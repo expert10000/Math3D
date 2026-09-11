@@ -260,6 +260,7 @@ import type {
   SurfaceAnalysisPayload,
   SurfaceCurvatureClass,
   SurfaceCurvatureFieldPayload,
+  SurfaceLocalProbePayload,
 } from "./surfaceAnalysis/contracts";
 import {
   adaptSurfaceDefinition,
@@ -278,6 +279,7 @@ import {
   serializeSurfaceAnalysisWorkspace,
 } from "./surfaceAnalysis/persistence";
 import { createSurfaceCurvatureField, createSurfaceCurvaturePayload, surfaceCurvatureRegionIndices } from "./surfaceAnalysis/surfaceCurvature";
+import { compareSurfaceLocalProbes, createSurfaceLocalProbe, createSurfaceProbePayload } from "./surfaceAnalysis/surfaceProbe";
 import {
   DEFAULT_GEOMETRY_SEMANTIC_FILTER,
   attachGeometrySemanticSelection,
@@ -41869,6 +41871,10 @@ const App: React.FC = () => {
     () => getSurfaceAnalysisResult<SurfaceAnalysisPayload>(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "curvature-field"),
     [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
   );
+  const activeSurfaceProbeResult = useMemo(
+    () => getSurfaceAnalysisResult<SurfaceAnalysisPayload>(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "surface-probe"),
+    [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
+  );
   const activeSurfaceAnalysisResult = useMemo(
     () => activeSurfaceCurvatureResult ?? getSurfaceAnalysisResult(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "differential-geometry") ?? activeSurfaceDefinitionResult,
     [activeCanonicalSurfaceDefinition.identity, activeSurfaceCurvatureResult, activeSurfaceDefinitionResult, surfaceAnalysisResultStore]
@@ -43194,6 +43200,11 @@ const App: React.FC = () => {
   const [surfaceCurvatureVisible, setSurfaceCurvatureVisible] = useState(true);
   const [surfaceCurvatureCompareLabel, setSurfaceCurvatureCompareLabel] = useState("Set a baseline to compare revisions.");
   const surfaceCurvatureCompareBaselineRef = useRef<SurfaceCurvatureFieldPayload | null>(null);
+  const [surfaceProbeAngleDeg, setSurfaceProbeAngleDeg] = useState(0);
+  const [surfaceProbeEvidenceVisible, setSurfaceProbeEvidenceVisible] = useState(true);
+  const [surfacePinnedProbes, setSurfacePinnedProbes] = useState<SurfaceLocalProbePayload[]>([]);
+  const [surfaceProbeCompareLabel, setSurfaceProbeCompareLabel] = useState("Pin or compare two probes.");
+  const surfaceProbeCompareBaselineRef = useRef<SurfaceLocalProbePayload | null>(null);
   const handleSelectSurfaceComputation = useCallback((computation: SurfaceComputationId) => {
     const section: AnalysisFocusedSection = computation === "surface-curves"
       ? "curvature-lines"
@@ -48733,6 +48744,174 @@ case "mobius":
     anchor.click();
     URL.revokeObjectURL(url);
   }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceCurvatureField, activeSurfaceCurvatureResult?.payload]);
+
+  const handleProbeCurrentSurfaceSample = useCallback(() => {
+    const source = surfaceCurvatureSource;
+    if (!source?.positions || !source.sampleCount) return;
+    const sampleIndex = Math.floor(source.sampleCount / 2);
+    const offset = sampleIndex * 3;
+    const point = { x: Number(source.positions[offset]), y: Number(source.positions[offset + 1]), z: Number(source.positions[offset + 2]) };
+    const sampledNormal = surfaceSampleSet?.samples.length === source.sampleCount ? surfaceSampleSet.samples[sampleIndex]?.normal : null;
+    const meshNormals = surfaceMeshCurvatures?.normals;
+    const normal = sampledNormal ?? (meshNormals?.length === source.sampleCount * 3 ? { x: Number(meshNormals[offset]), y: Number(meshNormals[offset + 1]), z: Number(meshNormals[offset + 2]) } : { x: 0, y: 1, z: 0 });
+    handleProbe({ point, normal: { x: normal.x, y: normal.y, z: normal.z }, vertexIndex: sampleIndex, meshKey: surfaceViewerKind === "mesh" ? surfaceSampleSet?.samples[sampleIndex]?.meshKey : undefined });
+    setInspectIdx(sampleIndex);
+    setProbeEnabled(true);
+    setSurfaceProbeEvidenceVisible(true);
+    setRightPanelTab("inspector");
+  }, [handleProbe, surfaceCurvatureSource, surfaceMeshCurvatures?.normals, surfaceSampleSet?.samples, surfaceViewerKind]);
+
+  const canonicalSurfaceProbe = useMemo<SurfaceLocalProbePayload | null>(() => {
+    if (!probeEnabled || !probeInfo) return null;
+    const source = surfaceCurvatureSource;
+    let sampleIndex = -1;
+    if (source) {
+      if (probeInfo.vertexIndex != null && probeInfo.vertexIndex >= 0 && probeInfo.vertexIndex < source.sampleCount) {
+        sampleIndex = probeInfo.vertexIndex;
+      } else if (source.positions?.length === source.sampleCount * 3) {
+        let bestDistance = Infinity;
+        for (let index = 0; index < source.sampleCount; index += 1) {
+          const offset = index * 3;
+          const distance = (Number(source.positions[offset]) - probeInfo.point.x) ** 2 +
+            (Number(source.positions[offset + 1]) - probeInfo.point.y) ** 2 +
+            (Number(source.positions[offset + 2]) - probeInfo.point.z) ** 2;
+          if (distance < bestDistance) { bestDistance = distance; sampleIndex = index; }
+        }
+      }
+    }
+    const read = (values: ArrayLike<number> | undefined): number | null => {
+      const value = sampleIndex >= 0 && values ? Number(values[sampleIndex]) : Number.NaN;
+      return Number.isFinite(value) ? value : null;
+    };
+    const K = read(source?.K) ?? probeCurv?.K ?? paramProbeCurv?.K ?? null;
+    const H = read(source?.H) ?? probeCurv?.H ?? paramProbeCurv?.H ?? null;
+    const k1 = read(source?.k1) ?? probeCurv?.k1 ?? paramProbeCurv?.k1 ?? null;
+    const k2 = read(source?.k2) ?? probeCurv?.k2 ?? paramProbeCurv?.k2 ?? null;
+    const directionValid = sampleIndex >= 0 && !!source?.directionValidityMask?.[sampleIndex];
+    const readDirection = (values: ArrayLike<number> | undefined): readonly [number, number, number] | null => {
+      if (!directionValid || !values) return null;
+      const offset = sampleIndex * 3;
+      const direction = [Number(values[offset]), Number(values[offset + 1]), Number(values[offset + 2])] as const;
+      return direction.every(Number.isFinite) ? direction : null;
+    };
+    const d1 = readDirection(source?.d1);
+    const d2 = readDirection(source?.d2);
+    const principalCurvatures = k1 != null && k2 != null ? [Math.max(k1, k2), Math.min(k1, k2)] as const : null;
+    const domainCoordinate = probeInfo.uv
+      ? { kind: "uv" as const, u: probeInfo.uv.u, v: probeInfo.uv.v }
+      : probeInfo.xy
+        ? { kind: "xy" as const, x: probeInfo.xy.x, y: probeInfo.xy.y }
+        : probeInfo.vertexIndex != null || probeInfo.faceIndex != null || probeInfo.meshKey
+          ? { kind: "mesh" as const, vertexIndex: probeInfo.vertexIndex, faceIndex: probeInfo.faceIndex, meshKey: probeInfo.meshKey }
+          : { kind: "world" as const };
+    return createSurfaceLocalProbe({
+      probeId: `probe-${activeCanonicalSurfaceDefinition.identity.surfaceRevision}-${probeStamp}`,
+      domainCoordinate,
+      position: [probeInfo.point.x, probeInfo.point.y, probeInfo.point.z],
+      normal: [probeInfo.normal.x, probeInfo.normal.y, probeInfo.normal.z],
+      firstFundamentalForm: probeCurv ? [probeCurv.E, probeCurv.F, probeCurv.G] : null,
+      secondFundamentalForm: probeCurv ? [probeCurv.e, probeCurv.f, probeCurv.g] : null,
+      gaussianCurvature: K,
+      meanCurvature: H,
+      principalCurvatures,
+      principalDirections: d1 && d2 ? [d1, d2] : null,
+      valid: true,
+      uncertain: sampleIndex >= 0 ? Boolean(source?.uncertaintyMask?.[sampleIndex]) : false,
+      umbilic: paramProbeCurv?.isUmbilic ?? false,
+      mapping: { sampleIndex: sampleIndex >= 0 ? sampleIndex : undefined, vertexIndex: probeInfo.vertexIndex, faceIndex: probeInfo.faceIndex, meshKey: probeInfo.meshKey },
+    }, surfaceProbeAngleDeg);
+  }, [activeCanonicalSurfaceDefinition.identity.surfaceRevision, paramProbeCurv, probeCurv, probeEnabled, probeInfo, probeStamp, surfaceCurvatureSource, surfaceProbeAngleDeg]);
+
+  const surfaceProbeMethod: SurfaceAnalysisMethod = activeCanonicalSurfaceDefinition.representation === "mesh-backed"
+    ? "mesh-approximation"
+    : probeCurv ? "numerical-derivatives" : "surface-sampling";
+  useEffect(() => {
+    if (!canonicalSurfaceProbe) return;
+    const definition = activeCanonicalSurfaceDefinition;
+    const dependencyRequest = createSurfaceAnalysisRequest({
+      requestId: `surface-probe-dependency:${definition.identity.key}`,
+      kind: "differential-geometry", definition, domain: "surface", method: surfaceProbeMethod,
+      requestedOutputs: ["local represented differential data"],
+    });
+    const dependencyPayload: SurfaceAnalysisPayload = {
+      version: 1, surfaceId: definition.identity.surfaceId, surfaceRevision: definition.identity.surfaceRevision,
+      representation: definition.representation, method: surfaceProbeMethod, units: definition.units,
+      orientation: definition.orientation, warnings: definition.warnings,
+      data: { kind: "summary", values: { source: "local probe", probeId: canonicalSurfaceProbe.probeId } },
+    };
+    const request = createSurfaceAnalysisRequest({
+      requestId: canonicalSurfaceProbe.probeId,
+      kind: "surface-probe", definition, domain: "point", method: surfaceProbeMethod,
+      parameters: { probeId: canonicalSurfaceProbe.probeId, angleDeg: surfaceProbeAngleDeg, coordinateKind: canonicalSurfaceProbe.domainCoordinate.kind },
+      requestedOutputs: ["position", "domain coordinate", "normal", "tangent basis", "I", "II", "H", "K", "k1", "k2", "d1", "d2", "classification", "normal curvature", "evidence"],
+    });
+    const payload = createSurfaceProbePayload({ definition, method: surfaceProbeMethod, probe: canonicalSurfaceProbe });
+    setSurfaceAnalysisResultStore((store) => {
+      let next = store;
+      if (getSurfaceAnalysisResult(next, definition.identity, "differential-geometry")?.state !== "ready") {
+        next = publishSurfaceAnalysisResult({ store: next, registry: surfaceAnalysisRegistryRef.current, request: dependencyRequest, payload: dependencyPayload, backend: "Local Surface adapter" });
+      }
+      return publishSurfaceAnalysisResult({ store: next, registry: surfaceAnalysisRegistryRef.current, request, payload, backend: "Local differential-geometry probe" });
+    });
+  }, [activeCanonicalSurfaceDefinition, canonicalSurfaceProbe, surfaceProbeAngleDeg, surfaceProbeMethod]);
+
+  const handleToggleSurfaceProbeEvidence = useCallback(() => {
+    setSurfaceProbeEvidenceVisible((visible) => {
+      const next = !visible;
+      setShowProbeNormal(next);
+      setShowProbeTangentPlane(next);
+      setShowProbeTangents(next);
+      setShowPrincipalDirections(next && !!canonicalSurfaceProbe?.evidence.principalAxes);
+      setShowPrincipalNormalPlanes(next && !!canonicalSurfaceProbe?.evidence.normalSection);
+      return next;
+    });
+  }, [canonicalSurfaceProbe?.evidence.normalSection, canonicalSurfaceProbe?.evidence.principalAxes]);
+  const handlePinSurfaceProbe = useCallback(() => {
+    if (!canonicalSurfaceProbe) return;
+    setSurfacePinnedProbes((entries) => [canonicalSurfaceProbe, ...entries.filter((entry) => entry.probeId !== canonicalSurfaceProbe.probeId)].slice(0, 12));
+    const identity = activeCanonicalSurfaceDefinition.identity;
+    setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, savedResults: [...document.savedResults.filter((entry) => entry.id !== `saved:${identity.key}:${canonicalSurfaceProbe.probeId}`), {
+      id: `saved:${identity.key}:${canonicalSurfaceProbe.probeId}`, resultKey: `${identity.key}:surface-probe:default`, kind: "surface-probe", variant: "default", identity,
+      label: `${canonicalSurfaceProbe.probeId} · ${canonicalSurfaceProbe.classification}`, visible: surfaceProbeEvidenceVisible,
+    }] }));
+  }, [activeCanonicalSurfaceDefinition.identity, canonicalSurfaceProbe, surfaceProbeEvidenceVisible]);
+  const handleCompareSurfaceProbe = useCallback(() => {
+    if (!canonicalSurfaceProbe) return;
+    const baseline = surfaceProbeCompareBaselineRef.current;
+    if (!baseline) {
+      surfaceProbeCompareBaselineRef.current = canonicalSurfaceProbe;
+      setSurfaceProbeCompareLabel(`Baseline ${canonicalSurfaceProbe.probeId} stored; click another point.`);
+      return;
+    }
+    const comparison = compareSurfaceLocalProbes(baseline, canonicalSurfaceProbe);
+    setSurfaceProbeCompareLabel(`Distance ${comparison.distance.toPrecision(4)} · ΔK ${comparison.gaussianCurvatureDelta?.toPrecision(4) ?? "undefined"} · ΔH ${comparison.meanCurvatureDelta?.toPrecision(4) ?? "undefined"}${comparison.classificationChanged ? " · class changed" : ""}`);
+  }, [canonicalSurfaceProbe]);
+  const surfaceProbeJson = useCallback((probe: SurfaceLocalProbePayload) => JSON.stringify({
+    version: 1, surface: activeCanonicalSurfaceDefinition.identity, representation: activeCanonicalSurfaceDefinition.representation,
+    method: surfaceProbeMethod, units: activeCanonicalSurfaceDefinition.units, orientation: activeCanonicalSurfaceDefinition.orientation, probe,
+  }, null, 2), [activeCanonicalSurfaceDefinition, surfaceProbeMethod]);
+  const handleCopySurfaceProbe = useCallback(() => {
+    if (canonicalSurfaceProbe) void navigator.clipboard?.writeText(surfaceProbeJson(canonicalSurfaceProbe));
+  }, [canonicalSurfaceProbe, surfaceProbeJson]);
+  const handleExportSurfaceProbe = useCallback(() => {
+    if (!canonicalSurfaceProbe) return;
+    const url = URL.createObjectURL(new Blob([surfaceProbeJson(canonicalSurfaceProbe)], { type: "application/json" }));
+    const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${canonicalSurfaceProbe.probeId}.json`; anchor.click(); URL.revokeObjectURL(url);
+  }, [canonicalSurfaceProbe, surfaceProbeJson]);
+  const handleReplaySurfaceProbe = useCallback((probe: SurfaceLocalProbePayload) => {
+    const normal = probe.normal ?? [0, 1, 0];
+    setProbeEnabled(true);
+    setActiveSurfaceComputation("surface-probe");
+    setProbeInfo({
+      point: { x: probe.position[0], y: probe.position[1], z: probe.position[2] }, normal: { x: normal[0], y: normal[1], z: normal[2] },
+      vertexIndex: probe.mapping.vertexIndex, faceIndex: probe.mapping.faceIndex, meshKey: probe.mapping.meshKey,
+      uv: probe.domainCoordinate.kind === "uv" ? { u: probe.domainCoordinate.u, v: probe.domainCoordinate.v } : undefined,
+      xy: probe.domainCoordinate.kind === "xy" ? { x: probe.domainCoordinate.x, y: probe.domainCoordinate.y } : undefined,
+    });
+    setProbeStamp((stamp) => stamp + 1);
+    if (probe.mapping.sampleIndex != null) setInspectIdx(probe.mapping.sampleIndex);
+    setCameraResetToken((token) => token + 1);
+  }, []);
 
   const calculusScalarOptions = useMemo(() => {
     const out: Array<{ value: string; label: string }> = [];
@@ -57103,6 +57282,37 @@ case "mobius":
     }
     return groups.some((group) => group.lines.length) ? groups : null;
   }, [ridgeValleyResult, ridgeValleyStitch, showRidges, showValleys, surfaceViewerKind]);
+  const surfaceProbeEvidencePolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (!surfaceProbeEvidenceVisible || !canonicalSurfaceProbe?.normal || !canonicalSurfaceProbe.normalCurvature.direction) return null;
+    const p = canonicalSurfaceProbe.position;
+    const n = canonicalSurfaceProbe.normal;
+    const d = canonicalSurfaceProbe.normalCurvature.direction;
+    const sceneScale = Math.max(0.1, surfaceSampleSet?.bbox?.getSize(new THREE.Vector3()).length() ?? 2);
+    const halfLength = sceneScale * 0.22;
+    const groups: OverlayPolylineGroup[] = [{
+      lines: [[
+        { x: p[0] - d[0] * halfLength, y: p[1] - d[1] * halfLength, z: p[2] - d[2] * halfLength },
+        { x: p[0] + d[0] * halfLength, y: p[1] + d[1] * halfLength, z: p[2] + d[2] * halfLength },
+      ]],
+      color: 0x0ea5e9, opacity: 0.98, radiusScale: 1.6,
+    }];
+    const curvature = canonicalSurfaceProbe.normalCurvature.value;
+    if (curvature != null && Number.isFinite(curvature) && Math.abs(curvature) > 1e-12) {
+      const signedRadius = 1 / curvature;
+      const radius = Math.min(Math.abs(signedRadius), sceneScale * 1.5);
+      const sign = Math.sign(signedRadius);
+      const center = [p[0] + n[0] * radius * sign, p[1] + n[1] * radius * sign, p[2] + n[2] * radius * sign] as const;
+      const circle: PolylineSet[number] = [];
+      for (let step = 0; step <= 48; step += 1) {
+        const angle = 2 * Math.PI * step / 48;
+        const normalOffset = -radius * sign * Math.cos(angle);
+        const tangentOffset = radius * Math.sin(angle);
+        circle.push({ x: center[0] + n[0] * normalOffset + d[0] * tangentOffset, y: center[1] + n[1] * normalOffset + d[1] * tangentOffset, z: center[2] + n[2] * normalOffset + d[2] * tangentOffset });
+      }
+      groups.push({ lines: [circle], color: 0xf97316, opacity: 0.9, radiusScale: 1.25 });
+    }
+    return groups;
+  }, [canonicalSurfaceProbe, surfaceProbeEvidenceVisible, surfaceSampleSet?.bbox]);
   const meshViewerOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
     const sets: OverlayPointSet[] = [];
     if (combinedOverlayPointSets?.length) sets.push(...combinedOverlayPointSets);
@@ -57116,10 +57326,11 @@ case "mobius":
     if (combinedOverlayPolylineGroups?.length) groups.push(...combinedOverlayPolylineGroups);
     if (surfaceFeatureOverlayPolylineGroups?.length) groups.push(...surfaceFeatureOverlayPolylineGroups);
     if (ridgeValleyOverlayPolylineGroups?.length) groups.push(...ridgeValleyOverlayPolylineGroups);
+    if (surfaceProbeEvidencePolylineGroups?.length) groups.push(...surfaceProbeEvidencePolylineGroups);
     if (meshBooleanReviewProblemOverlays.polylineGroups?.length) groups.push(...meshBooleanReviewProblemOverlays.polylineGroups);
     if (meshSelectionHighlightOverlays.polylineGroups.length) groups.push(...meshSelectionHighlightOverlays.polylineGroups);
     return groups.length ? groups : null;
-  }, [combinedOverlayPolylineGroups, meshBooleanReviewProblemOverlays.polylineGroups, meshSelectionHighlightOverlays.polylineGroups, ridgeValleyOverlayPolylineGroups, surfaceFeatureOverlayPolylineGroups]);
+  }, [combinedOverlayPolylineGroups, meshBooleanReviewProblemOverlays.polylineGroups, meshSelectionHighlightOverlays.polylineGroups, ridgeValleyOverlayPolylineGroups, surfaceFeatureOverlayPolylineGroups, surfaceProbeEvidencePolylineGroups]);
   const meshUnifiedSelectionFilterStatus =
     meshUnifiedSelection && !meshUnifiedSelectionFilterResult.accepted
       ? meshUnifiedSelectionFilterResult.reasons[0] ?? "Selection filtered out"
@@ -78734,6 +78945,8 @@ case "mobius":
                     onOpenConfiguration={() => setSurfaceLegacyAnalysisOpen(true)}
                     curvatureState={!surfaceCurvatureSource ? "unavailable" : activeSurfaceCurvatureField ? "computed" : "ready"}
                     onComputeCurvature={handleComputeSurfaceCurvature}
+                    probeState={!surfaceCurvatureSource ? "unavailable" : canonicalSurfaceProbe ? "active" : "ready"}
+                    onProbeCurrentSample={handleProbeCurrentSurfaceSample}
                     derivedMesh={{
                       available: hasSurfaceMesh,
                       label: surfaceMeshLabel,
@@ -84281,7 +84494,7 @@ case "mobius":
                     <>
                     {surfacesLeftTab === "analysis" && <SurfaceAnalysisInspectorPanel
                       definition={activeCanonicalSurfaceDefinition}
-                      result={activeSurfaceAnalysisResult}
+                      result={activeSurfaceComputation === "surface-probe" ? activeSurfaceProbeResult ?? activeSurfaceAnalysisResult : activeSurfaceAnalysisResult}
                       historyCount={surfaceAnalysisResultStore.history.length}
                       savedResultCount={surfaceAnalysisWorkspaceDocument.savedResults.length}
                       probeRows={probeInfo ? [
@@ -84300,6 +84513,20 @@ case "mobius":
                         onExport: handleExportSurfaceCurvature,
                         onToggleVisible: handleToggleSurfaceCurvatureVisible,
                         onRecompute: handleComputeSurfaceCurvature,
+                      } : undefined}
+                      probeActions={canonicalSurfaceProbe ? {
+                        probe: canonicalSurfaceProbe,
+                        angleDeg: surfaceProbeAngleDeg,
+                        evidenceVisible: surfaceProbeEvidenceVisible,
+                        compareLabel: surfaceProbeCompareLabel,
+                        pinned: surfacePinnedProbes,
+                        onChangeAngle: setSurfaceProbeAngleDeg,
+                        onToggleEvidence: handleToggleSurfaceProbeEvidence,
+                        onPin: handlePinSurfaceProbe,
+                        onCompare: handleCompareSurfaceProbe,
+                        onCopy: handleCopySurfaceProbe,
+                        onExport: handleExportSurfaceProbe,
+                        onReplay: handleReplaySurfaceProbe,
                       } : undefined}
                     />}
                     <SurfacesRightPanel

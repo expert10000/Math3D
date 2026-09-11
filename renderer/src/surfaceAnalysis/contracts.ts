@@ -111,6 +111,40 @@ export type SurfacePointwisePayload = {
   valid: boolean;
 };
 
+export type SurfaceProbeDomainCoordinate =
+  | { kind: "uv"; u: number; v: number }
+  | { kind: "xy"; x: number; y: number }
+  | { kind: "mesh"; vertexIndex?: number; faceIndex?: number; meshKey?: string }
+  | { kind: "world" };
+
+export type SurfaceLocalProbePayload = {
+  kind: "local-probe";
+  probeId: string;
+  domainCoordinate: SurfaceProbeDomainCoordinate;
+  position: readonly [number, number, number];
+  normal: readonly [number, number, number] | null;
+  tangentBasis: readonly [readonly [number, number, number], readonly [number, number, number]] | null;
+  firstFundamentalForm: readonly [number, number, number] | null;
+  secondFundamentalForm: readonly [number, number, number] | null;
+  gaussianCurvature: number | null;
+  meanCurvature: number | null;
+  principalCurvatures: readonly [number, number] | null;
+  principalDirections: readonly [readonly [number, number, number], readonly [number, number, number]] | null;
+  shapeIndex: number | null;
+  curvedness: number | null;
+  classification: SurfaceCurvatureClass;
+  normalCurvature: {
+    angleDeg: number;
+    value: number | null;
+    formula: string;
+    direction: readonly [number, number, number] | null;
+  };
+  mapping: { sampleIndex?: number; vertexIndex?: number; faceIndex?: number; meshKey?: string };
+  evidence: { tangentPlane: boolean; normal: boolean; principalAxes: boolean; normalSection: boolean; osculatingCircle: boolean };
+  missing: Readonly<Record<string, string>>;
+  valid: boolean;
+};
+
 export type SurfaceFieldPayload = {
   kind: "scalar-field" | "vector-field" | "tensor-field";
   quantity: string;
@@ -230,6 +264,7 @@ export type SurfaceAnalysisPayload = {
   warnings: string[];
   data:
     | SurfacePointwisePayload
+    | SurfaceLocalProbePayload
     | SurfaceFieldPayload
     | SurfaceCurvePayload
     | SurfaceFeaturePayload

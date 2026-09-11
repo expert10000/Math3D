@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   CanonicalSurfaceDefinition,
   SurfaceAnalysisPayload,
   SurfaceCurvatureClass,
   SurfaceCurvatureFieldPayload,
+  SurfaceLocalProbePayload,
 } from "../surfaceAnalysis/contracts";
 import type { SurfaceAnalysisResult } from "../surfaceAnalysis/infrastructure";
 import { SurfaceAnalysisContractCard } from "./SurfaceAnalysisContractCard";
@@ -39,6 +40,8 @@ export function SurfaceAnalysisComputationPanel({
   onOpenDerivedMesh,
   curvatureState,
   onComputeCurvature,
+  probeState,
+  onProbeCurrentSample,
 }: {
   definition: CanonicalSurfaceDefinition;
   selected: SurfaceComputationId;
@@ -49,6 +52,8 @@ export function SurfaceAnalysisComputationPanel({
   onOpenDerivedMesh: () => void;
   curvatureState?: "unavailable" | "ready" | "computed";
   onComputeCurvature?: () => void;
+  probeState?: "unavailable" | "ready" | "active";
+  onProbeCurrentSample?: () => void;
 }) {
   return (
     <section data-testid="surface-analysis-computation-panel" style={{ display: "grid", gap: 9 }}>
@@ -64,6 +69,15 @@ export function SurfaceAnalysisComputationPanel({
           <span style={{ color: "#475467", fontSize: 9.5 }}>Publishes K, H, k1, k2, shape index, curvedness, principal directions, masks, regions, statistics and provenance together.</span>
           <button type="button" data-testid="surface-curvature-compute-button" disabled={curvatureState === "unavailable"} onClick={onComputeCurvature}>
             {curvatureState === "computed" ? "Recompute Curvature" : curvatureState === "unavailable" ? "Curvature source unavailable" : "Compute Curvature"}
+          </button>
+        </section>
+      )}
+      {selected === "surface-probe" && (
+        <section data-testid="surface-probe-compute" style={{ border: "1px solid #bfdbfe", borderRadius: 8, background: "#eff6ff", padding: 8, display: "grid", gap: 6 }}>
+          <strong style={{ fontSize: 10.5 }}>Local differential-geometry probe</strong>
+          <span style={{ color: "#475467", fontSize: 9.5 }}>Click a valid Surface point, or start from the current represented sample.</span>
+          <button type="button" data-testid="surface-probe-current-sample" disabled={probeState === "unavailable"} onClick={onProbeCurrentSample}>
+            {probeState === "active" ? "Probe current sample again" : probeState === "unavailable" ? "Probe source unavailable" : "Probe current sample"}
           </button>
         </section>
       )}
@@ -181,6 +195,7 @@ export function SurfaceAnalysisInspectorPanel({
   savedResultCount,
   probeRows,
   curvatureActions,
+  probeActions,
 }: {
   definition: CanonicalSurfaceDefinition;
   result: SurfaceAnalysisResult<SurfaceAnalysisPayload> | null;
@@ -198,11 +213,28 @@ export function SurfaceAnalysisInspectorPanel({
     onToggleVisible: () => void;
     onRecompute: () => void;
   };
+  probeActions?: {
+    probe: SurfaceLocalProbePayload;
+    angleDeg: number;
+    evidenceVisible: boolean;
+    compareLabel: string;
+    pinned: readonly SurfaceLocalProbePayload[];
+    onChangeAngle: (angle: number) => void;
+    onToggleEvidence: () => void;
+    onPin: () => void;
+    onCompare: () => void;
+    onCopy: () => void;
+    onExport: () => void;
+    onReplay: (probe: SurfaceLocalProbePayload) => void;
+  };
 }) {
   const [tab, setTab] = useState<InspectorTab>("result");
   const payloadKind = result?.payload?.data.kind ?? "none";
   const warnings = result?.payload?.warnings ?? definition.warnings;
   const curvature = result?.payload?.data.kind === "curvature" ? result.payload.data : null;
+  useEffect(() => {
+    if (result?.payload?.data.kind === "local-probe") setTab("probe");
+  }, [result?.payload?.data.kind, result?.resultVersion]);
   return (
     <section data-testid="surface-analysis-inspector" style={{ display: "grid", gap: 8, marginBottom: 10 }}>
       <SurfaceAnalysisContractCard definition={definition} result={result} historyCount={historyCount} />
@@ -273,7 +305,9 @@ export function SurfaceAnalysisInspectorPanel({
             {!!warnings.length && <div style={{ color: "#9a3412" }}>{warnings.join(" · ")}</div>}
           </div>
         )}
-        {tab === "probe" && (
+        {tab === "probe" && probeActions ? (
+          <SurfaceLocalProbeInspector {...probeActions} />
+        ) : tab === "probe" && (
           probeRows.length ? (
             <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", gap: "4px 8px" }}>
               {probeRows.map((row) => (
@@ -299,5 +333,56 @@ export function SurfaceAnalysisInspectorPanel({
         )}
       </div>
     </section>
+  );
+}
+
+const fmtProbe = (value: number | null, digits = 5) => value == null || !Number.isFinite(value) ? "undefined" : value.toPrecision(digits);
+const fmtProbeVec = (value: readonly number[] | null) => value ? `(${value.map((entry) => fmtProbe(entry, 4)).join(", ")})` : "undefined";
+
+function SurfaceLocalProbeInspector({
+  probe,
+  angleDeg,
+  evidenceVisible,
+  compareLabel,
+  pinned,
+  onChangeAngle,
+  onToggleEvidence,
+  onPin,
+  onCompare,
+  onCopy,
+  onExport,
+  onReplay,
+}: NonNullable<Parameters<typeof SurfaceAnalysisInspectorPanel>[0]["probeActions"]>) {
+  const I = probe.firstFundamentalForm;
+  const II = probe.secondFundamentalForm;
+  const [d1, d2] = probe.principalDirections ?? [null, null];
+  const missing = Object.entries(probe.missing);
+  return (
+    <div data-testid="surface-local-probe-result" style={{ display: "grid", gap: 7 }}>
+      <div><strong>{probe.probeId}</strong> · {probe.classification} · {probe.valid ? "valid" : "invalid"}</div>
+      <div><strong>Position:</strong> {fmtProbeVec(probe.position)}</div>
+      <div><strong>Domain:</strong> {probe.domainCoordinate.kind === "uv" ? `(u,v) = (${fmtProbe(probe.domainCoordinate.u)}, ${fmtProbe(probe.domainCoordinate.v)})` : probe.domainCoordinate.kind === "xy" ? `(x,y) = (${fmtProbe(probe.domainCoordinate.x)}, ${fmtProbe(probe.domainCoordinate.y)})` : probe.domainCoordinate.kind === "mesh" ? `mesh vertex ${probe.domainCoordinate.vertexIndex ?? "undefined"}, face ${probe.domainCoordinate.faceIndex ?? "undefined"}` : "world coordinate"}</div>
+      <div><strong>Normal:</strong> {fmtProbeVec(probe.normal)}</div>
+      <div><strong>Tangent basis:</strong> {probe.tangentBasis ? `${fmtProbeVec(probe.tangentBasis[0])}; ${fmtProbeVec(probe.tangentBasis[1])}` : "undefined"}</div>
+      <div><strong>I = (E,F,G):</strong> {fmtProbeVec(I)}</div>
+      <div><strong>II = (L,M,N):</strong> {fmtProbeVec(II)}</div>
+      <div><strong>K / H:</strong> {fmtProbe(probe.gaussianCurvature)} / {fmtProbe(probe.meanCurvature)}</div>
+      <div><strong>k1 / k2:</strong> {probe.principalCurvatures ? `${fmtProbe(probe.principalCurvatures[0])} / ${fmtProbe(probe.principalCurvatures[1])}` : "undefined"}</div>
+      <div><strong>d1 / d2:</strong> {fmtProbeVec(d1)} / {fmtProbeVec(d2)}</div>
+      <div><strong>Shape index / curvedness:</strong> {fmtProbe(probe.shapeIndex)} / {fmtProbe(probe.curvedness)}</div>
+      <label>Normal-curvature angle θ = {Math.round(angleDeg)}°
+        <input data-testid="surface-probe-angle" type="range" min={0} max={180} step={1} value={angleDeg} onChange={(event) => onChangeAngle(Number(event.target.value))} />
+      </label>
+      <div data-testid="surface-probe-normal-curvature"><strong>Euler:</strong> {probe.normalCurvature.formula} = {fmtProbe(probe.normalCurvature.value)}</div>
+      <div><strong>Direction:</strong> {fmtProbeVec(probe.normalCurvature.direction)}</div>
+      <button type="button" aria-pressed={evidenceVisible} onClick={onToggleEvidence}>{evidenceVisible ? "Hide probe evidence" : "Show probe evidence"}</button>
+      <div style={{ color: "#475467" }}>Evidence: tangent plane {probe.evidence.tangentPlane ? "ready" : "undefined"}; normal {probe.evidence.normal ? "ready" : "undefined"}; principal axes {probe.evidence.principalAxes ? "ready" : "undefined"}; normal section {probe.evidence.normalSection ? "ready" : "undefined"}; osculating circle {probe.evidence.osculatingCircle ? "ready" : "undefined"}.</div>
+      {!!missing.length && <details><summary>Undefined quantities ({missing.length})</summary>{missing.map(([key, reason]) => <div key={key}><strong>{key}:</strong> {reason}</div>)}</details>}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        <button type="button" onClick={onPin}>Pin probe</button><button type="button" onClick={onCompare}>Compare</button><button type="button" onClick={onCopy}>Copy</button><button type="button" onClick={onExport}>Export JSON</button>
+      </div>
+      <div style={{ color: "#64748b" }}>{compareLabel}</div>
+      {!!pinned.length && <details open><summary>Pinned probes ({pinned.length})</summary>{pinned.map((entry) => <button key={entry.probeId} type="button" onClick={() => onReplay(entry)}>Replay {entry.probeId}</button>)}</details>}
+    </div>
   );
 }

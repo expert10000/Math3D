@@ -121,7 +121,38 @@ test.describe("Surface functional flow", () => {
     }
   });
 
-  test("Test 4 — invalid input failure", async () => {
+  test("Test 4 — canonical local probe and Euler evidence", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await openSurfaceGenerator(ctx.page);
+      await waitForWorkerReady(ctx.page);
+      await ctx.page.getByTestId("surfaces-left-tab-analysis").click();
+      await ctx.page.getByTestId("surface-computation-surface-probe").click();
+      await ctx.page.getByTestId("surface-probe-current-sample").click();
+      const probe = ctx.page.getByTestId("surface-local-probe-result");
+      await expect(probe).toBeVisible({ timeout: 10_000 });
+      await expect(probe).toContainText("Position:");
+      await expect(probe).toContainText("I = (E,F,G):");
+      await expect(probe).toContainText("II = (L,M,N):");
+      await expect(probe).toContainText("Euler:");
+      await ctx.page.getByTestId("surface-probe-angle").fill("60");
+      await expect(ctx.page.getByTestId("surface-probe-normal-curvature")).toContainText("cos²");
+      await probe.getByRole("button", { name: "Pin probe" }).click();
+      await expect(probe).toContainText("Pinned probes (1)");
+      await probe.getByRole("button", { name: "Compare", exact: true }).click();
+      await expect(probe).toContainText("Baseline");
+      await probe.getByRole("button", { name: "Hide probe evidence" }).click();
+      await expect(probe.getByRole("button", { name: "Show probe evidence" })).toBeVisible();
+      await probe.getByRole("button", { name: /Replay probe-/ }).click();
+      await expect(ctx.page.getByTestId("surface-analysis-contract-state")).toHaveText("ready");
+      await expect(ctx.page.getByTestId("error-banner")).toHaveCount(0);
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
+  test("Test 5 — invalid input failure", async () => {
     let ctx: LaunchedSurfaceApp | null = null;
     try {
       ctx = await launchSurfaceApp({
