@@ -85,8 +85,8 @@ Baseline verification at this assessment:
 | 4 — Curvature workspace | Complete (`f5b7504`) | One canonical K/H/k1/k2/shape-index/curvedness/d1/d2 result, masks, units, statistics, classifications, independent display controls, region navigation and saved-result lifecycle | None for Commit 4 |
 | 5 — Local differential-geometry probe | Complete (`101684b`) | Canonical point report, domain mapping, I/II forms, curvature, directions, classifications, Euler normal curvature, synchronized evidence, pin/compare/replay/copy/export lifecycle | None for Commit 5 |
 | 6 — Surface curves and features | Complete (`9e26ffc`) | Surface-owned curve/feature taxonomy, stable revision-aware result layers, method and seed provenance, statistics/policies, independent inspection and lifecycle actions | None for Commit 6 |
-| 7 — Charts and parameter diagnostics | Partial | Chart grid, orientation/degeneracy diagnostics, graph/param domains | Metric/Jacobian fields, distortion, boundary/degenerate regions, Inspector results, future atlas contract |
-| 8 — Provenance-linked derived SurfaceMesh | Partial | Baking, `SurfaceMeshData`, source kinds, preview/full mesh caches | Source ID/revision/settings, UV correspondence, live/snapshot states, stale/regenerate/detach, persistence |
+| 7 — Charts and parameter diagnostics | Complete (`8b67733`) | Revision-bound Chart result with metric/Jacobian and distortion fields, masks, regions, linked parameter/3D selection, independent overlays and atlas v1 contract | None for Commit 7 |
+| 8 — Provenance-linked derived SurfaceMesh | Complete (`83d8f3c`) | Derived-mesh identity, correspondence, live/snapshot/stale/detached lifecycle, source/mesh mapping, provenance actions and compact persistence | None for Commit 8 |
 | 9 — Live mesh, bake, and Mesh Analysis handoff | Partial | Promote, Bake to Mesh, Geometry/Mesh navigation | Three unambiguous actions, direct Mesh Analyze opening, selection/camera transfer, reverse navigation |
 | 10 — VTK/CGAL derived-mesh bridge | Partial | Shared workers/clients and extensive Mesh VTK/CGAL workflow | Compact Surface bridge, backend variants/provenance, no duplicated advanced Mesh panels |
 | 11 — Workers, cache, and performance | Partial | Viewer memoization, mesh workers, cancellation patterns, preview/full LOD | Surface request scheduler, dependency cache, revision guards, progressive fields, budgets and profiling |
@@ -439,21 +439,29 @@ Acceptance: curve/feature computation survives overlay toggles and becomes inspe
 
 Planned message: `feat(surface-analysis): add chart and parameter-domain diagnostics`
 
-**Status: planned; chart-grid diagnostics exist.**
+**Status: complete (`8b67733`).**
 
 Already implemented:
 
 - Parameter/graph domains, chart grids, chart-cell diagnostics, coordinate readouts, orientation information, and degeneracy checks.
 
-Remaining:
+Implemented:
 
-- [ ] Publish parameter-domain bounds, periodic seams, trim/chart boundaries, and valid-domain masks as a Chart result.
-- [ ] Compute Jacobian rank, orientation, `det(g) = EG-F²`, and area scale `sqrt(det(g))`.
-- [ ] Add area and angle distortion fields with documented reference metrics and units.
-- [ ] Detect degenerate/near-degenerate regions using scale-aware thresholds and link them to 3D selections.
-- [ ] Provide synchronized parameter-domain and 3D views with shared probe/selection highlighting.
-- [ ] Add chart boundary, seam, orientation-flip, and degenerate-region overlays with independent visibility.
-- [ ] Define a future-compatible atlas contract for chart overlap and coordinate transitions without requiring an atlas UI in v1.
+- [x] Publish parameter-domain bounds, periodic seams, trim/chart boundaries, and valid-domain masks as a Chart result.
+- [x] Compute Jacobian rank, orientation, `det(g) = EG-F²`, and area scale `sqrt(det(g))`.
+- [x] Add area and angle distortion fields with documented reference metrics and units.
+- [x] Detect degenerate/near-degenerate regions using scale-aware thresholds and link them to 3D selections.
+- [x] Provide synchronized parameter-domain and 3D views with shared probe/selection highlighting.
+- [x] Add chart boundary, seam, orientation-flip, and degenerate-region overlays with independent visibility.
+- [x] Define a future-compatible atlas contract for chart overlap and coordinate transitions without requiring an atlas UI in v1.
+
+The Chart result uses the viewer's parameter coordinates and matching 3D samples. Parametric families expose periodic seams from their canonical domain; representations without a global chart report that limitation rather than inventing coordinates. The Inspector owns the parameter-domain SVG, field statistics, region navigation, save/export/recompute actions and shared sample selection.
+
+Validation at `8b67733`:
+
+- The full renderer suite passes: **550 tests across 103 files**.
+- `npm run typecheck:noemit` and `npm run build:core` pass.
+- The Surface functional flow passes **7/7**, including parameter-domain computation, metric/distortion inspection, independent overlays and linked parameter/3D selection.
 
 Acceptance: users can explain where a parameterization is valid, oriented, distorted, or singular and navigate directly between domain evidence and the 3D Surface.
 
@@ -461,23 +469,34 @@ Acceptance: users can explain where a parameterization is valid, oriented, disto
 
 Planned message: `feat(surface-mesh): make tessellation a provenance-linked derived SurfaceMesh`
 
-**Status: planned; baking and broad source kinds exist.**
+**Status: complete (`83d8f3c`).**
 
 Already implemented:
 
 - Surface baking, preview/full meshes, `SurfaceMeshData`, broad `SurfaceMeshSource` kinds, UVs for several grids, and validation fields.
 - Geometry↔Mesh trace infrastructure that provides a model for bidirectional correspondence.
 
-Remaining:
+Implemented:
 
-- [ ] Define `DerivedSurfaceMeshIdentity` with mesh ID/revision, source Surface ID/revision/representation, tessellation method/settings, backend, timestamp, and state.
-- [ ] Distinguish live derived meshes, frozen snapshots, robust backend variants, and detached independently editable meshes.
-- [ ] Preserve vertex-to-domain `(u,v)` mapping and surface point/normal correspondence where available.
-- [ ] For implicit surfaces, retain projection/residual, source-cell, or nearest-surface correspondence with confidence rather than inventing UVs.
-- [ ] Add source→mesh and mesh→source selection mapping with partial/unavailable confidence states.
-- [ ] Mark a derived mesh stale when its Surface revision or tessellation parameters change; preserve its old payload for comparison.
-- [ ] Add regenerate, freeze snapshot, detach, delete, open source, and inspect provenance actions.
-- [ ] Persist compact derived-mesh metadata and regeneration history across save/reopen.
+- [x] Define `DerivedSurfaceMeshIdentity` with mesh ID/revision, source Surface ID/revision/representation, tessellation method/settings, backend, timestamp, and state.
+- [x] Distinguish live derived meshes, frozen snapshots, robust backend variants, and detached independently editable meshes.
+- [x] Preserve vertex-to-domain `(u,v)` mapping and surface point/normal correspondence where available.
+- [x] For implicit surfaces, retain source-sample correspondence and confidence rather than inventing UVs.
+- [x] Add source→mesh and mesh→source selection mapping with partial/unavailable confidence states.
+- [x] Mark a derived mesh stale when its Surface revision or tessellation parameters change; preserve its old metadata and result payload for comparison.
+- [x] Add regenerate, freeze snapshot, detach, delete, open source, and inspect provenance actions.
+- [x] Persist compact derived-mesh metadata and regeneration history across save/reopen without copying large geometry arrays into local storage.
+
+The Derived SurfaceMesh card reports the selected record's lifecycle state, source and mesh revisions, method, backend, tessellation settings, correspondence quality and regeneration history. Live result payloads retain geometry and mapping arrays in the shared result store; persisted workspace records keep compact provenance and history. The bridge can activate the current derived geometry in Mesh Analysis while Commit 9 remains responsible for the final three-action handoff model and complete camera/selection round trip.
+
+Validation at `83d8f3c`:
+
+- **5 focused derived-mesh lifecycle tests** and **5 Surface workspace persistence tests** pass.
+- The full renderer suite passes: **557 tests across 104 files**.
+- `npm run typecheck:noemit` and `npm run build:core` pass.
+- The Surface functional flow passes **8/8**, including regeneration, freeze, detach, provenance inspection, compact persistence and deletion.
+- Required Surface functional, Gallery, worker-failure and workspace-navigation checks pass: **17/17**.
+- `npm run test:app:responsive:smoke` passes for phone portrait, phone landscape, tablet and desktop layouts, including drawers, sheets and touch containment.
 
 Acceptance: every derived tessellation can answer which Surface revision and settings created it, whether it is current, and how its entities map back to the source.
 
