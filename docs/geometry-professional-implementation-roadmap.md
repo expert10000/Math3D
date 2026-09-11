@@ -323,22 +323,34 @@ Acceptance: every derived object can explain its source, revision, operation, de
 
 Planned message: `geometry: connect Geometry to shared AnalysisRequest AnalysisResult architecture`
 
-**Status: foundation implemented; live integration remains.**
+**Status: complete — `3e3a3b6`.**
 
 Already implemented:
 
 - Domain-neutral analysis contracts, registry, dependency resolution, result store, history, revisions, variants, and invalidation.
-- A thin Geometry adapter with basic-metrics and topology-summary definitions.
-- Quick Geometry analysis snapshots, basic metrics, topology summary, section summary, JSON save, variants, and Mesh Analyze handoff.
+- A thin Geometry adapter registers basic metrics, topology, section, differential, curve, surface, intrinsic, feature, diagnostics, measurement, comparison, and report families without moving domain mathematics into the generic core.
+- Canonical Geometry requests record the target object and scene identity, source revision, semantic selection, domain, sampling policy, parameters, precision, requested outputs, and registered variant.
+- Live Basic metrics, Topology summary, Section analysis, and Differential geometry handoff actions run through the shared registry and result store rather than a parallel component result array.
+- Exact parameter fingerprints, source-revision identities, cached requests, registered variants, exact dependency keys, transitive invalidation, retained stale payloads, result versions, and computation history use the shared lifecycle.
+- Scalar, vector, curve, point, table, summary, and warning outputs share one Geometry payload contract with backend and algorithm provenance.
+- The Analyze panel exposes stored current/stale results, lifecycle state, source/result revisions, request domain and outputs, parameter fingerprint, backend/algorithm provenance, computation time, and history; saved JSON includes the same lifecycle metadata.
+- Quick Geometry analysis snapshots, metrics, topology, section summaries, variants, JSON save, and Mesh Analyze handoff remain available through the existing UI.
 
 Remaining:
 
-- [ ] Define Geometry request metadata for target object, semantic selection, domain, sampling, parameters, precision, and requested outputs.
-- [ ] Route live quick analyses through the shared Geometry registry/result store rather than parallel component state.
-- [ ] Expand result kinds for curves, surfaces, intrinsic geometry, features, diagnostics, measurements, comparisons, and reports.
-- [ ] Use exact dependency keys, parameter fingerprints, source revisions, cached variants, stale payload inspection, and computation history.
-- [ ] Standardize scalar/vector/curve/point/table/summary/warning payloads and backend provenance.
-- [ ] Keep Geometry algorithms in Geometry adapters and workers; do not move domain mathematics into the generic core.
+- [x] Define Geometry request metadata for target object, semantic selection, domain, sampling, parameters, precision, and requested outputs.
+- [x] Route live quick analyses through the shared Geometry registry/result store rather than parallel component state.
+- [x] Expand result kinds for curves, surfaces, intrinsic geometry, features, diagnostics, measurements, comparisons, and reports.
+- [x] Use exact dependency keys, parameter fingerprints, source revisions, cached variants, stale payload inspection, and computation history.
+- [x] Standardize scalar/vector/curve/point/table/summary/warning payloads and backend provenance.
+- [x] Keep Geometry algorithms in Geometry adapters and workers; do not move domain mathematics into the generic core.
+
+Validation at `3e3a3b6`:
+
+- **137 Geometry tests across 26 files** pass, including canonical requests, standardized payloads, exact-request caching, source-revision invalidation, retained stale payloads, dependency keys, computation history, and registry-only family extension.
+- The full renderer suite passes: **441 tests across 83 files**.
+- `npm run typecheck:noemit` and `npm run build:core` pass.
+- Geometry professional-shell and object/scene E2E checks pass: **4/4**, including live execution plus lifecycle, request, fingerprint, provenance, history, and stored-result UI inspection.
 
 Acceptance: adding a Geometry analysis family requires a registry definition and domain implementation, not new result lifecycle code in `App.tsx`.
 
