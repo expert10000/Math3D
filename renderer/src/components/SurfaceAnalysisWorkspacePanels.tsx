@@ -44,6 +44,7 @@ export function SurfaceAnalysisComputationPanel({
   derivedMesh,
   derivedMeshLifecycle,
   onOpenDerivedMesh,
+  surfaceSourceHandoff,
   curvatureState,
   onComputeCurvature,
   probeState,
@@ -67,7 +68,8 @@ export function SurfaceAnalysisComputationPanel({
     status: string;
     onSelect: (id: string) => void;
     onRegenerate: () => void;
-    onFreeze: () => void;
+    onShowLive: () => void;
+    onBake: () => void;
     onDetach: () => void;
     onDelete: () => void;
     onOpenSource: () => void;
@@ -76,6 +78,16 @@ export function SurfaceAnalysisComputationPanel({
     onMapMeshToSource: () => void;
   };
   onOpenDerivedMesh: () => void;
+  surfaceSourceHandoff?: {
+    label: string;
+    sourceRevision: number;
+    meshState: string;
+    meshRevision: number;
+    units: string;
+    comparisonTarget: string;
+    mappedSelectionCount: number;
+    onReturn: () => void;
+  } | null;
   curvatureState?: "unavailable" | "ready" | "computed";
   onComputeCurvature?: () => void;
   probeState?: "unavailable" | "ready" | "active";
@@ -95,6 +107,15 @@ export function SurfaceAnalysisComputationPanel({
           Target: {definition.identity.label} · revision {definition.identity.surfaceRevision}
         </div>
       </div>
+      {surfaceSourceHandoff && (
+        <section data-testid="surface-mesh-source-handoff" style={{ border: "1px solid #86b7fe", borderRadius: 8, background: "#eff6ff", padding: 8, display: "grid", gap: 5 }}>
+          <strong style={{ fontSize: 10.5 }}>Surface source</strong>
+          <span style={{ color: "#475467", fontSize: 9.5 }}>{surfaceSourceHandoff.label} · source revision {surfaceSourceHandoff.sourceRevision}</span>
+          <span style={{ color: "#475467", fontSize: 9.5 }}>{surfaceSourceHandoff.meshState} · mesh revision {surfaceSourceHandoff.meshRevision} · {surfaceSourceHandoff.units} · {surfaceSourceHandoff.mappedSelectionCount} mapped selection</span>
+          <span style={{ color: "#475467", fontSize: 9.5 }}>Comparison target: {surfaceSourceHandoff.comparisonTarget}</span>
+          <button type="button" data-testid="surface-mesh-return-source" onClick={surfaceSourceHandoff.onReturn}>Open Surface Source</button>
+        </section>
+      )}
       {selected === "curvature-field" && (
         <section data-testid="surface-curvature-compute" style={{ border: "1px solid #bfdbfe", borderRadius: 8, background: "#eff6ff", padding: 8, display: "grid", gap: 6 }}>
           <strong style={{ fontSize: 10.5 }}>Canonical Curvature result</strong>
@@ -168,7 +189,7 @@ export function SurfaceAnalysisComputationPanel({
       >
         Configure selected computation
       </button>
-      <section
+      {!surfaceSourceHandoff && <section
         data-testid="surface-derived-mesh-bridge"
         style={{ border: "1px solid #c7d7ee", borderRadius: 8, background: "#f8fbff", padding: 8, display: "grid", gap: 5 }}
       >
@@ -189,9 +210,14 @@ export function SurfaceAnalysisComputationPanel({
           {derivedMeshLifecycle.selected.staleReason && <span style={{ color: "#9a3412" }}>{derivedMeshLifecycle.selected.staleReason}</span>}
         </div>}
         {derivedMeshLifecycle && <>
+          <div data-testid="surface-derived-mesh-primary-actions" role="group" aria-label="Surface Mesh workflows" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 4 }}>
+            <button type="button" data-testid="surface-derived-mesh-live" disabled={!derivedMesh.available} onClick={derivedMeshLifecycle.onShowLive}>Mesh (live)</button>
+            <button type="button" data-testid="surface-derived-mesh-bake" disabled={!derivedMeshLifecycle.selected} onClick={derivedMeshLifecycle.onBake}>Bake to Mesh</button>
+            <button type="button" data-testid="surface-derived-mesh-open-analysis" disabled={!derivedMeshLifecycle.selected} onClick={onOpenDerivedMesh}>Open in Mesh Analysis</button>
+          </div>
+          <div style={{ color: "#64748b", fontSize: 9.5 }}>Mesh follows the current Surface. Bake creates an independently editable snapshot. Open sends the selected live or saved mesh to Mesh Analysis.</div>
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
             <button type="button" data-testid="surface-derived-mesh-regenerate" disabled={!derivedMesh.available} onClick={derivedMeshLifecycle.onRegenerate}>{derivedMeshLifecycle.selected ? "Regenerate" : "Register live mesh"}</button>
-            <button type="button" disabled={!derivedMeshLifecycle.selected} onClick={derivedMeshLifecycle.onFreeze}>Freeze snapshot</button>
             <button type="button" disabled={!derivedMeshLifecycle.selected} onClick={derivedMeshLifecycle.onDetach}>Detach</button>
             <button type="button" disabled={!derivedMeshLifecycle.selected} onClick={derivedMeshLifecycle.onDelete}>Delete</button>
           </div>
@@ -203,10 +229,8 @@ export function SurfaceAnalysisComputationPanel({
           </div>
           <div style={{ color: "#64748b", fontSize: 9.5 }}>{derivedMeshLifecycle.status}</div>
         </>}
-        <button type="button" onClick={onOpenDerivedMesh}>
-          {derivedMesh.available ? "Open Mesh Analysis" : "Configure derived mesh"}
-        </button>
-      </section>
+        {!derivedMeshLifecycle && <button type="button" onClick={onOpenDerivedMesh}>{derivedMesh.available ? "Open in Mesh Analysis" : "Configure derived mesh"}</button>}
+      </section>}
     </section>
   );
 }

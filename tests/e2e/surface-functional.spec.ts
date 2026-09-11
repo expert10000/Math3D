@@ -238,7 +238,7 @@ test.describe("Surface functional flow", () => {
       await expect(ctx.page.getByTestId("surface-derived-mesh-provenance")).toContainText("source revision");
       await ctx.page.getByTestId("surface-derived-mesh-regenerate").click();
       await expect(ctx.page.getByTestId("surface-derived-mesh-provenance")).toContainText("mesh revision 2");
-      await bridge.getByRole("button", { name: "Freeze snapshot", exact: true }).click();
+      await ctx.page.getByTestId("surface-derived-mesh-bake").click();
       await expect(ctx.page.getByTestId("surface-derived-mesh-provenance")).toContainText("frozen-snapshot");
       await bridge.getByRole("button", { name: "Detach", exact: true }).click();
       await expect(ctx.page.getByTestId("surface-derived-mesh-provenance")).toContainText("detached");
@@ -261,7 +261,39 @@ test.describe("Surface functional flow", () => {
     }
   });
 
-  test("Test 8 — invalid input failure", async () => {
+  test("Test 8 — live mesh, baked snapshot, Mesh Analysis and mapped return", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await openParametricSurface(ctx.page);
+      await ctx.page.getByTestId("surfaces-left-tab-analysis").click();
+      await ctx.page.getByTestId("surface-computation-surface-probe").click();
+      await ctx.page.getByTestId("surface-probe-current-sample").click();
+
+      await ctx.page.getByTestId("surface-derived-mesh-live").click();
+      const sourceCard = ctx.page.getByTestId("surface-mesh-source-handoff");
+      await expect(sourceCard).toBeVisible();
+      await expect(sourceCard).toContainText("live-current");
+      await expect(sourceCard).toContainText("mapped selection");
+      await ctx.page.getByTestId("surface-mesh-return-source").click();
+      await expect(ctx.page.getByTestId("surface-derived-mesh-bridge")).toBeVisible();
+
+      await ctx.page.getByTestId("surface-derived-mesh-bake").click();
+      await expect(ctx.page.getByTestId("surface-derived-mesh-provenance")).toContainText("frozen-snapshot");
+      await ctx.page.getByTestId("surface-derived-mesh-open-analysis").click();
+      await expect(sourceCard).toBeVisible();
+      await expect(sourceCard).toContainText("frozen-snapshot");
+      await expect(sourceCard).toContainText("Torus");
+      await ctx.page.getByTestId("surface-mesh-return-source").click();
+      await expect(ctx.page.getByTestId("surface-derived-mesh-bridge")).toBeVisible();
+      await expect(ctx.page.getByText(/Returned to Torus revision .* mapped selection restored/)).toBeVisible();
+      await expect(ctx.page.getByTestId("error-banner")).toHaveCount(0);
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
+  test("Test 9 — invalid input failure", async () => {
     let ctx: LaunchedSurfaceApp | null = null;
     try {
       ctx = await launchSurfaceApp({

@@ -307,6 +307,10 @@ import {
   type DerivedSurfaceMeshRecord,
 } from "./surfaceAnalysis/derivedSurfaceMesh";
 import {
+  createSurfaceMeshForHandoff,
+  type SurfaceMeshGeometry,
+} from "./surfaceAnalysis/surfaceMeshHandoff";
+import {
   DEFAULT_GEOMETRY_SEMANTIC_FILTER,
   attachGeometrySemanticSelection,
   buildGeometrySemanticCandidate,
@@ -1338,6 +1342,20 @@ type CameraSyncState = {
   position: { x: number; y: number; z: number };
   target: { x: number; y: number; z: number };
   up: { x: number; y: number; z: number };
+};
+type SurfaceMeshAnalysisHandoff = {
+  record: DerivedSurfaceMeshRecord;
+  payload: SurfaceDerivedMeshPayload;
+  sourceViewerKind: SurfaceViewerKind;
+  sourceSelectionIndices: Uint32Array;
+  meshSelectionIndices: Uint32Array;
+  camera: CameraSyncState | null;
+  comparison: {
+    enabled: boolean;
+    surfaceId: SurfaceId;
+    paramId: ParamSurfaceId;
+  };
+  openedAt: number;
 };
 type GeometryCameraTourStatus = "idle" | "playing" | "completed" | "stopped" | "interrupted";
 const GEOMETRY_CAMERA_TOUR_MODE_OPTIONS: Array<{
@@ -39607,6 +39625,7 @@ const App: React.FC = () => {
   const [cameraSync, setCameraSync] = useState<CameraSyncState | null>(null);
   const [cameraOverride, setCameraOverride] = useState<CameraSyncState | null>(null);
   const [cameraOverrideToken, setCameraOverrideToken] = useState(0);
+  const surfaceCameraSnapshotRef = useRef<CameraSyncState | null>(null);
   const meshBooleanReviewAutoFrameKeyRef = useRef<string | null>(null);
   const [compareCameraOverride, setCompareCameraOverride] = useState<CameraSyncState | null>(null);
   const [compareCameraOverrideToken, setCompareCameraOverrideToken] = useState(0);
@@ -41192,6 +41211,10 @@ const App: React.FC = () => {
       : null;
   const cameraSyncEnabled = compareEnabled || rightPanelTab === "workbook";
   const compareCameraSyncEnabled = compareEnabled && compareCameraSync;
+  const handleSurfaceCameraSync = useCallback((state: CameraSyncState) => {
+    surfaceCameraSnapshotRef.current = state;
+    if (cameraSyncEnabled) setCameraSync(state);
+  }, [cameraSyncEnabled]);
   const workbookGraph = useMemo(() => {
     if (!activeWorkbook) {
       return {
@@ -43254,6 +43277,9 @@ const App: React.FC = () => {
   const [surfaceDerivedMeshSelectedId, setSurfaceDerivedMeshSelectedId] = useState<string | null>(null);
   const [surfaceDerivedMeshStatus, setSurfaceDerivedMeshStatus] = useState("Live tessellation provenance is tracked with the Surface revision.");
   const [surfaceInspectDerivedMesh, setSurfaceInspectDerivedMesh] = useState(false);
+  const surfaceDerivedMeshPayloadCacheRef = useRef(new Map<string, SurfaceDerivedMeshPayload>());
+  const surfaceDerivedMeshGeometryCacheRef = useRef(new Map<string, SurfaceMeshGeometry>());
+  const [surfaceMeshAnalysisHandoff, setSurfaceMeshAnalysisHandoff] = useState<SurfaceMeshAnalysisHandoff | null>(null);
   const handleSelectSurfaceComputation = useCallback((computation: SurfaceComputationId) => {
     const section: AnalysisFocusedSection = computation === "surface-curves"
       ? "curvature-lines"
@@ -49282,9 +49308,15 @@ case "mobius":
   }, [activeCanonicalSurfaceDefinition]);
   const surfaceDerivedCandidateKey = surfaceDerivedMeshCandidate ? JSON.stringify({ source: activeCanonicalSurfaceDefinition.identity.key, method: surfaceDerivedMeshCandidate.method, settings: surfaceDerivedMeshCandidate.settings, vertices: surfaceDerivedMeshCandidate.vertexCount, faces: surfaceDerivedMeshCandidate.faceCount }) : null;
   useEffect(() => {
+    if (surfaceMeshAnalysisHandoff) return;
     if (!surfaceDerivedCandidateKey) return;
     const payload = buildDerivedSurfaceMeshPayload();
     if (!payload) return;
+    surfaceDerivedMeshPayloadCacheRef.current.set(payload.meshId, payload);
+    surfaceDerivedMeshGeometryCacheRef.current.set(payload.meshId, {
+      positions: surfaceDerivedMeshCandidate!.positions,
+      indices: surfaceDerivedMeshCandidate!.indices,
+    });
     publishDerivedSurfaceMeshPayload(payload);
     setSurfaceAnalysisWorkspaceDocument((document) => {
       let changed = false;
@@ -49300,7 +49332,7 @@ case "mobius":
       return changed ? { ...document, derivedMeshes: records.slice(-64) } : document;
     });
     setSurfaceDerivedMeshSelectedId(payload.meshId);
-  }, [activeCanonicalSurfaceDefinition, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedCandidateKey, surfaceDerivedMeshCandidate]);
+  }, [activeCanonicalSurfaceDefinition, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedCandidateKey, surfaceDerivedMeshCandidate, surfaceMeshAnalysisHandoff]);
   const activeDerivedSurfaceMeshPayload = activeDerivedSurfaceMeshResult?.state === "ready" && activeDerivedSurfaceMeshResult.payload?.data.kind === "derived-mesh"
     ? activeDerivedSurfaceMeshResult.payload.data
     : null;
@@ -49315,20 +49347,38 @@ case "mobius":
   const handleRegenerateDerivedSurfaceMesh = useCallback(() => {
     const record = activeSurfaceDerivedMeshRecord; const payload = buildDerivedSurfaceMeshPayload({ meshId: record?.identity.meshId, meshRevision: (record?.identity.meshRevision ?? 0) + 1, createdAt: Date.now() });
     if (!payload) return;
+    surfaceDerivedMeshPayloadCacheRef.current.set(payload.meshId, payload);
+    if (surfaceDerivedMeshCandidate) surfaceDerivedMeshGeometryCacheRef.current.set(payload.meshId, { positions: surfaceDerivedMeshCandidate.positions, indices: surfaceDerivedMeshCandidate.indices });
     publishDerivedSurfaceMeshPayload(payload);
     const next = record ? regenerateDerivedSurfaceMeshRecord(record, payload) : compactDerivedSurfaceMesh(payload, `${activeCanonicalSurfaceDefinition.identity.label} live tessellation`);
     setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, derivedMeshes: [...document.derivedMeshes.filter((entry) => entry.identity.meshId !== next.identity.meshId), next].slice(-64) }));
     setSurfaceDerivedMeshSelectedId(next.identity.meshId); setSurfaceDerivedMeshStatus(`Regenerated mesh revision ${next.identity.meshRevision} from Surface revision ${next.identity.source.surfaceRevision}.`);
-  }, [activeCanonicalSurfaceDefinition.identity.label, activeSurfaceDerivedMeshRecord, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload]);
+  }, [activeCanonicalSurfaceDefinition.identity.label, activeSurfaceDerivedMeshRecord, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedMeshCandidate]);
   const handleTransitionDerivedSurfaceMesh = useCallback((state: "frozen-snapshot" | "detached") => {
-    if (!activeSurfaceDerivedMeshRecord) return;
+    if (!activeSurfaceDerivedMeshRecord) return null;
+    const sourcePayload = surfaceDerivedMeshPayloadCacheRef.current.get(activeSurfaceDerivedMeshRecord.identity.meshId);
+    const sourceGeometry = surfaceDerivedMeshGeometryCacheRef.current.get(activeSurfaceDerivedMeshRecord.identity.meshId);
+    if (!sourcePayload || !sourceGeometry) {
+      setSurfaceDerivedMeshStatus("The selected record has compact provenance only; regenerate it before creating an editable mesh.");
+      return null;
+    }
     const next = transitionDerivedSurfaceMeshRecord(activeSurfaceDerivedMeshRecord, state);
+    const nextPayload: SurfaceDerivedMeshPayload = { ...sourcePayload, meshId: next.identity.meshId, identity: next.identity, live: false };
+    surfaceDerivedMeshPayloadCacheRef.current.set(next.identity.meshId, nextPayload);
+    surfaceDerivedMeshGeometryCacheRef.current.set(next.identity.meshId, {
+      positions: Float32Array.from(sourceGeometry.positions),
+      indices: sourceGeometry.indices ? Uint32Array.from(sourceGeometry.indices) : null,
+      normals: sourceGeometry.normals ? Float32Array.from(sourceGeometry.normals) : null,
+    });
     setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, derivedMeshes: [...document.derivedMeshes, next].slice(-64) }));
     setSurfaceDerivedMeshSelectedId(next.identity.meshId); setSurfaceDerivedMeshStatus(state === "frozen-snapshot" ? "Frozen snapshot created with immutable source provenance." : "Detached mesh record created; source provenance remains readable.");
+    return next;
   }, [activeSurfaceDerivedMeshRecord]);
   const handleDeleteDerivedSurfaceMesh = useCallback(() => {
     if (!activeSurfaceDerivedMeshRecord) return;
     const removed = activeSurfaceDerivedMeshRecord.identity.meshId;
+    surfaceDerivedMeshPayloadCacheRef.current.delete(removed);
+    surfaceDerivedMeshGeometryCacheRef.current.delete(removed);
     setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, derivedMeshes: document.derivedMeshes.filter((entry) => entry.identity.meshId !== removed) }));
     setSurfaceDerivedMeshSelectedId(null); setSurfaceDerivedMeshStatus("Derived mesh metadata removed.");
   }, [activeSurfaceDerivedMeshRecord]);
@@ -49350,6 +49400,108 @@ case "mobius":
     if (mapping.sourceIndices.length) selectSurfaceChartIndices(mapping.sourceIndices);
     setSurfaceDerivedMeshStatus(`${mapping.state}: ${mapping.sourceIndices.length} source samples mapped. ${mapping.explanation}`);
   }, [activeDerivedSurfaceMeshPayload, inspectIdx, selectSurfaceChartIndices]);
+
+  const openDerivedSurfaceMesh = useCallback((record: DerivedSurfaceMeshRecord, analysis: boolean) => {
+    const payload = surfaceDerivedMeshPayloadCacheRef.current.get(record.identity.meshId);
+    const geometry = surfaceDerivedMeshGeometryCacheRef.current.get(record.identity.meshId);
+    if (!payload || !geometry) {
+      setSurfaceDerivedMeshStatus("This saved record contains compact provenance only. Regenerate the live tessellation before opening its geometry.");
+      return;
+    }
+    const sourceIndices = selectionMask?.selected
+      ? Uint32Array.from(Array.from(selectionMask.selected, (selected, index) => selected ? index : -1).filter((index) => index >= 0))
+      : inspectIdx != null ? Uint32Array.of(inspectIdx) : new Uint32Array();
+    const mapping = mapSourceSelectionToDerivedMesh(payload.correspondence, sourceIndices);
+    const camera = surfaceCameraSnapshotRef.current ?? cameraSync ?? cameraOverride;
+    const mesh = applySurfaceMeshOps(createSurfaceMeshForHandoff({
+      record,
+      payload,
+      geometry,
+      units: {
+        length: activeCanonicalSurfaceDefinition.units.length,
+        area: `${activeCanonicalSurfaceDefinition.units.length}²`,
+        gaussianCurvature: `${activeCanonicalSurfaceDefinition.units.length}⁻²`,
+        meanCurvature: `${activeCanonicalSurfaceDefinition.units.length}⁻¹`,
+      },
+    }));
+    setSurfaceMeshAnalysisHandoff({
+      record,
+      payload,
+      sourceViewerKind: surfaceViewerKind,
+      sourceSelectionIndices: sourceIndices,
+      meshSelectionIndices: mapping.meshVertexIndices,
+      camera,
+      comparison: { enabled: compareEnabled, surfaceId: compareSurfaceId, paramId: compareParamId },
+      openedAt: Date.now(),
+    });
+    setMeshDataset(mesh, analysis ? "surface-handoff:open-analysis" : "surface-handoff:show-live");
+    setSurfaceViewerKind("mesh");
+    setDatasetKind("mesh");
+    setCompareEnabled(false);
+    setCameraSync(null);
+    setSurfacesLeftTab("analysis");
+    setMeshWorkspaceLeftTab(analysis ? "analyze" : "scene");
+    if (analysis) setAnalysisFocusedSection("differential-geometry");
+    const meshVertex = mapping.meshVertexIndices[0];
+    if (meshVertex != null && meshVertex < mesh.positions.length / 3) {
+      const point = { x: mesh.positions[meshVertex * 3], y: mesh.positions[meshVertex * 3 + 1], z: mesh.positions[meshVertex * 3 + 2] };
+      const normal = mesh.normals?.length === mesh.positions.length
+        ? { x: mesh.normals[meshVertex * 3], y: mesh.normals[meshVertex * 3 + 1], z: mesh.normals[meshVertex * 3 + 2] }
+        : { x: 0, y: 1, z: 0 };
+      setInspectIdx(meshVertex); setInspectPos(point); setInspectNormal(normal);
+      setSurfaceMeshInspectPick({ point, normal, meshKey: "workspace:active", vertexIndex: meshVertex });
+      setSurfaceMeshTopologyPickMode("vertex");
+    }
+    if (camera) {
+      setCameraOverride(camera);
+      setCameraOverrideToken((token) => token + 1);
+    }
+    setSurfaceDerivedMeshStatus(`${analysis ? "Opened in Mesh Analysis" : "Showing live Mesh"}: ${record.label} · ${record.identity.state} · ${mapping.state} selection mapping · ${camera ? "camera framing transferred" : "mesh fitted"}.`);
+  }, [activeCanonicalSurfaceDefinition.units, cameraOverride, cameraSync, compareEnabled, compareParamId, compareSurfaceId, inspectIdx, selectionMask?.selected, setMeshDataset, surfaceViewerKind]);
+
+  const handleShowLiveSurfaceMesh = useCallback(() => {
+    const live = activeSourceDerivedMeshRecords.find((record) => record.identity.state === "live-current");
+    if (!live) {
+      setSurfaceDerivedMeshStatus("No current live tessellation is available; regenerate it first.");
+      return;
+    }
+    setSurfaceDerivedMeshSelectedId(live.identity.meshId);
+    openDerivedSurfaceMesh(live, false);
+  }, [activeSourceDerivedMeshRecords, openDerivedSurfaceMesh]);
+
+  const handleBakeSurfaceMeshSnapshot = useCallback(() => {
+    const snapshot = handleTransitionDerivedSurfaceMesh("frozen-snapshot");
+    if (snapshot) setSurfaceDerivedMeshStatus(`Baked editable Mesh snapshot ${snapshot.label}; its Surface revision ${snapshot.identity.source.surfaceRevision} is immutable.`);
+  }, [handleTransitionDerivedSurfaceMesh]);
+
+  const handleOpenSelectedDerivedMeshAnalysis = useCallback(() => {
+    if (!activeSurfaceDerivedMeshRecord) return;
+    openDerivedSurfaceMesh(activeSurfaceDerivedMeshRecord, true);
+  }, [activeSurfaceDerivedMeshRecord, openDerivedSurfaceMesh]);
+
+  const handleReturnToSurfaceSource = useCallback(() => {
+    const handoff = surfaceMeshAnalysisHandoff;
+    if (!handoff) return;
+    const selectedMeshVertex = surfaceMeshInspectPick?.vertexIndex ?? inspectIdx;
+    const mapped = selectedMeshVertex == null
+      ? { state: "unavailable" as const, sourceIndices: handoff.sourceSelectionIndices }
+      : mapDerivedMeshSelectionToSource(handoff.payload.correspondence, [selectedMeshVertex]);
+    setMode("surfaces");
+    setSurfaceViewerKind(handoff.sourceViewerKind);
+    setDatasetKind("surface");
+    setSurfacesLeftTab("analysis");
+    if (mapped.sourceIndices.length) selectSurfaceChartIndices(mapped.sourceIndices);
+    if (handoff.camera) {
+      setCameraOverride(handoff.camera);
+      setCameraOverrideToken((token) => token + 1);
+    }
+    setCompareSurfaceId(handoff.comparison.surfaceId);
+    setCompareParamId(handoff.comparison.paramId);
+    setCompareEnabled(handoff.comparison.enabled);
+    setSurfaceDerivedMeshSelectedId(handoff.record.identity.meshId);
+    setSurfaceDerivedMeshStatus(`Returned to ${handoff.record.identity.source.label} revision ${handoff.record.identity.source.surfaceRevision}; ${mapped.state} mapped selection restored.`);
+    setSurfaceMeshAnalysisHandoff(null);
+  }, [inspectIdx, selectSurfaceChartIndices, surfaceMeshAnalysisHandoff, surfaceMeshInspectPick?.vertexIndex]);
 
   const calculusScalarOptions = useMemo(() => {
     const out: Array<{ value: string; label: string }> = [];
@@ -79441,7 +79593,8 @@ case "mobius":
                       status: surfaceDerivedMeshStatus,
                       onSelect: setSurfaceDerivedMeshSelectedId,
                       onRegenerate: handleRegenerateDerivedSurfaceMesh,
-                      onFreeze: () => handleTransitionDerivedSurfaceMesh("frozen-snapshot"),
+                      onShowLive: handleShowLiveSurfaceMesh,
+                      onBake: handleBakeSurfaceMeshSnapshot,
                       onDetach: () => handleTransitionDerivedSurfaceMesh("detached"),
                       onDelete: handleDeleteDerivedSurfaceMesh,
                       onOpenSource: handleOpenDerivedSurfaceSource,
@@ -79449,27 +79602,19 @@ case "mobius":
                       onMapSourceToMesh: handleMapSurfaceSelectionToDerivedMesh,
                       onMapMeshToSource: handleMapDerivedSelectionToSurface,
                     }}
-                    onOpenDerivedMesh={() => {
-                      if (!surfaceDerivedMeshCandidate) {
-                        setSurfacesLeftTab("object");
-                        return;
-                      }
-                      if (!hasSurfaceMesh) {
-                        const source = activeCanonicalSurfaceDefinition.representation === "explicit" ? { kind: "bakedFromExplicit" as const }
-                          : activeCanonicalSurfaceDefinition.representation === "implicit" ? { kind: "bakedFromImplicit" as const }
-                            : activeCanonicalSurfaceDefinition.representation === "weierstrass" ? { kind: "bakedFromWeierstrass" as const }
-                              : { kind: "bakedFromParam" as const };
-                        setMeshDataset(applySurfaceMeshOps({
-                          label: `${activeCanonicalSurfaceDefinition.identity.label} live derived mesh`,
-                          positions: Float32Array.from(surfaceDerivedMeshCandidate.positions),
-                          indices: surfaceDerivedMeshCandidate.indices ? Uint32Array.from(surfaceDerivedMeshCandidate.indices) : null,
-                          source,
-                        }), "surface-analysis:open-derived-mesh");
-                      }
-                      handleChangeViewerKind("mesh");
-                      setMeshWorkspaceLeftTab("analyze");
-                      setAnalysisFocusedSection("differential-geometry");
-                    }}
+                    onOpenDerivedMesh={handleOpenSelectedDerivedMeshAnalysis}
+                    surfaceSourceHandoff={surfaceMeshAnalysisHandoff ? {
+                      label: surfaceMeshAnalysisHandoff.record.identity.source.label,
+                      sourceRevision: surfaceMeshAnalysisHandoff.record.identity.source.surfaceRevision,
+                      meshState: surfaceMeshAnalysisHandoff.record.identity.state,
+                      meshRevision: surfaceMeshAnalysisHandoff.record.identity.meshRevision,
+                      units: surfaceMeshData?.source.kind === "derivedSurface" ? surfaceMeshData.source.units.length : "scene-unit",
+                      comparisonTarget: surfaceMeshAnalysisHandoff.comparison.enabled
+                        ? (surfaceMeshAnalysisHandoff.sourceViewerKind === "param" ? surfaceMeshAnalysisHandoff.comparison.paramId : surfaceMeshAnalysisHandoff.comparison.surfaceId)
+                        : "none",
+                      mappedSelectionCount: surfaceMeshAnalysisHandoff.meshSelectionIndices.length,
+                      onReturn: handleReturnToSurfaceSource,
+                    } : null}
                   />
                   <details
                     id="surface-analysis-legacy-tools"
@@ -83038,7 +83183,7 @@ case "mobius":
                             onSetCustomY={setParamYExpr}
                             onSetCustomZ={setParamZExpr}
                             isCameraLeader={cameraSyncEnabled}
-                            onCameraSync={cameraSyncEnabled ? setCameraSync : undefined}
+                            onCameraSync={handleSurfaceCameraSync}
                             cameraOverride={cameraOverride}
                             cameraOverrideToken={cameraOverrideToken}
                             cameraTourCommand={isSurfaceDatasetKind(datasetKind) ? surfacesCameraTourCommand : null}
@@ -83211,7 +83356,7 @@ case "mobius":
                             showContours={cleanScreenshotSurfaceActive ? false : primaryOverlay.showContours}
                             contourCount={contourCount}
                             isCameraLeader={cameraSyncEnabled}
-                            onCameraSync={cameraSyncEnabled ? setCameraSync : undefined}
+                            onCameraSync={handleSurfaceCameraSync}
                             cameraOverride={cameraOverride}
                             cameraOverrideToken={cameraOverrideToken}
                             cameraTourCommand={isSurfaceDatasetKind(datasetKind) ? surfacesCameraTourCommand : null}

@@ -14,6 +14,22 @@ export type SurfaceMeshSource =
   | { kind: "bakedFromExplicit" }
   | { kind: "bakedFromParam" }
   | { kind: "bakedFromWeierstrass" }
+  | {
+      kind: "derivedSurface";
+      role: "live" | "snapshot" | "detached";
+      state: "live-current" | "frozen-snapshot" | "robust-variant" | "detached" | "stale";
+      meshId: string;
+      meshRevision: number;
+      sourceSurfaceId: string;
+      sourceSurfaceRevision: number;
+      sourceSurfaceLabel: string;
+      sourceRepresentation: string;
+      tessellationMethod: string;
+      backendId: string;
+      correspondenceId: string;
+      createdAt: number;
+      units: { length: string; area: string; gaussianCurvature: string; meanCurvature: string };
+    }
   | { kind: "detachedMesh"; fromKind?: string; fromLabel?: string }
   | {
       kind: "geometryObject";
@@ -59,6 +75,8 @@ export const formatSurfaceMeshSource = (source: SurfaceMeshSource | string): str
       return "baked from param";
     case "bakedFromWeierstrass":
       return "baked from weierstrass";
+    case "derivedSurface":
+      return `${source.role} from ${source.sourceSurfaceLabel} r${source.sourceSurfaceRevision}`;
     case "detachedMesh":
       return source.fromLabel ? `mesh (detached from ${source.fromLabel})` : "mesh (detached)";
     case "geometryObject": {

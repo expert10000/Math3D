@@ -81,6 +81,8 @@ const sourceIdentity = (source: SurfaceMeshSource): string => {
     case "geometryObject":
       return `geometry:${cleanAnalysisKeyPart(source.objectId ?? source.objectName ?? source.objects?.map((entry) => entry.objectId ?? entry.objectName).join(","))}`;
     case "polyhedronPreset": return `preset:${cleanAnalysisKeyPart(source.id ?? source.label)}`;
+    case "derivedSurface":
+      return `surface:${cleanAnalysisKeyPart(source.sourceSurfaceId)}:r${source.sourceSurfaceRevision}:mesh:${cleanAnalysisKeyPart(source.meshId)}:r${source.meshRevision}:${source.role}`;
     case "detachedMesh": return `detached:${cleanAnalysisKeyPart(source.fromLabel ?? source.fromKind)}`;
     default: return source.kind;
   }
