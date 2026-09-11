@@ -668,7 +668,7 @@ Acceptance: the left side answers what to do; the right side explains the select
 
 Planned message: `geometry: unify Geometry Mesh navigation analysis and cross-module round trips`
 
-**Status: partially implemented with an advanced baseline.**
+**Status: complete — implemented in `f2ddae5`.**
 
 Already implemented:
 
@@ -676,16 +676,33 @@ Already implemented:
 - Object, face, edge, and vertex trace maps with provenance.
 - Mesh mutation trace propagation, Open Geometry Source, Open Mesh Source, topology-history restoration, linked source cards, and round-trip demos.
 
-Remaining:
+Completed:
 
-- [ ] Make derived analysis Mesh a first-class scene relation rather than only a handoff snapshot.
-- [ ] Separate ephemeral display tessellation from saved derived Mesh.
-- [ ] Add chord tolerance, angular tolerance, maximum edge length, parameter density, normal strategy, welding, and boundary-preservation settings.
-- [ ] Store Geometry revision and tessellation preset on every derived Mesh.
-- [ ] Transfer semantic selections in both directions with exact, heuristic, partial, or unavailable mapping confidence.
-- [ ] Regenerate linked meshes after Geometry changes while preserving history and comparison targets.
-- [ ] Generalize round trips beyond current procedural/dataset objects to analytic curves, surfaces, trims, shells, and solids.
-- [ ] Keep module navigation, Scene selection, Inspector, and camera context coherent.
+- [x] Make derived analysis Mesh a first-class scene relation rather than only a handoff snapshot.
+- [x] Separate ephemeral display tessellation from saved derived Mesh.
+- [x] Add chord tolerance, angular tolerance, maximum edge length, parameter density, normal strategy, welding, and boundary-preservation settings.
+- [x] Store Geometry revision and tessellation preset on every derived Mesh.
+- [x] Transfer semantic selections in both directions with exact, heuristic, partial, or unavailable mapping confidence.
+- [x] Regenerate linked meshes after Geometry changes while preserving history and comparison targets.
+- [x] Generalize round trips beyond current procedural/dataset objects to analytic curves, surfaces, trims, shells, and solids.
+- [x] Keep module navigation, Scene selection, Inspector, and camera context coherent.
+
+Delivered:
+
+- A first-class Geometry↔Mesh relation store now distinguishes ephemeral display tessellations, derived analysis meshes, and saved derived meshes.
+- Promotion metadata persists the source kind and revision, stable relation identity, trace map, relation role, and complete tessellation preset on every linked derived Mesh.
+- Balanced, fast-preview, and fine-analysis presets expose chord tolerance, angular tolerance, maximum edge length, parameter density, normal strategy, welding/tolerance, and boundary preservation in Geometry Object Details.
+- Bidirectional semantic mapping reports exact, heuristic, partial, or unavailable confidence from the shared trace map for object, face, edge, and vertex selections.
+- Relation regeneration updates linked scene meshes at the current Geometry revision while preserving stable relation identity, regeneration history, selection trace, and comparison targets.
+- Relation source semantics cover procedural and dataset objects plus analytic curves, analytic surfaces, trims, shells, and solids.
+- The Provenance Inspector exposes linked relations, settings, trace availability, staleness, open navigation, and regeneration; relation navigation retains Geometry and Mesh selection/camera contexts.
+
+Validation:
+
+- Relation roles, metadata, source revisions, tessellation settings, bidirectional mapping confidence, staleness, regeneration preservation, generalized source semantics, promotion registration, and navigation-context tests pass (**12/12**).
+- The full renderer suite passes: **500 tests across 94 files**.
+- Renderer type checking and `npm run build:core` pass.
+- Geometry professional-shell and object/face/edge/vertex picking E2E acceptance tests pass (**2/2**).
 
 Acceptance: Geometry→Mesh→Analyze→Compare and Mesh→Open Geometry Source→Analyze work without losing identity or provenance.
 
