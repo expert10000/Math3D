@@ -493,20 +493,32 @@ Acceptance: characteristic and intersection results distinguish mathematical typ
 
 Planned message: `geometry: add topology trim continuity and validity diagnostics`
 
-**Status: partially implemented.**
+**Status: complete — implemented in `518d2ba` with semantic-evidence coverage completed in `9d7f024`.**
 
 Already implemented:
 
 - Triangulated readiness checks, basic topology summary, construction validity, stale dependency states, problem presets, and diagnostic scene patterns.
 
-Remaining:
+Completed:
 
-- [ ] Define Geometry-native bodies, shells, faces, loops, edges, and vertices independently from render triangles.
-- [ ] Detect invalid parameter domains, degenerate curves/surfaces, invalid trims, self-intersections, open shells, non-manifold joins, orientation problems, zero-length edges, collapsed trims, and duplicate boundaries.
-- [ ] Evaluate `C0/G0`, `C1/G1`, and `C2/G2` continuity with position gap, tangent angle, normal angle, and curvature mismatch.
-- [ ] Diagnose singularities, seams, poles, excessive stretch, poor metric conditioning, and trim-domain pathologies.
-- [ ] Reuse the application severity vocabulary and expose Frame, Select, Isolate, Open source, and Attempt repair actions.
-- [ ] Separate exact Geometry validity from tessellated-display mesh health while allowing both to be inspected.
+- [x] Define Geometry-native bodies, shells, faces, loops, edges, and vertices independently from render triangles.
+- [x] Detect invalid parameter domains, degenerate curves/surfaces, invalid trims, self-intersections, open shells, non-manifold joins, orientation problems, zero-length edges, collapsed trims, and duplicate boundaries.
+- [x] Evaluate `C0/G0`, `C1/G1`, and `C2/G2` continuity with position gap, tangent angle, normal angle, and curvature mismatch.
+- [x] Diagnose singularities, seams, poles, excessive stretch, poor metric conditioning, and trim-domain pathologies.
+- [x] Reuse the application severity vocabulary and expose Frame, Select, Isolate, Open source, and Attempt repair actions.
+- [x] Separate exact Geometry validity from tessellated-display mesh health while allowing both to be inspected.
+
+Delivered:
+
+- Analytic semantic topology defines bodies, shells, faces, loops, edges, and vertices without deriving identity from render triangles.
+- Parameter, curve/surface degeneracy, trim, shell, join, orientation, edge, duplicate-boundary, singularity, seam, pole, stretch, and conditioning checks publish semantic entity IDs, severity, tolerance, and actions.
+- Boundary sampling reports continuity class together with position gap, tangent angle, normal angle, and curvature mismatch.
+- Geometry Analyze presents exact semantic validity and **Tessellated display mesh health** as distinct evidence; mesh checks explicitly state that they are not exact B-rep validity.
+
+Validation:
+
+- Semantic topology, identical-patch `C2/G2`, invalid/duplicate trim, pole, non-manifold join, orientation, zero-length edge, duplicate boundary, and open-shell tests pass.
+- Shared-pipeline and Geometry UI tests verify triangle independence, semantic actions, and mesh-health separation.
 
 Acceptance: Geometry diagnostics identify semantic entities and never present a triangle-mesh check as exact B-rep validity.
 
@@ -514,21 +526,33 @@ Acceptance: Geometry diagnostics identify semantic entities and never present a 
 
 Planned message: `geometry: add measurements sections and quantitative reports`
 
-**Status: partially implemented.**
+**Status: complete — implemented in `2c46721`.**
 
 Already implemented:
 
 - Point coordinates, object metrics, topology counts, distances, angles, bounds, sections, section length/area, saved section curves, object comparisons, and JSON result export.
 
-Remaining:
+Completed:
 
-- [ ] Register point-point distance, curve/edge length, angle, dihedral, radius, diameter, area, volume, centroid, bounds, and principal extents as canonical analysis results.
-- [ ] Prefer exact analytic values when available and label numerical/tessellated fallback.
-- [ ] Add plane, axis, normal, parameter, iso-u, and iso-v sections with stable result identity.
-- [ ] Apply scene units consistently to length, area, volume, curvature, Gaussian curvature, torsion, and angles.
-- [ ] Add display precision, scientific/engineering notation, and absolute/relative tolerance controls.
-- [ ] Add report tables and export that preserve source, revision, selection, units, engine, parameters, and timestamp.
-- [ ] Map current measurement tools into one expandable Measure group without removing shortcuts.
+- [x] Register point-point distance, curve/edge length, angle, dihedral, radius, diameter, area, volume, centroid, bounds, and principal extents as canonical analysis results.
+- [x] Prefer exact analytic values when available and label numerical/tessellated fallback.
+- [x] Add plane, axis, normal, parameter, iso-u, and iso-v sections with stable result identity.
+- [x] Apply scene units consistently to length, area, volume, curvature, Gaussian curvature, torsion, and angles.
+- [x] Add display precision, scientific/engineering notation, and absolute/relative tolerance controls.
+- [x] Add report tables and export that preserve source, revision, selection, units, engine, parameters, and timestamp.
+- [x] Map current measurement tools into one expandable Measure group without removing shortcuts.
+
+Delivered:
+
+- Canonical measurements carry quantity, dimensional unit, exact/numerical/tessellated method, absolute/relative tolerance, and source revision.
+- Exact sphere/cylinder/torus and analytic curve values are preferred; sampled centroid, bounds, extents, and unsupported analytic areas identify numerical-parametric fallback.
+- Six section modes use stable source/revision/kind/parameter identities and publish reusable curve outputs.
+- The expandable **Measure — canonical results and sections** group adds fixed/scientific/engineering display, precision, tolerances, section control, report table, and reproducible export payload without removing existing shortcuts.
+
+Validation:
+
+- Exact sphere area/volume/radius, point distance, angle/dihedral, closed-form curve length, dimensional units, all section identities, fallback labels, formatting, and report provenance tests pass.
+- Shared-result publication preserves source, selection, revision, parameters, engine, precision, units, and timestamp.
 
 Acceptance: every displayed measurement can be saved, reproduced, and traced to an exact or sampled method.
 
@@ -536,21 +560,35 @@ Acceptance: every displayed measurement can be saved, reproduced, and traced to 
 
 Planned message: `geometry: add scalable sampled fields and worker-backed overlays`
 
-**Status: planned; supporting patterns exist.**
+**Status: complete — implemented in `9d7f024`.**
 
 Already implemented:
 
 - Geometry interaction-quality controls, fast/full rendering, overlay primitives, Mesh analysis workers, cancellation patterns, and revision-safe result publication elsewhere in the app.
 
-Remaining:
+Completed:
 
-- [ ] Add Geometry worker requests for dense curve/surface sampling and supported analyses.
-- [ ] Publish pointwise/basic, coarse preview, refined, and full results progressively.
-- [ ] Support cancel, supersede, timeout, stale-result rejection, and source-revision validation.
-- [ ] Reuse shared overlay types for scalar heatmaps, vector fields, points, polylines, contours, glyphs, frames, labels, and diagnostics.
-- [ ] Add per-layer visibility, opacity, density, scale, legend, range, clamp, source result, and source object metadata.
-- [ ] Set budgets for samples, glyphs, labels, polylines, upload size, and frame time.
-- [ ] Keep viewport interaction responsive during 10k and 100k-sample analyses.
+- [x] Add Geometry worker requests for dense curve/surface sampling and supported analyses.
+- [x] Publish pointwise/basic, coarse preview, refined, and full results progressively.
+- [x] Support cancel, supersede, timeout, stale-result rejection, and source-revision validation.
+- [x] Reuse shared overlay types for scalar heatmaps, vector fields, points, polylines, contours, glyphs, frames, labels, and diagnostics.
+- [x] Add per-layer visibility, opacity, density, scale, legend, range, clamp, source result, and source object metadata.
+- [x] Set budgets for samples, glyphs, labels, polylines, upload size, and frame time.
+- [x] Keep viewport interaction responsive during 10k and 100k-sample analyses.
+
+Delivered:
+
+- A dedicated Vite module worker accepts serializable analytic curve/surface requests and samples curvature, torsion, speed, Jacobian, and surface-curvature fields off the UI thread.
+- Every request emits pointwise, coarse, refined, and full stages, yielding cooperatively in chunks so cancel and supersede messages are processed.
+- The worker client implements timeout, cancellation, supersession, request identity, and source-revision gates; only completed matching results enter the shared analysis store.
+- Nine shared overlay kinds carry visibility, opacity, density, scale, legend, range, clamp, source result, and source object metadata.
+- Default budgets cap 100k samples, 2k glyphs, 300 labels, 1k polylines, 16 MB uploads, and an 8 ms target frame slice, with explicit clamp/upload diagnostics.
+
+Validation:
+
+- Progressive lifecycle, 10k/100k surface fields, 10k curve fields, budget enforcement, cooperative cancellation, timeout, supersession, stale revision rejection, overlay metadata, and shared-store publication tests pass.
+- The full renderer suite passes: **488 tests across 91 files**.
+- `npm run typecheck:noemit`, `npm run build:core`, and the Geometry professional-shell E2E test pass (**4/4**), including a real 10k worker run and overlay publication.
 
 Acceptance: heavy Geometry analysis runs outside the UI thread, can be cancelled, and cannot publish onto a changed source.
 
