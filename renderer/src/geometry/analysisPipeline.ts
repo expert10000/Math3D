@@ -11,6 +11,11 @@ import {
   type GeometryAnalyticSurfaceDefinition,
 } from "./exactSurfaceAnalysis";
 import {
+  analyzeIntrinsicGeometry,
+  type IntrinsicGeometryResult,
+  type IntrinsicParameterPoint,
+} from "./intrinsicGeometry";
+import {
   computeGeometryAnalysisBasicMetrics,
   computeGeometryAnalysisTopologySummary,
   type GeometryAnalysisBasicMetrics,
@@ -118,6 +123,7 @@ export type GeometryAnalysisPayload = {
   sectionSummary?: GeometrySectionAnalysisSummary;
   curveAnalysis?: ExactCurveAnalysisResult;
   surfaceAnalysis?: ExactSurfaceAnalysisResult;
+  intrinsicGeometry?: IntrinsicGeometryResult;
 };
 
 export type GeometryAnalysisExecutionContext = {
@@ -135,6 +141,15 @@ export type GeometryAnalysisExecutionContext = {
     uCount: number;
     vCount: number;
     normalCurvatureAngle: number;
+    tolerance: number;
+  };
+  intrinsicGeometry?: {
+    definition: GeometryAnalyticSurfaceDefinition;
+    start: IntrinsicParameterPoint;
+    destination: IntrinsicParameterPoint;
+    evaluation: IntrinsicParameterPoint;
+    sampleCount: number;
+    gridResolution: number;
     tolerance: number;
   };
 };
@@ -402,6 +417,39 @@ const builtinImplementationEntries: Array<[GeometryAnalysisResultKind, GeometryA
       surfaceAnalysis,
     };
   }],
+  ["intrinsic-geometry", ({ context }) => {
+    if (!context.intrinsicGeometry) throw new Error("Intrinsic geometry requires an analytic surface definition and endpoints.");
+    const intrinsicGeometry = analyzeIntrinsicGeometry(context.intrinsicGeometry);
+    const metric = intrinsicGeometry.metricPoint;
+    const outputs: GeometryAnalysisOutput[] = [
+      { id: "geodesic", label: "Preferred geodesic", kind: "curve", points: intrinsicGeometry.paths.find((path) => path.id === intrinsicGeometry.preferredPathId)?.points ?? [], closed: false },
+      { id: "metric", label: "Metric tensor", kind: "table", columns: ["matrix", "11", "12", "21", "22"], rows: [["g", metric.metric[0][0], metric.metric[0][1], metric.metric[1][0], metric.metric[1][1]]] },
+      { id: "christoffel-u", label: "Christoffel Γ^u", kind: "table", columns: ["matrix", "11", "12", "21", "22"], rows: [["Γ^u", metric.christoffel?.[0][0][0] ?? null, metric.christoffel?.[0][0][1] ?? null, metric.christoffel?.[0][1][0] ?? null, metric.christoffel?.[0][1][1] ?? null]] },
+      { id: "jacobian", label: "Jacobian magnitude", kind: "scalar", value: metric.jacobianMagnitude },
+      { id: "surface-area", label: "Surface area", kind: "scalar", value: intrinsicGeometry.surfaceArea, unit: "scene-unit²" },
+      { id: "engine", label: "Geodesic engine", kind: "summary", value: `${intrinsicGeometry.engine.backend} · ${intrinsicGeometry.engine.algorithm}` },
+    ];
+    if (intrinsicGeometry.curveArcLength != null) outputs.push({ id: "arc-length", label: "Geodesic arc length", kind: "scalar", value: intrinsicGeometry.curveArcLength, unit: "scene-unit" });
+    if (intrinsicGeometry.enclosedVolume != null) outputs.push({ id: "volume", label: "Enclosed volume", kind: "scalar", value: intrinsicGeometry.enclosedVolume, unit: "scene-unit³" });
+    intrinsicGeometry.warnings.forEach((warning, index) => outputs.push({ id: `warning-${index}`, label: "Intrinsic diagnostic", kind: "warning", value: warning, severity: "warning" }));
+    return {
+      algorithm: intrinsicGeometry.engine.algorithm,
+      backend: intrinsicGeometry.engine.backend,
+      outputs,
+      summary: {
+        arcLength: intrinsicGeometry.curveArcLength,
+        surfaceArea: intrinsicGeometry.surfaceArea,
+        volume: intrinsicGeometry.enclosedVolume,
+        jacobian: metric.jacobianMagnitude,
+        anisotropy: metric.anisotropy,
+        conditionNumber: metric.metricConditionNumber,
+        pathCount: intrinsicGeometry.paths.length,
+        exact: intrinsicGeometry.engine.exact,
+      },
+      warnings: intrinsicGeometry.warnings,
+      intrinsicGeometry,
+    };
+  }],
   ["differential-geometry", ({ snapshot }) => ({
     algorithm: "mesh-analyze-handoff-v1",
     outputs: [{ id: "handoff", label: "Mesh Analyze handoff", kind: "summary", value: "Analysis-ready mesh snapshot" }],
@@ -475,6 +523,7 @@ export const executeGeometryAnalysisRequest = (args: {
       ...(computed.sectionSummary ? { sectionSummary: computed.sectionSummary } : {}),
       ...(computed.curveAnalysis ? { curveAnalysis: computed.curveAnalysis } : {}),
       ...(computed.surfaceAnalysis ? { surfaceAnalysis: computed.surfaceAnalysis } : {}),
+      ...(computed.intrinsicGeometry ? { intrinsicGeometry: computed.intrinsicGeometry } : {}),
       provenance: {
         backend,
         algorithm: computed.algorithm,

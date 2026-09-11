@@ -232,6 +232,13 @@ test("Geometry professional shell keeps current workspaces and tools reachable",
     await expect(page.getByTestId("geometry-analysis-result-provenance")).toContainText("Geometry exact surface core");
     await expect(page.getByTestId("geometry-analysis-result-warnings")).toContainText("degenerate");
     await expect(page.getByTestId("geometry-exact-surface-open-surfaces")).toBeVisible();
+    await expect(page.getByTestId("geometry-intrinsic-analysis-controls")).toBeVisible();
+    await page.getByTestId("geometry-run-intrinsic-analysis").click();
+    await expect(page.getByTestId("geometry-intrinsic-analysis-result")).toContainText("Arc length");
+    await expect(page.getByTestId("geometry-intrinsic-metric")).toContainText("Christoffel");
+    await expect(page.getByTestId("geometry-intrinsic-geodesics")).toContainText("analytic");
+    await expect(page.getByTestId("geometry-intrinsic-overlays")).toContainText("metric ellipse");
+    await expect(page.getByTestId("geometry-intrinsic-endpoints")).toContainText("picked-surface-point");
     await page.getByTestId("geometry-professional-tool-construct").click();
     await expect(page.getByTestId("geometry-construct-panel-tab-create")).toBeVisible();
     await expect(page.getByTestId("geometry-construct-taxonomy")).toBeVisible();

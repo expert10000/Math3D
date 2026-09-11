@@ -313,4 +313,34 @@ describe("Geometry AnalysisRequest pipeline", () => {
     expect(execution.result.payload?.outputs.some((output) => output.kind === "table")).toBe(true);
     expect(execution.result.payload?.outputs.filter((output) => output.kind === "vector").length).toBeGreaterThanOrEqual(5);
   });
+
+  it("publishes intrinsic metric and canonical geodesic results with provenance", () => {
+    const source = snapshot(9);
+    const definition = getGeometryExactSurfacePreset("cylinder");
+    const request = createGeometryAnalysisRequest({
+      id: "request-9",
+      kind: "intrinsic-geometry",
+      snapshot: source,
+      sourceRevision: 13,
+      domain: "intrinsic",
+      sampling: { strategy: "exact", sampleCount: 65, tolerance: 1e-9 },
+      precision: { mode: "exact", digits: 12, tolerance: 1e-9 },
+      parameters: { surfaceDefinitionId: definition.id },
+      requestedOutputs: ["scalar", "curve", "table", "summary", "warning"],
+    });
+    const execution = executeGeometryAnalysisRequest({
+      store: createGeometryAnalysisResultStore(),
+      registry: createGeometryAnalysisRegistry(),
+      request,
+      snapshot: source,
+      context: { intrinsicGeometry: { definition, start: { u: 0.1, v: 0 }, destination: { u: Math.PI * 2 - 0.1, v: 1 }, evaluation: { u: 0, v: 0 }, sampleCount: 65, gridResolution: 24, tolerance: 1e-9 } },
+      now: 100,
+    });
+    expect(execution.result.state).toBe("ready");
+    expect(execution.result.backend).toBe("Geometry analytic intrinsic adapter");
+    expect(execution.result.payload?.intrinsicGeometry?.engine).toMatchObject({ exact: true, reusedEngine: "parametric" });
+    expect(execution.result.payload?.intrinsicGeometry?.paths[0].method).toBe("analytic-cylinder-unwrapped");
+    expect(execution.result.payload?.outputs.some((output) => output.kind === "curve")).toBe(true);
+    expect(execution.result.payload?.summary.pathCount).toBe(3);
+  });
 });

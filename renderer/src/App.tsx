@@ -320,6 +320,7 @@ import {
   type GeometryAnalyticSurfaceDefinition,
   type GeometryExactSurfacePresetId,
 } from "./geometry/exactSurfaceAnalysis";
+import type { IntrinsicGeometryResult } from "./geometry/intrinsicGeometry";
 import { evaluateGeometryMeshReadiness } from "./geometry/meshReadiness";
 import {
   GEOMETRY_TO_MESH_PROMOTION_MODES,
@@ -1049,6 +1050,7 @@ type GeometryQuickAnalysisResultKind =
   | "topology-summary"
   | "curve-analysis"
   | "surface-analysis"
+  | "intrinsic-geometry"
   | "differential-geometry"
   | "section-analysis";
 type GeometryQuickAnalysisResultEntry = {
@@ -1066,6 +1068,7 @@ type GeometryQuickAnalysisResultEntry = {
   sectionSummary?: GeometrySectionAnalysisSummary;
   curveAnalysis?: ExactCurveAnalysisResult;
   surfaceAnalysis?: ExactSurfaceAnalysisResult;
+  intrinsicGeometry?: IntrinsicGeometryResult;
   notes?: string[];
   state: GeometryAnalysisResultState;
   backend: string;
@@ -13337,6 +13340,10 @@ const App: React.FC = () => {
   const [geometryExactSurfaceHeatmap, setGeometryExactSurfaceHeatmap] = useState<"K" | "H" | "k1" | "k2">("K");
   const [geometryExactSurfaceShowNormals, setGeometryExactSurfaceShowNormals] = useState(true);
   const [geometryExactSurfaceShowDirections, setGeometryExactSurfaceShowDirections] = useState(true);
+  const [geometryIntrinsicStartU, setGeometryIntrinsicStartU] = useState(0.08);
+  const [geometryIntrinsicStartV, setGeometryIntrinsicStartV] = useState(0.35);
+  const [geometryIntrinsicDestinationU, setGeometryIntrinsicDestinationU] = useState(0.72);
+  const [geometryIntrinsicDestinationV, setGeometryIntrinsicDestinationV] = useState(0.65);
   const geometryExactSurfaceDefinition = useMemo(
     () => getGeometryExactSurfacePreset(geometryExactSurfacePresetId),
     [geometryExactSurfacePresetId]
@@ -13467,7 +13474,7 @@ const App: React.FC = () => {
     Object.entries(geometryAnalysisResultStore.entries)
       .map(([resultKey, result]): GeometryQuickAnalysisResultEntry | null => {
         const payload = result.payload as GeometryAnalysisPayload | null;
-        if (!payload || !["basic-metrics", "topology-summary", "curve-analysis", "surface-analysis", "differential-geometry", "section-analysis"].includes(result.kind)) return null;
+        if (!payload || !["basic-metrics", "topology-summary", "curve-analysis", "surface-analysis", "intrinsic-geometry", "differential-geometry", "section-analysis"].includes(result.kind)) return null;
         const title = result.kind === "basic-metrics"
           ? "Basic metrics"
           : result.kind === "topology-summary"
@@ -13476,6 +13483,8 @@ const App: React.FC = () => {
               ? "Exact curve differential analysis"
             : result.kind === "surface-analysis"
               ? "Exact surface differential analysis"
+            : result.kind === "intrinsic-geometry"
+              ? "Intrinsic metric and geodesics"
             : result.kind === "section-analysis"
               ? "Section analysis"
               : "Differential geometry handoff";
@@ -13494,6 +13503,7 @@ const App: React.FC = () => {
           sectionSummary: payload.sectionSummary,
           curveAnalysis: payload.curveAnalysis,
           surfaceAnalysis: payload.surfaceAnalysis,
+          intrinsicGeometry: payload.intrinsicGeometry,
           notes: payload.warnings,
           state: result.state,
           backend: result.backend,
@@ -42823,6 +42833,15 @@ const App: React.FC = () => {
       normalCurvatureAngle: number;
       tolerance: number;
     };
+    intrinsicGeometry?: {
+      definition: GeometryAnalyticSurfaceDefinition;
+      start: { u: number; v: number };
+      destination: { u: number; v: number };
+      evaluation: { u: number; v: number };
+      sampleCount: number;
+      gridResolution: number;
+      tolerance: number;
+    };
     sampling?: {
       strategy: "exact" | "mesh" | "adaptive" | "uniform";
       sampleCount?: number;
@@ -42870,7 +42889,7 @@ const App: React.FC = () => {
       request,
       snapshot: args.prepared.snapshot,
       selectionSnapshot: selection,
-      context: { sectionSummary: args.sectionSummary, exactCurve: args.exactCurve, exactSurface: args.exactSurface },
+      context: { sectionSummary: args.sectionSummary, exactCurve: args.exactCurve, exactSurface: args.exactSurface, intrinsicGeometry: args.intrinsicGeometry },
     }).store);
     setGeometryQuickAnalysisSelectedResultId(resultKey);
     return { request, resultKey };
@@ -42991,6 +43010,25 @@ const App: React.FC = () => {
     geometryExactSurfaceResolution,
     runGeometryQuickAnalysis,
   ]);
+  const handleRunGeometryIntrinsicAnalysis = useCallback(() => {
+    const prepared = createSelectedGeometryAnalysisSnapshot();
+    if (!prepared) return;
+    const domain = geometryExactSurfaceDefinition.domain;
+    const parameter = (fraction: number, axis: "u" | "v") => domain[axis].min + fraction * (domain[axis].max - domain[axis].min);
+    const start = { u: parameter(geometryIntrinsicStartU, "u"), v: parameter(geometryIntrinsicStartV, "v") };
+    const destination = { u: parameter(geometryIntrinsicDestinationU, "u"), v: parameter(geometryIntrinsicDestinationV, "v") };
+    runGeometryQuickAnalysis({
+      prepared,
+      kind: "intrinsic-geometry",
+      domain: "intrinsic",
+      parameters: { surfaceDefinitionId: geometryExactSurfaceDefinition.id, start: [start.u, start.v], destination: [destination.u, destination.v], endpointSemantic: "picked-surface-point" },
+      requestedOutputs: ["scalar", "curve", "table", "summary", "warning"],
+      intrinsicGeometry: { definition: geometryExactSurfaceDefinition, start, destination, evaluation: { u: geometryExactSurfaceParameterU, v: geometryExactSurfaceParameterV }, sampleCount: 65, gridResolution: geometryExactSurfaceResolution, tolerance: 1e-9 },
+      sampling: { strategy: ["plane", "cylinder", "sphere"].includes(geometryExactSurfaceDefinition.id) ? "exact" : "adaptive", sampleCount: 65, tolerance: 1e-9 },
+      precision: { mode: "adaptive", digits: 12, tolerance: 1e-9 },
+    });
+    setGeometryCreateActionStatus(`Intrinsic geometry ready: ${geometryExactSurfaceDefinition.label}, start to destination.`);
+  }, [createSelectedGeometryAnalysisSnapshot, geometryExactSurfaceDefinition, geometryExactSurfaceParameterU, geometryExactSurfaceParameterV, geometryExactSurfaceResolution, geometryIntrinsicDestinationU, geometryIntrinsicDestinationV, geometryIntrinsicStartU, geometryIntrinsicStartV, runGeometryQuickAnalysis]);
   const handleRunGeometryQuickSectionAnalysis = useCallback(() => {
     const prepared = createSelectedGeometryAnalysisSnapshot();
     if (!prepared) return;
@@ -43144,6 +43182,7 @@ const App: React.FC = () => {
       sectionSummary: geometrySelectedQuickAnalysisResult.sectionSummary ?? null,
       curveAnalysis: geometrySelectedQuickAnalysisResult.curveAnalysis ?? null,
       surfaceAnalysis: geometrySelectedQuickAnalysisResult.surfaceAnalysis ?? null,
+      intrinsicGeometry: geometrySelectedQuickAnalysisResult.intrinsicGeometry ?? null,
       notes: geometrySelectedQuickAnalysisResult.notes ?? [],
       lifecycle: {
         state: geometrySelectedQuickAnalysisResult.state,
@@ -93562,6 +93601,21 @@ case "mobius":
                                       Analyze surface
                                     </button>
                                   </div>
+                                  <div data-testid="geometry-intrinsic-analysis-controls" style={{ display: "grid", gap: 5, borderTop: "1px solid #e2e8f0", paddingTop: 7 }}>
+                                    <div style={{ fontSize: 10.5, fontWeight: 700 }}>Intrinsic metric and geodesics</div>
+                                    <div style={{ fontSize: 9.5, color: "#667085" }}>Pick start/destination in normalized parameter space. Uses exact canonical paths for plane, cylinder, and sphere.</div>
+                                    {([
+                                      ["Start u", geometryIntrinsicStartU, setGeometryIntrinsicStartU, "geometry-intrinsic-start-u"],
+                                      ["Start v", geometryIntrinsicStartV, setGeometryIntrinsicStartV, "geometry-intrinsic-start-v"],
+                                      ["Destination u", geometryIntrinsicDestinationU, setGeometryIntrinsicDestinationU, "geometry-intrinsic-destination-u"],
+                                      ["Destination v", geometryIntrinsicDestinationV, setGeometryIntrinsicDestinationV, "geometry-intrinsic-destination-v"],
+                                    ] as const).map(([label, value, setter, testId]) => (
+                                      <label key={testId} style={{ display: "grid", gap: 2, fontSize: 9.5 }}>{label} = {fmt(value)}
+                                        <input data-testid={testId} type="range" min={0} max={1} step={0.001} value={value} onChange={(event) => setter(Number(event.target.value))} />
+                                      </label>
+                                    ))}
+                                    <button type="button" data-testid="geometry-run-intrinsic-analysis" onClick={handleRunGeometryIntrinsicAnalysis} style={{ fontSize: 11 }}>Analyze metric + geodesics</button>
+                                  </div>
                                   <div style={{ display: "grid", gap: 4 }}>
                                     <div style={{ fontSize: 10.5, fontWeight: 700 }}>Differential geometry</div>
                                     <div style={{ fontSize: 10, color: "#667085" }}>
@@ -93622,6 +93676,8 @@ case "mobius":
                                           ? "Curve differential"
                                           : geometrySelectedQuickAnalysisResult.kind === "surface-analysis"
                                             ? "Surface differential"
+                                          : geometrySelectedQuickAnalysisResult.kind === "intrinsic-geometry"
+                                            ? "Intrinsic geometry"
                                             : "Geometry analysis"}
                                       </div>
                                       <div style={{ fontSize: 11.5, fontWeight: 800, overflowWrap: "anywhere" }}>
@@ -93650,6 +93706,8 @@ case "mobius":
                                         ? "Position / derivatives / κ / τ / arc length"
                                         : geometrySelectedQuickAnalysisResult.kind === "surface-analysis"
                                           ? "Forms / shape operator / k1 / k2 / H / K"
+                                        : geometrySelectedQuickAnalysisResult.kind === "intrinsic-geometry"
+                                          ? "Metric / Christoffel / geodesics / distortion"
                                           : geometrySelectedQuickAnalysisResult.title],
                                       ["Method", geometrySelectedQuickAnalysisResult.provenanceAlgorithm],
                                       ["Domain", geometrySelectedQuickAnalysisResult.domain],
@@ -93930,6 +93988,25 @@ case "mobius":
                                         </div>
                                       );
                                     })()}
+                                  {geometrySelectedQuickAnalysisResult.kind === "intrinsic-geometry" && geometrySelectedQuickAnalysisResult.intrinsicGeometry && (() => {
+                                    const intrinsic = geometrySelectedQuickAnalysisResult.intrinsicGeometry;
+                                    const metric = intrinsic.metricPoint;
+                                    return <div data-testid="geometry-intrinsic-analysis-result" style={{ display: "grid", gap: 6, fontSize: 9.5 }}>
+                                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", border: "1px solid #e2e8f0" }}>
+                                        {([[
+                                          "Arc length", intrinsic.curveArcLength == null ? "unavailable" : fmt(intrinsic.curveArcLength)
+                                        ], ["Area", fmt(intrinsic.surfaceArea)], ["Volume", intrinsic.enclosedVolume == null ? "open / unavailable" : fmt(intrinsic.enclosedVolume)], ["Jacobian", fmt(metric.jacobianMagnitude)], ["Anisotropy", metric.anisotropy == null ? "singular" : fmt(metric.anisotropy)], ["Condition", metric.metricConditionNumber == null ? "singular" : fmt(metric.metricConditionNumber)]] as const).map(([label, value]) => <div key={label} style={{ padding: 5, borderRight: "1px solid #e2e8f0", borderBottom: "1px solid #e2e8f0" }}><div style={{ color: "#64748b", fontSize: 8, textTransform: "uppercase", fontWeight: 800 }}>{label}</div><strong>{value}</strong></div>)}
+                                      </div>
+                                      <div data-testid="geometry-intrinsic-metric"><strong>Metric g:</strong> [[{fmt(metric.metric[0][0])}, {fmt(metric.metric[0][1])}], [{fmt(metric.metric[1][0])}, {fmt(metric.metric[1][1])}]] · <strong>Christoffel Γ:</strong> {metric.christoffel ? "available" : "rank deficient"}</div>
+                                      <div><strong>Distortion:</strong> angle {metric.angleDistortion == null ? "undefined" : fmt(metric.angleDistortion)} · area {fmt(metric.areaDistortion)} · stretch {fmt(metric.parameterStretch)}</div>
+                                      <div data-testid="geometry-intrinsic-geodesics"><strong>Paths:</strong> {intrinsic.paths.length} · preferred {intrinsic.preferredPathId ?? "none"} · {intrinsic.engine.exact ? "analytic" : "numerical"}</div>
+                                      <div><strong>Curvatures:</strong> geodesic {intrinsic.geodesicCurvature == null ? "unavailable" : fmt(intrinsic.geodesicCurvature)} · normal {intrinsic.normalCurvature == null ? "undefined" : fmt(intrinsic.normalCurvature)}</div>
+                                      <div data-testid="geometry-intrinsic-overlays"><strong>Overlays:</strong> parameter grid {intrinsic.overlays.parameterGrid.length} rows · metric ellipse {intrinsic.overlays.metricEllipse.length} points · contours {intrinsic.overlays.distanceContours.length} · fan {intrinsic.overlays.fan.length} · field {intrinsic.overlays.directionField.length} · normal section {intrinsic.overlays.normalSection.length}</div>
+                                      <div data-testid="geometry-intrinsic-endpoints"><strong>Endpoints:</strong> ({fmt(intrinsic.start.u)}, {fmt(intrinsic.start.v)}) → ({fmt(intrinsic.destination.u)}, {fmt(intrinsic.destination.v)}) · {intrinsic.endpointSemantics}</div>
+                                      <div><strong>Engine:</strong> {intrinsic.engine.backend} · {intrinsic.engine.algorithm} · reused {intrinsic.engine.reusedEngine ?? "none"}</div>
+                                      <div><strong>Uncertainty:</strong> length ±{intrinsic.uncertainty.length.toExponential(2)} · area cell {intrinsic.uncertainty.area.toExponential(2)} · source r{intrinsic.sourceRevision}</div>
+                                    </div>;
+                                  })()}
                                   {geometrySelectedQuickAnalysisResult.kind === "topology-summary" &&
                                     geometrySelectedQuickAnalysisResult.topologySummary && (
                                       <div style={{ marginTop: 2, fontSize: 10.5, display: "grid", gap: 2 }}>
