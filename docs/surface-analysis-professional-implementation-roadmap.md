@@ -81,7 +81,7 @@ Baseline verification at this assessment:
 | --- | --- | --- | --- |
 | 1 — Surface-first workspace and result contract | Complete (`bb0b24a`) | Canonical Surface identity/revision, all representation adapters, shared request/result publication, typed payloads, compact persistence, visible contract provenance | None for Commit 1 |
 | 2 — Unified differential-geometry engine | Complete (`9c0ddfc`) | One normalized differential point/field schema, exact Geometry reuse, analytic/symbolic/AD and adaptive numerical routes, explicit mesh provenance, masks and mathematical verification | None for Commit 2 |
-| 3 — Computation/display/inspection UI split | Partial | Professional shell, left/viewer/right regions, Inspector tabs, responsive drawers | Remove responsibility overlap, extract Surface-specific panels/controllers, preserve parity and accessibility |
+| 3 — Computation/display/inspection UI split | Complete (`bdd5bb2`) | Left computation catalog, View/viewport display controls, right Result/Probe/Provenance/History Inspector, compact derived-mesh bridge and collapsed compatibility tools | None for Commit 3 |
 | 4 — Curvature workspace | Advanced foundation | K/H/k1/k2 fields, directions, palettes, ranges, probes, classifications in adjacent code | Canonical saved result, statistics, classifications, direction validity, independent visualization |
 | 5 — Local differential-geometry probe | Advanced foundation | Point/normal/chart coordinates, tangent basis, curvature and direction readouts | Full I/II forms, method/provenance, classification, visual osculating evidence, pins/history/export |
 | 6 — Surface curves and features | Partial | Geodesics, curvature lines, ridges/valleys, feature extraction, overlays | Surface-owned method routing, persistent result layers, visibility independence, saved lifecycle |
@@ -300,24 +300,37 @@ Acceptance: the same Surface result schema describes correct differential geomet
 
 Planned message: `refactor(surface-ui): separate analysis computation, visualization and inspection controls`
 
-**Status: planned; the three-region shell already exists.**
+**Status: complete — `bdd5bb2`.**
 
 Already implemented:
 
 - Left, center, and right Surface regions with responsive drawer behavior.
 - Panel/Action/Tool navigation and Inspector tabs.
 - Many analysis and overlay controls, currently spread across several locations.
+- The left Analysis panel now starts with a representation-neutral computation catalog for differential geometry, curvature, probes, curves, features, and chart diagnostics.
+- The View panel and mesh analysis viewport toolbar are explicitly identified as display-only regions; computation no longer contains “show after compute” coupling.
+- The right Inspector owns the canonical result contract plus Result, Probe, Provenance, and History views, including method, backend, warnings, saved references, units, orientation, and dependencies.
+- A compact Derived SurfaceMesh bridge replaces detailed Mesh/backend controls in the primary Surface Analysis view; all prior controls remain reachable in one collapsed compatibility section.
+- Surface-specific computation and Inspector UI now live in an extracted component instead of adding more rendering responsibility to `App.tsx`.
 
 Remaining:
 
-- [ ] Move computation choices and parameters into the left Analysis panel.
-- [ ] Keep overlay visibility, density, glyph size, opacity, line width, palettes, and Gauss-map layout in the viewer toolbar or View panel.
-- [ ] Keep scientific values, warnings, provenance, saved state, and history in the right Inspector.
-- [ ] Replace “show after compute” coupling with independent compute and visibility state.
-- [ ] Extract Surface-specific controllers/components from the oversized `App.tsx` prop surfaces without changing behavior.
-- [ ] Remove detailed Mesh Analyze, VTK, and CGAL controls from ordinary Surface Analysis; replace them with a compact Derived Mesh bridge.
-- [ ] Preserve all legacy entry points in expandable groups until parity E2E passes.
-- [ ] Verify keyboard order, labels, focus return, narrow layouts, drawers, sheets, and touch containment.
+- [x] Move computation choices and parameters into the left Analysis panel.
+- [x] Keep overlay visibility, density, glyph size, opacity, line width, palettes, and Gauss-map layout in the viewer toolbar or View panel.
+- [x] Keep scientific values, warnings, provenance, saved state, and history in the right Inspector.
+- [x] Replace “show after compute” coupling with independent compute and visibility state.
+- [x] Extract Surface-specific controllers/components from the oversized `App.tsx` prop surfaces without changing behavior.
+- [x] Remove detailed Mesh Analyze, VTK, and CGAL controls from ordinary Surface Analysis; replace them with a compact Derived Mesh bridge.
+- [x] Preserve all legacy entry points in expandable groups until parity E2E passes.
+- [x] Verify keyboard order, labels, focus return, narrow layouts, drawers, sheets, and touch containment.
+
+Validation at `bdd5bb2`:
+
+- The full renderer suite passes: **530 tests across 99 files**.
+- `npm run typecheck:noemit` and `npm run build:core` pass.
+- The Surface functional flow passes **3/3**, including the computation/display/inspection responsibility split, keyboard order, accessible expanded state, canonical provenance, generation, and invalid input.
+- Required Surface functional, Gallery, worker-failure, and workspace-navigation E2E checks pass: **12/12**.
+- `npm run test:app:responsive:smoke` passes for phone portrait, phone landscape, tablet, and desktop layouts, including drawers, sheets, and touch containment.
 
 Acceptance: users can predict where to compute, where to display, and where to inspect; the same action is not presented with conflicting semantics in multiple regions.
 
