@@ -89332,6 +89332,9 @@ case "mobius":
 
                     {geometryProceduralPanelTab === "transform" && (
                     <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                      <div data-testid="geometry-transform-panel-title" style={{ fontSize: 12, fontWeight: 850, color: "#0f3557", letterSpacing: "0.04em" }}>
+                        GEOMETRY TRANSFORM
+                      </div>
                       <GeometryModifyPanel
                         semantic={geometrySemanticSelection}
                         selectionCount={geometryModifySelectionCount}
