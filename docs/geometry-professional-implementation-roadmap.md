@@ -428,17 +428,30 @@ Acceptance: plane, sphere, and cylinder quantities match analytic truth under do
 
 Planned message: `geometry: add intrinsic geometry metric and geodesic analysis`
 
-**Status: planned.**
+**Status: complete — implemented in `ef64e17`.**
 
-Remaining:
+Implemented:
 
-- [ ] Add curve/surface arc length, metric tensor, Christoffel symbols, area, volume, normal curvature, and geodesic curvature.
-- [ ] Add Jacobian magnitude, local scale, anisotropy, angle distortion, area distortion, parameter stretch, and metric condition number.
-- [ ] Implement start/destination picking for continuous or parametric geodesics.
-- [ ] Add parameter grid, metric ellipse, distance contours, path, fan, direction-field, and normal-section overlays.
-- [ ] Reuse appropriate existing parametric, heat, and CGAL geodesic engines through Geometry adapters with explicit provenance.
-- [ ] Support disconnected domains, seams, poles, trims, multiple paths, and unavailable-engine diagnostics.
-- [ ] Save path and distance-field results with source revision and endpoint semantics.
+- [x] Add curve/surface arc length, metric tensor, Christoffel symbols, area, volume, normal curvature, and geodesic curvature.
+- [x] Add Jacobian magnitude, local scale, anisotropy, angle distortion, area distortion, parameter stretch, and metric condition number.
+- [x] Implement start/destination picking for continuous or parametric geodesics.
+- [x] Add parameter grid, metric ellipse, distance contours, path, fan, direction-field, and normal-section overlays.
+- [x] Reuse appropriate existing parametric, heat, and CGAL geodesic engines through Geometry adapters with explicit provenance.
+- [x] Support disconnected domains, seams, poles, trims, multiple paths, and unavailable-engine diagnostics.
+- [x] Save path and distance-field results with source revision and endpoint semantics.
+
+Delivered:
+
+- Exact metric and Christoffel evaluation is derived from analytic first/second surface derivatives; canonical plane, unwrapped-cylinder, and sphere great-circle paths identify their analytic engine.
+- Non-canonical surfaces use a clearly labeled Geometry parametric adapter and sampled uncertainty. The result contract reserves explicit provenance for parametric, heat, and CGAL adapters without claiming unavailable local engines.
+- Periodic seams preserve winding alternatives, poles and trims produce diagnostics, and endpoints retain picked-surface-point semantics and source revision in saved results.
+- Geometry Analyze exposes start/destination controls and a Mesh-style result card for metric, distortion, paths, overlays, engine, tolerance, and endpoint semantics.
+
+Validation:
+
+- Canonical plane/cylinder/sphere metric, length, area, and volume tests pass, including seam-shortest cylinder paths and sphere great-circle distance.
+- The full renderer suite passes: **468 tests across 87 files**.
+- `npm run typecheck:noemit`, `npm run build:core`, and Geometry professional-shell E2E checks pass (**4/4**).
 
 Acceptance: analytic and numerical intrinsic results identify their engine and satisfy canonical plane/cylinder/sphere tests.
 
@@ -446,20 +459,33 @@ Acceptance: analytic and numerical intrinsic results identify their engine and s
 
 Planned message: `geometry: add characteristic curves singularities and critical geometry`
 
-**Status: partially implemented.**
+**Status: complete — implemented in `2e5efc5`.**
 
 Already implemented:
 
 - Line/plane and other construction relationships, plane sections, saved section curves, relation constraints, and point/polyline overlays.
 
-Remaining:
+Completed in this commit:
 
-- [ ] Add umbilics, parabolic curves, elliptic/hyperbolic regions, ridges, valleys, silhouettes, isophotes, and curvature extrema.
-- [ ] Classify curve-curve, curve-surface, surface-surface, surface-solid, and self-intersections as transverse, tangent, overlap, near-contact, or degenerate.
-- [ ] Detect rank-deficient Jacobians, poles, seams, trim singularities, and collapsed spans.
-- [ ] Publish characteristic points, polylines, isolines, bands, glyphs, labels, confidence, and uncertainty as reusable result layers.
-- [ ] Promote an overlay to editable Geometry only through an explicit action.
-- [ ] Add analytic cases and perturbed near-contact tests.
+- [x] Add umbilics, parabolic curves, elliptic/hyperbolic regions, ridges, valleys, silhouettes, isophotes, and curvature extrema.
+- [x] Classify curve-curve, curve-surface, surface-surface, surface-solid, and self-intersections as transverse, tangent, overlap, near-contact, or degenerate.
+- [x] Detect rank-deficient Jacobians, poles, seams, trim singularities, and collapsed spans.
+- [x] Publish characteristic points, polylines, isolines, bands, glyphs, labels, confidence, and uncertainty as reusable result layers.
+- [x] Promote an overlay to editable Geometry only through an explicit action.
+- [x] Add analytic cases and perturbed near-contact tests.
+
+Delivered:
+
+- Sampled exact-surface derivatives drive semantic layers for curvature regions and features, with `n·view=0` silhouettes, configurable isophotes, confidence, localization uncertainty, and source revision.
+- Intersection probes report mathematical type independently from display form, including transverse, tangent, overlap, near-contact, degenerate, and disjoint outcomes.
+- Rank loss, declared poles, identified seams, trims, and collapsed parameter spans remain distinct diagnostics instead of being conflated with tessellation defects.
+- Every characteristic layer is display-only by contract. Geometry Analyze exposes a separate explicit **Promote overlay to editable Geometry** action.
+
+Validation:
+
+- Analytic sphere/torus/saddle feature tests and transverse/tangent/overlap/degenerate/perturbed near-contact classification tests pass.
+- Shared-pipeline publication, source provenance, reusable-layer, and explicit-promotion tests pass.
+- The full renderer suite passes: **468 tests across 87 files**; typecheck, production build, and Geometry E2E pass (**4/4**).
 
 Acceptance: characteristic and intersection results distinguish mathematical type, numerical uncertainty, and display layer.
 
