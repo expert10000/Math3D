@@ -313,6 +313,13 @@ import {
   type GeometryAnalyticCurveDefinition,
   type GeometryExactCurvePresetId,
 } from "./geometry/exactCurveAnalysis";
+import {
+  GEOMETRY_EXACT_SURFACE_PRESETS,
+  getGeometryExactSurfacePreset,
+  type ExactSurfaceAnalysisResult,
+  type GeometryAnalyticSurfaceDefinition,
+  type GeometryExactSurfacePresetId,
+} from "./geometry/exactSurfaceAnalysis";
 import { evaluateGeometryMeshReadiness } from "./geometry/meshReadiness";
 import {
   GEOMETRY_TO_MESH_PROMOTION_MODES,
@@ -1041,6 +1048,7 @@ type GeometryQuickAnalysisResultKind =
   | "basic-metrics"
   | "topology-summary"
   | "curve-analysis"
+  | "surface-analysis"
   | "differential-geometry"
   | "section-analysis";
 type GeometryQuickAnalysisResultEntry = {
@@ -1057,6 +1065,7 @@ type GeometryQuickAnalysisResultEntry = {
   topologySummary?: GeometryAnalysisTopologySummary;
   sectionSummary?: GeometrySectionAnalysisSummary;
   curveAnalysis?: ExactCurveAnalysisResult;
+  surfaceAnalysis?: ExactSurfaceAnalysisResult;
   notes?: string[];
   state: GeometryAnalysisResultState;
   backend: string;
@@ -13320,6 +13329,22 @@ const App: React.FC = () => {
   );
   const geometryExactCurveParameter = geometryExactCurveDefinition.domain.min +
     geometryExactCurveParameterU * (geometryExactCurveDefinition.domain.max - geometryExactCurveDefinition.domain.min);
+  const [geometryExactSurfacePresetId, setGeometryExactSurfacePresetId] = useState<GeometryExactSurfacePresetId>("sphere");
+  const [geometryExactSurfaceU, setGeometryExactSurfaceU] = useState(0.25);
+  const [geometryExactSurfaceV, setGeometryExactSurfaceV] = useState(0.5);
+  const [geometryExactSurfaceResolution, setGeometryExactSurfaceResolution] = useState(17);
+  const [geometryExactSurfaceNormalAngle, setGeometryExactSurfaceNormalAngle] = useState(0);
+  const [geometryExactSurfaceHeatmap, setGeometryExactSurfaceHeatmap] = useState<"K" | "H" | "k1" | "k2">("K");
+  const [geometryExactSurfaceShowNormals, setGeometryExactSurfaceShowNormals] = useState(true);
+  const [geometryExactSurfaceShowDirections, setGeometryExactSurfaceShowDirections] = useState(true);
+  const geometryExactSurfaceDefinition = useMemo(
+    () => getGeometryExactSurfacePreset(geometryExactSurfacePresetId),
+    [geometryExactSurfacePresetId]
+  );
+  const geometryExactSurfaceParameterU = geometryExactSurfaceDefinition.domain.u.min +
+    geometryExactSurfaceU * (geometryExactSurfaceDefinition.domain.u.max - geometryExactSurfaceDefinition.domain.u.min);
+  const geometryExactSurfaceParameterV = geometryExactSurfaceDefinition.domain.v.min +
+    geometryExactSurfaceV * (geometryExactSurfaceDefinition.domain.v.max - geometryExactSurfaceDefinition.domain.v.min);
   const geometryObjectGeomCacheRef = useRef(
     new Map<string, { key: string; geom: THREE.BufferGeometry }>()
   );
@@ -13442,13 +13467,15 @@ const App: React.FC = () => {
     Object.entries(geometryAnalysisResultStore.entries)
       .map(([resultKey, result]): GeometryQuickAnalysisResultEntry | null => {
         const payload = result.payload as GeometryAnalysisPayload | null;
-        if (!payload || !["basic-metrics", "topology-summary", "curve-analysis", "differential-geometry", "section-analysis"].includes(result.kind)) return null;
+        if (!payload || !["basic-metrics", "topology-summary", "curve-analysis", "surface-analysis", "differential-geometry", "section-analysis"].includes(result.kind)) return null;
         const title = result.kind === "basic-metrics"
           ? "Basic metrics"
           : result.kind === "topology-summary"
             ? "Topology summary"
             : result.kind === "curve-analysis"
               ? "Exact curve differential analysis"
+            : result.kind === "surface-analysis"
+              ? "Exact surface differential analysis"
             : result.kind === "section-analysis"
               ? "Section analysis"
               : "Differential geometry handoff";
@@ -13466,6 +13493,7 @@ const App: React.FC = () => {
           topologySummary: payload.topologySummary,
           sectionSummary: payload.sectionSummary,
           curveAnalysis: payload.curveAnalysis,
+          surfaceAnalysis: payload.surfaceAnalysis,
           notes: payload.warnings,
           state: result.state,
           backend: result.backend,
@@ -42786,6 +42814,15 @@ const App: React.FC = () => {
       sampleCount: number;
       tolerance: number;
     };
+    exactSurface?: {
+      definition: GeometryAnalyticSurfaceDefinition;
+      u: number;
+      v: number;
+      uCount: number;
+      vCount: number;
+      normalCurvatureAngle: number;
+      tolerance: number;
+    };
     sampling?: {
       strategy: "exact" | "mesh" | "adaptive" | "uniform";
       sampleCount?: number;
@@ -42833,7 +42870,7 @@ const App: React.FC = () => {
       request,
       snapshot: args.prepared.snapshot,
       selectionSnapshot: selection,
-      context: { sectionSummary: args.sectionSummary, exactCurve: args.exactCurve },
+      context: { sectionSummary: args.sectionSummary, exactCurve: args.exactCurve, exactSurface: args.exactSurface },
     }).store);
     setGeometryQuickAnalysisSelectedResultId(resultKey);
     return { request, resultKey };
@@ -42903,6 +42940,55 @@ const App: React.FC = () => {
     geometryExactCurveDefinition,
     geometryExactCurveParameter,
     geometryExactCurveSampleCount,
+    runGeometryQuickAnalysis,
+  ]);
+  const handleRunGeometryExactSurfaceAnalysis = useCallback(() => {
+    const prepared = createSelectedGeometryAnalysisSnapshot();
+    if (!prepared) return;
+    runGeometryQuickAnalysis({
+      prepared,
+      kind: "surface-analysis",
+      domain: "surface",
+      parameters: {
+        surfaceDefinitionId: geometryExactSurfaceDefinition.id,
+        surfaceDefinitionRevision: geometryExactSurfaceDefinition.revision,
+        u: geometryExactSurfaceParameterU,
+        v: geometryExactSurfaceParameterV,
+        gridResolution: geometryExactSurfaceResolution,
+        normalCurvatureAngle: geometryExactSurfaceNormalAngle,
+        derivativeMode: "exact",
+        orientation: geometryExactSurfaceDefinition.orientation.description,
+        positionUnit: geometryExactSurfaceDefinition.units.position,
+        uUnit: geometryExactSurfaceDefinition.units.parameters[0],
+        vUnit: geometryExactSurfaceDefinition.units.parameters[1],
+      },
+      requestedOutputs: ["scalar", "vector", "point", "table", "summary", "warning"],
+      exactSurface: {
+        definition: geometryExactSurfaceDefinition,
+        u: geometryExactSurfaceParameterU,
+        v: geometryExactSurfaceParameterV,
+        uCount: geometryExactSurfaceResolution,
+        vCount: geometryExactSurfaceResolution,
+        normalCurvatureAngle: geometryExactSurfaceNormalAngle,
+        tolerance: 1e-9,
+      },
+      sampling: {
+        strategy: "exact",
+        sampleCount: geometryExactSurfaceResolution * geometryExactSurfaceResolution,
+        tolerance: 1e-9,
+      },
+      precision: { mode: "exact", digits: 12, tolerance: 1e-9 },
+    });
+    setGeometryCreateActionStatus(
+      `Exact surface analysis ready: ${geometryExactSurfaceDefinition.label} at (${fmt(geometryExactSurfaceParameterU)}, ${fmt(geometryExactSurfaceParameterV)}).`
+    );
+  }, [
+    createSelectedGeometryAnalysisSnapshot,
+    geometryExactSurfaceDefinition,
+    geometryExactSurfaceNormalAngle,
+    geometryExactSurfaceParameterU,
+    geometryExactSurfaceParameterV,
+    geometryExactSurfaceResolution,
     runGeometryQuickAnalysis,
   ]);
   const handleRunGeometryQuickSectionAnalysis = useCallback(() => {
@@ -43023,6 +43109,21 @@ const App: React.FC = () => {
     setMode("curves");
     setGeometryCreateActionStatus(`Opened ${definition.label} in Curves; exact results remain in Geometry history.`);
   }, [geometrySelectedQuickAnalysisResult]);
+  const handleOpenSelectedGeometrySurfaceAnalysis = useCallback(() => {
+    const analysis = geometrySelectedQuickAnalysisResult?.surfaceAnalysis;
+    if (!analysis) {
+      setGeometryCreateActionStatus("No exact surface analysis result selected.");
+      return;
+    }
+    const surfaceId: ParamSurfaceId = analysis.definition.id === "saddle"
+      ? "hyperbolicParaboloid"
+      : analysis.definition.id as ParamSurfaceId;
+    setSurfaceViewerKind("param");
+    setParamSurfaceId(surfaceId);
+    setSurfaceViewportPreset("analysis");
+    setMode("surfaces");
+    setGeometryCreateActionStatus(`Opened ${analysis.definition.label} in Surfaces; exact results remain in Geometry history.`);
+  }, [geometrySelectedQuickAnalysisResult]);
   const handleSaveSelectedGeometryQuickAnalysisResult = useCallback(() => {
     if (!geometrySelectedQuickAnalysisResult) {
       setGeometryCreateActionStatus("No analysis result selected.");
@@ -43042,6 +43143,7 @@ const App: React.FC = () => {
       topologySummary: geometrySelectedQuickAnalysisResult.topologySummary ?? null,
       sectionSummary: geometrySelectedQuickAnalysisResult.sectionSummary ?? null,
       curveAnalysis: geometrySelectedQuickAnalysisResult.curveAnalysis ?? null,
+      surfaceAnalysis: geometrySelectedQuickAnalysisResult.surfaceAnalysis ?? null,
       notes: geometrySelectedQuickAnalysisResult.notes ?? [],
       lifecycle: {
         state: geometrySelectedQuickAnalysisResult.state,
@@ -93419,6 +93521,47 @@ case "mobius":
                                       Analyze curve
                                     </button>
                                   </div>
+                                  <div
+                                    data-testid="geometry-exact-surface-analysis-controls"
+                                    style={{ display: "grid", gap: 5, borderTop: "1px solid #e2e8f0", paddingTop: 7 }}
+                                  >
+                                    <div style={{ fontSize: 10.5, fontWeight: 700 }}>Exact surface differential analysis</div>
+                                    <select
+                                      data-testid="geometry-exact-surface-preset"
+                                      value={geometryExactSurfacePresetId}
+                                      onChange={(event) => setGeometryExactSurfacePresetId(event.target.value as GeometryExactSurfacePresetId)}
+                                      style={{ fontSize: 10.5, minWidth: 0 }}
+                                    >
+                                      {GEOMETRY_EXACT_SURFACE_PRESETS.map((definition) => (
+                                        <option key={definition.id} value={definition.id}>{definition.label}</option>
+                                      ))}
+                                    </select>
+                                    <div style={{ fontSize: 9.5, color: "#667085", fontFamily: "monospace" }}>
+                                      r(u,v) = ({geometryExactSurfaceDefinition.formula.join(", ")})
+                                    </div>
+                                    <label style={{ display: "grid", gap: 2, fontSize: 9.5 }}>
+                                      u = {fmt(geometryExactSurfaceParameterU)} {geometryExactSurfaceDefinition.units.parameters[0]}
+                                      <input data-testid="geometry-exact-surface-u" type="range" min={0} max={1} step={0.001} value={geometryExactSurfaceU} onChange={(event) => setGeometryExactSurfaceU(Number(event.target.value))} />
+                                    </label>
+                                    <label style={{ display: "grid", gap: 2, fontSize: 9.5 }}>
+                                      v = {fmt(geometryExactSurfaceParameterV)} {geometryExactSurfaceDefinition.units.parameters[1]}
+                                      <input data-testid="geometry-exact-surface-v" type="range" min={0} max={1} step={0.001} value={geometryExactSurfaceV} onChange={(event) => setGeometryExactSurfaceV(Number(event.target.value))} />
+                                    </label>
+                                    <label style={{ display: "grid", gap: 2, fontSize: 9.5 }}>
+                                      Normal-curvature direction θ = {fmt(geometryExactSurfaceNormalAngle)} rad
+                                      <input data-testid="geometry-exact-surface-normal-angle" type="range" min={0} max={Math.PI * 2} step={0.01} value={geometryExactSurfaceNormalAngle} onChange={(event) => setGeometryExactSurfaceNormalAngle(Number(event.target.value))} />
+                                    </label>
+                                    <label style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", fontSize: 9.5 }}>
+                                      Grid resolution
+                                      <input data-testid="geometry-exact-surface-resolution" type="number" min={5} max={128} value={geometryExactSurfaceResolution} onChange={(event) => setGeometryExactSurfaceResolution(Math.max(5, Math.min(128, Number(event.target.value) || 5)))} style={{ width: 74, fontSize: 10 }} />
+                                    </label>
+                                    <div style={{ fontSize: 9.5, color: "#166534" }}>
+                                      Position + first/second partials: exact · normal: {geometryExactSurfaceDefinition.orientation.description}
+                                    </div>
+                                    <button type="button" data-testid="geometry-run-exact-surface-analysis" onClick={handleRunGeometryExactSurfaceAnalysis} style={{ fontSize: 11 }}>
+                                      Analyze surface
+                                    </button>
+                                  </div>
                                   <div style={{ display: "grid", gap: 4 }}>
                                     <div style={{ fontSize: 10.5, fontWeight: 700 }}>Differential geometry</div>
                                     <div style={{ fontSize: 10, color: "#667085" }}>
@@ -93475,7 +93618,11 @@ case "mobius":
                                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
                                     <div style={{ minWidth: 0 }}>
                                       <div style={{ fontSize: 9, color: "#64748b", fontWeight: 800, textTransform: "uppercase" }}>
-                                        {geometrySelectedQuickAnalysisResult.kind === "curve-analysis" ? "Curve differential" : "Geometry analysis"}
+                                        {geometrySelectedQuickAnalysisResult.kind === "curve-analysis"
+                                          ? "Curve differential"
+                                          : geometrySelectedQuickAnalysisResult.kind === "surface-analysis"
+                                            ? "Surface differential"
+                                            : "Geometry analysis"}
                                       </div>
                                       <div style={{ fontSize: 11.5, fontWeight: 800, overflowWrap: "anywhere" }}>
                                         {geometrySelectedQuickAnalysisResult.title}
@@ -93499,7 +93646,11 @@ case "mobius":
                                   </div>
                                   <div data-testid="geometry-analysis-result-definition" style={{ borderTop: "1px solid #e2e8f0", borderBottom: "1px solid #e2e8f0", padding: "7px 0", display: "grid", gap: 4, fontSize: 9.5 }}>
                                     {([
-                                      ["Quantity", geometrySelectedQuickAnalysisResult.kind === "curve-analysis" ? "Position / derivatives / κ / τ / arc length" : geometrySelectedQuickAnalysisResult.title],
+                                      ["Quantity", geometrySelectedQuickAnalysisResult.kind === "curve-analysis"
+                                        ? "Position / derivatives / κ / τ / arc length"
+                                        : geometrySelectedQuickAnalysisResult.kind === "surface-analysis"
+                                          ? "Forms / shape operator / k1 / k2 / H / K"
+                                          : geometrySelectedQuickAnalysisResult.title],
                                       ["Method", geometrySelectedQuickAnalysisResult.provenanceAlgorithm],
                                       ["Domain", geometrySelectedQuickAnalysisResult.domain],
                                     ] as const).map(([label, value]) => (
@@ -93660,6 +93811,125 @@ case "mobius":
                                         </div>
                                       );
                                     })()}
+                                  {geometrySelectedQuickAnalysisResult.kind === "surface-analysis" &&
+                                    geometrySelectedQuickAnalysisResult.surfaceAnalysis && (() => {
+                                      const analysis = geometrySelectedQuickAnalysisResult.surfaceAnalysis;
+                                      const point = analysis.point;
+                                      const formatVector = (value: readonly [number, number, number] | null) =>
+                                        value ? `(${fmt(value[0])}, ${fmt(value[1])}, ${fmt(value[2])})` : "undefined";
+                                      const formatMatrix = (value: readonly [readonly [number, number], readonly [number, number]] | null) =>
+                                        value ? `[[${fmt(value[0][0])}, ${fmt(value[0][1])}], [${fmt(value[1][0])}, ${fmt(value[1][1])}]]` : "undefined";
+                                      const allPoints = analysis.visualization.surfaceGrid.flat();
+                                      const xs = allPoints.map((entry) => entry[0]);
+                                      const ys = allPoints.map((entry) => entry[1]);
+                                      const minX = Math.min(...xs);
+                                      const maxX = Math.max(...xs);
+                                      const minY = Math.min(...ys);
+                                      const maxY = Math.max(...ys);
+                                      const spanX = Math.max(1e-9, maxX - minX);
+                                      const spanY = Math.max(1e-9, maxY - minY);
+                                      const project = (value: readonly [number, number, number]) => ({
+                                        x: 8 + ((value[0] - minX) / spanX) * 204,
+                                        y: 112 - ((value[1] - minY) / spanY) * 104,
+                                      });
+                                      const heatValues = analysis.visualization.heatmap
+                                        .map((entry) => entry[geometryExactSurfaceHeatmap])
+                                        .filter((value): value is number => value != null && Number.isFinite(value));
+                                      const heatMaxAbs = Math.max(1e-12, ...heatValues.map((value) => Math.abs(value)));
+                                      const heatColor = (value: number | null) => {
+                                        if (value == null || !Number.isFinite(value)) return "#94a3b8";
+                                        const strength = Math.min(1, Math.abs(value) / heatMaxAbs);
+                                        return value >= 0
+                                          ? `rgb(${Math.round(245 - 190 * strength)}, ${Math.round(247 - 105 * strength)}, ${Math.round(255 - 35 * strength)})`
+                                          : `rgb(${Math.round(255 - 35 * strength)}, ${Math.round(247 - 120 * strength)}, ${Math.round(245 - 175 * strength)})`;
+                                      };
+                                      return (
+                                        <div data-testid="geometry-exact-surface-result" style={{ borderTop: "1px solid #e2e8f0", paddingTop: 7, display: "grid", gap: 8 }}>
+                                          <div>
+                                            <div style={{ color: "#475569", fontSize: 9.5, fontWeight: 850, textTransform: "uppercase", marginBottom: 5 }}>Pointwise statistics</div>
+                                            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", borderTop: "1px solid #e2e8f0", borderLeft: "1px solid #e2e8f0" }}>
+                                              {([
+                                                ["u / v", `${fmt(point.u)} / ${fmt(point.v)}`],
+                                                ["Jacobian", fmt(point.jacobian)],
+                                                ["k1", point.principalCurvatures.k1 == null ? "undefined" : fmt(point.principalCurvatures.k1)],
+                                                ["k2", point.principalCurvatures.k2 == null ? "undefined" : fmt(point.principalCurvatures.k2)],
+                                                ["Mean H", point.meanCurvature == null ? "undefined" : fmt(point.meanCurvature)],
+                                                ["Gaussian K", point.gaussianCurvature == null ? "undefined" : fmt(point.gaussianCurvature)],
+                                                ["Normal curvature", point.normalCurvature.value == null ? "undefined" : fmt(point.normalCurvature.value)],
+                                                ["Class", point.classification],
+                                              ] as const).map(([label, value]) => (
+                                                <div key={`geometry-surface-stat-${label}`} style={{ borderRight: "1px solid #e2e8f0", borderBottom: "1px solid #e2e8f0", padding: "5px 6px", minWidth: 0 }}>
+                                                  <div style={{ color: "#64748b", fontSize: 8, fontWeight: 800, textTransform: "uppercase" }}>{label}</div>
+                                                  <div style={{ color: "#0f172a", fontSize: 10.5, fontWeight: 850, overflowWrap: "anywhere" }}>{value}</div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                          <div data-testid="geometry-exact-surface-forms" style={{ display: "grid", gap: 3, fontSize: 9.5 }}>
+                                            <div style={{ color: "#475569", fontWeight: 850, textTransform: "uppercase" }}>Derivatives and forms</div>
+                                            <div><strong>r(u,v)</strong> {formatVector(point.position)}</div>
+                                            <div><strong>rᵤ / rᵥ</strong> {formatVector(point.derivativeU)} / {formatVector(point.derivativeV)}</div>
+                                            <div><strong>rᵤᵤ / rᵤᵥ / rᵥᵥ</strong> {formatVector(point.derivativeUU)} / {formatVector(point.derivativeUV)} / {formatVector(point.derivativeVV)}</div>
+                                            <div><strong>n</strong> {formatVector(point.normal)}</div>
+                                            <div><strong>I = metric</strong> {formatMatrix(point.metricTensor)}</div>
+                                            <div><strong>II</strong> {formatMatrix(point.secondFundamentalForm.matrix)}</div>
+                                            <div><strong>Shape operator</strong> {formatMatrix(point.shapeOperator)}</div>
+                                            <div><strong>d1 / d2</strong> {formatVector(point.principalDirections.d1)} / {formatVector(point.principalDirections.d2)}</div>
+                                          </div>
+                                          <div data-testid="geometry-exact-surface-visualization" style={{ display: "grid", gap: 5 }}>
+                                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 9 }}>
+                                              <label><input type="checkbox" checked={geometryExactSurfaceShowNormals} onChange={(event) => setGeometryExactSurfaceShowNormals(event.target.checked)} /> Normals</label>
+                                              <label><input type="checkbox" checked={geometryExactSurfaceShowDirections} onChange={(event) => setGeometryExactSurfaceShowDirections(event.target.checked)} /> Principal directions</label>
+                                              <span>Tangent basis: {point.tangentBasis ? "ready" : "degenerate"}</span>
+                                              <span>Normal sections: {analysis.visualization.normalSections.length}/2</span>
+                                              <span>Curvature glyph: {analysis.visualization.curvatureGlyph ? "ready" : "degenerate"}</span>
+                                            </div>
+                                            <svg viewBox="0 0 220 120" role="img" aria-label="Exact surface differential overlays" style={{ width: "100%", height: 120, border: "1px solid #e2e8f0", borderRadius: 6, background: "#f8fafc" }}>
+                                              {analysis.visualization.surfaceGrid.map((row, rowIndex) => {
+                                                const path = row.map((entry, index) => { const p = project(entry); return `${index ? "L" : "M"}${p.x.toFixed(2)},${p.y.toFixed(2)}`; }).join(" ");
+                                                return <path key={`surface-row-${rowIndex}`} d={path} fill="none" stroke="#60a5fa" strokeWidth="0.8" />;
+                                              })}
+                                              {Array.from({ length: analysis.grid.uCount }, (_, columnIndex) => {
+                                                const column = analysis.visualization.surfaceGrid.map((row) => row[columnIndex]).filter(Boolean);
+                                                const path = column.map((entry, index) => { const p = project(entry); return `${index ? "L" : "M"}${p.x.toFixed(2)},${p.y.toFixed(2)}`; }).join(" ");
+                                                return <path key={`surface-column-${columnIndex}`} d={path} fill="none" stroke="#93c5fd" strokeWidth="0.65" />;
+                                              })}
+                                              {geometryExactSurfaceShowNormals && analysis.visualization.normalGlyphs.map((glyph, index) => {
+                                                const start = project(glyph.origin);
+                                                const end = project([glyph.origin[0] + glyph.vector[0] * spanX * 0.035, glyph.origin[1] + glyph.vector[1] * spanY * 0.035, glyph.origin[2] + glyph.vector[2] * 0.035]);
+                                                return <line key={`surface-normal-${index}`} x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke="#16a34a" strokeWidth="0.8" />;
+                                              })}
+                                              {geometryExactSurfaceShowDirections && analysis.visualization.principalDirectionGlyphs.map((glyph, index) => {
+                                                const start = project(glyph.origin);
+                                                const end = project([glyph.origin[0] + glyph.d1[0] * spanX * 0.025, glyph.origin[1] + glyph.d1[1] * spanY * 0.025, glyph.origin[2] + glyph.d1[2] * 0.025]);
+                                                return <line key={`surface-direction-${index}`} x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke="#dc2626" strokeWidth="0.8" />;
+                                              })}
+                                              {(() => { const selected = project(point.position); return <circle cx={selected.x} cy={selected.y} r="3.5" fill="#7c3aed" stroke="#fff" strokeWidth="1" />; })()}
+                                            </svg>
+                                          </div>
+                                          <div data-testid="geometry-exact-surface-heatmap" style={{ display: "grid", gap: 4 }}>
+                                            <div style={{ display: "flex", gap: 4 }}>
+                                              {(["K", "H", "k1", "k2"] as const).map((quantity) => (
+                                                <button key={quantity} type="button" onClick={() => setGeometryExactSurfaceHeatmap(quantity)} style={pill(geometryExactSurfaceHeatmap === quantity)}>{quantity}</button>
+                                              ))}
+                                            </div>
+                                            <div style={{ display: "grid", gridTemplateColumns: `repeat(${analysis.grid.uCount}, minmax(1px, 1fr))`, gap: 1, height: 72, border: "1px solid #e2e8f0", padding: 2, background: "#fff" }}>
+                                              {analysis.visualization.heatmap.map((entry, index) => <span key={`heat-${index}`} title={`${geometryExactSurfaceHeatmap}=${entry[geometryExactSurfaceHeatmap] ?? "undefined"}`} style={{ background: heatColor(entry[geometryExactSurfaceHeatmap]), minWidth: 1 }} />)}
+                                            </div>
+                                            <div style={{ display: "flex", justifyContent: "space-between", color: "#64748b", fontSize: 8.5 }}><span>−{fmt(heatMaxAbs)}</span><span>0</span><span>+{fmt(heatMaxAbs)}</span></div>
+                                          </div>
+                                          <div data-testid="geometry-exact-surface-conventions" style={{ borderTop: "1px solid #e2e8f0", paddingTop: 6, display: "grid", gap: 3, fontSize: 9.5 }}>
+                                            <div style={{ color: "#475569", fontWeight: 850, textTransform: "uppercase" }}>Computation and conventions</div>
+                                            <div><strong>Derivatives:</strong> first {analysis.definition.capabilities.first}, second {analysis.definition.capabilities.second}</div>
+                                            <div><strong>Normal:</strong> {analysis.conventions.normal}</div>
+                                            <div><strong>Curvature:</strong> {analysis.conventions.principalCurvatureOrder} · {analysis.conventions.meanCurvature} · {analysis.conventions.gaussianCurvature}</div>
+                                            <div><strong>Mesh agreement:</strong> outward-convex {analysis.conventions.outwardConvex} · compatible {analysis.conventions.meshCompatible ? "yes" : "no"}</div>
+                                            <div><strong>Domain:</strong> u seam {analysis.definition.domain.u.seam}, v seam {analysis.definition.domain.v.seam}, trims {analysis.definition.trims.length}</div>
+                                            <div><strong>Precision:</strong> tolerance {analysis.tolerance.toExponential(2)} · Δu≤{analysis.uncertainty.u.toExponential(2)} · Δv≤{analysis.uncertainty.v.toExponential(2)}</div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })()}
                                   {geometrySelectedQuickAnalysisResult.kind === "topology-summary" &&
                                     geometrySelectedQuickAnalysisResult.topologySummary && (
                                       <div style={{ marginTop: 2, fontSize: 10.5, display: "grid", gap: 2 }}>
@@ -93701,6 +93971,10 @@ case "mobius":
                                     {geometrySelectedQuickAnalysisResult.kind === "curve-analysis" ? (
                                       <button type="button" data-testid="geometry-exact-curve-open-curves" onClick={handleOpenSelectedGeometryCurveAnalysis} style={{ fontSize: 11 }}>
                                         Open in Curves
+                                      </button>
+                                    ) : geometrySelectedQuickAnalysisResult.kind === "surface-analysis" ? (
+                                      <button type="button" data-testid="geometry-exact-surface-open-surfaces" onClick={handleOpenSelectedGeometrySurfaceAnalysis} style={{ fontSize: 11 }}>
+                                        Open in Surfaces
                                       </button>
                                     ) : (
                                       <button type="button" onClick={handleOpenSelectedGeometryQuickAnalysisResult} style={{ fontSize: 11 }}>

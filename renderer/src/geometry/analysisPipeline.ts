@@ -6,6 +6,11 @@ import {
   type GeometryAnalyticCurveDefinition,
 } from "./exactCurveAnalysis";
 import {
+  analyzeExactSurface,
+  type ExactSurfaceAnalysisResult,
+  type GeometryAnalyticSurfaceDefinition,
+} from "./exactSurfaceAnalysis";
+import {
   computeGeometryAnalysisBasicMetrics,
   computeGeometryAnalysisTopologySummary,
   type GeometryAnalysisBasicMetrics,
@@ -112,6 +117,7 @@ export type GeometryAnalysisPayload = {
   topologySummary?: GeometryAnalysisTopologySummary;
   sectionSummary?: GeometrySectionAnalysisSummary;
   curveAnalysis?: ExactCurveAnalysisResult;
+  surfaceAnalysis?: ExactSurfaceAnalysisResult;
 };
 
 export type GeometryAnalysisExecutionContext = {
@@ -120,6 +126,15 @@ export type GeometryAnalysisExecutionContext = {
     definition: GeometryAnalyticCurveDefinition;
     parameter: number;
     sampleCount: number;
+    tolerance: number;
+  };
+  exactSurface?: {
+    definition: GeometryAnalyticSurfaceDefinition;
+    u: number;
+    v: number;
+    uCount: number;
+    vCount: number;
+    normalCurvatureAngle: number;
     tolerance: number;
   };
 };
@@ -333,6 +348,60 @@ const builtinImplementationEntries: Array<[GeometryAnalysisResultKind, GeometryA
       curveAnalysis,
     };
   }],
+  ["surface-analysis", ({ context }) => {
+    if (!context.exactSurface) throw new Error("Exact surface analysis requires an analytic surface definition.");
+    const surfaceAnalysis = analyzeExactSurface(context.exactSurface);
+    const point = surfaceAnalysis.point;
+    const outputs: GeometryAnalysisOutput[] = [
+      { id: "position", label: "Position", kind: "point", value: point.position, unit: surfaceAnalysis.definition.units.position },
+      { id: "ru", label: "r_u", kind: "vector", value: point.derivativeU },
+      { id: "rv", label: "r_v", kind: "vector", value: point.derivativeV },
+      {
+        id: "fundamental-forms",
+        label: "Fundamental forms and shape operator",
+        kind: "table",
+        columns: ["matrix", "11", "12", "21", "22"],
+        rows: [
+          ["I / metric", point.metricTensor[0][0], point.metricTensor[0][1], point.metricTensor[1][0], point.metricTensor[1][1]],
+          ["II", point.secondFundamentalForm.matrix?.[0][0] ?? null, point.secondFundamentalForm.matrix?.[0][1] ?? null, point.secondFundamentalForm.matrix?.[1][0] ?? null, point.secondFundamentalForm.matrix?.[1][1] ?? null],
+          ["Shape", point.shapeOperator?.[0][0] ?? null, point.shapeOperator?.[0][1] ?? null, point.shapeOperator?.[1][0] ?? null, point.shapeOperator?.[1][1] ?? null],
+        ],
+      },
+      { id: "jacobian", label: "Jacobian / area element", kind: "scalar", value: point.jacobian },
+    ];
+    if (point.normal) outputs.push({ id: "normal", label: "Oriented normal", kind: "vector", value: point.normal });
+    if (point.principalDirections.d1) outputs.push({ id: "principal-d1", label: "Principal direction d1", kind: "vector", value: point.principalDirections.d1 });
+    if (point.principalDirections.d2) outputs.push({ id: "principal-d2", label: "Principal direction d2", kind: "vector", value: point.principalDirections.d2 });
+    for (const [id, label, value] of [
+      ["k1", "Principal curvature k1", point.principalCurvatures.k1],
+      ["k2", "Principal curvature k2", point.principalCurvatures.k2],
+      ["H", "Mean curvature H", point.meanCurvature],
+      ["K", "Gaussian curvature K", point.gaussianCurvature],
+      ["normal-curvature", "Normal curvature", point.normalCurvature.value],
+    ] as const) {
+      if (value != null) outputs.push({ id, label, kind: "scalar", value, unit: `1/${surfaceAnalysis.definition.units.position}` });
+    }
+    outputs.push({ id: "classification", label: "Surface classification", kind: "summary", value: point.classification });
+    surfaceAnalysis.warnings.forEach((warning, index) => outputs.push({ id: `warning-${index}`, label: "Surface diagnostic", kind: "warning", value: warning, severity: "warning" }));
+    return {
+      algorithm: `analytic-surface-differential-v${surfaceAnalysis.definition.revision}`,
+      backend: "Geometry exact surface core",
+      outputs,
+      summary: {
+        u: point.u,
+        v: point.v,
+        jacobian: point.jacobian,
+        k1: point.principalCurvatures.k1,
+        k2: point.principalCurvatures.k2,
+        H: point.meanCurvature,
+        K: point.gaussianCurvature,
+        classification: point.classification,
+        degenerate: point.degenerate,
+      },
+      warnings: surfaceAnalysis.warnings,
+      surfaceAnalysis,
+    };
+  }],
   ["differential-geometry", ({ snapshot }) => ({
     algorithm: "mesh-analyze-handoff-v1",
     outputs: [{ id: "handoff", label: "Mesh Analyze handoff", kind: "summary", value: "Analysis-ready mesh snapshot" }],
@@ -405,6 +474,7 @@ export const executeGeometryAnalysisRequest = (args: {
       ...(computed.topologySummary ? { topologySummary: computed.topologySummary } : {}),
       ...(computed.sectionSummary ? { sectionSummary: computed.sectionSummary } : {}),
       ...(computed.curveAnalysis ? { curveAnalysis: computed.curveAnalysis } : {}),
+      ...(computed.surfaceAnalysis ? { surfaceAnalysis: computed.surfaceAnalysis } : {}),
       provenance: {
         backend,
         algorithm: computed.algorithm,

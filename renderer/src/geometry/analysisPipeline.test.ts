@@ -16,6 +16,7 @@ import {
   type GeometryAnalysisPayload,
 } from "./analysisPipeline";
 import { getGeometryExactCurvePreset } from "./exactCurveAnalysis";
+import { getGeometryExactSurfacePreset } from "./exactSurfaceAnalysis";
 
 const triangle: SurfaceMeshData = {
   label: "triangle",
@@ -274,5 +275,42 @@ describe("Geometry AnalysisRequest pipeline", () => {
     });
     expect(execution.result.payload?.outputs.some((output) => output.kind === "curve")).toBe(true);
     expect(execution.result.payload?.outputs.filter((output) => output.kind === "vector")).toHaveLength(3);
+  });
+
+  it("publishes exact pointwise and sampled surface results through the shared pipeline", () => {
+    const source = snapshot(8);
+    const definition = getGeometryExactSurfacePreset("sphere");
+    const request = createGeometryAnalysisRequest({
+      id: "request-8",
+      kind: "surface-analysis",
+      snapshot: source,
+      sourceRevision: 12,
+      domain: "surface",
+      sampling: { strategy: "exact", sampleCount: 17 * 9, tolerance: 1e-9 },
+      precision: { mode: "exact", digits: 12, tolerance: 1e-9 },
+      parameters: { surfaceDefinitionId: definition.id, u: 0, v: Math.PI / 2 },
+      requestedOutputs: ["scalar", "vector", "point", "table", "summary", "warning"],
+    });
+    const execution = executeGeometryAnalysisRequest({
+      store: createGeometryAnalysisResultStore(),
+      registry: createGeometryAnalysisRegistry(),
+      request,
+      snapshot: source,
+      context: { exactSurface: { definition, u: 0, v: Math.PI / 2, uCount: 17, vCount: 9, normalCurvatureAngle: 0, tolerance: 1e-9 } },
+      now: 90,
+    });
+    expect(execution.result).toMatchObject({
+      state: "ready",
+      backend: "Geometry exact surface core",
+      payload: {
+        provenance: { algorithm: "analytic-surface-differential-v1" },
+        surfaceAnalysis: {
+          point: { classification: "umbilic", meanCurvature: 1, gaussianCurvature: 1 },
+          conventions: { principalCurvatureOrder: "k1>=k2", meshCompatible: true },
+        },
+      },
+    });
+    expect(execution.result.payload?.outputs.some((output) => output.kind === "table")).toBe(true);
+    expect(execution.result.payload?.outputs.filter((output) => output.kind === "vector").length).toBeGreaterThanOrEqual(5);
   });
 });

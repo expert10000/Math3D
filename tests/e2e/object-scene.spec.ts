@@ -220,6 +220,18 @@ test("Geometry professional shell keeps current workspaces and tools reachable",
     await expect(page.getByTestId("geometry-analysis-result-provenance")).toContainText("Geometry exact curve core");
     await expect(page.getByTestId("geometry-analysis-result-warnings")).toContainText("None");
     await expect(page.getByTestId("geometry-exact-curve-open-curves")).toBeVisible();
+    await expect(page.getByTestId("geometry-exact-surface-analysis-controls")).toBeVisible();
+    await page.getByTestId("geometry-exact-surface-preset").selectOption("sphere");
+    await page.getByTestId("geometry-run-exact-surface-analysis").click();
+    await expect(page.getByTestId("geometry-exact-surface-result")).toContainText("Gaussian K");
+    await expect(page.getByTestId("geometry-exact-surface-forms")).toContainText("Shape operator");
+    await expect(page.getByTestId("geometry-exact-surface-visualization")).toContainText("Normal sections: 2/2");
+    await expect(page.getByTestId("geometry-exact-surface-heatmap")).toBeVisible();
+    await expect(page.getByTestId("geometry-exact-surface-conventions")).toContainText("k1>=k2");
+    await expect(page.getByTestId("geometry-exact-surface-conventions")).toContainText("compatible yes");
+    await expect(page.getByTestId("geometry-analysis-result-provenance")).toContainText("Geometry exact surface core");
+    await expect(page.getByTestId("geometry-analysis-result-warnings")).toContainText("degenerate");
+    await expect(page.getByTestId("geometry-exact-surface-open-surfaces")).toBeVisible();
     await page.getByTestId("geometry-professional-tool-construct").click();
     await expect(page.getByTestId("geometry-construct-panel-tab-create")).toBeVisible();
     await expect(page.getByTestId("geometry-construct-taxonomy")).toBeVisible();
