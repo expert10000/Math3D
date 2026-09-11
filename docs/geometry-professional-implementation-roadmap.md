@@ -633,21 +633,34 @@ Acceptance: exact and discrete values remain visibly distinct and the comparison
 
 Planned message: `geometry: complete Inspector saved results provenance and comparison workflow`
 
-**Status: partially implemented.**
+**Status: complete — implemented in `abf8197`.**
 
 Already implemented:
 
 - Right-side Selection, Actions, and Dependencies workflows.
 - Pick details, properties, operations, histories, quick analysis result cards, variant comparison, derived product provenance, stale summaries, regeneration, and JSON save.
 
-Remaining:
+Completed:
 
-- [ ] Establish Inspector sections for Selection, Geometry, Analysis, Diagnostics, Provenance, History, and Actions.
-- [ ] Display quantity, method, domain, units, precision, statistics, warnings, source revision, engine, sampling, parameters, timing, and timestamp consistently.
-- [ ] Route saved Geometry analysis results through the shared result lifecycle: running, preview, complete, saved, failed, cancelled, stale, and superseded.
-- [ ] Add Save, Rename, Compare, Duplicate settings, Recompute, Open source, Open derivative, Promote overlay, and Export actions.
-- [ ] Preserve stale result payloads for inspection while preventing them from driving the current viewport.
-- [ ] Remove duplicated controls only after the new location is tested and accepted.
+- [x] Establish Inspector sections for Selection, Geometry, Analysis, Diagnostics, Provenance, History, and Actions.
+- [x] Display quantity, method, domain, units, precision, statistics, warnings, source revision, engine, sampling, parameters, timing, and timestamp consistently.
+- [x] Route saved Geometry analysis results through the shared result lifecycle: running, preview, complete, saved, failed, cancelled, stale, and superseded.
+- [x] Add Save, Rename, Compare, Duplicate settings, Recompute, Open source, Open derivative, Promote overlay, and Export actions.
+- [x] Preserve stale result payloads for inspection while preventing them from driving the current viewport.
+- [x] Retain the established left-side controls during acceptance testing while making the right Inspector the canonical result explanation and saved-result workflow.
+
+Delivered:
+
+- The right Inspector now has explicit Selection, Geometry, Analysis, Diagnostics, Provenance, History, and Actions destinations without removing the accepted left-side analysis controls.
+- A persistent saved-result store keeps result payloads, parameters, statistics, warnings, provenance, timing, and source revisions available across reloads.
+- Lifecycle normalization covers running, preview, complete, saved, failed, cancelled, stale, and superseded states; stale payloads remain inspectable but are blocked from viewport publication.
+- The Analysis Inspector provides Save, Rename, Compare, Duplicate settings, Recompute, Open source, Open derivative, Promote overlay, and Export actions plus side-by-side metadata comparison.
+
+Validation:
+
+- Saved-result lifecycle, stale-payload preservation, viewport publication guards, settings duplication, comparison, persistence, and malformed-storage tests pass (**4/4**).
+- Renderer type checking and the production renderer build pass.
+- The Geometry professional-shell E2E acceptance test passes.
 
 Acceptance: the left side answers what to do; the right side explains the selection and result without duplicating primary configuration.
 
