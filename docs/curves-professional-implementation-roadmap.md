@@ -83,7 +83,7 @@ Baseline verification at this assessment:
 | 1 — Canonical Curve identity and result contract | Complete (`e5127b8`) | Revisioned identity, all representation adapters, shared request/result publication, exact Geometry bridge, compact persistence, visible provenance | None for Commit 1 |
 | 2 — Robust sampling and arc-length kernel | Complete (`916c7a8`) | Deterministic multi-criterion sampling, bounded evaluation, seam-safe render payloads, monotone arc-length maps, visible diagnostics | None for Commit 2 |
 | 3 — Professional workspace responsibility split | Complete (`c3f3baa`) | Professional shell, five focused work panels, viewport-only display controls, eight-tab Inspector, Curve-aware status bar | None for Commit 3 |
-| 4 — Differential geometry and stable frames | Planned | Derivatives, κ, τ, Frenet, exact Geometry fixtures | Unified engine, Bishop frame, signed planar analysis, evidence and conventions |
+| 4 — Differential geometry and stable frames | Complete (`e82ca97`) | Unified differential field, third derivatives, honest Frenet validity, Bishop transport, evidence geometry, planar and Surface-linked invariants | None for Commit 4 |
 | 5 — Linked local probe, plots, and annotations | Planned | Parameter slider, probe glyph, local κ/τ readout | Semantic picking, synchronized plots/evidence, pin/compare/export, persistent annotations |
 | 6 — Diagnostics, continuity, and intersections | Planned | Basic core validation and exact events | Typed severity model, C/G continuity, robust intersections, issue navigation |
 | 7 — Dependency-aware derived curves | Planned | Derived preset category and Geometry construction recipes | Real operations, preview/commit, recomputation, lineage, failure policy |
@@ -338,7 +338,7 @@ Acceptance: normal curve definition and analysis can be completed from the profe
 
 Planned message: `feat(curve-analysis): complete differential geometry and stable frames`
 
-**Status: planned.**
+**Status: complete — `e82ca97`.**
 
 Already implemented:
 
@@ -348,14 +348,22 @@ Already implemented:
 
 Remaining:
 
-- [ ] Create one Curve differential point/field schema for exact, analytic, numerical, spline, polyline, and backend methods.
-- [ ] Compute position, first through third derivatives, speed, arc length coordinate, tangent, normal, binormal, curvature, torsion, radius of curvature, and regularity masks.
-- [ ] Add a Bishop/parallel-transport frame with deterministic initial normal, closed-loop holonomy reporting, and stable handling around inflections and straight segments.
-- [ ] Add osculating circle, osculating plane, normal plane, rectifying plane, curvature comb, and evolute evidence.
-- [ ] For planar curves, add signed curvature, turning angle/turning number, inflection points, and convex/concave intervals.
-- [ ] For curve-on-surface inputs, expose ambient, normal, and geodesic curvature with an explicit Surface dependency.
-- [ ] Add field statistics, extrema, units, uncertainty, invalid masks, warnings, and method provenance.
-- [ ] Ensure undefined Frenet quantities remain undefined while the viewport may use a labeled Bishop-frame fallback.
+- [x] Create one Curve differential point/field schema for exact, analytic, numerical, spline, polyline, and backend methods.
+- [x] Compute position, first through third derivatives, speed, arc-length coordinate, tangent, normal, binormal, curvature, torsion, radius of curvature, and regularity masks.
+- [x] Add a Bishop/parallel-transport frame with deterministic initial normal, closed-loop holonomy reporting, and stable handling around inflections and straight segments.
+- [x] Add osculating circle, osculating plane, normal plane, rectifying plane, curvature comb, and evolute evidence.
+- [x] For planar curves, add signed curvature, turning angle/turning number, inflection points, and convex/concave intervals.
+- [x] For curve-on-surface inputs, expose ambient, normal, and geodesic curvature with an explicit Surface dependency.
+- [x] Add field statistics, extrema, units, uncertainty, validity/regularity masks, warnings, and method provenance.
+- [x] Ensure undefined Frenet quantities remain undefined while the viewport uses an explicitly labeled Bishop-frame fallback.
+
+Validation at `e82ca97`:
+
+- **41 focused Curve tests across 6 files** pass, including analytic circle and helix truth cases, straight-line stability, planar inflection orientation, Surface curvature decomposition, and numerical cusp regularity.
+- The full renderer suite passes: **605 tests across 114 files**.
+- `npm run typecheck:noemit` and `npm run build:core` pass.
+- The Curves functional E2E journey passes and verifies the differential summary, turning-number result, Frenet/Bishop frame label, and osculating-evidence display control.
+- `npm run test:app:responsive:smoke` passes for phone portrait, phone landscape, tablet, and desktop layouts.
 
 Acceptance: circle and helix truth cases pass, a straight line stays stable, planar orientation conventions are reproducible, and an inflection or zero-curvature segment never breaks rendering.
 
