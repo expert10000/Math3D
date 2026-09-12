@@ -84,14 +84,14 @@ Baseline verification at this assessment:
 | 2 — Robust sampling and arc-length kernel | Complete (`916c7a8`) | Deterministic multi-criterion sampling, bounded evaluation, seam-safe render payloads, monotone arc-length maps, visible diagnostics | None for Commit 2 |
 | 3 — Professional workspace responsibility split | Complete (`c3f3baa`) | Professional shell, five focused work panels, viewport-only display controls, eight-tab Inspector, Curve-aware status bar | None for Commit 3 |
 | 4 — Differential geometry and stable frames | Complete (`e82ca97`) | Unified differential field, third derivatives, honest Frenet validity, Bishop transport, evidence geometry, planar and Surface-linked invariants | None for Commit 4 |
-| 5 — Linked local probe, plots, and annotations | Planned | Parameter slider, probe glyph, local κ/τ readout | Semantic picking, synchronized plots/evidence, pin/compare/export, persistent annotations |
-| 6 — Diagnostics, continuity, and intersections | Planned | Basic core validation and exact events | Typed severity model, C/G continuity, robust intersections, issue navigation |
+| 5 — Linked local probe, plots, and annotations | Complete (`96b0cd4`) | Semantic picking, synchronized plots/evidence, pin/compare/export, and persistent annotations | None for Commit 5 |
+| 6 — Diagnostics, continuity, and intersections | Complete (`b37031d`) | Typed severity model, C/G continuity, robust intersections, issue navigation, and result lifecycle | None for Commit 6 |
 | 7 — Dependency-aware derived curves | Complete (`02e0f37`) | Derived preset category, Geometry construction recipes, canonical operations, dependency lifecycle, and explicit branches | None for Commit 7 |
-| 8 — Bézier, B-spline, and NURBS editing | Complete | Canonical spline definitions/evaluation, CAD edits, construction evidence, continuity tools, and revision history | None for Commit 8 |
+| 8 — Bézier, B-spline, and NURBS editing | Complete (`bab516e`) | Canonical spline definitions/evaluation, CAD edits, construction evidence, continuity tools, and revision history | None for Commit 8 |
 | 9 — Geometry and Surface interoperability | Complete (`4d5f78c`) | Canonical exchange envelopes preserve evaluators or labeled samples, identity, chart correspondence, stale navigation, and Curve-to-Surface requests | None for Commit 9 |
 | 10 — Provenance-linked CurveMesh workflows | Complete (`c6f974e`) | Six frame-aware CurveMesh variants, revisioned lineage/mapping/lifecycle, live and baked Mesh handoff, and explicit Mesh extraction/fitting workflows | None for Commit 10 |
 | 11 — Optional VTK and CGAL adapters | Complete (`83865be`) | Capability registry, native authority, injectable optional adapters, deterministic fallback, parity, provenance, and Backend inspection | Curve-specific VTK/CGAL process bridges remain optional and unregistered in this installation |
-| 12 — Workers, dependency cache, and performance | Complete | Browser Worker jobs, deterministic revision/dependency cache, cancellation/progress/retry guards, reviewed performance budgets, and bounded outputs | None for Commit 12 |
+| 12 — Workers, dependency cache, and performance | Complete (`3f3ede0`) | Browser Worker jobs, deterministic revision/dependency cache, cancellation/progress/retry guards, reviewed performance budgets, and bounded outputs | None for Commit 12 |
 | 13 — Result lifecycle and analysis presets | Planned | Shared saved-result patterns and Surface layer presets | Curve result cards, visibility, save/compare/export, useful layered presets |
 | 14 — Regression matrix and performance gates | Planned | Exact fixtures and repository-wide E2E infrastructure | Canonical/pathological matrix, cross-module journeys, tolerances, profiles |
 | 15 — Documentation and professional workflow freeze | Planned | Geometry/Surface/Mesh freeze precedents | User workflow, conventions, engine ownership, QA checklist, screenshot baseline |
@@ -434,7 +434,7 @@ Acceptance: pathological fixtures produce typed, reproducible diagnostics; click
 
 Planned message: `feat(curves): add dependency-aware derived curve operations`
 
-**Status: implemented and validated (`4d5f78c`).**
+**Status: implemented and validated (`02e0f37`).**
 
 Already implemented:
 
@@ -465,7 +465,7 @@ Acceptance: every derived curve is an ordinary canonical Curve with inspectable 
 
 Planned message: `feat(curves): add Bezier B-spline and NURBS editing workflows`
 
-**Status: implemented.**
+**Status: implemented and validated (`bab516e`).**
 
 Already implemented:
 
@@ -498,7 +498,7 @@ Acceptance: editing a control point, knot, degree, or weight produces a new Curv
 
 Planned message: `feat(curves): integrate Geometry and Surface curve round trips`
 
-**Status: implemented.**
+**Status: implemented and validated (`4d5f78c`).**
 
 Already implemented:
 
@@ -593,7 +593,7 @@ Acceptance: Curves works fully without VTK/CGAL; supported adapters are optional
 
 Planned message: `perf(curves): workerize heavy computations and cache curve results`
 
-**Status: implemented and validated.**
+**Status: implemented and validated (`3f3ede0`).**
 
 Already implemented:
 
