@@ -401,7 +401,7 @@ Acceptance: selecting a point from the viewport, plot, slider, or diagnostic res
 
 Planned message: `feat(curve-analysis): add diagnostics continuity and intersections`
 
-**Status: planned.**
+**Status: complete in `b37031d`.**
 
 Already implemented:
 
@@ -409,16 +409,24 @@ Already implemented:
 - Exact stationary, degenerate, inflection, piecewise-transition, and scalar-extrema events.
 - Basic workspace sampling errors.
 
-Remaining:
+Delivered:
 
-- [ ] Define typed diagnostic identity, severity (`OK`, `Info`, `Warning`, `Error`), parameter interval, evidence, method, uncertainty, and suggested action.
-- [ ] Detect invalid evaluations, NaN/Infinity, zero-speed points, derivative singularities, cusps, discontinuities, duplicate points, degenerate segments/spans, extreme curvature, and sampling under-resolution.
-- [ ] Detect exact or robust 2D self-intersections and near self-intersections; provide candidate/tolerance reporting for sampled 3D proximity.
-- [ ] Report C0/C1/C2 and G1/G2 continuity at piecewise joins, Bézier joins, B-spline knots, NURBS knots, and joined derived curves.
-- [ ] Distinguish mathematical discontinuity from a merely coarse tessellation and exact intersection from tolerance-based proximity.
-- [ ] Add Inspector summaries for Geometry, Sampling, Continuity, Singularities, Intersections, and warnings.
-- [ ] Make every diagnostic navigable: select/frame the location, place the parameter probe, and show local evidence.
-- [ ] Add save, compare, filter, export, and recompute lifecycle actions.
+- [x] Define typed diagnostic identity, severity (`OK`, `Info`, `Warning`, `Error`), parameter interval, evidence, method, uncertainty, suggested action, and mathematical/tessellation/tolerance distinction.
+- [x] Detect invalid evaluations, NaN/Infinity, zero-speed points, derivative singularities, cusps, discontinuities, duplicate points, degenerate segments/spans, extreme curvature, and sampling under-resolution.
+- [x] Detect exact or robust 2D self-intersections and near self-intersections; provide candidate/tolerance reporting for sampled 3D proximity.
+- [x] Report C0/C1/C2 and G1/G2 continuity at declared piecewise, spline-knot, and joined-curve breakpoints.
+- [x] Distinguish mathematical discontinuity from a merely coarse tessellation and exact intersection from tolerance-based proximity.
+- [x] Add Inspector summaries and filters for Geometry, Sampling, Continuity, Singularities, Intersections, and warnings.
+- [x] Make every diagnostic navigable: selecting an entry places the shared parameter/arc-length probe and frames its local evidence.
+- [x] Add save, compare, filter, JSON/CSV export, and recompute lifecycle actions.
+
+Validation at `b37031d`:
+
+- **39 focused Curve analysis tests across 6 files** pass, including regular circle, cusp/zero speed, duplicate and degenerate spans, C/G join continuity, mathematical discontinuity, exact sampled 2D crossing, and sampled 3D proximity fixtures.
+- The full renderer suite passes: **615 tests across 116 files**.
+- `npx tsc -p renderer/tsconfig.app.json --noEmit` and `npm run build:renderer` pass.
+- The Curves functional Electron E2E journey passes and verifies typed summary counts, save/recompute/compare, diagnostic-to-probe navigation, and persisted result references.
+- `npm run test:app:responsive:smoke` passes for phone portrait, phone landscape, tablet, and desktop layouts.
 
 Acceptance: pathological fixtures produce typed, reproducible diagnostics; clicking an issue moves the shared probe to its evidence without changing or recomputing unrelated results.
 
