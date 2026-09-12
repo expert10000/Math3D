@@ -1,0 +1,656 @@
+# Curves professional implementation roadmap
+
+Assessment date: 2026-09-12
+
+Reviewed checkout: `c6c1e1d` — feat(surface-analysis): add layered workflow presets
+
+Planning source: supplied Curves-module professionalization proposal, extended after inspection of the current Curve Core, Curves workspace, exact Geometry curve analysis, Surface result layers, and Geometry/Surface/Mesh handoffs
+
+The numbered commits below are implementation plans, not claims that corresponding Git commits are complete. The roadmap turns Curves into Math3D's canonical one-dimensional differential-geometry workbench while preserving the current Curve Core viewer and keeping clear ownership boundaries with Geometry, Surfaces, and Mesh.
+
+## Product boundary
+
+**Curves owns the definition, evaluation, sampling, analysis, editing, and derivation of one-dimensional geometric objects. Geometry owns scene-level construction semantics. Surfaces owns two-dimensional smooth-surface mathematics. Mesh owns discrete mesh topology, quality, and processing.**
+
+A curve extracted from a Surface or Mesh remains linked to its source, but its one-dimensional mathematics is computed in Curves. A tube, ribbon, or polyline generated from a curve is a provenance-linked derived Mesh, not a second unrelated object.
+
+| Curves owns | Neighboring module owns |
+| --- | --- |
+| Curve parameter domains, orientation, closure, and periodicity | Geometry scene membership, general construction relationships, and object-level transforms |
+| Exact, analytic, spline, sampled, and polyline curve evaluation | Surface charts, tangent planes, shape operators, and smooth geodesic solving |
+| Adaptive and arc-length-aware curve sampling | Mesh element quality, connectivity, repair, remeshing, and decimation |
+| Tangent, curvature, torsion, Frenet frame, and Bishop frame | Surface K/H/k1/k2 fields and Mesh discrete curvature fields |
+| Curve continuity, cusps, inflections, and self-intersections | Surface singularities and Mesh non-manifold or bad-element diagnostics |
+| Curve-derived constructions such as offset, evolute, trim, join, and projection | Boolean solids, surface trimming bodies, and general topology editing |
+| Bézier, B-spline, and NURBS curve editing | Surface spline patches and solid CAD feature history |
+| Curve-level result layers, probes, plots, histories, and exports | Source-module results that produced an input curve |
+| Curve-to-Surface and curve-to-Mesh requests plus lineage | Surface tessellation and Mesh processing after handoff |
+
+For a curve on a Surface, Curves owns speed, arc length, curvature, torsion, frames, and curve diagnostics. Surface Analysis may supply contextual values along the path—surface normal, normal/geodesic curvature, chart coordinates, and source geodesic metadata—through an explicit dependency rather than duplicate the curve engine.
+
+## Preservation rule
+
+The professionalization is additive until parity is verified. Existing capabilities remain reachable throughout the roadmap:
+
+- The current Curves module and `Curve Core` workspace.
+- Parametric 2D/3D, polar-style, Bézier, B-spline, NURBS, control-based, derived, custom-expression, and special-curve presets.
+- Circle, ellipse, Lissajous, hypotrochoid, helix, and the existing demonstration catalog.
+- Uniform and adaptive sampling controls, domain controls, custom expressions, and closed-curve controls.
+- Current T/N/B frame visualization, parameter slider, point probe, curvature/torsion readouts, arc-length summary, camera reset, and screenshot capture.
+- Geometry section-to-Curves handoff and imported polyline behavior.
+- Geometry exact-curve analysis and its analytic fixtures until Curves consumes the shared implementation with parity.
+- Existing top navigation, responsive behavior, theme, persistence, back/forward navigation, and module switching.
+
+Controls may be renamed, moved, merged, or retired only after their replacement covers the same workflow and the decision is recorded in this roadmap or the final Curves workflow freeze. Compatibility controls that do not yet fit the professional shell remain under an expandable **Existing tools** group.
+
+## Current implementation assessment
+
+The repository already contains a useful Curve foundation:
+
+- `packages/core/src/geometry/curve-core` defines shared 2D/3D curve types, domains, evaluation, numerical first/second derivatives, curvature, torsion, Frenet frames, arc length, bounding boxes, validation, reparameterization, and uniform/adaptive sampling.
+- `renderer/src/math/curvePresetFactory.ts` adapts formulas and special B-spline/NURBS demonstrations to the shared core model.
+- `renderer/src/components/CurveViewer.tsx` renders 2D/3D sampled curves, closed seams, T/N/B glyphs, a local probe marker, axes, grid, orbit controls, touch gestures, camera fitting, and cleanup.
+- The Curves workspace has family/category filtering, presets, custom x(t)/y(t)/z(t), domain editing, uniform/adaptive controls, frame controls, a parameter slider, local κ/τ values, arc length, and compact diagnostics.
+- Curves accepts a Geometry section handoff as a closed or open 3D polyline with retained source name, section length, area, segment count, and a curve-local probe.
+- `renderer/src/geometry/exactCurveAnalysis.ts` already implements exact line, circle, helix, and piecewise fixtures; first through third derivatives; speed; Frenet data; curvature; torsion; inflection/stationary/degenerate events; extrema; adaptive-Simpson arc length; osculating evidence; and uncertainty.
+- Geometry already publishes exact curve results through the shared analysis request/result pipeline. Surface Analysis already publishes revision-safe curve result layers. These implementations should be reused rather than copied.
+- The existing optional VTK/CGAL worker infrastructure and Mesh-operation registry can host curve adapters without making the Curve Core dependent on either engine.
+
+The main gaps are consolidation, completeness, and workflow ownership:
+
+- `CurveBase` has no canonical revision, source dependency, periodicity, units, coordinate system, sampling policy, or derivative-capability contract.
+- Representation-specific metadata is incomplete; explicit, implicit, polar, curve-on-surface, derived, and imported polyline curves are not yet normalized through one adapter registry.
+- Adaptive sampling currently uses midpoint chord error only and does not robustly handle seams, discontinuities, cusps, oscillations, derivative singularities, or uniform arc-length output.
+- Curve results are calculated primarily inside the current workspace render state instead of a revision-safe Curve Analysis result store with cache, cancellation, stale state, history, and saved results.
+- The exact Geometry curve engine and the Curve Core overlap. Curves should become authoritative while Geometry calls it through an adapter.
+- Frenet behavior exists, but Bishop frames, stable inflection handling, signed planar curvature, full plane/osculating evidence, and scalar plots are incomplete.
+- Diagnostics are currently compact render errors rather than typed, selectable issues with continuity and intersection evidence.
+- Bézier/B-spline/NURBS presets evaluate, but there is no unified CAD-style control-point, knot, weight, and continuity editor.
+- Derived curve operations and cross-module round trips are not yet one dependency-aware workflow.
+- The Curves UI does not yet follow the professional left-compute / center-evidence / right-inspection hierarchy used by Geometry, Surface Analysis, and Mesh Analysis.
+- There is no dedicated Curves acceptance command, functional E2E suite, performance profile, or frozen workflow contract.
+
+Baseline verification at this assessment:
+
+- **12 focused curve tests across 2 renderer files** pass for preset construction and exact curve analysis.
+- The focused baseline command is `npm --prefix renderer test -- src/math/curvePresetFactory.test.ts src/geometry/exactCurveAnalysis.test.ts`.
+- No Curves-specific E2E or maintained `test:curves:*` acceptance command exists yet.
+
+## Implementation progress
+
+| Plan | Status | Existing foundation | Main work remaining |
+| --- | --- | --- | --- |
+| 1 — Canonical Curve identity and result contract | Planned | Shared `AnyCurve`, domain, evaluation, Geometry analysis infrastructure | Revisions, representations, dependencies, methods, payloads, adapters, persistence |
+| 2 — Robust sampling and arc-length kernel | Planned | Uniform sampling, midpoint-error adaptive sampling, quadrature length | Multi-criterion subdivision, seam/discontinuity handling, arc-length maps, diagnostics |
+| 3 — Professional workspace responsibility split | Planned | Curves preset list, viewer, controls, compact diagnostics | Professional shell, computation/display/inspection split, responsive parity |
+| 4 — Differential geometry and stable frames | Planned | Derivatives, κ, τ, Frenet, exact Geometry fixtures | Unified engine, Bishop frame, signed planar analysis, evidence and conventions |
+| 5 — Linked local probe, plots, and annotations | Planned | Parameter slider, probe glyph, local κ/τ readout | Semantic picking, synchronized plots/evidence, pin/compare/export, persistent annotations |
+| 6 — Diagnostics, continuity, and intersections | Planned | Basic core validation and exact events | Typed severity model, C/G continuity, robust intersections, issue navigation |
+| 7 — Dependency-aware derived curves | Planned | Derived preset category and Geometry construction recipes | Real operations, preview/commit, recomputation, lineage, failure policy |
+| 8 — Bézier, B-spline, and NURBS editing | Planned | Shared preset evaluation for demonstration curves | Control/knot/weight models, editing, constraints, stable selection and history |
+| 9 — Geometry and Surface interoperability | Planned | Geometry section handoff, Geometry exact analysis, Surface curve result layers | Canonical round trips, source links, selection mapping, no algorithm duplication |
+| 10 — Provenance-linked CurveMesh workflows | Planned | Curve samples and shared Mesh handoff infrastructure | Polyline/tube/ribbon/sweep outputs, source return, Mesh extraction into Curves |
+| 11 — Optional VTK and CGAL adapters | Planned | Existing backend workers and Mesh operation registry | Curve operation adapters, capabilities, fallback, parity, provenance |
+| 12 — Workers, dependency cache, and performance | Planned | Shared worker/result patterns in Geometry/Surface/Mesh | Curve jobs, cancellation, progressive publication, budgets, memory controls |
+| 13 — Result lifecycle and analysis presets | Planned | Shared saved-result patterns and Surface layer presets | Curve result cards, visibility, save/compare/export, useful layered presets |
+| 14 — Regression matrix and performance gates | Planned | Exact fixtures and repository-wide E2E infrastructure | Canonical/pathological matrix, cross-module journeys, tolerances, profiles |
+| 15 — Documentation and professional workflow freeze | Planned | Geometry/Surface/Mesh freeze precedents | User workflow, conventions, engine ownership, QA checklist, screenshot baseline |
+
+Progress entries receive a Git hash only after the relevant focused tests, typecheck, production build, and required E2E/backend checks pass.
+
+## Target architecture
+
+```text
+Curve source
+├── Parametric 2D / 3D
+├── Explicit / implicit / polar
+├── Bézier / B-spline / NURBS
+├── Polyline / imported edge chain
+├── Curve on Surface
+└── Derived curve
+        │
+        ▼
+Canonical Curve identity + revision + dependencies
+        │
+        ├───────────────────────────┬───────────────────────────┐
+        ▼                           ▼                           ▼
+Curve evaluation              Curve Analysis              Derived products
+exact / analytic /            revision-safe results       curves / surfaces /
+sampled / backend             and saved layers            CurveMesh
+        │                           │                           │
+        ├── sampling                ├── local probe             ├── source links
+        ├── t ↔ s                   ├── frames and fields       ├── regeneration
+        ├── derivatives             ├── diagnostics             └── module handoff
+        └── uncertainty             └── plots/evidence
+```
+
+The canonical Curve layer owns identity and mathematical meaning. Render samples, plots, and derived meshes are revision-bound products. A backend result never replaces the source curve definition and never masquerades as an exact result.
+
+## Canonical contracts
+
+Commit 1 should extend the shared domain-neutral analysis infrastructure rather than introduce a second generic result store.
+
+```ts
+type CurveRepresentation =
+  | "parametric"
+  | "explicit"
+  | "implicit"
+  | "polar"
+  | "bezier"
+  | "b-spline"
+  | "nurbs"
+  | "polyline"
+  | "curve-on-surface"
+  | "derived";
+
+type CurveMethod =
+  | "analytic"
+  | "symbolic"
+  | "automatic-differentiation"
+  | "numerical-derivatives"
+  | "polyline-estimate"
+  | "vtk"
+  | "cgal";
+
+type CurveIdentity = {
+  curveId: string;
+  curveRevision: number;
+  sourceModule: "curves" | "geometry" | "surfaces" | "mesh";
+  sourceId?: string;
+  sourceRevision?: number;
+};
+
+type CurveDefinition = {
+  identity: CurveIdentity;
+  name: string;
+  representation: CurveRepresentation;
+  dimension: 2 | 3;
+  domain: {
+    parameter: string;
+    min: number;
+    max: number;
+    closed: boolean;
+    periodic: boolean;
+    orientation: string;
+  };
+  units: { parameter: string; position: string; angle: "rad" };
+  coordinateSystem: string;
+  evaluator: unknown;
+  derivativeCapabilities: readonly ("first" | "second" | "third")[];
+  samplingPolicy: CurveSamplingPolicy;
+  dependencies: readonly CurveDependency[];
+};
+
+type CurveAnalysisPayload =
+  | CurveSamplePayload
+  | CurveDifferentialFieldPayload
+  | CurveProbePayload
+  | CurveDiagnosticsPayload
+  | CurveIntersectionPayload
+  | DerivedCurvePayload
+  | CurveMeshPayload;
+```
+
+Every published result additionally retains request parameters, result kind, method/backend, units, timing, warnings, uncertainty, source revision, dependency revisions, cache state, and typed payload. Typed arrays remain in the analysis cache; persisted documents store lightweight definitions and result references.
+
+## Mathematical conventions to freeze
+
+For a regular curve `r(t)` with derivatives `v = r'(t)`, `a = r''(t)`, and `j = r'''(t)`:
+
+```text
+speed       = ||v||
+T           = v / ||v||
+curvature   = ||v × a|| / ||v||³                  (3D)
+signed κ    = (x'y'' - y'x'') / ||v||³            (oriented 2D)
+B           = normalize(v × a)
+N           = B × T
+torsion     = ((v × a) · j) / ||v × a||²
+radius      = 1 / |κ| when |κ| > tolerance
+arc length  = integral ||r'(t)|| dt
+```
+
+The result must mark quantities undefined when `||v||` or `||v × a||` falls below a scale-aware tolerance. It must not silently replace undefined mathematical values with zero. Display fallbacks—especially a Bishop frame near zero curvature—must be labeled as display/transport choices rather than Frenet values.
+
+For planar curves, positive signed curvature follows the configured plane normal and increasing parameter direction. Reversing the curve reverses signed curvature and tangent orientation but preserves unsigned curvature and total length. Closed curves use an explicit seam policy; periodicity and closure are related but distinct properties.
+
+For polylines, curvature, tangent, and arc length are discrete estimates with vertex/segment conventions and endpoint policies recorded in the result. Curve-on-surface results distinguish ambient curvature `κ`, normal curvature `κn`, geodesic curvature `κg`, and geodesic torsion when Surface context is available.
+
+## UI responsibility target
+
+The Curves layout should follow the professional Geometry and Surface shells while remaining curve-specific:
+
+```text
+Curves
+├── Panel: Scene | Object | View | Analysis | Services | Theory
+├── Actions: Gallery | New | Demo | Compare | More
+└── Tools: Construct | Edit | Analyze | Navigate
+
+left   = choose or define a curve; choose computations and parameters
+center = viewport, parameter selection, plots, previews, and visual evidence
+right  = object, result, diagnostics, sampling, dependencies, backend, history
+bottom = curve identity, representation, samples, result state, units, backend
+```
+
+The left Analysis panel chooses work: differential geometry, frames, diagnostics, continuity, intersections, derived curves, and CurveMesh generation. The viewport toolbar controls visibility only: curve, control polygon, samples, T/N/B or Bishop frame, curvature comb, osculating geometry, diagnostic markers, derived previews, and annotations. Visibility changes must never trigger recomputation.
+
+The parameter selector remains near the viewport and synchronizes the viewport probe, scalar plots, Inspector, and selected diagnostic. The right Inspector explains results and lifecycle; it does not become a second computation form.
+
+## Commit 1 — Canonical Curve identity, representation, and result contract
+
+Planned message: `refactor(curves): define canonical curve workspace and result contract`
+
+**Status: planned.**
+
+Already implemented:
+
+- Shared `AnyCurve`, `Curve2D`, `Curve3D`, `CurveDomain`, and evaluator contracts.
+- Core evaluation/derivative utilities and Curve preset adapters.
+- Shared analysis registry/result-store infrastructure used by Geometry and Surface Analysis.
+- Exact Geometry curve definitions already carry revisions, units, orientation, formulas, and derivative capabilities.
+
+Remaining:
+
+- [ ] Add canonical Curve identity, revision, representation, source, dependency, units, coordinate-system, domain, closure, periodicity, orientation, and sampling-policy contracts.
+- [ ] Normalize parametric, explicit, implicit, polar, Bézier, B-spline, NURBS, polyline, curve-on-surface, and derived curves through an adapter registry.
+- [ ] Define Curve analysis result kinds and typed payloads in the shared analysis registry.
+- [ ] Publish Curve results through revision-safe requests/results with queued, running, progressive, ready, cancelled, failed, and stale states.
+- [ ] Reuse the exact Geometry curve implementation through a Curves-owned adapter and retain compatibility imports during migration.
+- [ ] Persist Curve definitions, lightweight result references, workspace state, and saved presets without serializing evaluator functions or large typed arrays.
+- [ ] Add contract tests proving Curve Core has no renderer, Surface, Mesh, VTK, or CGAL dependency.
+
+Acceptance: every supported curve family enters the same workspace and issues the same revision-bound analysis request; the Inspector can state what the curve is, where it came from, how it was evaluated, and whether its results are current.
+
+## Commit 2 — Robust adaptive sampling and arc-length parameterization
+
+Planned message: `feat(curves): add robust sampling and arc-length parameterization`
+
+**Status: planned.**
+
+Already implemented:
+
+- Uniform parameter sampling.
+- Recursive midpoint chord-error adaptive sampling.
+- Numerical arc-length integration and a polyline length fallback.
+- Domain clamping and basic curve validation.
+
+Remaining:
+
+- [ ] Define deterministic uniform-parameter, chord-error, tangent-angle, curvature-aware, hybrid adaptive, and uniform-arc-length modes.
+- [ ] Add minimum/maximum sample count, tolerance, angular tolerance, curvature threshold, maximum depth, and evaluation-budget controls.
+- [ ] Split around declared breakpoints, invalid intervals, cusps, near-zero speed, derivative singularities, and detected discontinuities.
+- [ ] Handle closed seams and periodic domains without duplicate render segments or missing end segments.
+- [ ] Prevent a highly oscillatory curve from passing only because its midpoint lies on the endpoint chord; use multi-probe or derivative-aware error checks.
+- [ ] Produce monotone `t -> s` and `s -> t` lookup tables with local segment length, total length, normalized arc-length coordinate, and error estimates.
+- [ ] Record rejected/invalid samples, subdivision reason, tolerance saturation, and under-resolution warnings.
+- [ ] Reuse the same sample payload for rendering, analysis, Surface construction, and CurveMesh generation.
+
+Acceptance: sampling is deterministic, seam-safe, and explainable; increasing tolerance predictably reduces samples, difficult regions receive more samples, and `t -> s -> t` round trips remain within the declared tolerance.
+
+## Commit 3 — Professional Curves workspace and UI responsibility split
+
+Planned message: `refactor(curves): separate construction display and inspection workflows`
+
+**Status: planned.**
+
+Already implemented:
+
+- Left preset/category browser, central definition panel, Curve viewer, selection slider, and compact diagnostics.
+- Application-level Curves navigation, camera reset, screenshot capture, split panels, and touch support.
+- Professional shell patterns in Geometry, Surface Analysis, and Mesh Analysis.
+
+Remaining:
+
+- [ ] Add Panel, Actions, and Tools rows consistent with the other professional modules.
+- [ ] Organize the left region into Gallery/Construct, Definition/Edit, Analysis, Derived, and CurveMesh workflows.
+- [ ] Keep formula, domain, parameters, control points, and dependencies in Definition/Edit rather than mixing them with result readouts.
+- [ ] Add viewport-only toggles for curve, samples, control polygon, frames, comb, osculating evidence, diagnostics, annotations, and previews.
+- [ ] Add a right Inspector with Object, Result, Probe, Diagnostics, Sampling, Dependencies, Backend, and History tabs.
+- [ ] Retain the parameter slider beside the viewport and synchronize it with plots and the Inspector.
+- [ ] Replace stale status-bar fields with Curve ID/name, representation, dimension, sample mode/count, result state, units, and backend.
+- [ ] Preserve every current preset, custom formula, imported Geometry section, camera action, and responsive layout.
+
+Acceptance: normal curve definition and analysis can be completed from the professional shell without opening compatibility controls, while all existing Curves workflows remain reachable.
+
+## Commit 4 — Complete differential geometry and stable moving frames
+
+Planned message: `feat(curve-analysis): complete differential geometry and stable frames`
+
+**Status: planned.**
+
+Already implemented:
+
+- Core numerical derivatives, curvature, torsion, and Frenet frame calculations.
+- Exact Geometry evaluation of position, first/second/third derivatives, speed, κ, τ, radius, events, and selected osculating evidence.
+- T/N/B visualization and aggregate κ/τ readouts in Curves.
+
+Remaining:
+
+- [ ] Create one Curve differential point/field schema for exact, analytic, numerical, spline, polyline, and backend methods.
+- [ ] Compute position, first through third derivatives, speed, arc length coordinate, tangent, normal, binormal, curvature, torsion, radius of curvature, and regularity masks.
+- [ ] Add a Bishop/parallel-transport frame with deterministic initial normal, closed-loop holonomy reporting, and stable handling around inflections and straight segments.
+- [ ] Add osculating circle, osculating plane, normal plane, rectifying plane, curvature comb, and evolute evidence.
+- [ ] For planar curves, add signed curvature, turning angle/turning number, inflection points, and convex/concave intervals.
+- [ ] For curve-on-surface inputs, expose ambient, normal, and geodesic curvature with an explicit Surface dependency.
+- [ ] Add field statistics, extrema, units, uncertainty, invalid masks, warnings, and method provenance.
+- [ ] Ensure undefined Frenet quantities remain undefined while the viewport may use a labeled Bishop-frame fallback.
+
+Acceptance: circle and helix truth cases pass, a straight line stays stable, planar orientation conventions are reproducible, and an inflection or zero-curvature segment never breaks rendering.
+
+## Commit 5 — Linked local probe, scalar plots, and persistent annotations
+
+Planned message: `feat(curve-analysis): add linked probes plots and osculating evidence`
+
+**Status: planned.**
+
+Already implemented:
+
+- Normalized parameter slider, probe position, T/N/B glyph, and local κ/τ values.
+- Geometry exact-analysis visualization payloads include curves, frames, curvature combs, osculating evidence, and scalar plot rows.
+
+Remaining:
+
+- [ ] Define a revision-safe semantic curve pick containing `t`, normalized parameter, arc-length coordinate, segment/span, world point, and source mapping.
+- [ ] Synchronize viewport click, parameter slider, arc-length slider, scalar plot cursor, selected diagnostic, and Inspector probe.
+- [ ] Plot speed, curvature, signed curvature, torsion, and sampling error against `t` or normalized arc length.
+- [ ] Add visible tangent/normal/binormal or Bishop axes, osculating circle/planes, and optional surface-context frame at the selected point.
+- [ ] Add persistent distance-along-curve, segment-length, point, parameter, curvature, torsion, radius, tangent, and frame annotations.
+- [ ] Support pin, replay, compare, copy, save, and JSON/CSV export for probes.
+- [ ] Preserve source/revision identity and mark stale probes after curve edits.
+
+Acceptance: selecting a point from the viewport, plot, slider, or diagnostic resolves to the same curve location and visual evidence; pinned probes survive workspace reload with valid provenance.
+
+## Commit 6 — Professional diagnostics, continuity, and intersections
+
+Planned message: `feat(curve-analysis): add diagnostics continuity and intersections`
+
+**Status: planned.**
+
+Already implemented:
+
+- Core validation messages.
+- Exact stationary, degenerate, inflection, piecewise-transition, and scalar-extrema events.
+- Basic workspace sampling errors.
+
+Remaining:
+
+- [ ] Define typed diagnostic identity, severity (`OK`, `Info`, `Warning`, `Error`), parameter interval, evidence, method, uncertainty, and suggested action.
+- [ ] Detect invalid evaluations, NaN/Infinity, zero-speed points, derivative singularities, cusps, discontinuities, duplicate points, degenerate segments/spans, extreme curvature, and sampling under-resolution.
+- [ ] Detect exact or robust 2D self-intersections and near self-intersections; provide candidate/tolerance reporting for sampled 3D proximity.
+- [ ] Report C0/C1/C2 and G1/G2 continuity at piecewise joins, Bézier joins, B-spline knots, NURBS knots, and joined derived curves.
+- [ ] Distinguish mathematical discontinuity from a merely coarse tessellation and exact intersection from tolerance-based proximity.
+- [ ] Add Inspector summaries for Geometry, Sampling, Continuity, Singularities, Intersections, and warnings.
+- [ ] Make every diagnostic navigable: select/frame the location, place the parameter probe, and show local evidence.
+- [ ] Add save, compare, filter, export, and recompute lifecycle actions.
+
+Acceptance: pathological fixtures produce typed, reproducible diagnostics; clicking an issue moves the shared probe to its evidence without changing or recomputing unrelated results.
+
+## Commit 7 — Dependency-aware derived curve operations
+
+Planned message: `feat(curves): add dependency-aware derived curve operations`
+
+**Status: planned.**
+
+Already implemented:
+
+- A Derived preset category.
+- Geometry construction recipes for sampled offset, projection, intersection, boundary, iso-curve, and normal-curve concepts.
+- Shared scene dependency and result-provenance infrastructure.
+
+Remaining:
+
+- [ ] Implement offset, evolute, involute, normal curve, tangent indicatrix, curvature indicatrix, projection, transform, trim, reverse, split, join, and reparameterize.
+- [ ] Add planar tangent/normal constructions, curve/curve intersection, closest point, coordinate extrema, and bounding box.
+- [ ] Add 3D closest points, curve/plane intersection, curve/surface intersection request, projection to plane, and projection to Surface.
+- [ ] Standardize choose operation → collect semantic inputs → preview → configure tolerance/branch → commit.
+- [ ] Preserve source Curve IDs/revisions, operation parameters, branch choices, correspondence, and warnings.
+- [ ] Recompute downstream curves when dependencies change; support freeze snapshot, detach, regenerate, open source, and delete.
+- [ ] Represent multiple branches as a result collection instead of silently selecting one.
+- [ ] Define failure behavior for cusps, offset singularities, ambiguous joins, incompatible dimensions, and missing backend capability.
+
+Acceptance: every derived curve is an ordinary canonical Curve with inspectable lineage, deterministic recomputation, explicit branch handling, and a reversible path to its source.
+
+## Commit 8 — CAD-style Bézier, B-spline, and NURBS editing
+
+Planned message: `feat(curves): add Bezier B-spline and NURBS editing workflows`
+
+**Status: planned.**
+
+Already implemented:
+
+- Bézier, B-spline, and NURBS preset categories.
+- De Boor evaluation for demonstration B-spline and rational NURBS curves.
+- Shared Geometry construction catalog entries for Bézier/B-spline/NURBS curves.
+
+Remaining:
+
+- [ ] Add canonical spline definitions containing degree, control points, knot vector, weights, closure/periodicity, clamping, and valid parameter domain.
+- [ ] Implement stable basis, derivative, knot-span, endpoint, and rational evaluation in Curve Core.
+- [ ] Add selection modes for curve, segment/span, control point, knot, and weight handle.
+- [ ] Render and edit control polygons, control points, knot markers, weighted influence, and De Casteljau/De Boor construction evidence.
+- [ ] Support Bézier subdivision, degree elevation/reduction where valid, B-spline knot insertion/removal, and NURBS knot/weight editing.
+- [ ] Add endpoint position/tangent/curvature constraints and C0/C1/C2/G1/G2 join tools.
+- [ ] Keep mathematical definition separate from display tessellation and store edits in revisioned history with undo/redo.
+- [ ] Include a canonical rational NURBS circle fixture and round-trip serialization tests.
+
+Acceptance: editing a control point, knot, degree, or weight produces a new Curve revision; evaluation and continuity remain mathematically valid; the control representation round-trips without being reduced to samples.
+
+## Commit 9 — Canonical Geometry and Surface interoperability
+
+Planned message: `feat(curves): integrate Geometry and Surface curve round trips`
+
+**Status: planned.**
+
+Already implemented:
+
+- Geometry section curves can open in Curves as imported polylines.
+- Geometry exact curves and Surface curve/feature result layers already exist.
+- Geometry/Surface scene identity and dependency contracts are available.
+
+Remaining:
+
+- [ ] Add **Open in Curves** for Geometry analytic curves, section curves, intersections, construction paths, boundaries, and extracted edge/path selections.
+- [ ] Add **Open in Curves** for Surface boundaries, iso-u/iso-v curves, geodesics, sections, principal curves, feature curves, and Surface/Surface intersections.
+- [ ] Preserve exact/parametric definitions when available; use an explicitly labeled polyline approximation only when a source has no evaluator.
+- [ ] Retain host Surface ID/revision, parameter-space mapping, branch identity, units, selection correspondence, and generation settings.
+- [ ] Route extrusion, revolution, sweep, ruled surface, loft input, and tube-surface requests from Curves to canonical Surface construction.
+- [ ] Map selected curve locations back to Geometry entities or Surface chart coordinates where correspondence exists.
+- [ ] Add source/derivative navigation and stale-state behavior in both directions.
+- [ ] Remove duplicate curve-analysis algorithms from Geometry/Surface only after parity tests pass.
+
+Acceptance: exact definitions and sampled fallbacks remain visibly distinct, and a supported Geometry/Surface → Curve → Surface/Geometry journey preserves source identity, revision, selection correspondence, and return navigation.
+
+## Commit 10 — Provenance-linked CurveMesh and Mesh interoperability
+
+Planned message: `feat(curve-mesh): add provenance-linked curve mesh workflows`
+
+**Status: planned.**
+
+Already implemented:
+
+- Canonical curve samples and frame glyph data.
+- Provenance-linked SurfaceMesh live/snapshot/handoff model.
+- Mesh Analysis source-return, correspondence, and worker infrastructure.
+
+Remaining:
+
+- [ ] Define `DerivedCurveMeshIdentity`, source revision, sampling/frame settings, correspondence, variant, state, and regeneration history.
+- [ ] Support points/vertices, polyline, tube, ribbon, swept profile, and frame-glyph geometry outputs.
+- [ ] Add tube radius, radial/longitudinal resolution, caps, profile, twist, and Frenet/Bishop frame policy.
+- [ ] Add ribbon width, orientation, twist, frame, seam, and boundary policies.
+- [ ] Expose **Mesh (live)**, **Bake to Mesh**, and **Open in Mesh Analysis** with the same semantic distinction used by Surface Analysis.
+- [ ] Add **Open Curve Source**, regenerate, detach, freeze, delete, inspect provenance, and source/mesh selection mapping.
+- [ ] Extract Mesh boundary loops, feature-edge chains, selected edge chains, cross-sections, and polylines into Curves.
+- [ ] Offer optional spline fitting as a derived Curve with fitting tolerance and residuals—not as silent conversion.
+
+Acceptance: Curve → Mesh and Mesh → Curve round trips preserve lineage, mapping, frame/sampling policy, and explicit approximation quality; Mesh-specific analysis remains in Mesh.
+
+## Commit 11 — Optional VTK and CGAL curve-engine adapters
+
+Planned message: `feat(curves): add optional VTK and CGAL engine adapters`
+
+**Status: planned.**
+
+Already implemented:
+
+- Optional Python worker and VTK/CGAL infrastructure.
+- Shared Mesh-operation registry, backend status, logs, validation, fallback, and provenance patterns.
+- A Math3D analytical Curve Core that can remain authoritative.
+
+Remaining:
+
+- [ ] Add capability-based adapters rather than direct backend calls from React components.
+- [ ] Evaluate VTK for resampling, smoothing, spline filters, tube/ribbon generation, and conversion to visualization datasets.
+- [ ] Evaluate CGAL for robust 2D intersections, polyline simplification, arrangements, projection/intersection operations, and feature/polyline processing.
+- [ ] Keep exact/analytic operations on the Math3D kernel unless an explicit backend comparison is requested.
+- [ ] Record backend name/version, operation, input/output count, tolerance, runtime, warnings, validation, and fallback.
+- [ ] Define missing-backend and unsupported-capability behavior without disabling the Curves module.
+- [ ] Add native-versus-backend parity checks and preserve source/selection correspondence.
+- [ ] Keep advanced backend parameters in Services or Mesh Analysis where they belong; ordinary Curves workflows choose a safe implementation automatically.
+
+Acceptance: Curves works fully without VTK/CGAL; supported adapters are optional, inspectable, parity-tested accelerators or robust-operation providers with deterministic fallback.
+
+## Commit 12 — Worker execution, dependency cache, and performance budgets
+
+Planned message: `perf(curves): workerize heavy computations and cache curve results`
+
+**Status: planned.**
+
+Already implemented:
+
+- Shared worker, cancellation, progressive-result, revision guard, and cache patterns in Mesh and Surface Analysis.
+- Curve sampling/evaluation functions that can be extracted from React render state.
+
+Remaining:
+
+- [ ] Move large sampling, differential fields, diagnostics, intersections, spline fitting, and heavy derived operations off the UI thread.
+- [ ] Define cache keys from Curve identity/revision, operation, parameters, tolerance, dependencies, and backend version.
+- [ ] Reuse shared samples and derivative fields across plots, probes, diagnostics, derived curves, and CurveMesh generation.
+- [ ] Add request IDs, cancellation, revision guards, stale-result rejection, progress, retry, timeout, and failure details.
+- [ ] Publish coarse progressive previews only when they are labeled and cannot overwrite a later full result.
+- [ ] Add reviewed budgets for 1k, 10k, and 100k samples plus high-curvature and many-control-point cases.
+- [ ] Bound plot/render decimation, glyph counts, serialized state, cache memory, and worker transfers.
+- [ ] Add memory/profile checks for repeated module switching, preset changes, edits, recomputation, and backend failure.
+
+Acceptance: heavy Curve work remains responsive and cancellable; cached work is reused only for the exact dependency fingerprint; stale worker results never replace a newer Curve revision.
+
+## Commit 13 — Scientific result lifecycle and layered analysis presets
+
+Planned message: `feat(curves): add result lifecycle and layered analysis presets`
+
+**Status: planned.**
+
+Already implemented:
+
+- Result/save/compare/export/history patterns in Geometry, Surface Analysis, and Mesh Analysis.
+- Surface Analysis layered workflow presets.
+- Curves preset gallery for source definitions.
+
+Remaining:
+
+- [ ] Add typed Result cards with state, method, units, statistics, uncertainty, warnings, dependencies, timing, and backend.
+- [ ] Add independent show/hide, select, frame, pin, save, compare, export, recompute, and remove actions for result layers.
+- [ ] Separate source-definition presets from analysis-layer presets.
+- [ ] Add useful revision-safe analysis presets such as **Curvature lab**, **Frenet evidence**, **Bishop stable frame**, **Planar inflection map**, **Spline continuity**, and **Tube preparation**.
+- [ ] Ensure preset application orchestrates canonical computations and visibility without creating a parallel result store.
+- [ ] Add reproducible JSON/CSV/SVG export manifests containing Curve identity, source revision, definition, sampling, method, units, tolerances, warnings, and software/backend version.
+- [ ] Add comparison between revisions, methods, sampling policies, and native/backend results with common-domain alignment.
+- [ ] Clear or mark active presets stale when Curve identity/revision changes and prevent rapid-switch completion races.
+
+Acceptance: a user can apply a useful analysis stack, inspect each layer, reproduce it from exported provenance, compare it with another result, and safely revisit it after edits or reload.
+
+## Commit 14 — Analytic regression matrix, cross-module journeys, and performance gates
+
+Planned message: `test(curves): add regression matrix and performance gates`
+
+**Status: planned.**
+
+Already implemented:
+
+- Exact line, circle, helix, and piecewise-V fixtures.
+- Preset factory tests for ordinary and spline/NURBS examples.
+- Repository-wide Vitest, Playwright, responsive, packaged-worker, and memory-profile infrastructure.
+
+Remaining:
+
+- [ ] Add canonical fixtures: line, circle, ellipse, parabola, hyperbola, helix, clothoid, catenary, Lissajous, hypotrochoid, Bézier, B-spline, and rational NURBS circle.
+- [ ] Add pathological fixtures: cusp, inflection, almost-straight segment, derivative singularity, discontinuity, self-intersection, near intersection, oscillation, tiny loop, repeated points, degenerate spline span, and large coordinate range.
+- [ ] Verify known length, tangent, signed/unsigned curvature, torsion, turning number, bounds, intersections, continuity, and frame behavior with scale-aware tolerances.
+- [ ] Test adaptive convergence, seam closure, `t ↔ s`, deterministic ordering, invalid masks, and uncertainty contracts.
+- [ ] Test source-edit invalidation, cancellation, stale-result rejection, save/reload, presets, exports, and missing backend fallback.
+- [ ] Add functional journeys for Curve definition/analysis, diagnostics navigation, spline editing, derived curves, Geometry↔Curves, Surface↔Curves, Curve↔Mesh, and responsive layouts.
+- [ ] Add reviewed performance profiles for 1k/10k/100k samples, high curvature, many control points, intersections, and tube generation.
+- [ ] Add maintained commands `test:curves:v1:unit`, `test:curves:v1:e2e`, `verify:curves:v1:backends`, `profile:curves:v1`, and `test:curves:v1:acceptance`.
+
+Acceptance: the maintained acceptance command proves mathematical truth cases, pathological behavior, interoperability, responsive UI, backend fallback, and reviewed performance budgets.
+
+## Commit 15 — Unified workflow documentation and Curves v1 freeze
+
+Planned message: `docs(curves): document and freeze professional Curves workflow`
+
+**Status: planned.**
+
+Already implemented:
+
+- Professional workflow and freeze precedents for Geometry, Surface Analysis, and Mesh Analysis.
+
+Remaining:
+
+- [ ] Document the canonical workflow: define/receive → sample → analyze → diagnose/edit/derive → Surface or CurveMesh → source return.
+- [ ] Document supported representations, exact-versus-sampled behavior, parameter/orientation/periodicity semantics, and `t ↔ s` behavior.
+- [ ] Freeze derivative, curvature, torsion, Frenet/Bishop, planar-sign, polyline, and curve-on-surface conventions.
+- [ ] Document Bézier/B-spline/NURBS basis, knot, weight, closure, continuity, and serialization conventions.
+- [ ] Document source/dependency identity, stale-state rules, selection correspondence, result lifecycle, and reproducible exports.
+- [ ] Document Math3D/VTK/CGAL responsibilities and missing-backend fallback.
+- [ ] Add a Curves QA checklist, acceptance-command reference, troubleshooting notes, and desktop/tablet/phone screenshot baseline.
+- [ ] Record final additive UI decisions and any intentionally retained compatibility controls.
+- [ ] Freeze Curves v1 only after Commit 14 passes from a clean checkout.
+
+Acceptance: a new contributor can understand ownership, contracts, mathematics, UI workflow, interoperability, validation, and release gates without reading `App.tsx`; the documented acceptance command passes from a clean checkout.
+
+## Proposed maintained acceptance commands
+
+The exact file lists may evolve during implementation, but the final command family should follow the established module pattern:
+
+```json
+{
+  "test:curves:v1:unit": "npm --prefix renderer test -- src/curveAnalysis src/math/curvePresetFactory.test.ts src/geometry/exactCurveAnalysis.test.ts src/analysis/resultStore.test.ts",
+  "test:curves:v1:e2e": "playwright test tests/e2e/curves-functional.spec.ts tests/e2e/workspace-navigation.spec.ts tests/e2e/worker-failure-injection.spec.ts --reporter=list",
+  "verify:curves:v1:backends": "npm run test:worker:smoke && <focused VTK/CGAL curve parity checks>",
+  "profile:curves:v1": "npm --prefix renderer test -- src/curveAnalysis/performanceProfile.test.ts",
+  "test:curves:v1:acceptance": "npm run test:curves:v1:unit && npm run typecheck:noemit && npm run build:core && npm run test:curves:v1:e2e && npm run test:app:responsive:smoke && npm run verify:curves:v1:backends && npm run profile:curves:v1"
+}
+```
+
+The backend command must skip or report an explicit unsupported state when an optional engine is intentionally absent; it must not misreport a missing optional adapter as a mathematical Curve Core failure.
+
+## Final v1 workflow target
+
+```text
+Define / construct / receive Curve
+                │
+                ▼
+       Canonical Curve revision
+                │
+        ┌───────┴────────┐
+        ▼                ▼
+ Sample + analyze     Edit / derive
+        │                │
+        ├── probe        ├── spline/control edits
+        ├── frames       ├── trim/join/offset
+        ├── plots        └── projection/intersection
+        └── diagnostics          │
+                │                │
+                └───────┬────────┘
+                        ▼
+                 Saved Curve result
+                        │
+             ┌──────────┼──────────┐
+             ▼          ▼          ▼
+          Geometry    Surface   CurveMesh / Mesh
+             └──────────┴──────────┘
+                        │
+                        ▼
+              inspect source / return
+```
+
+The professional baseline is complete only when these paths share canonical Curve identity, revision-safe results, explicit approximation provenance, semantic selection correspondence, and one maintained acceptance gate.
