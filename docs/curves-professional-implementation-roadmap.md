@@ -625,7 +625,7 @@ Acceptance: heavy Curve work remains responsive and cancellable; cached work is 
 
 Planned message: `feat(curves): add result lifecycle and layered analysis presets`
 
-**Status: implemented and validated (`46bb894`).**
+**Status: implemented and validated (`46bb894`; visual-evidence wiring `a6dbe92`).**
 
 Already implemented:
 
@@ -681,7 +681,7 @@ Validation for Commit 14:
 - The maintained unit gate passes **107 tests across 19 files**, including the complete canonical/pathological matrix, mathematical invariants, scale-aware tolerances, adaptive convergence, seam and `t ↔ s` behavior, deterministic ordering, masks, uncertainty, lifecycle presentation, cancellation, stale guards, persistence, exports, and fallback.
 - The complete repository TypeScript check and production renderer build pass.
 - The maintained Electron gate passes **16 cross-module journeys**, covering Curve definition/analysis, diagnostics navigation, spline editing, derived curves, Geometry/Surface interoperability, CurveMesh/Mesh round trips, worker failure, and workspace navigation.
-- The result-lifecycle journey gates on rendered plot-series and viewport-evidence counts for all six analysis presets, including Hide removal and visibility-only viewport toggles, so state-only lifecycle wiring cannot satisfy the maintained acceptance command.
+- The result-lifecycle journey gates on rendered plot-series and viewport-evidence counts for all six analysis presets, including Hide removal and visibility-only viewport toggles, so state-only lifecycle wiring cannot satisfy the maintained acceptance command (`a6dbe92`).
 - Responsive smoke passes phone portrait, phone landscape, tablet, and desktop layouts.
 - Backend verification passes the Curve engine parity/fallback suite and bundled worker smoke. Optional VTK/CGAL Curve process endpoints are explicitly reported unsupported/unregistered in this installation; deterministic Math3D native fallback remains green.
 - The maintained profile gate passes **5 reviewed profiles** spanning 1k/10k/100k sampling, high curvature, 25k control points, sampled intersections, production-size Bishop tube generation, transfer bounds, and cache memory limits.
