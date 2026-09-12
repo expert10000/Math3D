@@ -82,7 +82,7 @@ Baseline verification at this assessment:
 | --- | --- | --- | --- |
 | 1 — Canonical Curve identity and result contract | Complete (`e5127b8`) | Revisioned identity, all representation adapters, shared request/result publication, exact Geometry bridge, compact persistence, visible provenance | None for Commit 1 |
 | 2 — Robust sampling and arc-length kernel | Complete (`916c7a8`) | Deterministic multi-criterion sampling, bounded evaluation, seam-safe render payloads, monotone arc-length maps, visible diagnostics | None for Commit 2 |
-| 3 — Professional workspace responsibility split | Planned | Curves preset list, viewer, controls, compact diagnostics | Professional shell, computation/display/inspection split, responsive parity |
+| 3 — Professional workspace responsibility split | Complete (`c3f3baa`) | Professional shell, five focused work panels, viewport-only display controls, eight-tab Inspector, Curve-aware status bar | None for Commit 3 |
 | 4 — Differential geometry and stable frames | Planned | Derivatives, κ, τ, Frenet, exact Geometry fixtures | Unified engine, Bishop frame, signed planar analysis, evidence and conventions |
 | 5 — Linked local probe, plots, and annotations | Planned | Parameter slider, probe glyph, local κ/τ readout | Semantic picking, synchronized plots/evidence, pin/compare/export, persistent annotations |
 | 6 — Diagnostics, continuity, and intersections | Planned | Basic core validation and exact events | Typed severity model, C/G continuity, robust intersections, issue navigation |
@@ -306,7 +306,7 @@ Acceptance: sampling is deterministic, seam-safe, and explainable; increasing to
 
 Planned message: `refactor(curves): separate construction display and inspection workflows`
 
-**Status: planned.**
+**Status: complete — `c3f3baa`.**
 
 Already implemented:
 
@@ -316,14 +316,21 @@ Already implemented:
 
 Remaining:
 
-- [ ] Add Panel, Actions, and Tools rows consistent with the other professional modules.
-- [ ] Organize the left region into Gallery/Construct, Definition/Edit, Analysis, Derived, and CurveMesh workflows.
-- [ ] Keep formula, domain, parameters, control points, and dependencies in Definition/Edit rather than mixing them with result readouts.
-- [ ] Add viewport-only toggles for curve, samples, control polygon, frames, comb, osculating evidence, diagnostics, annotations, and previews.
-- [ ] Add a right Inspector with Object, Result, Probe, Diagnostics, Sampling, Dependencies, Backend, and History tabs.
-- [ ] Retain the parameter slider beside the viewport and synchronize it with plots and the Inspector.
-- [ ] Replace stale status-bar fields with Curve ID/name, representation, dimension, sample mode/count, result state, units, and backend.
-- [ ] Preserve every current preset, custom formula, imported Geometry section, camera action, and responsive layout.
+- [x] Add Panel, Actions, and Tools rows consistent with the other professional modules.
+- [x] Organize the left region into Gallery, Definition/Edit, Analysis, Derived, and CurveMesh workflows.
+- [x] Keep formula, domain, parameters, control data, units, and dependencies in Definition/Edit rather than mixing them with result readouts.
+- [x] Add viewport-only toggles for curve, samples, control polygon, frames, comb, osculating evidence, diagnostics, annotations, and previews.
+- [x] Add a right Inspector with Object, Result, Probe, Diagnostics, Sampling, Dependencies, Backend, and History tabs.
+- [x] Retain the parameter slider beside the viewport and synchronize it with the Inspector probe.
+- [x] Replace stale status-bar fields with Curve ID/name, representation, dimension, sample mode/count, result state, units, and backend.
+- [x] Preserve every current preset, custom formula, imported Geometry section, camera action, and responsive layout.
+
+Validation at `c3f3baa`:
+
+- The full renderer suite passes: **599 tests across 113 files**.
+- `npm run typecheck:noemit` and `npm run build:core` pass.
+- The Curves functional E2E journey passes and verifies the professional shell, Analysis workflow, Sampling Inspector, viewport controls, and Curve-aware status bar.
+- `npm run test:app:responsive:smoke` passes for phone portrait, phone landscape, tablet, and desktop layouts.
 
 Acceptance: normal curve definition and analysis can be completed from the professional shell without opening compatibility controls, while all existing Curves workflows remain reachable.
 
