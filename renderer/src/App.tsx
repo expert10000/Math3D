@@ -571,6 +571,27 @@ import { getMeshBackendCapabilities } from "./services/meshBackend";
 import { solveContinuousGraphGeodesic } from "./math/graphGeodesicContinuous";
 import { compileExpression } from "./math/expression";
 import { buildCurveFromPreset } from "./math/curvePresetFactory";
+import type {
+  CurveAdapterInput,
+  CurveAnalysisMethod,
+  CurveAnalysisPayload,
+} from "./curveAnalysis/contracts";
+import {
+  adaptCurveDefinition,
+  createCurveAnalysisRegistry,
+  createCurveAnalysisRequest,
+  createCurveAnalysisResultStore,
+  curveAdapterFingerprint,
+  getCurveAnalysisResult,
+  publishCurveAnalysisResult,
+  resolveCurveRevision,
+  type CurveRevisionTracker,
+} from "./curveAnalysis/infrastructure";
+import {
+  createCurveAnalysisWorkspaceDocument,
+  parseCurveAnalysisWorkspace,
+  serializeCurveAnalysisWorkspace,
+} from "./curveAnalysis/persistence";
 import {
   buildComplexMapSweep,
   compileComplexMapExpressions,
@@ -1774,6 +1795,7 @@ const SURFACE_MESH_TOPOLOGY_SESSION_KEY = "math3d.mesh.topologySession.v1";
 const SURFACE_MESH_TOPOLOGY_SESSION_SKIPPED_RESTORE_KEY = "math3d.mesh.topologySession.skippedRestore.v1";
 const SURFACE_MESH_TOPOLOGY_SAVED_PRESETS_KEY = "math3d.mesh.topologySavedPresets.v1";
 const SURFACE_ANALYSIS_WORKSPACE_KEY = "math3d.surfaceAnalysis.workspace.v1";
+const CURVE_ANALYSIS_WORKSPACE_KEY = "math3d.curveAnalysis.workspace.v1";
 const SURFACE_MESH_TOPOLOGY_SESSION_MAX_CHARS = 3_400_000;
 const SURFACE_MESH_TOPOLOGY_PERSIST_HISTORY_LIMIT = 4;
 const SURFACE_MESH_TOPOLOGY_SAVED_PRESET_LIMIT = 8;
@@ -12444,6 +12466,199 @@ const App: React.FC = () => {
   const curveActiveIsImported = !!curveImportedSection;
   const curveActiveDimension = curveActiveIsImported ? 3 : (activeCurvePreset?.dimension ?? 2);
   const curveActiveClosed = curveActiveIsImported ? curveImportedSection.closed : Boolean(activeCurveDomain.closed);
+  const curveRevisionTrackerRef = useRef<CurveRevisionTracker>(new Map());
+  const curveCanonicalAdapterInput = useMemo<CurveAdapterInput>(() => {
+    const rawMin = curveActiveIsImported ? 0 : activeCurveDomain.tMin;
+    const rawMax = curveActiveIsImported ? 1 : activeCurveDomain.tMax;
+    const validDomain = Number.isFinite(rawMin) && Number.isFinite(rawMax) && rawMax > rawMin;
+    const canonicalDomain = {
+      parameter: curveActiveIsImported ? "u" : "t",
+      min: validDomain ? rawMin : 0,
+      max: validDomain ? rawMax : 1,
+      closed: curveActiveClosed,
+      periodic: curveActiveClosed,
+    };
+    const sourceExpressions = {
+      x: activeCurveFormulas.x,
+      y: activeCurveFormulas.y,
+      ...(activeCurveFormulas.z ? { z: activeCurveFormulas.z } : {}),
+    };
+    const sampling = curveActiveIsImported
+      ? { strategy: "source-samples" as const, minimumSamples: 2, maximumSamples: Math.max(2, curveImportedSection?.points.length ?? 2) }
+      : curveSamplingMode === "adaptive"
+        ? { strategy: "adaptive" as const, tolerance: Math.max(1e-6, curveAdaptiveTolerance), minimumSamples: 8, maximumSamples: 4096, maximumDepth: Math.max(3, Math.min(20, Math.round(curveAdaptiveMaxDepth))) }
+        : { strategy: "uniform-parameter" as const, minimumSamples: Math.max(8, Math.min(4096, Math.round(curveSampleCount))), maximumSamples: Math.max(8, Math.min(4096, Math.round(curveSampleCount))) };
+    const warnings = [
+      ...(!validDomain ? ["The editable Curve domain is invalid; canonical metadata uses [0, 1] until corrected."] : []),
+      ...curveRenderState.errors,
+    ];
+    let input: CurveAdapterInput;
+    if (curveImportedSection) {
+      input = {
+        id: curveImportedSection.id,
+        revision: 0,
+        label: curveImportedSection.name,
+        representation: "polyline",
+        dimension: 3,
+        domain: canonicalDomain,
+        points: curveImportedSection.points.map((point) => [point.x, point.y, point.z] as const),
+        sourceLabel: "geometry-section-handoff",
+        sourceModule: "geometry",
+        dependencies: [{
+          module: "geometry",
+          objectId: curveImportedSection.objectName,
+          revision: String(curveImportedSection.createdAt),
+          relation: "section-curve",
+          correspondence: "ordered polyline samples",
+        }],
+        sampling,
+        units: { position: "scene-unit", parameter: "normalized arc length", angle: "rad" },
+        warnings,
+      };
+    } else {
+      const common = {
+        id: activeCurvePreset?.id ?? "custom2d",
+        revision: 0,
+        label: activeCurvePreset?.label ?? "Curve",
+        dimension: curveActiveDimension,
+        domain: canonicalDomain,
+        sourceModule: "curves" as const,
+        sampling,
+        sourceExpressions,
+        units: { position: "scene-unit", parameter: "curve parameter", angle: "rad" as const },
+        warnings,
+      };
+      switch (activeCurvePreset?.category) {
+        case "explicit":
+          input = { ...common, representation: "explicit", formula: activeCurveFormulas.y, independentVariable: "x" };
+          break;
+        case "implicit":
+          input = { ...common, representation: "implicit", formula: activeCurvePreset.id === "implicitCircle2d" ? "x^2+y^2-1" : activeCurvePreset.note };
+          break;
+        case "polar":
+          input = { ...common, representation: "polar", radiusExpression: activeCurvePreset.id === "polarRose2d" ? "cos(4t)" : activeCurvePreset.note, angleParameter: "t" };
+          break;
+        case "bezier":
+          input = { ...common, representation: "bezier", controlPoints: Array.from({ length: 4 }, () => [] as readonly number[]), degree: 3 };
+          break;
+        case "bspline":
+          input = { ...common, representation: "b-spline", controlPoints: Array.from({ length: activeCurvePreset.id === "bSplineDemo" ? 6 : 0 }, () => [] as readonly number[]), degree: 3, knots: [] };
+          break;
+        case "nurbs":
+          input = { ...common, representation: "nurbs", controlPoints: Array.from({ length: activeCurvePreset.id === "nurbsQuarterArc" ? 3 : 0 }, () => [] as readonly number[]), degree: 2, knots: [], weights: [] };
+          break;
+        case "onSurface":
+          input = {
+            ...common,
+            representation: "curve-on-surface",
+            surfaceId: "preset:torus",
+            surfaceRevision: 1,
+            pointCount: curveRenderState.samplePoints.length,
+            dependencies: [{ module: "surfaces", objectId: "preset:torus", revision: "1", relation: "curve-on-surface" }],
+          };
+          break;
+        case "offset":
+        case "evolute":
+        case "involute":
+        case "intersection":
+          input = { ...common, representation: "derived", operation: activeCurvePreset.category, sourceIds: [`source:${activeCurvePreset.id}`] };
+          break;
+        default:
+          input = { ...common, representation: "parametric", expressions: sourceExpressions, familyId: activeCurvePreset?.kind ?? "custom" };
+          break;
+      }
+    }
+    const revision = resolveCurveRevision(curveRevisionTrackerRef.current, input.id, curveAdapterFingerprint(input));
+    return { ...input, revision } as CurveAdapterInput;
+  }, [
+    activeCurveDomain.tMax,
+    activeCurveDomain.tMin,
+    activeCurveFormulas,
+    activeCurvePreset,
+    curveActiveClosed,
+    curveActiveDimension,
+    curveActiveIsImported,
+    curveAdaptiveMaxDepth,
+    curveAdaptiveTolerance,
+    curveImportedSection,
+    curveRenderState.errors,
+    curveRenderState.samplePoints.length,
+    curveSampleCount,
+    curveSamplingMode,
+  ]);
+  const activeCanonicalCurveDefinition = useMemo(
+    () => adaptCurveDefinition(curveCanonicalAdapterInput),
+    [curveCanonicalAdapterInput]
+  );
+  const activeCurveDefinitionMethod: CurveAnalysisMethod = curveActiveIsImported
+    ? "polyline-estimate"
+    : curveRenderState.source === "special"
+      ? "analytic"
+      : "numerical-derivatives";
+  const [curveAnalysisWorkspaceDocument, setCurveAnalysisWorkspaceDocument] = useState(() => {
+    try {
+      const serialized = localStorage.getItem(CURVE_ANALYSIS_WORKSPACE_KEY);
+      return serialized ? parseCurveAnalysisWorkspace(serialized) : createCurveAnalysisWorkspaceDocument();
+    } catch {
+      return createCurveAnalysisWorkspaceDocument();
+    }
+  });
+  const curveAnalysisRegistryRef = useRef(createCurveAnalysisRegistry());
+  const [curveAnalysisResultStore, setCurveAnalysisResultStore] = useState(createCurveAnalysisResultStore);
+  useEffect(() => {
+    const definition = activeCanonicalCurveDefinition;
+    const request = createCurveAnalysisRequest({
+      requestId: `curve-definition:${definition.identity.key}`,
+      kind: "curve-definition",
+      definition,
+      domain: "curve",
+      method: activeCurveDefinitionMethod,
+      requestedOutputs: ["identity", "domain", "sampling", "derivative capabilities", "provenance"],
+    });
+    const payload: CurveAnalysisPayload = {
+      version: 1,
+      curveId: definition.identity.curveId,
+      curveRevision: definition.identity.curveRevision,
+      representation: definition.representation,
+      method: activeCurveDefinitionMethod,
+      units: definition.units,
+      orientation: definition.orientation,
+      warnings: definition.warnings,
+      data: {
+        kind: "summary",
+        values: {
+          family: definition.source.familyId,
+          dimension: definition.dimension,
+          closed: definition.domain.closed,
+          periodic: definition.domain.periodic,
+          dependencies: definition.dependencies.length,
+        },
+      },
+    };
+    setCurveAnalysisResultStore((store) => publishCurveAnalysisResult({
+      store,
+      registry: curveAnalysisRegistryRef.current,
+      request,
+      payload,
+      backend: "Curve definition adapter",
+    }));
+    setCurveAnalysisWorkspaceDocument((document) => {
+      const definitions = [...document.definitions.filter((entry) => entry.identity.key !== definition.identity.key), definition].slice(-64);
+      definitions.sort((left, right) => left.identity.curveId.localeCompare(right.identity.curveId) || left.identity.curveRevision - right.identity.curveRevision);
+      return { ...document, definitions };
+    });
+  }, [activeCanonicalCurveDefinition, activeCurveDefinitionMethod]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(CURVE_ANALYSIS_WORKSPACE_KEY, serializeCurveAnalysisWorkspace(curveAnalysisWorkspaceDocument));
+    } catch {
+      // Keep the live canonical Curve contract when persistence is unavailable.
+    }
+  }, [curveAnalysisWorkspaceDocument]);
+  const activeCurveDefinitionResult = useMemo(
+    () => getCurveAnalysisResult(curveAnalysisResultStore, activeCanonicalCurveDefinition.identity, "curve-definition"),
+    [activeCanonicalCurveDefinition.identity, curveAnalysisResultStore]
+  );
   const [geometryMode, setGeometryMode] = useState<GeometryMode>(() => {
     if (typeof window === "undefined") return "procedural";
     const saved = window.localStorage.getItem(UI_GEOMETRY_MODE_KEY) ?? undefined;
@@ -86193,6 +86408,38 @@ case "mobius":
                       }}
                     >
                       <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Curve Core Diagnostics</div>
+                      <div
+                        data-testid="curve-canonical-contract"
+                        style={{
+                          border: "1px solid #bfdbfe",
+                          borderRadius: 7,
+                          background: "#eff6ff",
+                          padding: "7px 8px",
+                          marginBottom: 7,
+                          display: "grid",
+                          gap: 2,
+                        }}
+                      >
+                        <div style={{ fontWeight: 800, color: "#1e3a8a" }}>Canonical Curve contract</div>
+                        <div>
+                          ID: <strong>{activeCanonicalCurveDefinition.identity.curveId}</strong> · revision {activeCanonicalCurveDefinition.identity.curveRevision}
+                        </div>
+                        <div>
+                          {activeCanonicalCurveDefinition.representation} · {activeCanonicalCurveDefinition.dimension}D · source {activeCanonicalCurveDefinition.identity.sourceModule}
+                        </div>
+                        <div>
+                          {activeCanonicalCurveDefinition.domain.parameter} ∈ [{fmt(activeCanonicalCurveDefinition.domain.min)}, {fmt(activeCanonicalCurveDefinition.domain.max)}] · {activeCanonicalCurveDefinition.domain.closed ? "closed" : "open"} · {activeCanonicalCurveDefinition.domain.periodic ? "periodic" : "non-periodic"}
+                        </div>
+                        <div>
+                          Sampling: {activeCanonicalCurveDefinition.sampling.strategy} · units {activeCanonicalCurveDefinition.units.position} / {activeCanonicalCurveDefinition.units.parameter}
+                        </div>
+                        <div>
+                          Result: <strong>{activeCurveDefinitionResult?.state ?? "queued"}</strong> · {activeCurveDefinitionMethod} · {activeCurveDefinitionResult?.backend ?? "Curve definition adapter"}
+                        </div>
+                        <div>
+                          Dependencies: {activeCanonicalCurveDefinition.dependencies.length} · history {curveAnalysisResultStore.history.length} · persisted definitions {curveAnalysisWorkspaceDocument.definitions.length}
+                        </div>
+                      </div>
                       <div style={{ display: "grid", gap: 2 }}>
                         <div>source: <strong>{curveRenderState.source ?? "-"}</strong></div>
                         <div>sample points: <strong>{curveRenderState.samplePoints.length}</strong></div>
