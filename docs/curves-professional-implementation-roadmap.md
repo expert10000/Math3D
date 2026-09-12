@@ -625,7 +625,7 @@ Acceptance: heavy Curve work remains responsive and cancellable; cached work is 
 
 Planned message: `feat(curves): add result lifecycle and layered analysis presets`
 
-**Status: planned.**
+**Status: implemented and validated.**
 
 Already implemented:
 
@@ -635,14 +635,20 @@ Already implemented:
 
 Remaining:
 
-- [ ] Add typed Result cards with state, method, units, statistics, uncertainty, warnings, dependencies, timing, and backend.
-- [ ] Add independent show/hide, select, frame, pin, save, compare, export, recompute, and remove actions for result layers.
-- [ ] Separate source-definition presets from analysis-layer presets.
-- [ ] Add useful revision-safe analysis presets such as **Curvature lab**, **Frenet evidence**, **Bishop stable frame**, **Planar inflection map**, **Spline continuity**, and **Tube preparation**.
-- [ ] Ensure preset application orchestrates canonical computations and visibility without creating a parallel result store.
-- [ ] Add reproducible JSON/CSV/SVG export manifests containing Curve identity, source revision, definition, sampling, method, units, tolerances, warnings, and software/backend version.
-- [ ] Add comparison between revisions, methods, sampling policies, and native/backend results with common-domain alignment.
-- [ ] Clear or mark active presets stale when Curve identity/revision changes and prevent rapid-switch completion races.
+- [x] Add typed Result cards with state, method, units, statistics, uncertainty, warnings, dependencies, timing, and backend.
+- [x] Add independent show/hide, select, frame, pin, save, compare, export, recompute, and remove actions for result layers.
+- [x] Separate source-definition presets from analysis-layer presets.
+- [x] Add useful revision-safe analysis presets such as **Curvature lab**, **Frenet evidence**, **Bishop stable frame**, **Planar inflection map**, **Spline continuity**, and **Tube preparation**.
+- [x] Ensure preset application orchestrates canonical computations and visibility without creating a parallel result store.
+- [x] Add reproducible JSON/CSV/SVG export manifests containing Curve identity, source revision, definition, sampling, method, units, tolerances, warnings, and software/backend version.
+- [x] Add comparison between revisions, methods, sampling policies, and native/backend results with common-domain alignment.
+- [x] Clear or mark active presets stale when Curve identity/revision changes and prevent rapid-switch completion races.
+
+Validation for Commit 13:
+
+- All **82 Curve Analysis tests across 14 files** pass. Lifecycle coverage verifies all six presets, canonical-store publication, independent actions, save/reload references, deterministic JSON/CSV/SVG manifests, common-domain comparison, revision invalidation, and rapid-switch rejection.
+- The renderer TypeScript project and production renderer build pass.
+- The Electron lifecycle journey applies Curvature lab, inspects metadata, changes independent layer state, saves and compares cards, verifies workspace persistence, and observes a stale preset after a source revision change.
 
 Acceptance: a user can apply a useful analysis stack, inspect each layer, reproduce it from exported provenance, compare it with another result, and safely revisit it after edits or reload.
 

@@ -10,3 +10,4 @@ export * from "./curveMesh";
 export * from "./curveEngines";
 export * from "./curveComputation";
 export * from "./curveWorkerCoordinator";
+export * from "./resultLifecycle";

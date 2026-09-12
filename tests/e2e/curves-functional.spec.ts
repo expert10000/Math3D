@@ -7,6 +7,43 @@ import {
 } from "./helpers/surfaceAppHarness";
 
 test.describe("Curves canonical workspace", () => {
+  test("orchestrates revision-safe scientific result cards and layered presets", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await resetSurfaceAppState(ctx.page);
+      await ctx.page.getByRole("button", { name: "Curves", exact: true }).first().click();
+      await ctx.page.getByTestId("curve-panel-analysis").click();
+      const lifecycle = ctx.page.getByTestId("curve-result-lifecycle");
+      await expect(lifecycle).toBeVisible();
+      await expect(lifecycle).toContainText("Analysis-layer presets");
+      await ctx.page.getByTestId("curve-analysis-preset").selectOption("curvature-lab");
+      await ctx.page.getByTestId("curve-apply-analysis-preset").click();
+      await expect(ctx.page.getByTestId("curve-active-analysis-preset")).toContainText("Curvature lab · current · Curve r1");
+      const cards = ctx.page.getByTestId("curve-result-cards").locator("article");
+      await expect(cards).toHaveCount(3);
+      await expect(cards.first()).toContainText("Math3D Curve Core");
+      await expect(cards.first()).toContainText("Uncertainty:");
+      await cards.first().getByRole("button", { name: "Hide" }).click();
+      await expect(cards.first().getByRole("button", { name: "Show" })).toBeVisible();
+      await cards.first().getByRole("button", { name: "Select" }).click();
+      await cards.first().getByRole("button", { name: "Pin" }).click();
+      await cards.first().getByRole("button", { name: "Save" }).click();
+      await cards.nth(0).getByRole("button", { name: "Compare" }).click();
+      await cards.nth(1).getByRole("button", { name: "Compare" }).click();
+      await expect(ctx.page.getByTestId("curve-result-comparison")).toContainText("Common domain");
+      await expect.poll(async () => ctx?.page.evaluate(() => JSON.parse(localStorage.getItem("math3d.curveAnalysis.workspace.v1") ?? "{}").savedResults?.some((entry: { variant?: string }) => entry.variant?.startsWith("preset:")))).toBe(true);
+
+      await ctx.page.getByTestId("curve-panel-gallery").click();
+      await ctx.page.getByRole("button", { name: /Custom x\(t\), y\(t\)/ }).first().click();
+      await ctx.page.getByRole("textbox", { name: "x(t)", exact: true }).fill("2*cos(t)");
+      await ctx.page.getByTestId("curve-panel-analysis").click();
+      await expect(ctx.page.getByTestId("curve-active-analysis-preset")).toContainText("stale");
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
   test("runs curve work in a revision-guarded Worker and reuses the dependency cache", async () => {
     let ctx: LaunchedSurfaceApp | null = null;
     try {

@@ -627,6 +627,8 @@ import { CurveInteroperabilityPanel } from "./components/CurveInteroperabilityPa
 import { CurveMeshPanel } from "./components/CurveMeshPanel";
 import { CurveBackendPanel } from "./components/CurveBackendPanel";
 import { CurveWorkerPanel } from "./components/CurveWorkerPanel";
+import { CurveResultLifecyclePanel } from "./components/CurveResultLifecyclePanel";
+import { createCurveResultLifecycleState, reconcileCurveResultLifecycle } from "./curveAnalysis/resultLifecycle";
 import { curveMeshToSurfaceMesh } from "./curveAnalysis/curveMesh";
 import {
   analyzeCurveDifferentialGeometry,
@@ -12826,6 +12828,8 @@ const App: React.FC = () => {
   });
   const curveAnalysisRegistryRef = useRef(createCurveAnalysisRegistry());
   const [curveAnalysisResultStore, setCurveAnalysisResultStore] = useState(createCurveAnalysisResultStore);
+  const [curveResultLifecycle, setCurveResultLifecycle] = useState(createCurveResultLifecycleState);
+  useEffect(() => setCurveResultLifecycle((state) => reconcileCurveResultLifecycle(state, activeCanonicalCurveDefinition)), [activeCanonicalCurveDefinition]);
   useEffect(() => {
     const definition = activeCanonicalCurveDefinition;
     const request = createCurveAnalysisRequest({
@@ -86531,6 +86535,16 @@ case "mobius":
                           domain={curvePlotDomain}
                           activeParameter={curveProbeU}
                           onSelect={(u) => setLinkedCurveProbe(u, "plot")}
+                        />
+                        <CurveResultLifecyclePanel
+                          definition={activeCanonicalCurveDefinition}
+                          points={curveRenderState.samplePoints}
+                          store={curveAnalysisResultStore}
+                          lifecycle={curveResultLifecycle}
+                          workspace={curveAnalysisWorkspaceDocument}
+                          onStoreChange={setCurveAnalysisResultStore}
+                          onLifecycleChange={setCurveResultLifecycle}
+                          onWorkspaceChange={setCurveAnalysisWorkspaceDocument}
                         />
                       </div>
                     )}
