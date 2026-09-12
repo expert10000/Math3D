@@ -307,6 +307,11 @@ import {
   type DerivedSurfaceMeshRecord,
 } from "./surfaceAnalysis/derivedSurfaceMesh";
 import {
+  buildDerivedSurfaceMeshBackendSummary,
+  createDerivedSurfaceMeshBackendRoute,
+  type SurfaceDerivedMeshBackendWorkflow,
+} from "./surfaceAnalysis/derivedMeshBackendBridge";
+import {
   createSurfaceMeshForHandoff,
   type SurfaceMeshGeometry,
 } from "./surfaceAnalysis/surfaceMeshHandoff";
@@ -49282,7 +49287,7 @@ case "mobius":
       faceCount: surfaceDerivedMeshCandidate.faceCount,
       method: surfaceDerivedMeshCandidate.method,
       settings: surfaceDerivedMeshCandidate.settings,
-      backend: { id: "threejs-native" },
+      backend: { id: "threejs-native", version: THREE.REVISION },
       state: options?.state,
       meshRevision: options?.meshRevision,
       meshId: options?.meshId,
@@ -49344,6 +49349,17 @@ case "mobius":
     () => surfaceAnalysisWorkspaceDocument.derivedMeshes.filter((record) => record.identity.source.surfaceId === activeCanonicalSurfaceDefinition.identity.surfaceId),
     [activeCanonicalSurfaceDefinition.identity.surfaceId, surfaceAnalysisWorkspaceDocument.derivedMeshes]
   );
+  const activeDerivedSurfaceMeshBackendSummary = useMemo(() => {
+    if (!activeSurfaceDerivedMeshRecord) return null;
+    const geometry = surfaceDerivedMeshGeometryCacheRef.current.get(activeSurfaceDerivedMeshRecord.identity.meshId) ?? null;
+    const availability = cgalHealthState == null ? "checking" : cgalHealthState.ok ? "ready" : "unavailable";
+    const availabilityMessage = cgalHealthState == null
+      ? "Checking the shared Python/CGAL worker."
+      : cgalHealthState.ok
+        ? `Shared worker available${cgalHealthState.version ? ` · v${cgalHealthState.version}` : ""}.`
+        : cgalHealthState.error ?? cgalHealthState.statusMessage ?? "Shared Python/CGAL worker unavailable.";
+    return buildDerivedSurfaceMeshBackendSummary({ record: activeSurfaceDerivedMeshRecord, geometry, backendAvailability: availability, backendAvailabilityMessage: availabilityMessage });
+  }, [activeSurfaceDerivedMeshRecord, cgalHealthState]);
   const handleRegenerateDerivedSurfaceMesh = useCallback(() => {
     const record = activeSurfaceDerivedMeshRecord; const payload = buildDerivedSurfaceMeshPayload({ meshId: record?.identity.meshId, meshRevision: (record?.identity.meshRevision ?? 0) + 1, createdAt: Date.now() });
     if (!payload) return;
@@ -49478,6 +49494,15 @@ case "mobius":
     if (!activeSurfaceDerivedMeshRecord) return;
     openDerivedSurfaceMesh(activeSurfaceDerivedMeshRecord, true);
   }, [activeSurfaceDerivedMeshRecord, openDerivedSurfaceMesh]);
+
+  const handleOpenDerivedMeshBackendWorkflow = useCallback((workflow: SurfaceDerivedMeshBackendWorkflow) => {
+    if (!activeSurfaceDerivedMeshRecord) return;
+    const route = createDerivedSurfaceMeshBackendRoute({ record: activeSurfaceDerivedMeshRecord, workflow, sourceRepresentation: activeCanonicalSurfaceDefinition.representation });
+    openDerivedSurfaceMesh(activeSurfaceDerivedMeshRecord, true);
+    setMeshWorkspaceLeftTab(route.panel);
+    focusMeshOperationRow(route.operation);
+    setSurfaceDerivedMeshStatus(`${workflow === "remesh" ? "Remesh" : "Robust Mesh"} opened in the shared Mesh Analysis backend workflow. Source revision ${route.sourceRevision} remains attached; run and inspect detailed parameters, validation, warnings, timing, and logs there.`);
+  }, [activeCanonicalSurfaceDefinition.representation, activeSurfaceDerivedMeshRecord, focusMeshOperationRow, openDerivedSurfaceMesh]);
 
   const handleReturnToSurfaceSource = useCallback(() => {
     const handoff = surfaceMeshAnalysisHandoff;
@@ -79584,13 +79609,19 @@ case "mobius":
                         meshRevision: activeSurfaceDerivedMeshRecord.identity.meshRevision,
                         method: activeSurfaceDerivedMeshRecord.identity.tessellation.method,
                         backend: activeSurfaceDerivedMeshRecord.identity.backend.id,
+                        backendVersion: activeDerivedSurfaceMeshBackendSummary?.backendVersion ?? null,
+                        variant: activeDerivedSurfaceMeshBackendSummary?.variant ?? "native-tessellation",
                         correspondence: `${activeSurfaceDerivedMeshRecord.correspondence.kind}/${activeSurfaceDerivedMeshRecord.correspondence.state}`,
                         mappedVertexCount: activeSurfaceDerivedMeshRecord.correspondence.mappedVertexCount,
+                        watertight: activeDerivedSurfaceMeshBackendSummary?.validation?.watertight ?? null,
+                        boundaryEdgeCount: activeDerivedSurfaceMeshBackendSummary?.validation?.boundaryEdgeCount ?? null,
                         staleReason: activeSurfaceDerivedMeshRecord.identity.staleReason,
                         historyCount: activeSurfaceDerivedMeshRecord.history.length,
                       } : null,
                       records: activeSourceDerivedMeshRecords.map((record) => ({ id: record.identity.meshId, label: record.label, state: record.identity.state })),
                       status: surfaceDerivedMeshStatus,
+                      backendAvailability: activeDerivedSurfaceMeshBackendSummary?.availability ?? "checking",
+                      backendAvailabilityMessage: activeDerivedSurfaceMeshBackendSummary?.availabilityMessage ?? "Checking the shared Python/CGAL worker.",
                       onSelect: setSurfaceDerivedMeshSelectedId,
                       onRegenerate: handleRegenerateDerivedSurfaceMesh,
                       onShowLive: handleShowLiveSurfaceMesh,
@@ -79601,6 +79632,8 @@ case "mobius":
                       onInspect: handleInspectDerivedSurfaceMesh,
                       onMapSourceToMesh: handleMapSurfaceSelectionToDerivedMesh,
                       onMapMeshToSource: handleMapDerivedSelectionToSurface,
+                      onRemesh: () => handleOpenDerivedMeshBackendWorkflow("remesh"),
+                      onRobustMesh: () => handleOpenDerivedMeshBackendWorkflow("robust-mesh"),
                     }}
                     onOpenDerivedMesh={handleOpenSelectedDerivedMeshAnalysis}
                     surfaceSourceHandoff={surfaceMeshAnalysisHandoff ? {

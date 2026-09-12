@@ -63,9 +63,11 @@ export function SurfaceAnalysisComputationPanel({
   onOpenConfiguration: () => void;
   derivedMesh: { available: boolean; label: string; vertexCount: number; faceCount: number };
   derivedMeshLifecycle?: {
-    selected: { id: string; label: string; state: string; sourceRevision: number; meshRevision: number; method: string; backend: string; correspondence: string; mappedVertexCount: number; staleReason?: string; historyCount: number } | null;
+    selected: { id: string; label: string; state: string; sourceRevision: number; meshRevision: number; method: string; backend: string; backendVersion: string | null; variant: string; correspondence: string; mappedVertexCount: number; watertight: boolean | null; boundaryEdgeCount: number | null; staleReason?: string; historyCount: number } | null;
     records: ReadonlyArray<{ id: string; label: string; state: string }>;
     status: string;
+    backendAvailability: "ready" | "checking" | "unavailable" | "browser-limited";
+    backendAvailabilityMessage: string;
     onSelect: (id: string) => void;
     onRegenerate: () => void;
     onShowLive: () => void;
@@ -76,6 +78,8 @@ export function SurfaceAnalysisComputationPanel({
     onInspect: () => void;
     onMapSourceToMesh: () => void;
     onMapMeshToSource: () => void;
+    onRemesh: () => void;
+    onRobustMesh: () => void;
   };
   onOpenDerivedMesh: () => void;
   surfaceSourceHandoff?: {
@@ -205,7 +209,8 @@ export function SurfaceAnalysisComputationPanel({
         {derivedMeshLifecycle?.records.length ? <label style={{ fontSize: 9.5 }}>Record <select data-testid="surface-derived-mesh-record" value={derivedMeshLifecycle.selected?.id ?? ""} onChange={(event) => derivedMeshLifecycle.onSelect(event.target.value)}>{derivedMeshLifecycle.records.map((record) => <option key={record.id} value={record.id}>{record.label} · {record.state}</option>)}</select></label> : null}
         {derivedMeshLifecycle?.selected && <div data-testid="surface-derived-mesh-provenance" style={{ display: "grid", gap: 2, fontSize: 9.5, color: "#475467" }}>
           <span><strong>{derivedMeshLifecycle.selected.state}</strong> · mesh revision {derivedMeshLifecycle.selected.meshRevision} · source revision {derivedMeshLifecycle.selected.sourceRevision}</span>
-          <span>{derivedMeshLifecycle.selected.method} · {derivedMeshLifecycle.selected.backend}</span>
+          <span>{derivedMeshLifecycle.selected.variant} · {derivedMeshLifecycle.selected.method} · {derivedMeshLifecycle.selected.backend}{derivedMeshLifecycle.selected.backendVersion ? ` v${derivedMeshLifecycle.selected.backendVersion}` : ""}</span>
+          <span>Watertight: {derivedMeshLifecycle.selected.watertight == null ? "unknown" : derivedMeshLifecycle.selected.watertight ? "yes" : "no"} · boundary edges: {derivedMeshLifecycle.selected.boundaryEdgeCount?.toLocaleString() ?? "unknown"}</span>
           <span>Mapping: {derivedMeshLifecycle.selected.correspondence} · {derivedMeshLifecycle.selected.mappedVertexCount.toLocaleString()} vertices · {derivedMeshLifecycle.selected.historyCount} history entries</span>
           {derivedMeshLifecycle.selected.staleReason && <span style={{ color: "#9a3412" }}>{derivedMeshLifecycle.selected.staleReason}</span>}
         </div>}
@@ -216,6 +221,11 @@ export function SurfaceAnalysisComputationPanel({
             <button type="button" data-testid="surface-derived-mesh-open-analysis" disabled={!derivedMeshLifecycle.selected} onClick={onOpenDerivedMesh}>Open in Mesh Analysis</button>
           </div>
           <div style={{ color: "#64748b", fontSize: 9.5 }}>Mesh follows the current Surface. Bake creates an independently editable snapshot. Open sends the selected live or saved mesh to Mesh Analysis.</div>
+          <div data-testid="surface-derived-mesh-backend-actions" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 4 }}>
+            <button type="button" data-testid="surface-derived-mesh-remesh" disabled={!derivedMeshLifecycle.selected || derivedMeshLifecycle.backendAvailability !== "ready"} onClick={derivedMeshLifecycle.onRemesh}>Remesh</button>
+            <button type="button" data-testid="surface-derived-mesh-robust" disabled={!derivedMeshLifecycle.selected || derivedMeshLifecycle.backendAvailability !== "ready"} onClick={derivedMeshLifecycle.onRobustMesh}>Robust Mesh</button>
+          </div>
+          <div data-testid="surface-derived-mesh-backend-status" style={{ color: derivedMeshLifecycle.backendAvailability === "ready" ? "#166534" : "#9a3412", fontSize: 9.5 }}>CGAL backend: {derivedMeshLifecycle.backendAvailability} · {derivedMeshLifecycle.backendAvailabilityMessage} Advanced parameters, logs, validation, and fallback choices stay in Mesh Analysis.</div>
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
             <button type="button" data-testid="surface-derived-mesh-regenerate" disabled={!derivedMesh.available} onClick={derivedMeshLifecycle.onRegenerate}>{derivedMeshLifecycle.selected ? "Regenerate" : "Register live mesh"}</button>
             <button type="button" disabled={!derivedMeshLifecycle.selected} onClick={derivedMeshLifecycle.onDetach}>Detach</button>
