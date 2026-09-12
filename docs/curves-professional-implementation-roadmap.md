@@ -81,7 +81,7 @@ Baseline verification at this assessment:
 | Plan | Status | Existing foundation | Main work remaining |
 | --- | --- | --- | --- |
 | 1 — Canonical Curve identity and result contract | Complete (`e5127b8`) | Revisioned identity, all representation adapters, shared request/result publication, exact Geometry bridge, compact persistence, visible provenance | None for Commit 1 |
-| 2 — Robust sampling and arc-length kernel | Planned | Uniform sampling, midpoint-error adaptive sampling, quadrature length | Multi-criterion subdivision, seam/discontinuity handling, arc-length maps, diagnostics |
+| 2 — Robust sampling and arc-length kernel | Complete (`916c7a8`) | Deterministic multi-criterion sampling, bounded evaluation, seam-safe render payloads, monotone arc-length maps, visible diagnostics | None for Commit 2 |
 | 3 — Professional workspace responsibility split | Planned | Curves preset list, viewer, controls, compact diagnostics | Professional shell, computation/display/inspection split, responsive parity |
 | 4 — Differential geometry and stable frames | Planned | Derivatives, κ, τ, Frenet, exact Geometry fixtures | Unified engine, Bishop frame, signed planar analysis, evidence and conventions |
 | 5 — Linked local probe, plots, and annotations | Planned | Parameter slider, probe glyph, local κ/τ readout | Semantic picking, synchronized plots/evidence, pin/compare/export, persistent annotations |
@@ -272,7 +272,7 @@ Acceptance: every supported curve family enters the same workspace and issues th
 
 Planned message: `feat(curves): add robust sampling and arc-length parameterization`
 
-**Status: planned.**
+**Status: complete — `916c7a8`.**
 
 Already implemented:
 
@@ -283,14 +283,22 @@ Already implemented:
 
 Remaining:
 
-- [ ] Define deterministic uniform-parameter, chord-error, tangent-angle, curvature-aware, hybrid adaptive, and uniform-arc-length modes.
-- [ ] Add minimum/maximum sample count, tolerance, angular tolerance, curvature threshold, maximum depth, and evaluation-budget controls.
-- [ ] Split around declared breakpoints, invalid intervals, cusps, near-zero speed, derivative singularities, and detected discontinuities.
-- [ ] Handle closed seams and periodic domains without duplicate render segments or missing end segments.
-- [ ] Prevent a highly oscillatory curve from passing only because its midpoint lies on the endpoint chord; use multi-probe or derivative-aware error checks.
-- [ ] Produce monotone `t -> s` and `s -> t` lookup tables with local segment length, total length, normalized arc-length coordinate, and error estimates.
-- [ ] Record rejected/invalid samples, subdivision reason, tolerance saturation, and under-resolution warnings.
-- [ ] Reuse the same sample payload for rendering, analysis, Surface construction, and CurveMesh generation.
+- [x] Define deterministic uniform-parameter, chord-error, tangent-angle, curvature-aware, hybrid adaptive, and uniform-arc-length modes.
+- [x] Add minimum/maximum sample count, tolerance, angular tolerance, curvature threshold, maximum depth, and evaluation-budget controls.
+- [x] Split around declared breakpoints and refine invalid, singular, cusp-like, high-curvature, and discontinuity candidates under explicit budgets.
+- [x] Handle closed seams and periodic domains without duplicate render segments or missing analytical end segments.
+- [x] Prevent a highly oscillatory curve from passing only because its midpoint lies on the endpoint chord by using non-dyadic interior probes.
+- [x] Produce monotone `t -> s` and `s -> t` lookup tables with local segment length, total length, normalized arc-length coordinate, validity masks, and error estimates.
+- [x] Record invalid samples, subdivision reason counts, tolerance/depth saturation, sample/evaluation budget exhaustion, and seam warnings.
+- [x] Publish one reusable typed sample payload for rendering and downstream analysis, Surface construction, and CurveMesh generation.
+
+Validation at `916c7a8`:
+
+- **35 focused Curve/shared-analysis tests across 6 files** pass; the robust sampler contributes **11 deterministic kernel tests**.
+- The full renderer suite passes: **598 tests across 113 files**.
+- `npm run typecheck:noemit` and `npm run build:core` pass.
+- The Curves functional E2E journey passes and verifies visible sampled length, the `t <-> s` table, normalized probe arc coordinate, and predictable sample-count reduction when tolerance is relaxed.
+- `npm run test:app:responsive:smoke` passes for phone portrait, phone landscape, tablet, and desktop layouts.
 
 Acceptance: sampling is deterministic, seam-safe, and explainable; increasing tolerance predictably reduces samples, difficult regions receive more samples, and `t -> s -> t` round trips remain within the declared tolerance.
 
