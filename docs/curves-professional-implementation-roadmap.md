@@ -371,22 +371,29 @@ Acceptance: circle and helix truth cases pass, a straight line stays stable, pla
 
 Planned message: `feat(curve-analysis): add linked probes plots and osculating evidence`
 
-**Status: planned.**
+**Status: complete in `96b0cd4`.**
 
 Already implemented:
 
 - Normalized parameter slider, probe position, T/N/B glyph, and local κ/τ values.
 - Geometry exact-analysis visualization payloads include curves, frames, curvature combs, osculating evidence, and scalar plot rows.
 
-Remaining:
+Delivered:
 
-- [ ] Define a revision-safe semantic curve pick containing `t`, normalized parameter, arc-length coordinate, segment/span, world point, and source mapping.
-- [ ] Synchronize viewport click, parameter slider, arc-length slider, scalar plot cursor, selected diagnostic, and Inspector probe.
-- [ ] Plot speed, curvature, signed curvature, torsion, and sampling error against `t` or normalized arc length.
-- [ ] Add visible tangent/normal/binormal or Bishop axes, osculating circle/planes, and optional surface-context frame at the selected point.
-- [ ] Add persistent distance-along-curve, segment-length, point, parameter, curvature, torsion, radius, tangent, and frame annotations.
-- [ ] Support pin, replay, compare, copy, save, and JSON/CSV export for probes.
-- [ ] Preserve source/revision identity and mark stale probes after curve edits.
+- [x] Define a revision-safe semantic curve pick containing `t`, normalized parameter, arc-length coordinate, segment/span, world point, and source mapping.
+- [x] Synchronize viewport click, parameter slider, arc-length slider, scalar plot cursor, selected diagnostic, and Inspector probe.
+- [x] Plot speed, curvature, signed curvature, torsion, and sampling error against `t` or normalized arc length.
+- [x] Add visible tangent/normal/binormal or Bishop axes and osculating evidence at the selected point; retain optional Surface-context evidence from Commit 4.
+- [x] Add persistent distance-along-curve, segment-length, point, parameter, curvature, torsion, radius, tangent, and frame annotations.
+- [x] Support pin, replay, compare, copy, save, and JSON/CSV export for probes.
+- [x] Preserve source/revision identity and mark stale probes after curve edits.
+
+Validation at `96b0cd4`:
+
+- **14 focused tests across 3 Curve analysis files** pass for pick identity, staleness, scalar domains, comparison, export, and persistence round trips.
+- `npm run typecheck:noemit` and `npm run build:renderer` pass.
+- The Curves functional Electron E2E journey passes and covers plot and arc-length selection, linked Inspector evidence, three persisted probes, comparison, nine annotation classes, and local-storage restoration.
+- The runtime-only `sampleCurveRobust` ESM import is resolved directly, avoiding the sampling barrel cycle that previously blanked the development window.
 
 Acceptance: selecting a point from the viewport, plot, slider, or diagnostic resolves to the same curve location and visual evidence; pinned probes survive workspace reload with valid provenance.
 
