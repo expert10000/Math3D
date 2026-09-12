@@ -624,6 +624,8 @@ import { CurveScalarPlots } from "./components/CurveScalarPlots";
 import { DerivedCurvePanel } from "./components/DerivedCurvePanel";
 import { SplineCurveEditor, type SplineVisualState } from "./components/SplineCurveEditor";
 import { CurveInteroperabilityPanel } from "./components/CurveInteroperabilityPanel";
+import { CurveMeshPanel } from "./components/CurveMeshPanel";
+import { curveMeshToSurfaceMesh } from "./curveAnalysis/curveMesh";
 import {
   analyzeCurveDifferentialGeometry,
   arcLength as curveArcLength,
@@ -1274,6 +1276,9 @@ type CurveImportedSection = {
   area: number;
   segmentCount: number;
   createdAt: number;
+  sourceModule?: "geometry" | "surfaces" | "mesh";
+  sourceRevision?: string;
+  sourceRelation?: string;
 };
 interface GeometryObjectMeta {
   id: string;
@@ -12669,13 +12674,13 @@ const App: React.FC = () => {
         dimension: 3,
         domain: canonicalDomain,
         points: curveImportedSection.points.map((point) => [point.x, point.y, point.z] as const),
-        sourceLabel: "geometry-section-handoff",
-        sourceModule: "geometry",
+        sourceLabel: `${curveImportedSection.sourceModule ?? "geometry"}-${curveImportedSection.sourceRelation ?? "section"}-handoff`,
+        sourceModule: curveImportedSection.sourceModule ?? "geometry",
         dependencies: [{
-          module: "geometry",
+          module: curveImportedSection.sourceModule ?? "geometry",
           objectId: curveImportedSection.objectName,
-          revision: String(curveImportedSection.createdAt),
-          relation: "section-curve",
+          revision: curveImportedSection.sourceRevision ?? String(curveImportedSection.createdAt),
+          relation: curveImportedSection.sourceRelation ?? "section-curve",
           correspondence: "ordered polyline samples",
         }],
         sampling,
@@ -86537,10 +86542,27 @@ case "mobius":
                       />
                     )}
                     {curveWorkspaceTab === "curvemesh" && (
-                      <div style={{ display: "grid", gap: 7 }}>
-                        {["Polyline", "Tube", "Ribbon", "Sweep profile"].map((label) => <button key={label} type="button" onClick={() => setCurveInspectorTab("dependencies")} style={{ textAlign: "left", padding: "9px 10px" }}>{label}</button>)}
-                        <div style={{ fontSize: 11, color: "#64748b" }}>The selected workflow keeps source ID, revision, units, and dependency links.</div>
-                      </div>
+                      <CurveMeshPanel
+                        curve={curveRenderState.curve}
+                        definition={activeCanonicalCurveDefinition}
+                        mesh={surfaceMeshData}
+                        selectedEdges={surfaceMeshData ? [[surfaceMeshTopologyFieldValidation.effectiveEdgeA, surfaceMeshTopologyFieldValidation.effectiveEdgeB]] : undefined}
+                        onOpenCurveSource={() => setCurveWorkspaceTab("definition")}
+                        onOpenMesh={(record, role) => {
+                          setMeshDataset(curveMeshToSurfaceMesh(record, role), `curve-mesh:${role}`);
+                          setDatasetKind("mesh");
+                          setSurfaceViewerKind("mesh");
+                          setMode("surfaces");
+                        }}
+                        onOpenExtractedCurve={(extracted) => {
+                          const points = extracted.points.map((point) => ({ ...point }));
+                          const first = points[0]; const last = points.at(-1);
+                          const closed = !!first && !!last && points.length > 2 && Math.hypot(first.x - last.x, first.y - last.y, first.z - last.z) <= 1e-7;
+                          setCurveImportedSection({ id: extracted.id, name: `${extracted.sourceMeshLabel} ${extracted.kind}`, objectName: extracted.sourceMeshLabel, points, closed, curveLength: curvePolylineLength(points, closed), area: 0, segmentCount: Math.max(0, points.length - 1), createdAt: Date.now(), sourceModule: "mesh", sourceRevision: surfaceMeshData?.source.kind === "derivedCurve" ? String(surfaceMeshData.source.meshRevision) : "1", sourceRelation: extracted.kind });
+                          setCurveWorkspaceTab("definition");
+                          setMode("curves");
+                        }}
+                      />
                     )}
                   </div>
                 )}

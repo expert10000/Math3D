@@ -89,7 +89,7 @@ Baseline verification at this assessment:
 | 7 — Dependency-aware derived curves | Complete (`02e0f37`) | Derived preset category, Geometry construction recipes, canonical operations, dependency lifecycle, and explicit branches | None for Commit 7 |
 | 8 — Bézier, B-spline, and NURBS editing | Complete | Canonical spline definitions/evaluation, CAD edits, construction evidence, continuity tools, and revision history | None for Commit 8 |
 | 9 — Geometry and Surface interoperability | Complete | Canonical exchange envelopes preserve evaluators or labeled samples, identity, chart correspondence, stale navigation, and Curve-to-Surface requests | None for Commit 9 |
-| 10 — Provenance-linked CurveMesh workflows | Planned | Curve samples and shared Mesh handoff infrastructure | Polyline/tube/ribbon/sweep outputs, source return, Mesh extraction into Curves |
+| 10 — Provenance-linked CurveMesh workflows | Complete | Six frame-aware CurveMesh variants, revisioned lineage/mapping/lifecycle, live and baked Mesh handoff, and explicit Mesh extraction/fitting workflows | None for Commit 10 |
 | 11 — Optional VTK and CGAL adapters | Planned | Existing backend workers and Mesh operation registry | Curve operation adapters, capabilities, fallback, parity, provenance |
 | 12 — Workers, dependency cache, and performance | Planned | Shared worker/result patterns in Geometry/Surface/Mesh | Curve jobs, cancellation, progressive publication, budgets, memory controls |
 | 13 — Result lifecycle and analysis presets | Planned | Shared saved-result patterns and Surface layer presets | Curve result cards, visibility, save/compare/export, useful layered presets |
@@ -529,7 +529,7 @@ Acceptance: exact definitions and sampled fallbacks remain visibly distinct, and
 
 Planned message: `feat(curve-mesh): add provenance-linked curve mesh workflows`
 
-**Status: planned.**
+**Status: implemented and validated.**
 
 Already implemented:
 
@@ -539,14 +539,21 @@ Already implemented:
 
 Remaining:
 
-- [ ] Define `DerivedCurveMeshIdentity`, source revision, sampling/frame settings, correspondence, variant, state, and regeneration history.
-- [ ] Support points/vertices, polyline, tube, ribbon, swept profile, and frame-glyph geometry outputs.
-- [ ] Add tube radius, radial/longitudinal resolution, caps, profile, twist, and Frenet/Bishop frame policy.
-- [ ] Add ribbon width, orientation, twist, frame, seam, and boundary policies.
-- [ ] Expose **Mesh (live)**, **Bake to Mesh**, and **Open in Mesh Analysis** with the same semantic distinction used by Surface Analysis.
-- [ ] Add **Open Curve Source**, regenerate, detach, freeze, delete, inspect provenance, and source/mesh selection mapping.
-- [ ] Extract Mesh boundary loops, feature-edge chains, selected edge chains, cross-sections, and polylines into Curves.
-- [ ] Offer optional spline fitting as a derived Curve with fitting tolerance and residuals—not as silent conversion.
+- [x] Define `DerivedCurveMeshIdentity`, source revision, sampling/frame settings, correspondence, variant, state, and regeneration history.
+- [x] Support points/vertices, polyline, tube, ribbon, swept profile, and frame-glyph geometry outputs.
+- [x] Add tube radius, radial/longitudinal resolution, caps, profile, twist, and Frenet/Bishop frame policy.
+- [x] Add ribbon width, orientation, twist, frame, seam, and boundary policies.
+- [x] Expose **Mesh (live)**, **Bake to Mesh**, and **Open in Mesh Analysis** with the same semantic distinction used by Surface Analysis.
+- [x] Add **Open Curve Source**, regenerate, detach, freeze, delete, inspect provenance, and source/mesh selection mapping.
+- [x] Extract Mesh boundary loops, feature-edge chains, selected edge chains, cross-sections, and polylines into Curves.
+- [x] Offer optional spline fitting as a derived Curve with fitting tolerance and residuals—not as silent conversion.
+
+Validation for Commit 10:
+
+- All **60 Curve Analysis tests across 10 files** pass; the CurveMesh suite covers every output variant, generation settings, provenance, bidirectional selection mapping, lifecycle transitions, Mesh handoff, all extraction paths, and explicit spline-fit residuals.
+- The complete repository TypeScript check and production renderer build pass.
+- All **5 Electron Curves journeys** pass, including CurveMesh generation, stale/regenerate behavior, Mesh Analysis handoff, boundary extraction, explicit fitting, and return to Curves with Mesh provenance.
+- The responsive smoke passes at phone portrait, phone landscape, tablet, and desktop sizes.
 
 Acceptance: Curve → Mesh and Mesh → Curve round trips preserve lineage, mapping, frame/sampling policy, and explicit approximation quality; Mesh-specific analysis remains in Mesh.
 

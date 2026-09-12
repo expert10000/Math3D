@@ -30,6 +30,23 @@ export type SurfaceMeshSource =
       createdAt: number;
       units: { length: string; area: string; gaussianCurvature: string; meanCurvature: string };
     }
+  | {
+      kind: "derivedCurve";
+      role: "live" | "snapshot" | "detached";
+      state: "live-current" | "frozen-snapshot" | "detached" | "stale";
+      meshId: string;
+      meshRevision: number;
+      sourceCurveId: string;
+      sourceCurveRevision: number;
+      sourceRepresentation: string;
+      sourceFidelity: "exact" | "parametric" | "sampled";
+      sourceUnits: { position: string; parameter: string; angle: "rad" | "deg" };
+      variant: string;
+      framePolicy: string;
+      generationSettings: Readonly<Record<string, number | string | boolean>>;
+      correspondenceId: string;
+      createdAt: number;
+    }
   | { kind: "detachedMesh"; fromKind?: string; fromLabel?: string }
   | {
       kind: "geometryObject";
@@ -77,6 +94,8 @@ export const formatSurfaceMeshSource = (source: SurfaceMeshSource | string): str
       return "baked from weierstrass";
     case "derivedSurface":
       return `${source.role} from ${source.sourceSurfaceLabel} r${source.sourceSurfaceRevision}`;
+    case "derivedCurve":
+      return `${source.role} ${source.variant} from Curve ${source.sourceCurveId} r${source.sourceCurveRevision}`;
     case "detachedMesh":
       return source.fromLabel ? `mesh (detached from ${source.fromLabel})` : "mesh (detached)";
     case "geometryObject": {

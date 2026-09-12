@@ -7,6 +7,47 @@ import {
 } from "./helpers/surfaceAppHarness";
 
 test.describe("Curves canonical workspace", () => {
+  test("creates provenance-linked CurveMesh variants and round-trips Mesh boundaries into Curves", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await resetSurfaceAppState(ctx.page);
+      const curvesTab = ctx.page.getByRole("button", { name: "Curves", exact: true }).first();
+      await curvesTab.click();
+      await ctx.page.getByTestId("curve-panel-curvemesh").click();
+
+      const workflow = ctx.page.getByTestId("curve-mesh-workflow");
+      await expect(workflow).toBeVisible();
+      await ctx.page.getByTestId("curve-mesh-output").selectOption("tube");
+      await workflow.getByLabel("Seam policy").selectOption("duplicate");
+      await workflow.getByLabel("Longitudinal resolution").fill("24");
+      await workflow.getByLabel("Radial resolution").fill("8");
+      await ctx.page.getByTestId("curve-mesh-generate").click();
+      await expect(ctx.page.getByTestId("curve-mesh-result")).toContainText("tube · live-current · mesh r1");
+      await expect(ctx.page.getByTestId("curve-mesh-result")).toContainText("map complete");
+      await expect(ctx.page.getByTestId("curve-mesh-map")).toContainText("complete");
+
+      await workflow.getByLabel("Tube radius").fill("0.12");
+      await expect(ctx.page.getByTestId("curve-mesh-result")).toContainText("stale");
+      await workflow.getByRole("button", { name: "Regenerate" }).click();
+      await expect(ctx.page.getByTestId("curve-mesh-result")).toContainText("live-current · mesh r2");
+      await ctx.page.getByTestId("curve-mesh-analysis").click();
+      await expect(ctx.page.getByRole("button", { name: "Mesh", exact: true }).first()).toHaveAttribute("aria-pressed", "true");
+
+      await curvesTab.click();
+      await ctx.page.getByTestId("curve-panel-curvemesh").click();
+      await ctx.page.getByTestId("mesh-curve-extraction-kind").selectOption("boundary-loops");
+      await ctx.page.getByTestId("mesh-curve-extract").click();
+      await expect(ctx.page.getByTestId("mesh-curve-extracted")).toContainText("polyline approximation");
+      await ctx.page.getByTestId("mesh-curve-fit").click();
+      await expect(ctx.page.getByTestId("curve-mesh-status")).toContainText("Spline fit");
+      await ctx.page.getByTestId("mesh-curve-extracted").getByRole("button", { name: "Open in Curves" }).click();
+      await expect(ctx.page.getByTestId("curve-canonical-contract")).toContainText("source mesh");
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
   test("round-trips Geometry and Surface curves with visible fidelity, chart mapping, and stale guards", async () => {
     let ctx: LaunchedSurfaceApp | null = null;
     try {
