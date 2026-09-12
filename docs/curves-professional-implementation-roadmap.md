@@ -80,7 +80,7 @@ Baseline verification at this assessment:
 
 | Plan | Status | Existing foundation | Main work remaining |
 | --- | --- | --- | --- |
-| 1 — Canonical Curve identity and result contract | Planned | Shared `AnyCurve`, domain, evaluation, Geometry analysis infrastructure | Revisions, representations, dependencies, methods, payloads, adapters, persistence |
+| 1 — Canonical Curve identity and result contract | Complete (`e5127b8`) | Revisioned identity, all representation adapters, shared request/result publication, exact Geometry bridge, compact persistence, visible provenance | None for Commit 1 |
 | 2 — Robust sampling and arc-length kernel | Planned | Uniform sampling, midpoint-error adaptive sampling, quadrature length | Multi-criterion subdivision, seam/discontinuity handling, arc-length maps, diagnostics |
 | 3 — Professional workspace responsibility split | Planned | Curves preset list, viewer, controls, compact diagnostics | Professional shell, computation/display/inspection split, responsive parity |
 | 4 — Differential geometry and stable frames | Planned | Derivatives, κ, τ, Frenet, exact Geometry fixtures | Unified engine, Bishop frame, signed planar analysis, evidence and conventions |
@@ -239,7 +239,7 @@ The parameter selector remains near the viewport and synchronizes the viewport p
 
 Planned message: `refactor(curves): define canonical curve workspace and result contract`
 
-**Status: planned.**
+**Status: complete — `e5127b8`.**
 
 Already implemented:
 
@@ -250,13 +250,21 @@ Already implemented:
 
 Remaining:
 
-- [ ] Add canonical Curve identity, revision, representation, source, dependency, units, coordinate-system, domain, closure, periodicity, orientation, and sampling-policy contracts.
-- [ ] Normalize parametric, explicit, implicit, polar, Bézier, B-spline, NURBS, polyline, curve-on-surface, and derived curves through an adapter registry.
-- [ ] Define Curve analysis result kinds and typed payloads in the shared analysis registry.
-- [ ] Publish Curve results through revision-safe requests/results with queued, running, progressive, ready, cancelled, failed, and stale states.
-- [ ] Reuse the exact Geometry curve implementation through a Curves-owned adapter and retain compatibility imports during migration.
-- [ ] Persist Curve definitions, lightweight result references, workspace state, and saved presets without serializing evaluator functions or large typed arrays.
-- [ ] Add contract tests proving Curve Core has no renderer, Surface, Mesh, VTK, or CGAL dependency.
+- [x] Add canonical Curve identity, revision, representation, source, dependency, units, coordinate-system, domain, closure, periodicity, orientation, and sampling-policy contracts.
+- [x] Normalize parametric, explicit, implicit, polar, Bézier, B-spline, NURBS, polyline, curve-on-surface, and derived curves through an adapter registry.
+- [x] Define Curve analysis result kinds and typed payloads in the shared analysis registry.
+- [x] Publish Curve results through revision-safe requests/results with queued, running, ready, cancelled, deferred, error, and stale states.
+- [x] Reuse the exact Geometry curve implementation through a Curves-owned adapter and retain compatibility imports during migration.
+- [x] Persist Curve definitions, lightweight result references, workspace state, and saved presets without serializing evaluator functions or large typed arrays.
+- [x] Add contract tests proving Curve Core has no renderer, Surface, Mesh, VTK, or CGAL dependency.
+
+Validation at `e5127b8`:
+
+- **25 focused Curve/shared-analysis tests across 5 files** pass.
+- The full renderer suite passes: **588 tests across 112 files**.
+- `npm run typecheck:noemit` and `npm run build:core` pass.
+- The first Curves functional E2E journey passes, including visible identity/revision provenance, formula-edit revision advancement, and compact workspace persistence.
+- `npm run test:app:responsive:smoke` passes for phone portrait, phone landscape, tablet, and desktop layouts.
 
 Acceptance: every supported curve family enters the same workspace and issues the same revision-bound analysis request; the Inspector can state what the curve is, where it came from, how it was evaluated, and whether its results are current.
 
