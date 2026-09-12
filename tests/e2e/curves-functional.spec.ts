@@ -7,6 +7,44 @@ import {
 } from "./helpers/surfaceAppHarness";
 
 test.describe("Curves canonical workspace", () => {
+  test("edits Bezier controls and NURBS weights with revisioned undo and construction evidence", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await resetSurfaceAppState(ctx.page);
+      await ctx.page.getByRole("button", { name: "Curves", exact: true }).first().click();
+      await ctx.page.getByRole("button", { name: /Bezier cubic/ }).first().click();
+      await ctx.page.getByTestId("curve-panel-definition").click();
+
+      const editor = ctx.page.getByTestId("curve-spline-editor");
+      await expect(editor).toBeVisible();
+      await expect(ctx.page.getByTestId("curve-spline-contract")).toContainText("bezier · degree 3");
+      await expect(ctx.page.getByTestId("curve-spline-evidence")).toContainText("De Casteljau evidence");
+      await ctx.page.getByTestId("curve-control-1").click();
+      await editor.getByLabel("Control y").fill("2.5");
+      await ctx.page.getByTestId("curve-spline-apply-control").click();
+      await expect(ctx.page.getByTestId("curve-spline-contract")).toContainText("revision 2");
+      await ctx.page.getByTestId("curve-spline-undo").click();
+      await expect(ctx.page.getByTestId("curve-spline-contract")).toContainText("revision 1");
+      await ctx.page.getByTestId("curve-spline-redo").click();
+      await expect(ctx.page.getByTestId("curve-spline-contract")).toContainText("revision 2");
+      await ctx.page.getByTestId("curve-viewport-display-controls").getByLabel("Control polygon", { exact: true }).check();
+
+      await ctx.page.getByTestId("curve-panel-gallery").click();
+      await ctx.page.getByRole("button", { name: /NURBS quarter arc/ }).first().click();
+      await ctx.page.getByTestId("curve-panel-definition").click();
+      await expect(ctx.page.getByTestId("curve-spline-contract")).toContainText("nurbs · degree 2");
+      await ctx.page.getByTestId("curve-spline-selection-mode").selectOption("weight");
+      await ctx.page.getByTestId("curve-control-1").click();
+      await ctx.page.getByTestId("curve-spline-weight").fill("0.9");
+      await ctx.page.getByTestId("curve-spline-apply-weight").click();
+      await expect(ctx.page.getByTestId("curve-spline-contract")).toContainText("revision 2");
+      await expect(ctx.page.getByTestId("curve-spline-evidence")).toContainText("De Boor evidence");
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
   test("previews and commits dependency-aware derived curve branches", async () => {
     let ctx: LaunchedSurfaceApp | null = null;
     try {

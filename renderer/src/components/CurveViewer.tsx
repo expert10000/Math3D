@@ -31,6 +31,10 @@ export type CurveViewerProps = {
   evolutePoints?: CurveViewerVec3[];
   osculatingCircle?: { center: CurveViewerVec3; radius: number; normal: CurveViewerVec3 } | null;
   evidencePlanes?: Array<{ point: CurveViewerVec3; normal: CurveViewerVec3; color: number }>;
+  controlPoints?: CurveViewerVec3[];
+  constructionLevels?: CurveViewerVec3[][];
+  knotPoints?: CurveViewerVec3[];
+  weights?: number[];
   onSelectSample?: (sampleIndex: number) => void;
 };
 
@@ -86,6 +90,10 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
   evolutePoints = [],
   osculatingCircle = null,
   evidencePlanes = [],
+  controlPoints = [],
+  constructionLevels = [],
+  knotPoints = [],
+  weights = [],
   onSelectSample,
 }) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -123,6 +131,40 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
 
     const visualGroup = new THREE.Group();
     scene.add(visualGroup);
+
+    const finiteControls = controlPoints.filter(finiteVec).map(vecFrom);
+    if (finiteControls.length) {
+      if (finiteControls.length >= 2) visualGroup.add(new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(finiteControls),
+        new THREE.LineDashedMaterial({ color: 0x64748b, dashSize: 0.08, gapSize: 0.05, transparent: true, opacity: 0.85 })
+      ));
+      visualGroup.add(new THREE.Points(
+        new THREE.BufferGeometry().setFromPoints(finiteControls),
+        new THREE.PointsMaterial({ color: 0xdc2626, size: Math.max(0.045, frameScale * 0.13), sizeAttenuation: true })
+      ));
+      finiteControls.forEach((point, index) => {
+        fitPoints.push(point.clone());
+        const weight = weights[index] ?? 1;
+        if (Math.abs(weight - 1) <= 1e-8) return;
+        const handle = point.clone().add(new THREE.Vector3(0, 0, Math.max(0.03, frameScale * 0.3) * (weight - 1)));
+        visualGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([point, handle]), new THREE.LineBasicMaterial({ color: 0xea580c })));
+        visualGroup.add(new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.012, frameScale * 0.045), 10, 8), new THREE.MeshBasicMaterial({ color: 0xea580c })).translateX(handle.x).translateY(handle.y).translateZ(handle.z));
+        fitPoints.push(handle);
+      });
+    }
+
+    constructionLevels.forEach((level, levelIndex) => {
+      const points = level.filter(finiteVec).map(vecFrom);
+      if (points.length < 2) return;
+      visualGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: levelIndex % 2 ? 0x7c3aed : 0x0891b2, transparent: true, opacity: 0.55 })));
+      points.forEach((point) => fitPoints.push(point.clone()));
+    });
+
+    const finiteKnots = knotPoints.filter(finiteVec).map(vecFrom);
+    if (finiteKnots.length) visualGroup.add(new THREE.Points(
+      new THREE.BufferGeometry().setFromPoints(finiteKnots),
+      new THREE.PointsMaterial({ color: 0xf59e0b, size: Math.max(0.035, frameScale * 0.1), sizeAttenuation: true })
+    ));
 
     if (showCurve && curvePoints.length >= 2) {
       const curveGeometry = new THREE.BufferGeometry().setFromPoints(curvePoints);

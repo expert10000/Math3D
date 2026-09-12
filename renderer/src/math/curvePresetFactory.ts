@@ -1,5 +1,11 @@
 import type { AnyCurve, Curve2D, Curve3D, CurveDomain, CurveKind, Vec3 } from "@math3d/core";
-import { normalizeCurveDomain } from "@math3d/core";
+import {
+  DEFAULT_BEZIER_CURVE,
+  DEFAULT_BSPLINE_CURVE,
+  DEFAULT_NURBS_QUARTER_ARC,
+  buildSplineCurve,
+  normalizeCurveDomain,
+} from "@math3d/core";
 import { compileExpression } from "./expression";
 
 export type CurvePresetInput = {
@@ -165,6 +171,11 @@ const deBoor4 = (controlPoints: Vec4[], degree: number, knots: number[], tRaw: n
 };
 
 const buildSpecialCurve = (preset: CurvePresetInput, domain: CurveDomain): AnyCurve | null => {
+  if (preset.id === "bezierCubic") return buildSplineCurve({ ...DEFAULT_BEZIER_CURVE, domain: { tMin: domain.tMin, tMax: domain.tMax } });
+  if (preset.id === "bSplineDemo") return buildSplineCurve({ ...DEFAULT_BSPLINE_CURVE, domain: { tMin: domain.tMin, tMax: domain.tMax } });
+  if (preset.id === "nurbsQuarterArc") return buildSplineCurve({ ...DEFAULT_NURBS_QUARTER_ARC, domain: { tMin: domain.tMin, tMax: domain.tMax } });
+
+  /* Legacy demonstrations remain below for source compatibility; canonical presets return above. */
   if (preset.id === "bSplineDemo") {
     const curve: Curve3D = {
       id: preset.id,

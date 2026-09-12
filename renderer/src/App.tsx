@@ -622,6 +622,7 @@ import {
 import { CurveViewer, type CurveViewerGlyph, type CurveViewerVec3 } from "./components/CurveViewer";
 import { CurveScalarPlots } from "./components/CurveScalarPlots";
 import { DerivedCurvePanel } from "./components/DerivedCurvePanel";
+import { SplineCurveEditor, type SplineVisualState } from "./components/SplineCurveEditor";
 import {
   analyzeCurveDifferentialGeometry,
   arcLength as curveArcLength,
@@ -639,6 +640,8 @@ import {
   type ConstructionRelationshipDefinition,
   type Curve3D as CoreCurve3D,
   type DerivedCurve,
+  type CanonicalSplineDefinition,
+  type SplineCurve,
   type DerivedConstructionObjectDefinition,
 } from "@math3d/core";
 
@@ -12308,6 +12311,9 @@ const App: React.FC = () => {
   const [curveDiagnosticRevisionToken, setCurveDiagnosticRevisionToken] = useState(0);
   const [curveSavedDiagnosticReports, setCurveSavedDiagnosticReports] = useState<CurveDiagnosticReport[]>([]);
   const [curveDerivedPreviewCurve, setCurveDerivedPreviewCurve] = useState<DerivedCurve | null>(null);
+  const [curveSplineDefinition, setCurveSplineDefinition] = useState<CanonicalSplineDefinition | null>(null);
+  const [curveSplineEditCurve, setCurveSplineEditCurve] = useState<SplineCurve | null>(null);
+  const [curveSplineVisuals, setCurveSplineVisuals] = useState<SplineVisualState>({ controlPoints: [], constructionLevels: [], knotPoints: [], weights: [] });
   const visibleCurvePresets = useMemo(
     () => (curvePresetCategoryFilter === "all" ? CURVE_PRESETS : CURVE_PRESETS.filter((p) => p.category === curvePresetCategoryFilter)),
     [curvePresetCategoryFilter]
@@ -12322,6 +12328,18 @@ const App: React.FC = () => {
     () => CURVE_PRESET_BY_ID.get(curvePresetId) ?? visibleCurvePresets[0] ?? CURVE_PRESETS[0],
     [curvePresetId, visibleCurvePresets]
   );
+  const handleCurveSplineChange = useCallback((definition: CanonicalSplineDefinition, curve: SplineCurve, visuals: SplineVisualState) => {
+    setCurveSplineDefinition(definition);
+    setCurveSplineEditCurve(curve);
+    setCurveSplineVisuals(visuals);
+  }, []);
+  useEffect(() => {
+    if (!activeCurvePreset || !["bezier", "bspline", "nurbs"].includes(activeCurvePreset.category)) {
+      setCurveSplineDefinition(null);
+      setCurveSplineEditCurve(null);
+      setCurveSplineVisuals({ controlPoints: [], constructionLevels: [], knotPoints: [], weights: [] });
+    }
+  }, [activeCurvePreset]);
   const activeCurveIsCustom = activeCurvePreset?.kind === "custom";
   const activeCurveFormulas = useMemo(
     () =>
@@ -12422,7 +12440,7 @@ const App: React.FC = () => {
     }
     const built = buildCurveFromPreset(activeCurveInput);
     const errors = [...built.errors];
-    const curve = built.curve;
+    const curve = curveSplineEditCurve?.spline.id === activeCurvePreset?.id ? curveSplineEditCurve : built.curve;
     if (!curve) {
       return {
         curve: null as CoreAnyCurve | null,
@@ -12544,6 +12562,8 @@ const App: React.FC = () => {
     curveProbeU,
     curveSampleCount,
     curveSamplingMode,
+    curveSplineEditCurve,
+    activeCurvePreset?.id,
   ]);
   const curveDifferentialField = useMemo(() => {
     const curve = curveRenderState.curve;
@@ -12685,13 +12705,19 @@ const App: React.FC = () => {
           input = { ...common, representation: "polar", radiusExpression: activeCurvePreset.id === "polarRose2d" ? "cos(4t)" : activeCurvePreset.note, angleParameter: "t" };
           break;
         case "bezier":
-          input = { ...common, representation: "bezier", controlPoints: Array.from({ length: 4 }, () => [] as readonly number[]), degree: 3 };
+          input = curveSplineDefinition?.id === activeCurvePreset.id
+            ? { ...common, representation: "bezier", controlPoints: curveSplineDefinition.controlPoints.map((point) => "z" in point ? [point.x, point.y, point.z] : [point.x, point.y]), degree: curveSplineDefinition.degree }
+            : { ...common, representation: "bezier", controlPoints: Array.from({ length: 4 }, () => [] as readonly number[]), degree: 3 };
           break;
         case "bspline":
-          input = { ...common, representation: "b-spline", controlPoints: Array.from({ length: activeCurvePreset.id === "bSplineDemo" ? 6 : 0 }, () => [] as readonly number[]), degree: 3, knots: [] };
+          input = curveSplineDefinition?.id === activeCurvePreset.id
+            ? { ...common, representation: "b-spline", controlPoints: curveSplineDefinition.controlPoints.map((point) => "z" in point ? [point.x, point.y, point.z] : [point.x, point.y]), degree: curveSplineDefinition.degree, knots: curveSplineDefinition.knotVector, periodic: curveSplineDefinition.periodic }
+            : { ...common, representation: "b-spline", controlPoints: Array.from({ length: activeCurvePreset.id === "bSplineDemo" ? 6 : 0 }, () => [] as readonly number[]), degree: 3, knots: [] };
           break;
         case "nurbs":
-          input = { ...common, representation: "nurbs", controlPoints: Array.from({ length: activeCurvePreset.id === "nurbsQuarterArc" ? 3 : 0 }, () => [] as readonly number[]), degree: 2, knots: [], weights: [] };
+          input = curveSplineDefinition?.id === activeCurvePreset.id
+            ? { ...common, representation: "nurbs", controlPoints: curveSplineDefinition.controlPoints.map((point) => "z" in point ? [point.x, point.y, point.z] : [point.x, point.y]), degree: curveSplineDefinition.degree, knots: curveSplineDefinition.knotVector, weights: curveSplineDefinition.weights, periodic: curveSplineDefinition.periodic }
+            : { ...common, representation: "nurbs", controlPoints: Array.from({ length: activeCurvePreset.id === "nurbsQuarterArc" ? 3 : 0 }, () => [] as readonly number[]), degree: 2, knots: [], weights: [] };
           break;
         case "onSurface":
           input = {
@@ -12731,6 +12757,7 @@ const App: React.FC = () => {
     curveRenderState.samplePoints.length,
     curveSampleCount,
     curveSamplingMode,
+    curveSplineDefinition,
   ]);
   const activeCanonicalCurveDefinition = useMemo(
     () => adaptCurveDefinition(curveCanonicalAdapterInput),
@@ -86469,6 +86496,9 @@ case "mobius":
                         <div><strong>Representation:</strong> {activeCanonicalCurveDefinition.representation}</div>
                         <div><strong>Domain:</strong> {activeCanonicalCurveDefinition.domain.parameter} ∈ [{fmt(activeCanonicalCurveDefinition.domain.min)}, {fmt(activeCanonicalCurveDefinition.domain.max)}]</div>
                         <button type="button" onClick={() => setCurvePresetId("custom2d")}>Open editable custom curve</button>
+                        {activeCurvePreset && ["bezier", "bspline", "nurbs"].includes(activeCurvePreset.category) && (
+                          <SplineCurveEditor presetId={activeCurvePreset.id} parameter={curveProbeU} onChange={handleCurveSplineChange} />
+                        )}
                       </div>
                     )}
                     {curveWorkspaceTab === "analysis" && (
@@ -86772,6 +86802,10 @@ case "mobius":
                         evolutePoints={curveShowOsculatingEvidence ? curveEvolutePoints : []}
                         osculatingCircle={curveShowOsculatingEvidence ? curveDifferentialProbePoint?.evidence.osculatingCircle ?? null : null}
                         evidencePlanes={curveShowOsculatingEvidence ? curveEvidencePlanes : []}
+                        controlPoints={curveShowControlPolygon ? curveSplineVisuals.controlPoints : []}
+                        constructionLevels={curveShowControlPolygon ? curveSplineVisuals.constructionLevels : []}
+                        knotPoints={curveShowControlPolygon ? curveSplineVisuals.knotPoints : []}
+                        weights={curveSplineVisuals.weights}
                         onSelectSample={(index) => setLinkedCurveProbe(index / Math.max(1, curveRenderState.samplePoints.length - 1), "viewport")}
                         frameScale={curveFrameScale}
                         resetToken={curveViewerResetToken}

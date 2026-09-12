@@ -4,3 +4,4 @@ export * from "./model";
 export * from "./sampling";
 export * from "./utils";
 export * from "./derived";
+export * from "./spline";

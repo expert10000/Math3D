@@ -86,8 +86,8 @@ Baseline verification at this assessment:
 | 4 — Differential geometry and stable frames | Complete (`e82ca97`) | Unified differential field, third derivatives, honest Frenet validity, Bishop transport, evidence geometry, planar and Surface-linked invariants | None for Commit 4 |
 | 5 — Linked local probe, plots, and annotations | Planned | Parameter slider, probe glyph, local κ/τ readout | Semantic picking, synchronized plots/evidence, pin/compare/export, persistent annotations |
 | 6 — Diagnostics, continuity, and intersections | Planned | Basic core validation and exact events | Typed severity model, C/G continuity, robust intersections, issue navigation |
-| 7 — Dependency-aware derived curves | Planned | Derived preset category and Geometry construction recipes | Real operations, preview/commit, recomputation, lineage, failure policy |
-| 8 — Bézier, B-spline, and NURBS editing | Planned | Shared preset evaluation for demonstration curves | Control/knot/weight models, editing, constraints, stable selection and history |
+| 7 — Dependency-aware derived curves | Complete (`02e0f37`) | Derived preset category, Geometry construction recipes, canonical operations, dependency lifecycle, and explicit branches | None for Commit 7 |
+| 8 — Bézier, B-spline, and NURBS editing | Complete | Canonical spline definitions/evaluation, CAD edits, construction evidence, continuity tools, and revision history | None for Commit 8 |
 | 9 — Geometry and Surface interoperability | Planned | Geometry section handoff, Geometry exact analysis, Surface curve result layers | Canonical round trips, source links, selection mapping, no algorithm duplication |
 | 10 — Provenance-linked CurveMesh workflows | Planned | Curve samples and shared Mesh handoff infrastructure | Polyline/tube/ribbon/sweep outputs, source return, Mesh extraction into Curves |
 | 11 — Optional VTK and CGAL adapters | Planned | Existing backend workers and Mesh operation registry | Curve operation adapters, capabilities, fallback, parity, provenance |
@@ -465,7 +465,7 @@ Acceptance: every derived curve is an ordinary canonical Curve with inspectable 
 
 Planned message: `feat(curves): add Bezier B-spline and NURBS editing workflows`
 
-**Status: planned.**
+**Status: implemented.**
 
 Already implemented:
 
@@ -475,14 +475,22 @@ Already implemented:
 
 Remaining:
 
-- [ ] Add canonical spline definitions containing degree, control points, knot vector, weights, closure/periodicity, clamping, and valid parameter domain.
-- [ ] Implement stable basis, derivative, knot-span, endpoint, and rational evaluation in Curve Core.
-- [ ] Add selection modes for curve, segment/span, control point, knot, and weight handle.
-- [ ] Render and edit control polygons, control points, knot markers, weighted influence, and De Casteljau/De Boor construction evidence.
-- [ ] Support Bézier subdivision, degree elevation/reduction where valid, B-spline knot insertion/removal, and NURBS knot/weight editing.
-- [ ] Add endpoint position/tangent/curvature constraints and C0/C1/C2/G1/G2 join tools.
-- [ ] Keep mathematical definition separate from display tessellation and store edits in revisioned history with undo/redo.
-- [ ] Include a canonical rational NURBS circle fixture and round-trip serialization tests.
+- [x] Add canonical spline definitions containing degree, control points, knot vector, weights, closure/periodicity, clamping, and valid parameter domain.
+- [x] Implement stable basis, derivative, knot-span, endpoint, and rational evaluation in Curve Core.
+- [x] Add selection modes for curve, segment/span, control point, knot, and weight handle.
+- [x] Render and edit control polygons, control points, knot markers, weighted influence, and De Casteljau/De Boor construction evidence.
+- [x] Support Bézier subdivision, degree elevation/reduction where valid, B-spline knot insertion/removal, and NURBS knot/weight editing.
+- [x] Add endpoint position/tangent/curvature constraints and C0/C1/C2/G1/G2 join tools.
+- [x] Keep mathematical definition separate from display tessellation and store edits in revisioned history with undo/redo.
+- [x] Include a canonical rational NURBS circle fixture and round-trip serialization tests.
+
+Validation:
+
+- The focused Curves suite passes 54 tests across 9 files, including exact spline shape-preservation, rational-circle, continuity, revision history, and serialization fixtures.
+- The renderer TypeScript project and production renderer build pass.
+- The complete Curves Electron suite passes control-point and weight editing, undo/redo revisions, construction evidence, derived workflows, diagnostics, and canonical persistence.
+- Responsive smoke coverage passes phone portrait, phone landscape, tablet, and desktop layouts.
+- Basis, knot, weight, closure, continuity, and serialization conventions are recorded in `docs/curves-spline-conventions.md`.
 
 Acceptance: editing a control point, knot, degree, or weight produces a new Curve revision; evaluation and continuity remain mathematically valid; the control representation round-trips without being reduced to samples.
 
@@ -650,7 +658,7 @@ Remaining:
 - [ ] Document the canonical workflow: define/receive → sample → analyze → diagnose/edit/derive → Surface or CurveMesh → source return.
 - [ ] Document supported representations, exact-versus-sampled behavior, parameter/orientation/periodicity semantics, and `t ↔ s` behavior.
 - [ ] Freeze derivative, curvature, torsion, Frenet/Bishop, planar-sign, polyline, and curve-on-surface conventions.
-- [ ] Document Bézier/B-spline/NURBS basis, knot, weight, closure, continuity, and serialization conventions.
+- [x] Document Bézier/B-spline/NURBS basis, knot, weight, closure, continuity, and serialization conventions. (`docs/curves-spline-conventions.md`)
 - [ ] Document source/dependency identity, stale-state rules, selection correspondence, result lifecycle, and reproducible exports.
 - [ ] Document Math3D/VTK/CGAL responsibilities and missing-backend fallback.
 - [ ] Add a Curves QA checklist, acceptance-command reference, troubleshooting notes, and desktop/tablet/phone screenshot baseline.
