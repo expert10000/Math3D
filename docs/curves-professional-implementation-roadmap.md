@@ -88,9 +88,9 @@ Baseline verification at this assessment:
 | 6 — Diagnostics, continuity, and intersections | Planned | Basic core validation and exact events | Typed severity model, C/G continuity, robust intersections, issue navigation |
 | 7 — Dependency-aware derived curves | Complete (`02e0f37`) | Derived preset category, Geometry construction recipes, canonical operations, dependency lifecycle, and explicit branches | None for Commit 7 |
 | 8 — Bézier, B-spline, and NURBS editing | Complete | Canonical spline definitions/evaluation, CAD edits, construction evidence, continuity tools, and revision history | None for Commit 8 |
-| 9 — Geometry and Surface interoperability | Complete | Canonical exchange envelopes preserve evaluators or labeled samples, identity, chart correspondence, stale navigation, and Curve-to-Surface requests | None for Commit 9 |
-| 10 — Provenance-linked CurveMesh workflows | Complete | Six frame-aware CurveMesh variants, revisioned lineage/mapping/lifecycle, live and baked Mesh handoff, and explicit Mesh extraction/fitting workflows | None for Commit 10 |
-| 11 — Optional VTK and CGAL adapters | Planned | Existing backend workers and Mesh operation registry | Curve operation adapters, capabilities, fallback, parity, provenance |
+| 9 — Geometry and Surface interoperability | Complete (`4d5f78c`) | Canonical exchange envelopes preserve evaluators or labeled samples, identity, chart correspondence, stale navigation, and Curve-to-Surface requests | None for Commit 9 |
+| 10 — Provenance-linked CurveMesh workflows | Complete (`c6f974e`) | Six frame-aware CurveMesh variants, revisioned lineage/mapping/lifecycle, live and baked Mesh handoff, and explicit Mesh extraction/fitting workflows | None for Commit 10 |
+| 11 — Optional VTK and CGAL adapters | Complete | Capability registry, native authority, injectable optional adapters, deterministic fallback, parity, provenance, and Backend inspection | Curve-specific VTK/CGAL process bridges remain optional and unregistered in this installation |
 | 12 — Workers, dependency cache, and performance | Planned | Shared worker/result patterns in Geometry/Surface/Mesh | Curve jobs, cancellation, progressive publication, budgets, memory controls |
 | 13 — Result lifecycle and analysis presets | Planned | Shared saved-result patterns and Surface layer presets | Curve result cards, visibility, save/compare/export, useful layered presets |
 | 14 — Regression matrix and performance gates | Planned | Exact fixtures and repository-wide E2E infrastructure | Canonical/pathological matrix, cross-module journeys, tolerances, profiles |
@@ -434,7 +434,7 @@ Acceptance: pathological fixtures produce typed, reproducible diagnostics; click
 
 Planned message: `feat(curves): add dependency-aware derived curve operations`
 
-**Status: implemented.**
+**Status: implemented and validated (`4d5f78c`).**
 
 Already implemented:
 
@@ -529,7 +529,7 @@ Acceptance: exact definitions and sampled fallbacks remain visibly distinct, and
 
 Planned message: `feat(curve-mesh): add provenance-linked curve mesh workflows`
 
-**Status: implemented and validated.**
+**Status: implemented and validated (`c6f974e`).**
 
 Already implemented:
 
@@ -561,7 +561,7 @@ Acceptance: Curve → Mesh and Mesh → Curve round trips preserve lineage, mapp
 
 Planned message: `feat(curves): add optional VTK and CGAL engine adapters`
 
-**Status: planned.**
+**Status: implemented and validated.**
 
 Already implemented:
 
@@ -571,14 +571,21 @@ Already implemented:
 
 Remaining:
 
-- [ ] Add capability-based adapters rather than direct backend calls from React components.
-- [ ] Evaluate VTK for resampling, smoothing, spline filters, tube/ribbon generation, and conversion to visualization datasets.
-- [ ] Evaluate CGAL for robust 2D intersections, polyline simplification, arrangements, projection/intersection operations, and feature/polyline processing.
-- [ ] Keep exact/analytic operations on the Math3D kernel unless an explicit backend comparison is requested.
-- [ ] Record backend name/version, operation, input/output count, tolerance, runtime, warnings, validation, and fallback.
-- [ ] Define missing-backend and unsupported-capability behavior without disabling the Curves module.
-- [ ] Add native-versus-backend parity checks and preserve source/selection correspondence.
-- [ ] Keep advanced backend parameters in Services or Mesh Analysis where they belong; ordinary Curves workflows choose a safe implementation automatically.
+- [x] Add capability-based adapters rather than direct backend calls from React components.
+- [x] Evaluate VTK for resampling, smoothing, spline filters, tube/ribbon generation, and conversion to visualization datasets.
+- [x] Evaluate CGAL for robust 2D intersections, polyline simplification, arrangements, projection/intersection operations, and feature/polyline processing.
+- [x] Keep exact/analytic operations on the Math3D kernel unless an explicit backend comparison is requested.
+- [x] Record backend name/version, operation, input/output count, tolerance, runtime, warnings, validation, and fallback.
+- [x] Define missing-backend and unsupported-capability behavior without disabling the Curves module.
+- [x] Add native-versus-backend parity checks and preserve source/selection correspondence.
+- [x] Keep advanced backend parameters in Services or Mesh Analysis where they belong; ordinary Curves workflows choose a safe implementation automatically.
+
+Validation for Commit 11:
+
+- All **66 Curve Analysis tests across 11 files** pass. Adapter tests cover capability discovery, missing and unsupported engines, exact native authority, injected VTK/CGAL success and failure, deterministic fallback, parity, mapping, and metadata.
+- The renderer TypeScript project and production renderer build pass.
+- The Electron Curves backend journey verifies visible optional-engine availability, native authority, VTK/CGAL fallback details, provenance, validation, and the placement of advanced controls outside ordinary Curves flows.
+- The bundled Python worker smoke passes ping, preview, and VTK clean/normals transform. Curve-specific VTK/CGAL process endpoints remain intentionally optional; this installation reports them unavailable through the Curve adapter registry while native Curve workflows continue.
 
 Acceptance: Curves works fully without VTK/CGAL; supported adapters are optional, inspectable, parity-tested accelerators or robust-operation providers with deterministic fallback.
 

@@ -7,6 +7,31 @@ import {
 } from "./helpers/surfaceAppHarness";
 
 test.describe("Curves canonical workspace", () => {
+  test("inspects optional VTK and CGAL capabilities with deterministic native fallback", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await resetSurfaceAppState(ctx.page);
+      await ctx.page.getByRole("button", { name: "Curves", exact: true }).first().click();
+      await ctx.page.getByTestId("curve-inspector-tab-backend").click();
+      const panel = ctx.page.getByTestId("curve-backend-panel");
+      await expect(panel).toBeVisible();
+      await expect(ctx.page.getByTestId("curve-backend-availability")).toContainText("math3d-native · available · curve-core-v1");
+      await expect(ctx.page.getByTestId("curve-backend-availability")).toContainText("vtk · optional / unavailable · not-installed");
+      await expect(ctx.page.getByTestId("curve-backend-availability")).toContainText("cgal · optional / unavailable · not-installed");
+      await expect(ctx.page.getByTestId("curve-backend-authority")).toContainText("Math3D Curve Core authoritative");
+      await ctx.page.getByTestId("curve-backend-vtk-compare").click();
+      await expect(ctx.page.getByTestId("curve-backend-execution")).toContainText("fallback · math3d-native curve-core-v1");
+      await expect(ctx.page.getByTestId("curve-backend-execution")).toContainText("mapping complete");
+      await ctx.page.getByTestId("curve-backend-cgal-compare").click();
+      await expect(ctx.page.getByTestId("curve-backend-execution")).toContainText("polyline-simplify");
+      await expect(ctx.page.getByTestId("curve-backend-execution")).toContainText("Used deterministic Math3D native fallback");
+      await expect(panel).toContainText("Advanced engine parameters remain in Services or Mesh Analysis");
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
   test("creates provenance-linked CurveMesh variants and round-trips Mesh boundaries into Curves", async () => {
     let ctx: LaunchedSurfaceApp | null = null;
     try {

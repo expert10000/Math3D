@@ -625,6 +625,7 @@ import { DerivedCurvePanel } from "./components/DerivedCurvePanel";
 import { SplineCurveEditor, type SplineVisualState } from "./components/SplineCurveEditor";
 import { CurveInteroperabilityPanel } from "./components/CurveInteroperabilityPanel";
 import { CurveMeshPanel } from "./components/CurveMeshPanel";
+import { CurveBackendPanel } from "./components/CurveBackendPanel";
 import { curveMeshToSurfaceMesh } from "./curveAnalysis/curveMesh";
 import {
   analyzeCurveDifferentialGeometry,
@@ -87141,6 +87142,7 @@ case "mobius":
                         <div><strong>{activeCurveDefinitionResult?.backend ?? "Curve definition adapter"}</strong></div>
                         <div>Method: {activeCurveDefinitionMethod}</div>
                         <div>Units: {activeCanonicalCurveDefinition.units.position} / {activeCanonicalCurveDefinition.units.parameter}</div>
+                        <CurveBackendPanel definition={activeCanonicalCurveDefinition} points={curveRenderState.samplePoints} />
                       </>
                     )}
                     {curveInspectorTab === "history" && (
