@@ -626,6 +626,7 @@ import { SplineCurveEditor, type SplineVisualState } from "./components/SplineCu
 import { CurveInteroperabilityPanel } from "./components/CurveInteroperabilityPanel";
 import { CurveMeshPanel } from "./components/CurveMeshPanel";
 import { CurveBackendPanel } from "./components/CurveBackendPanel";
+import { CurveWorkerPanel } from "./components/CurveWorkerPanel";
 import { curveMeshToSurfaceMesh } from "./curveAnalysis/curveMesh";
 import {
   analyzeCurveDifferentialGeometry,
@@ -87127,6 +87128,7 @@ case "mobius":
                         <div>{curveRenderState.arcLengthTableEntries} arc-length entries</div>
                         <div>Sampled length: {fmt(curveRenderState.sampledArcLength)}</div>
                         {curveRenderState.samplingStatistics && <div>{curveRenderState.samplingStatistics.evaluationCount}/{curveRenderState.samplingStatistics.evaluationBudget} evaluations · {curveRenderState.samplingStatistics.subdivisionCount} subdivisions</div>}
+                        <CurveWorkerPanel definition={activeCanonicalCurveDefinition} points={curveRenderState.samplePoints} />
                       </>
                     )}
                     {curveInspectorTab === "dependencies" && (

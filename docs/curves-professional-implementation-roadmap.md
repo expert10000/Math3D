@@ -90,8 +90,8 @@ Baseline verification at this assessment:
 | 8 — Bézier, B-spline, and NURBS editing | Complete | Canonical spline definitions/evaluation, CAD edits, construction evidence, continuity tools, and revision history | None for Commit 8 |
 | 9 — Geometry and Surface interoperability | Complete (`4d5f78c`) | Canonical exchange envelopes preserve evaluators or labeled samples, identity, chart correspondence, stale navigation, and Curve-to-Surface requests | None for Commit 9 |
 | 10 — Provenance-linked CurveMesh workflows | Complete (`c6f974e`) | Six frame-aware CurveMesh variants, revisioned lineage/mapping/lifecycle, live and baked Mesh handoff, and explicit Mesh extraction/fitting workflows | None for Commit 10 |
-| 11 — Optional VTK and CGAL adapters | Complete | Capability registry, native authority, injectable optional adapters, deterministic fallback, parity, provenance, and Backend inspection | Curve-specific VTK/CGAL process bridges remain optional and unregistered in this installation |
-| 12 — Workers, dependency cache, and performance | Planned | Shared worker/result patterns in Geometry/Surface/Mesh | Curve jobs, cancellation, progressive publication, budgets, memory controls |
+| 11 — Optional VTK and CGAL adapters | Complete (`83865be`) | Capability registry, native authority, injectable optional adapters, deterministic fallback, parity, provenance, and Backend inspection | Curve-specific VTK/CGAL process bridges remain optional and unregistered in this installation |
+| 12 — Workers, dependency cache, and performance | Complete | Browser Worker jobs, deterministic revision/dependency cache, cancellation/progress/retry guards, reviewed performance budgets, and bounded outputs | None for Commit 12 |
 | 13 — Result lifecycle and analysis presets | Planned | Shared saved-result patterns and Surface layer presets | Curve result cards, visibility, save/compare/export, useful layered presets |
 | 14 — Regression matrix and performance gates | Planned | Exact fixtures and repository-wide E2E infrastructure | Canonical/pathological matrix, cross-module journeys, tolerances, profiles |
 | 15 — Documentation and professional workflow freeze | Planned | Geometry/Surface/Mesh freeze precedents | User workflow, conventions, engine ownership, QA checklist, screenshot baseline |
@@ -561,7 +561,7 @@ Acceptance: Curve → Mesh and Mesh → Curve round trips preserve lineage, mapp
 
 Planned message: `feat(curves): add optional VTK and CGAL engine adapters`
 
-**Status: implemented and validated.**
+**Status: implemented and validated (`83865be`).**
 
 Already implemented:
 
@@ -593,7 +593,7 @@ Acceptance: Curves works fully without VTK/CGAL; supported adapters are optional
 
 Planned message: `perf(curves): workerize heavy computations and cache curve results`
 
-**Status: planned.**
+**Status: implemented and validated.**
 
 Already implemented:
 
@@ -602,14 +602,22 @@ Already implemented:
 
 Remaining:
 
-- [ ] Move large sampling, differential fields, diagnostics, intersections, spline fitting, and heavy derived operations off the UI thread.
-- [ ] Define cache keys from Curve identity/revision, operation, parameters, tolerance, dependencies, and backend version.
-- [ ] Reuse shared samples and derivative fields across plots, probes, diagnostics, derived curves, and CurveMesh generation.
-- [ ] Add request IDs, cancellation, revision guards, stale-result rejection, progress, retry, timeout, and failure details.
-- [ ] Publish coarse progressive previews only when they are labeled and cannot overwrite a later full result.
-- [ ] Add reviewed budgets for 1k, 10k, and 100k samples plus high-curvature and many-control-point cases.
-- [ ] Bound plot/render decimation, glyph counts, serialized state, cache memory, and worker transfers.
-- [ ] Add memory/profile checks for repeated module switching, preset changes, edits, recomputation, and backend failure.
+- [x] Move large sampling, differential fields, diagnostics, intersections, spline fitting, and heavy derived operations off the UI thread.
+- [x] Define cache keys from Curve identity/revision, operation, parameters, tolerance, dependencies, and backend version.
+- [x] Reuse shared samples and derivative fields across plots, probes, diagnostics, derived curves, and CurveMesh generation.
+- [x] Add request IDs, cancellation, revision guards, stale-result rejection, progress, retry, timeout, and failure details.
+- [x] Publish coarse progressive previews only when they are labeled and cannot overwrite a later full result.
+- [x] Add reviewed budgets for 1k, 10k, and 100k samples plus high-curvature and many-control-point cases.
+- [x] Bound plot/render decimation, glyph counts, serialized state, cache memory, and worker transfers.
+- [x] Add memory/profile checks for repeated module switching, preset changes, edits, recomputation, and backend failure.
+
+Validation for Commit 12:
+
+- All **75 Curve Analysis tests across 13 files** pass. The worker/coordinator suite covers all six job kinds, deterministic cache invalidation and reuse, shared consumers, cancellation, timeout, retry details, stale and superseded-result rejection, progressive labels, transfer limits, and output decimation.
+- The performance profile passes reviewed 1k, 10k, and 100k sampling fixtures, a 10k-point high-curvature differential fixture, a 25k-control-point fitting fixture, and repeated module/preset/edit/backend-failure cache churn under the memory cap.
+- The complete repository TypeScript check and production renderer build pass; the build emits a separate `curveComputationWorker` asset.
+- All **7 Electron Curves journeys** pass, including real Worker progress, protected full-result publication, and an exact dependency-cache hit.
+- Responsive smoke passes phone portrait, phone landscape, tablet, and desktop layouts.
 
 Acceptance: heavy Curve work remains responsive and cancellable; cached work is reused only for the exact dependency fingerprint; stale worker results never replace a newer Curve revision.
 

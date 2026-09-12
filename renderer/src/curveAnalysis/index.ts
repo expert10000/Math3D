@@ -8,3 +8,5 @@ export * from "./diagnostics";
 export * from "./curveInteroperability";
 export * from "./curveMesh";
 export * from "./curveEngines";
+export * from "./curveComputation";
+export * from "./curveWorkerCoordinator";

@@ -7,6 +7,30 @@ import {
 } from "./helpers/surfaceAppHarness";
 
 test.describe("Curves canonical workspace", () => {
+  test("runs curve work in a revision-guarded Worker and reuses the dependency cache", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await resetSurfaceAppState(ctx.page);
+      await ctx.page.getByRole("button", { name: "Curves", exact: true }).first().click();
+      await ctx.page.getByTestId("curve-inspector-tab-sampling").click();
+      const panel = ctx.page.getByTestId("curve-worker-panel");
+      await expect(panel).toBeVisible();
+      await ctx.page.getByTestId("curve-worker-operation").selectOption("sampling");
+      await ctx.page.getByTestId("curve-worker-workload").selectOption("1k");
+      await ctx.page.getByTestId("curve-worker-run").click();
+      await expect(ctx.page.getByTestId("curve-worker-lifecycle")).toContainText("ready", { timeout: 15_000 });
+      await expect(ctx.page.getByTestId("curve-worker-lifecycle")).toContainText("Progressive result: coarse-preview");
+      await expect(ctx.page.getByTestId("curve-worker-lifecycle")).toContainText(/3,?000 values/);
+      await expect(ctx.page.getByTestId("curve-worker-cache")).toContainText("Cache: 1 artifacts");
+      await ctx.page.getByTestId("curve-worker-run").click();
+      await expect(ctx.page.getByTestId("curve-worker-lifecycle")).toContainText("cached");
+      await expect(ctx.page.getByTestId("curve-worker-cache")).toContainText("render 4096 · plots 2048 · glyphs 512");
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
   test("inspects optional VTK and CGAL capabilities with deterministic native fallback", async () => {
     let ctx: LaunchedSurfaceApp | null = null;
     try {
