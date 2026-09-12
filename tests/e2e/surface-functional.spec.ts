@@ -367,4 +367,54 @@ test.describe("Surface functional flow", () => {
       await closeSurfaceApp(ctx);
     }
   });
+
+  test("Test 12 — Surface Analysis layer presets build reusable result stacks", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await openParametricSurface(ctx.page);
+      await ctx.page.getByTestId("surfaces-left-tab-analysis").click();
+      const presets = ctx.page.getByTestId("surface-analysis-presets");
+      await expect(presets).toBeVisible();
+      await expect(presets.getByRole("button")).toHaveCount(5);
+
+      const curvatureAtlas = ctx.page.getByTestId("surface-analysis-preset-curvature-atlas");
+      await curvatureAtlas.click();
+      await expect(ctx.page.getByTestId("surface-analysis-preset-status")).toContainText("Curvature atlas applied", { timeout: 10_000 });
+      await expect(ctx.page.getByLabel("Curvature scalar field")).toHaveValue("K");
+      await expect(ctx.page.getByLabel("Curvature range")).toHaveValue("symmetric");
+
+      const localFrame = ctx.page.getByTestId("surface-analysis-preset-local-frame");
+      await localFrame.click();
+      await expect(ctx.page.getByTestId("surface-analysis-preset-status")).toContainText("Local frame applied");
+      await ctx.page.getByTestId("surface-analysis-inspector-probe").click();
+      await expect(ctx.page.getByTestId("surface-local-probe-result")).toBeVisible();
+
+      const principalFlow = ctx.page.getByTestId("surface-analysis-preset-principal-flow");
+      await principalFlow.click();
+      await expect(principalFlow).toHaveAttribute("aria-pressed", "true");
+      await expect(ctx.page.getByTestId("surface-analysis-preset-status")).toContainText("Principal flow applied", { timeout: 10_000 });
+      await expect(ctx.page.getByTestId("surface-computation-surface-curves")).toHaveAttribute("aria-pressed", "true");
+      await expect(ctx.page.getByTestId("surface-result-layers")).toContainText("5 layers");
+      await expect(ctx.page.getByTestId("surface-result-layer-principal-k1")).toBeVisible();
+      await expect(ctx.page.getByTestId("surface-result-layer-principal-k2")).toBeVisible();
+
+      const featureMap = ctx.page.getByTestId("surface-analysis-preset-feature-map");
+      await featureMap.click();
+      await expect(ctx.page.getByTestId("surface-analysis-preset-status")).toContainText("Feature map applied");
+      await expect(ctx.page.getByTestId("surface-result-layers")).toContainText("6 layers");
+      await expect(ctx.page.getByTestId("surface-result-layer-ridge")).toBeVisible();
+      await expect(ctx.page.getByTestId("surface-result-layer-valley")).toBeVisible();
+
+      const chartSeams = ctx.page.getByTestId("surface-analysis-preset-chart-seams");
+      await chartSeams.click();
+      await expect(chartSeams).toHaveAttribute("aria-pressed", "true");
+      await expect(ctx.page.getByTestId("surface-analysis-preset-status")).toContainText("Chart + seams applied");
+      await expect(ctx.page.getByTestId("surface-computation-chart-diagnostics")).toHaveAttribute("aria-pressed", "true");
+      await expect(ctx.page.getByTestId("surface-chart-result")).toBeVisible();
+      await expect(ctx.page.getByTestId("error-banner")).toHaveCount(0);
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
 });

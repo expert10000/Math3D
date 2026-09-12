@@ -34,6 +34,18 @@ Analytic, automatic-differentiation, numerical, sampled, mesh-approximation, VTK
 - **Remesh** and **Robust Mesh** route to the shared Mesh Operations registry. Advanced VTK/CGAL parameters and logs are not duplicated in Surfaces.
 - Missing values and unavailable backends remain explicit. No fallback may be relabeled as analytic, VTK, or CGAL.
 
+## Built-in layer presets
+
+Surface → Analysis starts each preset on the current Surface definition and revision; it never replaces the source object. A Surface change clears the active preset badge so an earlier stack cannot appear current.
+
+- **Curvature atlas** — signed Gaussian-curvature field and principal directions.
+- **Local frame** — mean-curvature field, local probe, normal, tangent plane, and principal frame.
+- **Principal flow** — first-principal-curvature field, principal directions, and both principal-line result layers.
+- **Feature map** — signed curvature plus ridge, valley, umbilic, and parabolic result layers.
+- **Chart + seams** — parameter grid, boundary, seam, orientation-flip, and degeneracy diagnostics.
+
+Presets only orchestrate the canonical computations, display controls, Inspector results, and result-layer store described below. Each generated layer keeps its Surface identity, revision, method, warnings, visibility, and lifecycle actions; there is no separate preset result system.
+
 ## Accepted journeys
 
 1. Define or open a Surface, analyze Curvature, inspect and pin a local probe, then save/export the result.

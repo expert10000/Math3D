@@ -13,6 +13,7 @@ import type {
 import type { DerivedSurfaceMeshRecord } from "../surfaceAnalysis/derivedSurfaceMesh";
 import type { SurfaceAnalysisResult } from "../surfaceAnalysis/infrastructure";
 import type { SurfaceAnalysisExecutionState } from "../surfaceAnalysis/scheduler";
+import { SURFACE_ANALYSIS_PRESETS, type SurfaceAnalysisPresetLayer } from "../surfaceAnalysis/presets";
 import { SurfaceAnalysisContractCard } from "./SurfaceAnalysisContractCard";
 
 export type SurfaceComputationId =
@@ -36,6 +37,21 @@ export const SURFACE_COMPUTATION_CHOICES: ReadonlyArray<{
   { id: "chart-diagnostics", label: "Charts", description: "Metric determinant, orientation and distortion" },
 ];
 
+const SURFACE_PRESET_LAYER_LABELS: Readonly<Record<SurfaceAnalysisPresetLayer, string>> = {
+  "curvature-field": "Curvature",
+  "principal-directions": "Directions",
+  "local-probe": "Probe",
+  "tangent-frame": "Tangent frame",
+  "principal-lines": "Principal lines",
+  ridges: "Ridges",
+  valleys: "Valleys",
+  umbilics: "Umbilics",
+  "parabolic-set": "Parabolic set",
+  "chart-grid": "Chart grid",
+  seams: "Seams",
+  orientation: "Orientation",
+};
+
 export function SurfaceAnalysisComputationPanel({
   definition,
   selected,
@@ -58,6 +74,9 @@ export function SurfaceAnalysisComputationPanel({
   onCollectFeatureLayers,
   chartState,
   onComputeChart,
+  activePresetId,
+  presetStatus,
+  onApplyPreset,
 }: {
   definition: CanonicalSurfaceDefinition;
   selected: SurfaceComputationId;
@@ -107,6 +126,9 @@ export function SurfaceAnalysisComputationPanel({
   onCollectFeatureLayers?: () => void;
   chartState?: "unavailable" | "ready" | "computed";
   onComputeChart?: () => void;
+  activePresetId?: string | null;
+  presetStatus?: string;
+  onApplyPreset?: (id: string) => void | Promise<void>;
 }) {
   return (
     <section data-testid="surface-analysis-computation-panel" style={{ display: "grid", gap: 9 }}>
@@ -116,6 +138,35 @@ export function SurfaceAnalysisComputationPanel({
           Target: {definition.identity.label} · revision {definition.identity.surfaceRevision}
         </div>
       </div>
+      <section data-testid="surface-analysis-presets" style={{ border: "1px solid #c7d7ee", borderRadius: 8, background: "#f8fbff", padding: 8, display: "grid", gap: 6 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+          <strong style={{ fontSize: 10.5 }}>Layer presets</strong>
+          <span style={{ color: "#64748b", fontSize: 9 }}>Current Surface</span>
+        </div>
+        <div style={{ color: "#64748b", fontSize: 9.5 }}>Build a useful analysis stack without replacing the Surface definition.</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 5 }}>
+          {SURFACE_ANALYSIS_PRESETS.map((preset) => {
+            const active = preset.id === activePresetId;
+            return <button
+              key={preset.id}
+              type="button"
+              data-testid={`surface-analysis-preset-${preset.id}`}
+              aria-pressed={active}
+              onClick={() => void onApplyPreset?.(preset.id)}
+              disabled={!onApplyPreset}
+              title={preset.description}
+              style={{ border: `1px solid ${active ? "#60a5fa" : "#dbe4f0"}`, borderRadius: 7, background: active ? "#eaf3ff" : "#fff", padding: "6px 7px", display: "grid", gap: 4, textAlign: "left", color: "#0f172a" }}
+            >
+              <strong style={{ fontSize: 10 }}>{preset.label}</strong>
+              <span style={{ color: "#64748b", fontSize: 8.75, lineHeight: 1.25 }}>{preset.description}</span>
+              <span style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                {preset.layers.map((layer) => <span key={`${preset.id}-${layer}`} style={{ borderRadius: 999, background: active ? "#dbeafe" : "#eef2f7", padding: "1px 4px", color: "#475467", fontSize: 8 }}>{SURFACE_PRESET_LAYER_LABELS[layer]}</span>)}
+              </span>
+            </button>;
+          })}
+        </div>
+        {presetStatus && <div data-testid="surface-analysis-preset-status" role="status" style={{ color: "#475467", fontSize: 9.5 }}>{presetStatus}</div>}
+      </section>
       {surfaceSourceHandoff && (
         <section data-testid="surface-mesh-source-handoff" style={{ border: "1px solid #86b7fe", borderRadius: 8, background: "#eff6ff", padding: 8, display: "grid", gap: 5 }}>
           <strong style={{ fontSize: 10.5 }}>Surface source</strong>
@@ -306,6 +357,7 @@ type InspectorTab = "result" | "probe" | "provenance" | "history";
 export function SurfaceAnalysisInspectorPanel({
   definition,
   result,
+  preferredTab,
   historyCount,
   savedResultCount,
   probeRows,
@@ -317,6 +369,7 @@ export function SurfaceAnalysisInspectorPanel({
 }: {
   definition: CanonicalSurfaceDefinition;
   result: SurfaceAnalysisResult<SurfaceAnalysisPayload> | null;
+  preferredTab?: "result" | "probe";
   historyCount: number;
   savedResultCount: number;
   probeRows: ReadonlyArray<{ label: string; value: string }>;
@@ -369,6 +422,9 @@ export function SurfaceAnalysisInspectorPanel({
   useEffect(() => {
     if (result?.payload?.data.kind === "local-probe") setTab("probe");
   }, [result?.payload?.data.kind, result?.resultVersion]);
+  useEffect(() => {
+    if (preferredTab) setTab(preferredTab);
+  }, [preferredTab]);
   return (
     <section data-testid="surface-analysis-inspector" style={{ display: "grid", gap: 8, marginBottom: 10 }}>
       <SurfaceAnalysisContractCard definition={definition} result={result} historyCount={historyCount} />
