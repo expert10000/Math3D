@@ -12,6 +12,7 @@ import type {
 } from "../surfaceAnalysis/contracts";
 import type { DerivedSurfaceMeshRecord } from "../surfaceAnalysis/derivedSurfaceMesh";
 import type { SurfaceAnalysisResult } from "../surfaceAnalysis/infrastructure";
+import type { SurfaceAnalysisExecutionState } from "../surfaceAnalysis/scheduler";
 import { SurfaceAnalysisContractCard } from "./SurfaceAnalysisContractCard";
 
 export type SurfaceComputationId =
@@ -46,7 +47,9 @@ export function SurfaceAnalysisComputationPanel({
   onOpenDerivedMesh,
   surfaceSourceHandoff,
   curvatureState,
+  curvatureExecution,
   onComputeCurvature,
+  onCancelCurvature,
   probeState,
   onProbeCurrentSample,
   curveLayerState,
@@ -93,7 +96,9 @@ export function SurfaceAnalysisComputationPanel({
     onReturn: () => void;
   } | null;
   curvatureState?: "unavailable" | "ready" | "computed";
+  curvatureExecution?: "idle" | SurfaceAnalysisExecutionState;
   onComputeCurvature?: () => void;
+  onCancelCurvature?: () => void;
   probeState?: "unavailable" | "ready" | "active";
   onProbeCurrentSample?: () => void;
   curveLayerState?: "ready" | "collected";
@@ -124,9 +129,13 @@ export function SurfaceAnalysisComputationPanel({
         <section data-testid="surface-curvature-compute" style={{ border: "1px solid #bfdbfe", borderRadius: 8, background: "#eff6ff", padding: 8, display: "grid", gap: 6 }}>
           <strong style={{ fontSize: 10.5 }}>Canonical Curvature result</strong>
           <span style={{ color: "#475467", fontSize: 9.5 }}>Publishes K, H, k1, k2, shape index, curvedness, principal directions, masks, regions, statistics and provenance together.</span>
-          <button type="button" data-testid="surface-curvature-compute-button" disabled={curvatureState === "unavailable"} onClick={onComputeCurvature}>
-            {curvatureState === "computed" ? "Recompute Curvature" : curvatureState === "unavailable" ? "Curvature source unavailable" : "Compute Curvature"}
-          </button>
+          <span data-testid="surface-curvature-execution-state" style={{ color: curvatureExecution === "failed" ? "#b42318" : "#475467", fontSize: 9.5 }}>Execution: {curvatureExecution ?? "idle"}</span>
+          <div style={{ display: "grid", gridTemplateColumns: curvatureExecution === "running" || curvatureExecution === "progressive" || curvatureExecution === "queued" ? "1fr 1fr" : "1fr", gap: 4 }}>
+            <button type="button" data-testid="surface-curvature-compute-button" disabled={curvatureState === "unavailable" || curvatureExecution === "running" || curvatureExecution === "progressive" || curvatureExecution === "queued"} onClick={onComputeCurvature}>
+              {curvatureExecution === "failed" || curvatureExecution === "cancelled" ? "Retry Curvature" : curvatureState === "computed" ? "Recompute Curvature" : curvatureState === "unavailable" ? "Curvature source unavailable" : "Compute Curvature"}
+            </button>
+            {(curvatureExecution === "running" || curvatureExecution === "progressive" || curvatureExecution === "queued") && <button type="button" data-testid="surface-curvature-cancel-button" onClick={onCancelCurvature}>Cancel</button>}
+          </div>
         </section>
       )}
       {selected === "surface-probe" && (

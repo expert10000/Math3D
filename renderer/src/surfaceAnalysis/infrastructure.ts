@@ -257,7 +257,7 @@ export const publishSurfaceAnalysisResult = (args: {
   store: SurfaceAnalysisResultStore;
   registry: SurfaceAnalysisRegistry;
   request: SurfaceAnalysisRequest;
-  state?: "queued" | "running" | "ready" | "cancelled" | "deferred" | "error";
+  state?: "queued" | "running" | "ready" | "cancelled" | "deferred" | "stale" | "error";
   payload?: SurfaceAnalysisPayload | null;
   progress?: number | null;
   error?: string | null;

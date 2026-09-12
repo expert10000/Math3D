@@ -285,6 +285,13 @@ import {
   serializeSurfaceAnalysisWorkspace,
 } from "./surfaceAnalysis/persistence";
 import { createSurfaceCurvatureField, createSurfaceCurvaturePayload, surfaceCurvatureRegionIndices } from "./surfaceAnalysis/surfaceCurvature";
+import {
+  SurfaceAnalysisScheduler,
+  createSurfaceAnalysisCacheKey,
+  shouldWorkerizeSurfaceAnalysis,
+  type SurfaceAnalysisExecutionState,
+} from "./surfaceAnalysis/scheduler";
+import type { SurfaceAnalysisWorkerMessage } from "./workers/surfaceAnalysisWorkerTypes";
 import { compareSurfaceLocalProbes, createSurfaceLocalProbe, createSurfaceProbePayload } from "./surfaceAnalysis/surfaceProbe";
 import {
   compareSurfaceResultLayers,
@@ -43271,6 +43278,9 @@ const App: React.FC = () => {
   const [surfaceCurvatureVisible, setSurfaceCurvatureVisible] = useState(true);
   const [surfaceCurvatureCompareLabel, setSurfaceCurvatureCompareLabel] = useState("Set a baseline to compare revisions.");
   const surfaceCurvatureCompareBaselineRef = useRef<SurfaceCurvatureFieldPayload | null>(null);
+  const [surfaceCurvatureExecution, setSurfaceCurvatureExecution] = useState<"idle" | SurfaceAnalysisExecutionState>("idle");
+  const surfaceCurvatureSchedulerRef = useRef(new SurfaceAnalysisScheduler<SurfaceCurvatureFieldPayload>());
+  const activeSurfaceCurvatureIdentityRef = useRef("");
   const [surfaceProbeAngleDeg, setSurfaceProbeAngleDeg] = useState(0);
   const [surfaceProbeEvidenceVisible, setSurfaceProbeEvidenceVisible] = useState(true);
   const [surfacePinnedProbes, setSurfacePinnedProbes] = useState<SurfaceLocalProbePayload[]>([]);
@@ -43300,8 +43310,9 @@ const App: React.FC = () => {
   }, [probeEnabled, setProbeEnabled]);
   useEffect(() => {
     if (surfaceViewerKind !== "mesh" || surfacesLeftTab !== "analysis") return;
+    if (surfaceMeshAnalysisHandoff && meshWorkspaceLeftTab === "operations") return;
     if (meshWorkspaceLeftTab !== "analyze") setMeshWorkspaceLeftTab("analyze");
-  }, [meshWorkspaceLeftTab, surfaceViewerKind, surfacesLeftTab]);
+  }, [meshWorkspaceLeftTab, surfaceMeshAnalysisHandoff, surfaceViewerKind, surfacesLeftTab]);
   const prevModeRef = useRef<Mode>(mode);
   const skipSurfacesAutoBrowseOnModeChangeRef = useRef(false);
   const enterSurfacesWorkMode = useCallback(() => {
@@ -48659,17 +48670,29 @@ case "mobius":
     };
   }, [graphCurvatures, surfaceMeshCurvatures, surfaceMeshData?.positions, surfaceSampleSet]);
 
-  const handleComputeSurfaceCurvature = useCallback(() => {
+  activeSurfaceCurvatureIdentityRef.current = activeCanonicalSurfaceDefinition.identity.key;
+  const handleComputeSurfaceCurvature = useCallback(async () => {
     if (!surfaceCurvatureSource) return;
-    const started = performance.now();
     const definition = activeCanonicalSurfaceDefinition;
     const method: SurfaceAnalysisMethod = definition.representation === "mesh-backed" ? "mesh-approximation" : "surface-sampling";
-    const field = createSurfaceCurvatureField(surfaceCurvatureSource, {
+    const options = {
       histogramBins: 16,
       palette: colorPalette,
       rangeMode: surfaceCurvatureRangeMode,
-      percentileRange: [2, 98],
+      percentileRange: [2, 98] as const,
+    };
+    const cacheKey = createSurfaceAnalysisCacheKey({
+      surfaceId: definition.identity.surfaceId,
+      surfaceRevision: definition.identity.surfaceRevision,
+      representation: definition.representation,
+      domain: "surface",
+      samplingResolution: { ...definition.sampling, sampleCount: surfaceCurvatureSource.sampleCount },
+      analysisKind: "curvature",
+      parameters: { histogramBins: 16, classificationTolerance: "scale-aware", directionPolicy: "undefined-at-umbilic-or-uncertain" },
+      method,
+      dependencyRevisions: { "differential-geometry": definition.identity.surfaceRevision },
     });
+    const requestId = `surface-curvature:${definition.identity.key}:${Date.now()}`;
     const dependencyRequest = createSurfaceAnalysisRequest({
       requestId: `surface-differential:${definition.identity.key}`,
       kind: "differential-geometry",
@@ -48687,33 +48710,85 @@ case "mobius":
       units: definition.units,
       orientation: definition.orientation,
       warnings: definition.warnings,
-      data: { kind: "summary", values: { sampleCount: field.sampleCount, validDomainCount: field.validDomainCount, source: "represented Surface" } },
+      data: { kind: "summary", values: { sampleCount: surfaceCurvatureSource.sampleCount, source: "represented Surface" } },
     };
     const request = createSurfaceAnalysisRequest({
-      requestId: `surface-curvature:${definition.identity.key}:${Date.now()}`,
+      requestId,
       kind: "curvature-field",
       definition,
       domain: "surface",
       method,
-      parameters: { histogramBins: 16, classificationTolerance: "scale-aware", directionPolicy: "undefined-at-umbilic-or-uncertain" },
+      parameters: { histogramBins: 16, classificationTolerance: "scale-aware", directionPolicy: "undefined-at-umbilic-or-uncertain", cacheKey },
       requestedOutputs: ["K", "H", "k1", "k2", "d1", "d2", "shapeIndex", "curvedness", "masks", "classifications", "statistics"],
     });
-    const payload = createSurfaceCurvaturePayload({ definition, method, field });
     setSurfaceAnalysisResultStore((store) => {
       let next = store;
       const existingDependency = getSurfaceAnalysisResult(next, definition.identity, "differential-geometry");
       if (existingDependency?.state !== "ready") {
         next = publishSurfaceAnalysisResult({ store: next, registry: surfaceAnalysisRegistryRef.current, request: dependencyRequest, payload: dependencyPayload, backend: "Represented Surface adapter" });
       }
-      return publishSurfaceAnalysisResult({
-        store: next,
-        registry: surfaceAnalysisRegistryRef.current,
-        request,
-        payload,
-        computeTimeMs: performance.now() - started,
-        backend: method === "mesh-approximation" ? "Discrete Surface curvature" : "Surface sampler",
-      });
+      return next;
     });
+    const started = performance.now();
+    const final = await surfaceCurvatureSchedulerRef.current.run({
+      requestId,
+      surfaceRevision: definition.identity.surfaceRevision,
+      cacheKey,
+      publish: (job) => {
+        if (activeSurfaceCurvatureIdentityRef.current !== definition.identity.key) return;
+        setSurfaceCurvatureExecution(job.state);
+        const storeState = job.state === "queued" ? "queued" : job.state === "running" || job.state === "progressive" ? "running" : job.state === "cancelled" ? "cancelled" : job.state === "failed" ? "error" : job.state === "stale" ? "stale" : "ready";
+        const payload = job.value ? createSurfaceCurvaturePayload({ definition, method, field: job.value }) : undefined;
+        setSurfaceAnalysisResultStore((store) => publishSurfaceAnalysisResult({
+          store,
+          registry: surfaceAnalysisRegistryRef.current,
+          request,
+          state: storeState,
+          payload,
+          progress: job.progress,
+          error: job.error,
+          computeTimeMs: job.value ? performance.now() - started : undefined,
+          backend: job.state === "cached" ? "Surface analysis cache" : shouldWorkerizeSurfaceAnalysis("curvature", surfaceCurvatureSource.sampleCount) ? "Surface Analysis Web Worker" : method === "mesh-approximation" ? "Discrete Surface curvature" : "Surface sampler",
+        }));
+      },
+      compute: (signal, progress) => {
+        if (!shouldWorkerizeSurfaceAnalysis("curvature", surfaceCurvatureSource.sampleCount) || typeof Worker === "undefined") {
+          progress(0.25);
+          const field = createSurfaceCurvatureField(surfaceCurvatureSource, options);
+          progress(0.9);
+          return field;
+        }
+        return new Promise<SurfaceCurvatureFieldPayload>((resolve, reject) => {
+          const worker = new Worker(new URL("./workers/surfaceAnalysisWorker.ts", import.meta.url), { type: "module" });
+          const stop = () => { worker.terminate(); reject(new DOMException("Surface analysis cancelled.", "AbortError")); };
+          signal.addEventListener("abort", stop, { once: true });
+          worker.onmessage = (event: MessageEvent<SurfaceAnalysisWorkerMessage>) => {
+            const message = event.data;
+            if (!message || message.requestId !== requestId || message.surfaceRevision !== definition.identity.surfaceRevision) return;
+            if (message.type === "progress") { progress(message.progress); return; }
+            signal.removeEventListener("abort", stop);
+            worker.terminate();
+            if (message.type === "curvature-result") resolve(message.result);
+            else reject(new Error(message.error));
+          };
+          worker.onerror = (event) => { signal.removeEventListener("abort", stop); worker.terminate(); reject(new Error(event.message || "Surface Analysis worker failed.")); };
+          const copy = (values: ArrayLike<number> | undefined) => values ? Float64Array.from(values) : undefined;
+          worker.postMessage({
+            type: "compute-curvature", requestId, surfaceRevision: definition.identity.surfaceRevision,
+            source: {
+              sampleCount: surfaceCurvatureSource.sampleCount,
+              positions: copy(surfaceCurvatureSource.positions),
+              K: copy(surfaceCurvatureSource.K)!, H: copy(surfaceCurvatureSource.H)!, k1: copy(surfaceCurvatureSource.k1)!, k2: copy(surfaceCurvatureSource.k2)!,
+              d1: copy(surfaceCurvatureSource.d1), d2: copy(surfaceCurvatureSource.d2),
+              validityMask: copy(surfaceCurvatureSource.validityMask), uncertaintyMask: copy(surfaceCurvatureSource.uncertaintyMask),
+              directionValidityMask: copy(surfaceCurvatureSource.directionValidityMask),
+            }, options,
+          });
+        });
+      },
+    });
+    const field = final.value;
+    if (!field || activeSurfaceCurvatureIdentityRef.current !== definition.identity.key) return;
     const selectedValues = surfaceCurvatureScalar === "K" ? field.gaussianCurvature
       : surfaceCurvatureScalar === "H" ? field.meanCurvature
         : surfaceCurvatureScalar === "k1" ? Float64Array.from({ length: field.sampleCount }, (_, index) => field.principalCurvatures[index * 2])
@@ -48726,7 +48801,11 @@ case "mobius":
     setRightPanelTab("inspector");
   }, [activeCanonicalSurfaceDefinition, colorPalette, surfaceCurvatureRangeMode, surfaceCurvatureScalar, surfaceCurvatureSource, surfaceCurvatureVisible]);
 
-  const activeSurfaceCurvatureField = activeSurfaceCurvatureResult?.state === "ready" && activeSurfaceCurvatureResult.payload?.data.kind === "curvature"
+  const handleCancelSurfaceCurvature = useCallback(() => {
+    surfaceCurvatureSchedulerRef.current.cancel();
+  }, []);
+
+  const activeSurfaceCurvatureField = activeSurfaceCurvatureResult?.payload?.data.kind === "curvature"
     ? activeSurfaceCurvatureResult.payload.data
     : null;
   const surfaceCurvatureValues = useCallback((field: SurfaceCurvatureFieldPayload, scalar: SurfaceCurvatureScalar): ArrayLike<number> => {
@@ -49499,6 +49578,7 @@ case "mobius":
     if (!activeSurfaceDerivedMeshRecord) return;
     const route = createDerivedSurfaceMeshBackendRoute({ record: activeSurfaceDerivedMeshRecord, workflow, sourceRepresentation: activeCanonicalSurfaceDefinition.representation });
     openDerivedSurfaceMesh(activeSurfaceDerivedMeshRecord, true);
+    setSurfacesLeftTab("scene");
     setMeshWorkspaceLeftTab(route.panel);
     focusMeshOperationRow(route.operation);
     setSurfaceDerivedMeshStatus(`${workflow === "remesh" ? "Remesh" : "Robust Mesh"} opened in the shared Mesh Analysis backend workflow. Source revision ${route.sourceRevision} remains attached; run and inspect detailed parameters, validation, warnings, timing, and logs there.`);
@@ -79585,7 +79665,9 @@ case "mobius":
                     configurationOpen={surfaceLegacyAnalysisOpen}
                     onOpenConfiguration={() => setSurfaceLegacyAnalysisOpen(true)}
                     curvatureState={!surfaceCurvatureSource ? "unavailable" : activeSurfaceCurvatureField ? "computed" : "ready"}
+                    curvatureExecution={surfaceCurvatureExecution}
                     onComputeCurvature={handleComputeSurfaceCurvature}
+                    onCancelCurvature={handleCancelSurfaceCurvature}
                     probeState={!surfaceCurvatureSource ? "unavailable" : canonicalSurfaceProbe ? "active" : "ready"}
                     onProbeCurrentSample={handleProbeCurrentSurfaceSample}
                     curveLayerState={activeSurfaceCurvesResult?.state === "ready" ? "collected" : "ready"}

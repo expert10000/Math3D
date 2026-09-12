@@ -94,6 +94,7 @@ test.describe("Surface functional flow", () => {
       const compute = ctx.page.getByTestId("surface-curvature-compute-button");
       await expect(compute).toBeEnabled({ timeout: 10_000 });
       await compute.click();
+      await expect(ctx.page.getByTestId("surface-curvature-execution-state")).toHaveText(/Execution: (ready|cached)/);
       await expect(ctx.page.getByTestId("surface-curvature-result")).toBeVisible();
       await expect(ctx.page.getByTestId("surface-curvature-statistics")).toContainText("RMS");
       await expect(ctx.page.getByTestId("surface-curvature-display-controls")).toBeVisible();
@@ -308,6 +309,28 @@ test.describe("Surface functional flow", () => {
 
       await setSimpleSurfaceExpression(ctx.page);
       await expectSurfaceExpressionValue(ctx.page, "x*x + y*y + z*z - 1");
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
+  test("Test 10 — compact derived-mesh backend bridge routes to shared Mesh operations", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await openParametricSurface(ctx.page);
+      await ctx.page.getByTestId("surfaces-left-tab-analysis").click();
+      const provenance = ctx.page.getByTestId("surface-derived-mesh-provenance");
+      await expect(provenance).toContainText("native-tessellation");
+      await expect(provenance).toContainText("Watertight:");
+      await expect(provenance).toContainText("boundary edges:");
+      await expect(ctx.page.getByTestId("surface-derived-mesh-backend-status")).toContainText("Advanced parameters");
+      const remesh = ctx.page.getByTestId("surface-derived-mesh-remesh");
+      await expect(remesh).toBeEnabled({ timeout: 15_000 });
+      await remesh.click();
+      await expect(ctx.page.getByTestId("mesh-workspace-left-tab-operations")).toHaveAttribute("aria-pressed", "true");
+      await expect(ctx.page.getByTestId("mesh-workspace-operation-registry-row-cgal-remesh")).toBeVisible();
+      await expect(ctx.page.getByTestId("error-banner")).toHaveCount(0);
     } finally {
       await closeSurfaceApp(ctx);
     }
