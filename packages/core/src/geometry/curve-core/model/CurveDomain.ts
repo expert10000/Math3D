@@ -4,6 +4,8 @@ export type CurveDomain = {
   tMin: number;
   tMax: number;
   closed?: boolean;
+  periodic?: boolean;
+  breakpoints?: readonly number[];
 };
 
 export const isCurveDomain = (value: unknown): value is CurveDomain => {
@@ -21,4 +23,3 @@ export const normalizeCurveDomain = (domain: CurveDomain): CurveDomain => {
 export const curveDomainSpan = (domain: CurveDomain): number => {
   return Math.max(0, domain.tMax - domain.tMin);
 };
-

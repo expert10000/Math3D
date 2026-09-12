@@ -1,6 +1,6 @@
 import type { AnyCurve } from "../model";
 import { curveDomainSpan } from "../model";
-import { distancePoint } from "./vector";
+import { distancePoint, finitePoint } from "./vector";
 
 export const clampToDomain = (curve: AnyCurve, t: number): number => {
   if (t <= curve.domain.tMin) return curve.domain.tMin;
@@ -23,6 +23,32 @@ export type ArcLengthTable = {
   ts: number[];
   lengths: number[];
   totalLength: number;
+  segmentLengths?: number[];
+  normalizedLengths?: number[];
+  validMask?: number[];
+};
+
+export type ArcLengthSample = { t: number; point: import("../model").CurvePoint; valid?: boolean };
+
+export const buildArcLengthTableFromSamples = (samples: readonly ArcLengthSample[]): ArcLengthTable => {
+  if (!samples.length) return { ts: [], lengths: [], totalLength: 0, segmentLengths: [], normalizedLengths: [], validMask: [] };
+  const sorted = [...samples].sort((left, right) => left.t - right.t);
+  const ts = sorted.map((sample) => sample.t);
+  const lengths = new Array<number>(sorted.length).fill(0);
+  const segmentLengths = new Array<number>(sorted.length).fill(0);
+  const validMask = sorted.map((sample) => sample.valid === false || !finitePoint(sample.point) ? 0 : 1);
+  let totalLength = 0;
+  for (let index = 1; index < sorted.length; index += 1) {
+    const segmentLength = validMask[index - 1] && validMask[index]
+      ? distancePoint(sorted[index - 1].point, sorted[index].point)
+      : 0;
+    const finiteLength = Number.isFinite(segmentLength) ? Math.max(0, segmentLength) : 0;
+    segmentLengths[index] = finiteLength;
+    totalLength += finiteLength;
+    lengths[index] = totalLength;
+  }
+  const normalizedLengths = lengths.map((length) => totalLength > 1e-12 ? length / totalLength : 0);
+  return { ts, lengths, totalLength, segmentLengths, normalizedLengths, validMask };
 };
 
 export const buildArcLengthTable = (curve: AnyCurve, segments = 256): ArcLengthTable => {
@@ -47,7 +73,9 @@ export const buildArcLengthTable = (curve: AnyCurve, segments = 256): ArcLengthT
     prev = next;
   }
 
-  return { ts, lengths, totalLength: total };
+  const segmentLengths = lengths.map((length, index) => index ? Math.max(0, length - lengths[index - 1]) : 0);
+  const normalizedLengths = lengths.map((length) => total > 1e-12 ? length / total : 0);
+  return { ts, lengths, totalLength: total, segmentLengths, normalizedLengths, validMask: ts.map(() => 1) };
 };
 
 export const invertArcLengthTable = (table: ArcLengthTable, s: number): number => {
@@ -68,36 +96,36 @@ export const invertArcLengthTable = (table: ArcLengthTable, s: number): number =
   const bLen = lengths[lo + 1];
   const aT = ts[lo];
   const bT = ts[lo + 1];
-  const span = Math.max(1e-12, bLen - aLen);
+  const span = bLen - aLen;
+  if (span <= 1e-12) return target >= table.totalLength ? bT : aT;
   const alpha = (target - aLen) / span;
   return aT + (bT - aT) * alpha;
+};
+
+export const parameterToArcLength = (table: ArcLengthTable, t: number): number => {
+  if (!table.ts.length) return 0;
+  if (t <= table.ts[0]) return 0;
+  const last = table.ts.length - 1;
+  if (t >= table.ts[last]) return table.totalLength;
+  let lo = 0;
+  let hi = last;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (table.ts[mid] <= t) lo = mid;
+    else hi = mid;
+  }
+  const parameterSpan = table.ts[hi] - table.ts[lo];
+  if (parameterSpan <= 1e-12) return table.lengths[lo];
+  const alpha = (t - table.ts[lo]) / parameterSpan;
+  return table.lengths[lo] + alpha * (table.lengths[hi] - table.lengths[lo]);
 };
 
 export const reparameterizeByArcLength = (curve: AnyCurve, segments = 256) => {
   const table = buildArcLengthTable(curve, segments);
   return {
     table,
-    tToS: (t: number): number => {
-      const tc = clampToDomain(curve, t);
-      const ts = table.ts;
-      const lengths = table.lengths;
-      let lo = 0;
-      let hi = ts.length - 1;
-      while (hi - lo > 1) {
-        const mid = (lo + hi) >> 1;
-        if (ts[mid] <= tc) lo = mid;
-        else hi = mid;
-      }
-      const aT = ts[lo];
-      const bT = ts[lo + 1];
-      const aS = lengths[lo];
-      const bS = lengths[lo + 1];
-      const span = Math.max(1e-12, bT - aT);
-      const alpha = (tc - aT) / span;
-      return aS + (bS - aS) * alpha;
-    },
+    tToS: (t: number): number => parameterToArcLength(table, clampToDomain(curve, t)),
     sToT: (s: number): number => invertArcLengthTable(table, s),
     uToT: (u: number): number => invertArcLengthTable(table, Math.max(0, Math.min(1, u)) * table.totalLength),
   };
 };
-

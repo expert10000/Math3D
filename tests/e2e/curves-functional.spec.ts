@@ -25,6 +25,16 @@ test.describe("Curves canonical workspace", () => {
       await expect(contract).toContainText("parametric · 2D · source curves");
       await expect(contract).toContainText("Result: ready");
 
+      const robustSampling = ctx.page.getByTestId("curve-robust-sampling-summary");
+      await expect(robustSampling).toContainText("sampled length:");
+      await expect(robustSampling).toContainText("t↔s table:");
+      await expect(ctx.page.getByTestId("curve-probe-arc-coordinate")).toContainText("s/L =");
+
+      const sampleCount = ctx.page.getByTestId("curve-sample-count");
+      const strictCount = Number((await sampleCount.textContent())?.match(/\d+/)?.[0]);
+      await ctx.page.getByTestId("curve-adaptive-tolerance").fill("0.1");
+      await expect.poll(async () => Number((await sampleCount.textContent())?.match(/\d+/)?.[0])).toBeLessThan(strictCount);
+
       const custom = ctx.page.getByRole("button", { name: /Custom x\(t\), y\(t\)/ }).first();
       await custom.click();
       await expect(contract).toContainText("ID: custom2d · revision 1");

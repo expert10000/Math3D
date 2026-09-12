@@ -7,5 +7,9 @@ export type CurveEvalResult<TPoint extends CurvePoint = CurvePoint> = {
   point: TPoint;
   tangent?: TPoint;
   secondDerivative?: TPoint;
+  valid?: boolean;
+  arcLength?: number;
+  normalizedArcLength?: number;
+  samplingDepth?: number;
+  geometricError?: number;
 };
-

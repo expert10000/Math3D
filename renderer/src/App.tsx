@@ -608,11 +608,13 @@ import {
 import { CurveViewer, type CurveViewerGlyph, type CurveViewerVec3 } from "./components/CurveViewer";
 import {
   arcLength as curveArcLength,
+  buildArcLengthTableFromSamples as curveBuildArcLengthTableFromSamples,
   curvature as curveCurvature,
   derivative as curveDerivative,
   evaluateCurve as curveEvaluate,
   frenetFrame as curveFrenetFrame,
-  sampleAdaptive as curveSampleAdaptive,
+  parameterToArcLength as curveParameterToArcLength,
+  sampleCurveRobust as curveSampleRobust,
   sampleUniform as curveSampleUniform,
   validateCurve as curveValidate,
   evaluateDerivedConstructionObjects,
@@ -12368,6 +12370,14 @@ const App: React.FC = () => {
           Number.isFinite(curveImportedSection.curveLength) && curveImportedSection.curveLength > 0
             ? curveImportedSection.curveLength
             : curvePolylineLength(samplePoints, curveImportedSection.closed),
+        sampledArcLength:
+          Number.isFinite(curveImportedSection.curveLength) && curveImportedSection.curveLength > 0
+            ? curveImportedSection.curveLength
+            : curvePolylineLength(samplePoints, curveImportedSection.closed),
+        probeNormalizedArcLength: clamp(curveProbeU, 0, 1),
+        arcLengthTableEntries: samplePoints.length,
+        samplingStatistics: null,
+        samplingDiagnostics: [] as string[],
         curvatureSummary: null as CurveMetricSummary | null,
         torsionSummary: null as CurveMetricSummary | null,
       };
@@ -12385,6 +12395,11 @@ const App: React.FC = () => {
         probe: null as CurveFrameSample | null,
         probeT: NaN,
         arcLength: NaN,
+        sampledArcLength: NaN,
+        probeNormalizedArcLength: NaN,
+        arcLengthTableEntries: 0,
+        samplingStatistics: null,
+        samplingDiagnostics: [] as string[],
         curvatureSummary: null as CurveMetricSummary | null,
         torsionSummary: null as CurveMetricSummary | null,
       };
@@ -12393,13 +12408,28 @@ const App: React.FC = () => {
     const validationErrors = curveValidate(curve).map((message) => `Validation: ${message}`);
     errors.push(...validationErrors);
 
-    let sampleRows: Array<{ t: number; point: { x: number; y: number; z?: number } }> = [];
+    let sampleRows: Array<{ t: number; point: { x: number; y: number; z?: number }; valid?: boolean }> = [];
+    let samplingStatistics: ReturnType<typeof curveSampleRobust>["statistics"] | null = null;
+    let samplingDiagnostics: string[] = [];
+    let sampledArcLengthTable: ReturnType<typeof curveBuildArcLengthTableFromSamples> | null = null;
     try {
       if (curveSamplingMode === "adaptive") {
-        sampleRows = curveSampleAdaptive(curve, {
+        const sampled = curveSampleRobust(curve, {
+          mode: "hybrid",
           tolerance: Math.max(1e-6, curveAdaptiveTolerance),
+          angularTolerance: 0.12,
+          curvatureThreshold: 0.18,
+          minimumSamples: 8,
+          maximumSamples: 4096,
           maxDepth: Math.max(3, Math.min(20, Math.round(curveAdaptiveMaxDepth))),
-        }) as Array<{ t: number; point: { x: number; y: number; z?: number } }>;
+          breakpoints: curve.domain.breakpoints,
+          closed: Boolean(curve.domain.closed),
+          periodic: Boolean(curve.domain.periodic ?? curve.domain.closed),
+        });
+        sampleRows = sampled.renderSamples;
+        sampledArcLengthTable = sampled.arcLengthTable;
+        samplingStatistics = sampled.statistics;
+        samplingDiagnostics = sampled.diagnostics.map((diagnostic) => `${diagnostic.severity}: ${diagnostic.message}`);
       } else {
         sampleRows = curveSampleUniform(curve, Math.max(8, Math.min(4096, Math.round(curveSampleCount)))) as Array<{
           t: number;
@@ -12417,10 +12447,17 @@ const App: React.FC = () => {
     if (samplePoints.length < 2) {
       errors.push("Sampling produced fewer than 2 finite points.");
     }
+    errors.push(...samplingDiagnostics.filter((message) => !message.startsWith("info:")));
+
+    const arcLengthTable = sampledArcLengthTable ?? curveBuildArcLengthTableFromSamples(sampleRows);
 
     const span = Math.max(1e-9, curve.domain.tMax - curve.domain.tMin);
     const probeT = curve.domain.tMin + clamp(curveProbeU, 0, 1) * span;
     const probe = buildCurveFrameAt(curve, probeT);
+    const probeArcLength = curveParameterToArcLength(arcLengthTable, probeT);
+    const probeNormalizedArcLength = arcLengthTable.totalLength > 1e-12
+      ? probeArcLength / arcLengthTable.totalLength
+      : 0;
 
     const frameCountSafe = Math.max(1, Math.min(64, Math.floor(curveFrameCount)));
     const frameSamples: CurveFrameSample[] = [];
@@ -12450,6 +12487,11 @@ const App: React.FC = () => {
       probe,
       probeT,
       arcLength: arcLengthValue,
+      sampledArcLength: arcLengthTable.totalLength,
+      probeNormalizedArcLength,
+      arcLengthTableEntries: arcLengthTable.ts.length,
+      samplingStatistics,
+      samplingDiagnostics,
       curvatureSummary,
       torsionSummary,
     };
@@ -77189,6 +77231,7 @@ case "mobius":
                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                     Tolerance
                     <input
+                      data-testid="curve-adaptive-tolerance"
                       type="number"
                       min={0.0001}
                       max={1}
@@ -86385,6 +86428,9 @@ case "mobius":
                         <div>
                           t = <strong>{fmt(curveRenderState.probeT)}</strong>
                         </div>
+                        <div data-testid="curve-probe-arc-coordinate">
+                          s/L = <strong>{fmt(curveRenderState.probeNormalizedArcLength)}</strong>
+                        </div>
                         <div>
                           p(t) ={" "}
                           <strong>{curveRenderState.probe?.point ? fmt3(curveRenderState.probe.point) : "n/a"}</strong>
@@ -86442,9 +86488,21 @@ case "mobius":
                       </div>
                       <div style={{ display: "grid", gap: 2 }}>
                         <div>source: <strong>{curveRenderState.source ?? "-"}</strong></div>
-                        <div>sample points: <strong>{curveRenderState.samplePoints.length}</strong></div>
+                        <div data-testid="curve-sample-count">sample points: <strong>{curveRenderState.samplePoints.length}</strong></div>
                         <div>sample mode: <strong>{curveActiveIsImported ? "imported polyline" : curveSamplingMode}</strong></div>
                         <div>arc length: <strong>{fmt(curveRenderState.arcLength)}</strong></div>
+                        <div data-testid="curve-robust-sampling-summary">
+                          sampled length: <strong>{fmt(curveRenderState.sampledArcLength)}</strong> · t↔s table:{" "}
+                          <strong>{curveRenderState.arcLengthTableEntries} entries</strong>
+                        </div>
+                        {curveRenderState.samplingStatistics && (
+                          <div>
+                            robust sampler: <strong>{curveRenderState.samplingStatistics.mode}</strong> · evaluations{" "}
+                            <strong>{curveRenderState.samplingStatistics.evaluationCount}</strong> · subdivisions{" "}
+                            <strong>{curveRenderState.samplingStatistics.subdivisionCount}</strong> · max error{" "}
+                            <strong>{fmt(curveRenderState.samplingStatistics.maxObservedGeometricError)}</strong>
+                          </div>
+                        )}
                         <div>
                           curvature [min, avg, max]:{" "}
                           <strong>
