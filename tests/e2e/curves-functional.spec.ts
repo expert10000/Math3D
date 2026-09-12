@@ -17,6 +17,19 @@ test.describe("Curves canonical workspace", () => {
       await curvesTab.click();
       await expect(curvesTab).toHaveAttribute("aria-pressed", "true");
 
+      const professionalShell = ctx.page.getByTestId("curves-professional-shell");
+      await expect(professionalShell).toBeVisible();
+      await expect(professionalShell).toContainText("Panel");
+      await expect(professionalShell).toContainText("Actions");
+      await expect(professionalShell).toContainText("Tools");
+      await ctx.page.getByTestId("curve-panel-analysis").click();
+      await expect(ctx.page.getByTestId("curve-workspace-analysis")).toBeVisible();
+      await expect(ctx.page.getByTestId("curve-inspector")).toBeVisible();
+      await ctx.page.getByTestId("curve-inspector-tab-sampling").click();
+      await expect(ctx.page.getByTestId("curve-inspector-content-sampling")).toContainText("arc-length entries");
+      await expect(ctx.page.getByTestId("curve-viewport-display-controls")).toContainText("Control polygon");
+      await expect(ctx.page.getByTestId("app-status-bar")).toContainText("Curve circle2d");
+
       const contract = ctx.page.getByTestId("curve-canonical-contract");
       await contract.scrollIntoViewIfNeeded();
       await expect(contract).toBeVisible();
@@ -35,6 +48,7 @@ test.describe("Curves canonical workspace", () => {
       await ctx.page.getByTestId("curve-adaptive-tolerance").fill("0.1");
       await expect.poll(async () => Number((await sampleCount.textContent())?.match(/\d+/)?.[0])).toBeLessThan(strictCount);
 
+      await ctx.page.getByTestId("curve-panel-gallery").click();
       const custom = ctx.page.getByRole("button", { name: /Custom x\(t\), y\(t\)/ }).first();
       await custom.click();
       await expect(contract).toContainText("ID: custom2d · revision 1");

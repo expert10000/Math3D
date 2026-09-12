@@ -12271,6 +12271,17 @@ const App: React.FC = () => {
   const [curveProbeU, setCurveProbeU] = useState(0.5);
   const [curveViewerResetToken, setCurveViewerResetToken] = useState(0);
   const [curveImportedSection, setCurveImportedSection] = useState<CurveImportedSection | null>(null);
+  const [curveWorkspaceTab, setCurveWorkspaceTab] = useState<"gallery" | "definition" | "analysis" | "derived" | "curvemesh">("gallery");
+  const [curveInspectorTab, setCurveInspectorTab] = useState<"object" | "result" | "probe" | "diagnostics" | "sampling" | "dependencies" | "backend" | "history">("object");
+  const [curveShowCurve, setCurveShowCurve] = useState(true);
+  const [curveShowSamples, setCurveShowSamples] = useState(false);
+  const [curveShowFrames, setCurveShowFrames] = useState(true);
+  const [curveShowControlPolygon, setCurveShowControlPolygon] = useState(false);
+  const [curveShowComb, setCurveShowComb] = useState(false);
+  const [curveShowOsculatingEvidence, setCurveShowOsculatingEvidence] = useState(false);
+  const [curveShowDiagnostics, setCurveShowDiagnostics] = useState(true);
+  const [curveShowAnnotations, setCurveShowAnnotations] = useState(true);
+  const [curveShowPreviews, setCurveShowPreviews] = useState(true);
   const visibleCurvePresets = useMemo(
     () => (curvePresetCategoryFilter === "all" ? CURVE_PRESETS : CURVE_PRESETS.filter((p) => p.category === curvePresetCategoryFilter)),
     [curvePresetCategoryFilter]
@@ -74149,6 +74160,16 @@ case "mobius":
     surfaceMeshAnalyzeDiagnostics,
   ]);
   const statusItems = useMemo(() => {
+    if (mode === "curves") {
+      return [
+        `Curve ${activeCanonicalCurveDefinition.identity.curveId} · ${curveActiveIsImported ? curveImportedSection?.name ?? "Imported section curve" : activeCurvePreset?.label ?? "Curve"}`,
+        `${activeCanonicalCurveDefinition.representation} · ${activeCanonicalCurveDefinition.dimension}D`,
+        `sampling ${curveActiveIsImported ? "imported polyline" : curveSamplingMode} · ${curveRenderState.samplePoints.length} points`,
+        `result ${activeCurveDefinitionResult?.state ?? "queued"}`,
+        `units ${activeCanonicalCurveDefinition.units.position} / ${activeCanonicalCurveDefinition.units.parameter}`,
+        `backend ${activeCurveDefinitionResult?.backend ?? "Curve definition adapter"}`,
+      ];
+    }
     const items: string[] = [];
     items.push(statusViewerLabel);
     if (unifiedSelectedNode) {
@@ -74176,8 +74197,14 @@ case "mobius":
     else if (screenshotStatus) items.push(screenshotStatus);
     return items;
   }, [
+    activeCanonicalCurveDefinition,
+    activeCurveDefinitionResult?.backend,
+    activeCurveDefinitionResult?.state,
     analysisRunning,
     compareLayoutEnabled,
+    curveActiveIsImported,
+    curveRenderState.samplePoints.length,
+    curveSamplingMode,
     displayMode,
     IS_REPLAY_MODE,
     lightPreset,
@@ -76767,6 +76794,67 @@ case "mobius":
                         </button>
                       </>
                     )}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {mode === "curves" && !isPhoneViewerPriorityLayout && (
+                <div style={topNavContextBarStyle} data-testid="curves-professional-shell">
+                  <div style={surfacesModeStripWrapStyle}>
+                    <div style={surfacesModeGroupStyle("panel")}>
+                      <span style={surfacesModeLabelStyle("panel")}>Panel</span>
+                      {([
+                        ["gallery", "Gallery"],
+                        ["definition", "Definition / Edit"],
+                        ["analysis", "Analysis"],
+                        ["derived", "Derived"],
+                        ["curvemesh", "CurveMesh"],
+                      ] as const).map(([id, label]) => (
+                        <button
+                          key={`curve-panel-${id}`}
+                          type="button"
+                          data-testid={`curve-panel-${id}`}
+                          onClick={() => setCurveWorkspaceTab(id)}
+                          aria-pressed={curveWorkspaceTab === id}
+                          style={surfacesModeButtonStyle(curveWorkspaceTab === id, "panel")}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={surfacesModeGroupStyle("actions")}>
+                      <span style={surfacesModeLabelStyle("actions")}>Actions</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCurveImportedSection(null);
+                          setCurvePresetId("custom2d");
+                          setCurveWorkspaceTab("definition");
+                        }}
+                        style={surfacesModeButtonStyle(false, "actions")}
+                      >
+                        New
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCurveImportedSection(null);
+                          setCurvePresetId("helix3d");
+                          setCurveWorkspaceTab("analysis");
+                          setCurveViewerResetToken((token) => token + 1);
+                        }}
+                        style={surfacesModeButtonStyle(false, "actions")}
+                      >
+                        Demo
+                      </button>
+                      <button type="button" onClick={() => setCurveInspectorTab("result")} style={surfacesModeButtonStyle(curveInspectorTab === "result", "actions")}>Compare</button>
+                      <button type="button" onClick={() => setCurveInspectorTab("history")} style={surfacesModeButtonStyle(curveInspectorTab === "history", "actions")}>More</button>
+                    </div>
+                    <div style={surfacesModeGroupStyle("panel")}>
+                      <span style={surfacesModeLabelStyle("panel")}>Tools</span>
+                      <button type="button" onClick={() => setCurveInspectorTab("sampling")} style={surfacesModeButtonStyle(curveInspectorTab === "sampling", "panel")}>Display</button>
+                      <button type="button" onClick={() => setCurveInspectorTab("probe")} style={surfacesModeButtonStyle(curveInspectorTab === "probe", "panel")}>Inspect</button>
+                      <button type="button" onClick={() => setCurveViewerResetToken((token) => token + 1)} style={surfacesModeButtonStyle(false, "panel")}>Fit</button>
                     </div>
                   </div>
                 </div>
@@ -86057,6 +86145,8 @@ case "mobius":
                   Shared curve presets for geometry/surfaces/curves workflows.
                 </div>
 
+                {curveWorkspaceTab === "gallery" ? (
+                <>
                 <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Categories</div>
                 <div style={{ ...pillRow, marginBottom: 8 }}>
                   {CURVE_PRESET_CATEGORY_OPTIONS.map((option) => (
@@ -86156,6 +86246,49 @@ case "mobius":
                     );
                   })}
                 </div>
+                </>
+                ) : (
+                  <div data-testid={`curve-workspace-${curveWorkspaceTab}`} style={{ display: "grid", gap: 10 }}>
+                    <div style={{ border: "1px solid #bfdbfe", borderRadius: 9, background: "#eff6ff", padding: 10 }}>
+                      <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>
+                        {curveWorkspaceTab === "definition" ? "Definition / Edit" : curveWorkspaceTab === "analysis" ? "Analysis" : curveWorkspaceTab === "derived" ? "Derived curves" : "CurveMesh"}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#475569" }}>
+                        {curveWorkspaceTab === "definition"
+                          ? "Formula, domain, parameters, control data, units, and dependencies belong here."
+                          : curveWorkspaceTab === "analysis"
+                            ? "Choose a computation; display toggles remain beside the viewport."
+                            : curveWorkspaceTab === "derived"
+                              ? "Dependency-aware offsets, evolutes, involutes, projections, intersections, and surface curves."
+                              : "Build a polyline, tube, ribbon, or sweep while retaining Curve provenance."}
+                      </div>
+                    </div>
+                    {curveWorkspaceTab === "definition" && (
+                      <div style={{ display: "grid", gap: 7, fontSize: 11 }}>
+                        <div><strong>Active:</strong> {curveActiveIsImported ? curveImportedSection?.name ?? "Imported section curve" : activeCurvePreset?.label ?? "Curve"}</div>
+                        <div><strong>Representation:</strong> {activeCanonicalCurveDefinition.representation}</div>
+                        <div><strong>Domain:</strong> {activeCanonicalCurveDefinition.domain.parameter} ∈ [{fmt(activeCanonicalCurveDefinition.domain.min)}, {fmt(activeCanonicalCurveDefinition.domain.max)}]</div>
+                        <button type="button" onClick={() => setCurvePresetId("custom2d")}>Open editable custom curve</button>
+                      </div>
+                    )}
+                    {curveWorkspaceTab === "analysis" && (
+                      <div style={{ display: "grid", gap: 7 }}>
+                        {["Differential geometry", "Moving frames", "Sampling quality", "Diagnostics"].map((label, index) => (
+                          <button key={label} type="button" onClick={() => setCurveInspectorTab(index < 2 ? "result" : index === 2 ? "sampling" : "diagnostics")} style={{ textAlign: "left", padding: "9px 10px" }}>{label}</button>
+                        ))}
+                      </div>
+                    )}
+                    {(curveWorkspaceTab === "derived" || curveWorkspaceTab === "curvemesh") && (
+                      <div style={{ display: "grid", gap: 7 }}>
+                        {(curveWorkspaceTab === "derived"
+                          ? ["Offset / parallel", "Evolute / involute", "Project to Surface", "Intersection curve"]
+                          : ["Polyline", "Tube", "Ribbon", "Sweep profile"]
+                        ).map((label) => <button key={label} type="button" onClick={() => setCurveInspectorTab("dependencies")} style={{ textAlign: "left", padding: "9px 10px" }}>{label}</button>)}
+                        <div style={{ fontSize: 11, color: "#64748b" }}>The selected workflow keeps source ID, revision, units, and dependency links.</div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </section>
             </div>
 
@@ -86383,20 +86516,41 @@ case "mobius":
                       overflow: "auto",
                       minHeight: 0,
                       display: "grid",
-                      gridTemplateRows: "minmax(280px, 1fr) auto auto",
+                      gridTemplateRows: "auto minmax(280px, 1fr) auto auto",
                       gap: 10,
                     }}
                   >
+                    <div data-testid="curve-viewport-display-controls" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 11 }}>
+                      <strong>Display</strong>
+                      {([
+                        ["Curve", curveShowCurve, setCurveShowCurve],
+                        ["Samples", curveShowSamples, setCurveShowSamples],
+                        ["Control polygon", curveShowControlPolygon, setCurveShowControlPolygon],
+                        ["Frames", curveShowFrames, setCurveShowFrames],
+                        ["Comb", curveShowComb, setCurveShowComb],
+                        ["Osculating", curveShowOsculatingEvidence, setCurveShowOsculatingEvidence],
+                        ["Diagnostics", curveShowDiagnostics, setCurveShowDiagnostics],
+                        ["Annotations", curveShowAnnotations, setCurveShowAnnotations],
+                        ["Previews", curveShowPreviews, setCurveShowPreviews],
+                      ] as const).map(([label, checked, setter]) => (
+                        <label key={label} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                          <input type="checkbox" checked={checked} onChange={(event) => setter(event.target.checked)} />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
                     <div style={{ border: "1px solid #dce5f1", borderRadius: 10, overflow: "hidden", minHeight: 0 }}>
                       <CurveViewer
                         samples={curveRenderState.samplePoints}
                         dimension={curveActiveDimension}
                         closed={curveActiveClosed}
-                        frameGlyphs={curveRenderState.frameSamples}
-                        probeGlyph={curveRenderState.probe}
-                        showTangent={curveShowTangent}
-                        showNormal={curveShowNormal}
-                        showBinormal={curveShowBinormal && curveActiveDimension === 3}
+                        frameGlyphs={curveShowFrames ? curveRenderState.frameSamples : []}
+                        probeGlyph={curveShowAnnotations ? curveRenderState.probe : null}
+                        showTangent={curveShowFrames && curveShowTangent}
+                        showNormal={curveShowFrames && curveShowNormal}
+                        showBinormal={curveShowFrames && curveShowBinormal && curveActiveDimension === 3}
+                        showCurve={curveShowCurve}
+                        showSamples={curveShowSamples}
                         frameScale={curveFrameScale}
                         resetToken={curveViewerResetToken}
                       />
@@ -86543,6 +86697,98 @@ case "mobius":
                 </div>
               </div>
             </div>
+            {!isPhoneViewerPriorityLayout && (
+              <>
+                <div onMouseDown={startDragRight} style={splitterStyle} />
+                <aside
+                  data-testid="curve-inspector"
+                  style={{ width: Math.max(260, Math.min(360, rightWidth)), minWidth: 0, overflow: "auto", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: 10 }}
+                >
+                  <h2 style={{ ...styles.h2, marginBottom: 8 }}>Inspector</h2>
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 10 }}>
+                    {(["object", "result", "probe", "diagnostics", "sampling", "dependencies", "backend", "history"] as const).map((tab) => (
+                      <button
+                        key={`curve-inspector-${tab}`}
+                        type="button"
+                        data-testid={`curve-inspector-tab-${tab}`}
+                        onClick={() => setCurveInspectorTab(tab)}
+                        aria-pressed={curveInspectorTab === tab}
+                        style={{ ...pill(curveInspectorTab === tab), textTransform: "capitalize", fontSize: 10 }}
+                      >
+                        {tab}
+                      </button>
+                    ))}
+                  </div>
+                  <div data-testid={`curve-inspector-content-${curveInspectorTab}`} style={{ display: "grid", gap: 6, fontSize: 11, color: "#334155" }}>
+                    {curveInspectorTab === "object" && (
+                      <>
+                        <div><strong>{curveActiveIsImported ? curveImportedSection?.name ?? "Imported section curve" : activeCurvePreset?.label ?? "Curve"}</strong></div>
+                        <div>ID: {activeCanonicalCurveDefinition.identity.curveId}</div>
+                        <div>Revision: {activeCanonicalCurveDefinition.identity.curveRevision}</div>
+                        <div>{activeCanonicalCurveDefinition.representation} · {activeCanonicalCurveDefinition.dimension}D</div>
+                        <div>{activeCanonicalCurveDefinition.domain.closed ? "Closed" : "Open"} · {activeCanonicalCurveDefinition.domain.periodic ? "periodic" : "non-periodic"}</div>
+                      </>
+                    )}
+                    {curveInspectorTab === "result" && (
+                      <>
+                        <div><strong>Curve definition result</strong></div>
+                        <div>State: {activeCurveDefinitionResult?.state ?? "queued"}</div>
+                        <div>Method: {activeCurveDefinitionMethod}</div>
+                        <div>Samples: {curveRenderState.samplePoints.length}</div>
+                        <div>Length: {fmt(curveRenderState.arcLength)} {activeCanonicalCurveDefinition.units.position}</div>
+                      </>
+                    )}
+                    {curveInspectorTab === "probe" && (
+                      <>
+                        <div><strong>Linked parameter probe</strong></div>
+                        <div>t = {fmt(curveRenderState.probeT)}</div>
+                        <div>s/L = {fmt(curveRenderState.probeNormalizedArcLength)}</div>
+                        <div>p = {curveRenderState.probe?.point ? fmt3(curveRenderState.probe.point) : "n/a"}</div>
+                        <div>κ = {fmt(curveRenderState.probe?.curvature ?? NaN)}</div>
+                        <div>τ = {fmt(curveRenderState.probe?.torsion ?? NaN)}</div>
+                      </>
+                    )}
+                    {curveInspectorTab === "diagnostics" && (
+                      <>
+                        <div><strong>{curveRenderState.errors.length ? `${curveRenderState.errors.length} issue(s)` : "Ready — no issues"}</strong></div>
+                        {curveRenderState.errors.map((message, index) => <div key={`curve-inspector-issue-${index}`}>{message}</div>)}
+                      </>
+                    )}
+                    {curveInspectorTab === "sampling" && (
+                      <>
+                        <div><strong>{curveActiveIsImported ? "Imported polyline" : curveSamplingMode}</strong></div>
+                        <div>{curveRenderState.samplePoints.length} render samples</div>
+                        <div>{curveRenderState.arcLengthTableEntries} arc-length entries</div>
+                        <div>Sampled length: {fmt(curveRenderState.sampledArcLength)}</div>
+                        {curveRenderState.samplingStatistics && <div>{curveRenderState.samplingStatistics.evaluationCount}/{curveRenderState.samplingStatistics.evaluationBudget} evaluations · {curveRenderState.samplingStatistics.subdivisionCount} subdivisions</div>}
+                      </>
+                    )}
+                    {curveInspectorTab === "dependencies" && (
+                      <>
+                        <div><strong>{activeCanonicalCurveDefinition.dependencies.length} dependencies</strong></div>
+                        {activeCanonicalCurveDefinition.dependencies.length === 0
+                          ? <div>Self-contained Curve definition.</div>
+                          : activeCanonicalCurveDefinition.dependencies.map((dependency, index) => <div key={`curve-dependency-${index}`}>{dependency.module} / {dependency.objectId} / revision {dependency.revision}</div>)}
+                      </>
+                    )}
+                    {curveInspectorTab === "backend" && (
+                      <>
+                        <div><strong>{activeCurveDefinitionResult?.backend ?? "Curve definition adapter"}</strong></div>
+                        <div>Method: {activeCurveDefinitionMethod}</div>
+                        <div>Units: {activeCanonicalCurveDefinition.units.position} / {activeCanonicalCurveDefinition.units.parameter}</div>
+                      </>
+                    )}
+                    {curveInspectorTab === "history" && (
+                      <>
+                        <div><strong>{curveAnalysisResultStore.history.length} result entries</strong></div>
+                        <div>{curveAnalysisWorkspaceDocument.definitions.length} persisted definitions</div>
+                        <div>Current revision: {activeCanonicalCurveDefinition.identity.curveRevision}</div>
+                      </>
+                    )}
+                  </div>
+                </aside>
+              </>
+            )}
           </div>
         ) : mode === "topology" ? (
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>

@@ -23,6 +23,10 @@ export type CurveViewerProps = {
   showBinormal?: boolean;
   frameScale?: number;
   resetToken?: number;
+  showCurve?: boolean;
+  showSamples?: boolean;
+  showAxes?: boolean;
+  showGrid?: boolean;
 };
 
 const TANGENT_COLOR = new THREE.Color(0x0ea5e9);
@@ -69,6 +73,10 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
   showBinormal = true,
   frameScale = 0.5,
   resetToken = 0,
+  showCurve = true,
+  showSamples = false,
+  showAxes = true,
+  showGrid = true,
 }) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
 
@@ -106,7 +114,7 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
     const visualGroup = new THREE.Group();
     scene.add(visualGroup);
 
-    if (curvePoints.length >= 2) {
+    if (showCurve && curvePoints.length >= 2) {
       const curveGeometry = new THREE.BufferGeometry().setFromPoints(curvePoints);
       const curveLine = new THREE.Line(
         curveGeometry,
@@ -127,6 +135,12 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
           );
         }
       }
+    }
+
+    if (showSamples && curvePoints.length) {
+      const sampleGeometry = new THREE.BufferGeometry().setFromPoints(curvePoints);
+      const sampleMaterial = new THREE.PointsMaterial({ color: 0x7c3aed, size: Math.max(0.025, frameScale * 0.08), sizeAttenuation: true });
+      visualGroup.add(new THREE.Points(sampleGeometry, sampleMaterial));
     }
 
     const addGlyphSegment = (origin: THREE.Vector3, direction: CurveViewerVec3 | null | undefined, color: THREE.Color) => {
@@ -207,15 +221,17 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
     const fitSize = fitBox.getSize(new THREE.Vector3());
     const fitRadius = Math.max(fallbackRadius, fitSize.length() * 0.5);
 
-    const axisHelper = new THREE.AxesHelper(fitRadius * 0.85);
-    visualGroup.add(axisHelper);
+    if (showAxes) {
+      const axisHelper = new THREE.AxesHelper(fitRadius * 0.85);
+      visualGroup.add(axisHelper);
+    }
 
     const gridSize = Math.max(2, Math.ceil(fitRadius * 2.5));
     const grid = new THREE.GridHelper(gridSize, 20, 0x94a3b8, 0xcbd5e1);
     if (dimension === 2) {
       grid.rotation.x = Math.PI / 2;
     }
-    visualGroup.add(grid);
+    if (showGrid) visualGroup.add(grid);
 
     camera.near = Math.max(0.001, fitRadius / 150);
     camera.far = Math.max(100, fitRadius * 80);
@@ -276,6 +292,10 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
     showBinormal,
     frameScale,
     resetToken,
+    showCurve,
+    showSamples,
+    showAxes,
+    showGrid,
   ]);
 
   return <div ref={hostRef} style={{ width: "100%", height: "100%", minHeight: 280 }} />;
