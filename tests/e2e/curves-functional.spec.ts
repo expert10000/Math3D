@@ -7,6 +7,39 @@ import {
 } from "./helpers/surfaceAppHarness";
 
 test.describe("Curves canonical workspace", () => {
+  test("previews and commits dependency-aware derived curve branches", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await resetSurfaceAppState(ctx.page);
+      await ctx.page.getByRole("button", { name: "Curves", exact: true }).first().click();
+      await ctx.page.getByTestId("curve-panel-derived").click();
+
+      const workflow = ctx.page.getByTestId("curve-derived-workflow");
+      await expect(workflow).toBeVisible();
+      await expect(ctx.page.getByTestId("curve-derived-source")).toContainText("circle2d");
+      await ctx.page.getByTestId("curve-derived-preview").click();
+      await expect(ctx.page.getByTestId("curve-derived-preview-result")).toContainText("ready · 1 branch");
+      await expect(ctx.page.getByTestId("curve-derived-preview-result")).toContainText("Correspondence:");
+      await ctx.page.getByTestId("curve-derived-commit").click();
+      await expect(ctx.page.getByTestId("curve-derived-records")).toContainText("Committed dependencies (1)");
+      await expect(ctx.page.getByTestId("curve-derived-records")).toContainText("circle2d@1");
+
+      await ctx.page.getByTestId("curve-derived-operation").selectOption("split");
+      await ctx.page.getByTestId("curve-derived-preview").click();
+      await expect(ctx.page.getByTestId("curve-derived-preview-result")).toContainText("ready · 2 branches");
+      await ctx.page.getByRole("button", { name: "Branch 2" }).click();
+
+      await ctx.page.getByTestId("curve-derived-operation").selectOption("projection-surface");
+      await ctx.page.getByTestId("curve-derived-preview").click();
+      await expect(ctx.page.getByTestId("curve-derived-preview-result")).toContainText("capability-required");
+      await expect(ctx.page.getByTestId("curve-derived-preview-result")).toContainText("backend-unavailable");
+      await expect(ctx.page.getByTestId("curve-derived-commit")).toBeDisabled();
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
   test("publishes revisioned Curve provenance and persists lightweight definitions", async () => {
     let ctx: LaunchedSurfaceApp | null = null;
     try {

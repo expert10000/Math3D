@@ -434,7 +434,7 @@ Acceptance: pathological fixtures produce typed, reproducible diagnostics; click
 
 Planned message: `feat(curves): add dependency-aware derived curve operations`
 
-**Status: planned.**
+**Status: implemented.**
 
 Already implemented:
 
@@ -444,14 +444,20 @@ Already implemented:
 
 Remaining:
 
-- [ ] Implement offset, evolute, involute, normal curve, tangent indicatrix, curvature indicatrix, projection, transform, trim, reverse, split, join, and reparameterize.
-- [ ] Add planar tangent/normal constructions, curve/curve intersection, closest point, coordinate extrema, and bounding box.
-- [ ] Add 3D closest points, curve/plane intersection, curve/surface intersection request, projection to plane, and projection to Surface.
-- [ ] Standardize choose operation → collect semantic inputs → preview → configure tolerance/branch → commit.
-- [ ] Preserve source Curve IDs/revisions, operation parameters, branch choices, correspondence, and warnings.
-- [ ] Recompute downstream curves when dependencies change; support freeze snapshot, detach, regenerate, open source, and delete.
-- [ ] Represent multiple branches as a result collection instead of silently selecting one.
-- [ ] Define failure behavior for cusps, offset singularities, ambiguous joins, incompatible dimensions, and missing backend capability.
+- [x] Implement offset, evolute, involute, normal curve, tangent indicatrix, curvature indicatrix, projection, transform, trim, reverse, split, join, and reparameterize.
+- [x] Add planar tangent/normal constructions, curve/curve intersection, closest point, coordinate extrema, and bounding box.
+- [x] Add 3D closest points, curve/plane intersection, curve/surface intersection request, projection to plane, and projection to Surface.
+- [x] Standardize choose operation → collect semantic inputs → preview → configure tolerance/branch → commit.
+- [x] Preserve source Curve IDs/revisions, operation parameters, branch choices, correspondence, and warnings.
+- [x] Recompute downstream curves when dependencies change; support freeze snapshot, detach, regenerate, open source, and delete.
+- [x] Represent multiple branches as a result collection instead of silently selecting one.
+- [x] Define failure behavior for cusps, offset singularities, ambiguous joins, incompatible dimensions, and missing backend capability.
+
+Validation:
+
+- Focused derived-curve unit coverage verifies analytic constructions, sampled planar/3D queries, explicit branch and capability results, and every dependency lifecycle transition.
+- The renderer TypeScript project and production renderer build pass.
+- The Curves Electron journey previews and commits an offset, selects both split branches, and verifies an unavailable Surface projection remains inspectable and cannot be committed.
 
 Acceptance: every derived curve is an ordinary canonical Curve with inspectable lineage, deterministic recomputation, explicit branch handling, and a reversible path to its source.
 

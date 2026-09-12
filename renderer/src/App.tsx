@@ -621,6 +621,7 @@ import {
 } from "./math/paramGeodesicContinuous";
 import { CurveViewer, type CurveViewerGlyph, type CurveViewerVec3 } from "./components/CurveViewer";
 import { CurveScalarPlots } from "./components/CurveScalarPlots";
+import { DerivedCurvePanel } from "./components/DerivedCurvePanel";
 import {
   analyzeCurveDifferentialGeometry,
   arcLength as curveArcLength,
@@ -637,6 +638,7 @@ import {
   type AnyCurve as CoreAnyCurve,
   type ConstructionRelationshipDefinition,
   type Curve3D as CoreCurve3D,
+  type DerivedCurve,
   type DerivedConstructionObjectDefinition,
 } from "@math3d/core";
 
@@ -12305,6 +12307,7 @@ const App: React.FC = () => {
   const [curveDiagnosticFilter, setCurveDiagnosticFilter] = useState<CurveDiagnosticCategory | "all" | "warnings">("all");
   const [curveDiagnosticRevisionToken, setCurveDiagnosticRevisionToken] = useState(0);
   const [curveSavedDiagnosticReports, setCurveSavedDiagnosticReports] = useState<CurveDiagnosticReport[]>([]);
+  const [curveDerivedPreviewCurve, setCurveDerivedPreviewCurve] = useState<DerivedCurve | null>(null);
   const visibleCurvePresets = useMemo(
     () => (curvePresetCategoryFilter === "all" ? CURVE_PRESETS : CURVE_PRESETS.filter((p) => p.category === curvePresetCategoryFilter)),
     [curvePresetCategoryFilter]
@@ -86486,12 +86489,18 @@ case "mobius":
                         />
                       </div>
                     )}
-                    {(curveWorkspaceTab === "derived" || curveWorkspaceTab === "curvemesh") && (
+                    {curveWorkspaceTab === "derived" && (
+                      <DerivedCurvePanel
+                        sourceCurve={curveRenderState.curve}
+                        sourceId={activeCanonicalCurveDefinition.identity.curveId}
+                        sourceRevision={activeCanonicalCurveDefinition.identity.curveRevision}
+                        onPreviewCurve={setCurveDerivedPreviewCurve}
+                        onOpenSource={() => setCurveWorkspaceTab("definition")}
+                      />
+                    )}
+                    {curveWorkspaceTab === "curvemesh" && (
                       <div style={{ display: "grid", gap: 7 }}>
-                        {(curveWorkspaceTab === "derived"
-                          ? ["Offset / parallel", "Evolute / involute", "Project to Surface", "Intersection curve"]
-                          : ["Polyline", "Tube", "Ribbon", "Sweep profile"]
-                        ).map((label) => <button key={label} type="button" onClick={() => setCurveInspectorTab("dependencies")} style={{ textAlign: "left", padding: "9px 10px" }}>{label}</button>)}
+                        {["Polyline", "Tube", "Ribbon", "Sweep profile"].map((label) => <button key={label} type="button" onClick={() => setCurveInspectorTab("dependencies")} style={{ textAlign: "left", padding: "9px 10px" }}>{label}</button>)}
                         <div style={{ fontSize: 11, color: "#64748b" }}>The selected workflow keeps source ID, revision, units, and dependency links.</div>
                       </div>
                     )}
@@ -86749,9 +86758,9 @@ case "mobius":
                     </div>
                     <div style={{ border: "1px solid #dce5f1", borderRadius: 10, overflow: "hidden", minHeight: 0 }}>
                       <CurveViewer
-                        samples={curveRenderState.samplePoints}
-                        dimension={curveActiveDimension}
-                        closed={curveActiveClosed}
+                        samples={curveDerivedPreviewCurve && curveShowPreviews ? curveSampleUniform(curveDerivedPreviewCurve, Math.max(32, curveSampleCount)).map((row) => toCurveViewerVec3(row.point)) : curveRenderState.samplePoints}
+                        dimension={curveDerivedPreviewCurve && curveShowPreviews ? curveDerivedPreviewCurve.dimension : curveActiveDimension}
+                        closed={curveDerivedPreviewCurve && curveShowPreviews ? Boolean(curveDerivedPreviewCurve.domain.closed) : curveActiveClosed}
                         frameGlyphs={curveShowFrames ? curveDifferentialFrameSamples : []}
                         probeGlyph={curveShowAnnotations ? curveDisplayProbe : null}
                         showTangent={curveShowFrames && curveShowTangent}
