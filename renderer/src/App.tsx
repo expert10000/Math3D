@@ -594,11 +594,16 @@ import {
 } from "./curveAnalysis/persistence";
 import {
   buildCurveScalarPlots,
+  analyzeCurveDiagnostics,
+  compareCurveDiagnosticReports,
   createSemanticCurvePick,
+  curveDiagnosticReportToCsv,
   curvePickComparison,
   curvePickIsStale,
   curvePickToCsv,
   type CurvePickSource,
+  type CurveDiagnosticCategory,
+  type CurveDiagnosticReport,
   type CurveScalarPlotDomain,
 } from "./curveAnalysis";
 import {
@@ -12297,6 +12302,9 @@ const App: React.FC = () => {
   const [curveShowPreviews, setCurveShowPreviews] = useState(true);
   const [curvePlotDomain, setCurvePlotDomain] = useState<CurveScalarPlotDomain>("parameter");
   const [curveProbeSource, setCurveProbeSource] = useState<CurvePickSource>("parameter-slider");
+  const [curveDiagnosticFilter, setCurveDiagnosticFilter] = useState<CurveDiagnosticCategory | "all" | "warnings">("all");
+  const [curveDiagnosticRevisionToken, setCurveDiagnosticRevisionToken] = useState(0);
+  const [curveSavedDiagnosticReports, setCurveSavedDiagnosticReports] = useState<CurveDiagnosticReport[]>([]);
   const visibleCurvePresets = useMemo(
     () => (curvePresetCategoryFilter === "all" ? CURVE_PRESETS : CURVE_PRESETS.filter((p) => p.category === curvePresetCategoryFilter)),
     [curvePresetCategoryFilter]
@@ -12749,6 +12757,22 @@ const App: React.FC = () => {
     });
     return buildCurveScalarPlots(curveDifferentialField, curvePlotDomain, errors);
   }, [curveDifferentialField, curvePlotDomain, curveRenderState.samplingErrorRows]);
+  const curveDiagnosticReport = useMemo(() => analyzeCurveDiagnostics({
+    identity: activeCanonicalCurveDefinition.identity,
+    curve: curveRenderState.curve,
+    field: curveDifferentialField,
+    samplingDiagnostics: curveRenderState.samplingDiagnostics,
+    breakpoints: curveRenderState.curve?.domain.breakpoints,
+    tolerance: Math.max(1e-7, curveAdaptiveTolerance * 0.01),
+  }), [activeCanonicalCurveDefinition.identity, curveAdaptiveTolerance, curveDiagnosticRevisionToken, curveDifferentialField, curveRenderState.curve, curveRenderState.samplingDiagnostics]);
+  const filteredCurveDiagnostics = useMemo(() => curveDiagnosticReport.entries.filter((entry) =>
+    curveDiagnosticFilter === "all"
+      || (curveDiagnosticFilter === "warnings" ? entry.severity === "warning" || entry.severity === "error" : entry.category === curveDiagnosticFilter)
+  ), [curveDiagnosticFilter, curveDiagnosticReport.entries]);
+  const curveDiagnosticComparison = useMemo(() => curveSavedDiagnosticReports.length >= 2
+    ? compareCurveDiagnosticReports(curveSavedDiagnosticReports[1], curveSavedDiagnosticReports[0])
+    : null,
+  [curveSavedDiagnosticReports]);
   const activeCurveDefinitionMethod: CurveAnalysisMethod = curveActiveIsImported
     ? "polyline-estimate"
     : curveRenderState.source === "special"
@@ -12864,6 +12888,27 @@ const App: React.FC = () => {
     const probes = curveAnalysisWorkspaceDocument.savedProbes.filter((probe) => probe.identity.curveId === activeCanonicalCurveDefinition.identity.curveId);
     return probes.length >= 2 ? curvePickComparison(probes[1], probes[0]) : null;
   }, [activeCanonicalCurveDefinition.identity.curveId, curveAnalysisWorkspaceDocument.savedProbes]);
+  const navigateCurveDiagnostic = (entry: CurveDiagnosticReport["entries"][number]) => {
+    const parameter = (entry.parameterInterval[0] + entry.parameterInterval[1]) / 2;
+    const domain = activeCanonicalCurveDefinition.domain;
+    setLinkedCurveProbe((parameter - domain.min) / Math.max(1e-12, domain.max - domain.min), "diagnostic");
+  };
+  const saveCurveDiagnosticReport = () => {
+    const createdAt = Date.now();
+    setCurveSavedDiagnosticReports((reports) => [curveDiagnosticReport, ...reports].slice(0, 8));
+    setCurveAnalysisWorkspaceDocument((document) => ({
+      ...document,
+      savedResults: [{
+        id: `${curveDiagnosticReport.identity.key}:diagnostics:${createdAt}`,
+        resultKey: curveDiagnosticReport.fingerprint || "ready",
+        kind: "curve-diagnostics",
+        variant: "professional",
+        identity: curveDiagnosticReport.identity,
+        label: `Diagnostics · ${curveDiagnosticReport.status} · ${curveDiagnosticReport.entries.length} entries`,
+        visible: true,
+      }, ...document.savedResults].slice(0, 64),
+    }));
+  };
   const [geometryMode, setGeometryMode] = useState<GeometryMode>(() => {
     if (typeof window === "undefined") return "procedural";
     const saved = window.localStorage.getItem(UI_GEOMETRY_MODE_KEY) ?? undefined;
@@ -86971,9 +87016,34 @@ case "mobius":
                     )}
                     {curveInspectorTab === "diagnostics" && (
                       <>
-                        <div><strong>{curveRenderState.errors.length ? `${curveRenderState.errors.length} issue(s)` : "Ready — no issues"}</strong></div>
-                        {curveRenderState.errors.map((message, index) => <div key={`curve-inspector-issue-${index}`}>{message}</div>)}
-                        {curveDifferentialField?.warnings.map((message, index) => <div key={`curve-differential-warning-${index}`}>{message}</div>)}
+                        <div data-testid="curve-diagnostic-status"><strong>{curveDiagnosticReport.status.toUpperCase()} · {curveDiagnosticReport.warningCount} warning/error · {curveDiagnosticReport.entries.length} total</strong></div>
+                        <div data-testid="curve-diagnostic-summaries" style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          {(["all", "geometry", "sampling", "continuity", "singularity", "intersection", "warnings"] as const).map((category) => {
+                            const count = category === "all"
+                              ? curveDiagnosticReport.entries.length
+                              : category === "warnings"
+                                ? curveDiagnosticReport.warningCount
+                                : curveDiagnosticReport.summaries[category];
+                            return <button key={category} type="button" onClick={() => setCurveDiagnosticFilter(category)} aria-pressed={curveDiagnosticFilter === category} style={{ ...pill(curveDiagnosticFilter === category), fontSize: 9, textTransform: "capitalize" }}>{category} {count}</button>;
+                          })}
+                        </div>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          <button type="button" data-testid="curve-diagnostic-recompute" onClick={() => setCurveDiagnosticRevisionToken((value) => value + 1)}>Recompute</button>
+                          <button type="button" data-testid="curve-diagnostic-save" onClick={saveCurveDiagnosticReport}>Save snapshot</button>
+                          <button type="button" onClick={() => downloadCurveProbeText("curve-diagnostics.json", JSON.stringify(curveDiagnosticReport, null, 2), "application/json")}>JSON</button>
+                          <button type="button" onClick={() => downloadCurveProbeText("curve-diagnostics.csv", curveDiagnosticReportToCsv(curveDiagnosticReport), "text/csv")}>CSV</button>
+                        </div>
+                        {curveDiagnosticComparison && <div data-testid="curve-diagnostic-comparison">Compare snapshots: {curveDiagnosticComparison.changed ? "changed" : "unchanged"} · warning Δ {curveDiagnosticComparison.warningDelta} · added {curveDiagnosticComparison.added.length} · resolved {curveDiagnosticComparison.resolved.length}</div>}
+                        <div data-testid="curve-diagnostic-list" style={{ display: "grid", gap: 5 }}>
+                          {filteredCurveDiagnostics.map((entry) => (
+                            <button key={entry.id} type="button" onClick={() => navigateCurveDiagnostic(entry)} style={{ textAlign: "left", padding: 7, borderColor: entry.severity === "error" ? "#ef4444" : entry.severity === "warning" ? "#f59e0b" : "#cbd5e1" }}>
+                              <strong>{entry.severity.toUpperCase()} · {entry.category} · {entry.code}</strong>
+                              <span style={{ display: "block", marginTop: 2 }}>{entry.message}</span>
+                              <span style={{ display: "block", marginTop: 2, color: "#64748b" }}>t ∈ [{fmt(entry.parameterInterval[0])}, {fmt(entry.parameterInterval[1])}] · {entry.method} · {entry.distinction}{entry.uncertainty == null ? "" : ` · uncertainty ${fmt(entry.uncertainty)}`}</span>
+                              <span style={{ display: "block", marginTop: 2, color: "#475569" }}>{entry.suggestedAction}</span>
+                            </button>
+                          ))}
+                        </div>
                       </>
                     )}
                     {curveInspectorTab === "sampling" && (
@@ -87004,6 +87074,7 @@ case "mobius":
                       <>
                         <div><strong>{curveAnalysisResultStore.history.length} result entries</strong></div>
                         <div>{curveAnalysisWorkspaceDocument.definitions.length} persisted definitions</div>
+                        <div>{curveAnalysisWorkspaceDocument.savedResults.filter((entry) => entry.kind === "curve-diagnostics").length} saved diagnostic snapshots</div>
                         <div>Current revision: {activeCanonicalCurveDefinition.identity.curveRevision}</div>
                       </>
                     )}

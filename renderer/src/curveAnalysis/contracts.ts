@@ -186,13 +186,22 @@ export type CurveProbePayload = {
 };
 
 export type CurveDiagnosticSeverity = "ok" | "info" | "warning" | "error";
+export type CurveDiagnosticCategory = "geometry" | "sampling" | "continuity" | "singularity" | "intersection";
+export type CurveDiagnosticMethod = "exact" | "analytic" | "numerical" | "sampling" | "tolerance-robust" | "proximity-candidate";
 
 export type CurveDiagnosticEntry = {
   id: string;
+  identity: CurveIdentity;
   severity: CurveDiagnosticSeverity;
+  category: CurveDiagnosticCategory;
   code: string;
   message: string;
-  parameterInterval?: readonly [number, number];
+  parameterInterval: readonly [number, number];
+  evidence: Readonly<Record<string, number | string | boolean | null>>;
+  method: CurveDiagnosticMethod;
+  uncertainty: number | null;
+  suggestedAction: string;
+  distinction: "mathematical" | "tessellation" | "tolerance-candidate";
 };
 
 export type CurveDiagnosticsPayload = {

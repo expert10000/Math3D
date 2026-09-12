@@ -4,3 +4,4 @@ export * from "./adapters";
 export * from "./persistence";
 export * from "./probe";
 export * from "./scalarPlots";
+export * from "./diagnostics";

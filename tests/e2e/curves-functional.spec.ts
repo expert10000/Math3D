@@ -47,6 +47,15 @@ test.describe("Curves canonical workspace", () => {
       await expect(ctx.page.getByTestId("curve-pinned-probes")).toContainText("Pinned probes (3)");
       await expect(ctx.page.getByTestId("curve-probe-comparison")).toContainText("Compare latest");
       await expect(ctx.page.getByTestId("curve-probe-annotation-count")).toContainText("Annotations: 9");
+      await ctx.page.getByTestId("curve-inspector-tab-diagnostics").click();
+      await expect(ctx.page.getByTestId("curve-diagnostic-status")).toContainText("OK");
+      await expect(ctx.page.getByTestId("curve-diagnostic-summaries")).toContainText("geometry 1");
+      await ctx.page.getByTestId("curve-diagnostic-save").click();
+      await ctx.page.getByTestId("curve-diagnostic-recompute").click();
+      await ctx.page.getByTestId("curve-diagnostic-save").click();
+      await expect(ctx.page.getByTestId("curve-diagnostic-comparison")).toContainText("unchanged");
+      await ctx.page.getByTestId("curve-diagnostic-list").getByRole("button").first().click();
+      await expect(ctx.page.getByTestId("curve-probe-source")).toContainText("diagnostic");
       const osculatingToggle = ctx.page.getByTestId("curve-viewport-display-controls").getByLabel("Osculating", { exact: true });
       await osculatingToggle.check();
       await expect(osculatingToggle).toBeChecked();
@@ -84,6 +93,7 @@ test.describe("Curves canonical workspace", () => {
           definitions?: Array<{ identity?: { curveId?: string; curveRevision?: number }; fingerprint?: string }>;
           savedProbes?: unknown[];
           annotations?: unknown[];
+          savedResults?: Array<{ kind?: string }>;
         };
         const latest = document.definitions?.filter((entry) => entry.identity?.curveId === "custom2d").at(-1);
         return {
@@ -93,9 +103,10 @@ test.describe("Curves canonical workspace", () => {
           hasFingerprint: Boolean(latest?.fingerprint),
           savedProbes: document.savedProbes?.length,
           annotations: document.annotations?.length,
+          diagnosticSnapshots: document.savedResults?.filter((entry) => entry.kind === "curve-diagnostics").length,
           containsTypedArrays: serialized.includes("Float64Array"),
         };
-      })).toEqual({ version: 1, curveId: "custom2d", revision: 2, hasFingerprint: true, savedProbes: 3, annotations: 9, containsTypedArrays: false });
+      })).toEqual({ version: 1, curveId: "custom2d", revision: 2, hasFingerprint: true, savedProbes: 3, annotations: 9, diagnosticSnapshots: 2, containsTypedArrays: false });
     } finally {
       await closeSurfaceApp(ctx);
     }
