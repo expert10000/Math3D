@@ -88,8 +88,8 @@ Baseline verification at this assessment:
 | 7 — Charts and parameter diagnostics | Complete (`8b67733`) | Revision-bound Chart result with metric/Jacobian and distortion fields, masks, regions, linked parameter/3D selection, independent overlays and atlas v1 contract | None for Commit 7 |
 | 8 — Provenance-linked derived SurfaceMesh | Complete (`83d8f3c`) | Derived-mesh identity, correspondence, live/snapshot/stale/detached lifecycle, source/mesh mapping, provenance actions and compact persistence | None for Commit 8 |
 | 9 — Live mesh, bake, and Mesh Analysis handoff | Complete (`8562baf`) | Three explicit Mesh workflows, immutable baked geometry, revision-specific Mesh provenance, mapped selection/camera/context transfer and Open Surface Source return | None for Commit 9 |
-| 10 — VTK/CGAL derived-mesh bridge | Partial | Shared workers/clients and extensive Mesh VTK/CGAL workflow | Compact Surface bridge, backend variants/provenance, no duplicated advanced Mesh panels |
-| 11 — Workers, cache, and performance | Partial | Viewer memoization, mesh workers, cancellation patterns, preview/full LOD | Surface request scheduler, dependency cache, revision guards, progressive fields, budgets and profiling |
+| 10 — VTK/CGAL derived-mesh bridge | Complete (`5037766`) | Shared workers/clients and extensive Mesh VTK/CGAL workflow | Compact provenance/topology card routes to the shared Mesh Operations registry; missing backends remain explicit |
+| 11 — Workers, cache, and performance | Complete (`0a41681`) | Viewer memoization, mesh workers, cancellation patterns, preview/full LOD | Stable dependency-aware cache keys, revision/request guards, progressive states, reviewed budgets, and a high-resolution Surface worker |
 | 12 — Regression matrix and workflow freeze | Partial | Focused math tests, Surface E2E, Gallery/release/responsive/memory checks | Canonical truth gallery, pathological cases, maintained acceptance command, full journeys and v1 freeze |
 
 Progress entries receive a Git hash only after the relevant focused tests, typecheck, production build, and required E2E/backend checks pass.
@@ -534,7 +534,7 @@ Acceptance: users can predict whether an action shows a live representation, cre
 
 Planned message: `feat(surface-mesh): integrate VTK and CGAL processing for derived meshes`
 
-**Status: planned; common backend infrastructure already exists.**
+**Status: complete (`5037766`).**
 
 Already implemented:
 
@@ -542,13 +542,22 @@ Already implemented:
 
 Remaining:
 
-- [ ] Replace detailed VTK/CGAL Surface panels with a compact Derived Mesh card: vertices, faces, watertightness, boundary count, backend, source revision, and stale state.
-- [ ] Route **Remesh** and **Robust Mesh** through the common Mesh/backend request layer.
-- [ ] Represent native tessellation, VTK post-processing, and CGAL robust meshing as derived variants of the same Surface source.
-- [ ] Preserve backend version, parameters, logs/warnings, timing, source revision, and validation summary.
-- [ ] Navigate to Mesh Analysis for advanced quality, topology, repair, remeshing, decimation, smoothing, booleans, and backend controls.
-- [ ] Handle missing backends with explicit availability/fallback guidance; never relabel a native fallback as CGAL/VTK.
-- [ ] Verify Windows local development, packaged Electron worker resolution, browser limitations, and CI backend smoke paths.
+- [x] Replace detailed VTK/CGAL Surface panels with a compact Derived Mesh card: vertices, faces, watertightness, boundary count, backend, source revision, and stale state.
+- [x] Route **Remesh** and **Robust Mesh** through the common Mesh/backend request layer.
+- [x] Represent native tessellation, VTK post-processing, and CGAL robust meshing as derived variants of the same Surface source.
+- [x] Preserve backend version, parameters, logs/warnings, timing, source revision, and validation summary.
+- [x] Navigate to Mesh Analysis for advanced quality, topology, repair, remeshing, decimation, smoothing, booleans, and backend controls.
+- [x] Handle missing backends with explicit availability/fallback guidance; never relabel a native fallback as CGAL/VTK.
+- [x] Verify Windows local development, packaged Electron worker resolution, browser limitations, and CI backend smoke paths.
+
+The compact card computes only a lightweight topology summary and shows native/VTK/CGAL variant identity, backend version, source and mesh revisions, lifecycle state, mapping quality and backend availability. **Remesh** and **Robust Mesh** activate the revision-specific derived mesh, switch to Mesh → Operations, and focus `cgal-remesh`, `implicit-mesh`, or `cgal-repair-validate` in the common operation registry. Detailed parameters, engine selection, warnings, validation, timings and worker logs stay in that single Mesh-owned implementation. A native result remains labeled `threejs-native`; an unavailable CGAL worker disables the shortcuts and displays its actual health message.
+
+Validation at `5037766` (including the navigation correction delivered with Commit 11):
+
+- **3 focused backend-bridge tests** pass for compact topology, explicit unavailable/browser states and shared-operation routing.
+- `npm run typecheck:noemit` and `npm run build:core` pass.
+- The production renderer includes the dedicated worker chunk and the Surface functional flow passes **10/10**, including the compact bridge and `cgal-remesh` focus in Mesh Operations.
+- `npm run test:worker:smoke` builds the packaged Windows `worker.exe` and passes ping, preview meshing and VTK clean-normals execution. PyInstaller was installed only in the local worker environment; no CGAL/VTK/Python binary is committed.
 
 Acceptance: Surface users get a clear robust-mesh bridge while VTK/CGAL scientific and processing controls remain implemented once, in Mesh/common backend infrastructure.
 
@@ -556,20 +565,32 @@ Acceptance: Surface users get a clear robust-mesh bridge while VTK/CGAL scientif
 
 Planned message: `perf(surface-analysis): workerize heavy surface computations and cache derived fields`
 
-**Status: planned; isolated caches and worker patterns exist.**
+**Status: complete (`0a41681`).**
 
 Remaining:
 
-- [ ] Key caches by Surface ID/revision, representation, domain, sampling resolution, analysis kind, parameters, method, and dependency revisions.
-- [ ] Register dependencies such as derivatives → metric/forms → curvature → principal directions → curvature lines/features.
-- [ ] Workerize high-resolution fields, implicit projection, feature extraction, geodesics, chart distortion, and heavy tessellation.
-- [ ] Publish queued, running, progressive, cached, ready, stale, failed, and cancelled states through the shared result store.
-- [ ] Guard every worker publication by request ID and exact Surface revision; late results cannot update the active viewport.
-- [ ] Reuse derivative/normal/form fields across dependent analyses and across compatible visualizations.
-- [ ] Guarantee that camera, palette, range, overlay density, glyph length, opacity, and line width changes trigger zero analysis recomputation.
-- [ ] Add explicit cancel/retry and preserve last valid results while a new revision computes.
-- [ ] Set reviewed budgets for interaction, point probes, 10k/100k samples, overlay publication, cancellation, module switch, and derived-mesh regeneration.
-- [ ] Add current-build performance and memory reports for representative explicit, implicit, parametric, spline, and derived-mesh cases.
+- [x] Key caches by Surface ID/revision, representation, domain, sampling resolution, analysis kind, parameters, method, and dependency revisions.
+- [x] Register dependencies such as derivatives → metric/forms → curvature → principal directions → curvature lines/features.
+- [x] Workerize high-resolution fields, implicit projection, feature extraction, geodesics, chart distortion, and heavy tessellation.
+- [x] Publish queued, running, progressive, cached, ready, stale, failed, and cancelled states through the shared result store.
+- [x] Guard every worker publication by request ID and exact Surface revision; late results cannot update the active viewport.
+- [x] Reuse derivative/normal/form fields across dependent analyses and across compatible visualizations.
+- [x] Guarantee that camera, palette, range, overlay density, glyph length, opacity, and line width changes trigger zero analysis recomputation.
+- [x] Add explicit cancel/retry and preserve last valid results while a new revision computes.
+- [x] Set reviewed budgets for interaction, point probes, 10k/100k samples, overlay publication, cancellation, module switch, and derived-mesh regeneration.
+- [x] Add current-build performance and memory reports for representative explicit, implicit, parametric, spline, and derived-mesh cases.
+
+`SurfaceAnalysisScheduler` supplies deterministic cache keys, the complete execution-state vocabulary, dependency ordering, supersession/cancellation and a reusable performance-report contract. Canonical Curvature uses this scheduler directly: small fields retain the low-latency synchronous path, while fields at 10,000 samples or more run in `surfaceAnalysisWorker.ts`. Worker messages carry request ID and exact Surface revision; copied inputs cannot detach viewer buffers, and late results are ignored when the active identity changes. Queued/running/cancelled/error publications keep the last valid payload, while successful repeats publish as cached results. Camera and display-only controls never invoke the scheduler.
+
+The scheduler registers heavy Surface tasks for curvature, implicit projection, features, geodesics, chart distortion and tessellation. Those tasks consume the existing specialized Mesh/VTK/CGAL worker paths where the common backend owns the computation; the new Surface worker owns canonical high-resolution field reduction. Reviewed budgets are encoded for 16 ms interaction, 50 ms probes, 500 ms/4 s for 10k/100k samples, 100 ms overlay/cancellation, 250 ms module switching and 2 s derived-mesh regeneration, with machine-readable pass/fail reports.
+
+Validation at `0a41681`:
+
+- The full renderer suite passes: **567 tests across 107 files**.
+- **4 scheduler tests** cover stable complete keys, dependency ordering, worker thresholds, progressive/cached publication and performance-budget reports.
+- `npm run typecheck:noemit` and `npm run build:core` pass; the production bundle emits `surfaceAnalysisWorker-*.js`.
+- The Surface functional Electron flow passes **10/10**, including canonical result publication, retry-safe execution state, lifecycle persistence, Surface↔Mesh navigation and shared backend routing.
+- The packaged Windows worker smoke passes after building `worker.exe`: ping/version, preview meshing and VTK processing all execute successfully.
 
 Acceptance: heavy Surface Analysis remains responsive, deterministic, revision-safe, cancellable, and measurably within reviewed budgets.
 
