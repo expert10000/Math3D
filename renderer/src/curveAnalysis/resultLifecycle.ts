@@ -3,6 +3,7 @@ import type { AnalysisResult, AnalysisResultState } from "../analysis/contracts"
 import type { CurveAnalysisWorkspaceDocument } from "./persistence";
 import type { CanonicalCurveDefinition, CurveAnalysisMethod, CurveIdentity, CurveResultKind, CurveUnits } from "./contracts";
 import { upsertCurveAnalysisResult, type CurveAnalysisResultStore } from "./infrastructure";
+import type { CurveScalarPlotKey } from "./scalarPlots";
 
 export type CurveResultLayerAction = "show" | "hide" | "select" | "frame" | "pin" | "unpin" | "save" | "unsave";
 export type CurveResultLayerState = { visible: boolean; selected: boolean; framed: boolean; pinned: boolean; saved: boolean };
@@ -53,6 +54,31 @@ export type CurveResultCard = {
   updatedAt: number;
   layer: CurveResultLayerState;
   series: CurveLayerSeries | null;
+};
+
+export type CurveViewportEvidenceKind = "curvature-comb" | "evolute" | "frenet-frame" | "bishop-frame" | "inflection-markers" | "diagnostics" | "control-structure" | "samples" | "tube-preview";
+export type CurveResultPresentation = {
+  resultKeys: string[];
+  layerLabels: string[];
+  plotKeys: CurveScalarPlotKey[];
+  viewportEvidence: CurveViewportEvidenceKind[];
+  selectedResultKey: string | null;
+  framedResultKey: string | null;
+  pinnedResultKeys: string[];
+};
+
+const PRESENTATION_BY_VARIANT: Readonly<Record<string, { plots: readonly CurveScalarPlotKey[]; viewport: readonly CurveViewportEvidenceKind[] }>> = {
+  "preset:curvature": { plots: ["curvature"], viewport: ["curvature-comb", "evolute"] },
+  "preset:curvature-quality": { plots: ["sampling-error"], viewport: ["diagnostics"] },
+  "preset:frenet": { plots: ["curvature", "torsion"], viewport: ["frenet-frame"] },
+  "preset:frenet-validity": { plots: [], viewport: ["diagnostics"] },
+  "preset:bishop-frame": { plots: ["curvature"], viewport: ["bishop-frame"] },
+  "preset:signed-curvature": { plots: ["signed-curvature", "curvature"], viewport: ["curvature-comb"] },
+  "preset:inflections": { plots: [], viewport: ["inflection-markers", "diagnostics"] },
+  "preset:spline-continuity": { plots: ["speed", "curvature"], viewport: ["control-structure"] },
+  "preset:tube-samples": { plots: ["speed", "sampling-error"], viewport: ["samples"] },
+  "preset:tube-frame": { plots: ["curvature", "torsion"], viewport: ["bishop-frame"] },
+  "preset:tube-readiness": { plots: [], viewport: ["tube-preview"] },
 };
 
 export const CURVE_ANALYSIS_PRESETS: readonly CurveAnalysisPreset[] = [
@@ -118,7 +144,7 @@ export const applyCurveAnalysisPreset = (input: { state: CurveResultLifecycleSta
   const active = input.state.activePreset;
   if (!active || (input.token != null && input.token !== active.token) || active.curveId !== input.definition.identity.curveId || active.curveRevision !== input.definition.identity.curveRevision) return { accepted: false, state: input.state, store: input.store, resultKeys: [] };
   const preset = CURVE_ANALYSIS_PRESETS.find((candidate) => candidate.id === active.presetId)!;
-  let store = input.store; const resultKeys: string[] = []; const layers = { ...input.state.layers };
+  let store = input.store; const resultKeys: string[] = []; const layers = Object.fromEntries(Object.entries(input.state.layers).map(([key, layer]) => [key, layer.pinned ? layer : { ...layer, visible: false, selected: false, framed: false }]));
   preset.layers.forEach((layer, index) => {
     const key = analysisResultKey(input.definition.identity, layer.kind, layer.variant); resultKeys.push(key);
     const dependencyKind: CurveResultKind = layer.kind === "curve-samples" || layer.kind === "curve-continuity" ? "curve-definition" : layer.kind === "derived-curve-mesh" ? "curve-samples" : "curve-definition";
@@ -133,12 +159,13 @@ export const reconcileCurveResultLifecycle = (state: CurveResultLifecycleState, 
 export const updateCurveResultLayer = (state: CurveResultLifecycleState, resultKey: string, action: CurveResultLayerAction): CurveResultLifecycleState => {
   const current = state.layers[resultKey] ?? DEFAULT_LAYER;
   const next = { ...current };
-  if (action === "show" || action === "hide") next.visible = action === "show";
-  if (action === "select") next.selected = !current.selected;
-  if (action === "frame") next.framed = !current.framed;
+  if (action === "show" || action === "hide") { next.visible = action === "show"; if (action === "hide") { next.selected = false; next.framed = false; } }
+  if (action === "select") { next.selected = true; next.visible = true; }
+  if (action === "frame") { next.framed = true; next.visible = true; }
   if (action === "pin" || action === "unpin") next.pinned = action === "pin";
   if (action === "save" || action === "unsave") next.saved = action === "save";
-  return { ...state, layers: { ...state.layers, [resultKey]: next } };
+  const layers = Object.fromEntries(Object.entries(state.layers).map(([key, layer]) => [key, action === "select" ? { ...layer, selected: false } : action === "frame" ? { ...layer, framed: false } : layer]));
+  return { ...state, layers: { ...layers, [resultKey]: next } };
 };
 
 export const setCurveComparisonSelection = (state: CurveResultLifecycleState, resultKey: string): CurveResultLifecycleState => {
@@ -153,6 +180,23 @@ export const deriveCurveResultCards = (store: CurveAnalysisResultStore, definiti
     const payload = isLayerPayload(result.payload) ? result.payload : null;
     return { resultKey, kind: result.kind, variant: result.variant, label: payload?.label ?? String(result.kind), state: result.state, identity: result.identity, method: payload?.method ?? String((result.payload as { method?: string } | null)?.method ?? "unknown"), units: definition.units, valueUnit: payload?.unit ?? definition.units.position, statistics: payload?.statistics ?? null, uncertainty: payload?.uncertainty ?? null, warnings: payload?.warnings ?? ((result.payload as { warnings?: string[] } | null)?.warnings ?? []), dependencies: result.dependencies, computeTimeMs: result.computeTimeMs, backend: result.backend, resultVersion: result.resultVersion, createdAt: result.createdAt, updatedAt: result.updatedAt, layer: state.layers[resultKey] ?? DEFAULT_LAYER, series: payload?.series ?? null };
   }).sort((left, right) => Number(right.layer.pinned) - Number(left.layer.pinned) || right.updatedAt - left.updatedAt || left.resultKey.localeCompare(right.resultKey));
+
+export const deriveCurveResultPresentation = (cards: readonly CurveResultCard[], definition: CanonicalCurveDefinition): CurveResultPresentation => {
+  const variantOrder = Object.keys(PRESENTATION_BY_VARIANT);
+  const visible = cards.filter((card) => card.identity.key === definition.identity.key && card.state === "ready" && card.layer.visible && PRESENTATION_BY_VARIANT[card.variant]).sort((left, right) => variantOrder.indexOf(left.variant) - variantOrder.indexOf(right.variant));
+  const unique = <T extends string>(values: readonly T[]): T[] => [...new Set(values)];
+  const plotOrder: CurveScalarPlotKey[] = ["speed", "curvature", "signed-curvature", "torsion", "sampling-error"];
+  const viewportOrder: CurveViewportEvidenceKind[] = ["curvature-comb", "evolute", "frenet-frame", "bishop-frame", "inflection-markers", "diagnostics", "control-structure", "samples", "tube-preview"];
+  return {
+    resultKeys: visible.map((card) => card.resultKey),
+    layerLabels: visible.map((card) => card.label),
+    plotKeys: unique(visible.flatMap((card) => PRESENTATION_BY_VARIANT[card.variant].plots)).sort((left, right) => plotOrder.indexOf(left) - plotOrder.indexOf(right)),
+    viewportEvidence: unique(visible.flatMap((card) => PRESENTATION_BY_VARIANT[card.variant].viewport)).sort((left, right) => viewportOrder.indexOf(left) - viewportOrder.indexOf(right)),
+    selectedResultKey: visible.find((card) => card.layer.selected)?.resultKey ?? null,
+    framedResultKey: visible.find((card) => card.layer.framed)?.resultKey ?? null,
+    pinnedResultKeys: visible.filter((card) => card.layer.pinned).map((card) => card.resultKey),
+  };
+};
 
 export const removeCurveResult = (store: CurveAnalysisResultStore, state: CurveResultLifecycleState, resultKey: string): { store: CurveAnalysisResultStore; state: CurveResultLifecycleState } => {
   const entries = { ...store.entries }; delete entries[resultKey]; const layers = { ...state.layers }; delete layers[resultKey];

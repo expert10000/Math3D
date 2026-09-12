@@ -13,6 +13,7 @@ import {
   curveResultToJson,
   curveResultToSvg,
   deriveCurveResultCards,
+  deriveCurveResultPresentation,
   reconcileCurveResultLifecycle,
   removeCurveResult,
   saveCurveResultReference,
@@ -48,16 +49,50 @@ describe("Curve scientific result lifecycle", () => {
     expect(cards[0].dependencies).toHaveLength(1);
   });
 
+  it("maps every preset to real plot and viewport evidence", () => {
+    const expected = {
+      "curvature-lab": { plots: ["curvature", "sampling-error"], viewport: ["curvature-comb", "evolute", "diagnostics"] },
+      "frenet-evidence": { plots: ["curvature", "torsion"], viewport: ["frenet-frame", "diagnostics"] },
+      "bishop-stable-frame": { plots: ["curvature"], viewport: ["bishop-frame"] },
+      "planar-inflection-map": { plots: ["curvature", "signed-curvature"], viewport: ["curvature-comb", "inflection-markers", "diagnostics"] },
+      "spline-continuity": { plots: ["speed", "curvature"], viewport: ["control-structure"] },
+      "tube-preparation": { plots: ["speed", "curvature", "torsion", "sampling-error"], viewport: ["bishop-frame", "samples", "tube-preview"] },
+    } as const;
+    for (const preset of CURVE_ANALYSIS_PRESETS) {
+      const begun = beginCurveAnalysisPreset(createCurveResultLifecycleState(), definition(), preset.id);
+      const applied = applyCurveAnalysisPreset({ state: begun, store: createCurveAnalysisResultStore(), definition: definition(), points, now: 100 });
+      const presentation = deriveCurveResultPresentation(deriveCurveResultCards(applied.store, definition(), applied.state), definition());
+      expect(presentation.plotKeys, preset.id).toEqual(expected[preset.id].plots);
+      expect(presentation.viewportEvidence, preset.id).toEqual(expected[preset.id].viewport);
+    }
+  });
+
+  it("removes hidden evidence and preserves only pinned current-revision evidence across presets", () => {
+    let state = beginCurveAnalysisPreset(createCurveResultLifecycleState(), definition(), "curvature-lab");
+    let applied = applyCurveAnalysisPreset({ state, store: createCurveAnalysisResultStore(), definition: definition(), points, now: 100 });
+    const curvatureKey = applied.resultKeys[0], qualityKey = applied.resultKeys[1];
+    state = updateCurveResultLayer(applied.state, curvatureKey, "pin");
+    state = updateCurveResultLayer(state, qualityKey, "hide");
+    let presentation = deriveCurveResultPresentation(deriveCurveResultCards(applied.store, definition(), state), definition());
+    expect(presentation.plotKeys).toEqual(["curvature"]); expect(presentation.viewportEvidence).toEqual(["curvature-comb", "evolute"]);
+    state = beginCurveAnalysisPreset(state, definition(), "bishop-stable-frame");
+    applied = applyCurveAnalysisPreset({ state, store: applied.store, definition: definition(), points, now: 200 });
+    presentation = deriveCurveResultPresentation(deriveCurveResultCards(applied.store, definition(), applied.state), definition());
+    expect(presentation.viewportEvidence).toEqual(["curvature-comb", "evolute", "bishop-frame"]);
+    expect(presentation.pinnedResultKeys).toEqual([curvatureKey]);
+    expect(deriveCurveResultPresentation(deriveCurveResultCards(applied.store, definition(4), reconcileCurveResultLifecycle(applied.state, definition(4))), definition(4)).resultKeys).toEqual([]);
+  });
+
   it("handles independent display actions, persistence, comparison selection, and canonical removal", () => {
     const begun = beginCurveAnalysisPreset(createCurveResultLifecycleState(), definition(), "curvature-lab");
     const applied = applyCurveAnalysisPreset({ state: begun, store: createCurveAnalysisResultStore(), definition: definition(), points, now: 100 });
     const key = applied.resultKeys[0];
     let state = updateCurveResultLayer(applied.state, key, "hide"); state = updateCurveResultLayer(state, key, "select"); state = updateCurveResultLayer(state, key, "frame"); state = updateCurveResultLayer(state, key, "pin"); state = updateCurveResultLayer(state, key, "save"); state = setCurveComparisonSelection(state, key);
-    expect(state.layers[key]).toEqual({ visible: false, selected: true, framed: true, pinned: true, saved: true });
+    expect(state.layers[key]).toEqual({ visible: true, selected: true, framed: true, pinned: true, saved: true });
     expect(state.compareKeys).toEqual([key]);
     const card = deriveCurveResultCards(applied.store, definition(), state).find((candidate) => candidate.resultKey === key)!;
     const persisted = parseCurveAnalysisWorkspace(serializeCurveAnalysisWorkspace(saveCurveResultReference(createCurveAnalysisWorkspaceDocument(), card)));
-    expect(persisted.savedResults[0]).toMatchObject({ resultKey: key, visible: false, identity: { curveRevision: 3 } });
+    expect(persisted.savedResults[0]).toMatchObject({ resultKey: key, visible: true, identity: { curveRevision: 3 } });
     const removed = removeCurveResult(applied.store, state, key);
     expect(removed.store.entries[key]).toBeUndefined(); expect(removed.store.history.some((record) => record.resultKey === key)).toBe(false); expect(removed.state.layers[key]).toBeUndefined();
   });

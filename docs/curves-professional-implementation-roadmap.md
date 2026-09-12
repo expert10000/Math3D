@@ -636,19 +636,19 @@ Already implemented:
 Remaining:
 
 - [x] Add typed Result cards with state, method, units, statistics, uncertainty, warnings, dependencies, timing, and backend.
-- [x] Add independent show/hide, select, frame, pin, save, compare, export, recompute, and remove actions for result layers.
+- [x] Add independent show/hide, select, frame, pin, save, compare, export, recompute, and remove actions for result layers. Show/hide drives the plot and viewport, select drives the Inspector/probe context, frame fits the evidence, and pin carries current-revision evidence across preset changes.
 - [x] Separate source-definition presets from analysis-layer presets.
 - [x] Add useful revision-safe analysis presets such as **Curvature lab**, **Frenet evidence**, **Bishop stable frame**, **Planar inflection map**, **Spline continuity**, and **Tube preparation**.
-- [x] Ensure preset application orchestrates canonical computations and visibility without creating a parallel result store.
+- [x] Ensure preset application orchestrates canonical computations and actual scalar/viewport evidence without creating a parallel result store; visible labels identify every active plot and viewport layer.
 - [x] Add reproducible JSON/CSV/SVG export manifests containing Curve identity, source revision, definition, sampling, method, units, tolerances, warnings, and software/backend version.
 - [x] Add comparison between revisions, methods, sampling policies, and native/backend results with common-domain alignment.
 - [x] Clear or mark active presets stale when Curve identity/revision changes and prevent rapid-switch completion races.
 
 Validation for Commit 13:
 
-- All **82 Curve Analysis tests across 14 files** pass. Lifecycle coverage verifies all six presets, canonical-store publication, independent actions, save/reload references, deterministic JSON/CSV/SVG manifests, common-domain comparison, revision invalidation, and rapid-switch rejection.
+- The maintained unit gate passes **107 tests across 19 files**. Lifecycle coverage verifies all six presets, their plot/viewport presentation maps, canonical-store publication, independent actions, pinned-layer carryover, stale-layer exclusion, save/reload references, deterministic JSON/CSV/SVG manifests, common-domain comparison, revision invalidation, and rapid-switch rejection.
 - The renderer TypeScript project and production renderer build pass.
-- The Electron lifecycle journey applies Curvature lab, inspects metadata, changes independent layer state, saves and compares cards, verifies workspace persistence, and observes a stale preset after a source revision change.
+- The Electron lifecycle journey applies all six analysis presets and asserts real scalar series plus viewport glyph, comb, evolute, marker, control, knot, sample, and tube counts. It verifies that hiding Bishop evidence removes its glyphs, ordinary Frames visibility toggling removes and restores glyphs without invalidating the preset, selection updates the Inspector, framing fits the camera, pinned evidence survives a preset change, saved state persists, and source edits mark the preset stale.
 
 Acceptance: a user can apply a useful analysis stack, inspect each layer, reproduce it from exported provenance, compare it with another result, and safely revisit it after edits or reload.
 
@@ -678,9 +678,10 @@ Remaining:
 Validation for Commit 14:
 
 - `npm run test:curves:v1:acceptance` passes end to end from the repository root.
-- The maintained unit gate passes **105 tests across 19 files**, including the complete canonical/pathological matrix, mathematical invariants, scale-aware tolerances, adaptive convergence, seam and `t ↔ s` behavior, deterministic ordering, masks, uncertainty, lifecycle, cancellation, stale guards, persistence, exports, and fallback.
+- The maintained unit gate passes **107 tests across 19 files**, including the complete canonical/pathological matrix, mathematical invariants, scale-aware tolerances, adaptive convergence, seam and `t ↔ s` behavior, deterministic ordering, masks, uncertainty, lifecycle presentation, cancellation, stale guards, persistence, exports, and fallback.
 - The complete repository TypeScript check and production renderer build pass.
 - The maintained Electron gate passes **16 cross-module journeys**, covering Curve definition/analysis, diagnostics navigation, spline editing, derived curves, Geometry/Surface interoperability, CurveMesh/Mesh round trips, worker failure, and workspace navigation.
+- The result-lifecycle journey gates on rendered plot-series and viewport-evidence counts for all six analysis presets, including Hide removal and visibility-only viewport toggles, so state-only lifecycle wiring cannot satisfy the maintained acceptance command.
 - Responsive smoke passes phone portrait, phone landscape, tablet, and desktop layouts.
 - Backend verification passes the Curve engine parity/fallback suite and bundled worker smoke. Optional VTK/CGAL Curve process endpoints are explicitly reported unsupported/unregistered in this installation; deterministic Math3D native fallback remains green.
 - The maintained profile gate passes **5 reviewed profiles** spanning 1k/10k/100k sampling, high curvature, 25k control points, sampled intersections, production-size Bishop tube generation, transfer bounds, and cache memory limits.

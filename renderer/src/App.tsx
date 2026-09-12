@@ -628,7 +628,15 @@ import { CurveMeshPanel } from "./components/CurveMeshPanel";
 import { CurveBackendPanel } from "./components/CurveBackendPanel";
 import { CurveWorkerPanel } from "./components/CurveWorkerPanel";
 import { CurveResultLifecyclePanel } from "./components/CurveResultLifecyclePanel";
-import { createCurveResultLifecycleState, reconcileCurveResultLifecycle } from "./curveAnalysis/resultLifecycle";
+import {
+  createCurveResultLifecycleState,
+  deriveCurveResultCards,
+  deriveCurveResultPresentation,
+  reconcileCurveResultLifecycle,
+  type CurveAnalysisPresetId,
+  type CurveResultCard,
+  type CurveViewportEvidenceKind,
+} from "./curveAnalysis/resultLifecycle";
 import { curveMeshToSurfaceMesh } from "./curveAnalysis/curveMesh";
 import {
   analyzeCurveDifferentialGeometry,
@@ -643,6 +651,11 @@ import {
   sampleUniform as curveSampleUniform,
   validateCurve as curveValidate,
   evaluateDerivedConstructionObjects,
+  evaluateSpline as curveEvaluateSpline,
+  DEFAULT_BEZIER_CURVE,
+  DEFAULT_BSPLINE_CURVE,
+  DEFAULT_NURBS_QUARTER_ARC,
+  RATIONAL_NURBS_CIRCLE,
   type AnyCurve as CoreAnyCurve,
   type ConstructionRelationshipDefinition,
   type Curve3D as CoreCurve3D,
@@ -11533,6 +11546,17 @@ type CurveFrameSample = CurveViewerGlyph & {
   torsion: number;
   frameKind?: "frenet" | "bishop";
 };
+const CURVE_VIEWPORT_EVIDENCE_LABELS: Record<CurveViewportEvidenceKind, string> = {
+  "curvature-comb": "curvature comb",
+  evolute: "evolute",
+  "frenet-frame": "Frenet frame",
+  "bishop-frame": "Bishop frame",
+  "inflection-markers": "inflection markers",
+  diagnostics: "diagnostic markers",
+  "control-structure": "control and knot structure",
+  samples: "sample points",
+  "tube-preview": "tube preview",
+};
 
 const toCurveViewerVec3 = (point: { x: number; y: number; z?: number }): CurveViewerVec3 => ({
   x: point.x,
@@ -12604,6 +12628,37 @@ const App: React.FC = () => {
       frameKind: point.frenetDefined ? "frenet" : "bishop",
     })) ?? curveRenderState.frameSamples,
   [curveDifferentialField, curveRenderState.frameSamples]);
+  const curveBishopFrameSamples = useMemo<CurveFrameSample[]>(() =>
+    curveDifferentialField?.points.map((point) => ({
+      t: point.t,
+      point: point.position,
+      tangent: point.tangent,
+      normal: point.bishopNormal,
+      binormal: point.bishopBinormal,
+      curvature: point.curvature ?? NaN,
+      torsion: point.torsion ?? NaN,
+      frameKind: "bishop",
+    })) ?? [],
+  [curveDifferentialField]);
+  const curveCanonicalSplineStructure = useMemo(() => {
+    const renderedSpline = curveRenderState.curve && "spline" in curveRenderState.curve
+      ? (curveRenderState.curve as SplineCurve).spline
+      : null;
+    const presetSpline = activeCurvePreset?.id === "bezierCubic"
+      ? DEFAULT_BEZIER_CURVE
+      : activeCurvePreset?.id === "bSplineDemo"
+        ? DEFAULT_BSPLINE_CURVE
+        : activeCurvePreset?.id === "nurbsQuarterArc"
+          ? DEFAULT_NURBS_QUARTER_ARC
+          : activeCurvePreset?.id === "nurbs-circle"
+            ? RATIONAL_NURBS_CIRCLE
+            : null;
+    const definition = curveSplineDefinition?.id === activeCurvePreset?.id ? curveSplineDefinition : renderedSpline ?? presetSpline;
+    if (!definition) return { controlPoints: [] as CurveViewerVec3[], knotPoints: [] as CurveViewerVec3[], weights: [] as number[] };
+    const controlPoints = definition.controlPoints.map((point) => toCurveViewerVec3(point));
+    const knotPoints = [...new Set(definition.knotVector.filter((knot) => knot >= definition.domain.tMin && knot <= definition.domain.tMax))].map((knot) => toCurveViewerVec3(curveEvaluateSpline(definition, knot)));
+    return { controlPoints, knotPoints, weights: [...definition.weights] };
+  }, [activeCurvePreset?.id, curveRenderState.curve, curveSplineDefinition]);
   const curveDifferentialProbePoint = useMemo(() => {
     if (!curveDifferentialField?.points.length) return null;
     return curveDifferentialField.points.reduce((best, point) =>
@@ -12872,7 +12927,7 @@ const App: React.FC = () => {
       definitions.sort((left, right) => left.identity.curveId.localeCompare(right.identity.curveId) || left.identity.curveRevision - right.identity.curveRevision);
       return { ...document, definitions };
     });
-  }, [activeCanonicalCurveDefinition, activeCurveDefinitionMethod]);
+  }, [activeCanonicalCurveDefinition.fingerprint, activeCanonicalCurveDefinition.identity.key, activeCurveDefinitionMethod]);
   useEffect(() => {
     try {
       localStorage.setItem(CURVE_ANALYSIS_WORKSPACE_KEY, serializeCurveAnalysisWorkspace(curveAnalysisWorkspaceDocument));
@@ -12884,6 +12939,60 @@ const App: React.FC = () => {
     () => getCurveAnalysisResult(curveAnalysisResultStore, activeCanonicalCurveDefinition.identity, "curve-definition"),
     [activeCanonicalCurveDefinition.identity, curveAnalysisResultStore]
   );
+  const curveResultCards = useMemo(() => deriveCurveResultCards(curveAnalysisResultStore, activeCanonicalCurveDefinition, curveResultLifecycle), [activeCanonicalCurveDefinition, curveAnalysisResultStore, curveResultLifecycle]);
+  const curveResultPresentation = useMemo(() => deriveCurveResultPresentation(curveResultCards, activeCanonicalCurveDefinition), [activeCanonicalCurveDefinition, curveResultCards]);
+  const curveHasCurrentAnalysisPreset = curveResultLifecycle.activePreset?.state === "current"
+    && curveResultLifecycle.activePreset.curveId === activeCanonicalCurveDefinition.identity.curveId
+    && curveResultLifecycle.activePreset.curveRevision === activeCanonicalCurveDefinition.identity.curveRevision;
+  const curvePresentedScalarPlotRows = useMemo(() => curveHasCurrentAnalysisPreset
+    ? curveScalarPlotRows.filter((row) => curveResultPresentation.plotKeys.includes(row.key))
+    : curveScalarPlotRows,
+  [curveHasCurrentAnalysisPreset, curveResultPresentation.plotKeys, curveScalarPlotRows]);
+  const curveSelectedResultCard = useMemo(() => curveResultPresentation.selectedResultKey
+    ? curveResultCards.find((card) => card.resultKey === curveResultPresentation.selectedResultKey) ?? null
+    : null,
+  [curveResultCards, curveResultPresentation.selectedResultKey]);
+  const curveHasViewportEvidence = (kind: CurveViewportEvidenceKind) => !curveHasCurrentAnalysisPreset || curveResultPresentation.viewportEvidence.includes(kind);
+  const curveAnalysisMarkers = useMemo(() => {
+    if (!curveHasCurrentAnalysisPreset) return [];
+    const parameters = new Set<number>();
+    if (curveResultPresentation.viewportEvidence.includes("inflection-markers")) curveDifferentialField?.inflectionParameters.forEach((parameter) => parameters.add(parameter));
+    if (curveResultPresentation.viewportEvidence.includes("diagnostics")) curveDiagnosticReport.entries.slice(0, 24).forEach((entry) => parameters.add(0.5 * (entry.parameterInterval[0] + entry.parameterInterval[1])));
+    return [...parameters].flatMap((parameter) => {
+      const point = curveDifferentialField?.points.reduce((best, candidate) => Math.abs(candidate.t - parameter) < Math.abs(best.t - parameter) ? candidate : best);
+      return point ? [{ point: point.position, color: 0xdc2626 }] : [];
+    });
+  }, [curveDiagnosticReport.entries, curveDifferentialField, curveHasCurrentAnalysisPreset, curveResultPresentation.viewportEvidence]);
+  const handleCurveAnalysisPresetApplied = (presetId: CurveAnalysisPresetId) => {
+    if (presetId === "curvature-lab" || presetId === "planar-inflection-map") setCurveShowComb(true);
+    if (presetId === "curvature-lab") setCurveShowOsculatingEvidence(true);
+    if (presetId === "frenet-evidence" || presetId === "bishop-stable-frame" || presetId === "tube-preparation") setCurveShowFrames(true);
+    if (presetId === "planar-inflection-map" || presetId === "frenet-evidence") setCurveShowDiagnostics(true);
+    if (presetId === "spline-continuity") setCurveShowControlPolygon(true);
+    if (presetId === "tube-preparation") { setCurveShowSamples(true); setCurveShowPreviews(true); }
+    setCurveInspectorTab("result");
+  };
+  const handleCurveResultSelected = (card: CurveResultCard) => {
+    if (card.series?.value.length) {
+      let index = 0;
+      for (let candidate = 1; candidate < card.series.value.length; candidate++) if (Number.isFinite(card.series.value[candidate]) && (!Number.isFinite(card.series.value[index]) || Math.abs(card.series.value[candidate]) > Math.abs(card.series.value[index]))) index = candidate;
+      setCurveProbeSource("plot"); setCurveProbeU(index / Math.max(1, card.series.value.length - 1));
+    }
+    setCurveInspectorTab(card.kind === "curve-diagnostics" ? "diagnostics" : card.kind === "curve-samples" ? "sampling" : "result");
+  };
+  const handleCurveResultFramed = (_card: CurveResultCard) => setCurveViewerResetToken((token) => token + 1);
+  const curveAnalysisFrameGlyphs = curveShowFrames ? curveHasCurrentAnalysisPreset
+    ? [
+        ...(curveResultPresentation.viewportEvidence.includes("frenet-frame") ? curveDifferentialFrameSamples : []),
+        ...(curveResultPresentation.viewportEvidence.includes("bishop-frame") ? curveBishopFrameSamples : []),
+      ]
+    : curveDifferentialFrameSamples : [];
+  const curveAnalysisCombSegments = curveShowComb && curveHasViewportEvidence("curvature-comb") ? curveCurvatureCombSegments : [];
+  const curveAnalysisEvolutePoints = curveShowOsculatingEvidence && curveHasViewportEvidence("evolute") ? curveEvolutePoints : [];
+  const curveAnalysisControlPoints = curveShowControlPolygon && curveHasViewportEvidence("control-structure") ? curveCanonicalSplineStructure.controlPoints : [];
+  const curveAnalysisKnotPoints = curveShowControlPolygon && curveHasViewportEvidence("control-structure") ? curveCanonicalSplineStructure.knotPoints : [];
+  const curveAnalysisShowSamples = curveShowSamples && curveHasViewportEvidence("samples");
+  const curveAnalysisShowTube = curveShowPreviews && curveHasViewportEvidence("tube-preview");
   const setLinkedCurveProbe = (normalizedParameter: number, source: CurvePickSource) => {
     setCurveProbeSource(source);
     setCurveProbeU(clamp(normalizedParameter, 0, 1));
@@ -86531,7 +86640,7 @@ case "mobius":
                           <button type="button" onClick={() => setCurvePlotDomain("arc-length")} aria-pressed={curvePlotDomain === "arc-length"} style={pill(curvePlotDomain === "arc-length")}>s/L</button>
                         </div>
                         <CurveScalarPlots
-                          rows={curveScalarPlotRows}
+                          rows={curvePresentedScalarPlotRows}
                           domain={curvePlotDomain}
                           activeParameter={curveProbeU}
                           onSelect={(u) => setLinkedCurveProbe(u, "plot")}
@@ -86545,6 +86654,9 @@ case "mobius":
                           onStoreChange={setCurveAnalysisResultStore}
                           onLifecycleChange={setCurveResultLifecycle}
                           onWorkspaceChange={setCurveAnalysisWorkspaceDocument}
+                          onPresetApplied={handleCurveAnalysisPresetApplied}
+                          onSelectResult={handleCurveResultSelected}
+                          onFrameResult={handleCurveResultFramed}
                         />
                       </div>
                     )}
@@ -86832,26 +86944,37 @@ case "mobius":
                         </label>
                       ))}
                     </div>
+                    {curveHasCurrentAnalysisPreset && (
+                      <div data-testid="curve-analysis-visual-evidence" style={{ border: "1px solid #99f6e4", borderRadius: 7, background: "#f0fdfa", padding: "6px 8px", display: "grid", gap: 2, fontSize: 10 }}>
+                        <div><strong>Active analysis evidence</strong> · {curveResultPresentation.layerLabels.length ? curveResultPresentation.layerLabels.join(" + ") : "No visible result layers"}</div>
+                        <div data-testid="curve-analysis-plot-series">Plots ({curvePresentedScalarPlotRows.length}): {curvePresentedScalarPlotRows.length ? curvePresentedScalarPlotRows.map((row) => row.label).join(", ") : "none"}</div>
+                        <div data-testid="curve-analysis-viewport-evidence">Viewport: {curveResultPresentation.viewportEvidence.length ? curveResultPresentation.viewportEvidence.map((kind) => CURVE_VIEWPORT_EVIDENCE_LABELS[kind]).join(", ") : "none"} · glyphs {curveAnalysisFrameGlyphs.length} · comb {curveAnalysisCombSegments.length} · evolute {curveAnalysisEvolutePoints.length} · markers {curveShowDiagnostics ? curveAnalysisMarkers.length : 0} · controls {curveAnalysisControlPoints.length} · knots {curveAnalysisKnotPoints.length} · samples {curveAnalysisShowSamples ? curveRenderState.samplePoints.length : 0} · tube {curveAnalysisShowTube ? 1 : 0}</div>
+                        {curveResultPresentation.framedResultKey && <div data-testid="curve-analysis-frame-status">Camera fit includes the framed result layer.</div>}
+                        {curveResultPresentation.pinnedResultKeys.length > 0 && <div data-testid="curve-analysis-pin-status">Pinned visual layers: {curveResultPresentation.pinnedResultKeys.length}</div>}
+                      </div>
+                    )}
                     <div style={{ border: "1px solid #dce5f1", borderRadius: 10, overflow: "hidden", minHeight: 0 }}>
                       <CurveViewer
                         samples={curveDerivedPreviewCurve && curveShowPreviews ? curveSampleUniform(curveDerivedPreviewCurve, Math.max(32, curveSampleCount)).map((row) => toCurveViewerVec3(row.point)) : curveRenderState.samplePoints}
                         dimension={curveDerivedPreviewCurve && curveShowPreviews ? curveDerivedPreviewCurve.dimension : curveActiveDimension}
                         closed={curveDerivedPreviewCurve && curveShowPreviews ? Boolean(curveDerivedPreviewCurve.domain.closed) : curveActiveClosed}
-                        frameGlyphs={curveShowFrames ? curveDifferentialFrameSamples : []}
+                        frameGlyphs={curveAnalysisFrameGlyphs}
                         probeGlyph={curveShowAnnotations ? curveDisplayProbe : null}
                         showTangent={curveShowFrames && curveShowTangent}
                         showNormal={curveShowFrames && curveShowNormal}
                         showBinormal={curveShowFrames && curveShowBinormal && curveActiveDimension === 3}
                         showCurve={curveShowCurve}
-                        showSamples={curveShowSamples}
-                        curvatureComb={curveShowComb ? curveCurvatureCombSegments : []}
-                        evolutePoints={curveShowOsculatingEvidence ? curveEvolutePoints : []}
-                        osculatingCircle={curveShowOsculatingEvidence ? curveDifferentialProbePoint?.evidence.osculatingCircle ?? null : null}
-                        evidencePlanes={curveShowOsculatingEvidence ? curveEvidencePlanes : []}
-                        controlPoints={curveShowControlPolygon ? curveSplineVisuals.controlPoints : []}
-                        constructionLevels={curveShowControlPolygon ? curveSplineVisuals.constructionLevels : []}
-                        knotPoints={curveShowControlPolygon ? curveSplineVisuals.knotPoints : []}
-                        weights={curveSplineVisuals.weights}
+                        showSamples={curveAnalysisShowSamples}
+                        curvatureComb={curveAnalysisCombSegments}
+                        evolutePoints={curveAnalysisEvolutePoints}
+                        osculatingCircle={curveShowOsculatingEvidence && curveHasViewportEvidence("evolute") ? curveDifferentialProbePoint?.evidence.osculatingCircle ?? null : null}
+                        evidencePlanes={curveShowOsculatingEvidence && curveHasViewportEvidence("evolute") ? curveEvidencePlanes : []}
+                        controlPoints={curveAnalysisControlPoints}
+                        constructionLevels={curveShowControlPolygon && curveHasViewportEvidence("control-structure") ? curveSplineVisuals.constructionLevels : []}
+                        knotPoints={curveAnalysisKnotPoints}
+                        weights={curveHasCurrentAnalysisPreset && curveHasViewportEvidence("control-structure") ? curveCanonicalSplineStructure.weights : curveSplineVisuals.weights}
+                        analysisMarkers={curveShowDiagnostics ? curveAnalysisMarkers : []}
+                        tubePreview={curveAnalysisShowTube ? { radius: Math.max(0.025, curveFrameScale * 0.16) } : null}
                         onSelectSample={(index) => setLinkedCurveProbe(index / Math.max(1, curveRenderState.samplePoints.length - 1), "viewport")}
                         frameScale={curveFrameScale}
                         resetToken={curveViewerResetToken}
@@ -87062,9 +87185,10 @@ case "mobius":
                     )}
                     {curveInspectorTab === "result" && (
                       <>
-                        <div><strong>Curve definition result</strong></div>
-                        <div>State: {activeCurveDefinitionResult?.state ?? "queued"}</div>
-                        <div>Method: {activeCurveDefinitionMethod}</div>
+                        <div data-testid="curve-inspector-active-result"><strong>{curveSelectedResultCard?.label ?? "Curve definition result"}</strong></div>
+                        <div>State: {curveSelectedResultCard?.state ?? activeCurveDefinitionResult?.state ?? "queued"}</div>
+                        <div>Method: {curveSelectedResultCard?.method ?? activeCurveDefinitionMethod}</div>
+                        {curveSelectedResultCard && <div>{curveSelectedResultCard.valueUnit} · {curveSelectedResultCard.backend} · result v{curveSelectedResultCard.resultVersion}</div>}
                         <div>Samples: {curveRenderState.samplePoints.length}</div>
                         <div>Length: {fmt(curveRenderState.arcLength)} {activeCanonicalCurveDefinition.units.position}</div>
                         {curveDifferentialField && <div>Differential field: {curveDifferentialField.points.length} points · {curveDifferentialField.provenance.method}</div>}

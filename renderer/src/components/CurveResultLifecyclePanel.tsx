@@ -16,6 +16,7 @@ import {
   setCurveComparisonSelection,
   updateCurveResultLayer,
   type CurveAnalysisPresetId,
+  type CurveResultCard,
   type CurveResultLifecycleState,
 } from "../curveAnalysis/resultLifecycle";
 
@@ -28,6 +29,9 @@ export type CurveResultLifecyclePanelProps = {
   onStoreChange: (store: CurveAnalysisResultStore) => void;
   onLifecycleChange: (state: CurveResultLifecycleState) => void;
   onWorkspaceChange: (workspace: CurveAnalysisWorkspaceDocument) => void;
+  onPresetApplied?: (presetId: CurveAnalysisPresetId) => void;
+  onSelectResult?: (card: CurveResultCard) => void;
+  onFrameResult?: (card: CurveResultCard) => void;
 };
 
 const download = (name: string, contents: string, mime: string) => {
@@ -35,7 +39,7 @@ const download = (name: string, contents: string, mime: string) => {
   const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; anchor.click(); URL.revokeObjectURL(url);
 };
 
-export const CurveResultLifecyclePanel: React.FC<CurveResultLifecyclePanelProps> = ({ definition, points, store, lifecycle, workspace, onStoreChange, onLifecycleChange, onWorkspaceChange }) => {
+export const CurveResultLifecyclePanel: React.FC<CurveResultLifecyclePanelProps> = ({ definition, points, store, lifecycle, workspace, onStoreChange, onLifecycleChange, onWorkspaceChange, onPresetApplied, onSelectResult, onFrameResult }) => {
   const [presetId, setPresetId] = useState<CurveAnalysisPresetId>("curvature-lab");
   const cards = useMemo(() => deriveCurveResultCards(store, definition, lifecycle), [definition, lifecycle, store]);
   const compared = lifecycle.compareKeys.map((key) => cards.find((card) => card.resultKey === key)).filter((card): card is NonNullable<typeof card> => !!card);
@@ -43,7 +47,7 @@ export const CurveResultLifecyclePanel: React.FC<CurveResultLifecyclePanelProps>
   const apply = () => {
     const begun = beginCurveAnalysisPreset(lifecycle, definition, presetId);
     const applied = applyCurveAnalysisPreset({ state: begun, store, definition, points, token: begun.activePreset!.token });
-    onLifecycleChange(applied.state); onStoreChange(applied.store);
+    onLifecycleChange(applied.state); onStoreChange(applied.store); if (applied.accepted) onPresetApplied?.(presetId);
   };
   const changeLayer = (key: string, action: Parameters<typeof updateCurveResultLayer>[2]) => onLifecycleChange(updateCurveResultLayer(lifecycle, key, action));
   return <section data-testid="curve-result-lifecycle" style={{ borderTop: "1px solid #d6deea", paddingTop: 8, display: "grid", gap: 7 }}>
@@ -61,8 +65,8 @@ export const CurveResultLifecyclePanel: React.FC<CurveResultLifecyclePanelProps>
         {card.warnings.map((warning, index) => <div key={index} style={{ color: "#9a3412", fontSize: 10 }}>{warning}</div>)}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
           <button type="button" aria-pressed={card.layer.visible} onClick={() => changeLayer(card.resultKey, card.layer.visible ? "hide" : "show")}>{card.layer.visible ? "Hide" : "Show"}</button>
-          <button type="button" aria-pressed={card.layer.selected} onClick={() => changeLayer(card.resultKey, "select")}>Select</button>
-          <button type="button" aria-pressed={card.layer.framed} onClick={() => changeLayer(card.resultKey, "frame")}>Frame</button>
+          <button type="button" aria-pressed={card.layer.selected} onClick={() => { changeLayer(card.resultKey, "select"); onSelectResult?.(card); }}>Select</button>
+          <button type="button" aria-pressed={card.layer.framed} onClick={() => { changeLayer(card.resultKey, "frame"); onFrameResult?.(card); }}>Frame</button>
           <button type="button" aria-pressed={card.layer.pinned} onClick={() => changeLayer(card.resultKey, card.layer.pinned ? "unpin" : "pin")}>{card.layer.pinned ? "Unpin" : "Pin"}</button>
           <button type="button" aria-pressed={card.layer.saved} onClick={() => { changeLayer(card.resultKey, "save"); onWorkspaceChange(saveCurveResultReference(workspace, card)); }}>Save</button>
           <button type="button" aria-pressed={lifecycle.compareKeys.includes(card.resultKey)} onClick={() => onLifecycleChange(setCurveComparisonSelection(lifecycle, card.resultKey))}>Compare</button>

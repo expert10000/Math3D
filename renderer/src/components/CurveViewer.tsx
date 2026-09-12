@@ -35,6 +35,8 @@ export type CurveViewerProps = {
   constructionLevels?: CurveViewerVec3[][];
   knotPoints?: CurveViewerVec3[];
   weights?: number[];
+  analysisMarkers?: Array<{ point: CurveViewerVec3; color?: number }>;
+  tubePreview?: { radius: number; color?: number } | null;
   onSelectSample?: (sampleIndex: number) => void;
 };
 
@@ -94,6 +96,8 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
   constructionLevels = [],
   knotPoints = [],
   weights = [],
+  analysisMarkers = [],
+  tubePreview = null,
   onSelectSample,
 }) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -193,6 +197,18 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
       const sampleGeometry = new THREE.BufferGeometry().setFromPoints(curvePoints);
       const sampleMaterial = new THREE.PointsMaterial({ color: 0x7c3aed, size: Math.max(0.025, frameScale * 0.08), sizeAttenuation: true });
       visualGroup.add(new THREE.Points(sampleGeometry, sampleMaterial));
+    }
+
+    if (tubePreview && curvePoints.length >= 2 && Number.isFinite(tubePreview.radius) && tubePreview.radius > 0) {
+      const path = new THREE.CatmullRomCurve3(curvePoints, closed, "centripetal");
+      const geometry = new THREE.TubeGeometry(path, Math.min(512, Math.max(16, curvePoints.length * 2)), tubePreview.radius, 8, closed);
+      visualGroup.add(new THREE.Mesh(geometry, new THREE.MeshPhongMaterial({ color: tubePreview.color ?? 0x14b8a6, transparent: true, opacity: 0.26, side: THREE.DoubleSide, depthWrite: false })));
+    }
+
+    for (const marker of analysisMarkers) {
+      if (!finiteVec(marker.point)) continue;
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.018, frameScale * 0.07), 12, 8), new THREE.MeshStandardMaterial({ color: marker.color ?? 0xdc2626, emissive: marker.color ?? 0xdc2626, emissiveIntensity: 0.18 }));
+      mesh.position.copy(vecFrom(marker.point)); visualGroup.add(mesh); fitPoints.push(mesh.position.clone());
     }
 
     for (const segment of curvatureComb) {
@@ -412,8 +428,14 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
     evolutePoints,
     osculatingCircle,
     evidencePlanes,
+    controlPoints,
+    constructionLevels,
+    knotPoints,
+    weights,
+    analysisMarkers,
+    tubePreview,
     onSelectSample,
   ]);
 
-  return <div ref={hostRef} style={{ width: "100%", height: "100%", minHeight: 280 }} />;
+  return <div data-testid="curve-viewer-canvas" ref={hostRef} style={{ width: "100%", height: "100%", minHeight: 280 }} />;
 };

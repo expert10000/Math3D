@@ -13,7 +13,8 @@ const HEIGHT = 78;
 const PAD = 10;
 
 export const CurveScalarPlots: React.FC<CurveScalarPlotsProps> = ({ rows, domain, activeParameter, onSelect }) => (
-  <div data-testid="curve-scalar-plots" style={{ display: "grid", gap: 7 }}>
+  <div data-testid="curve-scalar-plots" data-series-count={rows.length} style={{ display: "grid", gap: 7 }}>
+    {rows.length === 0 && <div data-testid="curve-plots-empty" style={{ border: "1px dashed #cbd5e1", borderRadius: 7, padding: 7, fontSize: 10, color: "#64748b" }}>No visible scalar result series.</div>}
     {rows.map((row) => {
       const finite = row.values.filter((entry): entry is typeof entry & { value: number } => entry.value != null && Number.isFinite(entry.value));
       if (!finite.length) return (
@@ -33,7 +34,7 @@ export const CurveScalarPlots: React.FC<CurveScalarPlotsProps> = ({ rows, domain
       const path = finite.map((entry, index) => `${index ? "L" : "M"}${x(entry.x).toFixed(2)},${y(entry.value).toFixed(2)}`).join(" ");
       const selected = finite.reduce((best, entry) => Math.abs(entry.u - activeParameter) < Math.abs(best.u - activeParameter) ? entry : best);
       return (
-        <div key={row.key} data-testid={`curve-plot-${row.key}`} style={{ border: "1px solid #d6deea", borderRadius: 7, padding: 7, background: "#fff" }}>
+        <div key={row.key} data-testid={`curve-plot-${row.key}`} data-point-count={finite.length} style={{ border: "1px solid #d6deea", borderRadius: 7, padding: 7, background: "#fff" }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 3 }}>
             <strong>{row.label}</strong><span>{row.unit}</span>
           </div>
