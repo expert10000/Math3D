@@ -88,9 +88,9 @@ Baseline verification at this assessment:
 | 7 — Charts and parameter diagnostics | Complete (`8b67733`) | Revision-bound Chart result with metric/Jacobian and distortion fields, masks, regions, linked parameter/3D selection, independent overlays and atlas v1 contract | None for Commit 7 |
 | 8 — Provenance-linked derived SurfaceMesh | Complete (`83d8f3c`) | Derived-mesh identity, correspondence, live/snapshot/stale/detached lifecycle, source/mesh mapping, provenance actions and compact persistence | None for Commit 8 |
 | 9 — Live mesh, bake, and Mesh Analysis handoff | Complete (`8562baf`) | Three explicit Mesh workflows, immutable baked geometry, revision-specific Mesh provenance, mapped selection/camera/context transfer and Open Surface Source return | None for Commit 9 |
-| 10 — VTK/CGAL derived-mesh bridge | Complete (`5037766`) | Shared workers/clients and extensive Mesh VTK/CGAL workflow | Compact provenance/topology card routes to the shared Mesh Operations registry; missing backends remain explicit |
-| 11 — Workers, cache, and performance | Complete (`0a41681`) | Viewer memoization, mesh workers, cancellation patterns, preview/full LOD | Stable dependency-aware cache keys, revision/request guards, progressive states, reviewed budgets, and a high-resolution Surface worker |
-| 12 — Regression matrix and workflow freeze | Partial | Focused math tests, Surface E2E, Gallery/release/responsive/memory checks | Canonical truth gallery, pathological cases, maintained acceptance command, full journeys and v1 freeze |
+| 10 — VTK/CGAL derived-mesh bridge | Complete (`5037766`) | Compact provenance/topology card routes to the shared Mesh Operations registry; missing backends remain explicit | None for Commit 10 |
+| 11 — Workers, cache, and performance | Complete (`0a41681`) | Stable dependency-aware cache keys, revision/request guards, progressive states, reviewed budgets, and a high-resolution Surface worker | None for Commit 11 |
+| 12 — Regression matrix and workflow freeze | Complete (`4e966a2`) | Versioned canonical/pathological matrix, analytical truth and tolerance gates, 11 Surface journeys, maintained unit/E2E/backend/profile/aggregate commands, and v1 freeze contract | None for Commit 12 |
 
 Progress entries receive a Git hash only after the relevant focused tests, typecheck, production build, and required E2E/backend checks pass.
 
@@ -598,35 +598,44 @@ Acceptance: heavy Surface Analysis remains responsive, deterministic, revision-s
 
 Planned message: `test(surface-analysis): add surface-analysis regression matrix and workflow QA`
 
-**Status: planned; useful but distributed coverage exists.**
+**Status: complete (`4e966a2`).**
 
 Canonical gallery:
 
-- Plane, sphere, cylinder, cone, torus, saddle, paraboloid, ellipsoid, Mexican hat, Enneper surface, helicoid, Möbius strip, implicit sphere, implicit torus, spline/NURBS patch, and at least one constructed/Weierstrass surface.
-- Pathological cases: degenerate parameterization, implicit critical point, seam/orientation reversal, trim boundary, non-orientable chart, disconnected implicit extraction, undersampled field, stale derived mesh, worker cancellation/failure, and unavailable backend.
+- [x] Version plane, sphere, cylinder, cone, torus, saddle, paraboloid, ellipsoid, Mexican hat, Enneper surface, helicoid, Möbius strip, implicit sphere, implicit torus, spline/NURBS, constructed sweep, and Weierstrass cases in one maintained matrix.
+- [x] Version degenerate parameterization, implicit critical point, seam/orientation reversal, trim boundary, non-orientable chart, disconnected implicit extraction, undersampled field, stale derived mesh, worker cancellation/failure, and unavailable backend pathologies in the same matrix.
 
 Mathematical gates:
 
-- [ ] Plane: K = H = k1 = k2 = 0 within the declared tolerance.
-- [ ] Sphere of radius R: K = 1/R² and `|H| = |k1| = |k2| = 1/R`, with the sign explained by orientation.
-- [ ] Cylinder of radius R: K = 0 and principal curvature magnitudes `{0, 1/R}`.
-- [ ] Saddle: K < 0 away from singular/boundary regions.
-- [ ] Torus: expected elliptic/hyperbolic regions and parabolic transition.
-- [ ] Reparameterization preserves intrinsic quantities while orientation reversal follows the declared normal convention.
-- [ ] Exact, numerical, sampled, and mesh-approximation results use separate tolerance classes and demonstrate convergence where applicable.
+- [x] Plane: K = H = k1 = k2 = 0 within the declared tolerance.
+- [x] Sphere of radius R: K = 1/R² and `|H| = |k1| = |k2| = 1/R`, with the sign explained by orientation.
+- [x] Cylinder of radius R: K = 0 and principal curvature magnitudes `{0, 1/R}`.
+- [x] Saddle: K < 0 away from singular/boundary regions.
+- [x] Torus: expected elliptic/hyperbolic regions and parabolic transition.
+- [x] Reparameterization preserves intrinsic quantities while orientation reversal follows the declared normal convention.
+- [x] Exact, numerical, sampled, and mesh-approximation results use separate tolerance classes and require convergence outside exact analysis.
 
 Workflow gates:
 
-- [ ] Define Surface → Analyze Curvature → Probe → Save Result → change visualization without recomputation.
-- [ ] Modify source → stale result warning → recompute/compare revisions.
-- [ ] Compute geodesic/feature/chart result → independently hide/show/frame/export.
-- [ ] Surface → live SurfaceMesh → Mesh Analysis → mapped selection → Open Surface Source.
-- [ ] Surface → Bake to Mesh → edit Mesh independently → retain immutable source provenance.
-- [ ] Surface → robust CGAL/VTK mesh variant → validate in Mesh → return to source.
-- [ ] Save/reopen preserves Surface identities, saved results, derived relations, stale state, and visibility.
-- [ ] Gallery, New, Demo, formulas, all surface families, Workbook handoffs, responsive drawers/sheets, keyboard navigation, and backend-unavailable states remain functional.
-- [ ] Create maintained `test:surface-analysis:v1:unit`, `test:surface-analysis:v1:e2e`, backend verification, performance profile, and aggregate acceptance commands.
-- [ ] Publish `docs/surface-analysis-v1-freeze.md` with the final UI decisions, seven or more accepted journeys, ownership boundary, and change policy.
+- [x] Define Surface → Analyze Curvature → Probe → Save Result → change visualization without recomputation.
+- [x] Modify source → stale result warning → recompute/compare revisions.
+- [x] Compute geodesic/feature/chart result → independently hide/show/frame/export.
+- [x] Surface → live SurfaceMesh → Mesh Analysis → mapped selection → Open Surface Source.
+- [x] Surface → Bake to Mesh → edit Mesh independently → retain immutable source provenance.
+- [x] Surface → robust CGAL/VTK mesh variant → validate in Mesh → return to source.
+- [x] Save/reopen preserves Surface identities, saved results, derived relations, stale state, and visibility.
+- [x] Gallery, New, Demo, formulas, all surface families, Workbook handoffs, responsive drawers/sheets, keyboard navigation, and backend-unavailable states remain functional.
+- [x] Create maintained `test:surface-analysis:v1:unit`, `test:surface-analysis:v1:e2e`, backend verification, performance profile, and aggregate acceptance commands.
+- [x] Publish `docs/surface-analysis-v1-freeze.md` with the final UI decisions, ten accepted journeys, ownership boundary, and change policy.
+
+Validation at `4e966a2`:
+
+- `npm run test:surface-analysis:v1:unit`: **17 files / 84 tests passed**, including the 17 canonical and 10 pathological matrix inventory, analytical truth values, orientation behavior, invalid-point masks, persistence, scheduler, and performance contracts.
+- `npm run typecheck:noemit` and `npm run build:core` pass; the production build emits the dedicated Surface Analysis worker.
+- `npm run test:surface-analysis:v1:e2e`: **20/20 passed**, including 11 Surface functional journeys, saved-result/derived-provenance reload, Gallery, navigation depth, and three injected worker failures.
+- `npm run test:app:responsive:smoke` passes phone portrait/landscape, tablet, and desktop Surface/Geometry layouts.
+- `npm run verify:surface-analysis:v1:backends` packages and smokes the Windows Python/VTK worker, verifies CGAL plane/cylinder/sphere/disconnected/large-mesh geodesics, and passes real-mesh CGAL Boolean work on Armadillo and 3DBenchy fixtures.
+- `npm run profile:surface-analysis:v1` passes the reviewed 10k/100k current-build curvature-field budgets and memory accounting.
 
 Acceptance: canonical and pathological cases pass documented tolerances, the complete Surface↔Mesh lifecycle passes, and Surface Analysis v1 is governed by one repeatable acceptance contract.
 
@@ -676,18 +685,13 @@ The final freeze must preserve at least these journeys:
 
 ## Validation commands
 
-Until Commit 12 introduces the maintained aggregate gate, use focused checks followed by the relevant full gates:
+Run the maintained Surface Analysis v1 aggregate gate:
 
 ```powershell
-npm --prefix renderer test -- src/math/chartGridDiagnostics.test.ts src/math/splineSurface.test.ts src/math/selection/geodesicGraph.test.ts src/geometry/exactSurfaceAnalysis.test.ts
-npm --prefix renderer test
-npm run typecheck:noemit
-npm run build:core
-npx playwright test tests/e2e/surface-functional.spec.ts tests/e2e/gallery-visual.spec.ts tests/e2e/workspace-navigation.spec.ts tests/e2e/worker-failure-injection.spec.ts --reporter=list
-npm run test:app:responsive:smoke
+npm run test:surface-analysis:v1:acceptance
 ```
 
-Backend and long-running checks should be added when a commit touches derived meshes, workers, VTK, CGAL, release presets, or memory behavior.
+For focused iteration, the component commands are `test:surface-analysis:v1:unit`, `test:surface-analysis:v1:e2e`, `verify:surface-analysis:v1:backends`, and `profile:surface-analysis:v1`. The aggregate also runs typecheck, the production build, and responsive layout smoke.
 
 ## Main implementation references
 
