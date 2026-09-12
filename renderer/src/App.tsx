@@ -12665,20 +12665,6 @@ const App: React.FC = () => {
       Math.abs(point.t - curveRenderState.probeT) < Math.abs(best.t - curveRenderState.probeT) ? point : best
     );
   }, [curveDifferentialField, curveRenderState.probeT]);
-  const curveDisplayProbe = useMemo<CurveFrameSample | null>(() => {
-    const point = curveDifferentialProbePoint;
-    if (!point) return curveRenderState.probe;
-    return {
-      t: point.t,
-      point: point.position,
-      tangent: point.tangent,
-      normal: point.frenetNormal ?? point.bishopNormal,
-      binormal: point.frenetBinormal ?? point.bishopBinormal,
-      curvature: point.curvature ?? NaN,
-      torsion: point.torsion ?? NaN,
-      frameKind: point.frenetDefined ? "frenet" : "bishop",
-    };
-  }, [curveDifferentialProbePoint, curveRenderState.probe]);
   const curveCurvatureCombSegments = useMemo(() =>
     curveDifferentialField?.points.flatMap((point) => point.evidence.curvatureComb ? [point.evidence.curvatureComb] : []) ?? [],
   [curveDifferentialField]);
@@ -12944,6 +12930,22 @@ const App: React.FC = () => {
   const curveHasCurrentAnalysisPreset = curveResultLifecycle.activePreset?.state === "current"
     && curveResultLifecycle.activePreset.curveId === activeCanonicalCurveDefinition.identity.curveId
     && curveResultLifecycle.activePreset.curveRevision === activeCanonicalCurveDefinition.identity.curveRevision;
+  const curveProbeUsesBishopFrame = curveHasCurrentAnalysisPreset
+    && (curveResultLifecycle.activePreset?.presetId === "bishop-stable-frame" || curveResultLifecycle.activePreset?.presetId === "tube-preparation");
+  const curveDisplayProbe = useMemo<CurveFrameSample | null>(() => {
+    const point = curveDifferentialProbePoint;
+    if (!point) return curveRenderState.probe;
+    return {
+      t: point.t,
+      point: point.position,
+      tangent: point.tangent,
+      normal: curveProbeUsesBishopFrame ? point.bishopNormal : point.frenetNormal ?? point.bishopNormal,
+      binormal: curveProbeUsesBishopFrame ? point.bishopBinormal : point.frenetBinormal ?? point.bishopBinormal,
+      curvature: point.curvature ?? NaN,
+      torsion: point.torsion ?? NaN,
+      frameKind: curveProbeUsesBishopFrame ? "bishop" : point.frenetDefined ? "frenet" : "bishop",
+    };
+  }, [curveDifferentialProbePoint, curveProbeUsesBishopFrame, curveRenderState.probe]);
   const curvePresentedScalarPlotRows = useMemo(() => curveHasCurrentAnalysisPreset
     ? curveScalarPlotRows.filter((row) => curveResultPresentation.plotKeys.includes(row.key))
     : curveScalarPlotRows,
@@ -86921,7 +86923,9 @@ case "mobius":
                       overflow: "auto",
                       minHeight: 0,
                       display: "grid",
-                      gridTemplateRows: "auto minmax(280px, 1fr) auto auto",
+                      gridTemplateRows: curveHasCurrentAnalysisPreset
+                        ? "auto auto minmax(280px, 1fr) auto auto"
+                        : "auto minmax(280px, 1fr) auto auto",
                       gap: 10,
                     }}
                   >
@@ -86953,7 +86957,7 @@ case "mobius":
                         {curveResultPresentation.pinnedResultKeys.length > 0 && <div data-testid="curve-analysis-pin-status">Pinned visual layers: {curveResultPresentation.pinnedResultKeys.length}</div>}
                       </div>
                     )}
-                    <div style={{ border: "1px solid #dce5f1", borderRadius: 10, overflow: "hidden", minHeight: 0 }}>
+                    <div data-testid="curve-viewer-shell" style={{ border: "1px solid #dce5f1", borderRadius: 10, overflow: "hidden", minHeight: 280 }}>
                       <CurveViewer
                         samples={curveDerivedPreviewCurve && curveShowPreviews ? curveSampleUniform(curveDerivedPreviewCurve, Math.max(32, curveSampleCount)).map((row) => toCurveViewerVec3(row.point)) : curveRenderState.samplePoints}
                         dimension={curveDerivedPreviewCurve && curveShowPreviews ? curveDerivedPreviewCurve.dimension : curveActiveDimension}
@@ -87039,7 +87043,7 @@ case "mobius":
                         <div>
                           torsion τ(t) = <strong>{fmt(curveDisplayProbe?.torsion ?? NaN)}</strong>
                         </div>
-                        <div data-testid="curve-frame-kind">frame = <strong>{curveDisplayProbe?.frameKind ?? "unavailable"}</strong>{curveDisplayProbe?.frameKind === "bishop" ? " (Frenet undefined)" : ""}</div>
+                        <div data-testid="curve-frame-kind">frame = <strong>{curveDisplayProbe?.frameKind ?? "unavailable"}</strong>{curveProbeUsesBishopFrame ? " (active analysis frame)" : curveDisplayProbe?.frameKind === "bishop" ? " (Frenet undefined)" : ""}</div>
                       </div>
                     </div>
                     <div
@@ -87203,7 +87207,7 @@ case "mobius":
                         <div>p = {curveDisplayProbe?.point ? fmt3(curveDisplayProbe.point) : "n/a"}</div>
                         <div>κ = {fmt(curveDisplayProbe?.curvature ?? NaN)}</div>
                         <div>τ = {fmt(curveDisplayProbe?.torsion ?? NaN)}</div>
-                        <div>Frame: {curveDisplayProbe?.frameKind ?? "unavailable"}</div>
+                        <div>Frame: {curveDisplayProbe?.frameKind ?? "unavailable"}{curveProbeUsesBishopFrame ? " (active analysis frame)" : ""}</div>
                         <div data-testid="curve-probe-source">Source: {curveProbeSource}</div>
                         <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 4 }}>
                           <button type="button" data-testid="curve-pin-probe" onClick={persistActiveCurveProbe} disabled={!activeSemanticCurvePick}>Pin / save</button>

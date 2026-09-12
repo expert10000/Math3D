@@ -17,8 +17,19 @@ test.describe("Curves canonical workspace", () => {
       const lifecycle = ctx.page.getByTestId("curve-result-lifecycle");
       await expect(lifecycle).toBeVisible();
       await expect(lifecycle).toContainText("Analysis-layer presets");
+      const expectUsableCurveViewer = async () => {
+        const shell = ctx!.page.getByTestId("curve-viewer-shell");
+        const host = ctx!.page.getByTestId("curve-viewer-canvas");
+        const canvas = host.locator("canvas");
+        await expect(canvas).toBeVisible();
+        await expect.poll(() => shell.evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBeGreaterThanOrEqual(250);
+        await expect.poll(() => host.evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBeGreaterThanOrEqual(250);
+        await expect.poll(() => canvas.evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBeGreaterThanOrEqual(250);
+      };
+      await expectUsableCurveViewer();
       await ctx.page.getByTestId("curve-analysis-preset").selectOption("curvature-lab");
       await ctx.page.getByTestId("curve-apply-analysis-preset").click();
+      await expectUsableCurveViewer();
       await expect(ctx.page.getByTestId("curve-active-analysis-preset")).toContainText("Curvature lab · current · Curve r1");
       const evidence = ctx.page.getByTestId("curve-analysis-visual-evidence");
       await expect(evidence).toContainText("Curvature + Curvature quality");
@@ -45,9 +56,11 @@ test.describe("Curves canonical workspace", () => {
 
       await ctx.page.getByTestId("curve-analysis-preset").selectOption("bishop-stable-frame");
       await ctx.page.getByTestId("curve-apply-analysis-preset").click();
+      await expectUsableCurveViewer();
       const bishopCard = ctx.page.getByTestId("curve-result-card-preset:bishop-frame");
       await expect(evidence).toContainText("Curvature + Bishop frame");
       await expect(ctx.page.getByTestId("curve-analysis-viewport-evidence")).toContainText(/Bishop frame.*glyphs [1-9]\d*/);
+      await expect(ctx.page.getByTestId("curve-frame-kind")).toContainText("frame = bishop (active analysis frame)");
       await ctx.page.getByRole("checkbox", { name: "Frames", exact: true }).uncheck();
       await expect(ctx.page.getByTestId("curve-analysis-viewport-evidence")).toContainText(/Bishop frame.*glyphs 0/);
       await expect(ctx.page.getByTestId("curve-active-analysis-preset")).toContainText("Bishop stable frame · current");
@@ -65,11 +78,14 @@ test.describe("Curves canonical workspace", () => {
 
       await ctx.page.getByTestId("curve-analysis-preset").selectOption("frenet-evidence");
       await ctx.page.getByTestId("curve-apply-analysis-preset").click();
+      await expectUsableCurveViewer();
       await expect(ctx.page.getByTestId("curve-analysis-viewport-evidence")).toContainText(/Frenet frame.*glyphs [1-9]\d*/);
+      await expect(ctx.page.getByTestId("curve-frame-kind")).toContainText("frame = frenet");
       await expect(ctx.page.getByTestId("curve-plot-torsion")).toBeVisible();
 
       await ctx.page.getByTestId("curve-analysis-preset").selectOption("tube-preparation");
       await ctx.page.getByTestId("curve-apply-analysis-preset").click();
+      await expectUsableCurveViewer();
       await expect(ctx.page.getByTestId("curve-analysis-viewport-evidence")).toContainText(/Bishop frame, sample points, tube preview.*samples [1-9]\d*.*tube 1/);
       await expect(ctx.page.getByTestId("curve-viewer-canvas").locator("canvas")).toBeVisible();
 
@@ -80,6 +96,7 @@ test.describe("Curves canonical workspace", () => {
       await ctx.page.getByTestId("curve-panel-analysis").click();
       await ctx.page.getByTestId("curve-analysis-preset").selectOption("planar-inflection-map");
       await ctx.page.getByTestId("curve-apply-analysis-preset").click();
+      await expectUsableCurveViewer();
       await expect(ctx.page.getByTestId("curve-analysis-plot-series")).toContainText("Signed curvature");
       await expect(ctx.page.getByTestId("curve-analysis-viewport-evidence")).toContainText(/inflection markers.*markers [1-9]\d*/);
       await ctx.page.getByRole("textbox", { name: "y(t)", exact: true }).fill("t^3 + 0.01*t");
@@ -90,6 +107,7 @@ test.describe("Curves canonical workspace", () => {
       await ctx.page.getByTestId("curve-panel-analysis").click();
       await ctx.page.getByTestId("curve-analysis-preset").selectOption("spline-continuity");
       await ctx.page.getByTestId("curve-apply-analysis-preset").click();
+      await expectUsableCurveViewer();
       await expect(ctx.page.getByLabel("Control polygon")).toBeChecked();
       await expect(ctx.page.getByTestId("curve-analysis-viewport-evidence")).toContainText(/control and knot structure.*controls [1-9]\d*/);
       await expect(ctx.page.getByTestId("curve-analysis-plot-series")).toContainText("Speed, Curvature κ");
