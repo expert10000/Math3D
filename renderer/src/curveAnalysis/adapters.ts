@@ -27,6 +27,7 @@ export const adaptCoreCurveDefinition = (
     formulas?: { x: string; y: string; z?: string };
     sampling?: Partial<CurveSamplingPolicy>;
     dependencies?: readonly CurveDependency[];
+    units?: { position: string; parameter: string };
   } = {}
 ): CanonicalCurveDefinition => {
   const representation = representationForCoreCurve(curve);
@@ -45,6 +46,7 @@ export const adaptCoreCurveDefinition = (
     sampling: options.sampling,
     sourceModule: options.sourceModule ?? "curves" as const,
     dependencies: options.dependencies,
+    units: options.units ? { ...options.units, angle: "rad" as const } : undefined,
     derivatives: {
       position: "provided" as const,
       first: curve.derivative ? "provided" as const : "sampled" as const,

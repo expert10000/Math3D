@@ -623,6 +623,7 @@ import { CurveViewer, type CurveViewerGlyph, type CurveViewerVec3 } from "./comp
 import { CurveScalarPlots } from "./components/CurveScalarPlots";
 import { DerivedCurvePanel } from "./components/DerivedCurvePanel";
 import { SplineCurveEditor, type SplineVisualState } from "./components/SplineCurveEditor";
+import { CurveInteroperabilityPanel } from "./components/CurveInteroperabilityPanel";
 import {
   analyzeCurveDifferentialGeometry,
   arcLength as curveArcLength,
@@ -86499,6 +86500,13 @@ case "mobius":
                         {activeCurvePreset && ["bezier", "bspline", "nurbs"].includes(activeCurvePreset.category) && (
                           <SplineCurveEditor presetId={activeCurvePreset.id} parameter={curveProbeU} onChange={handleCurveSplineChange} />
                         )}
+                        <CurveInteroperabilityPanel
+                          curve={curveRenderState.curve}
+                          definition={activeCanonicalCurveDefinition}
+                          normalizedParameter={curveProbeU}
+                          onOpenSource={() => setCurveInspectorTab("dependencies")}
+                          onOpenDerivative={() => setCurveInspectorTab("result")}
+                        />
                       </div>
                     )}
                     {curveWorkspaceTab === "analysis" && (

@@ -7,6 +7,42 @@ import {
 } from "./helpers/surfaceAppHarness";
 
 test.describe("Curves canonical workspace", () => {
+  test("round-trips Geometry and Surface curves with visible fidelity, chart mapping, and stale guards", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await resetSurfaceAppState(ctx.page);
+      await ctx.page.getByRole("button", { name: "Curves", exact: true }).first().click();
+      await ctx.page.getByTestId("curve-panel-definition").click();
+
+      const interop = ctx.page.getByTestId("curve-interoperability");
+      await expect(interop).toBeVisible();
+      await ctx.page.getByTestId("curve-interop-source-kind").selectOption({ label: "Geometry analytic curve" });
+      await ctx.page.getByTestId("curve-interop-open").click();
+      await expect(ctx.page.getByTestId("curve-interop-exchange")).toContainText("exact · current");
+      await expect(ctx.page.getByTestId("curve-interop-exchange")).toContainText("Evaluator preserved");
+      await expect(ctx.page.getByTestId("curve-interop-selection")).toContainText("source parameter");
+      await ctx.page.getByTestId("curve-to-surface-kind").selectOption("revolution");
+      await ctx.page.getByTestId("curve-to-surface-request").click();
+      await expect(ctx.page.getByTestId("curve-interop-status")).toContainText("Surface request ready: revolution");
+
+      await ctx.page.getByTestId("curve-interop-source-kind").selectOption({ label: "Surface geodesic" });
+      await ctx.page.getByTestId("curve-interop-open").click();
+      await expect(ctx.page.getByTestId("curve-interop-exchange")).toContainText("polyline-approximation · current");
+      await expect(ctx.page.getByTestId("curve-interop-exchange")).toContainText("surface-chart");
+      await expect(ctx.page.getByTestId("curve-interop-selection")).toContainText("chart");
+      await ctx.page.getByTestId("curve-to-surface-kind").selectOption("tube-surface");
+      await ctx.page.getByTestId("curve-to-surface-request").click();
+      await expect(ctx.page.getByTestId("curve-interop-status")).toContainText("1 warning");
+      await ctx.page.getByTestId("curve-interop-stale").click();
+      await expect(ctx.page.getByTestId("curve-interop-exchange")).toContainText("stale");
+      await ctx.page.getByTestId("curve-to-surface-request").click();
+      await expect(ctx.page.getByTestId("curve-interop-status")).toContainText("Stale Curve inputs");
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
   test("edits Bezier controls and NURBS weights with revisioned undo and construction evidence", async () => {
     let ctx: LaunchedSurfaceApp | null = null;
     try {

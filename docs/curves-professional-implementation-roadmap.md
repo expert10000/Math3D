@@ -88,7 +88,7 @@ Baseline verification at this assessment:
 | 6 — Diagnostics, continuity, and intersections | Planned | Basic core validation and exact events | Typed severity model, C/G continuity, robust intersections, issue navigation |
 | 7 — Dependency-aware derived curves | Complete (`02e0f37`) | Derived preset category, Geometry construction recipes, canonical operations, dependency lifecycle, and explicit branches | None for Commit 7 |
 | 8 — Bézier, B-spline, and NURBS editing | Complete | Canonical spline definitions/evaluation, CAD edits, construction evidence, continuity tools, and revision history | None for Commit 8 |
-| 9 — Geometry and Surface interoperability | Planned | Geometry section handoff, Geometry exact analysis, Surface curve result layers | Canonical round trips, source links, selection mapping, no algorithm duplication |
+| 9 — Geometry and Surface interoperability | Complete | Canonical exchange envelopes preserve evaluators or labeled samples, identity, chart correspondence, stale navigation, and Curve-to-Surface requests | None for Commit 9 |
 | 10 — Provenance-linked CurveMesh workflows | Planned | Curve samples and shared Mesh handoff infrastructure | Polyline/tube/ribbon/sweep outputs, source return, Mesh extraction into Curves |
 | 11 — Optional VTK and CGAL adapters | Planned | Existing backend workers and Mesh operation registry | Curve operation adapters, capabilities, fallback, parity, provenance |
 | 12 — Workers, dependency cache, and performance | Planned | Shared worker/result patterns in Geometry/Surface/Mesh | Curve jobs, cancellation, progressive publication, budgets, memory controls |
@@ -498,7 +498,7 @@ Acceptance: editing a control point, knot, degree, or weight produces a new Curv
 
 Planned message: `feat(curves): integrate Geometry and Surface curve round trips`
 
-**Status: planned.**
+**Status: implemented.**
 
 Already implemented:
 
@@ -508,14 +508,20 @@ Already implemented:
 
 Remaining:
 
-- [ ] Add **Open in Curves** for Geometry analytic curves, section curves, intersections, construction paths, boundaries, and extracted edge/path selections.
-- [ ] Add **Open in Curves** for Surface boundaries, iso-u/iso-v curves, geodesics, sections, principal curves, feature curves, and Surface/Surface intersections.
-- [ ] Preserve exact/parametric definitions when available; use an explicitly labeled polyline approximation only when a source has no evaluator.
-- [ ] Retain host Surface ID/revision, parameter-space mapping, branch identity, units, selection correspondence, and generation settings.
-- [ ] Route extrusion, revolution, sweep, ruled surface, loft input, and tube-surface requests from Curves to canonical Surface construction.
-- [ ] Map selected curve locations back to Geometry entities or Surface chart coordinates where correspondence exists.
-- [ ] Add source/derivative navigation and stale-state behavior in both directions.
-- [ ] Remove duplicate curve-analysis algorithms from Geometry/Surface only after parity tests pass.
+- [x] Add **Open in Curves** for Geometry analytic curves, section curves, intersections, construction paths, boundaries, and extracted edge/path selections.
+- [x] Add **Open in Curves** for Surface boundaries, iso-u/iso-v curves, geodesics, sections, principal curves, feature curves, and Surface/Surface intersections.
+- [x] Preserve exact/parametric definitions when available; use an explicitly labeled polyline approximation only when a source has no evaluator.
+- [x] Retain host Surface ID/revision, parameter-space mapping, branch identity, units, selection correspondence, and generation settings.
+- [x] Route extrusion, revolution, sweep, ruled surface, loft input, and tube-surface requests from Curves to canonical Surface construction.
+- [x] Map selected curve locations back to Geometry entities or Surface chart coordinates where correspondence exists.
+- [x] Add source/derivative navigation and stale-state behavior in both directions.
+- [x] Remove duplicate curve-analysis algorithms from Geometry/Surface only after parity tests pass.
+
+Validation:
+
+- Nineteen focused interoperability, Curve infrastructure, and Surface-layer tests pass, including exact evaluator parity, sampled multi-branch fallback, Surface chart mapping, stale/detach behavior, and all six Curve-to-Surface request kinds.
+- The renderer TypeScript project and production renderer build pass.
+- The Electron Curves journey verifies visible exact-versus-sampled provenance, source/chart selection mapping, Surface request routing, approximation warnings, and stale-input blocking.
 
 Acceptance: exact definitions and sampled fallbacks remain visibly distinct, and a supported Geometry/Surface → Curve → Surface/Geometry journey preserves source identity, revision, selection correspondence, and return navigation.
 
