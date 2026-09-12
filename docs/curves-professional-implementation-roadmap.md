@@ -656,7 +656,7 @@ Acceptance: a user can apply a useful analysis stack, inspect each layer, reprod
 
 Planned message: `test(curves): add regression matrix and performance gates`
 
-**Status: planned.**
+**Status: implemented and validated.**
 
 Already implemented:
 
@@ -666,14 +666,24 @@ Already implemented:
 
 Remaining:
 
-- [ ] Add canonical fixtures: line, circle, ellipse, parabola, hyperbola, helix, clothoid, catenary, Lissajous, hypotrochoid, Bézier, B-spline, and rational NURBS circle.
-- [ ] Add pathological fixtures: cusp, inflection, almost-straight segment, derivative singularity, discontinuity, self-intersection, near intersection, oscillation, tiny loop, repeated points, degenerate spline span, and large coordinate range.
-- [ ] Verify known length, tangent, signed/unsigned curvature, torsion, turning number, bounds, intersections, continuity, and frame behavior with scale-aware tolerances.
-- [ ] Test adaptive convergence, seam closure, `t ↔ s`, deterministic ordering, invalid masks, and uncertainty contracts.
-- [ ] Test source-edit invalidation, cancellation, stale-result rejection, save/reload, presets, exports, and missing backend fallback.
-- [ ] Add functional journeys for Curve definition/analysis, diagnostics navigation, spline editing, derived curves, Geometry↔Curves, Surface↔Curves, Curve↔Mesh, and responsive layouts.
-- [ ] Add reviewed performance profiles for 1k/10k/100k samples, high curvature, many control points, intersections, and tube generation.
-- [ ] Add maintained commands `test:curves:v1:unit`, `test:curves:v1:e2e`, `verify:curves:v1:backends`, `profile:curves:v1`, and `test:curves:v1:acceptance`.
+- [x] Add canonical fixtures: line, circle, ellipse, parabola, hyperbola, helix, clothoid, catenary, Lissajous, hypotrochoid, Bézier, B-spline, and rational NURBS circle.
+- [x] Add pathological fixtures: cusp, inflection, almost-straight segment, derivative singularity, discontinuity, self-intersection, near intersection, oscillation, tiny loop, repeated points, degenerate spline span, and large coordinate range.
+- [x] Verify known length, tangent, signed/unsigned curvature, torsion, turning number, bounds, intersections, continuity, and frame behavior with scale-aware tolerances.
+- [x] Test adaptive convergence, seam closure, `t ↔ s`, deterministic ordering, invalid masks, and uncertainty contracts.
+- [x] Test source-edit invalidation, cancellation, stale-result rejection, save/reload, presets, exports, and missing backend fallback.
+- [x] Add functional journeys for Curve definition/analysis, diagnostics navigation, spline editing, derived curves, Geometry↔Curves, Surface↔Curves, Curve↔Mesh, and responsive layouts.
+- [x] Add reviewed performance profiles for 1k/10k/100k samples, high curvature, many control points, intersections, and tube generation.
+- [x] Add maintained commands `test:curves:v1:unit`, `test:curves:v1:e2e`, `verify:curves:v1:backends`, `profile:curves:v1`, and `test:curves:v1:acceptance`.
+
+Validation for Commit 14:
+
+- `npm run test:curves:v1:acceptance` passes end to end from the repository root.
+- The maintained unit gate passes **105 tests across 19 files**, including the complete canonical/pathological matrix, mathematical invariants, scale-aware tolerances, adaptive convergence, seam and `t ↔ s` behavior, deterministic ordering, masks, uncertainty, lifecycle, cancellation, stale guards, persistence, exports, and fallback.
+- The complete repository TypeScript check and production renderer build pass.
+- The maintained Electron gate passes **16 cross-module journeys**, covering Curve definition/analysis, diagnostics navigation, spline editing, derived curves, Geometry/Surface interoperability, CurveMesh/Mesh round trips, worker failure, and workspace navigation.
+- Responsive smoke passes phone portrait, phone landscape, tablet, and desktop layouts.
+- Backend verification passes the Curve engine parity/fallback suite and bundled worker smoke. Optional VTK/CGAL Curve process endpoints are explicitly reported unsupported/unregistered in this installation; deterministic Math3D native fallback remains green.
+- The maintained profile gate passes **5 reviewed profiles** spanning 1k/10k/100k sampling, high curvature, 25k control points, sampled intersections, production-size Bishop tube generation, transfer bounds, and cache memory limits.
 
 Acceptance: the maintained acceptance command proves mathematical truth cases, pathological behavior, interoperability, responsive UI, backend fallback, and reviewed performance budgets.
 
