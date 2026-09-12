@@ -6,6 +6,6 @@ export interface Curve2D extends CurveBase {
   eval: (t: number) => Vec2;
   derivative?: (t: number) => Vec2;
   secondDerivative?: (t: number) => Vec2;
+  thirdDerivative?: (t: number) => Vec2;
   arcLength?: (a: number, b: number) => number;
 }
-

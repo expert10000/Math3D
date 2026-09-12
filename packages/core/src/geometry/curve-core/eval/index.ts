@@ -5,4 +5,4 @@ export * from "./evaluateCurve";
 export * from "./frenetFrame";
 export * from "./secondDerivative";
 export * from "./torsion";
-
+export * from "./thirdDerivative";

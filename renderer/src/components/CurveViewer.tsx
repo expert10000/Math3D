@@ -27,6 +27,10 @@ export type CurveViewerProps = {
   showSamples?: boolean;
   showAxes?: boolean;
   showGrid?: boolean;
+  curvatureComb?: ReadonlyArray<readonly [CurveViewerVec3, CurveViewerVec3]>;
+  evolutePoints?: CurveViewerVec3[];
+  osculatingCircle?: { center: CurveViewerVec3; radius: number; normal: CurveViewerVec3 } | null;
+  evidencePlanes?: Array<{ point: CurveViewerVec3; normal: CurveViewerVec3; color: number }>;
 };
 
 const TANGENT_COLOR = new THREE.Color(0x0ea5e9);
@@ -77,6 +81,10 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
   showSamples = false,
   showAxes = true,
   showGrid = true,
+  curvatureComb = [],
+  evolutePoints = [],
+  osculatingCircle = null,
+  evidencePlanes = [],
 }) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
 
@@ -141,6 +149,48 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
       const sampleGeometry = new THREE.BufferGeometry().setFromPoints(curvePoints);
       const sampleMaterial = new THREE.PointsMaterial({ color: 0x7c3aed, size: Math.max(0.025, frameScale * 0.08), sizeAttenuation: true });
       visualGroup.add(new THREE.Points(sampleGeometry, sampleMaterial));
+    }
+
+    for (const segment of curvatureComb) {
+      if (!finiteVec(segment[0]) || !finiteVec(segment[1])) continue;
+      const geometry = new THREE.BufferGeometry().setFromPoints([vecFrom(segment[0]), vecFrom(segment[1])]);
+      visualGroup.add(new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0xdb2777, transparent: true, opacity: 0.7 })));
+    }
+
+    const evolute = evolutePoints.filter(finiteVec).map(vecFrom);
+    if (evolute.length >= 2) {
+      visualGroup.add(new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(evolute),
+        new THREE.LineBasicMaterial({ color: 0x9333ea, transparent: true, opacity: 0.8 })
+      ));
+    }
+
+    if (osculatingCircle && finiteVec(osculatingCircle.center) && finiteVec(osculatingCircle.normal) && Number.isFinite(osculatingCircle.radius)) {
+      const normal = safeUnit(osculatingCircle.normal);
+      if (normal && osculatingCircle.radius > 0) {
+        const reference = Math.abs(normal.z) < 0.9 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(0, 1, 0);
+        const axisA = new THREE.Vector3().crossVectors(reference, normal).normalize();
+        const axisB = new THREE.Vector3().crossVectors(normal, axisA).normalize();
+        const center = vecFrom(osculatingCircle.center);
+        const points = Array.from({ length: 65 }, (_, index) => {
+          const angle = Math.PI * 2 * index / 64;
+          return center.clone().addScaledVector(axisA, Math.cos(angle) * osculatingCircle.radius).addScaledVector(axisB, Math.sin(angle) * osculatingCircle.radius);
+        });
+        visualGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: 0xf59e0b })));
+      }
+    }
+
+    for (const plane of evidencePlanes) {
+      if (!finiteVec(plane.point) || !finiteVec(plane.normal)) continue;
+      const normal = safeUnit(plane.normal);
+      if (!normal) continue;
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(Math.max(0.2, frameScale * 1.5), Math.max(0.2, frameScale * 1.5)),
+        new THREE.MeshBasicMaterial({ color: plane.color, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false })
+      );
+      mesh.position.copy(vecFrom(plane.point));
+      mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+      visualGroup.add(mesh);
     }
 
     const addGlyphSegment = (origin: THREE.Vector3, direction: CurveViewerVec3 | null | undefined, color: THREE.Color) => {
@@ -296,6 +346,10 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
     showSamples,
     showAxes,
     showGrid,
+    curvatureComb,
+    evolutePoints,
+    osculatingCircle,
+    evidencePlanes,
   ]);
 
   return <div ref={hostRef} style={{ width: "100%", height: "100%", minHeight: 280 }} />;

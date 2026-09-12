@@ -607,6 +607,7 @@ import {
 } from "./math/paramGeodesicContinuous";
 import { CurveViewer, type CurveViewerGlyph, type CurveViewerVec3 } from "./components/CurveViewer";
 import {
+  analyzeCurveDifferentialGeometry,
   arcLength as curveArcLength,
   buildArcLengthTableFromSamples as curveBuildArcLengthTableFromSamples,
   curvature as curveCurvature,
@@ -11500,6 +11501,7 @@ type CurveFrameSample = CurveViewerGlyph & {
   t: number;
   curvature: number;
   torsion: number;
+  frameKind?: "frenet" | "bishop";
 };
 
 const toCurveViewerVec3 = (point: { x: number; y: number; z?: number }): CurveViewerVec3 => ({
@@ -11526,8 +11528,8 @@ const buildCurveFrameAt = (curve: CoreAnyCurve, t: number): CurveFrameSample | n
   if (curve.dimension === 3) {
     const frame = curveFrenetFrame(curve as CoreCurve3D, t);
     const tangent = normalizedCurveVec3(toCurveViewerVec3(frame.tangent));
-    const normal = normalizedCurveVec3(toCurveViewerVec3(frame.normal));
-    const binormal = normalizedCurveVec3(toCurveViewerVec3(frame.binormal));
+    const normal = frame.normal ? normalizedCurveVec3(toCurveViewerVec3(frame.normal)) : null;
+    const binormal = frame.binormal ? normalizedCurveVec3(toCurveViewerVec3(frame.binormal)) : null;
     return {
       t,
       point,
@@ -11535,7 +11537,8 @@ const buildCurveFrameAt = (curve: CoreAnyCurve, t: number): CurveFrameSample | n
       normal,
       binormal,
       curvature: Number.isFinite(frame.curvature) ? frame.curvature : 0,
-      torsion: Number.isFinite(frame.torsion) ? frame.torsion : 0,
+      torsion: frame.torsion != null && Number.isFinite(frame.torsion) ? frame.torsion : NaN,
+      frameKind: frame.defined ? "frenet" : "bishop",
     };
   }
 
@@ -12516,6 +12519,70 @@ const App: React.FC = () => {
     curveSampleCount,
     curveSamplingMode,
   ]);
+  const curveDifferentialField = useMemo(() => {
+    const curve = curveRenderState.curve;
+    if (!curve) return null;
+    const count = Math.max(8, Math.min(96, Math.round(curveFrameCount * 2)));
+    const parameters = Array.from({ length: count }, (_, index) =>
+      index === count - 1
+        ? curve.domain.tMax
+        : curve.domain.tMin + (curve.domain.tMax - curve.domain.tMin) * index / (count - 1)
+    );
+    parameters.push(curveRenderState.probeT);
+    return analyzeCurveDifferentialGeometry(curve, {
+      parameters,
+      method: curveRenderState.source === "special" ? "spline" : "numerical",
+      units: { position: "scene-unit", parameter: "curve parameter" },
+      curvatureCombScale: curveFrameScale,
+    });
+  }, [curveFrameCount, curveFrameScale, curveRenderState.curve, curveRenderState.probeT, curveRenderState.source]);
+  const curveDifferentialFrameSamples = useMemo<CurveFrameSample[]>(() =>
+    curveDifferentialField?.points.map((point) => ({
+      t: point.t,
+      point: point.position,
+      tangent: point.tangent,
+      normal: point.frenetNormal ?? point.bishopNormal,
+      binormal: point.frenetBinormal ?? point.bishopBinormal,
+      curvature: point.curvature ?? NaN,
+      torsion: point.torsion ?? NaN,
+      frameKind: point.frenetDefined ? "frenet" : "bishop",
+    })) ?? curveRenderState.frameSamples,
+  [curveDifferentialField, curveRenderState.frameSamples]);
+  const curveDifferentialProbePoint = useMemo(() => {
+    if (!curveDifferentialField?.points.length) return null;
+    return curveDifferentialField.points.reduce((best, point) =>
+      Math.abs(point.t - curveRenderState.probeT) < Math.abs(best.t - curveRenderState.probeT) ? point : best
+    );
+  }, [curveDifferentialField, curveRenderState.probeT]);
+  const curveDisplayProbe = useMemo<CurveFrameSample | null>(() => {
+    const point = curveDifferentialProbePoint;
+    if (!point) return curveRenderState.probe;
+    return {
+      t: point.t,
+      point: point.position,
+      tangent: point.tangent,
+      normal: point.frenetNormal ?? point.bishopNormal,
+      binormal: point.frenetBinormal ?? point.bishopBinormal,
+      curvature: point.curvature ?? NaN,
+      torsion: point.torsion ?? NaN,
+      frameKind: point.frenetDefined ? "frenet" : "bishop",
+    };
+  }, [curveDifferentialProbePoint, curveRenderState.probe]);
+  const curveCurvatureCombSegments = useMemo(() =>
+    curveDifferentialField?.points.flatMap((point) => point.evidence.curvatureComb ? [point.evidence.curvatureComb] : []) ?? [],
+  [curveDifferentialField]);
+  const curveEvolutePoints = useMemo(() =>
+    curveDifferentialField?.points.flatMap((point) => point.evidence.evolutePoint ? [point.evidence.evolutePoint] : []) ?? [],
+  [curveDifferentialField]);
+  const curveEvidencePlanes = useMemo(() => {
+    const evidence = curveDifferentialProbePoint?.evidence;
+    if (!evidence) return [];
+    return [
+      evidence.osculatingPlane ? { ...evidence.osculatingPlane, color: 0x38bdf8 } : null,
+      evidence.normalPlane ? { ...evidence.normalPlane, color: 0x22c55e } : null,
+      evidence.rectifyingPlane ? { ...evidence.rectifyingPlane, color: 0xf97316 } : null,
+    ].filter((entry): entry is { point: CurveViewerVec3; normal: CurveViewerVec3; color: number } => entry != null);
+  }, [curveDifferentialProbePoint]);
   const curveActiveIsImported = !!curveImportedSection;
   const curveActiveDimension = curveActiveIsImported ? 3 : (activeCurvePreset?.dimension ?? 2);
   const curveActiveClosed = curveActiveIsImported ? curveImportedSection.closed : Boolean(activeCurveDomain.closed);
@@ -86544,13 +86611,17 @@ case "mobius":
                         samples={curveRenderState.samplePoints}
                         dimension={curveActiveDimension}
                         closed={curveActiveClosed}
-                        frameGlyphs={curveShowFrames ? curveRenderState.frameSamples : []}
-                        probeGlyph={curveShowAnnotations ? curveRenderState.probe : null}
+                        frameGlyphs={curveShowFrames ? curveDifferentialFrameSamples : []}
+                        probeGlyph={curveShowAnnotations ? curveDisplayProbe : null}
                         showTangent={curveShowFrames && curveShowTangent}
                         showNormal={curveShowFrames && curveShowNormal}
                         showBinormal={curveShowFrames && curveShowBinormal && curveActiveDimension === 3}
                         showCurve={curveShowCurve}
                         showSamples={curveShowSamples}
+                        curvatureComb={curveShowComb ? curveCurvatureCombSegments : []}
+                        evolutePoints={curveShowOsculatingEvidence ? curveEvolutePoints : []}
+                        osculatingCircle={curveShowOsculatingEvidence ? curveDifferentialProbePoint?.evidence.osculatingCircle ?? null : null}
+                        evidencePlanes={curveShowOsculatingEvidence ? curveEvidencePlanes : []}
                         frameScale={curveFrameScale}
                         resetToken={curveViewerResetToken}
                       />
@@ -86587,14 +86658,15 @@ case "mobius":
                         </div>
                         <div>
                           p(t) ={" "}
-                          <strong>{curveRenderState.probe?.point ? fmt3(curveRenderState.probe.point) : "n/a"}</strong>
+                          <strong>{curveDisplayProbe?.point ? fmt3(curveDisplayProbe.point) : "n/a"}</strong>
                         </div>
                         <div>
-                          curvature κ(t) = <strong>{fmt(curveRenderState.probe?.curvature ?? NaN)}</strong>
+                          curvature κ(t) = <strong>{fmt(curveDisplayProbe?.curvature ?? NaN)}</strong>
                         </div>
                         <div>
-                          torsion τ(t) = <strong>{fmt(curveRenderState.probe?.torsion ?? NaN)}</strong>
+                          torsion τ(t) = <strong>{fmt(curveDisplayProbe?.torsion ?? NaN)}</strong>
                         </div>
+                        <div data-testid="curve-frame-kind">frame = <strong>{curveDisplayProbe?.frameKind ?? "unavailable"}</strong>{curveDisplayProbe?.frameKind === "bishop" ? " (Frenet undefined)" : ""}</div>
                       </div>
                     </div>
                     <div
@@ -86657,6 +86729,15 @@ case "mobius":
                             <strong>{fmt(curveRenderState.samplingStatistics.maxObservedGeometricError)}</strong>
                           </div>
                         )}
+                        {curveDifferentialField && (
+                          <div data-testid="curve-differential-summary" style={{ marginTop: 5, paddingTop: 5, borderTop: "1px dashed #cbd5e1", display: "grid", gap: 2 }}>
+                            <div><strong>Differential field:</strong> {curveDifferentialField.provenance.method} · {curveDifferentialField.points.length} points</div>
+                            <div>speed [min, avg, max]: <strong>{curveDifferentialField.statistics.speed ? `${fmt(curveDifferentialField.statistics.speed.minimum)} / ${fmt(curveDifferentialField.statistics.speed.average)} / ${fmt(curveDifferentialField.statistics.speed.maximum)}` : "n/a"}</strong></div>
+                            <div>signed curvature: <strong>{curveDifferentialField.statistics.signedCurvature ? `${fmt(curveDifferentialField.statistics.signedCurvature.minimum)} … ${fmt(curveDifferentialField.statistics.signedCurvature.maximum)}` : "3D / n/a"}</strong></div>
+                            <div>turning number: <strong>{fmt(curveDifferentialField.turningNumber ?? NaN)}</strong> · inflections <strong>{curveDifferentialField.inflectionParameters.length}</strong></div>
+                            <div>Bishop holonomy: <strong>{fmt(curveDifferentialField.bishopHolonomy ?? NaN)}</strong> · fallback samples <strong>{curveDifferentialField.points.filter((point) => point.bishopFallbackUsed).length}</strong></div>
+                          </div>
+                        )}
                         <div>
                           curvature [min, avg, max]:{" "}
                           <strong>
@@ -86674,7 +86755,7 @@ case "mobius":
                           </strong>
                         </div>
                       </div>
-                      {curveRenderState.errors.length > 0 && (
+                      {curveShowDiagnostics && curveRenderState.errors.length > 0 && (
                         <div
                           style={{
                             marginTop: 8,
@@ -86736,6 +86817,8 @@ case "mobius":
                         <div>Method: {activeCurveDefinitionMethod}</div>
                         <div>Samples: {curveRenderState.samplePoints.length}</div>
                         <div>Length: {fmt(curveRenderState.arcLength)} {activeCanonicalCurveDefinition.units.position}</div>
+                        {curveDifferentialField && <div>Differential field: {curveDifferentialField.points.length} points · {curveDifferentialField.provenance.method}</div>}
+                        {curveDifferentialProbePoint?.evidence.osculatingCircle && <div>Osculating radius: {fmt(curveDifferentialProbePoint.evidence.osculatingCircle.radius)}</div>}
                       </>
                     )}
                     {curveInspectorTab === "probe" && (
@@ -86743,15 +86826,17 @@ case "mobius":
                         <div><strong>Linked parameter probe</strong></div>
                         <div>t = {fmt(curveRenderState.probeT)}</div>
                         <div>s/L = {fmt(curveRenderState.probeNormalizedArcLength)}</div>
-                        <div>p = {curveRenderState.probe?.point ? fmt3(curveRenderState.probe.point) : "n/a"}</div>
-                        <div>κ = {fmt(curveRenderState.probe?.curvature ?? NaN)}</div>
-                        <div>τ = {fmt(curveRenderState.probe?.torsion ?? NaN)}</div>
+                        <div>p = {curveDisplayProbe?.point ? fmt3(curveDisplayProbe.point) : "n/a"}</div>
+                        <div>κ = {fmt(curveDisplayProbe?.curvature ?? NaN)}</div>
+                        <div>τ = {fmt(curveDisplayProbe?.torsion ?? NaN)}</div>
+                        <div>Frame: {curveDisplayProbe?.frameKind ?? "unavailable"}</div>
                       </>
                     )}
                     {curveInspectorTab === "diagnostics" && (
                       <>
                         <div><strong>{curveRenderState.errors.length ? `${curveRenderState.errors.length} issue(s)` : "Ready — no issues"}</strong></div>
                         {curveRenderState.errors.map((message, index) => <div key={`curve-inspector-issue-${index}`}>{message}</div>)}
+                        {curveDifferentialField?.warnings.map((message, index) => <div key={`curve-differential-warning-${index}`}>{message}</div>)}
                       </>
                     )}
                     {curveInspectorTab === "sampling" && (

@@ -29,6 +29,12 @@ test.describe("Curves canonical workspace", () => {
       await expect(ctx.page.getByTestId("curve-inspector-content-sampling")).toContainText("arc-length entries");
       await expect(ctx.page.getByTestId("curve-viewport-display-controls")).toContainText("Control polygon");
       await expect(ctx.page.getByTestId("app-status-bar")).toContainText("Curve circle2d");
+      await expect(ctx.page.getByTestId("curve-differential-summary")).toContainText("Differential field:");
+      await expect(ctx.page.getByTestId("curve-differential-summary")).toContainText("turning number:");
+      await expect(ctx.page.getByTestId("curve-frame-kind")).toContainText("frenet");
+      const osculatingToggle = ctx.page.getByTestId("curve-viewport-display-controls").getByLabel("Osculating", { exact: true });
+      await osculatingToggle.check();
+      await expect(osculatingToggle).toBeChecked();
 
       const contract = ctx.page.getByTestId("curve-canonical-contract");
       await contract.scrollIntoViewIfNeeded();
