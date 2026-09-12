@@ -625,7 +625,7 @@ Acceptance: heavy Curve work remains responsive and cancellable; cached work is 
 
 Planned message: `feat(curves): add result lifecycle and layered analysis presets`
 
-**Status: implemented and validated.**
+**Status: implemented and validated (`46bb894`).**
 
 Already implemented:
 
@@ -656,7 +656,7 @@ Acceptance: a user can apply a useful analysis stack, inspect each layer, reprod
 
 Planned message: `test(curves): add regression matrix and performance gates`
 
-**Status: implemented and validated.**
+**Status: implemented and validated (`d8cea9c`).**
 
 Already implemented:
 
