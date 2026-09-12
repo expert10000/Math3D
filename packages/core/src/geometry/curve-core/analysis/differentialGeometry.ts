@@ -1,7 +1,7 @@
 import type { Vec3 } from "../../../math";
 import type { AnyCurve, CurvePoint } from "../model";
 import { derivative, secondDerivative, thirdDerivative } from "../eval";
-import { sampleCurveRobust, type RobustSamplingOptions } from "../sampling";
+import { sampleCurveRobust, type RobustSamplingOptions } from "../sampling/sampleRobust";
 import {
   buildArcLengthTableFromSamples,
   parameterToArcLength,

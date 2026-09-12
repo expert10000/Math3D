@@ -2,3 +2,5 @@ export * from "./contracts";
 export * from "./infrastructure";
 export * from "./adapters";
 export * from "./persistence";
+export * from "./probe";
+export * from "./scalarPlots";

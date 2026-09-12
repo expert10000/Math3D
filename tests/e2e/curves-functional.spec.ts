@@ -32,6 +32,21 @@ test.describe("Curves canonical workspace", () => {
       await expect(ctx.page.getByTestId("curve-differential-summary")).toContainText("Differential field:");
       await expect(ctx.page.getByTestId("curve-differential-summary")).toContainText("turning number:");
       await expect(ctx.page.getByTestId("curve-frame-kind")).toContainText("frenet");
+      await expect(ctx.page.getByTestId("curve-scalar-plots")).toBeVisible();
+      await expect(ctx.page.getByTestId("curve-plot-speed")).toContainText("Speed");
+      await expect(ctx.page.getByTestId("curve-plot-sampling-error")).toContainText("Sampling error");
+      await ctx.page.getByTestId("curve-plot-speed").locator("svg").click({ position: { x: 180, y: 35 } });
+      await expect(ctx.page.getByTestId("curve-inspector-content-probe")).toBeVisible();
+      await expect(ctx.page.getByTestId("curve-probe-source")).toContainText("plot");
+      await ctx.page.getByTestId("curve-arc-length-slider").fill("0.72");
+      await expect(ctx.page.getByTestId("curve-probe-source")).toContainText("arc-length-slider");
+      await ctx.page.getByTestId("curve-pin-probe").click();
+      await ctx.page.getByTestId("curve-arc-length-slider").fill("0.28");
+      await ctx.page.getByTestId("curve-pin-probe").click();
+      await ctx.page.getByTestId("curve-add-probe-annotations").click();
+      await expect(ctx.page.getByTestId("curve-pinned-probes")).toContainText("Pinned probes (3)");
+      await expect(ctx.page.getByTestId("curve-probe-comparison")).toContainText("Compare latest");
+      await expect(ctx.page.getByTestId("curve-probe-annotation-count")).toContainText("Annotations: 9");
       const osculatingToggle = ctx.page.getByTestId("curve-viewport-display-controls").getByLabel("Osculating", { exact: true });
       await osculatingToggle.check();
       await expect(osculatingToggle).toBeChecked();
@@ -64,16 +79,23 @@ test.describe("Curves canonical workspace", () => {
       await expect.poll(async () => ctx?.page.evaluate(() => {
         const serialized = localStorage.getItem("math3d.curveAnalysis.workspace.v1");
         if (!serialized) return null;
-        const document = JSON.parse(serialized) as { version?: number; definitions?: Array<{ identity?: { curveId?: string; curveRevision?: number }; fingerprint?: string }> };
+        const document = JSON.parse(serialized) as {
+          version?: number;
+          definitions?: Array<{ identity?: { curveId?: string; curveRevision?: number }; fingerprint?: string }>;
+          savedProbes?: unknown[];
+          annotations?: unknown[];
+        };
         const latest = document.definitions?.filter((entry) => entry.identity?.curveId === "custom2d").at(-1);
         return {
           version: document.version,
           curveId: latest?.identity?.curveId,
           revision: latest?.identity?.curveRevision,
           hasFingerprint: Boolean(latest?.fingerprint),
+          savedProbes: document.savedProbes?.length,
+          annotations: document.annotations?.length,
           containsTypedArrays: serialized.includes("Float64Array"),
         };
-      })).toEqual({ version: 1, curveId: "custom2d", revision: 2, hasFingerprint: true, containsTypedArrays: false });
+      })).toEqual({ version: 1, curveId: "custom2d", revision: 2, hasFingerprint: true, savedProbes: 3, annotations: 9, containsTypedArrays: false });
     } finally {
       await closeSurfaceApp(ctx);
     }

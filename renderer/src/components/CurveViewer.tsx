@@ -31,6 +31,7 @@ export type CurveViewerProps = {
   evolutePoints?: CurveViewerVec3[];
   osculatingCircle?: { center: CurveViewerVec3; radius: number; normal: CurveViewerVec3 } | null;
   evidencePlanes?: Array<{ point: CurveViewerVec3; normal: CurveViewerVec3; color: number }>;
+  onSelectSample?: (sampleIndex: number) => void;
 };
 
 const TANGENT_COLOR = new THREE.Color(0x0ea5e9);
@@ -85,6 +86,7 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
   evolutePoints = [],
   osculatingCircle = null,
   evidencePlanes = [],
+  onSelectSample,
 }) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
 
@@ -304,6 +306,23 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
     const disposeTouchGestures = installViewerTouchGestures(renderer.domElement, {
       onDoubleTap: refitCamera,
     });
+    const handleClick = (event: MouseEvent) => {
+      if (!onSelectSample || !curvePoints.length) return;
+      const bounds = renderer.domElement.getBoundingClientRect();
+      const px = event.clientX - bounds.left;
+      const py = event.clientY - bounds.top;
+      let bestIndex = -1;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      curvePoints.forEach((point, index) => {
+        const projected = point.clone().project(camera);
+        const x = (projected.x * 0.5 + 0.5) * bounds.width;
+        const y = (-projected.y * 0.5 + 0.5) * bounds.height;
+        const distance = Math.hypot(x - px, y - py);
+        if (distance < bestDistance) { bestDistance = distance; bestIndex = index; }
+      });
+      if (bestIndex >= 0 && bestDistance <= 24) onSelectSample(bestIndex);
+    };
+    renderer.domElement.addEventListener("click", handleClick);
 
     let animationFrame = 0;
     const renderLoop = () => {
@@ -326,6 +345,7 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
       window.cancelAnimationFrame(animationFrame);
       resizeObserver.disconnect();
       disposeTouchGestures();
+      renderer.domElement.removeEventListener("click", handleClick);
       controls.dispose();
       disposeSceneObjects(scene);
       renderer.dispose();
@@ -350,6 +370,7 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
     evolutePoints,
     osculatingCircle,
     evidencePlanes,
+    onSelectSample,
   ]);
 
   return <div ref={hostRef} style={{ width: "100%", height: "100%", minHeight: 280 }} />;

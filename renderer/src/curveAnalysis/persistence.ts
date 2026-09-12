@@ -4,6 +4,7 @@ import type {
   CurveRepresentation,
   CurveResultKind,
 } from "./contracts";
+import type { SemanticCurvePick } from "./probe";
 
 export type SavedCurveResultReference = {
   id: string;
@@ -18,6 +19,19 @@ export type CurveAnalysisWorkspaceDocument = {
   version: 1;
   definitions: CanonicalCurveDefinition[];
   savedResults: SavedCurveResultReference[];
+  savedProbes: SemanticCurvePick[];
+  annotations: SavedCurveAnnotation[];
+};
+
+export type CurveAnnotationKind = "distance" | "segment-length" | "point" | "parameter" | "curvature" | "torsion" | "radius" | "tangent" | "frame";
+export type SavedCurveAnnotation = {
+  id: string;
+  pickId: string;
+  identity: CurveIdentity;
+  kind: CurveAnnotationKind;
+  label: string;
+  value: string;
+  visible: boolean;
 };
 
 const REPRESENTATIONS: ReadonlySet<CurveRepresentation> = new Set([
@@ -30,6 +44,8 @@ export const createCurveAnalysisWorkspaceDocument = (
   version: 1,
   definitions: [...(input?.definitions ?? [])],
   savedResults: [...(input?.savedResults ?? [])],
+  savedProbes: [...(input?.savedProbes ?? [])],
+  annotations: [...(input?.annotations ?? [])],
 });
 
 export const serializeCurveAnalysisWorkspace = (document: CurveAnalysisWorkspaceDocument): string => JSON.stringify(document);
@@ -55,5 +71,7 @@ export const parseCurveAnalysisWorkspace = (serialized: string): CurveAnalysisWo
       throw new Error("Invalid saved Curve result reference.");
     }
   }
-  return createCurveAnalysisWorkspaceDocument(value);
+  if (value.savedProbes != null && !Array.isArray(value.savedProbes)) throw new Error("Invalid saved Curve probes.");
+  if (value.annotations != null && !Array.isArray(value.annotations)) throw new Error("Invalid saved Curve annotations.");
+  return createCurveAnalysisWorkspaceDocument({ ...value, savedProbes: value.savedProbes ?? [], annotations: value.annotations ?? [] });
 };

@@ -593,6 +593,15 @@ import {
   serializeCurveAnalysisWorkspace,
 } from "./curveAnalysis/persistence";
 import {
+  buildCurveScalarPlots,
+  createSemanticCurvePick,
+  curvePickComparison,
+  curvePickIsStale,
+  curvePickToCsv,
+  type CurvePickSource,
+  type CurveScalarPlotDomain,
+} from "./curveAnalysis";
+import {
   buildComplexMapSweep,
   compileComplexMapExpressions,
   type ComplexMapInputMode,
@@ -606,6 +615,7 @@ import {
   type ParamGeodesicState,
 } from "./math/paramGeodesicContinuous";
 import { CurveViewer, type CurveViewerGlyph, type CurveViewerVec3 } from "./components/CurveViewer";
+import { CurveScalarPlots } from "./components/CurveScalarPlots";
 import {
   analyzeCurveDifferentialGeometry,
   arcLength as curveArcLength,
@@ -12285,6 +12295,8 @@ const App: React.FC = () => {
   const [curveShowDiagnostics, setCurveShowDiagnostics] = useState(true);
   const [curveShowAnnotations, setCurveShowAnnotations] = useState(true);
   const [curveShowPreviews, setCurveShowPreviews] = useState(true);
+  const [curvePlotDomain, setCurvePlotDomain] = useState<CurveScalarPlotDomain>("parameter");
+  const [curveProbeSource, setCurveProbeSource] = useState<CurvePickSource>("parameter-slider");
   const visibleCurvePresets = useMemo(
     () => (curvePresetCategoryFilter === "all" ? CURVE_PRESETS : CURVE_PRESETS.filter((p) => p.category === curvePresetCategoryFilter)),
     [curvePresetCategoryFilter]
@@ -12392,6 +12404,7 @@ const App: React.FC = () => {
         arcLengthTableEntries: samplePoints.length,
         samplingStatistics: null,
         samplingDiagnostics: [] as string[],
+        samplingErrorRows: [] as Array<{ t: number; error: number }>,
         curvatureSummary: null as CurveMetricSummary | null,
         torsionSummary: null as CurveMetricSummary | null,
       };
@@ -12414,6 +12427,7 @@ const App: React.FC = () => {
         arcLengthTableEntries: 0,
         samplingStatistics: null,
         samplingDiagnostics: [] as string[],
+        samplingErrorRows: [] as Array<{ t: number; error: number }>,
         curvatureSummary: null as CurveMetricSummary | null,
         torsionSummary: null as CurveMetricSummary | null,
       };
@@ -12506,6 +12520,7 @@ const App: React.FC = () => {
       arcLengthTableEntries: arcLengthTable.ts.length,
       samplingStatistics,
       samplingDiagnostics,
+      samplingErrorRows: sampleRows.map((row) => ({ t: row.t, error: "geometricError" in row && Number.isFinite(row.geometricError) ? Number(row.geometricError) : 0 })),
       curvatureSummary,
       torsionSummary,
     };
@@ -12710,6 +12725,30 @@ const App: React.FC = () => {
     () => adaptCurveDefinition(curveCanonicalAdapterInput),
     [curveCanonicalAdapterInput]
   );
+  const activeSemanticCurvePick = useMemo(() => {
+    if (!curveDifferentialField || !curveDifferentialProbePoint) return null;
+    const pointIndex = curveDifferentialField.points.indexOf(curveDifferentialProbePoint);
+    const left = curveDifferentialField.points[Math.max(0, pointIndex - 1)]?.t ?? curveDifferentialProbePoint.t;
+    const right = curveDifferentialField.points[Math.min(curveDifferentialField.points.length - 1, pointIndex + 1)]?.t ?? curveDifferentialProbePoint.t;
+    return createSemanticCurvePick({
+      identity: activeCanonicalCurveDefinition.identity,
+      point: curveDifferentialProbePoint,
+      pointIndex,
+      parameterSpan: [left, right],
+      source: curveProbeSource,
+      createdAt: 0,
+    });
+  }, [activeCanonicalCurveDefinition.identity, curveDifferentialField, curveDifferentialProbePoint, curveProbeSource]);
+  const curveScalarPlotRows = useMemo(() => {
+    if (!curveDifferentialField) return [];
+    const errors = curveDifferentialField.points.map((point) => {
+      const nearest = curveRenderState.samplingErrorRows.reduce<{ t: number; error: number } | null>((best, row) =>
+        !best || Math.abs(row.t - point.t) < Math.abs(best.t - point.t) ? row : best,
+      null);
+      return nearest?.error ?? 0;
+    });
+    return buildCurveScalarPlots(curveDifferentialField, curvePlotDomain, errors);
+  }, [curveDifferentialField, curvePlotDomain, curveRenderState.samplingErrorRows]);
   const activeCurveDefinitionMethod: CurveAnalysisMethod = curveActiveIsImported
     ? "polyline-estimate"
     : curveRenderState.source === "special"
@@ -12779,6 +12818,52 @@ const App: React.FC = () => {
     () => getCurveAnalysisResult(curveAnalysisResultStore, activeCanonicalCurveDefinition.identity, "curve-definition"),
     [activeCanonicalCurveDefinition.identity, curveAnalysisResultStore]
   );
+  const setLinkedCurveProbe = (normalizedParameter: number, source: CurvePickSource) => {
+    setCurveProbeSource(source);
+    setCurveProbeU(clamp(normalizedParameter, 0, 1));
+    setCurveInspectorTab("probe");
+  };
+  const persistActiveCurveProbe = () => {
+    if (!activeSemanticCurvePick) return null;
+    const createdAt = Date.now();
+    const saved = { ...activeSemanticCurvePick, id: `${activeCanonicalCurveDefinition.identity.key}:probe:${createdAt}`, createdAt, source: curveProbeSource };
+    setCurveAnalysisWorkspaceDocument((document) => ({ ...document, savedProbes: [saved, ...document.savedProbes].slice(0, 48) }));
+    return saved;
+  };
+  const handleAddCurveAnnotationSet = () => {
+    const pick = persistActiveCurveProbe();
+    if (!pick) return;
+    const values = [
+      ["distance", "Distance along curve", `${fmt(pick.arcLength)} scene-unit`],
+      ["segment-length", "Local segment", `[${fmt(pick.span[0])}, ${fmt(pick.span[1])}]`],
+      ["point", "Point", `(${pick.worldPoint.map(fmt).join(", ")})`],
+      ["parameter", "Parameter", `t=${fmt(pick.t)}, s/L=${fmt(pick.normalizedArcLength)}`],
+      ["curvature", "Curvature", fmt(pick.curvature ?? NaN)],
+      ["torsion", "Torsion", fmt(pick.torsion ?? NaN)],
+      ["radius", "Radius of curvature", fmt(pick.radiusOfCurvature ?? NaN)],
+      ["tangent", "Tangent", pick.tangent ? `(${pick.tangent.map(fmt).join(", ")})` : "undefined"],
+      ["frame", "Frame", pick.frameKind],
+    ] as const;
+    setCurveAnalysisWorkspaceDocument((document) => ({
+      ...document,
+      annotations: [
+        ...values.map(([kind, label, value]) => ({ id: `${pick.id}:${kind}`, pickId: pick.id, identity: pick.identity, kind, label, value, visible: true })),
+        ...document.annotations,
+      ].slice(0, 160),
+    }));
+  };
+  const downloadCurveProbeText = (filename: string, text: string, type: string) => {
+    const url = URL.createObjectURL(new Blob([text], { type }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+  const curveProbeComparison = useMemo(() => {
+    const probes = curveAnalysisWorkspaceDocument.savedProbes.filter((probe) => probe.identity.curveId === activeCanonicalCurveDefinition.identity.curveId);
+    return probes.length >= 2 ? curvePickComparison(probes[1], probes[0]) : null;
+  }, [activeCanonicalCurveDefinition.identity.curveId, curveAnalysisWorkspaceDocument.savedProbes]);
   const [geometryMode, setGeometryMode] = useState<GeometryMode>(() => {
     if (typeof window === "undefined") return "procedural";
     const saved = window.localStorage.getItem(UI_GEOMETRY_MODE_KEY) ?? undefined;
@@ -86343,6 +86428,17 @@ case "mobius":
                         {["Differential geometry", "Moving frames", "Sampling quality", "Diagnostics"].map((label, index) => (
                           <button key={label} type="button" onClick={() => setCurveInspectorTab(index < 2 ? "result" : index === 2 ? "sampling" : "diagnostics")} style={{ textAlign: "left", padding: "9px 10px" }}>{label}</button>
                         ))}
+                        <div style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 10 }}>
+                          <strong>Plot against</strong>
+                          <button type="button" onClick={() => setCurvePlotDomain("parameter")} aria-pressed={curvePlotDomain === "parameter"} style={pill(curvePlotDomain === "parameter")}>t</button>
+                          <button type="button" onClick={() => setCurvePlotDomain("arc-length")} aria-pressed={curvePlotDomain === "arc-length"} style={pill(curvePlotDomain === "arc-length")}>s/L</button>
+                        </div>
+                        <CurveScalarPlots
+                          rows={curveScalarPlotRows}
+                          domain={curvePlotDomain}
+                          activeParameter={curveProbeU}
+                          onSelect={(u) => setLinkedCurveProbe(u, "plot")}
+                        />
                       </div>
                     )}
                     {(curveWorkspaceTab === "derived" || curveWorkspaceTab === "curvemesh") && (
@@ -86622,6 +86718,7 @@ case "mobius":
                         evolutePoints={curveShowOsculatingEvidence ? curveEvolutePoints : []}
                         osculatingCircle={curveShowOsculatingEvidence ? curveDifferentialProbePoint?.evidence.osculatingCircle ?? null : null}
                         evidencePlanes={curveShowOsculatingEvidence ? curveEvidencePlanes : []}
+                        onSelectSample={(index) => setLinkedCurveProbe(index / Math.max(1, curveRenderState.samplePoints.length - 1), "viewport")}
                         frameScale={curveFrameScale}
                         resetToken={curveViewerResetToken}
                       />
@@ -86646,7 +86743,26 @@ case "mobius":
                         max={1}
                         step={0.001}
                         value={clamp(curveProbeU, 0, 1)}
-                        onChange={(e) => setCurveProbeU(Number(e.target.value))}
+                        onChange={(e) => setLinkedCurveProbe(Number(e.target.value), "parameter-slider")}
+                        style={{ width: "100%" }}
+                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 6, fontSize: 10 }}>
+                        <span>Arc-length selector</span><span>s/L = {fmt(activeSemanticCurvePick?.normalizedArcLength ?? curveRenderState.probeNormalizedArcLength)}</span>
+                      </div>
+                      <input
+                        data-testid="curve-arc-length-slider"
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.001}
+                        value={activeSemanticCurvePick?.normalizedArcLength ?? curveRenderState.probeNormalizedArcLength}
+                        onChange={(event) => {
+                          const target = Number(event.target.value);
+                          const nearest = curveDifferentialField?.points.reduce((best, point) =>
+                            Math.abs(point.normalizedArcLength - target) < Math.abs(best.normalizedArcLength - target) ? point : best
+                          );
+                          if (nearest) setLinkedCurveProbe(nearest.normalizedParameter, "arc-length-slider");
+                        }}
                         style={{ width: "100%" }}
                       />
                       <div style={{ marginTop: 8, display: "grid", gap: 2 }}>
@@ -86830,6 +86946,27 @@ case "mobius":
                         <div>κ = {fmt(curveDisplayProbe?.curvature ?? NaN)}</div>
                         <div>τ = {fmt(curveDisplayProbe?.torsion ?? NaN)}</div>
                         <div>Frame: {curveDisplayProbe?.frameKind ?? "unavailable"}</div>
+                        <div data-testid="curve-probe-source">Source: {curveProbeSource}</div>
+                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 4 }}>
+                          <button type="button" data-testid="curve-pin-probe" onClick={persistActiveCurveProbe} disabled={!activeSemanticCurvePick}>Pin / save</button>
+                          <button type="button" data-testid="curve-add-probe-annotations" onClick={handleAddCurveAnnotationSet} disabled={!activeSemanticCurvePick}>Add annotations</button>
+                          <button type="button" onClick={() => { if (activeSemanticCurvePick) void navigator.clipboard?.writeText(JSON.stringify(activeSemanticCurvePick, null, 2)); }} disabled={!activeSemanticCurvePick}>Copy</button>
+                          <button type="button" onClick={() => downloadCurveProbeText("curve-probes.json", JSON.stringify(curveAnalysisWorkspaceDocument.savedProbes, null, 2), "application/json")}>JSON</button>
+                          <button type="button" onClick={() => downloadCurveProbeText("curve-probes.csv", curvePickToCsv(curveAnalysisWorkspaceDocument.savedProbes), "text/csv")}>CSV</button>
+                        </div>
+                        <div data-testid="curve-pinned-probes" style={{ marginTop: 6, display: "grid", gap: 4 }}>
+                          <strong>Pinned probes ({curveAnalysisWorkspaceDocument.savedProbes.length})</strong>
+                          {curveAnalysisWorkspaceDocument.savedProbes.slice(0, 6).map((pick) => {
+                            const stale = curvePickIsStale(pick, activeCanonicalCurveDefinition.identity);
+                            return (
+                              <button key={pick.id} type="button" onClick={() => setLinkedCurveProbe(pick.normalizedParameter, "replay")} style={{ textAlign: "left", fontSize: 10 }}>
+                                t={fmt(pick.t)} · s/L={fmt(pick.normalizedArcLength)} · {pick.frameKind}{stale ? " · stale" : " · current"}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div data-testid="curve-probe-annotation-count">Annotations: {curveAnalysisWorkspaceDocument.annotations.length}</div>
+                        {curveProbeComparison && <div data-testid="curve-probe-comparison">Compare latest: Δt {fmt(curveProbeComparison.deltaParameter)} · Δs {fmt(curveProbeComparison.deltaArcLength)} · distance {fmt(curveProbeComparison.distance)}</div>}
                       </>
                     )}
                     {curveInspectorTab === "diagnostics" && (

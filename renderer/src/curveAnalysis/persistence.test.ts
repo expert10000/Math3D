@@ -39,6 +39,19 @@ describe("Curve Analysis persistence", () => {
     expect(serialized).not.toContain("evaluate");
   });
 
+  it("round-trips lightweight pinned probes and persistent annotations", () => {
+    const probe = {
+      id: "probe-1", identity: definition.identity, t: 1, normalizedParameter: 0.2, arcLength: 2,
+      normalizedArcLength: 0.25, segmentIndex: 3, span: [0.8, 1.2] as const, worldPoint: [1, 2, 0] as const,
+      source: "plot" as const, sourceMapping: "plot -> curve parameter -> arc-length table", speed: 1,
+      curvature: 0.5, signedCurvature: 0.5, torsion: 0, radiusOfCurvature: 2,
+      tangent: [1, 0, 0] as const, normal: [0, 1, 0] as const, binormal: [0, 0, 1] as const,
+      frameKind: "frenet" as const, createdAt: 42,
+    };
+    const document = createCurveAnalysisWorkspaceDocument({ definitions: [definition], savedProbes: [probe], annotations: [{ id: "a1", pickId: probe.id, identity: definition.identity, kind: "curvature", label: "Curvature", value: "0.5", visible: true }] });
+    expect(parseCurveAnalysisWorkspace(serializeCurveAnalysisWorkspace(document))).toEqual(document);
+  });
+
   it("rejects unsupported and malformed workspace documents", () => {
     expect(() => parseCurveAnalysisWorkspace('{"version":2,"definitions":[],"savedResults":[]}')).toThrow(/unsupported/i);
     expect(() => parseCurveAnalysisWorkspace('{"version":1,"definitions":[{}],"savedResults":[]}')).toThrow(/definition/i);
