@@ -335,4 +335,36 @@ test.describe("Surface functional flow", () => {
       await closeSurfaceApp(ctx);
     }
   });
+
+  test("Test 11 — saved Surface results and derived provenance survive reload", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await openParametricSurface(ctx.page);
+      await ctx.page.getByTestId("surfaces-left-tab-analysis").click();
+      await ctx.page.getByTestId("surface-computation-curvature-field").click();
+      await ctx.page.getByTestId("surface-curvature-compute-button").click();
+      const result = ctx.page.getByTestId("surface-curvature-result");
+      await expect(result).toBeVisible();
+      await result.getByRole("button", { name: "Save", exact: true }).click();
+      await ctx.page.getByTestId("surface-derived-mesh-bake").click();
+      const before = await ctx.page.evaluate(() => localStorage.getItem("math3d.surfaceAnalysis.workspace.v1"));
+      expect(before).not.toBeNull();
+      await ctx.page.reload();
+      await ctx.page.waitForLoadState("domcontentloaded");
+      await expect(ctx.page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
+      const restored = await ctx.page.evaluate(() => {
+        const raw = localStorage.getItem("math3d.surfaceAnalysis.workspace.v1");
+        if (!raw) return null;
+        const document = JSON.parse(raw);
+        return {
+          savedCurvature: document.savedResults?.some((entry: { kind?: string; visible?: boolean }) => entry.kind === "curvature-field" && entry.visible === true),
+          frozenMesh: document.derivedMeshes?.some((entry: { identity?: { state?: string; source?: { surfaceRevision?: number } } }) => entry.identity?.state === "frozen-snapshot" && Number(entry.identity?.source?.surfaceRevision) > 0),
+        };
+      });
+      expect(restored).toEqual({ savedCurvature: true, frozenMesh: true });
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
 });

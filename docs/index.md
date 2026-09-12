@@ -9,6 +9,7 @@ This site combines:
 - Install and run modes guide: `install-and-run-modes.md` (desktop, browser, and Docker browser modes, including worker requirements).
 - CGAL Python worker setup: `cgal-python-worker-setup.md` (one-command vcpkg + patched pygalmesh setup).
 - Surface Analysis professional roadmap: `surface-analysis-professional-implementation-roadmap.md` (12-commit consolidation plan, Surface/Mesh ownership boundary, linked SurfaceMesh workflow, and v1 acceptance target).
+- Surface Analysis v1 freeze: `surface-analysis-v1-freeze.md` (final UI ownership, regression/tolerance matrix, accepted journeys, maintained gates, and change policy).
 - Repository folder map: `repository-layout.md`.
 
 ## Public frontend
