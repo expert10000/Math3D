@@ -6,6 +6,7 @@ import {
   describeVolumeDefinition,
   describeVolumeSource,
   isPinnedVolumeProbeStale,
+  VOLUME_TRANSFER_PRESETS,
   volumeGridIndexToWorld,
   type PinnedVolumeProbe,
   type VolumeComputeDiagnostics,
@@ -17,9 +18,14 @@ import {
   type VolumeSdfMetadata,
   type VolumeSdfOperation,
   type VolumeSdfSignDiagnostics,
+  type VolumeDirectRenderStatus,
+  type VolumeRenderMode,
+  type VolumeRenderQuality,
+  type VolumeTextureSampling,
+  type VolumeTransferFunction,
 } from "../volume";
 
-type VolumeInspectorTab = "volume" | "field" | "sampling" | "slice" | "sdf" | "derived" | "diagnostics" | "history";
+type VolumeInspectorTab = "volume" | "field" | "sampling" | "slice" | "rendering" | "sdf" | "derived" | "diagnostics" | "history";
 
 export type VolumeInspectorPanelProps = {
   dataset: VolumeDataset;
@@ -54,6 +60,15 @@ export type VolumeInspectorPanelProps = {
   sdfSmoothness: number;
   sdfPreviewActive: boolean;
   sdfStatus: string;
+  renderMode: VolumeRenderMode;
+  transferPresetId: string;
+  transferFunction: VolumeTransferFunction;
+  renderQuality: VolumeRenderQuality;
+  textureSampling: VolumeTextureSampling;
+  gradientOpacity: number;
+  gradientShading: boolean;
+  renderWindow: [number, number];
+  directRenderStatus: VolumeDirectRenderStatus | null;
   definitionError: string | null;
   computeDiagnostics: VolumeComputeDiagnostics;
   derivedResults: readonly VolumeDerivedResult[];
@@ -73,6 +88,14 @@ export type VolumeInspectorPanelProps = {
   onPreviewSdfOperation: () => void;
   onApplySdfOperation: () => void;
   onCancelSdfPreview: () => void;
+  onChangeRenderMode: (mode: VolumeRenderMode) => void;
+  onChangeTransferPreset: (id: string) => void;
+  onChangeTransferFunction: (transfer: VolumeTransferFunction) => void;
+  onChangeRenderQuality: (quality: VolumeRenderQuality) => void;
+  onChangeTextureSampling: (sampling: VolumeTextureSampling) => void;
+  onChangeGradientOpacity: (opacity: number) => void;
+  onChangeGradientShading: (enabled: boolean) => void;
+  onChangeRenderWindow: (window: [number, number]) => void;
   onChangeNavigationLinked: (linked: boolean) => void;
   onChangeVoxelSnap: (enabled: boolean) => void;
   onChangeCoarseStep: (step: number) => void;
@@ -92,6 +115,7 @@ const tabs: ReadonlyArray<{ id: VolumeInspectorTab; label: string }> = [
   { id: "field", label: "Field" },
   { id: "sampling", label: "Sampling" },
   { id: "slice", label: "Slice" },
+  { id: "rendering", label: "Rendering" },
   { id: "sdf", label: "SDF" },
   { id: "derived", label: "Derived Surfaces" },
   { id: "diagnostics", label: "Diagnostics" },
@@ -170,6 +194,15 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   sdfSmoothness,
   sdfPreviewActive,
   sdfStatus,
+  renderMode,
+  transferPresetId,
+  transferFunction,
+  renderQuality,
+  textureSampling,
+  gradientOpacity,
+  gradientShading,
+  renderWindow,
+  directRenderStatus,
   definitionError,
   computeDiagnostics,
   derivedResults,
@@ -189,6 +222,14 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   onPreviewSdfOperation,
   onApplySdfOperation,
   onCancelSdfPreview,
+  onChangeRenderMode,
+  onChangeTransferPreset,
+  onChangeTransferFunction,
+  onChangeRenderQuality,
+  onChangeTextureSampling,
+  onChangeGradientOpacity,
+  onChangeGradientShading,
+  onChangeRenderWindow,
   onChangeNavigationLinked,
   onChangeVoxelSnap,
   onChangeCoarseStep,
@@ -549,6 +590,83 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
           </div>
           <div role="status" data-testid="volume-sdf-status" style={{ color: sdfPreviewActive ? "#1d4ed8" : "#475569", fontSize: 10 }}>{sdfStatus}</div>
           {sdfMetadata?.warnings.map((warning) => <div key={warning} style={{ color: "#92400e", fontSize: 10 }}>{warning}</div>)}
+        </div>
+      )}
+
+      {activeTab === "rendering" && (
+        <div style={cardStyle} data-testid="volume-rendering-card">
+          <div style={{ fontWeight: 850, fontSize: 12 }}>Direct Volume Rendering</div>
+          <label style={{ display: "grid", gap: 4, fontSize: 10 }}>
+            Render mode
+            <select data-testid="volume-render-mode" aria-label="Volume render mode" value={renderMode} onChange={(event) => onChangeRenderMode(event.target.value as VolumeRenderMode)}>
+              <option value="slice">Slice</option>
+              <option value="isosurface">Isosurface</option>
+              <option value="mip">MIP</option>
+              <option value="minip">MinIP</option>
+              <option value="average">Average</option>
+              <option value="dvr">DVR</option>
+            </select>
+          </label>
+          <label style={{ display: "grid", gap: 4, fontSize: 10 }}>
+            Transfer preset
+            <select aria-label="Volume transfer preset" value={transferPresetId} onChange={(event) => onChangeTransferPreset(event.target.value)}>
+              {VOLUME_TRANSFER_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
+              {transferPresetId === "custom" && <option value="custom">Custom</option>}
+            </select>
+          </label>
+          <div style={{ display: "grid", gap: 6 }}>
+            <div style={{ fontSize: 10, fontWeight: 800 }}>Color control points</div>
+            {transferFunction.colorPoints.map((point, index) => (
+              <label key={`color-${index}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 7, fontSize: 10 }}>
+                <span>{formatNumber(point.value, 3)}</span>
+                <input
+                  aria-label={`Transfer color ${index + 1}`}
+                  type="color"
+                  value={`#${point.color.map((channel) => Math.round(channel * 255).toString(16).padStart(2, "0")).join("")}`}
+                  onChange={(event) => {
+                    const hex = event.target.value;
+                    const color: [number, number, number] = [parseInt(hex.slice(1, 3), 16) / 255, parseInt(hex.slice(3, 5), 16) / 255, parseInt(hex.slice(5, 7), 16) / 255];
+                    onChangeTransferFunction({ ...transferFunction, id: "custom", label: "Custom", colorPoints: transferFunction.colorPoints.map((entry, entryIndex) => entryIndex === index ? { ...entry, color } : entry) });
+                  }}
+                />
+              </label>
+            ))}
+            <div style={{ fontSize: 10, fontWeight: 800 }}>Opacity control points</div>
+            {transferFunction.opacityPoints.map((point, index) => (
+              <label key={`opacity-${index}`} style={{ display: "grid", gridTemplateColumns: "42px minmax(80px, 1fr) 38px", alignItems: "center", gap: 6, fontSize: 10 }}>
+                <span>{formatNumber(point.value, 3)}</span>
+                <input
+                  aria-label={`Transfer opacity ${index + 1}`}
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={point.opacity}
+                  onChange={(event) => onChangeTransferFunction({ ...transferFunction, id: "custom", label: "Custom", opacityPoints: transferFunction.opacityPoints.map((entry, entryIndex) => entryIndex === index ? { ...entry, opacity: Number(event.target.value) } : entry) })}
+                />
+                <span>{formatNumber(point.opacity, 2)}</span>
+              </label>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+            <label style={{ display: "grid", gap: 4, fontSize: 10 }}>Quality<select aria-label="Volume render quality" value={renderQuality} onChange={(event) => onChangeRenderQuality(event.target.value as VolumeRenderQuality)}><option value="interactive">Fast</option><option value="balanced">Balanced</option><option value="full">Full</option></select></label>
+            <label style={{ display: "grid", gap: 4, fontSize: 10 }}>Sampling<select aria-label="Volume texture sampling" value={textureSampling} onChange={(event) => onChangeTextureSampling(event.target.value as VolumeTextureSampling)}><option value="nearest">Nearest</option><option value="linear">Linear</option></select></label>
+          </div>
+          <label style={{ display: "grid", gap: 4, fontSize: 10 }}>
+            Gradient opacity {formatNumber(gradientOpacity, 2)}
+            <input aria-label="Volume gradient opacity" type="range" min={0} max={1} step={0.05} value={gradientOpacity} onChange={(event) => onChangeGradientOpacity(Number(event.target.value))} />
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+            <label style={{ display: "grid", gap: 4, fontSize: 10 }}>Window low<input aria-label="Volume render window low" type="number" min={0} max={1} step={0.01} value={renderWindow[0]} onChange={(event) => onChangeRenderWindow([Math.max(0, Math.min(Number(event.target.value), renderWindow[1] - 0.01)), renderWindow[1]])} /></label>
+            <label style={{ display: "grid", gap: 4, fontSize: 10 }}>Window high<input aria-label="Volume render window high" type="number" min={0} max={1} step={0.01} value={renderWindow[1]} onChange={(event) => onChangeRenderWindow([renderWindow[0], Math.min(1, Math.max(Number(event.target.value), renderWindow[0] + 0.01))])} /></label>
+          </div>
+          <DetailRow label="Component" value="Scalar component 1 of 1" />
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10 }}><input type="checkbox" checked={gradientShading} onChange={(event) => onChangeGradientShading(event.target.checked)} />Gradient shading</label>
+          {directRenderStatus && (
+            <div data-testid="volume-direct-render-status" role="status" style={{ border: `1px solid ${directRenderStatus.state === "ready" ? "#86d5a5" : "#f0b56b"}`, borderRadius: 7, padding: 7, fontSize: 10, color: directRenderStatus.state === "ready" ? "#166534" : "#92400e" }}>
+              <strong>{directRenderStatus.state}</strong> · {directRenderStatus.plan.path}<br />{directRenderStatus.message}
+            </div>
+          )}
         </div>
       )}
 

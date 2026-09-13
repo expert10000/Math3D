@@ -63,6 +63,11 @@ test.describe("Workspace navigation", () => {
     try {
       ctx = await launchSurfaceApp();
       await resetSurfaceAppState(ctx.page);
+      const volumeShaderErrors: string[] = [];
+      ctx.page.on("console", (message) => {
+        const text = message.text();
+        if (message.type() === "error" && /shader|webglprogram/i.test(text)) volumeShaderErrors.push(text);
+      });
 
       const volumeNav = ctx.page.getByTestId("workspace-nav-volume");
       await volumeNav.click();
@@ -290,6 +295,14 @@ test.describe("Workspace navigation", () => {
       await expect(volumeNav).toHaveAttribute("aria-pressed", "true");
       await expect(ctx.page.getByText("Volume / Field / Sphere", { exact: true })).toBeVisible();
       await expect(volumeInspector.getByTestId("volume-inspector-selection")).toContainText("Volume: Sphere");
+      await volumeInspector.getByTestId("volume-inspector-tab-rendering").click();
+      await volumeInspector.getByLabel("Volume render mode").selectOption("dvr");
+      await expect(volumeInspector.getByTestId("volume-direct-render-status")).toContainText("ready");
+      await expect(volumeInspector.getByTestId("volume-direct-render-status")).toContainText("gpu-3d-texture");
+      await volumeInspector.getByLabel("Volume transfer preset").selectOption("fire");
+      await volumeInspector.getByLabel("Transfer opacity 2").fill("0.2");
+      await expect(volumeInspector.getByLabel("Volume transfer preset")).toHaveValue("custom");
+      expect(volumeShaderErrors).toEqual([]);
     } finally {
       await closeSurfaceApp(ctx);
     }

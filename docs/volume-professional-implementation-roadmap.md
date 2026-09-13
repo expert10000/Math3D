@@ -577,7 +577,23 @@ Acceptance:
 
 Planned message: `feat(volume): add transfer functions and direct volume rendering`
 
-**Status: planned.**
+**Status: complete.** Implemented in `renderer/src/volume/transferFunction.ts`, the WebGL2/CPU rendering paths in `VolumeViewer`, the Volume Inspector Rendering workspace, and deterministic unit/Electron regression coverage.
+
+Delivered:
+
+- Added Slice, Isosurface, MIP, MinIP, Average, and front-to-back DVR modes. The direct modes ray march a normalized 3-D texture and coexist with embedded orthogonal slice planes.
+- Added deterministic Grayscale, Fire, Cool-to-warm, and Signed-distance transfer presets plus editable color and opacity control points with exact normalized serialization/restoration.
+- Added normalized window low/high controls, scalar-component identity, gradient opacity, gradient shading, early ray termination, and crop-volume clipping.
+- Added nearest/linear texture sampling, Fast/Balanced/Full ray-step presets, and automatic interaction LOD while orbiting the camera.
+- Added WebGL2 and maximum-3-D-texture capability checks, a reviewed 128 MB upload budget, direct/bricked upload plans, and deterministic CPU projection fallback instead of a blank viewport.
+- Added context-loss reporting and automatic resource recreation after context restoration. Runtime status identifies ready, fallback, unsupported, and context-lost states.
+- Added stable CPU projection baselines for MIP, MinIP, Average, and DVR; transfer-function round-trip tests; GPU-plan tests; and an Electron WebGL shader/error regression.
+
+Where in the UI:
+
+1. Open **Volume → Inspector → Rendering** and choose **Slice**, **Isosurface**, **MIP**, **MinIP**, **Average**, or **DVR**.
+2. Select a transfer preset, edit its color/opacity points, set normalized window bounds, and choose rendering quality and nearest/linear sampling.
+3. Enable gradient opacity or gradient shading for DVR. The status card reports the active GPU/CPU path and recovery/fallback state.
 
 Implementation:
 

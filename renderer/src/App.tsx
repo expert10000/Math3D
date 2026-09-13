@@ -931,6 +931,7 @@ import {
   createVolumeIsosurfaceMesh,
   createVolumeJobRequest,
   createSdfMetadata,
+  getVolumeTransferPreset,
   createVolumeTypedArrayStore,
   deleteVolumeDerivedResult,
   detachVolumeDerivedResult,
@@ -945,7 +946,9 @@ import {
   readVolumeProbe,
   reconcileVolumeDerivedResult,
   restorePinnedVolumeProbes,
+  restoreVolumeTransferFunction,
   serializeVolumeObject,
+  serializeVolumeTransferFunction,
   volumeProbesToCsv,
   type PinnedVolumeProbe,
   type VolumeComputeDiagnostics,
@@ -957,6 +960,11 @@ import {
   type VolumeSdfMetadata,
   type VolumeSdfOperation,
   type VolumeSdfSignDiagnostics,
+  type VolumeDirectRenderStatus,
+  type VolumeRenderMode,
+  type VolumeRenderQuality,
+  type VolumeTextureSampling,
+  type VolumeTransferFunction,
 } from "./volume";
 import {
   getDefaultRotationalProfileExpressions,
@@ -35093,6 +35101,19 @@ const App: React.FC = () => {
   const [volumeProbeCompareIds, setVolumeProbeCompareIds] = useState<string[]>([]);
   const volumeProbeSequenceRef = useRef(1);
   const [volumeSliceOpacity, setVolumeSliceOpacity] = useState(0.85);
+  const [volumeRenderMode, setVolumeRenderMode] = useState<VolumeRenderMode>("isosurface");
+  const [volumeTransferPresetId, setVolumeTransferPresetId] = useState("grayscale");
+  const [volumeTransferFunction, setVolumeTransferFunction] = useState<VolumeTransferFunction>(() => getVolumeTransferPreset("grayscale"));
+  const [volumeRenderQuality, setVolumeRenderQuality] = useState<VolumeRenderQuality>("balanced");
+  const [volumeTextureSampling, setVolumeTextureSampling] = useState<VolumeTextureSampling>("linear");
+  const [volumeGradientOpacity, setVolumeGradientOpacity] = useState(0);
+  const [volumeGradientShading, setVolumeGradientShading] = useState(false);
+  const [volumeRenderWindow, setVolumeRenderWindow] = useState<[number, number]>([0, 1]);
+  const [volumeDirectRenderStatus, setVolumeDirectRenderStatus] = useState<VolumeDirectRenderStatus | null>(null);
+  const handleVolumeTransferPresetChange = useCallback((id: string) => {
+    setVolumeTransferPresetId(id);
+    setVolumeTransferFunction(getVolumeTransferPreset(id));
+  }, []);
   const [volumeShowStreamlines, setVolumeShowStreamlines] = useState(false);
   const [volumeVectorPresetId, setVolumeVectorPresetId] = useState<VectorPresetId>("vortex");
   const [volumeStreamSeedGrid, setVolumeStreamSeedGrid] = useState(8);
@@ -35409,6 +35430,22 @@ const App: React.FC = () => {
   const [volumeSliceReport, setVolumeSliceReport] = useState<VolumeSliceReport | null>(null);
   const [volumeSliceHover, setVolumeSliceHover] = useState<VolumeSliceHover | null>(null);
   const [volumeShowIsosurface, setVolumeShowIsosurface] = useState(false);
+  const handleToggleVolumeIsosurface = useCallback((visible: boolean) => {
+    setVolumeShowIsosurface(visible);
+    if (visible) setVolumeRenderMode("isosurface");
+  }, []);
+  const handleVolumeRenderModeChange = useCallback((renderMode: VolumeRenderMode) => {
+    setVolumeRenderMode(renderMode);
+    if (renderMode === "isosurface") setVolumeShowIsosurface(true);
+    if (renderMode === "slice") {
+      setVolumeViewMode("slices");
+      setVolumeLayout("quad");
+    } else {
+      setVolumeViewMode("3d");
+      setVolumeLayout("3d");
+    }
+    setVolumeFocusedPane(null);
+  }, []);
   const [volumeIsoValue, setVolumeIsoValue] = useState(0);
   const [volumeIsoSmooth, setVolumeIsoSmooth] = useState(false);
   const [volumeIsoSmoothIterations, setVolumeIsoSmoothIterations] = useState(20);
@@ -53982,6 +54019,14 @@ case "mobius":
           spatialPlaneVisibility: volumeSpatialPlaneVisibility,
           clipToCrop: volumeClipToCrop,
           cameraState: volumeCameraState,
+          renderMode: volumeRenderMode,
+          transferPresetId: volumeTransferPresetId,
+          transferFunction: serializeVolumeTransferFunction(volumeTransferFunction),
+          renderQuality: volumeRenderQuality,
+          textureSampling: volumeTextureSampling,
+          gradientOpacity: volumeGradientOpacity,
+          gradientShading: volumeGradientShading,
+          renderWindow: volumeRenderWindow,
           distanceSigned: volumeDistanceSigned,
           navigation: {
             crosshair: volumeCrosshair,
@@ -54256,6 +54301,14 @@ case "mobius":
       volumeSpatialPlaneVisibility,
       volumeClipToCrop,
       volumeCameraState,
+      volumeRenderMode,
+      volumeTransferPresetId,
+      volumeTransferFunction,
+      volumeRenderQuality,
+      volumeTextureSampling,
+      volumeGradientOpacity,
+      volumeGradientShading,
+      volumeRenderWindow,
       volumeDistanceSigned,
       volumeCrosshair,
       volumePaneIndices,
@@ -54873,6 +54926,25 @@ case "mobius":
         });
       }
       if (typeof volumeRecipe.clipToCrop === "boolean") setVolumeClipToCrop(volumeRecipe.clipToCrop);
+      if (["slice", "isosurface", "mip", "minip", "average", "dvr"].includes(volumeRecipe.renderMode)) setVolumeRenderMode(volumeRecipe.renderMode as VolumeRenderMode);
+      if (typeof volumeRecipe.transferPresetId === "string") setVolumeTransferPresetId(volumeRecipe.transferPresetId);
+      if (typeof volumeRecipe.transferFunction === "string") {
+        try {
+          setVolumeTransferFunction(restoreVolumeTransferFunction(volumeRecipe.transferFunction));
+        } catch {
+          setVolumeTransferPresetId("grayscale");
+          setVolumeTransferFunction(getVolumeTransferPreset("grayscale"));
+        }
+      }
+      if (["interactive", "balanced", "full"].includes(volumeRecipe.renderQuality)) setVolumeRenderQuality(volumeRecipe.renderQuality as VolumeRenderQuality);
+      if (["nearest", "linear"].includes(volumeRecipe.textureSampling)) setVolumeTextureSampling(volumeRecipe.textureSampling as VolumeTextureSampling);
+      if (Number.isFinite(volumeRecipe.gradientOpacity)) setVolumeGradientOpacity(Math.max(0, Math.min(1, Number(volumeRecipe.gradientOpacity))));
+      if (typeof volumeRecipe.gradientShading === "boolean") setVolumeGradientShading(volumeRecipe.gradientShading);
+      if (Array.isArray(volumeRecipe.renderWindow) && volumeRecipe.renderWindow.length === 2 && volumeRecipe.renderWindow.every((value: unknown) => Number.isFinite(Number(value)))) {
+        const low = Math.max(0, Math.min(0.99, Number(volumeRecipe.renderWindow[0])));
+        const high = Math.max(low + 0.01, Math.min(1, Number(volumeRecipe.renderWindow[1])));
+        setVolumeRenderWindow([low, high]);
+      }
       const cameraState = volumeRecipe.cameraState;
       const validCameraTriplet = (value: unknown) => Array.isArray(value) && value.length === 3 && value.every((entry) => Number.isFinite(Number(entry)));
       if (cameraState && validCameraTriplet(cameraState.position) && validCameraTriplet(cameraState.target) && validCameraTriplet(cameraState.up)) {
@@ -76720,7 +76792,7 @@ case "mobius":
                   onToggleVolumeContour={setVolumeContourEnabled}
                   onChangeVolumeContourCount={setVolumeContourCount}
                   onChangeVolumeWindowMode={setVolumeWindowMode}
-                  onToggleVolumeIsosurface={setVolumeShowIsosurface}
+                  onToggleVolumeIsosurface={handleToggleVolumeIsosurface}
                   onChangeVolumeIsoValue={setVolumeIsoValue}
                   onToggleVolumeIsoSmooth={setVolumeIsoSmooth}
                   onChangeVolumeIsoSmoothIterations={setVolumeIsoSmoothIterations}
@@ -83727,6 +83799,14 @@ case "mobius":
                             windowMode={volumeWindowMode}
                             onSliceHover={setVolumeSliceHover}
                             showIsosurface={volumeShowIsosurface}
+                            renderMode={volumeRenderMode}
+                            transferFunction={volumeTransferFunction}
+                            renderQuality={volumeRenderQuality}
+                            textureSampling={volumeTextureSampling}
+                            gradientOpacity={volumeGradientOpacity}
+                            gradientShading={volumeGradientShading}
+                            renderWindow={volumeRenderWindow}
+                            onVolumeRenderStatus={setVolumeDirectRenderStatus}
                             isoValue={volumeIsoValue}
                             isoSmoothing={volumeIsoSmooth}
                             isoSmoothingIterations={volumeIsoSmoothIterations}
@@ -87340,6 +87420,15 @@ case "mobius":
                         sdfSmoothness={volumeSdfSmoothness}
                         sdfPreviewActive={!!volumeSdfPreview}
                         sdfStatus={volumeSdfStatus}
+                        renderMode={volumeRenderMode}
+                        transferPresetId={volumeTransferPresetId}
+                        transferFunction={volumeTransferFunction}
+                        renderQuality={volumeRenderQuality}
+                        textureSampling={volumeTextureSampling}
+                        gradientOpacity={volumeGradientOpacity}
+                        gradientShading={volumeGradientShading}
+                        renderWindow={volumeRenderWindow}
+                        directRenderStatus={volumeDirectRenderStatus}
                         definitionError={volumeCustomCompiled.error}
                         computeDiagnostics={volumeComputeDiagnostics}
                         derivedResults={volumeDerivedResults}
@@ -87359,6 +87448,17 @@ case "mobius":
                         onPreviewSdfOperation={handlePreviewVolumeSdfOperation}
                         onApplySdfOperation={handleApplyVolumeSdfOperation}
                         onCancelSdfPreview={handleCancelVolumeSdfPreview}
+                        onChangeRenderMode={handleVolumeRenderModeChange}
+                        onChangeTransferPreset={handleVolumeTransferPresetChange}
+                        onChangeTransferFunction={(transfer) => {
+                          setVolumeTransferPresetId("custom");
+                          setVolumeTransferFunction(transfer);
+                        }}
+                        onChangeRenderQuality={setVolumeRenderQuality}
+                        onChangeTextureSampling={setVolumeTextureSampling}
+                        onChangeGradientOpacity={setVolumeGradientOpacity}
+                        onChangeGradientShading={setVolumeGradientShading}
+                        onChangeRenderWindow={setVolumeRenderWindow}
                         onChangeNavigationLinked={handleChangeVolumeNavigationLinked}
                         onChangeVoxelSnap={setVolumeVoxelSnap}
                         onChangeCoarseStep={setVolumeCoarseStep}

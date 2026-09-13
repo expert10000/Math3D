@@ -28,6 +28,18 @@ import {
 } from "../services/vtkVolumeClient";
 import { vtkSmooth } from "../services/vtkMeshClient";
 import { configureOrbitControlsForTouch, installViewerTouchGestures } from "../utils/viewerTouchGestures";
+import {
+  createVolumeTransferTextureData,
+  getVolumeTransferPreset,
+  planVolumeRendering,
+  renderVolumeProjectionCpu,
+  volumeRenderStepCount,
+  type VolumeDirectRenderStatus,
+  type VolumeRenderMode,
+  type VolumeRenderQuality,
+  type VolumeTextureSampling,
+  type VolumeTransferFunction,
+} from "../volume/transferFunction";
 
 export type VolumeViewerProps = {
   dataset: VolumeDataset | null;
@@ -64,6 +76,14 @@ export type VolumeViewerProps = {
   onCropChange?: (center: [number, number, number], extents: [number, number, number]) => void;
   cameraCommand?: { token: number; kind: "fit-volume" | "fit-mesh" | "fit-crop" | "reset" };
   autoFitIsosurface?: boolean;
+  renderMode?: VolumeRenderMode;
+  transferFunction?: VolumeTransferFunction;
+  renderQuality?: VolumeRenderQuality;
+  textureSampling?: VolumeTextureSampling;
+  gradientOpacity?: number;
+  gradientShading?: boolean;
+  renderWindow?: [number, number];
+  onVolumeRenderStatus?: (status: VolumeDirectRenderStatus) => void;
   initialCameraState?: VolumeCameraState | null;
   onCameraStateChange?: (state: VolumeCameraState) => void;
   showStreamlines?: boolean;
@@ -123,6 +143,101 @@ const clearGroup = (group: THREE.Group) => {
 const VTK_SLICE_THRESHOLD = 64 * 64 * 64;
 const VTK_ISO_THRESHOLD = 64 * 64 * 64;
 const MAX_INTERACTIVE_VOLUME_SAMPLES = 256 * 256 * 256;
+
+const DIRECT_VOLUME_VERTEX_SHADER = `precision highp float;
+in vec3 position;
+uniform mat4 modelViewMatrix;
+uniform mat4 projectionMatrix;
+out vec3 vTexturePosition;
+void main() {
+  vTexturePosition = position + vec3(0.5);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+const DIRECT_VOLUME_FRAGMENT_SHADER = `precision highp float;
+precision highp sampler3D;
+uniform sampler3D uVolume;
+uniform sampler2D uTransfer;
+uniform vec3 uCameraTexture;
+uniform vec3 uVoxelStep;
+uniform float uStepCount;
+uniform float uGradientOpacity;
+uniform bool uGradientShading;
+uniform int uMode;
+uniform vec3 uCropMin;
+uniform vec3 uCropMax;
+in vec3 vTexturePosition;
+out vec4 outColor;
+
+vec2 intersectSampleBox(vec3 origin, vec3 direction) {
+  vec3 safeDirection = sign(direction) * max(abs(direction), vec3(1e-6));
+  vec3 first = (uCropMin - origin) / safeDirection;
+  vec3 second = (uCropMax - origin) / safeDirection;
+  vec3 nearPlane = min(first, second);
+  vec3 farPlane = max(first, second);
+  return vec2(max(max(nearPlane.x, nearPlane.y), nearPlane.z), min(min(farPlane.x, farPlane.y), farPlane.z));
+}
+
+float scalarAt(vec3 position) {
+  return texture(uVolume, clamp(position, vec3(0.0), vec3(1.0))).r;
+}
+
+vec3 gradientAt(vec3 position) {
+  return vec3(
+    scalarAt(position + vec3(uVoxelStep.x, 0.0, 0.0)) - scalarAt(position - vec3(uVoxelStep.x, 0.0, 0.0)),
+    scalarAt(position + vec3(0.0, uVoxelStep.y, 0.0)) - scalarAt(position - vec3(0.0, uVoxelStep.y, 0.0)),
+    scalarAt(position + vec3(0.0, 0.0, uVoxelStep.z)) - scalarAt(position - vec3(0.0, 0.0, uVoxelStep.z))
+  );
+}
+
+void main() {
+  vec3 direction = normalize(vTexturePosition - uCameraTexture);
+  vec2 hit = intersectSampleBox(uCameraTexture, direction);
+  float startDistance = max(hit.x, 0.0);
+  if (hit.y <= startDistance) discard;
+  float stepLength = (hit.y - startDistance) / max(1.0, uStepCount);
+  vec3 position = uCameraTexture + direction * (startDistance + stepLength * 0.5);
+  vec3 stepVector = direction * stepLength;
+  float maximumValue = 0.0;
+  float minimumValue = 1.0;
+  float totalValue = 0.0;
+  float sampleCount = 0.0;
+  vec4 accumulated = vec4(0.0);
+
+  for (int sampleIndex = 0; sampleIndex < 512; sampleIndex += 1) {
+    if (float(sampleIndex) >= uStepCount) break;
+    float value = scalarAt(position);
+    maximumValue = max(maximumValue, value);
+    minimumValue = min(minimumValue, value);
+    totalValue += value;
+    sampleCount += 1.0;
+    if (uMode == 3) {
+      vec4 mapped = texture(uTransfer, vec2(value, 0.5));
+      vec3 gradient = gradientAt(position);
+      float gradientMagnitude = length(gradient);
+      mapped.a *= mix(1.0, clamp(gradientMagnitude * 8.0, 0.0, 1.0), clamp(uGradientOpacity, 0.0, 1.0));
+      mapped.a = 1.0 - pow(max(0.0, 1.0 - mapped.a), 180.0 / max(1.0, uStepCount));
+      if (uGradientShading && gradientMagnitude > 1e-5) {
+        vec3 normal = normalize(gradient);
+        vec3 lightDirection = normalize(vec3(0.45, 0.7, 1.0));
+        mapped.rgb *= 0.28 + 0.72 * abs(dot(normal, lightDirection));
+      }
+      accumulated.rgb += (1.0 - accumulated.a) * mapped.a * mapped.rgb;
+      accumulated.a += (1.0 - accumulated.a) * mapped.a;
+      if (accumulated.a >= 0.985) break;
+    }
+    position += stepVector;
+  }
+
+  if (uMode == 3) {
+    if (accumulated.a <= 0.002) discard;
+    outColor = accumulated;
+    return;
+  }
+  float projected = uMode == 0 ? maximumValue : uMode == 1 ? minimumValue : totalValue / max(1.0, sampleCount);
+  vec4 mapped = texture(uTransfer, vec2(projected, 0.5));
+  outColor = vec4(mapped.rgb, max(0.2, mapped.a));
+}`;
 
 const buildCpuIsosurface = (
   grid: VolumeDataset["grid"],
@@ -333,6 +448,14 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   onCropChange,
   cameraCommand,
   autoFitIsosurface = false,
+  renderMode = "slice",
+  transferFunction = getVolumeTransferPreset("grayscale"),
+  renderQuality = "balanced",
+  textureSampling = "linear",
+  gradientOpacity = 0,
+  gradientShading = false,
+  renderWindow = [0, 1],
+  onVolumeRenderStatus,
   initialCameraState = null,
   onCameraStateChange,
   showStreamlines = false,
@@ -356,6 +479,11 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   const hoverMarkerRef = useRef<THREE.Mesh | null>(null);
   const isoMeshRef = useRef<THREE.Mesh | null>(null);
   const isoMarkerRef = useRef<THREE.Mesh | null>(null);
+  const directVolumeMeshRef = useRef<THREE.Mesh | null>(null);
+  const directVolumeTextureRef = useRef<THREE.Data3DTexture | null>(null);
+  const transferTextureRef = useRef<THREE.DataTexture | null>(null);
+  const cpuProjectionTextureRef = useRef<THREE.DataTexture | null>(null);
+  const directVolumeMaterialRef = useRef<THREE.RawShaderMaterial | null>(null);
   const streamlinesGroupRef = useRef<THREE.Group | null>(null);
   const cropBoxRef = useRef<THREE.LineSegments | null>(null);
   const cropGizmoRef = useRef<TransformControls | null>(null);
@@ -378,8 +506,12 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   const orientationConventionRef = useRef(orientationConvention);
   const initialCameraStateRef = useRef(initialCameraState);
   const onCameraStateChangeRef = useRef(onCameraStateChange);
+  const onVolumeRenderStatusRef = useRef(onVolumeRenderStatus);
+  const renderModeRef = useRef(renderMode);
+  const renderStepCountRef = useRef(volumeRenderStepCount(renderQuality));
   const [isoMeshToken, setIsoMeshToken] = useState(0);
   const [cameraFitTarget, setCameraFitTarget] = useState<"initial" | "mesh" | "volume" | "crop">("initial");
+  const [volumeContextToken, setVolumeContextToken] = useState(0);
   const [sceneReady, setSceneReady] = useState(false);
   const [sliceRuntimeState, setSliceRuntimeState] = useState<VolumeSliceRuntimeState>({
     kind: dataset ? "loading" : "empty",
@@ -405,6 +537,19 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   useEffect(() => {
     onCameraStateChangeRef.current = onCameraStateChange;
   }, [onCameraStateChange]);
+
+  useEffect(() => {
+    onVolumeRenderStatusRef.current = onVolumeRenderStatus;
+  }, [onVolumeRenderStatus]);
+
+  useEffect(() => {
+    renderModeRef.current = renderMode;
+  }, [renderMode]);
+
+  useEffect(() => {
+    renderStepCountRef.current = volumeRenderStepCount(renderQuality);
+    if (directVolumeMaterialRef.current) directVolumeMaterialRef.current.uniforms.uStepCount.value = renderStepCountRef.current;
+  }, [renderQuality]);
 
   useEffect(() => {
     sliceDataRef.current = sliceData;
@@ -575,7 +720,27 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
         up: [camera.up.x, camera.up.y, camera.up.z],
       });
     };
-    controls.addEventListener("end", publishCameraState);
+    const beginInteractiveRender = () => {
+      const material = directVolumeMaterialRef.current;
+      if (material) material.uniforms.uStepCount.value = Math.min(80, renderStepCountRef.current);
+    };
+    const finishInteractiveRender = () => {
+      const material = directVolumeMaterialRef.current;
+      if (material) material.uniforms.uStepCount.value = renderStepCountRef.current;
+      publishCameraState();
+    };
+    controls.addEventListener("start", beginInteractiveRender);
+    controls.addEventListener("end", finishInteractiveRender);
+    const handleContextLost = (event: Event) => {
+      event.preventDefault();
+      const grid = datasetRef.current?.grid;
+      if (!grid) return;
+      const plan = planVolumeRendering(grid.dims, { webgl2: false, max3dTextureSize: 0, budgetBytes: 0 });
+      onVolumeRenderStatusRef.current?.({ state: "context-lost", plan, mode: renderModeRef.current, message: "WebGL context lost; orthogonal CPU slices remain available while the 3-D renderer recovers." });
+    };
+    const handleContextRestored = () => setVolumeContextToken((token) => token + 1);
+    renderer.domElement.addEventListener("webglcontextlost", handleContextLost);
+    renderer.domElement.addEventListener("webglcontextrestored", handleContextRestored);
 
     const axes = new THREE.AxesHelper(1.25);
     const axesMat = axes.material as THREE.Material | THREE.Material[];
@@ -694,9 +859,18 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     });
 
     let frameId = 0;
+    const localCamera = new THREE.Vector3();
     const animate = () => {
       frameId = requestAnimationFrame(animate);
       controls.update();
+      const directMesh = directVolumeMeshRef.current;
+      const directMaterial = directVolumeMaterialRef.current;
+      if (directMesh && directMaterial) {
+        localCamera.copy(camera.position);
+        directMesh.worldToLocal(localCamera);
+        localCamera.addScalar(0.5);
+        directMaterial.uniforms.uCameraTexture.value.copy(localCamera);
+      }
       renderer.render(scene, camera);
     };
     animate();
@@ -706,7 +880,10 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       ro.disconnect();
       window.removeEventListener("resize", handleResize);
       disposeTouchGestures();
-      controls.removeEventListener("end", publishCameraState);
+      controls.removeEventListener("start", beginInteractiveRender);
+      controls.removeEventListener("end", finishInteractiveRender);
+      renderer.domElement.removeEventListener("webglcontextlost", handleContextLost);
+      renderer.domElement.removeEventListener("webglcontextrestored", handleContextRestored);
       controls.dispose();
       renderer.dispose();
       renderer.domElement.remove();
@@ -721,6 +898,18 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
         disposeMesh(isoMeshRef.current);
         isoMeshRef.current = null;
       }
+      if (directVolumeMeshRef.current) {
+        scene.remove(directVolumeMeshRef.current);
+        disposeMesh(directVolumeMeshRef.current);
+        directVolumeMeshRef.current = null;
+      }
+      directVolumeTextureRef.current?.dispose();
+      directVolumeTextureRef.current = null;
+      transferTextureRef.current?.dispose();
+      transferTextureRef.current = null;
+      cpuProjectionTextureRef.current?.dispose();
+      cpuProjectionTextureRef.current = null;
+      directVolumeMaterialRef.current = null;
       if (contourGroupRef.current) {
         clearGroup(contourGroupRef.current);
         scene.remove(contourGroupRef.current);
@@ -1412,7 +1601,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
 
   useEffect(() => {
     const clippingPlanes = clipToCrop ? getCropClippingPlanes(cropCenter, cropExtents) : [];
-    for (const mesh of [sliceMeshRef.current, isoMeshRef.current]) {
+    for (const mesh of [sliceMeshRef.current, isoMeshRef.current, directVolumeMeshRef.current]) {
       if (!mesh) continue;
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (const material of materials) {
@@ -1424,9 +1613,156 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
 
   useEffect(() => {
     const scene = sceneRef.current;
+    const renderer = rendererRef.current;
+    if (!scene || !renderer || viewPreset !== "free") return;
+
+    const clearDirectVolume = () => {
+      if (directVolumeMeshRef.current) {
+        scene.remove(directVolumeMeshRef.current);
+        disposeMesh(directVolumeMeshRef.current);
+        directVolumeMeshRef.current = null;
+      }
+      directVolumeTextureRef.current?.dispose();
+      directVolumeTextureRef.current = null;
+      transferTextureRef.current?.dispose();
+      transferTextureRef.current = null;
+      cpuProjectionTextureRef.current?.dispose();
+      cpuProjectionTextureRef.current = null;
+      directVolumeMaterialRef.current = null;
+    };
+
+    if (!dataset?.grid || renderMode === "slice" || renderMode === "isosurface") {
+      clearDirectVolume();
+      if (dataset?.grid) {
+        const plan = planVolumeRendering(dataset.grid.dims, { webgl2: renderer.capabilities.isWebGL2, max3dTextureSize: 0, budgetBytes: 128 * 1024 * 1024 });
+        onVolumeRenderStatusRef.current?.({ state: "idle", plan, mode: renderMode, message: renderMode === "slice" ? "Orthogonal slice rendering active." : "Explicit isosurface rendering active." });
+      }
+      return;
+    }
+
+    const gl = renderer.getContext();
+    const gl2 = gl as WebGL2RenderingContext;
+    const max3dTextureSize = renderer.capabilities.isWebGL2 ? Number(gl2.getParameter(gl2.MAX_3D_TEXTURE_SIZE)) || 0 : 0;
+    const plan = planVolumeRendering(dataset.grid.dims, {
+      webgl2: renderer.capabilities.isWebGL2,
+      max3dTextureSize,
+      budgetBytes: 128 * 1024 * 1024,
+    });
+    if (plan.path !== "gpu-3d-texture") {
+      clearDirectVolume();
+      const projection = renderVolumeProjectionCpu({
+        scalars: dataset.grid.scalars,
+        dimensions: dataset.grid.dims,
+        mode: renderMode,
+        transferFunction,
+        window: renderWindow,
+      });
+      const texture = new THREE.DataTexture(projection.rgba, projection.width, projection.height, THREE.RGBAFormat, THREE.UnsignedByteType);
+      texture.minFilter = textureSampling === "nearest" ? THREE.NearestFilter : THREE.LinearFilter;
+      texture.magFilter = textureSampling === "nearest" ? THREE.NearestFilter : THREE.LinearFilter;
+      texture.needsUpdate = true;
+      cpuProjectionTextureRef.current = texture;
+      const bounds = getGridBounds(dataset.grid);
+      const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide, depthWrite: false });
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
+      mesh.position.set(...bounds.center);
+      mesh.scale.set(Math.max(1e-6, bounds.max[0] - bounds.min[0]), Math.max(1e-6, bounds.max[1] - bounds.min[1]), 1);
+      mesh.renderOrder = 1;
+      scene.add(mesh);
+      directVolumeMeshRef.current = mesh;
+      onVolumeRenderStatusRef.current?.({
+        state: "fallback",
+        plan,
+        mode: renderMode,
+        message: `${plan.message} Showing a deterministic CPU projection; orthogonal CPU slices remain visible.`,
+      });
+      return;
+    }
+
+    clearDirectVolume();
+    const scalars = dataset.grid.scalars;
+    let minimum = Infinity;
+    let maximum = -Infinity;
+    for (let index = 0; index < scalars.length; index += 1) {
+      const value = scalars[index];
+      if (!Number.isFinite(value)) continue;
+      minimum = Math.min(minimum, value);
+      maximum = Math.max(maximum, value);
+    }
+    if (!Number.isFinite(minimum) || !Number.isFinite(maximum)) {
+      onVolumeRenderStatusRef.current?.({ state: "unsupported", plan, mode: renderMode, message: "Direct rendering requires at least one finite scalar; orthogonal CPU slices remain visible." });
+      return;
+    }
+    const span = Math.max(1e-12, maximum - minimum);
+    const windowLow = Math.max(0, Math.min(1, Math.min(renderWindow[0], renderWindow[1])));
+    const windowHigh = Math.max(windowLow + 1e-6, Math.min(1, Math.max(renderWindow[0], renderWindow[1])));
+    const textureValues = Uint8Array.from(scalars, (value) => {
+      if (!Number.isFinite(value)) return 0;
+      const normalized = (value - minimum) / span;
+      return Math.round(Math.max(0, Math.min(1, (normalized - windowLow) / (windowHigh - windowLow))) * 255);
+    });
+    const volumeTexture = new THREE.Data3DTexture(textureValues, dataset.grid.dims[0], dataset.grid.dims[1], dataset.grid.dims[2]);
+    volumeTexture.format = THREE.RedFormat;
+    volumeTexture.type = THREE.UnsignedByteType;
+    volumeTexture.minFilter = textureSampling === "nearest" ? THREE.NearestFilter : THREE.LinearFilter;
+    volumeTexture.magFilter = textureSampling === "nearest" ? THREE.NearestFilter : THREE.LinearFilter;
+    volumeTexture.unpackAlignment = 1;
+    volumeTexture.needsUpdate = true;
+    directVolumeTextureRef.current = volumeTexture;
+
+    const transferTexture = new THREE.DataTexture(createVolumeTransferTextureData(transferFunction), 256, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+    transferTexture.minFilter = THREE.LinearFilter;
+    transferTexture.magFilter = THREE.LinearFilter;
+    transferTexture.needsUpdate = true;
+    transferTextureRef.current = transferTexture;
+
+    const modeIndex = renderMode === "mip" ? 0 : renderMode === "minip" ? 1 : renderMode === "average" ? 2 : 3;
+    const bounds = getGridBounds(dataset.grid);
+    const axisSpan = bounds.max.map((value, axis) => Math.max(1e-9, value - bounds.min[axis])) as [number, number, number];
+    const cropMin = clipToCrop && cropCenter && cropExtents
+      ? cropCenter.map((value, axis) => Math.max(0, Math.min(1, (value - Math.abs(cropExtents[axis]) - bounds.min[axis]) / axisSpan[axis]))) as [number, number, number]
+      : [0, 0, 0] as [number, number, number];
+    const cropMax = clipToCrop && cropCenter && cropExtents
+      ? cropCenter.map((value, axis) => Math.max(0, Math.min(1, (value + Math.abs(cropExtents[axis]) - bounds.min[axis]) / axisSpan[axis]))) as [number, number, number]
+      : [1, 1, 1] as [number, number, number];
+    const material = new THREE.RawShaderMaterial({
+      glslVersion: THREE.GLSL3,
+      vertexShader: DIRECT_VOLUME_VERTEX_SHADER,
+      fragmentShader: DIRECT_VOLUME_FRAGMENT_SHADER,
+      side: THREE.BackSide,
+      transparent: true,
+      depthWrite: false,
+      uniforms: {
+        uVolume: { value: volumeTexture },
+        uTransfer: { value: transferTexture },
+        uCameraTexture: { value: new THREE.Vector3(2, 2, 2) },
+        uVoxelStep: { value: new THREE.Vector3(1 / Math.max(1, dataset.grid.dims[0] - 1), 1 / Math.max(1, dataset.grid.dims[1] - 1), 1 / Math.max(1, dataset.grid.dims[2] - 1)) },
+        uStepCount: { value: volumeRenderStepCount(renderQuality) },
+        uGradientOpacity: { value: gradientOpacity },
+        uGradientShading: { value: gradientShading },
+        uMode: { value: modeIndex },
+        uCropMin: { value: new THREE.Vector3(...cropMin) },
+        uCropMax: { value: new THREE.Vector3(...cropMax) },
+      },
+    });
+    directVolumeMaterialRef.current = material;
+    renderStepCountRef.current = volumeRenderStepCount(renderQuality);
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), material);
+    mesh.position.set(...bounds.center);
+    mesh.scale.set(Math.max(1e-6, bounds.max[0] - bounds.min[0]), Math.max(1e-6, bounds.max[1] - bounds.min[1]), Math.max(1e-6, bounds.max[2] - bounds.min[2]));
+    mesh.renderOrder = 1;
+    scene.add(mesh);
+    directVolumeMeshRef.current = mesh;
+    onVolumeRenderStatusRef.current?.({ state: "ready", plan, mode: renderMode, message: `${renderMode.toUpperCase()} ray marching ready · ${renderStepCountRef.current} samples · ${textureSampling} sampling.` });
+
+    return clearDirectVolume;
+  }, [clipToCrop, cropCenter, cropExtents, dataset, gradientOpacity, gradientShading, renderMode, renderQuality, renderWindow, textureSampling, transferFunction, viewPreset, volumeContextToken]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
     if (!scene) return;
 
-    if (!showIsosurface || !dataset?.grid) {
+    if (!showIsosurface || renderMode !== "isosurface" || !dataset?.grid) {
       if (isoMeshRef.current) {
         scene.remove(isoMeshRef.current);
         disposeMesh(isoMeshRef.current);
@@ -1554,7 +1890,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [autoFitIsosurface, dataset, showIsosurface, isoValue, isoSmoothing, isoSmoothingIterations, viewPreset]);
+  }, [autoFitIsosurface, dataset, showIsosurface, isoValue, isoSmoothing, isoSmoothingIterations, renderMode, viewPreset]);
 
   useEffect(() => {
     const scene = sceneRef.current;

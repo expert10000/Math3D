@@ -6,4 +6,5 @@ export * from "./probes";
 export * from "./sdf";
 export * from "./spatial";
 export * from "./typedArrayStore";
+export * from "./transferFunction";
 export * from "./workerCoordinator";
