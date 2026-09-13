@@ -95,7 +95,7 @@ The following foundation is complete at `5d4cf6c` and is not a substitute for an
 | Plan | Status | Existing foundation | Main work remaining |
 | --- | --- | --- | --- |
 | 1 — Professional workspace and Inspector correction | Complete | Volume-first selection and Inspector, balanced responsive slice workspace, runtime states, compatibility controls | — |
-| 2 — Canonical Volume model and provenance | Planned | `VolumeGrid`, `VolumeDataset`, recipe persistence, scene nodes | Representation variants, identity/revision, orientation, units, storage and derived-result links |
+| 2 — Canonical Volume model and provenance | Complete | Canonical contracts, representation adapters, revision/provenance tracking, managed typed-array handles and stale derived-result records | — |
 | 3 — Orthogonal navigation and probe | Planned | Shared crosshair, click pick, world/index/value/gradient readouts | Wheel/drag, snapping, linked state, orientation labels, pinned probes |
 | 4 — Sampling, resampling and allocation planning | Planned | Dimensions, bounds, spacing, analytic sampling | Centering/interpolation, presets, estimates, validation and resampling results |
 | 5 — Quad layout and spatial 3-D context | Planned | Three slice panes and separate free 3-D mode | Quad layout, layout presets, embedded planes, clipping and deterministic camera behavior |
@@ -268,7 +268,18 @@ Acceptance:
 
 Planned message: `refactor(volume): introduce canonical volume object and provenance contract`
 
-**Status: planned.**
+**Status: complete (2026-09-13).**
+
+Delivered:
+
+- Added representation-aware `VolumeObject`, `VolumeSpatialMetadata`, `VolumeSource`, `VolumeStorageRef`, `VolumeProvenance`, dependency, and derived-result contracts.
+- Added adapters for analytic presets, custom scalar fields, dense/imported grids, vector grids, and VTK distance fields.
+- Definition, sampled-grid, and aggregate Volume revisions use separate deterministic fingerprints; one semantic edit advances the aggregate revision once, while view-only replay leaves all revisions unchanged.
+- Spatial metadata records dimensions, origin, spacing, direction matrix, point/cell centering, scalar type, components/layout, coordinate system, units, missing-value policy, sample/element counts, and byte size.
+- Typed arrays are bound to deterministic handles in a managed in-memory store with owner replacement, explicit release, and full cleanup; serialized workspace state retains the canonical handle and summary, not the payload.
+- Scene nodes, unified selection, status bar, workbook dataset references, Volume Inspector, vector overlays, and isosurface records now consume canonical identity and provenance.
+- Derived isosurface records retain their source revision and parameters; source or parameter changes keep the previous record visibly stale until explicit deletion.
+- Volume unit tests cover every adapter, exact revision behavior, oriented spatial-metadata serialization, managed storage round trips/release, and derived-result stale/detach/delete transitions.
 
 Implementation:
 

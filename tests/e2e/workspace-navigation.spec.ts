@@ -79,8 +79,19 @@ test.describe("Workspace navigation", () => {
       const volumeInspector = ctx.page.getByTestId("volume-inspector");
       await expect(volumeInspector).toBeVisible();
       await expect(volumeInspector.getByTestId("volume-details-card")).toBeVisible();
-      await expect(volumeInspector.getByText("Scalar volume grid", { exact: true })).toBeVisible();
+      await expect(volumeInspector.getByText("Analytic scalar field", { exact: true })).toBeVisible();
       await expect(volumeInspector.getByText("Mesh Details", { exact: true })).toHaveCount(0);
+      await expect(volumeInspector.getByTestId("volume-details-card")).toContainText(
+        "Volume 1 · definition 1 · grid 1"
+      );
+
+      const volume3d = detailedControls.getByRole("button", { name: "3D", exact: true });
+      await volume3d.click();
+      await expect(volume3d).toHaveAttribute("aria-pressed", "true");
+      await expect(volumeInspector.getByTestId("volume-details-card")).toContainText(
+        "Volume 1 · definition 1 · grid 1"
+      );
+      await detailedControls.getByRole("button", { name: "Slices", exact: true }).click();
 
       const sliceGrid = ctx.page.getByTestId("volume-slice-grid");
       await expect(sliceGrid).toBeVisible();
@@ -111,6 +122,25 @@ test.describe("Workspace navigation", () => {
       await expect(volumeInspector.getByTestId("volume-derived-card")).toContainText(
         "No derived isosurface result is active."
       );
+      await volumeInspector.getByTestId("volume-inspector-tab-volume").click();
+
+      await detailedControls.getByLabel("Volume dim Nx").fill("63");
+      await expect(volumeInspector.getByTestId("volume-details-card")).toContainText(
+        "Volume 2 · definition 1 · grid 2"
+      );
+
+      await detailedControls.getByTestId("volume-show-isosurface").check();
+      await volumeInspector.getByTestId("volume-inspector-tab-derived").click();
+      await expect(volumeInspector.getByTestId("volume-derived-result-current")).toBeVisible();
+
+      await detailedControls.getByLabel("Volume dim Ny").fill("63");
+      await volumeInspector.getByTestId("volume-inspector-tab-volume").click();
+      await expect(volumeInspector.getByTestId("volume-details-card")).toContainText(
+        "Volume 3 · definition 1 · grid 3"
+      );
+      await volumeInspector.getByTestId("volume-inspector-tab-derived").click();
+      await expect(volumeInspector.getByTestId("volume-derived-result-stale").first()).toBeVisible();
+      await expect(volumeInspector.getByTestId("volume-derived-result-current")).toBeVisible();
 
       const galleryBox = await presetGrid.boundingBox();
       const detailedBox = await detailedControls.boundingBox();

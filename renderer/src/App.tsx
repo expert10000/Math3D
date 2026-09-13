@@ -908,6 +908,22 @@ import {
 } from "./scene/volume/vectorPresets";
 import { buildSliceSeeds } from "./scene/volume/streamlines";
 import {
+  adaptAnalyticVolume,
+  adaptCustomFieldVolume,
+  adaptVectorGridVolume,
+  adaptVtkDistanceVolume,
+  createVolumeDerivedResult,
+  createVolumeTypedArrayStore,
+  deleteVolumeDerivedResult,
+  describeVolumeDefinition,
+  describeVolumeSource,
+  hydrateVolumeRevisionTracker,
+  reconcileVolumeDerivedResult,
+  serializeVolumeObject,
+  type VolumeDerivedResult,
+  type VolumeRevisionTracker,
+} from "./volume";
+import {
   getDefaultRotationalProfileExpressions,
   supportsGeneralRotationalProfile,
   type RotationalProfileMode,
@@ -34514,11 +34530,6 @@ const App: React.FC = () => {
     getVolumePreset(DEFAULT_VOLUME_PRESET_ID).defaultDims
   );
   const [volumeCustomExpr, setVolumeCustomExpr] = useState("x^2 + y^2 + z^2 - 1");
-  const handleChangeVolumePresetId = useCallback((id: VolumePresetId) => {
-    setVolumeDatasetOverride(null);
-    setVolumeDistanceError(null);
-    setVolumePresetId(id);
-  }, []);
   const volumePreset = useMemo(() => getVolumePreset(volumePresetId), [volumePresetId]);
   const volumeParamsResolved = useMemo(
     () => resolveVolumePresetParams(volumePreset, volumeParams),
@@ -34531,6 +34542,16 @@ const App: React.FC = () => {
   const [volumeSampling, setVolumeSampling] = useState<VolumeSampling>(() =>
     samplingFromBounds(volumePresetBounds, volumeDims)
   );
+  const handleChangeVolumePresetId = useCallback((id: VolumePresetId) => {
+    const nextPreset = getVolumePreset(id);
+    const nextParams = getVolumePresetDefaultParams(id);
+    const nextBounds = getVolumePresetBounds(nextPreset, resolveVolumePresetParams(nextPreset, nextParams));
+    setVolumeDatasetOverride(null);
+    setVolumeDistanceError(null);
+    setVolumePresetId(id);
+    setVolumeParams(nextParams);
+    setVolumeSampling(samplingFromBounds(nextBounds, volumeDims));
+  }, [volumeDims]);
   const volumeCustomFnRef = useRef<((x: number, y: number, z: number) => number) | null>(null);
   const volumeCustomCompiled = useMemo(() => {
     if (volumePresetId !== "custom") return { fn: undefined, error: null };
@@ -34565,9 +34586,6 @@ const App: React.FC = () => {
     }
   }, [volumeCustomCompiled.fn]);
   useEffect(() => {
-    setVolumeSampling(samplingFromBounds(volumePresetBounds, volumeDims));
-  }, [volumePresetBounds]);
-  useEffect(() => {
     setVolumeSampling((prev) => ({ ...prev, dims: volumeDims }));
   }, [volumeDims]);
   const volumeSamplingClamped = useMemo(() => clampSampling(volumeSampling), [volumeSampling]);
@@ -34592,6 +34610,61 @@ const App: React.FC = () => {
     [volumePresetId, volumeSamplingClamped, volumeSamplingBounds, volumeParamsResolved, volumeCustomCompiled.fn]
   );
   const volumeDataset = volumeDatasetOverride ?? volumeDatasetPreset;
+  const volumeRevisionTrackerRef = useRef<VolumeRevisionTracker>(new Map());
+  const volumeStorageStoreRef = useRef(createVolumeTypedArrayStore());
+  const canonicalVolumeObject = useMemo(() => {
+    const common = {
+      dataset: volumeDataset,
+      grid: volumeDataset.grid,
+      tracker: volumeRevisionTrackerRef.current,
+      positionUnits: "unit",
+    };
+    if (volumeDatasetOverride) {
+      const sourceObjectId = volumeDatasetOverride.sourceId ?? "surface-distance-source";
+      return adaptVtkDistanceVolume({
+        ...common,
+        id: `distance:${sourceObjectId}`,
+        label: volumeDatasetOverride.label ?? "Surface distance field",
+        sourceObjectId,
+        sourceObjectRevision: 1,
+        signed: volumeDatasetOverride.distanceSigned ?? volumeDistanceSigned,
+        valueUnits: "unit",
+      });
+    }
+    const expression = volumePresetId === "custom"
+      ? volumeCustomExpr.trim() || volumePreset.formula
+      : volumePreset.formula;
+    if (volumePresetId === "custom") {
+      return adaptCustomFieldVolume({
+        ...common,
+        id: "custom-field",
+        label: "Volume: Custom field",
+        expression,
+        parameters: volumeParamsResolved,
+      });
+    }
+    return adaptAnalyticVolume({
+      ...common,
+      id: `preset:${volumePresetId}`,
+      label: `Volume: ${volumePreset.label}`,
+      presetId: volumePresetId,
+      expression,
+      parameters: volumeParamsResolved,
+    });
+  }, [
+    volumeDataset,
+    volumeDatasetOverride,
+    volumeDistanceSigned,
+    volumePreset.formula,
+    volumePreset.label,
+    volumePresetId,
+    volumeCustomExpr,
+    volumeParamsResolved,
+  ]);
+  useEffect(() => {
+    volumeStorageStoreRef.current.bind("active-volume", canonicalVolumeObject.storage, volumeDataset.grid.scalars);
+  }, [canonicalVolumeObject.storage, volumeDataset.grid.scalars]);
+  useEffect(() => () => volumeStorageStoreRef.current.clear(), []);
   const volumeScalarRange = useMemo(() => {
     const scalars = volumeDataset.grid.scalars;
     let min = Infinity;
@@ -35036,6 +35109,29 @@ const App: React.FC = () => {
       bounds: volumeGridBounds,
     });
   }, [volumeShowStreamlines, volumeVectorPresetId, volumeDataset, volumeGridBounds]);
+  const canonicalVolumeVectorObject = useMemo(() => {
+    if (!volumeVectorGrid) return null;
+    return adaptVectorGridVolume({
+      id: `${canonicalVolumeObject.identity.volumeId}:vector:${volumeVectorPresetId}`,
+      label: `${volumeVectorPreset.label} vector field`,
+      presetId: volumeVectorPresetId,
+      grid: volumeVectorGrid,
+      tracker: volumeRevisionTrackerRef.current,
+      dependencies: [{
+        module: "volume",
+        objectId: canonicalVolumeObject.identity.volumeId,
+        revision: canonicalVolumeObject.identity.volumeRevision,
+        relation: "vector-overlay",
+      }],
+    });
+  }, [canonicalVolumeObject.identity.volumeId, canonicalVolumeObject.identity.volumeRevision, volumeVectorGrid, volumeVectorPreset.label, volumeVectorPresetId]);
+  useEffect(() => {
+    if (!canonicalVolumeVectorObject || !volumeVectorGrid) {
+      volumeStorageStoreRef.current.releaseOwner("active-volume-vector");
+      return;
+    }
+    volumeStorageStoreRef.current.bind("active-volume-vector", canonicalVolumeVectorObject.storage, volumeVectorGrid.vectors);
+  }, [canonicalVolumeVectorObject, volumeVectorGrid]);
   const volumeStreamlineSeeds = useMemo(() => {
     if (!volumeShowStreamlines) return [];
     return buildSliceSeeds(
@@ -35077,6 +35173,31 @@ const App: React.FC = () => {
   const [volumeIsoValue, setVolumeIsoValue] = useState(0);
   const [volumeIsoSmooth, setVolumeIsoSmooth] = useState(false);
   const [volumeIsoSmoothIterations, setVolumeIsoSmoothIterations] = useState(20);
+  const [volumeDerivedResults, setVolumeDerivedResults] = useState<VolumeDerivedResult[]>([]);
+  useEffect(() => {
+    const parameters = { isoValue: volumeIsoValue };
+    setVolumeDerivedResults((previous) => {
+      const reconciled = previous.map((result) =>
+        reconcileVolumeDerivedResult(result, canonicalVolumeObject, Date.now(), parameters)
+      );
+      if (!volumeShowIsosurface) return reconciled;
+      const resultId = `iso:${canonicalVolumeObject.identity.volumeId}:${canonicalVolumeObject.identity.volumeRevision}:${volumeIsoValue}`;
+      if (reconciled.some((result) => result.id === resultId)) return reconciled;
+      return [
+        createVolumeDerivedResult({
+          id: resultId,
+          label: `${canonicalVolumeObject.identity.label} iso ${fmt(volumeIsoValue)}`,
+          kind: "isosurface",
+          source: canonicalVolumeObject,
+          parameters,
+        }),
+        ...reconciled,
+      ].slice(0, 24);
+    });
+  }, [canonicalVolumeObject, volumeIsoValue, volumeShowIsosurface]);
+  const handleDeleteVolumeDerivedResult = useCallback((id: string) => {
+    setVolumeDerivedResults((previous) => deleteVolumeDerivedResult(previous, id, volumeStorageStoreRef.current));
+  }, []);
   const [volumeShowCropBox, setVolumeShowCropBox] = useState(true);
   const [volumeCropGizmoEnabled, setVolumeCropGizmoEnabled] = useState(true);
   const [volumeCropGizmoMode, setVolumeCropGizmoMode] = useState<"move" | "scale">("move");
@@ -35147,20 +35268,18 @@ const App: React.FC = () => {
   }, []);
   const handleVolumeParamChange = useCallback(
     (id: string, value: number) => {
-      setVolumeParams((prev) => {
-        const def = volumePreset.params?.find((param) => param.id === id);
-        if (!def) return prev;
-        const nextValue = Number.isFinite(value)
-          ? Math.min(def.max, Math.max(def.min, value))
-          : def.defaultValue;
-        return { ...prev, [id]: nextValue };
-      });
+      const def = volumePreset.params?.find((param) => param.id === id);
+      if (!def) return;
+      const nextValue = Number.isFinite(value)
+        ? Math.min(def.max, Math.max(def.min, value))
+        : def.defaultValue;
+      const nextParams = { ...volumeParams, [id]: nextValue };
+      const nextBounds = getVolumePresetBounds(volumePreset, resolveVolumePresetParams(volumePreset, nextParams));
+      setVolumeParams(nextParams);
+      setVolumeSampling(samplingFromBounds(nextBounds, volumeDims));
     },
-    [volumePreset]
+    [volumeDims, volumeParams, volumePreset]
   );
-  useEffect(() => {
-    setVolumeParams(getVolumePresetDefaultParams(volumePresetId));
-  }, [volumePresetId]);
   const volumeSeedIndexMax = useMemo(() => {
     const [nx, ny, nz] = volumeDataset.grid.dims;
     if (volumeSeedAxis === "x") return Math.max(0, nx - 1);
@@ -41819,8 +41938,7 @@ const App: React.FC = () => {
   }, [surfaceMeshLabel]);
   const currentDatasetRef = useMemo(() => {
     if (datasetKind === "volume") {
-      const label = volumeDatasetOverride?.label;
-      return label ? `volume:${label}` : `volume:${volumePresetId}`;
+      return canonicalVolumeObject.identity.key;
     }
     if (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") {
       return `mesh:${surfaceMeshLabel}`;
@@ -41833,8 +41951,7 @@ const App: React.FC = () => {
     return surfaceViewerKind;
   }, [
     datasetKind,
-    volumeDatasetOverride?.label,
-    volumePresetId,
+    canonicalVolumeObject.identity.key,
     surfaceMeshLabel,
     surfaceViewerKind,
     paramSurfaceId,
@@ -53244,10 +53361,11 @@ case "mobius":
 
     if (datasetKind === "volume" || volumeDatasetOverride) {
       datasetItems.push({
-        id: "volume:active",
+        id: canonicalVolumeObject.identity.key,
         kind: "volume",
-        source: volumeDatasetOverride ? "volumeOverride" : "volumePreset",
+        source: canonicalVolumeObject.source.kind,
         recipe: {
+          canonical: serializeVolumeObject(canonicalVolumeObject),
           presetId: volumePresetId,
           params: volumeParamsResolved,
           dims: volumeDims,
@@ -53259,9 +53377,9 @@ case "mobius":
           distanceSigned: volumeDistanceSigned,
         },
         provenance: {
-          source: volumeDatasetOverride ? "volumeOverride" : "volumePreset",
-          createdAt: now,
-          version: 1,
+          source: canonicalVolumeObject.provenance.engine,
+          createdAt: canonicalVolumeObject.provenance.createdAt,
+          version: canonicalVolumeObject.version,
         },
       });
     }
@@ -53508,6 +53626,7 @@ case "mobius":
       volumeIsoValue,
       volumeViewMode,
       volumeDistanceSigned,
+      canonicalVolumeObject,
       workbooks,
       geometryMode,
       geometrySceneIdentities,
@@ -54037,8 +54156,15 @@ case "mobius":
       );
     }
 
-    const volumeRecipe = byId.get("volume:active")?.recipe as any;
+    const volumeRecipe = (byId.get("volume:active") ?? datasetItems.find((item) => item.kind === "volume"))?.recipe as any;
     if (volumeRecipe) {
+      if (volumeRecipe.canonical && typeof volumeRecipe.canonical === "object") {
+        try {
+          hydrateVolumeRevisionTracker(volumeRevisionTrackerRef.current, volumeRecipe.canonical);
+        } catch {
+          // Older or incomplete workspace summaries are restored through the compatibility recipe below.
+        }
+      }
       if (
         typeof volumeRecipe.presetId === "string" &&
         VOLUME_PRESETS.some((preset) => preset.id === volumeRecipe.presetId)
@@ -70389,14 +70515,13 @@ case "mobius":
         });
       }
     } else {
-      activeDefinitionNodeId = `def:volume:${volumePresetId}`;
-      const volumeExpr = volumePresetId === "custom" ? (volumeCustomExpr.trim() || volumePreset.formula) : volumePreset.formula;
+      activeDefinitionNodeId = `def:${canonicalVolumeObject.identity.volumeId}@${canonicalVolumeObject.identity.definitionRevision}`;
       addRaw({
         id: activeDefinitionNodeId,
-        name: volumePreset.label,
-        type: "volume/definition",
-        sourceDefinition: `${volumeExpr}, dims ${volumeDims[0]}x${volumeDims[1]}x${volumeDims[2]}`,
-        displayState: "active",
+        name: `${canonicalVolumeObject.identity.label} definition`,
+        type: `volume/definition/${canonicalVolumeObject.source.kind}`,
+        sourceDefinition: describeVolumeDefinition(canonicalVolumeObject.source),
+        displayState: `active, definition r${canonicalVolumeObject.identity.definitionRevision}`,
         parentId: null,
         category: "surfaceDefinition",
         visible: true,
@@ -70446,22 +70571,55 @@ case "mobius":
 
     let volumeDatasetNodeId: string | null = null;
     if (datasetKind === "volume" || volumeDatasetOverride) {
-      volumeDatasetNodeId = "dataset:volume:active";
-      const volumeLabel = volumeDatasetOverride?.label ?? `Volume: ${volumePreset.label}`;
-      const sourceDef = volumeDatasetOverride
-        ? volumeDatasetOverride.note ?? "Distance volume derived from surface mesh."
-        : volumePreset.formula;
+      volumeDatasetNodeId = `dataset:${canonicalVolumeObject.identity.key}`;
       addRaw({
         id: volumeDatasetNodeId,
-        name: volumeLabel,
-        type: "dataset/volume-grid",
-        sourceDefinition: sourceDef,
-        displayState: datasetKind === "volume" ? "shown" : "ready",
-        parentId: volumeDatasetOverride?.sourceId === "surface_distance" ? surfaceDatasetNodeId : activeDefinitionNodeId,
+        name: canonicalVolumeObject.identity.label,
+        type: `dataset/volume/${canonicalVolumeObject.representation}`,
+        sourceDefinition: describeVolumeSource(canonicalVolumeObject.source),
+        displayState: `${datasetKind === "volume" ? "shown" : "ready"}, r${canonicalVolumeObject.identity.volumeRevision}, grid r${canonicalVolumeObject.identity.sampledGridRevision}`,
+        parentId:
+          canonicalVolumeObject.source.kind === "vtk-distance"
+            ? surfaceDatasetNodeId ?? activeDefinitionNodeId
+            : activeDefinitionNodeId,
         category: "dataset",
         sceneRole: "derivedResult",
+        sourceVersion: canonicalVolumeObject.identity.volumeRevision,
+        provenanceSource: canonicalVolumeObject.provenance.engine,
         visible: true,
       });
+      if (canonicalVolumeVectorObject) {
+        addRaw({
+          id: `dataset:${canonicalVolumeVectorObject.identity.key}`,
+          name: canonicalVolumeVectorObject.identity.label,
+          type: "dataset/volume/vector-field",
+          sourceDefinition: describeVolumeSource(canonicalVolumeVectorObject.source),
+          displayState: `visible, r${canonicalVolumeVectorObject.identity.volumeRevision}`,
+          parentId: volumeDatasetNodeId,
+          category: "derived",
+          sceneRole: "overlay",
+          sourceVersion: canonicalVolumeVectorObject.identity.volumeRevision,
+          provenanceSource: canonicalVolumeVectorObject.provenance.engine,
+          visible: true,
+        });
+      }
+      for (const result of volumeDerivedResults) {
+        addRaw({
+          id: `derived:volume:${result.id}`,
+          name: result.label,
+          type: `derived/volume/${result.kind}`,
+          sourceDefinition: `Volume ${result.sourceVolumeId}@${result.sourceVolumeRevision}`,
+          displayState: result.state,
+          parentId: volumeDatasetNodeId,
+          category: "derived",
+          sceneRole: "derivedResult",
+          sourceVersion: result.sourceVolumeRevision,
+          provenanceSource: canonicalVolumeObject.provenance.engine,
+          visible: result.state === "current" && volumeShowIsosurface,
+          canDelete: true,
+          derivedStatus: result.state === "stale" ? "stale" : result.state === "current" ? "ready" : "available",
+        });
+      }
     }
 
     const activeSurfaceParentId = surfaceDatasetNodeId ?? activeDefinitionNodeId;
@@ -70793,6 +70951,9 @@ case "mobius":
     volumeCustomExpr,
     volumeDims,
     volumeDatasetOverride,
+    canonicalVolumeObject,
+    canonicalVolumeVectorObject,
+    volumeDerivedResults,
     surfaceMeshData,
     surfaceMeshStats?.vertCount,
     showWireframe,
@@ -72727,7 +72888,9 @@ case "mobius":
 
   const statusViewerLabel = useMemo(() => {
     if (mode === "surfaces") {
-      if (datasetKind === "volume") return `Volume viewer (${volumeViewMode})`;
+      if (datasetKind === "volume") {
+        return `${canonicalVolumeObject.identity.label} · Volume r${canonicalVolumeObject.identity.volumeRevision} (${volumeViewMode})`;
+      }
       if (surfaceViewerKind === "implicit") return "Implicit viewer";
       if (surfaceViewerKind === "graph") return "Graph viewer";
       if (surfaceViewerKind === "param") return "Param viewer";
@@ -72754,7 +72917,7 @@ case "mobius":
     if (mode === "transform") return "Transform viewer";
     if (mode === "maps") return "Maps viewer";
     return mode;
-  }, [datasetKind, functionExplorerScene, geometryMode, mode, otherComplexMainViewMode, surfaceViewerKind, volumeViewMode]);
+  }, [canonicalVolumeObject.identity.label, canonicalVolumeObject.identity.volumeRevision, datasetKind, functionExplorerScene, geometryMode, mode, otherComplexMainViewMode, surfaceViewerKind, volumeViewMode]);
   const statusMeshLabel = useMemo(() => {
     if (unifiedSelectedSceneMeshStats) {
       return `${unifiedSelectedSceneMeshStats.vertCount.toLocaleString()} vertices / ${unifiedSelectedSceneMeshStats.triCount.toLocaleString()} faces`;
@@ -72763,7 +72926,7 @@ case "mobius":
       return `${surfaceMeshStats.vertCount.toLocaleString()} vertices / ${surfaceMeshStats.triCount.toLocaleString()} faces`;
     }
     if (mode === "surfaces" && datasetKind === "volume") {
-      return `grid ${volumeDims[0]}x${volumeDims[1]}x${volumeDims[2]}`;
+      return `grid r${canonicalVolumeObject.identity.sampledGridRevision} · ${canonicalVolumeObject.spatial.dimensions.join("x")} · ${canonicalVolumeObject.spatial.scalarType} · ${canonicalVolumeObject.spatial.byteSize.toLocaleString()} bytes`;
     }
     if (mode === "geometry" && geometryStats.mode === "procedural") {
       return `${geometryStats.vertCount.toLocaleString()} vertices / ${geometryStats.triCount.toLocaleString()} faces`;
@@ -72775,7 +72938,10 @@ case "mobius":
     mode,
     surfaceMeshStats,
     unifiedSelectedSceneMeshStats,
-    volumeDims,
+    canonicalVolumeObject.identity.sampledGridRevision,
+    canonicalVolumeObject.spatial.byteSize,
+    canonicalVolumeObject.spatial.dimensions,
+    canonicalVolumeObject.spatial.scalarType,
   ]);
   const statusPickedPointLabel = useMemo(() => {
     const point =
@@ -75422,7 +75588,7 @@ case "mobius":
       ? () => {
           setVolumeDatasetOverride(null);
           setVolumeDistanceError(null);
-          setVolumePresetId("custom");
+          handleChangeVolumePresetId("custom");
           setSurfacesPanelState("work");
           setSurfacesLeftTab("scene");
           setSurfacesWorkGalleryOpen(false);
@@ -77072,7 +77238,7 @@ case "mobius":
                         if (datasetKind === "volume") {
                           setVolumeDatasetOverride(null);
                           setVolumeDistanceError(null);
-                          setVolumePresetId("custom");
+                          handleChangeVolumePresetId("custom");
                           setSurfacesPanelState("work");
                           setSurfacesLeftTab("scene");
                           setSurfacesWorkGalleryOpen(false);
@@ -77134,7 +77300,7 @@ case "mobius":
                         if (datasetKind === "volume") {
                           setVolumeDatasetOverride(null);
                           setVolumeDistanceError(null);
-                          setVolumePresetId(DEFAULT_VOLUME_PRESET_ID);
+                          handleChangeVolumePresetId(DEFAULT_VOLUME_PRESET_ID);
                           setSurfacesPanelState("work");
                           setSurfacesLeftTab("scene");
                           setSurfacesWorkGalleryOpen(false);
@@ -82615,10 +82781,10 @@ case "mobius":
                       >
                         <div style={{ fontSize: 12, fontWeight: 850, color: "#1e3a5f" }}>Volume overview</div>
                         <div style={{ fontSize: 11 }}>
-                          <strong>{volumeDatasetOverride?.label ?? volumePreset.label}</strong>
+                          <strong>{canonicalVolumeObject.identity.label}</strong>
                         </div>
                         <div style={{ fontSize: 11 }}>
-                          Grid {volumeDataset.grid.dims.join(" × ")} · {volumeDataset.grid.scalars.length.toLocaleString()} samples
+                          Grid r{canonicalVolumeObject.identity.sampledGridRevision} · {canonicalVolumeObject.spatial.dimensions.join(" × ")} · {canonicalVolumeObject.spatial.sampleCount.toLocaleString()} samples
                         </div>
                         <div style={{ fontSize: 11 }}>
                           Range {fmt(volumeScalarRange.min)} … {fmt(volumeScalarRange.max)}
@@ -86222,12 +86388,7 @@ case "mobius":
                     datasetKind === "volume" ? (
                       <VolumeInspectorPanel
                         dataset={volumeDataset}
-                        label={volumeDatasetOverride?.label ?? `Volume: ${volumePreset.label}`}
-                        formula={
-                          volumeDatasetOverride?.note ??
-                          (volumePresetId === "custom" ? volumeCustomExpr.trim() || volumePreset.formula : volumePreset.formula)
-                        }
-                        sourceKind={volumeDatasetOverride ? "derived" : "preset"}
+                        volumeObject={canonicalVolumeObject}
                         valueRange={volumeScalarRange}
                         viewMode={volumeViewMode}
                         crosshair={volumeCrosshair}
@@ -86242,6 +86403,8 @@ case "mobius":
                         distanceBusy={volumeDistanceBusy}
                         distanceError={volumeDistanceError}
                         definitionError={volumeCustomCompiled.error}
+                        derivedResults={volumeDerivedResults}
+                        onDeleteDerivedResult={handleDeleteVolumeDerivedResult}
                       />
                     ) : (
                     <>
@@ -117372,6 +117535,7 @@ onChangeImplicitExpr,
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
               <input
                 type="checkbox"
+                data-testid="volume-show-isosurface"
                 checked={volumeShowIsosurface}
                 onChange={(e) => onToggleVolumeIsosurface(e.target.checked)}
               />

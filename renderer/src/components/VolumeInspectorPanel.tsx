@@ -2,14 +2,18 @@ import React, { useMemo, useState } from "react";
 
 import type { VolumeDataset } from "../scene/datasets";
 import type { VolumeSliceHover, VolumeSliceReport } from "../scene/volume/sliceVolume";
+import {
+  describeVolumeDefinition,
+  describeVolumeSource,
+  type VolumeDerivedResult,
+  type VolumeObject,
+} from "../volume";
 
 type VolumeInspectorTab = "volume" | "field" | "sampling" | "slice" | "derived" | "diagnostics" | "history";
 
 export type VolumeInspectorPanelProps = {
   dataset: VolumeDataset;
-  label: string;
-  formula: string;
-  sourceKind: "preset" | "derived";
+  volumeObject: VolumeObject;
   valueRange: { min: number; max: number };
   viewMode: "slices" | "3d";
   crosshair: [number, number, number] | null;
@@ -24,6 +28,8 @@ export type VolumeInspectorPanelProps = {
   distanceBusy: boolean;
   distanceError: string | null;
   definitionError: string | null;
+  derivedResults: readonly VolumeDerivedResult[];
+  onDeleteDerivedResult: (id: string) => void;
 };
 
 const tabs: ReadonlyArray<{ id: VolumeInspectorTab; label: string }> = [
@@ -77,9 +83,7 @@ const DetailRow: React.FC<{ label: string; value: React.ReactNode }> = ({ label,
 
 export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   dataset,
-  label,
-  formula,
-  sourceKind,
+  volumeObject,
   valueRange,
   viewMode,
   crosshair,
@@ -94,13 +98,27 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   distanceBusy,
   distanceError,
   definitionError,
+  derivedResults,
+  onDeleteDerivedResult,
 }) => {
   const [activeTab, setActiveTab] = useState<VolumeInspectorTab>("volume");
   const grid = dataset.grid;
-  const spacing = grid.spacing ?? [1, 1, 1];
-  const origin = grid.origin ?? [0, 0, 0];
-  const domainMax = grid.dims.map((dim, index) => origin[index] + spacing[index] * Math.max(0, dim - 1));
-  const sampleCount = grid.dims[0] * grid.dims[1] * grid.dims[2];
+  const { spatial } = volumeObject;
+  const spacing = spatial.spacing;
+  const origin = spatial.origin;
+  const domainMax = spatial.dimensions.map((dim, index) => origin[index] + spacing[index] * Math.max(0, dim - 1));
+  const sampleCount = spatial.sampleCount;
+  const label = volumeObject.identity.label;
+  const formula = describeVolumeDefinition(volumeObject.source);
+  const representationLabel = volumeObject.representation === "analytic-scalar-field"
+    ? "Analytic scalar field"
+    : volumeObject.representation === "custom-scalar-field"
+      ? "Custom scalar field"
+      : volumeObject.representation === "dense-scalar-grid"
+        ? "Dense scalar grid"
+        : volumeObject.representation === "dense-vector-grid"
+          ? "Dense vector grid"
+          : "Distance field";
   const finiteCount = useMemo(() => {
     let count = 0;
     for (let i = 0; i < grid.scalars.length; i += 1) if (Number.isFinite(grid.scalars[i])) count += 1;
@@ -151,18 +169,21 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
         <div style={cardStyle} data-testid="volume-details-card">
           <div style={{ fontWeight: 850, fontSize: 12 }}>Volume Details</div>
           <DetailRow label="Identity" value={label} />
-          <DetailRow label="Representation" value="Scalar volume grid" />
-          <DetailRow label="Source" value={sourceKind === "derived" ? "Derived distance field" : "Analytic preset"} />
-          <DetailRow label="Dimensions" value={`${grid.dims[0]} × ${grid.dims[1]} × ${grid.dims[2]}`} />
+          <DetailRow label="Representation" value={representationLabel} />
+          <DetailRow label="Source" value={describeVolumeSource(volumeObject.source)} />
+          <DetailRow label="Dimensions" value={spatial.dimensions.join(" × ")} />
           <DetailRow label="Domain min" value={`(${origin.map((value) => formatNumber(value, 3)).join(", ")})`} />
           <DetailRow label="Domain max" value={`(${domainMax.map((value) => formatNumber(value, 3)).join(", ")})`} />
           <DetailRow label="Samples" value={sampleCount.toLocaleString()} />
-          <DetailRow label="Scalar type" value="Float32" />
+          <DetailRow label="Scalar type" value={spatial.scalarType} />
           <DetailRow label="Spacing" value={`(${spacing.map((value) => formatNumber(value, 3)).join(", ")})`} />
           <DetailRow label="Value range" value={`${formatNumber(valueRange.min)} … ${formatNumber(valueRange.max)}`} />
-          <DetailRow label="Units" value="unitless" />
-          <DetailRow label="Payload" value={formatBytes(grid.scalars.byteLength)} />
-          <DetailRow label="Revision" value="live current" />
+          <DetailRow label="Units" value={`${spatial.positionUnits} / ${spatial.valueUnits}`} />
+          <DetailRow label="Payload" value={formatBytes(spatial.byteSize)} />
+          <DetailRow
+            label="Revision"
+            value={`Volume ${volumeObject.identity.volumeRevision} · definition ${volumeObject.identity.definitionRevision} · grid ${volumeObject.identity.sampledGridRevision}`}
+          />
           <DetailRow label="Current iso" value={formatNumber(isoValue)} />
           <DetailRow label="View" value={viewMode === "slices" ? "Orthogonal slices" : "3D volume"} />
         </div>
@@ -184,7 +205,10 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
           <div style={{ fontWeight: 850, fontSize: 12 }}>Sampling Grid</div>
           <DetailRow label="Origin" value={`(${origin.map((value) => formatNumber(value, 3)).join(", ")})`} />
           <DetailRow label="Spacing" value={`(${spacing.map((value) => formatNumber(value, 3)).join(", ")})`} />
-          <DetailRow label="Storage" value="Float32, x-fastest" />
+          <DetailRow label="Storage" value={`${spatial.scalarType}, x-fastest, ${spatial.componentLayout}`} />
+          <DetailRow label="Centering" value={spatial.centering} />
+          <DetailRow label="Direction" value={spatial.direction.join(" ")} />
+          <DetailRow label="Handle" value={volumeObject.storage.handle} />
           <DetailRow label="Validity" value={gridValid ? "Ready" : "Invalid grid"} />
         </div>
       )}
@@ -205,15 +229,30 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
       {activeTab === "derived" && (
         <div style={cardStyle} data-testid="volume-derived-card">
           <div style={{ fontWeight: 850, fontSize: 12 }}>Derived Surfaces</div>
-          {showIsosurface ? (
-            <>
-              <DetailRow label="Isosurface preview" value="Visible" />
-              <DetailRow label="Isovalue" value={formatNumber(isoValue)} />
-              <div style={{ fontSize: 10, color: "#64748b" }}>
-                This is a live derived preview. Mesh counts appear only after a first-class mesh result is created.
+          {showIsosurface && <DetailRow label="Isosurface preview" value="Visible" />}
+          {derivedResults.length ? derivedResults.map((result) => (
+            <div
+              key={result.id}
+              data-testid={`volume-derived-result-${result.state}`}
+              style={{ border: "1px solid #d7e2ee", borderRadius: 8, background: "#fff", padding: 8, display: "grid", gap: 5 }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
+                <strong>{result.label}</strong>
+                <span style={{ color: result.state === "stale" ? "#b45309" : result.state === "detached" ? "#475569" : "#166534" }}>
+                  {result.state}
+                </span>
               </div>
-            </>
-          ) : (
+              <DetailRow label="Source revision" value={result.sourceVolumeRevision} />
+              <DetailRow label="Grid revision" value={result.sourceSampledGridRevision} />
+              {result.staleReason && <div style={{ color: "#92400e", fontSize: 10 }}>{result.staleReason}</div>}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <span style={{ color: "#64748b", fontSize: 10 }}>
+                  Mesh counts appear when a first-class mesh payload is created.
+                </span>
+                <button type="button" onClick={() => onDeleteDerivedResult(result.id)} style={{ fontSize: 10 }}>Delete</button>
+              </div>
+            </div>
+          )) : (
             <div style={{ fontSize: 11, color: "#64748b" }}>No derived isosurface result is active.</div>
           )}
         </div>
@@ -223,6 +262,9 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
         <div style={cardStyle} data-testid="volume-diagnostics-card">
           <div style={{ fontWeight: 850, fontSize: 12 }}>Diagnostics</div>
           <DetailRow label="Grid" value={gridValid ? "Ready" : "Invalid"} />
+          <DetailRow label="Engine" value={`${volumeObject.provenance.engine} ${volumeObject.provenance.engineVersion}`} />
+          <DetailRow label="Missing values" value={spatial.missingValuePolicy} />
+          <DetailRow label="Dependencies" value={volumeObject.provenance.dependencies.length} />
           <DetailRow label="Distance backend" value={distanceBusy ? "Running" : distanceError ? "Failed" : "Idle"} />
           {definitionError && <div role="alert" style={{ color: "#b42318", fontSize: 11 }}>{definitionError}</div>}
           {distanceError && <div role="alert" style={{ color: "#b42318", fontSize: 11 }}>{distanceError}</div>}
@@ -235,10 +277,11 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
       {activeTab === "history" && (
         <div style={cardStyle} data-testid="volume-history-card">
           <div style={{ fontWeight: 850, fontSize: 12 }}>History</div>
-          <div style={{ fontSize: 11 }}><strong>Current:</strong> {label}</div>
-          <div style={{ fontSize: 10, color: "#64748b" }}>
-            The current live source is selected. Persistent operation-result history is introduced with Volume result objects.
-          </div>
+          <DetailRow label="Current object" value={volumeObject.identity.key} />
+          <DetailRow label="Created" value={new Date(volumeObject.provenance.createdAt).toLocaleString()} />
+          <DetailRow label="Updated" value={new Date(volumeObject.provenance.updatedAt).toLocaleString()} />
+          <DetailRow label="Derived results" value={derivedResults.length} />
+          <DetailRow label="Stale retained" value={derivedResults.filter((result) => result.state === "stale").length} />
         </div>
       )}
     </section>
