@@ -735,7 +735,7 @@ Acceptance:
 
 Planned message: `test(volume): add canonical regression and performance gates`
 
-**Status: planned.**
+**Status: complete.** Implemented in `renderer/src/volume/regression.ts`, canonical numerical/signature tests, a reviewed performance-budget profile, a Volume persistence E2E gate, and maintained Volume-specific unit, E2E, backend, and profile commands.
 
 Deterministic matrix:
 
