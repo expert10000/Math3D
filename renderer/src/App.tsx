@@ -217,7 +217,7 @@ import {
   type ConstructionLabState,
   type ConstructionWorkspaceTab,
 } from "./components/ConstructionLabPanel";
-import { VolumeViewer } from "./components/VolumeViewer";
+import { VolumeViewer, type VolumeCameraState } from "./components/VolumeViewer";
 import { VolumeInspectorPanel } from "./components/VolumeInspectorPanel";
 import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
 import OctaveLabPanel from "./features/octaveLab/OctaveLabPanel";
@@ -35047,6 +35047,30 @@ const App: React.FC = () => {
   const [volumeStreamlineStepSizeOverride, setVolumeStreamlineStepSizeOverride] = useState<number | null>(null);
   const [volumeStreamlineMaxSteps, setVolumeStreamlineMaxSteps] = useState(900);
   const [volumeViewMode, setVolumeViewMode] = useState<"slices" | "3d">("slices");
+  const [volumeLayout, setVolumeLayout] = useState<"quad" | "slices" | "3d" | "xy" | "xz" | "yz">("quad");
+  const [volumeFocusedPane, setVolumeFocusedPane] = useState<"xy" | "xz" | "yz" | "3d" | null>(null);
+  const [volumeSpatialPlaneVisibility, setVolumeSpatialPlaneVisibility] = useState<Record<SliceAxis, boolean>>({ x: true, y: true, z: true });
+  const [volumeClipToCrop, setVolumeClipToCrop] = useState(false);
+  const [volumeCameraCommand, setVolumeCameraCommand] = useState<{ token: number; kind: "fit-volume" | "fit-crop" | "reset" }>({ token: 0, kind: "reset" });
+  const [volumeCameraState, setVolumeCameraState] = useState<VolumeCameraState | null>(null);
+  const handleVolumeCameraStateChange = useCallback((state: VolumeCameraState) => {
+    setVolumeCameraState(state);
+    setVolumeCameraCommand((previous) => previous.token > 0 ? { ...previous, token: 0 } : previous);
+  }, []);
+  const handleVolumeLayoutChange = useCallback((layout: "quad" | "slices" | "3d" | "xy" | "xz" | "yz") => {
+    setVolumeLayout(layout);
+    setVolumeFocusedPane(null);
+    setVolumeViewMode(layout === "3d" ? "3d" : "slices");
+  }, []);
+  const handleVolumeViewModeChange = useCallback((viewMode: "slices" | "3d") => {
+    setVolumeViewMode(viewMode);
+    setVolumeLayout(viewMode === "3d" ? "3d" : "quad");
+    setVolumeFocusedPane(null);
+  }, []);
+  useEffect(() => {
+    if (volumeViewMode === "3d" && volumeLayout !== "3d") setVolumeLayout("3d");
+    if (volumeViewMode === "slices" && volumeLayout === "3d") setVolumeLayout("quad");
+  }, [volumeLayout, volumeViewMode]);
   const isDev = typeof import.meta !== "undefined" && !!(import.meta as any).env?.DEV;
   const isGeometrySmoke = useMemo(() => {
     if (typeof window === "undefined") return false;
@@ -53645,6 +53669,11 @@ case "mobius":
           showIsosurface: volumeShowIsosurface,
           isoValue: volumeIsoValue,
           viewMode: volumeViewMode,
+          layout: volumeLayout,
+          focusedPane: volumeFocusedPane,
+          spatialPlaneVisibility: volumeSpatialPlaneVisibility,
+          clipToCrop: volumeClipToCrop,
+          cameraState: volumeCameraState,
           distanceSigned: volumeDistanceSigned,
           navigation: {
             crosshair: volumeCrosshair,
@@ -53914,6 +53943,11 @@ case "mobius":
       volumeShowIsosurface,
       volumeIsoValue,
       volumeViewMode,
+      volumeLayout,
+      volumeFocusedPane,
+      volumeSpatialPlaneVisibility,
+      volumeClipToCrop,
+      volumeCameraState,
       volumeDistanceSigned,
       volumeCrosshair,
       volumePaneIndices,
@@ -54514,6 +54548,31 @@ case "mobius":
       if (Number.isFinite(volumeRecipe.isoValue)) setVolumeIsoValue(Number(volumeRecipe.isoValue));
       if (volumeRecipe.viewMode === "slices" || volumeRecipe.viewMode === "3d") {
         setVolumeViewMode(volumeRecipe.viewMode);
+      }
+      if (["quad", "slices", "3d", "xy", "xz", "yz"].includes(volumeRecipe.layout)) {
+        setVolumeLayout(volumeRecipe.layout);
+      }
+      if (["xy", "xz", "yz", "3d"].includes(volumeRecipe.focusedPane)) {
+        setVolumeFocusedPane(volumeRecipe.focusedPane);
+      } else {
+        setVolumeFocusedPane(null);
+      }
+      if (volumeRecipe.spatialPlaneVisibility && typeof volumeRecipe.spatialPlaneVisibility === "object") {
+        setVolumeSpatialPlaneVisibility({
+          x: volumeRecipe.spatialPlaneVisibility.x !== false,
+          y: volumeRecipe.spatialPlaneVisibility.y !== false,
+          z: volumeRecipe.spatialPlaneVisibility.z !== false,
+        });
+      }
+      if (typeof volumeRecipe.clipToCrop === "boolean") setVolumeClipToCrop(volumeRecipe.clipToCrop);
+      const cameraState = volumeRecipe.cameraState;
+      const validCameraTriplet = (value: unknown) => Array.isArray(value) && value.length === 3 && value.every((entry) => Number.isFinite(Number(entry)));
+      if (cameraState && validCameraTriplet(cameraState.position) && validCameraTriplet(cameraState.target) && validCameraTriplet(cameraState.up)) {
+        setVolumeCameraState({
+          position: cameraState.position.map(Number) as [number, number, number],
+          target: cameraState.target.map(Number) as [number, number, number],
+          up: cameraState.up.map(Number) as [number, number, number],
+        });
       }
       if (typeof volumeRecipe.distanceSigned === "boolean") {
         setVolumeDistanceSigned(volumeRecipe.distanceSigned);
@@ -76158,6 +76217,10 @@ case "mobius":
                   volumeCrosshairValue={volumeCrosshairSample?.value ?? null}
                   volumeCrosshairGradMag={volumeCrosshairSample?.gradMag ?? null}
                   volumeViewMode={volumeViewMode}
+                  volumeLayout={volumeLayout}
+                  volumeFocusedPane={volumeFocusedPane}
+                  volumeSpatialPlaneVisibility={volumeSpatialPlaneVisibility}
+                  volumeClipToCrop={volumeClipToCrop}
                   volumeOpacity={volumeSliceOpacity}
                   volumeVectorPresetId={volumeVectorPresetId}
                   volumeVectorPresetLabel={volumeVectorPreset.label}
@@ -76220,7 +76283,12 @@ case "mobius":
                   onChangeVolumeCrosshairIndex={handleVolumeCrosshairIndexChange}
                   onChangeVolumeSeedAxis={setVolumeSeedAxis}
                   onChangeVolumeSeedIndex={setVolumeSeedIndex}
-                  onChangeVolumeViewMode={setVolumeViewMode}
+                  onChangeVolumeViewMode={handleVolumeViewModeChange}
+                  onChangeVolumeLayout={handleVolumeLayoutChange}
+                  onToggleVolumeSpatialPlane={(axis, visible) => setVolumeSpatialPlaneVisibility((previous) => ({ ...previous, [axis]: visible }))}
+                  onToggleVolumeClipToCrop={setVolumeClipToCrop}
+                  onToggleVolumePaneFocus={(pane) => setVolumeFocusedPane((current) => current === pane ? null : pane)}
+                  onVolumeCameraCommand={(kind) => setVolumeCameraCommand((previous) => ({ token: previous.token + 1, kind }))}
                   onChangeVolumeOpacity={setVolumeSliceOpacity}
                   onChangeVolumeVectorPreset={setVolumeVectorPresetId}
                   onToggleVolumeStreamlines={setVolumeShowStreamlines}
@@ -83060,29 +83128,38 @@ case "mobius":
                     </div>
                   )}
                 {datasetKind === "volume" ? (
-                  volumeViewMode === "slices" ? (
+                  (() => {
+                    const activeLayout = volumeFocusedPane ?? volumeLayout;
+                    const allSliceViews = [
+                      { id: "xy" as const, label: "XY", axis: "z" as const, index: volumeNavigationLinked ? volumeCrosshairIndex[2] : volumePaneIndices.z, preset: "xy" as const },
+                      { id: "xz" as const, label: "XZ", axis: "y" as const, index: volumeNavigationLinked ? volumeCrosshairIndex[1] : volumePaneIndices.y, preset: "xz" as const },
+                      { id: "yz" as const, label: "YZ", axis: "x" as const, index: volumeNavigationLinked ? volumeCrosshairIndex[0] : volumePaneIndices.x, preset: "yz" as const },
+                    ];
+                    const sliceViews = activeLayout === "quad" || activeLayout === "slices"
+                      ? allSliceViews
+                      : allSliceViews.filter((view) => view.id === activeLayout);
+                    const showSpatial = activeLayout === "quad" || activeLayout === "3d";
+                    const paneCount = sliceViews.length + (showSpatial ? 1 : 0);
+                    return (
                     <div
                       data-testid="volume-slice-grid"
+                      data-volume-layout={activeLayout}
                       style={{
                         width: "100%",
                         height: "100%",
                         display: "grid",
-                        gridTemplateColumns: isSurfaceStackedLayout ? "minmax(0, 1fr)" : "repeat(2, minmax(0, 1fr))",
+                        gridTemplateColumns: isSurfaceStackedLayout || paneCount === 1 ? "minmax(0, 1fr)" : "repeat(2, minmax(0, 1fr))",
                         gridTemplateRows: isSurfaceStackedLayout
-                          ? "repeat(4, minmax(260px, 1fr))"
-                          : "repeat(2, minmax(0, 1fr))",
+                          ? `repeat(${paneCount}, minmax(260px, 1fr))`
+                          : paneCount > 2 ? "repeat(2, minmax(0, 1fr))" : "minmax(0, 1fr)",
                         gap: 8,
                         padding: 8,
                         boxSizing: "border-box",
                       }}
                     >
-                      {(
-                        [
-                          { id: "xy", label: "XY", axis: "z" as const, index: volumeNavigationLinked ? volumeCrosshairIndex[2] : volumePaneIndices.z, preset: "xy", primary: true },
-                          { id: "xz", label: "XZ", axis: "y" as const, index: volumeNavigationLinked ? volumeCrosshairIndex[1] : volumePaneIndices.y, preset: "xz", primary: false },
-                          { id: "yz", label: "YZ", axis: "x" as const, index: volumeNavigationLinked ? volumeCrosshairIndex[0] : volumePaneIndices.x, preset: "yz", primary: false },
-                        ] as const
-                      ).map((view) => (
+                      {sliceViews.map((view, viewIndex) => {
+                        const primary = viewIndex === 0 && !showSpatial;
+                        return (
                         <div
                           key={view.id}
                           data-testid={`volume-slice-pane-${view.id}`}
@@ -83114,9 +83191,17 @@ case "mobius":
                           >
                             {view.label} · {view.axis.toUpperCase()} {view.index + 1}/{volumeDataset.grid.dims[view.axis === "x" ? 0 : view.axis === "y" ? 1 : 2]}
                           </div>
+                          <button
+                            type="button"
+                            aria-label={volumeFocusedPane === view.id ? "Restore Volume layout" : `Focus ${view.label} pane`}
+                            onClick={() => setVolumeFocusedPane((current) => current === view.id ? null : view.id)}
+                            style={{ position: "absolute", top: 7, right: 7, zIndex: 3, padding: "2px 6px", fontSize: 10 }}
+                          >
+                            {volumeFocusedPane === view.id ? "Restore" : "Focus"}
+                          </button>
                           <VolumeViewer
                             dataset={activeDataset?.kind === "volume" ? activeDataset : null}
-                            vectorGrid={view.primary ? volumeVectorGrid : null}
+                            vectorGrid={primary ? volumeVectorGrid : null}
                             axis={view.axis}
                             index={view.index}
                             opacity={volumeSliceOpacity}
@@ -83131,109 +83216,99 @@ case "mobius":
                             contourEnabled={volumeContourEnabled}
                             contourCount={volumeContourCount}
                             windowMode={volumeWindowMode}
-                            onSliceReport={view.primary ? setVolumeSliceReport : undefined}
+                            onSliceReport={primary || view.id === "xy" ? setVolumeSliceReport : undefined}
                             onSliceHover={setVolumeSliceHover}
-                            showIsosurface={volumeShowIsosurface && view.primary}
+                            showIsosurface={volumeShowIsosurface && primary}
                             isoValue={volumeIsoValue}
                             isoSmoothing={volumeIsoSmooth}
                             isoSmoothingIterations={volumeIsoSmoothIterations}
                             showCropBox={volumeShowCropBox}
                             cropCenter={volumeSamplingClamped.center}
                             cropExtents={volumeSamplingClamped.extents}
-                            cropGizmoEnabled={view.primary ? volumeCropGizmoEnabled : false}
+                            cropGizmoEnabled={primary ? volumeCropGizmoEnabled : false}
                             cropGizmoMode={volumeCropGizmoMode}
                             onCropChange={handleVolumeCropChange}
-                            showStreamlines={volumeShowStreamlines && view.primary}
-                            streamlineSeeds={view.primary ? volumeStreamlineSeeds : undefined}
+                            showStreamlines={volumeShowStreamlines && primary}
+                            streamlineSeeds={primary ? volumeStreamlineSeeds : undefined}
                             streamlineStepSize={volumeStreamlineStepSize}
                             streamlineMaxSteps={volumeStreamlineMaxSteps}
                             streamlineMaxLength={volumeStreamlineMaxLength}
-                            captureToken={view.primary ? workbookCaptureToken : 0}
-                            onCaptureThumbnail={view.primary ? handleWorkbookThumbnail : undefined}
+                            captureToken={primary ? workbookCaptureToken : 0}
+                            onCaptureThumbnail={primary ? handleWorkbookThumbnail : undefined}
                           />
                         </div>
-                      ))}
-                      <div
+                      );})}
+                      {showSpatial && <div
                         data-testid="volume-overview-pane"
                         style={{
+                          position: "relative",
                           minWidth: 0,
-                          minHeight: isSurfaceStackedLayout ? 220 : 0,
+                          minHeight: isSurfaceStackedLayout ? 260 : 0,
                           border: "1px solid #d8e2ef",
                           borderRadius: 10,
-                          background: "linear-gradient(160deg, #f8fbff 0%, #eef6ff 100%)",
-                          padding: 14,
+                          background: "#f8f9fb",
                           boxSizing: "border-box",
-                          display: "grid",
-                          alignContent: "center",
-                          gap: 8,
+                          overflow: "hidden",
                           color: "#334155",
                         }}
                       >
-                        <div style={{ fontSize: 12, fontWeight: 850, color: "#1e3a5f" }}>Volume overview</div>
-                        <div style={{ fontSize: 11 }}>
-                          <strong>{canonicalVolumeObject.identity.label}</strong>
+                        <div data-testid="volume-spatial-pane" style={{ width: "100%", height: "100%" }}>
+                          <VolumeViewer
+                            dataset={activeDataset?.kind === "volume" ? activeDataset : null}
+                            vectorGrid={volumeVectorGrid}
+                            axis="z"
+                            index={volumeCrosshairIndex[2]}
+                            opacity={volumeSliceOpacity}
+                            crosshair={volumeCrosshair}
+                            onSlicePick={handleVolumeSlicePick}
+                            viewPreset="free"
+                            showPrimarySlice={false}
+                            spatialSlices={{
+                              x: volumeNavigationLinked ? volumeCrosshairIndex[0] : volumePaneIndices.x,
+                              y: volumeNavigationLinked ? volumeCrosshairIndex[1] : volumePaneIndices.y,
+                              z: volumeNavigationLinked ? volumeCrosshairIndex[2] : volumePaneIndices.z,
+                            }}
+                            spatialPlaneVisibility={volumeSpatialPlaneVisibility}
+                            showAxes={true}
+                            contourEnabled={false}
+                            windowMode={volumeWindowMode}
+                            onSliceHover={setVolumeSliceHover}
+                            showIsosurface={volumeShowIsosurface}
+                            isoValue={volumeIsoValue}
+                            isoSmoothing={volumeIsoSmooth}
+                            isoSmoothingIterations={volumeIsoSmoothIterations}
+                            showCropBox={volumeShowCropBox}
+                            cropCenter={volumeSamplingClamped.center}
+                            cropExtents={volumeSamplingClamped.extents}
+                            cropGizmoEnabled={volumeCropGizmoEnabled}
+                            cropGizmoMode={volumeCropGizmoMode}
+                            clipToCrop={volumeClipToCrop}
+                            onCropChange={handleVolumeCropChange}
+                            showStreamlines={volumeShowStreamlines}
+                            streamlineSeeds={volumeStreamlineSeeds}
+                            streamlineStepSize={volumeStreamlineStepSize}
+                            streamlineMaxSteps={volumeStreamlineMaxSteps}
+                            streamlineMaxLength={volumeStreamlineMaxLength}
+                            cameraCommand={volumeCameraCommand}
+                            initialCameraState={volumeCameraState}
+                            onCameraStateChange={handleVolumeCameraStateChange}
+                            captureToken={workbookCaptureToken}
+                            onCaptureThumbnail={handleWorkbookThumbnail}
+                          />
                         </div>
-                        <div style={{ fontSize: 11 }}>
-                          Grid r{canonicalVolumeObject.identity.sampledGridRevision} · {canonicalVolumeObject.spatial.dimensions.join(" × ")} · {canonicalVolumeObject.spatial.sampleCount.toLocaleString()} samples
-                        </div>
-                        <div style={{ fontSize: 11 }}>
-                          Range {fmt(volumeScalarRange.min)} … {fmt(volumeScalarRange.max)}
-                        </div>
-                        <div style={{ fontSize: 10, color: "#64748b" }}>
-                          {volumeNavigationLinked
-                            ? "Linked: XY, XZ, and YZ share one physical probe. Drag, wheel, or use the keyboard in any pane."
-                            : "Unlinked: each pane keeps its own slice position while the probe remains available for inspection."}
-                        </div>
-                      </div>
+                        <div style={{ position: "absolute", top: 8, left: 8, zIndex: 3, padding: "2px 6px", borderRadius: 6, background: "rgba(255,255,255,0.86)", fontSize: 11, fontWeight: 800, pointerEvents: "none" }}>3-D spatial context</div>
+                        <button
+                          type="button"
+                          aria-label={volumeFocusedPane === "3d" ? "Restore Volume layout" : "Focus 3D pane"}
+                          onClick={() => setVolumeFocusedPane((current) => current === "3d" ? null : "3d")}
+                          style={{ position: "absolute", top: 7, right: 7, zIndex: 3, padding: "2px 6px", fontSize: 10 }}
+                        >
+                          {volumeFocusedPane === "3d" ? "Restore" : "Focus"}
+                        </button>
+                      </div>}
                     </div>
-                  ) : (
-                    <div style={{ width: "100%", height: "100%", padding: 8, boxSizing: "border-box" }}>
-                      <div
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          borderRadius: 10,
-                          overflow: "hidden",
-                          background: cleanScreenshotSceneContainerBackground,
-                          boxShadow: "0 0 0 1px #e0e0e0",
-                        }}
-                      >
-                        <VolumeViewer
-                          dataset={activeDataset?.kind === "volume" ? activeDataset : null}
-                          vectorGrid={volumeVectorGrid}
-                          axis={"z"}
-                          index={volumeCrosshairIndex[2]}
-                          opacity={volumeSliceOpacity}
-                          crosshair={volumeCrosshair}
-                          onSlicePick={handleVolumeSlicePick}
-                          viewPreset="free"
-                          showAxes={true}
-                          contourEnabled={volumeContourEnabled}
-                          contourCount={volumeContourCount}
-                          windowMode={volumeWindowMode}
-                          onSliceReport={setVolumeSliceReport}
-                          onSliceHover={setVolumeSliceHover}
-                          showIsosurface={volumeShowIsosurface}
-                          isoValue={volumeIsoValue}
-                          isoSmoothing={volumeIsoSmooth}
-                          isoSmoothingIterations={volumeIsoSmoothIterations}
-                          showCropBox={volumeShowCropBox}
-                          cropCenter={volumeSamplingClamped.center}
-                          cropExtents={volumeSamplingClamped.extents}
-                          cropGizmoEnabled={volumeCropGizmoEnabled}
-                          cropGizmoMode={volumeCropGizmoMode}
-                          onCropChange={handleVolumeCropChange}
-                          showStreamlines={volumeShowStreamlines}
-                          streamlineSeeds={volumeStreamlineSeeds}
-                          streamlineStepSize={volumeStreamlineStepSize}
-                          streamlineMaxSteps={volumeStreamlineMaxSteps}
-                          streamlineMaxLength={volumeStreamlineMaxLength}
-                          captureToken={workbookCaptureToken}
-                          onCaptureThumbnail={handleWorkbookThumbnail}
-                        />
-                      </div>
-                    </div>
-                  )
+                    );
+                  })()
                 ) : (
                   <div
                     style={{
@@ -115186,6 +115261,10 @@ type SurfacesLeftPanelProps = {
   volumeCrosshairValue: number | null;
   volumeCrosshairGradMag: number | null;
   volumeViewMode: "slices" | "3d";
+  volumeLayout: "quad" | "slices" | "3d" | "xy" | "xz" | "yz";
+  volumeFocusedPane: "xy" | "xz" | "yz" | "3d" | null;
+  volumeSpatialPlaneVisibility: Record<SliceAxis, boolean>;
+  volumeClipToCrop: boolean;
   volumeOpacity: number;
   volumeVectorPresetId: VectorPresetId;
   volumeVectorPresetLabel: string;
@@ -115249,6 +115328,11 @@ type SurfacesLeftPanelProps = {
   onChangeVolumeSeedAxis: (axis: SliceAxis) => void;
   onChangeVolumeSeedIndex: (value: number) => void;
   onChangeVolumeViewMode: (mode: "slices" | "3d") => void;
+  onChangeVolumeLayout: (layout: "quad" | "slices" | "3d" | "xy" | "xz" | "yz") => void;
+  onToggleVolumeSpatialPlane: (axis: SliceAxis, visible: boolean) => void;
+  onToggleVolumeClipToCrop: (enabled: boolean) => void;
+  onToggleVolumePaneFocus: (pane: "xy" | "xz" | "yz" | "3d") => void;
+  onVolumeCameraCommand: (kind: "fit-volume" | "fit-crop" | "reset") => void;
   onChangeVolumeOpacity: (value: number) => void;
   onChangeVolumeVectorPreset: (id: VectorPresetId) => void;
   onToggleVolumeStreamlines: (v: boolean) => void;
@@ -115990,6 +116074,10 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   volumeCrosshairValue,
   volumeCrosshairGradMag,
   volumeViewMode,
+  volumeLayout,
+  volumeFocusedPane,
+  volumeSpatialPlaneVisibility,
+  volumeClipToCrop,
   volumeOpacity,
   volumeVectorPresetId,
   volumeVectorPresetLabel,
@@ -116053,6 +116141,11 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeVolumeSeedAxis,
   onChangeVolumeSeedIndex,
   onChangeVolumeViewMode,
+  onChangeVolumeLayout,
+  onToggleVolumeSpatialPlane,
+  onToggleVolumeClipToCrop,
+  onToggleVolumePaneFocus,
+  onVolumeCameraCommand,
   onChangeVolumeOpacity,
   onChangeVolumeVectorPreset,
   onToggleVolumeStreamlines,
@@ -118007,23 +118100,42 @@ onChangeImplicitExpr,
           )}
 
           <div style={{ fontWeight: 700, margin: "10px 0 6px" }}>View</div>
-          <div style={pillRow}>
-            <button
-              type="button"
-              onClick={() => onChangeVolumeViewMode("slices")}
-              style={pill(volumeViewMode === "slices")}
-              aria-pressed={volumeViewMode === "slices"}
-            >
-              Slices
-            </button>
-            <button
-              type="button"
-              onClick={() => onChangeVolumeViewMode("3d")}
-              style={pill(volumeViewMode === "3d")}
-              aria-pressed={volumeViewMode === "3d"}
-            >
-              3D
-            </button>
+          <div style={pillRow} data-testid="volume-layout-presets">
+            {(["quad", "slices", "3d", "xy", "xz", "yz"] as const).map((layout) => (
+              <button
+                key={layout}
+                type="button"
+                onClick={() => onChangeVolumeLayout(layout)}
+                style={pill(volumeLayout === layout && !volumeFocusedPane)}
+                aria-pressed={volumeLayout === layout && !volumeFocusedPane}
+              >
+                {layout === "quad" ? "Quad" : layout === "slices" ? "Slices" : layout === "3d" ? "3D" : layout.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <div style={{ marginTop: 8, padding: 8, border: "1px solid #d8e2ef", borderRadius: 8, background: "#f8fbff" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>3-D spatial context</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {(["x", "y", "z"] as const).map((axis) => (
+                <label key={`spatial-plane-${axis}`} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                  <input
+                    type="checkbox"
+                    checked={volumeSpatialPlaneVisibility[axis]}
+                    onChange={(event) => onToggleVolumeSpatialPlane(axis, event.target.checked)}
+                  />
+                  {axis === "x" ? "YZ" : axis === "y" ? "XZ" : "XY"} plane
+                </label>
+              ))}
+              <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                <input type="checkbox" checked={volumeClipToCrop} onChange={(event) => onToggleVolumeClipToCrop(event.target.checked)} />
+                Clip to crop
+              </label>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 7 }}>
+              <button type="button" onClick={() => onVolumeCameraCommand("fit-volume")} style={{ padding: "3px 7px", fontSize: 10 }}>Fit volume</button>
+              <button type="button" onClick={() => onVolumeCameraCommand("fit-crop")} style={{ padding: "3px 7px", fontSize: 10 }}>Fit crop</button>
+              <button type="button" onClick={() => onVolumeCameraCommand("reset")} style={{ padding: "3px 7px", fontSize: 10 }}>Reset 3D camera</button>
+            </div>
           </div>
 
           <div style={{ fontWeight: 700, margin: "10px 0 6px" }}>Volume slice</div>

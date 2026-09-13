@@ -85,15 +85,22 @@ test.describe("Workspace navigation", () => {
         "Volume 1 · definition 1 · grid 1"
       );
 
+      const layoutPresets = detailedControls.getByTestId("volume-layout-presets");
+      await expect(layoutPresets.getByRole("button", { name: "Quad", exact: true })).toHaveAttribute("aria-pressed", "true");
       const volume3d = detailedControls.getByRole("button", { name: "3D", exact: true });
       await volume3d.click();
       await expect(volume3d).toHaveAttribute("aria-pressed", "true");
+      await expect(ctx.page.getByTestId("volume-slice-grid")).toHaveAttribute("data-volume-layout", "3d");
+      await expect(ctx.page.getByTestId("volume-spatial-pane").locator("canvas")).toBeVisible();
       await expect(volumeInspector.getByTestId("volume-details-card")).toContainText(
         "Volume 1 · definition 1 · grid 1"
       );
       await detailedControls.getByRole("button", { name: "Slices", exact: true }).click();
+      await expect(ctx.page.getByTestId("volume-slice-grid")).toHaveAttribute("data-volume-layout", "slices");
+      await layoutPresets.getByRole("button", { name: "Quad", exact: true }).click();
 
       const sliceGrid = ctx.page.getByTestId("volume-slice-grid");
+      await expect(sliceGrid).toHaveAttribute("data-volume-layout", "quad");
       await expect(sliceGrid).toBeVisible();
       await expect(ctx.page.getByTestId("volume-overview-pane")).toBeVisible();
       for (const paneId of ["xy", "xz", "yz"] as const) {
@@ -117,6 +124,27 @@ test.describe("Workspace navigation", () => {
           expect(box?.height ?? 0).toBeGreaterThan(100);
         }
       }
+
+      for (const layout of ["XY", "XZ", "YZ"] as const) {
+        await layoutPresets.getByRole("button", { name: layout, exact: true }).click();
+        await expect(sliceGrid).toHaveAttribute("data-volume-layout", layout.toLowerCase());
+        const pane = ctx.page.getByTestId(`volume-slice-pane-${layout.toLowerCase()}`);
+        const box = await pane.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box?.width ?? 0).toBeGreaterThan(300);
+        expect(box?.height ?? 0).toBeGreaterThan(250);
+      }
+      await layoutPresets.getByRole("button", { name: "Quad", exact: true }).click();
+      await ctx.page.getByRole("button", { name: "Focus 3D pane", exact: true }).click();
+      await expect(sliceGrid).toHaveAttribute("data-volume-layout", "3d");
+      await ctx.page.getByRole("button", { name: "Restore Volume layout", exact: true }).click();
+      await expect(sliceGrid).toHaveAttribute("data-volume-layout", "quad");
+      await detailedControls.getByLabel("XY plane").uncheck();
+      await detailedControls.getByRole("button", { name: "Fit volume", exact: true }).click();
+      await expect(volumeInspector.getByTestId("volume-details-card")).toContainText(
+        "Volume 1 · definition 1 · grid 1"
+      );
+      await detailedControls.getByLabel("XY plane").check();
 
       await expect(ctx.page.getByTestId("volume-orientation-xy-horizontal")).toHaveText("+X");
       await expect(ctx.page.getByTestId("volume-orientation-xy-vertical")).toHaveText("+Y");

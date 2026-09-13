@@ -98,7 +98,7 @@ The following foundation is complete at `5d4cf6c` and is not a substitute for an
 | 2 — Canonical Volume model and provenance | Complete | Canonical contracts, representation adapters, revision/provenance tracking, managed typed-array handles and stale derived-result records | — |
 | 3 — Orthogonal navigation and probe | Complete | Direction-aware shared probe, independent pane positions, wheel/drag/keyboard navigation, orientation conventions, pinned probe lifecycle | — |
 | 4 — Sampling, resampling and allocation planning | Complete | Dimension presets, draft/apply recipes, centering/interpolation/boundary policies, estimates, limits, resampling and non-finite diagnostics | — |
-| 5 — Quad layout and spatial 3-D context | Planned | Three slice panes and separate free 3-D mode | Quad layout, layout presets, embedded planes, clipping and deterministic camera behavior |
+| 5 — Quad layout and spatial 3-D context | Complete | Quad default, six layout presets, embedded slice planes, focus, clipping and persistent deterministic camera state | — |
 | 6 — Worker, cache and memory foundation | Planned | VTK worker bridge and CPU fallbacks | Shared job lifecycle, cancellation, progress, dependency keys and memory guard |
 | 7 — Derived isosurface workflow | Planned | CPU/VTK extraction, smoothing, displayed mesh | First-class result, preview/apply, metrics, lifecycle and Mesh/Geometry handoff |
 | 8 — Voxelization and signed-distance workflow | Planned | VTK mesh distance field, signed option, auto bounds | Occupancy, sign confidence, SDF operations, provenance and round-trip validation |
@@ -312,7 +312,7 @@ Acceptance:
 
 Planned message: `feat(volume): complete synchronized orthogonal navigation and probing`
 
-**Status: complete (2026-09-13).**
+**Status: complete (2026-09-13, `763e50b`).**
 
 Delivered:
 
@@ -356,7 +356,7 @@ Acceptance:
 
 Planned message: `feat(volume): add controlled sampling resampling and allocation planning`
 
-**Status: complete (2026-09-13).**
+**Status: complete (2026-09-13, `30662c7`).**
 
 Delivered:
 
@@ -401,7 +401,24 @@ Acceptance:
 
 Planned message: `feat(volume): add quad slice and spatial 3d workspace layouts`
 
-**Status: planned.**
+**Status: complete (2026-09-13).**
+
+Delivered:
+
+- Added Quad, Slices, 3D, XY, XZ, and YZ layouts; Quad is the professional default.
+- Replaced the former text-only overview tile with a live free-camera 3-D spatial context containing the active XY/XZ/YZ planes, physical crosshair and probe marker, crop box/gizmo, streamlines, and current isosurface.
+- Each pane can be focused/maximized and restored without changing the underlying Volume revision.
+- Added independent XY/XZ/YZ plane visibility, crop clipping, Fit volume, Fit crop, and deterministic camera reset controls.
+- The three spatial planes share one 3-D scene. Plane textures, geometries, clipping state, controls, animation frames, and WebGL resources are explicitly disposed when the dataset or layout changes.
+- Workspace recipes preserve the layout, focused pane, plane visibility, clipping choice, and camera position/target/up independently of sampled-grid revisions.
+- Extended the desktop regression to exercise all six layouts, alternating resizes, focus/restore, plane visibility, camera actions, non-zero pane bounds, and revision stability.
+
+Where in the UI:
+
+- Open **Volume** and scroll to **View** in the detailed controls beneath the gallery.
+- Choose **Quad** to see XY, XZ, YZ, and the live **3-D spatial context** together; choose Slices, 3D, XY, XZ, or YZ for dedicated layouts.
+- Use **Focus** in the upper-right of any pane to maximize it and **Restore** to return to the selected layout.
+- The **3-D spatial context** card contains the three plane-visibility switches, **Clip to crop**, **Fit volume**, **Fit crop**, and **Reset 3D camera**.
 
 Implementation:
 

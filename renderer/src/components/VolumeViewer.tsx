@@ -42,6 +42,9 @@ export type VolumeViewerProps = {
   coarseStep?: number;
   orientationConvention?: "scientific" | "radiological";
   viewPreset?: "free" | "xy" | "xz" | "yz";
+  showPrimarySlice?: boolean;
+  spatialSlices?: Record<SliceAxis, number>;
+  spatialPlaneVisibility?: Record<SliceAxis, boolean>;
   showAxes?: boolean;
   contourEnabled?: boolean;
   contourCount?: number;
@@ -57,7 +60,11 @@ export type VolumeViewerProps = {
   cropExtents?: [number, number, number];
   cropGizmoEnabled?: boolean;
   cropGizmoMode?: "move" | "scale";
+  clipToCrop?: boolean;
   onCropChange?: (center: [number, number, number], extents: [number, number, number]) => void;
+  cameraCommand?: { token: number; kind: "fit-volume" | "fit-crop" | "reset" };
+  initialCameraState?: VolumeCameraState | null;
+  onCameraStateChange?: (state: VolumeCameraState) => void;
   showStreamlines?: boolean;
   streamlineSeeds?: [number, number, number][];
   streamlineStepSize?: number;
@@ -65,6 +72,12 @@ export type VolumeViewerProps = {
   streamlineMaxLength?: number;
   captureToken?: number;
   onCaptureThumbnail?: (dataUrl: string | null) => void;
+};
+
+export type VolumeCameraState = {
+  position: [number, number, number];
+  target: [number, number, number];
+  up: [number, number, number];
 };
 
 type VolumeSliceRuntimeState =
@@ -95,8 +108,13 @@ const clearGroup = (group: THREE.Group) => {
     }
     if (anyChild.material) {
       const mat = anyChild.material as THREE.Material | THREE.Material[];
-      if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-      else mat.dispose();
+      const disposeMaterial = (material: THREE.Material) => {
+        const map = (material as THREE.MeshBasicMaterial).map;
+        map?.dispose();
+        material.dispose();
+      };
+      if (Array.isArray(mat)) mat.forEach(disposeMaterial);
+      else disposeMaterial(mat);
     }
   }
 };
@@ -152,6 +170,23 @@ const getGridBounds = (grid: VolumeDataset["grid"]) => {
   const dz = max[2] - min[2];
   const diag = Math.sqrt(dx * dx + dy * dy + dz * dz);
   return { min, max, center, diag };
+};
+
+const getCropClippingPlanes = (
+  center?: [number, number, number],
+  extents?: [number, number, number]
+): THREE.Plane[] => {
+  if (!center || !extents) return [];
+  const min = center.map((value, axis) => value - Math.abs(extents[axis])) as [number, number, number];
+  const max = center.map((value, axis) => value + Math.abs(extents[axis])) as [number, number, number];
+  return [
+    new THREE.Plane(new THREE.Vector3(1, 0, 0), -min[0]),
+    new THREE.Plane(new THREE.Vector3(-1, 0, 0), max[0]),
+    new THREE.Plane(new THREE.Vector3(0, 1, 0), -min[1]),
+    new THREE.Plane(new THREE.Vector3(0, -1, 0), max[1]),
+    new THREE.Plane(new THREE.Vector3(0, 0, 1), -min[2]),
+    new THREE.Plane(new THREE.Vector3(0, 0, -1), max[2]),
+  ];
 };
 
 const getSliceCameraFrame = (
@@ -240,6 +275,9 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   coarseStep = 5,
   orientationConvention = "scientific",
   viewPreset = "free",
+  showPrimarySlice = true,
+  spatialSlices,
+  spatialPlaneVisibility,
   showAxes = true,
   contourEnabled = false,
   contourCount = 6,
@@ -255,7 +293,11 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   cropExtents,
   cropGizmoEnabled = false,
   cropGizmoMode = "move",
+  clipToCrop = false,
   onCropChange,
+  cameraCommand,
+  initialCameraState = null,
+  onCameraStateChange,
   showStreamlines = false,
   streamlineSeeds,
   streamlineStepSize,
@@ -272,6 +314,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   const axesHelperRef = useRef<THREE.AxesHelper | null>(null);
   const sliceMeshRef = useRef<THREE.Mesh | null>(null);
   const sliceTextureRef = useRef<THREE.DataTexture | null>(null);
+  const spatialPlanesGroupRef = useRef<THREE.Group | null>(null);
   const contourGroupRef = useRef<THREE.Group | null>(null);
   const hoverMarkerRef = useRef<THREE.Mesh | null>(null);
   const isoMeshRef = useRef<THREE.Mesh | null>(null);
@@ -296,6 +339,8 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   const hoverRafRef = useRef<number | null>(null);
   const viewPresetRef = useRef(viewPreset);
   const orientationConventionRef = useRef(orientationConvention);
+  const initialCameraStateRef = useRef(initialCameraState);
+  const onCameraStateChangeRef = useRef(onCameraStateChange);
   const [isoMeshToken, setIsoMeshToken] = useState(0);
   const [sceneReady, setSceneReady] = useState(false);
   const [sliceRuntimeState, setSliceRuntimeState] = useState<VolumeSliceRuntimeState>({
@@ -318,6 +363,10 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   useEffect(() => {
     orientationConventionRef.current = orientationConvention;
   }, [orientationConvention]);
+
+  useEffect(() => {
+    onCameraStateChangeRef.current = onCameraStateChange;
+  }, [onCameraStateChange]);
 
   useEffect(() => {
     sliceDataRef.current = sliceData;
@@ -407,6 +456,42 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   }, [axis, dataset, index, orientationConvention, viewPreset, sceneReady]);
 
   useEffect(() => {
+    if (!sceneReady || !cameraCommand || cameraCommand.token <= 0 || viewPreset !== "free") return;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    const gridBounds = dataset?.grid ? getGridBounds(dataset.grid) : { center: [0, 0, 0] as [number, number, number], diag: 2 };
+    const useCrop = cameraCommand.kind === "fit-crop" && cropCenter && cropExtents;
+    const center = new THREE.Vector3(...(useCrop ? cropCenter : gridBounds.center));
+    const cropDiag = useCrop
+      ? 2 * Math.hypot(cropExtents[0], cropExtents[1], cropExtents[2])
+      : gridBounds.diag;
+    const distance = Math.max(1, cropDiag * 1.4);
+    camera.up.set(0, 1, 0);
+    camera.position.set(center.x + distance * 0.9, center.y + distance * 0.82, center.z + distance);
+    controls.target.copy(center);
+    camera.lookAt(center);
+    controls.update();
+    onCameraStateChangeRef.current?.({
+      position: [camera.position.x, camera.position.y, camera.position.z],
+      target: [center.x, center.y, center.z],
+      up: [camera.up.x, camera.up.y, camera.up.z],
+    });
+  }, [cameraCommand, cropCenter, cropExtents, dataset, sceneReady, viewPreset]);
+
+  useEffect(() => {
+    if (!sceneReady || viewPreset !== "free" || !initialCameraState) return;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    camera.position.set(...initialCameraState.position);
+    camera.up.set(...initialCameraState.up);
+    controls.target.set(...initialCameraState.target);
+    camera.lookAt(controls.target);
+    controls.update();
+  }, [initialCameraState, sceneReady, viewPreset]);
+
+  useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
 
@@ -418,6 +503,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.localClippingEnabled = true;
     renderer.setPixelRatio(window.devicePixelRatio || 1);
     renderer.setSize(mount.clientWidth || 1, mount.clientHeight || 1);
     mount.appendChild(renderer.domElement);
@@ -427,7 +513,22 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     controls.dampingFactor = 0.08;
     controls.target.set(0, 0, 0);
     configureOrbitControlsForTouch(controls);
+    const restoredCamera = initialCameraStateRef.current;
+    if (restoredCamera) {
+      camera.position.set(...restoredCamera.position);
+      camera.up.set(...restoredCamera.up);
+      controls.target.set(...restoredCamera.target);
+      camera.lookAt(controls.target);
+    }
     controls.update();
+    const publishCameraState = () => {
+      onCameraStateChangeRef.current?.({
+        position: [camera.position.x, camera.position.y, camera.position.z],
+        target: [controls.target.x, controls.target.y, controls.target.z],
+        up: [camera.up.x, camera.up.y, camera.up.z],
+      });
+    };
+    controls.addEventListener("end", publishCameraState);
 
     const axes = new THREE.AxesHelper(1.25);
     const axesMat = axes.material as THREE.Material | THREE.Material[];
@@ -558,6 +659,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       ro.disconnect();
       window.removeEventListener("resize", handleResize);
       disposeTouchGestures();
+      controls.removeEventListener("end", publishCameraState);
       controls.dispose();
       renderer.dispose();
       renderer.domElement.remove();
@@ -576,6 +678,11 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
         clearGroup(contourGroupRef.current);
         scene.remove(contourGroupRef.current);
         contourGroupRef.current = null;
+      }
+      if (spatialPlanesGroupRef.current) {
+        clearGroup(spatialPlanesGroupRef.current);
+        scene.remove(spatialPlanesGroupRef.current);
+        spatialPlanesGroupRef.current = null;
       }
       if (streamlinesGroupRef.current) {
         clearGroup(streamlinesGroupRef.current);
@@ -749,7 +856,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     const scene = sceneRef.current;
     if (!scene) return;
 
-    if (!sliceData || !sliceImage) {
+    if (!showPrimarySlice || !sliceData || !sliceImage) {
       if (sliceMeshRef.current) {
         scene.remove(sliceMeshRef.current);
         disposeMesh(sliceMeshRef.current);
@@ -816,7 +923,59 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       const basis = new THREE.Matrix4().makeBasis(u, v, n);
       mesh.setRotationFromMatrix(basis);
     }
-  }, [sliceData, sliceImage]);
+  }, [showPrimarySlice, sliceData, sliceImage]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    if (spatialPlanesGroupRef.current) {
+      clearGroup(spatialPlanesGroupRef.current);
+      scene.remove(spatialPlanesGroupRef.current);
+      spatialPlanesGroupRef.current = null;
+    }
+    if (viewPreset !== "free" || !dataset?.grid || !spatialSlices) return;
+
+    const group = new THREE.Group();
+    group.name = "volume-spatial-slice-planes";
+    const colors: Record<SliceAxis, number> = { x: 0xef4444, y: 0x22c55e, z: 0x3b82f6 };
+    const clippingPlanes = clipToCrop ? getCropClippingPlanes(cropCenter, cropExtents) : [];
+    for (const sliceAxis of ["x", "y", "z"] as const) {
+      if (spatialPlaneVisibility?.[sliceAxis] === false) continue;
+      const data = sliceVolumeData(dataset.grid, sliceAxis, spatialSlices[sliceAxis]);
+      const image = buildSliceImage(data);
+      const texture = new THREE.DataTexture(image.data, image.width, image.height, THREE.RGBAFormat);
+      texture.magFilter = THREE.LinearFilter;
+      texture.minFilter = THREE.LinearFilter;
+      texture.needsUpdate = true;
+      const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        color: colors[sliceAxis],
+        transparent: true,
+        opacity: Math.min(0.72, Math.max(0.16, opacity * 0.55)),
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        clippingPlanes,
+      });
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(data.plane.width, data.plane.height), material);
+      mesh.name = `volume-spatial-plane-${sliceAxis}`;
+      mesh.position.set(...data.plane.center);
+      const basis = new THREE.Matrix4().makeBasis(
+        new THREE.Vector3(...data.plane.u).normalize(),
+        new THREE.Vector3(...data.plane.v).normalize(),
+        new THREE.Vector3(...data.plane.normal).normalize()
+      );
+      mesh.setRotationFromMatrix(basis);
+      mesh.renderOrder = 3;
+      group.add(mesh);
+    }
+    scene.add(group);
+    spatialPlanesGroupRef.current = group;
+    return () => {
+      if (spatialPlanesGroupRef.current === group) spatialPlanesGroupRef.current = null;
+      clearGroup(group);
+      scene.remove(group);
+    };
+  }, [clipToCrop, cropCenter, cropExtents, dataset, opacity, spatialPlaneVisibility, spatialSlices, viewPreset]);
 
   useEffect(() => {
     if (!sliceData || !sliceWindow || !onSliceReport) {
@@ -1203,6 +1362,18 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       }
     }
   }, [showCropBox, cropCenter, cropExtents, cropGizmoEnabled]);
+
+  useEffect(() => {
+    const clippingPlanes = clipToCrop ? getCropClippingPlanes(cropCenter, cropExtents) : [];
+    for (const mesh of [sliceMeshRef.current, isoMeshRef.current]) {
+      if (!mesh) continue;
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const material of materials) {
+        material.clippingPlanes = clippingPlanes;
+        material.needsUpdate = true;
+      }
+    }
+  }, [clipToCrop, cropCenter, cropExtents, isoMeshToken, sliceImage]);
 
   useEffect(() => {
     const scene = sceneRef.current;
