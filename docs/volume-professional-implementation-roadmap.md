@@ -99,17 +99,17 @@ The following foundation is complete at `5d4cf6c` and is not a substitute for an
 | 3 — Orthogonal navigation and probe | Complete | Direction-aware shared probe, independent pane positions, wheel/drag/keyboard navigation, orientation conventions, pinned probe lifecycle | — |
 | 4 — Sampling, resampling and allocation planning | Complete | Dimension presets, draft/apply recipes, centering/interpolation/boundary policies, estimates, limits, resampling and non-finite diagnostics | — |
 | 5 — Quad layout and spatial 3-D context | Complete | Quad default, six layout presets, embedded slice planes, focus, clipping and persistent deterministic camera state | — |
-| 6 — Worker, cache and memory foundation | Planned | VTK worker bridge and CPU fallbacks | Shared job lifecycle, cancellation, progress, dependency keys and memory guard |
-| 7 — Derived isosurface workflow | Planned | CPU/VTK extraction, smoothing, displayed mesh | First-class result, preview/apply, metrics, lifecycle and Mesh/Geometry handoff |
-| 8 — Voxelization and signed-distance workflow | Planned | VTK mesh distance field, signed option, auto bounds | Occupancy, sign confidence, SDF operations, provenance and round-trip validation |
-| 9 — Transfer functions and volume rendering | Planned | Grayscale slices, opacity and windowing | MIP/MinIP/average/DVR, editable color/opacity transfer functions and ray controls |
+| 6 — Worker, cache and memory foundation | Complete | Revision-safe jobs, cancellation, progress, dependency cache keys, memory guard and brick contract | — |
+| 7 — Derived isosurface workflow | Complete | First-class preview/apply result, metrics, lifecycle and Mesh/Geometry handoff | — |
+| 8 — Voxelization and signed-distance workflow | Complete | Occupancy, sign confidence, SDF operations, provenance and round-trip validation | — |
+| 9 — Transfer functions and volume rendering | Complete | MIP/MinIP/average/DVR, editable transfer functions, quality controls and explicit fallbacks | — |
 | 10 — Volume analysis results | Complete | Revision-safe shared result history, managed derivative fields, quantitative regions, critical points and iso statistics | — |
 | 11 — Masks, labels and segmentation | Complete | Typed categorical masks/labels, thresholding, connectivity, morphology, editable metadata and reversible previews | — |
 | 12 — Scientific import and export | Complete | RAW+metadata, NPY and VTI staged adapters, metadata preview, guarded import and atomic desktop export | — |
 | 13 — Volume comparison and difference | Complete | Explicit alignment, managed difference fields, scalar/label metrics, baseline workflow and synchronized comparison state | — |
-| 14 — Persistence, history and Workbook round trip | Planned | Partial recipe restore, scene graph and thumbnails | Dense-data policy, undo/redo, derived results, external references and full round trips |
-| 15 — Regression matrix and performance gates | Planned | Navigation regression and general memory profiles | Canonical datasets, numerical hashes/tolerances, cancellation and volume budgets |
-| 16 — Professional Volume workflow freeze | Planned | Existing module freeze conventions | Final UI contract, docs, screenshots, acceptance command and release evidence |
+| 14 — Persistence, history and Workbook round trip | Complete | Compact recipes/references, relink diagnostics, revision-aware history and replayable Volume blocks | — |
+| 15 — Regression matrix and performance gates | Complete | Canonical datasets, numerical signatures, responsive E2E and explicit performance budgets | — |
+| 16 — Professional Volume workflow freeze | Complete | Frozen UI/workflow/backend contract, guide, reviewed screenshots and aggregate release gate | — |
 
 Progress entries receive a Git hash only after focused tests, typecheck, production build, required E2E/backend checks, and roadmap updates pass.
 
@@ -710,7 +710,7 @@ Acceptance:
 
 Planned message: `feat(volume): complete persistence history and workbook round trips`
 
-**Status: complete.** Implemented in `renderer/src/volume/persistence.ts`, the Volume Inspector History workspace, compact artifact-aware session documents, revision-safe undo/redo, and replayable Volume Workbook blocks.
+**Status: complete (2026-09-13, `b1c13e7`).** Implemented in `renderer/src/volume/persistence.ts`, the Volume Inspector History workspace, compact artifact-aware session documents, revision-safe undo/redo, and replayable Volume Workbook blocks.
 
 Existing foundation:
 
@@ -735,7 +735,7 @@ Acceptance:
 
 Planned message: `test(volume): add canonical regression and performance gates`
 
-**Status: complete.** Implemented in `renderer/src/volume/regression.ts`, canonical numerical/signature tests, a reviewed performance-budget profile, a Volume persistence E2E gate, and maintained Volume-specific unit, E2E, backend, and profile commands.
+**Status: complete (2026-09-13, `9b41d1e`).** Implemented in `renderer/src/volume/regression.ts`, canonical numerical/signature tests, a reviewed performance-budget profile, a Volume persistence E2E gate, and maintained Volume-specific unit, E2E, backend, and profile commands.
 
 Deterministic matrix:
 
@@ -773,7 +773,7 @@ Acceptance:
 
 Planned message: `docs(volume): freeze professional volume workflow and acceptance evidence`
 
-**Status: planned.**
+**Status: complete.** Frozen in `docs/volume-v1-workflow-freeze.md` with canonical workflow and UI locations, backend/fallback policy, limitations, troubleshooting, reproducible evidence, screenshot capture, and the aggregate `test:volume:v1:acceptance` release gate.
 
 Implementation:
 

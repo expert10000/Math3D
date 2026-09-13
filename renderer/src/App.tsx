@@ -35844,7 +35844,7 @@ const App: React.FC = () => {
       renderMode: volumeRenderMode,
       renderQuality: volumeRenderQuality,
       textureSampling: volumeTextureSampling,
-      transferFunction: serializeVolumeTransferFunction(volumeTransferFunction),
+      transferFunction: volumeTransferFunction,
       renderWindow: [...volumeRenderWindow],
       isoValue: volumeIsoValue,
       crop: null,
@@ -35883,7 +35883,7 @@ const App: React.FC = () => {
     setVolumeRenderMode(view.renderMode);
     setVolumeRenderQuality(view.renderQuality);
     setVolumeTextureSampling(view.textureSampling);
-    setVolumeTransferFunction(restoreVolumeTransferFunction(view.transferFunction));
+    setVolumeTransferFunction(view.transferFunction);
     setVolumeTransferPresetId(view.transferFunction.id);
     setVolumeRenderWindow([...view.renderWindow]);
     setVolumeIsoValue(view.isoValue);

@@ -107,6 +107,8 @@
     "test:volume:v1:e2e": "playwright test tests/e2e/volume-v1-acceptance.spec.ts tests/e2e/workspace-navigation.spec.ts --grep Volume --reporter=list",
     "verify:volume:v1:backends": "npm --prefix renderer test -- src/volume/infrastructure.test.ts src/volume/computation.test.ts src/volume/transferFunction.test.ts && node -e \"console.log('[volume] Native worker and reviewed CPU/render fallbacks verified; optional VTK path is capability-gated.')\"",
     "profile:volume:v1": "npm --prefix renderer test -- src/volume/performanceProfile.test.ts",
+    "capture:volume:v1:screenshots": "node scripts/capture-volume-v1-baselines.mjs",
+    "test:volume:v1:acceptance": "npm run test:volume:v1:unit && npm run typecheck:noemit && npm run build:core && npm run test:volume:v1:e2e && npm run test:app:responsive:smoke && npm run verify:volume:v1:backends && npm run profile:volume:v1",
     "analyze:deps:prepare": "node -e \"const fs=require('node:fs');['analysis/dependency/arkit','analysis/dependency/dependency-cruiser'].forEach((d)=>fs.mkdirSync(d,{recursive:true}));\"",
     "analyze:deps:depcruise:err": "npm run analyze:deps:prepare && depcruise --config analysis/dependency/dependency-cruiser.cjs apps packages renderer src scripts --output-type err-long > analysis/dependency/dependency-cruiser/report.err.txt",
     "analyze:deps:depcruise:json": "npm run analyze:deps:prepare && depcruise --config analysis/dependency/dependency-cruiser.cjs apps packages renderer src scripts --output-type json > analysis/dependency/dependency-cruiser/report.json",

@@ -209,7 +209,8 @@ export class VolumeWorkspaceHistory {
   private currentValue: VolumeWorkspaceDocument;
   private undoValues: VolumeWorkspaceDocument[] = [];
   private redoValues: VolumeWorkspaceDocument[] = [];
-  constructor(initial: VolumeWorkspaceDocument, private readonly limit = 32) { this.currentValue = clone(initial); }
+  private readonly limit: number;
+  constructor(initial: VolumeWorkspaceDocument, limit = 32) { this.currentValue = clone(initial); this.limit = limit; }
   current(): VolumeWorkspaceDocument { return clone(this.currentValue); }
   push(next: VolumeWorkspaceDocument): void {
     this.undoValues.push(clone(this.currentValue));

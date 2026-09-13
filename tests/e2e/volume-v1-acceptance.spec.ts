@@ -13,10 +13,11 @@ test.describe("Volume v1 acceptance", () => {
       await inspector.getByTestId("volume-inspector-tab-history").click();
       const history = inspector.getByTestId("volume-history-card");
       await expect(history).toContainText("Workspace undo / redo");
-      const download = ctx.page.waitForEvent("download");
       await history.getByTestId("volume-save-workspace").click();
-      expect((await download).suggestedFilename()).toMatch(/^math3d-volume-.+\.json$/);
       await expect(history).toContainText("dense payloads remain external or managed");
+      const saved = await ctx.page.evaluate(() => localStorage.getItem("math3d.volume.workspace.v1"));
+      expect(saved).toContain('"kind":"math3d-volume-workspace"');
+      expect(saved).not.toContain('"scalars"');
 
       const controls = ctx.page.getByTestId("volume-detailed-controls");
       await controls.getByRole("button", { name: "3D", exact: true }).click();
@@ -25,6 +26,10 @@ test.describe("Volume v1 acceptance", () => {
 
       for (const viewport of [{ width: 900, height: 1180 }, { width: 390, height: 844 }]) {
         await ctx.page.setViewportSize(viewport);
+        await ctx.page.waitForTimeout(500);
+        const compactInspectorButton = ctx.page.getByRole("button", { name: "Inspector", exact: true }).last();
+        await expect(compactInspectorButton).toBeVisible();
+        if (!(await inspector.isVisible())) await compactInspectorButton.click();
         await expect(ctx.page.getByTestId("volume-inspector")).toBeVisible();
         await expect(history.getByRole("button", { name: "Save workspace" })).toBeEnabled();
       }
