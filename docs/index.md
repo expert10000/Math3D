@@ -10,6 +10,9 @@ This site combines:
 - CGAL Python worker setup: `cgal-python-worker-setup.md` (one-command vcpkg + patched pygalmesh setup).
 - Surface Analysis professional roadmap: `surface-analysis-professional-implementation-roadmap.md` (12-commit consolidation plan, Surface/Mesh ownership boundary, linked SurfaceMesh workflow, and v1 acceptance target).
 - Surface Analysis v1 freeze: `surface-analysis-v1-freeze.md` (final UI ownership, regression/tolerance matrix, accepted journeys, maintained gates, and change policy).
+- Curves professional roadmap: `curves-professional-implementation-roadmap.md` (15-commit consolidation plan and implementation record).
+- Curves v1 freeze: `curves-v1-freeze.md` (canonical workflow, mathematical conventions, result lifecycle, interoperability, QA, screenshot baselines, and change policy).
+- Curve spline conventions: `curves-spline-conventions.md` (Bézier/B-spline/NURBS basis, knot, weight, continuity, editing, and serialization rules).
 - Repository folder map: `repository-layout.md`.
 
 ## Public frontend

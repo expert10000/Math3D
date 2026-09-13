@@ -253,6 +253,30 @@ async function checkGeometryLayout(page, viewport) {
   await expectBoxInViewport(page.locator('[data-testid="geometry-right-panel"]'), "geometry inspector drawer", viewport, { minHeight: 180 });
 }
 
+async function checkCurveLayout(page, viewport) {
+  writeLog(process.stdout, `[responsive-smoke] ${viewport.name} curves`);
+  await page.locator('[data-testid="workspace-nav-curves"]').evaluate((element) => element.click());
+  await waitForStableLayout(page);
+
+  await expectBoxInViewport(page.locator('[data-testid="main-viewer"]'), "curve viewer", viewport, {
+    insideViewport: false,
+    minHeight: 160,
+  });
+  await expectTouchContained(page, "curve viewer");
+
+  if (!viewport.name.startsWith("phone")) {
+    await expectBoxInViewport(page.locator('[data-testid="curves-professional-shell"]'), "curve professional navigation", viewport, {
+      minHeight: 34,
+    });
+    const analysis = page.locator('[data-testid="curve-panel-analysis"]');
+    await analysis.click();
+    await page.locator('[data-testid="curve-workspace-analysis"]').waitFor({ state: "visible", timeout: timeoutMs });
+  } else {
+    await expectHidden(page.locator('[data-testid="curves-professional-shell"]'), "curve professional navigation");
+    await page.getByText(/^Curve Core$/i).first().waitFor({ state: "visible", timeout: timeoutMs });
+  }
+}
+
 async function runViewport(browser, viewport) {
   writeLog(process.stdout, `[responsive-smoke] ${viewport.name} start`);
   let page = await browser.newPage({ viewport: { width: viewport.width, height: viewport.height } });
@@ -279,6 +303,18 @@ async function runViewport(browser, viewport) {
     await boundedCleanup(`${viewport.name} geometry page`, () => page.close({ runBeforeUnload: false }));
   }
 
+  page = await browser.newPage({ viewport: { width: viewport.width, height: viewport.height } });
+  page.setDefaultTimeout(timeoutMs);
+  try {
+    await page.goto(`${baseUrl}?responsive-smoke=${encodeURIComponent(viewport.name)}-curves-${Date.now()}`);
+    await waitForStableLayout(page);
+    await checkCurveLayout(page, viewport);
+  } catch (error) {
+    throw new Error(`[${viewport.name} curves] ${String(error?.message ?? error)}`);
+  } finally {
+    await boundedCleanup(`${viewport.name} curves page`, () => page.close({ runBeforeUnload: false }));
+  }
+
   writeLog(process.stdout, `[responsive-smoke] ${viewport.name} ok`);
 }
 
@@ -298,7 +334,7 @@ async function run() {
     await boundedCleanup("browser", () => browser.close());
     if (previewServer) await boundedCleanup("preview server", async () => { previewServer.kill(); });
   }
-  writeLog(process.stdout, "[responsive-smoke] ok responsive layout + drawers + sheets + touch containment");
+  writeLog(process.stdout, "[responsive-smoke] ok responsive Surface/Geometry/Curves layout + drawers + sheets + touch containment");
 }
 
 run().catch((error) => {
