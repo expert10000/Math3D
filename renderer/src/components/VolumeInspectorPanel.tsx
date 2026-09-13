@@ -14,9 +14,12 @@ import {
   type VolumeOrientationConvention,
   type VolumeProbeComparison,
   type VolumeProbeReading,
+  type VolumeSdfMetadata,
+  type VolumeSdfOperation,
+  type VolumeSdfSignDiagnostics,
 } from "../volume";
 
-type VolumeInspectorTab = "volume" | "field" | "sampling" | "slice" | "derived" | "diagnostics" | "history";
+type VolumeInspectorTab = "volume" | "field" | "sampling" | "slice" | "sdf" | "derived" | "diagnostics" | "history";
 
 export type VolumeInspectorPanelProps = {
   dataset: VolumeDataset;
@@ -44,6 +47,13 @@ export type VolumeInspectorPanelProps = {
   isoValue: number;
   distanceBusy: boolean;
   distanceError: string | null;
+  sdfMetadata: VolumeSdfMetadata | null;
+  sdfDiagnostics: VolumeSdfSignDiagnostics | null;
+  sdfOperation: VolumeSdfOperation;
+  sdfAmount: number;
+  sdfSmoothness: number;
+  sdfPreviewActive: boolean;
+  sdfStatus: string;
   definitionError: string | null;
   computeDiagnostics: VolumeComputeDiagnostics;
   derivedResults: readonly VolumeDerivedResult[];
@@ -57,6 +67,12 @@ export type VolumeInspectorPanelProps = {
   onSendDerivedResultToGeometry: (id: string) => void;
   onOpenDerivedResultInMeshAnalysis: (id: string) => void;
   onDeleteDerivedResult: (id: string) => void;
+  onChangeSdfOperation: (operation: VolumeSdfOperation) => void;
+  onChangeSdfAmount: (amount: number) => void;
+  onChangeSdfSmoothness: (smoothness: number) => void;
+  onPreviewSdfOperation: () => void;
+  onApplySdfOperation: () => void;
+  onCancelSdfPreview: () => void;
   onChangeNavigationLinked: (linked: boolean) => void;
   onChangeVoxelSnap: (enabled: boolean) => void;
   onChangeCoarseStep: (step: number) => void;
@@ -76,6 +92,7 @@ const tabs: ReadonlyArray<{ id: VolumeInspectorTab; label: string }> = [
   { id: "field", label: "Field" },
   { id: "sampling", label: "Sampling" },
   { id: "slice", label: "Slice" },
+  { id: "sdf", label: "SDF" },
   { id: "derived", label: "Derived Surfaces" },
   { id: "diagnostics", label: "Diagnostics" },
   { id: "history", label: "History" },
@@ -146,6 +163,13 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   isoValue,
   distanceBusy,
   distanceError,
+  sdfMetadata,
+  sdfDiagnostics,
+  sdfOperation,
+  sdfAmount,
+  sdfSmoothness,
+  sdfPreviewActive,
+  sdfStatus,
   definitionError,
   computeDiagnostics,
   derivedResults,
@@ -159,6 +183,12 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   onSendDerivedResultToGeometry,
   onOpenDerivedResultInMeshAnalysis,
   onDeleteDerivedResult,
+  onChangeSdfOperation,
+  onChangeSdfAmount,
+  onChangeSdfSmoothness,
+  onPreviewSdfOperation,
+  onApplySdfOperation,
+  onCancelSdfPreview,
   onChangeNavigationLinked,
   onChangeVoxelSnap,
   onChangeCoarseStep,
@@ -463,6 +493,62 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
           )) : (
             <div style={{ fontSize: 11, color: "#64748b" }}>No derived isosurface result is active.</div>
           )}
+        </div>
+      )}
+
+      {activeTab === "sdf" && (
+        <div style={cardStyle} data-testid="volume-sdf-card">
+          <div style={{ fontWeight: 850, fontSize: 12 }}>Voxelization &amp; Signed Distance</div>
+          {sdfMetadata ? (
+            <>
+              <DetailRow label="Output" value={sdfMetadata.output} />
+              <DetailRow label="Operation" value={sdfMetadata.operation} />
+              <DetailRow label="Backend" value={`${sdfMetadata.backend} ${sdfMetadata.backendVersion}`} />
+              <DetailRow label="Sources" value={sdfMetadata.sources.map((source) => `${source.label} r${source.revision}`).join(" + ")} />
+              <DetailRow label="Sampling" value={sdfMetadata.sampling.dimensions.join(" × ")} />
+            </>
+          ) : <div style={{ fontSize: 10, color: "#64748b" }}>No sampled distance field is active.</div>}
+          {sdfDiagnostics && (
+            <div data-testid="volume-sdf-sign-diagnostics" style={{ border: `1px solid ${sdfDiagnostics.reliable ? "#86d5a5" : "#f0b56b"}`, borderRadius: 7, padding: 7, background: sdfDiagnostics.reliable ? "#f0fdf4" : "#fff7ed" }}>
+              <DetailRow label="Sign confidence" value={sdfDiagnostics.confidence} />
+              <DetailRow label="Watertight" value={sdfDiagnostics.watertight ? "yes" : "no"} />
+              <DetailRow label="Orientation" value={sdfDiagnostics.orientation} />
+              <DetailRow label="Boundary / non-manifold" value={`${sdfDiagnostics.boundaryEdgeCount} / ${sdfDiagnostics.nonManifoldEdgeCount}`} />
+              <div style={{ fontSize: 10, color: sdfDiagnostics.reliable ? "#166534" : "#9a3412" }}>{sdfDiagnostics.message}</div>
+            </div>
+          )}
+          <label style={{ display: "grid", gap: 4, fontSize: 10 }}>
+            Operation
+            <select aria-label="SDF operation" value={sdfOperation} onChange={(event) => onChangeSdfOperation(event.target.value as VolumeSdfOperation)}>
+              <option value="occupancy">Occupancy voxelization</option>
+              <option value="union">Union with current preset</option>
+              <option value="intersection">Intersection with current preset</option>
+              <option value="subtraction">Subtract current preset</option>
+              <option value="offset">Offset</option>
+              <option value="shell">Shell</option>
+              <option value="smooth-union">Smooth union with current preset</option>
+              <option value="reinitialize">Reinitialize signed distance</option>
+            </select>
+          </label>
+          {(sdfOperation === "offset" || sdfOperation === "shell") && (
+            <label style={{ display: "grid", gap: 4, fontSize: 10 }}>
+              Distance {formatNumber(sdfAmount)}
+              <input aria-label="SDF distance" type="range" min={-1} max={1} step={0.01} value={sdfAmount} onChange={(event) => onChangeSdfAmount(Number(event.target.value))} />
+            </label>
+          )}
+          {sdfOperation === "smooth-union" && (
+            <label style={{ display: "grid", gap: 4, fontSize: 10 }}>
+              Smoothness {formatNumber(sdfSmoothness)}
+              <input aria-label="SDF smoothness" type="range" min={0.01} max={1} step={0.01} value={sdfSmoothness} onChange={(event) => onChangeSdfSmoothness(Number(event.target.value))} />
+            </label>
+          )}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" data-testid="volume-sdf-preview" onClick={onPreviewSdfOperation} disabled={!sdfMetadata}>Preview</button>
+            <button type="button" data-testid="volume-sdf-apply" onClick={onApplySdfOperation} disabled={!sdfPreviewActive}>Apply</button>
+            <button type="button" data-testid="volume-sdf-cancel" onClick={onCancelSdfPreview} disabled={!sdfPreviewActive}>Discard preview</button>
+          </div>
+          <div role="status" data-testid="volume-sdf-status" style={{ color: sdfPreviewActive ? "#1d4ed8" : "#475569", fontSize: 10 }}>{sdfStatus}</div>
+          {sdfMetadata?.warnings.map((warning) => <div key={warning} style={{ color: "#92400e", fontSize: 10 }}>{warning}</div>)}
         </div>
       )}
 

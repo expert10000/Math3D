@@ -919,14 +919,18 @@ import { buildSliceSeeds } from "./scene/volume/streamlines";
 import {
   adaptAnalyticVolume,
   adaptCustomFieldVolume,
+  adaptSdfOperationVolume,
   adaptVectorGridVolume,
   adaptVtkDistanceVolume,
   analyzeVolumeIsosurface,
+  analyzeMeshForSignedDistance,
+  applySdfOperation,
   computeVolumeIsosurfaceNormals,
   createBrowserVolumeWorkerCoordinator,
   createVolumeDerivedResult,
   createVolumeIsosurfaceMesh,
   createVolumeJobRequest,
+  createSdfMetadata,
   createVolumeTypedArrayStore,
   deleteVolumeDerivedResult,
   detachVolumeDerivedResult,
@@ -950,6 +954,9 @@ import {
   type VolumeJobLifecycle,
   type VolumeOrientationConvention,
   type VolumeRevisionTracker,
+  type VolumeSdfMetadata,
+  type VolumeSdfOperation,
+  type VolumeSdfSignDiagnostics,
 } from "./volume";
 import {
   getDefaultRotationalProfileExpressions,
@@ -34563,6 +34570,12 @@ const App: React.FC = () => {
   const [volumeDistanceError, setVolumeDistanceError] = useState<string | null>(null);
   const [volumeDistanceSigned, setVolumeDistanceSigned] = useState(false);
   const [volumeDistanceAutoBounds, setVolumeDistanceAutoBounds] = useState(true);
+  const [volumeSdfDiagnostics, setVolumeSdfDiagnostics] = useState<VolumeSdfSignDiagnostics | null>(null);
+  const [volumeSdfOperation, setVolumeSdfOperation] = useState<VolumeSdfOperation>("offset");
+  const [volumeSdfAmount, setVolumeSdfAmount] = useState(0.15);
+  const [volumeSdfSmoothness, setVolumeSdfSmoothness] = useState(0.2);
+  const [volumeSdfPreview, setVolumeSdfPreview] = useState<VolumeDataset | null>(null);
+  const [volumeSdfStatus, setVolumeSdfStatus] = useState("Build a signed distance field to enable non-destructive SDF operations.");
   const [volumePresetId, setVolumePresetId] = useState<VolumePresetId>(DEFAULT_VOLUME_PRESET_ID);
   const [volumeParams, setVolumeParams] = useState<VolumePresetParams>(() =>
     getVolumePresetDefaultParams(DEFAULT_VOLUME_PRESET_ID)
@@ -34604,6 +34617,8 @@ const App: React.FC = () => {
     const nextParams = getVolumePresetDefaultParams(id);
     const nextBounds = getVolumePresetBounds(nextPreset, resolveVolumePresetParams(nextPreset, nextParams));
     setVolumeDatasetOverride(null);
+    setVolumeSdfPreview(null);
+    setVolumeSdfDiagnostics(null);
     setVolumeDistanceError(null);
     setVolumePresetId(id);
     setVolumeParams(nextParams);
@@ -34676,7 +34691,7 @@ const App: React.FC = () => {
     volumeInterpolation !== volumeAppliedInterpolation ||
     volumeBoundaryMode !== volumeAppliedBoundaryMode,
   [volumeAppliedBoundaryMode, volumeAppliedCentering, volumeAppliedInterpolation, volumeAppliedSamplingClamped, volumeBoundaryMode, volumeCentering, volumeInterpolation, volumeSamplingClamped]);
-  const volumeDatasetPreset = useMemo(
+  const volumeDatasetPreset = useMemo<VolumeDataset>(
     () => ({
       kind: "volume" as const,
       grid: buildVolumeGridFromPreset(volumePresetId, {
@@ -34689,7 +34704,7 @@ const App: React.FC = () => {
     }),
     [volumeAppliedCentering, volumeAppliedSamplingBounds, volumeAppliedSamplingClamped.dims, volumePresetId, volumeParamsResolved, volumeCustomCompiled.fn]
   );
-  const volumeDataset = volumeDatasetOverride ?? volumeDatasetPreset;
+  const volumeDataset: VolumeDataset = volumeSdfPreview ?? volumeDatasetOverride ?? volumeDatasetPreset;
   const volumeNonFiniteReport = useMemo(
     () => reportVolumeNonFinite(volumeDataset.grid.scalars, volumeDataset.grid.dims),
     [volumeDataset]
@@ -34704,6 +34719,20 @@ const App: React.FC = () => {
       positionUnits: "unit",
       centering: volumeDataset.grid.centering ?? volumeAppliedCentering,
     };
+    if (volumeDataset.sdf && volumeDataset.sdf.operation !== "distance") {
+      return adaptSdfOperationVolume({
+        ...common,
+        id: `sdf:${volumeDataset.sourceId ?? volumeDataset.sdf.operation}`,
+        label: volumeDataset.label ?? `SDF ${volumeDataset.sdf.operation}`,
+        operation: volumeDataset.sdf.operation,
+        sourceObjectIds: volumeDataset.sdf.sources.map((source) => source.objectId),
+        sourceObjectRevisions: volumeDataset.sdf.sources.map((source) => source.revision),
+        parameters: volumeDataset.sdf.parameters,
+        engine: volumeDataset.sdf.backend,
+        engineVersion: volumeDataset.sdf.backendVersion,
+        valueUnits: "unit",
+      });
+    }
     if (volumeDatasetOverride) {
       const sourceObjectId = volumeDatasetOverride.sourceId ?? "surface-distance-source";
       return adaptVtkDistanceVolume({
@@ -62659,6 +62688,12 @@ case "mobius":
       for (let i = 0; i < vertCount; i++) seq[i] = i;
       indices = seq;
     }
+    const signDiagnostics = analyzeMeshForSignedDistance(positions, indices);
+    setVolumeSdfDiagnostics(signDiagnostics);
+    if (volumeDistanceSigned && !signDiagnostics.reliable) {
+      setVolumeDistanceError(`${signDiagnostics.message} Use unsigned distance or repair the source mesh.`);
+      return;
+    }
 
     let sampling = volumeSamplingClamped;
     let bounds = volumeSamplingBounds;
@@ -62706,17 +62741,48 @@ case "mobius":
       };
       const label = `Distance field: ${surfaceMeshData.label ?? "Surface mesh"}`;
       const note = volumeDistanceSigned
-        ? "Signed distance to surface mesh (winding number)."
+        ? `Signed distance to surface mesh (winding number; ${signDiagnostics.confidence} sign confidence).`
         : "Unsigned distance to surface mesh.";
+      const sourceKind = surfaceMeshData.source.kind === "geometryObject" ? "geometry" : "mesh";
+      const sourceRevision = "meshRevision" in surfaceMeshData.source
+        ? surfaceMeshData.source.meshRevision
+        : "sourceSurfaceRevision" in surfaceMeshData.source
+          ? surfaceMeshData.source.sourceSurfaceRevision
+          : "sourceCurveRevision" in surfaceMeshData.source
+            ? surfaceMeshData.source.sourceCurveRevision
+            : 1;
+      const sourceObjectId = "objectId" in surfaceMeshData.source && surfaceMeshData.source.objectId
+        ? surfaceMeshData.source.objectId
+        : `${sourceKind}:${surfaceMeshData.label ?? "surface-mesh"}`;
+      const sdfMetadata = createSdfMetadata({
+        grid,
+        output: volumeDistanceSigned ? "signed-distance" : "unsigned-distance",
+        operation: "distance",
+        sources: [{
+          module: sourceKind,
+          objectId: sourceObjectId,
+          revision: Number(sourceRevision) || 1,
+          label: surfaceMeshData.label ?? "Surface mesh",
+          transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+          positionUnits: "unit",
+        }],
+        sign: signDiagnostics,
+        backend: "vtk-distance",
+        backendVersion: "1",
+        warnings: signDiagnostics.orientation === "inward" ? ["Source winding is inward; verify the signed-distance convention before downstream booleans."] : [],
+      });
       const distanceDataset: VolumeDataset = {
         kind: "volume",
         grid: { ...grid, centering: "point" },
         label,
         note,
         distanceSigned: volumeDistanceSigned,
-        sourceId: "surface_distance",
+        sourceId: sourceObjectId,
+        sdf: sdfMetadata,
       };
       setVolumeDatasetOverride(distanceDataset);
+      setVolumeSdfPreview(null);
+      setVolumeSdfStatus(`${volumeDistanceSigned ? "Signed" : "Unsigned"} distance applied · ${signDiagnostics.message}`);
       volumeOriginalDatasetRef.current = distanceDataset;
       volumeOriginalSamplingRef.current = sampling;
       setVolumeSampling(sampling);
@@ -62753,7 +62819,107 @@ case "mobius":
 
   const handleClearVolumeOverride = useCallback(() => {
     setVolumeDatasetOverride(null);
+    setVolumeSdfPreview(null);
+    setVolumeSdfDiagnostics(null);
+    setVolumeSdfStatus("Build a signed distance field to enable non-destructive SDF operations.");
     setVolumeDistanceError(null);
+  }, []);
+
+  const handlePreviewVolumeSdfOperation = useCallback(() => {
+    const source = volumeDatasetOverride;
+    if (!source) {
+      setVolumeSdfStatus("Build or route a distance field before previewing SDF operations.");
+      return;
+    }
+    if (volumeSdfOperation !== "occupancy" && source.distanceSigned !== true) {
+      setVolumeSdfStatus("Signed SDF operations require a reliable signed-distance source.");
+      return;
+    }
+    try {
+      const isBinary = ["union", "intersection", "subtraction", "smooth-union"].includes(volumeSdfOperation);
+      const values = applySdfOperation(
+        source.grid,
+        volumeSdfOperation,
+        isBinary ? volumeDatasetPreset.grid : null,
+        { amount: volumeSdfAmount, smoothness: volumeSdfSmoothness, reinitializeIterations: 4 },
+      );
+      const output = volumeSdfOperation === "occupancy" ? "occupancy" : "signed-distance";
+      const sources = [
+        ...(source.sdf?.sources ?? [{
+          module: "volume" as const,
+          objectId: source.sourceId ?? "distance-source",
+          revision: canonicalVolumeObject.identity.volumeRevision,
+          label: source.label ?? "Distance field",
+          transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+          positionUnits: "unit",
+        }]),
+        ...(isBinary ? [{
+          module: "volume" as const,
+          objectId: `preset:${volumePresetId}`,
+          revision: 1,
+          label: volumePreset.label,
+          transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+          positionUnits: "unit",
+        }] : []),
+      ];
+      const grid = { ...source.grid, scalars: values };
+      const metadata = createSdfMetadata({
+        grid,
+        output,
+        operation: volumeSdfOperation,
+        parameters: { amount: volumeSdfAmount, smoothness: volumeSdfSmoothness, reinitializeIterations: 4 },
+        sources,
+        sign: source.sdf?.sign ?? volumeSdfDiagnostics ?? {
+          reliable: false,
+          confidence: "unavailable",
+          watertight: false,
+          orientation: "unknown",
+          boundaryEdgeCount: 0,
+          nonManifoldEdgeCount: 0,
+          signedVolume: null,
+          message: "Source sign diagnostics are unavailable.",
+        },
+        backend: "math3d-native-sdf",
+        backendVersion: "1",
+        warnings: isBinary ? ["The current analytic preset is sampled as the secondary zero-set operand."] : [],
+      });
+      setVolumeSdfPreview({
+        kind: "volume",
+        grid,
+        label: `Preview: SDF ${volumeSdfOperation}`,
+        note: `Non-destructive ${volumeSdfOperation} preview.`,
+        distanceSigned: output === "signed-distance",
+        sourceId: `preview:${source.sourceId ?? "sdf"}:${volumeSdfOperation}`,
+        sdf: metadata,
+      });
+      setVolumeShowIsosurface(true);
+      setVolumeIsoValue(output === "occupancy" ? 0.5 : 0);
+      setVolumeSdfStatus(`Preview ready: ${volumeSdfOperation} · ${sources.length} provenance source${sources.length === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setVolumeSdfStatus(error instanceof Error ? error.message : "SDF preview failed.");
+    }
+  }, [canonicalVolumeObject.identity.volumeRevision, volumeDatasetOverride, volumeDatasetPreset.grid, volumePreset.label, volumePresetId, volumeSdfAmount, volumeSdfDiagnostics, volumeSdfOperation, volumeSdfSmoothness]);
+
+  const handleApplyVolumeSdfOperation = useCallback(() => {
+    if (!volumeSdfPreview) {
+      setVolumeSdfStatus("Preview an SDF operation before applying it.");
+      return;
+    }
+    const applied = {
+      ...volumeSdfPreview,
+      label: volumeSdfPreview.label?.replace(/^Preview:\s*/, "") ?? "Applied SDF operation",
+      note: volumeSdfPreview.note?.replace("Non-destructive", "Applied") ?? "Applied SDF operation.",
+      sourceId: volumeSdfPreview.sourceId?.replace(/^preview:/, "applied:"),
+    };
+    setVolumeDatasetOverride(applied);
+    volumeOriginalDatasetRef.current = applied;
+    setVolumeSdfPreview(null);
+    setVolumeSdfStatus(`Applied ${applied.sdf?.operation ?? "SDF operation"}; previous source remains recorded in provenance.`);
+  }, [volumeSdfPreview]);
+
+  const handleCancelVolumeSdfPreview = useCallback(() => {
+    setVolumeSdfPreview(null);
+    setVolumeSdfStatus("SDF preview discarded; the applied source is unchanged.");
   }, []);
 
   const handleUseImplicitBakeDomain = useCallback(() => {
@@ -87167,6 +87333,13 @@ case "mobius":
                         isoValue={volumeIsoValue}
                         distanceBusy={volumeDistanceBusy}
                         distanceError={volumeDistanceError}
+                        sdfMetadata={volumeDataset.sdf ?? null}
+                        sdfDiagnostics={volumeDataset.sdf?.sign ?? volumeSdfDiagnostics}
+                        sdfOperation={volumeSdfOperation}
+                        sdfAmount={volumeSdfAmount}
+                        sdfSmoothness={volumeSdfSmoothness}
+                        sdfPreviewActive={!!volumeSdfPreview}
+                        sdfStatus={volumeSdfStatus}
                         definitionError={volumeCustomCompiled.error}
                         computeDiagnostics={volumeComputeDiagnostics}
                         derivedResults={volumeDerivedResults}
@@ -87180,6 +87353,12 @@ case "mobius":
                         onSendDerivedResultToGeometry={(id) => openVolumeDerivedResult(id, "geometry")}
                         onOpenDerivedResultInMeshAnalysis={(id) => openVolumeDerivedResult(id, "analysis")}
                         onDeleteDerivedResult={handleDeleteVolumeDerivedResult}
+                        onChangeSdfOperation={setVolumeSdfOperation}
+                        onChangeSdfAmount={setVolumeSdfAmount}
+                        onChangeSdfSmoothness={setVolumeSdfSmoothness}
+                        onPreviewSdfOperation={handlePreviewVolumeSdfOperation}
+                        onApplySdfOperation={handleApplyVolumeSdfOperation}
+                        onCancelSdfPreview={handleCancelVolumeSdfPreview}
                         onChangeNavigationLinked={handleChangeVolumeNavigationLinked}
                         onChangeVoxelSnap={setVolumeVoxelSnap}
                         onChangeCoarseStep={setVolumeCoarseStep}

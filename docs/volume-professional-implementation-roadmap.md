@@ -537,7 +537,22 @@ Acceptance:
 
 Planned message: `feat(volume): complete voxelization signed-distance and sdf operations`
 
-**Status: planned.**
+**Status: complete.** Implemented in `renderer/src/volume/sdf.ts`, the canonical Volume/SDF contracts and adapters, the Volume Inspector SDF workspace, and deterministic Volume unit/Electron coverage.
+
+Delivered:
+
+- Added explicit occupancy, unsigned-distance, and signed-distance outputs with shared sampling metadata and source-aware Volume objects.
+- Added welded-edge closedness/non-manifold validation, oriented-volume checks, sign confidence, and a hard guard that prevents an open or invalid mesh from silently producing a reliable signed field.
+- Added deterministic union, intersection, subtraction, offset, shell, smooth union, and signed-distance reinitialization operations.
+- Added a non-destructive preview/apply/discard workflow. Boolean previews sample the current analytic preset as a second operand and preserve every source in multi-source provenance.
+- Preserved source module/object IDs, revisions, transforms, units, sampling recipe, backend/version, parameters, warnings, and sign diagnostics on distance and SDF-derived datasets.
+- Added round-trip tests for closed/open mesh sign classification, SDF truth cases, reinitialization, iso-zero extraction bounds/volume, and exact multi-source sampling/provenance.
+
+Where in the UI:
+
+1. From a Surface or Mesh, open **Analysis → Surface → Volume**, choose signed or unsigned distance, and use **Surface → Volume (distance)**.
+2. In Volume, open the right **Inspector → SDF** tab to inspect output type, backend, source revisions, sampling, watertightness, orientation, boundary/non-manifold edges, and sign confidence.
+3. Choose an SDF operation and use **Preview**, then **Apply** or **Discard preview**. The spatial isosurface updates without overwriting the applied source until Apply.
 
 Existing foundation:
 

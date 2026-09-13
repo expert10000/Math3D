@@ -10,6 +10,55 @@ export type VolumeCentering = "point" | "cell";
 export type VolumeMissingValuePolicy = "none" | "nan" | "sentinel";
 export type VolumeLifecycleState = "current" | "stale" | "snapshot" | "detached";
 
+export type VolumeSdfOperation =
+  | "distance"
+  | "occupancy"
+  | "union"
+  | "intersection"
+  | "subtraction"
+  | "offset"
+  | "shell"
+  | "smooth-union"
+  | "reinitialize";
+
+export type VolumeSdfSourceDescriptor = {
+  module: "surfaces" | "mesh" | "geometry" | "volume";
+  objectId: string;
+  revision: number;
+  label: string;
+  transform: readonly number[];
+  positionUnits: string;
+};
+
+export type VolumeSdfSignDiagnostics = {
+  reliable: boolean;
+  confidence: "high" | "low" | "unavailable";
+  watertight: boolean;
+  orientation: "outward" | "inward" | "degenerate" | "unknown";
+  boundaryEdgeCount: number;
+  nonManifoldEdgeCount: number;
+  signedVolume: number | null;
+  message: string;
+};
+
+export type VolumeSdfMetadata = {
+  output: "occupancy" | "unsigned-distance" | "signed-distance";
+  operation: VolumeSdfOperation;
+  parameters: Readonly<Record<string, number>>;
+  sources: readonly VolumeSdfSourceDescriptor[];
+  sign: VolumeSdfSignDiagnostics;
+  sampling: {
+    dimensions: readonly [number, number, number];
+    origin: readonly [number, number, number];
+    spacing: readonly [number, number, number];
+    centering: VolumeCentering;
+  };
+  backend: string;
+  backendVersion: string;
+  warnings: readonly string[];
+  createdAt: number;
+};
+
 export type VolumeDirectionMatrix = readonly [
   number, number, number,
   number, number, number,
@@ -78,6 +127,13 @@ export type VolumeSource =
       sourceObjectId: string;
       sourceObjectRevision: number;
       signed: boolean;
+    }
+  | {
+      kind: "sdf-operation";
+      operation: VolumeSdfOperation;
+      sourceObjectIds: readonly string[];
+      sourceObjectRevisions: readonly number[];
+      parameters: Readonly<Record<string, number>>;
     };
 
 export type VolumeProvenance = {

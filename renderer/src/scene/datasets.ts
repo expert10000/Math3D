@@ -1,5 +1,6 @@
 import type { Image2D, PolylineSet, SurfaceMesh } from "./renderPrimitives";
 export type { DatasetKind, SurfaceType } from "@math3d/core";
+import type { VolumeSdfMetadata } from "../volume/contracts";
 
 export type SurfaceScalarField = {
   name: string;
@@ -57,6 +58,7 @@ export type VolumeDataset = {
   note?: string;
   distanceSigned?: boolean;
   sourceId?: string;
+  sdf?: VolumeSdfMetadata;
 };
 
 export type Dataset = MeshDataset | VolumeDataset;

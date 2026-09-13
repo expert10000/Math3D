@@ -318,6 +318,34 @@ export const adaptVtkDistanceVolume = (args: Omit<VolumeAdapterOptions, "source"
   }],
 });
 
+export const adaptSdfOperationVolume = (args: Omit<VolumeAdapterOptions, "source" | "representation" | "values"> & {
+  operation: Extract<VolumeSource, { kind: "sdf-operation" }>["operation"];
+  sourceObjectIds: readonly string[];
+  sourceObjectRevisions: readonly number[];
+  parameters?: Readonly<Record<string, number>>;
+  dataset: VolumeDataset;
+}): VolumeObject => adaptVolumeObject({
+  ...args,
+  source: {
+    kind: "sdf-operation",
+    operation: args.operation,
+    sourceObjectIds: [...args.sourceObjectIds],
+    sourceObjectRevisions: [...args.sourceObjectRevisions],
+    parameters: { ...(args.parameters ?? {}) },
+  },
+  representation: "distance-field",
+  values: args.dataset.grid.scalars,
+  grid: args.dataset.grid,
+  valueUnits: args.valueUnits ?? args.positionUnits ?? "unit",
+  engine: args.engine ?? "Math3D SDF",
+  dependencies: args.dependencies ?? args.sourceObjectIds.map((objectId, index) => ({
+    module: "volume" as const,
+    objectId,
+    revision: args.sourceObjectRevisions[index] ?? 1,
+    relation: "derived-from" as const,
+  })),
+});
+
 export const serializeVolumeObject = (volume: VolumeObject): SerializedVolumeObject => JSON.parse(JSON.stringify(volume));
 
 export const restoreVolumeObject = (serialized: SerializedVolumeObject): VolumeObject => {
@@ -436,12 +464,14 @@ export const describeVolumeSource = (source: VolumeSource): string => {
   if (source.kind === "custom-field") return "Custom analytic field";
   if (source.kind === "dense-grid") return source.importRef ? `Imported grid · ${source.importRef}` : source.sourceLabel;
   if (source.kind === "vector-preset") return `Vector preset · ${source.presetId}`;
+  if (source.kind === "sdf-operation") return `SDF ${source.operation} · ${source.sourceObjectIds.length} source${source.sourceObjectIds.length === 1 ? "" : "s"}`;
   return `${source.signed ? "Signed" : "Unsigned"} VTK distance field`;
 };
 
 export const describeVolumeDefinition = (source: VolumeSource): string => {
   if (source.kind === "analytic-preset" || source.kind === "custom-field") return source.expression;
   if (source.kind === "vtk-distance") return `distance(${source.sourceObjectId}@${source.sourceObjectRevision})`;
+  if (source.kind === "sdf-operation") return `${source.operation}(${source.sourceObjectIds.map((id, index) => `${id}@${source.sourceObjectRevisions[index] ?? 1}`).join(", ")})`;
   if (source.kind === "vector-preset") return source.presetId;
   return source.importRef ?? source.sourceLabel;
 };

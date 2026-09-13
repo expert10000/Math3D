@@ -3,6 +3,7 @@ export * from "./computation";
 export * from "./infrastructure";
 export * from "./isosurface";
 export * from "./probes";
+export * from "./sdf";
 export * from "./spatial";
 export * from "./typedArrayStore";
 export * from "./workerCoordinator";

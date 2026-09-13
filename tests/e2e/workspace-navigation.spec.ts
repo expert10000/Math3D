@@ -202,6 +202,10 @@ test.describe("Workspace navigation", () => {
         "No derived isosurface result is active."
       );
       await volumeInspector.getByTestId("volume-inspector-tab-volume").click();
+      await volumeInspector.getByTestId("volume-inspector-tab-sdf").click();
+      await expect(volumeInspector.getByTestId("volume-sdf-card")).toContainText("No sampled distance field is active.");
+      await expect(volumeInspector.getByTestId("volume-sdf-preview")).toBeDisabled();
+      await volumeInspector.getByTestId("volume-inspector-tab-volume").click();
 
       await expect(detailedControls.getByTestId("volume-allocation-plan")).toContainText(/262\D144 samples/);
       await expect(detailedControls.getByLabel("Centering")).toHaveValue("point");
