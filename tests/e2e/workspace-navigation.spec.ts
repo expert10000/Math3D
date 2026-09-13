@@ -230,6 +230,10 @@ test.describe("Workspace navigation", () => {
 
       await detailedControls.getByTestId("volume-show-isosurface").check();
       await expect(ctx.page.getByTestId("volume-slice-viewer-free")).toHaveAttribute("data-camera-fit-target", "mesh");
+      const automaticFitRevision = await ctx.page.getByTestId("volume-slice-viewer-free").getAttribute("data-camera-fit-revision");
+      await volumeInspector.getByTestId("volume-inspector-tab-slice").click();
+      await volumeInspector.getByTestId("volume-inspector-tab-volume").click();
+      await expect(ctx.page.getByTestId("volume-slice-viewer-free")).toHaveAttribute("data-camera-fit-revision", automaticFitRevision ?? "");
       await detailedControls.getByRole("button", { name: "Fit mesh", exact: true }).click();
       await expect(ctx.page.getByTestId("volume-slice-viewer-free")).toHaveAttribute("data-camera-fit-target", "mesh");
       await detailedControls.getByTestId("volume-apply-isosurface").click();

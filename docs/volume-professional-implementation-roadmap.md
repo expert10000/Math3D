@@ -412,6 +412,7 @@ Delivered:
 - The three spatial planes share one 3-D scene. Plane textures, geometries, clipping state, controls, animation frames, and WebGL resources are explicitly disposed when the dataset or layout changes.
 - Workspace recipes preserve the layout, focused pane, plane visibility, clipping choice, and camera position/target/up independently of sampled-grid revisions.
 - Extended the desktop regression to exercise all six layouts, alternating resizes, focus/restore, plane visibility, camera actions, non-zero pane bounds, and revision stability.
+- Stabilized the spatial camera after delivery: each newly selected dataset or extracted isosurface is framed once with a full-object safety margin, restored/user camera states remain authoritative, echoed Orbit state is ignored, and intersecting transparent slice planes use deterministic draw order to prevent flicker while rotating.
 
 Where in the UI:
 
@@ -433,6 +434,7 @@ Acceptance:
 
 - All layouts survive resize and restore with no zero-size canvas or clipped pane.
 - Plane/crosshair positions agree across 2-D and 3-D views under anisotropic spacing.
+- Camera drag/zoom remains stable without parent-state snap-back, and changing Volume presets leaves the complete grid or derived isosurface visible.
 - GPU resources are disposed when layouts or datasets change; memory profile shows no monotonic leak.
 
 ### Post-Commit 5 gallery presentation update
