@@ -92,9 +92,9 @@ Baseline verification at this assessment:
 | 10 — Provenance-linked CurveMesh workflows | Complete (`c6f974e`) | Six frame-aware CurveMesh variants, revisioned lineage/mapping/lifecycle, live and baked Mesh handoff, and explicit Mesh extraction/fitting workflows | None for Commit 10 |
 | 11 — Optional VTK and CGAL adapters | Complete (`83865be`) | Capability registry, native authority, injectable optional adapters, deterministic fallback, parity, provenance, and Backend inspection | Curve-specific VTK/CGAL process bridges remain optional and unregistered in this installation |
 | 12 — Workers, dependency cache, and performance | Complete (`3f3ede0`) | Browser Worker jobs, deterministic revision/dependency cache, cancellation/progress/retry guards, reviewed performance budgets, and bounded outputs | None for Commit 12 |
-| 13 — Result lifecycle and analysis presets | Planned | Shared saved-result patterns and Surface layer presets | Curve result cards, visibility, save/compare/export, useful layered presets |
-| 14 — Regression matrix and performance gates | Planned | Exact fixtures and repository-wide E2E infrastructure | Canonical/pathological matrix, cross-module journeys, tolerances, profiles |
-| 15 — Documentation and professional workflow freeze | Planned | Geometry/Surface/Mesh freeze precedents | User workflow, conventions, engine ownership, QA checklist, screenshot baseline |
+| 13 — Result lifecycle and analysis presets | Complete (`46bb894`; visual evidence `a6dbe92`) | Typed result cards, six layered presets, evidence visibility, save/compare/export, stale guards | None for Commit 13 |
+| 14 — Regression matrix and performance gates | Complete (`d8cea9c`) | Canonical/pathological matrix, 16 cross-module journeys, maintained gates, reviewed profiles | None for Commit 14 |
+| 15 — Documentation and professional workflow freeze | Complete (`54a3844`) | Unified workflow/conventions/fallback contract, QA checklist, reproducible desktop/tablet/phone baselines | None for Commit 15 |
 
 Progress entries receive a Git hash only after the relevant focused tests, typecheck, production build, and required E2E/backend checks pass.
 
@@ -692,23 +692,30 @@ Acceptance: the maintained acceptance command proves mathematical truth cases, p
 
 Planned message: `docs(curves): document and freeze professional Curves workflow`
 
-**Status: planned.**
+**Status: implemented and validated (`54a3844`). Curves v1 is frozen.**
 
 Already implemented:
 
 - Professional workflow and freeze precedents for Geometry, Surface Analysis, and Mesh Analysis.
 
-Remaining:
+Delivered:
 
-- [ ] Document the canonical workflow: define/receive → sample → analyze → diagnose/edit/derive → Surface or CurveMesh → source return.
-- [ ] Document supported representations, exact-versus-sampled behavior, parameter/orientation/periodicity semantics, and `t ↔ s` behavior.
-- [ ] Freeze derivative, curvature, torsion, Frenet/Bishop, planar-sign, polyline, and curve-on-surface conventions.
+- [x] Document the canonical workflow: define/receive → sample → analyze → diagnose/edit/derive → Surface or CurveMesh → source return.
+- [x] Document supported representations, exact-versus-sampled behavior, parameter/orientation/periodicity semantics, and `t ↔ s` behavior.
+- [x] Freeze derivative, curvature, torsion, Frenet/Bishop, planar-sign, polyline, and curve-on-surface conventions.
 - [x] Document Bézier/B-spline/NURBS basis, knot, weight, closure, continuity, and serialization conventions. (`docs/curves-spline-conventions.md`)
-- [ ] Document source/dependency identity, stale-state rules, selection correspondence, result lifecycle, and reproducible exports.
-- [ ] Document Math3D/VTK/CGAL responsibilities and missing-backend fallback.
-- [ ] Add a Curves QA checklist, acceptance-command reference, troubleshooting notes, and desktop/tablet/phone screenshot baseline.
-- [ ] Record final additive UI decisions and any intentionally retained compatibility controls.
-- [ ] Freeze Curves v1 only after Commit 14 passes from a clean checkout.
+- [x] Document source/dependency identity, stale-state rules, selection correspondence, result lifecycle, and reproducible exports.
+- [x] Document Math3D/VTK/CGAL responsibilities and missing-backend fallback.
+- [x] Add a Curves QA checklist, acceptance-command reference, troubleshooting notes, and reproducible desktop/tablet/phone screenshot baseline.
+- [x] Record final additive UI decisions and intentionally retained compatibility controls.
+- [x] Freeze Curves v1 only after Commit 14 passes from a clean checkout.
+
+Validation for Commit 15:
+
+- `npm run test:curves:v1:acceptance` passes from the synchronized clean `main` source state: **107 tests across 19 files**, full TypeScript checks and production build, **16 Electron journeys**, backend/fallback verification, and **5 performance profiles**.
+- `npm run test:app:responsive:smoke` now enters Curves as well as Surfaces and Geometry; phone portrait, phone landscape, tablet, and desktop all pass layout, navigation, viewer, and touch-containment checks.
+- `npm run capture:curves:v1:screenshots` reproducibly generates the reviewed 1440×960 desktop, 900×1180 tablet, and 390×844 phone PNG baselines committed under `docs/assets/screenshots/curves-v1/`.
+- `docs/curves-v1-freeze.md` is the maintained contract for ownership, workflow, representations, scientific conventions, semantic selection, diagnostics, lifecycle, interoperability, backends/workers, UI responsibility, accepted journeys, QA, troubleshooting, and post-freeze change policy.
 
 Acceptance: a new contributor can understand ownership, contracts, mathematics, UI workflow, interoperability, validation, and release gates without reading `App.tsx`; the documented acceptance command passes from a clean checkout.
 
