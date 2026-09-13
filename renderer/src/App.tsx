@@ -943,6 +943,8 @@ import {
   createVolumeMemoryPlan,
   createVolumeAnalysisResultStore,
   connectedComponentsLabelMap,
+  compareVolumes,
+  createVolumeComparisonResultStore,
   createPinnedVolumeProbe,
   formatVolumeProbeText,
   isPinnedVolumeProbeStale,
@@ -956,6 +958,7 @@ import {
   exportScientificVolume,
   importScientificVolume,
   importedVolumeGrid,
+  publishVolumeComparison,
   scientificMetadataFromVolume,
   reconcileVolumeDerivedResult,
   restorePinnedVolumeProbes,
@@ -966,6 +969,10 @@ import {
   type PinnedVolumeProbe,
   type VolumeComputeDiagnostics,
   type VolumeAnalysisSummary,
+  type VolumeAlignmentPolicy,
+  type VolumeComparisonInput,
+  type VolumeComparisonSummary,
+  type VolumeComparisonView,
   type VolumeLabelDefinition,
   type VolumeDerivedResult,
   type VolumeIsosurfaceGeometry,
@@ -35612,6 +35619,58 @@ const App: React.FC = () => {
       setVolumeScientificIoStatus(`Export failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }, [canonicalVolumeObject, volumeDataset.grid.scalars]);
+  const volumeComparisonBaselineRef = useRef<VolumeComparisonInput | null>(null);
+  const [volumeComparisonBaselineLabel, setVolumeComparisonBaselineLabel] = useState<string | null>(null);
+  const [volumeComparisonAlignment, setVolumeComparisonAlignment] = useState<VolumeAlignmentPolicy>("exact-grid");
+  const [volumeComparisonView, setVolumeComparisonView] = useState<VolumeComparisonView>("a-difference");
+  const [volumeComparisonThreshold, setVolumeComparisonThreshold] = useState(0);
+  const [volumeComparisonError, setVolumeComparisonError] = useState<string | null>(null);
+  const [volumeComparisonStore, setVolumeComparisonStore] = useState(createVolumeComparisonResultStore);
+  const [volumeComparisonSnapshot, setVolumeComparisonSnapshot] = useState<{ bKey: string; summary: VolumeComparisonSummary } | null>(null);
+  const [volumeComparisonSync, setVolumeComparisonSync] = useState({ camera: true, slices: true, crosshair: true, window: false });
+  const currentVolumeComparisonSummary = volumeComparisonSnapshot?.bKey === canonicalVolumeObject.identity.key
+    ? volumeComparisonSnapshot.summary
+    : null;
+  const handleCaptureVolumeComparisonBaseline = useCallback(() => {
+    const scalars = new Float32Array(volumeDataset.grid.scalars);
+    const grid = { ...volumeDataset.grid, dims: [...volumeDataset.grid.dims] as [number, number, number], scalars };
+    volumeComparisonBaselineRef.current = { volume: canonicalVolumeObject, grid };
+    volumeStorageStoreRef.current.bind("volume-comparison-baseline", canonicalVolumeObject.storage, scalars);
+    setVolumeComparisonBaselineLabel(`${canonicalVolumeObject.identity.label} · r${canonicalVolumeObject.identity.volumeRevision}`);
+    setVolumeComparisonSnapshot(null);
+    setVolumeComparisonError(null);
+  }, [canonicalVolumeObject, volumeDataset.grid]);
+  const handleClearVolumeComparisonBaseline = useCallback(() => {
+    volumeComparisonBaselineRef.current = null;
+    volumeStorageStoreRef.current.releaseOwner("volume-comparison-baseline");
+    setVolumeComparisonBaselineLabel(null);
+    setVolumeComparisonSnapshot(null);
+    setVolumeComparisonError(null);
+  }, []);
+  const handleRunVolumeComparison = useCallback(() => {
+    const baseline = volumeComparisonBaselineRef.current;
+    if (!baseline) {
+      setVolumeComparisonError("Capture Volume A before running comparison.");
+      return;
+    }
+    try {
+      const { scalars: _targetScalars, ...commonTarget } = volumeDataset.grid;
+      const summary = compareVolumes({
+        a: baseline,
+        b: { volume: canonicalVolumeObject, grid: volumeDataset.grid },
+        alignment: volumeComparisonAlignment,
+        commonTarget: volumeComparisonAlignment === "common-target-grid" ? commonTarget : undefined,
+        changeThreshold: volumeComparisonThreshold,
+        store: volumeStorageStoreRef.current,
+      });
+      setVolumeComparisonSnapshot({ bKey: canonicalVolumeObject.identity.key, summary });
+      setVolumeComparisonStore((previous) => publishVolumeComparison(previous, baseline.volume, canonicalVolumeObject, summary));
+      setVolumeComparisonError(null);
+    } catch (error) {
+      setVolumeComparisonSnapshot(null);
+      setVolumeComparisonError(error instanceof Error ? error.message : String(error));
+    }
+  }, [canonicalVolumeObject, volumeComparisonAlignment, volumeComparisonThreshold, volumeDataset.grid]);
   const volumeComputeMemoryPlan = useMemo(
     () => createVolumeMemoryPlan("marchingCubes", canonicalVolumeObject.spatial.dimensions, canonicalVolumeObject.spatial.byteSize),
     [canonicalVolumeObject.spatial.byteSize, canonicalVolumeObject.spatial.dimensions]
@@ -87624,6 +87683,21 @@ case "mobius":
                         ioStatus={volumeScientificIoStatus}
                         onImportScientificVolume={() => void handleImportScientificVolume()}
                         onExportScientificVolume={(format) => void handleExportScientificVolume(format)}
+                        comparisonAlignment={volumeComparisonAlignment}
+                        comparisonView={volumeComparisonView}
+                        comparisonThreshold={volumeComparisonThreshold}
+                        comparisonBaselineLabel={volumeComparisonBaselineLabel}
+                        comparisonSummary={currentVolumeComparisonSummary}
+                        comparisonError={volumeComparisonError}
+                        comparisonHistoryCount={volumeComparisonStore.history.length}
+                        comparisonSync={volumeComparisonSync}
+                        onCaptureComparisonBaseline={handleCaptureVolumeComparisonBaseline}
+                        onClearComparisonBaseline={handleClearVolumeComparisonBaseline}
+                        onRunComparison={handleRunVolumeComparison}
+                        onChangeComparisonAlignment={setVolumeComparisonAlignment}
+                        onChangeComparisonView={setVolumeComparisonView}
+                        onChangeComparisonThreshold={setVolumeComparisonThreshold}
+                        onChangeComparisonSync={(key, enabled) => setVolumeComparisonSync((previous) => ({ ...previous, [key]: enabled }))}
                         onApplyDerivedResult={() => void handleApplyVolumeIsosurface()}
                         onCancelDerivedResult={handleCancelVolumeIsosurface}
                         onRegenerateDerivedResult={handleRegenerateVolumeDerivedResult}

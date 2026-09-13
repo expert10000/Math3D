@@ -22,13 +22,16 @@ import {
   type VolumeAnalysisSummary,
   type VolumeLabelDefinition,
   type VolumeLabelStatistics,
+  type VolumeAlignmentPolicy,
+  type VolumeComparisonSummary,
+  type VolumeComparisonView,
   type VolumeRenderMode,
   type VolumeRenderQuality,
   type VolumeTextureSampling,
   type VolumeTransferFunction,
 } from "../volume";
 
-type VolumeInspectorTab = "volume" | "field" | "sampling" | "slice" | "rendering" | "sdf" | "analysis" | "segmentation" | "io" | "derived" | "diagnostics" | "history";
+type VolumeInspectorTab = "volume" | "field" | "sampling" | "slice" | "rendering" | "sdf" | "analysis" | "segmentation" | "io" | "compare" | "derived" | "diagnostics" | "history";
 
 export type VolumeInspectorPanelProps = {
   dataset: VolumeDataset;
@@ -98,6 +101,21 @@ export type VolumeInspectorPanelProps = {
   ioStatus: string;
   onImportScientificVolume: () => void;
   onExportScientificVolume: (format: "raw" | "npy" | "vti") => void;
+  comparisonAlignment: VolumeAlignmentPolicy;
+  comparisonView: VolumeComparisonView;
+  comparisonThreshold: number;
+  comparisonBaselineLabel: string | null;
+  comparisonSummary: VolumeComparisonSummary | null;
+  comparisonError: string | null;
+  comparisonHistoryCount: number;
+  comparisonSync: { camera: boolean; slices: boolean; crosshair: boolean; window: boolean };
+  onCaptureComparisonBaseline: () => void;
+  onClearComparisonBaseline: () => void;
+  onRunComparison: () => void;
+  onChangeComparisonAlignment: (policy: VolumeAlignmentPolicy) => void;
+  onChangeComparisonView: (view: VolumeComparisonView) => void;
+  onChangeComparisonThreshold: (threshold: number) => void;
+  onChangeComparisonSync: (key: "camera" | "slices" | "crosshair" | "window", enabled: boolean) => void;
   onApplyDerivedResult: () => void;
   onCancelDerivedResult: () => void;
   onRegenerateDerivedResult: (id: string) => void;
@@ -145,6 +163,7 @@ const tabs: ReadonlyArray<{ id: VolumeInspectorTab; label: string }> = [
   { id: "analysis", label: "Analysis" },
   { id: "segmentation", label: "Masks & Labels" },
   { id: "io", label: "Import / Export" },
+  { id: "compare", label: "Compare" },
   { id: "derived", label: "Derived Surfaces" },
   { id: "diagnostics", label: "Diagnostics" },
   { id: "history", label: "History" },
@@ -257,6 +276,21 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   ioStatus,
   onImportScientificVolume,
   onExportScientificVolume,
+  comparisonAlignment,
+  comparisonView,
+  comparisonThreshold,
+  comparisonBaselineLabel,
+  comparisonSummary,
+  comparisonError,
+  comparisonHistoryCount,
+  comparisonSync,
+  onCaptureComparisonBaseline,
+  onClearComparisonBaseline,
+  onRunComparison,
+  onChangeComparisonAlignment,
+  onChangeComparisonView,
+  onChangeComparisonThreshold,
+  onChangeComparisonSync,
   onApplyDerivedResult,
   onCancelDerivedResult,
   onRegenerateDerivedResult,
@@ -687,6 +721,63 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
         </div>
       )}
 
+      {activeTab === "compare" && (
+        <div style={cardStyle} data-testid="volume-comparison-card">
+          <div style={{ fontWeight: 850, fontSize: 12 }}>Volume Compare</div>
+          <div style={{ fontSize: 10, color: "#475569" }}>Capture A, change or import the active Volume, then compare it as B.</div>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+            <button type="button" data-testid="volume-compare-capture-a" onClick={onCaptureComparisonBaseline}>Capture A</button>
+            <button type="button" onClick={onClearComparisonBaseline} disabled={!comparisonBaselineLabel}>Clear A</button>
+            <button type="button" data-testid="volume-compare-run" onClick={onRunComparison} disabled={!comparisonBaselineLabel}>Compare A ↔ B</button>
+          </div>
+          <DetailRow label="Volume A" value={comparisonBaselineLabel ?? "Not captured"} />
+          <DetailRow label="Volume B" value={volumeObject.identity.label} />
+          <label style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
+            <span>Alignment</span>
+            <select aria-label="Volume comparison alignment" value={comparisonAlignment} onChange={(event) => onChangeComparisonAlignment(event.target.value as VolumeAlignmentPolicy)}>
+              <option value="exact-grid">Exact grid</option>
+              <option value="resample-b-to-a">Resample B → A</option>
+              <option value="common-target-grid">Common target (B grid)</option>
+              <option value="reject-incompatible">Reject incompatible</option>
+            </select>
+          </label>
+          <label style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
+            <span>View</span>
+            <select aria-label="Volume comparison view" value={comparisonView} onChange={(event) => onChangeComparisonView(event.target.value as VolumeComparisonView)}>
+              <option value="a-b">A | B</option>
+              <option value="a-difference">A | Difference</option>
+              <option value="overlay">Overlay</option>
+              <option value="checkerboard">Checkerboard</option>
+              <option value="synchronized-probe">Synchronized probe</option>
+            </select>
+          </label>
+          <label style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
+            <span>Change threshold</span>
+            <input type="number" step="any" value={comparisonThreshold} onChange={(event) => onChangeComparisonThreshold(Math.max(0, Number(event.target.value) || 0))} style={{ width: 90 }} />
+          </label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 10 }}>
+            {(Object.keys(comparisonSync) as Array<keyof typeof comparisonSync>).map((key) => (
+              <label key={key}><input type="checkbox" checked={comparisonSync[key]} onChange={(event) => onChangeComparisonSync(key, event.target.checked)} /> Sync {key}</label>
+            ))}
+          </div>
+          {comparisonSummary && (
+            <div style={{ border: "1px solid #93c5fd", borderRadius: 7, padding: 7, background: "#eff6ff", display: "grid", gap: 5 }}>
+              <DetailRow label="Alignment used" value={`${comparisonSummary.provenance.alignmentPolicy} · ${comparisonSummary.provenance.interpolation}`} />
+              <DetailRow label="Finite / missing pairs" value={`${comparisonSummary.metrics.finitePairCount.toLocaleString()} / ${comparisonSummary.metrics.missingPairCount.toLocaleString()}`} />
+              <DetailRow label="Mean signed Δ" value={formatNumber(comparisonSummary.metrics.signedMeanDifference ?? Number.NaN)} />
+              <DetailRow label="Mean |Δ|" value={formatNumber(comparisonSummary.metrics.absoluteMeanDifference ?? Number.NaN)} />
+              <DetailRow label="L1 / L2 / L∞" value={`${formatNumber(comparisonSummary.metrics.norms.l1)} / ${formatNumber(comparisonSummary.metrics.norms.l2)} / ${formatNumber(comparisonSummary.metrics.norms.linfinity)}`} />
+              <DetailRow label="RMSE" value={formatNumber(comparisonSummary.metrics.norms.rmse)} />
+              <DetailRow label="Correlation" value={formatNumber(comparisonSummary.metrics.correlation ?? Number.NaN)} />
+              <DetailRow label="Changed voxels" value={`${comparisonSummary.metrics.changedVoxelCount.toLocaleString()} · ${(comparisonSummary.metrics.changedFraction * 100).toFixed(2)}%`} />
+            </div>
+          )}
+          {comparisonError && <div role="alert" style={{ color: "#b42318", fontSize: 10 }}>{comparisonError}</div>}
+          <DetailRow label="Result history" value={`${comparisonHistoryCount} records`} />
+          <div style={{ color: "#64748b", fontSize: 10 }}>Scalar difference fields use managed storage. Label maps use exact-grid confusion, Dice, and Jaccard metrics and are never interpolated.</div>
+        </div>
+      )}
+
       {activeTab === "sdf" && (
         <div style={cardStyle} data-testid="volume-sdf-card">
           <div style={{ fontWeight: 850, fontSize: 12 }}>Voxelization &amp; Signed Distance</div>
@@ -856,6 +947,7 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
           <DetailRow label="Updated" value={new Date(volumeObject.provenance.updatedAt).toLocaleString()} />
           <DetailRow label="Derived results" value={derivedResults.length} />
           <DetailRow label="Analysis records" value={analysisHistoryCount} />
+          <DetailRow label="Comparison records" value={comparisonHistoryCount} />
           <DetailRow label="Stale retained" value={derivedResults.filter((result) => result.state === "stale").length} />
         </div>
       )}

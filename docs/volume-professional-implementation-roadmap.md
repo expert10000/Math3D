@@ -106,7 +106,7 @@ The following foundation is complete at `5d4cf6c` and is not a substitute for an
 | 10 — Volume analysis results | Complete | Revision-safe shared result history, managed derivative fields, quantitative regions, critical points and iso statistics | — |
 | 11 — Masks, labels and segmentation | Complete | Typed categorical masks/labels, thresholding, connectivity, morphology, editable metadata and reversible previews | — |
 | 12 — Scientific import and export | Complete | RAW+metadata, NPY and VTI staged adapters, metadata preview, guarded import and atomic desktop export | — |
-| 13 — Volume comparison and difference | Planned | Generic Compare infrastructure for other modules | Alignment policy, A/B/difference views, norms, correlation and changed-voxel selection |
+| 13 — Volume comparison and difference | Complete | Explicit alignment, managed difference fields, scalar/label metrics, baseline workflow and synchronized comparison state | — |
 | 14 — Persistence, history and Workbook round trip | Planned | Partial recipe restore, scene graph and thumbnails | Dense-data policy, undo/redo, derived results, external references and full round trips |
 | 15 — Regression matrix and performance gates | Planned | Navigation regression and general memory profiles | Canonical datasets, numerical hashes/tolerances, cancellation and volume budgets |
 | 16 — Professional Volume workflow freeze | Planned | Existing module freeze conventions | Final UI contract, docs, screenshots, acceptance command and release evidence |
@@ -689,7 +689,7 @@ Acceptance:
 
 Planned message: `feat(volume): add aligned volume comparison and difference analysis`
 
-**Status: planned.**
+**Status: complete.** Implemented in `renderer/src/volume/comparison.ts`, the Volume Inspector Compare workspace, managed difference fields, shared result history, and deterministic scalar, resampling, identity, and categorical comparison tests.
 
 Implementation:
 
