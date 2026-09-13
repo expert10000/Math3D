@@ -61,6 +61,14 @@ export type VolumeViewerProps = {
   onCaptureThumbnail?: (dataUrl: string | null) => void;
 };
 
+type VolumeSliceRuntimeState =
+  | { kind: "empty"; message: string }
+  | { kind: "invalid"; message: string }
+  | { kind: "unsupported"; message: string }
+  | { kind: "loading"; message: string }
+  | { kind: "fallback"; message: string }
+  | { kind: "ready"; message: string };
+
 const disposeMesh = (mesh: THREE.Mesh) => {
   mesh.geometry.dispose();
   const mat = mesh.material as THREE.Material | THREE.Material[];
@@ -89,6 +97,7 @@ const clearGroup = (group: THREE.Group) => {
 
 const VTK_SLICE_THRESHOLD = 64 * 64 * 64;
 const VTK_ISO_THRESHOLD = 64 * 64 * 64;
+const MAX_INTERACTIVE_VOLUME_SAMPLES = 256 * 256 * 256;
 
 const buildCpuIsosurface = (
   grid: VolumeDataset["grid"],
@@ -249,6 +258,10 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   const viewPresetRef = useRef(viewPreset);
   const [isoMeshToken, setIsoMeshToken] = useState(0);
   const [sceneReady, setSceneReady] = useState(false);
+  const [sliceRuntimeState, setSliceRuntimeState] = useState<VolumeSliceRuntimeState>({
+    kind: dataset ? "loading" : "empty",
+    message: dataset ? "Preparing volume slice…" : "No volume dataset selected.",
+  });
 
   useEffect(() => {
     opacityRef.current = opacity;
@@ -583,11 +596,46 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       setSliceData(null);
       setSliceImage(null);
       setHoverInfo(null);
+      setSliceRuntimeState({ kind: "empty", message: "No volume dataset selected." });
       if (onSliceReport) onSliceReport(null);
       return;
     }
-    const data = sliceVolumeData(dataset.grid, axis, index);
-    setSliceData(data);
+    const expectedSamples = dataset.grid.dims[0] * dataset.grid.dims[1] * dataset.grid.dims[2];
+    const validDimensions = dataset.grid.dims.every((value) => Number.isInteger(value) && value > 0);
+    if (!validDimensions || expectedSamples <= 0 || dataset.grid.scalars.length < expectedSamples) {
+      setSliceData(null);
+      setSliceImage(null);
+      setHoverInfo(null);
+      setSliceRuntimeState({
+        kind: "invalid",
+        message: `Invalid volume grid (${dataset.grid.scalars.length.toLocaleString()} of ${Math.max(0, expectedSamples).toLocaleString()} samples).`,
+      });
+      if (onSliceReport) onSliceReport(null);
+      return;
+    }
+    if (expectedSamples > MAX_INTERACTIVE_VOLUME_SAMPLES) {
+      setSliceData(null);
+      setSliceImage(null);
+      setHoverInfo(null);
+      setSliceRuntimeState({
+        kind: "unsupported",
+        message: `Interactive slices support up to ${MAX_INTERACTIVE_VOLUME_SAMPLES.toLocaleString()} samples; this grid requests ${expectedSamples.toLocaleString()}.`,
+      });
+      if (onSliceReport) onSliceReport(null);
+      return;
+    }
+    try {
+      setSliceRuntimeState({ kind: "loading", message: `Preparing ${axis.toUpperCase()} slice…` });
+      setSliceData(sliceVolumeData(dataset.grid, axis, index));
+    } catch (error) {
+      setSliceData(null);
+      setSliceImage(null);
+      setSliceRuntimeState({
+        kind: "invalid",
+        message: error instanceof Error ? error.message : "The volume slice could not be sampled.",
+      });
+      if (onSliceReport) onSliceReport(null);
+    }
   }, [dataset, axis, index, onSliceReport]);
 
   useEffect(() => {
@@ -615,30 +663,48 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       : undefined;
 
     (async () => {
-      if (canUseVtk) {
-        const res = await vtkVolumeSlice({
-          dims: grid.dims,
-          scalars: grid.scalars,
-          axis,
-          index,
-          spacing: grid.spacing,
-          origin: grid.origin,
-          plane: planeReq,
-          window: windowReq,
-        });
-        if (!cancelled && res.ok) {
-          setSliceImage({
-            width: res.width,
-            height: res.height,
-            format: "rgba8",
-            data: res.data,
-            worldPlane: plane,
+      let backendFailure: string | null = null;
+      try {
+        if (canUseVtk) {
+          const res = await vtkVolumeSlice({
+            dims: grid.dims,
+            scalars: grid.scalars,
+            axis,
+            index,
+            spacing: grid.spacing,
+            origin: grid.origin,
+            plane: planeReq,
+            window: windowReq,
           });
-          return;
+          if (!cancelled && res.ok) {
+            setSliceImage({
+              width: res.width,
+              height: res.height,
+              format: "rgba8",
+              data: res.data,
+              worldPlane: plane,
+            });
+            setSliceRuntimeState({ kind: "ready", message: "VTK slice ready." });
+            return;
+          }
+          if (!res.ok) backendFailure = res.error;
         }
-      }
-      if (!cancelled) {
-        setSliceImage(buildSliceImage(sliceData, sliceWindow ?? undefined));
+        if (!cancelled) {
+          setSliceImage(buildSliceImage(sliceData, sliceWindow ?? undefined));
+          setSliceRuntimeState(
+            backendFailure
+              ? { kind: "fallback", message: `VTK unavailable: ${backendFailure}. Showing CPU slice.` }
+              : { kind: "ready", message: "CPU slice ready." }
+          );
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSliceImage(null);
+          setSliceRuntimeState({
+            kind: "invalid",
+            message: error instanceof Error ? error.message : "Volume slice rendering failed.",
+          });
+        }
       }
     })();
 
@@ -1269,5 +1335,65 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     mat.needsUpdate = true;
   }, [opacity]);
 
-  return <div ref={mountRef} style={{ width: "100%", height: "100%" }} />;
+  const showBlockingState =
+    sliceRuntimeState.kind === "empty" ||
+    sliceRuntimeState.kind === "invalid" ||
+    sliceRuntimeState.kind === "unsupported";
+  const showProgressState = sliceRuntimeState.kind === "loading";
+  const showFallbackState = sliceRuntimeState.kind === "fallback";
+
+  return (
+    <div style={{ width: "100%", height: "100%", minWidth: 0, minHeight: 0, position: "relative" }}>
+      <div ref={mountRef} style={{ width: "100%", height: "100%", minWidth: 0, minHeight: 0 }} />
+      {(showBlockingState || showProgressState) && (
+        <div
+          data-testid={`volume-slice-state-${sliceRuntimeState.kind}`}
+          role={sliceRuntimeState.kind === "invalid" || sliceRuntimeState.kind === "unsupported" ? "alert" : "status"}
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "grid",
+            placeItems: "center",
+            padding: 18,
+            background: showBlockingState ? "rgba(248,250,252,0.94)" : "rgba(248,250,252,0.72)",
+            color:
+              sliceRuntimeState.kind === "invalid" || sliceRuntimeState.kind === "unsupported"
+                ? "#b42318"
+                : "#475569",
+            fontSize: 11,
+            fontWeight: 700,
+            textAlign: "center",
+            zIndex: 5,
+          }}
+        >
+          {sliceRuntimeState.message}
+        </div>
+      )}
+      {showFallbackState && (
+        <div
+          data-testid="volume-slice-state-fallback"
+          role="status"
+          title={sliceRuntimeState.message}
+          style={{
+            position: "absolute",
+            right: 8,
+            bottom: 8,
+            maxWidth: "calc(100% - 16px)",
+            border: "1px solid #f5c26b",
+            borderRadius: 7,
+            background: "rgba(255,251,235,0.94)",
+            color: "#92400e",
+            padding: "4px 7px",
+            fontSize: 9,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            zIndex: 5,
+          }}
+        >
+          Backend fallback · CPU slice
+        </div>
+      )}
+    </div>
+  );
 };

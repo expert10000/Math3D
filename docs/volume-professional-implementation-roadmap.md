@@ -94,7 +94,7 @@ The following foundation is complete at `5d4cf6c` and is not a substitute for an
 
 | Plan | Status | Existing foundation | Main work remaining |
 | --- | --- | --- | --- |
-| 1 — Professional workspace and Inspector correction | Planned | Distinct header/navigation, modern gallery, compatibility controls, slice/3-D views | Volume-first Inspector, correct selection semantics, efficient responsive slice sizing |
+| 1 — Professional workspace and Inspector correction | Complete | Volume-first selection and Inspector, balanced responsive slice workspace, runtime states, compatibility controls | — |
 | 2 — Canonical Volume model and provenance | Planned | `VolumeGrid`, `VolumeDataset`, recipe persistence, scene nodes | Representation variants, identity/revision, orientation, units, storage and derived-result links |
 | 3 — Orthogonal navigation and probe | Planned | Shared crosshair, click pick, world/index/value/gradient readouts | Wheel/drag, snapping, linked state, orientation labels, pinned probes |
 | 4 — Sampling, resampling and allocation planning | Planned | Dimensions, bounds, spacing, analytic sampling | Centering/interpolation, presets, estimates, validation and resampling results |
@@ -229,7 +229,16 @@ The primary Inspector must never show `Mesh Details` for the selected Volume. It
 
 Planned message: `fix(volume): establish volume-first workspace and inspector semantics`
 
-**Status: planned.**
+**Status: complete (2026-09-13).**
+
+Delivered:
+
+- Volume entry and source changes select the active Volume dataset semantically.
+- The right panel now exposes Volume Details, Field, Sampling, Slice, Derived Surfaces, Diagnostics, and History without a primary Mesh Details card.
+- The default Volume card reports identity, representation, source, physical domain, dimensions, sample count, scalar type, spacing, range, units, payload, revision, view, and current isovalue.
+- Orthogonal views use a balanced responsive grid with a fourth live overview tile; pane labels stay anchored to their own viewport.
+- Slice viewers expose loading, empty, invalid-grid, unsupported-size, VTK-failure/CPU-fallback, and ready states.
+- The focused E2E test verifies Volume ownership, panel content, derived-surface empty state, and valid XY/XZ/YZ bounds across ten alternating resizes.
 
 Existing foundation:
 

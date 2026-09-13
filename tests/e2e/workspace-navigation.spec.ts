@@ -76,6 +76,42 @@ test.describe("Workspace navigation", () => {
       await expect(detailedControls).toBeVisible();
       await expect(detailedControls.getByText("Volume grid", { exact: true })).toBeVisible();
 
+      const volumeInspector = ctx.page.getByTestId("volume-inspector");
+      await expect(volumeInspector).toBeVisible();
+      await expect(volumeInspector.getByTestId("volume-details-card")).toBeVisible();
+      await expect(volumeInspector.getByText("Scalar volume grid", { exact: true })).toBeVisible();
+      await expect(volumeInspector.getByText("Mesh Details", { exact: true })).toHaveCount(0);
+
+      const sliceGrid = ctx.page.getByTestId("volume-slice-grid");
+      await expect(sliceGrid).toBeVisible();
+      await expect(ctx.page.getByTestId("volume-overview-pane")).toBeVisible();
+      for (const paneId of ["xy", "xz", "yz"] as const) {
+        const pane = ctx.page.getByTestId(`volume-slice-pane-${paneId}`);
+        await expect(pane).toBeVisible();
+        const box = await pane.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box?.width ?? 0).toBeGreaterThan(100);
+        expect(box?.height ?? 0).toBeGreaterThan(100);
+      }
+
+      for (let resizeIndex = 0; resizeIndex < 10; resizeIndex += 1) {
+        await ctx.page.setViewportSize(
+          resizeIndex % 2 === 0 ? { width: 1480, height: 900 } : { width: 1380, height: 820 }
+        );
+        await ctx.page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+        for (const paneId of ["xy", "xz", "yz"] as const) {
+          const box = await ctx.page.getByTestId(`volume-slice-pane-${paneId}`).boundingBox();
+          expect(box).not.toBeNull();
+          expect(box?.width ?? 0).toBeGreaterThan(100);
+          expect(box?.height ?? 0).toBeGreaterThan(100);
+        }
+      }
+
+      await volumeInspector.getByTestId("volume-inspector-tab-derived").click();
+      await expect(volumeInspector.getByTestId("volume-derived-card")).toContainText(
+        "No derived isosurface result is active."
+      );
+
       const galleryBox = await presetGrid.boundingBox();
       const detailedBox = await detailedControls.boundingBox();
       expect(galleryBox).not.toBeNull();
@@ -97,6 +133,7 @@ test.describe("Workspace navigation", () => {
       await ctx.page.getByTestId("volume-action-demo").click();
       await expect(volumeNav).toHaveAttribute("aria-pressed", "true");
       await expect(ctx.page.getByText("Volume / Field / Sphere", { exact: true })).toBeVisible();
+      await expect(volumeInspector.getByTestId("volume-inspector-selection")).toContainText("Volume: Sphere");
     } finally {
       await closeSurfaceApp(ctx);
     }

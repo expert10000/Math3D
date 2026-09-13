@@ -218,6 +218,7 @@ import {
   type ConstructionWorkspaceTab,
 } from "./components/ConstructionLabPanel";
 import { VolumeViewer } from "./components/VolumeViewer";
+import { VolumeInspectorPanel } from "./components/VolumeInspectorPanel";
 import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
 import OctaveLabPanel from "./features/octaveLab/OctaveLabPanel";
 import SageSymbolicPanel from "./features/sageLab/SageSymbolicPanel";
@@ -72427,6 +72428,10 @@ case "mobius":
     }
   }, [unifiedObjectNodes, unifiedTreeSelectedId, unifiedObjectModel.nodeById, unifiedObjectModel.preferredId]);
   useEffect(() => {
+    if (datasetKind !== "volume" || !unifiedObjectModel.activeDatasetNodeId) return;
+    setUnifiedTreeSelectedId(unifiedObjectModel.activeDatasetNodeId);
+  }, [datasetKind, volumePresetId, volumeDatasetOverride, unifiedObjectModel.activeDatasetNodeId]);
+  useEffect(() => {
     if (!unifiedSuppressedNodeIds.size) return;
     const knownNodeIds = new Set(unifiedObjectNodes.map((node) => node.id));
     setUnifiedSuppressedNodeIds((prev) => {
@@ -82505,11 +82510,15 @@ case "mobius":
                 {datasetKind === "volume" ? (
                   volumeViewMode === "slices" ? (
                     <div
+                      data-testid="volume-slice-grid"
                       style={{
                         width: "100%",
                         height: "100%",
                         display: "grid",
-                        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                        gridTemplateColumns: isSurfaceStackedLayout ? "minmax(0, 1fr)" : "repeat(2, minmax(0, 1fr))",
+                        gridTemplateRows: isSurfaceStackedLayout
+                          ? "repeat(4, minmax(260px, 1fr))"
+                          : "repeat(2, minmax(0, 1fr))",
                         gap: 8,
                         padding: 8,
                         boxSizing: "border-box",
@@ -82524,8 +82533,11 @@ case "mobius":
                       ).map((view) => (
                         <div
                           key={view.id}
+                          data-testid={`volume-slice-pane-${view.id}`}
                           style={{
                             position: "relative",
+                            minWidth: 0,
+                            minHeight: isSurfaceStackedLayout ? 260 : 0,
                             borderRadius: 10,
                             overflow: "hidden",
                             background: "#f8f9fb",
@@ -82534,7 +82546,7 @@ case "mobius":
                         >
                           <div
                             style={{
-                              position: surfacePanelsAsDrawers ? "fixed" : "absolute",
+                              position: "absolute",
                               top: 8,
                               left: 8,
                               padding: "2px 6px",
@@ -82585,6 +82597,36 @@ case "mobius":
                           />
                         </div>
                       ))}
+                      <div
+                        data-testid="volume-overview-pane"
+                        style={{
+                          minWidth: 0,
+                          minHeight: isSurfaceStackedLayout ? 220 : 0,
+                          border: "1px solid #d8e2ef",
+                          borderRadius: 10,
+                          background: "linear-gradient(160deg, #f8fbff 0%, #eef6ff 100%)",
+                          padding: 14,
+                          boxSizing: "border-box",
+                          display: "grid",
+                          alignContent: "center",
+                          gap: 8,
+                          color: "#334155",
+                        }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 850, color: "#1e3a5f" }}>Volume overview</div>
+                        <div style={{ fontSize: 11 }}>
+                          <strong>{volumeDatasetOverride?.label ?? volumePreset.label}</strong>
+                        </div>
+                        <div style={{ fontSize: 11 }}>
+                          Grid {volumeDataset.grid.dims.join(" × ")} · {volumeDataset.grid.scalars.length.toLocaleString()} samples
+                        </div>
+                        <div style={{ fontSize: 11 }}>
+                          Range {fmt(volumeScalarRange.min)} … {fmt(volumeScalarRange.max)}
+                        </div>
+                        <div style={{ fontSize: 10, color: "#64748b" }}>
+                          XY, XZ, and YZ share one crosshair. Select any slice to update all three views.
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div style={{ width: "100%", height: "100%", padding: 8, boxSizing: "border-box" }}>
@@ -86177,6 +86219,31 @@ case "mobius":
                   </div>
 
                   {rightPanelTab === "inspector" ? (
+                    datasetKind === "volume" ? (
+                      <VolumeInspectorPanel
+                        dataset={volumeDataset}
+                        label={volumeDatasetOverride?.label ?? `Volume: ${volumePreset.label}`}
+                        formula={
+                          volumeDatasetOverride?.note ??
+                          (volumePresetId === "custom" ? volumeCustomExpr.trim() || volumePreset.formula : volumePreset.formula)
+                        }
+                        sourceKind={volumeDatasetOverride ? "derived" : "preset"}
+                        valueRange={volumeScalarRange}
+                        viewMode={volumeViewMode}
+                        crosshair={volumeCrosshair}
+                        crosshairIndex={volumeCrosshairIndex}
+                        crosshairSample={volumeCrosshairSample}
+                        sliceReport={volumeSliceReport}
+                        sliceHover={volumeSliceHover}
+                        contourEnabled={volumeContourEnabled}
+                        contourCount={volumeContourCount}
+                        showIsosurface={volumeShowIsosurface}
+                        isoValue={volumeIsoValue}
+                        distanceBusy={volumeDistanceBusy}
+                        distanceError={volumeDistanceError}
+                        definitionError={volumeCustomCompiled.error}
+                      />
+                    ) : (
                     <>
                     {surfacesLeftTab === "analysis" && <SurfaceAnalysisInspectorPanel
                       definition={activeCanonicalSurfaceDefinition}
@@ -86512,6 +86579,7 @@ case "mobius":
                       </div>
                     </details>
                     </>
+                    )
                   ) : (
                     <WorkbookPanel
                       workbooks={workbooks}
