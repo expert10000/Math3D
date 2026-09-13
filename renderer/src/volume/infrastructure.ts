@@ -147,7 +147,7 @@ export const adaptVolumeObject = (options: VolumeAdapterOptions): VolumeObject =
   const dimensions = [...options.grid.dims] as [number, number, number];
   const origin = [...(options.grid.origin ?? [0, 0, 0])] as [number, number, number];
   const spacing = [...(options.grid.spacing ?? [1, 1, 1])] as [number, number, number];
-  const direction = [...(options.direction ?? IDENTITY_DIRECTION)] as unknown as VolumeDirectionMatrix;
+  const direction = [...(options.direction ?? options.grid.direction ?? IDENTITY_DIRECTION)] as unknown as VolumeDirectionMatrix;
   const components = Math.max(1, Math.floor(options.components ?? (options.representation === "dense-vector-grid" ? 3 : 1)));
   finiteTuple(dimensions, "dimensions");
   finiteTuple(origin, "origin");
@@ -356,6 +356,7 @@ export const volumeObjectToDataset = (volume: VolumeObject, store: VolumeTypedAr
       dims: [...volume.spatial.dimensions] as [number, number, number],
       origin: [...volume.spatial.origin] as [number, number, number],
       spacing: [...volume.spatial.spacing] as [number, number, number],
+      direction: [...volume.spatial.direction] as [number, number, number, number, number, number, number, number, number],
       scalars: values,
     },
   };

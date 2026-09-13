@@ -887,8 +887,7 @@ import {
 } from "./scene/volume/volumePresets";
 import {
   type SliceAxis,
-  gradientMagnitudeAt,
-  sampleGridTrilinear,
+  gridIndexToWorld,
   type VolumeSliceHover,
   type VolumeSliceReport,
   worldToGridIndex,
@@ -918,9 +917,18 @@ import {
   describeVolumeDefinition,
   describeVolumeSource,
   hydrateVolumeRevisionTracker,
+  comparePinnedVolumeProbes,
+  createPinnedVolumeProbe,
+  formatVolumeProbeText,
+  isPinnedVolumeProbeStale,
+  readVolumeProbe,
   reconcileVolumeDerivedResult,
+  restorePinnedVolumeProbes,
   serializeVolumeObject,
+  volumeProbesToCsv,
+  type PinnedVolumeProbe,
   type VolumeDerivedResult,
+  type VolumeOrientationConvention,
   type VolumeRevisionTracker,
 } from "./volume";
 import {
@@ -34963,6 +34971,20 @@ const App: React.FC = () => {
     Math.floor(volumeDataset.grid.dims[2] / 2)
   );
   const [volumeCrosshair, setVolumeCrosshair] = useState<[number, number, number] | null>(null);
+  const [volumeNavigationLinked, setVolumeNavigationLinked] = useState(true);
+  const [volumeVoxelSnap, setVolumeVoxelSnap] = useState(true);
+  const [volumeCoarseStep, setVolumeCoarseStep] = useState(5);
+  const [volumeOrientationConvention, setVolumeOrientationConvention] = useState<VolumeOrientationConvention>("scientific");
+  const [volumePaneIndices, setVolumePaneIndices] = useState<Record<SliceAxis, number>>(() => ({
+    x: Math.round((volumeDataset.grid.dims[0] - 1) * 0.5),
+    y: Math.round((volumeDataset.grid.dims[1] - 1) * 0.5),
+    z: Math.round((volumeDataset.grid.dims[2] - 1) * 0.5),
+  }));
+  const [volumeNavigationAnnouncement, setVolumeNavigationAnnouncement] = useState("Volume probe ready.");
+  const [volumeProbeName, setVolumeProbeName] = useState("Probe 1");
+  const [volumePinnedProbes, setVolumePinnedProbes] = useState<PinnedVolumeProbe[]>([]);
+  const [volumeProbeCompareIds, setVolumeProbeCompareIds] = useState<string[]>([]);
+  const volumeProbeSequenceRef = useRef(1);
   const [volumeSliceOpacity, setVolumeSliceOpacity] = useState(0.85);
   const [volumeShowStreamlines, setVolumeShowStreamlines] = useState(false);
   const [volumeVectorPresetId, setVolumeVectorPresetId] = useState<VectorPresetId>("vortex");
@@ -35007,14 +35029,22 @@ const App: React.FC = () => {
   const [devError, setDevError] = useState<{ message: string; stack?: string } | null>(null);
   const volumeGridBounds = useMemo(() => {
     const grid = volumeDataset.grid;
-    const spacing = grid.spacing ?? [1, 1, 1];
-    const origin = grid.origin ?? [0, 0, 0];
+    const corners: [number, number, number][] = [];
+    for (const x of [0, Math.max(0, grid.dims[0] - 1)]) {
+      for (const y of [0, Math.max(0, grid.dims[1] - 1)]) {
+        for (const z of [0, Math.max(0, grid.dims[2] - 1)]) corners.push(gridIndexToWorld(grid, [x, y, z]));
+      }
+    }
     return {
-      min: [origin[0], origin[1], origin[2]] as [number, number, number],
+      min: [
+        Math.min(...corners.map((corner) => corner[0])),
+        Math.min(...corners.map((corner) => corner[1])),
+        Math.min(...corners.map((corner) => corner[2])),
+      ] as [number, number, number],
       max: [
-        origin[0] + spacing[0] * Math.max(0, grid.dims[0] - 1),
-        origin[1] + spacing[1] * Math.max(0, grid.dims[1] - 1),
-        origin[2] + spacing[2] * Math.max(0, grid.dims[2] - 1),
+        Math.max(...corners.map((corner) => corner[0])),
+        Math.max(...corners.map((corner) => corner[1])),
+        Math.max(...corners.map((corner) => corner[2])),
       ] as [number, number, number],
     };
   }, [volumeDataset]);
@@ -35022,30 +35052,23 @@ const App: React.FC = () => {
     if (!Number.isFinite(value)) return 0;
     return Math.max(0, Math.min(max, Math.round(value)));
   };
-  const gridIndexToWorld = (grid: VolumeDataset["grid"], idx: [number, number, number]) => {
-    const spacing = grid.spacing ?? [1, 1, 1];
-    const origin = grid.origin ?? [0, 0, 0];
-    return [
-      origin[0] + idx[0] * spacing[0],
-      origin[1] + idx[1] * spacing[1],
-      origin[2] + idx[2] * spacing[2],
+  const volumeCrosshairContinuousIndex = useMemo(() => {
+    const grid = volumeDataset.grid;
+    if (!volumeCrosshair) return [
+      (grid.dims[0] - 1) * 0.5,
+      (grid.dims[1] - 1) * 0.5,
+      (grid.dims[2] - 1) * 0.5,
     ] as [number, number, number];
-  };
+    return worldToGridIndex(grid, volumeCrosshair);
+  }, [volumeCrosshair, volumeDataset]);
   const volumeCrosshairIndex = useMemo(() => {
     const grid = volumeDataset.grid;
-    const centerIdx: [number, number, number] = [
-      Math.round((grid.dims[0] - 1) * 0.5),
-      Math.round((grid.dims[1] - 1) * 0.5),
-      Math.round((grid.dims[2] - 1) * 0.5),
-    ];
-    if (!volumeCrosshair) return centerIdx;
-    const [fx, fy, fz] = worldToGridIndex(grid, volumeCrosshair);
     return [
-      clampGridIndex(fx, grid.dims[0] - 1),
-      clampGridIndex(fy, grid.dims[1] - 1),
-      clampGridIndex(fz, grid.dims[2] - 1),
+      clampGridIndex(volumeCrosshairContinuousIndex[0], grid.dims[0] - 1),
+      clampGridIndex(volumeCrosshairContinuousIndex[1], grid.dims[1] - 1),
+      clampGridIndex(volumeCrosshairContinuousIndex[2], grid.dims[2] - 1),
     ] as [number, number, number];
-  }, [volumeCrosshair, volumeDataset]);
+  }, [volumeCrosshairContinuousIndex, volumeDataset]);
   useEffect(() => {
     const grid = volumeDataset.grid;
     const centerIdx: [number, number, number] = [
@@ -35057,21 +35080,27 @@ const App: React.FC = () => {
       if (!prev) return gridIndexToWorld(grid, centerIdx);
       const [fx, fy, fz] = worldToGridIndex(grid, prev);
       const idx: [number, number, number] = [
-        clampGridIndex(fx, grid.dims[0] - 1),
-        clampGridIndex(fy, grid.dims[1] - 1),
-        clampGridIndex(fz, grid.dims[2] - 1),
+        Math.max(0, Math.min(grid.dims[0] - 1, volumeVoxelSnap ? Math.round(fx) : fx)),
+        Math.max(0, Math.min(grid.dims[1] - 1, volumeVoxelSnap ? Math.round(fy) : fy)),
+        Math.max(0, Math.min(grid.dims[2] - 1, volumeVoxelSnap ? Math.round(fz) : fz)),
       ];
       return gridIndexToWorld(grid, idx);
     });
-  }, [volumeDataset]);
+    setVolumePaneIndices((prev) => ({
+      x: clampGridIndex(prev.x, grid.dims[0] - 1),
+      y: clampGridIndex(prev.y, grid.dims[1] - 1),
+      z: clampGridIndex(prev.z, grid.dims[2] - 1),
+    }));
+  }, [volumeDataset, volumeVoxelSnap]);
   const volumeCrosshairSample = useMemo(() => {
     if (!volumeCrosshair) return null;
-    const grid = volumeDataset.grid;
+    const reading = readVolumeProbe(volumeDataset, canonicalVolumeObject, volumeCrosshair, volumeVoxelSnap);
     return {
-      value: sampleGridTrilinear(grid, volumeCrosshair),
-      gradMag: gradientMagnitudeAt(grid, volumeCrosshair),
+      value: reading.components[0] ?? Number.NaN,
+      gradMag: reading.gradientMagnitude,
+      ...reading,
     };
-  }, [volumeCrosshair, volumeDataset]);
+  }, [canonicalVolumeObject, volumeCrosshair, volumeDataset, volumeVoxelSnap]);
   const handleVolumeCrosshairIndexChange = useCallback(
     (axisIndex: 0 | 1 | 2, value: number) => {
       const grid = volumeDataset.grid;
@@ -35082,22 +35111,101 @@ const App: React.FC = () => {
       ];
       idx[axisIndex] = clampGridIndex(value, grid.dims[axisIndex] - 1);
       setVolumeCrosshair(gridIndexToWorld(grid, idx));
+      setVolumePaneIndices({ x: idx[0], y: idx[1], z: idx[2] });
+      setVolumeNavigationAnnouncement(`Probe moved to voxel ${idx.join(", ")}.`);
     },
     [volumeDataset, volumeCrosshairIndex]
   );
   const handleVolumeSlicePick = useCallback(
-    (world: [number, number, number]) => {
+    (world: [number, number, number], axis: SliceAxis) => {
       const grid = volumeDataset.grid;
       const [fx, fy, fz] = worldToGridIndex(grid, world);
       const idx: [number, number, number] = [
-        clampGridIndex(fx, grid.dims[0] - 1),
-        clampGridIndex(fy, grid.dims[1] - 1),
-        clampGridIndex(fz, grid.dims[2] - 1),
+        Math.max(0, Math.min(grid.dims[0] - 1, volumeVoxelSnap ? Math.round(fx) : fx)),
+        Math.max(0, Math.min(grid.dims[1] - 1, volumeVoxelSnap ? Math.round(fy) : fy)),
+        Math.max(0, Math.min(grid.dims[2] - 1, volumeVoxelSnap ? Math.round(fz) : fz)),
       ];
       setVolumeCrosshair(gridIndexToWorld(grid, idx));
+      const nearest = idx.map(Math.round) as [number, number, number];
+      setVolumePaneIndices((prev) => volumeNavigationLinked
+        ? { x: nearest[0], y: nearest[1], z: nearest[2] }
+        : { ...prev, [axis]: nearest[axis === "x" ? 0 : axis === "y" ? 1 : 2] });
+      setVolumeNavigationAnnouncement(`${axis.toUpperCase()} slice probe moved to voxel ${nearest.join(", ")}.`);
     },
-    [volumeDataset]
+    [volumeDataset, volumeNavigationLinked, volumeVoxelSnap]
   );
+  const handleVolumeSliceStep = useCallback((axis: SliceAxis, delta: number, coarse: boolean) => {
+    const axisIndex = axis === "x" ? 0 : axis === "y" ? 1 : 2;
+    const grid = volumeDataset.grid;
+    const base = volumeNavigationLinked ? volumeCrosshairIndex[axisIndex] : volumePaneIndices[axis];
+    const next = clampGridIndex(base + delta * (coarse ? volumeCoarseStep : 1), grid.dims[axisIndex] - 1);
+    const idx = [...volumeCrosshairIndex] as [number, number, number];
+    idx[axisIndex] = next;
+    setVolumeCrosshair(gridIndexToWorld(grid, idx));
+    setVolumePaneIndices((prev) => volumeNavigationLinked
+      ? { x: idx[0], y: idx[1], z: idx[2] }
+      : { ...prev, [axis]: next });
+    setVolumeNavigationAnnouncement(`${axis.toUpperCase()} slice ${next + 1} of ${grid.dims[axisIndex]}${coarse ? ` (coarse ${volumeCoarseStep})` : ""}.`);
+  }, [volumeCoarseStep, volumeCrosshairIndex, volumeDataset, volumeNavigationLinked, volumePaneIndices]);
+  const handleResetVolumeCrosshair = useCallback(() => {
+    const grid = volumeDataset.grid;
+    const center: [number, number, number] = [
+      Math.round((grid.dims[0] - 1) * 0.5),
+      Math.round((grid.dims[1] - 1) * 0.5),
+      Math.round((grid.dims[2] - 1) * 0.5),
+    ];
+    setVolumeCrosshair(gridIndexToWorld(grid, center));
+    setVolumePaneIndices({ x: center[0], y: center[1], z: center[2] });
+    setVolumeNavigationAnnouncement(`Probe reset to center voxel ${center.join(", ")}.`);
+  }, [volumeDataset]);
+  const handleChangeVolumeNavigationLinked = useCallback((linked: boolean) => {
+    setVolumeNavigationLinked(linked);
+    if (linked) setVolumePaneIndices({ x: volumeCrosshairIndex[0], y: volumeCrosshairIndex[1], z: volumeCrosshairIndex[2] });
+    setVolumeNavigationAnnouncement(linked ? "Slice panes linked to the shared physical probe." : "Slice panes unlinked; each slice can move independently.");
+  }, [volumeCrosshairIndex]);
+  const handlePinVolumeProbe = useCallback(() => {
+    if (!volumeCrosshairSample) return;
+    const sequence = volumeProbeSequenceRef.current++;
+    const pinned = createPinnedVolumeProbe({
+      id: `volume-probe-${Date.now()}-${sequence}`,
+      name: volumeProbeName,
+      reading: volumeCrosshairSample,
+      volume: canonicalVolumeObject,
+    });
+    setVolumePinnedProbes((prev) => [...prev, pinned]);
+    setVolumeProbeName(`Probe ${sequence + 1}`);
+    setVolumeNavigationAnnouncement(`${pinned.name} pinned against Volume revision ${pinned.volumeRevision}.`);
+  }, [canonicalVolumeObject, volumeCrosshairSample, volumeProbeName]);
+  const handleReplayVolumeProbe = useCallback((probe: PinnedVolumeProbe) => {
+    setVolumeCrosshair(probe.world);
+    const idx = probe.voxelIndex;
+    if (volumeNavigationLinked) setVolumePaneIndices({ x: idx[0], y: idx[1], z: idx[2] });
+    setVolumeNavigationAnnouncement(`${probe.name} replayed${isPinnedVolumeProbeStale(probe, canonicalVolumeObject) ? " from a stale revision" : ""}.`);
+  }, [canonicalVolumeObject, volumeNavigationLinked]);
+  const handleToggleVolumeProbeCompare = useCallback((id: string) => {
+    setVolumeProbeCompareIds((prev) => prev.includes(id) ? prev.filter((item) => item !== id) : [...prev.slice(-1), id]);
+  }, []);
+  const volumeProbeComparison = useMemo(() => {
+    const selected = volumeProbeCompareIds
+      .map((id) => volumePinnedProbes.find((probe) => probe.id === id))
+      .filter((probe): probe is PinnedVolumeProbe => !!probe);
+    return selected.length === 2 ? comparePinnedVolumeProbes(selected[0], selected[1]) : null;
+  }, [volumePinnedProbes, volumeProbeCompareIds]);
+  const handleCopyVolumeProbe = useCallback(async (probe?: PinnedVolumeProbe) => {
+    const target = probe ?? volumeCrosshairSample;
+    if (!target) return;
+    const text = formatVolumeProbeText(target);
+    try {
+      await navigator.clipboard.writeText(text);
+      setVolumeNavigationAnnouncement("Volume probe copied to clipboard.");
+    } catch {
+      setVolumeNavigationAnnouncement("Clipboard unavailable; use Export CSV for pinned probes.");
+    }
+  }, [volumeCrosshairSample]);
+  const handleExportVolumeProbes = useCallback(() => {
+    downloadTextFile(volumeProbesToCsv(volumePinnedProbes), "math3d-volume-probes.csv", "text/csv");
+    setVolumeNavigationAnnouncement(`${volumePinnedProbes.length} pinned probe${volumePinnedProbes.length === 1 ? "" : "s"} exported.`);
+  }, [volumePinnedProbes]);
   const volumeVectorPreset = useMemo(
     () => getVectorPreset(volumeVectorPresetId),
     [volumeVectorPresetId]
@@ -53375,6 +53483,15 @@ case "mobius":
           isoValue: volumeIsoValue,
           viewMode: volumeViewMode,
           distanceSigned: volumeDistanceSigned,
+          navigation: {
+            crosshair: volumeCrosshair,
+            paneIndices: volumePaneIndices,
+            linked: volumeNavigationLinked,
+            voxelSnap: volumeVoxelSnap,
+            coarseStep: volumeCoarseStep,
+            orientationConvention: volumeOrientationConvention,
+            pinnedProbes: volumePinnedProbes,
+          },
         },
         provenance: {
           source: canonicalVolumeObject.provenance.engine,
@@ -53626,6 +53743,13 @@ case "mobius":
       volumeIsoValue,
       volumeViewMode,
       volumeDistanceSigned,
+      volumeCrosshair,
+      volumePaneIndices,
+      volumeNavigationLinked,
+      volumeVoxelSnap,
+      volumeCoarseStep,
+      volumeOrientationConvention,
+      volumePinnedProbes,
       canonicalVolumeObject,
       workbooks,
       geometryMode,
@@ -54193,6 +54317,37 @@ case "mobius":
       }
       if (typeof volumeRecipe.distanceSigned === "boolean") {
         setVolumeDistanceSigned(volumeRecipe.distanceSigned);
+      }
+      const navigation = volumeRecipe.navigation;
+      if (navigation && typeof navigation === "object") {
+        if (
+          Array.isArray(navigation.crosshair) &&
+          navigation.crosshair.length === 3 &&
+          navigation.crosshair.every((value: unknown) => Number.isFinite(Number(value)))
+        ) {
+          setVolumeCrosshair(navigation.crosshair.map(Number) as [number, number, number]);
+        }
+        if (
+          navigation.paneIndices &&
+          [navigation.paneIndices.x, navigation.paneIndices.y, navigation.paneIndices.z].every((value: unknown) => Number.isFinite(Number(value)))
+        ) {
+          setVolumePaneIndices({
+            x: Math.max(0, Math.round(Number(navigation.paneIndices.x))),
+            y: Math.max(0, Math.round(Number(navigation.paneIndices.y))),
+            z: Math.max(0, Math.round(Number(navigation.paneIndices.z))),
+          });
+        }
+        if (typeof navigation.linked === "boolean") setVolumeNavigationLinked(navigation.linked);
+        if (typeof navigation.voxelSnap === "boolean") setVolumeVoxelSnap(navigation.voxelSnap);
+        if (Number.isFinite(navigation.coarseStep)) {
+          setVolumeCoarseStep(Math.max(2, Math.min(64, Math.round(Number(navigation.coarseStep)))));
+        }
+        if (navigation.orientationConvention === "scientific" || navigation.orientationConvention === "radiological") {
+          setVolumeOrientationConvention(navigation.orientationConvention);
+        }
+        const restoredProbes = restorePinnedVolumeProbes(navigation.pinnedProbes);
+        setVolumePinnedProbes(restoredProbes);
+        volumeProbeSequenceRef.current = restoredProbes.length + 1;
       }
     }
 
@@ -82692,9 +82847,9 @@ case "mobius":
                     >
                       {(
                         [
-                          { id: "xy", label: "XY", axis: "z" as const, index: volumeCrosshairIndex[2], preset: "xy", primary: true },
-                          { id: "xz", label: "XZ", axis: "y" as const, index: volumeCrosshairIndex[1], preset: "xz", primary: false },
-                          { id: "yz", label: "YZ", axis: "x" as const, index: volumeCrosshairIndex[0], preset: "yz", primary: false },
+                          { id: "xy", label: "XY", axis: "z" as const, index: volumeNavigationLinked ? volumeCrosshairIndex[2] : volumePaneIndices.z, preset: "xy", primary: true },
+                          { id: "xz", label: "XZ", axis: "y" as const, index: volumeNavigationLinked ? volumeCrosshairIndex[1] : volumePaneIndices.y, preset: "xz", primary: false },
+                          { id: "yz", label: "YZ", axis: "x" as const, index: volumeNavigationLinked ? volumeCrosshairIndex[0] : volumePaneIndices.x, preset: "yz", primary: false },
                         ] as const
                       ).map((view) => (
                         <div
@@ -82726,7 +82881,7 @@ case "mobius":
                               zIndex: 2,
                             }}
                           >
-                            {view.label}
+                            {view.label} · {view.axis.toUpperCase()} {view.index + 1}/{volumeDataset.grid.dims[view.axis === "x" ? 0 : view.axis === "y" ? 1 : 2]}
                           </div>
                           <VolumeViewer
                             dataset={activeDataset?.kind === "volume" ? activeDataset : null}
@@ -82736,6 +82891,10 @@ case "mobius":
                             opacity={volumeSliceOpacity}
                             crosshair={volumeCrosshair}
                             onSlicePick={handleVolumeSlicePick}
+                            onSliceStep={handleVolumeSliceStep}
+                            onResetCrosshair={handleResetVolumeCrosshair}
+                            coarseStep={volumeCoarseStep}
+                            orientationConvention={volumeOrientationConvention}
                             viewPreset={view.preset}
                             showAxes={false}
                             contourEnabled={volumeContourEnabled}
@@ -82790,7 +82949,9 @@ case "mobius":
                           Range {fmt(volumeScalarRange.min)} … {fmt(volumeScalarRange.max)}
                         </div>
                         <div style={{ fontSize: 10, color: "#64748b" }}>
-                          XY, XZ, and YZ share one crosshair. Select any slice to update all three views.
+                          {volumeNavigationLinked
+                            ? "Linked: XY, XZ, and YZ share one physical probe. Drag, wheel, or use the keyboard in any pane."
+                            : "Unlinked: each pane keeps its own slice position while the probe remains available for inspection."}
                         </div>
                       </div>
                     </div>
@@ -86394,6 +86555,16 @@ case "mobius":
                         crosshair={volumeCrosshair}
                         crosshairIndex={volumeCrosshairIndex}
                         crosshairSample={volumeCrosshairSample}
+                        paneIndices={volumePaneIndices}
+                        navigationLinked={volumeNavigationLinked}
+                        voxelSnap={volumeVoxelSnap}
+                        coarseStep={volumeCoarseStep}
+                        orientationConvention={volumeOrientationConvention}
+                        navigationAnnouncement={volumeNavigationAnnouncement}
+                        probeName={volumeProbeName}
+                        pinnedProbes={volumePinnedProbes}
+                        probeCompareIds={volumeProbeCompareIds}
+                        probeComparison={volumeProbeComparison}
                         sliceReport={volumeSliceReport}
                         sliceHover={volumeSliceHover}
                         contourEnabled={volumeContourEnabled}
@@ -86405,6 +86576,21 @@ case "mobius":
                         definitionError={volumeCustomCompiled.error}
                         derivedResults={volumeDerivedResults}
                         onDeleteDerivedResult={handleDeleteVolumeDerivedResult}
+                        onChangeNavigationLinked={handleChangeVolumeNavigationLinked}
+                        onChangeVoxelSnap={setVolumeVoxelSnap}
+                        onChangeCoarseStep={setVolumeCoarseStep}
+                        onChangeOrientationConvention={setVolumeOrientationConvention}
+                        onResetCrosshair={handleResetVolumeCrosshair}
+                        onChangeProbeName={setVolumeProbeName}
+                        onPinProbe={handlePinVolumeProbe}
+                        onReplayProbe={handleReplayVolumeProbe}
+                        onCopyProbe={handleCopyVolumeProbe}
+                        onRemoveProbe={(id) => {
+                          setVolumePinnedProbes((prev) => prev.filter((probe) => probe.id !== id));
+                          setVolumeProbeCompareIds((prev) => prev.filter((probeId) => probeId !== id));
+                        }}
+                        onToggleProbeCompare={handleToggleVolumeProbeCompare}
+                        onExportProbes={handleExportVolumeProbes}
                       />
                     ) : (
                     <>

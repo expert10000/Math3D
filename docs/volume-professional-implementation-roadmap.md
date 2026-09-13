@@ -96,7 +96,7 @@ The following foundation is complete at `5d4cf6c` and is not a substitute for an
 | --- | --- | --- | --- |
 | 1 — Professional workspace and Inspector correction | Complete | Volume-first selection and Inspector, balanced responsive slice workspace, runtime states, compatibility controls | — |
 | 2 — Canonical Volume model and provenance | Complete | Canonical contracts, representation adapters, revision/provenance tracking, managed typed-array handles and stale derived-result records | — |
-| 3 — Orthogonal navigation and probe | Planned | Shared crosshair, click pick, world/index/value/gradient readouts | Wheel/drag, snapping, linked state, orientation labels, pinned probes |
+| 3 — Orthogonal navigation and probe | Complete | Direction-aware shared probe, independent pane positions, wheel/drag/keyboard navigation, orientation conventions, pinned probe lifecycle | — |
 | 4 — Sampling, resampling and allocation planning | Planned | Dimensions, bounds, spacing, analytic sampling | Centering/interpolation, presets, estimates, validation and resampling results |
 | 5 — Quad layout and spatial 3-D context | Planned | Three slice panes and separate free 3-D mode | Quad layout, layout presets, embedded planes, clipping and deterministic camera behavior |
 | 6 — Worker, cache and memory foundation | Planned | VTK worker bridge and CPU fallbacks | Shared job lifecycle, cancellation, progress, dependency keys and memory guard |
@@ -312,7 +312,25 @@ Acceptance:
 
 Planned message: `feat(volume): complete synchronized orthogonal navigation and probing`
 
-**Status: planned.**
+**Status: complete (2026-09-13).**
+
+Delivered:
+
+- Added direction-aware index/world transforms for anisotropic spacing, non-zero origins, non-cubic grids, and row-major direction matrices; slices, picking, gradients, bounds, and camera framing share the same physical transform.
+- Slice panes support pointer drag, wheel stepping, modifier/Page-key coarse stepping, Arrow-key stepping, Home-to-center, linked navigation, independent unlinked slice positions, and optional voxel-center snapping.
+- Scientific and radiological view conventions have explicit selectors, camera-side behavior, and unambiguous positive/negative orientation labels on every orthogonal pane.
+- The Slice Inspector reports continuous `(i,j,k)`, nearest voxel, world `(x,y,z)`, component values, full gradient and magnitude, analytic versus numerical method, slice coordinates, pane positions, and domain status.
+- Sphere, ellipsoid, torus, cylinder, superquadric, gyroid, and metaball presets expose analytic gradients; custom/noise/imported grids use direction- and spacing-aware finite differences with one-sided boundary stencils.
+- Probes can be named, pinned against a Volume/grid revision, replayed, copied, selected in pairs for comparison, exported to CSV, deleted, serialized, and restored. Source changes retain them with a visible stale-revision state.
+- Added accessible pane labels, focusable keyboard navigation, and a polite live announcement for navigation and probe lifecycle changes.
+- Unit truth tests cover translated, anisotropic, rotated grids, numerical/analytic gradients, revision-safe probe restore, comparison, and export; E2E covers wheel, drag, keyboard, linked/unlinked state, reset, pinning, comparison, orientation, and stale retention.
+
+Where to see Commit 3 in the UI:
+
+1. Select **Volume**, keep **Slices** active, and use any XY/XZ/YZ pane: drag to move the shared probe, use the wheel or Arrow keys for one slice, Shift+wheel or Page Up/Down for the configured coarse step, and Home to reset.
+2. In the right **Inspector**, open **Slice**. Navigation controls, full probe values, gradient method, pane positions, announcements, and the pinned-probe workflow are together in this card.
+3. Clear **Link orthogonal panes** to move one pane independently, or clear **Snap probe to voxel center** for continuous in-plane coordinates.
+4. Pin two named probes and select **Compare** on both to see physical distance and value/gradient deltas. Change the Volume definition or sampling to see retained probes labeled **stale revision**.
 
 Existing foundation:
 

@@ -29,6 +29,8 @@ export type VolumeGrid = {
   scalars: Float32Array;
   spacing?: [number, number, number];
   origin?: [number, number, number];
+  /** Row-major index-to-world direction matrix. */
+  direction?: [number, number, number, number, number, number, number, number, number];
 };
 
 export type VectorGrid = {
@@ -36,6 +38,8 @@ export type VectorGrid = {
   vectors: Float32Array;
   spacing?: [number, number, number];
   origin?: [number, number, number];
+  /** Row-major index-to-world direction matrix. */
+  direction?: [number, number, number, number, number, number, number, number, number];
 };
 
 export type VolumeFields = {

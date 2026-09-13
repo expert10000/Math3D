@@ -8,7 +8,9 @@ import type { VolumeDataset, VectorGrid } from "../scene/datasets";
 import type { Image2D } from "../scene/renderPrimitives";
 import {
   buildSliceImage,
+  getSliceInfo,
   gradientMagnitudeAt,
+  gridIndexToWorld,
   sampleGridTrilinear,
   sliceVolumeData,
   volumeSliceContours,
@@ -34,7 +36,11 @@ export type VolumeViewerProps = {
   index: number;
   opacity: number;
   crosshair?: [number, number, number] | null;
-  onSlicePick?: (world: [number, number, number]) => void;
+  onSlicePick?: (world: [number, number, number], axis: SliceAxis) => void;
+  onSliceStep?: (axis: SliceAxis, delta: number, coarse: boolean) => void;
+  onResetCrosshair?: () => void;
+  coarseStep?: number;
+  orientationConvention?: "scientific" | "radiological";
   viewPreset?: "free" | "xy" | "xz" | "yz";
   showAxes?: boolean;
   contourEnabled?: boolean;
@@ -120,14 +126,22 @@ const buildCpuIsosurface = (
 };
 
 const getGridBounds = (grid: VolumeDataset["grid"]) => {
-  const spacing = grid.spacing ?? [1, 1, 1];
-  const origin = grid.origin ?? [0, 0, 0];
-  const max: [number, number, number] = [
-    origin[0] + spacing[0] * Math.max(0, grid.dims[0] - 1),
-    origin[1] + spacing[1] * Math.max(0, grid.dims[1] - 1),
-    origin[2] + spacing[2] * Math.max(0, grid.dims[2] - 1),
+  const corners: [number, number, number][] = [];
+  for (const x of [0, Math.max(0, grid.dims[0] - 1)]) {
+    for (const y of [0, Math.max(0, grid.dims[1] - 1)]) {
+      for (const z of [0, Math.max(0, grid.dims[2] - 1)]) corners.push(gridIndexToWorld(grid, [x, y, z]));
+    }
+  }
+  const min: [number, number, number] = [
+    Math.min(...corners.map((corner) => corner[0])),
+    Math.min(...corners.map((corner) => corner[1])),
+    Math.min(...corners.map((corner) => corner[2])),
   ];
-  const min: [number, number, number] = [origin[0], origin[1], origin[2]];
+  const max: [number, number, number] = [
+    Math.max(...corners.map((corner) => corner[0])),
+    Math.max(...corners.map((corner) => corner[1])),
+    Math.max(...corners.map((corner) => corner[2])),
+  ];
   const center: [number, number, number] = [
     (min[0] + max[0]) * 0.5,
     (min[1] + max[1]) * 0.5,
@@ -138,6 +152,26 @@ const getGridBounds = (grid: VolumeDataset["grid"]) => {
   const dz = max[2] - min[2];
   const diag = Math.sqrt(dx * dx + dy * dy + dz * dz);
   return { min, max, center, diag };
+};
+
+const getSliceCameraFrame = (
+  grid: VolumeDataset["grid"],
+  axis: SliceAxis,
+  index: number,
+  preset: "xy" | "xz" | "yz",
+  convention: "scientific" | "radiological"
+) => {
+  const bounds = getGridBounds(grid);
+  const slice = getSliceInfo(grid, axis, index);
+  const center = new THREE.Vector3(...slice.plane.center);
+  const normal = new THREE.Vector3(...slice.plane.normal).normalize();
+  const up = new THREE.Vector3(...slice.plane.v).normalize();
+  const scientificSide = preset === "xz" ? -1 : 1;
+  const conventionSide = convention === "radiological" ? -1 : 1;
+  const position = center
+    .clone()
+    .add(normal.multiplyScalar(Math.max(1, bounds.diag * 1.4) * scientificSide * conventionSide));
+  return { center, position, up };
 };
 
 const findNearestPointOnMesh = (geom: THREE.BufferGeometry, point: THREE.Vector3) => {
@@ -201,6 +235,10 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   opacity,
   crosshair = null,
   onSlicePick,
+  onSliceStep,
+  onResetCrosshair,
+  coarseStep = 5,
+  orientationConvention = "scientific",
   viewPreset = "free",
   showAxes = true,
   contourEnabled = false,
@@ -253,9 +291,11 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   const hoverInfoRef = useRef<VolumeSliceHover | null>(null);
   const onCropChangeRef = useRef(onCropChange);
   const onSlicePickRef = useRef(onSlicePick);
+  const onSliceStepRef = useRef(onSliceStep);
   const hoverPendingRef = useRef<{ x: number; y: number } | null>(null);
   const hoverRafRef = useRef<number | null>(null);
   const viewPresetRef = useRef(viewPreset);
+  const orientationConventionRef = useRef(orientationConvention);
   const [isoMeshToken, setIsoMeshToken] = useState(0);
   const [sceneReady, setSceneReady] = useState(false);
   const [sliceRuntimeState, setSliceRuntimeState] = useState<VolumeSliceRuntimeState>({
@@ -274,6 +314,10 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   useEffect(() => {
     viewPresetRef.current = viewPreset;
   }, [viewPreset]);
+
+  useEffect(() => {
+    orientationConventionRef.current = orientationConvention;
+  }, [orientationConvention]);
 
   useEffect(() => {
     sliceDataRef.current = sliceData;
@@ -318,6 +362,10 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   }, [onSlicePick]);
 
   useEffect(() => {
+    onSliceStepRef.current = onSliceStep;
+  }, [onSliceStep]);
+
+  useEffect(() => {
     if (axesHelperRef.current) {
       axesHelperRef.current.visible = showAxes;
     }
@@ -346,31 +394,17 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     const controls = controlsRef.current;
     if (!sceneReady || !camera || !controls) return;
     controls.enableRotate = viewPreset === "free";
-    controls.enablePan = true;
-    controls.enableZoom = true;
+    controls.enablePan = viewPreset === "free";
+    controls.enableZoom = viewPreset === "free";
     if (viewPreset === "free" || !dataset?.grid) return;
 
-    const bounds = getGridBounds(dataset.grid);
-    const center = new THREE.Vector3(...bounds.center);
-    const dist = Math.max(1, bounds.diag * 1.4);
-    const pos = new THREE.Vector3(...bounds.center);
-
-    if (viewPreset === "xy") {
-      pos.set(center.x, center.y, center.z + dist);
-      camera.up.set(0, 1, 0);
-    } else if (viewPreset === "xz") {
-      pos.set(center.x, center.y - dist, center.z);
-      camera.up.set(0, 0, 1);
-    } else if (viewPreset === "yz") {
-      pos.set(center.x + dist, center.y, center.z);
-      camera.up.set(0, 0, 1);
-    }
-
-    camera.position.copy(pos);
-    camera.lookAt(center);
-    controls.target.copy(center);
+    const frame = getSliceCameraFrame(dataset.grid, axis, index, viewPreset, orientationConvention);
+    camera.up.copy(frame.up);
+    camera.position.copy(frame.position);
+    camera.lookAt(frame.center);
+    controls.target.copy(frame.center);
     controls.update();
-  }, [dataset, viewPreset, sceneReady]);
+  }, [axis, dataset, index, orientationConvention, viewPreset, sceneReady]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -482,30 +516,28 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     const refitCamera = () => {
       const preset = viewPresetRef.current;
       const grid = datasetRef.current?.grid;
-      const bounds = grid
-        ? getGridBounds(grid)
-        : { center: [0, 0, 0] as [number, number, number], diag: 2 };
-      const center = new THREE.Vector3(...bounds.center);
-      const dist = Math.max(1, bounds.diag * 1.4);
-      const pos = center.clone();
-
-      if (preset === "xy") {
-        pos.set(center.x, center.y, center.z + dist);
-        camera.up.set(0, 1, 0);
-      } else if (preset === "xz") {
-        pos.set(center.x, center.y - dist, center.z);
-        camera.up.set(0, 0, 1);
-      } else if (preset === "yz") {
-        pos.set(center.x + dist, center.y, center.z);
-        camera.up.set(0, 0, 1);
+      if (grid && preset !== "free") {
+        const presetAxis: SliceAxis = preset === "xy" ? "z" : preset === "xz" ? "y" : "x";
+        const axisIndex = presetAxis === "x" ? 0 : presetAxis === "y" ? 1 : 2;
+        const presetIndex = Math.round((grid.dims[axisIndex] - 1) * 0.5);
+        const frame = getSliceCameraFrame(grid, presetAxis, presetIndex, preset, orientationConventionRef.current);
+        camera.up.copy(frame.up);
+        camera.position.copy(frame.position);
+        camera.lookAt(frame.center);
+        controls.target.copy(frame.center);
       } else {
+        const bounds = grid
+          ? getGridBounds(grid)
+          : { center: [0, 0, 0] as [number, number, number], diag: 2 };
+        const center = new THREE.Vector3(...bounds.center);
+        const dist = Math.max(1, bounds.diag * 1.4);
+        const pos = center.clone();
         pos.set(center.x + dist * 0.9, center.y + dist * 0.82, center.z + dist);
         camera.up.set(0, 1, 0);
+        camera.position.copy(pos);
+        camera.lookAt(center);
+        controls.target.copy(center);
       }
-
-      camera.position.copy(pos);
-      camera.lookAt(center);
-      controls.target.copy(center);
       controls.update();
     };
 
@@ -851,6 +883,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     const raycaster = new THREE.Raycaster();
     const plane = new THREE.Plane();
     const tmp = new THREE.Vector3();
+    let dragging = false;
 
     const pickAt = (clientX: number, clientY: number) => {
       const data = sliceDataRef.current;
@@ -912,13 +945,36 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       hoverPendingRef.current = { x: e.clientX, y: e.clientY };
       if (hoverRafRef.current !== null) return;
       hoverRafRef.current = window.requestAnimationFrame(process);
+      if (dragging && (e.buttons & 1) === 1 && !cropDraggingRef.current) {
+        const hit = pickAt(e.clientX, e.clientY);
+        if (hit) onSlicePickRef.current?.(hit.world, axis);
+      }
+    };
+
+    const handlePointerDown = (e: PointerEvent) => {
+      if (e.button !== 0 || cropDraggingRef.current || viewPresetRef.current === "free") return;
+      dragging = true;
+      dom.setPointerCapture?.(e.pointerId);
+      const hit = pickAt(e.clientX, e.clientY);
+      if (hit) onSlicePickRef.current?.(hit.world, axis);
+    };
+
+    const handlePointerUp = (e: PointerEvent) => {
+      dragging = false;
+      if (dom.hasPointerCapture?.(e.pointerId)) dom.releasePointerCapture?.(e.pointerId);
     };
 
     const handleClick = (e: MouseEvent) => {
       if (e.button !== 0 || cropDraggingRef.current) return;
       const hit = pickAt(e.clientX, e.clientY);
       if (!hit) return;
-      onSlicePickRef.current?.(hit.world);
+      onSlicePickRef.current?.(hit.world, axis);
+    };
+
+    const handleWheel = (e: WheelEvent) => {
+      if (viewPresetRef.current === "free" || !onSliceStepRef.current || e.deltaY === 0) return;
+      e.preventDefault();
+      onSliceStepRef.current(axis, e.deltaY > 0 ? 1 : -1, e.shiftKey || e.ctrlKey || e.altKey || e.metaKey);
     };
 
     const handleLeave = () => {
@@ -931,13 +987,21 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     };
 
     dom.addEventListener("pointermove", handleMove);
+    dom.addEventListener("pointerdown", handlePointerDown);
+    dom.addEventListener("pointerup", handlePointerUp);
+    dom.addEventListener("pointercancel", handlePointerUp);
     dom.addEventListener("click", handleClick);
     dom.addEventListener("pointerleave", handleLeave);
+    dom.addEventListener("wheel", handleWheel, { passive: false });
 
     return () => {
       dom.removeEventListener("pointermove", handleMove);
+      dom.removeEventListener("pointerdown", handlePointerDown);
+      dom.removeEventListener("pointerup", handlePointerUp);
+      dom.removeEventListener("pointercancel", handlePointerUp);
       dom.removeEventListener("click", handleClick);
       dom.removeEventListener("pointerleave", handleLeave);
+      dom.removeEventListener("wheel", handleWheel);
       if (hoverRafRef.current !== null) {
         window.cancelAnimationFrame(hoverRafRef.current);
         hoverRafRef.current = null;
@@ -1017,10 +1081,21 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       line.renderOrder = 8;
       return line;
     };
-
-    group.add(makeLine(new THREE.Vector3(bounds.min[0], y, z), new THREE.Vector3(bounds.max[0], y, z)));
-    group.add(makeLine(new THREE.Vector3(x, bounds.min[1], z), new THREE.Vector3(x, bounds.max[1], z)));
-    group.add(makeLine(new THREE.Vector3(x, y, bounds.min[2]), new THREE.Vector3(x, y, bounds.max[2])));
+    const data = sliceDataRef.current;
+    if (viewPreset !== "free" && data) {
+      const normal = new THREE.Vector3(...data.plane.normal).normalize();
+      const planeCenter = new THREE.Vector3(...data.plane.center);
+      const projected = new THREE.Vector3(x, y, z);
+      projected.addScaledVector(normal, -projected.clone().sub(planeCenter).dot(normal));
+      const u = new THREE.Vector3(...data.plane.u).normalize().multiplyScalar(data.plane.width * 0.5);
+      const v = new THREE.Vector3(...data.plane.v).normalize().multiplyScalar(data.plane.height * 0.5);
+      group.add(makeLine(projected.clone().sub(u), projected.clone().add(u)));
+      group.add(makeLine(projected.clone().sub(v), projected.clone().add(v)));
+    } else {
+      group.add(makeLine(new THREE.Vector3(bounds.min[0], y, z), new THREE.Vector3(bounds.max[0], y, z)));
+      group.add(makeLine(new THREE.Vector3(x, bounds.min[1], z), new THREE.Vector3(x, bounds.max[1], z)));
+      group.add(makeLine(new THREE.Vector3(x, y, bounds.min[2]), new THREE.Vector3(x, y, bounds.max[2])));
+    }
 
     const radius = Math.max(0.01, bounds.diag * 0.012);
     const marker = new THREE.Mesh(
@@ -1030,7 +1105,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     marker.position.set(x, y, z);
     marker.renderOrder = 9;
     group.add(marker);
-  }, [crosshair, dataset]);
+  }, [crosshair, dataset, sliceData, viewPreset]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -1341,10 +1416,62 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     sliceRuntimeState.kind === "unsupported";
   const showProgressState = sliceRuntimeState.kind === "loading";
   const showFallbackState = sliceRuntimeState.kind === "fallback";
+  const orientationLabels = useMemo(() => {
+    const horizontal = viewPreset === "yz" ? "Y" : "X";
+    const vertical = viewPreset === "xy" ? "Y" : "Z";
+    const sign = orientationConvention === "scientific" ? "+" : "−";
+    return { horizontal: `${sign}${horizontal}`, vertical: `+${vertical}` };
+  }, [orientationConvention, viewPreset]);
+  const handleNavigationKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (viewPreset === "free") return;
+    if (event.key === "Home") {
+      event.preventDefault();
+      onResetCrosshair?.();
+      return;
+    }
+    let delta = 0;
+    let coarse = event.shiftKey;
+    if (event.key === "ArrowUp" || event.key === "ArrowRight") delta = 1;
+    if (event.key === "ArrowDown" || event.key === "ArrowLeft") delta = -1;
+    if (event.key === "PageUp") {
+      delta = 1;
+      coarse = true;
+    }
+    if (event.key === "PageDown") {
+      delta = -1;
+      coarse = true;
+    }
+    if (!delta) return;
+    event.preventDefault();
+    onSliceStep?.(axis, delta, coarse);
+  };
 
   return (
-    <div style={{ width: "100%", height: "100%", minWidth: 0, minHeight: 0, position: "relative" }}>
+    <div
+      data-testid={`volume-slice-viewer-${viewPreset}`}
+      style={{ width: "100%", height: "100%", minWidth: 0, minHeight: 0, position: "relative" }}
+      tabIndex={viewPreset === "free" ? -1 : 0}
+      role={viewPreset === "free" ? undefined : "application"}
+      aria-label={viewPreset === "free" ? undefined : `${viewPreset.toUpperCase()} volume slice, ${orientationConvention} orientation. Arrow keys step one slice; Shift or Page keys step ${coarseStep}; Home resets.`}
+      onKeyDown={handleNavigationKeyDown}
+    >
       <div ref={mountRef} style={{ width: "100%", height: "100%", minWidth: 0, minHeight: 0 }} />
+      {viewPreset !== "free" && (
+        <>
+          <div
+            data-testid={`volume-orientation-${viewPreset}-horizontal`}
+            style={{ position: "absolute", right: 8, top: "50%", color: "#1d4ed8", fontSize: 10, fontWeight: 900, pointerEvents: "none", zIndex: 4 }}
+          >
+            {orientationLabels.horizontal}
+          </div>
+          <div
+            data-testid={`volume-orientation-${viewPreset}-vertical`}
+            style={{ position: "absolute", left: "50%", top: 7, color: "#15803d", fontSize: 10, fontWeight: 900, pointerEvents: "none", zIndex: 4 }}
+          >
+            {orientationLabels.vertical}
+          </div>
+        </>
+      )}
       {(showBlockingState || showProgressState) && (
         <div
           data-testid={`volume-slice-state-${sliceRuntimeState.kind}`}

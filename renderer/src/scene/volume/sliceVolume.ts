@@ -1,6 +1,12 @@
 import type { VolumeGrid } from "../datasets";
 import type { Image2D, PolylineSet } from "../renderPrimitives";
 import { marchingSquares } from "../../math/marchingSquares";
+import {
+  volumeDirectionColumns,
+  volumeGridIndexToWorld,
+  volumeLocalGradientToWorld,
+  volumeWorldToGridIndex,
+} from "../../volume/spatial";
 
 export type SliceAxis = "x" | "y" | "z";
 
@@ -110,7 +116,6 @@ const clampIndex = (value: number, max: number) => {
 export function getSliceInfo(grid: VolumeGrid, axis: SliceAxis, index: number): SliceInfo {
   const { dims } = grid;
   const spacing = grid.spacing ?? [1, 1, 1];
-  const origin = grid.origin ?? [0, 0, 0];
   const map = axisMaps[axis];
   const [nx, ny, nz] = dims;
   const axisDims = [nx, ny, nz];
@@ -124,12 +129,10 @@ export function getSliceInfo(grid: VolumeGrid, axis: SliceAxis, index: number): 
   const widthWorld = Math.max(0, (width - 1) * widthSpacing);
   const heightWorld = Math.max(0, (height - 1) * heightSpacing);
 
-  const center: [number, number, number] = [
-    origin[0] + (nx - 1) * spacing[0] * 0.5,
-    origin[1] + (ny - 1) * spacing[1] * 0.5,
-    origin[2] + (nz - 1) * spacing[2] * 0.5,
-  ];
-  center[map.axisIndex] = origin[map.axisIndex] + sliceIndex * spacing[map.axisIndex];
+  const centerIndex: [number, number, number] = [(nx - 1) * 0.5, (ny - 1) * 0.5, (nz - 1) * 0.5];
+  centerIndex[map.axisIndex] = sliceIndex;
+  const center = volumeGridIndexToWorld(grid, centerIndex);
+  const columns = volumeDirectionColumns(grid);
 
   return {
     axis,
@@ -138,9 +141,9 @@ export function getSliceInfo(grid: VolumeGrid, axis: SliceAxis, index: number): 
     height,
     plane: {
       center,
-      normal: map.normal,
-      u: map.widthAxis,
-      v: map.heightAxis,
+      normal: columns[map.axisIndex],
+      u: columns[map.widthIndex],
+      v: columns[map.heightIndex],
       width: widthWorld,
       height: heightWorld,
     },
@@ -355,13 +358,14 @@ export function worldToGridIndex(
   grid: VolumeGrid,
   world: [number, number, number]
 ): [number, number, number] {
-  const spacing = grid.spacing ?? [1, 1, 1];
-  const origin = grid.origin ?? [0, 0, 0];
-  return [
-    spacing[0] ? (world[0] - origin[0]) / spacing[0] : 0,
-    spacing[1] ? (world[1] - origin[1]) / spacing[1] : 0,
-    spacing[2] ? (world[2] - origin[2]) / spacing[2] : 0,
-  ];
+  return volumeWorldToGridIndex(grid, world);
+}
+
+export function gridIndexToWorld(
+  grid: VolumeGrid,
+  index: [number, number, number]
+): [number, number, number] {
+  return volumeGridIndexToWorld(grid, index);
 }
 
 export function sampleGridTrilinear(grid: VolumeGrid, world: [number, number, number]): number {
@@ -395,36 +399,32 @@ export function sampleGridTrilinear(grid: VolumeGrid, world: [number, number, nu
   return lerp(c0, c1, tz);
 }
 
-export function gradientMagnitudeAt(grid: VolumeGrid, world: [number, number, number]): number {
+export function gradientVectorAt(grid: VolumeGrid, world: [number, number, number]): [number, number, number] {
   const spacing = grid.spacing ?? [1, 1, 1];
   const [fx, fy, fz] = worldToGridIndex(grid, world);
   const ix = clampIndex(fx, grid.dims[0] - 1);
   const iy = clampIndex(fy, grid.dims[1] - 1);
   const iz = clampIndex(fz, grid.dims[2] - 1);
 
-  const xm = gridIndex(grid, ix - 1, iy, iz);
-  const xp = gridIndex(grid, ix + 1, iy, iz);
-  const ym = gridIndex(grid, ix, iy - 1, iz);
-  const yp = gridIndex(grid, ix, iy + 1, iz);
-  const zm = gridIndex(grid, ix, iy, iz - 1);
-  const zp = gridIndex(grid, ix, iy, iz + 1);
-
   const scalars = grid.scalars;
-  const fxm = scalars[xm] ?? 0;
-  const fxp = scalars[xp] ?? 0;
-  const fym = scalars[ym] ?? 0;
-  const fyp = scalars[yp] ?? 0;
-  const fzm = scalars[zm] ?? 0;
-  const fzp = scalars[zp] ?? 0;
+  const derivative = (axis: 0 | 1 | 2): number => {
+    const coord = [ix, iy, iz] as [number, number, number];
+    const max = grid.dims[axis] - 1;
+    if (max <= 0) return 0;
+    const lower = [...coord] as [number, number, number];
+    const upper = [...coord] as [number, number, number];
+    lower[axis] = Math.max(0, coord[axis] - 1);
+    upper[axis] = Math.min(max, coord[axis] + 1);
+    const lowerValue = scalars[gridIndex(grid, lower[0], lower[1], lower[2])] ?? 0;
+    const upperValue = scalars[gridIndex(grid, upper[0], upper[1], upper[2])] ?? 0;
+    const physicalDelta = (upper[axis] - lower[axis]) * (spacing[axis] || 1);
+    return physicalDelta ? (upperValue - lowerValue) / physicalDelta : 0;
+  };
+  const worldGradient = volumeLocalGradientToWorld(grid, [derivative(0), derivative(1), derivative(2)]);
+  return worldGradient.every(Number.isFinite) ? worldGradient : [0, 0, 0];
+}
 
-  const dx = spacing[0] || 1;
-  const dy = spacing[1] || 1;
-  const dz = spacing[2] || 1;
-
-  const gx = (fxp - fxm) / (2 * dx);
-  const gy = (fyp - fym) / (2 * dy);
-  const gz = (fzp - fzm) / (2 * dz);
-
-  if (!Number.isFinite(gx) || !Number.isFinite(gy) || !Number.isFinite(gz)) return 0;
-  return Math.sqrt(gx * gx + gy * gy + gz * gz);
+export function gradientMagnitudeAt(grid: VolumeGrid, world: [number, number, number]): number {
+  const gradient = gradientVectorAt(grid, world);
+  return Math.hypot(gradient[0], gradient[1], gradient[2]);
 }

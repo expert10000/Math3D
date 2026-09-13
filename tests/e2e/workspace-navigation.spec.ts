@@ -118,6 +118,52 @@ test.describe("Workspace navigation", () => {
         }
       }
 
+      await expect(ctx.page.getByTestId("volume-orientation-xy-horizontal")).toHaveText("+X");
+      await expect(ctx.page.getByTestId("volume-orientation-xy-vertical")).toHaveText("+Y");
+      await volumeInspector.getByTestId("volume-inspector-tab-slice").click();
+      const sliceCard = volumeInspector.getByTestId("volume-slice-card");
+      await expect(sliceCard).toContainText("analytic");
+      await expect(sliceCard.getByTestId("volume-navigation-linked")).toBeChecked();
+      await expect(sliceCard.getByTestId("volume-navigation-snap")).toBeChecked();
+
+      const xyViewer = ctx.page.getByTestId("volume-slice-viewer-xy");
+      await xyViewer.locator("canvas").dispatchEvent("wheel", { deltaY: 100 });
+      await expect(sliceCard.getByTestId("volume-navigation-announcement")).toContainText("Z slice 34 of 64");
+      await xyViewer.focus();
+      await xyViewer.press("PageUp");
+      await expect(sliceCard.getByTestId("volume-navigation-announcement")).toContainText("coarse 5");
+
+      const xyBox = await xyViewer.boundingBox();
+      expect(xyBox).not.toBeNull();
+      if (xyBox) {
+        await ctx.page.mouse.move(xyBox.x + xyBox.width * 0.45, xyBox.y + xyBox.height * 0.45);
+        await ctx.page.mouse.down();
+        await ctx.page.mouse.move(xyBox.x + xyBox.width * 0.58, xyBox.y + xyBox.height * 0.58, { steps: 4 });
+        await ctx.page.mouse.up();
+        await expect(sliceCard.getByTestId("volume-navigation-announcement")).toContainText("Z slice probe moved");
+      }
+
+      await sliceCard.getByTestId("volume-navigation-linked").uncheck();
+      const xzViewer = ctx.page.getByTestId("volume-slice-viewer-xz");
+      await xzViewer.locator("canvas").dispatchEvent("wheel", { deltaY: 100 });
+      await expect(sliceCard).toContainText("Pane slices");
+      await sliceCard.getByTestId("volume-reset-probe").click();
+      await expect(sliceCard.getByTestId("volume-navigation-announcement")).toContainText("reset to center voxel");
+
+      await sliceCard.getByLabel("Pinned probe name").fill("Center");
+      await sliceCard.getByTestId("volume-pin-probe").click();
+      await xyViewer.focus();
+      await xyViewer.press("ArrowUp");
+      await sliceCard.getByLabel("Pinned probe name").fill("Next slice");
+      await sliceCard.getByTestId("volume-pin-probe").click();
+      await expect(sliceCard.getByTestId("volume-pinned-probe")).toHaveCount(2);
+      const compareChecks = sliceCard.getByTestId("volume-pinned-probe").locator('input[type="checkbox"]');
+      await compareChecks.nth(0).check();
+      await compareChecks.nth(1).check();
+      await expect(sliceCard.getByTestId("volume-probe-comparison")).toBeVisible();
+      await sliceCard.getByLabel("Volume orientation convention").selectOption("radiological");
+      await expect(ctx.page.getByTestId("volume-orientation-xy-horizontal")).toHaveText("−X");
+
       await volumeInspector.getByTestId("volume-inspector-tab-derived").click();
       await expect(volumeInspector.getByTestId("volume-derived-card")).toContainText(
         "No derived isosurface result is active."
@@ -128,6 +174,9 @@ test.describe("Workspace navigation", () => {
       await expect(volumeInspector.getByTestId("volume-details-card")).toContainText(
         "Volume 2 · definition 1 · grid 2"
       );
+      await volumeInspector.getByTestId("volume-inspector-tab-slice").click();
+      await expect(volumeInspector.getByTestId("volume-pinned-probe").first()).toContainText("stale revision");
+      await volumeInspector.getByTestId("volume-inspector-tab-volume").click();
 
       await detailedControls.getByTestId("volume-show-isosurface").check();
       await volumeInspector.getByTestId("volume-inspector-tab-derived").click();
