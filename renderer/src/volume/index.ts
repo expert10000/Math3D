@@ -4,6 +4,7 @@ export * from "./computation";
 export * from "./infrastructure";
 export * from "./isosurface";
 export * from "./probes";
+export * from "./persistence";
 export * from "./segmentation";
 export * from "./scientificIO";
 export * from "./comparison";

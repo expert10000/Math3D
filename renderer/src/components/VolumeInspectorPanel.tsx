@@ -109,6 +109,12 @@ export type VolumeInspectorPanelProps = {
   comparisonError: string | null;
   comparisonHistoryCount: number;
   comparisonSync: { camera: boolean; slices: boolean; crosshair: boolean; window: boolean };
+  persistenceStatus: string;
+  workspaceHistory: { undoDepth: number; redoDepth: number };
+  onSaveWorkspace: () => void;
+  onRestoreWorkspace: () => void;
+  onUndoWorkspace: () => void;
+  onRedoWorkspace: () => void;
   onCaptureComparisonBaseline: () => void;
   onClearComparisonBaseline: () => void;
   onRunComparison: () => void;
@@ -284,6 +290,12 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   comparisonError,
   comparisonHistoryCount,
   comparisonSync,
+  persistenceStatus,
+  workspaceHistory,
+  onSaveWorkspace,
+  onRestoreWorkspace,
+  onUndoWorkspace,
+  onRedoWorkspace,
   onCaptureComparisonBaseline,
   onClearComparisonBaseline,
   onRunComparison,
@@ -942,6 +954,14 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
       {activeTab === "history" && (
         <div style={cardStyle} data-testid="volume-history-card">
           <div style={{ fontWeight: 850, fontSize: 12 }}>History</div>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+            <button type="button" data-testid="volume-save-workspace" onClick={onSaveWorkspace}>Save workspace</button>
+            <button type="button" data-testid="volume-restore-workspace" onClick={onRestoreWorkspace}>Restore last</button>
+            <button type="button" onClick={onUndoWorkspace} disabled={workspaceHistory.undoDepth === 0}>Undo</button>
+            <button type="button" onClick={onRedoWorkspace} disabled={workspaceHistory.redoDepth === 0}>Redo</button>
+          </div>
+          <div role="status" aria-live="polite" style={{ color: /missing|failed|error|relink/i.test(persistenceStatus) ? "#b42318" : "#315d86", fontSize: 10 }}>{persistenceStatus}</div>
+          <DetailRow label="Workspace undo / redo" value={`${workspaceHistory.undoDepth} / ${workspaceHistory.redoDepth}`} />
           <DetailRow label="Current object" value={volumeObject.identity.key} />
           <DetailRow label="Created" value={new Date(volumeObject.provenance.createdAt).toLocaleString()} />
           <DetailRow label="Updated" value={new Date(volumeObject.provenance.updatedAt).toLocaleString()} />

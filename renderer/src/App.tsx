@@ -945,6 +945,13 @@ import {
   connectedComponentsLabelMap,
   compareVolumes,
   createVolumeComparisonResultStore,
+  createVolumeWorkspaceDocument,
+  createVolumeWorkbookBlock,
+  parseVolumeWorkspace,
+  restoreVolumeWorkspace,
+  serializeVolumeWorkspace,
+  resultReferenceFromDerivedVolume,
+  VolumeWorkspaceHistory,
   createPinnedVolumeProbe,
   formatVolumeProbeText,
   isPinnedVolumeProbeStale,
@@ -988,6 +995,9 @@ import {
   type VolumeTextureSampling,
   type VolumeTransferFunction,
   type VolumeScientificFormat,
+  type VolumeArtifactReference,
+  type VolumeWorkspaceDocument,
+  type VolumeWorkspaceViewState,
 } from "./volume";
 import {
   getDefaultRotationalProfileExpressions,
@@ -1911,6 +1921,7 @@ const CURVE_PRESETS: CurvePreset[] = [
 const CURVE_PRESET_BY_ID = new Map(CURVE_PRESETS.map((preset) => [preset.id, preset]));
 
 const WORKBOOK_STORAGE_KEY = "math3d.workbooks.v1";
+const VOLUME_WORKSPACE_STORAGE_KEY = "math3d.volume.workspace.v1";
 const WORKBOOK_ACTIVE_KEY = "math3d.workbooks.active.v1";
 const WORKBOOK_STAGE_KEY = "math3d.workbooks.stage.v1";
 const WORKBOOK_PANEL_KEY = "math3d.workbooks.rightPanel.v1";
@@ -35808,6 +35819,124 @@ const App: React.FC = () => {
     volumeDerivedGeometryRef.current.delete(id);
     setVolumeDerivedResults((previous) => deleteVolumeDerivedResult(previous, id, volumeStorageStoreRef.current));
   }, []);
+  const volumeWorkspaceHistoryRef = useRef<VolumeWorkspaceHistory | null>(null);
+  const [volumeWorkspaceHistorySummary, setVolumeWorkspaceHistorySummary] = useState({ undoDepth: 0, redoDepth: 0 });
+  const [volumePersistenceStatus, setVolumePersistenceStatus] = useState("Workspace persistence is ready.");
+  const buildCurrentVolumeWorkspace = useCallback((): VolumeWorkspaceDocument => {
+    const artifacts: VolumeArtifactReference[] = volumeDataset.scientific ? [{
+      id: `source:${volumeDataset.scientific.externalReference.contentHash}`,
+      role: "source-grid",
+      storage: "external-file",
+      uri: volumeDataset.scientific.externalReference.fileName,
+      contentHash: volumeDataset.scientific.externalReference.contentHash,
+      byteLength: volumeDataset.scientific.externalReference.byteLength,
+      scalarType: volumeDataset.scientific.scalarType,
+      components: volumeDataset.scientific.components,
+    }] : [];
+    const view: VolumeWorkspaceViewState = {
+      layout: volumeLayout,
+      viewMode: volumeViewMode,
+      paneIndices: { ...volumePaneIndices },
+      crosshair: volumeCrosshair ? [...volumeCrosshair] : null,
+      orientation: volumeOrientationConvention,
+      linkedNavigation: volumeNavigationLinked,
+      voxelSnap: volumeVoxelSnap,
+      renderMode: volumeRenderMode,
+      renderQuality: volumeRenderQuality,
+      textureSampling: volumeTextureSampling,
+      transferFunction: serializeVolumeTransferFunction(volumeTransferFunction),
+      renderWindow: [...volumeRenderWindow],
+      isoValue: volumeIsoValue,
+      crop: null,
+      camera: volumeCameraState ? { ...volumeCameraState, position: [...volumeCameraState.position], target: [...volumeCameraState.target], up: [...volumeCameraState.up] } : null,
+    };
+    const blockBase = { sourceVolumeId: canonicalVolumeObject.identity.volumeId, sourceVolumeRevision: canonicalVolumeObject.identity.volumeRevision, artifactIds: artifacts.map((artifact) => artifact.id) };
+    const workbookBlocks = [
+      createVolumeWorkbookBlock({ ...blockBase, id: "volume-sample", operation: "sample", title: "Sample Volume", parameters: { nx: canonicalVolumeObject.spatial.dimensions[0], ny: canonicalVolumeObject.spatial.dimensions[1], nz: canonicalVolumeObject.spatial.dimensions[2] }, preview: { label: canonicalVolumeObject.identity.label, summary: canonicalVolumeObject.spatial.dimensions.join(" × ") } }),
+      createVolumeWorkbookBlock({ ...blockBase, id: "volume-slice", operation: "slice", title: "Review slices", parameters: { x: volumePaneIndices.x, y: volumePaneIndices.y, z: volumePaneIndices.z }, preview: { label: "Orthogonal slices", summary: `X ${volumePaneIndices.x + 1} · Y ${volumePaneIndices.y + 1} · Z ${volumePaneIndices.z + 1}` } }),
+      createVolumeWorkbookBlock({ ...blockBase, id: "volume-render", operation: "render", title: "Render Volume", parameters: { mode: volumeRenderMode, quality: volumeRenderQuality }, preview: { label: volumeRenderMode.toUpperCase(), summary: volumeTransferFunction.label } }),
+      createVolumeWorkbookBlock({ ...blockBase, id: "volume-analyze", operation: "analyze", title: "Analyze Volume", parameters: { threshold: volumeAnalysisThreshold, isoValue: volumeIsoValue }, preview: { label: "Analysis", summary: currentVolumeAnalysisSummary ? `${currentVolumeAnalysisSummary.statistics.finiteCount.toLocaleString()} finite samples` : "Ready to run" } }),
+      createVolumeWorkbookBlock({ ...blockBase, id: "volume-segment", operation: "segment", title: "Segment Volume", parameters: { threshold: volumeSegmentationThreshold }, preview: { label: "Masks & labels", summary: `${volumeSegmentationMap?.labels.length ?? 0} labels` } }),
+      createVolumeWorkbookBlock({ ...blockBase, id: "volume-compare", operation: "compare", title: "Compare Volumes", parameters: { alignment: volumeComparisonAlignment, threshold: volumeComparisonThreshold }, preview: { label: "A ↔ B", summary: volumeComparisonBaselineLabel ?? "Capture baseline A" } }),
+      createVolumeWorkbookBlock({ ...blockBase, id: "volume-export", operation: "export", title: "Export Volume", parameters: { format: "npy" }, preview: { label: "Scientific export", summary: "NPY + JSON metadata" } }),
+    ];
+    return createVolumeWorkspaceDocument({
+      volume: canonicalVolumeObject,
+      view,
+      artifacts,
+      probes: volumePinnedProbes,
+      results: volumeDerivedResults.map((result) => resultReferenceFromDerivedVolume(result)),
+      operations: [{ id: `active:${canonicalVolumeObject.identity.key}`, kind: "source", label: canonicalVolumeObject.identity.label, volumeRevision: canonicalVolumeObject.identity.volumeRevision, sampledGridRevision: canonicalVolumeObject.identity.sampledGridRevision, parameters: {}, artifactIds: artifacts.map((artifact) => artifact.id), createdAt: canonicalVolumeObject.provenance.updatedAt }],
+      workbookBlocks,
+      handoff: { sourceModule: canonicalVolumeObject.provenance.dependencies[0]?.module === "external" ? "volume" : (canonicalVolumeObject.provenance.dependencies[0]?.module ?? "volume"), sourceObjectId: canonicalVolumeObject.provenance.dependencies[0]?.objectId ?? null, returnCamera: view.camera },
+    });
+  }, [canonicalVolumeObject, currentVolumeAnalysisSummary, volumeAnalysisThreshold, volumeCameraState, volumeComparisonAlignment, volumeComparisonBaselineLabel, volumeComparisonThreshold, volumeCrosshair, volumeDataset.scientific, volumeDerivedResults, volumeIsoValue, volumeLayout, volumeNavigationLinked, volumeOrientationConvention, volumePaneIndices, volumePinnedProbes, volumeRenderMode, volumeRenderQuality, volumeRenderWindow, volumeSegmentationMap?.labels.length, volumeSegmentationThreshold, volumeTextureSampling, volumeTransferFunction, volumeViewMode, volumeVoxelSnap]);
+  const applyVolumeWorkspaceView = useCallback((document: VolumeWorkspaceDocument) => {
+    const { view } = document;
+    setVolumeLayout(view.layout);
+    setVolumeViewMode(view.viewMode);
+    setVolumePaneIndices({ ...view.paneIndices });
+    setVolumeCrosshair(view.crosshair ? [...view.crosshair] : null);
+    setVolumeOrientationConvention(view.orientation);
+    setVolumeNavigationLinked(view.linkedNavigation);
+    setVolumeVoxelSnap(view.voxelSnap);
+    setVolumeRenderMode(view.renderMode);
+    setVolumeRenderQuality(view.renderQuality);
+    setVolumeTextureSampling(view.textureSampling);
+    setVolumeTransferFunction(restoreVolumeTransferFunction(view.transferFunction));
+    setVolumeTransferPresetId(view.transferFunction.id);
+    setVolumeRenderWindow([...view.renderWindow]);
+    setVolumeIsoValue(view.isoValue);
+    setVolumePinnedProbes(restorePinnedVolumeProbes(document.probes));
+    if (view.camera) setVolumeCameraState({ position: [...view.camera.position], target: [...view.camera.target], up: [...view.camera.up] });
+  }, []);
+  const handleSaveVolumeWorkspace = useCallback(() => {
+    try {
+      const document = buildCurrentVolumeWorkspace();
+      const serialized = serializeVolumeWorkspace(document);
+      localStorage.setItem(VOLUME_WORKSPACE_STORAGE_KEY, serialized);
+      if (volumeWorkspaceHistoryRef.current) volumeWorkspaceHistoryRef.current.push(document);
+      else volumeWorkspaceHistoryRef.current = new VolumeWorkspaceHistory(document);
+      setVolumeWorkspaceHistorySummary(volumeWorkspaceHistoryRef.current.summary());
+      downloadTextFile(serialized, `math3d-volume-${canonicalVolumeObject.identity.volumeId}.json`, "application/json");
+      setVolumePersistenceStatus(`Saved Volume r${canonicalVolumeObject.identity.volumeRevision}; dense payloads remain external or managed.`);
+    } catch (error) {
+      setVolumePersistenceStatus(error instanceof Error ? `Save failed: ${error.message}` : "Save failed.");
+    }
+  }, [buildCurrentVolumeWorkspace, canonicalVolumeObject.identity.volumeId, canonicalVolumeObject.identity.volumeRevision]);
+  const handleRestoreVolumeWorkspace = useCallback(() => {
+    try {
+      const serialized = localStorage.getItem(VOLUME_WORKSPACE_STORAGE_KEY);
+      if (!serialized) throw new Error("No saved Volume workspace is available.");
+      const document = parseVolumeWorkspace(serialized);
+      const activeHash = volumeDataset.scientific?.externalReference.contentHash ?? null;
+      const restored = restoreVolumeWorkspace(document, (artifact) => ({ exists: artifact.contentHash === activeHash, contentHash: activeHash ?? undefined }));
+      applyVolumeWorkspaceView(document);
+      volumeWorkspaceHistoryRef.current = new VolumeWorkspaceHistory(document);
+      setVolumeWorkspaceHistorySummary(volumeWorkspaceHistoryRef.current.summary());
+      setVolumePersistenceStatus(restored.relinkRequired ? `${restored.diagnostics.map((entry) => entry.message).join(" ")} Current view and recipe metadata were restored safely.` : `Restored ${document.volume.identity.label} r${document.volume.identity.volumeRevision}.`);
+    } catch (error) {
+      setVolumePersistenceStatus(error instanceof Error ? `Restore failed: ${error.message}` : "Restore failed.");
+    }
+  }, [applyVolumeWorkspaceView, volumeDataset.scientific?.externalReference.contentHash]);
+  const handleUndoVolumeWorkspace = useCallback(() => {
+    try {
+      const document = volumeWorkspaceHistoryRef.current?.undo((id) => id === `source:${volumeDataset.scientific?.externalReference.contentHash}`);
+      if (!document) return;
+      applyVolumeWorkspaceView(document);
+      setVolumeWorkspaceHistorySummary(volumeWorkspaceHistoryRef.current!.summary());
+      setVolumePersistenceStatus("Restored the previous revision-aware Volume workspace snapshot.");
+    } catch (error) { setVolumePersistenceStatus(error instanceof Error ? error.message : "Undo failed."); }
+  }, [applyVolumeWorkspaceView, volumeDataset.scientific?.externalReference.contentHash]);
+  const handleRedoVolumeWorkspace = useCallback(() => {
+    try {
+      const document = volumeWorkspaceHistoryRef.current?.redo((id) => id === `source:${volumeDataset.scientific?.externalReference.contentHash}`);
+      if (!document) return;
+      applyVolumeWorkspaceView(document);
+      setVolumeWorkspaceHistorySummary(volumeWorkspaceHistoryRef.current!.summary());
+      setVolumePersistenceStatus("Reapplied the next revision-aware Volume workspace snapshot.");
+    } catch (error) { setVolumePersistenceStatus(error instanceof Error ? error.message : "Redo failed."); }
+  }, [applyVolumeWorkspaceView, volumeDataset.scientific?.externalReference.contentHash]);
   const [volumeShowCropBox, setVolumeShowCropBox] = useState(true);
   const [volumeCropGizmoEnabled, setVolumeCropGizmoEnabled] = useState(true);
   const [volumeCropGizmoMode, setVolumeCropGizmoMode] = useState<"move" | "scale">("move");
@@ -87691,6 +87820,12 @@ case "mobius":
                         comparisonError={volumeComparisonError}
                         comparisonHistoryCount={volumeComparisonStore.history.length}
                         comparisonSync={volumeComparisonSync}
+                        persistenceStatus={volumePersistenceStatus}
+                        workspaceHistory={volumeWorkspaceHistorySummary}
+                        onSaveWorkspace={handleSaveVolumeWorkspace}
+                        onRestoreWorkspace={handleRestoreVolumeWorkspace}
+                        onUndoWorkspace={handleUndoVolumeWorkspace}
+                        onRedoWorkspace={handleRedoVolumeWorkspace}
                         onCaptureComparisonBaseline={handleCaptureVolumeComparisonBaseline}
                         onClearComparisonBaseline={handleClearVolumeComparisonBaseline}
                         onRunComparison={handleRunVolumeComparison}

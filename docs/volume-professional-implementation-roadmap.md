@@ -710,7 +710,7 @@ Acceptance:
 
 Planned message: `feat(volume): complete persistence history and workbook round trips`
 
-**Status: planned.**
+**Status: complete.** Implemented in `renderer/src/volume/persistence.ts`, the Volume Inspector History workspace, compact artifact-aware session documents, revision-safe undo/redo, and replayable Volume Workbook blocks.
 
 Existing foundation:
 
