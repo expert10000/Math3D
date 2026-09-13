@@ -401,7 +401,7 @@ Acceptance:
 
 Planned message: `feat(volume): add quad slice and spatial 3d workspace layouts`
 
-**Status: complete (2026-09-13).**
+**Status: complete (2026-09-13, `6643f0a`).**
 
 Delivered:
 
@@ -434,6 +434,22 @@ Acceptance:
 - All layouts survive resize and restore with no zero-size canvas or clipped pane.
 - Plane/crosshair positions agree across 2-D and 3-D views under anisotropic spacing.
 - GPU resources are disposed when layouts or datasets change; memory profile shows no monotonic leak.
+
+### Post-Commit 5 gallery presentation update
+
+**Status: complete (2026-09-13).**
+
+- Added dedicated rendered thumbnails for all nine Volume presets: Sphere, Ellipsoid, Torus, Cylinder, Superquadric, Gyroid, Metaballs, Noise field, and Mandelbulb density.
+- Every Rendered card now uses an authentic capture from the live Volume 3-D isosurface workspace. Volume no longer borrows similarly named Surface images or falls back to sketch-style SVGs in Rendered mode.
+- Preserved **Diagram** as the explicit technical alternate view rather than mixing diagrams into the Rendered gallery.
+- Added the reproducible `npm run capture:gallery:volume` capture workflow and a per-gallery manifest under `gallery-images/captured/volume/`.
+- Added E2E coverage that verifies all nine gallery cards resolve to loadable Volume capture assets.
+
+Where in the UI:
+
+1. Select **Volume** in the top module bar. The module opens in **Gallery** mode.
+2. Keep **Rendered** selected above the card grid to see the nine live 3-D isosurface captures.
+3. Select **Diagram** only when a schematic/formula-oriented thumbnail is preferred.
 
 ## Commit 6 — Worker, cache, cancellation and memory foundation
 

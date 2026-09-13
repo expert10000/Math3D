@@ -108043,7 +108043,8 @@ type PresetThumbKind =
   | "sweep"
   | "tube"
   | "ruled"
-  | "weierstrass";
+  | "weierstrass"
+  | "volume";
 
 const PRESET_THUMB_CACHE = new Map<string, string>();
 
@@ -108166,6 +108167,17 @@ const presetSilhouetteSvg = (id: string, kind: PresetThumbKind, stroke: string):
 };
 
 const CAPTURED_PRESET_IDS_BY_KIND: Partial<Record<PresetThumbKind, ReadonlySet<string>>> = {
+  volume: new Set([
+    "sphere",
+    "ellipsoid",
+    "torus",
+    "cylinder",
+    "superquadric",
+    "gyroid",
+    "metaballs",
+    "noise",
+    "mandelbulb",
+  ]),
   graph: new Set([
     "graph_saddle",
     "graph_rotatedSaddle",
@@ -108285,6 +108297,7 @@ const capturedPresetThumbPath = (id: string, kind: PresetThumbKind): string | nu
   if (kind === "parametric") return resolveGalleryAssetPath(`gallery-images/captured/surfaces/parametric/${normalizedId}.png`);
   if (kind === "spline") return resolveGalleryAssetPath(`gallery-images/captured/surfaces/spline/${normalizedId}.png`);
   if (kind === "mesh") return resolveGalleryAssetPath(`gallery-images/captured/mesh/${normalizedId}.png`);
+  if (kind === "volume") return resolveGalleryAssetPath(`gallery-images/captured/volume/${normalizedId}.png`);
   if (kind === "rotational") {
     return resolveGalleryAssetPath(`gallery-images/captured/surfaces/constructed/rotational/${normalizedId}.png`);
   }
@@ -108311,7 +108324,9 @@ const makePresetThumb = (
   if (cached) return cached;
 
   const palette =
-    kind === "graph"
+    kind === "volume"
+      ? { top: "#dbeafe", bottom: "#c7d2fe", stroke: "#315ea8", ink: "#17345f" }
+      : kind === "graph"
       ? { top: "#dbeafe", bottom: "#e0f2fe", stroke: "#1d4ed8", ink: "#1e3a8a" }
       : kind === "implicit"
         ? { top: "#dcfce7", bottom: "#d1fae5", stroke: "#0f766e", ink: "#115e59" }
@@ -108333,7 +108348,9 @@ const makePresetThumb = (
   const shape = presetSilhouetteSvg(id, kind, palette.stroke);
 
   const toneTag =
-    kind === "graph"
+    kind === "volume"
+      ? "F(x,y,z)"
+      : kind === "graph"
       ? "z=f(x,y)"
       : kind === "implicit"
         ? "f(x,y,z)=0"
@@ -109984,7 +110001,8 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         <div style={bandStyle}>
           <div style={bandTitleStyle}>Volume workspace</div>
           <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>
-            Choose a scalar-field preset, then open Scene/Object tabs for advanced volume tools.
+            Choose a scalar-field preset. Rendered cards use captures from the live 3-D Volume workspace;
+            Diagram remains available as a technical alternate view.
           </div>
           <div className="surface-card-grid" data-testid="volume-preset-grid" data-gallery-grid="true">
             {VOLUME_PRESETS.filter((preset) => preset.id !== "custom").map((preset) => {
@@ -109993,14 +110011,14 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                 preset.id,
                 preset.label,
                 preset.formula,
-                "implicit",
+                "volume",
                 "diagram"
               );
               const renderedThumb = makePresetThumb(
                 preset.id,
                 preset.label,
                 preset.formula,
-                "implicit",
+                "volume",
                 "rendered"
               );
               const thumb = thumbByViewMode(renderedThumb, diagramThumb, cardViewMode);

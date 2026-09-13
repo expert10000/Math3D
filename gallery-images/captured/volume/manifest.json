@@ -1,0 +1,60 @@
+{
+  "generatedBy": "npm run capture:gallery:volume",
+  "mode": "Volume workspace · 3-D isosurface",
+  "images": [
+    {
+      "id": "sphere",
+      "file": "gallery-images/captured/volume/sphere.png",
+      "width": 689,
+      "height": 430
+    },
+    {
+      "id": "ellipsoid",
+      "file": "gallery-images/captured/volume/ellipsoid.png",
+      "width": 689,
+      "height": 430
+    },
+    {
+      "id": "torus",
+      "file": "gallery-images/captured/volume/torus.png",
+      "width": 689,
+      "height": 430
+    },
+    {
+      "id": "cylinder",
+      "file": "gallery-images/captured/volume/cylinder.png",
+      "width": 689,
+      "height": 430
+    },
+    {
+      "id": "superquadric",
+      "file": "gallery-images/captured/volume/superquadric.png",
+      "width": 689,
+      "height": 430
+    },
+    {
+      "id": "gyroid",
+      "file": "gallery-images/captured/volume/gyroid.png",
+      "width": 689,
+      "height": 430
+    },
+    {
+      "id": "metaballs",
+      "file": "gallery-images/captured/volume/metaballs.png",
+      "width": 689,
+      "height": 430
+    },
+    {
+      "id": "noise",
+      "file": "gallery-images/captured/volume/noise.png",
+      "width": 689,
+      "height": 430
+    },
+    {
+      "id": "mandelbulb",
+      "file": "gallery-images/captured/volume/mandelbulb.png",
+      "width": 689,
+      "height": 430
+    }
+  ]
+}

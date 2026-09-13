@@ -245,6 +245,22 @@ test.describe("Workspace navigation", () => {
       await expect(volumeNav).toHaveAttribute("aria-pressed", "true");
       await expect(presetGrid).toBeVisible();
 
+      const volumePresetImages = presetGrid.locator("img.gallery-scan-card-preview-image");
+      await expect(volumePresetImages).toHaveCount(9);
+      const volumePresetImageSources = await volumePresetImages.evaluateAll((images) =>
+        images.map((image) => image.getAttribute("src") ?? "")
+      );
+      expect(
+        volumePresetImageSources.every((source) =>
+          source.replace(/\\/g, "/").includes("/gallery-images/captured/volume/")
+        )
+      ).toBe(true);
+      for (let imageIndex = 0; imageIndex < await volumePresetImages.count(); imageIndex += 1) {
+        const image = volumePresetImages.nth(imageIndex);
+        await image.scrollIntoViewIfNeeded();
+        await expect.poll(() => image.evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+      }
+
       await ctx.page.getByTestId("volume-preset-card-torus").click();
       await expect(volumeNav).toHaveAttribute("aria-pressed", "true");
       await expect(ctx.page.getByTestId("volume-preset-card-torus").getByText("Active", { exact: true })).toBeVisible();
