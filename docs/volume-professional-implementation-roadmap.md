@@ -104,7 +104,7 @@ The following foundation is complete at `5d4cf6c` and is not a substitute for an
 | 8 — Voxelization and signed-distance workflow | Planned | VTK mesh distance field, signed option, auto bounds | Occupancy, sign confidence, SDF operations, provenance and round-trip validation |
 | 9 — Transfer functions and volume rendering | Planned | Grayscale slices, opacity and windowing | MIP/MinIP/average/DVR, editable color/opacity transfer functions and ray controls |
 | 10 — Volume analysis results | Complete | Revision-safe shared result history, managed derivative fields, quantitative regions, critical points and iso statistics | — |
-| 11 — Masks, labels and segmentation | Planned | None beyond scalar threshold-style display | Typed masks/labels, thresholding, components, morphology and editable segmentation results |
+| 11 — Masks, labels and segmentation | Complete | Typed categorical masks/labels, thresholding, connectivity, morphology, editable metadata and reversible previews | — |
 | 12 — Scientific import and export | Planned | Workspace recipes only | RAW+metadata, NPY and VTI first; NRRD/NIfTI later; metadata-preserving export |
 | 13 — Volume comparison and difference | Planned | Generic Compare infrastructure for other modules | Alignment policy, A/B/difference views, norms, correlation and changed-voxel selection |
 | 14 — Persistence, history and Workbook round trip | Planned | Partial recipe restore, scene graph and thumbnails | Dense-data policy, undo/redo, derived results, external references and full round trips |
@@ -641,7 +641,7 @@ Acceptance:
 
 Planned message: `feat(volume): add masks labels and segmentation workflows`
 
-**Status: planned.**
+**Status: complete.** Implemented in `renderer/src/volume/segmentation.ts`, the Volume Inspector Masks & Labels workspace, and deterministic connectivity, morphology, categorical persistence, and undo/redo tests.
 
 Implementation:
 

@@ -465,6 +465,7 @@ export const describeVolumeSource = (source: VolumeSource): string => {
   if (source.kind === "dense-grid") return source.importRef ? `Imported grid · ${source.importRef}` : source.sourceLabel;
   if (source.kind === "vector-preset") return `Vector preset · ${source.presetId}`;
   if (source.kind === "sdf-operation") return `SDF ${source.operation} · ${source.sourceObjectIds.length} source${source.sourceObjectIds.length === 1 ? "" : "s"}`;
+  if (source.kind === "segmentation") return `Segmentation · ${source.operation}`;
   return `${source.signed ? "Signed" : "Unsigned"} VTK distance field`;
 };
 
@@ -472,6 +473,7 @@ export const describeVolumeDefinition = (source: VolumeSource): string => {
   if (source.kind === "analytic-preset" || source.kind === "custom-field") return source.expression;
   if (source.kind === "vtk-distance") return `distance(${source.sourceObjectId}@${source.sourceObjectRevision})`;
   if (source.kind === "sdf-operation") return `${source.operation}(${source.sourceObjectIds.map((id, index) => `${id}@${source.sourceObjectRevisions[index] ?? 1}`).join(", ")})`;
+  if (source.kind === "segmentation") return `${source.operation}(${source.sourceObjectId}@${source.sourceObjectRevision})`;
   if (source.kind === "vector-preset") return source.presetId;
   return source.importRef ?? source.sourceLabel;
 };

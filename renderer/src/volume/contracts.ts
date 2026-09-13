@@ -3,7 +3,9 @@ export type VolumeRepresentation =
   | "custom-scalar-field"
   | "dense-scalar-grid"
   | "dense-vector-grid"
-  | "distance-field";
+  | "distance-field"
+  | "binary-mask"
+  | "label-map";
 
 export type VolumeScalarType = "float32" | "float64" | "int32" | "uint32" | "int16" | "uint16" | "int8" | "uint8";
 export type VolumeCentering = "point" | "cell";
@@ -134,6 +136,13 @@ export type VolumeSource =
       sourceObjectIds: readonly string[];
       sourceObjectRevisions: readonly number[];
       parameters: Readonly<Record<string, number>>;
+    }
+  | {
+      kind: "segmentation";
+      operation: string;
+      sourceObjectId: string;
+      sourceObjectRevision: number;
+      parameters: Readonly<Record<string, number | string | boolean>>;
     };
 
 export type VolumeProvenance = {

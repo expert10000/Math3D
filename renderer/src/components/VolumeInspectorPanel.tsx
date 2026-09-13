@@ -20,13 +20,15 @@ import {
   type VolumeSdfSignDiagnostics,
   type VolumeDirectRenderStatus,
   type VolumeAnalysisSummary,
+  type VolumeLabelDefinition,
+  type VolumeLabelStatistics,
   type VolumeRenderMode,
   type VolumeRenderQuality,
   type VolumeTextureSampling,
   type VolumeTransferFunction,
 } from "../volume";
 
-type VolumeInspectorTab = "volume" | "field" | "sampling" | "slice" | "rendering" | "sdf" | "analysis" | "derived" | "diagnostics" | "history";
+type VolumeInspectorTab = "volume" | "field" | "sampling" | "slice" | "rendering" | "sdf" | "analysis" | "segmentation" | "derived" | "diagnostics" | "history";
 
 export type VolumeInspectorPanelProps = {
   dataset: VolumeDataset;
@@ -81,6 +83,18 @@ export type VolumeInspectorPanelProps = {
   onRunAnalysis: () => void;
   onChangeAnalysisThreshold: (value: number) => void;
   onExportAnalysis: () => void;
+  segmentationThreshold: number;
+  segmentationLabels: readonly VolumeLabelDefinition[];
+  segmentationStats: readonly VolumeLabelStatistics[];
+  segmentationHasPreview: boolean;
+  segmentationHistory: { undoDepth: number; redoDepth: number; ownedBytes: number };
+  onChangeSegmentationThreshold: (value: number) => void;
+  onPreviewSegmentation: () => void;
+  onApplySegmentation: () => void;
+  onCancelSegmentation: () => void;
+  onUndoSegmentation: () => void;
+  onRedoSegmentation: () => void;
+  onUpdateSegmentationLabel: (id: number, patch: Partial<Omit<VolumeLabelDefinition, "id">>) => void;
   onApplyDerivedResult: () => void;
   onCancelDerivedResult: () => void;
   onRegenerateDerivedResult: (id: string) => void;
@@ -126,6 +140,7 @@ const tabs: ReadonlyArray<{ id: VolumeInspectorTab; label: string }> = [
   { id: "rendering", label: "Rendering" },
   { id: "sdf", label: "SDF" },
   { id: "analysis", label: "Analysis" },
+  { id: "segmentation", label: "Masks & Labels" },
   { id: "derived", label: "Derived Surfaces" },
   { id: "diagnostics", label: "Diagnostics" },
   { id: "history", label: "History" },
@@ -223,6 +238,18 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   onRunAnalysis,
   onChangeAnalysisThreshold,
   onExportAnalysis,
+  segmentationThreshold,
+  segmentationLabels,
+  segmentationStats,
+  segmentationHasPreview,
+  segmentationHistory,
+  onChangeSegmentationThreshold,
+  onPreviewSegmentation,
+  onApplySegmentation,
+  onCancelSegmentation,
+  onUndoSegmentation,
+  onRedoSegmentation,
+  onUpdateSegmentationLabel,
   onApplyDerivedResult,
   onCancelDerivedResult,
   onRegenerateDerivedResult,
@@ -590,6 +617,42 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
             </>
           ) : <div style={{ fontSize: 10, color: "#64748b" }}>Run analysis to publish statistics, derivatives, regions, critical candidates, and iso statistics for this revision.</div>}
           <DetailRow label="Result history" value={`${analysisHistoryCount} records`} />
+        </div>
+      )}
+
+      {activeTab === "segmentation" && (
+        <div style={cardStyle} data-testid="volume-segmentation-card">
+          <div style={{ fontWeight: 850, fontSize: 12 }}>Masks &amp; Labels</div>
+          <label style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
+            <span>Threshold</span>
+            <input aria-label="Volume segmentation threshold" type="number" step="any" value={segmentationThreshold} onChange={(event) => onChangeSegmentationThreshold(Number(event.target.value) || 0)} style={{ width: 90 }} />
+          </label>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+            <button type="button" data-testid="volume-segmentation-preview" onClick={onPreviewSegmentation}>Preview</button>
+            <button type="button" data-testid="volume-segmentation-apply" onClick={onApplySegmentation} disabled={!segmentationHasPreview}>Apply</button>
+            <button type="button" onClick={onCancelSegmentation} disabled={!segmentationHasPreview}>Cancel</button>
+            <button type="button" onClick={onUndoSegmentation} disabled={!segmentationHistory.undoDepth}>Undo</button>
+            <button type="button" onClick={onRedoSegmentation} disabled={!segmentationHistory.redoDepth}>Redo</button>
+          </div>
+          <DetailRow label="Categorical sampling" value="nearest-neighbor only" />
+          <DetailRow label="Labels" value={segmentationLabels.length} />
+          <DetailRow label="History buffers" value={`${segmentationHistory.undoDepth} undo · ${segmentationHistory.redoDepth} redo · ${formatBytes(segmentationHistory.ownedBytes)}`} />
+          {segmentationLabels.length ? segmentationLabels.map((label) => {
+            const stats = segmentationStats.find((entry) => entry.label === label.id);
+            return (
+              <div key={label.id} data-testid="volume-segmentation-label" style={{ border: "1px solid #d7e2ee", borderRadius: 7, background: "#fff", padding: 7, display: "grid", gap: 5 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10 }}>
+                  <span style={{ width: 12, height: 12, borderRadius: 3, background: label.color, border: "1px solid #64748b" }} />
+                  <strong style={{ flex: 1 }}>{label.name}</strong><span>ID {label.id}</span>
+                </div>
+                {stats && <DetailRow label="Region" value={`${stats.voxelCount.toLocaleString()} voxels · ${formatNumber(stats.physicalVolume)} ${spatial.positionUnits}³`} />}
+                <div style={{ display: "flex", gap: 10, fontSize: 10 }}>
+                  <label><input type="checkbox" checked={label.visible} onChange={(event) => onUpdateSegmentationLabel(label.id, { visible: event.target.checked })} /> Visible</label>
+                  <label><input type="checkbox" checked={label.locked} onChange={(event) => onUpdateSegmentationLabel(label.id, { locked: event.target.checked })} /> Locked</label>
+                </div>
+              </div>
+            );
+          }) : <div style={{ fontSize: 10, color: "#64748b" }}>Preview a threshold to create deterministic connected-component labels.</div>}
         </div>
       )}
 

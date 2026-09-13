@@ -941,12 +941,17 @@ import {
   comparePinnedVolumeProbes,
   createVolumeMemoryPlan,
   createVolumeAnalysisResultStore,
+  connectedComponentsLabelMap,
   createPinnedVolumeProbe,
   formatVolumeProbeText,
   isPinnedVolumeProbeStale,
   readVolumeProbe,
   publishVolumeAnalysis,
   runVolumeAnalysis,
+  labelStatistics,
+  thresholdVolumeMask,
+  updateVolumeLabel,
+  VolumeSegmentationSession,
   reconcileVolumeDerivedResult,
   restorePinnedVolumeProbes,
   restoreVolumeTransferFunction,
@@ -956,6 +961,7 @@ import {
   type PinnedVolumeProbe,
   type VolumeComputeDiagnostics,
   type VolumeAnalysisSummary,
+  type VolumeLabelDefinition,
   type VolumeDerivedResult,
   type VolumeIsosurfaceGeometry,
   type VolumeJobLifecycle,
@@ -35487,6 +35493,43 @@ const App: React.FC = () => {
       analysis: currentVolumeAnalysisSummary,
     }, null, 2), `math3d-volume-analysis-r${canonicalVolumeObject.identity.volumeRevision}.json`, "application/json");
   }, [canonicalVolumeObject, currentVolumeAnalysisSummary]);
+  const volumeSegmentationSessionRef = useRef(new VolumeSegmentationSession());
+  const [volumeSegmentationVersion, setVolumeSegmentationVersion] = useState(0);
+  const [volumeSegmentationThreshold, setVolumeSegmentationThreshold] = useState(0);
+  useEffect(() => {
+    volumeSegmentationSessionRef.current.clear();
+    setVolumeSegmentationVersion((version) => version + 1);
+  }, [canonicalVolumeObject.identity.key]);
+  const volumeSegmentationMap = useMemo(() =>
+    volumeSegmentationSessionRef.current.preview()?.result ?? volumeSegmentationSessionRef.current.current(),
+  [volumeSegmentationVersion]);
+  const volumeSegmentationHistory = useMemo(() => volumeSegmentationSessionRef.current.summary(), [volumeSegmentationVersion]);
+  const volumeSegmentationStats = useMemo(() => volumeSegmentationMap
+    ? labelStatistics(volumeSegmentationMap, volumeDataset.grid)
+    : [], [volumeDataset.grid, volumeSegmentationMap]);
+  const handlePreviewVolumeSegmentation = useCallback(() => {
+    const mask = thresholdVolumeMask(volumeDataset.grid, volumeSegmentationThreshold, Number.POSITIVE_INFINITY, {
+      sourceVolumeId: canonicalVolumeObject.identity.volumeId,
+      sourceVolumeRevision: canonicalVolumeObject.identity.volumeRevision,
+    });
+    const labels = connectedComponentsLabelMap(mask, 6);
+    volumeSegmentationSessionRef.current.createPreview(labels, "range-threshold");
+    setVolumeSegmentationVersion((version) => version + 1);
+  }, [canonicalVolumeObject.identity.volumeId, canonicalVolumeObject.identity.volumeRevision, volumeDataset.grid, volumeSegmentationThreshold]);
+  const handleApplyVolumeSegmentation = useCallback(() => {
+    volumeSegmentationSessionRef.current.applyPreview();
+    setVolumeSegmentationVersion((version) => version + 1);
+  }, []);
+  const handleCancelVolumeSegmentation = useCallback(() => {
+    volumeSegmentationSessionRef.current.cancelPreview();
+    setVolumeSegmentationVersion((version) => version + 1);
+  }, []);
+  const handleUpdateVolumeSegmentationLabel = useCallback((id: number, patch: Partial<Omit<VolumeLabelDefinition, "id">>) => {
+    const current = volumeSegmentationSessionRef.current.current();
+    if (!current) return;
+    volumeSegmentationSessionRef.current.replace(updateVolumeLabel(current, id, patch), "label-metadata");
+    setVolumeSegmentationVersion((version) => version + 1);
+  }, []);
   const volumeComputeMemoryPlan = useMemo(
     () => createVolumeMemoryPlan("marchingCubes", canonicalVolumeObject.spatial.dimensions, canonicalVolumeObject.spatial.byteSize),
     [canonicalVolumeObject.spatial.byteSize, canonicalVolumeObject.spatial.dimensions]
@@ -87478,6 +87521,24 @@ case "mobius":
                         onRunAnalysis={handleRunVolumeAnalysis}
                         onChangeAnalysisThreshold={setVolumeAnalysisThreshold}
                         onExportAnalysis={handleExportVolumeAnalysis}
+                        segmentationThreshold={volumeSegmentationThreshold}
+                        segmentationLabels={volumeSegmentationMap?.labels ?? []}
+                        segmentationStats={volumeSegmentationStats}
+                        segmentationHasPreview={volumeSegmentationHistory.hasPreview}
+                        segmentationHistory={volumeSegmentationHistory}
+                        onChangeSegmentationThreshold={setVolumeSegmentationThreshold}
+                        onPreviewSegmentation={handlePreviewVolumeSegmentation}
+                        onApplySegmentation={handleApplyVolumeSegmentation}
+                        onCancelSegmentation={handleCancelVolumeSegmentation}
+                        onUndoSegmentation={() => {
+                          volumeSegmentationSessionRef.current.undo();
+                          setVolumeSegmentationVersion((version) => version + 1);
+                        }}
+                        onRedoSegmentation={() => {
+                          volumeSegmentationSessionRef.current.redo();
+                          setVolumeSegmentationVersion((version) => version + 1);
+                        }}
+                        onUpdateSegmentationLabel={handleUpdateVolumeSegmentationLabel}
                         onApplyDerivedResult={() => void handleApplyVolumeIsosurface()}
                         onCancelDerivedResult={handleCancelVolumeIsosurface}
                         onRegenerateDerivedResult={handleRegenerateVolumeDerivedResult}
