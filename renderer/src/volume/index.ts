@@ -1,6 +1,7 @@
 export * from "./contracts";
 export * from "./computation";
 export * from "./infrastructure";
+export * from "./isosurface";
 export * from "./probes";
 export * from "./spatial";
 export * from "./typedArrayStore";

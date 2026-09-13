@@ -220,8 +220,16 @@ test.describe("Workspace navigation", () => {
       await volumeInspector.getByTestId("volume-inspector-tab-volume").click();
 
       await detailedControls.getByTestId("volume-show-isosurface").check();
+      await detailedControls.getByTestId("volume-apply-isosurface").click();
       await volumeInspector.getByTestId("volume-inspector-tab-derived").click();
       await expect(volumeInspector.getByTestId("volume-derived-result-current")).toBeVisible();
+      await expect(volumeInspector.getByTestId("volume-derived-result-current")).toContainText(/\d[\d\s,.]* V · \d[\d\s,.]* F/);
+      await expect(volumeInspector.getByTestId("volume-derived-result-current")).toContainText("gradient-derived");
+      await volumeInspector.getByTestId("volume-derived-result-current").getByTestId("volume-derived-open-analysis").click();
+      await expect(ctx.page.getByTestId("workspace-nav-mesh")).toHaveAttribute("aria-pressed", "true");
+      await expect(ctx.page.getByTestId("volume-handoff-return")).toBeVisible();
+      await ctx.page.getByTestId("volume-handoff-return").click();
+      await expect(volumeNav).toHaveAttribute("aria-pressed", "true");
 
       await detailedControls.getByLabel("Volume dim Ny").fill("63");
       await volumeInspector.getByTestId("volume-inspector-tab-volume").click();
@@ -232,6 +240,7 @@ test.describe("Workspace navigation", () => {
       await expect(volumeInspector.getByTestId("volume-details-card")).toContainText(
         "Volume 3 · definition 1 · grid 3"
       );
+      await detailedControls.getByTestId("volume-apply-isosurface").click();
       await volumeInspector.getByTestId("volume-inspector-tab-derived").click();
       await expect(volumeInspector.getByTestId("volume-derived-result-stale").first()).toBeVisible();
       await expect(volumeInspector.getByTestId("volume-derived-result-current")).toBeVisible();

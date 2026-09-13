@@ -921,9 +921,15 @@ import {
   adaptCustomFieldVolume,
   adaptVectorGridVolume,
   adaptVtkDistanceVolume,
+  analyzeVolumeIsosurface,
+  computeVolumeIsosurfaceNormals,
+  createBrowserVolumeWorkerCoordinator,
   createVolumeDerivedResult,
+  createVolumeIsosurfaceMesh,
+  createVolumeJobRequest,
   createVolumeTypedArrayStore,
   deleteVolumeDerivedResult,
+  detachVolumeDerivedResult,
   describeVolumeDefinition,
   describeVolumeSource,
   hydrateVolumeRevisionTracker,
@@ -938,7 +944,10 @@ import {
   serializeVolumeObject,
   volumeProbesToCsv,
   type PinnedVolumeProbe,
+  type VolumeComputeDiagnostics,
   type VolumeDerivedResult,
+  type VolumeIsosurfaceGeometry,
+  type VolumeJobLifecycle,
   type VolumeOrientationConvention,
   type VolumeRevisionTracker,
 } from "./volume";
@@ -1471,6 +1480,19 @@ type SurfaceMeshAnalysisHandoff = {
     surfaceId: SurfaceId;
     paramId: ParamSurfaceId;
   };
+  openedAt: number;
+};
+type VolumeMeshAnalysisHandoff = {
+  resultId: string;
+  label: string;
+  sourceVolumeId: string;
+  sourceVolumeRevision: number;
+  sourceSampledGridRevision: number;
+  crosshair: [number, number, number] | null;
+  camera: VolumeCameraState | null;
+  layout: "quad" | "slices" | "3d" | "xy" | "xz" | "yz";
+  focusedPane: "xy" | "xz" | "yz" | "3d" | null;
+  panelState: "browse" | "work";
   openedAt: number;
 };
 type GeometryCameraTourStatus = "idle" | "playing" | "completed" | "stopped" | "interrupted";
@@ -35366,28 +35388,136 @@ const App: React.FC = () => {
     [canonicalVolumeObject.spatial.byteSize, canonicalVolumeObject.spatial.dimensions]
   );
   const [volumeDerivedResults, setVolumeDerivedResults] = useState<VolumeDerivedResult[]>([]);
+  const volumeDerivedGeometryRef = useRef(new Map<string, VolumeIsosurfaceGeometry>());
+  const volumeWorkerRevisionRef = useRef({
+    volumeId: canonicalVolumeObject.identity.volumeId,
+    volumeRevision: canonicalVolumeObject.identity.volumeRevision,
+    sampledGridRevision: canonicalVolumeObject.identity.sampledGridRevision,
+  });
+  volumeWorkerRevisionRef.current = {
+    volumeId: canonicalVolumeObject.identity.volumeId,
+    volumeRevision: canonicalVolumeObject.identity.volumeRevision,
+    sampledGridRevision: canonicalVolumeObject.identity.sampledGridRevision,
+  };
+  const volumeWorkerCoordinatorRef = useRef<ReturnType<typeof createBrowserVolumeWorkerCoordinator> | null>(null);
+  if (!volumeWorkerCoordinatorRef.current) {
+    volumeWorkerCoordinatorRef.current = createBrowserVolumeWorkerCoordinator((volumeId) => {
+      const current = volumeWorkerRevisionRef.current;
+      return current.volumeId === volumeId
+        ? { volumeRevision: current.volumeRevision, sampledGridRevision: current.sampledGridRevision }
+        : null;
+    });
+  }
+  const activeVolumeWorkerHandleRef = useRef<{ requestId: string; cancel: () => void } | null>(null);
+  const volumeWorkerRequestCounterRef = useRef(0);
+  const [volumeComputeRuntime, setVolumeComputeRuntime] = useState<{
+    lifecycle: VolumeJobLifecycle | "idle";
+    operation: "marchingCubes" | null;
+    progress: number;
+    message: string;
+    lastProfile: VolumeComputeDiagnostics["lastProfile"];
+  }>({ lifecycle: "idle", operation: null, progress: 0, message: volumeComputeMemoryPlan.message, lastProfile: null });
+  useEffect(() => () => volumeWorkerCoordinatorRef.current?.dispose(), []);
   useEffect(() => {
     const parameters = { isoValue: volumeIsoValue };
-    setVolumeDerivedResults((previous) => {
-      const reconciled = previous.map((result) =>
-        reconcileVolumeDerivedResult(result, canonicalVolumeObject, Date.now(), parameters)
-      );
-      if (!volumeShowIsosurface) return reconciled;
-      const resultId = `iso:${canonicalVolumeObject.identity.volumeId}:${canonicalVolumeObject.identity.volumeRevision}:${volumeIsoValue}`;
-      if (reconciled.some((result) => result.id === resultId)) return reconciled;
-      return [
-        createVolumeDerivedResult({
-          id: resultId,
-          label: `${canonicalVolumeObject.identity.label} iso ${fmt(volumeIsoValue)}`,
-          kind: "isosurface",
-          source: canonicalVolumeObject,
-          parameters,
-        }),
-        ...reconciled,
-      ].slice(0, 24);
+    setVolumeDerivedResults((previous) => previous.map((result) =>
+      reconcileVolumeDerivedResult(result, canonicalVolumeObject, Date.now(), parameters)
+    ));
+  }, [canonicalVolumeObject, volumeIsoValue]);
+  const volumeComputeDiagnostics = useMemo<VolumeComputeDiagnostics>(() => {
+    const cache = volumeWorkerCoordinatorRef.current?.cache.summary() ?? { entries: 0, hits: 0 };
+    return {
+      lifecycle: volumeComputeRuntime.lifecycle,
+      operation: volumeComputeRuntime.operation,
+      backend: "native-worker",
+      progress: volumeComputeRuntime.progress,
+      memoryPlan: volumeComputeMemoryPlan,
+      cacheEntries: cache.entries,
+      cacheHits: cache.hits,
+      lastProfile: volumeComputeRuntime.lastProfile,
+      message: volumeComputeRuntime.message,
+    };
+  }, [volumeComputeMemoryPlan, volumeComputeRuntime]);
+  const handleApplyVolumeIsosurface = useCallback(async (isoOverride?: number) => {
+    const coordinator = volumeWorkerCoordinatorRef.current;
+    if (!coordinator) return;
+    const iso = typeof isoOverride === "number" ? isoOverride : volumeIsoValue;
+    activeVolumeWorkerHandleRef.current?.cancel();
+    setVolumeShowIsosurface(true);
+    const requestId = `volume-isosurface:${canonicalVolumeObject.identity.volumeId}:${canonicalVolumeObject.identity.volumeRevision}:${++volumeWorkerRequestCounterRef.current}`;
+    const request = createVolumeJobRequest({
+      requestId,
+      operation: "marchingCubes",
+      volume: canonicalVolumeObject,
+      grid: volumeDataset.grid,
+      parameters: { isoValue: iso, smoothing: volumeIsoSmooth, smoothingIterations: volumeIsoSmoothIterations },
+      backend: "native-worker",
+      algorithmVersion: "marching-cubes-v1",
     });
-  }, [canonicalVolumeObject, volumeIsoValue, volumeShowIsosurface]);
+    const handle = coordinator.submit(request, {
+      onLifecycle: (lifecycle) => setVolumeComputeRuntime((previous) => ({ ...previous, lifecycle, operation: "marchingCubes", message: `Isosurface ${lifecycle}.` })),
+      onProgress: (progress) => setVolumeComputeRuntime((previous) => ({ ...previous, progress: progress.progress, message: `Isosurface ${progress.phase} · ${Math.round(progress.progress * 100)}%.` })),
+    });
+    activeVolumeWorkerHandleRef.current = handle;
+    const artifact = await handle.promise;
+    if (activeVolumeWorkerHandleRef.current?.requestId === handle.requestId) activeVolumeWorkerHandleRef.current = null;
+    if (artifact.state !== "complete" || !artifact.output.positions?.length || !artifact.output.indices?.length) {
+      setVolumeComputeRuntime((previous) => ({ ...previous, lifecycle: artifact.state, progress: 0, message: artifact.failure?.message ?? "The isosurface produced no triangles.", lastProfile: artifact.profile }));
+      return;
+    }
+    const normalResult = computeVolumeIsosurfaceNormals(canonicalVolumeObject, volumeDataset.grid, artifact.output.positions);
+    const geometry: VolumeIsosurfaceGeometry = {
+      positions: new Float32Array(artifact.output.positions),
+      indices: new Uint32Array(artifact.output.indices),
+      normals: normalResult.normals,
+    };
+    const metrics = analyzeVolumeIsosurface(geometry);
+    const resultId = `iso:${canonicalVolumeObject.identity.volumeId}:${canonicalVolumeObject.identity.volumeRevision}:${iso}`;
+    const warnings = [
+      ...artifact.warnings,
+      ...normalResult.warnings,
+      ...(volumeIsoSmooth ? ["Full-result smoothing remains a post-extraction Mesh operation; the applied result preserves the exact extracted level set."] : []),
+    ];
+    volumeDerivedGeometryRef.current.set(resultId, geometry);
+    const result = createVolumeDerivedResult({
+      id: resultId,
+      label: `${canonicalVolumeObject.identity.label} iso ${fmt(iso)}`,
+      kind: "isosurface",
+      source: canonicalVolumeObject,
+      parameters: { isoValue: iso },
+      isosurface: {
+        algorithm: "marching-cubes",
+        algorithmVersion: "marching-cubes-v1",
+        backend: artifact.profile.backend,
+        isoValue: iso,
+        inputTransform: {
+          dimensions: [...canonicalVolumeObject.spatial.dimensions],
+          origin: [...canonicalVolumeObject.spatial.origin],
+          spacing: [...canonicalVolumeObject.spatial.spacing],
+          direction: [...canonicalVolumeObject.spatial.direction] as unknown as typeof canonicalVolumeObject.spatial.direction,
+        },
+        profile: {
+          wallTimeMs: artifact.profile.wallTimeMs,
+          peakWorkingSetBytes: artifact.profile.peakWorkingSetBytes,
+          transferredBytes: artifact.profile.transferredBytes,
+          cacheHit: artifact.profile.cacheHit,
+        },
+        normalMethod: normalResult.method,
+        warnings,
+        correspondence: {
+          kind: "volume-grid",
+          id: `volume-grid:${canonicalVolumeObject.identity.volumeId}@${canonicalVolumeObject.identity.sampledGridRevision}`,
+          sourceSampledGridRevision: canonicalVolumeObject.identity.sampledGridRevision,
+        },
+        metrics,
+      },
+    });
+    setVolumeDerivedResults((previous) => [result, ...previous.filter((entry) => entry.id !== resultId)].slice(0, 24));
+    setVolumeComputeRuntime({ lifecycle: "complete", operation: "marchingCubes", progress: 1, message: `Applied full isosurface · ${metrics.vertexCount.toLocaleString()} vertices · ${metrics.faceCount.toLocaleString()} faces.`, lastProfile: artifact.profile });
+  }, [canonicalVolumeObject, volumeDataset.grid, volumeIsoSmooth, volumeIsoSmoothIterations, volumeIsoValue]);
+  const handleCancelVolumeIsosurface = useCallback(() => activeVolumeWorkerHandleRef.current?.cancel(), []);
   const handleDeleteVolumeDerivedResult = useCallback((id: string) => {
+    volumeDerivedGeometryRef.current.delete(id);
     setVolumeDerivedResults((previous) => deleteVolumeDerivedResult(previous, id, volumeStorageStoreRef.current));
   }, []);
   const [volumeShowCropBox, setVolumeShowCropBox] = useState(true);
@@ -44341,6 +44471,7 @@ const App: React.FC = () => {
   const surfaceDerivedMeshPayloadCacheRef = useRef(new Map<string, SurfaceDerivedMeshPayload>());
   const surfaceDerivedMeshGeometryCacheRef = useRef(new Map<string, SurfaceMeshGeometry>());
   const [surfaceMeshAnalysisHandoff, setSurfaceMeshAnalysisHandoff] = useState<SurfaceMeshAnalysisHandoff | null>(null);
+  const [volumeMeshAnalysisHandoff, setVolumeMeshAnalysisHandoff] = useState<VolumeMeshAnalysisHandoff | null>(null);
   const handleSelectSurfaceComputation = useCallback((computation: SurfaceComputationId) => {
     const section: AnalysisFocusedSection = computation === "surface-curves"
       ? "curvature-lines"
@@ -50737,6 +50868,149 @@ case "mobius":
     setSurfaceDerivedMeshStatus(`Returned to ${handoff.record.identity.source.label} revision ${handoff.record.identity.source.surfaceRevision}; ${mapped.state} mapped selection restored.`);
     setSurfaceMeshAnalysisHandoff(null);
   }, [inspectIdx, selectSurfaceChartIndices, surfaceMeshAnalysisHandoff, surfaceMeshInspectPick?.vertexIndex]);
+
+  const handleRegenerateVolumeDerivedResult = useCallback((id: string) => {
+    const result = volumeDerivedResults.find((entry) => entry.id === id);
+    if (!result?.isosurface) return;
+    setVolumeIsoValue(result.isosurface.isoValue);
+    void handleApplyVolumeIsosurface(result.isosurface.isoValue);
+  }, [handleApplyVolumeIsosurface, volumeDerivedResults]);
+
+  const handleBakeVolumeDerivedResult = useCallback((id: string) => {
+    const result = volumeDerivedResults.find((entry) => entry.id === id);
+    const geometry = volumeDerivedGeometryRef.current.get(id);
+    if (!result?.isosurface || !geometry) return;
+    const now = Date.now();
+    const snapshotId = `${id}:snapshot:${now}`;
+    volumeDerivedGeometryRef.current.set(snapshotId, {
+      positions: new Float32Array(geometry.positions),
+      indices: new Uint32Array(geometry.indices),
+      normals: new Float32Array(geometry.normals),
+    });
+    setVolumeDerivedResults((previous) => [{
+      ...result,
+      id: snapshotId,
+      label: `${result.label} snapshot`,
+      state: "snapshot" as const,
+      staleReason: null,
+      createdAt: now,
+      updatedAt: now,
+    }, ...previous].slice(0, 24));
+  }, [volumeDerivedResults]);
+
+  const handleDetachVolumeDerivedResult = useCallback((id: string) => {
+    setVolumeDerivedResults((previous) => previous.map((result) => result.id === id ? detachVolumeDerivedResult(result) : result));
+  }, []);
+
+  const openVolumeDerivedResult = useCallback((id: string, destination: "mesh" | "geometry" | "analysis") => {
+    const result = volumeDerivedResults.find((entry) => entry.id === id);
+    const geometry = volumeDerivedGeometryRef.current.get(id);
+    if (!result?.isosurface || !geometry) return;
+    const role = result.state === "snapshot" ? "snapshot" : result.state === "detached" ? "detached" : "live";
+    const mesh = createVolumeIsosurfaceMesh({
+      resultId: result.id,
+      label: result.label,
+      sourceVolumeId: result.sourceVolumeId,
+      sourceVolumeRevision: result.sourceVolumeRevision,
+      sourceSampledGridRevision: result.sourceSampledGridRevision,
+      metadata: result.isosurface,
+      geometry,
+      role,
+    });
+    const handoff: VolumeMeshAnalysisHandoff = {
+      resultId: result.id,
+      label: result.label,
+      sourceVolumeId: result.sourceVolumeId,
+      sourceVolumeRevision: result.sourceVolumeRevision,
+      sourceSampledGridRevision: result.sourceSampledGridRevision,
+      crosshair: volumeCrosshair ? [...volumeCrosshair] : null,
+      camera: volumeCameraState ? {
+        position: [...volumeCameraState.position],
+        target: [...volumeCameraState.target],
+        up: [...volumeCameraState.up],
+      } : null,
+      layout: volumeLayout,
+      focusedPane: volumeFocusedPane,
+      panelState: surfacesPanelState,
+      openedAt: Date.now(),
+    };
+    setVolumeMeshAnalysisHandoff(handoff);
+    if (destination === "geometry") {
+      const objectId = makeId();
+      const geometryObject: GeometryDatasetMeshObject = {
+        id: objectId,
+        name: `${result.label} geometry`,
+        mesh: toDetachedMeshData(mesh),
+        transform: {
+          position: { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+        },
+        visible: true,
+        material: { color: 0x5b6f91, opacity: 1 },
+        promotion: null,
+        sourceSelectionOverlay: null,
+      };
+      setGeometryDatasetMeshObjects((previous) => [geometryObject, ...previous]);
+      setGeometrySelectedObjectId(objectId);
+      setGeometryProceduralPanelTab("object");
+      setGeometryRightPanelTab("selection");
+      setGeometryMode("procedural");
+      setMode("geometry");
+      if (typeof window !== "undefined") window.setTimeout(() => handleGeometryFit("scene"), 0);
+      return;
+    }
+    setMeshDataset(mesh, destination === "analysis" ? "volume-isosurface:open-analysis" : "volume-isosurface:send-mesh");
+    setSurfaceViewerKind("mesh");
+    setDatasetKind("mesh");
+    setSurfacesPanelState("work");
+    setSurfacesLeftTab(destination === "analysis" ? "analysis" : "scene");
+    setMeshWorkspaceLeftTab(destination === "analysis" ? "analyze" : "scene");
+    setMode("surfaces");
+    if (volumeCameraState) {
+      setCameraOverride({
+        position: { x: volumeCameraState.position[0], y: volumeCameraState.position[1], z: volumeCameraState.position[2] },
+        target: { x: volumeCameraState.target[0], y: volumeCameraState.target[1], z: volumeCameraState.target[2] },
+        up: { x: volumeCameraState.up[0], y: volumeCameraState.up[1], z: volumeCameraState.up[2] },
+      });
+      setCameraOverrideToken((token) => token + 1);
+    }
+    if (volumeCrosshair && geometry.positions.length) {
+      let nearest = 0;
+      let nearestDistance = Infinity;
+      for (let vertex = 0; vertex < geometry.positions.length / 3; vertex += 1) {
+        const base = vertex * 3;
+        const distance = Math.hypot(geometry.positions[base] - volumeCrosshair[0], geometry.positions[base + 1] - volumeCrosshair[1], geometry.positions[base + 2] - volumeCrosshair[2]);
+        if (distance < nearestDistance) { nearest = vertex; nearestDistance = distance; }
+      }
+      const base = nearest * 3;
+      const point = { x: geometry.positions[base], y: geometry.positions[base + 1], z: geometry.positions[base + 2] };
+      const normal = { x: geometry.normals[base] ?? 0, y: geometry.normals[base + 1] ?? 1, z: geometry.normals[base + 2] ?? 0 };
+      setInspectIdx(nearest);
+      setInspectPos(point);
+      setInspectNormal(normal);
+      setSurfaceMeshInspectPick({ point, normal, meshKey: "workspace:active", vertexIndex: nearest });
+      setSurfaceMeshTopologyPickMode("vertex");
+    }
+  }, [handleGeometryFit, setMeshDataset, surfacesPanelState, volumeCameraState, volumeCrosshair, volumeDerivedResults, volumeFocusedPane, volumeLayout]);
+
+  const handleReturnToVolumeSource = useCallback(() => {
+    if (!volumeMeshAnalysisHandoff) return;
+    setMode("surfaces");
+    setDatasetKind("volume");
+    setSurfacesPanelState(volumeMeshAnalysisHandoff.panelState);
+    setSurfacesLeftTab("analysis");
+    setVolumeLayout(volumeMeshAnalysisHandoff.layout);
+    setVolumeFocusedPane(volumeMeshAnalysisHandoff.focusedPane);
+    setVolumeCrosshair(volumeMeshAnalysisHandoff.crosshair ? [...volumeMeshAnalysisHandoff.crosshair] : null);
+    setVolumeCameraState(volumeMeshAnalysisHandoff.camera ? {
+      position: [...volumeMeshAnalysisHandoff.camera.position],
+      target: [...volumeMeshAnalysisHandoff.camera.target],
+      up: [...volumeMeshAnalysisHandoff.camera.up],
+    } : null);
+    setVolumeComputeRuntime((previous) => ({ ...previous, message: `Returned from ${volumeMeshAnalysisHandoff.label}; Volume ${volumeMeshAnalysisHandoff.sourceVolumeId} revision ${volumeMeshAnalysisHandoff.sourceVolumeRevision} restored.` }));
+    setVolumeMeshAnalysisHandoff(null);
+  }, [volumeMeshAnalysisHandoff]);
 
   const calculusScalarOptions = useMemo(() => {
     const out: Array<{ value: string; label: string }> = [];
@@ -76259,6 +76533,7 @@ case "mobius":
                   volumeIsoRange={volumeIsoRange}
                   volumeIsoSmooth={volumeIsoSmooth}
                   volumeIsoSmoothIterations={volumeIsoSmoothIterations}
+                  volumeIsosurfaceLifecycle={volumeComputeRuntime.lifecycle}
                   onChangeVolumePresetId={handleChangeVolumePresetId}
                   onChangeVolumeDim={handleVolumeDimChange}
                   onChangeVolumeDimensionPreset={handleVolumeDimensionPreset}
@@ -76283,6 +76558,8 @@ case "mobius":
                   onChangeVolumeIsoValue={setVolumeIsoValue}
                   onToggleVolumeIsoSmooth={setVolumeIsoSmooth}
                   onChangeVolumeIsoSmoothIterations={setVolumeIsoSmoothIterations}
+                  onApplyVolumeIsosurface={() => void handleApplyVolumeIsosurface()}
+                  onCancelVolumeIsosurface={handleCancelVolumeIsosurface}
                   onChangeVolumeParam={handleVolumeParamChange}
                   onChangeVolumeCustomExpr={setVolumeCustomExpr}
                   onChangeVolumeCrosshairIndex={handleVolumeCrosshairIndexChange}
@@ -78937,6 +79214,11 @@ case "mobius":
               <span data-testid="mesh-analysis-context-result" style={{ fontWeight: 700 }}>
                 {meshActiveAnalysisResult.result}
               </span>
+              {volumeMeshAnalysisHandoff && (
+                <button type="button" data-testid="volume-handoff-return" onClick={handleReturnToVolumeSource}>
+                  Return to Volume source
+                </button>
+              )}
               <span
                 data-testid="mesh-analysis-context-validation"
                 style={{
@@ -86885,18 +87167,17 @@ case "mobius":
                         distanceBusy={volumeDistanceBusy}
                         distanceError={volumeDistanceError}
                         definitionError={volumeCustomCompiled.error}
-                        computeDiagnostics={{
-                          lifecycle: "idle",
-                          operation: null,
-                          backend: "native-worker",
-                          progress: 0,
-                          memoryPlan: volumeComputeMemoryPlan,
-                          cacheEntries: 0,
-                          cacheHits: 0,
-                          lastProfile: null,
-                          message: volumeComputeMemoryPlan.message,
-                        }}
+                        computeDiagnostics={volumeComputeDiagnostics}
                         derivedResults={volumeDerivedResults}
+                        derivedBusy={volumeComputeRuntime.lifecycle === "queued" || volumeComputeRuntime.lifecycle === "running" || volumeComputeRuntime.lifecycle === "progressive"}
+                        onApplyDerivedResult={() => void handleApplyVolumeIsosurface()}
+                        onCancelDerivedResult={handleCancelVolumeIsosurface}
+                        onRegenerateDerivedResult={handleRegenerateVolumeDerivedResult}
+                        onBakeDerivedResult={handleBakeVolumeDerivedResult}
+                        onDetachDerivedResult={handleDetachVolumeDerivedResult}
+                        onSendDerivedResultToMesh={(id) => openVolumeDerivedResult(id, "mesh")}
+                        onSendDerivedResultToGeometry={(id) => openVolumeDerivedResult(id, "geometry")}
+                        onOpenDerivedResultInMeshAnalysis={(id) => openVolumeDerivedResult(id, "analysis")}
                         onDeleteDerivedResult={handleDeleteVolumeDerivedResult}
                         onChangeNavigationLinked={handleChangeVolumeNavigationLinked}
                         onChangeVoxelSnap={setVolumeVoxelSnap}
@@ -115332,6 +115613,7 @@ type SurfacesLeftPanelProps = {
   volumeIsoRange: { min: number; max: number; step: number };
   volumeIsoSmooth: boolean;
   volumeIsoSmoothIterations: number;
+  volumeIsosurfaceLifecycle: VolumeJobLifecycle | "idle";
   onChangeVolumePresetId: (id: VolumePresetId) => void;
   onChangeVolumeDim: (axisIndex: 0 | 1 | 2, value: number) => void;
   onChangeVolumeDimensionPreset: (value: 32 | 64 | 128 | 256) => void;
@@ -115356,6 +115638,8 @@ type SurfacesLeftPanelProps = {
   onChangeVolumeIsoValue: (v: number) => void;
   onToggleVolumeIsoSmooth: (v: boolean) => void;
   onChangeVolumeIsoSmoothIterations: (v: number) => void;
+  onApplyVolumeIsosurface: () => void;
+  onCancelVolumeIsosurface: () => void;
   onChangeVolumeParam: (id: string, value: number) => void;
   onChangeVolumeCustomExpr: (value: string) => void;
   onChangeVolumeCrosshairIndex: (axisIndex: 0 | 1 | 2, value: number) => void;
@@ -116145,6 +116429,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   volumeIsoRange,
   volumeIsoSmooth,
   volumeIsoSmoothIterations,
+  volumeIsosurfaceLifecycle,
   onChangeVolumePresetId,
   onChangeVolumeDim,
   onChangeVolumeDimensionPreset,
@@ -116169,6 +116454,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeVolumeIsoValue,
   onToggleVolumeIsoSmooth,
   onChangeVolumeIsoSmoothIterations,
+  onApplyVolumeIsosurface,
+  onCancelVolumeIsosurface,
   onChangeVolumeParam,
   onChangeVolumeCustomExpr,
   onChangeVolumeCrosshairIndex,
@@ -118288,6 +118575,20 @@ onChangeImplicitExpr,
                 />
               </label>
             )}
+            <button
+              type="button"
+              data-testid="volume-apply-isosurface"
+              onClick={onApplyVolumeIsosurface}
+              disabled={volumeIsosurfaceLifecycle === "running" || volumeIsosurfaceLifecycle === "progressive"}
+            >
+              Apply full isosurface
+            </button>
+            {(volumeIsosurfaceLifecycle === "queued" || volumeIsosurfaceLifecycle === "running" || volumeIsosurfaceLifecycle === "progressive") && (
+              <button type="button" data-testid="volume-cancel-isosurface" onClick={onCancelVolumeIsosurface}>Cancel</button>
+            )}
+            <span data-testid="volume-isosurface-lifecycle" style={{ fontSize: 10, color: "#475569" }}>
+              Live preview · full result {volumeIsosurfaceLifecycle}
+            </span>
           </div>
           <div style={{ fontWeight: 700, margin: "10px 0 6px" }}>Streamlines</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>

@@ -8,7 +8,7 @@ export type VolumeRepresentation =
 export type VolumeScalarType = "float32" | "float64" | "int32" | "uint32" | "int16" | "uint16" | "int8" | "uint8";
 export type VolumeCentering = "point" | "cell";
 export type VolumeMissingValuePolicy = "none" | "nan" | "sentinel";
-export type VolumeLifecycleState = "current" | "stale" | "detached";
+export type VolumeLifecycleState = "current" | "stale" | "snapshot" | "detached";
 
 export type VolumeDirectionMatrix = readonly [
   number, number, number,
@@ -115,6 +115,45 @@ export type VolumeObject = {
 
 export type VolumeDerivedResultKind = "isosurface" | "slice" | "gradient" | "segmentation";
 
+export type VolumeIsosurfaceMetrics = {
+  vertexCount: number;
+  faceCount: number;
+  bounds: { min: [number, number, number]; max: [number, number, number] } | null;
+  connectedComponents: number;
+  boundaryEdgeCount: number;
+  nonManifoldEdgeCount: number;
+  surfaceArea: number;
+  enclosedVolume: number | null;
+  watertight: boolean;
+};
+
+export type VolumeIsosurfaceMetadata = {
+  algorithm: "marching-cubes" | "surface-nets" | "dual-contouring" | "flying-edges";
+  algorithmVersion: string;
+  backend: "native-worker" | "vtk-worker" | "cpu-fallback";
+  isoValue: number;
+  inputTransform: {
+    dimensions: [number, number, number];
+    origin: [number, number, number];
+    spacing: [number, number, number];
+    direction: VolumeDirectionMatrix;
+  };
+  profile: {
+    wallTimeMs: number;
+    peakWorkingSetBytes: number;
+    transferredBytes: number;
+    cacheHit: boolean;
+  };
+  normalMethod: "gradient-derived" | "face-average-fallback";
+  warnings: readonly string[];
+  correspondence: {
+    kind: "volume-grid";
+    id: string;
+    sourceSampledGridRevision: number;
+  };
+  metrics: VolumeIsosurfaceMetrics;
+};
+
 export type VolumeDerivedResult = {
   id: string;
   label: string;
@@ -124,6 +163,7 @@ export type VolumeDerivedResult = {
   sourceSampledGridRevision: number;
   parameters: Readonly<Record<string, number | string | boolean>>;
   storage: VolumeStorageRef | null;
+  isosurface: VolumeIsosurfaceMetadata | null;
   state: VolumeLifecycleState;
   staleReason: string | null;
   createdAt: number;

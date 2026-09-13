@@ -4,6 +4,7 @@ import type {
   VolumeDependency,
   VolumeDerivedResult,
   VolumeDerivedResultKind,
+  VolumeIsosurfaceMetadata,
   VolumeDirectionMatrix,
   VolumeObject,
   VolumeRepresentation,
@@ -370,6 +371,7 @@ export const createVolumeDerivedResult = (args: {
   source: VolumeObject;
   parameters?: Readonly<Record<string, number | string | boolean>>;
   storage?: VolumeStorageRef | null;
+  isosurface?: VolumeIsosurfaceMetadata | null;
   now?: number;
 }): VolumeDerivedResult => {
   const now = args.now ?? Date.now();
@@ -382,6 +384,7 @@ export const createVolumeDerivedResult = (args: {
     sourceSampledGridRevision: args.source.identity.sampledGridRevision,
     parameters: { ...(args.parameters ?? {}) },
     storage: args.storage ?? null,
+    isosurface: args.isosurface ?? null,
     state: "current",
     staleReason: null,
     createdAt: now,
@@ -395,7 +398,7 @@ export const reconcileVolumeDerivedResult = (
   now = Date.now(),
   currentParameters?: Readonly<Record<string, number | string | boolean>>
 ): VolumeDerivedResult => {
-  if (result.state === "detached") return result;
+  if (result.state === "detached" || result.state === "snapshot") return result;
   const parametersChanged = currentParameters != null && fingerprint(result.parameters) !== fingerprint(currentParameters);
   if (
     result.sourceVolumeId === source.identity.volumeId &&

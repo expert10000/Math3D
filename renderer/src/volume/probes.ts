@@ -46,7 +46,7 @@ const signPowDerivative = (value: number, power: number): number => {
   return power * Math.sign(value) * Math.pow(Math.abs(value), power - 1);
 };
 
-const analyticGradient = (volume: VolumeObject, world: VolumePoint3): VolumePoint3 | null => {
+export const analyticVolumeGradientAt = (volume: VolumeObject, world: VolumePoint3): VolumePoint3 | null => {
   if (volume.source.kind !== "analytic-preset") return null;
   const [x, y, z] = world;
   const p = volume.source.parameters;
@@ -116,7 +116,7 @@ export const readVolumeProbe = (
   const clamped = clampVolumeIndex(grid.dims, rawIndex);
   const sampleIndex = snapToVoxelCenter ? nearestVolumeVoxel(grid.dims, clamped) : clamped;
   const sampleWorld = volumeGridIndexToWorld(grid, sampleIndex);
-  const exactGradient = analyticGradient(volume, sampleWorld);
+  const exactGradient = analyticVolumeGradientAt(volume, sampleWorld);
   const gradient = exactGradient ?? gradientVectorAt(grid, sampleWorld);
   const gradientMagnitude = Math.hypot(gradient[0], gradient[1], gradient[2]);
   return {

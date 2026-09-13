@@ -47,6 +47,15 @@ export type VolumeInspectorPanelProps = {
   definitionError: string | null;
   computeDiagnostics: VolumeComputeDiagnostics;
   derivedResults: readonly VolumeDerivedResult[];
+  derivedBusy: boolean;
+  onApplyDerivedResult: () => void;
+  onCancelDerivedResult: () => void;
+  onRegenerateDerivedResult: (id: string) => void;
+  onBakeDerivedResult: (id: string) => void;
+  onDetachDerivedResult: (id: string) => void;
+  onSendDerivedResultToMesh: (id: string) => void;
+  onSendDerivedResultToGeometry: (id: string) => void;
+  onOpenDerivedResultInMeshAnalysis: (id: string) => void;
   onDeleteDerivedResult: (id: string) => void;
   onChangeNavigationLinked: (linked: boolean) => void;
   onChangeVoxelSnap: (enabled: boolean) => void;
@@ -140,6 +149,15 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   definitionError,
   computeDiagnostics,
   derivedResults,
+  derivedBusy,
+  onApplyDerivedResult,
+  onCancelDerivedResult,
+  onRegenerateDerivedResult,
+  onBakeDerivedResult,
+  onDetachDerivedResult,
+  onSendDerivedResultToMesh,
+  onSendDerivedResultToGeometry,
+  onOpenDerivedResultInMeshAnalysis,
   onDeleteDerivedResult,
   onChangeNavigationLinked,
   onChangeVoxelSnap,
@@ -397,7 +415,11 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
       {activeTab === "derived" && (
         <div style={cardStyle} data-testid="volume-derived-card">
           <div style={{ fontWeight: 850, fontSize: 12 }}>Derived Surfaces</div>
-          {showIsosurface && <DetailRow label="Isosurface preview" value="Visible" />}
+          {showIsosurface && <DetailRow label="Live low-latency preview" value="Visible" />}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" data-testid="volume-derived-apply" onClick={onApplyDerivedResult} disabled={derivedBusy}>Apply full result</button>
+            {derivedBusy && <button type="button" data-testid="volume-derived-cancel" onClick={onCancelDerivedResult}>Cancel</button>}
+          </div>
           {derivedResults.length ? derivedResults.map((result) => (
             <div
               key={result.id}
@@ -412,12 +434,30 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
               </div>
               <DetailRow label="Source revision" value={result.sourceVolumeRevision} />
               <DetailRow label="Grid revision" value={result.sourceSampledGridRevision} />
+              {result.isosurface && (
+                <>
+                  <DetailRow label="Algorithm" value={`${result.isosurface.algorithm} · ${result.isosurface.backend}`} />
+                  <DetailRow label="Iso value" value={formatNumber(result.isosurface.isoValue)} />
+                  <DetailRow label="Mesh" value={`${result.isosurface.metrics.vertexCount.toLocaleString()} V · ${result.isosurface.metrics.faceCount.toLocaleString()} F`} />
+                  <DetailRow label="Topology" value={`${result.isosurface.metrics.connectedComponents} components · ${result.isosurface.metrics.boundaryEdgeCount} boundary · ${result.isosurface.metrics.nonManifoldEdgeCount} non-manifold`} />
+                  <DetailRow label="Area" value={formatNumber(result.isosurface.metrics.surfaceArea)} />
+                  <DetailRow label="Enclosed volume" value={result.isosurface.metrics.enclosedVolume == null ? "n/a" : formatNumber(result.isosurface.metrics.enclosedVolume)} />
+                  <DetailRow label="Watertight" value={result.isosurface.metrics.watertight ? "yes" : "no"} />
+                  <DetailRow label="Normals" value={result.isosurface.normalMethod} />
+                  <DetailRow label="Timing" value={`${formatNumber(result.isosurface.profile.wallTimeMs, 1)} ms${result.isosurface.profile.cacheHit ? " · cache hit" : ""}`} />
+                  <DetailRow label="Transfer" value={formatBytes(result.isosurface.profile.transferredBytes)} />
+                  {result.isosurface.warnings.map((warning) => <div key={warning} style={{ color: "#92400e", fontSize: 10 }}>{warning}</div>)}
+                </>
+              )}
               {result.staleReason && <div style={{ color: "#92400e", fontSize: 10 }}>{result.staleReason}</div>}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                <span style={{ color: "#64748b", fontSize: 10 }}>
-                  Mesh counts appear when a first-class mesh payload is created.
-                </span>
-                <button type="button" onClick={() => onDeleteDerivedResult(result.id)} style={{ fontSize: 10 }}>Delete</button>
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5 }}>
+                <button type="button" onClick={() => onRegenerateDerivedResult(result.id)}>Regenerate</button>
+                <button type="button" onClick={() => onBakeDerivedResult(result.id)} disabled={result.state === "snapshot"}>Bake snapshot</button>
+                <button type="button" onClick={() => onDetachDerivedResult(result.id)} disabled={result.state === "detached"}>Detach</button>
+                <button type="button" data-testid="volume-derived-send-mesh" onClick={() => onSendDerivedResultToMesh(result.id)}>Send to Mesh</button>
+                <button type="button" data-testid="volume-derived-send-geometry" onClick={() => onSendDerivedResultToGeometry(result.id)}>Send to Geometry</button>
+                <button type="button" data-testid="volume-derived-open-analysis" onClick={() => onOpenDerivedResultInMeshAnalysis(result.id)}>Open in Mesh Analysis</button>
+                <button type="button" onClick={() => onDeleteDerivedResult(result.id)}>Delete</button>
               </div>
             </div>
           )) : (

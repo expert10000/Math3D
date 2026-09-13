@@ -47,6 +47,19 @@ export type SurfaceMeshSource =
       correspondenceId: string;
       createdAt: number;
     }
+  | {
+      kind: "derivedVolume";
+      role: "live" | "snapshot" | "detached";
+      resultId: string;
+      sourceVolumeId: string;
+      sourceVolumeRevision: number;
+      sourceSampledGridRevision: number;
+      isoValue: number;
+      algorithm: string;
+      backend: string;
+      correspondenceId: string;
+      createdAt: number;
+    }
   | { kind: "detachedMesh"; fromKind?: string; fromLabel?: string }
   | {
       kind: "geometryObject";
@@ -96,6 +109,8 @@ export const formatSurfaceMeshSource = (source: SurfaceMeshSource | string): str
       return `${source.role} from ${source.sourceSurfaceLabel} r${source.sourceSurfaceRevision}`;
     case "derivedCurve":
       return `${source.role} ${source.variant} from Curve ${source.sourceCurveId} r${source.sourceCurveRevision}`;
+    case "derivedVolume":
+      return `${source.role} ${source.algorithm} iso ${source.isoValue} from Volume ${source.sourceVolumeId} r${source.sourceVolumeRevision}`;
     case "detachedMesh":
       return source.fromLabel ? `mesh (detached from ${source.fromLabel})` : "mesh (detached)";
     case "geometryObject": {

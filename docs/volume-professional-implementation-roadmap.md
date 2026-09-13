@@ -437,7 +437,7 @@ Acceptance:
 
 ### Post-Commit 5 gallery presentation update
 
-**Status: complete (2026-09-13).**
+**Status: complete (2026-09-13, `d0cf527`).**
 
 - Added dedicated rendered thumbnails for all nine Volume presets: Sphere, Ellipsoid, Torus, Cylinder, Superquadric, Gyroid, Metaballs, Noise field, and Mandelbulb density.
 - Every Rendered card now uses an authentic capture from the live Volume 3-D isosurface workspace. Volume no longer borrows similarly named Surface images or falls back to sketch-style SVGs in Rendered mode.
@@ -455,7 +455,7 @@ Where in the UI:
 
 Planned message: `perf(volume): add revision-safe workers cache and memory guards`
 
-**Status: complete (2026-09-13).**
+**Status: complete (2026-09-13, `3cf4f5a`).**
 
 Delivered:
 
@@ -493,7 +493,25 @@ Acceptance:
 
 Planned message: `feat(volume): promote isosurfaces to provenance-linked derived results`
 
-**Status: planned.**
+**Status: complete (2026-09-13).**
+
+Delivered:
+
+- Separated the continuously updated viewport preview from explicit **Apply full isosurface** execution through the revision-safe Volume worker.
+- Published mesh-bearing isosurface records with source Volume/grid revisions, iso value, input transform, algorithm/backend version, timings, memory/transfer profile, warnings, and grid correspondence identity.
+- Added gradient-derived normals for analytic and sampled fields with a documented face-average fallback when a gradient is undefined.
+- Added vertices, faces, bounds, connected components, boundary/non-manifold edges, surface area, enclosed volume, and watertight diagnostics.
+- Added regenerate, bake snapshot, detach, delete, Send to Mesh, Send to Geometry, and Open in Mesh Analysis actions. Baked snapshots retain independent geometry and ignore later source revisions.
+- Added a Volume-derived `SurfaceMesh` source contract so Mesh and Geometry retain the originating Volume ID/revision, sampled-grid revision, iso value, algorithm, backend, and correspondence ID.
+- Added camera and nearest-selection transfer into Mesh Analysis plus **Return to Volume source** navigation that restores the Volume layout, focused pane, crosshair, camera, and gallery/work mode.
+- Added sphere, ellipsoid, torus, gyroid, and signed-distance fixtures for bounds, topology, area/volume and watertight tolerances, together with an Electron Apply → Mesh Analysis → Return regression.
+
+Where in the UI:
+
+1. Select **Volume**, show an isosurface, and use **Apply full isosurface** in the detailed **Isosurface** controls. The nearby lifecycle label distinguishes the live preview from the applied full result.
+2. In the right **Inspector**, choose **Derived Surfaces** to inspect mesh counts, topology, area, enclosed volume, watertight status, normal method, timing, transfer size, warnings, and source revisions.
+3. Use **Regenerate**, **Bake snapshot**, **Detach**, or **Delete** on an individual result.
+4. Use **Send to Mesh**, **Send to Geometry**, or **Open in Mesh Analysis**. Mesh Analysis shows **Return to Volume source** in its context strip.
 
 Existing foundation:
 
