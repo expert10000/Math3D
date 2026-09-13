@@ -35074,7 +35074,7 @@ const App: React.FC = () => {
   const [volumeFocusedPane, setVolumeFocusedPane] = useState<"xy" | "xz" | "yz" | "3d" | null>(null);
   const [volumeSpatialPlaneVisibility, setVolumeSpatialPlaneVisibility] = useState<Record<SliceAxis, boolean>>({ x: true, y: true, z: true });
   const [volumeClipToCrop, setVolumeClipToCrop] = useState(false);
-  const [volumeCameraCommand, setVolumeCameraCommand] = useState<{ token: number; kind: "fit-volume" | "fit-crop" | "reset" }>({ token: 0, kind: "reset" });
+  const [volumeCameraCommand, setVolumeCameraCommand] = useState<{ token: number; kind: "fit-volume" | "fit-mesh" | "fit-crop" | "reset" }>({ token: 0, kind: "reset" });
   const [volumeCameraState, setVolumeCameraState] = useState<VolumeCameraState | null>(null);
   const handleVolumeCameraStateChange = useCallback((state: VolumeCameraState) => {
     setVolumeCameraState(state);
@@ -83577,6 +83577,7 @@ case "mobius":
                             streamlineMaxSteps={volumeStreamlineMaxSteps}
                             streamlineMaxLength={volumeStreamlineMaxLength}
                             cameraCommand={volumeCameraCommand}
+                            autoFitIsosurface
                             initialCameraState={volumeCameraState}
                             onCameraStateChange={handleVolumeCameraStateChange}
                             captureToken={workbookCaptureToken}
@@ -115650,7 +115651,7 @@ type SurfacesLeftPanelProps = {
   onToggleVolumeSpatialPlane: (axis: SliceAxis, visible: boolean) => void;
   onToggleVolumeClipToCrop: (enabled: boolean) => void;
   onToggleVolumePaneFocus: (pane: "xy" | "xz" | "yz" | "3d") => void;
-  onVolumeCameraCommand: (kind: "fit-volume" | "fit-crop" | "reset") => void;
+  onVolumeCameraCommand: (kind: "fit-volume" | "fit-mesh" | "fit-crop" | "reset") => void;
   onChangeVolumeOpacity: (value: number) => void;
   onChangeVolumeVectorPreset: (id: VectorPresetId) => void;
   onToggleVolumeStreamlines: (v: boolean) => void;
@@ -118453,6 +118454,7 @@ onChangeImplicitExpr,
               </label>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 7 }}>
+              <button type="button" onClick={() => onVolumeCameraCommand("fit-mesh")} style={{ padding: "3px 7px", fontSize: 10 }}>Fit mesh</button>
               <button type="button" onClick={() => onVolumeCameraCommand("fit-volume")} style={{ padding: "3px 7px", fontSize: 10 }}>Fit volume</button>
               <button type="button" onClick={() => onVolumeCameraCommand("fit-crop")} style={{ padding: "3px 7px", fontSize: 10 }}>Fit crop</button>
               <button type="button" onClick={() => onVolumeCameraCommand("reset")} style={{ padding: "3px 7px", fontSize: 10 }}>Reset 3D camera</button>

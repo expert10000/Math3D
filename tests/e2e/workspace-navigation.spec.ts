@@ -220,6 +220,9 @@ test.describe("Workspace navigation", () => {
       await volumeInspector.getByTestId("volume-inspector-tab-volume").click();
 
       await detailedControls.getByTestId("volume-show-isosurface").check();
+      await expect(ctx.page.getByTestId("volume-slice-viewer-free")).toHaveAttribute("data-camera-fit-target", "mesh");
+      await detailedControls.getByRole("button", { name: "Fit mesh", exact: true }).click();
+      await expect(ctx.page.getByTestId("volume-slice-viewer-free")).toHaveAttribute("data-camera-fit-target", "mesh");
       await detailedControls.getByTestId("volume-apply-isosurface").click();
       await volumeInspector.getByTestId("volume-inspector-tab-derived").click();
       await expect(volumeInspector.getByTestId("volume-derived-result-current")).toBeVisible();

@@ -62,7 +62,8 @@ export type VolumeViewerProps = {
   cropGizmoMode?: "move" | "scale";
   clipToCrop?: boolean;
   onCropChange?: (center: [number, number, number], extents: [number, number, number]) => void;
-  cameraCommand?: { token: number; kind: "fit-volume" | "fit-crop" | "reset" };
+  cameraCommand?: { token: number; kind: "fit-volume" | "fit-mesh" | "fit-crop" | "reset" };
+  autoFitIsosurface?: boolean;
   initialCameraState?: VolumeCameraState | null;
   onCameraStateChange?: (state: VolumeCameraState) => void;
   showStreamlines?: boolean;
@@ -170,6 +171,41 @@ const getGridBounds = (grid: VolumeDataset["grid"]) => {
   const dz = max[2] - min[2];
   const diag = Math.sqrt(dx * dx + dy * dy + dz * dz);
   return { min, max, center, diag };
+};
+
+const fitCameraToGeometry = (
+  camera: THREE.PerspectiveCamera,
+  controls: OrbitControls,
+  geometry: THREE.BufferGeometry,
+  padding = 1.18
+): VolumeCameraState | null => {
+  if (!geometry.boundingSphere) geometry.computeBoundingSphere();
+  const sphere = geometry.boundingSphere;
+  if (!sphere || !Number.isFinite(sphere.radius) || sphere.radius <= 0) return null;
+
+  const center = sphere.center.clone();
+  const verticalFov = THREE.MathUtils.degToRad(camera.fov);
+  const horizontalFov = 2 * Math.atan(Math.tan(verticalFov * 0.5) * Math.max(0.01, camera.aspect));
+  const limitingFov = Math.max(THREE.MathUtils.degToRad(5), Math.min(verticalFov, horizontalFov));
+  const distance = Math.max(0.1, (sphere.radius * padding) / Math.sin(limitingFov * 0.5));
+  const direction = camera.position.clone().sub(controls.target);
+  if (direction.lengthSq() < 1e-8) direction.set(0.9, 0.82, 1);
+  direction.normalize();
+
+  camera.position.copy(center).addScaledVector(direction, distance);
+  camera.up.set(0, 1, 0);
+  camera.near = Math.max(0.001, distance / 1000);
+  camera.far = Math.max(200, distance + sphere.radius * 10);
+  camera.updateProjectionMatrix();
+  controls.target.copy(center);
+  camera.lookAt(center);
+  controls.update();
+
+  return {
+    position: [camera.position.x, camera.position.y, camera.position.z],
+    target: [center.x, center.y, center.z],
+    up: [camera.up.x, camera.up.y, camera.up.z],
+  };
 };
 
 const getCropClippingPlanes = (
@@ -296,6 +332,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   clipToCrop = false,
   onCropChange,
   cameraCommand,
+  autoFitIsosurface = false,
   initialCameraState = null,
   onCameraStateChange,
   showStreamlines = false,
@@ -342,6 +379,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   const initialCameraStateRef = useRef(initialCameraState);
   const onCameraStateChangeRef = useRef(onCameraStateChange);
   const [isoMeshToken, setIsoMeshToken] = useState(0);
+  const [cameraFitTarget, setCameraFitTarget] = useState<"initial" | "mesh" | "volume" | "crop">("initial");
   const [sceneReady, setSceneReady] = useState(false);
   const [sliceRuntimeState, setSliceRuntimeState] = useState<VolumeSliceRuntimeState>({
     kind: dataset ? "loading" : "empty",
@@ -460,6 +498,14 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
+    if (cameraCommand.kind === "fit-mesh" && isoMeshRef.current) {
+      const state = fitCameraToGeometry(camera, controls, isoMeshRef.current.geometry);
+      if (state) {
+        setCameraFitTarget("mesh");
+        onCameraStateChangeRef.current?.(state);
+      }
+      return;
+    }
     const gridBounds = dataset?.grid ? getGridBounds(dataset.grid) : { center: [0, 0, 0] as [number, number, number], diag: 2 };
     const useCrop = cameraCommand.kind === "fit-crop" && cropCenter && cropExtents;
     const center = new THREE.Vector3(...(useCrop ? cropCenter : gridBounds.center));
@@ -472,6 +518,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     controls.target.copy(center);
     camera.lookAt(center);
     controls.update();
+    setCameraFitTarget(useCrop ? "crop" : "volume");
     onCameraStateChangeRef.current?.({
       position: [camera.position.x, camera.position.y, camera.position.z],
       target: [center.x, center.y, center.z],
@@ -1431,6 +1478,17 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
         mesh.geometry = cpu;
         mesh.position.set(0, 0, 0);
         mesh.scale.set(1, 1, 1);
+        if (autoFitIsosurface && viewPreset === "free") {
+          const camera = cameraRef.current;
+          const controls = controlsRef.current;
+          if (camera && controls) {
+            const state = fitCameraToGeometry(camera, controls, cpu);
+            if (state) {
+              setCameraFitTarget("mesh");
+              onCameraStateChangeRef.current?.(state);
+            }
+          }
+        }
         setIsoMeshToken((t) => t + 1);
         return;
       }
@@ -1479,13 +1537,24 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       mesh.geometry = geom;
       mesh.position.set(0, 0, 0);
       mesh.scale.set(1, 1, 1);
+      if (autoFitIsosurface && viewPreset === "free") {
+        const camera = cameraRef.current;
+        const controls = controlsRef.current;
+        if (camera && controls) {
+          const state = fitCameraToGeometry(camera, controls, geom);
+          if (state) {
+            setCameraFitTarget("mesh");
+            onCameraStateChangeRef.current?.(state);
+          }
+        }
+      }
       setIsoMeshToken((t) => t + 1);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [dataset, showIsosurface, isoValue, isoSmoothing, isoSmoothingIterations]);
+  }, [autoFitIsosurface, dataset, showIsosurface, isoValue, isoSmoothing, isoSmoothingIterations, viewPreset]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -1620,6 +1689,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   return (
     <div
       data-testid={`volume-slice-viewer-${viewPreset}`}
+      data-camera-fit-target={viewPreset === "free" ? cameraFitTarget : undefined}
       style={{ width: "100%", height: "100%", minWidth: 0, minHeight: 0, position: "relative" }}
       tabIndex={viewPreset === "free" ? -1 : 0}
       role={viewPreset === "free" ? undefined : "application"}
