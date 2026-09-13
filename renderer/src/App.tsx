@@ -35479,6 +35479,17 @@ const App: React.FC = () => {
     setVolumeShowIsosurface(visible);
     if (visible) setVolumeRenderMode("isosurface");
   }, []);
+  const handleOpenVolumeGalleryPreset = useCallback((id: VolumePresetId) => {
+    handleChangeVolumePresetId(id);
+    setVolumeShowIsosurface(true);
+    setVolumeRenderMode("isosurface");
+    setVolumeViewMode("slices");
+    setVolumeLayout("quad");
+    setVolumeFocusedPane(null);
+    // A gallery choice is a fresh viewing action. Do not let a persisted camera
+    // from the previous preset suppress the isosurface's geometry-aware auto-fit.
+    setVolumeCameraState(null);
+  }, [handleChangeVolumePresetId]);
   const handleVolumeRenderModeChange = useCallback((renderMode: VolumeRenderMode) => {
     setVolumeRenderMode(renderMode);
     if (renderMode === "isosurface") setVolumeShowIsosurface(true);
@@ -79203,6 +79214,7 @@ case "mobius":
                   onRunSurfaceMeshTopologyFullRoundTripDemoPreset={handleRunSurfaceMeshTopologyFullRoundTripDemoPreset}
                   volumePresetId={volumePresetId}
                   onChangeVolumePresetId={handleChangeVolumePresetId}
+                  onOpenVolumePresetId={handleOpenVolumeGalleryPreset}
                 />
               </div>
               )}
@@ -80280,6 +80292,7 @@ case "mobius":
                   onRunSurfaceMeshTopologyFullRoundTripDemoPreset={handleRunSurfaceMeshTopologyFullRoundTripDemoPreset}
                   volumePresetId={volumePresetId}
                   onChangeVolumePresetId={handleChangeVolumePresetId}
+                  onOpenVolumePresetId={handleOpenVolumeGalleryPreset}
                 />
               )}
               {surfacesLayoutUsesLeftBrowseWork && datasetKind === "volume" && (
@@ -84003,6 +84016,48 @@ case "mobius":
                       {OBJECT_CONTEXT_COPY.mesh.wholeSelected}
                     </div>
                   )}
+                {datasetKind === "volume" && !cleanScreenshotSurfaceActive && (
+                  <div
+                    data-testid="volume-view-switcher"
+                    aria-label="Volume view layout"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 5,
+                      padding: "6px 8px",
+                      borderBottom: "1px solid #dbe4f0",
+                      background: "rgba(248, 251, 255, 0.96)",
+                      flex: "0 0 auto",
+                    }}
+                  >
+                    <span style={{ marginRight: 3, color: "#475569", fontSize: 10, fontWeight: 700 }}>View</span>
+                    {(["quad", "slices", "3d"] as const).map((layout) => {
+                      const active = volumeLayout === layout && !volumeFocusedPane;
+                      const label = layout === "quad" ? "Quad" : layout === "slices" ? "Slices" : "3D";
+                      return (
+                        <button
+                          key={`volume-quick-layout-${layout}`}
+                          type="button"
+                          onClick={() => handleVolumeLayoutChange(layout)}
+                          aria-pressed={active}
+                          style={{
+                            padding: "3px 10px",
+                            borderRadius: 999,
+                            border: `1px solid ${active ? "#0a66c2" : "#cfd8e3"}`,
+                            background: active ? "#dbeafe" : "#fff",
+                            color: active ? "#0f3557" : "#334155",
+                            fontSize: 10,
+                            fontWeight: active ? 800 : 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
                 {datasetKind === "volume" ? (
                   (() => {
                     const activeLayout = volumeFocusedPane ?? volumeLayout;
@@ -84022,7 +84077,9 @@ case "mobius":
                       data-volume-layout={activeLayout}
                       style={{
                         width: "100%",
-                        height: "100%",
+                        height: "auto",
+                        flex: 1,
+                        minHeight: 0,
                         display: "grid",
                         gridTemplateColumns: isSurfaceStackedLayout || paneCount === 1 ? "minmax(0, 1fr)" : "repeat(2, minmax(0, 1fr))",
                         gridTemplateRows: isSurfaceStackedLayout
@@ -109800,6 +109857,7 @@ type SurfacesControlsProps = {
   onRunSurfaceMeshTopologyFullRoundTripDemoPreset: (id: string) => void;
   volumePresetId: VolumePresetId;
   onChangeVolumePresetId: (id: VolumePresetId) => void;
+  onOpenVolumePresetId: (id: VolumePresetId) => void;
 };
 
 const SurfacesControls: React.FC<SurfacesControlsProps> = ({
@@ -109861,6 +109919,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   onRunSurfaceMeshTopologyFullRoundTripDemoPreset,
   volumePresetId,
   onChangeVolumePresetId,
+  onOpenVolumePresetId,
 }) => {
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
@@ -111007,7 +111066,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                   data-testid={`volume-preset-card-${preset.id}`}
                   onClick={() => {
                     onChangeDatasetKind("volume");
-                    onChangeVolumePresetId(preset.id);
+                    onOpenVolumePresetId(preset.id);
                   }}
                   onKeyDown={(e) => {
                     if (e.key === "ArrowLeft") {

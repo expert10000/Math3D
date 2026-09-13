@@ -312,6 +312,39 @@ test.describe("Workspace navigation", () => {
     }
   });
 
+  test("Volume Gallery opens Gyroid centered and fitted in the four-pane layout", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await resetSurfaceAppState(ctx.page);
+
+      await ctx.page.getByTestId("workspace-nav-volume").click();
+      const detailedControls = ctx.page.getByTestId("volume-detailed-controls");
+      await detailedControls.getByRole("button", { name: "Slices", exact: true }).click();
+      await detailedControls.getByTestId("volume-show-isosurface").uncheck();
+
+      await ctx.page.getByTestId("volume-preset-card-gyroid").click();
+
+      await expect(ctx.page.getByTestId("volume-preset-card-gyroid").getByText("Active", { exact: true })).toBeVisible();
+      await expect(ctx.page.getByTestId("volume-slice-grid")).toHaveAttribute("data-volume-layout", "quad");
+      const quickSwitcher = ctx.page.getByTestId("volume-view-switcher");
+      await expect(quickSwitcher.getByRole("button", { name: "Quad", exact: true })).toHaveAttribute("aria-pressed", "true");
+      for (const paneId of ["xy", "xz", "yz"] as const) {
+        await expect(ctx.page.getByTestId(`volume-slice-pane-${paneId}`)).toBeVisible();
+      }
+      await expect(ctx.page.getByTestId("volume-overview-pane")).toBeVisible();
+      await expect(detailedControls.getByTestId("volume-show-isosurface")).toBeChecked();
+      await expect(ctx.page.getByTestId("volume-slice-viewer-free")).toHaveAttribute("data-camera-fit-target", "mesh");
+
+      await quickSwitcher.getByRole("button", { name: "3D", exact: true }).click();
+      await expect(ctx.page.getByTestId("volume-slice-grid")).toHaveAttribute("data-volume-layout", "3d");
+      await quickSwitcher.getByRole("button", { name: "Quad", exact: true }).click();
+      await expect(ctx.page.getByTestId("volume-slice-grid")).toHaveAttribute("data-volume-layout", "quad");
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
   test("surface New and Demo actions preserve the active family", async () => {
     let ctx: LaunchedSurfaceApp | null = null;
     try {
