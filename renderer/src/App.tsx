@@ -928,6 +928,7 @@ import {
   describeVolumeSource,
   hydrateVolumeRevisionTracker,
   comparePinnedVolumeProbes,
+  createVolumeMemoryPlan,
   createPinnedVolumeProbe,
   formatVolumeProbeText,
   isPinnedVolumeProbeStale,
@@ -35360,6 +35361,10 @@ const App: React.FC = () => {
   const [volumeIsoValue, setVolumeIsoValue] = useState(0);
   const [volumeIsoSmooth, setVolumeIsoSmooth] = useState(false);
   const [volumeIsoSmoothIterations, setVolumeIsoSmoothIterations] = useState(20);
+  const volumeComputeMemoryPlan = useMemo(
+    () => createVolumeMemoryPlan("marchingCubes", canonicalVolumeObject.spatial.dimensions, canonicalVolumeObject.spatial.byteSize),
+    [canonicalVolumeObject.spatial.byteSize, canonicalVolumeObject.spatial.dimensions]
+  );
   const [volumeDerivedResults, setVolumeDerivedResults] = useState<VolumeDerivedResult[]>([]);
   useEffect(() => {
     const parameters = { isoValue: volumeIsoValue };
@@ -86880,6 +86885,17 @@ case "mobius":
                         distanceBusy={volumeDistanceBusy}
                         distanceError={volumeDistanceError}
                         definitionError={volumeCustomCompiled.error}
+                        computeDiagnostics={{
+                          lifecycle: "idle",
+                          operation: null,
+                          backend: "native-worker",
+                          progress: 0,
+                          memoryPlan: volumeComputeMemoryPlan,
+                          cacheEntries: 0,
+                          cacheHits: 0,
+                          lastProfile: null,
+                          message: volumeComputeMemoryPlan.message,
+                        }}
                         derivedResults={volumeDerivedResults}
                         onDeleteDerivedResult={handleDeleteVolumeDerivedResult}
                         onChangeNavigationLinked={handleChangeVolumeNavigationLinked}

@@ -84,6 +84,11 @@ test.describe("Workspace navigation", () => {
       await expect(volumeInspector.getByTestId("volume-details-card")).toContainText(
         "Volume 1 · definition 1 · grid 1"
       );
+      await volumeInspector.getByTestId("volume-inspector-tab-diagnostics").click();
+      await expect(volumeInspector.getByTestId("volume-compute-diagnostics")).toContainText("reviewed Volume memory envelope");
+      await expect(volumeInspector.getByTestId("volume-diagnostics-card")).toContainText("Native Web Worker");
+      await expect(volumeInspector.getByTestId("volume-diagnostics-card")).toContainText("Memory guard");
+      await volumeInspector.getByTestId("volume-inspector-tab-volume").click();
 
       const layoutPresets = detailedControls.getByTestId("volume-layout-presets");
       await expect(layoutPresets.getByRole("button", { name: "Quad", exact: true })).toHaveAttribute("aria-pressed", "true");

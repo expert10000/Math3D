@@ -455,7 +455,23 @@ Where in the UI:
 
 Planned message: `perf(volume): add revision-safe workers cache and memory guards`
 
-**Status: planned.**
+**Status: complete (2026-09-13).**
+
+Delivered:
+
+- Added one typed worker protocol for field sampling, slicing, resampling, histograms, gradient volumes, marching cubes, mesh voxelization, distance transforms, and connected components.
+- Added queued, running, progressive, complete, cancelled, stale, and failed lifecycle handling with progress callbacks, cancellation, timeouts, retryable errors, and injected-failure recovery.
+- Added revision and latest-request guards so superseded responses cannot replace the last valid artifact.
+- Added deterministic cache keys over Volume identity/revision, operation, parameters, algorithm/backend version, and dependency revisions, plus bounded LRU accounting and cache-hit profiles.
+- Added pre-transfer soft/hard memory enforcement, transferable typed-array payloads, and 64³ brick/halo contracts for large computations.
+- Added wall-time, peak-working-set, transferred-byte, backend, and cache-hit diagnostics, including deterministic 128³ and 256³ allocation profiles.
+- Added a native module worker and retained the existing reviewed CPU/VTK routes as explicit backend choices.
+
+Where in the UI:
+
+1. Select **Volume**, open the right **Inspector**, then choose **Diagnostics**.
+2. The card shows the selected compute backend, lifecycle, operation, progress, guarded peak allocation, cache totals, and brick contract when the current job needs one.
+3. The detailed controls remain available below the Volume gallery; selecting a larger sampling recipe updates the guarded allocation before work is submitted.
 
 Implementation:
 

@@ -8,6 +8,7 @@ import {
   isPinnedVolumeProbeStale,
   volumeGridIndexToWorld,
   type PinnedVolumeProbe,
+  type VolumeComputeDiagnostics,
   type VolumeDerivedResult,
   type VolumeObject,
   type VolumeOrientationConvention,
@@ -44,6 +45,7 @@ export type VolumeInspectorPanelProps = {
   distanceBusy: boolean;
   distanceError: string | null;
   definitionError: string | null;
+  computeDiagnostics: VolumeComputeDiagnostics;
   derivedResults: readonly VolumeDerivedResult[];
   onDeleteDerivedResult: (id: string) => void;
   onChangeNavigationLinked: (linked: boolean) => void;
@@ -136,6 +138,7 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   distanceBusy,
   distanceError,
   definitionError,
+  computeDiagnostics,
   derivedResults,
   onDeleteDerivedResult,
   onChangeNavigationLinked,
@@ -431,6 +434,18 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
           <DetailRow label="Missing values" value={spatial.missingValuePolicy} />
           <DetailRow label="Dependencies" value={volumeObject.provenance.dependencies.length} />
           <DetailRow label="Distance backend" value={distanceBusy ? "Running" : distanceError ? "Failed" : "Idle"} />
+          <DetailRow label="Compute backend" value={computeDiagnostics.backend === "native-worker" ? "Native Web Worker" : computeDiagnostics.backend === "vtk-worker" ? "VTK worker" : "Reviewed CPU fallback"} />
+          <DetailRow label="Worker lifecycle" value={computeDiagnostics.lifecycle} />
+          <DetailRow label="Worker operation" value={computeDiagnostics.operation ?? "None queued"} />
+          <DetailRow label="Progress" value={`${Math.round(computeDiagnostics.progress * 100)}%`} />
+          <DetailRow label="Memory guard" value={`${computeDiagnostics.memoryPlan.level} · ${formatBytes(computeDiagnostics.memoryPlan.peakWorkingSetBytes)} peak`} />
+          <DetailRow label="Cache" value={`${computeDiagnostics.cacheEntries} entries · ${computeDiagnostics.cacheHits} hits`} />
+          {computeDiagnostics.memoryPlan.brickLayout && (
+            <DetailRow label="Brick contract" value={`${computeDiagnostics.memoryPlan.brickLayout.brickDimensions.join(" × ")} · halo ${computeDiagnostics.memoryPlan.brickLayout.halo}`} />
+          )}
+          <div data-testid="volume-compute-diagnostics" style={{ color: computeDiagnostics.lifecycle === "failed" ? "#b42318" : "#315d86", fontSize: 10 }}>
+            {computeDiagnostics.message}
+          </div>
           {definitionError && <div role="alert" style={{ color: "#b42318", fontSize: 11 }}>{definitionError}</div>}
           {distanceError && <div role="alert" style={{ color: "#b42318", fontSize: 11 }}>{distanceError}</div>}
           {!definitionError && !distanceError && gridValid && (
