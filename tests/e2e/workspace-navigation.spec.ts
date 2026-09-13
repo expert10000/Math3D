@@ -170,7 +170,15 @@ test.describe("Workspace navigation", () => {
       );
       await volumeInspector.getByTestId("volume-inspector-tab-volume").click();
 
+      await expect(detailedControls.getByTestId("volume-allocation-plan")).toContainText(/262\D144 samples/);
+      await expect(detailedControls.getByLabel("Centering")).toHaveValue("point");
+      await expect(detailedControls.getByLabel("Interpolation")).toHaveValue("linear");
       await detailedControls.getByLabel("Volume dim Nx").fill("63");
+      await expect(detailedControls.getByTestId("volume-sampling-status")).toContainText("current grid is unchanged until Apply");
+      await expect(volumeInspector.getByTestId("volume-details-card")).toContainText(
+        "Volume 1 · definition 1 · grid 1"
+      );
+      await detailedControls.getByTestId("volume-apply-sampling").click();
       await expect(volumeInspector.getByTestId("volume-details-card")).toContainText(
         "Volume 2 · definition 1 · grid 2"
       );
@@ -184,6 +192,10 @@ test.describe("Workspace navigation", () => {
 
       await detailedControls.getByLabel("Volume dim Ny").fill("63");
       await volumeInspector.getByTestId("volume-inspector-tab-volume").click();
+      await expect(volumeInspector.getByTestId("volume-details-card")).toContainText(
+        "Volume 2 · definition 1 · grid 2"
+      );
+      await detailedControls.getByTestId("volume-apply-sampling").click();
       await expect(volumeInspector.getByTestId("volume-details-card")).toContainText(
         "Volume 3 · definition 1 · grid 3"
       );

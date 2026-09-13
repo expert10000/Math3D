@@ -97,7 +97,7 @@ The following foundation is complete at `5d4cf6c` and is not a substitute for an
 | 1 — Professional workspace and Inspector correction | Complete | Volume-first selection and Inspector, balanced responsive slice workspace, runtime states, compatibility controls | — |
 | 2 — Canonical Volume model and provenance | Complete | Canonical contracts, representation adapters, revision/provenance tracking, managed typed-array handles and stale derived-result records | — |
 | 3 — Orthogonal navigation and probe | Complete | Direction-aware shared probe, independent pane positions, wheel/drag/keyboard navigation, orientation conventions, pinned probe lifecycle | — |
-| 4 — Sampling, resampling and allocation planning | Planned | Dimensions, bounds, spacing, analytic sampling | Centering/interpolation, presets, estimates, validation and resampling results |
+| 4 — Sampling, resampling and allocation planning | Complete | Dimension presets, draft/apply recipes, centering/interpolation/boundary policies, estimates, limits, resampling and non-finite diagnostics | — |
 | 5 — Quad layout and spatial 3-D context | Planned | Three slice panes and separate free 3-D mode | Quad layout, layout presets, embedded planes, clipping and deterministic camera behavior |
 | 6 — Worker, cache and memory foundation | Planned | VTK worker bridge and CPU fallbacks | Shared job lifecycle, cancellation, progress, dependency keys and memory guard |
 | 7 — Derived isosurface workflow | Planned | CPU/VTK extraction, smoothing, displayed mesh | First-class result, preview/apply, metrics, lifecycle and Mesh/Geometry handoff |
@@ -356,7 +356,26 @@ Acceptance:
 
 Planned message: `feat(volume): add controlled sampling resampling and allocation planning`
 
-**Status: planned.**
+**Status: complete (2026-09-13).**
+
+Delivered:
+
+- Added `32³`, `64³`, `128³`, `256³`, and Custom sampling choices while retaining independent X/Y/Z dimensions.
+- Added point- and cell-centered spacing conventions, nearest/linear/cubic resampling, clamp/zero/mirror boundary policies, and optional isotropic-spacing locking.
+- Sampling controls now edit a draft recipe. The current Volume and its revision remain unchanged until Apply succeeds; a rejected allocation or resampling failure preserves the current grid.
+- Added a pre-allocation plan with exact sample/element counts, scalar/component metadata, CPU/GPU byte estimates, execution path, and centralized warning policy.
+- Added resample-to-spacing, resample-to-dimensions/Apply, crop-to-current-box, reset-bounds, and restore-original-grid operations.
+- Added explicit finite/non-finite/missing sample reporting with affected index bounds.
+- Workspace recipes preserve draft/applied sampling and policy state without embedding dense arrays.
+- Added deterministic tests for byte estimates, centering conventions, analytic sphere/ellipsoid values, linear-field resampling bounds, and non-finite diagnostics.
+
+Where in the UI:
+
+- Open **Volume**, then use the preserved detailed controls below the preset gallery.
+- In **Volume grid**, choose a cubic dimension preset or edit `Nx`, `Ny`, and `Nz` independently.
+- The centering, interpolation, boundary, isotropic-lock, and allocation-plan controls are immediately below the dimensions.
+- Edit the sampling box and confirm the amber draft message, then choose **Apply sampling** or **Crop to current box**. The green state confirms the live grid was replaced.
+- Use **Resample to spacing** for physical target spacing and **Restore original grid** to return to the source grid.
 
 Existing foundation:
 

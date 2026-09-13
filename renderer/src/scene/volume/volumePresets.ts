@@ -1,4 +1,5 @@
 import type { VolumeGrid } from "../datasets";
+import { clampVolumeDimension, type VolumeSamplingCentering } from "./volumeSampling";
 
 export type VolumePresetId =
   | "sphere"
@@ -40,6 +41,7 @@ type VolumePresetBuildOptions = {
   params?: VolumePresetParams;
   customFn?: (x: number, y: number, z: number) => number;
   bounds?: { min: [number, number, number]; max: [number, number, number] };
+  centering?: VolumeSamplingCentering;
 };
 
 const DEFAULT_DIMS: [number, number, number] = [64, 64, 64];
@@ -368,11 +370,6 @@ export function getVolumePresetBounds(preset: VolumePreset, params: VolumePreset
   return DEFAULT_BOUNDS;
 }
 
-const clampDim = (value: number, fallback: number) => {
-  if (!Number.isFinite(value)) return fallback;
-  return Math.max(1, Math.min(256, Math.round(value)));
-};
-
 export function buildVolumeGridFromPreset(
   presetId: VolumePresetId,
   options: VolumePresetBuildOptions = {}
@@ -380,20 +377,24 @@ export function buildVolumeGridFromPreset(
   const preset = getVolumePreset(presetId);
   const baseDims = preset.defaultDims ?? DEFAULT_DIMS;
   const dims = options.dims ?? baseDims;
-  const nx = clampDim(dims[0], baseDims[0]);
-  const ny = clampDim(dims[1], baseDims[1]);
-  const nz = clampDim(dims[2], baseDims[2]);
+  const nx = clampVolumeDimension(dims[0], baseDims[0]);
+  const ny = clampVolumeDimension(dims[1], baseDims[1]);
+  const nz = clampVolumeDimension(dims[2], baseDims[2]);
   const total = nx * ny * nz;
   const scalars = new Float32Array(total);
 
   const params = resolveVolumePresetParams(preset, options.params);
   const { min, max } = options.bounds ?? getVolumePresetBounds(preset, params);
+  const centering = options.centering ?? "point";
+  const denominator = (dim: number) => Math.max(1, dim - (centering === "point" ? 1 : 0));
   const spacing: [number, number, number] = [
-    nx > 1 ? (max[0] - min[0]) / (nx - 1) : 1,
-    ny > 1 ? (max[1] - min[1]) / (ny - 1) : 1,
-    nz > 1 ? (max[2] - min[2]) / (nz - 1) : 1,
+    (max[0] - min[0]) / denominator(nx),
+    (max[1] - min[1]) / denominator(ny),
+    (max[2] - min[2]) / denominator(nz),
   ];
-  const origin: [number, number, number] = [min[0], min[1], min[2]];
+  const origin: [number, number, number] = centering === "cell"
+    ? [min[0] + spacing[0] * 0.5, min[1] + spacing[1] * 0.5, min[2] + spacing[2] * 0.5]
+    : [min[0], min[1], min[2]];
 
   const sampler =
     presetId === "custom" && options.customFn
@@ -412,5 +413,5 @@ export function buildVolumeGridFromPreset(
     }
   }
 
-  return { dims: [nx, ny, nz], scalars, spacing, origin };
+  return { dims: [nx, ny, nz], scalars, spacing, origin, centering };
 }

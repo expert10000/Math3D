@@ -894,10 +894,20 @@ import {
 } from "./scene/volume/sliceVolume";
 import {
   clampSampling,
+  dimensionsForSpacing,
+  lockSamplingToIsotropicSpacing,
+  planVolumeAllocation,
+  reportVolumeNonFinite,
+  resampleVolumeGrid,
   samplingFromBounds,
   samplingSpacing,
   samplingToBounds,
+  type VolumeAllocationPlan,
+  type VolumeBoundaryMode,
+  type VolumeInterpolation,
+  type VolumeNonFiniteReport,
   type VolumeSampling,
+  type VolumeSamplingCentering,
 } from "./scene/volume/volumeSampling";
 import {
   buildVectorGridFromPreset,
@@ -34550,6 +34560,22 @@ const App: React.FC = () => {
   const [volumeSampling, setVolumeSampling] = useState<VolumeSampling>(() =>
     samplingFromBounds(volumePresetBounds, volumeDims)
   );
+  const [volumeAppliedSampling, setVolumeAppliedSampling] = useState<VolumeSampling>(() =>
+    samplingFromBounds(volumePresetBounds, volumeDims)
+  );
+  const [volumeCentering, setVolumeCentering] = useState<VolumeSamplingCentering>("point");
+  const [volumeAppliedCentering, setVolumeAppliedCentering] = useState<VolumeSamplingCentering>("point");
+  const [volumeInterpolation, setVolumeInterpolation] = useState<VolumeInterpolation>("linear");
+  const [volumeAppliedInterpolation, setVolumeAppliedInterpolation] = useState<VolumeInterpolation>("linear");
+  const [volumeBoundaryMode, setVolumeBoundaryMode] = useState<VolumeBoundaryMode>("clamp");
+  const [volumeAppliedBoundaryMode, setVolumeAppliedBoundaryMode] = useState<VolumeBoundaryMode>("clamp");
+  const [volumeIsotropicSpacing, setVolumeIsotropicSpacing] = useState(false);
+  const [volumeSamplingStatus, setVolumeSamplingStatus] = useState("Current grid matches the applied sampling recipe.");
+  const [volumeTargetSpacing, setVolumeTargetSpacing] = useState<[number, number, number]>(() =>
+    samplingSpacing(samplingFromBounds(volumePresetBounds, volumeDims))
+  );
+  const volumeOriginalSamplingRef = useRef<VolumeSampling>(samplingFromBounds(volumePresetBounds, volumeDims));
+  const volumeOriginalDatasetRef = useRef<VolumeDataset | null>(null);
   const handleChangeVolumePresetId = useCallback((id: VolumePresetId) => {
     const nextPreset = getVolumePreset(id);
     const nextParams = getVolumePresetDefaultParams(id);
@@ -34558,8 +34584,17 @@ const App: React.FC = () => {
     setVolumeDistanceError(null);
     setVolumePresetId(id);
     setVolumeParams(nextParams);
-    setVolumeSampling(samplingFromBounds(nextBounds, volumeDims));
-  }, [volumeDims]);
+    const nextSampling = samplingFromBounds(nextBounds, volumeDims);
+    setVolumeSampling(nextSampling);
+    setVolumeAppliedSampling(nextSampling);
+    setVolumeAppliedCentering(volumeCentering);
+    setVolumeAppliedInterpolation(volumeInterpolation);
+    setVolumeAppliedBoundaryMode(volumeBoundaryMode);
+    setVolumeTargetSpacing(samplingSpacing(nextSampling, volumeCentering));
+    volumeOriginalSamplingRef.current = nextSampling;
+    volumeOriginalDatasetRef.current = null;
+    setVolumeSamplingStatus("Preset definition and its sampling recipe applied.");
+  }, [volumeBoundaryMode, volumeCentering, volumeDims, volumeInterpolation]);
   const volumeCustomFnRef = useRef<((x: number, y: number, z: number) => number) | null>(null);
   const volumeCustomCompiled = useMemo(() => {
     if (volumePresetId !== "custom") return { fn: undefined, error: null };
@@ -34593,31 +34628,49 @@ const App: React.FC = () => {
       volumeCustomFnRef.current = volumeCustomCompiled.fn;
     }
   }, [volumeCustomCompiled.fn]);
-  useEffect(() => {
-    setVolumeSampling((prev) => ({ ...prev, dims: volumeDims }));
-  }, [volumeDims]);
   const volumeSamplingClamped = useMemo(() => clampSampling(volumeSampling), [volumeSampling]);
+  const volumeAppliedSamplingClamped = useMemo(() => clampSampling(volumeAppliedSampling), [volumeAppliedSampling]);
   const volumeSamplingBounds = useMemo(
     () => samplingToBounds(volumeSamplingClamped),
     [volumeSamplingClamped]
   );
   const volumeSamplingSpacing = useMemo(
-    () => samplingSpacing(volumeSamplingClamped),
-    [volumeSamplingClamped]
+    () => samplingSpacing(volumeSamplingClamped, volumeCentering),
+    [volumeCentering, volumeSamplingClamped]
   );
+  const volumeAppliedSamplingBounds = useMemo(
+    () => samplingToBounds(volumeAppliedSamplingClamped),
+    [volumeAppliedSamplingClamped]
+  );
+  const volumeAllocationPlan = useMemo<VolumeAllocationPlan>(() => planVolumeAllocation({
+    dims: volumeSamplingClamped.dims,
+    scalarType: "float32",
+    components: 1,
+  }), [volumeSamplingClamped.dims]);
+  const volumeSamplingDirty = useMemo(() =>
+    JSON.stringify(volumeSamplingClamped) !== JSON.stringify(volumeAppliedSamplingClamped) ||
+    volumeCentering !== volumeAppliedCentering ||
+    volumeInterpolation !== volumeAppliedInterpolation ||
+    volumeBoundaryMode !== volumeAppliedBoundaryMode,
+  [volumeAppliedBoundaryMode, volumeAppliedCentering, volumeAppliedInterpolation, volumeAppliedSamplingClamped, volumeBoundaryMode, volumeCentering, volumeInterpolation, volumeSamplingClamped]);
   const volumeDatasetPreset = useMemo(
     () => ({
       kind: "volume" as const,
       grid: buildVolumeGridFromPreset(volumePresetId, {
-        dims: volumeSamplingClamped.dims,
-        bounds: volumeSamplingBounds,
+        dims: volumeAppliedSamplingClamped.dims,
+        bounds: volumeAppliedSamplingBounds,
         params: volumeParamsResolved,
         customFn: volumeCustomCompiled.fn ?? volumeCustomFnRef.current ?? undefined,
+        centering: volumeAppliedCentering,
       }),
     }),
-    [volumePresetId, volumeSamplingClamped, volumeSamplingBounds, volumeParamsResolved, volumeCustomCompiled.fn]
+    [volumeAppliedCentering, volumeAppliedSamplingBounds, volumeAppliedSamplingClamped.dims, volumePresetId, volumeParamsResolved, volumeCustomCompiled.fn]
   );
   const volumeDataset = volumeDatasetOverride ?? volumeDatasetPreset;
+  const volumeNonFiniteReport = useMemo(
+    () => reportVolumeNonFinite(volumeDataset.grid.scalars, volumeDataset.grid.dims),
+    [volumeDataset]
+  );
   const volumeRevisionTrackerRef = useRef<VolumeRevisionTracker>(new Map());
   const volumeStorageStoreRef = useRef(createVolumeTypedArrayStore());
   const canonicalVolumeObject = useMemo(() => {
@@ -34626,6 +34679,7 @@ const App: React.FC = () => {
       grid: volumeDataset.grid,
       tracker: volumeRevisionTrackerRef.current,
       positionUnits: "unit",
+      centering: volumeDataset.grid.centering ?? volumeAppliedCentering,
     };
     if (volumeDatasetOverride) {
       const sourceObjectId = volumeDatasetOverride.sourceId ?? "surface-distance-source";
@@ -34660,6 +34714,7 @@ const App: React.FC = () => {
       parameters: volumeParamsResolved,
     });
   }, [
+    volumeAppliedCentering,
     volumeDataset,
     volumeDatasetOverride,
     volumeDistanceSigned,
@@ -35309,31 +35364,73 @@ const App: React.FC = () => {
   const [volumeShowCropBox, setVolumeShowCropBox] = useState(true);
   const [volumeCropGizmoEnabled, setVolumeCropGizmoEnabled] = useState(true);
   const [volumeCropGizmoMode, setVolumeCropGizmoMode] = useState<"move" | "scale">("move");
-  const clampVolumeDim = (value: number) => {
-    if (!Number.isFinite(value)) return 1;
-    return Math.max(1, Math.min(256, Math.round(value)));
-  };
   const handleVolumeDimChange = (axisIndex: 0 | 1 | 2, value: number) => {
-    setVolumeDims((prev) => {
-      const next: [number, number, number] = [prev[0], prev[1], prev[2]];
-      next[axisIndex] = clampVolumeDim(value);
+    const next: VolumeSampling = {
+      ...volumeSamplingClamped,
+      dims: [...volumeSamplingClamped.dims] as [number, number, number],
+    };
+    next.dims[axisIndex] = Math.max(1, Math.min(256, Math.round(Number.isFinite(value) ? value : next.dims[axisIndex])));
+    const locked = volumeIsotropicSpacing ? lockSamplingToIsotropicSpacing(next, axisIndex, volumeCentering) : next;
+    setVolumeDims(locked.dims);
+    setVolumeSampling(locked);
+    setVolumeSamplingStatus("Sampling recipe changed; current grid is unchanged until Apply.");
+  };
+  const handleVolumeDimensionPreset = useCallback((value: 32 | 64 | 128 | 256) => {
+    const next: VolumeSampling = { ...volumeSamplingClamped, dims: [value, value, value] };
+    setVolumeDims(next.dims);
+    setVolumeSampling(next);
+    setVolumeSamplingStatus(`${value}³ sampling preset selected; current grid is unchanged until Apply.`);
+  }, [volumeSamplingClamped]);
+  const handleVolumeCenteringChange = useCallback((centering: VolumeSamplingCentering) => {
+    const next = volumeIsotropicSpacing
+      ? lockSamplingToIsotropicSpacing(volumeSamplingClamped, 0, centering)
+      : volumeSamplingClamped;
+    setVolumeCentering(centering);
+    setVolumeDims(next.dims);
+    setVolumeSampling(next);
+    setVolumeSamplingStatus(`${centering === "point" ? "Point" : "Cell"}-centered sampling selected; current grid is unchanged until Apply.`);
+  }, [volumeIsotropicSpacing, volumeSamplingClamped]);
+  const handleVolumeIsotropicSpacingChange = useCallback((enabled: boolean) => {
+    setVolumeIsotropicSpacing(enabled);
+    if (enabled) {
+      const next = lockSamplingToIsotropicSpacing(volumeSamplingClamped, 0, volumeCentering);
+      setVolumeSampling(next);
+      setVolumeDims(next.dims);
+    }
+    setVolumeSamplingStatus(`${enabled ? "Isotropic spacing lock enabled" : "Isotropic spacing lock disabled"}; current grid is unchanged until Apply.`);
+  }, [volumeCentering, volumeSamplingClamped]);
+  const handleVolumeInterpolationChange = useCallback((interpolation: VolumeInterpolation) => {
+    setVolumeInterpolation(interpolation);
+    setVolumeSamplingStatus(`${interpolation} interpolation selected; current grid is unchanged until Apply.`);
+  }, []);
+  const handleVolumeBoundaryModeChange = useCallback((mode: VolumeBoundaryMode) => {
+    setVolumeBoundaryMode(mode);
+    setVolumeSamplingStatus(`${mode} boundary policy selected; current grid is unchanged until Apply.`);
+  }, []);
+  const handleVolumeTargetSpacingChange = useCallback((axisIndex: 0 | 1 | 2, value: number) => {
+    setVolumeTargetSpacing((previous) => {
+      const next: [number, number, number] = [...previous];
+      next[axisIndex] = Number.isFinite(value) && value > 0 ? value : previous[axisIndex];
+      if (volumeIsotropicSpacing) return [next[axisIndex], next[axisIndex], next[axisIndex]];
       return next;
     });
-  };
+  }, [volumeIsotropicSpacing]);
   const handleVolumeSamplingCenterChange = (axisIndex: 0 | 1 | 2, value: number) => {
     setVolumeSampling((prev) => {
       const center: [number, number, number] = [prev.center[0], prev.center[1], prev.center[2]];
       center[axisIndex] = Number.isFinite(value) ? value : center[axisIndex];
       return { ...prev, center };
     });
+    setVolumeSamplingStatus("Sampling recipe changed; current grid is unchanged until Apply.");
   };
   const handleVolumeSamplingExtentChange = (axisIndex: 0 | 1 | 2, value: number) => {
-    setVolumeSampling((prev) => {
-      const extents: [number, number, number] = [prev.extents[0], prev.extents[1], prev.extents[2]];
-      const next = Number.isFinite(value) ? Math.max(1e-6, Math.abs(value)) : extents[axisIndex];
-      extents[axisIndex] = next;
-      return { ...prev, extents };
-    });
+    const extents: [number, number, number] = [...volumeSamplingClamped.extents];
+    extents[axisIndex] = Number.isFinite(value) ? Math.max(1e-6, Math.abs(value)) : extents[axisIndex];
+    const sampling = { ...volumeSamplingClamped, extents };
+    const next = volumeIsotropicSpacing ? lockSamplingToIsotropicSpacing(sampling, axisIndex, volumeCentering) : sampling;
+    setVolumeSampling(next);
+    setVolumeDims(next.dims);
+    setVolumeSamplingStatus("Sampling recipe changed; current grid is unchanged until Apply.");
   };
   const handleVolumeStreamSeedGridChange = useCallback((value: number) => {
     if (!Number.isFinite(value)) return;
@@ -35357,14 +35454,68 @@ const App: React.FC = () => {
     setVolumeStreamlineMaxSteps(next);
   }, []);
   const handleResetVolumeSampling = () => {
-    setVolumeSampling(samplingFromBounds(volumePresetBounds, volumeDims));
+    const reset = samplingFromBounds(volumePresetBounds, volumeDims);
+    setVolumeSampling(reset);
+    setVolumeSamplingStatus("Sampling bounds reset in the recipe; Apply to rebuild the grid.");
   };
+  const applyVolumeSamplingRecipe = useCallback((sampling: VolumeSampling, reason: string) => {
+    const next = clampSampling(sampling);
+    const plan = planVolumeAllocation({ dims: next.dims, scalarType: "float32", components: 1 });
+    if (plan.warning === "blocked") {
+      setVolumeSamplingStatus(`Rejected: ${plan.message} The current Volume was preserved.`);
+      return false;
+    }
+    if (volumeDatasetOverride) {
+      const source = volumeOriginalDatasetRef.current ?? volumeDatasetOverride;
+      try {
+        const grid = resampleVolumeGrid(source.grid, next, {
+          centering: volumeCentering,
+          interpolation: volumeInterpolation,
+          boundary: volumeBoundaryMode,
+        });
+        setVolumeDatasetOverride({ ...volumeDatasetOverride, grid, note: `${volumeDatasetOverride.note ?? "Volume grid"} Resampled with ${volumeInterpolation}/${volumeBoundaryMode}.` });
+      } catch (error) {
+        setVolumeSamplingStatus(`Resample failed: ${error instanceof Error ? error.message : String(error)} The current Volume was preserved.`);
+        return false;
+      }
+    }
+    setVolumeAppliedSampling(next);
+    setVolumeAppliedCentering(volumeCentering);
+    setVolumeAppliedInterpolation(volumeInterpolation);
+    setVolumeAppliedBoundaryMode(volumeBoundaryMode);
+    setVolumeDims(next.dims);
+    setVolumeSampling(next);
+    setVolumeSamplingStatus(`${reason} applied: ${next.dims.join(" × ")} ${volumeCentering}-centered, ${volumeInterpolation}/${volumeBoundaryMode}.`);
+    return true;
+  }, [volumeBoundaryMode, volumeCentering, volumeDatasetOverride, volumeInterpolation]);
   const handleRebuildVolumeSampling = () => {
-    setVolumeSampling((prev) => ({ ...prev }));
+    applyVolumeSamplingRecipe(volumeSamplingClamped, "Sampling recipe");
   };
+  const handleResampleVolumeToSpacing = useCallback(() => {
+    const dims = dimensionsForSpacing(volumeSamplingClamped, volumeTargetSpacing, volumeCentering);
+    const next = { ...volumeSamplingClamped, dims };
+    setVolumeDims(dims);
+    setVolumeSampling(next);
+    applyVolumeSamplingRecipe(next, "Target spacing");
+  }, [applyVolumeSamplingRecipe, volumeCentering, volumeSamplingClamped, volumeTargetSpacing]);
+  const handleRestoreOriginalVolumeGrid = useCallback(() => {
+    const original = volumeOriginalSamplingRef.current;
+    if (volumeOriginalDatasetRef.current) setVolumeDatasetOverride(volumeOriginalDatasetRef.current);
+    setVolumeSampling(original);
+    setVolumeAppliedSampling(original);
+    setVolumeDims(original.dims);
+    setVolumeCentering("point");
+    setVolumeAppliedCentering("point");
+    setVolumeInterpolation("linear");
+    setVolumeAppliedInterpolation("linear");
+    setVolumeBoundaryMode("clamp");
+    setVolumeAppliedBoundaryMode("clamp");
+    setVolumeSamplingStatus("Original Volume grid restored.");
+  }, []);
   const handleVolumeCropChange = useCallback(
     (center: [number, number, number], extents: [number, number, number]) => {
       setVolumeSampling((prev) => clampSampling({ ...prev, center, extents }));
+      setVolumeSamplingStatus("Crop box changed the sampling recipe; Apply to rebuild the grid.");
     },
     []
   );
@@ -35383,8 +35534,11 @@ const App: React.FC = () => {
         : def.defaultValue;
       const nextParams = { ...volumeParams, [id]: nextValue };
       const nextBounds = getVolumePresetBounds(volumePreset, resolveVolumePresetParams(volumePreset, nextParams));
+      const nextSampling = samplingFromBounds(nextBounds, volumeDims);
       setVolumeParams(nextParams);
-      setVolumeSampling(samplingFromBounds(nextBounds, volumeDims));
+      setVolumeSampling(nextSampling);
+      setVolumeAppliedSampling(nextSampling);
+      setVolumeSamplingStatus("Field parameter and matching sampling bounds applied.");
     },
     [volumeDims, volumeParams, volumePreset]
   );
@@ -53478,6 +53632,15 @@ case "mobius":
           params: volumeParamsResolved,
           dims: volumeDims,
           sampling: volumeSamplingClamped,
+          appliedSampling: volumeAppliedSamplingClamped,
+          centering: volumeCentering,
+          appliedCentering: volumeAppliedCentering,
+          interpolation: volumeInterpolation,
+          appliedInterpolation: volumeAppliedInterpolation,
+          boundaryMode: volumeBoundaryMode,
+          appliedBoundaryMode: volumeAppliedBoundaryMode,
+          isotropicSpacing: volumeIsotropicSpacing,
+          targetSpacing: volumeTargetSpacing,
           customExpr: volumeCustomExpr,
           showIsosurface: volumeShowIsosurface,
           isoValue: volumeIsoValue,
@@ -53738,6 +53901,15 @@ case "mobius":
       volumeParamsResolved,
       volumeDims,
       volumeSamplingClamped,
+      volumeAppliedSamplingClamped,
+      volumeCentering,
+      volumeAppliedCentering,
+      volumeInterpolation,
+      volumeAppliedInterpolation,
+      volumeBoundaryMode,
+      volumeAppliedBoundaryMode,
+      volumeIsotropicSpacing,
+      volumeTargetSpacing,
       volumeCustomExpr,
       volumeShowIsosurface,
       volumeIsoValue,
@@ -54309,6 +54481,34 @@ case "mobius":
       if (volumeRecipe.params && typeof volumeRecipe.params === "object") {
         setVolumeParams(volumeRecipe.params as VolumePresetParams);
       }
+      const restoreSampling = (candidate: any): VolumeSampling | null => {
+        if (!candidate || typeof candidate !== "object") return null;
+        const validTriplet = (value: unknown) => Array.isArray(value) && value.length === 3 && value.every((entry) => Number.isFinite(Number(entry)));
+        if (!validTriplet(candidate.center) || !validTriplet(candidate.extents) || !validTriplet(candidate.dims)) return null;
+        return clampSampling({
+          center: candidate.center.map(Number) as [number, number, number],
+          extents: candidate.extents.map(Number) as [number, number, number],
+          dims: candidate.dims.map(Number) as [number, number, number],
+        });
+      };
+      const restoredSampling = restoreSampling(volumeRecipe.sampling);
+      const restoredAppliedSampling = restoreSampling(volumeRecipe.appliedSampling) ?? restoredSampling;
+      if (restoredSampling) {
+        setVolumeSampling(restoredSampling);
+        setVolumeDims(restoredSampling.dims);
+      }
+      if (restoredAppliedSampling) setVolumeAppliedSampling(restoredAppliedSampling);
+      if (volumeRecipe.centering === "point" || volumeRecipe.centering === "cell") setVolumeCentering(volumeRecipe.centering);
+      if (volumeRecipe.appliedCentering === "point" || volumeRecipe.appliedCentering === "cell") setVolumeAppliedCentering(volumeRecipe.appliedCentering);
+      if (["nearest", "linear", "cubic"].includes(volumeRecipe.interpolation)) setVolumeInterpolation(volumeRecipe.interpolation);
+      if (["nearest", "linear", "cubic"].includes(volumeRecipe.appliedInterpolation)) setVolumeAppliedInterpolation(volumeRecipe.appliedInterpolation);
+      if (["clamp", "zero", "mirror"].includes(volumeRecipe.boundaryMode)) setVolumeBoundaryMode(volumeRecipe.boundaryMode);
+      if (["clamp", "zero", "mirror"].includes(volumeRecipe.appliedBoundaryMode)) setVolumeAppliedBoundaryMode(volumeRecipe.appliedBoundaryMode);
+      if (typeof volumeRecipe.isotropicSpacing === "boolean") setVolumeIsotropicSpacing(volumeRecipe.isotropicSpacing);
+      if (Array.isArray(volumeRecipe.targetSpacing) && volumeRecipe.targetSpacing.length === 3 && volumeRecipe.targetSpacing.every((entry: unknown) => Number.isFinite(Number(entry)) && Number(entry) > 0)) {
+        setVolumeTargetSpacing(volumeRecipe.targetSpacing.map(Number) as [number, number, number]);
+      }
+      if (restoredSampling || restoredAppliedSampling) setVolumeSamplingStatus("Sampling recipe restored from workspace.");
       if (typeof volumeRecipe.customExpr === "string") setVolumeCustomExpr(volumeRecipe.customExpr);
       if (typeof volumeRecipe.showIsosurface === "boolean") setVolumeShowIsosurface(volumeRecipe.showIsosurface);
       if (Number.isFinite(volumeRecipe.isoValue)) setVolumeIsoValue(Number(volumeRecipe.isoValue));
@@ -62170,14 +62370,28 @@ case "mobius":
       const note = volumeDistanceSigned
         ? "Signed distance to surface mesh (winding number)."
         : "Unsigned distance to surface mesh.";
-      setVolumeDatasetOverride({
+      const distanceDataset: VolumeDataset = {
         kind: "volume",
-        grid,
+        grid: { ...grid, centering: "point" },
         label,
         note,
         distanceSigned: volumeDistanceSigned,
         sourceId: "surface_distance",
-      });
+      };
+      setVolumeDatasetOverride(distanceDataset);
+      volumeOriginalDatasetRef.current = distanceDataset;
+      volumeOriginalSamplingRef.current = sampling;
+      setVolumeSampling(sampling);
+      setVolumeAppliedSampling(sampling);
+      setVolumeDims(sampling.dims);
+      setVolumeCentering("point");
+      setVolumeAppliedCentering("point");
+      setVolumeInterpolation("linear");
+      setVolumeAppliedInterpolation("linear");
+      setVolumeBoundaryMode("clamp");
+      setVolumeAppliedBoundaryMode("clamp");
+      setVolumeTargetSpacing(spacing);
+      setVolumeSamplingStatus("Distance field created with its original sampling recipe.");
       setDatasetKind("volume");
       setVolumeShowIsosurface(true);
       setVolumeIsoValue(0);
@@ -75955,6 +76169,15 @@ case "mobius":
                   volumeStreamlineMaxLength={volumeStreamlineMaxLength}
                   volumeSampling={volumeSamplingClamped}
                   volumeSamplingSpacing={volumeSamplingSpacing}
+                  volumeAllocationPlan={volumeAllocationPlan}
+                  volumeSamplingDirty={volumeSamplingDirty}
+                  volumeSamplingStatus={volumeSamplingStatus}
+                  volumeCentering={volumeCentering}
+                  volumeInterpolation={volumeInterpolation}
+                  volumeBoundaryMode={volumeBoundaryMode}
+                  volumeIsotropicSpacing={volumeIsotropicSpacing}
+                  volumeTargetSpacing={volumeTargetSpacing}
+                  volumeNonFiniteReport={volumeNonFiniteReport}
                   volumeShowCropBox={volumeShowCropBox}
                   volumeCropGizmoEnabled={volumeCropGizmoEnabled}
                   volumeCropGizmoMode={volumeCropGizmoMode}
@@ -75970,6 +76193,14 @@ case "mobius":
                   volumeIsoSmoothIterations={volumeIsoSmoothIterations}
                   onChangeVolumePresetId={handleChangeVolumePresetId}
                   onChangeVolumeDim={handleVolumeDimChange}
+                  onChangeVolumeDimensionPreset={handleVolumeDimensionPreset}
+                  onChangeVolumeCentering={handleVolumeCenteringChange}
+                  onChangeVolumeInterpolation={handleVolumeInterpolationChange}
+                  onChangeVolumeBoundaryMode={handleVolumeBoundaryModeChange}
+                  onToggleVolumeIsotropicSpacing={handleVolumeIsotropicSpacingChange}
+                  onChangeVolumeTargetSpacing={handleVolumeTargetSpacingChange}
+                  onResampleVolumeToSpacing={handleResampleVolumeToSpacing}
+                  onRestoreOriginalVolumeGrid={handleRestoreOriginalVolumeGrid}
                   onChangeVolumeSamplingCenter={handleVolumeSamplingCenterChange}
                   onChangeVolumeSamplingExtent={handleVolumeSamplingExtentChange}
                   onResetVolumeSampling={handleResetVolumeSampling}
@@ -114966,6 +115197,15 @@ type SurfacesLeftPanelProps = {
   volumeStreamlineMaxLength: number;
   volumeSampling: VolumeSampling;
   volumeSamplingSpacing: [number, number, number];
+  volumeAllocationPlan: VolumeAllocationPlan;
+  volumeSamplingDirty: boolean;
+  volumeSamplingStatus: string;
+  volumeCentering: VolumeSamplingCentering;
+  volumeInterpolation: VolumeInterpolation;
+  volumeBoundaryMode: VolumeBoundaryMode;
+  volumeIsotropicSpacing: boolean;
+  volumeTargetSpacing: [number, number, number];
+  volumeNonFiniteReport: VolumeNonFiniteReport;
   volumeShowCropBox: boolean;
   volumeCropGizmoEnabled: boolean;
   volumeCropGizmoMode: "move" | "scale";
@@ -114981,6 +115221,14 @@ type SurfacesLeftPanelProps = {
   volumeIsoSmoothIterations: number;
   onChangeVolumePresetId: (id: VolumePresetId) => void;
   onChangeVolumeDim: (axisIndex: 0 | 1 | 2, value: number) => void;
+  onChangeVolumeDimensionPreset: (value: 32 | 64 | 128 | 256) => void;
+  onChangeVolumeCentering: (centering: VolumeSamplingCentering) => void;
+  onChangeVolumeInterpolation: (interpolation: VolumeInterpolation) => void;
+  onChangeVolumeBoundaryMode: (mode: VolumeBoundaryMode) => void;
+  onToggleVolumeIsotropicSpacing: (enabled: boolean) => void;
+  onChangeVolumeTargetSpacing: (axisIndex: 0 | 1 | 2, value: number) => void;
+  onResampleVolumeToSpacing: () => void;
+  onRestoreOriginalVolumeGrid: () => void;
   onChangeVolumeSamplingCenter: (axisIndex: 0 | 1 | 2, value: number) => void;
   onChangeVolumeSamplingExtent: (axisIndex: 0 | 1 | 2, value: number) => void;
   onResetVolumeSampling: () => void;
@@ -115753,6 +116001,15 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   volumeStreamlineMaxLength,
   volumeSampling,
   volumeSamplingSpacing,
+  volumeAllocationPlan,
+  volumeSamplingDirty,
+  volumeSamplingStatus,
+  volumeCentering,
+  volumeInterpolation,
+  volumeBoundaryMode,
+  volumeIsotropicSpacing,
+  volumeTargetSpacing,
+  volumeNonFiniteReport,
   volumeShowCropBox,
   volumeCropGizmoEnabled,
   volumeCropGizmoMode,
@@ -115768,6 +116025,14 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   volumeIsoSmoothIterations,
   onChangeVolumePresetId,
   onChangeVolumeDim,
+  onChangeVolumeDimensionPreset,
+  onChangeVolumeCentering,
+  onChangeVolumeInterpolation,
+  onChangeVolumeBoundaryMode,
+  onToggleVolumeIsotropicSpacing,
+  onChangeVolumeTargetSpacing,
+  onResampleVolumeToSpacing,
+  onRestoreOriginalVolumeGrid,
   onChangeVolumeSamplingCenter,
   onChangeVolumeSamplingExtent,
   onResetVolumeSampling,
@@ -117351,6 +117616,22 @@ onChangeImplicitExpr,
               )}
             </div>
           )}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }} aria-label="Volume dimension presets">
+            {([32, 64, 128, 256] as const).map((size) => (
+              <button
+                key={size}
+                type="button"
+                onClick={() => onChangeVolumeDimensionPreset(size)}
+                style={pill(volumeDims.every((dimension) => dimension === size))}
+                aria-pressed={volumeDims.every((dimension) => dimension === size)}
+              >
+                {size}³
+              </button>
+            ))}
+            <span style={{ ...pill(![32, 64, 128, 256].some((size) => volumeDims.every((dimension) => dimension === size))), cursor: "default" }}>
+              Custom
+            </span>
+          </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
               <span>Dims (Nx, Ny, Nz)</span>
@@ -117384,6 +117665,58 @@ onChangeImplicitExpr,
                 />
               </div>
             </label>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: 8, marginTop: 10 }}>
+            <label style={{ display: "grid", gap: 4, fontSize: 11 }}>
+              Centering
+              <select value={volumeCentering} onChange={(event) => onChangeVolumeCentering(event.target.value as VolumeSamplingCentering)}>
+                <option value="point">Point centered</option>
+                <option value="cell">Cell centered</option>
+              </select>
+            </label>
+            <label style={{ display: "grid", gap: 4, fontSize: 11 }}>
+              Interpolation
+              <select value={volumeInterpolation} onChange={(event) => onChangeVolumeInterpolation(event.target.value as VolumeInterpolation)}>
+                <option value="nearest">Nearest</option>
+                <option value="linear">Linear</option>
+                <option value="cubic">Cubic</option>
+              </select>
+            </label>
+            <label style={{ display: "grid", gap: 4, fontSize: 11 }}>
+              Boundary
+              <select value={volumeBoundaryMode} onChange={(event) => onChangeVolumeBoundaryMode(event.target.value as VolumeBoundaryMode)}>
+                <option value="clamp">Clamp</option>
+                <option value="zero">Zero outside</option>
+                <option value="mirror">Mirror</option>
+              </select>
+            </label>
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, marginTop: 8 }}>
+            <input
+              type="checkbox"
+              checked={volumeIsotropicSpacing}
+              onChange={(event) => onToggleVolumeIsotropicSpacing(event.target.checked)}
+            />
+            Lock isotropic spacing
+          </label>
+
+          <div
+            data-testid="volume-allocation-plan"
+            style={{
+              marginTop: 10,
+              padding: 8,
+              borderRadius: 8,
+              border: `1px solid ${volumeAllocationPlan.warning === "blocked" ? "#f1a6a0" : volumeAllocationPlan.warning === "caution" ? "#f0c36d" : "#a7d7b4"}`,
+              background: volumeAllocationPlan.warning === "blocked" ? "#fff1f0" : volumeAllocationPlan.warning === "caution" ? "#fff8e8" : "#f0fff4",
+              fontSize: 10,
+              lineHeight: 1.45,
+            }}
+          >
+            <div style={{ fontWeight: 700 }}>Allocation plan · {volumeAllocationPlan.warning}</div>
+            <div>{volumeAllocationPlan.sampleCount.toLocaleString()} samples · {volumeAllocationPlan.scalarType} · {volumeAllocationPlan.components} component</div>
+            <div>CPU {formatBenchmarkBytes(volumeAllocationPlan.cpuBytes)} · GPU {formatBenchmarkBytes(volumeAllocationPlan.gpuBytes)} · {volumeAllocationPlan.backend}</div>
+            <div>{volumeAllocationPlan.message}</div>
           </div>
 
           <div style={{ marginTop: 10 }}>
@@ -117456,16 +117789,64 @@ onChangeImplicitExpr,
                   Scale
                 </button>
               </div>
-              <button type="button" onClick={onRebuildVolumeSampling} style={{ padding: "4px 8px" }}>
-                Rebuild grid
+              <button
+                type="button"
+                data-testid="volume-apply-sampling"
+                onClick={onRebuildVolumeSampling}
+                disabled={!volumeSamplingDirty || volumeAllocationPlan.warning === "blocked"}
+                style={{ padding: "4px 8px", fontWeight: 700 }}
+              >
+                Apply sampling
+              </button>
+              <button
+                type="button"
+                onClick={onRebuildVolumeSampling}
+                disabled={!volumeSamplingDirty || volumeAllocationPlan.warning === "blocked"}
+                style={{ padding: "4px 8px" }}
+              >
+                Crop to current box
               </button>
               <button type="button" onClick={onResetVolumeSampling} style={{ padding: "4px 8px" }}>
                 Reset bounds
+              </button>
+              <button type="button" onClick={onRestoreOriginalVolumeGrid} style={{ padding: "4px 8px" }}>
+                Restore original grid
               </button>
             </div>
             <div style={{ fontSize: 10, opacity: 0.65, marginTop: 6 }}>
               Spacing: {fmtVal(volumeSamplingSpacing[0], 3)} × {fmtVal(volumeSamplingSpacing[1], 3)} ×{" "}
               {fmtVal(volumeSamplingSpacing[2], 3)} (world units)
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6, marginTop: 8 }}>
+              {(["X", "Y", "Z"] as const).map((axis, axisIndex) => (
+                <label key={`target-spacing-${axis}`} style={{ display: "grid", gap: 3, fontSize: 10 }}>
+                  Target spacing {axis}
+                  <input
+                    aria-label={`Target spacing ${axis}`}
+                    type="number"
+                    min={1e-6}
+                    step="any"
+                    value={volumeTargetSpacing[axisIndex]}
+                    onChange={(event) => onChangeVolumeTargetSpacing(axisIndex as 0 | 1 | 2, Number(event.target.value))}
+                  />
+                </label>
+              ))}
+            </div>
+            <button type="button" onClick={onResampleVolumeToSpacing} style={{ padding: "4px 8px", marginTop: 6 }}>
+              Resample to spacing
+            </button>
+            <div
+              role="status"
+              data-testid="volume-sampling-status"
+              style={{ marginTop: 8, fontSize: 10, color: volumeSamplingStatus.startsWith("Rejected") || volumeSamplingStatus.startsWith("Resample failed") ? "#b42318" : volumeSamplingDirty ? "#8a5800" : "#146c2e" }}
+            >
+              {volumeSamplingDirty ? "Draft differs from applied grid. " : ""}{volumeSamplingStatus}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 10, color: volumeNonFiniteReport.nonFiniteCount ? "#b42318" : "#146c2e" }}>
+              Finite samples: {volumeNonFiniteReport.finiteCount.toLocaleString()} · non-finite/missing: {volumeNonFiniteReport.nonFiniteCount.toLocaleString()}
+              {volumeNonFiniteReport.nonFiniteIndexBounds
+                ? ` · index bounds ${volumeNonFiniteReport.nonFiniteIndexBounds.min.join(",")} → ${volumeNonFiniteReport.nonFiniteIndexBounds.max.join(",")}`
+                : ""}
             </div>
           </div>
 

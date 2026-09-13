@@ -31,6 +31,7 @@ export type VolumeGrid = {
   origin?: [number, number, number];
   /** Row-major index-to-world direction matrix. */
   direction?: [number, number, number, number, number, number, number, number, number];
+  centering?: "point" | "cell";
 };
 
 export type VectorGrid = {
@@ -40,6 +41,7 @@ export type VectorGrid = {
   origin?: [number, number, number];
   /** Row-major index-to-world direction matrix. */
   direction?: [number, number, number, number, number, number, number, number, number];
+  centering?: "point" | "cell";
 };
 
 export type VolumeFields = {
