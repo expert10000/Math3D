@@ -103,7 +103,7 @@ The following foundation is complete at `5d4cf6c` and is not a substitute for an
 | 7 — Derived isosurface workflow | Planned | CPU/VTK extraction, smoothing, displayed mesh | First-class result, preview/apply, metrics, lifecycle and Mesh/Geometry handoff |
 | 8 — Voxelization and signed-distance workflow | Planned | VTK mesh distance field, signed option, auto bounds | Occupancy, sign confidence, SDF operations, provenance and round-trip validation |
 | 9 — Transfer functions and volume rendering | Planned | Grayscale slices, opacity and windowing | MIP/MinIP/average/DVR, editable color/opacity transfer functions and ray controls |
-| 10 — Volume analysis results | Planned | Slice stats, histogram, trilinear probe, gradient magnitude | Volume stats, gradients, Hessian/Laplacian, regions, critical points and result lifecycle |
+| 10 — Volume analysis results | Complete | Revision-safe shared result history, managed derivative fields, quantitative regions, critical points and iso statistics | — |
 | 11 — Masks, labels and segmentation | Planned | None beyond scalar threshold-style display | Typed masks/labels, thresholding, components, morphology and editable segmentation results |
 | 12 — Scientific import and export | Planned | Workspace recipes only | RAW+metadata, NPY and VTI first; NRRD/NIfTI later; metadata-preserving export |
 | 13 — Volume comparison and difference | Planned | Generic Compare infrastructure for other modules | Alignment policy, A/B/difference views, norms, correlation and changed-voxel selection |
@@ -616,7 +616,7 @@ Acceptance:
 
 Planned message: `feat(volume): add revision-safe volume analysis results`
 
-**Status: planned.**
+**Status: complete.** Implemented in `renderer/src/volume/analysis.ts`, the Volume Inspector Analysis workspace, managed field storage, and analytic numerical/result-lifecycle tests.
 
 Existing foundation:
 

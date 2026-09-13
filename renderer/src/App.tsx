@@ -940,10 +940,13 @@ import {
   hydrateVolumeRevisionTracker,
   comparePinnedVolumeProbes,
   createVolumeMemoryPlan,
+  createVolumeAnalysisResultStore,
   createPinnedVolumeProbe,
   formatVolumeProbeText,
   isPinnedVolumeProbeStale,
   readVolumeProbe,
+  publishVolumeAnalysis,
+  runVolumeAnalysis,
   reconcileVolumeDerivedResult,
   restorePinnedVolumeProbes,
   restoreVolumeTransferFunction,
@@ -952,6 +955,7 @@ import {
   volumeProbesToCsv,
   type PinnedVolumeProbe,
   type VolumeComputeDiagnostics,
+  type VolumeAnalysisSummary,
   type VolumeDerivedResult,
   type VolumeIsosurfaceGeometry,
   type VolumeJobLifecycle,
@@ -35449,6 +35453,40 @@ const App: React.FC = () => {
   const [volumeIsoValue, setVolumeIsoValue] = useState(0);
   const [volumeIsoSmooth, setVolumeIsoSmooth] = useState(false);
   const [volumeIsoSmoothIterations, setVolumeIsoSmoothIterations] = useState(20);
+  const [volumeAnalysisThreshold, setVolumeAnalysisThreshold] = useState(0);
+  const [volumeAnalysisBusy, setVolumeAnalysisBusy] = useState(false);
+  const [volumeAnalysisResultStore, setVolumeAnalysisResultStore] = useState(createVolumeAnalysisResultStore);
+  const [volumeAnalysisSnapshot, setVolumeAnalysisSnapshot] = useState<{
+    identityKey: string;
+    summary: VolumeAnalysisSummary;
+  } | null>(null);
+  const currentVolumeAnalysisSummary = volumeAnalysisSnapshot?.identityKey === canonicalVolumeObject.identity.key
+    ? volumeAnalysisSnapshot.summary
+    : null;
+  const handleRunVolumeAnalysis = useCallback(() => {
+    setVolumeAnalysisBusy(true);
+    try {
+      const summary = runVolumeAnalysis({
+        volume: canonicalVolumeObject,
+        grid: volumeDataset.grid,
+        store: volumeStorageStoreRef.current,
+        threshold: volumeAnalysisThreshold,
+        isoValue: volumeIsoValue,
+      });
+      setVolumeAnalysisSnapshot({ identityKey: canonicalVolumeObject.identity.key, summary });
+      setVolumeAnalysisResultStore((previous) => publishVolumeAnalysis(previous, canonicalVolumeObject, summary));
+    } finally {
+      setVolumeAnalysisBusy(false);
+    }
+  }, [canonicalVolumeObject, volumeAnalysisThreshold, volumeDataset.grid, volumeIsoValue]);
+  const handleExportVolumeAnalysis = useCallback(() => {
+    if (!currentVolumeAnalysisSummary) return;
+    downloadTextFile(JSON.stringify({
+      version: 1,
+      volume: serializeVolumeObject(canonicalVolumeObject),
+      analysis: currentVolumeAnalysisSummary,
+    }, null, 2), `math3d-volume-analysis-r${canonicalVolumeObject.identity.volumeRevision}.json`, "application/json");
+  }, [canonicalVolumeObject, currentVolumeAnalysisSummary]);
   const volumeComputeMemoryPlan = useMemo(
     () => createVolumeMemoryPlan("marchingCubes", canonicalVolumeObject.spatial.dimensions, canonicalVolumeObject.spatial.byteSize),
     [canonicalVolumeObject.spatial.byteSize, canonicalVolumeObject.spatial.dimensions]
@@ -87433,6 +87471,13 @@ case "mobius":
                         computeDiagnostics={volumeComputeDiagnostics}
                         derivedResults={volumeDerivedResults}
                         derivedBusy={volumeComputeRuntime.lifecycle === "queued" || volumeComputeRuntime.lifecycle === "running" || volumeComputeRuntime.lifecycle === "progressive"}
+                        analysisSummary={currentVolumeAnalysisSummary}
+                        analysisBusy={volumeAnalysisBusy}
+                        analysisThreshold={volumeAnalysisThreshold}
+                        analysisHistoryCount={volumeAnalysisResultStore.history.length}
+                        onRunAnalysis={handleRunVolumeAnalysis}
+                        onChangeAnalysisThreshold={setVolumeAnalysisThreshold}
+                        onExportAnalysis={handleExportVolumeAnalysis}
                         onApplyDerivedResult={() => void handleApplyVolumeIsosurface()}
                         onCancelDerivedResult={handleCancelVolumeIsosurface}
                         onRegenerateDerivedResult={handleRegenerateVolumeDerivedResult}

@@ -1,4 +1,5 @@
 export * from "./contracts";
+export * from "./analysis";
 export * from "./computation";
 export * from "./infrastructure";
 export * from "./isosurface";

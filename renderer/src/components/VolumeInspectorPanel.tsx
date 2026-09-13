@@ -19,13 +19,14 @@ import {
   type VolumeSdfOperation,
   type VolumeSdfSignDiagnostics,
   type VolumeDirectRenderStatus,
+  type VolumeAnalysisSummary,
   type VolumeRenderMode,
   type VolumeRenderQuality,
   type VolumeTextureSampling,
   type VolumeTransferFunction,
 } from "../volume";
 
-type VolumeInspectorTab = "volume" | "field" | "sampling" | "slice" | "rendering" | "sdf" | "derived" | "diagnostics" | "history";
+type VolumeInspectorTab = "volume" | "field" | "sampling" | "slice" | "rendering" | "sdf" | "analysis" | "derived" | "diagnostics" | "history";
 
 export type VolumeInspectorPanelProps = {
   dataset: VolumeDataset;
@@ -73,6 +74,13 @@ export type VolumeInspectorPanelProps = {
   computeDiagnostics: VolumeComputeDiagnostics;
   derivedResults: readonly VolumeDerivedResult[];
   derivedBusy: boolean;
+  analysisSummary: VolumeAnalysisSummary | null;
+  analysisBusy: boolean;
+  analysisThreshold: number;
+  analysisHistoryCount: number;
+  onRunAnalysis: () => void;
+  onChangeAnalysisThreshold: (value: number) => void;
+  onExportAnalysis: () => void;
   onApplyDerivedResult: () => void;
   onCancelDerivedResult: () => void;
   onRegenerateDerivedResult: (id: string) => void;
@@ -117,6 +125,7 @@ const tabs: ReadonlyArray<{ id: VolumeInspectorTab; label: string }> = [
   { id: "slice", label: "Slice" },
   { id: "rendering", label: "Rendering" },
   { id: "sdf", label: "SDF" },
+  { id: "analysis", label: "Analysis" },
   { id: "derived", label: "Derived Surfaces" },
   { id: "diagnostics", label: "Diagnostics" },
   { id: "history", label: "History" },
@@ -207,6 +216,13 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   computeDiagnostics,
   derivedResults,
   derivedBusy,
+  analysisSummary,
+  analysisBusy,
+  analysisThreshold,
+  analysisHistoryCount,
+  onRunAnalysis,
+  onChangeAnalysisThreshold,
+  onExportAnalysis,
   onApplyDerivedResult,
   onCancelDerivedResult,
   onRegenerateDerivedResult,
@@ -537,6 +553,46 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
         </div>
       )}
 
+      {activeTab === "analysis" && (
+        <div style={cardStyle} data-testid="volume-analysis-card">
+          <div style={{ fontWeight: 850, fontSize: 12 }}>Volume Analysis</div>
+          <label style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
+            <span>Region threshold</span>
+            <input
+              aria-label="Volume analysis threshold"
+              type="number"
+              value={analysisThreshold}
+              step="any"
+              onChange={(event) => onChangeAnalysisThreshold(Number(event.target.value) || 0)}
+              style={{ width: 90 }}
+            />
+          </label>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" data-testid="volume-run-analysis" onClick={onRunAnalysis} disabled={analysisBusy}>
+              {analysisBusy ? "Analyzing…" : "Run analysis"}
+            </button>
+            <button type="button" onClick={onExportAnalysis} disabled={!analysisSummary}>Export report</button>
+          </div>
+          {analysisSummary ? (
+            <>
+              <DetailRow label="Finite / missing" value={`${analysisSummary.statistics.finiteCount.toLocaleString()} / ${analysisSummary.statistics.missingCount.toLocaleString()}`} />
+              <DetailRow label="Range" value={`${formatNumber(analysisSummary.statistics.minimum ?? Number.NaN)} … ${formatNumber(analysisSummary.statistics.maximum ?? Number.NaN)}`} />
+              <DetailRow label="Mean ± σ" value={`${formatNumber(analysisSummary.statistics.mean ?? Number.NaN)} ± ${formatNumber(analysisSummary.statistics.standardDeviation ?? Number.NaN)}`} />
+              <DetailRow label="Percentiles" value={`p05 ${formatNumber(analysisSummary.statistics.percentiles.p05 ?? Number.NaN)} · p50 ${formatNumber(analysisSummary.statistics.percentiles.p50 ?? Number.NaN)} · p95 ${formatNumber(analysisSummary.statistics.percentiles.p95 ?? Number.NaN)}`} />
+              <DetailRow label="Derivative method" value={`${analysisSummary.derivatives.method.source} · order ${analysisSummary.derivatives.method.stencilOrder}`} />
+              <DetailRow label="Region" value={`${analysisSummary.region.voxelCount.toLocaleString()} voxels · ${formatNumber(analysisSummary.region.physicalVolume)} ${spatial.positionUnits}³`} />
+              <DetailRow label="Components" value={analysisSummary.region.components.length} />
+              <DetailRow label="Boundary area" value={`${formatNumber(analysisSummary.region.surfaceContactArea)} ${spatial.positionUnits}²`} />
+              <DetailRow label="Critical candidates" value={analysisSummary.criticalPoints.length} />
+              <DetailRow label="Iso crossings" value={analysisSummary.iso.crossingEdgeCount.toLocaleString()} />
+              <DetailRow label="Managed fields" value="gradient · magnitude · Hessian · Laplacian · masks" />
+              <div style={{ color: "#315d86", fontSize: 10 }}>Dense derived arrays remain in the managed Volume store; this panel keeps only revision-safe handles and summaries.</div>
+            </>
+          ) : <div style={{ fontSize: 10, color: "#64748b" }}>Run analysis to publish statistics, derivatives, regions, critical candidates, and iso statistics for this revision.</div>}
+          <DetailRow label="Result history" value={`${analysisHistoryCount} records`} />
+        </div>
+      )}
+
       {activeTab === "sdf" && (
         <div style={cardStyle} data-testid="volume-sdf-card">
           <div style={{ fontWeight: 850, fontSize: 12 }}>Voxelization &amp; Signed Distance</div>
@@ -705,6 +761,7 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
           <DetailRow label="Created" value={new Date(volumeObject.provenance.createdAt).toLocaleString()} />
           <DetailRow label="Updated" value={new Date(volumeObject.provenance.updatedAt).toLocaleString()} />
           <DetailRow label="Derived results" value={derivedResults.length} />
+          <DetailRow label="Analysis records" value={analysisHistoryCount} />
           <DetailRow label="Stale retained" value={derivedResults.filter((result) => result.state === "stale").length} />
         </div>
       )}

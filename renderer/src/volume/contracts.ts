@@ -169,7 +169,7 @@ export type VolumeObject = {
   staleReason: string | null;
 };
 
-export type VolumeDerivedResultKind = "isosurface" | "slice" | "gradient" | "segmentation";
+export type VolumeDerivedResultKind = "isosurface" | "slice" | "gradient" | "analysis" | "segmentation";
 
 export type VolumeIsosurfaceMetrics = {
   vertexCount: number;
