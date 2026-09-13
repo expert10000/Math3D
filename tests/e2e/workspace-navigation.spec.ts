@@ -58,6 +58,81 @@ const buildAlternatingWalk = (start: SectionLabel, alternate: SectionLabel, step
 };
 
 test.describe("Workspace navigation", () => {
+  test("Volume stays in its own workspace and keeps gallery plus detailed controls", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await resetSurfaceAppState(ctx.page);
+
+      const volumeNav = ctx.page.getByTestId("workspace-nav-volume");
+      await volumeNav.click();
+
+      await expect(volumeNav).toHaveAttribute("aria-pressed", "true");
+      await expect(ctx.page.getByText("Volume / Workspace", { exact: true })).toBeVisible();
+
+      const presetGrid = ctx.page.getByTestId("volume-preset-grid");
+      const detailedControls = ctx.page.getByTestId("volume-detailed-controls");
+      await expect(presetGrid).toBeVisible();
+      await expect(detailedControls).toBeVisible();
+      await expect(detailedControls.getByText("Volume grid", { exact: true })).toBeVisible();
+
+      const galleryBox = await presetGrid.boundingBox();
+      const detailedBox = await detailedControls.boundingBox();
+      expect(galleryBox).not.toBeNull();
+      expect(detailedBox).not.toBeNull();
+      expect((detailedBox?.y ?? 0)).toBeGreaterThan((galleryBox?.y ?? 0));
+
+      await ctx.page.getByTestId("volume-action-new").click();
+      await expect(volumeNav).toHaveAttribute("aria-pressed", "true");
+      await expect(detailedControls.getByLabel("F(x,y,z)")).toBeVisible();
+
+      await ctx.page.getByTestId("volume-action-gallery").click();
+      await expect(volumeNav).toHaveAttribute("aria-pressed", "true");
+      await expect(presetGrid).toBeVisible();
+
+      await ctx.page.getByTestId("volume-preset-card-torus").click();
+      await expect(volumeNav).toHaveAttribute("aria-pressed", "true");
+      await expect(ctx.page.getByTestId("volume-preset-card-torus").getByText("Active", { exact: true })).toBeVisible();
+
+      await ctx.page.getByTestId("volume-action-demo").click();
+      await expect(volumeNav).toHaveAttribute("aria-pressed", "true");
+      await expect(ctx.page.getByText("Volume / Field / Sphere", { exact: true })).toBeVisible();
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
+  test("surface New and Demo actions preserve the active family", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await resetSurfaceAppState(ctx.page);
+      await ctx.page.getByTestId("workspace-nav-surfaces").click();
+
+      const implicit = ctx.page.getByTestId("surface-family-implicit").first();
+      await implicit.click();
+      await ctx.page.getByTestId("surfaces-action-demo").click();
+      await expect(ctx.page.getByText("Surfaces / Implicit", { exact: true })).toBeVisible();
+
+      const explicit = ctx.page.getByTestId("surface-family-explicit").first();
+      await explicit.click();
+      await ctx.page.getByTestId("surfaces-action-new").click();
+      await expect(ctx.page.getByText("Surfaces / Explicit", { exact: true })).toBeVisible();
+
+      const spline = ctx.page.getByTestId("surface-family-spline").first();
+      await spline.click();
+      await ctx.page.getByTestId("surfaces-action-demo").click();
+      await expect(ctx.page.getByText("Surfaces / Spline", { exact: true })).toBeVisible();
+
+      const constructed = ctx.page.getByTestId("surface-family-constructed").first();
+      await constructed.click();
+      await ctx.page.getByTestId("surfaces-action-demo").click();
+      await expect(ctx.page.getByText("Surfaces / Constructed / Rotational", { exact: true })).toBeVisible();
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
   for (const depth of [1, 2, 5, 10] as const) {
     test(`back/forward supports history depth ${depth}`, async () => {
       let ctx: LaunchedSurfaceApp | null = null;

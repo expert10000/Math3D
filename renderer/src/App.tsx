@@ -34513,6 +34513,11 @@ const App: React.FC = () => {
     getVolumePreset(DEFAULT_VOLUME_PRESET_ID).defaultDims
   );
   const [volumeCustomExpr, setVolumeCustomExpr] = useState("x^2 + y^2 + z^2 - 1");
+  const handleChangeVolumePresetId = useCallback((id: VolumePresetId) => {
+    setVolumeDatasetOverride(null);
+    setVolumeDistanceError(null);
+    setVolumePresetId(id);
+  }, []);
   const volumePreset = useMemo(() => getVolumePreset(volumePresetId), [volumePresetId]);
   const volumeParamsResolved = useMemo(
     () => resolveVolumePresetParams(volumePreset, volumeParams),
@@ -74921,10 +74926,12 @@ case "mobius":
       label: "Volume",
       active: mode === "surfaces" && datasetKind === "volume",
       onSelect: () => {
+        skipSurfacesAutoBrowseOnModeChangeRef.current = true;
         setMode("surfaces");
         setDatasetKind("volume");
-        setSurfacesPanelState("work");
+        setSurfacesPanelState("browse");
         setSurfacesLeftTab("scene");
+        setSurfacesWorkGalleryOpen(false);
       },
     },
     {
@@ -74993,12 +75000,16 @@ case "mobius":
       : null;
   const headerContextLabel =
     mode === "surfaces"
-      ? surfaceViewerKind === "mesh" && isSurfaceDatasetKind(datasetKind)
+      ? datasetKind === "volume"
+        ? "Volume / Workspace"
+        : surfaceViewerKind === "mesh" && isSurfaceDatasetKind(datasetKind)
         ? "Mesh / Workspace"
         : `Surfaces / ${headerSurfacesFamilyLabel}${headerSurfacesSubtypeLabel ? ` / ${headerSurfacesSubtypeLabel[0].toUpperCase()}${headerSurfacesSubtypeLabel.slice(1)}` : ""}`
       : `${activeSectionLabel} / ${activeDisplayLabel}`;
   const surfacesWorkSubtypeLabel =
-    surfaceViewerKind === "graph"
+    datasetKind === "volume"
+      ? "Field"
+      : surfaceViewerKind === "graph"
       ? "Graph"
       : surfaceViewerKind === "implicit"
         ? "Level Set"
@@ -75018,11 +75029,11 @@ case "mobius":
               ? "Preset"
               : surfaceViewerKind === "complex"
                 ? "Map"
-                : datasetKind === "volume"
-                  ? "Field"
-                  : "Preset";
+                : "Preset";
   const surfacesWorkPresetLabel =
-    surfaceViewerKind === "graph" || surfaceViewerKind === "implicit"
+    datasetKind === "volume"
+      ? (volumeDatasetOverride?.label ?? volumePreset.label)
+      : surfaceViewerKind === "graph" || surfaceViewerKind === "implicit"
       ? (SURFACES_EQ_META_BY_ID.get(activeEqSurfaceId)?.label ?? "Preset")
       : surfaceViewerKind === "param"
         ? (PARAM_SURFACES_META.find((entry) => entry.id === paramSurfaceId)?.label ?? "Preset")
@@ -75032,11 +75043,11 @@ case "mobius":
             ? "Mesh Workspace"
             : surfaceViewerKind === "complex"
               ? "Complex Workspace"
-              : datasetKind === "volume"
-                ? "Volume Workspace"
-                : "Preset";
+              : "Preset";
   const surfacesWorkBreadcrumbParts =
-    surfaceViewerKind === "mesh" && isSurfaceDatasetKind(datasetKind)
+    datasetKind === "volume"
+      ? ["Volume", surfacesWorkSubtypeLabel, surfacesWorkPresetLabel]
+      : surfaceViewerKind === "mesh" && isSurfaceDatasetKind(datasetKind)
       ? ["Mesh Workspace"]
       : ["Surfaces", headerSurfacesFamilyLabel, surfacesWorkSubtypeLabel, surfacesWorkPresetLabel].filter(
           (part, index, parts) => {
@@ -75382,7 +75393,9 @@ case "mobius":
     surfaceViewerKind !== "mesh" &&
     surfaceViewerKind !== "complex";
   const surfacesQuickEditLabel =
-    surfaceViewerKind === "graph"
+    datasetKind === "volume"
+      ? (volumePresetId === "custom" ? "Already custom" : "Edit custom F(x,y,z)")
+      : surfaceViewerKind === "graph"
       ? (graphSurfaceId === "graph_custom" ? "Already custom" : "Edit custom z=f(x,y)")
       : surfaceViewerKind === "implicit"
         ? (implicitSurfaceId === "implicit_custom" ? "Already custom" : "Edit custom f(x,y,z)")
@@ -75390,7 +75403,9 @@ case "mobius":
           ? (paramSurfaceId === "custom" ? "Already custom" : "Start as custom σ(u,v)")
           : null;
   const surfacesQuickEditEnabled =
-    surfaceViewerKind === "graph"
+    datasetKind === "volume"
+      ? volumePresetId !== "custom"
+      : surfaceViewerKind === "graph"
       ? canEditGraphAsCustom
       : surfaceViewerKind === "implicit"
         ? canEditImplicitAsCustom
@@ -75398,7 +75413,16 @@ case "mobius":
           ? canEditParamAsCustom
           : false;
   const handleSurfacesQuickEdit =
-    surfaceViewerKind === "graph"
+    datasetKind === "volume"
+      ? () => {
+          setVolumeDatasetOverride(null);
+          setVolumeDistanceError(null);
+          setVolumePresetId("custom");
+          setSurfacesPanelState("work");
+          setSurfacesLeftTab("scene");
+          setSurfacesWorkGalleryOpen(false);
+        }
+      : surfaceViewerKind === "graph"
       ? handleEditGraphAsCustom
       : surfaceViewerKind === "implicit"
         ? handleEditImplicitAsCustom
@@ -75618,7 +75642,7 @@ case "mobius":
                   volumeIsoRange={volumeIsoRange}
                   volumeIsoSmooth={volumeIsoSmooth}
                   volumeIsoSmoothIterations={volumeIsoSmoothIterations}
-                  onChangeVolumePresetId={setVolumePresetId}
+                  onChangeVolumePresetId={handleChangeVolumePresetId}
                   onChangeVolumeDim={handleVolumeDimChange}
                   onChangeVolumeSamplingCenter={handleVolumeSamplingCenterChange}
                   onChangeVolumeSamplingExtent={handleVolumeSamplingExtentChange}
@@ -77015,11 +77039,9 @@ case "mobius":
                     </span>
                     <button
                       type="button"
+                      data-testid={datasetKind === "volume" ? "volume-action-gallery" : "surfaces-action-gallery"}
                       onClick={() => {
-                        const noPresetGalleryInCurrentContext = datasetKind === "volume";
-                        if (noPresetGalleryInCurrentContext) {
-                          setDatasetKind("surface");
-                          handleChangeViewerKind("graph");
+                        if (datasetKind === "volume") {
                           setSurfacesPanelState("browse");
                           setSurfacesWorkGalleryOpen(false);
                           return;
@@ -77033,15 +77055,24 @@ case "mobius":
                         if (surfacesLeftTab !== "scene") setSurfacesLeftTab("scene");
                         setSurfacesWorkGalleryOpen((v) => !v);
                       }}
-                      aria-pressed={surfacesPanelState === "work" && surfacesWorkGalleryOpen}
-                      style={surfacesModeButtonStyle(surfacesPanelState === "work" && surfacesWorkGalleryOpen, "actions")}
+                      aria-pressed={datasetKind === "volume" ? surfacesPanelState === "browse" : surfacesPanelState === "work" && surfacesWorkGalleryOpen}
+                      style={surfacesModeButtonStyle(datasetKind === "volume" ? surfacesPanelState === "browse" : surfacesPanelState === "work" && surfacesWorkGalleryOpen, "actions")}
                     >
                       Gallery
                     </button>
                     <button
                       type="button"
-                      data-testid="mesh-action-new"
+                      data-testid={datasetKind === "volume" ? "volume-action-new" : surfaceViewerKind === "mesh" ? "mesh-action-new" : "surfaces-action-new"}
                       onClick={() => {
+                        if (datasetKind === "volume") {
+                          setVolumeDatasetOverride(null);
+                          setVolumeDistanceError(null);
+                          setVolumePresetId("custom");
+                          setSurfacesPanelState("work");
+                          setSurfacesLeftTab("scene");
+                          setSurfacesWorkGalleryOpen(false);
+                          return;
+                        }
                         if (isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "mesh") {
                           if (meshNewPresetId) handleGenerateSurfaceMeshPreset(meshNewPresetId);
                           setSurfacesPanelState("work");
@@ -77050,21 +77081,60 @@ case "mobius":
                           setSurfacesWorkGalleryOpen(false);
                           return;
                         }
-                        setDatasetKind("surface");
-                        handleChangeViewerKind("graph");
-                        handlePickEqSurface("graph_mexican");
+                        if (surfaceViewerKind === "graph") {
+                          handlePickEqSurface("graph_custom");
+                        } else if (surfaceViewerKind === "implicit") {
+                          handlePickEqSurface("implicit_custom");
+                        } else if (surfaceViewerKind === "param") {
+                          const sourceKind = paramSurfaceSourceKindFor(paramSurfaceId);
+                          if (sourceKind === "formula") {
+                            handlePickParamSurface("custom");
+                          } else if (sourceKind === "spline") {
+                            handlePickParamSurface("bezierSurface");
+                          } else {
+                            const subtype = constructedParamSubtypeFor(paramSurfaceId);
+                            handlePickParamSurface(
+                              subtype === "sweep"
+                                ? "sweepLinearExtrusion"
+                                : subtype === "tube"
+                                  ? "tubeConstant"
+                                  : subtype === "ruled"
+                                    ? "plane"
+                                    : "rotationalGraph"
+                            );
+                          }
+                        } else if (surfaceViewerKind === "weierstrass") {
+                          setDatasetKind("surface");
+                          handleResetWeierstrass();
+                        }
                         setSurfacesPanelState("work");
                         setSurfacesLeftTab("scene");
+                        setSurfacesWorkGalleryOpen(false);
                       }}
-                      title="Create a fresh Icosphere mesh"
+                      title={
+                        datasetKind === "volume"
+                          ? "Create a custom scalar field"
+                          : surfaceViewerKind === "mesh"
+                            ? "Create a fresh Icosphere mesh"
+                            : "Create within the active surface family"
+                      }
                       style={surfacesModeButtonStyle(false, "actions")}
                     >
                       New
                     </button>
                     <button
                       type="button"
-                      data-testid="mesh-action-demo"
+                      data-testid={datasetKind === "volume" ? "volume-action-demo" : surfaceViewerKind === "mesh" ? "mesh-action-demo" : "surfaces-action-demo"}
                       onClick={() => {
+                        if (datasetKind === "volume") {
+                          setVolumeDatasetOverride(null);
+                          setVolumeDistanceError(null);
+                          setVolumePresetId(DEFAULT_VOLUME_PRESET_ID);
+                          setSurfacesPanelState("work");
+                          setSurfacesLeftTab("scene");
+                          setSurfacesWorkGalleryOpen(false);
+                          return;
+                        }
                         if (isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "mesh") {
                           if (meshDemoPresetId) handleGenerateSurfaceMeshPreset(meshDemoPresetId);
                           setSurfacesPanelState("work");
@@ -77073,13 +77143,44 @@ case "mobius":
                           setSurfacesWorkGalleryOpen(false);
                           return;
                         }
-                        setDatasetKind("surface");
-                        handleChangeViewerKind("param");
-                        handlePickParamSurface("torus");
+                        if (surfaceViewerKind === "graph") {
+                          handlePickEqSurface("graph_wave");
+                        } else if (surfaceViewerKind === "implicit") {
+                          handlePickEqSurface("gyroid");
+                        } else if (surfaceViewerKind === "param") {
+                          const sourceKind = paramSurfaceSourceKindFor(paramSurfaceId);
+                          if (sourceKind === "formula") {
+                            handlePickParamSurface("torus");
+                          } else if (sourceKind === "spline") {
+                            handlePickParamSurface("bSplineSurface");
+                          } else {
+                            const subtype = constructedParamSubtypeFor(paramSurfaceId);
+                            handlePickParamSurface(
+                              subtype === "sweep"
+                                ? "sweepHelical"
+                                : subtype === "tube"
+                                  ? "tubeClosed"
+                                  : subtype === "ruled"
+                                    ? "helicoid"
+                                    : "rotationalBell"
+                            );
+                          }
+                        } else if (surfaceViewerKind === "weierstrass") {
+                          const demoPreset = WEIERSTRASS_PRESETS.find((preset) => preset.id === "trig") ?? WEIERSTRASS_PRESETS[0];
+                          if (demoPreset) applyWeierstrassPreset(demoPreset);
+                          setDatasetKind("surface");
+                        }
                         setSurfacesPanelState("work");
                         setSurfacesLeftTab("scene");
+                        setSurfacesWorkGalleryOpen(false);
                       }}
-                      title="Load the Torus knot mesh demo"
+                      title={
+                        datasetKind === "volume"
+                          ? "Load the default scalar-field demo"
+                          : surfaceViewerKind === "mesh"
+                            ? "Load the Torus knot mesh demo"
+                            : "Load a demo from the active surface family"
+                      }
                       style={surfacesModeButtonStyle(false, "actions")}
                     >
                       Demo
@@ -77135,8 +77236,9 @@ case "mobius":
                           type="button"
                           onClick={() => {
                             setDatasetKind("volume");
-                            setSurfacesPanelState("work");
+                            setSurfacesPanelState("browse");
                             setSurfacesLeftTab("scene");
+                            setSurfacesWorkGalleryOpen(false);
                           }}
                           style={surfacesModeButtonStyle(datasetKind === "volume", "actions")}
                         >
@@ -77604,7 +77706,7 @@ case "mobius":
                   onApplySurfaceMeshTopologySavedPreset={handleApplySurfaceMeshTopologySavedPreset}
                   onRunSurfaceMeshTopologyFullRoundTripDemoPreset={handleRunSurfaceMeshTopologyFullRoundTripDemoPreset}
                   volumePresetId={volumePresetId}
-                  onChangeVolumePresetId={setVolumePresetId}
+                  onChangeVolumePresetId={handleChangeVolumePresetId}
                 />
               </div>
               )}
@@ -78676,8 +78778,27 @@ case "mobius":
                   onApplySurfaceMeshTopologySavedPreset={handleApplySurfaceMeshTopologySavedPreset}
                   onRunSurfaceMeshTopologyFullRoundTripDemoPreset={handleRunSurfaceMeshTopologyFullRoundTripDemoPreset}
                   volumePresetId={volumePresetId}
-                  onChangeVolumePresetId={setVolumePresetId}
+                  onChangeVolumePresetId={handleChangeVolumePresetId}
                 />
+              )}
+              {surfacesLayoutUsesLeftBrowseWork && datasetKind === "volume" && (
+                <div
+                  data-testid="volume-detailed-controls"
+                  style={{
+                    border: "1px solid #bfdbfe",
+                    borderRadius: 10,
+                    background: "#f8fbff",
+                    padding: "10px 10px 4px",
+                    marginTop: 8,
+                    marginBottom: 8,
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "#0f3557" }}>Detailed Volume controls</div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 3, marginBottom: 8 }}>
+                    Original grid, field, crop, slice, isosurface, and streamline controls remain available here.
+                  </div>
+                  {renderSurfacesInspectorPanel("tools")}
+                </div>
               )}
               {surfaceViewerKind === "mesh" && (!surfacesWorkGalleryOpen || surfacesLeftTab === "analysis") && (
                 <div
