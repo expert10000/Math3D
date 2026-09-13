@@ -919,6 +919,7 @@ import { buildSliceSeeds } from "./scene/volume/streamlines";
 import {
   adaptAnalyticVolume,
   adaptCustomFieldVolume,
+  adaptDenseGridVolume,
   adaptSdfOperationVolume,
   adaptVectorGridVolume,
   adaptVtkDistanceVolume,
@@ -952,6 +953,10 @@ import {
   thresholdVolumeMask,
   updateVolumeLabel,
   VolumeSegmentationSession,
+  exportScientificVolume,
+  importScientificVolume,
+  importedVolumeGrid,
+  scientificMetadataFromVolume,
   reconcileVolumeDerivedResult,
   restorePinnedVolumeProbes,
   restoreVolumeTransferFunction,
@@ -975,6 +980,7 @@ import {
   type VolumeRenderQuality,
   type VolumeTextureSampling,
   type VolumeTransferFunction,
+  type VolumeScientificFormat,
 } from "./volume";
 import {
   getDefaultRotationalProfileExpressions,
@@ -34751,6 +34757,17 @@ const App: React.FC = () => {
         valueUnits: "unit",
       });
     }
+    if (volumeDatasetOverride?.scientific) {
+      return adaptDenseGridVolume({
+        ...common,
+        id: `import:${volumeDatasetOverride.scientific.externalReference.contentHash}`,
+        label: volumeDatasetOverride.label ?? volumeDatasetOverride.scientific.externalReference.fileName,
+        sourceLabel: volumeDatasetOverride.scientific.externalReference.fileName,
+        importRef: `content:${volumeDatasetOverride.scientific.externalReference.contentHash}`,
+        positionUnits: volumeDatasetOverride.scientific.positionUnits,
+        valueUnits: volumeDatasetOverride.scientific.valueUnits,
+      });
+    }
     if (volumeDatasetOverride) {
       const sourceObjectId = volumeDatasetOverride.sourceId ?? "surface-distance-source";
       return adaptVtkDistanceVolume({
@@ -35530,6 +35547,71 @@ const App: React.FC = () => {
     volumeSegmentationSessionRef.current.replace(updateVolumeLabel(current, id, patch), "label-metadata");
     setVolumeSegmentationVersion((version) => version + 1);
   }, []);
+  const [volumeScientificIoStatus, setVolumeScientificIoStatus] = useState("Ready to import or export a scientific Volume.");
+  const handleImportScientificVolume = useCallback(async () => {
+    const api = window.volumeFiles;
+    if (!api) {
+      setVolumeScientificIoStatus("Scientific file dialogs are unavailable in this runtime.");
+      return;
+    }
+    setVolumeScientificIoStatus("Waiting for scientific Volume files…");
+    const response = await api.open();
+    if (!response.ok) {
+      setVolumeScientificIoStatus(response.canceled ? "Import cancelled." : `Import failed: ${response.error}`);
+      return;
+    }
+    try {
+      const imported = importScientificVolume(response.files, {
+        onProgress: (progress, phase) => setVolumeScientificIoStatus(`${phase} · ${Math.round(progress * 100)}%`),
+      });
+      setVolumeDatasetOverride({
+        kind: "volume",
+        grid: importedVolumeGrid(imported),
+        label: `Imported: ${imported.fileName}`,
+        note: `${imported.format.toUpperCase()} scientific Volume`,
+        sourceId: `import:${imported.externalReference.contentHash}`,
+        scientific: {
+          format: imported.format,
+          scalarType: imported.metadata.scalarType,
+          components: imported.metadata.components,
+          positionUnits: imported.metadata.positionUnits,
+          valueUnits: imported.metadata.valueUnits,
+          externalReference: imported.externalReference,
+        },
+      });
+      setVolumeScientificIoStatus(`Imported ${imported.fileName} · ${imported.metadata.dimensions.join(" × ")} · ${imported.metadata.scalarType}.`);
+    } catch (error) {
+      setVolumeScientificIoStatus(`Import failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, []);
+  const handleExportScientificVolume = useCallback(async (format: VolumeScientificFormat) => {
+    try {
+      const safeLabel = canonicalVolumeObject.identity.label.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "math3d-volume";
+      const artifacts = exportScientificVolume(safeLabel, format, volumeDataset.grid.scalars, scientificMetadataFromVolume(canonicalVolumeObject));
+      if (window.volumeFiles) {
+        const response = await window.volumeFiles.save({
+          suggestedName: artifacts[0].fileName,
+          artifacts: artifacts.map((artifact) => ({ fileName: artifact.fileName, bytes: artifact.bytes })),
+        });
+        setVolumeScientificIoStatus(response.ok
+          ? `Exported ${response.paths.length} artifact${response.paths.length === 1 ? "" : "s"}.`
+          : response.canceled ? "Export cancelled." : `Export failed: ${response.error}`);
+        return;
+      }
+      for (const artifact of artifacts) {
+        const blob = new Blob([artifact.bytes.slice().buffer], { type: artifact.mediaType });
+        const href = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = href;
+        anchor.download = artifact.fileName;
+        anchor.click();
+        URL.revokeObjectURL(href);
+      }
+      setVolumeScientificIoStatus(`Downloaded ${artifacts.length} ${format.toUpperCase()} artifact${artifacts.length === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setVolumeScientificIoStatus(`Export failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, [canonicalVolumeObject, volumeDataset.grid.scalars]);
   const volumeComputeMemoryPlan = useMemo(
     () => createVolumeMemoryPlan("marchingCubes", canonicalVolumeObject.spatial.dimensions, canonicalVolumeObject.spatial.byteSize),
     [canonicalVolumeObject.spatial.byteSize, canonicalVolumeObject.spatial.dimensions]
@@ -87539,6 +87621,9 @@ case "mobius":
                           setVolumeSegmentationVersion((version) => version + 1);
                         }}
                         onUpdateSegmentationLabel={handleUpdateVolumeSegmentationLabel}
+                        ioStatus={volumeScientificIoStatus}
+                        onImportScientificVolume={() => void handleImportScientificVolume()}
+                        onExportScientificVolume={(format) => void handleExportScientificVolume(format)}
                         onApplyDerivedResult={() => void handleApplyVolumeIsosurface()}
                         onCancelDerivedResult={handleCancelVolumeIsosurface}
                         onRegenerateDerivedResult={handleRegenerateVolumeDerivedResult}

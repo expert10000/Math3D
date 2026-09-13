@@ -105,7 +105,7 @@ The following foundation is complete at `5d4cf6c` and is not a substitute for an
 | 9 — Transfer functions and volume rendering | Planned | Grayscale slices, opacity and windowing | MIP/MinIP/average/DVR, editable color/opacity transfer functions and ray controls |
 | 10 — Volume analysis results | Complete | Revision-safe shared result history, managed derivative fields, quantitative regions, critical points and iso statistics | — |
 | 11 — Masks, labels and segmentation | Complete | Typed categorical masks/labels, thresholding, connectivity, morphology, editable metadata and reversible previews | — |
-| 12 — Scientific import and export | Planned | Workspace recipes only | RAW+metadata, NPY and VTI first; NRRD/NIfTI later; metadata-preserving export |
+| 12 — Scientific import and export | Complete | RAW+metadata, NPY and VTI staged adapters, metadata preview, guarded import and atomic desktop export | — |
 | 13 — Volume comparison and difference | Planned | Generic Compare infrastructure for other modules | Alignment policy, A/B/difference views, norms, correlation and changed-voxel selection |
 | 14 — Persistence, history and Workbook round trip | Planned | Partial recipe restore, scene graph and thumbnails | Dense-data policy, undo/redo, derived results, external references and full round trips |
 | 15 — Regression matrix and performance gates | Planned | Navigation regression and general memory profiles | Canonical datasets, numerical hashes/tolerances, cancellation and volume budgets |
@@ -662,7 +662,7 @@ Acceptance:
 
 Planned message: `feat(volume): add scientific volume import and export`
 
-**Status: planned.**
+**Status: complete.** Implemented in `renderer/src/volume/scientificIO.ts`, the Volume Inspector Import / Export workspace, and the atomic desktop `volumeFiles` bridge with golden round-trip and malformed-input tests.
 
 Staging:
 

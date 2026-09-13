@@ -297,6 +297,15 @@ export type MeshFileOpenResponse =
   | { ok: true; canceled: false; files: MeshFileDialogEntry[] }
   | { ok: false; canceled: true }
   | { ok: false; canceled: false; error: string };
+export type VolumeFileSaveRequest = {
+  suggestedName: string;
+  artifacts: { fileName: string; bytes: Uint8Array }[];
+};
+export type VolumeFileSaveResponse =
+  | { ok: true; canceled: false; paths: string[] }
+  | { ok: false; canceled: true }
+  | { ok: false; canceled: false; error: string };
+export type VolumeFileOpenResponse = MeshFileOpenResponse;
 
 export type MeshBenchmarkCategory = "basic" | "standard" | "mathematical" | "problematic" | "stress" | "libigl";
 export type MeshBenchmarkTestKind = "import" | "topology" | "boundary" | "selection" | "analysis" | "performance";
@@ -503,6 +512,11 @@ contextBridge.exposeInMainWorld("topologyDocuments", {
 contextBridge.exposeInMainWorld("meshFiles", {
   open: (): Promise<MeshFileOpenResponse> =>
     ipcRenderer.invoke("meshFiles:open"),
+});
+
+contextBridge.exposeInMainWorld("volumeFiles", {
+  open: (): Promise<VolumeFileOpenResponse> => ipcRenderer.invoke("volumeFiles:open"),
+  save: (req: VolumeFileSaveRequest): Promise<VolumeFileSaveResponse> => ipcRenderer.invoke("volumeFiles:save", req),
 });
 
 contextBridge.exposeInMainWorld("meshBenchmarks", {

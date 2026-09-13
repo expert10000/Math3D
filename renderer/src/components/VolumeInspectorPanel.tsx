@@ -28,7 +28,7 @@ import {
   type VolumeTransferFunction,
 } from "../volume";
 
-type VolumeInspectorTab = "volume" | "field" | "sampling" | "slice" | "rendering" | "sdf" | "analysis" | "segmentation" | "derived" | "diagnostics" | "history";
+type VolumeInspectorTab = "volume" | "field" | "sampling" | "slice" | "rendering" | "sdf" | "analysis" | "segmentation" | "io" | "derived" | "diagnostics" | "history";
 
 export type VolumeInspectorPanelProps = {
   dataset: VolumeDataset;
@@ -95,6 +95,9 @@ export type VolumeInspectorPanelProps = {
   onUndoSegmentation: () => void;
   onRedoSegmentation: () => void;
   onUpdateSegmentationLabel: (id: number, patch: Partial<Omit<VolumeLabelDefinition, "id">>) => void;
+  ioStatus: string;
+  onImportScientificVolume: () => void;
+  onExportScientificVolume: (format: "raw" | "npy" | "vti") => void;
   onApplyDerivedResult: () => void;
   onCancelDerivedResult: () => void;
   onRegenerateDerivedResult: (id: string) => void;
@@ -141,6 +144,7 @@ const tabs: ReadonlyArray<{ id: VolumeInspectorTab; label: string }> = [
   { id: "sdf", label: "SDF" },
   { id: "analysis", label: "Analysis" },
   { id: "segmentation", label: "Masks & Labels" },
+  { id: "io", label: "Import / Export" },
   { id: "derived", label: "Derived Surfaces" },
   { id: "diagnostics", label: "Diagnostics" },
   { id: "history", label: "History" },
@@ -250,6 +254,9 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   onUndoSegmentation,
   onRedoSegmentation,
   onUpdateSegmentationLabel,
+  ioStatus,
+  onImportScientificVolume,
+  onExportScientificVolume,
   onApplyDerivedResult,
   onCancelDerivedResult,
   onRegenerateDerivedResult,
@@ -653,6 +660,30 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
               </div>
             );
           }) : <div style={{ fontSize: 10, color: "#64748b" }}>Preview a threshold to create deterministic connected-component labels.</div>}
+        </div>
+      )}
+
+      {activeTab === "io" && (
+        <div style={cardStyle} data-testid="volume-scientific-io-card">
+          <div style={{ fontWeight: 850, fontSize: 12 }}>Scientific Volume Import / Export</div>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+            <button type="button" data-testid="volume-import-scientific" onClick={onImportScientificVolume}>Import…</button>
+            <button type="button" onClick={() => onExportScientificVolume("npy")}>Export NPY</button>
+            <button type="button" onClick={() => onExportScientificVolume("vti")}>Export VTI</button>
+            <button type="button" onClick={() => onExportScientificVolume("raw")}>Export RAW</button>
+          </div>
+          <DetailRow label="Staged formats" value="RAW + JSON · NPY + JSON · VTI" />
+          <DetailRow label="Export metadata" value="spacing · origin · direction · units · missing policy" />
+          {dataset.scientific && (
+            <>
+              <DetailRow label="Imported format" value={dataset.scientific.format.toUpperCase()} />
+              <DetailRow label="Source scalar layout" value={`${dataset.scientific.scalarType} × ${dataset.scientific.components}`} />
+              <DetailRow label="External artifact" value={`${dataset.scientific.externalReference.fileName} · ${formatBytes(dataset.scientific.externalReference.byteLength)}`} />
+              <DetailRow label="Content reference" value={dataset.scientific.externalReference.contentHash} />
+            </>
+          )}
+          <div aria-live="polite" style={{ color: /failed|error|unsupported/i.test(ioStatus) ? "#b42318" : "#315d86", fontSize: 10 }}>{ioStatus}</div>
+          <div style={{ color: "#64748b", fontSize: 10 }}>Only the explicit external reference and content hash enter the workspace model; dense imported bytes are not copied into local storage.</div>
         </div>
       )}
 

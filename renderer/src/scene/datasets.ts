@@ -59,6 +59,14 @@ export type VolumeDataset = {
   distanceSigned?: boolean;
   sourceId?: string;
   sdf?: VolumeSdfMetadata;
+  scientific?: {
+    format: "raw" | "npy" | "vti";
+    scalarType: string;
+    components: number;
+    positionUnits: string;
+    valueUnits: string;
+    externalReference: { fileName: string; byteLength: number; contentHash: string };
+  };
 };
 
 export type Dataset = MeshDataset | VolumeDataset;

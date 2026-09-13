@@ -416,6 +416,15 @@ declare global {
     | { ok: true; canceled: false; files: MeshFileDialogEntry[] }
     | { ok: false; canceled: true }
     | { ok: false; canceled: false; error: string };
+  type VolumeFileSaveRequest = {
+    suggestedName: string;
+    artifacts: { fileName: string; bytes: Uint8Array }[];
+  };
+  type VolumeFileSaveResponse =
+    | { ok: true; canceled: false; paths: string[] }
+    | { ok: false; canceled: true }
+    | { ok: false; canceled: false; error: string };
+  type VolumeFileOpenResponse = MeshFileOpenResponse;
 
   type TopologyDocumentSaveRequest = {
     suggestedName?: string;
@@ -617,6 +626,10 @@ declare global {
     };
     meshFiles?: {
       open: () => Promise<MeshFileOpenResponse>;
+    };
+    volumeFiles?: {
+      open: () => Promise<VolumeFileOpenResponse>;
+      save: (req: VolumeFileSaveRequest) => Promise<VolumeFileSaveResponse>;
     };
     appCapture?: {
       captureScreenshot: (req: AppCaptureScreenshotRequest) => Promise<AppCaptureScreenshotResponse>;

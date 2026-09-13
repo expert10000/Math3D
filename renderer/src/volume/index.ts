@@ -5,6 +5,7 @@ export * from "./infrastructure";
 export * from "./isosurface";
 export * from "./probes";
 export * from "./segmentation";
+export * from "./scientificIO";
 export * from "./sdf";
 export * from "./spatial";
 export * from "./typedArrayStore";

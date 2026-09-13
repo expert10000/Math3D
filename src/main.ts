@@ -172,6 +172,15 @@ type MeshFileOpenResponse =
   | { ok: true; canceled: false; files: MeshFileDialogEntry[] }
   | { ok: false; canceled: true }
   | { ok: false; canceled: false; error: string };
+type VolumeFileSaveRequest = {
+  suggestedName: string;
+  artifacts: { fileName: string; bytes: Uint8Array }[];
+};
+type VolumeFileSaveResponse =
+  | { ok: true; canceled: false; paths: string[] }
+  | { ok: false; canceled: true }
+  | { ok: false; canceled: false; error: string };
+type VolumeFileOpenResponse = MeshFileOpenResponse;
 type MeshBenchmarkCategory = "basic" | "standard" | "mathematical" | "problematic" | "stress" | "libigl";
 type MeshBenchmarkTestKind = "import" | "topology" | "boundary" | "selection" | "analysis" | "performance";
 type MeshBenchmarkModel = {
@@ -1104,6 +1113,104 @@ app.whenReady().then(async () => {
       return { ok: true, canceled: false, files };
     } catch (error: any) {
       return { ok: false, canceled: false, error: String(error?.message ?? error) };
+    }
+  });
+
+  ipcMain.handle("volumeFiles:open", async (evt): Promise<VolumeFileOpenResponse> => {
+    try {
+      const win = BrowserWindow.fromWebContents(evt.sender);
+      if (!win || win.isDestroyed()) return { ok: false, canceled: false, error: "Window not available." };
+      const dialogResult = await dialog.showOpenDialog(win, {
+        title: "Open Scientific Volume",
+        filters: [
+          { name: "Scientific Volume", extensions: ["raw", "npy", "vti", "json"] },
+          { name: "All files", extensions: ["*"] },
+        ],
+        properties: ["openFile", "multiSelections"],
+      });
+      if (dialogResult.canceled || dialogResult.filePaths.length === 0) return { ok: false, canceled: true };
+      const files = await Promise.all(dialogResult.filePaths.map(async (filePath) => ({
+        fileName: path.basename(filePath),
+        bytes: new Uint8Array(await fs.promises.readFile(filePath)),
+      })));
+      return { ok: true, canceled: false, files };
+    } catch (error: any) {
+      return { ok: false, canceled: false, error: String(error?.message ?? error) };
+    }
+  });
+
+  ipcMain.handle("volumeFiles:save", async (evt, req: VolumeFileSaveRequest): Promise<VolumeFileSaveResponse> => {
+    const temporaryPaths: string[] = [];
+    try {
+      const win = BrowserWindow.fromWebContents(evt.sender);
+      if (!win || win.isDestroyed()) return { ok: false, canceled: false, error: "Window not available." };
+      if (!Array.isArray(req?.artifacts) || req.artifacts.length === 0) {
+        return { ok: false, canceled: false, error: "No Volume export artifacts were provided." };
+      }
+      const artifacts = req.artifacts.map((artifact) => ({
+        fileName: path.basename(String(artifact.fileName ?? "")),
+        bytes: new Uint8Array(artifact.bytes),
+      }));
+      if (artifacts.some((artifact) => !artifact.fileName || artifact.bytes.byteLength === 0)) {
+        return { ok: false, canceled: false, error: "A Volume export artifact is empty or unnamed." };
+      }
+      const primary = artifacts[0];
+      const dialogResult = await dialog.showSaveDialog(win, {
+        title: "Export Scientific Volume",
+        defaultPath: path.basename(String(req.suggestedName || primary.fileName)),
+        filters: [
+          { name: "Scientific Volume", extensions: ["npy", "vti", "raw"] },
+          { name: "All files", extensions: ["*"] },
+        ],
+        properties: ["createDirectory", "showOverwriteConfirmation"],
+      });
+      if (dialogResult.canceled || !dialogResult.filePath) return { ok: false, canceled: true };
+      const selectedPath = dialogResult.filePath;
+      const selectedExtension = path.extname(selectedPath);
+      const selectedStem = path.basename(selectedPath, selectedExtension);
+      const primaryExtension = path.extname(primary.fileName);
+      const primaryStem = path.basename(primary.fileName, primaryExtension);
+      const targets = artifacts.map((artifact, index) => {
+        if (index === 0) return selectedPath;
+        const suffix = artifact.fileName.startsWith(primaryStem)
+          ? artifact.fileName.slice(primaryStem.length)
+          : `.${artifact.fileName}`;
+        return path.join(path.dirname(selectedPath), `${selectedStem}${suffix}`);
+      });
+      const extraExisting: string[] = [];
+      for (const target of targets.slice(1)) {
+        try { await fs.promises.access(target); extraExisting.push(target); } catch { /* absent */ }
+      }
+      if (extraExisting.length) {
+        const confirmation = await dialog.showMessageBox(win, {
+          type: "warning",
+          buttons: ["Cancel", "Overwrite"],
+          defaultId: 0,
+          cancelId: 0,
+          title: "Overwrite Volume sidecar files?",
+          message: `${extraExisting.length} companion file${extraExisting.length === 1 ? "" : "s"} already exist.`,
+          detail: extraExisting.map((target) => path.basename(target)).join("\n"),
+        });
+        if (confirmation.response !== 1) return { ok: false, canceled: true };
+      }
+      const nonce = `${process.pid}-${Date.now()}`;
+      for (let index = 0; index < artifacts.length; index += 1) {
+        const target = targets[index];
+        const temporary = path.join(path.dirname(target), `.${path.basename(target)}.${nonce}.tmp`);
+        temporaryPaths.push(temporary);
+        await fs.promises.writeFile(temporary, artifacts[index].bytes, { flag: "wx" });
+      }
+      for (let index = 0; index < targets.length; index += 1) {
+        await fs.promises.rename(temporaryPaths[index], targets[index]);
+      }
+      temporaryPaths.length = 0;
+      return { ok: true, canceled: false, paths: targets };
+    } catch (error: any) {
+      return { ok: false, canceled: false, error: String(error?.message ?? error) };
+    } finally {
+      await Promise.all(temporaryPaths.map(async (temporary) => {
+        try { await fs.promises.unlink(temporary); } catch { /* already renamed or unavailable */ }
+      }));
     }
   });
 
