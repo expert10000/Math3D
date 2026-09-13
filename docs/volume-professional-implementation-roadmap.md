@@ -229,7 +229,7 @@ The primary Inspector must never show `Mesh Details` for the selected Volume. It
 
 Planned message: `fix(volume): establish volume-first workspace and inspector semantics`
 
-**Status: complete (2026-09-13).**
+**Status: complete (2026-09-13, `7fce781`).**
 
 Delivered:
 
@@ -268,7 +268,7 @@ Acceptance:
 
 Planned message: `refactor(volume): introduce canonical volume object and provenance contract`
 
-**Status: complete (2026-09-13).**
+**Status: complete (2026-09-13, `20bec9e`).**
 
 Delivered:
 
@@ -280,6 +280,16 @@ Delivered:
 - Scene nodes, unified selection, status bar, workbook dataset references, Volume Inspector, vector overlays, and isosurface records now consume canonical identity and provenance.
 - Derived isosurface records retain their source revision and parameters; source or parameter changes keep the previous record visibly stale until explicit deletion.
 - Volume unit tests cover every adapter, exact revision behavior, oriented spatial-metadata serialization, managed storage round trips/release, and derived-result stale/detach/delete transitions.
+
+Where to see Commit 2 in the UI:
+
+1. Select **Volume** in the top module bar. The breadcrumb remains Volume-owned and the right panel opens the Volume Inspector.
+2. Open **Volume Details** in the right Inspector to see canonical identity, representation, source, dimensions, scalar type, payload size, and the separate `Volume / definition / grid` revision counters.
+3. Open **Sampling** to inspect origin, spacing, storage layout, point/cell centering, direction matrix, and the managed storage handle.
+4. Open **Diagnostics** to inspect the producing engine/version, missing-value policy, dependency count, and backend state; open **History** to see the canonical object key, timestamps, derived-result count, and retained-stale count.
+5. In the left panel, scroll below the preset gallery to **Detailed Volume controls**, find **Isosurface**, and enable **Show**. Then open **Derived Surfaces** in the right Inspector to see the current result and its source/grid revisions.
+6. Change the iso slider or one sampling dimension. **Derived Surfaces** keeps the superseded result marked `stale` beside the new current result; it remains inspectable until **Delete** is pressed.
+7. The bottom status bar also reports the active canonical Volume revision, grid revision, scalar type, and payload size. Switching only between **Slices** and **3D** leaves those revisions unchanged.
 
 Implementation:
 
