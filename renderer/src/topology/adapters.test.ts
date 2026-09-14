@@ -83,4 +83,14 @@ describe("Topology read-only module adapters", () => {
       "adapter/unresolved-trims",
     ]));
   });
+
+  it("withholds oversized interactive exact analysis without mutating the source", () => {
+    const mesh = tetrahedron();
+    mesh.positions = new Float32Array(4_001 * 3);
+    const beforeLength = mesh.positions.length;
+    const result = analyzeMeshTopologySnapshot({ mesh, sourceObjectId: "large", sourceObjectRevision: "1" });
+    expect(result.status).toBe("unsupported");
+    expect(result.diagnostics[0]?.code).toBe("adapter/exact-analysis-budget");
+    expect(mesh.positions.length).toBe(beforeLength);
+  });
 });

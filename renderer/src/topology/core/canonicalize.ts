@@ -6,6 +6,8 @@ import type {
 import {
   TOPOLOGY_CANONICAL_SCHEMA_VERSION,
   TOPOLOGY_CANONICALIZER_VERSION,
+  TOPOLOGY_CW_CANONICALIZER_VERSION,
+  type CWComplexInput,
   type CanonicalSourceCellReference,
   type CanonicalTopologyComplex,
   type TopologyObject,
@@ -182,5 +184,61 @@ export const createTopologyObjectFromFundamentalDiagram = (
       },
     },
     realizations: input.realizations.map((realization) => ({ ...realization })),
+  };
+};
+
+/** Identity canonicalization for an explicitly authored finite 2D CW incidence complex. */
+export const createTopologyObjectFromCWComplex = (input: CWComplexInput): TopologyObject => {
+  const value: CWComplexInput = {
+    ...input,
+    vertices: input.vertices.map((entry) => ({ ...entry })),
+    edges: input.edges.map((entry) => ({ ...entry, endpoints: [...entry.endpoints] })),
+    faces: input.faces.map((entry) => ({
+      ...entry,
+      attachment: entry.attachment.map((occurrence) => ({ ...occurrence })),
+    })),
+  };
+  const source: TopologySource = { kind: "cw-complex", value };
+  const vertexToEdges: Record<string, string[]> = Object.fromEntries(value.vertices.map((vertex) => [vertex.id, []]));
+  const edgeToFaces: Record<string, string[]> = Object.fromEntries(value.edges.map((edge) => [edge.id, []]));
+  value.edges.forEach((edge) => edge.endpoints.forEach((vertexId) => {
+    if (vertexToEdges[vertexId] && !vertexToEdges[vertexId].includes(edge.id)) vertexToEdges[vertexId].push(edge.id);
+  }));
+  value.faces.forEach((face) => face.attachment.forEach(({ edgeId }) => {
+    if (edgeToFaces[edgeId] && !edgeToFaces[edgeId].includes(face.id)) edgeToFaces[edgeId].push(face.id);
+  }));
+  const canonical: CanonicalTopologyComplex = {
+    schemaVersion: TOPOLOGY_CANONICAL_SCHEMA_VERSION,
+    dimension: 2,
+    id: `${value.id}/canonical`,
+    name: value.name,
+    vertices: value.vertices.map((vertex) => ({ id: vertex.id, name: vertex.name ?? vertex.id, sourceRefs: [{ stage: "source", dimension: 0, cellId: vertex.id }] })),
+    edges: value.edges.map((edge) => ({ id: edge.id, name: edge.name ?? edge.id, endpoints: [...edge.endpoints], sourceRefs: [{ stage: "source", dimension: 1, cellId: edge.id }] })),
+    faces: value.faces.map((face) => ({
+      id: face.id,
+      name: face.name ?? face.id,
+      attachment: face.attachment.map((occurrence) => ({ ...occurrence })),
+      boundaryWord: face.attachment.map((occurrence) => `${occurrence.edgeId}${occurrence.direction < 0 ? "^-1" : ""}`).join(" "),
+      sourceRefs: [{ stage: "source", dimension: 2, cellId: face.id }],
+    })),
+    incidences: { vertexToEdges, edgeToFaces },
+  };
+  const sourceHash = hashTopologyValue(source);
+  const canonicalHash = hashTopologyValue(canonical);
+  return {
+    id: value.id,
+    name: value.name,
+    source,
+    canonical,
+    provenance: {
+      source: { kind: "cw-complex", revision: sourceHash, hash: sourceHash },
+      canonicalization: {
+        method: "finite CW identity canonicalization",
+        algorithmVersion: TOPOLOGY_CW_CANONICALIZER_VERSION,
+        revision: `${TOPOLOGY_CANONICAL_SCHEMA_VERSION}:${canonicalHash}`,
+        hash: canonicalHash,
+      },
+    },
+    realizations: [],
   };
 };

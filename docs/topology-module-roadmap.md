@@ -547,6 +547,7 @@ Delivered:
 - Mesh input is accepted only as a complete indexed triangle snapshot whose source winding is explicitly authoritative. Stable vertex, edge, and face IDs map every canonical result back to its source element.
 - Geometry starts with the deliberately narrow `surface-tessellation` export. Every result exposes the conversion method, `exact-incidence` or `tessellated-approximation` fidelity, and complete/partial correspondence.
 - Missing indices, out-of-range references, duplicate IDs/edges, non-triangle faces, missing winding, more than two triangles at an edge, unsupported Geometry representations, unresolved trims, and absent correspondence produce typed diagnostics. The adapter never guesses repairs or mutates its source.
+- Interactive exact algebra is protected by an explicit V/E/F budget (`256 / 1000 / 512`). Larger display tessellations receive a typed request for a coarser explicit snapshot instead of freezing the renderer.
 - Extracted the shared canonical-analysis pipeline so adapted finite complexes use the same structural validation, exact integer boundary maps, integral and mod-2 homology, Euler consistency, CW presentation/abelianization, and certified surface classifier as authored quotients.
 - Added direct **Locate first face in Mesh/Geometry** round-trip navigation. Mesh location restores the appropriate face/edge/vertex pick mode and source index; Geometry returns to the selected source object.
 - Added regression coverage for exact tetrahedral sphere homology, source mapping, read-only semantics, incomplete-index rejection, fidelity labels, unsupported representations, and unresolved trims.
@@ -557,6 +558,27 @@ Where in the UI:
 - **Analyze current Mesh** reads the dataset last active in Mesh. **Analyze selected Geometry** reads the selected Geometry object's display tessellation.
 - The result card shows acceptance state, conversion method, fidelity, mapping completeness, canonical V/E/F counts, exact `H₀`–`H₂`, and any rejection diagnostics.
 - Use **Locate first face in Mesh** or **Locate first face in Geometry** to return to the source module. All analysis remains read-only.
+
+### Commit 13 — Formal and end-to-end release gates
+
+**Status: complete (2026-09-14).**
+
+Delivered:
+
+- Added the mandatory ten-object formal fixture matrix: Point, Circle, Sphere, Torus, Cylinder, Möbius band, RP², Klein bottle, Moore `M(Z/3,1)`, and the contractible degree-one 2-complex.
+- Every fixture gates deterministic canonicalization, structural validity, exact integral boundary entries, `∂₁∂₂ = 0`, expected integral Betti/torsion data, mod-2 analysis, Euler consistency, π₁ abelianization agreement, source mapping, and provenance.
+- Added an explicit finite-CW identity canonicalizer so lower-dimensional and presentation-complex fixtures enter the same audited exact pipeline without disguising themselves as polygon quotients.
+- Added a stale-cache release gate proving that invalid algorithm provenance forces recomputation from authoritative v2 source data.
+- Extended the desktop E2E suite with real current-Mesh and selected-Geometry adapter runs, visible method/fidelity/read-only labels, exact output or truthful budget refusal, and Locate-source navigation when correspondence is available.
+- Added stable `test:topology:v1:unit`, `test:topology:v1:e2e`, and aggregate `test:topology:v1:acceptance` commands. The aggregate includes repository typechecking, the production Electron/renderer build, and responsive smoke coverage.
+- Published the command, fixture, and E2E contract in `docs/topology-v1-release-gates.md`.
+
+Where to verify:
+
+- Run `npm run test:topology:v1:unit` for the complete formal matrix and all Topology unit suites.
+- Run `npm run test:topology:v1:e2e` for the user-visible semantic and interoperability flows.
+- Run `npm run test:topology:v1:acceptance` before release; any failed stage blocks the Topology v1 release.
+- In the app, open **Topology** for the existing source/canonical, Complex, Algebra, classification, realization, comparison, and new interoperability evidence surfaces.
 
 ## Deferred research layer
 

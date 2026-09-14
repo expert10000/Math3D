@@ -1337,6 +1337,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
     source: "Mesh" | "Geometry";
     result: TopologyAdapterAnalysisResult;
   } | null>(null);
+  const [adapterBusy, setAdapterBusy] = useState<"Mesh" | "Geometry" | null>(null);
   const [documentAudit, setDocumentAudit] = useState("v2 · source authoritative · current recomputation");
   const svgRef = useRef<SVGSVGElement | null>(null);
   const draggingVertexIdRef = useRef<string | null>(null);
@@ -5711,17 +5712,25 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
 
   const runMeshAdapter = useCallback(() => {
     if (!meshAdapterSource) return;
-    setAdapterResult({ source: "Mesh", result: analyzeMeshTopologySnapshot(meshAdapterSource) });
+    setAdapterBusy("Mesh");
+    window.setTimeout(() => {
+      setAdapterResult({ source: "Mesh", result: analyzeMeshTopologySnapshot(meshAdapterSource) });
+      setAdapterBusy(null);
+    }, 0);
   }, [meshAdapterSource]);
   const runGeometryAdapter = useCallback(() => {
     if (!geometryAdapterSource) return;
-    setAdapterResult({ source: "Geometry", result: analyzeGeometryTopologySnapshot(geometryAdapterSource) });
+    setAdapterBusy("Geometry");
+    window.setTimeout(() => {
+      setAdapterResult({ source: "Geometry", result: analyzeGeometryTopologySnapshot(geometryAdapterSource) });
+      setAdapterBusy(null);
+    }, 0);
   }, [geometryAdapterSource]);
   const adapterCounts = adapterResult?.result.status === "accepted"
     ? adapterResult.result.analysis?.topologyObject.canonical
     : null;
   const adapterHomology = adapterResult?.result.status === "accepted"
-    ? adapterResult.result.analysis?.homology.value?.integer.groups.map((group) => group.notation).join(" · ")
+    ? adapterResult.result.analysis?.homology.value?.integer.groups.map((group) => `H${group.degree} ≅ ${group.notation}`).join(" · ")
     : null;
   const adapterFirstFaceId = adapterResult?.result.status === "accepted"
     ? adapterResult.result.analysis?.topologyObject.canonical.faces[0]?.sourceRefs[0]?.cellId ?? null
@@ -5880,11 +5889,11 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
           <div style={{ fontSize: 10, color: "#475569" }}>
             Read-only oriented triangle snapshots. Topology never edits the source dataset.
           </div>
-          <button type="button" data-testid="topology-analyze-current-mesh" disabled={!meshAdapterSource} onClick={runMeshAdapter}>
-            {meshAdapterSource ? `Analyze current Mesh · ${meshAdapterSource.mesh.label}` : "No indexed Mesh available"}
+          <button type="button" data-testid="topology-analyze-current-mesh" disabled={!meshAdapterSource || adapterBusy !== null} onClick={runMeshAdapter}>
+            {adapterBusy === "Mesh" ? "Analyzing Mesh…" : meshAdapterSource ? `Analyze current Mesh · ${meshAdapterSource.mesh.label} · ${Math.floor(meshAdapterSource.mesh.positions.length / 3)} V / ${Math.floor((meshAdapterSource.mesh.indices?.length ?? 0) / 3)} F` : "No indexed Mesh available"}
           </button>
-          <button type="button" data-testid="topology-analyze-current-geometry" disabled={!geometryAdapterSource} onClick={runGeometryAdapter}>
-            {geometryAdapterSource ? `Analyze selected Geometry · ${geometryAdapterSource.mesh.label}` : "No Geometry tessellation selected"}
+          <button type="button" data-testid="topology-analyze-current-geometry" disabled={!geometryAdapterSource || adapterBusy !== null} onClick={runGeometryAdapter}>
+            {adapterBusy === "Geometry" ? "Analyzing Geometry…" : geometryAdapterSource ? `Analyze selected Geometry · ${geometryAdapterSource.mesh.label} · ${Math.floor(geometryAdapterSource.mesh.positions.length / 3)} V / ${Math.floor((geometryAdapterSource.mesh.indices?.length ?? 0) / 3)} F` : "No Geometry tessellation selected"}
           </button>
           {adapterResult && (
             <div

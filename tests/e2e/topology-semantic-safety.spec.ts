@@ -2,6 +2,44 @@ import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
 test.describe("Topology semantic safety", () => {
+  test("analyzes read-only Mesh and scoped Geometry handoffs with visible fidelity", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await resetSurfaceAppState(ctx.page);
+
+      await ctx.page.getByTestId("workspace-nav-mesh").click();
+      await expect(ctx.page.getByTestId("workspace-nav-mesh")).toHaveAttribute("aria-pressed", "true");
+      await ctx.page.getByTestId("workspace-nav-topology").click();
+      const panel = ctx.page.getByTestId("topology-interoperability-panel");
+      await expect(panel).toBeVisible();
+      await panel.getByTestId("topology-analyze-current-mesh").click();
+      await expect(panel.getByTestId("topology-adapter-result")).toContainText(/Mesh · (ACCEPTED|UNSUPPORTED) · read-only/);
+      await expect(panel.getByTestId("topology-adapter-result")).toContainText("exact-incidence");
+      const meshLocate = panel.getByTestId("topology-locate-source-face");
+      if (await meshLocate.count()) {
+        await meshLocate.click();
+        await expect(ctx.page.getByTestId("workspace-nav-mesh")).toHaveAttribute("aria-pressed", "true");
+      }
+
+      await ctx.page.getByTestId("workspace-nav-geometry").click();
+      await expect(ctx.page.getByTestId("workspace-nav-geometry")).toHaveAttribute("aria-pressed", "true");
+      await ctx.page.getByTestId("workspace-nav-topology").click();
+      await expect(panel.getByTestId("topology-analyze-current-geometry")).toBeEnabled();
+      await panel.getByTestId("topology-analyze-current-geometry").click();
+      await expect(panel.getByTestId("topology-adapter-result")).toContainText(/Geometry · (ACCEPTED|UNSUPPORTED) · read-only/);
+      await expect(panel.getByTestId("topology-adapter-result")).toContainText("selected Geometry display tessellation");
+      await expect(panel.getByTestId("topology-adapter-result")).toContainText("tessellated-approximation");
+      const geometryLocate = panel.getByTestId("topology-locate-source-face");
+      if (await geometryLocate.count()) {
+        await geometryLocate.click();
+        await expect(ctx.page.getByTestId("workspace-nav-geometry")).toHaveAttribute("aria-pressed", "true");
+      }
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
   test("labels realization authority and separates formal counts from display geometry", async () => {
     let ctx: LaunchedSurfaceApp | null = null;
     try {

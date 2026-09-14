@@ -26,6 +26,31 @@ export type TopologyAdapterAnalysisResult = SnapshotCanonicalizationResult & {
   analysis?: CanonicalTopologyAnalysis;
 };
 
+export const TOPOLOGY_ADAPTER_EXACT_LIMITS = { vertices: 256, edges: 1_000, faces: 512 } as const;
+
+const overExactBudget = (snapshot: Pick<MeshTopologySnapshot, "vertexIds" | "edges" | "faces">): boolean =>
+  snapshot.vertexIds.length > TOPOLOGY_ADAPTER_EXACT_LIMITS.vertices ||
+  snapshot.edges.length > TOPOLOGY_ADAPTER_EXACT_LIMITS.edges ||
+  snapshot.faces.length > TOPOLOGY_ADAPTER_EXACT_LIMITS.faces;
+
+const budgetResult = (
+  counts: { vertices: number; edges: number; faces: number },
+  method: string,
+  fidelity: "exact-incidence" | "tessellated-approximation",
+  correspondence: "complete" | "partial" | "none"
+): TopologyAdapterAnalysisResult => ({
+  status: "unsupported",
+  method,
+  fidelity,
+  correspondence,
+  readOnly: true,
+  diagnostics: [{
+    code: "adapter/exact-analysis-budget",
+    severity: "warning",
+    message: `Snapshot V=${counts.vertices}, E=${counts.edges}, F=${counts.faces} exceeds the interactive exact-analysis limit V≤${TOPOLOGY_ADAPTER_EXACT_LIMITS.vertices}, E≤${TOPOLOGY_ADAPTER_EXACT_LIMITS.edges}, F≤${TOPOLOGY_ADAPTER_EXACT_LIMITS.faces}. Use a coarser explicit snapshot; the source was not changed.`,
+  }],
+});
+
 const indexedSnapshotCells = (mesh: SurfaceMeshData) => {
   const vertexCount = Math.floor(mesh.positions.length / 3);
   const vertexIds = Array.from({ length: vertexCount }, (_, index) => `v${index}`);
@@ -80,8 +105,30 @@ const withAnalysis = (result: SnapshotCanonicalizationResult): TopologyAdapterAn
     ? { ...result, analysis: analyzeCanonicalTopologyObject(result.topologyObject) }
     : result;
 
-export const analyzeMeshTopologySnapshot = (input: TopologyMeshAdapterInput): TopologyAdapterAnalysisResult =>
-  withAnalysis(canonicalizeMeshTopologySnapshot(createMeshTopologySnapshot(input)));
+export const analyzeMeshTopologySnapshot = (input: TopologyMeshAdapterInput): TopologyAdapterAnalysisResult => {
+  const preflight = {
+    vertices: Math.floor(input.mesh.positions.length / 3),
+    edges: Math.floor((input.mesh.indices?.length ?? 0)),
+    faces: Math.floor((input.mesh.indices?.length ?? 0) / 3),
+  };
+  if (preflight.vertices > TOPOLOGY_ADAPTER_EXACT_LIMITS.vertices || preflight.faces > TOPOLOGY_ADAPTER_EXACT_LIMITS.faces) {
+    return budgetResult(preflight, "Mesh indexed triangle snapshot", "exact-incidence", "complete");
+  }
+  const snapshot = createMeshTopologySnapshot(input);
+  if (overExactBudget(snapshot)) return budgetResult({ vertices: snapshot.vertexIds.length, edges: snapshot.edges.length, faces: snapshot.faces.length }, "Mesh indexed triangle snapshot", "exact-incidence", "complete");
+  return withAnalysis(canonicalizeMeshTopologySnapshot(snapshot));
+};
 
-export const analyzeGeometryTopologySnapshot = (input: TopologyGeometryAdapterInput): TopologyAdapterAnalysisResult =>
-  withAnalysis(canonicalizeGeometryTopologySnapshot(createGeometryTopologySnapshot(input)));
+export const analyzeGeometryTopologySnapshot = (input: TopologyGeometryAdapterInput): TopologyAdapterAnalysisResult => {
+  const preflight = {
+    vertices: Math.floor(input.mesh.positions.length / 3),
+    edges: Math.floor((input.mesh.indices?.length ?? 0)),
+    faces: Math.floor((input.mesh.indices?.length ?? 0) / 3),
+  };
+  if (preflight.vertices > TOPOLOGY_ADAPTER_EXACT_LIMITS.vertices || preflight.faces > TOPOLOGY_ADAPTER_EXACT_LIMITS.faces) {
+    return budgetResult(preflight, input.conversionMethod, input.fidelity, input.correspondence);
+  }
+  const snapshot = createGeometryTopologySnapshot(input);
+  if (overExactBudget(snapshot)) return budgetResult({ vertices: snapshot.vertexIds.length, edges: snapshot.edges.length, faces: snapshot.faces.length }, input.conversionMethod, input.fidelity, input.correspondence);
+  return withAnalysis(canonicalizeGeometryTopologySnapshot(snapshot));
+};

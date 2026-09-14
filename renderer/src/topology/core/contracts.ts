@@ -3,6 +3,7 @@ import type { FundamentalDiagram, Orientation, Realization3D } from "../types";
 export const TOPOLOGY_CANONICAL_SCHEMA_VERSION = 1 as const;
 export const TOPOLOGY_CANONICALIZER_VERSION = "fundamental-diagram-quotient@1" as const;
 export const TOPOLOGY_SNAPSHOT_CANONICALIZER_VERSION = "oriented-triangle-incidence@1" as const;
+export const TOPOLOGY_CW_CANONICALIZER_VERSION = "finite-cw-identity@1" as const;
 
 export type TopologySourceCellDimension = 0 | 1 | 2;
 
@@ -116,10 +117,12 @@ export type TopologyProvenance = {
   canonicalization: {
     method:
       | "fundamental-diagram quotient canonicalization"
-      | "read-only oriented triangle incidence canonicalization";
+      | "read-only oriented triangle incidence canonicalization"
+      | "finite CW identity canonicalization";
     algorithmVersion:
       | typeof TOPOLOGY_CANONICALIZER_VERSION
-      | typeof TOPOLOGY_SNAPSHOT_CANONICALIZER_VERSION;
+      | typeof TOPOLOGY_SNAPSHOT_CANONICALIZER_VERSION
+      | typeof TOPOLOGY_CW_CANONICALIZER_VERSION;
     revision: string;
     hash: string;
   };
