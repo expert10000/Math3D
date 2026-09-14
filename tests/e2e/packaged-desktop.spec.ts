@@ -18,6 +18,7 @@ const installedWorkerExe =
 const runPackagedE2E = ["1", "true", "yes", "on"].includes(
   String(process.env.MATH3D_RUN_PACKAGED_E2E ?? "").toLowerCase()
 );
+const sectionLabels = ["Surfaces", "Mesh", "Volume", "Curves", "Topology", "Geometry", "Complex Analysis"] as const;
 
 test.describe("Packaged desktop flow", () => {
   test.skip(
@@ -29,7 +30,7 @@ test.describe("Packaged desktop flow", () => {
     `Installed app/worker not found. app=${installedAppExe} worker=${installedWorkerExe}`
   );
 
-  test("installed app launches", async () => {
+  test("installed app launches and opens every top-level module", async () => {
     let app: ElectronApplication | null = null;
     try {
       const launchEnv: Record<string, string | undefined> = {
@@ -46,6 +47,17 @@ test.describe("Packaged desktop flow", () => {
       const page = await app.firstWindow();
       await page.waitForLoadState("domcontentloaded");
       await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
+
+      for (const label of sectionLabels) {
+        const sectionButton = page.getByRole("button", { name: label, exact: true }).first();
+        await expect(sectionButton).toBeVisible();
+        await sectionButton.click();
+        await expect(sectionButton).toHaveAttribute("aria-pressed", "true");
+        await expect(page.getByTestId("app-shell")).toBeVisible();
+        await expect
+          .poll(async () => (await page.locator("body").innerText()).trim().length)
+          .toBeGreaterThan(100);
+      }
     } finally {
       if (app) {
         await app.close();

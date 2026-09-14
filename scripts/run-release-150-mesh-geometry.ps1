@@ -2,7 +2,7 @@ param(
   [int]$ActionsPerArea = 12,
   [int]$ActionDelayMs = 5000,
   [int]$SceneLoadTimeoutMs = 30000,
-  [string]$Areas = "topology,complex"
+  [string]$Areas = "mesh,geometry"
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,7 +20,7 @@ try {
   $env:MATH3D_RELEASE_CHECK_SCENE_LOAD_TIMEOUT_MS = [string]$SceneLoadTimeoutMs
   $env:MATH3D_RELEASE_CHECK_AREAS = $Areas
 
-  npx playwright test tests/e2e/release-1-4-9-topology-complex.spec.ts --reporter=list
+  npx playwright test tests/e2e/release-1-5-0-mesh-geometry.spec.ts --reporter=list
 }
 finally {
   if ($null -eq $oldActionsPerArea) {

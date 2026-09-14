@@ -75,7 +75,7 @@ Relevant tests:
 - `renderer/src/topology/documentFormat.test.ts`
 - `renderer/src/topology/diagnostics.test.ts`
 - `renderer/src/topology/animationPlan.test.ts`
-- `tests/e2e/release-1-4-9-topology-complex.spec.ts`
+- `tests/e2e/release-1-5-0-topology-complex.spec.ts`
 
 ## Boundary with the other modules
 

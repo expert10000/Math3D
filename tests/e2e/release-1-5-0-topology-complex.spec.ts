@@ -340,7 +340,7 @@ async function runComplexArea(
   return results;
 }
 
-test.describe("release 1.4.9 topology and complex analysis check", () => {
+test.describe("release 1.5.0 topology and complex analysis check", () => {
   test("loads Topology presets and Complex Analysis labs in one app session", async () => {
     test.setTimeout(Math.max(240_000, actionsPerArea * 2 * actionDelayMs + 120_000));
     let ctx: { app: ElectronApplication; page: Page; profileDir: string } | null = null;
@@ -366,7 +366,7 @@ test.describe("release 1.4.9 topology and complex analysis check", () => {
       const summary = summarizeProcessMemory(samples);
       const report = {
         app: "Math3D",
-        releaseCandidate: "1.4.9",
+        releaseCandidate: "1.5.0",
         measuredAt: new Date().toISOString(),
         platform: process.platform,
         cwd: repoRoot,
@@ -391,7 +391,7 @@ test.describe("release 1.4.9 topology and complex analysis check", () => {
       mkdirSync(reportDir, { recursive: true });
       const reportPath = path.join(
         reportDir,
-        `math3d-release-1.4.9-topology-complex-${new Date().toISOString().replace(/[:.]/g, "-")}.json`
+        `math3d-release-1.5.0-topology-complex-${new Date().toISOString().replace(/[:.]/g, "-")}.json`
       );
       await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 

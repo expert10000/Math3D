@@ -1,7 +1,7 @@
 {
   "name": "@math3d/app-web",
   "private": true,
-  "version": "1.4.9",
+  "version": "1.5.0",
   "scripts": {
     "proxy": "node server/worker-proxy.cjs",
     "dev": "npm --prefix ../../renderer run dev",
