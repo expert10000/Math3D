@@ -870,3 +870,41 @@ remaining shared-kernel requirements.
 Therefore the immediate next program commit remains **F01**, but the old instruction
 to re-execute T01-T13 literally is superseded by conformance and adapter work over
 the already released Topology implementation.
+
+### F01 execution plan
+
+**Status:** complete
+
+F01 is one test-and-fixture-only commit.  It freezes the released behavior without
+changing production code, mathematical algorithms, persistent schemas, or UI
+workflows.
+
+1. Add a reviewed `platform-v1.5.0` manifest.  Every scenario records its owner,
+   compatibility purpose, oracle class (`exact`, `numerical`, or `illustrative`),
+   and numerical tolerance where applicable.
+2. Add compact Topology expectations for canonical preset results, exact Z and Z2
+   homology, classification eligibility, realization authority, legacy-v1
+   migration, verified-v2 loading, stale-cache recomputation, and invalid-document
+   rejection.  Reuse the existing formal release corpus rather than duplicating its
+   algorithms or full output payloads.
+3. Add Complex Analysis expectations for expression parsing/evaluation, invalid
+   diagnostics, Mobius maps and poles, Riemann-sphere projection, branch sheets,
+   and representative complex-map output.
+4. Add one deterministic desktop workflow covering Topology preset/editor views and
+   all current Complex laboratories: Function Explorer, Mobius, Riemann Sphere,
+   Residue, Branch, Covering, and the 3D complex-map handoff.
+5. Publish a baseline inventory that identifies deliberately transient state and
+   prohibits pixels, animation phase, timestamps, and renderer layout from acting
+   as mathematical oracles.
+6. Gate the commit with focused unit tests, the new desktop baseline test,
+   `typecheck:noemit`, and the renderer build.  Later F/T/C commits must name any
+   baseline fixture they intentionally migrate.
+
+**F01 acceptance:** the baseline is deterministic across repeated runs; invalid
+inputs are characterized; scientific assertions have explicit authority and
+tolerance; and the commit contains no production-code or persistent-format change.
+
+**Completed verification:** 67 focused unit assertions, two desktop workflow
+scenarios, `typecheck:noemit`, and the renderer production build pass.  The frozen
+inventory and fixture policy are documented in
+`docs/testing/platform-v1.5.0-baseline.md`; F02 is the next program commit.

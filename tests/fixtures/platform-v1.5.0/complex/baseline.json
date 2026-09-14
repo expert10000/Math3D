@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "defaultTolerance": 1e-8,
+  "expressionCases": [
+    { "id": "identity", "expression": "z", "z": [1.25, -0.75], "expected": [1.25, -0.75] },
+    { "id": "square", "expression": "z^2", "z": [2, 3], "expected": [-5, 12] },
+    { "id": "reciprocal", "expression": "1/z", "z": [1, 1], "expected": [0.5, -0.5] },
+    { "id": "sine-origin", "expression": "sin(z)", "z": [0, 0], "expected": [0, 0] },
+    { "id": "exp-log", "expression": "exp(log(z))", "z": [2, 0], "expected": [2, 0], "tolerance": 1e-6 },
+    { "id": "implicit-imaginary", "expression": "z + 2i", "z": [1, -1], "expected": [1, 1] }
+  ],
+  "diagnosticCases": [
+    { "id": "unknown-identifier", "expression": "foo + z", "messageContains": "Unknown identifier" },
+    { "id": "variable-whitelist", "expression": "u + 1", "allowedVariables": ["z"], "messageContains": "Unknown identifier" },
+    { "id": "non-real-power", "expression": "z^(1+i)", "z": [2, 0], "expectedNonFinite": true }
+  ],
+  "mobiusCases": [
+    { "id": "identity", "params": [[1, 0], [0, 0], [0, 0], [1, 0]], "z": [1.2, -0.3], "expected": [1.2, -0.3], "classification": "identity" },
+    { "id": "inversion", "params": [[0, 0], [1, 0], [1, 0], [0, 0]], "z": [2, 0], "expected": [0.5, 0], "classification": "inversionLike" },
+    { "id": "inversion-pole", "params": [[0, 0], [1, 0], [1, 0], [0, 0]], "z": [0, 0], "expected": null, "classification": "inversionLike" }
+  ],
+  "riemannCases": [
+    { "id": "origin-south-pole", "z": [0, 0], "sphere": [0, 0, -1] },
+    { "id": "finite-round-trip", "z": [0.75, -1.2], "roundTrip": true, "tolerance": 1e-7 }
+  ],
+  "branchCases": [
+    { "id": "sqrt-positive-sheet-0", "z": [1, 0], "sheetIndex": 0, "sheetCount": 2, "branchCutAngle": 0, "expected": [1, 0] },
+    { "id": "sqrt-positive-sheet-1", "z": [1, 0], "sheetIndex": 1, "sheetCount": 2, "branchCutAngle": 0, "expected": [-1, 0] }
+  ],
+  "complexMapCases": [
+    { "id": "square-plus-one", "expression": "z^2 + 1", "z": [2, 3], "expected": [-4, 12] }
+  ]
+}

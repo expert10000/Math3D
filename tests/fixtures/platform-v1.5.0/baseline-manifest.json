@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "platform-v1.5.0",
+  "releaseTag": "v1.5.0",
+  "releaseCommit": "9855524c9290457f45f91c6b2db4cd998b4f0fec",
+  "compatibilityBoundary": "No production code or persistent format changes in F01.",
+  "authorityClasses": {
+    "exact": "Discrete result determined by the represented mathematical model.",
+    "numerical": "Floating-point result checked with the tolerance declared by its fixture.",
+    "illustrative": "Availability and navigation only; rendering pixels are not mathematical evidence."
+  },
+  "suites": [
+    {
+      "id": "topology-canonical",
+      "owner": "Topology",
+      "fixture": "topology/baseline.json",
+      "oracle": "exact",
+      "preserves": [
+        "canonical quotient counts",
+        "Euler characteristic",
+        "Z and Z2 homology",
+        "surface-classification eligibility",
+        "realization authority"
+      ]
+    },
+    {
+      "id": "topology-document-compatibility",
+      "owner": "Topology",
+      "fixture": "topology/baseline.json",
+      "oracle": "exact",
+      "preserves": [
+        "legacy v1 recomputation",
+        "current v2 verification",
+        "stale cache recomputation",
+        "invalid document rejection"
+      ]
+    },
+    {
+      "id": "complex-numerical",
+      "owner": "Complex Analysis",
+      "fixture": "complex/baseline.json",
+      "oracle": "numerical",
+      "preserves": [
+        "expression evaluation",
+        "parser diagnostics",
+        "Mobius evaluation and poles",
+        "Riemann-sphere projection",
+        "branch-sheet evaluation",
+        "complex-map samples"
+      ]
+    },
+    {
+      "id": "topology-complex-desktop-workflows",
+      "owner": "Platform",
+      "test": "tests/e2e/platform-baseline.spec.ts",
+      "oracle": "illustrative",
+      "preserves": [
+        "Topology editor and analysis views",
+        "Complex laboratory navigation",
+        "3D complex-map handoff"
+      ]
+    }
+  ],
+  "excludedTransientState": [
+    "timestamps",
+    "temporary paths",
+    "camera and hover state",
+    "animation phase",
+    "frame timing",
+    "panel dimensions",
+    "screenshot pixels"
+  ]
+}

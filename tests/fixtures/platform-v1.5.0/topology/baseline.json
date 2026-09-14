@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "oracle": "exact",
+  "presets": [
+    {
+      "presetId": "torus_square",
+      "canonicalCellCounts": [1, 2, 1],
+      "eulerCharacteristic": 0,
+      "integerBetti": [1, 2, 1],
+      "mod2Dimensions": [1, 2, 1],
+      "h1Torsion": [],
+      "classification": "Torus (orientable genus 1)",
+      "realizationKinds": ["schematic", "embedded"]
+    },
+    {
+      "presetId": "cylinder",
+      "canonicalCellCounts": [2, 3, 1],
+      "eulerCharacteristic": 0,
+      "integerBetti": [1, 1, 0],
+      "mod2Dimensions": [1, 1, 0],
+      "h1Torsion": [],
+      "classification": "Cylinder / annulus (orientable genus 0, boundary 2)",
+      "realizationKinds": ["schematic", "embedded"]
+    },
+    {
+      "presetId": "mobius_from_rectangle",
+      "canonicalCellCounts": [2, 3, 1],
+      "eulerCharacteristic": 0,
+      "integerBetti": [1, 1, 0],
+      "mod2Dimensions": [1, 1, 0],
+      "h1Torsion": [],
+      "classification": "Möbius band (non-orientable crosscap 1, boundary 1)",
+      "realizationKinds": ["schematic", "embedded"]
+    },
+    {
+      "presetId": "projective_plane",
+      "canonicalCellCounts": [2, 2, 1],
+      "eulerCharacteristic": 1,
+      "integerBetti": [1, 0, 0],
+      "mod2Dimensions": [1, 1, 1],
+      "h1Torsion": ["2"],
+      "classification": "Projective plane (non-orientable crosscap 1)",
+      "realizationKinds": ["schematic", "immersed"]
+    },
+    {
+      "presetId": "klein_bottle_square",
+      "canonicalCellCounts": [1, 2, 1],
+      "eulerCharacteristic": 0,
+      "integerBetti": [1, 1, 0],
+      "mod2Dimensions": [1, 2, 1],
+      "h1Torsion": ["2"],
+      "classification": "Klein bottle (non-orientable crosscap 2)",
+      "realizationKinds": ["schematic", "immersed"]
+    }
+  ],
+  "documentCompatibility": [
+    { "case": "legacy-v1", "expectedMigration": "v1-recomputed", "expectedCacheStatus": "recomputed" },
+    { "case": "current-v2", "expectedMigration": "v2-verified", "expectedCacheStatus": "current" },
+    { "case": "stale-v2", "expectedMigration": "v2-stale-recomputed", "expectedCacheStatus": "recomputed" },
+    { "case": "invalid", "expectedMigration": null, "expectedCacheStatus": null }
+  ]
+}
