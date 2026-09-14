@@ -1312,3 +1312,54 @@ All existing Topology suites pass (124 tests across 21 files), the F01-T01
 foundation/compatibility matrix passes (103 tests across 13 files), and
 `typecheck:noemit` plus the renderer production build succeed.  The released UI and
 save/export path remain unchanged; T03 is the next program commit.
+
+### T03 execution plan
+
+**Status:** complete
+
+T03 introduces a deterministic finite-2D canonical artifact and pure source-to-cell
+derivation.  It does not certify topology, compute algebra, replace the current
+renderer, or publish artifacts into a document; those responsibilities remain with
+T04-T06 and the later command migration.
+
+1. Add a strict schema-v1 `CanonicalFinite2DComplex` to shared core with stable
+   complex/cell IDs, canonical 0-, 1-, and 2-cell ordering, oriented face attachment
+   words, and immutable source references on every cell and boundary occurrence.
+2. Bind every canonicalization result to the exact T02 document ID, revision,
+   structural hash, and generation.  Compute the canonical artifact hash with the
+   shared SHA-256 canonical-JSON primitive and include no clock, worker, renderer,
+   realization, analysis, or transient state.
+3. Implement pure shared canonicalizers for explicitly authored finite CW sources
+   and simplicial sources.  Preserve declared incidence, orientation, and dangling
+   references for T04 to validate instead of silently repairing or certifying them.
+4. Add deterministic source-map queries in both directions: canonical cell to source
+   elements and source element to canonical cells.  Require every canonical cell to
+   have at least one dimension-correct source reference.
+5. Add a renderer-side fundamental-diagram adapter that uses the released quotient
+   derivation, copies only its finite cells and source maps into the shared artifact,
+   and derives boundary-occurrence references from diagram tokens.  Never read a 3D
+   realization or change the released quotient/rendering path.
+6. Return explicit unsupported/invalid-source outcomes for source kinds not yet in
+   scope or malformed source models.  Mesh/Geometry snapshot canonicalization remains
+   on its existing path until the revisioned handoff work later in Phase T.
+7. Prove deterministic replay/hash, reorder-normalized explicit complexes, oriented
+   words, exact source/generation binding, two-way source maps, invalid-fixture
+   preservation without certification, renderer-realization independence, and all
+   T01 corpus mappings.  Re-run the F01-T02 compatibility suites, all Topology tests,
+   `typecheck:noemit`, and the renderer production build.
+
+**T03 acceptance:** unchanged input produces byte-identical canonical cells and hash;
+every canonical cell and attachment occurrence locates back to its authoritative
+source; CW, simplicial, and current fundamental-diagram inputs retain declared
+orientation; unsupported inputs fail explicitly; no output claims structural or
+algebraic validity; and current UI, renderer, and save workflows remain unchanged.
+
+**Completed verification:** nine focused canonical-complex and fundamental-diagram
+adapter assertions pass, covering deterministic/reorder-normalized replay, SHA-256
+artifact hashes, exact source-generation binding, oriented CW and simplicial words,
+two-way locate-back maps, invalid-source preservation without certification,
+realization independence, released quotient parity, and all ten T01 corpus entries.
+All Topology suites pass (128 tests across 22 files), the F01-T03 foundation and
+compatibility matrix passes (113 tests across 15 files), and `typecheck:noemit` plus
+the renderer production build succeed.  Current UI/render/save behavior is unchanged;
+T04 is the next program commit.

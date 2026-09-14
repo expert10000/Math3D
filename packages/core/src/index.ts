@@ -1,4 +1,5 @@
 export * from "./commands";
+export * from "./canonicalFinite2DComplex";
 export * from "./analysisResults";
 export * from "./documentIdentity";
 export * from "./geometry";

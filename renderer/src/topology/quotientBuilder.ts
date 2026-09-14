@@ -587,7 +587,8 @@ const buildQuotientComplex = (
   };
 };
 
-export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildResult => {
+/** Pure source-to-quotient derivation. It does not build R3 realizations or run analysis. */
+export const deriveFundamentalDiagramQuotient = (input: FundamentalDiagram) => {
   const warnings: QuotientWarning[] = [];
   const normalizedDiagram = normalizeFundamentalDiagram(input);
   const { diagram: subdividedDiagram, summary: subdivision } = triangulateDiagramFaces(normalizedDiagram, warnings);
@@ -619,6 +620,33 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
     edgeClassBySource,
     warnings
   );
+  return {
+    normalizedDiagram,
+    subdividedDiagram,
+    subdivision,
+    vertexClasses,
+    edgeClasses,
+    orientationRelations,
+    vertexClassBySource,
+    edgeClassBySource,
+    quotient,
+    warnings,
+  };
+};
+
+export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildResult => {
+  const {
+    normalizedDiagram,
+    subdividedDiagram,
+    subdivision,
+    vertexClasses,
+    edgeClasses,
+    orientationRelations,
+    vertexClassBySource,
+    edgeClassBySource,
+    quotient,
+    warnings,
+  } = deriveFundamentalDiagramQuotient(input);
   const realizations = buildRealizationChoices(quotient, orientationRelations);
   const topologyObjectWithoutAnalysis = createTopologyObjectFromFundamentalDiagram(input, {
     quotient,
