@@ -1220,3 +1220,48 @@ identity, command, transaction, kernel, scientific-job, result-envelope, artifac
 registry, scene/topology compatibility, and Topology/Complex platform-baseline suites
 pass (98 tests total), along with `typecheck:noemit` and the renderer production
 build.  The foundation phase is complete; T01 is the next program commit.
+
+### T01 execution plan
+
+**Status:** complete
+
+T01 freezes a reviewed canonical Topology corpus before the versioned document and
+canonicalization migrations begin.  It adds fixtures, fixture-policy documentation,
+and regression tests only; released algorithms, presets, persistence, rendering, and
+UI behavior remain unchanged.
+
+1. Add one schema-v1 corpus containing point, circle, independently authored sphere,
+   torus, cylinder, Möbius band, RP², Klein bottle, Moore `M(Z/3,1)`, and a deliberately
+   invalid finite complex.  Use existing preset IDs where compatibility is the
+   subject and explicit CW sources where an independent formal fixture is clearer.
+2. Give every entry explicit validity and cellular-algebra eligibility, canonical
+   cell counts, exact boundary matrices when available, integral and mod-2 homology,
+   torsion, classification eligibility/label, and required diagnostic codes.
+3. Attach an authority to every expected claim: exact for incidence/boundary/homology,
+   certified-within-model for surface eligibility/classification, unsupported where
+   invalid prerequisites block analysis, and illustrative for 3D realizations.
+4. Add source-to-canonical-view examples that identify a source cell, its expected
+   canonical cell, and the exact source reference.  For applicable teaching presets,
+   also identify one current realization by stable suffix while declaring it
+   illustrative rather than a mathematical oracle.
+5. Validate the corpus schema and inventory independently of the algorithms: IDs are
+   unique, the required ten cases occur exactly once, sources are well formed, and
+   no fixture uses numerical/pixel/timestamp/animation/layout output as an oracle.
+6. Replay each valid fixture twice and prove deterministic canonical hash, exact
+   mapping, boundary, chain condition, homology, algebraic consistency, and stated
+   classification authority.  Prove the invalid fixture yields focused structural
+   diagnostics and withholds boundary, homology, and classification results.
+7. Re-run the F01-F08 compatibility suites, all existing Topology core tests,
+   `typecheck:noemit`, and the renderer production build.  Document which fixture
+   facts T02 and later commits must intentionally migrate if they change.
+
+**T01 acceptance:** all ten required spaces have explicit validity, eligibility,
+authority, boundary/homology/classification expectations, and source-to-view
+mapping; repeated runs are deterministic; the invalid source cannot acquire formal
+algebraic output; illustrative realization data is never treated as proof; and no
+production or persistent-format code changes in this commit.
+
+**Completed verification:** thirteen focused corpus/schema/invalidity assertions plus
+the F01-F08 compatibility and all existing Topology core suites pass (162 tests
+across 21 files), along with `typecheck:noemit` and the renderer production build.
+Only fixture, test, and documentation files change.  T02 is the next program commit.

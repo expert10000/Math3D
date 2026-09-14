@@ -1,0 +1,263 @@
+{
+  "schemaVersion": 1,
+  "corpusId": "topology-v1-canonical-regression",
+  "authorityDefinitions": {
+    "exact": "Integer incidence, boundary, and algebra derived from the declared finite complex.",
+    "certified-within-model": "Surface eligibility or classification certified within the finite 2D complex model.",
+    "unsupported": "Formal output withheld because declared prerequisites do not hold.",
+    "illustrative": "A source or 3D teaching view that is not a mathematical oracle."
+  },
+  "entries": [
+    {
+      "id": "point",
+      "name": "Point",
+      "source": {
+        "kind": "cw-complex",
+        "value": {
+          "id": "corpus/point",
+          "name": "Point",
+          "vertices": [{ "id": "v" }],
+          "edges": [],
+          "faces": []
+        }
+      },
+      "expected": {
+        "canonicalCellCounts": [1, 0, 0],
+        "validation": { "status": "certified-within-model", "structurallyValid": true, "cellularAlgebraEligible": true, "requiredDiagnosticCodes": [] },
+        "boundary": { "authority": "exact", "status": "exact", "d1": [[]], "d2": [] },
+        "homology": { "authority": "exact", "status": "exact", "integerGroups": ["Z", "0", "0"], "mod2Dimensions": [1, 0, 0], "h1Torsion": [] },
+        "classification": { "authority": "certified-within-model", "status": "certified-within-model", "eligible": false, "label": null }
+      },
+      "sourceToView": { "sourceCell": { "dimension": 0, "cellId": "v" }, "canonicalCellId": "v", "authority": "exact" },
+      "claims": [
+        { "subject": "canonical-incidence", "authority": "exact" },
+        { "subject": "cellular-boundary", "authority": "exact" },
+        { "subject": "homology", "authority": "exact" },
+        { "subject": "surface-classification", "authority": "certified-within-model" }
+      ]
+    },
+    {
+      "id": "circle",
+      "name": "Circle",
+      "source": {
+        "kind": "cw-complex",
+        "value": {
+          "id": "corpus/circle",
+          "name": "Circle",
+          "vertices": [{ "id": "v" }],
+          "edges": [{ "id": "a", "endpoints": ["v", "v"] }],
+          "faces": []
+        }
+      },
+      "expected": {
+        "canonicalCellCounts": [1, 1, 0],
+        "validation": { "status": "certified-within-model", "structurallyValid": true, "cellularAlgebraEligible": true, "requiredDiagnosticCodes": ["link/isolated-edge", "link/unsupported-vertex"] },
+        "boundary": { "authority": "exact", "status": "exact", "d1": [["0"]], "d2": [[]] },
+        "homology": { "authority": "exact", "status": "exact", "integerGroups": ["Z", "Z", "0"], "mod2Dimensions": [1, 1, 0], "h1Torsion": [] },
+        "classification": { "authority": "certified-within-model", "status": "certified-within-model", "eligible": false, "label": null }
+      },
+      "sourceToView": { "sourceCell": { "dimension": 1, "cellId": "a" }, "canonicalCellId": "a", "authority": "exact" },
+      "claims": [
+        { "subject": "canonical-incidence", "authority": "exact" },
+        { "subject": "cellular-boundary", "authority": "exact" },
+        { "subject": "homology", "authority": "exact" },
+        { "subject": "surface-classification", "authority": "certified-within-model" }
+      ]
+    },
+    {
+      "id": "sphere",
+      "name": "Sphere",
+      "source": {
+        "kind": "cw-complex",
+        "value": {
+          "id": "corpus/sphere",
+          "name": "Two-bigon sphere",
+          "vertices": [{ "id": "v0" }, { "id": "v1" }],
+          "edges": [
+            { "id": "a", "endpoints": ["v0", "v1"] },
+            { "id": "b", "endpoints": ["v0", "v1"] }
+          ],
+          "faces": [
+            { "id": "north", "attachment": [{ "edgeId": "a", "direction": 1 }, { "edgeId": "b", "direction": -1 }] },
+            { "id": "south", "attachment": [{ "edgeId": "b", "direction": 1 }, { "edgeId": "a", "direction": -1 }] }
+          ]
+        }
+      },
+      "expected": {
+        "canonicalCellCounts": [2, 2, 2],
+        "validation": { "status": "certified-within-model", "structurallyValid": true, "cellularAlgebraEligible": true, "requiredDiagnosticCodes": [] },
+        "boundary": { "authority": "exact", "status": "exact", "d1": [["-1", "-1"], ["1", "1"]], "d2": [["1", "-1"], ["-1", "1"]] },
+        "homology": { "authority": "exact", "status": "exact", "integerGroups": ["Z", "0", "Z"], "mod2Dimensions": [1, 0, 1], "h1Torsion": [] },
+        "classification": { "authority": "certified-within-model", "status": "certified-within-model", "eligible": true, "label": "Sphere (orientable genus 0)" }
+      },
+      "sourceToView": { "sourceCell": { "dimension": 2, "cellId": "north" }, "canonicalCellId": "north", "authority": "exact" },
+      "claims": [
+        { "subject": "canonical-incidence", "authority": "exact" },
+        { "subject": "cellular-boundary", "authority": "exact" },
+        { "subject": "homology", "authority": "exact" },
+        { "subject": "surface-classification", "authority": "certified-within-model" }
+      ]
+    },
+    {
+      "id": "torus",
+      "name": "Torus",
+      "source": { "kind": "preset", "presetId": "torus_square" },
+      "expected": {
+        "canonicalCellCounts": [1, 2, 1],
+        "validation": { "status": "certified-within-model", "structurallyValid": true, "cellularAlgebraEligible": true, "requiredDiagnosticCodes": [] },
+        "boundary": { "authority": "exact", "status": "exact", "d1": [["0", "0"]], "d2": [["0"], ["0"]] },
+        "homology": { "authority": "exact", "status": "exact", "integerGroups": ["Z", "Z^2", "Z"], "mod2Dimensions": [1, 2, 1], "h1Torsion": [] },
+        "classification": { "authority": "certified-within-model", "status": "certified-within-model", "eligible": true, "label": "Torus (orientable genus 1)" }
+      },
+      "sourceToView": { "sourceCell": { "dimension": 1, "cellId": "e0" }, "canonicalCellId": "qE0", "authority": "exact" },
+      "realizationExample": { "idSuffix": "/realization/torus-smooth", "kind": "embedded", "authority": "illustrative" },
+      "claims": [
+        { "subject": "canonical-incidence", "authority": "exact" },
+        { "subject": "cellular-boundary", "authority": "exact" },
+        { "subject": "homology", "authority": "exact" },
+        { "subject": "surface-classification", "authority": "certified-within-model" },
+        { "subject": "3d-realization", "authority": "illustrative" }
+      ]
+    },
+    {
+      "id": "cylinder",
+      "name": "Cylinder",
+      "source": { "kind": "preset", "presetId": "cylinder" },
+      "expected": {
+        "canonicalCellCounts": [2, 3, 1],
+        "validation": { "status": "certified-within-model", "structurallyValid": true, "cellularAlgebraEligible": true, "requiredDiagnosticCodes": [] },
+        "boundary": { "authority": "exact", "status": "exact", "d1": [["0", "-1", "0"], ["0", "1", "0"]], "d2": [["1"], ["0"], ["1"]] },
+        "homology": { "authority": "exact", "status": "exact", "integerGroups": ["Z", "Z", "0"], "mod2Dimensions": [1, 1, 0], "h1Torsion": [] },
+        "classification": { "authority": "certified-within-model", "status": "certified-within-model", "eligible": true, "label": "Cylinder / annulus (orientable genus 0, boundary 2)" }
+      },
+      "sourceToView": { "sourceCell": { "dimension": 1, "cellId": "e1" }, "canonicalCellId": "qE1", "authority": "exact" },
+      "realizationExample": { "idSuffix": "/realization/cylinder-smooth", "kind": "embedded", "authority": "illustrative" },
+      "claims": [
+        { "subject": "canonical-incidence", "authority": "exact" },
+        { "subject": "cellular-boundary", "authority": "exact" },
+        { "subject": "homology", "authority": "exact" },
+        { "subject": "surface-classification", "authority": "certified-within-model" },
+        { "subject": "3d-realization", "authority": "illustrative" }
+      ]
+    },
+    {
+      "id": "mobius-band",
+      "name": "Möbius band",
+      "source": { "kind": "preset", "presetId": "mobius_from_rectangle" },
+      "expected": {
+        "canonicalCellCounts": [2, 3, 1],
+        "validation": { "status": "certified-within-model", "structurallyValid": true, "cellularAlgebraEligible": true, "requiredDiagnosticCodes": [] },
+        "boundary": { "authority": "exact", "status": "exact", "d1": [["-1", "1", "-1"], ["1", "-1", "1"]], "d2": [["1"], ["2"], ["1"]] },
+        "homology": { "authority": "exact", "status": "exact", "integerGroups": ["Z", "Z", "0"], "mod2Dimensions": [1, 1, 0], "h1Torsion": [] },
+        "classification": { "authority": "certified-within-model", "status": "certified-within-model", "eligible": true, "label": "Möbius band (non-orientable crosscap 1, boundary 1)" }
+      },
+      "sourceToView": { "sourceCell": { "dimension": 1, "cellId": "e1" }, "canonicalCellId": "qE1", "authority": "exact" },
+      "realizationExample": { "idSuffix": "/realization/mobius-smooth", "kind": "embedded", "authority": "illustrative" },
+      "claims": [
+        { "subject": "canonical-incidence", "authority": "exact" },
+        { "subject": "cellular-boundary", "authority": "exact" },
+        { "subject": "homology", "authority": "exact" },
+        { "subject": "surface-classification", "authority": "certified-within-model" },
+        { "subject": "3d-realization", "authority": "illustrative" }
+      ]
+    },
+    {
+      "id": "rp2",
+      "name": "Real projective plane",
+      "source": { "kind": "preset", "presetId": "projective_plane" },
+      "expected": {
+        "canonicalCellCounts": [2, 2, 1],
+        "validation": { "status": "certified-within-model", "structurallyValid": true, "cellularAlgebraEligible": true, "requiredDiagnosticCodes": [] },
+        "boundary": { "authority": "exact", "status": "exact", "d1": [["-1", "1"], ["1", "-1"]], "d2": [["2"], ["2"]] },
+        "homology": { "authority": "exact", "status": "exact", "integerGroups": ["Z", "Z/2Z", "0"], "mod2Dimensions": [1, 1, 1], "h1Torsion": ["2"] },
+        "classification": { "authority": "certified-within-model", "status": "certified-within-model", "eligible": true, "label": "Projective plane (non-orientable crosscap 1)" }
+      },
+      "sourceToView": { "sourceCell": { "dimension": 1, "cellId": "e0" }, "canonicalCellId": "qE0", "authority": "exact" },
+      "realizationExample": { "idSuffix": "/realization/projective-immersed", "kind": "immersed", "authority": "illustrative" },
+      "claims": [
+        { "subject": "canonical-incidence", "authority": "exact" },
+        { "subject": "cellular-boundary", "authority": "exact" },
+        { "subject": "homology", "authority": "exact" },
+        { "subject": "surface-classification", "authority": "certified-within-model" },
+        { "subject": "3d-realization", "authority": "illustrative" }
+      ]
+    },
+    {
+      "id": "klein-bottle",
+      "name": "Klein bottle",
+      "source": { "kind": "preset", "presetId": "klein_bottle_square" },
+      "expected": {
+        "canonicalCellCounts": [1, 2, 1],
+        "validation": { "status": "certified-within-model", "structurallyValid": true, "cellularAlgebraEligible": true, "requiredDiagnosticCodes": [] },
+        "boundary": { "authority": "exact", "status": "exact", "d1": [["0", "0"]], "d2": [["0"], ["2"]] },
+        "homology": { "authority": "exact", "status": "exact", "integerGroups": ["Z", "Z ⊕ Z/2Z", "0"], "mod2Dimensions": [1, 2, 1], "h1Torsion": ["2"] },
+        "classification": { "authority": "certified-within-model", "status": "certified-within-model", "eligible": true, "label": "Klein bottle (non-orientable crosscap 2)" }
+      },
+      "sourceToView": { "sourceCell": { "dimension": 1, "cellId": "e1" }, "canonicalCellId": "qE1", "authority": "exact" },
+      "realizationExample": { "idSuffix": "/realization/klein-immersed", "kind": "immersed", "authority": "illustrative" },
+      "claims": [
+        { "subject": "canonical-incidence", "authority": "exact" },
+        { "subject": "cellular-boundary", "authority": "exact" },
+        { "subject": "homology", "authority": "exact" },
+        { "subject": "surface-classification", "authority": "certified-within-model" },
+        { "subject": "3d-realization", "authority": "illustrative" }
+      ]
+    },
+    {
+      "id": "moore-z3-1",
+      "name": "Moore space M(Z/3,1)",
+      "source": {
+        "kind": "cw-complex",
+        "value": {
+          "id": "corpus/moore-z3-1",
+          "name": "Moore space M(Z/3,1)",
+          "vertices": [{ "id": "v" }],
+          "edges": [{ "id": "a", "endpoints": ["v", "v"] }],
+          "faces": [{ "id": "f", "attachment": [{ "edgeId": "a", "direction": 1 }, { "edgeId": "a", "direction": 1 }, { "edgeId": "a", "direction": 1 }] }]
+        }
+      },
+      "expected": {
+        "canonicalCellCounts": [1, 1, 1],
+        "validation": { "status": "certified-within-model", "structurallyValid": true, "cellularAlgebraEligible": true, "requiredDiagnosticCodes": ["link/unsupported-edge", "link/unsupported-vertex"] },
+        "boundary": { "authority": "exact", "status": "exact", "d1": [["0"]], "d2": [["3"]] },
+        "homology": { "authority": "exact", "status": "exact", "integerGroups": ["Z", "Z/3Z", "0"], "mod2Dimensions": [1, 0, 0], "h1Torsion": ["3"] },
+        "classification": { "authority": "certified-within-model", "status": "certified-within-model", "eligible": false, "label": null }
+      },
+      "sourceToView": { "sourceCell": { "dimension": 2, "cellId": "f" }, "canonicalCellId": "f", "authority": "exact" },
+      "claims": [
+        { "subject": "canonical-incidence", "authority": "exact" },
+        { "subject": "cellular-boundary", "authority": "exact" },
+        { "subject": "homology", "authority": "exact" },
+        { "subject": "surface-classification", "authority": "certified-within-model" }
+      ]
+    },
+    {
+      "id": "invalid-dangling-complex",
+      "name": "Invalid dangling finite complex",
+      "source": {
+        "kind": "cw-complex",
+        "value": {
+          "id": "corpus/invalid-dangling",
+          "name": "Invalid dangling finite complex",
+          "vertices": [{ "id": "v" }],
+          "edges": [{ "id": "bad", "endpoints": ["v", "missing"] }],
+          "faces": [{ "id": "f", "attachment": [{ "edgeId": "missing-edge", "direction": 1 }] }]
+        }
+      },
+      "expected": {
+        "canonicalCellCounts": [1, 1, 1],
+        "validation": { "status": "failed", "structurallyValid": false, "cellularAlgebraEligible": false, "requiredDiagnosticCodes": ["edge/dangling-endpoint", "attachment/dangling-edge"] },
+        "boundary": { "authority": "unsupported", "status": "unsupported", "d1": null, "d2": null },
+        "homology": { "authority": "unsupported", "status": "unsupported", "integerGroups": null, "mod2Dimensions": null, "h1Torsion": null },
+        "classification": { "authority": "unsupported", "status": "unsupported", "eligible": null, "label": null }
+      },
+      "sourceToView": { "sourceCell": { "dimension": 1, "cellId": "bad" }, "canonicalCellId": "bad", "authority": "exact" },
+      "claims": [
+        { "subject": "canonical-incidence", "authority": "exact" },
+        { "subject": "cellular-boundary", "authority": "unsupported" },
+        { "subject": "homology", "authority": "unsupported" },
+        { "subject": "surface-classification", "authority": "unsupported" }
+      ]
+    }
+  ]
+}
