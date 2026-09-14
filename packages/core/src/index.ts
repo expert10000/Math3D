@@ -6,6 +6,7 @@ export * from "./math";
 export * from "./sceneDocument";
 export * from "./sceneObjects";
 export * from "./scientificJobs";
+export * from "./topologyDocument";
 export * from "./serialization";
 export * from "./validation";
 export * from "./viewerTypes";

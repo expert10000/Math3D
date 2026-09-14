@@ -1265,3 +1265,50 @@ production or persistent-format code changes in this commit.
 the F01-F08 compatibility and all existing Topology core suites pass (162 tests
 across 21 files), along with `typecheck:noemit` and the renderer production build.
 Only fixture, test, and documentation files change.  T02 is the next program commit.
+
+### T02 execution plan
+
+**Status:** complete
+
+T02 adds the first shared, UI-independent Topology document without replacing the
+released renderer format.  The new document stores authoritative source plus compact
+references; current v1/v2 files are adapted in memory and remain saved by their
+existing path until a later explicit cutover.
+
+1. Add a strict schema-v1 `TopologyDocument` to shared core with stable document
+   identity, positive revision and SHA-256 structural hash, typed authoritative
+   source kind/ID/model, and no renderer, worker, clock, or module-store dependency.
+2. Add revision/generation-bound references for the canonical complex, analysis
+   results, and display realizations.  Keep canonical cells, matrices, result values,
+   meshes, sampled geometry, and animation state out of the shared document.
+3. Mark every display realization `illustrative`; represent current-format embedded
+   canonical/display caches as `legacy-embedded`; represent pre-F06 result entries as
+   `legacy-limited` without copying or upgrading their scientific status.
+4. Add strict normalization plus canonical serialization/deserialization.  Reject
+   unknown fields, invalid IDs/source guards, duplicate references, source-hash
+   mismatch, non-illustrative displays, unsupported versions, and non-JSON data.
+5. Add a renderer-side compatibility adapter for released topology v1 and v2 files.
+   Deterministically derive stable identity from the authoritative source; classify
+   verified v2 as migrated, v1 and stale v2 as needs-canonicalization, and malformed
+   or unsupported inputs as view-only with an actionable diagnostic.
+6. Preserve source data and compact illustrative display references only.  Never
+   trust a v1 cache, never publish stale v2 derived references, never invoke a new
+   save/export path, and leave existing `migrateTopologyDocument` behavior unchanged.
+7. Prove deterministic IDs/hashes, round-trip serialization, immutable references,
+   strict validation, verified/stale/v1/view-only adaptation, legacy-result limits,
+   payload exclusion, and T01 corpus source compatibility.  Re-run F01-T01 and
+   Topology document/core suites, `typecheck:noemit`, and the renderer build.
+
+**T02 acceptance:** the shared document round-trips as strict schema-v1 canonical
+JSON; source edits change its structural identity; every derived reference is bound
+to the exact source revision/hash/generation; legacy results remain limited; older or
+stale files produce an actionable migrated/view-only/needs-canonicalization outcome;
+and current UI/save workflows are unchanged.
+
+**Completed verification:** ten focused shared-document and compatibility-adapter
+assertions pass, including strict validation, deterministic round trips, verified,
+stale, v1, and view-only outcomes, payload exclusion, and all T01 corpus sources.
+All existing Topology suites pass (124 tests across 21 files), the F01-T01
+foundation/compatibility matrix passes (103 tests across 13 files), and
+`typecheck:noemit` plus the renderer production build succeed.  The released UI and
+save/export path remain unchanged; T03 is the next program commit.
