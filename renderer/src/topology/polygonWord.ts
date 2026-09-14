@@ -5,6 +5,40 @@ export type PolygonWordEdge = {
   orientation: Orientation;
 };
 
+export type PolygonWordDiagnostic = {
+  code: "empty-word" | "invalid-token" | "boundary-edge" | "overused-label";
+  severity: "info" | "warning" | "error";
+  message: string;
+  tokenIndex?: number;
+  label?: string;
+};
+
+export type PolygonWordOccurrenceReview = PolygonWordEdge & {
+  index: number;
+  rawToken: string;
+  occurrence: number;
+  peerIndices: number[];
+  status: "paired" | "boundary" | "overused" | "invalid";
+};
+
+export type PolygonWordLabelReview = {
+  label: string;
+  count: number;
+  positive: number;
+  negative: number;
+  status: "paired" | "boundary" | "overused";
+};
+
+export type PolygonWordReview = {
+  raw: string;
+  normalized: string;
+  occurrences: PolygonWordOccurrenceReview[];
+  labels: PolygonWordLabelReview[];
+  classification: PolygonWordClassification | null;
+  diagnostics: PolygonWordDiagnostic[];
+  canBuild: boolean;
+};
+
 export type PolygonWordClassification =
   | { kind: "torus"; label: string; comparisonId: "torus" }
   | { kind: "projective"; label: string; comparisonId: "projective" }
@@ -42,6 +76,92 @@ const splitBoundaryWord = (raw: string): string[] =>
     .split(/\s+/)
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
+
+const STRICT_LABEL_PATTERN = /^[a-z][a-z0-9_]*$/i;
+
+export const reviewPolygonWord = (raw: string): PolygonWordReview => {
+  const rawTokens = splitBoundaryWord(raw);
+  const parsed = rawTokens.map((token, index) => {
+    const stripped = stripInverseSuffix(token);
+    const valid = STRICT_LABEL_PATTERN.test(stripped.base.trim());
+    return {
+      rawToken: token,
+      edge: parsePolygonWordEdge(token, index),
+      valid,
+    };
+  });
+  const diagnostics: PolygonWordDiagnostic[] = [];
+  if (rawTokens.length === 0) {
+    diagnostics.push({ code: "empty-word", severity: "error", message: "Enter at least one oriented edge token." });
+  }
+  parsed.forEach((entry, index) => {
+    if (!entry.valid) {
+      diagnostics.push({
+        code: "invalid-token",
+        severity: "error",
+        tokenIndex: index,
+        message: `Token ${index + 1} ('${entry.rawToken}') is malformed. Use names such as a, seam_1, or a^-1.`,
+      });
+    }
+  });
+
+  const validEntries = parsed.filter((entry) => entry.valid);
+  const labels = [...new Set(validEntries.map((entry) => entry.edge.label))]
+    .sort((a, b) => a.localeCompare(b))
+    .map((label): PolygonWordLabelReview => {
+      const matches = validEntries.filter((entry) => entry.edge.label === label);
+      const count = matches.length;
+      const status = count === 1 ? "boundary" : count === 2 ? "paired" : "overused";
+      if (status === "boundary") {
+        diagnostics.push({
+          code: "boundary-edge",
+          severity: "info",
+          label,
+          message: `'${label}' occurs once and remains an open boundary edge.`,
+        });
+      } else if (status === "overused") {
+        diagnostics.push({
+          code: "overused-label",
+          severity: "warning",
+          label,
+          message: `'${label}' occurs ${count} times; the quotient is allowed but is not an ordinary paired polygon surface.`,
+        });
+      }
+      return {
+        label,
+        count,
+        positive: matches.filter((entry) => entry.edge.orientation > 0).length,
+        negative: matches.filter((entry) => entry.edge.orientation < 0).length,
+        status,
+      };
+    });
+  const labelByName = new Map(labels.map((entry) => [entry.label, entry]));
+  const occurrences: PolygonWordOccurrenceReview[] = parsed.map((entry, index) => {
+    const peers = parsed
+      .map((candidate, candidateIndex) => ({ candidate, candidateIndex }))
+      .filter(({ candidate, candidateIndex }) => candidateIndex !== index && candidate.valid && candidate.edge.label === entry.edge.label)
+      .map(({ candidateIndex }) => candidateIndex);
+    return {
+      ...entry.edge,
+      index,
+      rawToken: entry.rawToken,
+      occurrence: parsed.slice(0, index + 1).filter((candidate) => candidate.valid && candidate.edge.label === entry.edge.label).length,
+      peerIndices: peers,
+      status: !entry.valid ? "invalid" : labelByName.get(entry.edge.label)?.status ?? "boundary",
+    };
+  });
+  const canBuild = rawTokens.length > 0 && diagnostics.every((entry) => entry.severity !== "error");
+  const edges = parsed.filter((entry) => entry.valid).map((entry) => entry.edge);
+  return {
+    raw,
+    normalized: canBuild ? formatPolygonWord(edges) : "",
+    occurrences,
+    labels,
+    classification: canBuild ? classifyPolygonWord(edges) : null,
+    diagnostics,
+    canBuild,
+  };
+};
 
 export const parsePolygonWordEdge = (raw: string, fallbackIndex = 0): PolygonWordEdge => {
   const { base, orientation } = stripInverseSuffix(raw);

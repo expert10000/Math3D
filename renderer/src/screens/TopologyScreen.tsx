@@ -3,7 +3,9 @@ import * as THREE from "three";
 import { uiStyles as styles } from "../uiStyles";
 import {
   addEdgeToDiagram,
+  addFaceFromAttachmentWord,
   addVertexToDiagram,
+  buildDiagramFromPolygonWord,
   buildPlannedOperations,
   buildPlannedSteps,
   createDefaultAnimationPlan,
@@ -24,9 +26,15 @@ import {
   normalizeTopologyRealizationKinds,
   normalizeAnimationPlan,
   regenerateBoundaryWordsInPlace,
+  removeFaceFromDiagram,
   removeEdgeFromDiagram,
   removeVertexFromDiagram,
+  renameDiagramCell,
+  reverseFaceAttachment,
+  reviewPolygonWord,
+  setFaceAttachmentWord,
   setOperationGroupInPlan,
+  subdivideFaceByDiagonal,
   type InvalidBoundaryCycleDiagnostic,
   type ExactIntegerMatrix,
   type FundamentalDiagram,
@@ -1293,6 +1301,11 @@ export const TopologyScreen: React.FC = () => {
   const [timelinePlaying, setTimelinePlaying] = useState(false);
   const [jsonDraft, setJsonDraft] = useState(() => JSON.stringify(initialDiagram(), null, 2));
   const [jsonError, setJsonError] = useState<string | null>(null);
+  const [guidedWordDraft, setGuidedWordDraft] = useState(() => initialDiagram().faceBoundaryWords.f0 ?? "a b a^-1 b^-1");
+  const [selectedFaceId, setSelectedFaceId] = useState(() => initialDiagram().faces[0]?.id ?? "");
+  const [faceNameDraft, setFaceNameDraft] = useState(() => initialDiagram().faces[0]?.name ?? "Face 1");
+  const [faceWordDraft, setFaceWordDraft] = useState(() => initialDiagram().faceBoundaryWords.f0 ?? "");
+  const [authoringError, setAuthoringError] = useState<string | null>(null);
   const [animationPlan, setAnimationPlan] = useState<TopologyAnimationPlan | null>(null);
   const [storyStageThreeVisible, setStoryStageThreeVisible] = useState(false);
   const [currentDocumentPath, setCurrentDocumentPath] = useState<string | null>(null);
@@ -1311,6 +1324,7 @@ export const TopologyScreen: React.FC = () => {
   }, []);
 
   const diagramSignature = useMemo(() => JSON.stringify(diagram), [diagram]);
+  const guidedWordReview = useMemo(() => reviewPolygonWord(guidedWordDraft), [guidedWordDraft]);
   const buildStale = diagramSignature !== builtSignature;
   const dirty = diagramSignature !== savedSignature;
   const edgeById = useMemo(() => edgeByIdMap(diagram), [diagram]);
@@ -1700,6 +1714,53 @@ export const TopologyScreen: React.FC = () => {
     setSelectedEdgeId(null);
   };
 
+  const applyGuidedPolygonWord = () => {
+    if (!guidedWordReview.canBuild) {
+      setAuthoringError("Fix the word diagnostics before building the diagram.");
+      return;
+    }
+    const next = buildDiagramFromPolygonWord(
+      guidedWordReview.occurrences.map((entry) => ({ label: entry.label, orientation: entry.orientation })),
+      {
+        id: "custom/guided-polygon-word",
+        name: guidedWordReview.classification?.label ?? "Guided polygon word",
+        description: `Authored through guided polygon-word review: ${guidedWordReview.normalized}`,
+      }
+    );
+    next.faces[0]!.name = "Fundamental face";
+    setDiagramAndDraft(next, { pushHistory: true });
+    const built = buildQuotientPipeline(next);
+    setBuildResult(built);
+    setBuiltSignature(JSON.stringify(next));
+    setBuildMode("editor");
+    setSelectedFaceId(next.faces[0]?.id ?? "");
+    setActiveRealizationId(built.realizations[0]?.id ?? null);
+    setAnimationPlan(buildNarrativeAnimationPlan(next, built));
+    setAuthoringError(null);
+    setDocStatus(`Built reviewed word '${guidedWordReview.normalized}'.`);
+  };
+
+  const applyFaceEdit = (mode: "update" | "add") => {
+    const result = mode === "add"
+      ? addFaceFromAttachmentWord(diagram, faceWordDraft, faceNameDraft)
+      : setFaceAttachmentWord(diagram, selectedFaceId, faceWordDraft);
+    if (!result.ok) {
+      setAuthoringError(result.errors.join(" "));
+      return;
+    }
+    setDiagramAndDraft(result.diagram, { pushHistory: true });
+    if (mode === "add") setSelectedFaceId(result.diagram.faces[result.diagram.faces.length - 1]?.id ?? selectedFaceId);
+    setAuthoringError(null);
+  };
+
+  const validateAndFocusAuthoredComplex = () => {
+    const built = buildQuotientPipeline(diagram);
+    setBuildResult(built);
+    setBuiltSignature(diagramSignature);
+    setActiveView("complex");
+    setDocStatus(`Validated ${diagram.vertices.length} vertices, ${diagram.edges.length} edges, and ${diagram.faces.length} faces.`);
+  };
+
   const handleUndo = () => {
     if (undoStack.length === 0) return;
     const nextUndo = [...undoStack];
@@ -1748,6 +1809,19 @@ export const TopologyScreen: React.FC = () => {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [diagram, undoStack, redoStack]);
+
+  useEffect(() => {
+    const face = diagram.faces.find((entry) => entry.id === selectedFaceId) ?? diagram.faces[0];
+    if (!face) {
+      setSelectedFaceId("");
+      setFaceNameDraft("Face");
+      setFaceWordDraft("");
+      return;
+    }
+    if (face.id !== selectedFaceId) setSelectedFaceId(face.id);
+    setFaceNameDraft(face.name || face.id);
+    setFaceWordDraft(diagram.faceBoundaryWords[face.id] ?? "");
+  }, [diagramSignature, selectedFaceId]);
 
   useEffect(() => {
     if (!timelinePlaying) return;
@@ -5685,6 +5759,66 @@ export const TopologyScreen: React.FC = () => {
           )}
           {buildMode === "editor" && (
             <div style={{ display: "grid", gap: 8 }}>
+              <div
+                data-testid="topology-guided-word-authoring"
+                style={{ border: "1px solid #bfdbfe", borderRadius: 8, background: "#f8fbff", padding: 8, display: "grid", gap: 6 }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 700 }}>Guided polygon word</div>
+                <div style={{ fontSize: 10, color: "#475569" }}>
+                  Word → occurrences → pairing/orientation review → recognized surface → diagram → canonical complex.
+                </div>
+                <input
+                  data-testid="topology-guided-word-input"
+                  type="text"
+                  value={guidedWordDraft}
+                  onChange={(event) => setGuidedWordDraft(event.target.value)}
+                  placeholder="a b a^-1 b^-1"
+                  style={{ width: "100%", fontFamily: "ui-monospace, Consolas, monospace", fontSize: 11 }}
+                />
+                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => setGuidedWordDraft("a b a^-1 b^-1")} style={{ fontSize: 10 }}>Torus</button>
+                  <button type="button" onClick={() => setGuidedWordDraft("a a")} style={{ fontSize: 10 }}>Projective plane</button>
+                  <button type="button" onClick={() => setGuidedWordDraft("a b a^-1 b")} style={{ fontSize: 10 }}>Klein bottle</button>
+                </div>
+                <div style={{ fontSize: 10 }}>
+                  Normalized: <strong>{guidedWordReview.normalized || "withheld"}</strong>
+                </div>
+                <div data-testid="topology-guided-word-classification" style={{ fontSize: 10, color: guidedWordReview.canBuild ? "#166534" : "#b42318" }}>
+                  Recognized: <strong>{guidedWordReview.classification?.label ?? "withheld until syntax is valid"}</strong>
+                </div>
+                {guidedWordReview.occurrences.length > 0 && (
+                  <div style={{ maxHeight: 116, overflowY: "auto", border: "1px solid #dbe4f0", borderRadius: 6, background: "#fff" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+                      <thead><tr><th>#</th><th>token</th><th>sign</th><th>peers</th><th>status</th></tr></thead>
+                      <tbody>
+                        {guidedWordReview.occurrences.map((entry) => (
+                          <tr key={`word-occurrence-${entry.index}`} data-testid={`topology-word-occurrence-${entry.index}`}>
+                            <td style={{ textAlign: "center" }}>{entry.index + 1}</td>
+                            <td style={{ textAlign: "center", fontFamily: "ui-monospace, Consolas, monospace" }}>{entry.rawToken}</td>
+                            <td style={{ textAlign: "center" }}>{entry.orientation > 0 ? "+" : "−"}</td>
+                            <td style={{ textAlign: "center" }}>{entry.peerIndices.map((index) => index + 1).join(", ") || "—"}</td>
+                            <td style={{ textAlign: "center" }}>{entry.status}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {guidedWordReview.diagnostics.map((entry, index) => (
+                  <div key={`word-diagnostic-${entry.code}-${index}`} style={{ fontSize: 10, color: entry.severity === "error" ? "#b42318" : entry.severity === "warning" ? "#b45309" : "#475569" }}>
+                    {entry.severity.toUpperCase()}: {entry.message}
+                  </div>
+                ))}
+                <button
+                  data-testid="topology-build-reviewed-word"
+                  type="button"
+                  disabled={!guidedWordReview.canBuild}
+                  onClick={applyGuidedPolygonWord}
+                >
+                  Build reviewed diagram + canonical complex
+                </button>
+              </div>
+
               <div style={{ fontSize: 12, fontWeight: 700 }}>Edge editor</div>
               <div style={{ maxHeight: 220, overflowY: "auto", border: "1px solid #dbe4f0", borderRadius: 8 }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
@@ -5752,6 +5886,68 @@ export const TopologyScreen: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              <div
+                data-testid="topology-cw-authoring"
+                style={{ border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", padding: 8, display: "grid", gap: 6 }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 700 }}>Controlled CW authoring</div>
+                <div style={{ fontSize: 10, color: "#475569" }}>
+                  Named source cells remain authoritative. Attachment tokens resolve to edge ids or unique labels and must form a closed walk.
+                </div>
+                <label style={{ display: "grid", gap: 3, fontSize: 10 }}>
+                  Face
+                  <select value={selectedFaceId} onChange={(event) => setSelectedFaceId(event.target.value)}>
+                    {diagram.faces.map((face) => <option key={`face-choice-${face.id}`} value={face.id}>{face.name || face.id} [{face.id}]</option>)}
+                  </select>
+                </label>
+                <label style={{ display: "grid", gap: 3, fontSize: 10 }}>
+                  Face name
+                  <input type="text" value={faceNameDraft} onChange={(event) => setFaceNameDraft(event.target.value)} />
+                </label>
+                <label style={{ display: "grid", gap: 3, fontSize: 10 }}>
+                  Closed attachment word
+                  <input
+                    data-testid="topology-face-word-input"
+                    type="text"
+                    value={faceWordDraft}
+                    onChange={(event) => setFaceWordDraft(event.target.value)}
+                    placeholder="e0 e1 e2 e3"
+                    style={{ fontFamily: "ui-monospace, Consolas, monospace", fontSize: 11 }}
+                  />
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
+                  <button type="button" disabled={!selectedFaceId} onClick={() => {
+                    const renamed = renameDiagramCell(diagram, 2, selectedFaceId, faceNameDraft);
+                    const result = setFaceAttachmentWord(renamed, selectedFaceId, faceWordDraft);
+                    if (!result.ok) { setAuthoringError(result.errors.join(" ")); return; }
+                    setDiagramAndDraft(result.diagram, { pushHistory: true });
+                    setAuthoringError(null);
+                  }}>Apply face edit</button>
+                  <button type="button" onClick={() => applyFaceEdit("add")}>Add named face</button>
+                  <button type="button" disabled={!selectedFaceId} onClick={() => {
+                    setDiagramAndDraft(reverseFaceAttachment(diagram, selectedFaceId), { pushHistory: true });
+                    setAuthoringError(null);
+                  }}>Reverse attachment</button>
+                  <button type="button" disabled={!selectedFaceId} onClick={() => {
+                    const result = subdivideFaceByDiagonal(diagram, selectedFaceId);
+                    if (!result.ok) { setAuthoringError(result.errors.join(" ")); return; }
+                    setDiagramAndDraft(result.diagram, { pushHistory: true });
+                    setAuthoringError(null);
+                  }}>Subdivide by diagonal</button>
+                  <button type="button" disabled={!selectedFaceId || diagram.faces.length <= 1} onClick={() => {
+                    const next = removeFaceFromDiagram(diagram, selectedFaceId);
+                    setDiagramAndDraft(next, { pushHistory: true });
+                    setSelectedFaceId(next.faces[0]?.id ?? "");
+                    setAuthoringError(null);
+                  }}>Delete face</button>
+                  <button type="button" onClick={validateAndFocusAuthoredComplex}>Validate + focus diagnostics</button>
+                </div>
+                <div style={{ fontSize: 10, color: "#475569" }}>
+                  Cell browser: {diagram.vertices.length} named 0-cells · {diagram.edges.length} named 1-cells · {diagram.faces.length} named 2-cells
+                </div>
+                {authoringError && <div data-testid="topology-authoring-error" style={{ color: "#b42318", fontSize: 10 }}>{authoringError}</div>}
               </div>
 
               <details>

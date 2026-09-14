@@ -19,6 +19,8 @@ export type FundamentalDiagramBoundaryHalfEdge = {
 
 export type FundamentalDiagramFace = {
   id: string;
+  /** Optional user-facing name. The id remains the stable source-map key. */
+  name?: string;
   boundary: FundamentalDiagramBoundaryHalfEdge[];
 };
 

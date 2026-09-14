@@ -6,6 +6,7 @@ import {
   buildOrientableGenusWord,
   classifyPolygonWord,
   parsePolygonWord,
+  reviewPolygonWord,
 } from "./polygonWord";
 
 describe("polygonWord helpers", () => {
@@ -64,5 +65,25 @@ describe("polygonWord helpers", () => {
     if (classification.kind === "nonorientable-genus") {
       expect(classification.genus).toBe(3);
     }
+  });
+
+  it("reviews occurrences and withholds malformed words", () => {
+    const torus = reviewPolygonWord("a b a^-1 b^-1");
+    expect(torus.canBuild).toBe(true);
+    expect(torus.classification?.kind).toBe("torus");
+    expect(torus.occurrences[0]?.peerIndices).toEqual([2]);
+    expect(torus.labels.every((entry) => entry.status === "paired")).toBe(true);
+
+    const malformed = reviewPolygonWord("a b$ a^-1");
+    expect(malformed.canBuild).toBe(false);
+    expect(malformed.classification).toBeNull();
+    expect(malformed.diagnostics.some((entry) => entry.code === "invalid-token")).toBe(true);
+  });
+
+  it("marks unpaired and multiply identified labels transparently", () => {
+    const review = reviewPolygonWord("a b b c c c");
+    expect(review.canBuild).toBe(true);
+    expect(review.labels.find((entry) => entry.label === "a")?.status).toBe("boundary");
+    expect(review.labels.find((entry) => entry.label === "c")?.status).toBe("overused");
   });
 });

@@ -101,7 +101,7 @@ const canonicalComplexFromQuotient = (
     });
     return {
       id: `qF${faceIndex}`,
-      name: face.id,
+      name: face.name || face.id,
       attachment,
       boundaryWord:
         word ||

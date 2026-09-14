@@ -450,6 +450,27 @@ Where in the UI:
 - The right-side **C. Diagnostics** panel separates recognized teaching hints from certified boundary/orientability values and the formal surface name.
 - Torus and Möbius **Realization View** stories now include a formal certificate card explaining that classification comes from the canonical complex, not the rendered R³ model.
 
+### Commit 8 — Guided words and controlled multi-face authoring
+
+**Status: complete (2026-09-14).**
+
+Delivered:
+
+- Promoted polygon words into a visible review pipeline: strict token parsing, normalized signed word, occurrence numbers, peer positions, pairing status, diagnostics, recognized explanation, diagram construction, and immediate canonical rebuild.
+- Malformed tokens now withhold recognition and building with actionable diagnostics. Single occurrences are identified as retained boundary edges; labels used more than twice are explicitly marked as non-surface multi-identifications rather than silently treated as ordinary pairs.
+- Added controlled named 2-cell authoring with a face browser, closed attachment-word editing, deterministic label/edge-ID resolution, attachment reversal, face creation/deletion, and a direct validate-and-focus action.
+- Added explicit diagonal subdivision for source faces with four or more boundary occurrences. The original source face ID remains stable, the new face and diagonal receive deterministic IDs, and the canonical source maps rebuild from the edited source.
+- Corrected boundary-word regeneration to combine boundary traversal with authored edge orientation, so inverse signs survive edits, undo/redo, and later persistence.
+- Retained the existing named 0-/1-cell editor, direct diagram tools, raw JSON escape hatch, and bounded undo/redo history while continuing to defer arbitrary contractions, auto-repair, and freehand face drawing.
+- Added unit coverage for valid/malformed word review, boundary/overused-label outcomes, signed attachment preservation, multi-face authoring, reversal, and Euler-preserving diagonal subdivision.
+
+Where in the UI:
+
+- Open **Topology**, select **Editor mode**, and use **Guided polygon word** above the edge table. Type a word such as `a b a^-1 b^-1`; the occurrence table shows signs, peers, and status before **Build reviewed diagram + canonical complex** becomes available.
+- In the same left panel, use **Controlled CW authoring** below the edge table to select a face, rename it, edit/reverse its closed attachment, add or delete a face, or subdivide it by a deterministic diagonal.
+- Choose **Validate + focus diagnostics** to rebuild and open **Complex View**, where canonical cells, source mappings, attachment validity, and focused diagnostics are inspectable.
+- Existing **Undo/Redo** controls in Diagram View cover these source edits. Stable v2 save/reopen of this history and source mapping is delivered by Commit 9.
+
 ## Deferred research layer
 
 Do not schedule before the above release gates are stable:

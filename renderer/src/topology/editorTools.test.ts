@@ -2,11 +2,17 @@ import { describe, expect, it } from "vitest";
 import { TOPOLOGY_PRESET_BY_ID } from "./presets";
 import {
   addEdgeToDiagram,
+  addFaceFromAttachmentWord,
   addVertexToDiagram,
   moveVertexInDiagram,
   removeEdgeFromDiagram,
   removeVertexFromDiagram,
+  reverseFaceAttachment,
+  setFaceAttachmentWord,
+  subdivideFaceByDiagonal,
 } from "./editorTools";
+import { buildDiagramFromPolygonWord, parsePolygonWord } from "./polygonWord";
+import { buildQuotientPipeline } from "./quotientBuilder";
 
 describe("topology editor tools", () => {
   it("adds vertex/edge and regenerates face boundary word", () => {
@@ -45,5 +51,33 @@ describe("topology editor tools", () => {
     const removedVertex = removeVertexFromDiagram(moved, firstVertexId);
     expect(removedVertex.vertices.some((entry) => entry.id === firstVertexId)).toBe(false);
     expect(removedVertex.edges.every((edge) => edge.from !== firstVertexId && edge.to !== firstVertexId)).toBe(true);
+  });
+
+  it("preserves inverse signs and supports controlled face editing", () => {
+    const base = buildDiagramFromPolygonWord(parsePolygonWord("a b a^-1 b^-1"));
+    const edited = setFaceAttachmentWord(base, "f0", "a b a^-1 b^-1");
+    expect(edited.ok).toBe(true);
+    if (!edited.ok) return;
+    expect(edited.normalizedWord).toBe("a b a^-1 b^-1");
+
+    const reversed = reverseFaceAttachment(edited.diagram, "f0");
+    expect(reversed.faceBoundaryWords.f0).toBe("b a b^-1 a^-1");
+
+    const added = addFaceFromAttachmentWord(edited.diagram, "a b a^-1 b^-1", "Second face");
+    expect(added.ok).toBe(true);
+    if (!added.ok) return;
+    expect(added.diagram.faces).toHaveLength(2);
+    expect(added.diagram.faces[1]?.name).toBe("Second face");
+  });
+
+  it("subdivides a source face by a stable diagonal without changing Euler characteristic", () => {
+    const disk = buildDiagramFromPolygonWord(parsePolygonWord("a b c d"));
+    const before = buildQuotientPipeline(disk).quotient.invariants?.eulerCharacteristic;
+    const divided = subdivideFaceByDiagonal(disk, "f0");
+    expect(divided.ok).toBe(true);
+    if (!divided.ok) return;
+    expect(divided.diagram.faces).toHaveLength(2);
+    expect(divided.diagram.edges).toHaveLength(5);
+    expect(buildQuotientPipeline(divided.diagram).quotient.invariants?.eulerCharacteristic).toBe(before);
   });
 });
