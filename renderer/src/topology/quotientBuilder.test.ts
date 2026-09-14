@@ -61,6 +61,7 @@ describe("buildQuotientPipeline", () => {
     const projectiveRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/projective-immersed"));
     expect(projectiveRealization).toBeTruthy();
     expect(projectiveRealization?.name).toContain("RP^2");
+    expect(projectiveRealization?.kind).toBe("immersed");
     expect(realizationIds.some((id) => id.endsWith("/realization/torus-smooth"))).toBe(false);
     expect(result.quotient.invariants?.eulerCharacteristic).toBe(1);
   });
@@ -75,6 +76,7 @@ describe("buildQuotientPipeline", () => {
     const kleinRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/klein-immersed"));
     expect(kleinRealization).toBeTruthy();
     expect(kleinRealization?.name.toLowerCase()).toContain("klein");
+    expect(kleinRealization?.kind).toBe("immersed");
     expect(realizationIds.some((id) => id.endsWith("/realization/torus-smooth"))).toBe(false);
   });
 

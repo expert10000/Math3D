@@ -12,6 +12,7 @@ import {
   TOPOLOGY_DOCUMENT_EXTENSION,
   TOPOLOGY_PRESETS,
   TopologyRealization3DView,
+  buildTopologyCountLayers,
   buildQuotientPipeline,
   cloneFundamentalDiagram,
   createTopologyDocument,
@@ -20,6 +21,7 @@ import {
   computeVertexStarDisconnectionDiagnostics,
   moveOperationInPlan,
   moveVertexInDiagram,
+  normalizeTopologyRealizationKinds,
   normalizeAnimationPlan,
   regenerateBoundaryWordsInPlace,
   removeEdgeFromDiagram,
@@ -33,6 +35,7 @@ import {
   type QuotientWarning,
   type TopologyAnimationPlan,
   type TopologyDocumentView,
+  type TopologyRealizationKind,
   type Vec3,
   type VertexStarDisconnectionDiagnostic,
   isTopologyDocument,
@@ -51,6 +54,18 @@ const TOPOLOGY_TOPIC_TABS: Array<{ id: TopologyTopicTab; label: string }> = [
   { id: "klein", label: "Klein" },
   { id: "mobius", label: "Mobius" },
 ];
+
+const TOPOLOGY_REALIZATION_KIND_LABELS: Record<TopologyRealizationKind, string> = {
+  embedded: "Embedded",
+  immersed: "Immersed",
+  schematic: "Schematic",
+};
+
+const topologyRealizationExplanation = (kind: TopologyRealizationKind): string => {
+  if (kind === "embedded") return "Displayed without modeled self-intersections in R³.";
+  if (kind === "immersed") return "May self-intersect in R³; intersections do not identify quotient points.";
+  return "Teaching/display model only; it is not a proof of an embedding or formal type.";
+};
 
 const POLYHEDRA_EULER_ROWS = [
   { name: "Tetrahedron", v: 4, e: 6, f: 4 },
@@ -1229,6 +1244,14 @@ export const TopologyScreen: React.FC = () => {
   const [pendingEdgeStartId, setPendingEdgeStartId] = useState<string | null>(null);
   const [appendCreatedEdgesToBoundary, setAppendCreatedEdgesToBoundary] = useState(true);
   const [activeRealizationId, setActiveRealizationId] = useState<string | null>(null);
+  const activeRealization = useMemo(
+    () => buildResult.realizations.find((entry) => entry.id === activeRealizationId) ?? buildResult.realizations[0] ?? null,
+    [activeRealizationId, buildResult.realizations]
+  );
+  const topologyCountLayers = useMemo(
+    () => buildTopologyCountLayers(buildResult, activeRealization),
+    [activeRealization, buildResult]
+  );
   const [realizationRenderMode, setRealizationRenderMode] = useState<"scene3d" | "projected2d">("scene3d");
   const [showEdgeClasses, setShowEdgeClasses] = useState(true);
   const [showCornerIdentifications, setShowCornerIdentifications] = useState(true);
@@ -1769,11 +1792,12 @@ export const TopologyScreen: React.FC = () => {
       resetHistory();
       setBuildMode("editor");
       if (raw.payload.cache?.buildResult) {
-        setBuildResult(raw.payload.cache.buildResult);
+        const compatibleBuildResult = normalizeTopologyRealizationKinds(raw.payload.cache.buildResult);
+        setBuildResult(compatibleBuildResult);
         setBuiltSignature(JSON.stringify(loadedDiagram));
         setActiveView(raw.payload.cache.activeView ?? "diagram");
-        setActiveRealizationId(raw.payload.cache.activeRealizationId ?? raw.payload.cache.buildResult.realizations[0]?.id ?? null);
-        setAnimationPlan(normalizeAnimationPlan(raw.payload.cache.buildResult.orientationRelations, raw.payload.cache.animationPlan));
+        setActiveRealizationId(raw.payload.cache.activeRealizationId ?? compatibleBuildResult.realizations[0]?.id ?? null);
+        setAnimationPlan(normalizeAnimationPlan(compatibleBuildResult.orientationRelations, raw.payload.cache.animationPlan));
         applyDiagramNarrativeDefaults(loadedDiagram);
       } else {
         const built = buildQuotientPipeline(loadedDiagram);
@@ -2614,7 +2638,7 @@ export const TopologyScreen: React.FC = () => {
     for (const edgeId of highlightedRealizationEdgeIds) {
       edgeColorOverrides[edgeId] = "#0a66c2";
     }
-    const modelIsImmersed = !!realization.edgeCurves.rp2_self_intersection || !!realization.edgeCurves.klein_self_intersection;
+    const realizationKindLabel = TOPOLOGY_REALIZATION_KIND_LABELS[realization.kind];
     const orientationTrackEdgeId = firstAvailableCurveId(realization.edgeCurves, MOBIUS_ORIENT_TRACK_IDS);
     const orientationStartNormalEdgeId = firstAvailableCurveId(realization.edgeCurves, MOBIUS_ORIENT_NORMAL_START_IDS);
     const orientationEndNormalEdgeId = firstAvailableCurveId(realization.edgeCurves, MOBIUS_ORIENT_NORMAL_END_IDS);
@@ -2862,18 +2886,17 @@ export const TopologyScreen: React.FC = () => {
           )}
         </div>
 
-        <div style={{ border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", padding: "6px 8px", display: "grid", gap: 5 }}>
+        <div data-testid="topology-realization-authority" data-realization-kind={realization.kind} style={{ border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", padding: "6px 8px", display: "grid", gap: 5 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10 }}>
             <span style={{ border: "1px solid #1d4ed8", borderRadius: 999, padding: "3px 8px", background: "#eff6ff", color: "#1e3a8a", fontWeight: 700 }}>
               Topological quotient
             </span>
             <span style={{ border: "1px solid #0f766e", borderRadius: 999, padding: "3px 8px", background: "#f0fdfa", color: "#134e4a", fontWeight: 700 }}>
-              Geometric realization in R^3
+              {realizationKindLabel} R³ model
             </span>
           </div>
           <div style={{ fontSize: 11, color: "#475569" }}>
-            Quotient object is the actual construction; rendered shape is one geometric model.
-            {modelIsImmersed ? " This model is immersed and can self-intersect." : ""}
+            The quotient complex is authoritative. This rendered shape is non-authoritative. {topologyRealizationExplanation(realization.kind)}
           </div>
         </div>
 
@@ -4519,6 +4542,10 @@ export const TopologyScreen: React.FC = () => {
                   ))}
                 </select>
               </label>
+              <div data-testid={`topology-compare-realization-kind-${side}`} style={{ fontSize: 10, color: "#475569" }}>
+                <strong>{TOPOLOGY_REALIZATION_KIND_LABELS[realization.kind]} R³ model.</strong>{" "}
+                {topologyRealizationExplanation(realization.kind)} Formal values below come from the quotient complex.
+              </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 10 }}>
                 <span style={{ border: "1px solid #bfdbfe", borderRadius: 999, padding: "2px 7px", background: "#eff6ff" }}>
                   chi = {result.quotient.invariants?.eulerCharacteristic ?? "?"}
@@ -4558,8 +4585,6 @@ export const TopologyScreen: React.FC = () => {
         boundaryComponents: 0,
         orientable: null as boolean | null,
         orientableText: "N/A (non-manifold 2-complex)",
-        connectedComponents: 1,
-        eulerCharacteristic: 1,
       };
     }
     if (torusStoryEnabled) {
@@ -4567,8 +4592,6 @@ export const TopologyScreen: React.FC = () => {
         boundaryComponents: 0,
         orientable: true,
         orientableText: null as string | null,
-        connectedComponents: 1,
-        eulerCharacteristic: 0,
       };
     }
     if (mobiusStoryEnabled) {
@@ -4576,8 +4599,6 @@ export const TopologyScreen: React.FC = () => {
         boundaryComponents: 1,
         orientable: false,
         orientableText: null as string | null,
-        connectedComponents: 1,
-        eulerCharacteristic: 0,
       };
     }
     if (projectiveStoryEnabled) {
@@ -4585,8 +4606,6 @@ export const TopologyScreen: React.FC = () => {
         boundaryComponents: 0,
         orientable: false,
         orientableText: null as string | null,
-        connectedComponents: 1,
-        eulerCharacteristic: 1,
       };
     }
     if (kleinStoryEnabled) {
@@ -4594,8 +4613,6 @@ export const TopologyScreen: React.FC = () => {
         boundaryComponents: 0,
         orientable: false,
         orientableText: null as string | null,
-        connectedComponents: 1,
-        eulerCharacteristic: 0,
       };
     }
     if (cylinderStoryEnabled) {
@@ -4603,8 +4620,6 @@ export const TopologyScreen: React.FC = () => {
         boundaryComponents: 2,
         orientable: true,
         orientableText: null as string | null,
-        connectedComponents: 1,
-        eulerCharacteristic: 0,
       };
     }
     if (coneStoryEnabled) {
@@ -4612,8 +4627,6 @@ export const TopologyScreen: React.FC = () => {
         boundaryComponents: 1,
         orientable: true,
         orientableText: null as string | null,
-        connectedComponents: 1,
-        eulerCharacteristic: 1,
       };
     }
     if (sphereStoryEnabled) {
@@ -4621,16 +4634,12 @@ export const TopologyScreen: React.FC = () => {
         boundaryComponents: 0,
         orientable: true,
         orientableText: null as string | null,
-        connectedComponents: 1,
-        eulerCharacteristic: 2,
       };
     }
     return {
       boundaryComponents: null as number | null,
       orientable: null as boolean | null,
       orientableText: null as string | null,
-      connectedComponents: null as number | null,
-      eulerCharacteristic: null as number | null,
     };
   }, [
     coneStoryEnabled,
@@ -4658,10 +4667,10 @@ export const TopologyScreen: React.FC = () => {
   );
   const unifiedTopologyDiagnostics = useMemo(() => {
     const invariants = buildResult.quotient.invariants;
-    const eulerCharacteristic =
-      derivedTopologyHints.eulerCharacteristic ?? invariants?.eulerCharacteristic ?? null;
-    const connectedComponents =
-      derivedTopologyHints.connectedComponents ?? invariants?.connectedComponents ?? null;
+    // Euler is a property of the canonical quotient cell structure. Preset/story
+    // recognition may explain it, but must never override the computed value.
+    const eulerCharacteristic = invariants?.eulerCharacteristic ?? null;
+    const connectedComponents = invariants?.connectedComponents ?? null;
     const boundaryComponents = derivedTopologyHints.boundaryComponents;
     const orientable = derivedTopologyHints.orientable;
     const orientableText = derivedTopologyHints.orientableText;
@@ -4673,26 +4682,11 @@ export const TopologyScreen: React.FC = () => {
       invalidBoundaryCycleDiagnostics.length > 0 ||
       /non-manifold/i.test(orientableText ?? "");
 
-    let genusLabel = "n/a";
-    if (!hasNonManifold && connectedComponents === 1 && eulerCharacteristic !== null && boundaryComponents !== null) {
-      if (orientable === true) {
-        const genus = (2 - boundaryComponents - eulerCharacteristic) / 2;
-        genusLabel =
-          Number.isInteger(genus) && genus >= 0
-            ? `${genus} (orientable genus g)`
-            : "inconsistent invariants";
-      } else if (orientable === false) {
-        const genus = 2 - boundaryComponents - eulerCharacteristic;
-        genusLabel =
-          Number.isInteger(genus) && genus >= 0
-            ? `${genus} (nonorientable genus n)`
-            : "inconsistent invariants";
-      } else if (orientableText) {
-        genusLabel = orientableText;
-      }
-    } else if (hasNonManifold) {
-      genusLabel = "n/a (non-manifold)";
-    }
+    const genusLabel = hasNonManifold
+      ? "withheld (non-manifold diagnostics)"
+      : boundaryComponents !== null || orientable !== null || orientableText
+        ? "withheld pending manifold eligibility certification"
+        : "n/a";
 
     return {
       eulerCharacteristic,
@@ -5088,11 +5082,10 @@ export const TopologyScreen: React.FC = () => {
                   word: {selectedPresetBoundaryWord}
                 </div>
                 <div style={{ fontSize: 10, color: "#334155" }}>
-                  V={buildResult.quotient.vertices.length}, E={buildResult.quotient.edges.length}, F={buildResult.quotient.faces.length}
+                  Canonical quotient: V={buildResult.quotient.vertices.length}, E={buildResult.quotient.edges.length}, F={buildResult.quotient.faces.length}, χ={buildResult.quotient.invariants?.eulerCharacteristic ?? "?"}
                 </div>
                 <div style={{ fontSize: 10, color: "#334155" }}>
-                  chi={derivedTopologyHints.eulerCharacteristic ?? buildResult.quotient.invariants?.eulerCharacteristic ?? "?"} ,
-                  orientable=
+                  Recognized teaching hints: orientable=
                   {derivedTopologyHints.orientableText !== null
                     ? derivedTopologyHints.orientableText
                     : derivedTopologyHints.orientable !== null
@@ -5395,7 +5388,7 @@ export const TopologyScreen: React.FC = () => {
               >
                 {buildResult.realizations.map((realization) => (
                   <option key={`realization-option-${realization.id}`} value={realization.id}>
-                    {realization.name}
+                    {realization.name} — {TOPOLOGY_REALIZATION_KIND_LABELS[realization.kind]}
                   </option>
                 ))}
               </select>
@@ -5421,11 +5414,17 @@ export const TopologyScreen: React.FC = () => {
         <section>
           <h2 style={styles.h2}>A. Structure</h2>
           <div style={{ fontSize: 11, display: "grid", gap: 4 }}>
-            <div>
-              Diagram: V {diagram.vertices.length}, E {diagram.edges.length}, F {diagram.faces.length}
+            <div data-testid="topology-count-source">
+              <strong>Source diagram cells:</strong> V {topologyCountLayers.source.vertices}, E {topologyCountLayers.source.edges}, F {topologyCountLayers.source.faces}
             </div>
-            <div>
-              Quotient: V {buildResult.quotient.vertices.length}, E {buildResult.quotient.edges.length}, F {buildResult.quotient.faces.length}
+            <div data-testid="topology-count-refinement">
+              <strong>Build refinement cells:</strong> V {topologyCountLayers.refinement.vertices}, E {topologyCountLayers.refinement.edges}, F {topologyCountLayers.refinement.faces}
+            </div>
+            <div data-testid="topology-count-canonical">
+              <strong>Canonical quotient cells:</strong> V {topologyCountLayers.canonical.vertices}, E {topologyCountLayers.canonical.edges}, F {topologyCountLayers.canonical.faces}; χ = {topologyCountLayers.canonical.eulerCharacteristic}
+            </div>
+            <div data-testid="topology-count-display">
+              <strong>Display geometry only:</strong> {topologyCountLayers.display.meshVertices} mesh vertices, {topologyCountLayers.display.triangles} triangles, {topologyCountLayers.display.curveSamples} curve samples
             </div>
             <div>
               {buildResult.subdivision.applied
@@ -5470,8 +5469,14 @@ export const TopologyScreen: React.FC = () => {
           <div style={{ fontSize: 11, display: "grid", gap: 4 }}>
             <div>
               Active model:{" "}
-              <strong>{buildResult.realizations.find((entry) => entry.id === activeRealizationId)?.name ?? buildResult.realizations[0]?.name ?? "(none)"}</strong>
+              <strong>{activeRealization?.name ?? "(none)"}</strong>
             </div>
+            {activeRealization && (
+              <div data-testid="topology-active-realization-kind">
+                <strong>{TOPOLOGY_REALIZATION_KIND_LABELS[activeRealization.kind]} R³ model:</strong>{" "}
+                {topologyRealizationExplanation(activeRealization.kind)}
+              </div>
+            )}
             <div>Realization choices: {buildResult.realizations.length}</div>
             <div>
               Seams: {(buildResult.realizations.find((entry) => entry.id === activeRealizationId) ?? buildResult.realizations[0])?.seams.length ?? 0}
@@ -5485,7 +5490,7 @@ export const TopologyScreen: React.FC = () => {
                 Topological quotient
               </span>
               <span style={{ border: "1px solid #0f766e", borderRadius: 999, padding: "2px 7px", background: "#f0fdfa", color: "#134e4a", fontWeight: 700 }}>
-                Geometric realization
+                Non-authoritative visualization
               </span>
             </div>
           </div>
@@ -5520,11 +5525,11 @@ export const TopologyScreen: React.FC = () => {
                   </button>
                 )}
               </div>
-              <div>Euler characteristic: {unifiedTopologyDiagnostics.eulerCharacteristic ?? "n/a"}</div>
-              <div>Connected components: {unifiedTopologyDiagnostics.connectedComponents ?? "n/a"}</div>
-              <div>Boundary components: {unifiedTopologyDiagnostics.boundaryComponents ?? "n/a"}</div>
-              <div>
-                Orientable:{" "}
+              <div data-testid="topology-canonical-euler">Canonical Euler characteristic: {unifiedTopologyDiagnostics.eulerCharacteristic ?? "n/a"}</div>
+              <div data-testid="topology-computed-components">Computed connected components: {unifiedTopologyDiagnostics.connectedComponents ?? "n/a"}</div>
+              <div data-testid="topology-recognized-boundary">Recognized boundary hint: {unifiedTopologyDiagnostics.boundaryComponents ?? "n/a"}</div>
+              <div data-testid="topology-recognized-orientability">
+                Recognized orientability hint:{" "}
                 {unifiedTopologyDiagnostics.orientableText !== null
                   ? unifiedTopologyDiagnostics.orientableText
                   : unifiedTopologyDiagnostics.orientable !== null
@@ -5533,7 +5538,7 @@ export const TopologyScreen: React.FC = () => {
                       : "No"
                     : "n/a"}
               </div>
-              <div>Genus: {unifiedTopologyDiagnostics.genusLabel}</div>
+              <div data-testid="topology-formal-classification">Formal surface classification: {unifiedTopologyDiagnostics.genusLabel}</div>
               <div
                 style={{
                   color: unifiedTopologyDiagnostics.hasNonManifold ? "#b91c1c" : "#166534",

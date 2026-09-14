@@ -292,6 +292,25 @@ An algebraic release requires: fixture matrix pass; no float arithmetic in the i
 | 12 | feat(topology): add read-only Mesh and scoped Geometry adapters | 2, 6 |
 | 13 | test(topology): formal and end-to-end release gates | continuous; mandatory by 6 and 12 |
 
+### Commit 1 — Realization labels and count-layer safety
+
+**Status: complete (2026-09-14).**
+
+Delivered:
+
+- Added explicit `embedded`, `immersed`, or `schematic` metadata to every generated R³ realization; RP² and Klein bottle models are audited as immersed, generic/cut-open teaching models as schematic, and supported smooth surface models as embedded.
+- Removed curve-name-based immersion inference and labeled realization authority in the Realization view, selector, right inspector, and Compare view.
+- Added separate source-diagram, build-refinement, canonical-quotient, and display-geometry counts. Display mesh density cannot affect the canonical Euler characteristic.
+- Made the quotient-complex calculation the sole displayed Euler source; preset/story recognition remains visibly a teaching hint rather than a formal result.
+- Relabeled boundary/orientability values as recognized teaching hints and withholds formal genus/classification until the manifold-eligibility milestone is delivered.
+- Added unit coverage for the complete preset realization audit and count independence, plus an Electron regression for the visible labels and count layers.
+
+Where in the UI:
+
+- Open **Topology**. The right-side **A. Structure** panel shows all count layers and the canonical Euler value.
+- Select **Realization View** to see the active model labeled **Embedded**, **Immersed**, or **Schematic**, together with its non-authoritative status.
+- Select **Compare View** to see the realization classification independently for both compared objects.
+
 ## Deferred research layer
 
 Do not schedule before the above release gates are stable:

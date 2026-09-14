@@ -1,4 +1,27 @@
-import type { OrientationRelation, QuotientComplex, Realization3D, Vec3 } from "./types";
+import type { OrientationRelation, QuotientBuildResult, QuotientComplex, Realization3D, TopologyRealizationKind, Vec3 } from "./types";
+
+export const inferLegacyTopologyRealizationKind = (
+  realization: Pick<Realization3D, "id" | "name"> & { kind?: TopologyRealizationKind }
+): TopologyRealizationKind => {
+  if (realization.kind === "embedded" || realization.kind === "immersed" || realization.kind === "schematic") {
+    return realization.kind;
+  }
+  const identity = `${realization.id} ${realization.name}`.toLowerCase();
+  if (/\/default\b|\/flat\b|cut-open|dunce/.test(identity)) return "schematic";
+  if (/projective|rp\^?2|klein|immersed/.test(identity)) return "immersed";
+  if (/torus-smooth|mobius-smooth|möbius|cylinder-smooth|cone-smooth|sphere-smooth|suspension-bicone/.test(identity)) {
+    return "embedded";
+  }
+  return "schematic";
+};
+
+export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): QuotientBuildResult => ({
+  ...result,
+  realizations: result.realizations.map((realization) => ({
+    ...realization,
+    kind: inferLegacyTopologyRealizationKind(realization),
+  })),
+});
 
 const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -657,6 +680,7 @@ const buildTorusRealizationBase = (
   return {
     id: `${quotient.id}/realization/torus-${kind}`,
     name: kind === "smooth" ? "Smooth torus realization" : "Cut-open torus model",
+    kind: kind === "smooth" ? "embedded" : "schematic",
     quotientComplexId: quotient.id,
     vertexPositions,
     edgeCurves,
@@ -725,6 +749,7 @@ const buildProjectiveImmersedRealization = (
   return {
     id: `${quotient.id}/realization/projective-immersed`,
     name: "Immersed realization of RP^2 in R^3 (cross-cap style)",
+    kind: "immersed",
     quotientComplexId: quotient.id,
     vertexPositions,
     edgeCurves,
@@ -795,6 +820,7 @@ const buildKleinImmersedRealization = (
   return {
     id: `${quotient.id}/realization/klein-immersed`,
     name: "Immersed Klein bottle realization in R^3",
+    kind: "immersed",
     quotientComplexId: quotient.id,
     vertexPositions,
     edgeCurves,
@@ -860,6 +886,7 @@ const buildCylinderPresetRealization = (quotient: QuotientComplex): Realization3
   return {
     id: `${quotient.id}/realization/cylinder-smooth`,
     name: "Smooth cylinder realization",
+    kind: "embedded",
     quotientComplexId: quotient.id,
     vertexPositions,
     edgeCurves,
@@ -919,6 +946,7 @@ const buildConePresetRealization = (quotient: QuotientComplex): Realization3D | 
   return {
     id: `${quotient.id}/realization/cone-smooth`,
     name: "Smooth cone realization",
+    kind: "embedded",
     quotientComplexId: quotient.id,
     vertexPositions,
     edgeCurves,
@@ -983,7 +1011,8 @@ const buildDunceMapPresetRealization = (quotient: QuotientComplex): Realization3
 
   return {
     id: `${quotient.id}/realization/dunce-map-smooth`,
-    name: "Dunce map smooth realization (a a^-1 a)",
+    name: "Dunce map teaching model (a a^-1 a)",
+    kind: "schematic",
     quotientComplexId: quotient.id,
     vertexPositions,
     edgeCurves,
@@ -1040,6 +1069,7 @@ const buildSpherePresetRealization = (quotient: QuotientComplex): Realization3D 
   return {
     id: `${quotient.id}/realization/sphere-smooth`,
     name: "Smooth sphere realization",
+    kind: "embedded",
     quotientComplexId: quotient.id,
     vertexPositions,
     edgeCurves,
@@ -1107,6 +1137,7 @@ const buildSuspensionPresetRealization = (quotient: QuotientComplex): Realizatio
   return {
     id: `${quotient.id}/realization/suspension-bicone`,
     name: "Suspension-style bicone realization",
+    kind: "embedded",
     quotientComplexId: quotient.id,
     vertexPositions,
     edgeCurves,
@@ -1227,6 +1258,7 @@ const buildMobiusRealizationBase = (
   return {
     id: `${quotient.id}/realization/mobius-${kind}`,
     name: kind === "smooth" ? "Smooth Möbius realization" : "Cut-open Möbius model",
+    kind: kind === "smooth" ? "embedded" : "schematic",
     quotientComplexId: quotient.id,
     vertexPositions,
     edgeCurves,
@@ -1281,7 +1313,8 @@ export const buildDefaultRealization = (quotient: QuotientComplex): Realization3
 
   return {
     id: `${quotient.id}/realization/default`,
-    name: "Default immersed realization",
+    name: "Default schematic realization",
+    kind: "schematic",
     quotientComplexId: quotient.id,
     vertexPositions,
     edgeCurves,
@@ -1341,6 +1374,7 @@ export const buildFlatSchematicRealization = (quotient: QuotientComplex): Realiz
   return {
     id: `${quotient.id}/realization/flat`,
     name: "Flat schematic realization",
+    kind: "schematic",
     quotientComplexId: quotient.id,
     vertexPositions,
     edgeCurves,

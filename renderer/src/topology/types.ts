@@ -158,9 +158,13 @@ export type RealizationStyle = {
   singularityColor: string;
 };
 
+export type TopologyRealizationKind = "embedded" | "immersed" | "schematic";
+
 export type Realization3D = {
   id: string;
   name: string;
+  /** Non-authoritative relationship between this R^3 display and the quotient. */
+  kind: TopologyRealizationKind;
   quotientComplexId: string;
   vertexPositions: Record<string, Vec3>;
   edgeCurves: Record<string, Vec3[]>;
