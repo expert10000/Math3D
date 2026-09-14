@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createTopologyDocument, isTopologyDocument } from "./documentFormat";
 import { TOPOLOGY_PRESET_BY_ID } from "./presets";
 import { buildQuotientPipeline } from "./quotientBuilder";
+import { normalizeTopologyRealizationKinds } from "./realization";
+import type { CanonicalTopologyComplex } from "./core";
 
 describe("topology document format", () => {
   it("creates a versioned .math3d-topology document with cache", () => {
@@ -53,5 +55,19 @@ describe("topology document format", () => {
     expect(isTopologyDocument(valid)).toBe(true);
     expect(isTopologyDocument({ format: "math3d-topology", version: 2 })).toBe(false);
     expect(isTopologyDocument(null)).toBe(false);
+  });
+
+  it("reconstructs structural contracts for legacy v1 cached builds", () => {
+    const diagram = TOPOLOGY_PRESET_BY_ID.get("cylinder")!.buildDiagram();
+    const legacy = structuredClone(buildQuotientPipeline(diagram));
+    delete (legacy as { structuralValidation?: unknown }).structuralValidation;
+    delete (legacy.topologyObject.canonical as Partial<CanonicalTopologyComplex>).incidences;
+    legacy.pipeline = legacy.pipeline.filter((stage) => stage.id !== "validation");
+
+    const normalized = normalizeTopologyRealizationKinds(legacy);
+
+    expect(normalized.topologyObject.canonical.incidences).toBeTruthy();
+    expect(normalized.structuralValidation.status).toBe("certified-within-model");
+    expect(normalized.pipeline.some((stage) => stage.id === "validation")).toBe(true);
   });
 });

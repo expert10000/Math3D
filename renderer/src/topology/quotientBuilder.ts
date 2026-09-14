@@ -1,5 +1,5 @@
 import { buildRealizationChoices } from "./realization";
-import { createTopologyObjectFromFundamentalDiagram } from "./core";
+import { createTopologyObjectFromFundamentalDiagram, validateCanonicalTopologyObject } from "./core";
 import type {
   EquivalenceClass,
   FundamentalDiagram,
@@ -617,11 +617,21 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
     warnings
   );
   const realizations = buildRealizationChoices(quotient, orientationRelations);
-  const topologyObject = createTopologyObjectFromFundamentalDiagram(input, {
+  const topologyObjectWithoutAnalysis = createTopologyObjectFromFundamentalDiagram(input, {
     quotient,
     subdivision,
     realizations,
+    subdividedDiagram,
+    vertexClassBySource,
+    edgeClassBySource,
   });
+  const structuralValidation = validateCanonicalTopologyObject(topologyObjectWithoutAnalysis);
+  const topologyObject = {
+    ...topologyObjectWithoutAnalysis,
+    analysis: {
+      structuralValidation,
+    },
+  };
 
   const pipeline: QuotientPipelineStage[] = [
     {
@@ -651,6 +661,20 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
       note: "CW-style quotient with incidence and attachments.",
     },
     {
+      id: "validation",
+      label: "Structural Validation",
+      status:
+        structuralValidation.status === "failed"
+          ? "error"
+          : structuralValidation.diagnostics.some((entry) => entry.severity === "warning")
+            ? "warning"
+            : "done",
+      note:
+        structuralValidation.status === "failed"
+          ? `${structuralValidation.diagnostics.filter((entry) => entry.severity === "error").length} structural error(s); formal analysis is gated.`
+          : `${structuralValidation.value?.model ?? "Canonical model"} certified; ${structuralValidation.diagnostics.filter((entry) => entry.severity === "warning").length} eligibility warning(s).`,
+    },
+    {
       id: "realization",
       label: "Geometric Realization",
       status: "done",
@@ -678,5 +702,6 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
     warnings,
     pipeline,
     topologyObject,
+    structuralValidation,
   };
 };

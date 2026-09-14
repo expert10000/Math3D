@@ -174,12 +174,12 @@ export type Realization3D = {
   style: RealizationStyle;
 };
 
-export type PipelineStageId = "diagram" | "subdivide" | "equivalence" | "quotient" | "realization" | "render";
+export type PipelineStageId = "diagram" | "subdivide" | "equivalence" | "quotient" | "validation" | "realization" | "render";
 
 export type QuotientPipelineStage = {
   id: PipelineStageId;
   label: string;
-  status: "done" | "warning";
+  status: "done" | "warning" | "error";
   note: string;
 };
 
@@ -207,4 +207,7 @@ export type QuotientBuildResult = {
   pipeline: QuotientPipelineStage[];
   /** Canonical source/derived/provenance contract for formal analysis consumers. */
   topologyObject: import("./core/contracts").TopologyObject;
+  structuralValidation: import("./core/contracts").TopologyResult<
+    import("./core/structuralValidation").TopologyStructuralValidationReport
+  >;
 };

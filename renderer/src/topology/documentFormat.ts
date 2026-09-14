@@ -1,7 +1,7 @@
 import type { FundamentalDiagram, QuotientBuildResult } from "./types";
 import type { TopologyAnimationPlan } from "./animationPlan";
 
-export type TopologyDocumentView = "diagram" | "quotient" | "realization" | "animation";
+export type TopologyDocumentView = "diagram" | "complex" | "quotient" | "realization" | "animation";
 
 export type TopologyDocumentCache = {
   buildResult: QuotientBuildResult;

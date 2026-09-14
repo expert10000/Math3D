@@ -21,6 +21,17 @@ test.describe("Topology semantic safety", () => {
       await expect(ctx.page.getByTestId("topology-computed-components")).toContainText("Computed connected components");
       await expect(ctx.page.getByTestId("topology-recognized-boundary")).toContainText("Recognized boundary hint");
       await expect(ctx.page.getByTestId("topology-formal-classification")).toContainText("withheld");
+      await expect(ctx.page.getByTestId("topology-structural-validation-status")).toContainText("certified-within-model");
+
+      await ctx.page.getByRole("button", { name: "Complex View", exact: true }).click();
+      await expect(ctx.page.getByTestId("topology-complex-view")).toBeVisible();
+      await expect(ctx.page.getByTestId("topology-structural-validation-summary")).toContainText("Canonical finite 2-complex structural validation");
+      await expect(ctx.page.getByTestId("topology-complex-vertices")).toContainText("0-cells / vertices");
+      await expect(ctx.page.getByTestId("topology-complex-edges")).toContainText("1-cells / oriented edges");
+      await expect(ctx.page.getByTestId("topology-complex-faces")).toContainText("2-cells / attachments");
+      await ctx.page.getByTestId("topology-complex-faces").locator('[data-testid^="topology-complex-cell-2-"]').first().click();
+      await expect(ctx.page.getByTestId("topology-complex-selected-cell")).toContainText("source 2-cell");
+      await expect(ctx.page.getByTestId("topology-complex-boundary-dimensions")).toContainText("Expected operator shapes");
 
       await ctx.page.getByTestId("topology-preset-card-projective_plane").click();
       await ctx.page.getByRole("button", { name: "Realization View", exact: true }).click();

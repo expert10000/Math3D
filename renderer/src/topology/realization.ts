@@ -1,5 +1,5 @@
 import type { OrientationRelation, QuotientBuildResult, QuotientComplex, Realization3D, TopologyRealizationKind, Vec3 } from "./types";
-import { createTopologyObjectFromFundamentalDiagram } from "./core";
+import { createTopologyObjectFromFundamentalDiagram, validateCanonicalTopologyObject } from "./core";
 
 export const inferLegacyTopologyRealizationKind = (
   realization: Pick<Realization3D, "id" | "name"> & { kind?: TopologyRealizationKind }
@@ -24,15 +24,47 @@ export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): 
       kind: inferLegacyTopologyRealizationKind(realization),
     })),
   };
-  return {
-    ...normalized,
-    topologyObject:
-      result.topologyObject ??
-      createTopologyObjectFromFundamentalDiagram(result.normalizedDiagram, {
+  const topologyObjectWithoutAnalysis = result.topologyObject?.canonical?.incidences
+    ? { ...result.topologyObject, realizations: normalized.realizations }
+    : createTopologyObjectFromFundamentalDiagram(result.normalizedDiagram, {
         quotient: result.quotient,
         subdivision: result.subdivision,
         realizations: normalized.realizations,
-      }),
+        subdividedDiagram: result.subdividedDiagram,
+        vertexClassBySource: result.vertexClassBySource,
+        edgeClassBySource: result.edgeClassBySource,
+      });
+  const structuralValidation = validateCanonicalTopologyObject(topologyObjectWithoutAnalysis);
+  const topologyObject = {
+    ...topologyObjectWithoutAnalysis,
+    analysis: {
+      ...(topologyObjectWithoutAnalysis.analysis ?? {}),
+      structuralValidation,
+    },
+  };
+  const validationStage = {
+    id: "validation" as const,
+    label: "Structural Validation",
+    status:
+      structuralValidation.status === "failed"
+        ? ("error" as const)
+        : structuralValidation.diagnostics.some((entry) => entry.severity === "warning")
+          ? ("warning" as const)
+          : ("done" as const),
+    note:
+      structuralValidation.status === "failed"
+        ? `${structuralValidation.diagnostics.filter((entry) => entry.severity === "error").length} structural error(s); formal analysis is gated.`
+        : `${structuralValidation.value?.model ?? "Canonical model"} certified; ${structuralValidation.diagnostics.filter((entry) => entry.severity === "warning").length} eligibility warning(s).`,
+  };
+  const pipelineWithoutValidation = normalized.pipeline.filter((stage) => stage.id !== "validation");
+  const quotientStageIndex = pipelineWithoutValidation.findIndex((stage) => stage.id === "quotient");
+  const pipeline = [...pipelineWithoutValidation];
+  pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 1 : pipeline.length, 0, validationStage);
+  return {
+    ...normalized,
+    topologyObject,
+    structuralValidation,
+    pipeline,
   };
 };
 

@@ -89,6 +89,10 @@ export type CanonicalTopologyComplex = {
   vertices: CanonicalTopologyVertex[];
   edges: CanonicalTopologyEdge[];
   faces: CanonicalTopologyFace[];
+  incidences: {
+    vertexToEdges: Record<string, string[]>;
+    edgeToFaces: Record<string, string[]>;
+  };
 };
 
 export type TopologyProvenance = {

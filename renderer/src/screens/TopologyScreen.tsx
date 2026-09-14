@@ -46,6 +46,7 @@ type TopologyBuildMode = "preset" | "editor";
 type DiagramToolMode = "select" | "addVertex" | "addEdge";
 type TopologyTopicTab = "euler" | "constructingPolygon" | "polyhedra" | "klein" | "mobius";
 type DiagnosticsFocusKind = "edge" | "vertex" | "face";
+type CanonicalCellSelection = { dimension: 0 | 1 | 2; cellId: string };
 
 const TOPOLOGY_TOPIC_TABS: Array<{ id: TopologyTopicTab; label: string }> = [
   { id: "euler", label: "Euler" },
@@ -1238,6 +1239,7 @@ export const TopologyScreen: React.FC = () => {
   const [undoStack, setUndoStack] = useState<FundamentalDiagram[]>([]);
   const [redoStack, setRedoStack] = useState<FundamentalDiagram[]>([]);
   const [activeView, setActiveView] = useState<TopologyView>("diagram");
+  const [selectedCanonicalCell, setSelectedCanonicalCell] = useState<CanonicalCellSelection | null>(null);
   const [hoverEdgeId, setHoverEdgeId] = useState<string | null>(null);
   const [selectedVertexId, setSelectedVertexId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
@@ -2258,6 +2260,179 @@ export const TopologyScreen: React.FC = () => {
               ))}
             </div>
           </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderComplexView = () => {
+    const result = ensureBuilt();
+    const complex = result.topologyObject.canonical;
+    const validation = result.structuralValidation;
+    const report = validation.value;
+    const errorCount = validation.diagnostics.filter((entry) => entry.severity === "error").length;
+    const warningCount = validation.diagnostics.filter((entry) => entry.severity === "warning").length;
+    const selectedCell = selectedCanonicalCell
+      ? selectedCanonicalCell.dimension === 0
+        ? complex.vertices.find((cell) => cell.id === selectedCanonicalCell.cellId)
+        : selectedCanonicalCell.dimension === 1
+          ? complex.edges.find((cell) => cell.id === selectedCanonicalCell.cellId)
+          : complex.faces.find((cell) => cell.id === selectedCanonicalCell.cellId)
+      : null;
+    const formatRefs = (refs: Array<{ stage: "source" | "refinement"; dimension: 0 | 1 | 2; cellId: string }>) =>
+      refs.map((ref) => `${ref.stage} ${ref.dimension}-cell ${ref.cellId}`).join("; ") || "(missing mapping)";
+    const inspectCell = (dimension: 0 | 1 | 2, cellId: string) => {
+      setSelectedCanonicalCell({ dimension, cellId });
+    };
+    const locateSource = (
+      dimension: 0 | 1 | 2,
+      cellId: string,
+      refs: Array<{ stage: "source" | "refinement"; dimension: 0 | 1 | 2; cellId: string }>
+    ) => {
+      inspectCell(dimension, cellId);
+      const sourceRef = refs.find((ref) => ref.stage === "source" && ref.dimension === dimension);
+      if (!sourceRef) return;
+      setSelectedVertexId(dimension === 0 ? sourceRef.cellId : null);
+      setSelectedEdgeId(
+        dimension === 1
+          ? sourceRef.cellId
+          : dimension === 2
+            ? diagram.faces.find((face) => face.id === sourceRef.cellId)?.boundary[0]?.edgeId ?? null
+            : null
+      );
+      setDocStatus(`Located canonical ${dimension}-cell '${cellId}' at source ${dimension}-cell '${sourceRef.cellId}'.`);
+      setActiveView("diagram");
+    };
+    const cellCardStyle = (selected: boolean): React.CSSProperties => ({
+      border: `1px solid ${selected ? "#0a66c2" : "#dbe4f0"}`,
+      borderRadius: 8,
+      background: selected ? "#eff6ff" : "#fff",
+      padding: "7px 8px",
+      display: "grid",
+      gap: 4,
+      fontSize: 10,
+    });
+
+    return (
+      <div data-testid="topology-complex-view" style={{ display: "grid", gap: 10 }}>
+        <div
+          data-testid="topology-structural-validation-summary"
+          style={{
+            border: `1px solid ${validation.status === "failed" ? "#fca5a5" : warningCount > 0 ? "#fde68a" : "#86efac"}`,
+            borderRadius: 10,
+            background: validation.status === "failed" ? "#fff1f2" : warningCount > 0 ? "#fffbeb" : "#f0fdf4",
+            padding: "9px 10px",
+            display: "grid",
+            gap: 4,
+            fontSize: 11,
+          }}
+        >
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <strong>Canonical finite 2-complex structural validation</strong>
+            <span style={{ fontWeight: 700, color: validation.status === "failed" ? "#b91c1c" : "#166534" }}>
+              {validation.status}
+            </span>
+          </div>
+          <div>
+            Method: {validation.method} · algorithm {validation.algorithmVersion}
+          </div>
+          <div>
+            {errorCount} structural errors · {warningCount} surface-eligibility warnings · cellular algebra {report?.canComputeCellularAlgebra ? "allowed" : "gated"}
+          </div>
+          <div style={{ color: "#475569" }}>
+            This certifies structure only within the displayed finite model; it is not yet a 2-manifold or surface-classification proof.
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+          <section data-testid="topology-complex-vertices" style={{ border: "1px solid #dbe4f0", borderRadius: 9, background: "#f8fbff", padding: 8, display: "grid", gap: 6, alignContent: "start" }}>
+            <strong style={{ fontSize: 12 }}>0-cells / vertices ({complex.vertices.length})</strong>
+            {complex.vertices.map((cell) => (
+              <div key={`complex-v-${cell.id}`} style={cellCardStyle(selectedCanonicalCell?.dimension === 0 && selectedCanonicalCell.cellId === cell.id)}>
+                <button type="button" data-testid={`topology-complex-cell-0-${cell.id}`} onClick={() => inspectCell(0, cell.id)} style={{ textAlign: "left", fontWeight: 700 }}>
+                  {cell.id}: {cell.name}
+                </button>
+                <div>Incident edges: {(complex.incidences.vertexToEdges[cell.id] ?? []).join(", ") || "(none)"}</div>
+                <div>Map: {formatRefs(cell.sourceRefs)}</div>
+                <button type="button" onClick={() => locateSource(0, cell.id, cell.sourceRefs)} disabled={!cell.sourceRefs.some((ref) => ref.stage === "source")}>
+                  Locate authoring source
+                </button>
+              </div>
+            ))}
+          </section>
+
+          <section data-testid="topology-complex-edges" style={{ border: "1px solid #dbe4f0", borderRadius: 9, background: "#f8fbff", padding: 8, display: "grid", gap: 6, alignContent: "start" }}>
+            <strong style={{ fontSize: 12 }}>1-cells / oriented edges ({complex.edges.length})</strong>
+            {complex.edges.map((cell) => {
+              const link = report?.edgeLinks.find((entry) => entry.edgeId === cell.id);
+              return (
+                <div key={`complex-e-${cell.id}`} style={cellCardStyle(selectedCanonicalCell?.dimension === 1 && selectedCanonicalCell.cellId === cell.id)}>
+                  <button type="button" data-testid={`topology-complex-cell-1-${cell.id}`} onClick={() => inspectCell(1, cell.id)} style={{ textAlign: "left", fontWeight: 700 }}>
+                    {cell.id}: {cell.name}
+                  </button>
+                  <div>Positive orientation: {cell.endpoints[0]} → {cell.endpoints[1]}</div>
+                  <div>Attached faces: {(complex.incidences.edgeToFaces[cell.id] ?? []).join(", ") || "(none)"}</div>
+                  <div>Link: {link?.kind ?? "unknown"} · occurrences {link?.attachmentOccurrences ?? "?"}</div>
+                  <div>Map: {formatRefs(cell.sourceRefs)}</div>
+                  <button type="button" onClick={() => locateSource(1, cell.id, cell.sourceRefs)} disabled={!cell.sourceRefs.some((ref) => ref.stage === "source")}>
+                    Locate authoring source
+                  </button>
+                </div>
+              );
+            })}
+          </section>
+
+          <section data-testid="topology-complex-faces" style={{ border: "1px solid #dbe4f0", borderRadius: 9, background: "#f8fbff", padding: 8, display: "grid", gap: 6, alignContent: "start" }}>
+            <strong style={{ fontSize: 12 }}>2-cells / attachments ({complex.faces.length})</strong>
+            {complex.faces.map((cell) => (
+              <div key={`complex-f-${cell.id}`} style={cellCardStyle(selectedCanonicalCell?.dimension === 2 && selectedCanonicalCell.cellId === cell.id)}>
+                <button type="button" data-testid={`topology-complex-cell-2-${cell.id}`} onClick={() => inspectCell(2, cell.id)} style={{ textAlign: "left", fontWeight: 700 }}>
+                  {cell.id}: {cell.name}
+                </button>
+                <div>Word: {cell.boundaryWord || "(empty)"}</div>
+                <div>
+                  Walk: {cell.attachment.map((entry) => `${entry.edgeId}${entry.direction < 0 ? "⁻¹" : ""}`).join(" ") || "(empty)"}
+                </div>
+                <div>Map: {formatRefs(cell.sourceRefs)}</div>
+                <button type="button" onClick={() => locateSource(2, cell.id, cell.sourceRefs)} disabled={!cell.sourceRefs.some((ref) => ref.stage === "source")}>
+                  Locate authoring source
+                </button>
+              </div>
+            ))}
+          </section>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <section data-testid="topology-complex-selected-cell" style={{ border: "1px solid #bfdbfe", borderRadius: 9, background: "#eff6ff", padding: "8px 10px", display: "grid", gap: 4, fontSize: 11 }}>
+            <strong>Selected canonical cell and source map</strong>
+            {selectedCanonicalCell && selectedCell ? (
+              <>
+                <div>{selectedCanonicalCell.dimension}-cell {selectedCanonicalCell.cellId}</div>
+                <div>{formatRefs(selectedCell.sourceRefs)}</div>
+              </>
+            ) : (
+              <div>Select any canonical cell to inspect its mapping.</div>
+            )}
+          </section>
+          <section data-testid="topology-complex-validation-diagnostics" style={{ border: "1px solid #dbe4f0", borderRadius: 9, background: "#fff", padding: "8px 10px", display: "grid", gap: 5, fontSize: 10 }}>
+            <strong style={{ fontSize: 11 }}>Focused structural diagnostics</strong>
+            {validation.diagnostics.length === 0 && <div>No structural diagnostics.</div>}
+            {validation.diagnostics.map((entry, index) => (
+              <div key={`complex-diagnostic-${entry.code}-${index}`} style={{ borderLeft: `3px solid ${entry.severity === "error" ? "#dc2626" : entry.severity === "warning" ? "#d97706" : "#2563eb"}`, paddingLeft: 7 }}>
+                <div><strong>{entry.code}</strong> [{entry.severity}]</div>
+                <div>{entry.message}</div>
+                {entry.cellRef && (
+                  <button type="button" onClick={() => inspectCell(entry.cellRef!.dimension, entry.cellRef!.cellId)}>
+                    Focus {entry.cellRef.dimension}-cell {entry.cellRef.cellId}
+                  </button>
+                )}
+              </div>
+            ))}
+          </section>
+        </div>
+
+        <div data-testid="topology-complex-boundary-dimensions" style={{ border: "1px solid #dbe4f0", borderRadius: 9, background: "#fff", padding: "8px 10px", fontSize: 11 }}>
+          Expected operator shapes: ∂₁ {report?.expectedBoundaryOperatorDimensions.boundary1.join(" × ") ?? "n/a"}; ∂₂ {report?.expectedBoundaryOperatorDimensions.boundary2.join(" × ") ?? "n/a"}. Exact matrices arrive in Commit 4.
         </div>
       </div>
     );
@@ -4573,6 +4748,7 @@ export const TopologyScreen: React.FC = () => {
 
   const renderCenterView = () => {
     if (activeView === "diagram") return renderDiagramView();
+    if (activeView === "complex") return renderComplexView();
     if (activeView === "quotient") return renderQuotientView();
     if (activeView === "realization") return renderRealizationView();
     if (activeView === "compare") return renderCompareView();
@@ -4876,6 +5052,8 @@ export const TopologyScreen: React.FC = () => {
             : 4
         : activeView === "quotient"
           ? 3
+          : activeView === "complex"
+            ? 3
           : activeView === "realization" || activeView === "compare"
             ? 4
             : 5;
@@ -5356,6 +5534,7 @@ export const TopologyScreen: React.FC = () => {
             {([
               ["diagram", "Diagram View"],
               ["quotient", "Quotient Structure View"],
+              ["complex", "Complex View"],
               ["realization", "Realization View"],
               ["animation", "Animation View"],
               ["compare", "Compare View"],
@@ -5463,9 +5642,9 @@ export const TopologyScreen: React.FC = () => {
               <div
                 key={`stage-${stage.id}`}
                 style={{
-                  border: "1px solid " + (stage.status === "warning" ? "#fde68a" : "#dbe4f0"),
+                  border: "1px solid " + (stage.status === "error" ? "#fca5a5" : stage.status === "warning" ? "#fde68a" : "#dbe4f0"),
                   borderRadius: 8,
-                  background: stage.status === "warning" ? "#fffbeb" : "#fff",
+                  background: stage.status === "error" ? "#fff1f2" : stage.status === "warning" ? "#fffbeb" : "#fff",
                   padding: "6px 8px",
                 }}
               >
@@ -5553,6 +5732,12 @@ export const TopologyScreen: React.FC = () => {
                     : "n/a"}
               </div>
               <div data-testid="topology-formal-classification">Formal surface classification: {unifiedTopologyDiagnostics.genusLabel}</div>
+              <div data-testid="topology-structural-validation-status">
+                Canonical structural validation: <strong>{buildResult.structuralValidation.status}</strong>
+              </div>
+              <button type="button" onClick={() => setActiveView("complex")} style={{ fontSize: 10 }}>
+                Open Complex view
+              </button>
               <div
                 style={{
                   color: unifiedTopologyDiagnostics.hasNonManifold ? "#b91c1c" : "#166534",

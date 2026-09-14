@@ -331,6 +331,29 @@ Where in the UI:
 - The blue provenance card identifies the **authoritative source**, its deterministic revision, and the **derived canonical 2-complex** schema/canonicalizer version.
 - Detailed canonical-cell inspection and attachment validation arrive in Commit 3's Complex view.
 
+### Commit 3 — Structural validation and Complex view
+
+**Status: complete (2026-09-14).**
+
+Delivered:
+
+- Added deterministic structural validation for the canonical finite 2-complex: unique/non-empty cell IDs, endpoint and attachment references, oriented closed/contiguous walks, source-map dimensions and targets, and stored incidence consistency.
+- Canonical attachment orientation is now resolved against canonical edge endpoints after quotienting, preventing source-edge orientation from producing false failures.
+- Added computed 1-skeleton components, boundary-edge candidates, edge-link occurrence classes, vertex-link connectivity/branching summaries, and expected dimensions for the upcoming exact boundary operators.
+- Structural errors return focused `TopologyResult` diagnostics and gate later cellular algebra without discarding malformed inputs. Singular link patterns remain inspectable warnings: they withhold surface eligibility but do not invalidate general CW-complex algebra.
+- Added a dedicated **Complex View** with separate 0-cell, oriented 1-cell, and 2-cell browsers; attachment words and walks; incidences; link summaries; source/refinement mappings; cell selection; and diagnostic focus actions.
+- Added **Locate authoring source** actions for canonical cells with direct source mappings. Refinement-only cells stay explicitly labeled rather than pretending to be authored cells.
+- Added a Structural Validation pipeline stage and right-inspector status/link. Cached v1 builds from before the contract change reconstruct current canonical incidence/validation data when loaded.
+- Added unit coverage for all shipped presets and malformed canonical fixtures, plus Electron coverage for the Complex view and cell-to-source inspection.
+
+Where in the UI:
+
+- Open **Topology**, then choose **Complex View** beside the existing Diagram and Quotient Structure views.
+- The top status card names the exact validation model and whether cellular algebra is allowed or gated.
+- Select any 0-, 1-, or 2-cell to inspect its source/refinement map; use **Locate authoring source** when a direct source cell exists.
+- Structural warnings and errors appear under **Focused structural diagnostics** and can select the affected canonical cell.
+- The right-side **C. Diagnostics** panel also shows canonical validation status and provides **Open Complex view**.
+
 ## Deferred research layer
 
 Do not schedule before the above release gates are stable:
