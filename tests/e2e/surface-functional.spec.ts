@@ -15,6 +15,43 @@ import {
 } from "./helpers/surfaceAppHarness";
 
 test.describe("Surface functional flow", () => {
+  test("viewport and Gauss side panels hide independently without disabling analysis", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await ctx.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(1700, 1050));
+      await openParametricSurface(ctx.page);
+
+      const viewportPanelToggle = ctx.page.getByTestId("surface-viewport-panel-toggle");
+      await viewportPanelToggle.check();
+      const viewportPanelHide = ctx.page.getByTestId("surface-viewport-panel-hide");
+      await expect(viewportPanelHide).toBeVisible();
+
+      const gaussAnalysisToggle = ctx.page.getByRole("checkbox", { name: "Show Gauss map (S²)", exact: true });
+      await gaussAnalysisToggle.check();
+      const gaussPanelToggle = ctx.page.getByTestId("surface-gauss-panel-toggle");
+      const gaussPanelHide = ctx.page.getByTestId("surface-gauss-panel-hide");
+      await expect(gaussPanelHide).toBeVisible();
+
+      await gaussPanelHide.click();
+      await expect(ctx.page.getByTestId("surface-gauss-panel-hide")).toHaveCount(0);
+      await expect(gaussAnalysisToggle).toBeChecked();
+      await expect(gaussPanelToggle).not.toBeChecked();
+
+      await gaussPanelToggle.check();
+      await expect(ctx.page.getByTestId("surface-gauss-panel-hide")).toBeVisible();
+
+      await viewportPanelHide.click();
+      await expect(ctx.page.getByTestId("surface-viewport-panel-hide")).toHaveCount(0);
+      await expect(viewportPanelToggle).not.toBeChecked();
+      await viewportPanelToggle.check();
+      await expect(ctx.page.getByTestId("surface-viewport-panel-hide")).toBeVisible();
+      await expect(ctx.page.getByTestId("error-banner")).toHaveCount(0);
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
   test("Test 1 — startup smoke", async () => {
     let ctx: LaunchedSurfaceApp | null = null;
     try {

@@ -383,6 +383,7 @@ type Props = {
   gaussMapEnabled?: boolean;
   onToggleGaussMap?: () => void;
   showOverlayControls?: boolean;
+  onRequestHideOverlayControls?: () => void;
   showViewGizmo?: boolean;
   onGaussPoints?: (points: GaussPoint[]) => void;
   gaussHighlightPoint?: { x: number; y: number; z: number } | null;
@@ -1502,6 +1503,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     gaussMapEnabled = false,
     onToggleGaussMap,
     showOverlayControls = true,
+    onRequestHideOverlayControls,
     showViewGizmo = true,
     onGaussPoints,
     gaussHighlightPoint = null,
@@ -6936,6 +6938,28 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
               minWidth: 180,
             }}
           >
+            {onRequestHideOverlayControls && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  paddingBottom: 5,
+                  borderBottom: "1px solid rgba(148,163,184,0.45)",
+                }}
+              >
+                <span style={{ fontWeight: 700 }}>Viewport panel</span>
+                <button
+                  type="button"
+                  data-testid="surface-viewport-panel-hide"
+                  onClick={onRequestHideOverlayControls}
+                  style={{ fontSize: 10, padding: "2px 7px", cursor: "pointer" }}
+                >
+                  Hide
+                </button>
+              </div>
+            )}
             <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <input
                 type="checkbox"

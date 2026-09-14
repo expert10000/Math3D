@@ -21,6 +21,7 @@ type GaussMapPanelProps = {
   onGaussSelection?: (selection: GaussCapSelection) => void;
   densityNormals?: Float32Array | null;
   densitySelectionIndices?: number[] | null;
+  onRequestHide?: () => void;
 };
 
 type GaussSampleEntry = {
@@ -152,6 +153,7 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
   onGaussSelection,
   densityNormals = null,
   densitySelectionIndices = null,
+  onRequestHide,
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -731,7 +733,20 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
         boxShadow: "0 0 0 1px #e1e1e6",
       }}
     >
-      <div style={{ fontSize: 12, fontWeight: 700 }}>Gauss map (Sı)</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 700 }}>Gauss map (S²)</div>
+        {onRequestHide && (
+          <button
+            type="button"
+            data-testid="surface-gauss-panel-hide"
+            onClick={onRequestHide}
+            style={resetButtonStyle}
+            title="Hide the Gauss panel without disabling the Gauss-map analysis"
+          >
+            Hide
+          </button>
+        )}
+      </div>
       <div style={{ fontSize: 11, color: "#555" }}>
         {samples.length
           ? `${samples.length} sampled normals plotted${selectionInfo}`

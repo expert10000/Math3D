@@ -1958,6 +1958,7 @@ const UI_ACCENT_KEY = "math3d.ui.accent.v1";
 const UI_DISPLAY_MODE_KEY = "math3d.ui.displayMode.v1";
 const UI_VIEWPORT_PRESET_KEY = "math3d.ui.viewportPreset.v1";
 const UI_VIEWPORT_OVERLAY_CONTROLS_KEY = "math3d.ui.viewportOverlayControls.v1";
+const UI_SURFACE_GAUSS_PANEL_KEY = "math3d.ui.surfaceGaussPanel.v1";
 const UI_SURFACE_VIEW_GIZMO_KEY = "math3d.ui.surfaceViewGizmo.v1";
 const UI_MESH_VIEWER_CONTROLS_KEY = "math3d.ui.meshViewerControls.v1";
 const UI_MESH_VIEWER_CONTROLS_DENSITY_KEY = "math3d.ui.meshViewerControlsDensity.v1";
@@ -33749,6 +33750,10 @@ const App: React.FC = () => {
     if (IS_REPLAY_MODE) return false;
     return localStorage.getItem(UI_VIEWPORT_OVERLAY_CONTROLS_KEY) === "1";
   });
+  const [showSurfaceGaussPanel, setShowSurfaceGaussPanel] = useState(() => {
+    if (IS_REPLAY_MODE) return true;
+    return localStorage.getItem(UI_SURFACE_GAUSS_PANEL_KEY) !== "0";
+  });
   const [meshViewerControlsOpen, setMeshViewerControlsOpen] = useState(() => {
     if (IS_REPLAY_MODE) return true;
     if (localStorage.getItem(UI_MESH_VIEWER_CONTROLS_LAYOUT_KEY) !== "1") {
@@ -33815,6 +33820,11 @@ const App: React.FC = () => {
     if (IS_REPLAY_MODE) return;
     localStorage.setItem(UI_VIEWPORT_OVERLAY_CONTROLS_KEY, showInViewportOverlayControls ? "1" : "0");
   }, [showInViewportOverlayControls]);
+
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    localStorage.setItem(UI_SURFACE_GAUSS_PANEL_KEY, showSurfaceGaussPanel ? "1" : "0");
+  }, [showSurfaceGaussPanel]);
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
@@ -75815,7 +75825,8 @@ case "mobius":
   };
   const responsiveBottomSheetOffset = showStatusBar ? 112 : 68;
   const showSurfaceSideCompanions =
-    (showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere)) &&
+    ((showGaussMap && showSurfaceGaussPanel) ||
+      (surfaceViewerKind === "complex" && complexMapShowSphere)) &&
     !(mode === "surfaces" && isPresentDisplayMode) &&
     !isSurfaceStackedLayout &&
     !cleanScreenshotSurfaceActive;
@@ -84677,11 +84688,26 @@ case "mobius":
                           <label style={viewerControlCheckStyle}>
                             <input
                               type="checkbox"
+                              data-testid="surface-viewport-panel-toggle"
                               checked={showInViewportOverlayControls}
                               onChange={(event) => setShowInViewportOverlayControls(event.target.checked)}
                             />
-                            {meshViewerControlsDensity === "compact" ? "Overlay" : "Overlay controls"}
+                            {meshViewerControlsDensity === "compact" ? "Panel" : "Viewport panel"}
                           </label>
+                          {showGaussMap && (
+                            <label
+                              style={viewerControlCheckStyle}
+                              title="Show or hide the Gauss analysis panel without disabling the analysis"
+                            >
+                              <input
+                                type="checkbox"
+                                data-testid="surface-gauss-panel-toggle"
+                                checked={showSurfaceGaussPanel}
+                                onChange={(event) => setShowSurfaceGaussPanel(event.target.checked)}
+                              />
+                              {meshViewerControlsDensity === "compact" ? "Gauss" : "Gauss panel"}
+                            </label>
+                          )}
                           <label
                             title="Show or hide viewport command preview badges and ghost overlays. Strip preview text remains visible."
                             style={viewerControlCheckStyle}
@@ -85778,6 +85804,7 @@ case "mobius":
                             chartGridMode={meshChartGridMode === "meshFace" ? "mesh-face" : "local"}
                             onSurfaceCellSelectionEnabledChange={handleSurfaceCellSelectionEnabledChange}
                             showOverlayControls={cleanScreenshotSurfaceActive ? false : showInViewportOverlayControls}
+                            onRequestHideOverlayControls={() => setShowInViewportOverlayControls(false)}
                             showViewGizmo={showSurfaceViewGizmo}
                             chartGridCountU={chartGridCountU}
                             chartGridCountV={chartGridCountV}
@@ -85952,6 +85979,7 @@ case "mobius":
                             showChartGrid={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : primaryOverlay.showChartGrid}
                             chartGridMode={meshChartGridMode === "meshFace" ? "mesh-face" : "local"}
                             showOverlayControls={cleanScreenshotSurfaceActive ? false : showInViewportOverlayControls}
+                            onRequestHideOverlayControls={() => setShowInViewportOverlayControls(false)}
                             chartGridCountU={chartGridCountU}
                             chartGridCountV={chartGridCountV}
                             implicitOverlay={implicitOverlay}
@@ -87687,8 +87715,8 @@ case "mobius":
                   {showSurfaceSideCompanions && (
                     <div
                       style={{
-                        minWidth: showGaussMap ? 220 : 240,
-                        maxWidth: showGaussMap ? 270 : 340,
+                        minWidth: showGaussMap && showSurfaceGaussPanel ? 220 : 240,
+                        maxWidth: showGaussMap && showSurfaceGaussPanel ? 270 : 340,
                         display: "flex",
                         flexDirection: "column",
                         gap: 10,
@@ -87697,7 +87725,7 @@ case "mobius":
                         overflowY: "auto",
                       }}
                     >
-                      {showGaussMap && (
+                      {showGaussMap && showSurfaceGaussPanel && (
                         <GaussMapPanel
                           samples={surfaceSampleSet?.samples ?? []}
                           palette={colorPalette}
@@ -87710,6 +87738,7 @@ case "mobius":
                           onGaussSelection={handleGaussSelection}
                           densityNormals={selectionBaseArrays?.normals ?? null}
                           densitySelectionIndices={selectionIndices}
+                          onRequestHide={() => setShowSurfaceGaussPanel(false)}
                         />
                       )}
                       {surfaceViewerKind === "complex" && complexMapShowSphere && (
