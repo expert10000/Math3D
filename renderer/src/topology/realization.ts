@@ -5,6 +5,7 @@ import {
   computeEulerHomologyConsistency,
   computeExactHomology,
   createTopologyObjectFromFundamentalDiagram,
+  deriveFundamentalGroupPresentation,
   validateCanonicalTopologyObject,
 } from "./core";
 
@@ -65,11 +66,19 @@ export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): 
       homology,
     },
   };
-  const algebraicConsistency = computeEulerHomologyConsistency(topologyObjectWithHomology, homology);
-  const topologyObjectWithAlgebra = {
+  const fundamentalGroup = deriveFundamentalGroupPresentation(topologyObjectWithHomology, structuralValidation, homology);
+  const topologyObjectWithFundamentalGroup = {
     ...topologyObjectWithHomology,
     analysis: {
       ...topologyObjectWithHomology.analysis,
+      fundamentalGroup,
+    },
+  };
+  const algebraicConsistency = computeEulerHomologyConsistency(topologyObjectWithFundamentalGroup, homology);
+  const topologyObjectWithAlgebra = {
+    ...topologyObjectWithFundamentalGroup,
+    analysis: {
+      ...topologyObjectWithFundamentalGroup.analysis,
       algebraicConsistency,
     },
   };
@@ -141,6 +150,14 @@ export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): 
         ? `Cell Euler and Betti Euler checks ${algebraicConsistency.value.holds ? "agree" : "disagree"} over Z and Z/2Z.`
         : "Euler–homology check withheld because exact homology is unavailable.",
   };
+  const fundamentalGroupStage = {
+    id: "fundamental-group" as const,
+    label: "Fundamental Group Presentation",
+    status: fundamentalGroup.status === "exact" ? ("done" as const) : fundamentalGroup.status === "unsupported" ? ("warning" as const) : ("error" as const),
+    note: fundamentalGroup.value
+      ? `${fundamentalGroup.value.presentation}; abelianization ${fundamentalGroup.value.abelianization.agreesWithExactH1 ? "agrees" : "does not agree"} with exact H1.`
+      : "Presentation withheld because connected structural prerequisites were not met.",
+  };
   const classificationStage = {
     id: "classification" as const,
     label: "Surface Eligibility & Classification",
@@ -153,7 +170,7 @@ export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): 
     note: surfaceClassification.value?.classification?.label ?? "Formal surface classification withheld; inspect eligibility evidence.",
   };
   const pipelineWithoutFormalStages = normalized.pipeline.filter(
-    (stage) => stage.id !== "validation" && stage.id !== "boundary" && stage.id !== "homology" && stage.id !== "algebra" && stage.id !== "classification"
+    (stage) => stage.id !== "validation" && stage.id !== "boundary" && stage.id !== "homology" && stage.id !== "algebra" && stage.id !== "fundamental-group" && stage.id !== "classification"
   );
   const quotientStageIndex = pipelineWithoutFormalStages.findIndex((stage) => stage.id === "quotient");
   const pipeline = [...pipelineWithoutFormalStages];
@@ -161,7 +178,8 @@ export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): 
   pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 2 : pipeline.length, 0, boundaryStage);
   pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 3 : pipeline.length, 0, homologyStage);
   pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 4 : pipeline.length, 0, algebraStage);
-  pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 5 : pipeline.length, 0, classificationStage);
+  pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 5 : pipeline.length, 0, fundamentalGroupStage);
+  pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 6 : pipeline.length, 0, classificationStage);
   return {
     ...normalized,
     topologyObject,
@@ -169,6 +187,7 @@ export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): 
     cellularBoundaryOperators,
     homology,
     algebraicConsistency,
+    fundamentalGroup,
     surfaceClassification,
     pipeline,
   };

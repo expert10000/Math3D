@@ -2677,6 +2677,7 @@ export const TopologyScreen: React.FC = () => {
     const boundaries = result.cellularBoundaryOperators.value;
     const homology = result.homology.value;
     const consistency = result.algebraicConsistency;
+    const fundamentalGroup = result.fundamentalGroup;
     const inspectAlgebraCell = (dimension: 0 | 1 | 2, cellId: string) => {
       setSelectedCanonicalCell({ dimension, cellId });
       setActiveView("complex");
@@ -2778,6 +2779,82 @@ export const TopologyScreen: React.FC = () => {
         ) : (
           <div style={{ color: "#b91c1c" }}>Exact homology is unavailable.</div>
         )}
+
+        <section
+          data-testid="topology-fundamental-group"
+          style={{
+            border: `1px solid ${fundamentalGroup.status === "exact" ? "#c4b5fd" : "#fca5a5"}`,
+            borderRadius: 10,
+            background: fundamentalGroup.status === "exact" ? "#faf5ff" : "#fff1f2",
+            padding: "9px 10px",
+            display: "grid",
+            gap: 7,
+            fontSize: 11,
+          }}
+        >
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <strong>Fundamental group π₁ presentation</strong>
+            <span style={{ fontWeight: 700 }}>{fundamentalGroup.status.toUpperCase()}</span>
+          </div>
+          {fundamentalGroup.value ? (
+            <>
+              <div data-testid="topology-pi1-presentation" style={{ fontFamily: "ui-monospace, Consolas, monospace", fontSize: 13, fontWeight: 700 }}>
+                π₁(X, {fundamentalGroup.value.baseVertexId}) = {fundamentalGroup.value.presentation}
+              </div>
+              <div>
+                Maximal tree: {fundamentalGroup.value.spanningTreeEdgeIds.length > 0 ? fundamentalGroup.value.spanningTreeEdgeIds.join(", ") : "empty (the 1-skeleton has one vertex)"}
+              </div>
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                {fundamentalGroup.value.generators.map((generator) => (
+                  <button key={generator.id} type="button" onClick={() => inspectAlgebraCell(1, generator.canonicalEdgeId)} style={{ fontSize: 10 }}>
+                    {generator.symbol} ↔ {generator.canonicalEdgeId} ({generator.canonicalEdgeName})
+                  </button>
+                ))}
+                {fundamentalGroup.value.generators.length === 0 && <span>No non-tree 1-cell generators.</span>}
+              </div>
+              <div style={{ display: "grid", gap: 5 }}>
+                {fundamentalGroup.value.relators.map((relator) => (
+                  <details key={relator.id} style={{ border: "1px solid #ddd6fe", borderRadius: 7, background: "#fff", padding: "5px 7px" }}>
+                    <summary style={{ cursor: "pointer", fontWeight: 700 }}>
+                      {relator.id} from {relator.canonicalFaceId}: {relator.reducedWord}
+                    </summary>
+                    <div style={{ display: "grid", gap: 3, marginTop: 5 }}>
+                      <button type="button" onClick={() => inspectAlgebraCell(2, relator.canonicalFaceId)} style={{ justifySelf: "start", fontSize: 10 }}>
+                        Inspect 2-cell {relator.canonicalFaceId}
+                      </button>
+                      <div>Authored/canonical word: {relator.sourceBoundaryWord || "1"}</div>
+                      {relator.steps.map((step, index) => (
+                        <div key={`${relator.id}-step-${index}`} style={{ color: "#475569" }}>
+                          {index + 1}. {step.kind}: {step.before} → {step.after}. {step.explanation}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                ))}
+              </div>
+              <div
+                data-testid="topology-pi1-abelianization-check"
+                style={{ borderTop: "1px solid #ddd6fe", paddingTop: 6, color: fundamentalGroup.value.abelianization.agreesWithExactH1 ? "#166534" : "#b42318", fontWeight: 700 }}
+              >
+                Abelianization: {fundamentalGroup.value.abelianization.notation} · exact H₁: {fundamentalGroup.value.abelianization.exactH1Notation} · {fundamentalGroup.value.abelianization.agreesWithExactH1 ? "PASS" : "FAIL"}
+              </div>
+              <details>
+                <summary style={{ cursor: "pointer", fontWeight: 700 }}>Abelian relation matrix and SNF</summary>
+                <div style={{ marginTop: 5, display: "grid", gap: 3, fontFamily: "ui-monospace, Consolas, monospace", fontSize: 10 }}>
+                  {fundamentalGroup.value.abelianization.relationMatrix.rowGeneratorIds.map((generatorId, rowIndex) => (
+                    <div key={`pi1-matrix-${generatorId}`}>{generatorId}: [{fundamentalGroup.value!.abelianization.relationMatrix.entries[rowIndex]?.join(", ") ?? ""}]</div>
+                  ))}
+                  <div>SNF diagonal: [{fundamentalGroup.value.abelianization.smithNormalForm.diagonal.join(", ") || "empty"}]</div>
+                </div>
+              </details>
+              <div style={{ color: "#475569" }}>
+                {fundamentalGroup.method} · {fundamentalGroup.algorithmVersion}. This is a derived presentation, not a general group-isomorphism solver.
+              </div>
+            </>
+          ) : (
+            <div>A connected structurally valid canonical 2-complex is required; no general disconnected groupoid is inferred.</div>
+          )}
+        </section>
 
         <section
           data-testid="topology-algebra-euler-check"
@@ -6330,6 +6407,10 @@ export const TopologyScreen: React.FC = () => {
               </div>
               <div data-testid="topology-algebra-consistency-status">
                 Euler–homology consistency: <strong>{buildResult.algebraicConsistency.value?.holds ? "PASS" : buildResult.algebraicConsistency.status}</strong>
+              </div>
+              <div data-testid="topology-fundamental-group-status">
+                CW π₁ presentation: <strong>{buildResult.fundamentalGroup.status}</strong>
+                {buildResult.fundamentalGroup.value ? ` · ${buildResult.fundamentalGroup.value.presentation}` : ""}
               </div>
               <button type="button" onClick={() => setActiveView("complex")} style={{ fontSize: 10 }}>
                 Open Complex view

@@ -7,3 +7,4 @@ export * from "./smithNormalForm";
 export * from "./homology";
 export * from "./algebraicConsistency";
 export * from "./surfaceClassification";
+export * from "./fundamentalGroup";

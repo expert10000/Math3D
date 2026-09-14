@@ -492,6 +492,29 @@ Where in the UI:
 - Load a v2 file to see either **derived cache current** or **derived cache recomputed**. A stale cache is never displayed as current analysis.
 - V2 restores the saved Diagram/Complex/Algebra/Quotient/Realization/Animation view, realization choice, animation plan, and authoring undo/redo history.
 
+### Commit 10 — CW fundamental-group presentations and abelianization
+
+**Status: complete (2026-09-14).**
+
+Delivered:
+
+- Added a UI-independent, versioned derivation of a finite connected 2D CW fundamental-group presentation from the canonical complex.
+- Builds a deterministic maximal tree of the canonical 1-skeleton, collapses its edges, assigns one inspectable generator to each non-tree 1-cell, and derives one relator from each oriented 2-cell attachment.
+- Retains a step-by-step reduction audit for every relator: authored/canonical word, tree-collapse projection, adjacent free cancellations, cyclic-end cancellations, and final reduced word.
+- Computes the presentation abelianization over exact `bigint` integers using a generator-by-relator exponent-sum matrix and Smith normal form.
+- Cross-checks free rank and torsion factors against the independently computed exact integral `H₁`. A mismatch is a failed result rather than a silently displayed presentation.
+- Explicitly withholds a single-basepoint presentation for disconnected or structurally invalid input; no general groupoid or group-isomorphism solver is claimed.
+- Added the result and algorithm version to pipeline provenance, v2 cache provenance, legacy-cache reconstruction, the Algebra view, and the right diagnostics summary.
+- Added exact fixtures for torus, projective plane, Klein bottle, a real free-cancellation trace, and disconnected-input withholding.
+
+Where in the UI:
+
+- Open **Topology → Algebra View** and scroll below the homology groups to **Fundamental group π₁ presentation**.
+- The first line shows `π₁(X, base) = ⟨generators | relators⟩`. Select a generator to inspect its canonical 1-cell and source mapping.
+- Expand any relator to see the source boundary word and every tree-collapse/free-reduction step; use **Inspect 2-cell** to locate its attachment in Complex View.
+- The green abelianization row compares the exact SNF result with independently computed `H₁` and displays **PASS** only when free rank and torsion agree.
+- The right-side **C. Diagnostics** panel also reports the presentation status and compact group presentation.
+
 ## Deferred research layer
 
 Do not schedule before the above release gates are stable:

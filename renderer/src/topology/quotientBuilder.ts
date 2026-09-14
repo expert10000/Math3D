@@ -5,6 +5,7 @@ import {
   computeEulerHomologyConsistency,
   computeExactHomology,
   createTopologyObjectFromFundamentalDiagram,
+  deriveFundamentalGroupPresentation,
   validateCanonicalTopologyObject,
 } from "./core";
 import type {
@@ -655,11 +656,19 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
       homology,
     },
   };
-  const algebraicConsistency = computeEulerHomologyConsistency(topologyObjectWithHomology, homology);
-  const topologyObjectWithAlgebra = {
+  const fundamentalGroup = deriveFundamentalGroupPresentation(topologyObjectWithHomology, structuralValidation, homology);
+  const topologyObjectWithFundamentalGroup = {
     ...topologyObjectWithHomology,
     analysis: {
       ...topologyObjectWithHomology.analysis,
+      fundamentalGroup,
+    },
+  };
+  const algebraicConsistency = computeEulerHomologyConsistency(topologyObjectWithFundamentalGroup, homology);
+  const topologyObjectWithAlgebra = {
+    ...topologyObjectWithFundamentalGroup,
+    analysis: {
+      ...topologyObjectWithFundamentalGroup.analysis,
       algebraicConsistency,
     },
   };
@@ -750,6 +759,14 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
           : "Euler–homology check withheld because exact homology is unavailable.",
     },
     {
+      id: "fundamental-group",
+      label: "Fundamental Group Presentation",
+      status: fundamentalGroup.status === "exact" ? "done" : fundamentalGroup.status === "unsupported" ? "warning" : "error",
+      note: fundamentalGroup.value
+        ? `${fundamentalGroup.value.presentation}; abelianization ${fundamentalGroup.value.abelianization.agreesWithExactH1 ? "agrees" : "does not agree"} with exact H1.`
+        : "Presentation withheld because connected structural prerequisites were not met.",
+    },
+    {
       id: "classification",
       label: "Surface Eligibility & Classification",
       status:
@@ -792,6 +809,7 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
     cellularBoundaryOperators,
     homology,
     algebraicConsistency,
+    fundamentalGroup,
     surfaceClassification,
   };
 };

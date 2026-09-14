@@ -131,6 +131,7 @@ const algorithmVersionsFor = (buildResult: QuotientBuildResult): Record<string, 
   cellularBoundaryOperators: buildResult.cellularBoundaryOperators.algorithmVersion,
   homology: buildResult.homology.algorithmVersion,
   algebraicConsistency: buildResult.algebraicConsistency.algorithmVersion,
+  fundamentalGroup: buildResult.fundamentalGroup.algorithmVersion,
   surfaceClassification: buildResult.surfaceClassification.algorithmVersion,
 });
 
