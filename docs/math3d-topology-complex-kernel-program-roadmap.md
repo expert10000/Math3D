@@ -1113,3 +1113,48 @@ F01-F05 identity, command, transaction, kernel, scientific-job, scene/topology
 compatibility, and Topology/Complex platform-baseline suites pass (77 tests total),
 along with `typecheck:noemit` and the renderer production build.  F07 is the next
 program commit.
+
+### F07 execution plan
+
+**Status:** complete
+
+F07 adds the single kernel-owned cache boundary behind F06 artifact handles.  It
+stores encoded artifact bytes outside document and React state, exposes compact
+immutable metadata, and implements deterministic whole-source invalidation without
+attempting dependency-local invalidation or migrating current domain stores.
+
+1. Add revisioned managed-artifact metadata carrying the F06 handle, exact source
+   document/revision/hash/generation, byte length, SHA-256 checksum, encoding, cache
+   owner, availability, and clean/dirty/computing/failed lifecycle status.
+2. Add a synchronous in-memory artifact registry with strict IDs and ownership,
+   configurable per-artifact size limits, detached byte storage, immutable metadata
+   snapshots, and explicit resolution results for available, missing, stale, dirty,
+   computing, and failed artifacts.
+3. Guard declare, computation, failure, and publication operations against the
+   registry's current-source resolver.  Verify publication size and checksum from
+   registry-owned bytes; never trust caller-provided size/checksum metadata.
+4. Implement deterministic full invalidation by current document source.  In one
+   operation, clear bytes and mark every non-current declared artifact for that
+   document dirty/unavailable, while leaving current-generation and other-document
+   artifacts untouched.  Keep local dependency invalidation deferred.
+5. Enforce one cache owner per artifact ID, owner-authorized replacement/removal,
+   deterministic owner cleanup, and idempotent repeated cleanup/invalidation.
+6. Emit ordered immutable metadata-only lifecycle facts for declaration, computing,
+   publication, failure, invalidation, and removal.  Listener failures and payload
+   mutation attempts must not affect registry state or later listeners.
+7. Prove byte isolation, checksum/size verification, source guards, explicit missing
+   references, all lifecycle states, exact full invalidation, ownership/cleanup,
+   event ordering, and metadata compactness in UI-free tests.  Re-run F01-F06
+   compatibility suites, `typecheck:noemit`, and the renderer production build.
+
+**F07 acceptance:** a source revision/hash/generation change makes exactly that
+document's non-current declared artifacts dirty and unavailable; stale or missing
+handles never resolve bytes; registry metadata and events contain no artifact
+payload; owners cannot mutate or remove each other's entries; and no large payload
+enters React or document state.
+
+**Completed verification:** ten focused registry/checksum assertions plus the F01-F06
+identity, command, transaction, kernel, scientific-job, result-envelope,
+scene/topology compatibility, and Topology/Complex platform-baseline suites pass (87
+tests total), along with `typecheck:noemit` and the renderer production build.  F08
+is the next program commit.

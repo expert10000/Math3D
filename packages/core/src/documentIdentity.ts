@@ -101,8 +101,7 @@ const SHA256_CONSTANTS = [
 const rotateRight = (value: number, count: number): number =>
   (value >>> count) | (value << (32 - count));
 
-const sha256 = (input: string): string => {
-  const bytes = new TextEncoder().encode(input);
+const sha256BytesHex = (bytes: Uint8Array): string => {
   const bitLength = bytes.length * 8;
   const paddedLength = Math.ceil((bytes.length + 9) / 64) * 64;
   const padded = new Uint8Array(paddedLength);
@@ -161,9 +160,15 @@ const sha256 = (input: string): string => {
   return state.map((word) => word.toString(16).padStart(8, "0")).join("");
 };
 
+/** Computes a portable SHA-256 checksum over raw bytes without retaining the input. */
+export const sha256Checksum = (bytes: Uint8Array): StructuralHash => {
+  if (!(bytes instanceof Uint8Array)) throw new TypeError("SHA-256 checksum input must be a Uint8Array.");
+  return `${STRUCTURAL_HASH_ALGORITHM}:${sha256BytesHex(bytes)}`;
+};
+
 /** Hashes only canonical JSON, so object insertion order and runtime identity are irrelevant. */
 export const structuralHash = (source: unknown): StructuralHash =>
-  `${STRUCTURAL_HASH_ALGORITHM}:${sha256(canonicalJsonStringify(source))}`;
+  sha256Checksum(new TextEncoder().encode(canonicalJsonStringify(source)));
 
 const STABLE_ID_KIND = /^[a-z][a-z0-9-]{0,31}$/;
 const STABLE_DOCUMENT_ID = /^math3d:[a-z][a-z0-9-]{0,31}:[0-9a-f]{32}$/;
