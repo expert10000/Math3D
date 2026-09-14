@@ -471,6 +471,27 @@ Where in the UI:
 - Choose **Validate + focus diagnostics** to rebuild and open **Complex View**, where canonical cells, source mappings, attachment validity, and focused diagnostics are inspectable.
 - Existing **Undo/Redo** controls in Diagram View cover these source edits. Stable v2 save/reopen of this history and source mapping is delivered by Commit 9.
 
+### Commit 9 — Source-authoritative v2 documents with v1 compatibility
+
+**Status: complete (2026-09-14).**
+
+Delivered:
+
+- Advanced `.math3d-topology` writes to format v2 while retaining a strict read-only v1 compatibility shape.
+- V2 serializes the authoritative `TopologySource`, derived canonical complex and provenance, analysis-cache source/canonical fingerprints, coefficient domains, per-stage algorithm versions, realization choices, view state, animation plan, and bounded undo/redo history.
+- Added one deterministic load/migration entry point. Both v1 and v2 documents rebuild the canonical complex and exact analysis from the authoritative source; serialized caches are never trusted as the mathematical authority.
+- V1 loads ignore legacy cached build results, preserve compatible view/animation choices, produce a visible legacy-audit warning, and materialize a current v2 document model in memory.
+- V2 loads verify the serialized canonical value, source/canonical fingerprints, and every analysis algorithm version. A mismatch is labeled stale and recomputed; current data is also freshly reproduced and reported as verified.
+- Multi-face documents retain stable authored face IDs, canonical source references, and undo/redo snapshots through JSON save/reopen.
+- Added regression coverage for v2 contents and JSON safety, v1 detection/migration with a deliberately incorrect cache, current-v2 verification, tampered/stale-v2 invalidation, and multi-face source-map/history round trips.
+
+Where in the UI:
+
+- Open **Topology** and scroll to **Topology document** in the left panel. Saving now writes v2 automatically; the blue audit line states that source is authoritative and the canonical/cache fingerprints are current.
+- Load an existing v1 file with **Load .math3d-topology**. The status reports that v1 was migrated and all derived results were recomputed; the audit line explicitly labels the legacy audit.
+- Load a v2 file to see either **derived cache current** or **derived cache recomputed**. A stale cache is never displayed as current analysis.
+- V2 restores the saved Diagram/Complex/Algebra/Quotient/Realization/Animation view, realization choice, animation plan, and authoring undo/redo history.
+
 ## Deferred research layer
 
 Do not schedule before the above release gates are stable:

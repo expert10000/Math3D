@@ -23,6 +23,7 @@ import {
   computeVertexStarDisconnectionDiagnostics,
   moveOperationInPlan,
   moveVertexInDiagram,
+  migrateTopologyDocument,
   normalizeTopologyRealizationKinds,
   normalizeAnimationPlan,
   regenerateBoundaryWordsInPlace,
@@ -1311,6 +1312,7 @@ export const TopologyScreen: React.FC = () => {
   const [currentDocumentPath, setCurrentDocumentPath] = useState<string | null>(null);
   const [docStatus, setDocStatus] = useState<string | null>(null);
   const [docError, setDocError] = useState<string | null>(null);
+  const [documentAudit, setDocumentAudit] = useState("v2 · source authoritative · current recomputation");
   const svgRef = useRef<SVGSVGElement | null>(null);
   const draggingVertexIdRef = useRef<string | null>(null);
   const draggingStartDiagramRef = useRef<FundamentalDiagram | null>(null);
@@ -1863,28 +1865,24 @@ export const TopologyScreen: React.FC = () => {
 
   const applyLoadedTopologyPayload = (raw: unknown, sourceLabel: string, sourcePath: string | null) => {
     if (isTopologyDocument(raw)) {
-      const loadedDiagram = raw.payload.diagram;
-      regenerateBoundaryWordsInPlace(loadedDiagram);
+      const loaded = migrateTopologyDocument(raw);
+      if (!loaded) return false;
+      const loadedDiagram = loaded.diagram;
       setDiagramAndDraft(loadedDiagram, { markSaved: true });
-      resetHistory();
+      setUndoStack(loaded.document.payload.history.undo.map(cloneFundamentalDiagram));
+      setRedoStack(loaded.document.payload.history.redo.map(cloneFundamentalDiagram));
       setBuildMode("editor");
-      if (raw.payload.cache?.buildResult) {
-        const compatibleBuildResult = normalizeTopologyRealizationKinds(raw.payload.cache.buildResult);
-        setBuildResult(compatibleBuildResult);
-        setBuiltSignature(JSON.stringify(loadedDiagram));
-        setActiveView(raw.payload.cache.activeView ?? "diagram");
-        setActiveRealizationId(raw.payload.cache.activeRealizationId ?? compatibleBuildResult.realizations[0]?.id ?? null);
-        setAnimationPlan(normalizeAnimationPlan(compatibleBuildResult.orientationRelations, raw.payload.cache.animationPlan));
-        applyDiagramNarrativeDefaults(loadedDiagram);
-      } else {
-        const built = buildQuotientPipeline(loadedDiagram);
-        setBuildResult(built);
-        setBuiltSignature(JSON.stringify(loadedDiagram));
-        setActiveView("diagram");
-        setActiveRealizationId(built.realizations[0]?.id ?? null);
-        setAnimationPlan(buildNarrativeAnimationPlan(loadedDiagram, built));
-        applyDiagramNarrativeDefaults(loadedDiagram);
-      }
+      const compatibleBuildResult = normalizeTopologyRealizationKinds(loaded.buildResult);
+      setBuildResult(compatibleBuildResult);
+      setBuiltSignature(JSON.stringify(loadedDiagram));
+      setActiveView(loaded.document.payload.viewState.activeView ?? "diagram");
+      setActiveRealizationId(
+        loaded.document.payload.viewState.activeRealizationId ?? compatibleBuildResult.realizations[0]?.id ?? null
+      );
+      setAnimationPlan(
+        normalizeAnimationPlan(compatibleBuildResult.orientationRelations, loaded.document.payload.viewState.animationPlan)
+      );
+      applyDiagramNarrativeDefaults(loadedDiagram);
       setTimelinePosition(0);
       setTimelinePlaying(false);
       setSelectedEdgeId(null);
@@ -1892,7 +1890,16 @@ export const TopologyScreen: React.FC = () => {
       setPendingEdgeStartId(null);
       setPresetId(DEFAULT_TOPOLOGY_PRESET_ID);
       setCurrentDocumentPath(sourcePath);
-      setDocStatus(`Loaded ${sourceLabel}`);
+      setDocStatus(
+        loaded.audit.loadedVersion === 1
+          ? `Loaded ${sourceLabel}; migrated v1 and recomputed all derived results.`
+          : `Loaded ${sourceLabel}; v2 cache ${loaded.audit.cacheStatus}.`
+      );
+      setDocumentAudit(
+        loaded.audit.loadedVersion === 1
+          ? "v1 legacy audit · migrated to v2 · derived cache recomputed"
+          : `v2 · source authoritative · derived cache ${loaded.audit.cacheStatus}`
+      );
       setDocError(null);
       clearDiagnosticsFocus();
       return true;
@@ -1914,6 +1921,7 @@ export const TopologyScreen: React.FC = () => {
       setTimelinePlaying(false);
       setCurrentDocumentPath(sourcePath);
       setDocStatus(`Loaded diagram ${sourceLabel}`);
+      setDocumentAudit("raw diagram import · source authoritative · derived cache recomputed");
       setDocError(null);
       clearDiagnosticsFocus();
       return true;
@@ -1929,6 +1937,8 @@ export const TopologyScreen: React.FC = () => {
       activeView: activeViewForDocument,
       activeRealizationId,
       animationPlan: normalizedAnimationPlan,
+      undoHistory: undoStack,
+      redoHistory: redoStack,
     });
     const text = JSON.stringify(doc, null, 2);
     const cleanName = (diagram.name || "topology")
@@ -1949,6 +1959,7 @@ export const TopologyScreen: React.FC = () => {
         setCurrentDocumentPath(result.path);
         setSavedSignature(diagramSignature);
         setDocStatus(`Saved ${result.path}`);
+        setDocumentAudit("v2 · source authoritative · canonical/cache fingerprints current");
         setDocError(null);
       } else if (!result.canceled) {
         setDocError(result.error || "Failed to save topology document.");
@@ -1967,6 +1978,7 @@ export const TopologyScreen: React.FC = () => {
     setSavedSignature(diagramSignature);
     setCurrentDocumentPath(null);
     setDocStatus(`Saved ${anchor.download}`);
+    setDocumentAudit("v2 · source authoritative · canonical/cache fingerprints current");
     setDocError(null);
   };
 
@@ -6040,7 +6052,10 @@ export const TopologyScreen: React.FC = () => {
             </button>
           </div>
           <div style={{ fontSize: 10, color: "#475569" }}>
-            Stores diagram + quotient cache + realization choices + operation plan.
+            v2 stores authoritative source, derived canonical snapshot, cache provenance, realizations, view state, and undo/redo history.
+          </div>
+          <div data-testid="topology-document-audit" style={{ fontSize: 10, color: "#0f4c81", fontWeight: 700 }}>
+            {documentAudit}
           </div>
           <div style={{ fontSize: 10, color: dirty ? "#b45309" : "#166534" }}>{dirty ? "Unsaved changes." : "Saved."}</div>
           {currentDocumentPath && <div style={{ fontSize: 10, color: "#475569" }}>Path: {currentDocumentPath}</div>}
