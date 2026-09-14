@@ -5,6 +5,8 @@ import {
   addEdgeToDiagram,
   addFaceFromAttachmentWord,
   addVertexToDiagram,
+  analyzeGeometryTopologySnapshot,
+  analyzeMeshTopologySnapshot,
   buildDiagramFromPolygonWord,
   buildPlannedOperations,
   buildPlannedSteps,
@@ -45,7 +47,10 @@ import {
   type QuotientBuildResult,
   type QuotientWarning,
   type TopologyAnimationPlan,
+  type TopologyAdapterAnalysisResult,
   type TopologyDocumentView,
+  type TopologyGeometryAdapterInput,
+  type TopologyMeshAdapterInput,
   type TopologyRealizationKind,
   type Vec3,
   type VertexStarDisconnectionDiagnostic,
@@ -59,6 +64,13 @@ type TopologyTopicTab = "euler" | "constructingPolygon" | "polyhedra" | "klein" 
 type DiagnosticsFocusKind = "edge" | "vertex" | "face";
 type CanonicalCellSelection = { dimension: 0 | 1 | 2; cellId: string };
 type CompareSourceOverride = { label: string; result: QuotientBuildResult; audit: string };
+
+export type TopologyScreenProps = {
+  meshAdapterSource?: TopologyMeshAdapterInput | null;
+  geometryAdapterSource?: TopologyGeometryAdapterInput | null;
+  onLocateMeshCell?: (dimension: 0 | 1 | 2, sourceCellId: string) => void;
+  onLocateGeometryCell?: (dimension: 0 | 1 | 2, sourceCellId: string) => void;
+};
 
 const TOPOLOGY_TOPIC_TABS: Array<{ id: TopologyTopicTab; label: string }> = [
   { id: "euler", label: "Euler" },
@@ -1235,7 +1247,12 @@ const DunceMapReference3D: React.FC = () => {
   );
 };
 
-export const TopologyScreen: React.FC = () => {
+export const TopologyScreen: React.FC<TopologyScreenProps> = ({
+  meshAdapterSource = null,
+  geometryAdapterSource = null,
+  onLocateMeshCell,
+  onLocateGeometryCell,
+}) => {
   const [diagram, setDiagram] = useState<FundamentalDiagram>(() => {
     const next = initialDiagram();
     regenerateBoundaryWordsInPlace(next);
@@ -1316,6 +1333,10 @@ export const TopologyScreen: React.FC = () => {
   const [currentDocumentPath, setCurrentDocumentPath] = useState<string | null>(null);
   const [docStatus, setDocStatus] = useState<string | null>(null);
   const [docError, setDocError] = useState<string | null>(null);
+  const [adapterResult, setAdapterResult] = useState<{
+    source: "Mesh" | "Geometry";
+    result: TopologyAdapterAnalysisResult;
+  } | null>(null);
   const [documentAudit, setDocumentAudit] = useState("v2 · source authoritative · current recomputation");
   const svgRef = useRef<SVGSVGElement | null>(null);
   const draggingVertexIdRef = useRef<string | null>(null);
@@ -5688,6 +5709,24 @@ export const TopologyScreen: React.FC = () => {
             ? 4
             : 5;
 
+  const runMeshAdapter = useCallback(() => {
+    if (!meshAdapterSource) return;
+    setAdapterResult({ source: "Mesh", result: analyzeMeshTopologySnapshot(meshAdapterSource) });
+  }, [meshAdapterSource]);
+  const runGeometryAdapter = useCallback(() => {
+    if (!geometryAdapterSource) return;
+    setAdapterResult({ source: "Geometry", result: analyzeGeometryTopologySnapshot(geometryAdapterSource) });
+  }, [geometryAdapterSource]);
+  const adapterCounts = adapterResult?.result.status === "accepted"
+    ? adapterResult.result.analysis?.topologyObject.canonical
+    : null;
+  const adapterHomology = adapterResult?.result.status === "accepted"
+    ? adapterResult.result.analysis?.homology.value?.integer.groups.map((group) => group.notation).join(" · ")
+    : null;
+  const adapterFirstFaceId = adapterResult?.result.status === "accepted"
+    ? adapterResult.result.analysis?.topologyObject.canonical.faces[0]?.sourceRefs[0]?.cellId ?? null
+    : null;
+
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch", gap: 10 }}>
       <div style={{ ...styles.panelLeft, width: 340, display: "grid", gap: 10 }}>
@@ -5830,6 +5869,49 @@ export const TopologyScreen: React.FC = () => {
             <div style={{ display: "grid", gap: 5, fontSize: 11 }}>
               <div>Mobius workflow uses the rectangle model boundary word: b a c a.</div>
               <div style={{ color: "#475569" }}>Inspect one boundary component, core circle and orientation flip markers.</div>
+            </div>
+          )}
+        </section>
+        <section
+          data-testid="topology-interoperability-panel"
+          style={{ border: "1px solid #bfdbfe", borderRadius: 10, background: "#eff6ff", padding: "8px 9px", display: "grid", gap: 7 }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 800 }}>Mesh / Geometry interoperability</div>
+          <div style={{ fontSize: 10, color: "#475569" }}>
+            Read-only oriented triangle snapshots. Topology never edits the source dataset.
+          </div>
+          <button type="button" data-testid="topology-analyze-current-mesh" disabled={!meshAdapterSource} onClick={runMeshAdapter}>
+            {meshAdapterSource ? `Analyze current Mesh · ${meshAdapterSource.mesh.label}` : "No indexed Mesh available"}
+          </button>
+          <button type="button" data-testid="topology-analyze-current-geometry" disabled={!geometryAdapterSource} onClick={runGeometryAdapter}>
+            {geometryAdapterSource ? `Analyze selected Geometry · ${geometryAdapterSource.mesh.label}` : "No Geometry tessellation selected"}
+          </button>
+          {adapterResult && (
+            <div
+              data-testid="topology-adapter-result"
+              style={{ border: `1px solid ${adapterResult.result.status === "accepted" ? "#86efac" : "#fca5a5"}`, borderRadius: 8, background: "#fff", padding: "7px 8px", display: "grid", gap: 4, fontSize: 10 }}
+            >
+              <div style={{ fontWeight: 800 }}>
+                {adapterResult.source} · {adapterResult.result.status.toUpperCase()} · read-only
+              </div>
+              <div>Method: {adapterResult.result.method}</div>
+              <div>Fidelity: {adapterResult.result.fidelity} · mapping {adapterResult.result.correspondence}</div>
+              {adapterCounts && <div>Canonical cells: V={adapterCounts.vertices.length} · E={adapterCounts.edges.length} · F={adapterCounts.faces.length}</div>}
+              {adapterHomology && <div data-testid="topology-adapter-homology">{adapterHomology}</div>}
+              {adapterResult.result.diagnostics.map((entry) => (
+                <div key={`${entry.code}:${entry.cellRef?.cellId ?? "global"}`} style={{ color: "#b91c1c" }}>{entry.code}: {entry.message}</div>
+              ))}
+              {adapterFirstFaceId && (
+                <button
+                  type="button"
+                  data-testid="topology-locate-source-face"
+                  onClick={() => adapterResult.source === "Mesh"
+                    ? onLocateMeshCell?.(2, adapterFirstFaceId)
+                    : onLocateGeometryCell?.(2, adapterFirstFaceId)}
+                >
+                  Locate first face in {adapterResult.source}
+                </button>
+              )}
             </div>
           )}
         </section>

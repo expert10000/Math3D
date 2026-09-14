@@ -2,6 +2,7 @@ import type { FundamentalDiagram, Orientation, Realization3D } from "../types";
 
 export const TOPOLOGY_CANONICAL_SCHEMA_VERSION = 1 as const;
 export const TOPOLOGY_CANONICALIZER_VERSION = "fundamental-diagram-quotient@1" as const;
+export const TOPOLOGY_SNAPSHOT_CANONICALIZER_VERSION = "oriented-triangle-incidence@1" as const;
 
 export type TopologySourceCellDimension = 0 | 1 | 2;
 
@@ -32,6 +33,9 @@ export type MeshTopologySnapshot = {
   vertexIds: string[];
   edges: Array<{ id: string; vertices: [string, string] }>;
   faces: Array<{ id: string; vertexIds: string[] }>;
+  /** Required declaration: triangle vertex order is the source orientation. */
+  orientation?: "source-winding";
+  indexing?: "complete" | "incomplete";
 };
 
 export type GeometryTopologySnapshot = {
@@ -43,6 +47,14 @@ export type GeometryTopologySnapshot = {
   vertexIds: string[];
   edges: Array<{ id: string; vertices: [string, string] }>;
   faces: Array<{ id: string; vertexIds: string[] }>;
+  orientation?: "source-winding";
+  indexing?: "complete" | "incomplete";
+  conversion?: {
+    method: string;
+    fidelity: "exact-incidence" | "tessellated-approximation";
+    correspondence: "complete" | "partial" | "none";
+    unresolvedTrims?: boolean;
+  };
 };
 
 export type TopologySource =
@@ -102,8 +114,12 @@ export type TopologyProvenance = {
     hash: string;
   };
   canonicalization: {
-    method: "fundamental-diagram quotient canonicalization";
-    algorithmVersion: typeof TOPOLOGY_CANONICALIZER_VERSION;
+    method:
+      | "fundamental-diagram quotient canonicalization"
+      | "read-only oriented triangle incidence canonicalization";
+    algorithmVersion:
+      | typeof TOPOLOGY_CANONICALIZER_VERSION
+      | typeof TOPOLOGY_SNAPSHOT_CANONICALIZER_VERSION;
     revision: string;
     hash: string;
   };

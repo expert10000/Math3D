@@ -1,12 +1,7 @@
 import { buildRealizationChoices } from "./realization";
 import {
-  buildExactCellularBoundaryOperators,
-  certifyAndClassifySurface,
-  computeEulerHomologyConsistency,
-  computeExactHomology,
+  analyzeCanonicalTopologyObject,
   createTopologyObjectFromFundamentalDiagram,
-  deriveFundamentalGroupPresentation,
-  validateCanonicalTopologyObject,
 } from "./core";
 import type {
   EquivalenceClass,
@@ -630,60 +625,15 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
     realizations,
     edgeClassBySource,
   });
-  const structuralValidation = validateCanonicalTopologyObject(topologyObjectWithoutAnalysis);
-  const topologyObjectWithValidation = {
-    ...topologyObjectWithoutAnalysis,
-    analysis: {
-      structuralValidation,
-    },
-  };
-  const cellularBoundaryOperators = buildExactCellularBoundaryOperators(
-    topologyObjectWithValidation,
-    structuralValidation
-  );
-  const topologyObjectWithBoundaries = {
-    ...topologyObjectWithValidation,
-    analysis: {
-      ...topologyObjectWithValidation.analysis,
-      cellularBoundaryOperators,
-    },
-  };
-  const homology = computeExactHomology(topologyObjectWithBoundaries, cellularBoundaryOperators);
-  const topologyObjectWithHomology = {
-    ...topologyObjectWithBoundaries,
-    analysis: {
-      ...topologyObjectWithBoundaries.analysis,
-      homology,
-    },
-  };
-  const fundamentalGroup = deriveFundamentalGroupPresentation(topologyObjectWithHomology, structuralValidation, homology);
-  const topologyObjectWithFundamentalGroup = {
-    ...topologyObjectWithHomology,
-    analysis: {
-      ...topologyObjectWithHomology.analysis,
-      fundamentalGroup,
-    },
-  };
-  const algebraicConsistency = computeEulerHomologyConsistency(topologyObjectWithFundamentalGroup, homology);
-  const topologyObjectWithAlgebra = {
-    ...topologyObjectWithFundamentalGroup,
-    analysis: {
-      ...topologyObjectWithFundamentalGroup.analysis,
-      algebraicConsistency,
-    },
-  };
-  const surfaceClassification = certifyAndClassifySurface(
-    topologyObjectWithAlgebra,
+  const {
+    topologyObject,
     structuralValidation,
-    algebraicConsistency
-  );
-  const topologyObject = {
-    ...topologyObjectWithAlgebra,
-    analysis: {
-      ...topologyObjectWithAlgebra.analysis,
-      surfaceClassification,
-    },
-  };
+    cellularBoundaryOperators,
+    homology,
+    fundamentalGroup,
+    algebraicConsistency,
+    surfaceClassification,
+  } = analyzeCanonicalTopologyObject(topologyObjectWithoutAnalysis);
 
   const pipeline: QuotientPipelineStage[] = [
     {

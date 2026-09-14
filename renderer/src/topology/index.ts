@@ -10,4 +10,5 @@ export * from "./polygonWord";
 export * from "./diagnostics";
 export * from "./countLayers";
 export * from "./comparison";
+export * from "./adapters";
 export * from "./core";

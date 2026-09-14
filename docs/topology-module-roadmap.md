@@ -537,6 +537,27 @@ Where in the UI:
 - The side-by-side R³ models remain available for visual context. Scroll to **Compare documents and invariants** for the authoritative comparison report.
 - A red **DISTINGUISHED** result lists every exact/certified witness. An amber **INCONCLUSIVE** result means only that the current computations found no difference—not that the objects are equivalent.
 
+### Commit 12 — Read-only Mesh and scoped Geometry adapters
+
+**Status: complete (2026-09-14).**
+
+Delivered:
+
+- Added thin, UI-independent adapter boundaries for the current Mesh dataset and the selected Geometry display tessellation.
+- Mesh input is accepted only as a complete indexed triangle snapshot whose source winding is explicitly authoritative. Stable vertex, edge, and face IDs map every canonical result back to its source element.
+- Geometry starts with the deliberately narrow `surface-tessellation` export. Every result exposes the conversion method, `exact-incidence` or `tessellated-approximation` fidelity, and complete/partial correspondence.
+- Missing indices, out-of-range references, duplicate IDs/edges, non-triangle faces, missing winding, more than two triangles at an edge, unsupported Geometry representations, unresolved trims, and absent correspondence produce typed diagnostics. The adapter never guesses repairs or mutates its source.
+- Extracted the shared canonical-analysis pipeline so adapted finite complexes use the same structural validation, exact integer boundary maps, integral and mod-2 homology, Euler consistency, CW presentation/abelianization, and certified surface classifier as authored quotients.
+- Added direct **Locate first face in Mesh/Geometry** round-trip navigation. Mesh location restores the appropriate face/edge/vertex pick mode and source index; Geometry returns to the selected source object.
+- Added regression coverage for exact tetrahedral sphere homology, source mapping, read-only semantics, incomplete-index rejection, fidelity labels, unsupported representations, and unresolved trims.
+
+Where in the UI:
+
+- Open **Topology** and use **Mesh / Geometry interoperability** in the left panel.
+- **Analyze current Mesh** reads the dataset last active in Mesh. **Analyze selected Geometry** reads the selected Geometry object's display tessellation.
+- The result card shows acceptance state, conversion method, fidelity, mapping completeness, canonical V/E/F counts, exact `H₀`–`H₂`, and any rejection diagnostics.
+- Use **Locate first face in Mesh** or **Locate first face in Geometry** to return to the source module. All analysis remains read-only.
+
 ## Deferred research layer
 
 Do not schedule before the above release gates are stable:

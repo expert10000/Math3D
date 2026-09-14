@@ -8,3 +8,5 @@ export * from "./homology";
 export * from "./algebraicConsistency";
 export * from "./surfaceClassification";
 export * from "./fundamentalGroup";
+export * from "./analysisPipeline";
+export * from "./snapshotCanonicalizer";

@@ -89187,7 +89187,54 @@ case "mobius":
               ref={topologySceneCaptureRef}
               style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", ...viewerTouchContainmentStyle }}
             >
-              <TopologyScreen />
+              <TopologyScreen
+                meshAdapterSource={surfaceMeshData && activeMeshAnalysisIdentity ? {
+                  mesh: surfaceMeshData,
+                  sourceObjectId: activeMeshAnalysisIdentity.meshId,
+                  sourceObjectRevision: activeMeshAnalysisIdentity.revision,
+                } : null}
+                geometryAdapterSource={(() => {
+                  if (!geometrySelectedObjectId) return null;
+                  const resolved = resolveGeometrySceneMeshById(geometrySelectedObjectId);
+                  if (!resolved?.mesh) return null;
+                  return {
+                    mesh: resolved.mesh,
+                    sourceObjectId: geometrySelectedObjectId,
+                    sourceObjectRevision: String(geometryObjectRevisionById[geometrySelectedObjectId] ?? 1),
+                    conversionMethod: "selected Geometry display tessellation",
+                    fidelity: "tessellated-approximation" as const,
+                    correspondence: "complete" as const,
+                  };
+                })()}
+                onLocateMeshCell={(dimension, sourceCellId) => {
+                  setMode("surfaces");
+                  setDatasetKind("mesh");
+                  setSurfacesPanelState("work");
+                  setSurfacesLeftTab("analysis");
+                  handleChangeViewerKind("mesh");
+                  if (dimension === 2) {
+                    const faceIndex = Number(sourceCellId.replace(/^f/, ""));
+                    if (Number.isInteger(faceIndex)) {
+                      setSurfaceMeshTopologyPickMode("face");
+                      setSurfaceMeshTopologyFaceIndex(faceIndex);
+                    }
+                  } else if (dimension === 0) {
+                    const vertexIndex = Number(sourceCellId.replace(/^v/, ""));
+                    if (Number.isInteger(vertexIndex)) {
+                      setSurfaceMeshTopologyPickMode("vertex");
+                      setSurfaceMeshTopologyVertexIndex(vertexIndex);
+                    }
+                  } else {
+                    const match = /^e(\d+):(\d+)$/.exec(sourceCellId);
+                    if (match) {
+                      setSurfaceMeshTopologyPickMode("edge");
+                      setSurfaceMeshTopologyEdgeA(Number(match[1]));
+                      setSurfaceMeshTopologyEdgeB(Number(match[2]));
+                    }
+                  }
+                }}
+                onLocateGeometryCell={() => setMode("geometry")}
+              />
             </div>
           </div>
         ) : mode === "geometry" ? (
