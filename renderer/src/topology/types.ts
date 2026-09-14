@@ -205,4 +205,6 @@ export type QuotientBuildResult = {
   realizations: Realization3D[];
   warnings: QuotientWarning[];
   pipeline: QuotientPipelineStage[];
+  /** Canonical source/derived/provenance contract for formal analysis consumers. */
+  topologyObject: import("./core/contracts").TopologyObject;
 };

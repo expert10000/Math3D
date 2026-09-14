@@ -311,6 +311,26 @@ Where in the UI:
 - Select **Realization View** to see the active model labeled **Embedded**, **Immersed**, or **Schematic**, together with its non-authoritative status.
 - Select **Compare View** to see the realization classification independently for both compared objects.
 
+### Commit 2 — Provenance and canonical 2-complex contracts
+
+**Status: complete (2026-09-14).**
+
+Delivered:
+
+- Added a UI-independent `topology/core` contract layer for authoritative fundamental-diagram, CW-complex, simplicial-complex, Mesh-snapshot, and Geometry-snapshot sources.
+- Added a versioned finite canonical 2-complex model with named 0-cells, oriented 1-cells (including loops), and oriented 2-cell attachment words.
+- Every canonical cell carries source/refinement references, preserving the route back to the authoring diagram while keeping build-only subdivisions explicit.
+- Added deterministic source and canonical fingerprints, source/canonical revisions, and a versioned canonicalization method. Rebuilding identical input yields identical provenance; source edits invalidate the source revision.
+- Added the shared `TopologyResult<T>` envelope with explicit evidence status, method, assumptions, source revision, algorithm version, and structured diagnostics.
+- Attached the new `TopologyObject` to every quotient build while retaining `.math3d-topology` v1 loading; legacy cached builds reconstruct the missing contract on load.
+- Added unit coverage for separation of authority, cell mappings, stable fingerprints, invalidation, and exact/unsupported result envelopes, plus visible provenance regression coverage.
+
+Where in the UI:
+
+- Open **Topology** and inspect the right-side **A. Structure** panel.
+- The blue provenance card identifies the **authoritative source**, its deterministic revision, and the **derived canonical 2-complex** schema/canonicalizer version.
+- Detailed canonical-cell inspection and attachment validation arrive in Commit 3's Complex view.
+
 ## Deferred research layer
 
 Do not schedule before the above release gates are stable:

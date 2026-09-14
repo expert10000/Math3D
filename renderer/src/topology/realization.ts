@@ -1,4 +1,5 @@
 import type { OrientationRelation, QuotientBuildResult, QuotientComplex, Realization3D, TopologyRealizationKind, Vec3 } from "./types";
+import { createTopologyObjectFromFundamentalDiagram } from "./core";
 
 export const inferLegacyTopologyRealizationKind = (
   realization: Pick<Realization3D, "id" | "name"> & { kind?: TopologyRealizationKind }
@@ -15,13 +16,25 @@ export const inferLegacyTopologyRealizationKind = (
   return "schematic";
 };
 
-export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): QuotientBuildResult => ({
-  ...result,
-  realizations: result.realizations.map((realization) => ({
-    ...realization,
-    kind: inferLegacyTopologyRealizationKind(realization),
-  })),
-});
+export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): QuotientBuildResult => {
+  const normalized = {
+    ...result,
+    realizations: result.realizations.map((realization) => ({
+      ...realization,
+      kind: inferLegacyTopologyRealizationKind(realization),
+    })),
+  };
+  return {
+    ...normalized,
+    topologyObject:
+      result.topologyObject ??
+      createTopologyObjectFromFundamentalDiagram(result.normalizedDiagram, {
+        quotient: result.quotient,
+        subdivision: result.subdivision,
+        realizations: normalized.realizations,
+      }),
+  };
+};
 
 const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];

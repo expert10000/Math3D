@@ -5426,6 +5426,20 @@ export const TopologyScreen: React.FC = () => {
             <div data-testid="topology-count-display">
               <strong>Display geometry only:</strong> {topologyCountLayers.display.meshVertices} mesh vertices, {topologyCountLayers.display.triangles} triangles, {topologyCountLayers.display.curveSamples} curve samples
             </div>
+            <div
+              data-testid="topology-source-provenance"
+              style={{ border: "1px solid #bfdbfe", borderRadius: 8, background: "#eff6ff", padding: "6px 7px", display: "grid", gap: 2 }}
+            >
+              <div>
+                <strong>Authoritative source:</strong> {buildResult.topologyObject.provenance.source.kind}
+              </div>
+              <div title={buildResult.topologyObject.provenance.source.hash}>
+                Source revision: {buildResult.topologyObject.provenance.source.revision}
+              </div>
+              <div data-testid="topology-canonical-provenance" title={buildResult.topologyObject.provenance.canonicalization.hash}>
+                <strong>Derived canonical 2-complex:</strong> schema v{buildResult.topologyObject.canonical.schemaVersion} · {buildResult.topologyObject.provenance.canonicalization.algorithmVersion}
+              </div>
+            </div>
             <div>
               {buildResult.subdivision.applied
                 ? `Subdivision applied: faces ${buildResult.subdivision.triangulatedFaceIds.length}, edges ${buildResult.subdivision.createdEdgeIds.length}`

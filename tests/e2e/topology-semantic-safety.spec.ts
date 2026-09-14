@@ -14,6 +14,9 @@ test.describe("Topology semantic safety", () => {
       await expect(ctx.page.getByTestId("topology-count-refinement")).toContainText("Build refinement cells");
       await expect(ctx.page.getByTestId("topology-count-canonical")).toContainText("Canonical quotient cells");
       await expect(ctx.page.getByTestId("topology-count-display")).toContainText("Display geometry only");
+      await expect(ctx.page.getByTestId("topology-source-provenance")).toContainText("Authoritative source: fundamental-diagram");
+      await expect(ctx.page.getByTestId("topology-source-provenance")).toContainText("Source revision: fnv1a32:");
+      await expect(ctx.page.getByTestId("topology-canonical-provenance")).toContainText("Derived canonical 2-complex: schema v1");
       await expect(ctx.page.getByTestId("topology-canonical-euler")).toContainText("Canonical Euler characteristic");
       await expect(ctx.page.getByTestId("topology-computed-components")).toContainText("Computed connected components");
       await expect(ctx.page.getByTestId("topology-recognized-boundary")).toContainText("Recognized boundary hint");

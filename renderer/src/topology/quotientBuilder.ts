@@ -1,4 +1,5 @@
 import { buildRealizationChoices } from "./realization";
+import { createTopologyObjectFromFundamentalDiagram } from "./core";
 import type {
   EquivalenceClass,
   FundamentalDiagram,
@@ -616,6 +617,11 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
     warnings
   );
   const realizations = buildRealizationChoices(quotient, orientationRelations);
+  const topologyObject = createTopologyObjectFromFundamentalDiagram(input, {
+    quotient,
+    subdivision,
+    realizations,
+  });
 
   const pipeline: QuotientPipelineStage[] = [
     {
@@ -671,5 +677,6 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
     realizations,
     warnings,
     pipeline,
+    topologyObject,
   };
 };
