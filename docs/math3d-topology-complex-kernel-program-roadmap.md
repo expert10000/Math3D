@@ -1068,3 +1068,48 @@ identity, command, transaction, kernel, scene/topology compatibility, and
 Topology/Complex platform-baseline suites pass (67 tests total), along with
 `typecheck:noemit` and the renderer production build.  F06 is the next program
 commit.
+
+### F06 execution plan
+
+**Status:** complete
+
+F06 introduces the shared durable analysis-result boundary used after an F05 job
+finishes.  It standardizes provenance and epistemic status while keeping large
+scientific artifacts out of document-facing and UI-facing records.  Existing module
+result stores remain compatibility consumers and are not migrated in this commit.
+
+1. Add a strict schema-v1 analysis-result envelope with caller-owned result IDs and
+   the common statuses exact, certified, numerical, recognized, heuristic,
+   unsupported, failed, and cancelled.
+2. Require exact source document ID, revision, structural hash, and generation plus
+   operation type, algorithm/version, canonical parameters, precision/tolerance,
+   engine/version, and non-negative elapsed time as durable provenance.
+3. Represent warnings and structured diagnostics consistently, and represent grids,
+   sparse matrices, meshes, binary data, and other large outputs only with opaque
+   typed artifact handles.  Artifact storage and availability remain the F07
+   registry's responsibility.
+4. Enforce canonical serialization, exact fields, bounded summary/parameter/record
+   sizes, bounded JSON complexity, and explicit rejection of embedded scientific
+   payload fields so result envelopes remain safe for UI and document histories.
+5. Add an F05 publication bridge that accepts only a successful scientific-job
+   result for the still-current source generation and never copies its raw output
+   implicitly into the durable result summary.
+6. Classify pre-F06 unversioned results as legacy/limited without inventing missing
+   provenance or scientific certainty.  Malformed versioned envelopes remain
+   validation failures rather than silently becoming legacy records.
+7. Prove status/provenance validation, immutable deterministic normalization,
+   numerical metadata rules, compactness limits, artifact handles, stale job-result
+   rejection, and legacy classification in UI-free tests.  Re-run the F01-F05
+   compatibility suites, `typecheck:noemit`, and the renderer production build.
+
+**F06 acceptance:** every versioned result is serializable, immutable, source-bound,
+and explicit about method and epistemic status; no accepted result embeds sampled
+grids, sparse matrices, full meshes, typed buffers, or oversized JSON; successful
+F05 output can publish only against its matching current source; and unprovenanced
+legacy records remain visibly limited.
+
+**Completed verification:** ten focused compact-result/provenance assertions plus the
+F01-F05 identity, command, transaction, kernel, scientific-job, scene/topology
+compatibility, and Topology/Complex platform-baseline suites pass (77 tests total),
+along with `typecheck:noemit` and the renderer production build.  F07 is the next
+program commit.
