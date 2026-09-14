@@ -1024,3 +1024,47 @@ command assertions, F02 identity, scene/topology document compatibility, and F01
 Topology/Complex platform-baseline suites pass (58 tests total), along with
 `typecheck:noemit` and the renderer production build.  F05 is the next program
 commit.
+
+### F05 execution plan
+
+**Status:** complete
+
+F05 adds the first controlled scientific-job lifecycle to shared core and kernel.  It
+defines execution semantics and safety guards without migrating an existing worker or
+making Sage/native capabilities mandatory.
+
+1. Add strict schema-v1 JSON contracts for scientific source generations, operation
+   requests, deadlines/resource limits, progress, success, failure, and ordered job
+   lifecycle events.  Keep operation payloads semantic and adapter-neutral.
+2. Bind every request and successful result to stable document ID, positive source
+   revision, structural hash, and positive artifact generation.  Provide one exact
+   source-generation comparison used at admission, progress checkpoints, and result
+   publication.
+3. Add an asynchronous in-process kernel service with an allowlisted operation-to-
+   adapter registry, caller-owned deterministic job IDs, injected source resolver,
+   and injectable clock/timer runtime for deterministic tests.
+4. Enforce hard deadlines and explicit cancellation independently of adapter
+   completion.  Give cooperative adapters checkpoint/progress methods while ignoring
+   any output that arrives after cancellation or timeout.
+5. Enforce canonical input/output byte ceilings and cooperative work/memory budgets.
+   Invalid requests, unsupported operations, adapter exceptions, and each limit
+   failure return a structured qualified failure rather than publishing a result.
+6. Emit immutable submitted/progress/completed/failure facts in deterministic order.
+   Isolate diagnostic listener failures and ensure only a matching current source
+   generation can produce the completed event and successful result.
+7. Prove validation, success/progress ordering, cancellation, hard timeout, adapter
+   failure, input/output/work/memory limits, listener isolation, and stale late-result
+   rejection in UI/worker-free tests.  Re-run F01-F04 compatibility suites,
+   `typecheck:noemit`, and the renderer production build; document the F06 boundary
+   in `docs/kernel-scientific-jobs.md`.
+
+**F05 acceptance:** cancellation and deadline completion do not wait for an
+uncooperative adapter; every terminal path is structured and emits at most one
+terminal fact; progress and output remain within declared limits; and a result cannot
+complete or publish after its source revision, structural hash, or generation changes.
+
+**Completed verification:** nine focused scientific-job assertions plus the F01-F04
+identity, command, transaction, kernel, scene/topology compatibility, and
+Topology/Complex platform-baseline suites pass (67 tests total), along with
+`typecheck:noemit` and the renderer production build.  F06 is the next program
+commit.

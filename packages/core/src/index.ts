@@ -4,6 +4,7 @@ export * from "./geometry";
 export * from "./math";
 export * from "./sceneDocument";
 export * from "./sceneObjects";
+export * from "./scientificJobs";
 export * from "./serialization";
 export * from "./validation";
 export * from "./viewerTypes";
