@@ -1,5 +1,9 @@
 import type { Vec3 } from "./math";
 import type { GeometryObject, GeometryScene } from "./sceneObjects";
+import {
+  defineDocumentFieldPolicy,
+  type DocumentIdentity,
+} from "./documentIdentity";
 
 export type SurfaceDefinition =
   | {
@@ -71,6 +75,8 @@ export type CameraPreset = {
 };
 
 export type SceneDocument = {
+  /** Optional until an explicit save/migration adopts shared document identity. */
+  identity?: DocumentIdentity;
   id: string;
   title: string;
   createdAt: number;
@@ -84,3 +90,23 @@ export type SceneDocument = {
   metadata?: Record<string, string | number | boolean | null>;
   extensions?: Record<string, unknown>;
 };
+
+/**
+ * Structural fields define mathematical scene content. Existing display settings
+ * remain persistent but are deliberately excluded from the structural hash.
+ */
+export const SCENE_DOCUMENT_FIELD_POLICY = defineDocumentFieldPolicy({
+  identity: "persistent-metadata",
+  id: "persistent-metadata",
+  title: "persistent-metadata",
+  createdAt: "persistent-metadata",
+  updatedAt: "persistent-metadata",
+  geometry: "structural",
+  objects: "structural",
+  surfaces: "structural",
+  overlays: "persistent-display",
+  cameras: "persistent-display",
+  activeCameraId: "persistent-display",
+  metadata: "persistent-metadata",
+  extensions: "structural",
+});

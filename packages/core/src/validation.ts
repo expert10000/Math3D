@@ -1,4 +1,5 @@
 import { isFiniteNumber, isVec3 } from "./math";
+import { isDocumentIdentity } from "./documentIdentity";
 import type { SceneDocument } from "./sceneDocument";
 import type { GeometryObject, GeometryScene } from "./sceneObjects";
 
@@ -62,6 +63,9 @@ export const validateSceneDocument = (value: unknown): ValidationResult<SceneDoc
   if (!hasString(value.title)) errors.push("scene.title is required.");
   if (!isFiniteNumber(value.createdAt)) errors.push("scene.createdAt must be a finite number.");
   if (!isFiniteNumber(value.updatedAt)) errors.push("scene.updatedAt must be a finite number.");
+  if (value.identity !== undefined && !isDocumentIdentity(value.identity)) {
+    errors.push("scene.identity must be a valid versioned document identity when provided.");
+  }
 
   if (value.geometry !== undefined) {
     validateGeometryScene(value.geometry, errors, "scene.geometry");

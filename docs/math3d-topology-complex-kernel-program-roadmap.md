@@ -907,4 +907,33 @@ tolerance; and the commit contains no production-code or persistent-format chang
 **Completed verification:** 67 focused unit assertions, two desktop workflow
 scenarios, `typecheck:noemit`, and the renderer production build pass.  The frozen
 inventory and fixture policy are documented in
-`docs/testing/platform-v1.5.0-baseline.md`; F02 is the next program commit.
+`docs/testing/platform-v1.5.0-baseline.md`.
+
+### F02 execution plan
+
+**Status:** complete
+
+F02 is a shared-core contract commit with no module migration or UI change.
+
+1. Add strict canonical JSON serialization and SHA-256 structural fingerprints,
+   independent of object insertion order, clock, randomness, renderer, and process.
+2. Add deterministic stable IDs plus immutable identity records carrying schema
+   version, positive monotonic source revision, and current structural hash.
+3. Add an explicit, exhaustive field-authority policy separating mathematical
+   structure, persistent metadata, persistent display state, and transient display
+   state.  Unclassified fields fail closed.
+4. Classify the current shared `SceneDocument`; make its identity optional and
+   validate it when present, without changing the scene-project format version.
+5. Document compatibility rules and prove deterministic hashes, source-change
+   revision advancement, view-state isolation, invalid-value rejection, and legacy
+   read behavior in focused tests.
+
+**F02 acceptance:** equal canonical sources hash identically across runs; a
+structural edit advances both revision and hash; metadata/display-only edits do not
+change the structural hash; and opening a legacy document neither rewrites it nor
+adds identity metadata.
+
+**Completed verification:** seven focused identity/hash tests plus the existing
+scene-serialization and F01 Topology/Complex baseline suites pass (50 tests total),
+along with `typecheck:noemit` and the renderer production build.  F03 is the next
+program commit.

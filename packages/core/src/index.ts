@@ -1,4 +1,5 @@
 export * from "./commands";
+export * from "./documentIdentity";
 export * from "./geometry";
 export * from "./math";
 export * from "./sceneDocument";
