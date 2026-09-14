@@ -377,6 +377,29 @@ Where in the UI:
 - The green chain-condition card shows **Exact chain condition ∂₁∂₂ = 0: PASS** when the certified matrices compose to zero.
 - The right-side **C. Diagnostics** panel shows the exact-boundary result and chain-condition status. The full Algebra view and homology arrive in Commits 5–6.
 
+### Commit 5 — Exact Z and Z/2Z homology with Smith normal form
+
+**Status: complete (2026-09-14).**
+
+Delivered:
+
+- Added a versioned exact Smith normal form implementation using `bigint` throughout, with tracked left/right unimodular transforms and their inverses rather than diagonal invariants alone.
+- Computed integral `H₀`, `H₁`, and `H₂` from the exact cellular chain complex. Results expose Betti numbers, invariant-factor torsion, readable group notation, and representative cycles in canonical cell coordinates.
+- Restricted `∂₂` to the exact kernel basis of `∂₁` before the `H₁` quotient, retaining the basis transformations needed to map free and torsion generators back to selectable canonical 1-cells.
+- Added a separate exact Gaussian-elimination path over `Z/2Z`; it does not infer finite-field results from integral Betti numbers or discard torsion effects.
+- Stored every large integer as a decimal string in result payloads, keeping `.math3d-topology` v1 caches JSON-safe while retaining SNF reduction evidence and cell-linked representatives.
+- Gated homology on exact boundary operators and a passing `∂₁∂₂ = 0` check. Invalid inputs return an explicit unsupported result instead of speculative groups.
+- Added an Exact Homology pipeline stage and automatic reconstruction for cached legacy builds.
+- Added audited fixture coverage for torus, projective plane, Klein bottle, and cylinder over both coefficient domains, including torsion, representative mappings, independent mod-2 behavior, serialization, and unsupported prerequisites.
+
+Where in the UI:
+
+- Open **Topology → Complex View** and scroll below **Exact cellular boundary operators over Z**.
+- **Exact homology preview** shows `H₀`, `H₁`, and `H₂` first over `Z`, then over `Z/2Z`. Integral rows include Betti numbers and torsion orders.
+- Each displayed representative coefficient is a button linked to its canonical cell; selecting it updates the existing canonical-cell inspector.
+- The right-side **C. Diagnostics** panel shows the exact homology status and the current integral `H₁` summary.
+- Full matrix/group comparison and the Euler–homology consistency check remain scheduled for Commit 6's dedicated **Algebra View**.
+
 ## Deferred research layer
 
 Do not schedule before the above release gates are stable:

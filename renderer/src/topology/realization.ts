@@ -1,6 +1,7 @@
 import type { OrientationRelation, QuotientBuildResult, QuotientComplex, Realization3D, TopologyRealizationKind, Vec3 } from "./types";
 import {
   buildExactCellularBoundaryOperators,
+  computeExactHomology,
   createTopologyObjectFromFundamentalDiagram,
   validateCanonicalTopologyObject,
 } from "./core";
@@ -47,11 +48,19 @@ export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): 
     topologyObjectWithValidation,
     structuralValidation
   );
-  const topologyObject = {
+  const topologyObjectWithBoundaries = {
     ...topologyObjectWithValidation,
     analysis: {
       ...topologyObjectWithValidation.analysis,
       cellularBoundaryOperators,
+    },
+  };
+  const homology = computeExactHomology(topologyObjectWithBoundaries, cellularBoundaryOperators);
+  const topologyObject = {
+    ...topologyObjectWithBoundaries,
+    analysis: {
+      ...topologyObjectWithBoundaries.analysis,
+      homology,
     },
   };
   const validationStage = {
@@ -82,18 +91,34 @@ export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): 
         ? `Built bigint ∂₁ and ∂₂; exact chain check ${cellularBoundaryOperators.value?.chainCondition.holds ? "PASS" : "FAIL"}.`
         : "Boundary matrices withheld because structural prerequisites were not met.",
   };
+  const homologyStage = {
+    id: "homology" as const,
+    label: "Exact Homology",
+    status:
+      homology.status === "exact"
+        ? ("done" as const)
+        : homology.status === "unsupported"
+          ? ("warning" as const)
+          : ("error" as const),
+    note:
+      homology.status === "exact"
+        ? `Computed Z and Z/2Z homology exactly; H1 = ${homology.value?.integer.groups[1].notation ?? "n/a"}.`
+        : "Homology withheld because exact chain-complex prerequisites were not met.",
+  };
   const pipelineWithoutFormalStages = normalized.pipeline.filter(
-    (stage) => stage.id !== "validation" && stage.id !== "boundary"
+    (stage) => stage.id !== "validation" && stage.id !== "boundary" && stage.id !== "homology"
   );
   const quotientStageIndex = pipelineWithoutFormalStages.findIndex((stage) => stage.id === "quotient");
   const pipeline = [...pipelineWithoutFormalStages];
   pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 1 : pipeline.length, 0, validationStage);
   pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 2 : pipeline.length, 0, boundaryStage);
+  pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 3 : pipeline.length, 0, homologyStage);
   return {
     ...normalized,
     topologyObject,
     structuralValidation,
     cellularBoundaryOperators,
+    homology,
     pipeline,
   };
 };

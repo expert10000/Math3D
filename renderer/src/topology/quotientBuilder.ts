@@ -1,6 +1,7 @@
 import { buildRealizationChoices } from "./realization";
 import {
   buildExactCellularBoundaryOperators,
+  computeExactHomology,
   createTopologyObjectFromFundamentalDiagram,
   validateCanonicalTopologyObject,
 } from "./core";
@@ -637,11 +638,19 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
     topologyObjectWithValidation,
     structuralValidation
   );
-  const topologyObject = {
+  const topologyObjectWithBoundaries = {
     ...topologyObjectWithValidation,
     analysis: {
       ...topologyObjectWithValidation.analysis,
       cellularBoundaryOperators,
+    },
+  };
+  const homology = computeExactHomology(topologyObjectWithBoundaries, cellularBoundaryOperators);
+  const topologyObject = {
+    ...topologyObjectWithBoundaries,
+    analysis: {
+      ...topologyObjectWithBoundaries.analysis,
+      homology,
     },
   };
 
@@ -701,6 +710,15 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
           : "Boundary matrices withheld because structural prerequisites were not met.",
     },
     {
+      id: "homology",
+      label: "Exact Homology",
+      status: homology.status === "exact" ? "done" : homology.status === "unsupported" ? "warning" : "error",
+      note:
+        homology.status === "exact"
+          ? `Computed Z and Z/2Z homology exactly; H1 = ${homology.value?.integer.groups[1].notation ?? "n/a"}.`
+          : "Homology withheld because exact chain-complex prerequisites were not met.",
+    },
+    {
       id: "realization",
       label: "Geometric Realization",
       status: "done",
@@ -730,5 +748,6 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
     topologyObject,
     structuralValidation,
     cellularBoundaryOperators,
+    homology,
   };
 };

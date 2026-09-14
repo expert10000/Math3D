@@ -3,3 +3,5 @@ export * from "./provenance";
 export * from "./canonicalize";
 export * from "./structuralValidation";
 export * from "./cellularBoundary";
+export * from "./smithNormalForm";
+export * from "./homology";

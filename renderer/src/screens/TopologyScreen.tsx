@@ -2271,6 +2271,7 @@ export const TopologyScreen: React.FC = () => {
     const complex = result.topologyObject.canonical;
     const validation = result.structuralValidation;
     const boundaryOperators = result.cellularBoundaryOperators;
+    const homology = result.homology;
     const report = validation.value;
     const errorCount = validation.diagnostics.filter((entry) => entry.severity === "error").length;
     const warningCount = validation.diagnostics.filter((entry) => entry.severity === "warning").length;
@@ -2500,12 +2501,84 @@ export const TopologyScreen: React.FC = () => {
                 Exact chain condition ∂₁∂₂ = 0: {boundaryOperators.value.chainCondition.holds ? "PASS" : "FAIL"}
               </div>
               <div style={{ fontSize: 10, color: "#475569" }}>
-                Cell headers are selectable. Homology and Smith normal form arrive in Commit 5.
+                Cell headers are selectable. Integral reductions use exact bigint Smith normal form.
               </div>
             </>
           ) : (
             <div data-testid="topology-chain-condition" style={{ color: "#b91c1c", fontSize: 11, fontWeight: 700 }}>
               Matrices withheld: canonical structural validation did not authorize cellular algebra.
+            </div>
+          )}
+        </section>
+        <section
+          data-testid="topology-homology-preview"
+          style={{ border: "1px solid #99f6e4", borderRadius: 10, background: "#f0fdfa", padding: "9px 10px", display: "grid", gap: 8 }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
+            <strong>Exact homology preview</strong>
+            <span style={{ fontWeight: 700, color: homology.status === "exact" ? "#166534" : "#b91c1c" }}>
+              {homology.status}
+            </span>
+            <span>{homology.method}</span>
+          </div>
+          {homology.value ? (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 8 }}>
+                <div style={{ border: "1px solid #a7f3d0", borderRadius: 8, background: "#fff", padding: 8, display: "grid", gap: 6 }}>
+                  <strong style={{ fontSize: 11 }}>Integral coefficients Z</strong>
+                  {homology.value.integer.groups.map((group) => (
+                    <div key={`homology-z-${group.degree}`} data-testid={`topology-homology-z-h${group.degree}`} style={{ fontSize: 11 }}>
+                      <div><strong>H{group.degree} ≅ {group.notation}</strong> · β{group.degree} = {group.bettiNumber}</div>
+                      {group.torsionCoefficients.length > 0 && <div>Torsion: {group.torsionCoefficients.join(", ")}</div>}
+                      {group.generators.map((generator) => (
+                        <div key={generator.id} style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", color: "#475569" }}>
+                          <span>{generator.kind === "torsion" ? `order ${generator.order}` : "free"} representative:</span>
+                          {generator.representative.coefficients.length === 0 ? <span>0</span> : generator.representative.coefficients.map((entry) => (
+                            <button
+                              key={`${generator.id}-${entry.cellId}`}
+                              type="button"
+                              onClick={() => inspectCell(group.degree, entry.cellId)}
+                              style={{ fontSize: 10, fontFamily: "ui-monospace, monospace" }}
+                            >
+                              {entry.coefficient}·{entry.cellId}
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ border: "1px solid #a7f3d0", borderRadius: 8, background: "#fff", padding: 8, display: "grid", gap: 6 }}>
+                  <strong style={{ fontSize: 11 }}>Finite-field coefficients Z/2Z</strong>
+                  {homology.value.mod2.groups.map((group) => (
+                    <div key={`homology-z2-${group.degree}`} data-testid={`topology-homology-z2-h${group.degree}`} style={{ fontSize: 11 }}>
+                      <div><strong>H{group.degree} ≅ {group.notation}</strong> · dimension {group.dimension}</div>
+                      {group.generators.map((generator) => (
+                        <div key={generator.id} style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", color: "#475569" }}>
+                          <span>representative:</span>
+                          {generator.representative.coefficients.map((entry) => (
+                            <button
+                              key={`${generator.id}-${entry.cellId}`}
+                              type="button"
+                              onClick={() => inspectCell(group.degree, entry.cellId)}
+                              style={{ fontSize: 10, fontFamily: "ui-monospace, monospace" }}
+                            >
+                              {entry.cellId}
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ fontSize: 10, color: "#475569" }}>
+                SNF reduction maps and cycle representatives retain the canonical cell basis. Full matrix/group comparison and the Euler cross-check arrive in the Algebra view in Commit 6.
+              </div>
+            </>
+          ) : (
+            <div style={{ color: "#b91c1c", fontSize: 11, fontWeight: 700 }}>
+              Homology withheld: exact boundary operators with a passing chain condition are required.
             </div>
           )}
         </section>
@@ -5812,6 +5885,10 @@ export const TopologyScreen: React.FC = () => {
               </div>
               <div data-testid="topology-cellular-boundary-status">
                 Exact cellular boundaries: <strong>{buildResult.cellularBoundaryOperators.status}</strong> · ∂₁∂₂ {buildResult.cellularBoundaryOperators.value?.chainCondition.holds ? "PASS" : "withheld"}
+              </div>
+              <div data-testid="topology-homology-status">
+                Exact homology Z / Z/2Z: <strong>{buildResult.homology.status}</strong>
+                {buildResult.homology.value ? ` · H1 = ${buildResult.homology.value.integer.groups[1].notation}` : ""}
               </div>
               <button type="button" onClick={() => setActiveView("complex")} style={{ fontSize: 10 }}>
                 Open Complex view

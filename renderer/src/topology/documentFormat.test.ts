@@ -64,15 +64,18 @@ describe("topology document format", () => {
     const legacy = structuredClone(buildQuotientPipeline(diagram));
     delete (legacy as { structuralValidation?: unknown }).structuralValidation;
     delete (legacy as { cellularBoundaryOperators?: unknown }).cellularBoundaryOperators;
+    delete (legacy as { homology?: unknown }).homology;
     delete (legacy.topologyObject.canonical as Partial<CanonicalTopologyComplex>).incidences;
-    legacy.pipeline = legacy.pipeline.filter((stage) => stage.id !== "validation" && stage.id !== "boundary");
+    legacy.pipeline = legacy.pipeline.filter((stage) => stage.id !== "validation" && stage.id !== "boundary" && stage.id !== "homology");
 
     const normalized = normalizeTopologyRealizationKinds(legacy);
 
     expect(normalized.topologyObject.canonical.incidences).toBeTruthy();
     expect(normalized.structuralValidation.status).toBe("certified-within-model");
     expect(normalized.cellularBoundaryOperators.status).toBe("exact");
+    expect(normalized.homology.status).toBe("exact");
     expect(normalized.pipeline.some((stage) => stage.id === "validation")).toBe(true);
     expect(normalized.pipeline.some((stage) => stage.id === "boundary")).toBe(true);
+    expect(normalized.pipeline.some((stage) => stage.id === "homology")).toBe(true);
   });
 });

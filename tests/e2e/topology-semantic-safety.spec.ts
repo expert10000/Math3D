@@ -22,6 +22,7 @@ test.describe("Topology semantic safety", () => {
       await expect(ctx.page.getByTestId("topology-recognized-boundary")).toContainText("Recognized boundary hint");
       await expect(ctx.page.getByTestId("topology-formal-classification")).toContainText("withheld");
       await expect(ctx.page.getByTestId("topology-structural-validation-status")).toContainText("certified-within-model");
+      await expect(ctx.page.getByTestId("topology-homology-status")).toContainText("exact");
 
       await ctx.page.getByRole("button", { name: "Complex View", exact: true }).click();
       await expect(ctx.page.getByTestId("topology-complex-view")).toBeVisible();
@@ -35,8 +36,13 @@ test.describe("Topology semantic safety", () => {
       await expect(ctx.page.getByTestId("topology-cellular-boundary-operators")).toContainText("∂₁ : C₁ → C₀");
       await expect(ctx.page.getByTestId("topology-cellular-boundary-operators")).toContainText("∂₂ : C₂ → C₁");
       await expect(ctx.page.getByTestId("topology-chain-condition")).toContainText("∂₁∂₂ = 0: PASS");
+      await expect(ctx.page.getByTestId("topology-homology-preview")).toContainText("Exact homology preview");
+      await expect(ctx.page.getByTestId("topology-homology-z-h1")).toContainText("H1 ≅");
+      await expect(ctx.page.getByTestId("topology-homology-z2-h1")).toContainText("dimension");
 
       await ctx.page.getByTestId("topology-preset-card-projective_plane").click();
+      await ctx.page.getByRole("button", { name: "Complex View", exact: true }).click();
+      await expect(ctx.page.getByTestId("topology-homology-z-h1")).toContainText("Z/2Z");
       await ctx.page.getByRole("button", { name: "Realization View", exact: true }).click();
       await expect(ctx.page.getByTestId("topology-realization-authority")).toHaveAttribute("data-realization-kind", "immersed");
       await expect(ctx.page.getByTestId("topology-realization-authority")).toContainText("non-authoritative");

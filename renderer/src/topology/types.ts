@@ -174,7 +174,7 @@ export type Realization3D = {
   style: RealizationStyle;
 };
 
-export type PipelineStageId = "diagram" | "subdivide" | "equivalence" | "quotient" | "validation" | "boundary" | "realization" | "render";
+export type PipelineStageId = "diagram" | "subdivide" | "equivalence" | "quotient" | "validation" | "boundary" | "homology" | "realization" | "render";
 
 export type QuotientPipelineStage = {
   id: PipelineStageId;
@@ -212,5 +212,8 @@ export type QuotientBuildResult = {
   >;
   cellularBoundaryOperators: import("./core/contracts").TopologyResult<
     import("./core/cellularBoundary").CellularBoundaryOperators
+  >;
+  homology: import("./core/contracts").TopologyResult<
+    import("./core/homology").TopologyHomologyAnalysis
   >;
 };
