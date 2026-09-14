@@ -1,4 +1,4 @@
-import type { CommandEnvelope } from "./commands";
+import { normalizeCommandEnvelope, type CommandEnvelope } from "./commands";
 import type { SceneDocument } from "./sceneDocument";
 import { validateSceneDocument, type ValidationResult } from "./validation";
 
@@ -50,13 +50,32 @@ export const deserializeSceneProject = (serialized: string): ValidationResult<Sc
   const sceneResult = validateSceneDocument(candidate.scene);
   if (!sceneResult.ok) return { ok: false, errors: sceneResult.errors };
 
+  const rawCommandLog = (parsed as Record<string, unknown>).commandLog;
+  let commandLog: CommandEnvelope[] | undefined;
+  if (rawCommandLog !== undefined) {
+    if (!Array.isArray(rawCommandLog)) {
+      return { ok: false, errors: ["Project commandLog must be an array when provided."] };
+    }
+    commandLog = [];
+    for (let index = 0; index < rawCommandLog.length; index += 1) {
+      const commandResult = normalizeCommandEnvelope(rawCommandLog[index]);
+      if (!commandResult.ok) {
+        return {
+          ok: false,
+          errors: commandResult.errors.map((error) => `commandLog[${index}]: ${error}`),
+        };
+      }
+      commandLog.push(commandResult.value);
+    }
+  }
+
   return {
     ok: true,
     value: {
       format: SCENE_PROJECT_FORMAT,
       version: SCENE_PROJECT_VERSION,
       scene: sceneResult.value,
-      commandLog: Array.isArray(candidate.commandLog) ? candidate.commandLog : undefined,
+      commandLog,
       workbookId: typeof candidate.workbookId === "string" ? candidate.workbookId : undefined,
     },
   };
