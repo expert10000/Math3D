@@ -347,6 +347,22 @@ store for migrated paths.
 artifacts remain explicit `unavailable` references; no large payload enters React
 state.
 
+#### F08 - `feat(kernel): add capability-aware scientific execution broker`
+
+**Scope.** Add a transport-neutral broker over F05 job contracts with explicit
+backend capability discovery, deterministic routing, cancellation propagation,
+typed transport/protocol failures, safe bounded retry/fallback policy, and an
+adapter for the in-process scientific-job service.
+
+**Compatibility boundary.** Existing browser, Electron, Python, CGAL, VTK, Sage,
+and native worker clients remain unchanged until domain adapter commits opt in.  No
+optional backend becomes required and no current operation silently changes engine.
+
+**Acceptance.** Identical capability snapshots select the same backend; unsupported
+operations fail before transport; cancellation returns without waiting for an
+uncooperative backend; only explicitly idempotent operations retry/fallback; stale
+or malformed backend results cannot publish.
+
 ### Phase T - Topology v1
 
 #### T01 - `test(topology): add canonical topology regression corpus`
@@ -1158,3 +1174,49 @@ identity, command, transaction, kernel, scientific-job, result-envelope,
 scene/topology compatibility, and Topology/Complex platform-baseline suites pass (87
 tests total), along with `typecheck:noemit` and the renderer production build.  F08
 is the next program commit.
+
+### F08 execution plan
+
+**Status:** complete
+
+F08 introduces routing and transport policy without replacing F05 lifecycle safety
+or migrating a domain worker.  Backends expose declarative capabilities; the broker
+selects and audits execution while F05 requests/results remain the semantic wire
+contract.
+
+1. Define immutable capability snapshots for backend ID/version, transport kind,
+   priority, availability, cancellation support, operation limits, and explicit
+   `never` or `idempotent` retry safety.  Discovery failure produces an inspectable
+   unavailable snapshot rather than an exception escaping routing.
+2. Add a broker with strict backend configuration, deterministic priority/ID route
+   ordering, optional caller preferences, and explicit fallback control.  Reject an
+   unsupported operation or insufficient backend limit before invoking transport.
+3. Add typed transport errors for unavailable, failed, and protocol-invalid paths.
+   Validate every returned F05 outcome against job ID, operation, source generation,
+   canonical output, and reported byte length before accepting publication.
+4. Propagate cancellation to the active backend and race broker completion so an
+   uncooperative transport cannot delay the caller.  Apply the request's absolute
+   deadline across discovery, retries, and fallback attempts.
+5. Retry transient transport failures only for capabilities explicitly marked
+   idempotent, with a configured finite per-backend attempt count.  Never retry
+   scientific failures, protocol errors, cancelled/deadline jobs, or operations
+   marked `never`; record all attempts and fallback decisions as compact metadata.
+6. Provide an in-process backend adapter over the existing F05 service as the local
+   deterministic fallback.  Do not make it mandatory when a caller configures only
+   worker or remote backends.
+7. Prove discovery, deterministic routing, preference/fallback, limit filtering,
+   typed failures, safe retry rules, prompt cancellation/deadline, malformed/stale
+   result rejection, and in-process compatibility in UI-free tests.  Re-run F01-F07
+   compatibility suites, `typecheck:noemit`, and the renderer production build.
+
+**F08 acceptance:** routing is deterministic and capability-driven; unsupported or
+oversized jobs never reach transport; cancellation/deadline completion does not wait
+for a backend; retries and fallback occur only for explicitly idempotent operations
+after transient transport failures; accepted results match the exact F05 request and
+current source; and no existing UI or worker route changes until it opts in.
+
+**Completed verification:** eleven focused broker assertions plus the F01-F07
+identity, command, transaction, kernel, scientific-job, result-envelope, artifact-
+registry, scene/topology compatibility, and Topology/Complex platform-baseline suites
+pass (98 tests total), along with `typecheck:noemit` and the renderer production
+build.  The foundation phase is complete; T01 is the next program commit.

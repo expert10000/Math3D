@@ -45,18 +45,21 @@ export type ScientificJobProgress = Readonly<{
   message?: string;
 }>;
 
-export type ScientificJobFailureCode =
-  | "invalid-request"
-  | "unsupported-operation"
-  | "source-unavailable"
-  | "stale-source"
-  | "cancelled"
-  | "deadline-exceeded"
-  | "input-limit-exceeded"
-  | "output-limit-exceeded"
-  | "memory-limit-exceeded"
-  | "work-limit-exceeded"
-  | "adapter-failed";
+export const SCIENTIFIC_JOB_FAILURE_CODES = [
+  "invalid-request",
+  "unsupported-operation",
+  "source-unavailable",
+  "stale-source",
+  "cancelled",
+  "deadline-exceeded",
+  "input-limit-exceeded",
+  "output-limit-exceeded",
+  "memory-limit-exceeded",
+  "work-limit-exceeded",
+  "adapter-failed",
+] as const;
+
+export type ScientificJobFailureCode = (typeof SCIENTIFIC_JOB_FAILURE_CODES)[number];
 
 export type ScientificJobResult = Readonly<{
   ok: true;
