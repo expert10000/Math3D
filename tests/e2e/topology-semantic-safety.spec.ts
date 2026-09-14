@@ -45,6 +45,16 @@ test.describe("Topology semantic safety", () => {
       await expect(ctx.page.getByTestId("topology-algebra-groups")).toContainText("Homology over Z/2Z");
       await expect(ctx.page.getByTestId("topology-algebra-snf")).toContainText("SNF diagonals");
       await expect(ctx.page.getByTestId("topology-algebra-euler-check")).toContainText("Euler–homology consistency: PASS");
+      await expect(ctx.page.getByTestId("topology-fundamental-group")).toContainText("Fundamental group π₁ presentation");
+      await expect(ctx.page.getByTestId("topology-pi1-abelianization-check")).toContainText("PASS");
+
+      await ctx.page.getByRole("button", { name: "Compare View", exact: true }).click();
+      await expect(ctx.page.getByTestId("topology-comparison-outcome")).toContainText("DISTINGUISHED");
+      await expect(ctx.page.getByTestId("topology-comparison-report")).toContainText("Matching computed invariants do not prove equivalence");
+      await ctx.page.getByLabel("Source A").selectOption("torus_square");
+      await ctx.page.getByLabel("Source B").selectOption("torus_square");
+      await expect(ctx.page.getByTestId("topology-comparison-outcome")).toContainText("INCONCLUSIVE");
+      await expect(ctx.page.getByTestId("topology-comparison-outcome")).toContainText("equivalence remains unproved");
 
       await ctx.page.getByTestId("topology-preset-card-projective_plane").click();
       await ctx.page.getByRole("button", { name: "Complex View", exact: true }).click();

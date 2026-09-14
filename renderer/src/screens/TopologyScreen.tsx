@@ -17,6 +17,7 @@ import {
   buildTopologyCountLayers,
   buildQuotientPipeline,
   cloneFundamentalDiagram,
+  compareTopologyBuildResults,
   createTopologyDocument,
   computeInvalidBoundaryCycleDiagnostics,
   computeNonManifoldEdgeDiagnostics,
@@ -57,6 +58,7 @@ type DiagramToolMode = "select" | "addVertex" | "addEdge";
 type TopologyTopicTab = "euler" | "constructingPolygon" | "polyhedra" | "klein" | "mobius";
 type DiagnosticsFocusKind = "edge" | "vertex" | "face";
 type CanonicalCellSelection = { dimension: 0 | 1 | 2; cellId: string };
+type CompareSourceOverride = { label: string; result: QuotientBuildResult; audit: string };
 
 const TOPOLOGY_TOPIC_TABS: Array<{ id: TopologyTopicTab; label: string }> = [
   { id: "euler", label: "Euler" },
@@ -1290,6 +1292,8 @@ export const TopologyScreen: React.FC = () => {
       ? "mobius_from_rectangle"
       : TOPOLOGY_PRESETS[1]?.id ?? TOPOLOGY_PRESETS[0]?.id ?? DEFAULT_TOPOLOGY_PRESET_ID
   );
+  const [compareLeftOverride, setCompareLeftOverride] = useState<CompareSourceOverride | null>(null);
+  const [compareRightOverride, setCompareRightOverride] = useState<CompareSourceOverride | null>(null);
   const [expandedWarningId, setExpandedWarningId] = useState<string | null>(null);
   const [diagnosticsFocusKind, setDiagnosticsFocusKind] = useState<DiagnosticsFocusKind | null>(null);
   const [diagnosticsFocusLabel, setDiagnosticsFocusLabel] = useState<string | null>(null);
@@ -1379,14 +1383,20 @@ export const TopologyScreen: React.FC = () => {
       faces: buildResult.quotient.faces.length,
     };
   }, [buildResult]);
-  const compareLeftResult = useMemo(() => {
+  const compareLeftPresetResult = useMemo(() => {
     const preset = TOPOLOGY_PRESET_BY_ID.get(compareLeftPresetId) ?? TOPOLOGY_PRESETS[0];
     return preset ? buildQuotientPipeline(preset.buildDiagram()) : null;
   }, [compareLeftPresetId]);
-  const compareRightResult = useMemo(() => {
+  const compareRightPresetResult = useMemo(() => {
     const preset = TOPOLOGY_PRESET_BY_ID.get(compareRightPresetId) ?? TOPOLOGY_PRESETS[1] ?? TOPOLOGY_PRESETS[0];
     return preset ? buildQuotientPipeline(preset.buildDiagram()) : null;
   }, [compareRightPresetId]);
+  const compareLeftResult = compareLeftOverride?.result ?? compareLeftPresetResult;
+  const compareRightResult = compareRightOverride?.result ?? compareRightPresetResult;
+  const comparisonReport = useMemo(
+    () => compareLeftResult && compareRightResult ? compareTopologyBuildResults(compareLeftResult, compareRightResult) : null,
+    [compareLeftResult, compareRightResult]
+  );
   const quotientEdgeById = useMemo(
     () => new Map(buildResult.quotient.edges.map((edge) => [edge.id, edge])),
     [buildResult.quotient.edges]
@@ -2032,6 +2042,48 @@ export const TopologyScreen: React.FC = () => {
       reader.readAsText(file);
     };
     input.click();
+  };
+
+  const useCurrentWorkspaceForCompare = (side: "A" | "B") => {
+    const currentResult = ensureBuilt();
+    const source: CompareSourceOverride = {
+      label: `Current workspace: ${diagram.name}`,
+      result: currentResult,
+      audit: `live source ${currentResult.topologyObject.provenance.source.revision}`,
+    };
+    if (side === "A") setCompareLeftOverride(source);
+    else setCompareRightOverride(source);
+  };
+
+  const loadDocumentForCompare = async (side: "A" | "B") => {
+    if (!window.topologyDocuments?.open) {
+      setDocError("Document comparison requires the desktop topology document picker.");
+      return;
+    }
+    const opened = await window.topologyDocuments.open();
+    if (!opened.ok) {
+      if (!opened.canceled) setDocError(opened.error || "Failed to open comparison document.");
+      return;
+    }
+    try {
+      const loaded = migrateTopologyDocument(JSON.parse(opened.content));
+      if (!loaded) {
+        setDocError("Unsupported topology document selected for comparison.");
+        return;
+      }
+      const fileLabel = opened.path.split(/[\\/]/).pop() || opened.path;
+      const source: CompareSourceOverride = {
+        label: `Document: ${fileLabel}`,
+        result: loaded.buildResult,
+        audit: loaded.audit.loadedVersion === 1 ? "v1 migrated/recomputed" : `v2 cache ${loaded.audit.cacheStatus}`,
+      };
+      if (side === "A") setCompareLeftOverride(source);
+      else setCompareRightOverride(source);
+      setDocError(null);
+      setDocStatus(`Loaded ${fileLabel} into Compare side ${side} without replacing the workspace.`);
+    } catch (error) {
+      setDocError(`Failed to parse comparison document: ${String((error as Error).message ?? error)}`);
+    }
   };
 
   const renderDiagramView = () => {
@@ -5209,7 +5261,7 @@ export const TopologyScreen: React.FC = () => {
   const renderCompareView = () => {
     const pickRealization = (result: QuotientBuildResult) =>
       result.realizations.find((entry) => entry.id.includes("smooth") || entry.id.includes("immersed")) ?? result.realizations[0];
-    if (!compareLeftResult || !compareRightResult) {
+    if (!compareLeftResult || !compareRightResult || !comparisonReport) {
       return <div style={{ fontSize: 12 }}>Compare presets are not available.</div>;
     }
     const leftRealization = pickRealization(compareLeftResult);
@@ -5217,21 +5269,26 @@ export const TopologyScreen: React.FC = () => {
     if (!leftRealization || !rightRealization) {
       return <div style={{ fontSize: 12 }}>Compare realizations are missing.</div>;
     }
+    const sides = [
+      { side: "A" as const, presetId: compareLeftPresetId, setPresetId: setCompareLeftPresetId, override: compareLeftOverride, setOverride: setCompareLeftOverride, result: compareLeftResult, realization: leftRealization },
+      { side: "B" as const, presetId: compareRightPresetId, setPresetId: setCompareRightPresetId, override: compareRightOverride, setOverride: setCompareRightOverride, result: compareRightResult, realization: rightRealization },
+    ];
     return (
       <div style={{ display: "grid", gap: 10 }}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
-          <strong>Compare constructions</strong>
-          <span style={{ color: "#475569" }}>Side-by-side quotient models with synchronized overlay settings.</span>
+          <strong>Compare documents and invariants</strong>
+          <span style={{ color: "#475569" }}>Presets, the current workspace, or saved v1/v2 documents; loaded comparison documents never replace the workspace.</span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          {([
-            [compareLeftPresetId, setCompareLeftPresetId, compareLeftResult, leftRealization, "A"],
-            [compareRightPresetId, setCompareRightPresetId, compareRightResult, rightRealization, "B"],
-          ] as const).map(([presetIdValue, setPreset, result, realization, side]) => (
-            <div key={`compare-${side}`} style={{ border: "1px solid #dbe4f0", borderRadius: 9, background: "#fff", padding: "8px 9px", display: "grid", gap: 7 }}>
+          {sides.map(({ side, presetId: presetIdValue, setPresetId, override, setOverride, result, realization }) => (
+            <div key={`compare-${side}`} data-testid={`topology-compare-side-${side}`} style={{ border: "1px solid #dbe4f0", borderRadius: 9, background: "#fff", padding: "8px 9px", display: "grid", gap: 7 }}>
               <label style={{ fontSize: 11, display: "grid", gap: 4 }}>
-                <span>Preset {side}</span>
-                <select value={presetIdValue} onChange={(event) => setPreset(event.target.value)} style={{ fontSize: 11 }}>
+                <span>Source {side}</span>
+                <select value={override ? "__override__" : presetIdValue} onChange={(event) => {
+                  setOverride(null);
+                  setPresetId(event.target.value);
+                }} style={{ fontSize: 11 }}>
+                  {override && <option value="__override__">{override.label}</option>}
                   {TOPOLOGY_PRESETS.map((preset) => (
                     <option key={`compare-preset-${side}-${preset.id}`} value={preset.id}>
                       {preset.label}
@@ -5239,6 +5296,14 @@ export const TopologyScreen: React.FC = () => {
                   ))}
                 </select>
               </label>
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                <button type="button" onClick={() => useCurrentWorkspaceForCompare(side)} style={{ fontSize: 10 }}>Use current workspace</button>
+                <button type="button" onClick={() => void loadDocumentForCompare(side)} style={{ fontSize: 10 }}>Load document…</button>
+                {override && <button type="button" onClick={() => setOverride(null)} style={{ fontSize: 10 }}>Back to preset</button>}
+              </div>
+              <div style={{ fontSize: 10, color: "#0f4c81", fontWeight: 700 }}>
+                {override ? `${override.label} · ${override.audit}` : `Preset: ${TOPOLOGY_PRESET_BY_ID.get(presetIdValue)?.label ?? presetIdValue}`}
+              </div>
               <div data-testid={`topology-compare-realization-kind-${side}`} style={{ fontSize: 10, color: "#475569" }}>
                 <strong>{TOPOLOGY_REALIZATION_KIND_LABELS[realization.kind]} R³ model.</strong>{" "}
                 {topologyRealizationExplanation(realization.kind)} Formal values below come from the quotient complex.
@@ -5264,6 +5329,43 @@ export const TopologyScreen: React.FC = () => {
             </div>
           ))}
         </div>
+        <section
+          data-testid="topology-comparison-report"
+          style={{
+            border: `1px solid ${comparisonReport.outcome === "distinguished" ? "#fca5a5" : "#fbbf24"}`,
+            borderRadius: 10,
+            background: comparisonReport.outcome === "distinguished" ? "#fff1f2" : "#fffbeb",
+            padding: "9px 10px",
+            display: "grid",
+            gap: 7,
+            fontSize: 11,
+          }}
+        >
+          <div data-testid="topology-comparison-outcome" style={{ fontSize: 13, fontWeight: 800 }}>
+            {comparisonReport.outcome === "distinguished" ? "DISTINGUISHED" : "INCONCLUSIVE"}: {comparisonReport.summary}
+          </div>
+          <div style={{ color: "#7c2d12", fontWeight: 700 }}>{comparisonReport.disclaimer}</div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+              <thead><tr><th style={{ textAlign: "left" }}>Evidence</th><th>A</th><th>B</th><th>Result</th></tr></thead>
+              <tbody>
+                {comparisonReport.rows.map((row) => (
+                  <tr key={`comparison-row-${row.id}`} data-testid={`topology-comparison-row-${row.id}`}>
+                    <td style={{ borderTop: "1px solid #e2e8f0", padding: "5px 4px" }}><strong>{row.label}</strong><div style={{ color: "#64748b" }}>{row.authority}</div></td>
+                    <td style={{ borderTop: "1px solid #e2e8f0", padding: "5px 4px", textAlign: "center" }}>{row.left}</td>
+                    <td style={{ borderTop: "1px solid #e2e8f0", padding: "5px 4px", textAlign: "center" }}>{row.right}</td>
+                    <td style={{ borderTop: "1px solid #e2e8f0", padding: "5px 4px" }}>
+                      <strong style={{ color: row.distinguishes ? "#b42318" : row.status === "match" ? "#166534" : "#475569" }}>
+                        {row.distinguishes ? "witness" : row.status}
+                      </strong>
+                      <div style={{ color: "#64748b" }}>{row.explanation}</div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
     );
   };

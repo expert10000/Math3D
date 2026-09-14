@@ -9,4 +9,5 @@ export * from "./TopologyRealization3DView";
 export * from "./polygonWord";
 export * from "./diagnostics";
 export * from "./countLayers";
+export * from "./comparison";
 export * from "./core";

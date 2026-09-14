@@ -515,6 +515,28 @@ Where in the UI:
 - The green abelianization row compares the exact SNF result with independently computed `H₁` and displays **PASS** only when free rank and torsion agree.
 - The right-side **C. Diagnostics** panel also reports the presentation status and compact group presentation.
 
+### Commit 11 — Document and invariant comparison
+
+**Status: complete (2026-09-14).**
+
+Delivered:
+
+- Replaced the preset-only comparison summary with a versioned, UI-independent invariant comparison report.
+- Compare now accepts any mixture of shipped presets, the current live workspace, and saved `.math3d-topology` v1/v2 documents. Comparison loads are read-only and never replace the active workspace.
+- Saved inputs use the v2 migration/audit path: v1 caches are ignored and recomputed, while v2 fingerprints and algorithm versions are verified before comparison.
+- Compares exact Euler characteristic and `H₀`–`H₂` over `Z` and `Z/2Z`, plus orientability, boundary-component count, and genus/crosscap data only when both inputs have certified compact-surface results.
+- A difference in an exact/certified invariant produces a precise **DISTINGUISHED** witness. If no available invariant differs, the result is **INCONCLUSIVE** and explicitly says that equivalence/homeomorphism remains unproved.
+- Shows derived π₁ presentation text and R³ realization type for context but never treats differences in either as distinguishing evidence: different presentations may define isomorphic groups, and display models are non-authoritative.
+- Retained synchronized side-by-side realization controls while adding a complete evidence table with authority, values, result state, and the mathematical meaning of each row.
+- Added regression fixtures for homology witnesses, certified-surface witnesses, matching-invariant inconclusiveness, and non-authoritative presentation/realization differences.
+
+Where in the UI:
+
+- Open **Topology → Compare View**.
+- For either side, choose a preset, select **Use current workspace**, or choose **Load document…** for a saved v1/v2 topology file. The source/audit line identifies exactly what is being compared.
+- The side-by-side R³ models remain available for visual context. Scroll to **Compare documents and invariants** for the authoritative comparison report.
+- A red **DISTINGUISHED** result lists every exact/certified witness. An amber **INCONCLUSIVE** result means only that the current computations found no difference—not that the objects are equivalent.
+
 ## Deferred research layer
 
 Do not schedule before the above release gates are stable:
