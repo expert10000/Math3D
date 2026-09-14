@@ -17,6 +17,8 @@
     "paths": {
       "@math3d/core": ["../packages/core/src/index.ts"],
       "@math3d/core/*": ["../packages/core/src/*"],
+      "@math3d/kernel": ["../packages/kernel/src/index.ts"],
+      "@math3d/kernel/*": ["../packages/kernel/src/*"],
       "@math3d/renderer-web": ["../packages/renderer-web/src/index.ts"],
       "@math3d/renderer-web/*": ["../packages/renderer-web/src/*"],
       "@math3d/ui": ["../packages/ui/src/index.ts"],
@@ -41,6 +43,7 @@
   "include": [
     "src",
     "../packages/core/src/**/*.ts",
+    "../packages/kernel/src/**/*.ts",
     "../packages/renderer-web/src/**/*.ts",
     "../packages/ui/src/**/*.ts",
     "../packages/workbook/src/**/*.ts",

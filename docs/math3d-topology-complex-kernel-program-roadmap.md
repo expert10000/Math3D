@@ -937,3 +937,90 @@ adds identity metadata.
 scene-serialization and F01 Topology/Complex baseline suites pass (50 tests total),
 along with `typecheck:noemit` and the renderer production build.  F03 is the next
 program commit.
+
+### F03 execution plan
+
+**Status:** complete
+
+F03 is a shared-core contract commit.  It establishes deterministic command and
+projection semantics without introducing the runtime kernel service or migrating any
+current UI mutation path.
+
+1. Replace the unversioned command-log record with a strict schema-v1 envelope
+   carrying a stable command ID, explicit origin, normalized `{ type, payload }`
+   command input, and separately stored diagnostic metadata.
+2. Require canonical JSON for envelopes, payloads, normalized validator output, and
+   transaction state.  Reject unknown envelope fields and unsupported schema
+   versions so execution inputs cannot depend on functions, clocks, random values,
+   browser state, or class instances.
+3. Normalize the legacy `{ id, timestamp, actor, command }` scene-log shape during
+   reads.  Preserve its timestamp as diagnostic metadata and mark its origin as
+   legacy; do not rewrite a file until the user's normal save/export action.
+4. Add a registry-driven pure transaction projector that validates the complete
+   batch before projection, works against an immutable clone, preserves command
+   order, and returns no candidate state on failure.
+5. Reserve `scene.replace` for controlled import, migration, and replay.  Reject it
+   in ordinary interactive transactions while leaving all current UI mutation paths
+   unchanged.
+6. Prove legacy normalization, metadata/input separation, validation-before-project,
+   atomic rollback, immutable input, replacement policy, and deterministic replay in
+   focused shared-core tests.  Re-run the scene-document compatibility suite, F01
+   platform baseline, `typecheck:noemit`, and the renderer production build.  Publish
+   the contract and F04 boundary in `docs/kernel-command-transactions.md`.
+
+**F03 acceptance:** invalid batches invoke no projector; projection failures cannot
+mutate the caller's input; repeated replay produces byte-identical canonical state;
+legacy logs load as normalized v1 envelopes; and no React, Three.js, Electron, clock,
+or randomness dependency enters shared core.
+
+**Completed verification:** eight focused command-envelope/transaction assertions
+plus the F02 identity, scene/topology document compatibility, and F01
+Topology/Complex platform-baseline suites pass (49 tests total), along with
+`typecheck:noemit` and the renderer production build.  F04 is the next program
+commit.
+
+### F04 execution plan
+
+**Status:** complete
+
+F04 is the first dedicated `@math3d/kernel` runtime commit.  It composes the pure F03
+projector into a synchronous in-memory ownership boundary without migrating any
+existing React store or viewer workflow.
+
+1. Create the private workspace package `@math3d/kernel`, depending only on
+   `@math3d/core`, and expose a generic in-memory document kernel with no React,
+   Three.js, Electron, browser-global, worker, clock, or randomness dependency.
+2. Accept deterministic transaction IDs, ordered versioned command batches, an
+   execution mode, and an explicit history policy.  Project and validate completely
+   before committing candidate state.
+3. Expose state only through synchronous read-only queries over recursively frozen
+   snapshots.  Clone and freeze query results so neither callers nor subscribers can
+   acquire mutable kernel-owned state.
+4. Publish immutable, monotonically sequenced completed-fact events only after state
+   and history commit.  Deliver listeners in subscription order, isolate listener
+   failures, define snapshot semantics for subscription changes, and return an
+   idempotent cleanup function.
+5. Record bounded reversible history as normalized forward and inverse command
+   batches rather than unconditional document copies.  Validate the inverse batch
+   before commit; implement synchronous undo/redo, clear redo on a new commit, and
+   clear both stacks for an explicitly irreversible commit.
+6. Reject re-entrant mutations during read-only query evaluation and completed-event
+   delivery so nested selectors/listeners cannot mutate through a side channel or
+   make event order ambiguous.  Failed commit, undo, or redo operations leave state,
+   history, event sequence, and subscriber observations unchanged.
+7. Prove commit visibility, event/listener ordering, immutable queries/events,
+   cleanup, failure atomicity, bounded history, undo/redo, irreversible policy, and
+   re-entrancy behavior in UI-free tests.  Re-run F01-F03 compatibility tests,
+   `typecheck:noemit`, and the renderer production build, and document the F05
+   boundary in `docs/kernel-runtime-service.md`.
+
+**F04 acceptance:** successful commits become visible before their completed event;
+failed operations emit nothing and record no history; listeners cannot mutate event
+or document state; event sequence and delivery order are deterministic; cleanup is
+idempotent; and bounded heterogeneous command history can undo and redo without UI.
+
+**Completed verification:** nine focused kernel-service assertions plus the eight F03
+command assertions, F02 identity, scene/topology document compatibility, and F01
+Topology/Complex platform-baseline suites pass (58 tests total), along with
+`typecheck:noemit` and the renderer production build.  F05 is the next program
+commit.

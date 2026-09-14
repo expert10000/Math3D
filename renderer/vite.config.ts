@@ -188,6 +188,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@math3d/core": path.resolve(rootDir, "../packages/core/src"),
+      "@math3d/kernel": path.resolve(rootDir, "../packages/kernel/src"),
       "@math3d/renderer-web": path.resolve(rootDir, "../packages/renderer-web/src"),
       "@math3d/ui": path.resolve(rootDir, "../packages/ui/src"),
       "@math3d/workbook": path.resolve(rootDir, "../packages/workbook/src"),
