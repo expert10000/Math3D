@@ -1,6 +1,7 @@
 import { buildRealizationChoices } from "./realization";
 import {
   buildExactCellularBoundaryOperators,
+  certifyAndClassifySurface,
   computeEulerHomologyConsistency,
   computeExactHomology,
   createTopologyObjectFromFundamentalDiagram,
@@ -655,11 +656,23 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
     },
   };
   const algebraicConsistency = computeEulerHomologyConsistency(topologyObjectWithHomology, homology);
-  const topologyObject = {
+  const topologyObjectWithAlgebra = {
     ...topologyObjectWithHomology,
     analysis: {
       ...topologyObjectWithHomology.analysis,
       algebraicConsistency,
+    },
+  };
+  const surfaceClassification = certifyAndClassifySurface(
+    topologyObjectWithAlgebra,
+    structuralValidation,
+    algebraicConsistency
+  );
+  const topologyObject = {
+    ...topologyObjectWithAlgebra,
+    analysis: {
+      ...topologyObjectWithAlgebra.analysis,
+      surfaceClassification,
     },
   };
 
@@ -737,6 +750,17 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
           : "Euler–homology check withheld because exact homology is unavailable.",
     },
     {
+      id: "classification",
+      label: "Surface Eligibility & Classification",
+      status:
+        surfaceClassification.status === "failed"
+          ? "error"
+          : surfaceClassification.value?.classification
+            ? "done"
+            : "warning",
+      note: surfaceClassification.value?.classification?.label ?? "Formal surface classification withheld; inspect eligibility evidence.",
+    },
+    {
       id: "realization",
       label: "Geometric Realization",
       status: "done",
@@ -768,5 +792,6 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
     cellularBoundaryOperators,
     homology,
     algebraicConsistency,
+    surfaceClassification,
   };
 };

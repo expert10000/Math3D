@@ -1,6 +1,7 @@
 import type { OrientationRelation, QuotientBuildResult, QuotientComplex, Realization3D, TopologyRealizationKind, Vec3 } from "./types";
 import {
   buildExactCellularBoundaryOperators,
+  certifyAndClassifySurface,
   computeEulerHomologyConsistency,
   computeExactHomology,
   createTopologyObjectFromFundamentalDiagram,
@@ -65,11 +66,23 @@ export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): 
     },
   };
   const algebraicConsistency = computeEulerHomologyConsistency(topologyObjectWithHomology, homology);
-  const topologyObject = {
+  const topologyObjectWithAlgebra = {
     ...topologyObjectWithHomology,
     analysis: {
       ...topologyObjectWithHomology.analysis,
       algebraicConsistency,
+    },
+  };
+  const surfaceClassification = certifyAndClassifySurface(
+    topologyObjectWithAlgebra,
+    structuralValidation,
+    algebraicConsistency
+  );
+  const topologyObject = {
+    ...topologyObjectWithAlgebra,
+    analysis: {
+      ...topologyObjectWithAlgebra.analysis,
+      surfaceClassification,
     },
   };
   const validationStage = {
@@ -128,8 +141,19 @@ export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): 
         ? `Cell Euler and Betti Euler checks ${algebraicConsistency.value.holds ? "agree" : "disagree"} over Z and Z/2Z.`
         : "Euler–homology check withheld because exact homology is unavailable.",
   };
+  const classificationStage = {
+    id: "classification" as const,
+    label: "Surface Eligibility & Classification",
+    status:
+      surfaceClassification.status === "failed"
+        ? ("error" as const)
+        : surfaceClassification.value?.classification
+          ? ("done" as const)
+          : ("warning" as const),
+    note: surfaceClassification.value?.classification?.label ?? "Formal surface classification withheld; inspect eligibility evidence.",
+  };
   const pipelineWithoutFormalStages = normalized.pipeline.filter(
-    (stage) => stage.id !== "validation" && stage.id !== "boundary" && stage.id !== "homology" && stage.id !== "algebra"
+    (stage) => stage.id !== "validation" && stage.id !== "boundary" && stage.id !== "homology" && stage.id !== "algebra" && stage.id !== "classification"
   );
   const quotientStageIndex = pipelineWithoutFormalStages.findIndex((stage) => stage.id === "quotient");
   const pipeline = [...pipelineWithoutFormalStages];
@@ -137,6 +161,7 @@ export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): 
   pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 2 : pipeline.length, 0, boundaryStage);
   pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 3 : pipeline.length, 0, homologyStage);
   pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 4 : pipeline.length, 0, algebraStage);
+  pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 5 : pipeline.length, 0, classificationStage);
   return {
     ...normalized,
     topologyObject,
@@ -144,6 +169,7 @@ export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): 
     cellularBoundaryOperators,
     homology,
     algebraicConsistency,
+    surfaceClassification,
     pipeline,
   };
 };

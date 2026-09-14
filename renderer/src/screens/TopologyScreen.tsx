@@ -474,8 +474,8 @@ const isMobiusRectangleStoryDiagram = (candidate: FundamentalDiagram): boolean =
   const samePairLabel = pairLabel.length > 0 && pairedEdges.every((edge) => primaryEdgeLabelToken(candidate.edgeLabels[edge.id]) === pairLabel);
   if (!samePairLabel) return false;
   const relationKinds = new Set<number>(pairedEdges.map((edge) => candidate.edgeOrientations[edge.id] ?? 1));
-  const hasReversedGluing = relationKinds.size > 1;
-  if (!hasReversedGluing) return false;
+  const hasSameBoundaryDirection = relationKinds.size === 1;
+  if (!hasSameBoundaryDirection) return false;
   const unpaired = candidate.edges.filter((edge) => (candidate.edgePairings[edge.id]?.length ?? 0) === 0);
   return unpaired.length >= 2;
 };
@@ -2381,7 +2381,7 @@ export const TopologyScreen: React.FC = () => {
             {errorCount} structural errors · {warningCount} surface-eligibility warnings · cellular algebra {report?.canComputeCellularAlgebra ? "allowed" : "gated"}
           </div>
           <div style={{ color: "#475569" }}>
-            This certifies structure only within the displayed finite model; it is not yet a 2-manifold or surface-classification proof.
+            This certifies structure only within the displayed finite model. Open Algebra View for the separate manifold-eligibility and classification certificate.
           </div>
         </div>
 
@@ -2716,6 +2716,68 @@ export const TopologyScreen: React.FC = () => {
               ))}
               <div style={{ color: "#475569" }}>{consistency.method} · {consistency.algorithmVersion}</div>
             </>
+          )}
+        </section>
+        <section
+          data-testid="topology-surface-classification"
+          style={{
+            border: `1px solid ${result.surfaceClassification.value?.eligible ? "#86efac" : "#fbbf24"}`,
+            borderRadius: 10,
+            background: result.surfaceClassification.value?.eligible ? "#f0fdf4" : "#fffbeb",
+            padding: "9px 10px",
+            display: "grid",
+            gap: 7,
+            fontSize: 11,
+          }}
+        >
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <strong>Surface eligibility & formal classification</strong>
+            <span style={{ fontWeight: 700 }}>
+              {result.surfaceClassification.value?.eligible ? "ELIGIBLE" : "WITHHELD"}
+            </span>
+          </div>
+          {result.surfaceClassification.value ? (
+            <>
+              <div data-testid="topology-surface-classification-label" style={{ fontSize: 12, fontWeight: 700 }}>
+                {result.surfaceClassification.value.classification?.label ?? "No formal surface name: one or more eligibility checks failed."}
+              </div>
+              {result.surfaceClassification.value.classification && (
+                <div>
+                  {result.surfaceClassification.value.classification.equation} · boundary components {result.surfaceClassification.value.classification.boundaryComponents} · {result.surfaceClassification.value.orientability?.orientable ? "orientable" : "non-orientable"}
+                </div>
+              )}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 6 }}>
+                {result.surfaceClassification.value.eligibilityChecks.map((check) => (
+                  <div key={`surface-check-${check.id}`} data-testid={`topology-surface-check-${check.id}`} style={{ border: `1px solid ${check.holds ? "#bbf7d0" : "#fde68a"}`, borderRadius: 7, background: "#fff", padding: "6px 7px" }}>
+                    <div><strong>{check.holds ? "PASS" : "WITHHELD"}: {check.label}</strong></div>
+                    <div style={{ color: "#475569" }}>{check.note}</div>
+                    {check.cellRefs.map((ref) => (
+                      <button key={`${check.id}-${ref.dimension}-${ref.cellId}`} type="button" onClick={() => inspectAlgebraCell(ref.dimension, ref.cellId)} style={{ marginTop: 3, fontSize: 10 }}>
+                        Inspect {ref.dimension}-cell {ref.cellId}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+              <details>
+                <summary style={{ cursor: "pointer", fontWeight: 700 }}>Vertex-link and orientation evidence</summary>
+                <div style={{ display: "grid", gap: 4, marginTop: 5 }}>
+                  {result.surfaceClassification.value.vertexLinks.map((link) => (
+                    <button key={`surface-link-${link.vertexId}`} type="button" onClick={() => inspectAlgebraCell(0, link.vertexId)} style={{ textAlign: "left", fontSize: 10 }}>
+                      {link.vertexId}: {link.kind} · components {link.components} · degree-1 nodes {link.degreeOneNodes} · degree-2 nodes {link.degreeTwoNodes}
+                    </button>
+                  ))}
+                  {result.surfaceClassification.value.orientability && (
+                    <div>
+                      Signed face-orientation propagation: {result.surfaceClassification.value.orientability.orientable ? "consistent" : `conflicts at ${result.surfaceClassification.value.orientability.conflictEdgeIds.join(", ")}`}
+                    </div>
+                  )}
+                </div>
+              </details>
+              <div style={{ color: "#475569" }}>{result.surfaceClassification.method} · {result.surfaceClassification.algorithmVersion}</div>
+            </>
+          ) : (
+            <div>Surface eligibility prerequisites are unavailable.</div>
           )}
         </section>
       </div>
@@ -3358,6 +3420,19 @@ export const TopologyScreen: React.FC = () => {
             The quotient complex is authoritative. This rendered shape is non-authoritative. {topologyRealizationExplanation(realization.kind)}
           </div>
         </div>
+        {(torusStoryEnabled || mobiusStoryEnabled) && (
+          <div data-testid="topology-story-formal-certificate" style={{ border: "1px solid #a7f3d0", borderRadius: 8, background: "#f0fdfa", padding: "6px 8px", display: "grid", gap: 4, fontSize: 10 }}>
+            <strong>Formal certificate from the canonical complex</strong>
+            <div>{result.surfaceClassification.value?.classification?.label ?? "Classification withheld by eligibility checks."}</div>
+            {result.surfaceClassification.value?.classification && (
+              <div>{result.surfaceClassification.value.classification.equation}</div>
+            )}
+            <div style={{ color: "#475569" }}>
+              Derived from edge/vertex links, boundary cycles, signed face orientations, and exact Euler data—not from this R³ rendering or preset name.
+            </div>
+            <button type="button" onClick={() => setActiveView("algebra")} style={{ justifySelf: "start", fontSize: 10 }}>Inspect formal evidence</button>
+          </div>
+        )}
 
         {showVertexClassChips && (
           <div style={{ border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", padding: "6px 8px", display: "grid", gap: 5 }}>
@@ -5130,24 +5205,25 @@ export const TopologyScreen: React.FC = () => {
     const invariants = buildResult.quotient.invariants;
     // Euler is a property of the canonical quotient cell structure. Preset/story
     // recognition may explain it, but must never override the computed value.
-    const eulerCharacteristic = invariants?.eulerCharacteristic ?? null;
-    const connectedComponents = invariants?.connectedComponents ?? null;
-    const boundaryComponents = derivedTopologyHints.boundaryComponents;
-    const orientable = derivedTopologyHints.orientable;
-    const orientableText = derivedTopologyHints.orientableText;
+    const eulerCharacteristic = buildResult.algebraicConsistency.value?.cellularEulerCharacteristic ?? invariants?.eulerCharacteristic ?? null;
+    const connectedComponents = buildResult.structuralValidation.value?.connectedComponents ?? invariants?.connectedComponents ?? null;
+    const surfaceReport = buildResult.surfaceClassification.value;
+    const boundaryComponents = surfaceReport?.boundaryComponents ?? null;
+    const orientable = surfaceReport?.orientability?.orientable ?? null;
+    const orientableText = surfaceReport?.eligible
+      ? null
+      : "withheld by formal surface-eligibility checks";
     const nonManifoldEdgeCount =
       nonManifoldEdgeDiagnostics.length || invariants?.nonManifoldEdgeCount || 0;
     const hasNonManifold =
+      surfaceReport?.eligible === false ||
       nonManifoldEdgeCount > 0 ||
       vertexStarDisconnectionDiagnostics.length > 0 ||
       invalidBoundaryCycleDiagnostics.length > 0 ||
       /non-manifold/i.test(orientableText ?? "");
 
-    const genusLabel = hasNonManifold
-      ? "withheld (non-manifold diagnostics)"
-      : boundaryComponents !== null || orientable !== null || orientableText
-        ? "withheld pending manifold eligibility certification"
-        : "n/a";
+    const genusLabel = surfaceReport?.classification?.label ??
+      (surfaceReport ? "withheld (surface eligibility failed)" : "withheld (classification prerequisites unavailable)");
 
     return {
       eulerCharacteristic,
@@ -5163,7 +5239,9 @@ export const TopologyScreen: React.FC = () => {
     };
   }, [
     buildResult.quotient.invariants,
-    derivedTopologyHints,
+    buildResult.algebraicConsistency.value?.cellularEulerCharacteristic,
+    buildResult.structuralValidation.value?.connectedComponents,
+    buildResult.surfaceClassification.value,
     invalidBoundaryCycleDiagnostics.length,
     nonManifoldEdgeDiagnostics.length,
     vertexStarDisconnectionDiagnostics.length,
@@ -5176,6 +5254,7 @@ export const TopologyScreen: React.FC = () => {
         name: diagram.name,
       },
       unified: unifiedTopologyDiagnostics,
+      formalSurface: buildResult.surfaceClassification,
       nonManifoldEdges: nonManifoldEdgeDiagnostics,
       vertexStarDisconnections: vertexStarDisconnectionDiagnostics,
       invalidBoundaryCycles: invalidBoundaryCycleDiagnostics,
@@ -5185,6 +5264,7 @@ export const TopologyScreen: React.FC = () => {
     [
       diagram.id,
       diagram.name,
+      buildResult.surfaceClassification,
       infoDiagnostics,
       invalidBoundaryCycleDiagnostics,
       nonManifoldEdgeDiagnostics,
@@ -5483,7 +5563,7 @@ export const TopologyScreen: React.FC = () => {
           )}
           {topicTab === "mobius" && (
             <div style={{ display: "grid", gap: 5, fontSize: 11 }}>
-              <div>Mobius workflow uses the rectangle model boundary word: b a c a^-1.</div>
+              <div>Mobius workflow uses the rectangle model boundary word: b a c a.</div>
               <div style={{ color: "#475569" }}>Inspect one boundary component, core circle and orientation flip markers.</div>
             </div>
           )}
@@ -5491,7 +5571,7 @@ export const TopologyScreen: React.FC = () => {
         <section>
           <h2 style={styles.h2}>Topology Module</h2>
           <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>
-            Pipeline: Fundamental Diagram - Subdivision/Triangulation - Equivalence - Quotient Complex - Realization - Render.
+            Pipeline: Fundamental Diagram → Canonical Complex → Exact Algebra → Surface Certificate → Realization.
           </div>
           <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
             <button type="button" onClick={() => setBuildMode("preset")} style={{ fontWeight: buildMode === "preset" ? 700 : 500 }}>
@@ -6006,16 +6086,25 @@ export const TopologyScreen: React.FC = () => {
               </div>
               <div data-testid="topology-canonical-euler">Canonical Euler characteristic: {unifiedTopologyDiagnostics.eulerCharacteristic ?? "n/a"}</div>
               <div data-testid="topology-computed-components">Computed connected components: {unifiedTopologyDiagnostics.connectedComponents ?? "n/a"}</div>
-              <div data-testid="topology-recognized-boundary">Recognized boundary hint: {unifiedTopologyDiagnostics.boundaryComponents ?? "n/a"}</div>
+              <div data-testid="topology-recognized-boundary">Recognized boundary hint: {derivedTopologyHints.boundaryComponents ?? "n/a"}</div>
               <div data-testid="topology-recognized-orientability">
                 Recognized orientability hint:{" "}
-                {unifiedTopologyDiagnostics.orientableText !== null
-                  ? unifiedTopologyDiagnostics.orientableText
-                  : unifiedTopologyDiagnostics.orientable !== null
-                    ? unifiedTopologyDiagnostics.orientable
+                {derivedTopologyHints.orientableText !== null
+                  ? derivedTopologyHints.orientableText
+                  : derivedTopologyHints.orientable !== null
+                    ? derivedTopologyHints.orientable
                       ? "Yes"
                       : "No"
                     : "n/a"}
+              </div>
+              <div data-testid="topology-surface-eligibility-status">
+                Formal surface eligibility: <strong>{buildResult.surfaceClassification.value?.eligible ? "certified" : "withheld"}</strong>
+              </div>
+              <div data-testid="topology-certified-boundary">
+                Certified boundary components: {unifiedTopologyDiagnostics.boundaryComponents ?? "withheld"}
+              </div>
+              <div data-testid="topology-certified-orientability">
+                Certified orientability: {unifiedTopologyDiagnostics.orientable === null ? "withheld" : unifiedTopologyDiagnostics.orientable ? "Yes" : "No"}
               </div>
               <div data-testid="topology-formal-classification">Formal surface classification: {unifiedTopologyDiagnostics.genusLabel}</div>
               <div data-testid="topology-structural-validation-status">

@@ -174,7 +174,7 @@ export type Realization3D = {
   style: RealizationStyle;
 };
 
-export type PipelineStageId = "diagram" | "subdivide" | "equivalence" | "quotient" | "validation" | "boundary" | "homology" | "algebra" | "realization" | "render";
+export type PipelineStageId = "diagram" | "subdivide" | "equivalence" | "quotient" | "validation" | "boundary" | "homology" | "algebra" | "classification" | "realization" | "render";
 
 export type QuotientPipelineStage = {
   id: PipelineStageId;
@@ -218,5 +218,8 @@ export type QuotientBuildResult = {
   >;
   algebraicConsistency: import("./core/contracts").TopologyResult<
     import("./core/algebraicConsistency").TopologyAlgebraicConsistency
+  >;
+  surfaceClassification: import("./core/contracts").TopologyResult<
+    import("./core/surfaceClassification").SurfaceClassificationReport
   >;
 };

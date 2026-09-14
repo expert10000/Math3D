@@ -423,6 +423,33 @@ Where in the UI:
 - The bottom **Euler–homology consistency** card shows the cell-count equation and both Betti-number equations with exact PASS/FAIL status.
 - The right-side **C. Diagnostics** panel also shows the consistency status and provides **Open Algebra view**.
 
+### Commit 7 — Supported 2-manifold eligibility and formal surface classification
+
+**Status: complete (2026-09-14).**
+
+Delivered:
+
+- Added a versioned formal certificate for the finite connected compact 2-manifold model with optional boundary. Preset names and R³ realizations never grant eligibility.
+- Certified every canonical edge link as boundary/interior only when it has exactly one/two face occurrences; isolated and higher-valence edge links withhold classification with cell-focused evidence.
+- Added multiplicity-aware vertex-link reconstruction. A vertex is supported only when its link is one connected circle or interval; disconnected, branched, isolated, and invalid-degree links are reported explicitly.
+- Certified the boundary subcomplex independently as a disjoint union of circles and computed its connected components only after every boundary vertex has degree two.
+- Added signed face-orientation propagation across interior edges, including self-identifications. Conflicting signs provide an exact non-orientability certificate rather than relying on a recognized word label.
+- Applied the compact-surface equations only after every eligibility check passes: `χ = 2 - 2g - b` for orientable surfaces and `χ = 2 - k - b` for non-orientable surfaces.
+- Added formal names for the audited sphere, torus, cylinder/annulus, Möbius band, projective plane, and Klein bottle cases, with general genus/crosscap labels for other supported inputs.
+- Corrected the Möbius rectangle preset to the canonical same-boundary-direction attachment word `b a c a`; its former `b a c a^-1` formal data described the cylinder-like orientation class.
+- Kept singular Dunce, cone-contraction, and sphere-boundary-contraction teaching presets inspectable but formally unclassified. A smooth or familiar-looking display is not allowed to override failed edge/vertex-link evidence.
+- Added the classification pipeline stage, formal diagnostic/export data, cell-focus actions, and provenance-backed teaching cards in the Torus/Möbius realization stories.
+- Added audited unit fixtures for torus, cylinder, Möbius band, projective plane, Klein bottle, singular non-surfaces, and an independently authored two-bigon sphere, plus persistence and Electron regression coverage.
+
+Where in the UI:
+
+- Open **Topology → Algebra View** and scroll below the Euler check to **Surface eligibility & formal classification**.
+- The classification appears only above a complete grid of PASS results for finite 2D input, connectedness, edge links, vertex links, boundary circles, and exact algebraic consistency.
+- Expand **Vertex-link and orientation evidence** for circle/interval link details and the signed face-orientation certificate.
+- Any failed check includes **Inspect cell** actions that open the affected canonical cell in Complex View.
+- The right-side **C. Diagnostics** panel separates recognized teaching hints from certified boundary/orientability values and the formal surface name.
+- Torus and Möbius **Realization View** stories now include a formal certificate card explaining that classification comes from the canonical complex, not the rendered R³ model.
+
 ## Deferred research layer
 
 Do not schedule before the above release gates are stable:

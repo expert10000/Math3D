@@ -111,12 +111,12 @@ const PRESETS: TopologyPreset[] = [
   {
     id: "mobius_from_rectangle",
     label: "Möbius band from rectangle",
-    summary: "Rectangle with one opposite edge pair identified with reversal.",
+    summary: "Rectangle with one opposite edge pair identified in the same boundary direction.",
     buildDiagram: () =>
       makeSingleFaceDiagram({
         id: "preset/mobius-rectangle",
         name: "Möbius band from rectangle",
-        description: "One pair identified with reversed orientation, two boundary edges left open.",
+        description: "One pair identified in the same boundary direction, producing one open boundary component.",
         vertices: [
           { id: "v0", x: -1.2, y: 0.75 },
           { id: "v1", x: 1.2, y: 0.75 },
@@ -127,9 +127,9 @@ const PRESETS: TopologyPreset[] = [
           { edgeId: "e0", from: "v0", to: "v1", label: "b", orientation: 1 },
           { edgeId: "e1", from: "v1", to: "v2", label: "a", orientation: 1, pairings: ["e3"] },
           { edgeId: "e2", from: "v2", to: "v3", label: "c", orientation: 1 },
-          { edgeId: "e3", from: "v3", to: "v0", label: "a", orientation: -1, pairings: ["e1"] },
+          { edgeId: "e3", from: "v3", to: "v0", label: "a", orientation: 1, pairings: ["e1"] },
         ],
-        boundaryWord: "b a c a^-1",
+        boundaryWord: "b a c a",
       }),
   },
   {

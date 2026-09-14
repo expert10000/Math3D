@@ -49,10 +49,19 @@ test.describe("Topology semantic safety", () => {
       await ctx.page.getByTestId("topology-preset-card-projective_plane").click();
       await ctx.page.getByRole("button", { name: "Complex View", exact: true }).click();
       await expect(ctx.page.getByTestId("topology-homology-z-h1")).toContainText("Z/2Z");
+      await ctx.page.getByRole("button", { name: "Algebra View", exact: true }).click();
+      await expect(ctx.page.getByTestId("topology-surface-classification")).toContainText("ELIGIBLE");
+      await expect(ctx.page.getByTestId("topology-surface-classification-label")).toContainText("Projective plane");
+      await expect(ctx.page.getByTestId("topology-certified-orientability")).toContainText("No");
       await ctx.page.getByRole("button", { name: "Realization View", exact: true }).click();
       await expect(ctx.page.getByTestId("topology-realization-authority")).toHaveAttribute("data-realization-kind", "immersed");
       await expect(ctx.page.getByTestId("topology-realization-authority")).toContainText("non-authoritative");
       await expect(ctx.page.getByTestId("topology-active-realization-kind")).toContainText("Immersed R³ model");
+
+      await ctx.page.getByTestId("topology-preset-card-mobius_from_rectangle").click();
+      await ctx.page.getByRole("button", { name: "Realization View", exact: true }).click();
+      await expect(ctx.page.getByTestId("topology-story-formal-certificate")).toContainText("Möbius band");
+      await expect(ctx.page.getByTestId("topology-story-formal-certificate")).toContainText("not from this R³ rendering or preset name");
     } finally {
       await closeSurfaceApp(ctx);
     }
