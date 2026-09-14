@@ -1,6 +1,7 @@
 import type { OrientationRelation, QuotientBuildResult, QuotientComplex, Realization3D, TopologyRealizationKind, Vec3 } from "./types";
 import {
   buildExactCellularBoundaryOperators,
+  computeEulerHomologyConsistency,
   computeExactHomology,
   createTopologyObjectFromFundamentalDiagram,
   validateCanonicalTopologyObject,
@@ -56,11 +57,19 @@ export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): 
     },
   };
   const homology = computeExactHomology(topologyObjectWithBoundaries, cellularBoundaryOperators);
-  const topologyObject = {
+  const topologyObjectWithHomology = {
     ...topologyObjectWithBoundaries,
     analysis: {
       ...topologyObjectWithBoundaries.analysis,
       homology,
+    },
+  };
+  const algebraicConsistency = computeEulerHomologyConsistency(topologyObjectWithHomology, homology);
+  const topologyObject = {
+    ...topologyObjectWithHomology,
+    analysis: {
+      ...topologyObjectWithHomology.analysis,
+      algebraicConsistency,
     },
   };
   const validationStage = {
@@ -105,20 +114,36 @@ export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): 
         ? `Computed Z and Z/2Z homology exactly; H1 = ${homology.value?.integer.groups[1].notation ?? "n/a"}.`
         : "Homology withheld because exact chain-complex prerequisites were not met.",
   };
+  const algebraStage = {
+    id: "algebra" as const,
+    label: "Euler–Homology Consistency",
+    status:
+      algebraicConsistency.status === "exact"
+        ? ("done" as const)
+        : algebraicConsistency.status === "unsupported"
+          ? ("warning" as const)
+          : ("error" as const),
+    note:
+      algebraicConsistency.value
+        ? `Cell Euler and Betti Euler checks ${algebraicConsistency.value.holds ? "agree" : "disagree"} over Z and Z/2Z.`
+        : "Euler–homology check withheld because exact homology is unavailable.",
+  };
   const pipelineWithoutFormalStages = normalized.pipeline.filter(
-    (stage) => stage.id !== "validation" && stage.id !== "boundary" && stage.id !== "homology"
+    (stage) => stage.id !== "validation" && stage.id !== "boundary" && stage.id !== "homology" && stage.id !== "algebra"
   );
   const quotientStageIndex = pipelineWithoutFormalStages.findIndex((stage) => stage.id === "quotient");
   const pipeline = [...pipelineWithoutFormalStages];
   pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 1 : pipeline.length, 0, validationStage);
   pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 2 : pipeline.length, 0, boundaryStage);
   pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 3 : pipeline.length, 0, homologyStage);
+  pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 4 : pipeline.length, 0, algebraStage);
   return {
     ...normalized,
     topologyObject,
     structuralValidation,
     cellularBoundaryOperators,
     homology,
+    algebraicConsistency,
     pipeline,
   };
 };

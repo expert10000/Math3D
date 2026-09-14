@@ -2573,13 +2573,149 @@ export const TopologyScreen: React.FC = () => {
                 </div>
               </div>
               <div style={{ fontSize: 10, color: "#475569" }}>
-                SNF reduction maps and cycle representatives retain the canonical cell basis. Full matrix/group comparison and the Euler cross-check arrive in the Algebra view in Commit 6.
+                SNF reduction maps and cycle representatives retain the canonical cell basis. Open Algebra View for full matrix/group comparison and the exact Euler cross-check.
               </div>
             </>
           ) : (
             <div style={{ color: "#b91c1c", fontSize: 11, fontWeight: 700 }}>
               Homology withheld: exact boundary operators with a passing chain condition are required.
             </div>
+          )}
+        </section>
+      </div>
+    );
+  };
+
+  const renderAlgebraView = () => {
+    const result = ensureBuilt();
+    const boundaries = result.cellularBoundaryOperators.value;
+    const homology = result.homology.value;
+    const consistency = result.algebraicConsistency;
+    const inspectAlgebraCell = (dimension: 0 | 1 | 2, cellId: string) => {
+      setSelectedCanonicalCell({ dimension, cellId });
+      setActiveView("complex");
+      setDocStatus(`Selected canonical ${dimension}-cell '${cellId}' from Algebra view.`);
+    };
+    const renderMatrix = (label: string, symbol: string, matrix: ExactIntegerMatrix) => (
+      <div style={{ border: "1px solid #dbe4f0", borderRadius: 9, background: "#fff", padding: 8, minWidth: 0, overflowX: "auto" }}>
+        <strong style={{ fontSize: 11 }}>{label}</strong>
+        <table style={{ borderCollapse: "collapse", fontSize: 10, width: "max-content", minWidth: "100%", marginTop: 6 }}>
+          <thead>
+            <tr>
+              <th style={{ border: "1px solid #cbd5e1", padding: "4px 6px", background: "#f8fafc" }}>{symbol}</th>
+              {matrix.columnCellIds.map((cellId) => (
+                <th key={`${symbol}-algebra-column-${cellId}`} style={{ border: "1px solid #cbd5e1", padding: "3px 5px", background: "#eff6ff" }}>
+                  <button type="button" onClick={() => inspectAlgebraCell(matrix.columnCellDimension, cellId)} style={{ fontSize: 10, fontWeight: 700 }}>{cellId}</button>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {matrix.rowCellIds.map((cellId, rowIndex) => (
+              <tr key={`${symbol}-algebra-row-${cellId}`}>
+                <th style={{ border: "1px solid #cbd5e1", padding: "3px 5px", background: "#eff6ff" }}>
+                  <button type="button" onClick={() => inspectAlgebraCell(matrix.rowCellDimension, cellId)} style={{ fontSize: 10, fontWeight: 700 }}>{cellId}</button>
+                </th>
+                {(matrix.entries[rowIndex] ?? []).map((value, columnIndex) => (
+                  <td key={`${symbol}-algebra-${rowIndex}-${columnIndex}`} style={{ border: "1px solid #cbd5e1", padding: "4px 7px", textAlign: "center", fontFamily: "ui-monospace, monospace" }}>{value}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div style={{ marginTop: 5, fontSize: 9.5, color: "#475569" }}>Select a cell header to inspect its canonical/source mapping.</div>
+      </div>
+    );
+
+    return (
+      <div data-testid="topology-algebra-view" style={{ display: "grid", gap: 10 }}>
+        <section style={{ border: "1px solid #bfdbfe", borderRadius: 10, background: "#eff6ff", padding: "9px 10px", display: "grid", gap: 5, fontSize: 11 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <strong>Exact cellular Algebra</strong>
+            <span>source revision {result.topologyObject.provenance.source.revision}</span>
+          </div>
+          <div>Canonical basis: {result.topologyObject.canonical.vertices.length} zero-cells · {result.topologyObject.canonical.edges.length} one-cells · {result.topologyObject.canonical.faces.length} two-cells.</div>
+          <div style={{ color: "#475569" }}>Integral arithmetic uses bigint Smith normal form. Z/2Z uses an independent exact finite-field reduction.</div>
+        </section>
+
+        {boundaries ? (
+          <section data-testid="topology-algebra-matrices" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 10 }}>
+            {renderMatrix("∂₁ : C₁ → C₀ over Z", "∂₁", boundaries.boundary1)}
+            {renderMatrix("∂₂ : C₂ → C₁ over Z", "∂₂", boundaries.boundary2)}
+          </section>
+        ) : (
+          <div style={{ color: "#b91c1c" }}>Exact boundary matrices are unavailable.</div>
+        )}
+
+        {homology ? (
+          <section data-testid="topology-algebra-groups" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 10 }}>
+            <div style={{ border: "1px solid #a7f3d0", borderRadius: 9, background: "#f0fdfa", padding: "9px 10px", display: "grid", gap: 7 }}>
+              <strong style={{ fontSize: 12 }}>Homology over Z</strong>
+              {homology.integer.groups.map((group) => (
+                <div key={`algebra-z-h${group.degree}`} data-testid={`topology-algebra-z-h${group.degree}`} style={{ borderTop: "1px solid #d1fae5", paddingTop: 6, fontSize: 11 }}>
+                  <div><strong>H{group.degree}(X; Z) ≅ {group.notation}</strong></div>
+                  <div>β{group.degree} = {group.bettiNumber} · torsion {group.torsionCoefficients.join(", ") || "none"}</div>
+                  {group.generators.map((generator) => (
+                    <div key={`algebra-${generator.id}`} style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", marginTop: 3 }}>
+                      <span>{generator.kind}{generator.order ? ` (order ${generator.order})` : ""}:</span>
+                      {generator.representative.coefficients.map((entry) => (
+                        <button key={`${generator.id}-${entry.cellId}`} type="button" onClick={() => inspectAlgebraCell(group.degree, entry.cellId)} style={{ fontSize: 10, fontFamily: "ui-monospace, monospace" }}>
+                          {entry.coefficient}·{entry.cellId}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              ))}
+              <div data-testid="topology-algebra-snf" style={{ borderTop: "1px solid #d1fae5", paddingTop: 6, fontSize: 10, color: "#475569" }}>
+                SNF diagonals: ∂₁ [{homology.integer.smith.boundary1.diagonal.join(", ") || "empty"}] · ∂₂ on ker ∂₁ [{homology.integer.smith.boundary2OnKernelBoundary1.diagonal.join(", ") || "empty"}]
+              </div>
+            </div>
+            <div style={{ border: "1px solid #c4b5fd", borderRadius: 9, background: "#f5f3ff", padding: "9px 10px", display: "grid", gap: 7 }}>
+              <strong style={{ fontSize: 12 }}>Homology over Z/2Z</strong>
+              {homology.mod2.groups.map((group) => (
+                <div key={`algebra-z2-h${group.degree}`} data-testid={`topology-algebra-z2-h${group.degree}`} style={{ borderTop: "1px solid #ddd6fe", paddingTop: 6, fontSize: 11 }}>
+                  <div><strong>H{group.degree}(X; Z/2Z) ≅ {group.notation}</strong></div>
+                  <div>dimension {group.dimension}</div>
+                  {group.generators.map((generator) => (
+                    <div key={`algebra-${generator.id}`} style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", marginTop: 3 }}>
+                      <span>cycle:</span>
+                      {generator.representative.coefficients.map((entry) => (
+                        <button key={`${generator.id}-${entry.cellId}`} type="button" onClick={() => inspectAlgebraCell(group.degree, entry.cellId)} style={{ fontSize: 10, fontFamily: "ui-monospace, monospace" }}>{entry.cellId}</button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : (
+          <div style={{ color: "#b91c1c" }}>Exact homology is unavailable.</div>
+        )}
+
+        <section
+          data-testid="topology-algebra-euler-check"
+          style={{
+            border: `1px solid ${consistency.value?.holds ? "#86efac" : "#fca5a5"}`,
+            borderRadius: 10,
+            background: consistency.value?.holds ? "#f0fdf4" : "#fff1f2",
+            padding: "9px 10px",
+            display: "grid",
+            gap: 5,
+            fontSize: 11,
+          }}
+        >
+          <strong>Euler–homology consistency: {consistency.value?.holds ? "PASS" : consistency.status.toUpperCase()}</strong>
+          {consistency.value && (
+            <>
+              <div>χ cells = {consistency.value.cellCounts[0]} − {consistency.value.cellCounts[1]} + {consistency.value.cellCounts[2]} = <strong>{consistency.value.cellularEulerCharacteristic}</strong></div>
+              {consistency.value.coefficientChecks.map((check) => (
+                <div key={`algebra-euler-${check.coefficientDomain}`}>
+                  χ homology ({check.coefficientDomain}) = {check.bettiNumbers[0]} − {check.bettiNumbers[1]} + {check.bettiNumbers[2]} = <strong>{check.homologyEulerCharacteristic}</strong> · {check.holds ? "PASS" : "FAIL"}
+                </div>
+              ))}
+              <div style={{ color: "#475569" }}>{consistency.method} · {consistency.algorithmVersion}</div>
+            </>
           )}
         </section>
       </div>
@@ -4897,6 +5033,7 @@ export const TopologyScreen: React.FC = () => {
   const renderCenterView = () => {
     if (activeView === "diagram") return renderDiagramView();
     if (activeView === "complex") return renderComplexView();
+    if (activeView === "algebra") return renderAlgebraView();
     if (activeView === "quotient") return renderQuotientView();
     if (activeView === "realization") return renderRealizationView();
     if (activeView === "compare") return renderCompareView();
@@ -5200,7 +5337,7 @@ export const TopologyScreen: React.FC = () => {
             : 4
         : activeView === "quotient"
           ? 3
-          : activeView === "complex"
+          : activeView === "complex" || activeView === "algebra"
             ? 3
           : activeView === "realization" || activeView === "compare"
             ? 4
@@ -5683,6 +5820,7 @@ export const TopologyScreen: React.FC = () => {
               ["diagram", "Diagram View"],
               ["quotient", "Quotient Structure View"],
               ["complex", "Complex View"],
+              ["algebra", "Algebra View"],
               ["realization", "Realization View"],
               ["animation", "Animation View"],
               ["compare", "Compare View"],
@@ -5890,8 +6028,14 @@ export const TopologyScreen: React.FC = () => {
                 Exact homology Z / Z/2Z: <strong>{buildResult.homology.status}</strong>
                 {buildResult.homology.value ? ` · H1 = ${buildResult.homology.value.integer.groups[1].notation}` : ""}
               </div>
+              <div data-testid="topology-algebra-consistency-status">
+                Euler–homology consistency: <strong>{buildResult.algebraicConsistency.value?.holds ? "PASS" : buildResult.algebraicConsistency.status}</strong>
+              </div>
               <button type="button" onClick={() => setActiveView("complex")} style={{ fontSize: 10 }}>
                 Open Complex view
+              </button>
+              <button type="button" onClick={() => setActiveView("algebra")} style={{ fontSize: 10 }}>
+                Open Algebra view
               </button>
               <div
                 style={{

@@ -65,8 +65,9 @@ describe("topology document format", () => {
     delete (legacy as { structuralValidation?: unknown }).structuralValidation;
     delete (legacy as { cellularBoundaryOperators?: unknown }).cellularBoundaryOperators;
     delete (legacy as { homology?: unknown }).homology;
+    delete (legacy as { algebraicConsistency?: unknown }).algebraicConsistency;
     delete (legacy.topologyObject.canonical as Partial<CanonicalTopologyComplex>).incidences;
-    legacy.pipeline = legacy.pipeline.filter((stage) => stage.id !== "validation" && stage.id !== "boundary" && stage.id !== "homology");
+    legacy.pipeline = legacy.pipeline.filter((stage) => stage.id !== "validation" && stage.id !== "boundary" && stage.id !== "homology" && stage.id !== "algebra");
 
     const normalized = normalizeTopologyRealizationKinds(legacy);
 
@@ -74,8 +75,10 @@ describe("topology document format", () => {
     expect(normalized.structuralValidation.status).toBe("certified-within-model");
     expect(normalized.cellularBoundaryOperators.status).toBe("exact");
     expect(normalized.homology.status).toBe("exact");
+    expect(normalized.algebraicConsistency.status).toBe("exact");
     expect(normalized.pipeline.some((stage) => stage.id === "validation")).toBe(true);
     expect(normalized.pipeline.some((stage) => stage.id === "boundary")).toBe(true);
     expect(normalized.pipeline.some((stage) => stage.id === "homology")).toBe(true);
+    expect(normalized.pipeline.some((stage) => stage.id === "algebra")).toBe(true);
   });
 });

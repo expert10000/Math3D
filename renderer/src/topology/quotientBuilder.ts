@@ -1,6 +1,7 @@
 import { buildRealizationChoices } from "./realization";
 import {
   buildExactCellularBoundaryOperators,
+  computeEulerHomologyConsistency,
   computeExactHomology,
   createTopologyObjectFromFundamentalDiagram,
   validateCanonicalTopologyObject,
@@ -646,11 +647,19 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
     },
   };
   const homology = computeExactHomology(topologyObjectWithBoundaries, cellularBoundaryOperators);
-  const topologyObject = {
+  const topologyObjectWithHomology = {
     ...topologyObjectWithBoundaries,
     analysis: {
       ...topologyObjectWithBoundaries.analysis,
       homology,
+    },
+  };
+  const algebraicConsistency = computeEulerHomologyConsistency(topologyObjectWithHomology, homology);
+  const topologyObject = {
+    ...topologyObjectWithHomology,
+    analysis: {
+      ...topologyObjectWithHomology.analysis,
+      algebraicConsistency,
     },
   };
 
@@ -719,6 +728,15 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
           : "Homology withheld because exact chain-complex prerequisites were not met.",
     },
     {
+      id: "algebra",
+      label: "Euler–Homology Consistency",
+      status: algebraicConsistency.status === "exact" ? "done" : algebraicConsistency.status === "unsupported" ? "warning" : "error",
+      note:
+        algebraicConsistency.value
+          ? `Cell Euler and Betti Euler checks ${algebraicConsistency.value.holds ? "agree" : "disagree"} over Z and Z/2Z.`
+          : "Euler–homology check withheld because exact homology is unavailable.",
+    },
+    {
       id: "realization",
       label: "Geometric Realization",
       status: "done",
@@ -749,5 +767,6 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
     structuralValidation,
     cellularBoundaryOperators,
     homology,
+    algebraicConsistency,
   };
 };

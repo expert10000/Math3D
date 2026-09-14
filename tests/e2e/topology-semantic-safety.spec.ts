@@ -39,6 +39,12 @@ test.describe("Topology semantic safety", () => {
       await expect(ctx.page.getByTestId("topology-homology-preview")).toContainText("Exact homology preview");
       await expect(ctx.page.getByTestId("topology-homology-z-h1")).toContainText("H1 ≅");
       await expect(ctx.page.getByTestId("topology-homology-z2-h1")).toContainText("dimension");
+      await ctx.page.getByRole("button", { name: "Algebra View", exact: true }).click();
+      await expect(ctx.page.getByTestId("topology-algebra-view")).toBeVisible();
+      await expect(ctx.page.getByTestId("topology-algebra-matrices")).toContainText("∂₁ : C₁ → C₀ over Z");
+      await expect(ctx.page.getByTestId("topology-algebra-groups")).toContainText("Homology over Z/2Z");
+      await expect(ctx.page.getByTestId("topology-algebra-snf")).toContainText("SNF diagonals");
+      await expect(ctx.page.getByTestId("topology-algebra-euler-check")).toContainText("Euler–homology consistency: PASS");
 
       await ctx.page.getByTestId("topology-preset-card-projective_plane").click();
       await ctx.page.getByRole("button", { name: "Complex View", exact: true }).click();

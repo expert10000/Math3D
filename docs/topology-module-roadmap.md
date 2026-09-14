@@ -398,7 +398,30 @@ Where in the UI:
 - **Exact homology preview** shows `H₀`, `H₁`, and `H₂` first over `Z`, then over `Z/2Z`. Integral rows include Betti numbers and torsion orders.
 - Each displayed representative coefficient is a button linked to its canonical cell; selecting it updates the existing canonical-cell inspector.
 - The right-side **C. Diagnostics** panel shows the exact homology status and the current integral `H₁` summary.
-- Full matrix/group comparison and the Euler–homology consistency check remain scheduled for Commit 6's dedicated **Algebra View**.
+- Full matrix/group comparison and the Euler–homology consistency check are now available in Commit 6's dedicated **Algebra View**.
+
+### Commit 6 — Euler–homology consistency and Algebra view
+
+**Status: complete (2026-09-14).**
+
+Delivered:
+
+- Added a versioned exact derived-invariant result comparing the canonical cell Euler characteristic with Betti-number Euler characteristics over both `Z` and `Z/2Z`.
+- The consistency result is provenance-bearing and independently persisted in the topology analysis cache. Missing homology returns unsupported; any disagreement returns a failed result with a precise coefficient-domain diagnostic.
+- Added a dedicated **Algebra View** to the primary Topology view switcher and `.math3d-topology` v1 cached view state.
+- The Algebra view displays exact `∂₁` and `∂₂` matrices with canonical cell row/column labels, integral and mod-2 homology groups, Betti numbers, torsion, representative cycles, and retained SNF diagonals.
+- Matrix headers and representative terms navigate directly to the selected canonical cell in Complex View, preserving the source/refinement inspection path.
+- Added a visible three-way Euler check: canonical cell counts, integral Betti numbers, and mod-2 Betti numbers. Each equation receives its own PASS/FAIL result.
+- Added an Euler–Homology Consistency pipeline stage, right-side diagnostic status/action, and automatic reconstruction for legacy cached builds.
+- Added unit coverage across every shipped preset, explicit mismatch/unsupported behavior, type/persistence coverage, and Electron navigation/content regression checks.
+
+Where in the UI:
+
+- Open **Topology → Algebra View** beside Complex View.
+- The top matrices show `∂₁ : C₁ → C₀` and `∂₂ : C₂ → C₁`; select any row or column cell ID to inspect it in Complex View.
+- The two group panels show `H₀`–`H₂` over `Z` and `Z/2Z`, including integral torsion and selectable representative cycles.
+- The bottom **Euler–homology consistency** card shows the cell-count equation and both Betti-number equations with exact PASS/FAIL status.
+- The right-side **C. Diagnostics** panel also shows the consistency status and provides **Open Algebra view**.
 
 ## Deferred research layer
 

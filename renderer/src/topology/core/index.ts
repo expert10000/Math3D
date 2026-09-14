@@ -5,3 +5,4 @@ export * from "./structuralValidation";
 export * from "./cellularBoundary";
 export * from "./smithNormalForm";
 export * from "./homology";
+export * from "./algebraicConsistency";
