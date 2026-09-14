@@ -1,5 +1,9 @@
 import type { OrientationRelation, QuotientBuildResult, QuotientComplex, Realization3D, TopologyRealizationKind, Vec3 } from "./types";
-import { createTopologyObjectFromFundamentalDiagram, validateCanonicalTopologyObject } from "./core";
+import {
+  buildExactCellularBoundaryOperators,
+  createTopologyObjectFromFundamentalDiagram,
+  validateCanonicalTopologyObject,
+} from "./core";
 
 export const inferLegacyTopologyRealizationKind = (
   realization: Pick<Realization3D, "id" | "name"> & { kind?: TopologyRealizationKind }
@@ -28,18 +32,26 @@ export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): 
     ? { ...result.topologyObject, realizations: normalized.realizations }
     : createTopologyObjectFromFundamentalDiagram(result.normalizedDiagram, {
         quotient: result.quotient,
-        subdivision: result.subdivision,
         realizations: normalized.realizations,
-        subdividedDiagram: result.subdividedDiagram,
-        vertexClassBySource: result.vertexClassBySource,
         edgeClassBySource: result.edgeClassBySource,
       });
   const structuralValidation = validateCanonicalTopologyObject(topologyObjectWithoutAnalysis);
-  const topologyObject = {
+  const topologyObjectWithValidation = {
     ...topologyObjectWithoutAnalysis,
     analysis: {
       ...(topologyObjectWithoutAnalysis.analysis ?? {}),
       structuralValidation,
+    },
+  };
+  const cellularBoundaryOperators = buildExactCellularBoundaryOperators(
+    topologyObjectWithValidation,
+    structuralValidation
+  );
+  const topologyObject = {
+    ...topologyObjectWithValidation,
+    analysis: {
+      ...topologyObjectWithValidation.analysis,
+      cellularBoundaryOperators,
     },
   };
   const validationStage = {
@@ -56,14 +68,32 @@ export const normalizeTopologyRealizationKinds = (result: QuotientBuildResult): 
         ? `${structuralValidation.diagnostics.filter((entry) => entry.severity === "error").length} structural error(s); formal analysis is gated.`
         : `${structuralValidation.value?.model ?? "Canonical model"} certified; ${structuralValidation.diagnostics.filter((entry) => entry.severity === "warning").length} eligibility warning(s).`,
   };
-  const pipelineWithoutValidation = normalized.pipeline.filter((stage) => stage.id !== "validation");
-  const quotientStageIndex = pipelineWithoutValidation.findIndex((stage) => stage.id === "quotient");
-  const pipeline = [...pipelineWithoutValidation];
+  const boundaryStage = {
+    id: "boundary" as const,
+    label: "Exact Boundary Operators",
+    status:
+      cellularBoundaryOperators.status === "exact"
+        ? ("done" as const)
+        : cellularBoundaryOperators.status === "unsupported"
+          ? ("warning" as const)
+          : ("error" as const),
+    note:
+      cellularBoundaryOperators.status === "exact"
+        ? `Built bigint ∂₁ and ∂₂; exact chain check ${cellularBoundaryOperators.value?.chainCondition.holds ? "PASS" : "FAIL"}.`
+        : "Boundary matrices withheld because structural prerequisites were not met.",
+  };
+  const pipelineWithoutFormalStages = normalized.pipeline.filter(
+    (stage) => stage.id !== "validation" && stage.id !== "boundary"
+  );
+  const quotientStageIndex = pipelineWithoutFormalStages.findIndex((stage) => stage.id === "quotient");
+  const pipeline = [...pipelineWithoutFormalStages];
   pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 1 : pipeline.length, 0, validationStage);
+  pipeline.splice(quotientStageIndex >= 0 ? quotientStageIndex + 2 : pipeline.length, 0, boundaryStage);
   return {
     ...normalized,
     topologyObject,
     structuralValidation,
+    cellularBoundaryOperators,
     pipeline,
   };
 };

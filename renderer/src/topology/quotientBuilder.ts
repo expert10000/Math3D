@@ -1,5 +1,9 @@
 import { buildRealizationChoices } from "./realization";
-import { createTopologyObjectFromFundamentalDiagram, validateCanonicalTopologyObject } from "./core";
+import {
+  buildExactCellularBoundaryOperators,
+  createTopologyObjectFromFundamentalDiagram,
+  validateCanonicalTopologyObject,
+} from "./core";
 import type {
   EquivalenceClass,
   FundamentalDiagram,
@@ -619,17 +623,25 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
   const realizations = buildRealizationChoices(quotient, orientationRelations);
   const topologyObjectWithoutAnalysis = createTopologyObjectFromFundamentalDiagram(input, {
     quotient,
-    subdivision,
     realizations,
-    subdividedDiagram,
-    vertexClassBySource,
     edgeClassBySource,
   });
   const structuralValidation = validateCanonicalTopologyObject(topologyObjectWithoutAnalysis);
-  const topologyObject = {
+  const topologyObjectWithValidation = {
     ...topologyObjectWithoutAnalysis,
     analysis: {
       structuralValidation,
+    },
+  };
+  const cellularBoundaryOperators = buildExactCellularBoundaryOperators(
+    topologyObjectWithValidation,
+    structuralValidation
+  );
+  const topologyObject = {
+    ...topologyObjectWithValidation,
+    analysis: {
+      ...topologyObjectWithValidation.analysis,
+      cellularBoundaryOperators,
     },
   };
 
@@ -675,6 +687,20 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
           : `${structuralValidation.value?.model ?? "Canonical model"} certified; ${structuralValidation.diagnostics.filter((entry) => entry.severity === "warning").length} eligibility warning(s).`,
     },
     {
+      id: "boundary",
+      label: "Exact Boundary Operators",
+      status:
+        cellularBoundaryOperators.status === "exact"
+          ? "done"
+          : cellularBoundaryOperators.status === "unsupported"
+            ? "warning"
+            : "error",
+      note:
+        cellularBoundaryOperators.status === "exact"
+          ? `Built bigint ∂₁ and ∂₂; exact chain check ${cellularBoundaryOperators.value?.chainCondition.holds ? "PASS" : "FAIL"}.`
+          : "Boundary matrices withheld because structural prerequisites were not met.",
+    },
+    {
       id: "realization",
       label: "Geometric Realization",
       status: "done",
@@ -703,5 +729,6 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
     pipeline,
     topologyObject,
     structuralValidation,
+    cellularBoundaryOperators,
   };
 };

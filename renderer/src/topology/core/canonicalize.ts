@@ -2,7 +2,6 @@ import type {
   FundamentalDiagram,
   QuotientComplex,
   Realization3D,
-  SubdivisionSummary,
 } from "../types";
 import {
   TOPOLOGY_CANONICAL_SCHEMA_VERSION,
@@ -16,10 +15,7 @@ import { hashTopologyValue } from "./provenance";
 
 type FundamentalDiagramCanonicalizationInput = {
   quotient: QuotientComplex;
-  subdivision: SubdivisionSummary;
   realizations: Realization3D[];
-  subdividedDiagram: FundamentalDiagram;
-  vertexClassBySource: Record<string, string>;
   edgeClassBySource: Record<string, string>;
 };
 const cloneFundamentalDiagramSource = (diagram: FundamentalDiagram): FundamentalDiagram => ({
@@ -57,19 +53,86 @@ const sourceRefs = (
     cellId,
   }));
 
+const boundaryWordSigns = (word: string): Array<1 | -1> =>
+  word
+    .replaceAll(",", " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .map((token) => (/⁻¹$|\^\s*-\s*1$|\{\s*-\s*1\s*\}$/i.test(token) ? -1 : 1));
+
 const canonicalComplexFromQuotient = (
   source: FundamentalDiagram,
   input: FundamentalDiagramCanonicalizationInput
 ): CanonicalTopologyComplex => {
   const sourceVertexIds = new Set(source.vertices.map((cell) => cell.id));
   const sourceEdgeIds = new Set(source.edges.map((cell) => cell.id));
-  const sourceFaceIds = new Set(source.faces.map((cell) => cell.id));
-  const originalFaceByRefinedFace = new Map<string, string>();
-  const subdividedEdgeById = new Map(input.subdividedDiagram.edges.map((edge) => [edge.id, edge]));
-  const subdividedFaceById = new Map(input.subdividedDiagram.faces.map((face) => [face.id, face]));
-  for (const [originalFaceId, refinedFaceIds] of Object.entries(input.subdivision.faceMap)) {
-    refinedFaceIds.forEach((refinedFaceId) => originalFaceByRefinedFace.set(refinedFaceId, originalFaceId));
-  }
+  const quotientEdgeById = new Map(input.quotient.edges.map((edge) => [edge.id, edge]));
+  const canonicalEdges = input.quotient.edges
+    .filter((edge) => edge.sourceEdgeIds.some((sourceEdgeId) => sourceEdgeIds.has(sourceEdgeId)))
+    .map((edge) => {
+      const authoredSourceEdgeIds = edge.sourceEdgeIds.filter((sourceEdgeId) => sourceEdgeIds.has(sourceEdgeId));
+      const representativeId = authoredSourceEdgeIds[0];
+      const representativeOrientation = representativeId ? source.edgeOrientations[representativeId] ?? 1 : 1;
+      const endpoints =
+        representativeOrientation === 1
+          ? ([...edge.endpointVertexIds] as [string, string])
+          : ([edge.endpointVertexIds[1], edge.endpointVertexIds[0]] as [string, string]);
+      return {
+        id: edge.id,
+        name: edge.label || edge.id,
+        endpoints,
+        sourceRefs: sourceRefs(authoredSourceEdgeIds, 1, sourceEdgeIds),
+      };
+    });
+  const canonicalEdgeIds = new Set(canonicalEdges.map((edge) => edge.id));
+  const canonicalFaces = source.faces.map((face, faceIndex) => {
+    const word = source.faceBoundaryWords[face.id]?.trim() ?? "";
+    const signs = boundaryWordSigns(word);
+    const useWordSigns = signs.length === face.boundary.length;
+    const attachment = face.boundary.map((occurrence, occurrenceIndex) => {
+      const edgeId = input.edgeClassBySource[occurrence.edgeId] ?? occurrence.edgeId;
+      const fallbackSign =
+        occurrence.direction * (source.edgeOrientations[occurrence.edgeId] ?? 1) < 0 ? -1 : 1;
+      return {
+        edgeId,
+        direction: (useWordSigns ? signs[occurrenceIndex] : fallbackSign) as 1 | -1,
+      };
+    });
+    return {
+      id: `qF${faceIndex}`,
+      name: face.id,
+      attachment,
+      boundaryWord:
+        word ||
+        attachment.map((entry) => `${quotientEdgeById.get(entry.edgeId)?.label || entry.edgeId}${entry.direction < 0 ? "^-1" : ""}`).join(" "),
+      sourceRefs: [{ stage: "source" as const, dimension: 2 as const, cellId: face.id }],
+    };
+  });
+  const vertexToEdges: Record<string, string[]> = Object.fromEntries(
+    input.quotient.vertices.map((vertex) => [vertex.id, [] as string[]])
+  );
+  canonicalEdges.forEach((edge) => {
+    edge.endpoints.forEach((vertexId) => {
+      if (vertexToEdges[vertexId] && !vertexToEdges[vertexId].includes(edge.id)) {
+        vertexToEdges[vertexId].push(edge.id);
+      }
+    });
+  });
+  const edgeToFaces: Record<string, string[]> = Object.fromEntries(
+    canonicalEdges.map((edge) => [edge.id, [] as string[]])
+  );
+  canonicalFaces.forEach((face) =>
+    face.attachment.forEach((occurrence) => {
+      if (
+        canonicalEdgeIds.has(occurrence.edgeId) &&
+        edgeToFaces[occurrence.edgeId] &&
+        !edgeToFaces[occurrence.edgeId].includes(face.id)
+      ) {
+        edgeToFaces[occurrence.edgeId].push(face.id);
+      }
+    })
+  );
 
   return {
     schemaVersion: TOPOLOGY_CANONICAL_SCHEMA_VERSION,
@@ -81,78 +144,11 @@ const canonicalComplexFromQuotient = (
       name: vertex.label || vertex.id,
       sourceRefs: sourceRefs(vertex.sourceVertexIds, 0, sourceVertexIds),
     })),
-    edges: input.quotient.edges.map((edge) => ({
-      id: edge.id,
-      name: edge.label || edge.id,
-      endpoints: [...edge.endpointVertexIds] as [string, string],
-      sourceRefs: sourceRefs(edge.sourceEdgeIds, 1, sourceEdgeIds),
-    })),
-    faces: input.quotient.faces.map((face) => {
-      const attachment = input.quotient.attachmentMap[face.attachmentId];
-      const refs: CanonicalSourceCellReference[] = [];
-      for (const refinedFaceId of face.sourceFaceIds) {
-        const originalFaceId = originalFaceByRefinedFace.get(refinedFaceId);
-        if (originalFaceId && sourceFaceIds.has(originalFaceId)) {
-          if (!refs.some((ref) => ref.stage === "source" && ref.cellId === originalFaceId)) {
-            refs.push({ stage: "source", dimension: 2, cellId: originalFaceId });
-          }
-          if (refinedFaceId !== originalFaceId) {
-            refs.push({ stage: "refinement", dimension: 2, cellId: refinedFaceId });
-          }
-        } else {
-          refs.push(...sourceRefs([refinedFaceId], 2, sourceFaceIds));
-        }
-      }
-      const canonicalAttachment = face.sourceFaceIds.flatMap((refinedFaceId) => {
-        const refinedFace = subdividedFaceById.get(refinedFaceId);
-        if (!refinedFace) return [];
-        return refinedFace.boundary.map((occurrence, occurrenceIndex) => {
-          const edgeId = input.edgeClassBySource[occurrence.edgeId];
-          const sourceEdge = subdividedEdgeById.get(occurrence.edgeId);
-          const canonicalEdge = input.quotient.edges.find((edge) => edge.id === edgeId);
-          if (!edgeId || !sourceEdge || !canonicalEdge) {
-            return attachment?.boundary[occurrenceIndex]
-              ? { ...attachment.boundary[occurrenceIndex] }
-              : { edgeId: edgeId || occurrence.edgeId, direction: occurrence.direction };
-          }
-          const sourceStart = occurrence.direction === 1 ? sourceEdge.from : sourceEdge.to;
-          const sourceEnd = occurrence.direction === 1 ? sourceEdge.to : sourceEdge.from;
-          const canonicalStart = input.vertexClassBySource[sourceStart];
-          const canonicalEnd = input.vertexClassBySource[sourceEnd];
-          const [positiveStart, positiveEnd] = canonicalEdge.endpointVertexIds;
-          const direction =
-            positiveStart !== positiveEnd && canonicalStart === positiveEnd && canonicalEnd === positiveStart
-              ? -1
-              : positiveStart !== positiveEnd && canonicalStart === positiveStart && canonicalEnd === positiveEnd
-                ? 1
-                : occurrence.direction;
-          return { edgeId, direction };
-        });
-      });
-      return {
-        id: face.id,
-        name: face.id,
-        attachment:
-          canonicalAttachment.length > 0
-            ? canonicalAttachment
-            : (attachment?.boundary ?? []).map((entry) => ({ ...entry })),
-        boundaryWord: attachment?.boundaryWord ?? "",
-        sourceRefs: refs,
-      };
-    }),
+    edges: canonicalEdges,
+    faces: canonicalFaces,
     incidences: {
-      vertexToEdges: Object.fromEntries(
-        Object.entries(input.quotient.incidences.vertexToEdges).map(([vertexId, edgeIds]) => [
-          vertexId,
-          [...edgeIds],
-        ])
-      ),
-      edgeToFaces: Object.fromEntries(
-        Object.entries(input.quotient.incidences.edgeToFaces).map(([edgeId, faceIds]) => [
-          edgeId,
-          [...faceIds],
-        ])
-      ),
+      vertexToEdges,
+      edgeToFaces,
     },
   };
 };

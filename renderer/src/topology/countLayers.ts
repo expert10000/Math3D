@@ -39,9 +39,9 @@ export const buildTopologyCountLayers = (
   realization?: Realization3D | null
 ): TopologyCountLayers => {
   const canonical = {
-    vertices: result.quotient.vertices.length,
-    edges: result.quotient.edges.length,
-    faces: result.quotient.faces.length,
+    vertices: result.topologyObject.canonical.vertices.length,
+    edges: result.topologyObject.canonical.edges.length,
+    faces: result.topologyObject.canonical.faces.length,
   };
   return {
     source: diagramCounts(result.normalizedDiagram),

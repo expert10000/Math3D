@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { TOPOLOGY_PRESET_BY_ID } from "./presets";
+import { TOPOLOGY_PRESET_BY_ID, TOPOLOGY_PRESETS } from "./presets";
 import { buildQuotientPipeline } from "./quotientBuilder";
 
 describe("buildQuotientPipeline", () => {
+  it("keeps every shipped preset face boundary contiguous before refinement", () => {
+    for (const preset of TOPOLOGY_PRESETS) {
+      const result = buildQuotientPipeline(preset.buildDiagram());
+      expect(
+        result.warnings.some((warning) => warning.code === "subdivide/non-contiguous-boundary"),
+        preset.id
+      ).toBe(false);
+    }
+  });
   it("builds the canonical dunce-cap quotient", () => {
     const preset = TOPOLOGY_PRESET_BY_ID.get("dunce_cap");
     expect(preset).toBeTruthy();

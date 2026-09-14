@@ -16,8 +16,9 @@ describe("canonical topology contracts", () => {
     expect(object.canonical.vertices).toHaveLength(result.quotient.vertices.length);
     expect(object.canonical.edges.every((edge) => edge.endpoints.length === 2)).toBe(true);
     expect(object.canonical.faces.every((face) => Array.isArray(face.attachment))).toBe(true);
-    expect(object.canonical.faces.some((face) => face.sourceRefs.some((ref) => ref.stage === "source"))).toBe(true);
-    expect(object.canonical.faces.some((face) => face.sourceRefs.some((ref) => ref.stage === "refinement"))).toBe(true);
+    expect(object.canonical.faces.every((face) => face.sourceRefs.some((ref) => ref.stage === "source"))).toBe(true);
+    expect(result.subdivision.applied).toBe(true);
+    expect(object.canonical.faces).toHaveLength(diagram.faces.length);
     expect(object.realizations).toHaveLength(result.realizations.length);
   });
 

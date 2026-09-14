@@ -17,6 +17,7 @@ describe("topology semantic safety", () => {
 
     expect(smoothLayers.source.faces).toBe(1);
     expect(smoothLayers.refinement.faces).toBeGreaterThan(smoothLayers.source.faces);
+    expect(smoothLayers.canonical).toMatchObject({ vertices: 1, edges: 2, faces: 1, eulerCharacteristic: 0 });
     expect(smoothLayers.canonical.eulerCharacteristic).toBe(
       smoothLayers.canonical.vertices - smoothLayers.canonical.edges + smoothLayers.canonical.faces
     );

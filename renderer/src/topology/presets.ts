@@ -174,8 +174,8 @@ const PRESETS: TopologyPreset[] = [
         boundary: [
           { edgeId: "e0", from: "v0", to: "v1", label: "a", orientation: 1, pairings: ["e2"] },
           { edgeId: "e1", from: "v1", to: "v2", label: "b", orientation: 1, pairings: ["e3"] },
-          { edgeId: "e2", from: "v3", to: "v2", label: "a", orientation: -1, pairings: ["e0"] },
-          { edgeId: "e3", from: "v0", to: "v3", label: "b", orientation: -1, pairings: ["e1"] },
+          { edgeId: "e2", from: "v2", to: "v3", label: "a", orientation: -1, pairings: ["e0"] },
+          { edgeId: "e3", from: "v3", to: "v0", label: "b", orientation: -1, pairings: ["e1"] },
         ],
         boundaryWord: "a b a^-1 b^-1",
       }),
@@ -198,7 +198,7 @@ const PRESETS: TopologyPreset[] = [
         boundary: [
           { edgeId: "e0", from: "v0", to: "v1", label: "a", orientation: 1, pairings: ["e2"] },
           { edgeId: "e1", from: "v1", to: "v2", label: "b", orientation: 1, pairings: ["e3"] },
-          { edgeId: "e2", from: "v3", to: "v2", label: "a", orientation: -1, pairings: ["e0"] },
+          { edgeId: "e2", from: "v2", to: "v3", label: "a", orientation: -1, pairings: ["e0"] },
           { edgeId: "e3", from: "v3", to: "v0", label: "b", orientation: 1, pairings: ["e1"] },
         ],
         boundaryWord: "a b a^-1 b",
@@ -269,7 +269,7 @@ const PRESETS: TopologyPreset[] = [
           { edgeId: "e0", from: "v0", to: "v1", label: "u", orientation: 1 },
           { edgeId: "e1", from: "v1", to: "v2", label: "a", orientation: 1, pairings: ["e3"] },
           { edgeId: "e2", from: "v2", to: "v3", label: "v", orientation: 1 },
-          { edgeId: "e3", from: "v0", to: "v3", label: "a", orientation: 1, pairings: ["e1"] },
+          { edgeId: "e3", from: "v3", to: "v0", label: "a", orientation: -1, pairings: ["e1"] },
         ],
         boundaryWord: "u a v a^-1",
       }),

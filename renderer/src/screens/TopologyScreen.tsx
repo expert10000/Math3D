@@ -28,6 +28,7 @@ import {
   removeVertexFromDiagram,
   setOperationGroupInPlan,
   type InvalidBoundaryCycleDiagnostic,
+  type ExactIntegerMatrix,
   type FundamentalDiagram,
   type FundamentalDiagramEdge,
   type NonManifoldEdgeDiagnostic,
@@ -2269,6 +2270,7 @@ export const TopologyScreen: React.FC = () => {
     const result = ensureBuilt();
     const complex = result.topologyObject.canonical;
     const validation = result.structuralValidation;
+    const boundaryOperators = result.cellularBoundaryOperators;
     const report = validation.value;
     const errorCount = validation.diagnostics.filter((entry) => entry.severity === "error").length;
     const warningCount = validation.diagnostics.filter((entry) => entry.severity === "warning").length;
@@ -2312,6 +2314,44 @@ export const TopologyScreen: React.FC = () => {
       gap: 4,
       fontSize: 10,
     });
+    const renderExactMatrix = (label: string, symbol: string, matrix: ExactIntegerMatrix) => (
+      <div style={{ border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", padding: 8, minWidth: 0, overflowX: "auto" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 5 }}>{label}</div>
+        <table style={{ borderCollapse: "collapse", fontSize: 10, width: "max-content", minWidth: "100%" }}>
+          <thead>
+            <tr>
+              <th style={{ border: "1px solid #cbd5e1", padding: "4px 6px", background: "#f8fafc" }}>{symbol}</th>
+              {matrix.columnCellIds.map((cellId) => (
+                <th key={`${symbol}-column-${cellId}`} style={{ border: "1px solid #cbd5e1", padding: "3px 5px", background: "#eff6ff" }}>
+                  <button type="button" onClick={() => inspectCell(matrix.columnCellDimension, cellId)} style={{ fontSize: 10, fontWeight: 700 }}>
+                    {cellId}
+                  </button>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {matrix.rowCellIds.map((cellId, rowIndex) => (
+              <tr key={`${symbol}-row-${cellId}`}>
+                <th style={{ border: "1px solid #cbd5e1", padding: "3px 5px", background: "#eff6ff" }}>
+                  <button type="button" onClick={() => inspectCell(matrix.rowCellDimension, cellId)} style={{ fontSize: 10, fontWeight: 700 }}>
+                    {cellId}
+                  </button>
+                </th>
+                {(matrix.entries[rowIndex] ?? []).map((value, columnIndex) => (
+                  <td key={`${symbol}-${rowIndex}-${columnIndex}`} style={{ border: "1px solid #cbd5e1", padding: "4px 7px", textAlign: "center", fontFamily: "ui-monospace, monospace" }}>
+                    {value}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div style={{ marginTop: 5, fontSize: 9.5, color: "#475569" }}>
+          Rows: {matrix.rowCellDimension}-cells · columns: {matrix.columnCellDimension}-cells · exact {matrix.encoding}
+        </div>
+      </div>
+    );
 
     return (
       <div data-testid="topology-complex-view" style={{ display: "grid", gap: 10 }}>
@@ -2432,8 +2472,43 @@ export const TopologyScreen: React.FC = () => {
         </div>
 
         <div data-testid="topology-complex-boundary-dimensions" style={{ border: "1px solid #dbe4f0", borderRadius: 9, background: "#fff", padding: "8px 10px", fontSize: 11 }}>
-          Expected operator shapes: ∂₁ {report?.expectedBoundaryOperatorDimensions.boundary1.join(" × ") ?? "n/a"}; ∂₂ {report?.expectedBoundaryOperatorDimensions.boundary2.join(" × ") ?? "n/a"}. Exact matrices arrive in Commit 4.
+          Expected operator shapes: ∂₁ {report?.expectedBoundaryOperatorDimensions.boundary1.join(" × ") ?? "n/a"}; ∂₂ {report?.expectedBoundaryOperatorDimensions.boundary2.join(" × ") ?? "n/a"}.
         </div>
+        <section data-testid="topology-cellular-boundary-operators" style={{ border: "1px solid #bfdbfe", borderRadius: 10, background: "#eff6ff", padding: "9px 10px", display: "grid", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
+            <strong>Exact cellular boundary operators over Z</strong>
+            <span>{boundaryOperators.method}</span>
+          </div>
+          {boundaryOperators.value ? (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 8 }}>
+                {renderExactMatrix("∂₁ : C₁ → C₀", "∂₁", boundaryOperators.value.boundary1)}
+                {renderExactMatrix("∂₂ : C₂ → C₁", "∂₂", boundaryOperators.value.boundary2)}
+              </div>
+              <div
+                data-testid="topology-chain-condition"
+                style={{
+                  border: `1px solid ${boundaryOperators.value.chainCondition.holds ? "#86efac" : "#fca5a5"}`,
+                  borderRadius: 8,
+                  background: boundaryOperators.value.chainCondition.holds ? "#f0fdf4" : "#fff1f2",
+                  padding: "7px 8px",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: boundaryOperators.value.chainCondition.holds ? "#166534" : "#b91c1c",
+                }}
+              >
+                Exact chain condition ∂₁∂₂ = 0: {boundaryOperators.value.chainCondition.holds ? "PASS" : "FAIL"}
+              </div>
+              <div style={{ fontSize: 10, color: "#475569" }}>
+                Cell headers are selectable. Homology and Smith normal form arrive in Commit 5.
+              </div>
+            </>
+          ) : (
+            <div data-testid="topology-chain-condition" style={{ color: "#b91c1c", fontSize: 11, fontWeight: 700 }}>
+              Matrices withheld: canonical structural validation did not authorize cellular algebra.
+            </div>
+          )}
+        </section>
       </div>
     );
   };
@@ -5734,6 +5809,9 @@ export const TopologyScreen: React.FC = () => {
               <div data-testid="topology-formal-classification">Formal surface classification: {unifiedTopologyDiagnostics.genusLabel}</div>
               <div data-testid="topology-structural-validation-status">
                 Canonical structural validation: <strong>{buildResult.structuralValidation.status}</strong>
+              </div>
+              <div data-testid="topology-cellular-boundary-status">
+                Exact cellular boundaries: <strong>{buildResult.cellularBoundaryOperators.status}</strong> · ∂₁∂₂ {buildResult.cellularBoundaryOperators.value?.chainCondition.holds ? "PASS" : "withheld"}
               </div>
               <button type="button" onClick={() => setActiveView("complex")} style={{ fontSize: 10 }}>
                 Open Complex view

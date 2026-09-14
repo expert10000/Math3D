@@ -75,7 +75,7 @@ export type CanonicalTopologyEdge = {
 export type CanonicalTopologyFace = {
   id: string;
   name: string;
-  /** Finite closed oriented edge word; validation is intentionally the next milestone. */
+  /** Finite closed oriented edge word, checked by canonical structural validation. */
   attachment: Array<{ edgeId: string; direction: Orientation }>;
   boundaryWord: string;
   sourceRefs: CanonicalSourceCellReference[];

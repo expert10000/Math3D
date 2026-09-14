@@ -28,6 +28,8 @@ describe("topology document format", () => {
     expect(doc.payload.cache?.activeView).toBe("quotient");
     expect(doc.payload.cache?.realizationChoiceIds).toEqual(built.realizations.map((entry) => entry.id));
     expect(doc.payload.cache?.animationPlan?.groups["op-0"]).toBe("g1");
+    expect(() => JSON.stringify(doc)).not.toThrow();
+    expect(JSON.stringify(doc)).toContain("decimal-bigint");
   });
 
   it("detects valid and invalid documents", () => {
@@ -61,13 +63,16 @@ describe("topology document format", () => {
     const diagram = TOPOLOGY_PRESET_BY_ID.get("cylinder")!.buildDiagram();
     const legacy = structuredClone(buildQuotientPipeline(diagram));
     delete (legacy as { structuralValidation?: unknown }).structuralValidation;
+    delete (legacy as { cellularBoundaryOperators?: unknown }).cellularBoundaryOperators;
     delete (legacy.topologyObject.canonical as Partial<CanonicalTopologyComplex>).incidences;
-    legacy.pipeline = legacy.pipeline.filter((stage) => stage.id !== "validation");
+    legacy.pipeline = legacy.pipeline.filter((stage) => stage.id !== "validation" && stage.id !== "boundary");
 
     const normalized = normalizeTopologyRealizationKinds(legacy);
 
     expect(normalized.topologyObject.canonical.incidences).toBeTruthy();
     expect(normalized.structuralValidation.status).toBe("certified-within-model");
+    expect(normalized.cellularBoundaryOperators.status).toBe("exact");
     expect(normalized.pipeline.some((stage) => stage.id === "validation")).toBe(true);
+    expect(normalized.pipeline.some((stage) => stage.id === "boundary")).toBe(true);
   });
 });

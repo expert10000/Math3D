@@ -354,6 +354,29 @@ Where in the UI:
 - Structural warnings and errors appear under **Focused structural diagnostics** and can select the affected canonical cell.
 - The right-side **C. Diagnostics** panel also shows canonical validation status and provides **Open Complex view**.
 
+### Commit 4 — Exact cellular boundary operators
+
+**Status: complete (2026-09-14).**
+
+Delivered:
+
+- Added exact cellular chain groups `C₂ → C₁ → C₀` with deterministic cell-ID bases and row/column mappings back to canonical cells.
+- Built `∂₁` as target-minus-source incidence for every oriented 1-cell, including exact cancellation for loop edges.
+- Built `∂₂` by summing signed occurrences in each canonical 2-cell attachment word. Repeated occurrences and torsion-producing coefficients are retained exactly.
+- All integral arithmetic uses `bigint`; persisted matrices use a documented decimal-bigint encoding so `.math3d-topology` v1 caches remain JSON-safe and lossless.
+- Added exact bigint matrix composition and a mandatory `∂₁∂₂ = 0` check. Nonzero entries return cell-focused failed diagnostics rather than a false pass.
+- Invalid structural input returns an explicit unsupported result and no matrices, preserving malformed objects for inspection while preventing invalid downstream algebra.
+- Corrected the formal canonicalization boundary: authored quotient cells and attachment words define the canonical CW complex, while fan triangulation remains only a separate build refinement. The torus now correctly exposes the minimal `1 V / 2 E / 1 F` cellular presentation.
+- Audited inconsistent edge ordering in the Torus, Klein bottle, Suspension, and Cylinder preset diagrams so their source boundary walks are contiguous before refinement.
+- Added the Exact Boundary Operators pipeline stage, JSON-cache reconstruction, exact fixture matrices for torus/projective-plane/Klein presentations, and regression coverage over every shipped preset.
+
+Where in the UI:
+
+- Open **Topology → Complex View** and scroll below the cell browsers.
+- **Exact cellular boundary operators over Z** displays `∂₁ : C₁ → C₀` and `∂₂ : C₂ → C₁`; rows and columns are labeled by selectable canonical cell IDs.
+- The green chain-condition card shows **Exact chain condition ∂₁∂₂ = 0: PASS** when the certified matrices compose to zero.
+- The right-side **C. Diagnostics** panel shows the exact-boundary result and chain-condition status. The full Algebra view and homology arrive in Commits 5–6.
+
 ## Deferred research layer
 
 Do not schedule before the above release gates are stable:

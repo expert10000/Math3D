@@ -32,6 +32,9 @@ test.describe("Topology semantic safety", () => {
       await ctx.page.getByTestId("topology-complex-faces").locator('[data-testid^="topology-complex-cell-2-"]').first().click();
       await expect(ctx.page.getByTestId("topology-complex-selected-cell")).toContainText("source 2-cell");
       await expect(ctx.page.getByTestId("topology-complex-boundary-dimensions")).toContainText("Expected operator shapes");
+      await expect(ctx.page.getByTestId("topology-cellular-boundary-operators")).toContainText("∂₁ : C₁ → C₀");
+      await expect(ctx.page.getByTestId("topology-cellular-boundary-operators")).toContainText("∂₂ : C₂ → C₁");
+      await expect(ctx.page.getByTestId("topology-chain-condition")).toContainText("∂₁∂₂ = 0: PASS");
 
       await ctx.page.getByTestId("topology-preset-card-projective_plane").click();
       await ctx.page.getByRole("button", { name: "Realization View", exact: true }).click();
