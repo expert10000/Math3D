@@ -1775,3 +1775,45 @@ vertex/edge/face locate-back. The ownership and lifecycle boundary is documented
 (9 tests across two files); all Topology unit suites pass (144 tests across 26
 files), and both semantic-safety E2E checks pass against the rebuilt renderer.
 `typecheck:noemit` and the renderer production build also succeed.
+
+### T13 execution plan
+
+**Status:** complete — Topology v1 formal migration closed
+
+T13 closes the formal Topology v1 migration by consolidating its release evidence and
+removing the last React-state mutation fallback. It does not remove supported legacy
+documents, authoring tools, Geometry adapters, or visualization modes.
+
+1. Extend the formal fixture matrix to require explicit H0-H2 results over both `Z`
+   and `Z/2Z`, source mapping, provenance, exact matrices, and consistency checks.
+2. Add a generated degree-`n` attaching-map property matrix for `n = 1…12`, checking
+   `∂₁∂₂ = 0`, integral torsion, mod-2 parity, and Euler/homology consistency.
+3. Promote the constrained Sage differential, timeout/cancellation, late-publication,
+   malformed-output, stale-source, and size-limit suites into the aggregate release
+   command.
+4. Expose kernel undo/redo state from `TopologyDiagramCommandAdapter`; remove the
+   parallel React snapshot stacks and all source-state fallback mutation.
+5. Migrate released v2 undo/redo snapshots once into reversible kernel transactions,
+   retaining legacy open behavior while ensuring all subsequent changes use one
+   production route.
+6. Retain v1/v2 document migration, raw diagram import, read-only Mesh/Geometry
+   adapters, and realization compatibility unless a focused gate proves them
+   redundant. Record the remaining out-of-scope workflows explicitly.
+7. Run persistence/replay, formal/property, Sage differential/cancellation, adapter,
+   E2E semantic/visual-realization, responsive, TypeScript, and production-build
+   gates through one authoritative command.
+
+**T13 acceptance:** valid inputs publish transparent exact H0-H2 over `Z` and
+`Z/2Z`, including integral torsion and complete provenance; invalid, stale,
+unsupported, timed-out, and cancelled work remains explicit and cannot publish as
+current; save/reopen/replay remains structurally identical; all interactive source
+mutations use the application kernel; compatibility paths still in use remain
+supported and documented.
+
+**Completed verification:** `npm run test:topology:v1:acceptance` passes the complete
+gate: 146 Topology tests across 26 files; 8 dedicated Sage/publication tests across 2
+files; cross-project TypeScript; desktop and renderer production builds; 2 Electron
+semantic and visual-realization journeys; and phone portrait, phone landscape,
+tablet, and desktop responsive smoke checks. The closure, retained compatibility,
+out-of-scope work, and authoritative commands are recorded in
+`docs/topology-v1-release-gates.md`.

@@ -144,4 +144,25 @@ describe("fundamental-diagram command adapter", () => {
     adapter.commit(preview);
     expect(adapter.completedTransactions).toBe(1);
   });
+
+  it("migrates legacy snapshot history into the sole command-kernel undo/redo route", () => {
+    const base = TOPOLOGY_PRESET_BY_ID.get("torus_square")!.buildDiagram();
+    const vertexId = base.vertices[0]!.id;
+    const first = moveVertexInDiagram(base, vertexId, -0.8, 0.8);
+    const current = moveVertexInDiagram(first, vertexId, -0.6, 0.7);
+    const future = moveVertexInDiagram(current, vertexId, -0.4, 0.6);
+    const adapter = TopologyDiagramCommandAdapter.restoreLegacyHistory(current, [base, first], [future]);
+
+    expect(adapter.current()).toEqual(current);
+    expect(adapter.historyState()).toEqual({ undoCount: 2, redoCount: 1 });
+    expect(adapter.canUndo).toBe(true);
+    expect(adapter.canRedo).toBe(true);
+    expect(adapter.undo()).toEqual(first);
+    expect(adapter.undo()).toEqual(base);
+    expect(adapter.undo()).toBeNull();
+    expect(adapter.redo()).toEqual(first);
+    expect(adapter.redo()).toEqual(current);
+    expect(adapter.redo()).toEqual(future);
+    expect(adapter.redo()).toBeNull();
+  });
 });

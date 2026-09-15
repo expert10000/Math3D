@@ -93,6 +93,9 @@ describe("Topology v1 formal release matrix", () => {
       expect(first.homology.status).toBe("exact");
       expect(first.homology.value?.integer.groups.map((group) => group.bettiNumber)).toEqual(fixture.expected.betti);
       expect(first.homology.value?.integer.groups[1].torsionCoefficients).toEqual(fixture.expected.h1Torsion ?? []);
+      expect(first.homology.value?.coefficientDomains).toEqual(["Z", "Z/2Z"]);
+      expect(first.homology.value?.mod2.groups.map((group) => group.degree)).toEqual([0, 1, 2]);
+      expect(first.homology.value?.mod2.groups.every((group) => Number.isSafeInteger(group.dimension) && group.dimension >= 0)).toBe(true);
       expect(first.algebraicConsistency.value?.holds).toBe(true);
       expect(first.fundamentalGroup.value?.abelianization.agreesWithExactH1).toBe(true);
       expect(first.topologyObject.provenance.source.hash).toMatch(/^fnv1a32:/);
@@ -120,5 +123,24 @@ describe("Topology v1 formal release matrix", () => {
     expect(loaded?.audit.migration).toBe("v2-stale-recomputed");
     expect(loaded?.buildResult.homology.status).toBe("exact");
     expect(loaded?.document.payload.cache.algorithmVersions.homology).not.toBe("stale@0");
+  });
+
+  it("satisfies the exact chain and coefficient-field properties for degree-n attaching maps", () => {
+    for (let degree = 1; degree <= 12; degree += 1) {
+      const analysis = analyzeCW(oneVertexCW(
+        `moore-degree-${degree}`,
+        ["a"],
+        [Array.from({ length: degree }, () => ({ edgeId: "a", direction: 1 as const }))]
+      ));
+      expect(analysis.structuralValidation.value?.structurallyValid, `degree ${degree} structural validity`).toBe(true);
+      expect(analysis.cellularBoundaryOperators.value?.chainCondition.holds, `degree ${degree} chain condition`).toBe(true);
+      expect(analysis.homology.status, `degree ${degree} exact homology`).toBe("exact");
+      expect(analysis.homology.value?.integer.groups.map((group) => group.degree)).toEqual([0, 1, 2]);
+      expect(analysis.homology.value?.integer.groups[1].torsionCoefficients).toEqual(degree === 1 ? [] : [String(degree)]);
+      expect(analysis.homology.value?.mod2.groups.map((group) => group.dimension)).toEqual(
+        degree % 2 === 0 ? [1, 1, 1] : [1, 0, 0]
+      );
+      expect(analysis.algebraicConsistency.value?.holds, `degree ${degree} Euler/homology consistency`).toBe(true);
+    }
   });
 });

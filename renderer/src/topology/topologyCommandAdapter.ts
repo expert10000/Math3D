@@ -72,6 +72,21 @@ export class TopologyDiagramCommandAdapter {
     return this.#completedTransactions;
   }
 
+  get canUndo(): boolean {
+    return this.#replayCursor > 0;
+  }
+
+  get canRedo(): boolean {
+    return this.#replayCursor < this.#replayTransactions.length;
+  }
+
+  historyState(): Readonly<{ undoCount: number; redoCount: number }> {
+    return {
+      undoCount: this.#replayCursor,
+      redoCount: this.#replayTransactions.length - this.#replayCursor,
+    };
+  }
+
   current(): FundamentalDiagram {
     return diagramFromKernel(this.#kernel);
   }
@@ -118,6 +133,28 @@ export class TopologyDiagramCommandAdapter {
       transaction.commands.map((command) => Number(command.commandId.match(/(\d+)$/)?.[1] ?? 0))
     ));
     adapter.#completedTransactions = 0;
+    return adapter;
+  }
+
+  /**
+   * Imports the released v2 snapshot history into the command kernel once. No
+   * legacy snapshot is used as an undo/redo fallback after this boundary.
+   */
+  static restoreLegacyHistory(
+    current: FundamentalDiagram,
+    undoHistory: readonly FundamentalDiagram[],
+    redoHistory: readonly FundamentalDiagram[]
+  ): TopologyDiagramCommandAdapter {
+    const adapter = new TopologyDiagramCommandAdapter(undoHistory[0] ?? current);
+    for (let index = 1; index < undoHistory.length; index += 1) {
+      adapter.commit(undoHistory[index]!, { kind: "import", sourceId: "topology-v2-history-migration" });
+    }
+    adapter.commit(current, { kind: "import", sourceId: "topology-v2-history-migration" });
+    const currentCursor = adapter.historyState().undoCount;
+    for (const diagram of [...redoHistory].reverse()) {
+      adapter.commit(diagram, { kind: "import", sourceId: "topology-v2-history-migration" });
+    }
+    while (adapter.historyState().undoCount > currentCursor) adapter.undo();
     return adapter;
   }
 

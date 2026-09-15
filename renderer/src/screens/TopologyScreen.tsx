@@ -282,7 +282,6 @@ class SmallDsu {
   }
 }
 
-const DIAGRAM_HISTORY_LIMIT = 120;
 const EDGE_CLASS_COLOR_A = "#dc2626";
 const EDGE_CLASS_COLOR_B = "#2563eb";
 const EDGE_CLASS_COLOR_NEUTRAL = "#334155";
@@ -1300,8 +1299,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
   const [buildResult, setBuildResult] = useState<QuotientBuildResult>(() => buildQuotientPipeline(initialDiagram()));
   const [builtSignature, setBuiltSignature] = useState(() => JSON.stringify(initialDiagram()));
   const [savedSignature, setSavedSignature] = useState(() => JSON.stringify(initialDiagram()));
-  const [undoStack, setUndoStack] = useState<FundamentalDiagram[]>([]);
-  const [redoStack, setRedoStack] = useState<FundamentalDiagram[]>([]);
+  const [commandHistoryState, setCommandHistoryState] = useState({ undoCount: 0, redoCount: 0 });
   const [activeView, setActiveView] = useState<TopologyView>("diagram");
   const [selectedCanonicalCell, setSelectedCanonicalCell] = useState<CanonicalCellSelection | null>(null);
   const [hoverEdgeId, setHoverEdgeId] = useState<string | null>(null);
@@ -1390,6 +1388,9 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
   if (!topologyCommandAdapterRef.current) {
     topologyCommandAdapterRef.current = new TopologyDiagramCommandAdapter(diagram);
   }
+  const syncCommandHistoryState = () => {
+    setCommandHistoryState(topologyCommandAdapterRef.current!.historyState());
+  };
   const storyStageStripRef = useRef<HTMLDivElement | null>(null);
   const scrollStoryStageStrip = useCallback((direction: -1 | 1) => {
     const host = storyStageStripRef.current;
@@ -1539,8 +1540,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
   );
 
   const resetHistory = () => {
-    setUndoStack([]);
-    setRedoStack([]);
+    syncCommandHistoryState();
   };
 
   const setDiagramAndDraft = (
@@ -1558,10 +1558,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
     }
     const nextSignature = JSON.stringify(routed);
     if (nextSignature !== diagramSignature) setPersistedTopologySession(null);
-    if (options?.pushHistory && nextSignature !== diagramSignature) {
-      setUndoStack((prev) => [...prev.slice(-(DIAGRAM_HISTORY_LIMIT - 1)), cloneFundamentalDiagram(diagram)]);
-      setRedoStack([]);
-    }
+    if (options?.pushHistory || options?.source === "import" || options?.source === "session") syncCommandHistoryState();
     setDiagram(routed);
     setJsonDraft(JSON.stringify(routed, null, 2));
     if (options?.markSaved) {
@@ -1811,8 +1808,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
   const stopDragging = () => {
     if (draggingChangedRef.current && draggingStartDiagramRef.current) {
       topologyCommandAdapterRef.current!.commit(diagram);
-      setUndoStack((prev) => [...prev.slice(-(DIAGRAM_HISTORY_LIMIT - 1)), draggingStartDiagramRef.current!]);
-      setRedoStack([]);
+      syncCommandHistoryState();
     }
     draggingVertexIdRef.current = null;
     draggingStartDiagramRef.current = null;
@@ -1914,13 +1910,10 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
   };
 
   const handleUndo = () => {
-    if (undoStack.length === 0) return;
-    const nextUndo = [...undoStack];
-    const previous = nextUndo.pop();
-    if (!previous) return;
-    setUndoStack(nextUndo);
-    setRedoStack((prev) => [...prev.slice(-(DIAGRAM_HISTORY_LIMIT - 1)), cloneFundamentalDiagram(diagram)]);
-    const routed = topologyCommandAdapterRef.current!.undo() ?? cloneFundamentalDiagram(previous);
+    if (!topologyCommandAdapterRef.current!.canUndo) return;
+    const routed = topologyCommandAdapterRef.current!.undo();
+    if (!routed) return;
+    syncCommandHistoryState();
     setDiagramAndDraft(routed);
     setSelectedEdgeId(null);
     setSelectedVertexId(null);
@@ -1928,13 +1921,10 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
   };
 
   const handleRedo = () => {
-    if (redoStack.length === 0) return;
-    const nextRedo = [...redoStack];
-    const upcoming = nextRedo.pop();
-    if (!upcoming) return;
-    setRedoStack(nextRedo);
-    setUndoStack((prev) => [...prev.slice(-(DIAGRAM_HISTORY_LIMIT - 1)), cloneFundamentalDiagram(diagram)]);
-    const routed = topologyCommandAdapterRef.current!.redo() ?? cloneFundamentalDiagram(upcoming);
+    if (!topologyCommandAdapterRef.current!.canRedo) return;
+    const routed = topologyCommandAdapterRef.current!.redo();
+    if (!routed) return;
+    syncCommandHistoryState();
     setDiagramAndDraft(routed);
     setSelectedEdgeId(null);
     setSelectedVertexId(null);
@@ -1962,7 +1952,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [diagram, undoStack, redoStack]);
+  }, [diagram, commandHistoryState.undoCount, commandHistoryState.redoCount]);
 
   useEffect(() => {
     const face = diagram.faces.find((entry) => entry.id === selectedFaceId) ?? diagram.faces[0];
@@ -2040,16 +2030,20 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
         const restoredAdapter = TopologyDiagramCommandAdapter.restore(loaded.persistence.replay);
         topologyCommandAdapterRef.current = restoredAdapter;
         loadedDiagram = restoredAdapter.current();
-        regenerateBoundaryWordsInPlace(loadedDiagram);
-        const loadedSignature = JSON.stringify(loadedDiagram);
-        setDiagram(loadedDiagram);
-        setJsonDraft(JSON.stringify(loadedDiagram, null, 2));
-        setSavedSignature(loadedSignature);
       } else {
-        setDiagramAndDraft(loadedDiagram, { markSaved: true, source: "import" });
+        topologyCommandAdapterRef.current = TopologyDiagramCommandAdapter.restoreLegacyHistory(
+          loadedDiagram,
+          loaded.document.payload.history.undo,
+          loaded.document.payload.history.redo
+        );
+        loadedDiagram = topologyCommandAdapterRef.current.current();
       }
-      setUndoStack(loaded.document.payload.history.undo.map(cloneFundamentalDiagram));
-      setRedoStack(loaded.document.payload.history.redo.map(cloneFundamentalDiagram));
+      regenerateBoundaryWordsInPlace(loadedDiagram);
+      const loadedSignature = JSON.stringify(loadedDiagram);
+      setDiagram(loadedDiagram);
+      setJsonDraft(JSON.stringify(loadedDiagram, null, 2));
+      setSavedSignature(loadedSignature);
+      syncCommandHistoryState();
       setBuildMode("editor");
       const compatibleBuildResult = normalizeTopologyRealizationKinds(loaded.buildResult);
       setBuildResult(compatibleBuildResult);
@@ -2331,10 +2325,10 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
           <button type="button" onClick={handleRemoveSelectedEdge} disabled={!selectedEdgeId}>
             Remove Edge
           </button>
-          <button type="button" onClick={handleUndo} disabled={undoStack.length === 0}>
+          <button type="button" onClick={handleUndo} disabled={commandHistoryState.undoCount === 0}>
             Undo
           </button>
-          <button type="button" onClick={handleRedo} disabled={redoStack.length === 0}>
+          <button type="button" onClick={handleRedo} disabled={commandHistoryState.redoCount === 0}>
             Redo
           </button>
         </div>
@@ -6837,7 +6831,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
             <button type="button" onClick={() => void loadTopologyDocument()}>
               Load .math3d-topology
             </button>
-            <button type="button" onClick={handleRedo} disabled={redoStack.length === 0}>
+            <button type="button" onClick={handleRedo} disabled={commandHistoryState.redoCount === 0}>
               Redo
             </button>
           </div>
