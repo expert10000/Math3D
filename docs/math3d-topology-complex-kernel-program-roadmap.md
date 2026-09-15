@@ -25,6 +25,8 @@ Where labels differ, use the following rule:
 ```text
 F / T / C labels = program delivery order and unique commit identities
 K01-K51 = detailed application-kernel implementation catalogue
+GK01-GK20 = post-C12 cross-module integration commits that consume the K catalogue
+G01-G08 = milestone groups used to summarize the GK sequence, not commit identities
 ```
 
 The K catalogue is consumed after C12 unless a narrowly scoped K capability is
@@ -678,23 +680,26 @@ adapter and parity gate pass.
 **Acceptance.** All migrated labs operate as views of one reproducible document with
 immediate preview, status-qualified scientific results and one mutation path.
 
-### Phase K - general application-kernel rollout
+### Phase GK/K - general application-kernel rollout
 
 The detailed **K01-K51** commit descriptions, scopes, compatibility boundaries and
 acceptance criteria remain intact in
 `docs/application-kernel-scene-script-migration-plan.md`; this roadmap does not
-abbreviate, renumber, or supersede them.  Their program placement is:
+abbreviate, renumber, or supersede them. The executable post-C12 sequence is
+**GK01-GK20** below. Each GK commit declares which K catalogue entries it consumes;
+already-proven F/T/C behavior is accepted as conformance evidence instead of being
+implemented twice. Their milestone placement is:
 
 | Generalization group | Detailed K catalogue focus | Program gate |
 | --- | --- | --- |
-| G01 | Scene Script command lowering, execution parity, snapshot/operation-log exports. | Scene -> Script -> Scene structural parity. |
-| G02 | Geometry and Scene Viewer command adapter, selection, edits, history bridge. | Viewer, Inspector, script and undo agree. |
-| G03 | General derived-resource dependency graph and invalidation. | No stale resource presented as current. |
-| G04 | First Mesh analysis migration and worker adapter. | Revision/cancellation/provenance conformance. |
-| G05 | Geometry construction, Surface->Mesh, Volume and Curve slices. | Per-module replay/provenance/save gates. |
-| G06 | Local invalidation where mathematical global-oracle comparison exists. | Benchmark improvement without correctness regression. |
-| G07 | Browser/desktop cross-runtime and dependency conformance. | Contract parity on supported runtimes. |
-| G08 | Contract freeze and final adapter removal. | One mutation route per completed workflow. |
+| G01 | Relations, dependency graph, deterministic invalidation, and adapter conformance. | Every module consumes one relation/lifecycle contract. |
+| G02 | Geometry document plus Scene Script/GUI command unification and resources. | Scene, script, viewer, Inspector, and undo agree. |
+| G03 | Mesh document, transactional editing, and Mesh Analyze migration. | Revision/cancellation/provenance conformance at production scale. |
+| G04 | Surface document and revisioned Surface → Mesh handoff. | Surface save/replay and derived-lineage gates. |
+| G05 | Curve document/analysis and Curve → Surface/Geometry handoffs. | Curve replay, provenance, and locate-back gates. |
+| G06 | Volume document and Volume → Surface/Mesh handoffs. | Volume replay, invalidation, and extraction-lineage gates. |
+| G07 | Shared Viewer/Inspector provenance and cross-module workspace replay. | Uniform status, navigation, save, reopen, and replay. |
+| G08 | Proven local invalidation, runtime conformance, and lifecycle freeze. | Cross-runtime parity and one mutation route per workflow. |
 
 ## Execution and security requirements
 
@@ -2178,3 +2183,364 @@ and tessellation parameters. The handoff and UI are documented in
 define → explore → analyze → save → reopen → replay → derived-handoff workflow.
 The gate and compatibility decision are recorded in
 `docs/complex-analysis-v1-release-gate.md`.
+
+---
+
+## Required cross-module kernel rollout commits
+
+**Status:** planned — begins after the completed C12 gate
+
+**Purpose.** F02-F08 proved a domain-neutral lifecycle kernel, while Topology and
+Complex Analysis proved it in complete vertical slices. GK01-GK20 now make that
+kernel the shared lifecycle for Geometry, Mesh, Surfaces, Curves, Volumes, Topology,
+and Complex Analysis. They migrate released professional workflows; they do not
+reimplement their mathematical algorithms or introduce module-local command,
+history, job, artifact, provenance, relation, or invalidation systems.
+
+### Numbering and consumption rule
+
+- `GK01-GK20` are the executable cross-module integration commits.
+- `K01-K51` remain the detailed source catalogue and design record.
+- Every GK implementation must cite its consumed K entries in its completion note.
+- A K entry already satisfied by F/T/C work contributes conformance evidence; its
+  infrastructure must not be duplicated.
+- A GK commit closes only when its cross-module acceptance gate passes, even when
+  all of its underlying primitives already exist.
+
+### K-catalogue crosswalk
+
+| GK commit | Primary K entries consumed | Existing evidence reused |
+| --- | --- | --- |
+| GK01 | K20, K44, K46 | F06 provenance; T12 interoperability; C11 Riemann-surface lineage |
+| GK02 | K46 | F07 artifact invalidation and stale-generation guards |
+| GK03 | K07, K13, K23, K33, K45, K50 | Topology and Complex v1 acceptance harnesses |
+| GK04 | K03-K07, K14-K21 | Geometry professional document, metadata, and operation-tree work |
+| GK05 | K05-K19, K21 | Existing Scene Script transactions and GUI history bridge |
+| GK06 | K22, K23, K46, K48 | Geometry analysis-result and derived-mesh infrastructure |
+| GK07 | K20, K46-K48 | Mesh resource identity, analysis records, and persistence work |
+| GK08 | K14-K19, K21, K47-K48 | Professional Mesh edit and unified selection/history workflows |
+| GK09 | K22, K23, K46-K48 | Mesh Analyze v1 jobs, provenance, CGAL/VTK capability gates |
+| GK10 | K20, K21, K46, K48 | Surface Analysis v1 document/result infrastructure |
+| GK11 | K20, K23, K46, K48 | Derived SurfaceMesh lifecycle and C11 lineage precedent |
+| GK12 | K20-K23, K46, K48 | Curves v1 document, result, worker, and persistence infrastructure |
+| GK13 | K20, K46, K48 | Curve interoperability and derived-curve/surface workflows |
+| GK14 | K20-K23, K46, K48 | Volume v1 object, computation, and persistence infrastructure |
+| GK15 | K20, K22-K23, K46, K48 | Volume isosurface and derived-surface workflows |
+| GK16 | K20, K23, K32, K44, K48 | Existing module provenance and locate-back inspectors |
+| GK17 | K11, K20-K21, K32, K42, K46, K48 | Topology/Complex replay formats and module persistence |
+| GK18 | K49 | Full deterministic recomputation remains the correctness oracle |
+| GK19 | K22, K50 | F08 capability registry and desktop/browser worker gates |
+| GK20 | K09-K10, K19, K45, K50-K51 | All preceding parity and acceptance evidence |
+
+### GK01 — `feat(core): add cross-document relation and lineage contracts`
+
+**Milestone:** G01 — shared relations foundation
+
+**Scope.** Add strict versioned relations between source documents, derived
+documents, result records, and artifact generations. Model `derived-from`,
+`generated-by`, `snapshot-of`, `analysis-of`, `realization-of`, and `promoted-from`
+with exact source document ID/revision/hash/generation, operation, parameters,
+producing result, and target reference.
+
+**Required use cases.** Geometry → Mesh, Surface → Mesh, Curve → Surface/Geometry,
+Volume → Surface/Mesh, Mesh → Topology, and Complex → Riemann-surface/Surface/Mesh.
+
+**Acceptance.** Relations are immutable canonical JSON, revision-bound, compact,
+and traversable in both directions without source or artifact payloads. A relation
+cannot claim a current dependency when its recorded source generation is stale.
+
+### GK02 — `feat(kernel): add derived-document dependency graph and invalidation`
+
+**Milestone:** G01 — shared relations foundation
+
+**Scope.** Extend artifact invalidation to a compact dependency graph over GK01
+relations. The first implementation is full and deterministic: a source revision
+marks dependent relations, result references, artifacts, and derived snapshots
+stale without mutating downstream source documents in place.
+
+**Compatibility boundary.** No live implicit coupling and no local incremental
+invalidation before GK18.
+
+**Acceptance.** Editing one source invalidates exactly its dependent generations;
+unrelated documents remain current; cycles are rejected or explicitly diagnosed;
+repeated invalidation is deterministic and idempotent.
+
+### GK03 — `test(kernel): add domain-adapter conformance harness`
+
+**Milestone:** G01 — shared relations foundation
+
+**Scope.** Build one reusable adapter harness for identity/revision changes, command
+validation, atomic transactions, undo/redo, replay, result provenance, artifacts,
+job cancellation, stale publication, persistence, relations, and invalidation.
+
+**Acceptance.** Geometry, Mesh, Surface, Curve, and Volume adapters run the same
+harness. A module cannot declare kernel migration complete from UI-only tests.
+
+### GK04 — `refactor(geometry): introduce kernel-owned GeometryDocument adapter`
+
+**Milestone:** G02 — Geometry and Scene Script
+
+**Scope.** Adapt the existing Geometry construction graph, objects, and persistent
+scene intent to a versioned kernel-owned document without changing released file
+formats or construction algorithms. Classify mathematical, persistent-display, and
+transient viewer fields explicitly.
+
+**Acceptance.** A Geometry source edit advances revision/hash exactly once; a
+view-only change does not. Legacy projects open without silent rewrite, and the
+canonical document round-trips without React or Three.js objects.
+
+### GK05 — `refactor(geometry): unify Scene Script and GUI through kernel commands`
+
+**Milestone:** G02 — Geometry and Scene Script
+
+**Scope.** Lower Scene Script operations and equivalent GUI construction/edit
+operations to the same typed command families. Preserve parser and GUI preview
+behavior behind adapters while the kernel owns commit, transaction, history,
+undo/redo, and replay.
+
+**Acceptance.** Scene → Script → Scene structural parity holds; equivalent GUI and
+script operations produce the same canonical document/hash; failed batches are
+atomic; hover and drag previews create no command spam.
+
+### GK06 — `feat(geometry): publish revision-safe derived geometry resources`
+
+**Milestone:** G02 — Geometry and Scene Script
+
+**Scope.** Move expensive tessellations, measurements, section/intersection results,
+construction diagnostics, and other large Geometry outputs behind shared jobs,
+results, and artifacts where appropriate. Bounded lightweight exact operations may
+remain synchronous with a documented reason.
+
+**Acceptance.** Every migrated output records source revision, algorithm, status,
+precision/tolerance where applicable, and artifact lineage. Late output from an
+older Geometry revision cannot publish.
+
+### GK07 — `feat(mesh): introduce versioned MeshDocument and resource identity`
+
+**Milestone:** G03 — Mesh and Mesh Analyze
+
+**Scope.** Wrap imported and generated meshes in stable document identity with
+source revision/hash/generation, resource/object IDs, compact metadata, and
+artifact-backed bulk vertex/index/attribute storage. Preserve current importers
+through explicit adapters.
+
+**Acceptance.** Import/save/reopen/replay preserves mesh identity and lineage; bulk
+buffers never enter command/history JSON; a structural edit advances revision and
+invalidates dependent analysis.
+
+### GK08 — `refactor(mesh): route committed mesh edits through kernel transactions`
+
+**Milestone:** G03 — Mesh and Mesh Analyze
+
+**Scope.** Migrate completed object/face/edge/vertex edits, split/offset/subdivide,
+repair, smoothing/remeshing, committed selection, and controlled imports to typed
+commands. Keep hover and pick previews transient.
+
+**Acceptance.** GUI edit, undo/redo, replay, and save produce the same canonical
+Mesh source; invalid mixed batches mutate nothing; professional selection semantics
+remain compatible.
+
+### GK09 — `feat(mesh): migrate Mesh Analyze to shared jobs results and artifacts`
+
+**Milestone:** G03 — Mesh and Mesh Analyze
+
+**Scope.** Put normals, curvature, principal directions, Gauss maps, topology,
+diagnostics, and other heavy Mesh Analyze outputs on the shared job/result/artifact
+path. Dense scalar and vector fields remain artifact-backed; summaries stay compact.
+
+**Acceptance.** Large stress fixtures cancel safely; changed meshes reject late
+results; the UI distinguishes current, computing, stale, failed, unavailable, and
+scientific status; heavy overlays are not retained in React state.
+
+### GK10 — `feat(surface): introduce kernel-owned SurfaceDocument adapter`
+
+**Milestone:** G04 — Surfaces and derived Mesh
+
+**Scope.** Adapt parametric/explicit definitions, domains, parameters, construction
+state, and persistent analysis settings into a versioned Surface document while
+retaining the professional Surface UI and algorithms.
+
+**Acceptance.** Definition edits deterministically change source identity;
+transient view/sampling interaction is separated from authority; save/reopen/replay
+preserves the mathematical definition.
+
+### GK11 — `feat(surface): make Surface-to-Mesh a revisioned derived handoff`
+
+**Milestone:** G04 — Surfaces and derived Mesh
+
+**Scope.** Route tessellation through an explicit operation that publishes a
+revision-bound mesh artifact and, on promotion to Mesh, records GK01 lineage rather
+than exporting an anonymous mesh.
+
+**Acceptance.** A Mesh derived from Surface revision N locates back to its Surface,
+parameters, operation, and artifact generation. Editing the Surface marks the old
+relation stale without mutating the promoted Mesh snapshot.
+
+### GK12 — `feat(curves): introduce kernel-owned CurveDocument and analysis adapter`
+
+**Milestone:** G05 — Curves and construction handoffs
+
+**Scope.** Adapt curve definitions/control data and supported Bézier,
+spline/NURBS/parametric workflows into a versioned document. Route sampling,
+arc-length, frames, curvature/torsion, and other expensive fields through shared
+result/artifact contracts where appropriate.
+
+**Acceptance.** Curve edits, replay, save/reopen, invalidation, and status
+publication pass GK03. Handle dragging remains preview-only until commit.
+
+### GK13 — `feat(curves): add revisioned curve sweep extrusion and surface lineage`
+
+**Milestone:** G05 — Curves and construction handoffs
+
+**Scope.** Represent Curve → Surface/Geometry sweep, extrusion, revolution, loft
+participation, and other supported handoffs as typed operations with GK01 lineage
+and artifact/document references.
+
+**Acceptance.** Generated objects retain exact Curve revision and parameters;
+promoted documents never update implicitly; locate-back reaches source curve
+elements where correspondence exists.
+
+### GK14 — `feat(volumes): introduce kernel-owned VolumeDocument adapter`
+
+**Milestone:** G06 — Volumes and extraction handoffs
+
+**Scope.** Adapt Volume definitions, parameters, construction state, and supported
+scalar/implicit/boundary semantics into a versioned kernel document. Renderer
+sampling and temporary slice state remain non-authoritative.
+
+**Acceptance.** Volume source is replayable and revision-safe; structural edits
+invalidate boundary/sampling/mesh resources; view-only changes do not affect the
+structural hash.
+
+### GK15 — `feat(volumes): add revisioned boundary-surface and mesh handoffs`
+
+**Milestone:** G06 — Volumes and extraction handoffs
+
+**Scope.** Route supported Volume → Surface/Mesh extraction through shared jobs,
+artifacts, and GK01 relations with operation parameters, tolerance/resolution,
+engine/version, diagnostics, and exact source generation.
+
+**Acceptance.** Derived data cannot appear current after a Volume source change;
+promoted downstream documents remain stable snapshots with explicit stale lineage.
+
+### GK16 — `feat(viewer): unify provenance status and locate-back across modules`
+
+**Milestone:** G07 — shared viewer and workspace
+
+**Scope.** Provide shared Inspector/Viewer presentation for source identity,
+revision, result status, method/engine, tolerance/precision, artifact availability,
+staleness, and GK01 lineage. Navigate across Geometry, Mesh, Surface, Curve, Volume,
+Topology, and Complex relations.
+
+**Acceptance.** Status vocabulary and provenance fields mean the same thing in all
+modules; a selected derived object/result locates back through relation, operation,
+artifact/result, canonical object, and source where mappings exist.
+
+### GK17 — `feat(workspace): persist cross-module replay and lineage records`
+
+**Milestone:** G07 — shared viewer and workspace
+
+**Scope.** Extend workspace persistence with compact module checkpoints/logs,
+current result references, artifact handles, and GK01 relations. Bulk artifacts
+remain cache data and reopen explicitly unavailable or needing recomputation.
+
+**Acceptance.** A mixed project can save, reopen, and replay Geometry, Surface,
+Mesh, Curve, Volume, Topology, and Complex documents while preserving relation IDs
+and source hashes and never fabricating artifact availability.
+
+### GK18 — `perf(kernel): add dependency-local invalidation only behind full-oracle parity`
+
+**Milestone:** G08 — optimization under proof
+
+**Scope.** Enable optional local invalidation for large workloads only after full
+deterministic recomputation exists as an oracle and benchmarks show material value.
+Full invalidation remains the fallback.
+
+**Acceptance.** Property tests prove local/full parity, no stale resource survives,
+and reviewed benchmarks justify every production-enabled local strategy.
+
+### GK19 — `test(platform): prove browser desktop and worker capability conformance`
+
+**Milestone:** G08 — platform conformance
+
+**Scope.** Run command/replay/result/artifact/job/relation contracts across supported
+browser and desktop runtimes. Native, WASM, worker, Sage, CGAL, and other capability
+differences are explicit and routed by F08.
+
+**Acceptance.** Supported operations are contract-equivalent; unsupported backends
+fail before transport; cancellation, deadlines, and stale-result semantics match at
+the kernel boundary.
+
+### GK20 — `refactor(kernel): remove redundant module-local lifecycle paths and freeze contracts`
+
+**Milestone:** G08 — lifecycle freeze
+
+**Scope.** After GK03-GK19 parity gates pass, remove only module-local command,
+history, job, result, artifact-cache, persistence, or invalidation paths proven
+redundant. Freeze shared contracts and list remaining adapters with owners and
+removal criteria.
+
+**Acceptance.** Every completed workflow has one production mutation path; modules
+own mathematics rather than lifecycle frameworks; dependency rules pass; legacy
+files remain readable; cross-module save/reopen/replay and lineage E2E gates are
+green.
+
+## Cross-module rollout order
+
+```text
+F02-F08 shared kernel foundation              COMPLETE
+            |
+            v
+Topology T01-T13 and Complex C01-C12          COMPLETE
+            |
+            v
+GK01-GK03  relations + graph + conformance harness
+            |
+            +--> GK04-GK06  Geometry / Scene Script
+            |
+            +--> GK07-GK09  Mesh / Mesh Analyze
+            |
+            +--> GK10-GK11  Surfaces -> Mesh
+            |
+            +--> GK12-GK13  Curves -> Surface / Geometry
+            |
+            +--> GK14-GK15  Volumes -> Surface / Mesh
+            |
+            v
+GK16-GK17  shared Viewer provenance + workspace persistence
+            |
+            v
+GK18       local invalidation only with full-oracle parity
+            |
+            v
+GK19-GK20  runtime conformance + lifecycle freeze
+```
+
+Geometry and Mesh may progress independently after GK01-GK03 when touched adapters
+do not overlap. Surface, Curve, and Volume migrations must consume shared relations
+and dependency rules rather than direct module-to-module state coupling.
+
+## Cross-module definition of done
+
+The general kernel rollout is complete only when:
+
+1. Geometry, Mesh, Surface, Curve, Volume, Topology, and Complex sources use stable
+   kernel identity, revision, and structural hash.
+2. Every migrated committed edit uses a typed command and atomic transaction;
+   transient interaction stays outside history until commit.
+3. Expensive computation uses shared jobs/results/artifacts or documents why a
+   bounded pure synchronous operation is preferable.
+4. Derived documents/artifacts retain revision-bound lineage across Geometry → Mesh,
+   Surface → Mesh, Curve → Surface/Geometry, Volume → Surface/Mesh, Mesh → Topology,
+   and Complex → Riemann-surface/Surface/Mesh.
+5. Source changes deterministically stale dependent results, artifacts, and
+   relations without implicitly mutating promoted documents.
+6. Save → reopen → replay preserves source hashes, history, compact provenance,
+   artifact availability, and cross-module relation identity.
+7. Viewer and Inspector status/provenance semantics are uniform across modules.
+8. Browser/desktop/worker capability differences remain explicit at F08 and never
+   create separate mathematical state models.
+9. No completed module owns a duplicate command bus, history, scientific-job,
+   provenance, artifact registry, or dependency-invalidation framework.
+10. The kernel remains lifecycle infrastructure; mathematical algorithms stay in
+    their domain modules.
