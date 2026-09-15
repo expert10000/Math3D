@@ -16,6 +16,7 @@ import {
   TOPOLOGY_DOCUMENT_EXTENSION,
   TOPOLOGY_PRESETS,
   TopologyRealization3DView,
+  TopologyDiagramCommandAdapter,
   buildTopologyCountLayers,
   buildQuotientPipeline,
   cloneFundamentalDiagram,
@@ -1343,6 +1344,10 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
   const draggingVertexIdRef = useRef<string | null>(null);
   const draggingStartDiagramRef = useRef<FundamentalDiagram | null>(null);
   const draggingChangedRef = useRef(false);
+  const topologyCommandAdapterRef = useRef<TopologyDiagramCommandAdapter | null>(null);
+  if (!topologyCommandAdapterRef.current) {
+    topologyCommandAdapterRef.current = new TopologyDiagramCommandAdapter(diagram);
+  }
   const storyStageStripRef = useRef<HTMLDivElement | null>(null);
   const scrollStoryStageStrip = useCallback((direction: -1 | 1) => {
     const host = storyStageStripRef.current;
@@ -1496,15 +1501,26 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
     setRedoStack([]);
   };
 
-  const setDiagramAndDraft = (next: FundamentalDiagram, options?: { pushHistory?: boolean; markSaved?: boolean }) => {
+  const setDiagramAndDraft = (
+    next: FundamentalDiagram,
+    options?: { pushHistory?: boolean; markSaved?: boolean; source?: "session" | "import" }
+  ) => {
     regenerateBoundaryWordsInPlace(next);
-    const nextSignature = JSON.stringify(next);
+    let routed = next;
+    if (options?.pushHistory) {
+      routed = topologyCommandAdapterRef.current!.commit(next);
+    } else if (options?.source === "import") {
+      routed = topologyCommandAdapterRef.current!.import(next);
+    } else if (options?.source === "session") {
+      routed = topologyCommandAdapterRef.current!.reset(next);
+    }
+    const nextSignature = JSON.stringify(routed);
     if (options?.pushHistory && nextSignature !== diagramSignature) {
       setUndoStack((prev) => [...prev.slice(-(DIAGRAM_HISTORY_LIMIT - 1)), cloneFundamentalDiagram(diagram)]);
       setRedoStack([]);
     }
-    setDiagram(next);
-    setJsonDraft(JSON.stringify(next, null, 2));
+    setDiagram(routed);
+    setJsonDraft(JSON.stringify(routed, null, 2));
     if (options?.markSaved) {
       setSavedSignature(nextSignature);
     }
@@ -1586,7 +1602,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
     const nextResult = buildQuotientPipeline(nextDiagram);
     setBuildMode("preset");
     setPresetId(nextPresetId);
-    setDiagramAndDraft(nextDiagram, { markSaved: true });
+    setDiagramAndDraft(nextDiagram, { markSaved: true, source: "session" });
     resetHistory();
     setBuildResult(nextResult);
     setBuiltSignature(JSON.stringify(nextDiagram));
@@ -1612,7 +1628,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
     const nextResult = buildQuotientPipeline(nextDiagram);
     setBuildMode("editor");
     setPresetId(`polygon_${Math.max(3, Math.floor(sides))}`);
-    setDiagramAndDraft(nextDiagram, { markSaved: true });
+    setDiagramAndDraft(nextDiagram, { markSaved: true, source: "session" });
     resetHistory();
     setBuildResult(nextResult);
     setBuiltSignature(JSON.stringify(nextDiagram));
@@ -1693,6 +1709,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
 
   const stopDragging = () => {
     if (draggingChangedRef.current && draggingStartDiagramRef.current) {
+      topologyCommandAdapterRef.current!.commit(diagram);
       setUndoStack((prev) => [...prev.slice(-(DIAGRAM_HISTORY_LIMIT - 1)), draggingStartDiagramRef.current!]);
       setRedoStack([]);
     }
@@ -1802,7 +1819,8 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
     if (!previous) return;
     setUndoStack(nextUndo);
     setRedoStack((prev) => [...prev.slice(-(DIAGRAM_HISTORY_LIMIT - 1)), cloneFundamentalDiagram(diagram)]);
-    setDiagramAndDraft(cloneFundamentalDiagram(previous));
+    const routed = topologyCommandAdapterRef.current!.undo() ?? cloneFundamentalDiagram(previous);
+    setDiagramAndDraft(routed);
     setSelectedEdgeId(null);
     setSelectedVertexId(null);
     setPendingEdgeStartId(null);
@@ -1815,7 +1833,8 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
     if (!upcoming) return;
     setRedoStack(nextRedo);
     setUndoStack((prev) => [...prev.slice(-(DIAGRAM_HISTORY_LIMIT - 1)), cloneFundamentalDiagram(diagram)]);
-    setDiagramAndDraft(cloneFundamentalDiagram(upcoming));
+    const routed = topologyCommandAdapterRef.current!.redo() ?? cloneFundamentalDiagram(upcoming);
+    setDiagramAndDraft(routed);
     setSelectedEdgeId(null);
     setSelectedVertexId(null);
     setPendingEdgeStartId(null);
@@ -1900,7 +1919,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
       const loaded = migrateTopologyDocument(raw);
       if (!loaded) return false;
       const loadedDiagram = loaded.diagram;
-      setDiagramAndDraft(loadedDiagram, { markSaved: true });
+      setDiagramAndDraft(loadedDiagram, { markSaved: true, source: "import" });
       setUndoStack(loaded.document.payload.history.undo.map(cloneFundamentalDiagram));
       setRedoStack(loaded.document.payload.history.redo.map(cloneFundamentalDiagram));
       setBuildMode("editor");
@@ -1939,7 +1958,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
     if ((raw as any)?.edges && (raw as any)?.vertices && (raw as any)?.faces) {
       const loadedDiagram = raw as FundamentalDiagram;
       regenerateBoundaryWordsInPlace(loadedDiagram);
-      setDiagramAndDraft(loadedDiagram, { markSaved: true });
+      setDiagramAndDraft(loadedDiagram, { markSaved: true, source: "import" });
       resetHistory();
       const built = buildQuotientPipeline(loadedDiagram);
       setBuildResult(built);

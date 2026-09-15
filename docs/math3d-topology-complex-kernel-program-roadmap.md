@@ -1406,12 +1406,55 @@ the formal-job gate.  The shared-core/kernel/Topology suites pass (207 tests acr
 files), and `typecheck:noemit` plus the renderer production build succeed.  T05 is
 the next program commit.
 
+### T05 execution plan
+
+**Status:** complete
+
+T05 establishes the first production Topology mutation route through the F03/F04
+kernel.  It migrates the fundamental-diagram editor incrementally and keeps the
+released editor helpers, file format, quotient builder, and realization renderer as
+explicit compatibility adapters.
+
+1. Add shared, strict command definitions for authoritative source replacement,
+   edge-pairing edits, canonicalization requests, committed canonical-cell
+   selection, and analysis requests.
+2. Project every structural source edit into the T02 document: advance revision and
+   structural hash exactly once, clear transient committed selection/request state,
+   and invalidate canonical, result, and display-realization references.
+3. Bind canonicalization and analysis intents to the exact source revision/hash;
+   validate payloads before projection so mixed invalid batches remain atomic.
+4. Add a renderer compatibility bridge backed by the F04 in-memory kernel.  Current
+   editor functions continue to build candidate diagrams, while the bridge owns
+   committed source transactions and kernel undo/redo replay.
+5. Route completed add/remove/rename/attachment/JSON edits through one reversible
+   command.  Route file loads through controlled import commands and preserve the
+   released format/migration adapters.
+6. Keep vertex drag and hover state outside the kernel.  Preview every pointer move
+   locally, then commit only the final diagram on pointer release.
+7. Prove legacy-editor parity, canonicalization parity, import, undo/redo, replay,
+   source invalidation, request provenance, atomic rejection, and the one-command
+   drag invariant.  Re-run Topology, typecheck, and production-build gates.
+
+**T05 acceptance:** migrated GUI edits and imports produce the same authoritative
+diagram and canonical complex as the compatibility path; undo/redo uses kernel
+replay for migrated transactions; source requests are revision/hash bound; invalid
+batches change nothing; and twenty pointer previews produce zero commands followed
+by exactly one completed transaction.
+
+**Completed verification:** focused command and editor-bridge assertions cover all
+five command families, revision/invalidation behavior, atomic rejection, canonical
+parity, import, undo/redo, and transient drag previews.  The migration boundary and
+remaining adapters are recorded in `docs/topology-kernel-command-migration.md`.
+All Topology unit suites pass (133 tests across 23 files), both semantic-safety E2E
+checks pass, and `typecheck:noemit` plus the renderer production build succeed.  T06
+remains complete; T07 is the next sequential Topology feature.
+
 ### T06 execution plan
 
 **Status:** complete
 
-T06 adds the exact shared sparse-matrix artifact over T03/T04.  It is intentionally
-independent of the still-pending T05 editor-command migration and does not replace
+T06 adds the exact shared sparse-matrix artifact over T03/T04.  It was intentionally
+implemented independently of the T05 editor-command migration and does not replace
 the current renderer-side matrix or Algebra result path.
 
 1. Define a versioned, canonical-JSON sparse boundary artifact carrying exact source
@@ -1449,5 +1492,5 @@ cancelling coordinate provenance, strict artifact decoding, F07 publication,
 resolution/full invalidation, and invalid-input non-publication.  Shared
 core/kernel/Topology suites pass (214 tests across 33 files), the additional F01
 platform/Complex baseline passes (19 tests across two files), and
-`typecheck:noemit` plus the renderer production build succeed.  T05 remains the
-next uncompleted sequential commit; T07 is the next algebra feature after it.
+`typecheck:noemit` plus the renderer production build succeed.  With T05 now
+complete, T07 is the next algebra feature.
