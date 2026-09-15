@@ -3,11 +3,13 @@ import * as THREE from "three";
 import {
   decodeExactSparseIntegerMatrix,
   locateExactSparseMatrixCoordinate,
+  type AnalysisResultEnvelope,
   type CanonicalFinite2DSourceReference,
   type ExactSparseIntegerMatrix,
   type SageIntegerHomologyOutput,
   type ScientificJobProgress,
   type ScientificSourceGeneration,
+  type TopologyPersistenceRecord,
 } from "@math3d/core";
 import {
   createInProcessScientificJobService,
@@ -38,7 +40,7 @@ import {
   buildQuotientPipeline,
   cloneFundamentalDiagram,
   compareTopologyBuildResults,
-  createTopologyDocument,
+  createReplayableTopologyDocument,
   computeInvalidBoundaryCycleDiagnostics,
   computeNonManifoldEdgeDiagnostics,
   computeVertexStarDisconnectionDiagnostics,
@@ -1362,7 +1364,8 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
     result: TopologyAdapterAnalysisResult;
   } | null>(null);
   const [adapterBusy, setAdapterBusy] = useState<"Mesh" | "Geometry" | null>(null);
-  const [documentAudit, setDocumentAudit] = useState("v2 · source authoritative · current recomputation");
+  const [documentAudit, setDocumentAudit] = useState("v3 ready · shared source authority · replayable save");
+  const [persistedTopologySession, setPersistedTopologySession] = useState<TopologyPersistenceRecord | null>(null);
   const [integerHomologyState, setIntegerHomologyState] = useState<TopologyIntegerHomologyUiState>({ status: "idle" });
   const [algebraMatrixSelection, setAlgebraMatrixSelection] = useState<AlgebraMatrixSelection | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -1543,6 +1546,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
       routed = topologyCommandAdapterRef.current!.reset(next);
     }
     const nextSignature = JSON.stringify(routed);
+    if (nextSignature !== diagramSignature) setPersistedTopologySession(null);
     if (options?.pushHistory && nextSignature !== diagramSignature) {
       setUndoStack((prev) => [...prev.slice(-(DIAGRAM_HISTORY_LIMIT - 1)), cloneFundamentalDiagram(diagram)]);
       setRedoStack([]);
@@ -2020,8 +2024,19 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
     if (isTopologyDocument(raw)) {
       const loaded = migrateTopologyDocument(raw);
       if (!loaded) return false;
-      const loadedDiagram = loaded.diagram;
-      setDiagramAndDraft(loadedDiagram, { markSaved: true, source: "import" });
+      let loadedDiagram = loaded.diagram;
+      if (loaded.persistence) {
+        const restoredAdapter = TopologyDiagramCommandAdapter.restore(loaded.persistence.replay);
+        topologyCommandAdapterRef.current = restoredAdapter;
+        loadedDiagram = restoredAdapter.current();
+        regenerateBoundaryWordsInPlace(loadedDiagram);
+        const loadedSignature = JSON.stringify(loadedDiagram);
+        setDiagram(loadedDiagram);
+        setJsonDraft(JSON.stringify(loadedDiagram, null, 2));
+        setSavedSignature(loadedSignature);
+      } else {
+        setDiagramAndDraft(loadedDiagram, { markSaved: true, source: "import" });
+      }
       setUndoStack(loaded.document.payload.history.undo.map(cloneFundamentalDiagram));
       setRedoStack(loaded.document.payload.history.redo.map(cloneFundamentalDiagram));
       setBuildMode("editor");
@@ -2043,15 +2058,20 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
       setPendingEdgeStartId(null);
       setPresetId(DEFAULT_TOPOLOGY_PRESET_ID);
       setCurrentDocumentPath(sourcePath);
+      setPersistedTopologySession(loaded.persistence ?? null);
       setDocStatus(
         loaded.audit.loadedVersion === 1
           ? `Loaded ${sourceLabel}; migrated v1 and recomputed all derived results.`
-          : `Loaded ${sourceLabel}; v2 cache ${loaded.audit.cacheStatus}.`
+          : loaded.audit.loadedVersion === 2
+            ? `Loaded ${sourceLabel}; v2 cache ${loaded.audit.cacheStatus}.`
+            : `Loaded ${sourceLabel}; v3 command replay verified. ${loaded.persistence?.artifacts.length ?? 0} artifact payload(s) require recomputation.`
       );
       setDocumentAudit(
         loaded.audit.loadedVersion === 1
           ? "v1 legacy audit · migrated to v2 · derived cache recomputed"
-          : `v2 · source authoritative · derived cache ${loaded.audit.cacheStatus}`
+          : loaded.audit.loadedVersion === 2
+            ? `v2 · source authoritative · derived cache ${loaded.audit.cacheStatus}`
+            : `v3 · shared TopologyDocument · replay ${loaded.persistence?.replay.cursor ?? 0}/${loaded.persistence?.replay.transactions.length ?? 0} verified · artifacts unavailable until recomputed`
       );
       setDocError(null);
       clearDiagnosticsFocus();
@@ -2083,15 +2103,27 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
   };
 
   const saveTopologyDocument = async (saveAs = false) => {
-    const built = ensureBuilt();
+    ensureBuilt();
     const activeViewForDocument: TopologyDocumentView = activeView === "compare" ? "realization" : activeView;
-    const doc = createTopologyDocument(diagram, {
-      buildResult: built,
+    const authority = deriveTopologyAlgebraAuthority(topologyCommandAdapterRef.current!.document());
+    if (!authority.canonical) {
+      setDocError("Cannot save replayable v3 data until the authoritative source can be canonicalized.");
+      return;
+    }
+    const compactResults: AnalysisResultEnvelope[] = [];
+    if (persistedTopologySession) compactResults.push(...persistedTopologySession.results);
+    if ("result" in authority.localZ2 && authority.localZ2.result) compactResults.push(authority.localZ2.result);
+    if (authority.surfaceClassification) compactResults.push(authority.surfaceClassification.result);
+    if (integerHomologyState.status === "exact") compactResults.push(integerHomologyState.result);
+    const doc = createReplayableTopologyDocument({
+      document: topologyCommandAdapterRef.current!.document(),
+      replay: topologyCommandAdapterRef.current!.exportReplay(),
+      canonicalHash: authority.canonical.canonicalHash,
+      results: compactResults,
+      artifactHandles: authority.status === "exact" ? [authority.boundary.handle] : [],
       activeView: activeViewForDocument,
       activeRealizationId,
       animationPlan: normalizedAnimationPlan,
-      undoHistory: undoStack,
-      redoHistory: redoStack,
     });
     const text = JSON.stringify(doc, null, 2);
     const cleanName = (diagram.name || "topology")
@@ -2111,8 +2143,9 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
       if (result.ok) {
         setCurrentDocumentPath(result.path);
         setSavedSignature(diagramSignature);
+        setPersistedTopologySession(doc.payload.persistence);
         setDocStatus(`Saved ${result.path}`);
-        setDocumentAudit("v2 · source authoritative · canonical/cache fingerprints current");
+        setDocumentAudit(`v3 · shared TopologyDocument · replay ${doc.payload.persistence.replay.cursor}/${doc.payload.persistence.replay.transactions.length} · ${doc.payload.persistence.results.length} compact result(s) · artifact payloads not embedded`);
         setDocError(null);
       } else if (!result.canceled) {
         setDocError(result.error || "Failed to save topology document.");
@@ -2129,9 +2162,10 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
     anchor.click();
     URL.revokeObjectURL(url);
     setSavedSignature(diagramSignature);
+    setPersistedTopologySession(doc.payload.persistence);
     setCurrentDocumentPath(null);
     setDocStatus(`Saved ${anchor.download}`);
-    setDocumentAudit("v2 · source authoritative · canonical/cache fingerprints current");
+    setDocumentAudit(`v3 · shared TopologyDocument · replay ${doc.payload.persistence.replay.cursor}/${doc.payload.persistence.replay.transactions.length} · ${doc.payload.persistence.results.length} compact result(s) · artifact payloads not embedded`);
     setDocError(null);
   };
 
@@ -2875,6 +2909,10 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
     const exactBoundaries = algebraAuthority.status === "exact" ? algebraAuthority.boundary.payload : null;
     const sourceProvenance = algebraAuthority.status === "exact" ? algebraAuthority.canonical.source : null;
     const canonicalHash = algebraAuthority.status === "exact" ? algebraAuthority.canonical.canonicalHash : null;
+    const persistedIntegerResult = persistedTopologySession?.results.find((entry) => entry.provenance.operation.type === "topology.integer-homology") ?? null;
+    const persistedIntegerArtifacts = persistedIntegerResult
+      ? persistedIntegerResult.artifacts.map((handle) => persistedTopologySession?.artifacts.find((entry) => entry.handle.artifactId === handle.artifactId)).filter((entry) => !!entry)
+      : [];
     const algebraSourceStamp = sourceProvenance
       ? `source r${sourceProvenance.revision}/g${sourceProvenance.generation} · ${sourceProvenance.structuralHash}`
       : "source provenance unavailable";
@@ -3045,6 +3083,18 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
           </div>
           {integerHomologyState.status === "idle" && (
             <div>Run the constrained, allowlisted Sage job to publish an F06 integral result with engine and source provenance.</div>
+          )}
+          {integerHomologyState.status === "idle" && persistedIntegerResult && (
+            <div data-testid="topology-persisted-integer-result" style={{ border: "1px solid #bbf7d0", borderRadius: 8, background: "#fff", padding: 7, display: "grid", gap: 3 }}>
+              <strong>Persisted exact result metadata</strong>
+              <div>Status {persistedIntegerResult.status} · {persistedIntegerResult.provenance.engine.name} {persistedIntegerResult.provenance.engine.version}</div>
+              <div>Source revision {persistedIntegerResult.provenance.source.revision} · generation {persistedIntegerResult.provenance.source.generation}</div>
+              <div style={{ overflowWrap: "anywhere" }}>Source hash {persistedIntegerResult.provenance.source.structuralHash}</div>
+              <div style={{ fontFamily: "ui-monospace, Consolas, monospace", overflowWrap: "anywhere" }}>Summary {JSON.stringify(persistedIntegerResult.summary)}</div>
+              <div style={{ color: "#92400e" }}>
+                Artifact payloads: {persistedIntegerArtifacts.length === 0 ? "none referenced" : "unavailable after reopen"}. Re-run exact Z homology to regenerate inspectable artifacts.
+              </div>
+            </div>
           )}
           {integerHomologyState.status === "running" && (
             <div data-testid="topology-integer-homology-progress">
@@ -6693,7 +6743,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
           </div>
         </section>
 
-        <section style={{ borderTop: "1px solid #e2e8f0", paddingTop: 8, display: "grid", gap: 6 }}>
+        <section data-testid="topology-document-persistence" style={{ borderTop: "1px solid #e2e8f0", paddingTop: 8, display: "grid", gap: 6 }}>
           <div style={{ fontSize: 11, fontWeight: 700 }}>Topology document</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
             <button type="button" onClick={() => void saveTopologyDocument(false)}>
@@ -6710,11 +6760,19 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
             </button>
           </div>
           <div style={{ fontSize: 10, color: "#475569" }}>
-            v2 stores authoritative source, derived canonical snapshot, cache provenance, realizations, view state, and undo/redo history.
+            v3 stores the shared TopologyDocument, canonical hash, replay checkpoint/log, compact provenance results, view state, and artifact references—never bulk artifact payloads.
           </div>
           <div data-testid="topology-document-audit" style={{ fontSize: 10, color: "#0f4c81", fontWeight: 700 }}>
             {documentAudit}
           </div>
+          {persistedTopologySession && (
+            <div data-testid="topology-persistence-status" style={{ border: "1px solid #bfdbfe", borderRadius: 7, background: "#eff6ff", padding: 6, display: "grid", gap: 3, fontSize: 10 }}>
+              <div><strong>Replay:</strong> {persistedTopologySession.replay.cursor}/{persistedTopologySession.replay.transactions.length} transaction(s) · final hash verified</div>
+              <div style={{ overflowWrap: "anywhere" }}><strong>Canonical:</strong> {persistedTopologySession.canonicalHash}</div>
+              <div><strong>Results:</strong> {persistedTopologySession.results.length} compact record(s) with provenance</div>
+              <div><strong>Artifacts:</strong> {persistedTopologySession.artifacts.length === 0 ? "none" : `${persistedTopologySession.artifacts.length} unavailable payload(s) · recompute available`}</div>
+            </div>
+          )}
           <div style={{ fontSize: 10, color: dirty ? "#b45309" : "#166534" }}>{dirty ? "Unsaved changes." : "Saved."}</div>
           {currentDocumentPath && <div style={{ fontSize: 10, color: "#475569" }}>Path: {currentDocumentPath}</div>}
           {docStatus && <div data-testid="topology-doc-status" style={{ fontSize: 10, color: "#166534" }}>{docStatus}</div>}

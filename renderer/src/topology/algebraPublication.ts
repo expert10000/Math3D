@@ -33,6 +33,8 @@ export type TopologyAlgebraAuthority = Readonly<{
   diagnostics: readonly Readonly<{ code: string; message: string }>[];
   localZ2: LocalZ2HomologyOutcome;
   surfaceClassification: CanonicalSurfaceClassificationOutcome | null;
+  document?: TopologyDocument;
+  canonical?: CanonicalFinite2DResult;
 }>;
 
 export type PreparedTopologyIntegerHomologyJob = Readonly<{
@@ -82,7 +84,7 @@ export const deriveTopologyAlgebraAuthority = (document: TopologyDocument): Topo
   }
   const surfaceClassification = classifyCanonicalFinite2DSurface(canonical, document);
   const boundary = constructExactSparseBoundaryMatrices(canonical, document);
-  if (boundary.status !== "exact") return { ...boundary, localZ2, surfaceClassification };
+  if (boundary.status !== "exact") return { ...boundary, document, canonical, localZ2, surfaceClassification };
   return { status: "exact", document, canonical, boundary, localZ2, surfaceClassification };
 };
 

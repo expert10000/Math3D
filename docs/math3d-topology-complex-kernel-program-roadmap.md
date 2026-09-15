@@ -1683,3 +1683,54 @@ documented in `docs/topology-surface-classification.md`. The combined T03-T10
 authority suites pass (35 tests across seven files), all Topology unit suites pass
 (137 tests across 24 files), and both semantic-safety E2E checks pass against the
 rebuilt renderer. `typecheck:noemit` and the renderer production build also succeed.
+
+### T11 execution plan
+
+**Status:** complete
+
+T11 makes the current Topology vertical slice portable and replayable without making
+derived caches authoritative. Normal saves move to `.math3d-topology` renderer format
+v3; released v1/v2 files keep their existing read/migration behavior until the user
+chooses to save.
+
+1. Define a strict shared-core persistence record around the T02
+   `TopologyDocument`, T03 canonical hash, F03 command envelopes, F06 compact result
+   envelopes, and F07 artifact handles.
+2. Persist a source-only checkpoint, normalized forward/inverse transaction log,
+   per-transaction structural hashes, saved undo/redo cursor, and exact final state
+   hash. Bound the retained log to the kernel's 100-entry history limit.
+3. Validate replay from the checkpoint in `replay` mode, verify every forward state
+   and inverse source, restore commands above the saved cursor, and require the final
+   source identity/revision/hash to match the persisted document.
+4. Extend the diagram command adapter to export the active replay record and restore
+   the same kernel undo/redo state. Keep pointer previews transient and exclude
+   committed selection and pending analysis requests from checkpoints.
+5. Save current T07, T08 (when present), and T10 F06 records as compact metadata.
+   Require matching current result references in the persisted TopologyDocument and
+   reject stale results.
+6. Save artifact handles and source lineage only. Mark all omitted payloads
+   `unavailable` with a recompute reason; never serialize T06 matrices or fabricate
+   artifact availability on reopen.
+7. Recompute renderer display/teaching data from the replayed source, preserve view
+   state, expose replay/result/artifact status in the document panel, and keep loaded
+   exact-result metadata visible with a rerun affordance.
+8. Verify author -> analyze -> save -> reopen -> replay, save-after-undo redo
+   restoration, legacy v1/v2 migration, compactness, stale/tampered/fabricated input
+   rejection, TypeScript, Topology suites, Electron E2E, and production build.
+
+**T11 acceptance:** an authored and analyzed session reopens with the same stable
+document ID, source revision/hash, canonical hash, compact result statuses and
+provenance; replay reproduces the saved state and undo/redo cursor; missing artifacts
+remain explicitly unavailable with recomputation offered; no bulk cache becomes
+authoritative; and old files are never rewritten merely by opening them.
+
+**Completed verification:** the T11 persistence suite covers the full
+author/analyze/save/reopen/replay flow, an undone transaction with a retained redo
+branch, exact checkpoint/transaction/final hashes, compact current result references,
+unavailable artifact handles, payload non-embedding, replay divergence, stale result,
+and fabricated availability rejection. The format and compatibility boundary are
+documented in `docs/topology-replayable-persistence.md`. The focused persistence,
+legacy-format, and command-adapter suites pass (14 tests across three files); all
+Topology unit suites pass (140 tests across 25 files), and both semantic-safety E2E
+checks pass against the rebuilt renderer. `typecheck:noemit` and the renderer
+production build also succeed.

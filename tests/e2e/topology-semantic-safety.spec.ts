@@ -47,6 +47,8 @@ test.describe("Topology semantic safety", () => {
       await resetSurfaceAppState(ctx.page);
       await ctx.page.getByTestId("workspace-nav-topology").click();
       await expect(ctx.page.getByRole("heading", { name: "Topology Module" })).toBeVisible();
+      await expect(ctx.page.getByTestId("topology-document-persistence")).toContainText("v3 stores the shared TopologyDocument");
+      await expect(ctx.page.getByTestId("topology-document-audit")).toContainText("v3 ready");
 
       await expect(ctx.page.getByTestId("topology-count-source")).toContainText("Source diagram cells");
       await expect(ctx.page.getByTestId("topology-count-refinement")).toContainText("Build refinement cells");

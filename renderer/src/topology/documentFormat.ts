@@ -1,4 +1,15 @@
 import type { TopologyAnimationPlan } from "./animationPlan";
+import {
+  createTopologyDocument as createSharedTopologyDocument,
+  createTopologyPersistenceRecord,
+  normalizeTopologyPersistenceRecord,
+  type AnalysisResultEnvelope,
+  type ScientificSourceGeneration,
+  type TopologyDocument as SharedTopologyDocument,
+  type TopologyPersistedArtifactReference,
+  type TopologyPersistenceRecord,
+  type TopologyReplayBundle,
+} from "@math3d/core";
 import type {
   CanonicalTopologyComplex,
   TopologyAnalysisResult,
@@ -63,12 +74,27 @@ export type TopologyDocumentV2 = {
   };
 };
 
-export type TopologyDocument = TopologyDocumentV1 | TopologyDocumentV2;
+export type TopologyDocumentV3 = {
+  format: "math3d-topology";
+  version: 3;
+  extension: typeof TOPOLOGY_DOCUMENT_EXTENSION;
+  savedAt: string;
+  payload: {
+    persistence: TopologyPersistenceRecord;
+    viewState: {
+      activeView: TopologyDocumentView;
+      activeRealizationId: string | null;
+      animationPlan?: TopologyAnimationPlan;
+    };
+  };
+};
+
+export type TopologyDocument = TopologyDocumentV1 | TopologyDocumentV2 | TopologyDocumentV3;
 
 export type TopologyDocumentLoadAudit = {
-  loadedVersion: 1 | 2;
-  migration: "v1-recomputed" | "v2-verified" | "v2-stale-recomputed";
-  cacheStatus: "current" | "recomputed";
+  loadedVersion: 1 | 2 | 3;
+  migration: "v1-recomputed" | "v2-verified" | "v2-stale-recomputed" | "v3-replayed";
+  cacheStatus: "current" | "recomputed" | "replayed";
   warnings: string[];
 };
 
@@ -77,6 +103,7 @@ export type LoadedTopologyDocument = {
   diagram: FundamentalDiagram;
   buildResult: QuotientBuildResult;
   audit: TopologyDocumentLoadAudit;
+  persistence?: TopologyPersistenceRecord;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object";
@@ -122,8 +149,25 @@ export const isTopologyDocumentV2 = (value: unknown): value is TopologyDocumentV
   );
 };
 
+export const isTopologyDocumentV3 = (value: unknown): value is TopologyDocumentV3 => {
+  if (!isRecord(value)) return false;
+  const payload = isRecord(value.payload) ? value.payload : null;
+  const viewState = payload && isRecord(payload.viewState) ? payload.viewState : null;
+  return (
+    value.format === "math3d-topology" &&
+    value.version === 3 &&
+    value.extension === TOPOLOGY_DOCUMENT_EXTENSION &&
+    typeof value.savedAt === "string" &&
+    !!payload &&
+    normalizeTopologyPersistenceRecord(payload.persistence).ok &&
+    !!viewState &&
+    typeof viewState.activeView === "string" &&
+    (viewState.activeRealizationId === null || typeof viewState.activeRealizationId === "string")
+  );
+};
+
 export const isTopologyDocument = (value: unknown): value is TopologyDocument =>
-  isTopologyDocumentV1(value) || isTopologyDocumentV2(value);
+  isTopologyDocumentV1(value) || isTopologyDocumentV2(value) || isTopologyDocumentV3(value);
 
 const algorithmVersionsFor = (buildResult: QuotientBuildResult): Record<string, string> => ({
   canonicalization: buildResult.topologyObject.provenance.canonicalization.algorithmVersion,
@@ -188,7 +232,106 @@ export const createTopologyDocument = (
   };
 };
 
+const sourceGenerationForDocument = (document: SharedTopologyDocument): ScientificSourceGeneration => ({
+  documentId: document.identity.id,
+  revision: document.identity.revision,
+  structuralHash: document.identity.structuralHash,
+  generation: 1,
+});
+
+export const createReplayableTopologyDocument = (args: {
+  document: SharedTopologyDocument;
+  replay: TopologyReplayBundle;
+  canonicalHash: TopologyPersistenceRecord["canonicalHash"];
+  results: readonly AnalysisResultEnvelope[];
+  artifactHandles: readonly AnalysisResultEnvelope["artifacts"][number][];
+  activeView: TopologyDocumentView;
+  activeRealizationId: string | null;
+  animationPlan?: TopologyAnimationPlan;
+}): TopologyDocumentV3 => {
+  const source = sourceGenerationForDocument(args.document);
+  const results = [...new Map(args.results.map((result) => [result.resultId, result])).values()];
+  const document = createSharedTopologyDocument({
+    identity: args.document.identity,
+    source: args.document.source,
+    canonicalComplex: null,
+    results: results.map((result) => ({
+      resultId: result.resultId,
+      resultType: result.provenance.operation.type,
+      source,
+      state: "available",
+    })),
+    displayRealizations: args.document.displayRealizations,
+    provenance: {
+      origin: "native",
+      sourceFormat: "math3d-topology",
+      sourceVersion: 3,
+      diagnostics: [],
+    },
+  });
+  const artifactHandles = [...new Map([
+    ...args.artifactHandles,
+    ...results.flatMap((result) => result.artifacts),
+  ].map((handle) => [handle.artifactId, handle])).values()];
+  const artifacts: TopologyPersistedArtifactReference[] = artifactHandles.map((handle) => ({
+    handle,
+    source,
+    state: "unavailable",
+    reason: "payload-not-embedded",
+  }));
+  const persistence = createTopologyPersistenceRecord({
+    document,
+    replay: args.replay,
+    canonicalHash: args.canonicalHash,
+    results,
+    artifacts,
+  });
+  return {
+    format: "math3d-topology",
+    version: 3,
+    extension: TOPOLOGY_DOCUMENT_EXTENSION,
+    savedAt: new Date().toISOString(),
+    payload: {
+      persistence,
+      viewState: {
+        activeView: args.activeView,
+        activeRealizationId: args.activeRealizationId,
+        ...(args.animationPlan ? { animationPlan: args.animationPlan } : {}),
+      },
+    },
+  };
+};
+
 export const migrateTopologyDocument = (value: unknown): LoadedTopologyDocument | null => {
+  if (isTopologyDocumentV3(value)) {
+    const normalized = normalizeTopologyPersistenceRecord(value.payload.persistence);
+    if (!normalized.ok || normalized.value.document.source.kind !== "fundamental-diagram") return null;
+    const persistence = normalized.value;
+    const diagram = cloneFundamentalDiagram(persistence.document.source.model as unknown as FundamentalDiagram);
+    const buildResult = buildQuotientPipeline(diagram);
+    const compatibilityDocument = createTopologyDocument(diagram, {
+      buildResult,
+      activeView: value.payload.viewState.activeView,
+      activeRealizationId: value.payload.viewState.activeRealizationId,
+      animationPlan: value.payload.viewState.animationPlan,
+      undoHistory: Array.from({ length: persistence.replay.cursor }, () => cloneFundamentalDiagram(diagram)),
+      redoHistory: Array.from({ length: persistence.replay.transactions.length - persistence.replay.cursor }, () => cloneFundamentalDiagram(diagram)),
+    });
+    return {
+      document: compatibilityDocument,
+      diagram,
+      buildResult,
+      persistence,
+      audit: {
+        loadedVersion: 3,
+        migration: "v3-replayed",
+        cacheStatus: "replayed",
+        warnings: persistence.artifacts.map((artifact) =>
+          `Artifact '${artifact.handle.artifactId}' is unavailable after reopen; recompute ${artifact.handle.role}.`
+        ),
+      },
+    };
+  }
   if (isTopologyDocumentV1(value)) {
     const diagram = cloneFundamentalDiagram(value.payload.diagram);
     const buildResult = buildQuotientPipeline(diagram);
