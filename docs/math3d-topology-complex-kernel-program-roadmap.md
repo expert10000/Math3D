@@ -1969,3 +1969,40 @@ files pass, covering transient typing, eight-family ordered migration, GUI/impor
 parity, result staleness, dependent-intent clearing, source-bound selection and
 requests, revision advancement, and undo history. Cross-project TypeScript succeeds;
 the boundary is documented in `docs/complex-analysis-commands.md`.
+
+### C05 execution plan
+
+**Status:** complete
+
+C05 adds an F07-backed preview session between the authoritative C04 document and
+the existing immediate Function Explorer experience.
+
+1. Define low/high artifact bundles for domain coloring, Z/W deformation grids,
+   real, imaginary, modulus, argument, vector field, U/V level curves,
+   Cauchy-Riemann defect, conformal field, path mapping, and 3D value surfaces.
+2. Compile only the validated C03 AST and sample the exact C04 document generation.
+3. Publish Float32 payloads through the F07 registry with handles containing quality,
+   source revision/hash, layer role, byte count, and checksum.
+4. Keep React state compact: revision, readiness, and handle count only; never place
+   sampled arrays in the document or localStorage.
+5. Cap low quality at 32×32 and high quality at 256×256 under the document's sampling
+   budget; yield between row blocks to preserve interactive rendering.
+6. Keep drag previews transient and cap them at 256 samples regardless of persistent
+   sampling resolution.
+7. Recheck source generation before publication, ignore late work, and invalidate
+   old payloads after a committed source change.
+8. Bind the current Function Explorer spec to the preview session and expose its
+   revision/artifact readiness beside the overlay controls.
+
+**C05 acceptance:** all fourteen preview families resolve only through current
+revision-bound handles; large payloads remain outside React/document/localStorage;
+drag previews are bounded; old and late artifacts cannot publish or resolve as
+current; and the existing TypeScript UI remains immediately available without Sage
+or native backends.
+
+**Completed verification:** five focused artifact journeys and 59 tests across four
+files pass, covering low/high resolution, fourteen layer roles, compact handles,
+registry-only bytes, source advancement, stale/late rejection, and drag caps.
+Cross-project TypeScript and the production renderer build pass. The three C01 lab
+journeys and the new visible provenance journey pass in Electron. The lifecycle and
+UI location are documented in `docs/complex-preview-artifacts.md`.

@@ -614,6 +614,7 @@ import {
   type ComplexMapInputMode,
   type ComplexMapSweepSpec,
 } from "./math/complexMapSweep";
+import { ComplexFunctionPreviewSession } from "./math/complexPreviewArtifacts";
 import { marchingSquares } from "./math/marchingSquares";
 import { formatRoot, inspectRationalFunction, type RationalInspection } from "./math/rationalInspector";
 import { buildVertexAdjacency } from "./math/curvatureLines";
@@ -37936,6 +37937,31 @@ const App: React.FC = () => {
   const [complexMapSphereStacked, setComplexMapSphereStacked] = useState(false);
   const [complexMapProbe, setComplexMapProbe] = useState<ComplexMapProbe | null>(null);
   const [complexMapProbePins, setComplexMapProbePins] = useState<ComplexMapProbePin[]>([]);
+  const [complexPreviewSession] = useState(() => new ComplexFunctionPreviewSession(COMPLEX_MAP_DEFAULT_SPEC));
+  const [complexPreviewArtifactStatus, setComplexPreviewArtifactStatus] = useState<{
+    revision: number;
+    artifactCount: number;
+    state: "computing" | "ready" | "error";
+    message?: string;
+  }>(() => ({ revision: complexPreviewSession.commands.document().identity.revision, artifactCount: 0, state: "computing" }));
+
+  useEffect(() => {
+    let active = true;
+    const synchronized = complexPreviewSession.synchronize(complexMapSpec);
+    if (synchronized.error) {
+      setComplexPreviewArtifactStatus({ revision: synchronized.document.identity.revision, artifactCount: 0, state: "error", message: synchronized.error });
+      return () => { active = false; };
+    }
+    setComplexPreviewArtifactStatus((previous) => ({ ...previous, revision: synchronized.document.identity.revision, artifactCount: 0, state: "computing", message: undefined }));
+    void complexPreviewSession.build("low").then((bundle) => {
+      if (!active || bundle.ignored) return;
+      setComplexPreviewArtifactStatus({ revision: bundle.source.revision, artifactCount: Object.keys(bundle.handles).length, state: "ready" });
+    }).catch((error) => {
+      if (!active) return;
+      setComplexPreviewArtifactStatus({ revision: complexPreviewSession.commands.document().identity.revision, artifactCount: 0, state: "error", message: String((error as Error).message ?? error) });
+    });
+    return () => { active = false; };
+  }, [complexMapSpec, complexPreviewSession]);
 
   const updateComplexMapSpec = useCallback((patch: Partial<ComplexMapSweepSpec>) => {
     setComplexMapSpec((prev) => ({ ...prev, ...patch }));
@@ -105906,6 +105932,9 @@ case "mobius":
                       </div>
                       <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
                         <div style={{ fontWeight: 700, fontSize: 12 }}>Visualization / Overlays</div>
+                        <div data-testid="complex-preview-artifact-status" style={{ fontSize: 11, color: complexPreviewArtifactStatus.state === "error" ? "#b42318" : "#176b3a" }}>
+                          Revision-safe preview r{complexPreviewArtifactStatus.revision} · {complexPreviewArtifactStatus.state === "ready" ? `${complexPreviewArtifactStatus.artifactCount} F07 artifacts ready` : complexPreviewArtifactStatus.state === "computing" ? "sampling low-resolution artifacts…" : `preview unavailable: ${complexPreviewArtifactStatus.message ?? "invalid source"}`}
+                        </div>
                         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 11 }}>
                           <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <input
