@@ -14,6 +14,8 @@ export * from "./analysisResults";
 export * from "./documentIdentity";
 export * from "./documentRelations";
 export * from "./geometry";
+export * from "./geometryDocument";
+export * from "./geometryCommands";
 export * from "./math";
 export * from "./sceneDocument";
 export * from "./sceneObjects";

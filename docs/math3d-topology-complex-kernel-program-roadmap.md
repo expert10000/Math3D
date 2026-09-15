@@ -2318,6 +2318,16 @@ transient viewer fields explicitly.
 view-only change does not. Legacy projects open without silent rewrite, and the
 canonical document round-trips without React or Three.js objects.
 
+**Completed verification.** The v1 `GeometryDocument` separates source,
+persistent metadata, persistent display, provenance, and viewer-owned transient
+state. Explicit SceneDocument read/export adapters preserve construction graphs,
+relationships, stable IDs, and released files without silent rewrite. The renderer
+adapter uses shared kernel transactions for validated source/display replacement,
+inverse history, undo/redo, replay, and query isolation; GK05 will add fine-grained
+GUI/Scratch/Scene Script commands. `npm run test:kernel:gk04` exercises the GK03
+contract and canonical/legacy round trips; see
+`docs/kernel-geometry-document-adapter.md`.
+
 ### GK05 — `refactor(geometry): unify Scene Script and GUI through kernel commands`
 
 **Milestone:** G02 — Geometry and Scene Script

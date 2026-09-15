@@ -480,6 +480,17 @@ not; IDs survive replay; canonical documents contain no React/Three objects or l
 mesh buffers; save/reopen/replay preserves construction structure and identity;
 legacy projects open without silent rewrite; GK03 document gates pass.
 
+**Completion evidence.** Added the strict v1 `GeometryDocument` with explicit
+structural source, persistent metadata, persistent display, provenance, and a
+separate transient-view contract. The legacy SceneDocument read adapter preserves
+objects, surfaces, constructions, relationships, parameters/extensions, presentation,
+and stable IDs without mutating the opened value; compatibility export is explicit.
+`GeometryDocumentAdapter` now owns source/display replacement through shared kernel
+transactions, inverse history, undo/redo, replay, and isolated queries. Runtime
+buffers and non-JSON UI/Three values are rejected. `npm run test:kernel:gk04` runs
+the GK03 fixture plus round-trip/legacy/authority gates documented in
+`docs/kernel-geometry-document-adapter.md`.
+
 #### GK05 — `refactor(geometry): unify Scene Script, Scratch, and GUI commands`
 
 **Scope.** Add a Geometry/Scene Viewer command adapter and lower equivalent Scene
