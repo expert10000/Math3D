@@ -7,6 +7,7 @@ export * from "./complexAnalysisDocument";
 export * from "./complexExpressionAst";
 export * from "./complexCommands";
 export * from "./complexSageAnalysis";
+export * from "./complexPersistence";
 export * from "./localZ2Homology";
 export * from "./sageIntegerHomology";
 export * from "./analysisResults";

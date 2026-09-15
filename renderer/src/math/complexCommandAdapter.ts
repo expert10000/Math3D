@@ -9,7 +9,11 @@ import {
   type ComplexCommandState,
   type ComplexCommittedSelection,
   type ComplexExpressionVariable,
+  type ComplexReplayBundle,
+  type ComplexReplayTransaction,
   type ComplexValueSurfaceRequest,
+  createComplexReplayBundle,
+  replayComplexCommandLog,
   complexCommandDefinitions,
   parseComplexExpressionAst,
 } from "@math3d/core";
@@ -25,16 +29,39 @@ const fieldCommands = [
 ] as const;
 
 export class ComplexAnalysisCommandAdapter {
-  readonly #kernel: InMemoryDocumentKernel<ComplexCommandState>;
+  #kernel: InMemoryDocumentKernel<ComplexCommandState>;
+  #replayCheckpoint: ComplexCommandState;
+  #replayTransactions: ComplexReplayTransaction[] = [];
+  #replayCursor = 0;
   #sequence = 0;
 
   constructor(document: ComplexAnalysisDocument) {
-    this.#kernel = createInMemoryDocumentKernel({ initialState: createComplexCommandState(document), commandDefinitions: complexCommandDefinitions, historyLimit: 100 });
+    this.#replayCheckpoint = createComplexCommandState(document);
+    this.#kernel = createInMemoryDocumentKernel({ initialState: this.#replayCheckpoint, commandDefinitions: complexCommandDefinitions, historyLimit: 100 });
   }
 
   document(): ComplexAnalysisDocument { return this.#kernel.query((state) => state.document) as ComplexAnalysisDocument; }
   state(): ComplexCommandState { return this.#kernel.query((state) => state) as ComplexCommandState; }
   history() { return this.#kernel.historyStatus(); }
+  exportReplay(): ComplexReplayBundle { return createComplexReplayBundle(this.#replayCheckpoint, this.#replayTransactions, this.#replayCursor); }
+
+  static restore(replay: ComplexReplayBundle): ComplexAnalysisCommandAdapter {
+    const replayed = replayComplexCommandLog(replay);
+    if (!replayed.ok) throw new TypeError(replayed.errors.join(" "));
+    const adapter = new ComplexAnalysisCommandAdapter(replay.checkpoint.document);
+    adapter.#kernel = createInMemoryDocumentKernel({ initialState: replay.checkpoint, commandDefinitions: complexCommandDefinitions, historyLimit: 100 });
+    adapter.#replayCheckpoint = replay.checkpoint;
+    adapter.#replayTransactions = [];
+    adapter.#replayCursor = 0;
+    for (const transaction of replay.transactions) {
+      const result = adapter.#kernel.transact({ transactionId: transaction.transactionId, commands: transaction.commands, mode: "replay", history: { kind: "reversible", inverseCommands: transaction.inverseCommands } });
+      if (!result.ok || result.event.stateHash !== transaction.stateHash) throw new TypeError(`Could not restore Complex transaction '${transaction.transactionId}'.`);
+      adapter.#replayTransactions.push(transaction);
+      adapter.#replayCursor += 1;
+    }
+    while (adapter.#replayCursor > replay.cursor) { adapter.#kernel.undo(); adapter.#replayCursor -= 1; }
+    return adapter;
+  }
 
   /** Typing remains a bounded local preview and does not mutate document history. */
   previewFunction(sourceText: string, allowedVariables: readonly ComplexExpressionVariable[] = ["z"]): ComplexPreviewCompileResult {
@@ -57,6 +84,9 @@ export class ComplexAnalysisCommandAdapter {
     const inverse = this.#command(`${transactionId}/inverse`, type, { value: clone(current[field]) as CanonicalJsonValue }, { kind: "system", sourceId: "complex-undo" });
     const result = this.#kernel.transact({ transactionId, commands: [forward], history: { kind: "reversible", inverseCommands: [inverse] } });
     if (!result.ok) throw new TypeError(result.errors.flatMap((error) => error.transactionErrors?.flatMap((entry) => entry.messages) ?? [error.message]).join(" "));
+    this.#replayTransactions.splice(this.#replayCursor);
+    this.#replayTransactions.push({ transactionId, commands: [forward], inverseCommands: [inverse], stateHash: result.event.stateHash });
+    this.#replayCursor += 1;
     return this.document();
   }
 
@@ -83,8 +113,16 @@ export class ComplexAnalysisCommandAdapter {
     return this.state();
   }
 
-  undo(): ComplexAnalysisDocument | null { return this.#kernel.undo().ok ? this.document() : null; }
-  redo(): ComplexAnalysisDocument | null { return this.#kernel.redo().ok ? this.document() : null; }
+  undo(): ComplexAnalysisDocument | null {
+    const result = this.#kernel.undo();
+    if (result.ok) this.#replayCursor = Math.max(0, this.#replayCursor - 1);
+    return result.ok ? this.document() : null;
+  }
+  redo(): ComplexAnalysisDocument | null {
+    const result = this.#kernel.redo();
+    if (result.ok) this.#replayCursor = Math.min(this.#replayTransactions.length, this.#replayCursor + 1);
+    return result.ok ? this.document() : null;
+  }
 
   private execute(type: string, payload: CanonicalJsonValue, origin: CommandOrigin): void {
     const transactionId = this.#nextId("intent");

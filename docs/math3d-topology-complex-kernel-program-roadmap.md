@@ -2098,3 +2098,25 @@ adaptive error metadata, argument-principle values, provenance, and unsupported
 handling. TypeScript, renderer build, and both numerical/exact Electron workflows are
 gated by `npm run test:complex:c08`. UI and evidence boundaries are documented in
 `docs/complex-exact-residue-contour-mvp.md`.
+
+### C09 execution plan
+
+**Status:** complete
+
+1. Define canonical `.math3d-complex` session serialization around the C02 document.
+2. Persist a source-only checkpoint, reversible C04 command transactions, and cursor.
+3. Verify every replay step, inverse, state hash, and final document generation.
+4. Persist compact current F06 result metadata and never embed sampled artifacts.
+5. Reopen omitted F07 payloads as unavailable and external engines as needs-compute.
+6. Migrate legacy C02 snapshots without inventing replay/result availability.
+7. Export normalized AST plus allowlisted Sage/notebook requests, never executable text.
+8. Restore the Complex command adapter with working undo/redo from the replay bundle.
+
+**C09 acceptance:** define -> explore -> analyze -> save -> reopen -> replay preserves
+source identity and qualified results while missing artifacts/engines remain explicit.
+
+**Completed verification:** focused persistence tests cover canonical round-trip,
+command replay/undo/redo, result provenance, unavailable artifacts, engine state,
+structured export, migration, and tamper rejection. TypeScript and renderer build are
+gated by `npm run test:complex:c09`; the format is documented in
+`docs/complex-session-persistence.md`.
