@@ -91517,10 +91517,14 @@ case "mobius":
                         </button>
                       </div>
                       {geometryProceduralScriptStatus && (
-                        <div style={{ fontSize: 11, color: "#166534" }}>{geometryProceduralScriptStatus}</div>
+                        <div data-testid="geometry-procedural-script-status" style={{ fontSize: 11, color: "#166534" }}>
+                          {geometryProceduralScriptStatus}
+                        </div>
                       )}
                       {geometryProceduralScriptError && (
-                        <div style={{ fontSize: 11, color: "#b42318" }}>{geometryProceduralScriptError}</div>
+                        <div data-testid="geometry-procedural-script-error" style={{ fontSize: 11, color: "#b42318" }}>
+                          {geometryProceduralScriptError}
+                        </div>
                       )}
                     </div>
                     )}

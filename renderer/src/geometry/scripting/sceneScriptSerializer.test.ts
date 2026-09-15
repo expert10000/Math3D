@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createGeometryObject } from "../proceduralObjects";
+import { GEOMETRY_OBJECT_REGISTRY, GEOMETRY_OBJECT_TYPES, createGeometryObject } from "../proceduralObjects";
 import { executeSceneScript } from "./sceneScriptExecutor";
 import { serializeSceneToScript } from "./sceneScriptSerializer";
 
@@ -110,5 +110,42 @@ describe("scene script serializer", () => {
     if (!result.ok) return;
     expect(result.objects[0].params.sourceEntityIds).toBe("A,B,AB");
     expect(result.objects[0].params.sourcePayload).toBe(scratch.params.sourcePayload);
+  });
+
+  it("canonically round-trips every registered Geometry object type with presentation state", () => {
+    const objects = GEOMETRY_OBJECT_TYPES.map((type, index) => {
+      const object = createGeometryObject(type, `acceptance_${type}`);
+      object.name = `${GEOMETRY_OBJECT_REGISTRY[type].label} acceptance ${index + 1}`;
+      object.group = index % 2 === 0 ? "primary acceptance" : "secondary acceptance";
+      object.transform.position = { x: index * 0.25, y: -index * 0.125, z: index * 0.5 };
+      object.transform.rotation = { x: index * 0.05, y: index * 0.1, z: -index * 0.025 };
+      object.transform.scale = { x: 1 + index * 0.05, y: 1 + index * 0.025, z: 1 + index * 0.075 };
+      object.visible = index % 3 !== 1;
+      object.material = {
+        color: 0x102030 + index * 0x010101,
+        opacity: 0.5 + index * 0.05,
+        roughness: 0.2 + index * 0.05,
+        metalness: index * 0.05,
+      };
+      return object;
+    });
+    const selectedObjectId = objects.at(-1)?.id ?? null;
+
+    const firstScript = serializeSceneToScript(objects, { selectedObjectId });
+    const firstResult = executeSceneScript({ script: firstScript, objects: [] });
+
+    expect(firstResult.ok).toBe(true);
+    if (!firstResult.ok) return;
+    expect(firstResult.objects.map((object) => object.type)).toEqual(GEOMETRY_OBJECT_TYPES);
+    expect(firstResult.objects.map((object) => object.id)).toEqual(objects.map((object) => object.id));
+    expect(firstResult.objects.map((object) => object.name)).toEqual(objects.map((object) => object.name));
+    expect(firstResult.objects.map((object) => object.group)).toEqual(objects.map((object) => object.group));
+    expect(firstResult.objects.map((object) => object.visible)).toEqual(objects.map((object) => object.visible));
+    expect(firstResult.selectedObjectId).toBe(selectedObjectId);
+
+    const secondScript = serializeSceneToScript(firstResult.objects, {
+      selectedObjectId: firstResult.selectedObjectId,
+    });
+    expect(secondScript).toBe(firstScript);
   });
 });
