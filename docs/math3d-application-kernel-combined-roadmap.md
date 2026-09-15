@@ -523,6 +523,19 @@ same committed document revision and selection.
 The old mutation/history path is either removed or listed with a specific parity and
 removal gate.
 
+**Completion evidence.** Added fine-grained typed Geometry commands for scene clear,
+object upsert/remove/visibility, construction and relationship lifecycle, parameters,
+topology-edit records, Scratch graph replace, and committed selection. GUI completion
+handlers and Scene Script now share `GeometryDocumentAdapter.dispatch`; successful
+scripts lower to one atomic transaction while released parsing diagnostics and
+coercion remain intact. Canonical snapshot text and compact replay logs both reproduce
+the same document. The advertised published-Scratch subset round-trips nodes, checks,
+constraints, dependencies, IDs, parameters, authoring script, and selection with
+structured no-mutation diagnostics outside that subset. The remaining App/React and
+ConstructionLab local-history bridge and its removal gate are explicit in
+`docs/kernel-geometry-command-migration.md`. `npm run test:kernel:gk05` gates parity,
+atomicity, preview isolation, replay, and conversion behavior.
+
 #### GK06 — `feat(geometry): publish revision-safe derived geometry resources`
 
 **Scope.** Route expensive tessellations, measurements, sections/intersections,

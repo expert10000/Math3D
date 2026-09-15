@@ -2341,6 +2341,16 @@ undo/redo, and replay.
 script operations produce the same canonical document/hash; failed batches are
 atomic; hover and drag previews create no command spam.
 
+**Completed verification.** The kernel Geometry vocabulary now covers object,
+visibility, construction, relationship, parameter, topology-edit, Scratch graph,
+scene-clear, and committed-selection operations. Completed GUI gestures and Scene
+Script lower to the same atomic adapter transaction; snapshot and operation-log
+exports replay canonically. The supported Scratch published-construction subset
+round-trips graph identity and constraints, while unsupported conversion reports
+structured diagnostics without mutation. Remaining App-local setters are documented
+as a compatibility bridge with a professional-E2E removal gate in
+`docs/kernel-geometry-command-migration.md`. Gate: `npm run test:kernel:gk05`.
+
 ### GK06 — `feat(geometry): publish revision-safe derived geometry resources`
 
 **Milestone:** G02 — Geometry and Scene Script

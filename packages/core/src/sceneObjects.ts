@@ -68,11 +68,13 @@ export type GeometryScene = {
 export type GeometryObjectType =
   | "sphere"
   | "box"
+  | "polygon"
   | "cylinder"
   | "cone"
   | "torus"
   | "plane"
-  | "polyhedron";
+  | "polyhedron"
+  | "constructed";
 
 export type GeometryParamDef = {
   id: string;
@@ -93,6 +95,8 @@ export type GeometryObjectTransform = {
 export type GeometryObjectMaterial = {
   color?: number;
   opacity?: number;
+  roughness?: number;
+  metalness?: number;
 };
 
 export type GeometryObject = {

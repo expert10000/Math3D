@@ -128,7 +128,7 @@ const exactFields = (value: Record<string, unknown>, expected: readonly string[]
 };
 const validVec3 = (value: unknown): boolean => isRecord(value) &&
   [value.x, value.y, value.z].every((entry) => typeof entry === "number" && Number.isFinite(entry));
-const GEOMETRY_OBJECT_TYPES: readonly GeometryObjectType[] = ["sphere", "box", "cylinder", "cone", "torus", "plane", "polyhedron"];
+const GEOMETRY_OBJECT_TYPES: readonly GeometryObjectType[] = ["sphere", "box", "polygon", "cylinder", "cone", "torus", "plane", "polyhedron", "constructed"];
 
 const validateSource = (source: unknown, errors: string[]): source is GeometryDocumentSource => {
   if (!isRecord(source)) { errors.push("geometry.source must be an object."); return false; }

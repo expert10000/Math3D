@@ -17,8 +17,8 @@ import { createInMemoryDocumentKernel, type InMemoryDocumentKernel } from "@math
 
 export type GeometryReplayTransaction = Readonly<{
   transactionId: string;
-  command: CommandEnvelope;
-  inverse: CommandEnvelope;
+  commands: readonly CommandEnvelope[];
+  inverseCommands: readonly CommandEnvelope[];
   stateHash: StructuralHash;
 }>;
 
@@ -30,6 +30,10 @@ export type GeometryReplayBundle = Readonly<{
 
 const clone = <Value>(value: Value): Value => JSON.parse(JSON.stringify(value)) as Value;
 const payload = (value: unknown): CanonicalJsonValue => value as CanonicalJsonValue;
+export type GeometryAdapterCommand = Readonly<{
+  type: typeof GEOMETRY_COMMAND_TYPES[keyof typeof GEOMETRY_COMMAND_TYPES];
+  payload: CanonicalJsonValue;
+}>;
 
 export class GeometryDocumentAdapter {
   #kernel: InMemoryDocumentKernel<GeometryCommandState>;
@@ -44,6 +48,8 @@ export class GeometryDocumentAdapter {
   }
 
   document(): GeometryDocument { return this.#kernel.query((state) => state.document) as GeometryDocument; }
+  state(): GeometryCommandState { return this.#kernel.query((state) => state) as GeometryCommandState; }
+  committedSelectionIds(): readonly string[] { return this.state().committedSelection.entityIds; }
   history() { return this.#kernel.historyStatus(); }
   previewSource(source: GeometryDocumentSource): GeometryDocumentSource { return clone(source); }
 
@@ -53,6 +59,32 @@ export class GeometryDocumentAdapter {
 
   commitDisplay(display: GeometryDocumentDisplay, origin: CommandOrigin = { kind: "interactive", sourceId: "geometry-view" }): GeometryDocument {
     return this.#commit(GEOMETRY_COMMAND_TYPES.replaceDisplay, display, this.document().display, origin);
+  }
+
+  dispatch(
+    commands: readonly GeometryAdapterCommand[],
+    origin: CommandOrigin = { kind: "interactive", sourceId: "geometry-gui" }
+  ): GeometryCommandState {
+    if (!commands.length) return this.state();
+    const before = this.state();
+    this.#sequence += 1;
+    const transactionId = `geometry/batch/${this.#sequence}`;
+    const envelopes = commands.map((entry, index) => createCommandEnvelope({
+      commandId: `${transactionId}/forward/${index + 1}`,
+      origin,
+      command: { type: entry.type, payload: entry.payload },
+    }));
+    const inverseCommands = [
+      createCommandEnvelope({ commandId: `${transactionId}/inverse/source`, origin: { kind: "system", sourceId: "geometry-undo" }, command: { type: GEOMETRY_COMMAND_TYPES.replaceSource, payload: payload(before.document.source) } }),
+      createCommandEnvelope({ commandId: `${transactionId}/inverse/display`, origin: { kind: "system", sourceId: "geometry-undo" }, command: { type: GEOMETRY_COMMAND_TYPES.replaceDisplay, payload: payload(before.document.display) } }),
+      createCommandEnvelope({ commandId: `${transactionId}/inverse/selection`, origin: { kind: "system", sourceId: "geometry-undo" }, command: { type: GEOMETRY_COMMAND_TYPES.commitSelection, payload: payload(before.committedSelection) } }),
+    ];
+    const result = this.#kernel.transact({ transactionId, commands: envelopes, history: { kind: "reversible", inverseCommands } });
+    if (!result.ok) throw new TypeError(result.errors.flatMap((error) => error.transactionErrors?.flatMap((entry) => entry.messages) ?? [error.message]).join(" "));
+    this.#transactions.splice(this.#cursor);
+    this.#transactions.push({ transactionId, commands: envelopes, inverseCommands, stateHash: result.event.stateHash });
+    this.#cursor += 1;
+    return this.state();
   }
 
   undo(): GeometryDocument | null {
@@ -81,9 +113,9 @@ export class GeometryDocumentAdapter {
     for (const transaction of bundle.transactions) {
       const result = adapter.#kernel.transact({
         transactionId: transaction.transactionId,
-        commands: [transaction.command],
+        commands: transaction.commands,
         mode: "replay",
-        history: { kind: "reversible", inverseCommands: [transaction.inverse] },
+        history: { kind: "reversible", inverseCommands: transaction.inverseCommands },
       });
       if (!result.ok || result.event.stateHash !== transaction.stateHash) throw new TypeError(`Could not restore Geometry transaction '${transaction.transactionId}'.`);
       adapter.#transactions.push(clone(transaction));
@@ -116,7 +148,7 @@ export class GeometryDocumentAdapter {
     const result = this.#kernel.transact({ transactionId, commands: [command], history: { kind: "reversible", inverseCommands: [inverse] } });
     if (!result.ok) throw new TypeError(result.errors.flatMap((error) => error.transactionErrors?.flatMap((entry) => entry.messages) ?? [error.message]).join(" "));
     this.#transactions.splice(this.#cursor);
-    this.#transactions.push({ transactionId, command, inverse, stateHash: result.event.stateHash });
+    this.#transactions.push({ transactionId, commands: [command], inverseCommands: [inverse], stateHash: result.event.stateHash });
     this.#cursor += 1;
     return this.document();
   }

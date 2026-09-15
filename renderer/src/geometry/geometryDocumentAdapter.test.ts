@@ -133,7 +133,7 @@ describe("GK04 GeometryDocument adapter", () => {
     expect(deserializeGeometryDocument(JSON.stringify(unknown))).toMatchObject({ ok: false });
 
     const tampered = structuredClone(adapter.exportReplay());
-    (tampered.transactions[0]!.command.command.payload as any).parameters.radius = 9;
+    (tampered.transactions[0]!.commands[0]!.command.payload as any).parameters.radius = 9;
     expect(() => GeometryDocumentAdapter.restore(tampered)).toThrow(/restore Geometry transaction/);
   });
 });
