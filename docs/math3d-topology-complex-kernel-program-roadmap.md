@@ -2160,3 +2160,21 @@ renderer build, and the Branch Lab Electron journey are gated by
 relationship to its Complex function, AST, branch policy, results, source generation,
 and tessellation parameters. The handoff and UI are documented in
 `docs/complex-riemann-surface-lineage.md` and gated by `npm run test:complex:c11`.
+
+### C12 execution plan
+
+**Status:** complete — Complex Analysis MVP/v1 migration gate closed.
+
+1. Run every Complex parser, AST, corpus, command, preview, result, and artifact test.
+2. Gate numerical tolerances, exact/Sage qualification, cancellation, and resource limits.
+3. Verify canonical save/reopen/replay and unavailable external-artifact behavior.
+4. Gate adaptive continuation, uncertainty, and validated monodromy fixtures.
+5. Verify revisioned Riemann-surface artifacts, relationships, and locate-back.
+6. Exercise every migrated lab and focused scientific workflow in Electron.
+7. Retain a rendering screenshot as visual evidence, never as a scientific oracle.
+8. Preserve unproven compatibility adapters and document the parity rule for later removal.
+
+**C12 acceptance:** `npm run test:complex:v1:acceptance` proves the integrated
+define → explore → analyze → save → reopen → replay → derived-handoff workflow.
+The gate and compatibility decision are recorded in
+`docs/complex-analysis-v1-release-gate.md`.
