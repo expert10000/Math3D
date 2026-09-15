@@ -117,6 +117,21 @@ test("Geometry UI preserves a complete Script -> Scene -> Script round trip atom
 
     await page.getByTestId("geometry-scene-to-script").click();
     expect(await editor.inputValue()).toBe(canonicalScript);
+
+    await page.getByTestId("geometry-professional-action-new").click();
+    await page.getByTestId("geometry-professional-expanded-new-object").click();
+    await expect.poll(() => readStats(page)).toEqual({ objects: 1, visible: 1 });
+    await expect(page.getByTestId("geometry-create-selected-card")).toContainText("Gallery selection: Box");
+    await expect(page.getByTestId("geometry-create-object-preset-shortcuts")).toContainText(
+      "Built-in presets and validation"
+    );
+
+    await page.getByTestId("geometry-workflow-command-create-presets").click();
+    await expect(page.getByTestId("geometry-debug-scene-gallery")).toBeVisible();
+    await expect(page.getByTestId("geometry-scene-script-validation-preset")).toBeVisible();
+    await page.getByTestId("geometry-run-scene-script-self-test-preset").click();
+    await expect(page.getByTestId("geometry-procedural-script-status")).toContainText("PASS");
+    await expect.poll(() => readStats(page)).toEqual({ objects: 3, visible: 2 });
   } finally {
     if (app) await app.close();
     rmSync(profileDir, { recursive: true, force: true });

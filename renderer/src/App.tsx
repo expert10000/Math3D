@@ -16343,6 +16343,39 @@ const App: React.FC = () => {
     geometryAddSelectNewObject,
     geometryNewObjectType,
   ]);
+  const handleStartNewGeometryObjectWorkspace = useCallback(() => {
+    const id = makeId();
+    const object = createGeometryObject("box", id);
+    suppressGeometryHistoryCapture();
+    setGeometryObjects([object]);
+    setGeometryDatasetMeshObjects([]);
+    setGeometryLockedObjectIds(new Set());
+    setGeometrySelectedObjectId(id);
+    setGeometryObjectHistoryById({});
+    setGeometrySelectedHistoryStepId(null);
+    setGeometryProceduralPick(null);
+    setGeometryProceduralHoverPick(null);
+    setGeometryMultiSelectionSet(createUnifiedSelectionSet([]));
+    setGeometryOperationInputs(GEOMETRY_OPERATION_INPUT_DEFS.map((input) => ({ ...input, value: null })));
+    setGeometryActiveOperationInputSlotId("primary-object");
+    setGeometryCompareObjectAId(null);
+    setGeometryCompareObjectBId(null);
+    setGeometryDerivedConstructions([]);
+    setGeometrySelectedDerivedConstructionId(null);
+    setGeometryConstructionHistory([]);
+    setGeometrySceneGalleryActiveId(null);
+    setGeometrySceneGalleryStatus(null);
+    setGeometryGallerySelectedCardId("box");
+    setGeometryGallerySelectedPresetId(null);
+    setGeometryNewObjectType("box");
+    setGeometryProceduralScriptText(PROCEDURAL_SCENE_SCRIPT_STARTER);
+    setGeometryProceduralScriptStatus(null);
+    setGeometryProceduralScriptError(null);
+    setGeometryMode("procedural");
+    setGeometryProceduralPanelTab("create");
+    setGeometryProfessionalExpandedGroup(null);
+    setGeometryCreateActionStatus("New Geometry workspace created with one selected Box.");
+  }, [suppressGeometryHistoryCapture]);
   const geometryConstructCatalogReferences = useMemo(
     () => [
       ...geometryObjects.map((object) => ({ id: object.id, label: object.name })),
@@ -17519,6 +17552,7 @@ const App: React.FC = () => {
       "PASS · Script -> scene -> script -> render preserved 3 objects, 2 visible, and the active selection."
     );
     setGeometryMode("procedural");
+    setGeometryProceduralPanelTab("script");
   }, [geometryDatasetMeshObjects]);
 
   const geometryDragRef = useRef<{
@@ -79102,7 +79136,14 @@ case "mobius":
                                 key={`geometry-professional-expanded-entry-${entry.id}`}
                                 type="button"
                                 data-testid={`geometry-professional-expanded-${entry.id}`}
-                                onClick={() => openGeometryProfessionalDestination(entry.destination)}
+                                onClick={() => {
+                                  if (entry.id === "new-object") {
+                                    handleStartNewGeometryObjectWorkspace();
+                                    return;
+                                  }
+                                  setGeometryProfessionalExpandedGroup(null);
+                                  openGeometryProfessionalDestination(entry.destination);
+                                }}
                                 style={surfacesModeButtonStyle(false, "actions")}
                               >
                                 {entry.label}
@@ -90495,7 +90536,28 @@ case "mobius":
                               </div>
                             )}
                           <div style={{ display: "grid", gap: 5 }}>
-                            <div style={{ color: "#0f3557", fontWeight: 800 }}>Saved Geometry object presets</div>
+                            <div style={{ color: "#0f3557", fontWeight: 800 }}>Built-in presets and validation</div>
+                            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                data-testid="geometry-open-built-in-scene-presets"
+                                onClick={() => setGeometryProceduralPanelTab("debug")}
+                                style={{ fontSize: 10.5, padding: "4px 8px" }}
+                              >
+                                Browse scene presets
+                              </button>
+                              <button
+                                type="button"
+                                data-testid="geometry-run-scene-script-self-test-shortcut"
+                                onClick={handleRunProceduralRoundTripSelfTest}
+                                style={{ fontSize: 10.5, padding: "4px 8px", fontWeight: 800 }}
+                              >
+                                Run Scene Script preset
+                              </button>
+                            </div>
+                          </div>
+                          <div style={{ display: "grid", gap: 5 }}>
+                            <div style={{ color: "#0f3557", fontWeight: 800 }}>Saved local object presets</div>
                             {geometryObjectPresets.length ? (
                               <div style={{ display: "grid", gap: 5 }}>
                                 {geometryObjectPresets.slice(0, 4).map((preset) => (
@@ -90536,7 +90598,7 @@ case "mobius":
                               </div>
                             ) : (
                               <div style={{ color: "#64748b" }}>
-                                Save a round-trip Geometry preset and it will appear here.
+                                No local object presets saved yet. Use Object Details to save the selected object.
                               </div>
                             )}
                           </div>
@@ -100467,6 +100529,35 @@ case "mobius":
                       </div>
                     )}
                     {geometryProceduralPanelTab === "debug" && (
+                      <div style={{ display: "grid", gap: 8 }}>
+                      <div
+                        data-testid="geometry-scene-script-validation-preset"
+                        style={{
+                          border: "1px solid #86efac",
+                          borderRadius: 8,
+                          background: "#f0fdf4",
+                          padding: "8px 10px",
+                          display: "grid",
+                          gap: 6,
+                        }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 800, color: "#166534" }}>
+                          Scene Script round-trip acceptance
+                        </div>
+                        <div style={{ fontSize: 10.5, color: "#475569" }}>
+                          Built-in three-object preset that validates Script → Scene → Script → Render and leaves the result open for inspection.
+                        </div>
+                        <div>
+                          <button
+                            type="button"
+                            data-testid="geometry-run-scene-script-self-test-preset"
+                            onClick={handleRunProceduralRoundTripSelfTest}
+                            style={{ fontSize: 11, fontWeight: 800 }}
+                          >
+                            Run validation preset
+                          </button>
+                        </div>
+                      </div>
                       <GeometryScenePresetsPanel
                         scenes={GEOMETRY_SCENE_GALLERY}
                         selectedScene={geometrySceneGallerySelected}
@@ -100481,6 +100572,7 @@ case "mobius":
                           setGeometryProceduralPanelTab(panel as GeometryProceduralPanelTab);
                         }}
                       />
+                      </div>
                     )}
 
                     {geometryProceduralPanelTab === "demonstrations" && (
