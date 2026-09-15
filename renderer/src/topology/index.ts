@@ -8,6 +8,7 @@ export * from "./canonicalFinite2DAdapter";
 export * from "./canonicalBoundaryMatrixArtifact";
 export * from "./editorTools";
 export * from "./topologyCommandAdapter";
+export * from "./localZ2Feedback";
 export * from "./animationPlan";
 export * from "./TopologyRealization3DView";
 export * from "./polygonWord";

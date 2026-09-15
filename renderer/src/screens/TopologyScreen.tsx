@@ -17,6 +17,7 @@ import {
   TOPOLOGY_PRESETS,
   TopologyRealization3DView,
   TopologyDiagramCommandAdapter,
+  computeFundamentalDiagramLocalZ2Feedback,
   buildTopologyCountLayers,
   buildQuotientPipeline,
   cloneFundamentalDiagram,
@@ -2767,6 +2768,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
 
   const renderAlgebraView = () => {
     const result = ensureBuilt();
+    const localZ2 = computeFundamentalDiagramLocalZ2Feedback(topologyCommandAdapterRef.current!.document());
     const boundaries = result.cellularBoundaryOperators.value;
     const homology = result.homology.value;
     const consistency = result.algebraicConsistency;
@@ -2816,6 +2818,44 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
           </div>
           <div>Canonical basis: {result.topologyObject.canonical.vertices.length} zero-cells · {result.topologyObject.canonical.edges.length} one-cells · {result.topologyObject.canonical.faces.length} two-cells.</div>
           <div style={{ color: "#475569" }}>Integral arithmetic uses bigint Smith normal form. Z/2Z uses an independent exact finite-field reduction.</div>
+        </section>
+
+        <section
+          data-testid="topology-local-z2-feedback"
+          style={{
+            border: `1px solid ${localZ2.status === "exact" ? "#8b5cf6" : "#f59e0b"}`,
+            borderRadius: 10,
+            background: localZ2.status === "exact" ? "#f5f3ff" : "#fffbeb",
+            padding: "9px 10px",
+            display: "grid",
+            gap: 5,
+            fontSize: 11,
+          }}
+        >
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <strong>Local finite-field feedback</strong>
+            <span data-testid="topology-local-z2-status" style={{ fontWeight: 700 }}>
+              {localZ2.status.toUpperCase()} · coefficients Z/2Z
+            </span>
+          </div>
+          {localZ2.status === "exact" ? (
+            <>
+              <div data-testid="topology-local-z2-betti" style={{ fontFamily: "ui-monospace, Consolas, monospace", fontWeight: 700 }}>
+                β₀, β₁, β₂ = {localZ2.value.bettiNumbers.join(", ")}
+              </div>
+              <div>
+                {localZ2.value.groups.map((group) => `H${group.degree} ≅ ${group.notation}`).join(" · ")}
+              </div>
+              <div style={{ color: "#475569" }}>
+                Exact bounded local reduction · source revision {localZ2.result.provenance.source.revision} · {localZ2.result.provenance.operation.algorithmVersion}
+              </div>
+              <div style={{ color: "#6d28d9" }}>{localZ2.value.limitation}</div>
+            </>
+          ) : (
+            <div style={{ color: "#92400e" }}>
+              {localZ2.diagnostics.map((entry) => `${entry.code}: ${entry.message}`).join(" ")}
+            </div>
+          )}
         </section>
 
         {boundaries ? (

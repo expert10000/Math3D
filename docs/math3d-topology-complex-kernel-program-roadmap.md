@@ -1494,3 +1494,49 @@ core/kernel/Topology suites pass (214 tests across 33 files), the additional F01
 platform/Complex baseline passes (19 tests across two files), and
 `typecheck:noemit` plus the renderer production build succeed.  With T05 now
 complete, T07 is the next algebra feature.
+
+### T07 execution plan
+
+**Status:** complete
+
+T07 adds immediate exact finite-field feedback on top of the shared T03-T06 path.
+It does not reuse the released renderer homology cache as authority and does not
+claim integral groups or torsion.
+
+1. Add a shared-core sparse column-reduction engine over the field with two
+   elements.  Consume only a normalized T06 boundary artifact whose exact chain
+   condition already passed T04/T06.
+2. Compute `rank(d1)` and `rank(d2)` independently modulo two, then derive
+   `beta0 = dim(C0)-rank(d1)`, `beta1 = dim(C1)-rank(d1)-rank(d2)`, and
+   `beta2 = dim(C2)-rank(d2)`.
+3. Publish a compact F06 `AnalysisResultEnvelope` with explicit coefficient field
+   `Z/2Z`, exact authority, chain dimensions, ranks, Betti dimensions, group
+   notation, algorithm/engine provenance, and the T06 matrix artifact handle.
+4. Bind publication to the exact current document ID, revision, structural hash,
+   and generation.  Withhold stale artifacts and fail closed for malformed payloads
+   or a handle that is not the T06 cellular-boundary artifact.
+5. Bound cells, sparse nonzero entries, and reduction steps.  Return an explicit
+   unsupported result with no partial Betti numbers whenever a reviewed local limit
+   is exceeded.
+6. Add renderer glue that executes T03 -> T04/T06 -> T07 for the current
+   fundamental-diagram command document.  Show a clearly labeled local finite-field
+   feedback card in Algebra without replacing the existing integral analysis view.
+7. Verify the entire T01 corpus, deterministic replay, Euler-Poincare identity,
+   odd/even torsion examples, strict result envelopes, artifact/source provenance,
+   local limits, malformed inputs, stale generations, UI labeling, typecheck, and
+   production build.
+
+**T07 acceptance:** every eligible T01 fixture reports its reviewed `Z/2Z` Betti
+dimensions; every result identifies `Z/2Z`, source revision/hash/generation, method,
+limits, and the integral/torsion limitation; stale, malformed, invalid, or oversized
+inputs publish no partial answer; and the Algebra UI never presents this local result
+as integer homology.
+
+**Completed verification:** focused T07 assertions cover all ten T01 entries,
+deterministic replay, field-sensitive Moore/RP2 examples, Euler-Poincare equality,
+strict F06 envelopes, T06 artifact references, stale/malformed/wrong-handle failure,
+and cell/nonzero/work limits.  The implementation boundary is documented in
+`docs/topology-local-z2-homology.md`.  All Topology suites pass (133 tests across 23
+files), the focused T06/T07 shared-core suites pass (12 tests across two files), both
+semantic-safety E2E checks pass, and `typecheck:noemit` plus the renderer production
+build succeed.  T08 is the next sequential Topology commit.

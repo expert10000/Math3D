@@ -79,6 +79,9 @@ test.describe("Topology semantic safety", () => {
       await expect(ctx.page.getByTestId("topology-homology-z2-h1")).toContainText("dimension");
       await ctx.page.getByRole("button", { name: "Algebra View", exact: true }).click();
       await expect(ctx.page.getByTestId("topology-algebra-view")).toBeVisible();
+      await expect(ctx.page.getByTestId("topology-local-z2-feedback")).toContainText("Local finite-field feedback");
+      await expect(ctx.page.getByTestId("topology-local-z2-status")).toContainText("EXACT · coefficients Z/2Z");
+      await expect(ctx.page.getByTestId("topology-local-z2-feedback")).toContainText("does not compute integral homology or torsion");
       await expect(ctx.page.getByTestId("topology-algebra-matrices")).toContainText("∂₁ : C₁ → C₀ over Z");
       await expect(ctx.page.getByTestId("topology-algebra-groups")).toContainText("Homology over Z/2Z");
       await expect(ctx.page.getByTestId("topology-algebra-snf")).toContainText("SNF diagonals");
@@ -98,6 +101,7 @@ test.describe("Topology semantic safety", () => {
       await ctx.page.getByRole("button", { name: "Complex View", exact: true }).click();
       await expect(ctx.page.getByTestId("topology-homology-z-h1")).toContainText("Z/2Z");
       await ctx.page.getByRole("button", { name: "Algebra View", exact: true }).click();
+      await expect(ctx.page.getByTestId("topology-local-z2-betti")).toContainText("1, 1, 1");
       await expect(ctx.page.getByTestId("topology-surface-classification")).toContainText("ELIGIBLE");
       await expect(ctx.page.getByTestId("topology-surface-classification-label")).toContainText("Projective plane");
       await expect(ctx.page.getByTestId("topology-certified-orientability")).toContainText("No");

@@ -2,6 +2,7 @@ export * from "./commands";
 export * from "./canonicalFinite2DComplex";
 export * from "./canonicalFinite2DBoundaryMatrices";
 export * from "./canonicalFinite2DValidation";
+export * from "./localZ2Homology";
 export * from "./analysisResults";
 export * from "./documentIdentity";
 export * from "./geometry";
