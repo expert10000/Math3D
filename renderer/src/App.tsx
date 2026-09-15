@@ -619,6 +619,7 @@ import {
   contourRecordFromPoints,
   publishComplexNumericalAnalysis,
 } from "./math/complexNumericalAnalysis";
+import { analyzeComplexExactMvp, type ComplexExactMvpAnalysis } from "./math/complexExactAnalysis";
 import { marchingSquares } from "./math/marchingSquares";
 import { formatRoot, inspectRationalFunction, type RationalInspection } from "./math/rationalInspector";
 import { buildVertexAdjacency } from "./math/curvatureLines";
@@ -37953,11 +37954,13 @@ const App: React.FC = () => {
   }>(() => ({ revision: complexPreviewSession.commands.document().identity.revision, artifactCount: 0, state: "computing" }));
   const [complexNumericalResult, setComplexNumericalResult] = useState<AnalysisResultEnvelope | null>(null);
   const [complexNumericalError, setComplexNumericalError] = useState<string | null>(null);
+  const [complexExactResult, setComplexExactResult] = useState<ComplexExactMvpAnalysis | null>(null);
 
   useEffect(() => {
     let active = true;
     setComplexNumericalResult(null);
     setComplexNumericalError(null);
+    setComplexExactResult(null);
     const synchronized = complexPreviewSession.synchronize(complexMapSpec);
     if (synchronized.error) {
       setComplexPreviewArtifactStatus({ revision: synchronized.document.identity.revision, artifactCount: 0, state: "error", message: synchronized.error });
@@ -47284,6 +47287,29 @@ const App: React.FC = () => {
     errorEstimate: number;
     branchCutCrossings: number;
     nearPole: boolean;
+  }> | undefined;
+  const analyzeOtherComplexExactResult = useCallback(() => {
+    try {
+      const contourKind: ComplexContourRecord["kind"] =
+        otherComplexPathMode === "loop_all" ? "branch-loop" :
+          otherComplexPathMode === "figure_eight" ? "figure-eight" : otherComplexPathMode;
+      const contours = otherComplexPathZLoops.filter((loop) => loop.length >= 2).map((loop, index) =>
+        contourRecordFromPoints(`exact-path-${index + 1}`, contourKind, loop.map(([re, im]) => ({ re, im }))));
+      const document = complexPreviewSession.commands.commit(COMPLEX_COMMAND_TYPES.setContours, contours);
+      complexPreviewSession.commands.requestAnalysis(`complex-exact-${document.identity.revision}`, "complex.exact-residue-series");
+      setComplexExactResult(analyzeComplexExactMvp({ document, expansionPoint: otherComplexSelectedPoint, seriesOrder: 6 }));
+      setComplexNumericalError(null);
+    } catch (error) {
+      setComplexNumericalError(String((error as Error).message ?? error));
+    }
+  }, [complexPreviewSession, otherComplexPathMode, otherComplexPathZLoops, otherComplexSelectedPoint]);
+  const otherComplexExactSingularities = complexExactResult?.symbolic.summary.singularities as readonly Readonly<{ point: string; classification: string; order: number; residue: string }>[] | undefined;
+  const otherComplexExactSeries = complexExactResult?.symbolic.summary.series as readonly Readonly<{ power: number; coefficient: string }>[] | undefined;
+  const otherComplexAdaptiveContour = complexExactResult?.contour.summary as Readonly<{
+    errorEstimate: number;
+    samples: number;
+    argumentPrinciple: number | null;
+    zerosMinusPoles: number | null;
   }> | undefined;
 
   const otherComplexPathMetrics = useMemo(() => {
@@ -108405,6 +108431,26 @@ case "mobius":
                                 <div>samples: {otherComplexNumericalContour.validSamples} / {otherComplexNumericalContour.samples}</div>
                                 <div>branch crossings: {otherComplexNumericalContour.branchCutCrossings}; near pole: {otherComplexNumericalContour.nearPole ? "yes" : "no"}</div>
                                 <div>artifacts available: {complexNumericalResult.artifacts.length}</div>
+                              </div>
+                            )}
+                            <button type="button" onClick={analyzeOtherComplexExactResult} data-testid="analyze-complex-exact-mvp">
+                              Analyze exact residue + contour
+                            </button>
+                            {complexExactResult && otherComplexAdaptiveContour && (
+                              <div data-testid="complex-exact-result-inspector" style={{ display: "grid", gap: 3, padding: "8px 9px", border: "1px solid #86efac", borderRadius: 8, background: "#f0fdf4", fontSize: 11 }}>
+                                <div style={{ fontWeight: 800 }}>C08 Analyze layer</div>
+                                <div>symbolic status: {complexExactResult.symbolic.status}</div>
+                                <div>source revision: r{complexExactResult.symbolic.provenance.source.revision}</div>
+                                <div>derivative: {String(complexExactResult.symbolic.summary.derivative)}</div>
+                                <div>classification: {String(complexExactResult.symbolic.summary.classification)}</div>
+                                <div>singularities: {otherComplexExactSingularities?.length ?? 0}</div>
+                                {otherComplexExactSingularities?.map((entry) => (
+                                  <div key={`exact-feature:${entry.point}`}>{entry.point}: {entry.classification}, order {entry.order}, residue {entry.residue}</div>
+                                ))}
+                                <div>series: {otherComplexExactSeries?.map((entry) => `${entry.coefficient}·(z-a)^${entry.power}`).join(" + ") || "none"}</div>
+                                <div>adaptive contour: {complexExactResult.contour.status}; error ≤ {otherComplexAdaptiveContour.errorEstimate.toExponential(3)}; {otherComplexAdaptiveContour.samples} samples</div>
+                                <div>argument principle: {otherComplexAdaptiveContour.argumentPrinciple == null ? "n/a" : otherComplexAdaptiveContour.argumentPrinciple.toFixed(6)}; zeros − poles = {otherComplexAdaptiveContour.zerosMinusPoles ?? "unqualified"}</div>
+                                <div>Sage differential: structured adapter available (C07)</div>
                               </div>
                             )}
                             <div>function: f(z) = {otherComplexFunctionExpr || "z"}</div>

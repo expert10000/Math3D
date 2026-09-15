@@ -2065,3 +2065,36 @@ engine/version publication, unsafe field and AST rejection, cancellation, work-l
 enforcement, and runtime policy. Cross-project TypeScript plus main and renderer builds
 are gated by `npm run test:complex:c07`. The protocol and trust boundary are documented
 in `docs/complex-sage-adapter.md`.
+
+### C08 execution plan
+
+**Status:** complete
+
+C08 completes the exact residue/contour MVP as an Analyze layer alongside the
+existing Function Explorer, Residue/Path preview, C06 numerical publisher, and C07
+Sage boundary.
+
+1. Differentiate supported normalized AST nodes symbolically without evaluating text.
+2. Add reviewed exact profiles for `1/z`, `1/(z^2+1)`, `sin(z)/z`, and `exp(z)`.
+3. Report exact pole/removable classification, pole order, residue, and local
+   Laurent/Taylor coefficients for those profiles.
+4. Leave unrecognized singularity/residue/series claims explicitly `unsupported`.
+5. Integrate committed contours with adaptive nested quadrature, bounded subdivision,
+   explicit tolerance, sample count, and accumulated error estimate.
+6. Compute unwrapped image-path winding and publish `zeros - poles` only when its
+   integer residual passes the qualification threshold.
+7. Keep exact symbolic and numerical contour evidence in separate F06 envelopes tied
+   to one source generation.
+8. Add the exact Analyze action and result inspector to the current Residue tab,
+   retaining the C06 and legacy workflows in place.
+
+**C08 acceptance:** all four required functions pass exact known values, JS derivative,
+structured Sage differential, source provenance, adaptive contour, argument-principle,
+and Electron workflow checks; unsupported exact claims remain explicit.
+
+**Completed verification:** focused tests cover all four required functions, exact
+derivatives/classification/residues/series, JS and Sage differential agreement,
+adaptive error metadata, argument-principle values, provenance, and unsupported
+handling. TypeScript, renderer build, and both numerical/exact Electron workflows are
+gated by `npm run test:complex:c08`. UI and evidence boundaries are documented in
+`docs/complex-exact-residue-contour-mvp.md`.
