@@ -2296,6 +2296,15 @@ job cancellation, stale publication, persistence, relations, and invalidation.
 **Acceptance.** Geometry, Mesh, Surface, Curve, and Volume adapters run the same
 harness. A module cannot declare kernel migration complete from UI-only tests.
 
+**Completed verification.** The framework-neutral document and selection fixture
+APIs now live in `@math3d/kernel`. Topology and Complex production adapters are the
+first reference fixtures, with shared checks for strict identity, transient preview,
+single-revision commit, atomic rejection, undo/redo, replay, persistence, and query
+isolation. The released unified selection implementation supplies the hover,
+commit/clear, history, invalidation, locate-back, and Inspector-isolation reference.
+Cross-cutting F05-F08 and GK01-GK02 suites remain authoritative and are composed by
+`npm run test:kernel:gk03`; see `docs/kernel-domain-adapter-conformance.md`.
+
 ### GK04 — `refactor(geometry): introduce kernel-owned GeometryDocument adapter`
 
 **Milestone:** G02 — Geometry and Scene Script

@@ -455,6 +455,16 @@ Surface, Curve, and Volume must pass before their migration group closes. The sa
 fixture vocabulary is usable in browser/desktop test adapters. UI-only tests cannot
 declare lifecycle migration complete.
 
+**Completion evidence.** Implemented in `@math3d/kernel` as the reusable
+`runDomainAdapterConformance` and `runSelectionConformance` fixtures. Production
+Topology and Complex command adapters pass the same identity, preview, atomicity,
+history, replay, persistence, and query-isolation matrix; the released unified
+selection model passes hover, commit, clear, history, structural invalidation,
+locate-back, and Inspector-isolation checks. Existing artifact, job, cancellation,
+stale-publication, relation, invalidation, persistence, and capability suites are
+composed by `npm run test:kernel:gk03`. Contract details are recorded in
+`docs/kernel-domain-adapter-conformance.md`.
+
 ### G02 — Geometry and Scene Script
 
 #### GK04 — `refactor(geometry): introduce kernel-owned GeometryDocument adapter`
