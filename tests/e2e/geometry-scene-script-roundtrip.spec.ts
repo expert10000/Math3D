@@ -120,6 +120,7 @@ test("Geometry UI preserves a complete Script -> Scene -> Script round trip atom
 
     await page.getByTestId("geometry-professional-action-new").click();
     await expect.poll(() => readStats(page)).toEqual({ objects: 0, visible: 0 });
+    await expect(page.getByTestId("geometry-empty-scene")).toContainText("Empty Geometry scene");
     await expect(page.getByTestId("geometry-professional-expanded-group")).toContainText("New workspace");
     await expect(page.getByTestId("geometry-professional-action-new")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("geometry-professional-action-gallery")).toHaveAttribute("aria-pressed", "false");
@@ -133,6 +134,7 @@ test("Geometry UI preserves a complete Script -> Scene -> Script round trip atom
     await expect(page.getByTestId("geometry-professional-expanded-group")).toContainText("New workspace");
     await page.getByTestId("geometry-professional-expanded-new-object").click();
     await expect.poll(() => readStats(page)).toEqual({ objects: 1, visible: 1 });
+    await expect(page.getByTestId("geometry-empty-scene")).toHaveCount(0);
     await expect(page.getByTestId("geometry-create-selected-card")).toContainText("Gallery selection: Box");
     await expect(page.getByTestId("geometry-create-object-preset-shortcuts")).toContainText(
       "Built-in presets and validation"

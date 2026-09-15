@@ -16391,6 +16391,37 @@ const App: React.FC = () => {
     setGeometryActiveOperationInputSlotId("primary-object");
     setGeometryCompareObjectAId(null);
     setGeometryCompareObjectBId(null);
+    setGeometryBooleanObjectAId(null);
+    setGeometryBooleanObjectBId(null);
+    setGeometryBooleanPreviewMeshes([]);
+    setGeometryBooleanPreviewCurveLines([]);
+    setGeometryBooleanPreviewWarnings([]);
+    setGeometryBooleanPreviewStatus(null);
+    setGeometryBooleanComposerReview(null);
+    setGeometryConstructDraftRecipe(null);
+    setGeometryVariantSets({});
+    setGeometrySelectedVariantId(null);
+    setGeometrySelectedVariantCompareId(null);
+    setGeometryShowAllVariantsGhosted(false);
+    setGeometryHistoryPreviewStepId(null);
+    setGeometryTimelinePlaying(false);
+    setGeometryTimelineStepIndex(0);
+    setGeometryTimelineGhostPreviousEnabled(false);
+    setGeometryMeasuredEdges([]);
+    setGeometryMarkedEdges([]);
+    setGeometryAnnotations([]);
+    setGeometrySavedSectionCurves([]);
+    setAppliedContextualViewportPreview(null);
+    setGeometryGizmoEnabled(false);
+    setGeometryPendingPlacementObjectId(null);
+    setGeometryCreatePlacementModeActive(false);
+    setGeometryCreatePlacementStatus(null);
+    setGeometrySnapPreview(null);
+    setGeometryRoundTripDemoFeedback(null);
+    setGeometryRestoredObjectPresetFeedback(null);
+    setGeometryLastDirectEdit(null);
+    setGeometryTopologyEditFeedback(null);
+    setGeometryLastActionContinuity(null);
     setGeometryDerivedConstructions([]);
     setGeometrySelectedDerivedConstructionId(null);
     setGeometryConstructionHistory([]);
@@ -103885,6 +103916,31 @@ case "mobius":
                   }
                   inspectSelectionMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
                 />
+                {geometryMode === "procedural" && geometryStats.objectCount === 0 && !cleanScreenshotActive && (
+                  <div
+                    data-testid="geometry-empty-scene"
+                    style={{
+                      position: "absolute",
+                      left: "50%",
+                      top: "50%",
+                      transform: "translate(-50%, -50%)",
+                      zIndex: 18,
+                      border: "1px solid #bfdbfe",
+                      borderRadius: 10,
+                      background: "rgba(239,246,255,0.94)",
+                      color: "#1e3a8a",
+                      boxShadow: "0 12px 30px rgba(15,23,42,0.14)",
+                      padding: "12px 18px",
+                      textAlign: "center",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    <div style={{ fontSize: 14, fontWeight: 900 }}>Empty Geometry scene</div>
+                    <div style={{ marginTop: 3, fontSize: 11, color: "#475569" }}>
+                      Choose New object, Gallery, Presets, Scratch, or Workbook to continue.
+                    </div>
+                  </div>
+                )}
                 {geometryMode === "procedural" && !cleanScreenshotActive && (
                   <div
                     data-testid="geometry-viewport-selection-breadcrumb"
