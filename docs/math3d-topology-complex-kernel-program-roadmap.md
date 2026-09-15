@@ -14,8 +14,8 @@ program view and fixes the execution order between them.
 
 | Document | Role |
 | --- | --- |
-| `docs/application-kernel-scene-script-migration-plan.md` | Detailed implementation catalogue for the application kernel, Scene Script, Geometry, resources, jobs, and later module migration. |
-| `docs/topology-complex-kernel-delivery-order.md` | Canonical sequential commit order: F01-F07, T01-T13, C01-C12, then generalization. |
+| `docs/math3d-application-kernel-combined-roadmap.md` | Canonical architecture boundaries, historical traceability, and executable GK01-GK20 extension scopes and gates. |
+| `docs/topology-complex-kernel-delivery-order.md` | Historical sequential delivery record for the completed F/T/C phases. |
 | `docs/architecture-layered-workspace.md` | Existing shared-package and cross-runtime boundary rules. |
 | `docs/geometry-professional-implementation-roadmap.md` | Existing Geometry and Scene Script requirements that must not regress. |
 | `Math3d - strategiczna mapa dalszego rozwoju modułów Complex Analysis i Topology.pdf` | Strategic research and product context; it is reference material, not an executable instruction set. |
@@ -24,14 +24,15 @@ Where labels differ, use the following rule:
 
 ```text
 F / T / C labels = program delivery order and unique commit identities
-K01-K51 = detailed application-kernel implementation catalogue
-GK01-GK20 = post-C12 cross-module integration commits that consume the K catalogue
+K01-K51 = completed inherited application-kernel program; detailed catalogue source is unavailable
+GK01-GK20 = post-C12 cross-module extension and integration commits
 G01-G08 = milestone groups used to summarize the GK sequence, not commit identities
 ```
 
-The K catalogue is consumed after C12 unless a narrowly scoped K capability is
-explicitly required by an active F, T, or C commit.  Do not create a second command,
-job, provenance, artifact, or history system merely to satisfy a module deadline.
+K, T, and C are completed baseline work and are not re-executed by GK commits. Use
+the combined roadmap for post-C12 execution. Do not create a second command, job,
+provenance, artifact, history, selection, relation, or invalidation system merely to
+satisfy a module deadline.
 
 ## Background
 
@@ -235,17 +236,16 @@ from transient layout, animation, hover and drag state.
 ## Program dependencies
 
 ```text
-F01-F07
-   |
-   +--> T01-T13  Topology v1
-   |       |
-   |       +--> C01-C12  Complex MVP/v1
-   |                       |
-   +-----------------------+--> K catalogue generalization
-                                   |
-                                   +--> Scene Script / Geometry / Viewer
-                                   +--> resources / Mesh / workers
-                                   +--> Surfaces / Volumes / Curves
+F01-F08 + K01-K51  shared/application-kernel baseline       COMPLETE
+             |
+             +--> T01-T13  Topology v1                     COMPLETE
+             |
+             +--> C01-C12  Complex MVP/v1                  COMPLETE
+             |
+             +--> GK01-GK20 cross-module extensions        PLANNED
+                    +--> Scene Script / Scratch / Geometry / Viewer
+                    +--> resources / Mesh / workers
+                    +--> Surfaces / Volumes / Curves / workspace / runtimes
 ```
 
 The dependency is intentional.  A Complex Sage result relies on the same F05 job
@@ -257,7 +257,8 @@ resource invalidation.  Generalization follows evidence from both modules.
 
 This section is intentionally detailed.  It is the program-level source for the
 F/T/C commits; no commit has been reduced to a title-only item.  The existing
-K01-K51 catalogue remains detailed in its companion plan and is retained unchanged.
+K01-K51 program is retained as a completed inherited phase. Its missing detailed
+catalogue is not reconstructed or treated as pending work.
 
 ### Phase F - minimum kernel seed
 
@@ -680,15 +681,14 @@ adapter and parity gate pass.
 **Acceptance.** All migrated labs operate as views of one reproducible document with
 immediate preview, status-qualified scientific results and one mutation path.
 
-### Phase GK/K - general application-kernel rollout
+### Phase GK - cross-module application-kernel extensions
 
-The detailed **K01-K51** commit descriptions, scopes, compatibility boundaries and
-acceptance criteria remain intact in
-`docs/application-kernel-scene-script-migration-plan.md`; this roadmap does not
-abbreviate, renumber, or supersede them. The executable post-C12 sequence is
-**GK01-GK20** below. Each GK commit declares which K catalogue entries it consumes;
-already-proven F/T/C behavior is accepted as conformance evidence instead of being
-implemented twice. Their milestone placement is:
+The canonical extended scopes, compatibility boundaries, acceptance gates, and
+historical mappings now live in
+`docs/math3d-application-kernel-combined-roadmap.md`. K01-K51, T01-T13, and C01-C12
+are completed inherited baseline work. The executable post-C12 extension sequence is
+**GK01-GK20**. The table below is retained as an earlier grouping summary; use the
+combined roadmap where group boundaries or wording differ.
 
 | Generalization group | Detailed K catalogue focus | Program gate |
 | --- | --- | --- |
@@ -2190,6 +2190,12 @@ The gate and compatibility decision are recorded in
 
 **Status:** planned — begins after the completed C12 gate
 
+**Authority notice:** this section is retained as the original GK proposal and K
+crosswalk. The approved scopes and gates in
+`docs/math3d-application-kernel-combined-roadmap.md` are canonical. The K crosswalk
+below is historical/non-normative until the missing detailed K catalogue is
+recovered; no GK commit reopens completed K/T/C work.
+
 **Purpose.** F02-F08 proved a domain-neutral lifecycle kernel, while Topology and
 Complex Analysis proved it in complete vertical slices. GK01-GK20 now make that
 kernel the shared lifecycle for Geometry, Mesh, Surfaces, Curves, Volumes, Topology,
@@ -2197,19 +2203,21 @@ and Complex Analysis. They migrate released professional workflows; they do not
 reimplement their mathematical algorithms or introduce module-local command,
 history, job, artifact, provenance, relation, or invalidation systems.
 
-### Numbering and consumption rule
+### Numbering and inheritance rule
 
 - `GK01-GK20` are the executable cross-module integration commits.
-- `K01-K51` remain the detailed source catalogue and design record.
-- Every GK implementation must cite its consumed K entries in its completion note.
+- `K01-K51` remain a completed inherited phase; its detailed source catalogue is
+  currently unavailable in the repository.
+- GK completion notes cite concrete repository evidence and combined-roadmap gates;
+  they do not invent unverifiable per-entry K completion claims.
 - A K entry already satisfied by F/T/C work contributes conformance evidence; its
   infrastructure must not be duplicated.
 - A GK commit closes only when its cross-module acceptance gate passes, even when
   all of its underlying primitives already exist.
 
-### K-catalogue crosswalk
+### Historical K-reference crosswalk
 
-| GK commit | Primary K entries consumed | Existing evidence reused |
+| GK commit | Referenced K entries in the original proposal | Existing evidence reused |
 | --- | --- | --- |
 | GK01 | K20, K44, K46 | F06 provenance; T12 interoperability; C11 Riemann-surface lineage |
 | GK02 | K46 | F07 artifact invalidation and stale-generation guards |
