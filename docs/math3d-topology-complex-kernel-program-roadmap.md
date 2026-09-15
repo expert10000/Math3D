@@ -1405,3 +1405,49 @@ the formal-job gate.  The shared-core/kernel/Topology suites pass (207 tests acr
 32 files), the additional F01 platform/Complex baseline passes (19 tests across two
 files), and `typecheck:noemit` plus the renderer production build succeed.  T05 is
 the next program commit.
+
+### T06 execution plan
+
+**Status:** complete
+
+T06 adds the exact shared sparse-matrix artifact over T03/T04.  It is intentionally
+independent of the still-pending T05 editor-command migration and does not replace
+the current renderer-side matrix or Algebra result path.
+
+1. Define a versioned, canonical-JSON sparse boundary artifact carrying exact source
+   generation, canonical hash, T04 validator version, and T06 algorithm version.
+2. Use canonical cell array order as the `C0`, `C1`, and `C2` bases.  Construct `d1`
+   with target-minus-source endpoint signs and `d2` by summing oriented face
+   occurrences, using `bigint` arithmetic and decimal-string COO coefficients.
+3. Retain atomic incidence contributions separately from nonzero entries so an
+   Algebra selection can explain cancellations and locate every row, column, and
+   contributing boundary occurrence back to canonical/source cells.
+4. Re-run T04 validation before construction and independently multiply the sparse
+   matrices.  Publish only when exact `d1*d2 = 0`; invalid/stale/malformed inputs
+   return explicit limitations and cannot create an artifact.
+5. Add strict deterministic encode/decode normalization for detached artifact bytes,
+   including basis dimensions, coordinate bounds/order, coefficient syntax,
+   contribution aggregation, composable shapes, and chain condition.
+6. Add a Topology/F07 adapter that publishes bytes directly to the artifact registry
+   and returns only compact metadata, summary, and a sparse-matrix handle.  Store no
+   matrix or bytes in the T02 document or React state.
+7. Match all T01 exact matrices, add chain-composition and locate-back properties,
+   cover cancelling loop contributions, malformed payload rejection, registry
+   resolution/invalidation, deterministic replay, and invalid-fixture withholding.
+   Re-run shared core/kernel/Topology suites, F01 compatibility tests,
+   `typecheck:noemit`, and the renderer production build.
+
+**T06 acceptance:** every eligible T01 matrix matches its reviewed exact value;
+`d1*d2 = 0` holds under independent sparse multiplication; selected coordinates map
+to canonical cells and source occurrences; invalid inputs publish nothing; matrix
+bytes live only in F07 behind a compact handle; and current UI/save behavior remains
+unchanged.
+
+**Completed verification:** seven focused T06 assertions cover all ten T01 matrices,
+independent exact sparse composition, canonical ordering/encoding, selected and
+cancelling coordinate provenance, strict artifact decoding, F07 publication,
+resolution/full invalidation, and invalid-input non-publication.  Shared
+core/kernel/Topology suites pass (214 tests across 33 files), the additional F01
+platform/Complex baseline passes (19 tests across two files), and
+`typecheck:noemit` plus the renderer production build succeed.  T05 remains the
+next uncompleted sequential commit; T07 is the next algebra feature after it.

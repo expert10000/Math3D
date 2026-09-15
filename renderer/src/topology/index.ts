@@ -5,6 +5,7 @@ export * from "./quotientBuilder";
 export * from "./documentFormat";
 export * from "./topologyDocumentAdapter";
 export * from "./canonicalFinite2DAdapter";
+export * from "./canonicalBoundaryMatrixArtifact";
 export * from "./editorTools";
 export * from "./animationPlan";
 export * from "./TopologyRealization3DView";
