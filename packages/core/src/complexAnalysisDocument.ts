@@ -11,6 +11,7 @@ import {
   type StructuralHash,
 } from "./documentIdentity";
 import type { ValidationResult } from "./validation";
+import { validateComplexExpressionAst, type ComplexExpressionVariable } from "./complexExpressionAst";
 
 export const COMPLEX_ANALYSIS_DOCUMENT_FORMAT = "math3d.complex-analysis-document" as const;
 export const COMPLEX_ANALYSIS_DOCUMENT_SCHEMA_VERSION = 1 as const;
@@ -179,21 +180,6 @@ const points = (value: unknown, path: string, errors: string[]) => {
   value.forEach((entry, index) => point(entry, `${path}[${index}]`, errors));
 };
 
-const validateAst = (value: unknown, path: string, errors: string[], depth = 0): value is ComplexExpressionAst => {
-  if (depth > 128) { errors.push(`${path} exceeds the AST depth limit.`); return false; }
-  if (!isRecord(value)) { errors.push(`${path} must be an AST node.`); return false; }
-  switch (value.type) {
-    case "number": fields(value, ["type", "value"], path, errors); if (!finite(value.value)) errors.push(`${path}.value must be finite.`); break;
-    case "constant": fields(value, ["type", "name"], path, errors); if (!["i", "pi", "e"].includes(value.name as string)) errors.push(`${path}.name is invalid.`); break;
-    case "variable": fields(value, ["type", "name"], path, errors); if (!["z", "u", "v"].includes(value.name as string)) errors.push(`${path}.name is invalid.`); break;
-    case "unary": fields(value, ["type", "operator", "argument"], path, errors); if (value.operator !== "-") errors.push(`${path}.operator is invalid.`); validateAst(value.argument, `${path}.argument`, errors, depth + 1); break;
-    case "binary": fields(value, ["type", "operator", "left", "right"], path, errors); if (!["+", "-", "*", "/", "^"].includes(value.operator as string)) errors.push(`${path}.operator is invalid.`); validateAst(value.left, `${path}.left`, errors, depth + 1); validateAst(value.right, `${path}.right`, errors, depth + 1); break;
-    case "call": fields(value, ["type", "name", "argument"], path, errors); if (!["sin", "cos", "tan", "exp", "log", "sqrt", "abs"].includes(value.name as string)) errors.push(`${path}.name is invalid.`); validateAst(value.argument, `${path}.argument`, errors, depth + 1); break;
-    default: errors.push(`${path}.type is invalid.`); return false;
-  }
-  return true;
-};
-
 const validateStructuralSource = (value: Record<string, unknown>, errors: string[]): void => {
   const fn = value.function;
   if (!isRecord(fn)) errors.push("complex.function must be an object.");
@@ -201,8 +187,10 @@ const validateStructuralSource = (value: Record<string, unknown>, errors: string
     fields(fn, ["sourceText", "astVersion", "normalizedAst", "allowedVariables"], "complex.function", errors);
     stringValue(fn.sourceText, "complex.function.sourceText", errors, 10_000);
     if (fn.astVersion !== COMPLEX_EXPRESSION_AST_VERSION) errors.push(`complex.function.astVersion must be ${COMPLEX_EXPRESSION_AST_VERSION}.`);
-    validateAst(fn.normalizedAst, "complex.function.normalizedAst", errors);
-    if (!Array.isArray(fn.allowedVariables) || fn.allowedVariables.some((entry) => !["z", "u", "v"].includes(entry as string)) || new Set(fn.allowedVariables).size !== fn.allowedVariables.length) errors.push("complex.function.allowedVariables must be a unique array drawn from z, u, v.");
+    const allowedVariablesValid = Array.isArray(fn.allowedVariables) && !fn.allowedVariables.some((entry) => !["z", "u", "v"].includes(entry as string)) && new Set(fn.allowedVariables).size === fn.allowedVariables.length;
+    if (!allowedVariablesValid) errors.push("complex.function.allowedVariables must be a unique array drawn from z, u, v.");
+    const astValidation = validateComplexExpressionAst(fn.normalizedAst, allowedVariablesValid ? fn.allowedVariables as ComplexExpressionVariable[] : ["z", "u", "v"]);
+    if (!astValidation.ok) errors.push(...astValidation.errors.map((error) => `complex.function.normalizedAst: ${error}`));
   }
   if (!Array.isArray(value.parameters)) errors.push("complex.parameters must be an array.");
   else value.parameters.forEach((entry, index) => {

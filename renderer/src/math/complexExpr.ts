@@ -1,265 +1,71 @@
-// src/math/complexExpr.ts
 import {
-  C,
-  add,
-  sub,
-  mul,
-  div,
-  abs,
-  exp,
-  log,
-  sqrt,
-  sin,
-  cos,
-  tan,
-  powReal,
-  type Complex,
-  isFiniteC,
-} from "./complex";
+  parseComplexExpressionAst,
+  validateComplexExpressionAst,
+  type ComplexExpressionAst,
+  type ComplexExpressionDiagnostic,
+  type ComplexExpressionVariable,
+} from "@math3d/core";
+import { C, abs, add, cos, div, exp, isFiniteC, log, mul, powReal, sin, sqrt, sub, tan, type Complex } from "./complex";
 
-type Tok =
-  | { k: "num"; v: number; i: number }
-  | { k: "id"; v: string; i: number }
-  | { k: "op"; v: string; i: number }
-  | { k: "lp"; i: number }
-  | { k: "rp"; i: number }
-  | { k: "comma"; i: number };
-
-export type ComplexExprError = { message: string; index: number; line: number; col: number };
-
-type ComplexVars = { z?: Complex; u?: number; v?: number };
-
-const FUNCS: Record<string, (x: Complex) => Complex> = {
-  sin,
-  cos,
-  tan,
-  exp,
-  log,
-  sqrt,
-  abs: (z) => C(abs(z), 0),
+export type ComplexExprError = ComplexExpressionDiagnostic;
+export type ComplexVars = { z?: Complex; u?: number; v?: number };
+export type ComplexPreviewCompileResult = {
+  fn?: (vars: ComplexVars) => Complex;
+  ast?: ComplexExpressionAst;
+  error?: ComplexExprError;
 };
 
-const CONSTS: Record<string, Complex> = {
-  i: C(0, 1),
-  pi: C(Math.PI, 0),
-  e: C(Math.E, 0),
+const FUNCTIONS: Record<Extract<ComplexExpressionAst, { type: "call" }>["name"], (value: Complex) => Complex> = {
+  sin, cos, tan, exp, log, sqrt, abs: (value) => C(abs(value), 0),
+};
+const CONSTANTS: Record<Extract<ComplexExpressionAst, { type: "constant" }>["name"], Complex> = {
+  i: C(0, 1), pi: C(Math.PI, 0), e: C(Math.E, 0),
 };
 
-function err(message: string, index: number): ComplexExprError {
-  return { message, index, line: 1, col: index + 1 };
-}
-
-function isWS(ch: string) { return ch === " " || ch === "\t" || ch === "\n" || ch === "\r"; }
-function isDigit(ch: string) { return ch >= "0" && ch <= "9"; }
-function isAlpha(ch: string) { return (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch === "_"; }
-
-function tokenize(src: string): { toks: Tok[]; error?: ComplexExprError } {
-  const toks: Tok[] = [];
-  let i = 0;
-
-  while (i < src.length) {
-    const ch = src[i];
-    if (isWS(ch)) { i++; continue; }
-
-    if (isDigit(ch) || (ch === "." && i + 1 < src.length && isDigit(src[i + 1]))) {
-      const start = i;
-      i++;
-      while (i < src.length && (isDigit(src[i]) || src[i] === ".")) i++;
-      const s = src.slice(start, i);
-      const v = Number(s);
-      if (!Number.isFinite(v)) return { toks, error: err(`Bad number: ${s}`, start) };
-      toks.push({ k: "num", v, i: start });
-      continue;
+const evaluate = (node: ComplexExpressionAst, vars: ComplexVars): Complex => {
+  switch (node.type) {
+    case "number": return C(node.value, 0);
+    case "constant": return CONSTANTS[node.name];
+    case "variable": return node.name === "z" ? vars.z ?? C() : C(node.name === "u" ? vars.u ?? 0 : vars.v ?? 0, 0);
+    case "unary": {
+      const value = evaluate(node.argument, vars);
+      return C(-value.re, -value.im);
     }
-
-    if (isAlpha(ch)) {
-      const start = i;
-      i++;
-      while (i < src.length && (isAlpha(src[i]) || isDigit(src[i]))) i++;
-      toks.push({ k: "id", v: src.slice(start, i), i: start });
-      continue;
+    case "binary": {
+      const left = evaluate(node.left, vars);
+      const right = evaluate(node.right, vars);
+      if (node.operator === "+") return add(left, right);
+      if (node.operator === "-") return sub(left, right);
+      if (node.operator === "*") return mul(left, right);
+      if (node.operator === "/") return div(left, right);
+      return Math.abs(right.im) <= 1e-10 ? powReal(left, right.re) : C(NaN, NaN);
     }
-
-    if (ch === "(") { toks.push({ k: "lp", i }); i++; continue; }
-    if (ch === ")") { toks.push({ k: "rp", i }); i++; continue; }
-    if (ch === ",") { toks.push({ k: "comma", i }); i++; continue; }
-
-    if ("+-*/^".includes(ch)) { toks.push({ k: "op", v: ch, i }); i++; continue; }
-
-    return { toks, error: err(`Unexpected character '${ch}'`, i) };
+    case "call": return FUNCTIONS[node.name](evaluate(node.argument, vars));
   }
+};
 
-  return { toks };
-}
+const astError = (message: string): ComplexExprError => ({ message, index: 0, line: 1, col: 1 });
 
-function insertImplicitMul(toks: Tok[]): Tok[] {
-  const out: Tok[] = [];
-  const isValueEnd = (t: Tok) => t.k === "num" || t.k === "id" || t.k === "rp";
-  const isValueStart = (t: Tok) => t.k === "num" || t.k === "id" || t.k === "lp";
-  const isFuncCall = (a: Tok, b: Tok) => a.k === "id" && b.k === "lp" && a.v in FUNCS;
+/** Final preview-only stage. It compiles validated data, never executable input. */
+export const compileComplexExpressionAstPreview = (
+  ast: ComplexExpressionAst,
+  allowedVariables: readonly ComplexExpressionVariable[] = ["z", "u", "v"]
+): ComplexPreviewCompileResult => {
+  const validation = validateComplexExpressionAst(ast, allowedVariables);
+  if (!validation.ok) return { error: astError(validation.errors.join(" ")) };
+  const fn = (vars: ComplexVars): Complex => {
+    const value = evaluate(validation.value, vars);
+    return isFiniteC(value) ? value : C(NaN, NaN);
+  };
+  return { ast: validation.value, fn };
+};
 
-  for (let i = 0; i < toks.length; i++) {
-    const a = toks[i];
-    out.push(a);
-    const b = toks[i + 1];
-    if (!b) continue;
-    if (isValueEnd(a) && isValueStart(b) && !isFuncCall(a, b)) {
-      out.push({ k: "op", v: "*", i: b.i });
-    }
-  }
-  return out;
-}
-
-type Rpn =
-  | { t: "num"; v: Complex }
-  | { t: "var"; name: string }
-  | { t: "op"; op: string }
-  | { t: "call"; fn: string; argc: number };
-
-const PREC: Record<string, number> = { neg: 5, "^": 4, "*": 3, "/": 3, "+": 2, "-": 2 };
-const RIGHT_ASSOC = new Set(["^", "neg"]);
-
+/** Controlled parse -> normalized AST -> validation -> preview-compiler pipeline. */
 export function compileComplexExpression(
-  src: string,
-  allowedVars: Array<"z" | "u" | "v"> = ["z", "u", "v"]
-): { fn?: (vars: ComplexVars) => Complex; error?: ComplexExprError } {
-  const t0 = tokenize(src);
-  if (t0.error) return { error: t0.error };
-
-  const toks = insertImplicitMul(t0.toks);
-
-  const output: Rpn[] = [];
-  const ops: Array<Tok | { k: "fn"; name: string; i: number } | { k: "uop"; op: string; i: number }> = [];
-
-  let prev: Tok | null = null;
-
-  const pushOp = (op: string, i: number) => {
-    const isUnary = op === "-" && (!prev || (prev.k === "op" || prev.k === "lp" || prev.k === "comma"));
-    const realOp = isUnary ? "neg" : op;
-
-    while (ops.length) {
-      const top = ops[ops.length - 1];
-      const topOp =
-        (top as any).k === "uop" ? (top as any).op :
-        (top as any).k === "op" ? (top as any).v :
-        null;
-      if (!topOp) break;
-
-      const p1 = PREC[realOp] ?? 0;
-      const p2 = PREC[topOp] ?? 0;
-
-      if ((RIGHT_ASSOC.has(realOp) && p1 < p2) || (!RIGHT_ASSOC.has(realOp) && p1 <= p2)) {
-        ops.pop();
-        output.push({ t: "op", op: topOp });
-        continue;
-      }
-      break;
-    }
-
-    if (realOp === "neg") ops.push({ k: "uop", op: "neg", i });
-    else ops.push({ k: "op", v: realOp, i } as any);
-  };
-
-  for (let idx = 0; idx < toks.length; idx++) {
-    const t = toks[idx];
-
-    if (t.k === "num") {
-      output.push({ t: "num", v: C(t.v, 0) });
-    } else if (t.k === "id") {
-      const name = t.v;
-      const next = toks[idx + 1];
-
-      if (name in FUNCS && next?.k === "lp") {
-        ops.push({ k: "fn", name, i: t.i });
-      } else if (name in CONSTS) {
-        output.push({ t: "num", v: CONSTS[name] });
-      } else if (allowedVars.includes(name as any)) {
-        output.push({ t: "var", name });
-      } else {
-        return { error: err(`Unknown identifier '${name}'`, t.i) };
-      }
-    } else if (t.k === "op") {
-      pushOp(t.v, t.i);
-    } else if (t.k === "lp") {
-      ops.push(t);
-    } else if (t.k === "comma") {
-      return { error: err("Unexpected ','", t.i) };
-    } else if (t.k === "rp") {
-      while (ops.length && (ops[ops.length - 1] as any).k !== "lp") {
-        const top = ops.pop()!;
-        const topOp = (top as any).op ?? (top as any).v;
-        if (topOp) output.push({ t: "op", op: topOp });
-      }
-      if (!ops.length) return { error: err("Mismatched ')'", t.i) };
-      ops.pop();
-      const maybeFn = ops[ops.length - 1];
-      if (maybeFn && (maybeFn as any).k === "fn") {
-        const fn = ops.pop() as any;
-        output.push({ t: "call", fn: fn.name, argc: 1 });
-      }
-    }
-
-    prev = t;
-  }
-
-  while (ops.length) {
-    const top = ops.pop()!;
-    if ((top as any).k === "lp") return { error: err("Mismatched '('", (top as any).i) };
-    const topOp = (top as any).op ?? (top as any).v;
-    if (topOp) output.push({ t: "op", op: topOp });
-  }
-
-  const fn = (vars: ComplexVars) => {
-    const st: Complex[] = [];
-    for (const n of output) {
-      if (n.t === "num") st.push(n.v);
-      else if (n.t === "var") {
-        if (n.name === "z") st.push(vars.z ?? C(0, 0));
-        else if (n.name === "u") st.push(C(vars.u ?? 0, 0));
-        else if (n.name === "v") st.push(C(vars.v ?? 0, 0));
-        else st.push(C(0, 0));
-      } else if (n.t === "op") {
-        if (n.op === "neg") {
-          const a = st.pop() ?? C(0, 0);
-          st.push(C(-a.re, -a.im));
-        } else {
-          const b = st.pop() ?? C(0, 0);
-          const a = st.pop() ?? C(0, 0);
-          switch (n.op) {
-            case "+": st.push(add(a, b)); break;
-            case "-": st.push(sub(a, b)); break;
-            case "*": st.push(mul(a, b)); break;
-            case "/": st.push(div(a, b)); break;
-            case "^": {
-              const expRe = b.re;
-              const expIm = b.im;
-              if (Math.abs(expIm) > 1e-10) {
-                st.push(C(NaN, NaN));
-              } else {
-                st.push(powReal(a, expRe));
-              }
-              break;
-            }
-            default: st.push(C(NaN, NaN));
-          }
-        }
-      } else if (n.t === "call") {
-        const f = FUNCS[n.fn];
-        if (!f || n.argc !== 1) {
-          st.push(C(NaN, NaN));
-        } else {
-          const arg = st.pop() ?? C(0, 0);
-          st.push(f(arg));
-        }
-      }
-    }
-    return st.length ? st[st.length - 1] : C(NaN, NaN);
-  };
-
-  const wrapped = (vars: ComplexVars) => {
-    const out = fn(vars);
-    return isFiniteC(out) ? out : C(NaN, NaN);
-  };
-
-  return { fn: wrapped };
+  source: string,
+  allowedVariables: ComplexExpressionVariable[] = ["z", "u", "v"]
+): ComplexPreviewCompileResult {
+  const parsed = parseComplexExpressionAst(source, allowedVariables);
+  if (!parsed.ast || parsed.error) return { error: parsed.error };
+  return compileComplexExpressionAstPreview(parsed.ast, allowedVariables);
 }

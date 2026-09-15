@@ -1897,3 +1897,41 @@ deterministic source hashing, exclusion and rejection of transient state, stale
 result rejection, controlled legacy adaptation, and raw-text/compiled-function
 rejection. Cross-project TypeScript succeeds, and the contract and migration
 boundary are documented in `docs/complex-analysis-document.md`.
+
+### C03 execution plan
+
+**Status:** complete
+
+C03 replaces the renderer's compile-only expression implementation with an explicit
+controlled parse, normalized-AST, validation, and preview-compilation pipeline.
+
+1. Define the supported tokens, operators, constants, variables, unary functions,
+   implicit multiplication, associativity, and precedence in shared core.
+2. Parse source into a position-free `ComplexExpressionAst` suitable for canonical
+   JSON persistence in `ComplexAnalysisDocument`.
+3. Validate exact node fields, allowed variables, finite literals, supported
+   operators/functions, canonical-JSON safety, maximum depth, and node budget.
+4. Serialize and deserialize ASTs deterministically and prove repeated parse and
+   canonical JSON round-trips preserve the same tree.
+5. Report absolute index and one-based line/column for lexical and grammatical
+   failures, including invalid characters, names, operands, parentheses, and
+   function arity.
+6. Compile only validated AST nodes into the existing fast Complex preview evaluator;
+   never compile or execute unrestricted source.
+7. Route the existing `compileComplexExpression` API through the new stages so
+   Function Explorer, maps, surfaces, and consumers retain their current behavior.
+8. Differentially verify all eight C01 functions, controlled-grammar behavior,
+   existing parser/map suites, TypeScript, production build, and Electron workflows.
+
+**C03 acceptance:** AST serialization/deserialization and repeated parsing are
+stable; every C01 supported expression retains its preview value within its declared
+floating-point tolerance; unsupported or malformed syntax identifies its precise
+source location; and no unrestricted evaluation path is introduced.
+
+**Completed verification:** 83 tests across six files pass, including sixteen C01
+AST/value differential cases, stable canonical serialization, implicit
+multiplication, seven precise diagnostic cases, malformed/executable AST rejection,
+and the existing Complex expression, map, document, and platform suites.
+Cross-project TypeScript and the production renderer build succeed; all three C01
+Electron journeys also pass after the parser migration. The security/grammar
+boundary is documented in `docs/complex-expression-ast.md`.
