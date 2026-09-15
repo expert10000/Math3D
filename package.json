@@ -117,6 +117,7 @@
     "test:complex:c01:unit": "npm --prefix renderer test -- src/math/complexScientificCorpus.test.ts src/math/complexPlatformBaseline.test.ts src/math/complexExpr.test.ts src/math/complexMapSweep.test.ts src/math/mobius.test.ts src/math/riemannSphere.test.ts",
     "test:complex:c01:e2e": "playwright test tests/e2e/complex-analysis-corpus.spec.ts --reporter=list",
     "test:complex:c01": "npm run test:complex:c01:unit && npm run typecheck:noemit && npm run build:renderer && npm run test:complex:c01:e2e",
+    "test:complex:c02": "npm --prefix renderer test -- src/math/complexAnalysisDocument.test.ts && npm run typecheck:noemit && npm run build:renderer",
     "analyze:deps:prepare": "node -e \"const fs=require('node:fs');['analysis/dependency/arkit','analysis/dependency/dependency-cruiser'].forEach((d)=>fs.mkdirSync(d,{recursive:true}));\"",
     "analyze:deps:depcruise:err": "npm run analyze:deps:prepare && depcruise --config analysis/dependency/dependency-cruiser.cjs apps packages renderer src scripts --output-type err-long > analysis/dependency/dependency-cruiser/report.err.txt",
     "analyze:deps:depcruise:json": "npm run analyze:deps:prepare && depcruise --config analysis/dependency/dependency-cruiser.cjs apps packages renderer src scripts --output-type json > analysis/dependency/dependency-cruiser/report.json",

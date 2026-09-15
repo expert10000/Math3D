@@ -1859,3 +1859,41 @@ pass; and all three Electron journeys pass across lab navigation, explorer contr
 branch/path/3D controls, fibers, and deck transformations. The evidence levels and
 their proof boundary are documented in
 `docs/complex-analysis-scientific-fixture-corpus.md`.
+
+### C02 execution plan
+
+**Status:** complete
+
+C02 introduces a shared-core `ComplexAnalysisDocument` as the first authoritative
+Complex Analysis source record while leaving the current lab UI behavior intact.
+
+1. Define a versioned canonical-JSON document for normalized function AST, parameters,
+   assumptions, domain, sampling, contours/paths, branch policy, covering data,
+   Möbius coefficients, result references, identity/hash, and provenance.
+2. Hash the complete mathematical source while excluding result references and
+   migration metadata from source identity.
+3. Define panel layout, active inspector tab, animation progress, hover, and drag
+   preview in a separate transient-view contract and reject those fields in saved
+   documents.
+4. Validate bounded arrays, finite values, safe IDs, branch-sheet invariants,
+   sampling budgets, normalized AST shape, and current-result provenance.
+5. Provide immutable create, normalize, serialize, and deserialize operations with
+   stable identity and deterministic structural hashes.
+6. Adapt recognized current lab-state records only through an injected validated
+   AST parser; omit transient fields and attach a migration diagnostic.
+7. Reject raw text, compiled functions, unsupported legacy shapes, invalid sheets,
+   and stale available-result claims with actionable diagnostics.
+8. Document the authority, compatibility, and migration boundaries and add a focused
+   verification command.
+
+**C02 acceptance:** save/load preserves all mathematical and branch semantics with
+the same document ID, revision, and source hash; transient view state cannot enter
+the document; current result references must match the exact source generation; and
+unsupported legacy state returns a clear recovery diagnostic instead of becoming
+authority.
+
+**Completed verification:** five focused tests cover full semantic round-trip,
+deterministic source hashing, exclusion and rejection of transient state, stale
+result rejection, controlled legacy adaptation, and raw-text/compiled-function
+rejection. Cross-project TypeScript succeeds, and the contract and migration
+boundary are documented in `docs/complex-analysis-document.md`.

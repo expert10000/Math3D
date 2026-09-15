@@ -3,6 +3,7 @@ export * from "./canonicalFinite2DComplex";
 export * from "./canonicalFinite2DBoundaryMatrices";
 export * from "./canonicalFinite2DValidation";
 export * from "./canonicalFinite2DSurfaceClassification";
+export * from "./complexAnalysisDocument";
 export * from "./localZ2Homology";
 export * from "./sageIntegerHomology";
 export * from "./analysisResults";
