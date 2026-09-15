@@ -3,19 +3,11 @@ import type { ElectronApplication } from "playwright";
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { PROCEDURAL_SCENE_SCRIPT_ROUND_TRIP_FIXTURE } from "../../renderer/src/geometry/scripting/sceneScriptExamples";
 import { launchRepoElectron } from "./helpers/electronLauncher";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const COMPUTE_ENGINE_FIRST_LAUNCH_KEY = "math3d.computeEngines.firstLaunchSeen";
-
-const ACCEPTANCE_SCRIPT = [
-  "# Bidirectional Scene Script UI acceptance fixture",
-  "clear",
-  'add box as box_alpha width=2.75 height=1.25 depth=3.5 x=-1.5 y=0.25 z=2 rx=0.1 ry=0.2 rz=0.3 sx=1.1 sy=0.9 sz=1.2 color=#123abc opacity=0.65 roughness=0.42 metalness=0.17 visible=true "name=Primary Box" "group=roundtrip group"',
-  'add sphere as sphere_beta radius=1.375 widthSegments=24 heightSegments=16 x=2 y=-0.5 z=0.75 color=#22c55e opacity=0.8 roughness=0.3 metalness=0.05 visible=false "name=Hidden Sphere" "group=roundtrip group"',
-  'add torus as torus_gamma radius=1.6 tube=0.2 radialSegments=10 tubularSegments=36 arc=5.5 x=0 y=1.25 z=-1.5 rx=1.570796 color=#f97316 opacity=0.9 roughness=0.25 metalness=0.4 visible=true "name=Orbit Torus" "group=secondary group"',
-  "select box_alpha",
-].join("\n");
 
 const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication; page: Page }> => {
   const env: Record<string, string | undefined> = {
@@ -81,7 +73,12 @@ test("Geometry UI preserves a complete Script -> Scene -> Script round trip atom
     await openSceneScriptPanel(page);
 
     const editor = page.getByTestId("geometry-procedural-script-editor");
-    await editor.fill(ACCEPTANCE_SCRIPT);
+    await page.getByTestId("geometry-run-scene-script-self-test").click();
+    await expect(page.getByTestId("geometry-procedural-script-status")).toContainText("PASS");
+    await expect.poll(() => readStats(page)).toEqual({ objects: 3, visible: 2 });
+    expect(await editor.inputValue()).toContain("select box_alpha");
+
+    await editor.fill(PROCEDURAL_SCENE_SCRIPT_ROUND_TRIP_FIXTURE);
     await page.getByTestId("geometry-script-to-scene").click();
     await expect(page.getByTestId("geometry-procedural-script-status")).toContainText("Applied 3 objects");
     await expect.poll(() => readStats(page)).toEqual({ objects: 3, visible: 2 });

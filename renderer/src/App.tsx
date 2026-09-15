@@ -463,7 +463,10 @@ import {
 } from "./geometry/proceduralObjects";
 import { formatSceneScriptDiagnostic } from "./geometry/scripting/sceneScriptDiagnostics";
 import { executeSceneScript } from "./geometry/scripting/sceneScriptExecutor";
-import { PROCEDURAL_SCENE_SCRIPT_STARTER } from "./geometry/scripting/sceneScriptExamples";
+import {
+  PROCEDURAL_SCENE_SCRIPT_ROUND_TRIP_FIXTURE,
+  PROCEDURAL_SCENE_SCRIPT_STARTER,
+} from "./geometry/scripting/sceneScriptExamples";
 import { serializeSceneToScript } from "./geometry/scripting/sceneScriptSerializer";
 import {
   GEOMETRY_GALLERY_CARD_BY_ID,
@@ -17472,6 +17475,51 @@ const App: React.FC = () => {
       successMessage: `Scene -> script -> render matched ${geometryObjects.length} objects.`,
     });
   }, [executeProceduralScript, geometryObjects, geometrySelectedObjectId]);
+
+  const handleRunProceduralRoundTripSelfTest = useCallback(() => {
+    const datasetObjectIds = geometryDatasetMeshObjects.map((object) => object.id);
+    const first = executeSceneScript({
+      script: PROCEDURAL_SCENE_SCRIPT_ROUND_TRIP_FIXTURE,
+      objects: [],
+      datasetObjectIds,
+    });
+    if (!first.ok) {
+      setGeometryProceduralScriptStatus(null);
+      setGeometryProceduralScriptError(`Self-test fixture failed: ${formatSceneScriptDiagnostic(first.error)}`);
+      return;
+    }
+
+    const canonicalScript = serializeSceneToScript(first.objects, { selectedObjectId: first.selectedObjectId });
+    const replay = executeSceneScript({ script: canonicalScript, objects: [], datasetObjectIds });
+    if (!replay.ok) {
+      setGeometryProceduralScriptStatus(null);
+      setGeometryProceduralScriptError(`Self-test replay failed: ${formatSceneScriptDiagnostic(replay.error)}`);
+      return;
+    }
+
+    const replayScript = serializeSceneToScript(replay.objects, { selectedObjectId: replay.selectedObjectId });
+    const preserved =
+      canonicalScript === replayScript &&
+      JSON.stringify(first.objects) === JSON.stringify(replay.objects) &&
+      first.selectedObjectId === replay.selectedObjectId &&
+      replay.objects.length === 3 &&
+      replay.objects.filter((object) => object.visible).length === 2 &&
+      replay.selectedObjectId === "box_alpha";
+    if (!preserved) {
+      setGeometryProceduralScriptStatus(null);
+      setGeometryProceduralScriptError("Self-test failed: canonical scene state changed during replay.");
+      return;
+    }
+
+    setGeometryObjects(replay.objects);
+    setGeometrySelectedObjectId(replay.selectedObjectId);
+    setGeometryProceduralScriptText(canonicalScript);
+    setGeometryProceduralScriptError(null);
+    setGeometryProceduralScriptStatus(
+      "PASS · Script -> scene -> script -> render preserved 3 objects, 2 visible, and the active selection."
+    );
+    setGeometryMode("procedural");
+  }, [geometryDatasetMeshObjects]);
 
   const geometryDragRef = useRef<{
     id: string;
@@ -91507,6 +91555,14 @@ case "mobius":
                         </button>
                         <button
                           type="button"
+                          data-testid="geometry-run-scene-script-self-test"
+                          onClick={handleRunProceduralRoundTripSelfTest}
+                          title="Replace the current procedural scene with a deterministic three-object round-trip test"
+                        >
+                          Run round-trip self-test
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => {
                             setGeometryProceduralScriptText(PROCEDURAL_SCENE_SCRIPT_STARTER);
                             setGeometryProceduralScriptError(null);
@@ -91515,6 +91571,9 @@ case "mobius":
                         >
                           Load starter
                         </button>
+                      </div>
+                      <div style={{ fontSize: 10, opacity: 0.72 }}>
+                        Self-test replaces the current procedural scene with a box, hidden sphere, and torus, then verifies canonical replay.
                       </div>
                       {geometryProceduralScriptStatus && (
                         <div data-testid="geometry-procedural-script-status" style={{ fontSize: 11, color: "#166534" }}>
