@@ -2035,3 +2035,33 @@ tolerance/sample/error metadata, pole candidates, branch diagnostics, and legacy
 qualification. Cross-project TypeScript, renderer build, and the Electron publication
 journey are gated by `npm run test:complex:c06`. UI location and the evidence boundary
 are documented in `docs/complex-numerical-results.md`.
+
+### C07 execution plan
+
+**Status:** complete
+
+C07 introduces a narrow structured bridge from the authoritative Complex document
+to SageMath while excluding arbitrary language execution from ordinary analysis.
+
+1. Allowlist derivative, limit, pole, residue, and series operations.
+2. Carry only the validated normalized AST, variable, point/order, and assumptions.
+3. Reject unknown fields, non-`z` variables, malformed ASTs, and unsupported requests.
+4. Translate AST nodes recursively to Sage objects inside the isolated Sage service;
+   never serialize the expression into a shell command.
+5. Execute through F05 source, cancellation, deadline, input/output, memory, and work
+   controls with a declared no-source/no-shell/ephemeral-filesystem runtime policy.
+6. Validate exact response format, operation identity, engine, version, and bounded
+   symbolic output before it can publish.
+7. Publish successful work through F06 as exact Sage evidence tied to the originating
+   Complex source generation.
+8. Keep trusted notebook execution explicitly outside the ordinary Analyze protocol.
+
+**C07 acceptance:** malformed and source/script-bearing requests fail before the Sage
+executor; the executor sees structured AST data only; F05 cancellation and resource
+limits remain authoritative; and exact records identify SageMath and its version.
+
+**Completed verification:** focused adapter tests cover structured translation,
+engine/version publication, unsafe field and AST rejection, cancellation, work-limit
+enforcement, and runtime policy. Cross-project TypeScript plus main and renderer builds
+are gated by `npm run test:complex:c07`. The protocol and trust boundary are documented
+in `docs/complex-sage-adapter.md`.

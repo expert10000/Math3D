@@ -518,7 +518,8 @@ declare global {
     | "sage.groebner.compute"
     | "sage.numberTheory.gcd"
     | "sage.numberTheory.modInverse"
-    | "sage.topology.integer_homology";
+    | "sage.topology.integer_homology"
+    | "sage.complex.analyze";
 
   type SageHealthResponse = {
     status: string;

@@ -406,7 +406,8 @@ export type SageOperation =
   | "sage.groebner.compute"
   | "sage.numberTheory.gcd"
   | "sage.numberTheory.modInverse"
-  | "sage.topology.integer_homology";
+  | "sage.topology.integer_homology"
+  | "sage.complex.analyze";
 
 export type SageRunRequest = {
   operation: SageOperation;
