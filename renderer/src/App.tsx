@@ -620,6 +620,7 @@ import {
   publishComplexNumericalAnalysis,
 } from "./math/complexNumericalAnalysis";
 import { analyzeComplexExactMvp, type ComplexExactMvpAnalysis } from "./math/complexExactAnalysis";
+import { analyzeAdaptiveComplexContinuation } from "./math/complexBranchContinuation";
 import { marchingSquares } from "./math/marchingSquares";
 import { formatRoot, inspectRationalFunction, type RationalInspection } from "./math/rationalInspector";
 import { buildVertexAdjacency } from "./math/curvatureLines";
@@ -37955,12 +37956,14 @@ const App: React.FC = () => {
   const [complexNumericalResult, setComplexNumericalResult] = useState<AnalysisResultEnvelope | null>(null);
   const [complexNumericalError, setComplexNumericalError] = useState<string | null>(null);
   const [complexExactResult, setComplexExactResult] = useState<ComplexExactMvpAnalysis | null>(null);
+  const [complexContinuationResult, setComplexContinuationResult] = useState<AnalysisResultEnvelope | null>(null);
 
   useEffect(() => {
     let active = true;
     setComplexNumericalResult(null);
     setComplexNumericalError(null);
     setComplexExactResult(null);
+    setComplexContinuationResult(null);
     const synchronized = complexPreviewSession.synchronize(complexMapSpec);
     if (synchronized.error) {
       setComplexPreviewArtifactStatus({ revision: synchronized.document.identity.revision, artifactCount: 0, state: "error", message: synchronized.error });
@@ -47310,6 +47313,28 @@ const App: React.FC = () => {
     samples: number;
     argumentPrinciple: number | null;
     zerosMinusPoles: number | null;
+  }> | undefined;
+  const analyzeOtherComplexContinuation = useCallback(() => {
+    try {
+      const contourKind: ComplexContourRecord["kind"] = otherComplexPathMode === "loop_all" ? "branch-loop" : otherComplexPathMode === "figure_eight" ? "figure-eight" : otherComplexPathMode;
+      const contours = otherComplexPathZLoops.filter((loop) => loop.length >= 2).map((loop, index) => contourRecordFromPoints(`continuation-path-${index + 1}`, contourKind, loop.map(([re, im]) => ({ re, im }))));
+      const document = complexPreviewSession.commands.commit(COMPLEX_COMMAND_TYPES.setContours, contours);
+      complexPreviewSession.commands.requestAnalysis(`complex-continuation-${document.identity.revision}`, "complex.branch-continuation");
+      setComplexContinuationResult(analyzeAdaptiveComplexContinuation(document).result);
+      setComplexNumericalError(null);
+    } catch (error) {
+      setComplexNumericalError(String((error as Error).message ?? error));
+    }
+  }, [complexPreviewSession, otherComplexPathMode, otherComplexPathZLoops]);
+  const otherComplexContinuationSummary = complexContinuationResult?.summary as Readonly<{
+    outcome: string;
+    model: string;
+    originalSamples: number;
+    refinedSamples: number;
+    minDiscriminantDistance: number | null;
+    precisionDigits: number;
+    sheetShift: number | null;
+    monodromyPermutation: readonly string[];
   }> | undefined;
 
   const otherComplexPathMetrics = useMemo(() => {
@@ -107913,6 +107938,20 @@ case "mobius":
                         )}
                         {otherComplexInspectorTab === "branch" && (
                           <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                            <button type="button" onClick={analyzeOtherComplexContinuation} data-testid="analyze-complex-continuation">
+                              Analyze adaptive continuation
+                            </button>
+                            {complexContinuationResult && otherComplexContinuationSummary && (
+                              <div data-testid="complex-continuation-inspector" style={{ display: "grid", gap: 3, padding: "8px 9px", border: `1px solid ${otherComplexContinuationSummary.outcome === "validated" ? "#86efac" : "#fdba74"}`, borderRadius: 8, background: otherComplexContinuationSummary.outcome === "validated" ? "#f0fdf4" : "#fff7ed", fontSize: 11 }}>
+                                <div style={{ fontWeight: 800 }}>C10 adaptive path lifting · {otherComplexContinuationSummary.outcome}</div>
+                                <div>model: {otherComplexContinuationSummary.model}; source r{complexContinuationResult.provenance.source.revision}</div>
+                                <div>samples: {otherComplexContinuationSummary.originalSamples} → {otherComplexContinuationSummary.refinedSamples}; precision: {otherComplexContinuationSummary.precisionDigits} digits</div>
+                                <div>discriminant distance: {otherComplexContinuationSummary.minDiscriminantDistance == null ? "n/a" : otherComplexContinuationSummary.minDiscriminantDistance.toExponential(3)}</div>
+                                <div>sheet shift: {otherComplexContinuationSummary.sheetShift ?? "withheld"}</div>
+                                <div>monodromy: {otherComplexContinuationSummary.monodromyPermutation.join(", ") || "withheld"}</div>
+                                {complexContinuationResult.warnings.map((warning) => <div key={warning} style={{ color: "#9a3412" }}>{warning}</div>)}
+                              </div>
+                            )}
                             <div>function: {otherComplexBranchProfile.label}</div>
                             <div>cut mode: {otherComplexBranchCutMode.replace(/_/g, " ")}</div>
                             <div>branch cut: {otherComplexBranchCutLabel}</div>

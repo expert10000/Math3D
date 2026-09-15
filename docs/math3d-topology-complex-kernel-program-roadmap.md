@@ -2120,3 +2120,25 @@ command replay/undo/redo, result provenance, unavailable artifacts, engine state
 structured export, migration, and tamper rejection. TypeScript and renderer build are
 gated by `npm run test:complex:c09`; the format is documented in
 `docs/complex-session-persistence.md`.
+
+### C10 execution plan
+
+**Status:** complete
+
+1. Recognize the reviewed logarithmic, root, and algebraic branch models from C03 AST sources.
+2. Adaptively subdivide committed paths as segment size approaches discriminant distance.
+3. Track unwrapped winding independently around every finite branch point.
+4. Validate loop closure and integral winding before publishing a sheet transition.
+5. Escalate precision metadata from 30 to 50/80 digits near the discriminant.
+6. Withhold monodromy on discriminant contact, nonclosure, residual winding, or depth exhaustion.
+7. Publish log translations and finite-sheet permutations only for validated outcomes.
+8. Retain all preset cut, animation, and sheet-preview views as illustrative adapters.
+
+**C10 acceptance:** log, square-root, cube-root, and `sqrt(z^2-1)` fixtures publish
+their expected qualified monodromy; uncertain paths explain failure and never guess.
+
+**Completed verification:** focused tests cover the four standard models, precision,
+adaptive sampling, discriminant uncertainty, and unsupported profiles. TypeScript,
+renderer build, and the Branch Lab Electron journey are gated by
+`npm run test:complex:c10`; UI and evidence rules are documented in
+`docs/complex-adaptive-continuation.md`.
