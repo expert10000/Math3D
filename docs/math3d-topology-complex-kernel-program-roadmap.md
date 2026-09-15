@@ -1363,3 +1363,45 @@ All Topology suites pass (128 tests across 22 files), the F01-T03 foundation and
 compatibility matrix passes (113 tests across 15 files), and `typecheck:noemit` plus
 the renderer production build succeed.  Current UI/render/save behavior is unchanged;
 T04 is the next program commit.
+
+### T04 execution plan
+
+**Status:** complete
+
+T04 validates the shared T03 canonical artifact against its exact T02 source
+generation.  It adds a reusable prerequisite/gating layer without changing the
+released renderer, persistence path, or existing Topology analysis implementation.
+
+1. Add a pure versioned shared-core validator that accepts only a normalized T03
+   canonicalization result plus its matching T02 `TopologyDocument`.
+2. Verify document ID/revision/hash/source guards and authoritative source mappings;
+   preserve canonical-cell and source-reference context on every focused diagnostic.
+3. Validate edge endpoints, oriented closed face walks, attachment incidence,
+   connected components, edge multiplicities, boundary candidates, and vertex-link
+   multigraphs without consulting a mesh or R³ realization.
+4. Evaluate the exact integer `d1*d2 = 0` precondition directly from incidence.
+   Report nonzero vertex/face coefficients, while leaving canonical sparse matrix
+   artifacts and locate-back tables to T06.
+5. Publish separate cellular-algebra, formal-homology-job, and supported-surface
+   eligibility decisions.  Add one gate that revalidates before returning a formal
+   homology authorization bound to the exact source generation and canonical hash.
+6. Keep malformed, stale, and invalid sources inspectable through immutable
+   structured diagnostics but fail closed for formal algebra.
+7. Prove all ten T01 cases, invalid source references, non-closed attachment walks,
+   nonzero chain composition, stale generation rejection, malformed-artifact
+   rejection, deterministic replay, and immutable reports.  Re-run the F01-T03 and
+   Topology compatibility suites, `typecheck:noemit`, and the renderer build.
+
+**T04 acceptance:** `d1*d2 = 0` is verified before any formal-homology authorization;
+invalid, stale, or malformed canonical complexes cannot pass the submission gate;
+diagnostics locate back to canonical/source cells; surface eligibility is distinct
+from general cellular-algebra eligibility; and existing UI/save/render behavior is
+unchanged.
+
+**Completed verification:** five focused T04 assertions cover the full ten-case T01
+corpus, locate-back diagnostics, non-closed walks/nonzero chain composition, stale
+source generations, malformed artifacts, deterministic replay, immutability, and
+the formal-job gate.  The shared-core/kernel/Topology suites pass (207 tests across
+32 files), the additional F01 platform/Complex baseline passes (19 tests across two
+files), and `typecheck:noemit` plus the renderer production build succeed.  T05 is
+the next program commit.
