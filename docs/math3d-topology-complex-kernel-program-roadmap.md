@@ -2364,6 +2364,16 @@ remain synchronous with a documented reason.
 precision/tolerance where applicable, and artifact lineage. Late output from an
 older Geometry revision cannot publish.
 
+**Completed verification.** Geometry's derived-resource coordinator uses shared
+scientific jobs, compact analysis envelopes, byte-owning artifacts, and GK01
+relations for expensive tessellation, sections/intersections, diagnostics, and
+Geometry → Mesh publication. Exact source generation, algorithm/version,
+engine/version, status, elapsed time, parameters, numerical context, artifact
+lineage, promoted-document lineage, and locate-back are explicit. Late results are
+rejected after any source edit; only bounded exact distance/angle/area operations
+remain synchronous with a recorded cost justification. See
+`docs/kernel-geometry-derived-resources.md`; gate: `npm run test:kernel:gk06`.
+
 ### GK07 — `feat(mesh): introduce versioned MeshDocument and resource identity`
 
 **Milestone:** G03 — Mesh and Mesh Analyze

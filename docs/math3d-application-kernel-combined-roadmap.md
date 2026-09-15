@@ -547,6 +547,17 @@ documented cost/authority reason. Record GK01 lineage for derived or promoted da
 status, engine, and precision/tolerance where applicable; dense data is artifact-
 backed; late output cannot publish; Geometry → Mesh locate-back works; GK03 passes.
 
+**Completion evidence.** `GeometryDerivedResourceCoordinator` now binds
+tessellation, section/intersection, diagnostics, generated Geometry → Mesh, and
+other expensive operations to shared scientific-job limits and exact Geometry source
+generation. Compact F06 results record operation/algorithm, engine, status, elapsed
+time, parameters, and numeric context; dense bytes publish only through F07 artifact
+handles. GK01 `analysis-of`, `generated-by`, and `promoted-from` relations plus a
+compact mesh-entity locate-back map preserve lineage. Publication rechecks source
+generation and rejects late work. Only bounded exact distance/angle/area publication
+stays synchronous with an explicit authority reason. Contract and gate details are in
+`docs/kernel-geometry-derived-resources.md`; run `npm run test:kernel:gk06`.
+
 ### G03 — Mesh and Mesh Analyze
 
 #### GK07 — `feat(mesh): introduce versioned MeshDocument and resource identity`
