@@ -2006,3 +2006,32 @@ registry-only bytes, source advancement, stale/late rejection, and drag caps.
 Cross-project TypeScript and the production renderer build pass. The three C01 lab
 journeys and the new visible provenance journey pass in Electron. The lifecycle and
 UI location are documented in `docs/complex-preview-artifacts.md`.
+
+### C06 execution plan
+
+**Status:** complete
+
+C06 qualifies the existing Residue/Path experience with compact, revision-safe F06
+numerical records without presenting approximation as symbolic proof.
+
+1. Publish centered complex-derivative checks from the validated C03 AST.
+2. Carry recognized rational pole candidates as numerical inspection evidence.
+3. Commit active path loops before analysis and apply nested trapezoid quadrature.
+4. Record winding, valid/attempted samples, and coarse/refined error estimates.
+5. Detect active branch-cut crossings and contour proximity to pole candidates.
+6. Bind every record to document ID, revision, structural hash, engine, algorithm,
+   tolerance, and elapsed time through the F06 envelope.
+7. Keep bulk samples outside the result and report F07 artifact availability only
+   through compact handles/counts.
+8. Preserve all inline lab values with an explicit legacy/no-provenance label and
+   add a visible publish action and result inspector.
+
+**C06 acceptance:** the inspector exposes method, source revision, numerical status,
+tolerance/error, samples, diagnostics, and artifact availability; legacy values stay
+visible; and neither good agreement nor recognized poles can claim exact proof.
+
+**Completed verification:** focused unit coverage verifies revision binding,
+tolerance/sample/error metadata, pole candidates, branch diagnostics, and legacy
+qualification. Cross-project TypeScript, renderer build, and the Electron publication
+journey are gated by `npm run test:complex:c06`. UI location and the evidence boundary
+are documented in `docs/complex-numerical-results.md`.

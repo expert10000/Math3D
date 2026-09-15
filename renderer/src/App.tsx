@@ -615,6 +615,10 @@ import {
   type ComplexMapSweepSpec,
 } from "./math/complexMapSweep";
 import { ComplexFunctionPreviewSession } from "./math/complexPreviewArtifacts";
+import {
+  contourRecordFromPoints,
+  publishComplexNumericalAnalysis,
+} from "./math/complexNumericalAnalysis";
 import { marchingSquares } from "./math/marchingSquares";
 import { formatRoot, inspectRationalFunction, type RationalInspection } from "./math/rationalInspector";
 import { buildVertexAdjacency } from "./math/curvatureLines";
@@ -666,6 +670,9 @@ import {
   type CanonicalSplineDefinition,
   type SplineCurve,
   type DerivedConstructionObjectDefinition,
+  COMPLEX_COMMAND_TYPES,
+  type AnalysisResultEnvelope,
+  type ComplexContourRecord,
 } from "@math3d/core";
 
 import {
@@ -37944,9 +37951,13 @@ const App: React.FC = () => {
     state: "computing" | "ready" | "error";
     message?: string;
   }>(() => ({ revision: complexPreviewSession.commands.document().identity.revision, artifactCount: 0, state: "computing" }));
+  const [complexNumericalResult, setComplexNumericalResult] = useState<AnalysisResultEnvelope | null>(null);
+  const [complexNumericalError, setComplexNumericalError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
+    setComplexNumericalResult(null);
+    setComplexNumericalError(null);
     const synchronized = complexPreviewSession.synchronize(complexMapSpec);
     if (synchronized.error) {
       setComplexPreviewArtifactStatus({ revision: synchronized.document.identity.revision, artifactCount: 0, state: "error", message: synchronized.error });
@@ -47239,6 +47250,41 @@ const App: React.FC = () => {
     evalOtherComplexW,
     otherComplexEffectiveBranchCutSegments,
   ]);
+
+  const publishOtherComplexNumericalResult = useCallback(() => {
+    try {
+      const contourKind: ComplexContourRecord["kind"] =
+        otherComplexPathMode === "loop_all" ? "branch-loop" :
+          otherComplexPathMode === "figure_eight" ? "figure-eight" : otherComplexPathMode;
+      const contours = otherComplexPathZLoops
+        .filter((loop) => loop.length >= 2)
+        .map((loop, index) => contourRecordFromPoints(
+          `path-${index + 1}`,
+          contourKind,
+          loop.map(([re, im]) => ({ re, im }))
+        ));
+      const document = complexPreviewSession.commands.commit(COMPLEX_COMMAND_TYPES.setContours, contours);
+      complexPreviewSession.commands.requestAnalysis(
+        `complex-numerical-${document.identity.revision}`,
+        "complex.numerical-analysis"
+      );
+      setComplexNumericalResult(publishComplexNumericalAnalysis({
+        document,
+        probe: otherComplexSelectedPoint,
+        artifacts: [],
+      }));
+      setComplexNumericalError(null);
+    } catch (error) {
+      setComplexNumericalError(String((error as Error).message ?? error));
+    }
+  }, [complexPreviewSession, otherComplexPathMode, otherComplexPathZLoops, otherComplexSelectedPoint]);
+  const otherComplexNumericalContour = complexNumericalResult?.summary.contour as Readonly<{
+    samples: number;
+    validSamples: number;
+    errorEstimate: number;
+    branchCutCrossings: number;
+    nearPole: boolean;
+  }> | undefined;
 
   const otherComplexPathMetrics = useMemo(() => {
     let zLength = 0;
@@ -107809,6 +107855,9 @@ case "mobius":
                           <button type="button" onClick={() => setOtherComplexInspectorTab("covering")} style={pill(otherComplexInspectorTab === "covering")}>Covering</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("sheet")} style={pill(otherComplexInspectorTab === "sheet")}>Sheet</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("analysis")} style={pill(otherComplexInspectorTab === "analysis")}>Analysis</button>
+                          <button type="button" onClick={() => setOtherComplexInspectorTab("contour")} style={pill(otherComplexInspectorTab === "contour")}>Contour</button>
+                          <button type="button" onClick={() => setOtherComplexInspectorTab("residue")} style={pill(otherComplexInspectorTab === "residue")}>Residue</button>
+                          <button type="button" onClick={() => setOtherComplexInspectorTab("laurent")} style={pill(otherComplexInspectorTab === "laurent")}>Laurent</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("warnings")} style={pill(otherComplexInspectorTab === "warnings")}>Warnings</button>
                         </div>
                         {otherComplexInspectorTab === "covering" && (
@@ -108338,6 +108387,26 @@ case "mobius":
                             <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
                               ∮γ f(z)dz = 2πi Σ n(γ, ak) Res(f, ak)
                             </div>
+                            <div style={{ padding: "7px 8px", border: "1px solid #fed7aa", borderRadius: 8, background: "#fff7ed", color: "#9a3412", fontSize: 11 }}>
+                              Live values below are legacy numerical previews until published; they are not exact proof.
+                            </div>
+                            <button type="button" onClick={publishOtherComplexNumericalResult} data-testid="publish-complex-numerical-result">
+                              Publish numerical analysis
+                            </button>
+                            {complexNumericalError && <div data-testid="complex-numerical-result-error" style={{ color: "#b42318" }}>Numerical publication failed: {complexNumericalError}</div>}
+                            {complexNumericalResult && otherComplexNumericalContour && (
+                              <div data-testid="complex-numerical-result-inspector" style={{ display: "grid", gap: 3, padding: "8px 9px", border: "1px solid #93c5fd", borderRadius: 8, background: "#eff6ff", fontSize: 11 }}>
+                                <div style={{ fontWeight: 800 }}>F06 numerical result · not proof</div>
+                                <div>status: {complexNumericalResult.status}</div>
+                                <div>source revision: r{complexNumericalResult.provenance.source.revision}</div>
+                                <div>method: {complexNumericalResult.provenance.operation.algorithm}</div>
+                                <div>tolerance: {complexNumericalResult.provenance.numericContext?.tolerance?.absolute?.toExponential(2) ?? "n/a"}</div>
+                                <div>error estimate: {otherComplexNumericalContour.errorEstimate.toExponential(3)}</div>
+                                <div>samples: {otherComplexNumericalContour.validSamples} / {otherComplexNumericalContour.samples}</div>
+                                <div>branch crossings: {otherComplexNumericalContour.branchCutCrossings}; near pole: {otherComplexNumericalContour.nearPole ? "yes" : "no"}</div>
+                                <div>artifacts available: {complexNumericalResult.artifacts.length}</div>
+                              </div>
+                            )}
                             <div>function: f(z) = {otherComplexFunctionExpr || "z"}</div>
                             <div>contour: {otherComplexPathMode}{otherComplexContourAnalysis.loopCount > 1 ? ` (${otherComplexContourAnalysis.loopCount} loops)` : ""}</div>
                             <div>
