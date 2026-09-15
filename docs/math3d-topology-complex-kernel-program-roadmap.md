@@ -1638,3 +1638,48 @@ pass (137 tests across 24 files), and both semantic-safety E2E checks pass.
 `typecheck:noemit` and the renderer production build also succeed. Live Sage
 execution remains an optional environment-specific gate on a runner with SageMath
 installed.
+
+### T10 execution plan
+
+**Status:** complete
+
+T10 replaces preset/name recognition as a possible source of formal surface labels
+with a shared-core, revision-bound certificate over the T03 canonical complex and
+T04 structural report. The existing renderer classifier remains a compatibility
+consumer outside the migrated Algebra publication path.
+
+1. Define immutable shared-core surface classification, eligibility, orientability,
+   diagnostic, and outcome contracts with the T10 algorithm version.
+2. Require successful T04 canonical validation, a finite nonempty 2-complex, and a
+   connected canonical one-skeleton before attempting surface classification.
+3. Certify edge links, vertex links, and the boundary graph. Preserve failed
+   canonical-cell and authored-source references for inspection and locate-back.
+4. Propagate signed face orientations across every interior edge. Publish the
+   conflicting canonical edge certificate for non-orientable surfaces.
+5. Compute cellular Euler characteristic and require a valid integer genus or
+   crosscap number using the certified boundary count. Publish a formal label only
+   after every displayed gate passes.
+6. Publish a compact F06 result with certified/unsupported status, exact source
+   revision/hash/generation, canonical hash, method/version, engine, eligibility,
+   boundary, orientability, Euler, and classification summary.
+7. Consume the shared result in Algebra View without changing Diagram, Complex, or
+   Realization behavior. Show every gate, provenance, boundary/orientation evidence,
+   and source-location controls for failed prerequisites.
+8. Verify the entire T01 classification corpus, orientable/non-orientable and
+   boundary cases, a torus-named non-manifold impostor, invalid structural input,
+   provenance, UI rejection, TypeScript, Topology tests, E2E, and production build.
+
+**T10 acceptance:** valid surfaces classify from canonical incidence with the
+reviewed family, genus/crosscap number, boundary components, and Euler certificate;
+invalid or non-manifold inputs display their exact failed gates and no formal name;
+every result is revision/hash bound and failures locate back to source cells; and a
+preset label or R3 shape cannot upgrade an ineligible complex.
+
+**Completed verification:** the shared T10 suite exercises the complete T01 corpus,
+all six publication gates, signed non-orientability, boundary components, F06
+provenance, a deliberately torus-named non-manifold source, invalid structural
+rejection, and source locate-back. The migrated UI and architecture boundary are
+documented in `docs/topology-surface-classification.md`. The combined T03-T10
+authority suites pass (35 tests across seven files), all Topology unit suites pass
+(137 tests across 24 files), and both semantic-safety E2E checks pass against the
+rebuilt renderer. `typecheck:noemit` and the renderer production build also succeed.

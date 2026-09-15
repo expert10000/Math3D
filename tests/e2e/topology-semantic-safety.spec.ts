@@ -113,6 +113,13 @@ test.describe("Topology semantic safety", () => {
       await expect(ctx.page.getByTestId("topology-local-z2-betti")).toContainText("1, 1, 1");
       await expect(ctx.page.getByTestId("topology-surface-classification")).toContainText("ELIGIBLE");
       await expect(ctx.page.getByTestId("topology-surface-classification-label")).toContainText("Projective plane");
+      await expect(ctx.page.getByTestId("topology-surface-check-connected")).toContainText("PASS");
+      await expect(ctx.page.getByTestId("topology-surface-check-edge-links")).toContainText("PASS");
+      await expect(ctx.page.getByTestId("topology-surface-check-vertex-links")).toContainText("PASS");
+      await expect(ctx.page.getByTestId("topology-surface-check-boundary-circles")).toContainText("PASS");
+      await expect(ctx.page.getByTestId("topology-surface-check-euler-characteristic")).toContainText("PASS");
+      await expect(ctx.page.getByTestId("topology-surface-classification-provenance")).toContainText("finite-surface-classification@2");
+      await expect(ctx.page.getByTestId("topology-surface-classification-provenance")).toContainText("source r");
       await expect(ctx.page.getByTestId("topology-certified-orientability")).toContainText("No");
       await ctx.page.getByRole("button", { name: "Realization View", exact: true }).click();
       await expect(ctx.page.getByTestId("topology-realization-authority")).toHaveAttribute("data-realization-kind", "immersed");
@@ -123,6 +130,13 @@ test.describe("Topology semantic safety", () => {
       await ctx.page.getByRole("button", { name: "Realization View", exact: true }).click();
       await expect(ctx.page.getByTestId("topology-story-formal-certificate")).toContainText("Möbius band");
       await expect(ctx.page.getByTestId("topology-story-formal-certificate")).toContainText("not from this R³ rendering or preset name");
+
+      await ctx.page.getByTestId("topology-preset-card-dunce_cap").click();
+      await ctx.page.getByRole("button", { name: "Algebra View", exact: true }).click();
+      await expect(ctx.page.getByTestId("topology-surface-classification")).toContainText("WITHHELD");
+      await expect(ctx.page.getByTestId("topology-surface-classification-label")).toContainText("No formal surface name");
+      await expect(ctx.page.getByTestId("topology-surface-check-edge-links")).toContainText("WITHHELD");
+      await expect(ctx.page.getByTestId("topology-surface-check-euler-characteristic")).toContainText("WITHHELD");
     } finally {
       await closeSurfaceApp(ctx);
     }

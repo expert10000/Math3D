@@ -2871,6 +2871,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
     const result = ensureBuilt();
     const algebraAuthority = deriveTopologyAlgebraAuthority(topologyCommandAdapterRef.current!.document());
     const localZ2 = algebraAuthority.localZ2;
+    const formalSurface = algebraAuthority.surfaceClassification;
     const exactBoundaries = algebraAuthority.status === "exact" ? algebraAuthority.boundary.payload : null;
     const sourceProvenance = algebraAuthority.status === "exact" ? algebraAuthority.canonical.source : null;
     const canonicalHash = algebraAuthority.status === "exact" ? algebraAuthority.canonical.canonicalHash : null;
@@ -3330,9 +3331,9 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
         <section
           data-testid="topology-surface-classification"
           style={{
-            border: `1px solid ${result.surfaceClassification.value?.eligible ? "#86efac" : "#fbbf24"}`,
+            border: `1px solid ${formalSurface?.report?.eligible ? "#86efac" : "#fbbf24"}`,
             borderRadius: 10,
-            background: result.surfaceClassification.value?.eligible ? "#f0fdf4" : "#fffbeb",
+            background: formalSurface?.report?.eligible ? "#f0fdf4" : "#fffbeb",
             padding: "9px 10px",
             display: "grid",
             gap: 7,
@@ -3342,52 +3343,66 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <strong>Surface eligibility & formal classification</strong>
             <span style={{ fontWeight: 700 }}>
-              {result.surfaceClassification.value?.eligible ? "ELIGIBLE" : "WITHHELD"}
+              {formalSurface?.report?.eligible ? "ELIGIBLE" : "WITHHELD"}
             </span>
           </div>
-          {result.surfaceClassification.value ? (
+          {formalSurface?.report ? (
             <>
               <div data-testid="topology-surface-classification-label" style={{ fontSize: 12, fontWeight: 700 }}>
-                {result.surfaceClassification.value.classification?.label ?? "No formal surface name: one or more eligibility checks failed."}
+                {formalSurface.report.classification?.label ?? "No formal surface name: one or more eligibility checks failed."}
               </div>
-              {result.surfaceClassification.value.classification && (
+              {formalSurface.report.classification && (
                 <div>
-                  {result.surfaceClassification.value.classification.equation} · boundary components {result.surfaceClassification.value.classification.boundaryComponents} · {result.surfaceClassification.value.orientability?.orientable ? "orientable" : "non-orientable"}
+                  {formalSurface.report.classification.equation} · boundary components {formalSurface.report.classification.boundaryComponents} · {formalSurface.report.orientability?.orientable ? "orientable" : "non-orientable"}
                 </div>
               )}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 6 }}>
-                {result.surfaceClassification.value.eligibilityChecks.map((check) => (
+                {formalSurface.report.eligibilityChecks.map((check) => (
                   <div key={`surface-check-${check.id}`} data-testid={`topology-surface-check-${check.id}`} style={{ border: `1px solid ${check.holds ? "#bbf7d0" : "#fde68a"}`, borderRadius: 7, background: "#fff", padding: "6px 7px" }}>
                     <div><strong>{check.holds ? "PASS" : "WITHHELD"}: {check.label}</strong></div>
                     <div style={{ color: "#475569" }}>{check.note}</div>
-                    {check.cellRefs.map((ref) => (
+                    {check.canonicalCells.map((ref) => (
                       <button key={`${check.id}-${ref.dimension}-${ref.cellId}`} type="button" onClick={() => inspectAlgebraCell(ref.dimension, ref.cellId)} style={{ marginTop: 3, fontSize: 10 }}>
                         Inspect {ref.dimension}-cell {ref.cellId}
+                      </button>
+                    ))}
+                    {check.sourceReferences.filter((reference) => reference.stage === "source").map((reference) => (
+                      <button key={`${check.id}-source-${reference.dimension}-${reference.cellId}-${reference.occurrence ?? "base"}`} type="button" onClick={() => locateAlgebraSource(reference)} style={{ marginTop: 3, marginLeft: 4, fontSize: 10 }}>
+                        Locate source {reference.dimension}-cell {reference.cellId}
                       </button>
                     ))}
                   </div>
                 ))}
               </div>
               <details>
-                <summary style={{ cursor: "pointer", fontWeight: 700 }}>Vertex-link and orientation evidence</summary>
+                <summary style={{ cursor: "pointer", fontWeight: 700 }}>Boundary and orientation certificate</summary>
                 <div style={{ display: "grid", gap: 4, marginTop: 5 }}>
-                  {result.surfaceClassification.value.vertexLinks.map((link) => (
-                    <button key={`surface-link-${link.vertexId}`} type="button" onClick={() => inspectAlgebraCell(0, link.vertexId)} style={{ textAlign: "left", fontSize: 10 }}>
-                      {link.vertexId}: {link.kind} · components {link.components} · degree-1 nodes {link.degreeOneNodes} · degree-2 nodes {link.degreeTwoNodes}
-                    </button>
-                  ))}
-                  {result.surfaceClassification.value.orientability && (
+                  <div>Boundary edges: {formalSurface.report.boundaryEdgeIds.join(", ") || "none"} · components {formalSurface.report.boundaryComponents ?? "withheld"}</div>
+                  {formalSurface.report.orientability && (
                     <div>
-                      Signed face-orientation propagation: {result.surfaceClassification.value.orientability.orientable ? "consistent" : `conflicts at ${result.surfaceClassification.value.orientability.conflictEdgeIds.join(", ")}`}
+                      Signed face-orientation propagation: {formalSurface.report.orientability.orientable ? "consistent (orientable)" : `orientation-reversing conflicts at ${formalSurface.report.orientability.conflictEdgeIds.join(", ")} (non-orientable)`}
                     </div>
                   )}
                 </div>
               </details>
-              <div style={{ color: "#475569" }}>{result.surfaceClassification.method} · {result.surfaceClassification.algorithmVersion}</div>
-              <div style={{ color: "#475569", overflowWrap: "anywhere" }}>{algebraSourceStamp}</div>
+              <div data-testid="topology-surface-classification-provenance" style={{ color: "#475569", overflowWrap: "anywhere" }}>
+                {formalSurface.result.provenance.operation.algorithm} · {formalSurface.result.provenance.operation.algorithmVersion} · {algebraSourceStamp} · canonical {formalSurface.report.canonicalHash}
+              </div>
             </>
           ) : (
-            <div>Surface eligibility prerequisites are unavailable.</div>
+            <>
+              <div>Surface eligibility prerequisites are unavailable.</div>
+              {formalSurface?.diagnostics.map((diagnostic) => (
+                <div key={diagnostic.code} style={{ borderLeft: "3px solid #f59e0b", paddingLeft: 7 }}>
+                  <strong>{diagnostic.code}</strong>: {diagnostic.message}
+                  {diagnostic.sourceReferences.filter((reference) => reference.stage === "source").map((reference) => (
+                    <button key={`${diagnostic.code}-${reference.dimension}-${reference.cellId}-${reference.occurrence ?? "base"}`} type="button" onClick={() => locateAlgebraSource(reference)} style={{ marginLeft: 5, fontSize: 10 }}>
+                      Locate source {reference.dimension}-cell {reference.cellId}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </>
           )}
         </section>
       </div>

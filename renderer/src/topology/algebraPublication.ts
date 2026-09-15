@@ -1,11 +1,13 @@
 import {
   constructExactSparseBoundaryMatrices,
+  classifyCanonicalFinite2DSurface,
   createSageIntegerHomologyJobRequest,
   createSageIntegerHomologyPayload,
   normalizeSageIntegerHomologyOutput,
   publishSageIntegerHomologyResult,
   type AnalysisResultEnvelope,
   type CanonicalFinite2DResult,
+  type CanonicalSurfaceClassificationOutcome,
   type ExactSparseBoundaryMatrixOutcome,
   type LocalZ2HomologyOutcome,
   type SageIntegerHomologyOutput,
@@ -25,10 +27,12 @@ export type TopologyAlgebraAuthority = Readonly<{
   canonical: CanonicalFinite2DResult;
   boundary: Extract<ExactSparseBoundaryMatrixOutcome, { status: "exact" }>;
   localZ2: LocalZ2HomologyOutcome;
+  surfaceClassification: CanonicalSurfaceClassificationOutcome;
 }> | Readonly<{
   status: "unsupported" | "failed";
   diagnostics: readonly Readonly<{ code: string; message: string }>[];
   localZ2: LocalZ2HomologyOutcome;
+  surfaceClassification: CanonicalSurfaceClassificationOutcome | null;
 }>;
 
 export type PreparedTopologyIntegerHomologyJob = Readonly<{
@@ -73,11 +77,13 @@ export const deriveTopologyAlgebraAuthority = (document: TopologyDocument): Topo
       status: canonical.status === "unsupported" ? "unsupported" : "failed",
       diagnostics: canonical.diagnostics.map(({ code, message }) => ({ code, message })),
       localZ2,
+      surfaceClassification: null,
     };
   }
+  const surfaceClassification = classifyCanonicalFinite2DSurface(canonical, document);
   const boundary = constructExactSparseBoundaryMatrices(canonical, document);
-  if (boundary.status !== "exact") return { ...boundary, localZ2 };
-  return { status: "exact", document, canonical, boundary, localZ2 };
+  if (boundary.status !== "exact") return { ...boundary, localZ2, surfaceClassification };
+  return { status: "exact", document, canonical, boundary, localZ2, surfaceClassification };
 };
 
 export const prepareTopologyIntegerHomologyJob = (args: {
