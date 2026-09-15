@@ -1591,3 +1591,50 @@ desktop because neither Docker nor SageMath is installed; that optional backend 
 remains an environment-specific integration gate. The implementation boundary is
 documented in `docs/topology-sage-integer-homology.md`. T09 is the next sequential
 Topology feature.
+
+### T09 execution plan
+
+**Status:** complete
+
+T09 publishes the completed T03-T08 algebra pipeline in the existing Algebra View.
+It preserves Diagram, Complex, and Realization as separate views and never infers a
+formal answer from display geometry.
+
+1. Derive one Algebra authority model from the current kernel-owned document, its
+   T03 canonical complex, T06 sparse boundary artifact, and T07 local result.
+2. Display eligibility, document identity, source revision/hash/generation,
+   canonical hash, artifact identity, coefficient domain, result status, method,
+   engine version, diagnostics, and elapsed time next to the answers they qualify.
+3. Add explicit lifecycle controls for the allowlisted T08 Sage job: idle, running,
+   exact, unavailable, cancelled, timed out, stale, and failed. Reject late/stale
+   publication after source changes or cancellation.
+4. Publish exact `H0` through `H2`, free ranks, torsion invariant factors, and Smith
+   diagonals only from a verified F06 integral result over `Z`.
+5. Keep the released renderer calculation as a labeled compatibility preview and
+   retain T07 only as visibly finite-field `Z/2Z` feedback when Sage is absent or
+   times out. Never imply that the fallback computed integral torsion.
+6. Make every `d1`/`d2` coefficient selectable. Show exact values, row/column basis
+   cells, signed incidence contributions, cancellations, and direct authored-source
+   locate-back. Add source locate-back for displayed cycle representatives.
+7. Verify exact publication, torsion and Smith data, source/artifact/engine
+   provenance, stale rejection, unavailable/timeout semantics, matrix evidence,
+   authored-source navigation, TypeScript, the Topology suite, semantic-safety E2E,
+   and the renderer production build.
+
+**T09 acceptance:** every displayed formal answer identifies its source revision,
+generation, structural hash, coefficient domain, method/engine, and artifact where
+applicable; matrix coefficients and cycles locate back through canonical cells to
+editable source elements; stale or failed external work publishes no integral
+answer; and Diagram/Complex/Realization behavior remains available and semantically
+separate.
+
+**Completed verification:** the T09 publication contract covers exact matrix
+coordinate/source evidence, integral group and torsion publication, Smith data,
+engine/source/artifact provenance, stale-result rejection, and separate unavailable
+and timed-out `Z/2Z` fallback states. The Algebra UI exposes the same authority and
+locate-back chain, documented in `docs/topology-algebra-publication.md`. The combined
+T03-T09 authority suites pass (30 tests across six files), all Topology unit suites
+pass (137 tests across 24 files), and both semantic-safety E2E checks pass.
+`typecheck:noemit` and the renderer production build also succeed. Live Sage
+execution remains an optional environment-specific gate on a runner with SageMath
+installed.

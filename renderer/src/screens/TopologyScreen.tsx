@@ -1,5 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import {
+  decodeExactSparseIntegerMatrix,
+  locateExactSparseMatrixCoordinate,
+  type CanonicalFinite2DSourceReference,
+  type ExactSparseIntegerMatrix,
+  type SageIntegerHomologyOutput,
+  type ScientificJobProgress,
+  type ScientificSourceGeneration,
+} from "@math3d/core";
+import {
+  createInProcessScientificJobService,
+  type InProcessScientificJobService,
+} from "@math3d/kernel";
 import { uiStyles as styles } from "../uiStyles";
 import {
   addEdgeToDiagram,
@@ -17,7 +30,10 @@ import {
   TOPOLOGY_PRESETS,
   TopologyRealization3DView,
   TopologyDiagramCommandAdapter,
-  computeFundamentalDiagramLocalZ2Feedback,
+  createSageIntegerHomologyJobAdapter,
+  deriveTopologyAlgebraAuthority,
+  prepareTopologyIntegerHomologyJob,
+  publishTopologyIntegerHomologyOutcome,
   buildTopologyCountLayers,
   buildQuotientPipeline,
   cloneFundamentalDiagram,
@@ -54,6 +70,7 @@ import {
   type TopologyGeometryAdapterInput,
   type TopologyMeshAdapterInput,
   type TopologyRealizationKind,
+  type PublishedTopologyIntegerHomology,
   type Vec3,
   type VertexStarDisconnectionDiagnostic,
   isTopologyDocument,
@@ -66,6 +83,11 @@ type TopologyTopicTab = "euler" | "constructingPolygon" | "polyhedra" | "klein" 
 type DiagnosticsFocusKind = "edge" | "vertex" | "face";
 type CanonicalCellSelection = { dimension: 0 | 1 | 2; cellId: string };
 type CompareSourceOverride = { label: string; result: QuotientBuildResult; audit: string };
+type AlgebraMatrixSelection = { boundary: "boundary1" | "boundary2"; row: number; column: number };
+type TopologyIntegerHomologyUiState =
+  | { status: "idle" }
+  | { status: "running"; jobId: string; source: ScientificSourceGeneration; progress: ScientificJobProgress | null }
+  | PublishedTopologyIntegerHomology;
 
 export type TopologyScreenProps = {
   meshAdapterSource?: TopologyMeshAdapterInput | null;
@@ -1341,11 +1363,16 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
   } | null>(null);
   const [adapterBusy, setAdapterBusy] = useState<"Mesh" | "Geometry" | null>(null);
   const [documentAudit, setDocumentAudit] = useState("v2 · source authoritative · current recomputation");
+  const [integerHomologyState, setIntegerHomologyState] = useState<TopologyIntegerHomologyUiState>({ status: "idle" });
+  const [algebraMatrixSelection, setAlgebraMatrixSelection] = useState<AlgebraMatrixSelection | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const draggingVertexIdRef = useRef<string | null>(null);
   const draggingStartDiagramRef = useRef<FundamentalDiagram | null>(null);
   const draggingChangedRef = useRef(false);
   const topologyCommandAdapterRef = useRef<TopologyDiagramCommandAdapter | null>(null);
+  const integerHomologyServiceRef = useRef<InProcessScientificJobService | null>(null);
+  const integerHomologyActiveJobIdRef = useRef<string | null>(null);
+  const integerHomologyJobSequenceRef = useRef(0);
   if (!topologyCommandAdapterRef.current) {
     topologyCommandAdapterRef.current = new TopologyDiagramCommandAdapter(diagram);
   }
@@ -1666,6 +1693,64 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
     return nextResult;
   };
 
+  const resolveCurrentTopologySource = (): ScientificSourceGeneration | null => {
+    const authority = deriveTopologyAlgebraAuthority(topologyCommandAdapterRef.current!.document());
+    return authority.status === "exact" ? authority.canonical.source : null;
+  };
+
+  const runPublishedIntegerHomology = async () => {
+    integerHomologyJobSequenceRef.current += 1;
+    const jobId = `topology-integer-${Date.now()}-${integerHomologyJobSequenceRef.current}`;
+    let prepared: ReturnType<typeof prepareTopologyIntegerHomologyJob>;
+    try {
+      prepared = prepareTopologyIntegerHomologyJob({
+        document: topologyCommandAdapterRef.current!.document(),
+        jobId,
+        deadlineAt: Date.now() + 20_000,
+      });
+    } catch (error) {
+      setIntegerHomologyState({ status: "failed", message: error instanceof Error ? error.message : String(error) });
+      return;
+    }
+
+    const service = createInProcessScientificJobService({
+      adapters: [createSageIntegerHomologyJobAdapter()],
+      resolveSource: () => resolveCurrentTopologySource(),
+    });
+    integerHomologyServiceRef.current = service;
+    integerHomologyActiveJobIdRef.current = jobId;
+    setIntegerHomologyState({ status: "running", jobId, source: prepared.authority.canonical.source, progress: null });
+    const unsubscribe = service.subscribe((event) => {
+      if (event.jobId !== jobId || event.type !== "scientific-job.progressed" || !event.progress) return;
+      setIntegerHomologyState((previous) => previous.status === "running" && previous.jobId === jobId
+        ? { ...previous, progress: event.progress! }
+        : previous);
+    });
+    const outcome = await service.submit(prepared.request);
+    unsubscribe();
+    if (integerHomologyActiveJobIdRef.current !== jobId) return;
+    integerHomologyActiveJobIdRef.current = null;
+    integerHomologyServiceRef.current = null;
+    const currentSource = resolveCurrentTopologySource();
+    if (!currentSource) {
+      setIntegerHomologyState({ status: "stale", message: "The current topology source is unavailable for publication." });
+      return;
+    }
+    const published = publishTopologyIntegerHomologyOutcome({ prepared, outcome, currentSource });
+    setIntegerHomologyState(published);
+    setDocStatus(published.status === "exact"
+      ? `Published exact integer homology from ${published.output.engine.name} ${published.output.engine.version}.`
+      : published.status === "sage-unavailable"
+        ? "SageMath unavailable; retained the clearly labeled local Z/2Z result."
+        : `Integer homology job ${published.status}: ${published.message}`);
+  };
+
+  const cancelPublishedIntegerHomology = () => {
+    const jobId = integerHomologyActiveJobIdRef.current;
+    if (!jobId) return;
+    integerHomologyServiceRef.current?.cancel(jobId);
+  };
+
   const handleBuild = () => {
     ensureBuilt();
     setActiveView("quotient");
@@ -1876,6 +1961,22 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
     setFaceNameDraft(face.name || face.id);
     setFaceWordDraft(diagram.faceBoundaryWords[face.id] ?? "");
   }, [diagramSignature, selectedFaceId]);
+
+  useEffect(() => {
+    const activeJobId = integerHomologyActiveJobIdRef.current;
+    if (activeJobId) integerHomologyServiceRef.current?.cancel(activeJobId);
+    integerHomologyActiveJobIdRef.current = null;
+    integerHomologyServiceRef.current = null;
+    setAlgebraMatrixSelection(null);
+    setIntegerHomologyState((previous) => previous.status === "idle"
+      ? previous
+      : { status: "stale", message: "Topology source changed; the previous integer-homology publication is stale." });
+  }, [diagramSignature]);
+
+  useEffect(() => () => {
+    const activeJobId = integerHomologyActiveJobIdRef.current;
+    if (activeJobId) integerHomologyServiceRef.current?.cancel(activeJobId);
+  }, []);
 
   useEffect(() => {
     if (!timelinePlaying) return;
@@ -2768,8 +2869,14 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
 
   const renderAlgebraView = () => {
     const result = ensureBuilt();
-    const localZ2 = computeFundamentalDiagramLocalZ2Feedback(topologyCommandAdapterRef.current!.document());
-    const boundaries = result.cellularBoundaryOperators.value;
+    const algebraAuthority = deriveTopologyAlgebraAuthority(topologyCommandAdapterRef.current!.document());
+    const localZ2 = algebraAuthority.localZ2;
+    const exactBoundaries = algebraAuthority.status === "exact" ? algebraAuthority.boundary.payload : null;
+    const sourceProvenance = algebraAuthority.status === "exact" ? algebraAuthority.canonical.source : null;
+    const canonicalHash = algebraAuthority.status === "exact" ? algebraAuthority.canonical.canonicalHash : null;
+    const algebraSourceStamp = sourceProvenance
+      ? `source r${sourceProvenance.revision}/g${sourceProvenance.generation} · ${sourceProvenance.structuralHash}`
+      : "source provenance unavailable";
     const homology = result.homology.value;
     const consistency = result.algebraicConsistency;
     const fundamentalGroup = result.fundamentalGroup;
@@ -2778,46 +2885,200 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
       setActiveView("complex");
       setDocStatus(`Selected canonical ${dimension}-cell '${cellId}' from Algebra view.`);
     };
-    const renderMatrix = (label: string, symbol: string, matrix: ExactIntegerMatrix) => (
+    const locateAlgebraSource = (reference: CanonicalFinite2DSourceReference) => {
+      setSelectedCanonicalCell({ dimension: reference.dimension, cellId: reference.cellId });
+      setSelectedVertexId(reference.dimension === 0 ? reference.cellId : null);
+      setSelectedEdgeId(
+        reference.dimension === 1
+          ? reference.cellId
+          : reference.dimension === 2
+            ? diagram.faces.find((face) => face.id === reference.cellId)?.boundary[0]?.edgeId ?? null
+            : null
+      );
+      setDocStatus(`Located Algebra evidence at source ${reference.dimension}-cell '${reference.cellId}'.`);
+      setActiveView("diagram");
+    };
+    const canonicalSourceReference = (dimension: 0 | 1 | 2, cellId: string) => {
+      if (algebraAuthority.status !== "exact") return null;
+      const cells = dimension === 0
+        ? algebraAuthority.canonical.complex.vertices
+        : dimension === 1
+          ? algebraAuthority.canonical.complex.edges
+          : algebraAuthority.canonical.complex.faces;
+      return cells.find((cell) => cell.id === cellId)?.sourceRefs.find((reference) => reference.stage === "source") ?? null;
+    };
+    const selectedMatrix = exactBoundaries && algebraMatrixSelection
+      ? exactBoundaries[algebraMatrixSelection.boundary]
+      : null;
+    const selectedMatrixEvidence = selectedMatrix && algebraMatrixSelection
+      ? locateExactSparseMatrixCoordinate(selectedMatrix, algebraMatrixSelection.row, algebraMatrixSelection.column)
+      : null;
+    const selectedMatrixSourceReferences = selectedMatrixEvidence
+      ? Array.from(new Map([
+          ...selectedMatrixEvidence.rowCell.sourceReferences,
+          ...selectedMatrixEvidence.columnCell.sourceReferences,
+          ...selectedMatrixEvidence.contributions.flatMap((contribution) => contribution.sourceReferences),
+        ]
+          .filter((reference) => reference.stage === "source")
+          .map((reference) => [`${reference.dimension}:${reference.cellId}:${reference.occurrence ?? ""}`, reference])).values())
+      : [];
+    const renderMatrix = (
+      label: string,
+      symbol: string,
+      boundary: "boundary1" | "boundary2",
+      matrix: ExactSparseIntegerMatrix
+    ) => {
+      const entries = decodeExactSparseIntegerMatrix(matrix);
+      return (
       <div style={{ border: "1px solid #dbe4f0", borderRadius: 9, background: "#fff", padding: 8, minWidth: 0, overflowX: "auto" }}>
         <strong style={{ fontSize: 11 }}>{label}</strong>
         <table style={{ borderCollapse: "collapse", fontSize: 10, width: "max-content", minWidth: "100%", marginTop: 6 }}>
           <thead>
             <tr>
               <th style={{ border: "1px solid #cbd5e1", padding: "4px 6px", background: "#f8fafc" }}>{symbol}</th>
-              {matrix.columnCellIds.map((cellId) => (
-                <th key={`${symbol}-algebra-column-${cellId}`} style={{ border: "1px solid #cbd5e1", padding: "3px 5px", background: "#eff6ff" }}>
-                  <button type="button" onClick={() => inspectAlgebraCell(matrix.columnCellDimension, cellId)} style={{ fontSize: 10, fontWeight: 700 }}>{cellId}</button>
+              {matrix.columnBasis.map(({ cell }) => (
+                <th key={`${symbol}-algebra-column-${cell.cellId}`} style={{ border: "1px solid #cbd5e1", padding: "3px 5px", background: "#eff6ff" }}>
+                  <button type="button" onClick={() => inspectAlgebraCell(cell.dimension, cell.cellId)} style={{ fontSize: 10, fontWeight: 700 }}>{cell.cellId}</button>
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {matrix.rowCellIds.map((cellId, rowIndex) => (
-              <tr key={`${symbol}-algebra-row-${cellId}`}>
+            {matrix.rowBasis.map(({ cell }, rowIndex) => (
+              <tr key={`${symbol}-algebra-row-${cell.cellId}`}>
                 <th style={{ border: "1px solid #cbd5e1", padding: "3px 5px", background: "#eff6ff" }}>
-                  <button type="button" onClick={() => inspectAlgebraCell(matrix.rowCellDimension, cellId)} style={{ fontSize: 10, fontWeight: 700 }}>{cellId}</button>
+                  <button type="button" onClick={() => inspectAlgebraCell(cell.dimension, cell.cellId)} style={{ fontSize: 10, fontWeight: 700 }}>{cell.cellId}</button>
                 </th>
-                {(matrix.entries[rowIndex] ?? []).map((value, columnIndex) => (
-                  <td key={`${symbol}-algebra-${rowIndex}-${columnIndex}`} style={{ border: "1px solid #cbd5e1", padding: "4px 7px", textAlign: "center", fontFamily: "ui-monospace, monospace" }}>{value}</td>
+                {(entries[rowIndex] ?? []).map((value, columnIndex) => (
+                  <td key={`${symbol}-algebra-${rowIndex}-${columnIndex}`} style={{ border: "1px solid #cbd5e1", padding: 0, textAlign: "center", fontFamily: "ui-monospace, monospace" }}>
+                    <button
+                      type="button"
+                      data-testid={`topology-algebra-matrix-${boundary}-${rowIndex}-${columnIndex}`}
+                      onClick={() => setAlgebraMatrixSelection({ boundary, row: rowIndex, column: columnIndex })}
+                      style={{
+                        border: 0,
+                        borderRadius: 0,
+                        width: "100%",
+                        minWidth: 34,
+                        padding: "4px 7px",
+                        background: algebraMatrixSelection?.boundary === boundary && algebraMatrixSelection.row === rowIndex && algebraMatrixSelection.column === columnIndex ? "#dbeafe" : "transparent",
+                        fontFamily: "inherit",
+                        fontWeight: value === 0n ? 400 : 700,
+                      }}
+                    >
+                      {value.toString()}
+                    </button>
+                  </td>
                 ))}
               </tr>
             ))}
           </tbody>
         </table>
-        <div style={{ marginTop: 5, fontSize: 9.5, color: "#475569" }}>Select a cell header to inspect its canonical/source mapping.</div>
+        <div style={{ marginTop: 5, fontSize: 9.5, color: "#475569" }}>Select a header for its canonical cell or a coefficient for exact incidence/source evidence.</div>
+      </div>
+      );
+    };
+
+    const renderPublishedGroups = (output: SageIntegerHomologyOutput) => (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 7 }}>
+        {output.groups.map((group) => (
+          <div key={`published-z-h${group.degree}`} data-testid={`topology-published-z-h${group.degree}`} style={{ border: "1px solid #86efac", borderRadius: 8, background: "#fff", padding: "7px 8px", display: "grid", gap: 3 }}>
+            <strong>H{group.degree}(X; Z) ≅ {group.notation}</strong>
+            <span>free rank {group.freeRank}</span>
+            <span>torsion {group.torsionCoefficients.join(", ") || "none"}</span>
+          </div>
+        ))}
       </div>
     );
 
     return (
       <div data-testid="topology-algebra-view" style={{ display: "grid", gap: 10 }}>
-        <section style={{ border: "1px solid #bfdbfe", borderRadius: 10, background: "#eff6ff", padding: "9px 10px", display: "grid", gap: 5, fontSize: 11 }}>
+        <section data-testid="topology-algebra-provenance" style={{ border: "1px solid #bfdbfe", borderRadius: 10, background: "#eff6ff", padding: "9px 10px", display: "grid", gap: 5, fontSize: 11 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <strong>Exact cellular Algebra</strong>
-            <span>source revision {result.topologyObject.provenance.source.revision}</span>
+            <span style={{ fontWeight: 700, color: algebraAuthority.status === "exact" ? "#166534" : "#b91c1c" }}>
+              {algebraAuthority.status === "exact" ? "ELIGIBLE" : algebraAuthority.status.toUpperCase()}
+            </span>
           </div>
           <div>Canonical basis: {result.topologyObject.canonical.vertices.length} zero-cells · {result.topologyObject.canonical.edges.length} one-cells · {result.topologyObject.canonical.faces.length} two-cells.</div>
-          <div style={{ color: "#475569" }}>Integral arithmetic uses bigint Smith normal form. Z/2Z uses an independent exact finite-field reduction.</div>
+          {sourceProvenance ? (
+            <>
+              <div><strong>Document:</strong> {sourceProvenance.documentId}</div>
+              <div><strong>Source generation:</strong> revision {sourceProvenance.revision} · generation {sourceProvenance.generation}</div>
+              <div style={{ overflowWrap: "anywhere" }}><strong>Source structural hash:</strong> {sourceProvenance.structuralHash}</div>
+              <div style={{ overflowWrap: "anywhere" }}><strong>Canonical complex hash:</strong> {canonicalHash}</div>
+              <div style={{ overflowWrap: "anywhere" }}><strong>Matrix artifact:</strong> {algebraAuthority.status === "exact" ? algebraAuthority.boundary.handle.artifactId : "withheld"}</div>
+            </>
+          ) : (
+            <div style={{ color: "#b91c1c" }}>Canonical cellular algebra is not eligible; exact matrices and homology are withheld.</div>
+          )}
+          <div style={{ color: "#475569" }}>Results derive from the canonical finite complex and exact cell incidences, never from the displayed R³ realization.</div>
+        </section>
+
+        <section
+          data-testid="topology-integer-homology-job"
+          style={{ border: "1px solid #86efac", borderRadius: 10, background: "#f0fdf4", padding: "9px 10px", display: "grid", gap: 8, fontSize: 11 }}
+        >
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <strong>Published integer homology</strong>
+            <span data-testid="topology-integer-homology-status" style={{ fontWeight: 800 }}>
+              {integerHomologyState.status === "idle" ? "NOT RUN"
+                : integerHomologyState.status === "running" ? "RUNNING"
+                  : integerHomologyState.status === "exact" ? "EXACT · coefficients Z"
+                    : integerHomologyState.status === "sage-unavailable" ? "SAGE UNAVAILABLE · Z/2Z FALLBACK ONLY"
+                      : integerHomologyState.status.toUpperCase()}
+            </span>
+            <button
+              type="button"
+              data-testid="topology-run-integer-homology"
+              onClick={() => void runPublishedIntegerHomology()}
+              disabled={integerHomologyState.status === "running" || algebraAuthority.status !== "exact"}
+            >
+              Run exact Z homology (Sage)
+            </button>
+            {integerHomologyState.status === "running" && (
+              <button type="button" data-testid="topology-cancel-integer-homology" onClick={cancelPublishedIntegerHomology}>
+                Cancel
+              </button>
+            )}
+          </div>
+          {integerHomologyState.status === "idle" && (
+            <div>Run the constrained, allowlisted Sage job to publish an F06 integral result with engine and source provenance.</div>
+          )}
+          {integerHomologyState.status === "running" && (
+            <div data-testid="topology-integer-homology-progress">
+              {integerHomologyState.progress
+                ? `${integerHomologyState.progress.message ?? "Working"} · ${integerHomologyState.progress.completed}/${integerHomologyState.progress.total ?? "?"}`
+                : "Submitting canonical sparse boundary matrices…"}
+            </div>
+          )}
+          {integerHomologyState.status === "exact" && (
+            <>
+              {renderPublishedGroups(integerHomologyState.output)}
+              <div data-testid="topology-published-snf" style={{ fontFamily: "ui-monospace, Consolas, monospace" }}>
+                Boundary SNF: ∂₁ [{integerHomologyState.output.smithNormalForms.boundary1Diagonal.join(", ") || "empty"}] · ∂₂ [{integerHomologyState.output.smithNormalForms.boundary2Diagonal.join(", ") || "empty"}]
+              </div>
+              <div data-testid="topology-published-provenance" style={{ borderTop: "1px solid #bbf7d0", paddingTop: 6, display: "grid", gap: 3 }}>
+                <div><strong>Status:</strong> {integerHomologyState.result.status} · coefficients {integerHomologyState.output.coefficientRing}</div>
+                <div><strong>Engine:</strong> {integerHomologyState.result.provenance.engine.name} {integerHomologyState.result.provenance.engine.version} · {integerHomologyState.result.provenance.elapsedMs} ms</div>
+                <div><strong>Method:</strong> {integerHomologyState.result.provenance.operation.algorithm} · {integerHomologyState.result.provenance.operation.algorithmVersion}</div>
+                <div><strong>Source:</strong> revision {integerHomologyState.result.provenance.source.revision} · generation {integerHomologyState.result.provenance.source.generation}</div>
+                <div style={{ overflowWrap: "anywhere" }}><strong>Source hash:</strong> {integerHomologyState.result.provenance.source.structuralHash}</div>
+                <div style={{ overflowWrap: "anywhere" }}><strong>Artifact:</strong> {integerHomologyState.result.artifacts[0]?.artifactId ?? "missing"}</div>
+              </div>
+              <div data-testid="topology-published-diagnostics" style={{ display: "grid", gap: 3 }}>
+                {integerHomologyState.result.diagnostics.map((entry) => (
+                  <div key={entry.code}><strong>{entry.code}</strong> [{entry.severity}] — {entry.message}</div>
+                ))}
+              </div>
+            </>
+          )}
+          {integerHomologyState.status !== "idle" && integerHomologyState.status !== "running" && integerHomologyState.status !== "exact" && (
+            <div style={{ color: integerHomologyState.status === "sage-unavailable" ? "#92400e" : "#b91c1c" }}>
+              {integerHomologyState.message}
+              {(integerHomologyState.status === "sage-unavailable" || integerHomologyState.status === "timed-out") && " Local Z/2Z feedback remains available below and is not an integral/torsion answer."}
+            </div>
+          )}
         </section>
 
         <section
@@ -2847,8 +3108,9 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
                 {localZ2.value.groups.map((group) => `H${group.degree} ≅ ${group.notation}`).join(" · ")}
               </div>
               <div style={{ color: "#475569" }}>
-                Exact bounded local reduction · source revision {localZ2.result.provenance.source.revision} · {localZ2.result.provenance.operation.algorithmVersion}
+                Exact bounded local reduction · source revision {localZ2.result.provenance.source.revision} · generation {localZ2.result.provenance.source.generation} · {localZ2.result.provenance.operation.algorithmVersion}
               </div>
+              <div style={{ overflowWrap: "anywhere", color: "#475569" }}>Source hash: {localZ2.result.provenance.source.structuralHash} · artifact {localZ2.result.artifacts[0]?.artifactId ?? "missing"}</div>
               <div style={{ color: "#6d28d9" }}>{localZ2.value.limitation}</div>
             </>
           ) : (
@@ -2858,19 +3120,51 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
           )}
         </section>
 
-        {boundaries ? (
+        {exactBoundaries ? (
           <section data-testid="topology-algebra-matrices" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 10 }}>
-            {renderMatrix("∂₁ : C₁ → C₀ over Z", "∂₁", boundaries.boundary1)}
-            {renderMatrix("∂₂ : C₂ → C₁ over Z", "∂₂", boundaries.boundary2)}
+            {renderMatrix("∂₁ : C₁ → C₀ over Z", "∂₁", "boundary1", exactBoundaries.boundary1)}
+            {renderMatrix("∂₂ : C₂ → C₁ over Z", "∂₂", "boundary2", exactBoundaries.boundary2)}
           </section>
         ) : (
           <div style={{ color: "#b91c1c" }}>Exact boundary matrices are unavailable.</div>
         )}
 
+        <section data-testid="topology-algebra-matrix-evidence" style={{ border: "1px solid #bfdbfe", borderRadius: 9, background: "#f8fbff", padding: "8px 10px", display: "grid", gap: 6, fontSize: 11 }}>
+          <strong>Selected matrix coefficient evidence</strong>
+          {selectedMatrixEvidence && algebraMatrixSelection ? (
+            <>
+              <div style={{ fontFamily: "ui-monospace, Consolas, monospace" }}>
+                {algebraMatrixSelection.boundary === "boundary1" ? "∂₁" : "∂₂"}[{selectedMatrixEvidence.rowCell.cell.cellId}, {selectedMatrixEvidence.columnCell.cell.cellId}] = <strong>{selectedMatrixEvidence.coefficient}</strong>
+              </div>
+              <div>
+                Row basis: {selectedMatrixEvidence.rowCell.cell.dimension}-cell {selectedMatrixEvidence.rowCell.cell.cellId} · column basis: {selectedMatrixEvidence.columnCell.cell.dimension}-cell {selectedMatrixEvidence.columnCell.cell.cellId}
+              </div>
+              <div>
+                Atomic incidence contributions: {selectedMatrixEvidence.contributions.length === 0
+                  ? "none (exact zero)"
+                  : selectedMatrixEvidence.contributions.map((contribution) => contribution.value).join(" + ")}
+              </div>
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                <button type="button" onClick={() => inspectAlgebraCell(selectedMatrixEvidence.rowCell.cell.dimension, selectedMatrixEvidence.rowCell.cell.cellId)}>Inspect row cell</button>
+                <button type="button" onClick={() => inspectAlgebraCell(selectedMatrixEvidence.columnCell.cell.dimension, selectedMatrixEvidence.columnCell.cell.cellId)}>Inspect column cell</button>
+                {selectedMatrixSourceReferences.map((reference) => (
+                  <button key={`matrix-source-${reference.dimension}-${reference.cellId}-${reference.occurrence ?? "base"}`} type="button" onClick={() => locateAlgebraSource(reference)}>
+                    Locate source {reference.dimension}-cell {reference.cellId}{reference.occurrence === undefined ? "" : ` #${reference.occurrence + 1}`}
+                  </button>
+                ))}
+              </div>
+              <div style={{ color: "#475569", overflowWrap: "anywhere" }}>{algebraSourceStamp} · canonical {canonicalHash}</div>
+            </>
+          ) : (
+            <div>Select any matrix coefficient to inspect its exact value, canonical basis cells, incidence contributions, and editable source location.</div>
+          )}
+        </section>
+
         {homology ? (
           <section data-testid="topology-algebra-groups" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 10 }}>
             <div style={{ border: "1px solid #a7f3d0", borderRadius: 9, background: "#f0fdfa", padding: "9px 10px", display: "grid", gap: 7 }}>
-              <strong style={{ fontSize: 12 }}>Homology over Z</strong>
+              <strong style={{ fontSize: 12 }}>Current in-app integral preview (compatibility)</strong>
+              <div style={{ fontSize: 10, color: "#475569", overflowWrap: "anywhere" }}>{algebraSourceStamp}</div>
               {homology.integer.groups.map((group) => (
                 <div key={`algebra-z-h${group.degree}`} data-testid={`topology-algebra-z-h${group.degree}`} style={{ borderTop: "1px solid #d1fae5", paddingTop: 6, fontSize: 11 }}>
                   <div><strong>H{group.degree}(X; Z) ≅ {group.notation}</strong></div>
@@ -2883,6 +3177,14 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
                           {entry.coefficient}·{entry.cellId}
                         </button>
                       ))}
+                      {generator.representative.coefficients.map((entry) => {
+                        const sourceReference = canonicalSourceReference(group.degree, entry.cellId);
+                        return sourceReference ? (
+                          <button key={`${generator.id}-${entry.cellId}-source`} type="button" onClick={() => locateAlgebraSource(sourceReference)} style={{ fontSize: 10 }}>
+                            locate {entry.cellId} source
+                          </button>
+                        ) : null;
+                      })}
                     </div>
                   ))}
                 </div>
@@ -2893,6 +3195,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
             </div>
             <div style={{ border: "1px solid #c4b5fd", borderRadius: 9, background: "#f5f3ff", padding: "9px 10px", display: "grid", gap: 7 }}>
               <strong style={{ fontSize: 12 }}>Homology over Z/2Z</strong>
+              <div style={{ fontSize: 10, color: "#475569", overflowWrap: "anywhere" }}>{algebraSourceStamp}</div>
               {homology.mod2.groups.map((group) => (
                 <div key={`algebra-z2-h${group.degree}`} data-testid={`topology-algebra-z2-h${group.degree}`} style={{ borderTop: "1px solid #ddd6fe", paddingTop: 6, fontSize: 11 }}>
                   <div><strong>H{group.degree}(X; Z/2Z) ≅ {group.notation}</strong></div>
@@ -2903,6 +3206,14 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
                       {generator.representative.coefficients.map((entry) => (
                         <button key={`${generator.id}-${entry.cellId}`} type="button" onClick={() => inspectAlgebraCell(group.degree, entry.cellId)} style={{ fontSize: 10, fontFamily: "ui-monospace, monospace" }}>{entry.cellId}</button>
                       ))}
+                      {generator.representative.coefficients.map((entry) => {
+                        const sourceReference = canonicalSourceReference(group.degree, entry.cellId);
+                        return sourceReference ? (
+                          <button key={`${generator.id}-${entry.cellId}-source`} type="button" onClick={() => locateAlgebraSource(sourceReference)} style={{ fontSize: 10 }}>
+                            locate {entry.cellId} source
+                          </button>
+                        ) : null;
+                      })}
                     </div>
                   ))}
                 </div>
@@ -2983,6 +3294,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
               <div style={{ color: "#475569" }}>
                 {fundamentalGroup.method} · {fundamentalGroup.algorithmVersion}. This is a derived presentation, not a general group-isomorphism solver.
               </div>
+              <div style={{ color: "#475569", overflowWrap: "anywhere" }}>{algebraSourceStamp}</div>
             </>
           ) : (
             <div>A connected structurally valid canonical 2-complex is required; no general disconnected groupoid is inferred.</div>
@@ -3011,6 +3323,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
                 </div>
               ))}
               <div style={{ color: "#475569" }}>{consistency.method} · {consistency.algorithmVersion}</div>
+              <div style={{ color: "#475569", overflowWrap: "anywhere" }}>{algebraSourceStamp}</div>
             </>
           )}
         </section>
@@ -3071,6 +3384,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
                 </div>
               </details>
               <div style={{ color: "#475569" }}>{result.surfaceClassification.method} · {result.surfaceClassification.algorithmVersion}</div>
+              <div style={{ color: "#475569", overflowWrap: "anywhere" }}>{algebraSourceStamp}</div>
             </>
           ) : (
             <div>Surface eligibility prerequisites are unavailable.</div>
