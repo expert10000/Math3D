@@ -1935,3 +1935,37 @@ and the existing Complex expression, map, document, and platform suites.
 Cross-project TypeScript and the production renderer build succeed; all three C01
 Electron journeys also pass after the parser migration. The security/grammar
 boundary is documented in `docs/complex-expression-ast.md`.
+
+### C04 execution plan
+
+**Status:** complete
+
+C04 establishes one application-kernel command boundary for committed Complex
+Analysis edits while keeping typing, dragging, hover, animation, and layout local.
+
+1. Register commands for function, parameters, domain, sampling, contours/paths,
+   branch policy, covering definition, and Möbius transformation.
+2. Register source-bound intents for committed Z/W/sphere selection, analysis, and
+   preview/full 3D value-surface handoff.
+3. Project all semantic edits through `ComplexAnalysisDocument` validation and its
+   deterministic source hash.
+4. Advance revision once per changed semantic field, preserve no-op identity, mark
+   retained results unavailable, and clear source-dependent selection and requests.
+5. Provide reversible edits and kernel undo/redo with exact inverse commands.
+6. Keep expression typing in a validated preview method until an intentional
+   function commit.
+7. Bridge candidate state in Function -> Path/Residue -> Branch -> Covering ->
+   Möbius -> Riemann Sphere/selection -> 3D handoff order.
+8. Prove interactive and imported origins converge to the same canonical document
+   and document the compatibility boundary.
+
+**C04 acceptance:** all committed semantic edits pass the command registry; GUI and
+imported command origins produce identical canonical documents; every changed source
+field advances the revision/hash and stales previous results; preview-only edits do
+not mutate history; and selection/analysis/3D requests name their source generation.
+
+**Completed verification:** five adapter journeys and 42 focused tests across four
+files pass, covering transient typing, eight-family ordered migration, GUI/import
+parity, result staleness, dependent-intent clearing, source-bound selection and
+requests, revision advancement, and undo history. Cross-project TypeScript succeeds;
+the boundary is documented in `docs/complex-analysis-commands.md`.

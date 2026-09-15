@@ -5,6 +5,7 @@ export * from "./canonicalFinite2DValidation";
 export * from "./canonicalFinite2DSurfaceClassification";
 export * from "./complexAnalysisDocument";
 export * from "./complexExpressionAst";
+export * from "./complexCommands";
 export * from "./localZ2Homology";
 export * from "./sageIntegerHomology";
 export * from "./analysisResults";
