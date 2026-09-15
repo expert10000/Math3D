@@ -16376,6 +16376,33 @@ const App: React.FC = () => {
     setGeometryProfessionalExpandedGroup(null);
     setGeometryCreateActionStatus("New Geometry workspace created with one selected Box.");
   }, [suppressGeometryHistoryCapture]);
+  const handleClearGeometryWorkspace = useCallback(() => {
+    suppressGeometryHistoryCapture();
+    setGeometryObjects([]);
+    setGeometryDatasetMeshObjects([]);
+    setGeometryLockedObjectIds(new Set());
+    setGeometrySelectedObjectId(null);
+    setGeometryObjectHistoryById({});
+    setGeometrySelectedHistoryStepId(null);
+    setGeometryProceduralPick(null);
+    setGeometryProceduralHoverPick(null);
+    setGeometryMultiSelectionSet(createUnifiedSelectionSet([]));
+    setGeometryOperationInputs(GEOMETRY_OPERATION_INPUT_DEFS.map((input) => ({ ...input, value: null })));
+    setGeometryActiveOperationInputSlotId("primary-object");
+    setGeometryCompareObjectAId(null);
+    setGeometryCompareObjectBId(null);
+    setGeometryDerivedConstructions([]);
+    setGeometrySelectedDerivedConstructionId(null);
+    setGeometryConstructionHistory([]);
+    setGeometrySceneGalleryActiveId(null);
+    setGeometrySceneGalleryStatus(null);
+    setGeometryProceduralScriptText(PROCEDURAL_SCENE_SCRIPT_STARTER);
+    setGeometryProceduralScriptStatus(null);
+    setGeometryProceduralScriptError(null);
+    setGeometryMode("procedural");
+    setGeometryProceduralPanelTab("create");
+    setGeometryCreateActionStatus("New Geometry workspace created. Scene is empty.");
+  }, [suppressGeometryHistoryCapture]);
   const geometryConstructCatalogReferences = useMemo(
     () => [
       ...geometryObjects.map((object) => ({ id: object.id, label: object.name })),
@@ -74684,7 +74711,12 @@ case "mobius":
   );
   const handleGeometryProfessionalAction = useCallback(
     (actionId: GeometryProfessionalActionId, destination: GeometryProfessionalDestination) => {
-      if (actionId === "gallery" || actionId === "new") {
+      if (actionId === "new") {
+        handleClearGeometryWorkspace();
+        setGeometryProfessionalExpandedGroup("new");
+        return;
+      }
+      if (actionId === "gallery") {
         setGeometryProfessionalExpandedGroup((current) => current === actionId ? null : actionId);
       } else if (actionId === "more") {
         setGeometryProfessionalExpandedGroup((current) => current === "existing" ? null : "existing");
@@ -74693,7 +74725,7 @@ case "mobius":
       }
       openGeometryProfessionalDestination(destination);
     },
-    [openGeometryProfessionalDestination]
+    [handleClearGeometryWorkspace, openGeometryProfessionalDestination]
   );
   const geometryWorkflowActiveStepId = useMemo<GeometryWorkflowStepId>(() => {
     if (geometryMode === "workbook") return "export";
