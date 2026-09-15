@@ -358,6 +358,44 @@ export class InMemoryArtifactRegistry {
     return Object.freeze(invalidated);
   }
 
+  /**
+   * Invalidates explicit artifact handles selected by the dependency graph.
+   * F07 remains the sole owner of bytes and lifecycle metadata; callers only
+   * provide stable IDs and never receive mutable storage references.
+   */
+  invalidateArtifacts(artifactIds: readonly string[]): readonly string[] {
+    this.#assertMutationAllowed();
+    if (!Array.isArray(artifactIds)) throw new TypeError("artifactIds must be an array.");
+    const requested = [...new Set(artifactIds)];
+    for (const artifactId of requested) validateArtifactId(artifactId);
+    requested.sort((left, right) => left.localeCompare(right));
+    const invalidated: string[] = [];
+    for (const artifactId of requested) {
+      const stored = this.#artifacts.get(artifactId);
+      if (!stored) continue;
+      const alreadyInvalid =
+        stored.metadata.status === "dirty" &&
+        stored.metadata.availability === "unavailable" &&
+        stored.metadata.byteLength === null &&
+        stored.metadata.checksum === null &&
+        stored.metadata.failure === undefined &&
+        stored.bytes === null;
+      if (alreadyInvalid) continue;
+      const metadata = immutableMetadata({
+        ...withoutFailure(stored.metadata),
+        availability: "unavailable",
+        status: "dirty",
+        byteLength: null,
+        checksum: null,
+      });
+      stored.metadata = metadata;
+      stored.bytes = null;
+      invalidated.push(artifactId);
+      this.#emit("artifact.invalidated", metadata);
+    }
+    return Object.freeze(invalidated);
+  }
+
   resolve(
     handle: AnalysisArtifactHandle,
     source: ScientificSourceGeneration

@@ -2261,6 +2261,8 @@ cannot claim a current dependency when its recorded source generation is stale.
 
 **Milestone:** G01 — shared relations foundation
 
+**Status:** complete
+
 **Scope.** Extend artifact invalidation to a compact dependency graph over GK01
 relations. The first implementation is full and deterministic: a source revision
 marks dependent relations, result references, artifacts, and derived snapshots
@@ -2272,6 +2274,16 @@ invalidation before GK18.
 **Acceptance.** Editing one source invalidates exactly its dependent generations;
 unrelated documents remain current; cycles are rejected or explicitly diagnosed;
 repeated invalidation is deterministic and idempotent.
+
+**Completed verification.** GK02 consumes K46 and reuses the F07 byte-store owner.
+The kernel graph now combines live source freshness with relation state, rejects
+cycles atomically, propagates full downstream invalidation in stable topological
+order, coordinates explicit artifact invalidation without owning bytes, preserves
+promoted documents, and publishes immutable metadata-only reports/events. Focused
+tests cover exact and unrelated branches, multi-source dependencies, cycles,
+idempotence, event isolation, and F07 lifecycle behavior. The contract is documented
+in `docs/kernel-derived-dependency-invalidation.md` and gated by
+`npm run test:kernel:gk02`.
 
 ### GK03 — `test(kernel): add domain-adapter conformance harness`
 

@@ -130,6 +130,7 @@
     "test:complex:v1:unit": "npm --prefix renderer test -- src/math/complex",
     "test:complex:v1:e2e": "playwright test tests/e2e/complex-analysis-corpus.spec.ts tests/e2e/complex-preview-artifacts.spec.ts tests/e2e/complex-numerical-results.spec.ts tests/e2e/complex-exact-mvp.spec.ts tests/e2e/complex-continuation.spec.ts tests/e2e/complex-riemann-lineage.spec.ts tests/e2e/complex-v1-acceptance.spec.ts --reporter=list",
     "test:complex:v1:acceptance": "npm run test:complex:v1:unit && npm run typecheck:noemit && npm run build:renderer && npm run test:complex:v1:e2e",
+    "test:kernel:gk02": "npm --prefix renderer test -- src/kernel/dependencyGraph.test.ts src/kernel/artifactRegistry.test.ts src/core/documentRelations.test.ts && npm run typecheck:noemit && npm run build:core",
     "analyze:deps:prepare": "node -e \"const fs=require('node:fs');['analysis/dependency/arkit','analysis/dependency/dependency-cruiser'].forEach((d)=>fs.mkdirSync(d,{recursive:true}));\"",
     "analyze:deps:depcruise:err": "npm run analyze:deps:prepare && depcruise --config analysis/dependency/dependency-cruiser.cjs apps packages renderer src scripts --output-type err-long > analysis/dependency/dependency-cruiser/report.err.txt",
     "analyze:deps:depcruise:json": "npm run analyze:deps:prepare && depcruise --config analysis/dependency/dependency-cruiser.cjs apps packages renderer src scripts --output-type json > analysis/dependency/dependency-cruiser/report.json",

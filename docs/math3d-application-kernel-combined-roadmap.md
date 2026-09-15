@@ -413,6 +413,8 @@ embedded.
 
 #### GK02 — `feat(kernel): add derived-document dependency graph and invalidation`
 
+**Status:** complete
+
 **Goal.** Extend F07 correctness from artifacts of one document to the complete
 cross-document relation graph.
 
@@ -428,6 +430,13 @@ invalidate when any source changes; cycles are rejected or explicitly quarantine
 event order and reports are deterministic; F07 remains the byte-store owner; local
 invalidation is absent; no stale dependent resource can be queried or presented as
 current.
+
+**Completion evidence.** Implemented as the kernel-owned
+`InMemoryDependencyGraph`, consuming K46 and the GK01 relation contract. Full
+downstream invalidation, cycle rejection, multi-source propagation, stable reports,
+ordered completed events, promoted-snapshot preservation, and F07-owned artifact
+invalidation are gated by `npm run test:kernel:gk02`. Local invalidation remains
+deferred to GK18.
 
 #### GK03 — `test(kernel): add domain-adapter and selection conformance harness`
 
