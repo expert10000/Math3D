@@ -621,6 +621,12 @@ import {
 } from "./math/complexNumericalAnalysis";
 import { analyzeComplexExactMvp, type ComplexExactMvpAnalysis } from "./math/complexExactAnalysis";
 import { analyzeAdaptiveComplexContinuation } from "./math/complexBranchContinuation";
+import {
+  createComplexRiemannSurfaceHandoff,
+  isComplexRiemannSurfaceHandoffCurrent,
+  locateComplexRiemannSurfaceVertex,
+  type ComplexRiemannSurfaceHandoff,
+} from "./math/complexRiemannSurfaceHandoff";
 import { marchingSquares } from "./math/marchingSquares";
 import { formatRoot, inspectRationalFunction, type RationalInspection } from "./math/rationalInspector";
 import { buildVertexAdjacency } from "./math/curvatureLines";
@@ -37957,6 +37963,7 @@ const App: React.FC = () => {
   const [complexNumericalError, setComplexNumericalError] = useState<string | null>(null);
   const [complexExactResult, setComplexExactResult] = useState<ComplexExactMvpAnalysis | null>(null);
   const [complexContinuationResult, setComplexContinuationResult] = useState<AnalysisResultEnvelope | null>(null);
+  const [complexRiemannSurfaceHandoff, setComplexRiemannSurfaceHandoff] = useState<ComplexRiemannSurfaceHandoff | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -38429,7 +38436,21 @@ const App: React.FC = () => {
       source: { kind: "bakedFromParam" },
     };
 
+    const handoff = createComplexRiemannSurfaceHandoff({
+      document: complexPreviewSession.commands.document(),
+      registry: complexPreviewSession.artifacts.registry,
+      positions,
+      indices: Uint32Array.from(indices),
+      scalarField: heights,
+      quantity: otherComplexValueSurfaceQuantity,
+      columns: nu,
+      rows: nv,
+      sheetCount,
+      domain: { uMin, uMax, vMin, vMax },
+    });
+
     setMeshDataset(applySurfaceMeshOps(mesh));
+    setComplexRiemannSurfaceHandoff(handoff);
     setSurfaceMeshImportError(null);
     setComplexMapError(null);
     setDatasetKind("mesh");
@@ -38449,6 +38470,7 @@ const App: React.FC = () => {
     otherComplexBranchProfile.id,
     otherComplexValueSurfaceLogSheetCount,
     otherComplexValueSurfaceQuantity,
+    complexPreviewSession,
   ]);
   const otherComplexGrid2d = useMemo(() => {
     const reFn = otherComplexCompiled2d.reFn;
@@ -106523,6 +106545,31 @@ case "mobius":
                               Open Sheet Preview Inspector
                             </button>
                           </div>
+                          {complexRiemannSurfaceHandoff && (
+                            <div data-testid="complex-riemann-lineage" style={{ border: "1px solid #bfd7ee", borderRadius: 8, padding: 7, display: "grid", gap: 3, fontSize: 11 }}>
+                              <strong>Revisioned Riemann-surface handoff</strong>
+                              <span>
+                                source r{complexRiemannSurfaceHandoff.source.revision} · {complexRiemannSurfaceHandoff.generation.sheetCount} sheet(s) · {complexRiemannSurfaceHandoff.seams.length} seam records
+                              </span>
+                              <span>related: Surfaces + Mesh · scalar: {complexRiemannSurfaceHandoff.generation.quantity}</span>
+                              <span>
+                                {isComplexRiemannSurfaceHandoffCurrent(complexRiemannSurfaceHandoff, complexPreviewSession.commands.document())
+                                  ? "current source revision"
+                                  : "preserved stale source revision"}
+                              </span>
+                              <button
+                                data-testid="complex-riemann-locate-back"
+                                type="button"
+                                onClick={() => {
+                                  const location = locateComplexRiemannSurfaceVertex(complexRiemannSurfaceHandoff, 0);
+                                  if (!location) return;
+                                  setOtherComplexActionStatus(`Located surface vertex 0 → ${location.functionSource}, sheet ${location.sheetIndex}, z=${cToStr(location.z)}, source r${location.source.revision}, ${location.generation.columns}×${location.generation.rows}.`);
+                                }}
+                              >
+                                Locate vertex 0 in Complex source
+                              </button>
+                            </div>
+                          )}
                         </div>
                         <div style={{ fontWeight: 700, fontSize: 12 }}>Branch points</div>
                         <div style={{ display: "grid", gap: 4, fontSize: 11 }}>

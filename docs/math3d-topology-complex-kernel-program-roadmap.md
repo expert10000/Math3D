@@ -2142,3 +2142,21 @@ adaptive sampling, discriminant uncertainty, and unsupported profiles. TypeScrip
 renderer build, and the Branch Lab Electron journey are gated by
 `npm run test:complex:c10`; UI and evidence rules are documented in
 `docs/complex-adaptive-continuation.md`.
+
+### C11 execution plan
+
+**Status:** complete
+
+1. Promote every 3D Complex value surface to a revision-qualified sheet-mesh handoff.
+2. Publish mesh bytes, the selected scalar field, and seam/gluing records as F07 artifacts.
+3. Preserve function source, normalized AST, branch policy, and analysis-result references.
+4. Record domain, resolution, quantity, and sheet count as reproducible generation parameters.
+5. Create explicit derived relationships from Complex to both Surfaces and Mesh.
+6. Map selected sheet vertices back to their source parameter, sheet, function, and revision.
+7. Preserve an older handoff as stale when the authoritative Complex document advances.
+8. Retain the existing preview and gallery workflows as views over this lineage record.
+
+**C11 acceptance:** a derived sheet vertex resolves back through the Surfaces/Mesh
+relationship to its Complex function, AST, branch policy, results, source generation,
+and tessellation parameters. The handoff and UI are documented in
+`docs/complex-riemann-surface-lineage.md` and gated by `npm run test:complex:c11`.
