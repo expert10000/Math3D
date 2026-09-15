@@ -4,7 +4,8 @@ import sys
 import time
 from pathlib import Path
 
-from sage.all import GF, QQ, SR, ZZ, PolynomialRing, gcd, inverse_mod, latex, matrix, solve, var
+from sage.all import ChainComplex, GF, QQ, SR, ZZ, PolynomialRing, gcd, inverse_mod, latex, matrix, solve, var
+from sage.env import SAGE_VERSION
 
 
 ENGINE = "sagemath"
@@ -12,6 +13,9 @@ MAX_EXPR_LEN = 1200
 MAX_MATRIX_DIM = 8
 MAX_POLYS = 12
 MAX_VARIABLES = 8
+MAX_TOPOLOGY_CELLS = 4096
+MAX_TOPOLOGY_NONZEROS = 32768
+MAX_TOPOLOGY_INTEGER_DIGITS = 128
 SAFE_EXPR_RE = re.compile(r"^[A-Za-z0-9_+\-*/^().,=<>\[\]\s]+$")
 NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -206,6 +210,146 @@ def _number_theory_mod_inverse(operation, params):
     return _success(operation, {"value": str(value), "modulus": str(modulus)}, latex(value))
 
 
+def _require_exact_fields(value, fields, label):
+    if not isinstance(value, dict):
+        raise SageRequestError(f"{label} must be an object.")
+    actual = set(value.keys())
+    expected = set(fields)
+    unknown = sorted(actual - expected)
+    missing = sorted(expected - actual)
+    if unknown:
+        raise SageRequestError(f"{label} contains unknown fields: {', '.join(unknown)}.")
+    if missing:
+        raise SageRequestError(f"{label} is missing fields: {', '.join(missing)}.")
+
+
+def _topology_sparse_matrix(value, label, expected_rows, expected_columns):
+    _require_exact_fields(value, ("rows", "columns", "entries"), label)
+    rows = value["rows"]
+    columns = value["columns"]
+    if type(rows) is not int or type(columns) is not int or rows < 0 or columns < 0:
+        raise SageRequestError(f"{label} dimensions must be non-negative integers.")
+    if rows != expected_rows or columns != expected_columns:
+        raise SageRequestError(f"{label} dimensions do not match chainDimensions.")
+    entries = value["entries"]
+    if not isinstance(entries, list):
+        raise SageRequestError(f"{label}.entries must be an array.")
+    if len(entries) > MAX_TOPOLOGY_NONZEROS:
+        raise SageRequestError(f"Topology nonzero limit exceeded (max {MAX_TOPOLOGY_NONZEROS}).")
+    result = matrix(ZZ, rows, columns, sparse=True)
+    previous = None
+    for index, entry in enumerate(entries):
+        entry_label = f"{label}.entries[{index}]"
+        _require_exact_fields(entry, ("row", "column", "value"), entry_label)
+        row = entry["row"]
+        column = entry["column"]
+        raw_value = entry["value"]
+        if type(row) is not int or type(column) is not int or row < 0 or row >= rows or column < 0 or column >= columns:
+            raise SageRequestError(f"{entry_label} coordinate is out of range.")
+        coordinate = (row, column)
+        if previous is not None and coordinate <= previous:
+            raise SageRequestError(f"{label}.entries must be strictly row-major ordered.")
+        previous = coordinate
+        if not isinstance(raw_value, str) or not re.fullmatch(r"-?[1-9][0-9]*", raw_value):
+            raise SageRequestError(f"{entry_label}.value must be a non-zero canonical decimal integer string.")
+        if len(raw_value.lstrip("-")) > MAX_TOPOLOGY_INTEGER_DIGITS:
+            raise SageRequestError(f"{entry_label}.value exceeds the reviewed integer digit limit.")
+        result[row, column] = ZZ(raw_value)
+    return result
+
+
+def _smith_diagonal(mat):
+    smith = mat.smith_form(transformation=False)
+    values = []
+    for index in range(min(smith.nrows(), smith.ncols())):
+        value = abs(ZZ(smith[index, index]))
+        if value != 0:
+            values.append(str(value))
+    return values
+
+
+def _homology_group_record(degree, group):
+    orders = [abs(ZZ(order)) for order in group.gens_orders()]
+    free_rank = sum(1 for order in orders if order == 0)
+    torsion = sorted((order for order in orders if order > 1), key=lambda value: int(value))
+    pieces = []
+    if free_rank == 1:
+        pieces.append("Z")
+    elif free_rank > 1:
+        pieces.append(f"Z^{free_rank}")
+    pieces.extend(f"Z/{value}Z" for value in torsion)
+    return {
+        "degree": degree,
+        "freeRank": free_rank,
+        "torsionCoefficients": [str(value) for value in torsion],
+        "notation": " ⊕ ".join(pieces) if pieces else "0",
+    }
+
+
+def _topology_integer_homology(operation, params):
+    started = time.time()
+    _require_exact_fields(
+        params,
+        ("format", "schemaVersion", "canonicalHash", "matrixArtifactId", "chainDimensions", "boundary1", "boundary2"),
+        "params",
+    )
+    if params["format"] != "math3d.topology-integer-homology-input" or params["schemaVersion"] != 1:
+        raise SageRequestError("Unsupported topology integer-homology schema.")
+    if not isinstance(params["canonicalHash"], str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", params["canonicalHash"]):
+        raise SageRequestError("canonicalHash must be a lowercase sha256 structural hash.")
+    if not isinstance(params["matrixArtifactId"], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}", params["matrixArtifactId"]):
+        raise SageRequestError("matrixArtifactId is invalid.")
+    dimensions = params["chainDimensions"]
+    if not isinstance(dimensions, list) or len(dimensions) != 3 or any(type(value) is not int or value < 0 for value in dimensions):
+        raise SageRequestError("chainDimensions must contain exactly three non-negative integers.")
+    if sum(dimensions) > MAX_TOPOLOGY_CELLS:
+        raise SageRequestError(f"Topology cell limit exceeded (max {MAX_TOPOLOGY_CELLS}).")
+
+    d1 = _topology_sparse_matrix(params["boundary1"], "boundary1", dimensions[0], dimensions[1])
+    d2 = _topology_sparse_matrix(params["boundary2"], "boundary2", dimensions[1], dimensions[2])
+    if len(params["boundary1"]["entries"]) + len(params["boundary2"]["entries"]) > MAX_TOPOLOGY_NONZEROS:
+        raise SageRequestError(f"Topology nonzero limit exceeded (max {MAX_TOPOLOGY_NONZEROS}).")
+    if not (d1 * d2).is_zero():
+        raise SageRequestError("Exact chain condition d1*d2 = 0 failed.")
+
+    # Sage stores a differential C_n -> C_(n-1) as the matrix that left-
+    # multiplies a column vector, matching Math3D's boundary convention. Its
+    # constructor also requires explicit zero differentials at nonempty ends.
+    differentials = {}
+    if dimensions[0] > 0:
+        differentials[0] = matrix(ZZ, 0, dimensions[0], sparse=True)
+    if dimensions[1] > 0 or dimensions[0] > 0:
+        differentials[1] = d1
+    if dimensions[2] > 0 or dimensions[1] > 0:
+        differentials[2] = d2
+    if dimensions[2] > 0:
+        differentials[3] = matrix(ZZ, dimensions[2], 0, sparse=True)
+    chain = ChainComplex(differentials, base_ring=ZZ, degree=-1, check=True)
+    groups = [_homology_group_record(degree, chain.homology(degree, algorithm="auto")) for degree in range(3)]
+    elapsed_ms = round((time.time() - started) * 1000)
+    result = {
+        "format": "math3d.topology-integer-homology-result",
+        "schemaVersion": 1,
+        "coefficientRing": "Z",
+        "canonicalHash": params["canonicalHash"],
+        "matrixArtifactId": params["matrixArtifactId"],
+        "chainDimensions": dimensions,
+        "groups": groups,
+        "smithNormalForms": {
+            "boundary1Diagonal": _smith_diagonal(d1),
+            "boundary2Diagonal": _smith_diagonal(d2),
+        },
+        "engine": {"name": "SageMath", "version": str(SAGE_VERSION)},
+        "algorithm": "sage-chain-complex-smith-normal-form",
+        "elapsedMs": elapsed_ms,
+        "diagnostics": [{
+            "code": "topology/integer-homology-exact",
+            "message": "Integral homology computed from the canonical cellular boundary operators over Z.",
+        }],
+    }
+    return _success(operation, result)
+
+
 OPERATIONS = {
     "sage.symbolic.simplify": lambda op, params: _symbolic_unary(op, params, lambda expr: expr.simplify_full()),
     "sage.symbolic.factor": lambda op, params: _symbolic_unary(op, params, lambda expr: expr.factor()),
@@ -218,6 +362,7 @@ OPERATIONS = {
     "sage.groebner.compute": _groebner_compute,
     "sage.numberTheory.gcd": _number_theory_gcd,
     "sage.numberTheory.modInverse": _number_theory_mod_inverse,
+    "sage.topology.integer_homology": _topology_integer_homology,
 }
 
 

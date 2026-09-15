@@ -8,13 +8,13 @@ describe("Sage schemas", () => {
         status: "ok",
         engine: "sagemath",
         available: true,
-        operations: ["sage.symbolic.simplify", "sage.unsafe.eval"],
+        operations: ["sage.symbolic.simplify", "sage.topology.integer_homology", "sage.unsafe.eval"],
       })
     ).toEqual({
       status: "ok",
       engine: "sagemath",
       available: true,
-      operations: ["sage.symbolic.simplify"],
+      operations: ["sage.symbolic.simplify", "sage.topology.integer_homology"],
     });
   });
 

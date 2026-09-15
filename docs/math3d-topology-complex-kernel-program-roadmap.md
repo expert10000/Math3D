@@ -1540,3 +1540,54 @@ and cell/nonzero/work limits.  The implementation boundary is documented in
 files), the focused T06/T07 shared-core suites pass (12 tests across two files), both
 semantic-safety E2E checks pass, and `typecheck:noemit` plus the renderer production
 build succeed.  T08 is the next sequential Topology commit.
+
+### T08 execution plan
+
+**Status:** complete
+
+T08 adds the first exact external algebra path over the shared T03-T06 authority. It
+uses the existing F05 job lifecycle and F06 result envelope; it does not expose a
+general Sage source evaluator to Topology and does not replace T07.
+
+1. Define strict versioned shared-core input and output contracts for integral
+   homology. Input contains only the canonical hash, T06 artifact identity, chain
+   dimensions, and ordered sparse integer entries for `d1` and `d2`.
+2. Add one allowlisted `sage.topology.integer_homology` operation to the isolated
+   Sage worker. Reject unknown fields and source/script/expression data, enforce
+   reviewed cell/nonzero/coefficient limits, and independently verify `d1*d2 = 0`.
+3. Construct a Sage chain complex over `ZZ`, compute `H0` through `H2` with Sage's
+   Smith-normal-form homology implementation, and return free ranks, torsion invariant
+   factors, group notation, boundary Smith diagonals, Sage version, elapsed time, and
+   bounded diagnostics.
+4. Wrap the Sage call in an F05 adapter with source checkpoints, progress, work,
+   memory, input/output, deadline, and cancellation enforcement. Ignore late output
+   after cancellation, timeout, or source invalidation.
+5. Publish through F06 only after strict output validation and exact source/hash/
+   artifact/dimension matching. Store only compact answer metadata and retain the T06
+   sparse-matrix handle for locate-back.
+6. Keep T07 local `Z/2Z` feedback available when Sage is unavailable or times out.
+   Never relabel that fallback as an integral answer, and do not start it after an
+   explicit cancellation.
+7. Verify all eligible T01 integer groups, `Z/2Z` and `Z/3Z` torsion examples, strict
+   allowlisting, input/output limits, timeout, cancellation, engine provenance,
+   stale publication, artifact identity, and fallback coefficient labeling.
+
+**T08 acceptance:** every eligible T01 fixture can traverse the reviewed F05 adapter
+and publish an exact F06 `Z` result with SageMath version and the correct free/torsion
+decomposition; arbitrary Sage source is structurally impossible in this workflow;
+oversized, cancelled, timed-out, malformed, or stale work publishes no integral
+answer; and a missing Sage service leaves only the explicitly labeled T07 `Z/2Z`
+feedback available.
+
+**Completed verification:** the focused T08 contract suite covers every eligible T01
+entry, including projective-plane/Klein-bottle 2-torsion and Moore-space 3-torsion,
+plus strict schema allowlisting, F05 input/output limits, cancellation, timeout, F06
+engine/source/artifact provenance, stale publication, and coefficient-safe fallback.
+The shared T06/T07/T08 and Sage schema suites pass (19 tests across four files), and
+the full Topology unit suite passes (133 tests across 23 files). The Sage worker
+modules pass Python bytecode compilation, repository-wide TypeScript checking and the
+renderer production build succeed. A live Sage container was not exercised on this
+desktop because neither Docker nor SageMath is installed; that optional backend check
+remains an environment-specific integration gate. The implementation boundary is
+documented in `docs/topology-sage-integer-homology.md`. T09 is the next sequential
+Topology feature.

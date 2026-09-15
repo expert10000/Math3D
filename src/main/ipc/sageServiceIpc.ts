@@ -11,7 +11,8 @@ type SageOperation =
   | "sage.polynomial.factor"
   | "sage.groebner.compute"
   | "sage.numberTheory.gcd"
-  | "sage.numberTheory.modInverse";
+  | "sage.numberTheory.modInverse"
+  | "sage.topology.integer_homology";
 
 type SageRunRequest = {
   operation: SageOperation;

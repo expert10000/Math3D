@@ -56,3 +56,9 @@ Result shape:
 - `sage.groebner.compute`
 - `sage.numberTheory.gcd`
 - `sage.numberTheory.modInverse`
+- `sage.topology.integer_homology` (strict canonical sparse-matrix payload only)
+
+The Topology operation is intentionally not a source-code endpoint. It accepts only
+the versioned Math3D canonical boundary-matrix schema, enforces cell/nonzero/integer
+limits, verifies `d1*d2 = 0`, and returns compact integral groups, Smith diagonals,
+SageMath version, and diagnostics.

@@ -1,15 +1,15 @@
 import React, { useMemo, useState } from "react";
 import { checkSageHealth, runSageOperation } from "../../integrations/sage/sageClient";
 import {
-  SAGE_OPERATIONS,
+  SAGE_SYMBOLIC_OPERATIONS,
   type SageHealthResponse,
-  type SageOperation,
+  type SageSymbolicOperation,
   type SageRunResponse,
 } from "../../integrations/sage/sageSchemas";
 
 const DEFAULT_EXPRESSION = "sin(x)^2 + cos(x)^2";
 
-const OPERATION_LABELS: Record<SageOperation, string> = {
+const OPERATION_LABELS: Record<SageSymbolicOperation, string> = {
   "sage.symbolic.simplify": "Simplify",
   "sage.symbolic.factor": "Factor",
   "sage.symbolic.expand": "Expand",
@@ -51,7 +51,7 @@ const resultText = (response: SageRunResponse | null): string => {
 
 const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
   const [engine, setEngine] = useState<"auto" | "sagemath">("auto");
-  const [operation, setOperation] = useState<SageOperation>("sage.symbolic.simplify");
+  const [operation, setOperation] = useState<SageSymbolicOperation>("sage.symbolic.simplify");
   const [expression, setExpression] = useState(DEFAULT_EXPRESSION);
   const [variablesText, setVariablesText] = useState("x");
   const [health, setHealth] = useState<SageHealthResponse | null>(null);
@@ -120,8 +120,8 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
 
         <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontWeight: 600 }}>Operation</span>
-          <select value={operation} onChange={(event) => setOperation(event.target.value as SageOperation)} style={fieldStyle}>
-            {SAGE_OPERATIONS.map((item) => (
+          <select value={operation} onChange={(event) => setOperation(event.target.value as SageSymbolicOperation)} style={fieldStyle}>
+            {SAGE_SYMBOLIC_OPERATIONS.map((item) => (
               <option key={item} value={item}>
                 {OPERATION_LABELS[item]}
               </option>

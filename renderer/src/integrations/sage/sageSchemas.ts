@@ -9,7 +9,10 @@ export type SageOperation =
   | "sage.polynomial.factor"
   | "sage.groebner.compute"
   | "sage.numberTheory.gcd"
-  | "sage.numberTheory.modInverse";
+  | "sage.numberTheory.modInverse"
+  | "sage.topology.integer_homology";
+
+export type SageSymbolicOperation = Exclude<SageOperation, "sage.topology.integer_homology">;
 
 export type SageHealthResponse = {
   status: string;
@@ -34,7 +37,7 @@ export type SageRunResponse = {
   error?: string;
 };
 
-export const SAGE_OPERATIONS: SageOperation[] = [
+export const SAGE_SYMBOLIC_OPERATIONS: SageSymbolicOperation[] = [
   "sage.symbolic.simplify",
   "sage.symbolic.factor",
   "sage.symbolic.expand",
@@ -46,6 +49,11 @@ export const SAGE_OPERATIONS: SageOperation[] = [
   "sage.groebner.compute",
   "sage.numberTheory.gcd",
   "sage.numberTheory.modInverse",
+];
+
+export const SAGE_OPERATIONS: SageOperation[] = [
+  ...SAGE_SYMBOLIC_OPERATIONS,
+  "sage.topology.integer_homology",
 ];
 
 const SAGE_OPERATION_SET = new Set<string>(SAGE_OPERATIONS);
