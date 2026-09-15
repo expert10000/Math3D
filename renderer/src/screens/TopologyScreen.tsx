@@ -21,7 +21,7 @@ import {
   addFaceFromAttachmentWord,
   addVertexToDiagram,
   analyzeGeometryTopologySnapshot,
-  analyzeMeshTopologySnapshot,
+  analyzeRevisionedMeshTopologyHandoff,
   buildDiagramFromPolygonWord,
   buildPlannedOperations,
   buildPlannedSteps,
@@ -41,12 +41,15 @@ import {
   cloneFundamentalDiagram,
   compareTopologyBuildResults,
   createReplayableTopologyDocument,
+  createRevisionedMeshTopologyHandoff,
   computeInvalidBoundaryCycleDiagnostics,
   computeNonManifoldEdgeDiagnostics,
   computeVertexStarDisconnectionDiagnostics,
   moveOperationInPlan,
   moveVertexInDiagram,
   migrateTopologyDocument,
+  evaluateMeshTopologyHandoffFreshness,
+  locateCanonicalMeshSnapshotCell,
   normalizeTopologyRealizationKinds,
   normalizeAnimationPlan,
   regenerateBoundaryWordsInPlace,
@@ -71,6 +74,8 @@ import {
   type TopologyDocumentView,
   type TopologyGeometryAdapterInput,
   type TopologyMeshAdapterInput,
+  type TopologyMeshLocateReference,
+  type TopologyMeshSnapshotHandoff,
   type TopologyRealizationKind,
   type PublishedTopologyIntegerHomology,
   type Vec3,
@@ -93,6 +98,8 @@ type TopologyIntegerHomologyUiState =
 
 export type TopologyScreenProps = {
   meshAdapterSource?: TopologyMeshAdapterInput | null;
+  meshSnapshotHandoff?: TopologyMeshSnapshotHandoff | null;
+  onMeshSnapshotHandoffChange?: (handoff: TopologyMeshSnapshotHandoff) => void;
   geometryAdapterSource?: TopologyGeometryAdapterInput | null;
   onLocateMeshCell?: (dimension: 0 | 1 | 2, sourceCellId: string) => void;
   onLocateGeometryCell?: (dimension: 0 | 1 | 2, sourceCellId: string) => void;
@@ -1275,6 +1282,8 @@ const DunceMapReference3D: React.FC = () => {
 
 export const TopologyScreen: React.FC<TopologyScreenProps> = ({
   meshAdapterSource = null,
+  meshSnapshotHandoff = null,
+  onMeshSnapshotHandoffChange,
   geometryAdapterSource = null,
   onLocateMeshCell,
   onLocateGeometryCell,
@@ -1362,7 +1371,9 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
   const [adapterResult, setAdapterResult] = useState<{
     source: "Mesh" | "Geometry";
     result: TopologyAdapterAnalysisResult;
+    meshHandoff?: TopologyMeshSnapshotHandoff;
   } | null>(null);
+  const [adapterLocateKey, setAdapterLocateKey] = useState<string | null>(null);
   const [adapterBusy, setAdapterBusy] = useState<"Mesh" | "Geometry" | null>(null);
   const [documentAudit, setDocumentAudit] = useState("v3 ready · shared source authority · replayable save");
   const [persistedTopologySession, setPersistedTopologySession] = useState<TopologyPersistenceRecord | null>(null);
@@ -6152,10 +6163,12 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
     if (!meshAdapterSource) return;
     setAdapterBusy("Mesh");
     window.setTimeout(() => {
-      setAdapterResult({ source: "Mesh", result: analyzeMeshTopologySnapshot(meshAdapterSource) });
+      const handoff = createRevisionedMeshTopologyHandoff(meshAdapterSource);
+      setAdapterResult({ source: "Mesh", result: analyzeRevisionedMeshTopologyHandoff(handoff), meshHandoff: handoff });
+      onMeshSnapshotHandoffChange?.(handoff);
       setAdapterBusy(null);
     }, 0);
-  }, [meshAdapterSource]);
+  }, [meshAdapterSource, onMeshSnapshotHandoffChange]);
   const runGeometryAdapter = useCallback(() => {
     if (!geometryAdapterSource) return;
     setAdapterBusy("Geometry");
@@ -6173,6 +6186,37 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
   const adapterFirstFaceId = adapterResult?.result.status === "accepted"
     ? adapterResult.result.analysis?.topologyObject.canonical.faces[0]?.sourceRefs[0]?.cellId ?? null
     : null;
+  useEffect(() => {
+    if (!meshSnapshotHandoff || adapterResult) return;
+    setAdapterResult({
+      source: "Mesh",
+      result: analyzeRevisionedMeshTopologyHandoff(meshSnapshotHandoff),
+      meshHandoff: meshSnapshotHandoff,
+    });
+  }, [adapterResult, meshSnapshotHandoff]);
+  const adapterMeshFreshness = adapterResult?.source === "Mesh" && adapterResult.meshHandoff
+    ? evaluateMeshTopologyHandoffFreshness(adapterResult.meshHandoff, meshAdapterSource)
+    : null;
+  const adapterCanonicalCells = adapterResult?.result.status === "accepted"
+    ? [
+        ...adapterResult.result.topologyObject.canonical.vertices.map((cell) => ({ dimension: 0 as const, id: cell.id, label: `Vertex ${cell.id}` })),
+        ...adapterResult.result.topologyObject.canonical.edges.map((cell) => ({ dimension: 1 as const, id: cell.id, label: `Edge ${cell.id}` })),
+        ...adapterResult.result.topologyObject.canonical.faces.map((cell) => ({ dimension: 2 as const, id: cell.id, label: `Face ${cell.id}` })),
+      ]
+    : [];
+  const selectedAdapterCell = adapterCanonicalCells.find((cell) => `${cell.dimension}:${cell.id}` === adapterLocateKey)
+    ?? adapterCanonicalCells.find((cell) => cell.dimension === 2)
+    ?? adapterCanonicalCells[0]
+    ?? null;
+  const selectedMeshLocateReference: TopologyMeshLocateReference | null =
+    selectedAdapterCell && adapterResult?.source === "Mesh" && adapterResult.meshHandoff
+      ? locateCanonicalMeshSnapshotCell(
+          adapterResult.meshHandoff,
+          adapterResult.result,
+          selectedAdapterCell.dimension,
+          selectedAdapterCell.id
+        )
+      : null;
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch", gap: 10 }}>
@@ -6325,7 +6369,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
         >
           <div style={{ fontSize: 12, fontWeight: 800 }}>Mesh / Geometry interoperability</div>
           <div style={{ fontSize: 10, color: "#475569" }}>
-            Read-only oriented triangle snapshots. Topology never edits the source dataset.
+            Revisioned, read-only oriented triangle snapshots. Topology never edits or silently follows the source dataset.
           </div>
           <button type="button" data-testid="topology-analyze-current-mesh" disabled={!meshAdapterSource || adapterBusy !== null} onClick={runMeshAdapter}>
             {adapterBusy === "Mesh" ? "Analyzing Mesh…" : meshAdapterSource ? `Analyze current Mesh · ${meshAdapterSource.mesh.label} · ${Math.floor(meshAdapterSource.mesh.positions.length / 3)} V / ${Math.floor((meshAdapterSource.mesh.indices?.length ?? 0) / 3)} F` : "No indexed Mesh available"}
@@ -6345,18 +6389,56 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
               <div>Fidelity: {adapterResult.result.fidelity} · mapping {adapterResult.result.correspondence}</div>
               {adapterCounts && <div>Canonical cells: V={adapterCounts.vertices.length} · E={adapterCounts.edges.length} · F={adapterCounts.faces.length}</div>}
               {adapterHomology && <div data-testid="topology-adapter-homology">{adapterHomology}</div>}
+              {adapterResult.source === "Mesh" && adapterResult.meshHandoff && adapterMeshFreshness && (
+                <div
+                  data-testid="topology-mesh-snapshot-status"
+                  style={{ border: `1px solid ${adapterMeshFreshness.state === "current" ? "#86efac" : "#fbbf24"}`, borderRadius: 7, background: adapterMeshFreshness.state === "current" ? "#f0fdf4" : "#fffbeb", padding: 6, display: "grid", gap: 3 }}
+                >
+                  <div style={{ fontWeight: 800 }}>
+                    Snapshot {adapterMeshFreshness.state.toUpperCase()} · result {adapterMeshFreshness.resultState}
+                  </div>
+                  <div>Source: {adapterResult.meshHandoff.source.meshId} · revision {adapterResult.meshHandoff.source.meshRevision}</div>
+                  <div style={{ overflowWrap: "anywhere" }}>Snapshot hash: {adapterResult.meshHandoff.snapshotHash}</div>
+                  <div>
+                    Stable IDs: {adapterResult.meshHandoff.snapshot.vertexIds.length} vertices · {adapterResult.meshHandoff.snapshot.edges.length} edges · {adapterResult.meshHandoff.snapshot.faces.length} triangles
+                  </div>
+                  <div>{adapterMeshFreshness.reason}</div>
+                </div>
+              )}
               {adapterResult.result.diagnostics.map((entry) => (
                 <div key={`${entry.code}:${entry.cellRef?.cellId ?? "global"}`} style={{ color: "#b91c1c" }}>{entry.code}: {entry.message}</div>
               ))}
-              {adapterFirstFaceId && (
+              {adapterResult.source === "Mesh" && adapterCanonicalCells.length > 0 && (
+                <label style={{ display: "grid", gap: 3 }}>
+                  Canonical selection
+                  <select
+                    data-testid="topology-mesh-snapshot-cell"
+                    value={selectedAdapterCell ? `${selectedAdapterCell.dimension}:${selectedAdapterCell.id}` : ""}
+                    onChange={(event) => setAdapterLocateKey(event.currentTarget.value)}
+                  >
+                    {adapterCanonicalCells.map((cell) => (
+                      <option key={`${cell.dimension}:${cell.id}`} value={`${cell.dimension}:${cell.id}`}>{cell.label}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {selectedMeshLocateReference && adapterMeshFreshness?.state === "current" && (
                 <button
                   type="button"
                   data-testid="topology-locate-source-face"
-                  onClick={() => adapterResult.source === "Mesh"
-                    ? onLocateMeshCell?.(2, adapterFirstFaceId)
-                    : onLocateGeometryCell?.(2, adapterFirstFaceId)}
+                  title={selectedMeshLocateReference.qualifiedId}
+                  onClick={() => onLocateMeshCell?.(selectedMeshLocateReference.dimension, selectedMeshLocateReference.sourceElementId)}
                 >
-                  Locate first face in {adapterResult.source}
+                  Locate {selectedMeshLocateReference.kind} in originating Mesh snapshot
+                </button>
+              )}
+              {adapterResult.source === "Geometry" && adapterFirstFaceId && (
+                <button
+                  type="button"
+                  data-testid="topology-locate-source-face"
+                  onClick={() => onLocateGeometryCell?.(2, adapterFirstFaceId)}
+                >
+                  Locate first face in Geometry
                 </button>
               )}
             </div>

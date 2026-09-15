@@ -20,6 +20,7 @@ import {
   parsePolygonWord,
   type FundamentalDiagram,
   type PolygonWordEdge,
+  type TopologyMeshSnapshotHandoff,
 } from "./topology";
 
 import { PlanePlot, type PlanePlotHandle } from "./components/PlanePlot";
@@ -12416,6 +12417,7 @@ const App: React.FC = () => {
     const saved = window.localStorage.getItem(UI_WORKSPACE_MODE_KEY);
     return isAppMode(saved) ? saved : "surfaces";
   });
+  const [topologyMeshSnapshotHandoff, setTopologyMeshSnapshotHandoff] = useState<TopologyMeshSnapshotHandoff | null>(null);
   const [curvePresetCategoryFilter, setCurvePresetCategoryFilter] = useState<CurvePresetCategory | "all">("all");
   const [curvePresetId, setCurvePresetId] = useState<string>("circle2d");
   const [curveCustomXExpr, setCurveCustomXExpr] = useState("cos(t)");
@@ -89222,6 +89224,8 @@ case "mobius":
                   sourceObjectId: activeMeshAnalysisIdentity.meshId,
                   sourceObjectRevision: activeMeshAnalysisIdentity.revision,
                 } : null}
+                meshSnapshotHandoff={topologyMeshSnapshotHandoff}
+                onMeshSnapshotHandoffChange={setTopologyMeshSnapshotHandoff}
                 geometryAdapterSource={(() => {
                   if (!geometrySelectedObjectId) return null;
                   const resolved = resolveGeometrySceneMeshById(geometrySelectedObjectId);

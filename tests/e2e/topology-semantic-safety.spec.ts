@@ -16,10 +16,18 @@ test.describe("Topology semantic safety", () => {
       await panel.getByTestId("topology-analyze-current-mesh").click();
       await expect(panel.getByTestId("topology-adapter-result")).toContainText(/Mesh · (ACCEPTED|UNSUPPORTED) · read-only/);
       await expect(panel.getByTestId("topology-adapter-result")).toContainText("exact-incidence");
+      await expect(panel.getByTestId("topology-mesh-snapshot-status")).toContainText("Snapshot CURRENT · result current");
+      await expect(panel.getByTestId("topology-mesh-snapshot-status")).toContainText("Stable IDs:");
+      const cellSelector = panel.getByTestId("topology-mesh-snapshot-cell");
+      if (await cellSelector.count()) {
+        await cellSelector.selectOption({ index: 1 });
+      }
       const meshLocate = panel.getByTestId("topology-locate-source-face");
       if (await meshLocate.count()) {
         await meshLocate.click();
         await expect(ctx.page.getByTestId("workspace-nav-mesh")).toHaveAttribute("aria-pressed", "true");
+        await ctx.page.getByTestId("workspace-nav-topology").click();
+        await expect(ctx.page.getByTestId("topology-mesh-snapshot-status")).toContainText("Snapshot CURRENT");
       }
 
       await ctx.page.getByTestId("workspace-nav-geometry").click();

@@ -1734,3 +1734,44 @@ legacy-format, and command-adapter suites pass (14 tests across three files); al
 Topology unit suites pass (140 tests across 25 files), and both semantic-safety E2E
 checks pass against the rebuilt renderer. `typecheck:noemit` and the renderer
 production build also succeed.
+
+### T12 execution plan
+
+**Status:** complete
+
+T12 turns the existing read-only Mesh incidence adapter into a revision-safe module
+handoff. Mesh remains the owner of polygonal geometry; Topology captures an immutable
+finite snapshot and never follows later Mesh edits implicitly.
+
+1. Define a versioned Mesh handoff record with source Mesh ID/revision, capture time,
+   deterministic snapshot hash, and the complete oriented triangle incidence source.
+2. Generate stable snapshot IDs for every vertex, edge, and triangle and qualify each
+   locate-back reference with the source Mesh ID and revision.
+3. Analyze the captured `MeshTopologySnapshot` directly, so mutation of the original
+   position/index buffers after capture cannot alter the Topology source or result.
+4. Map canonical vertices, edges, and faces through their source references to the
+   exact originating Mesh snapshot elements.
+5. Compare the captured source identity with the current Mesh identity and expose
+   `current`, `stale`, and `source-unavailable` states. A changed revision marks the
+   dependent Topology result stale without modifying it.
+6. Retain the handoff in application workspace state across Mesh/Topology navigation;
+   require an explicit **Analyze current Mesh** action to replace it.
+7. Show source revision, snapshot hash, stable cell counts, lifecycle state, canonical
+   cell selection, and gated locate-back in the interoperability panel.
+8. Verify immutability, deterministic identity, lifecycle transitions, all-dimensional
+   locate-back, adapter compatibility, TypeScript integration, Topology regression,
+   Electron interaction, and production build.
+
+**T12 acceptance:** a Mesh analysis is tied to one immutable source ID/revision and
+canonical simplex map; editing or replacing the live Mesh leaves the captured source
+unchanged and marks its result stale; while the originating revision is current, a
+canonical vertex, edge, or face can navigate back to the corresponding Mesh element.
+
+**Completed verification:** the focused handoff and compatibility suites cover stable
+vertex/triangle IDs, qualified source references, post-capture live-buffer mutation,
+exact snapshot analysis, revision staleness, source retention, and canonical
+vertex/edge/face locate-back. The ownership and lifecycle boundary is documented in
+`docs/topology-mesh-snapshot-handoff.md`. The focused handoff/adapter suites pass
+(9 tests across two files); all Topology unit suites pass (144 tests across 26
+files), and both semantic-safety E2E checks pass against the rebuilt renderer.
+`typecheck:noemit` and the renderer production build also succeed.
