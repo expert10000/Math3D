@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createComplexAnalysisDocument, parseComplexExpressionAst } from "@math3d/core";
 import { createInMemoryArtifactRegistry } from "@math3d/kernel";
 import {
+  adaptComplexRiemannSurfaceHandoffRelations,
   createComplexRiemannSurfaceHandoff,
   isComplexRiemannSurfaceHandoffCurrent,
   locateComplexRiemannSurfaceVertex,
@@ -22,6 +23,27 @@ const makeDocument = () => {
 };
 
 describe("C11 Riemann-surface handoff", () => {
+  it("adapts both C11 targets to shared relations", () => {
+    const document = makeDocument();
+    const registry = createInMemoryArtifactRegistry({ resolveSource: () => ({ documentId: document.identity.id, revision: document.identity.revision, structuralHash: document.identity.structuralHash, generation: document.identity.revision }) });
+    const handoff = createComplexRiemannSurfaceHandoff({
+      document, registry,
+      positions: new Float32Array(24), indices: new Uint32Array(),
+      scalarField: new Float32Array(8), quantity: "arg", columns: 2, rows: 2, sheetCount: 2,
+      domain: { uMin: -2, uMax: 2, vMin: -2, vMax: 2 },
+    });
+    const relations = adaptComplexRiemannSurfaceHandoffRelations(handoff);
+
+    expect(relations).toHaveLength(2);
+    expect(new Set(relations.map((relation) => relation.relationId)).size).toBe(2);
+    expect(relations.every((relation) => relation.sources[0]?.documentId === document.identity.id)).toBe(true);
+    expect(relations.map((relation) => relation.parameters)).toEqual([
+      expect.objectContaining({ targetModule: "Surfaces", relationshipKind: "derived-sheet-surface" }),
+      expect.objectContaining({ targetModule: "Mesh", relationshipKind: "derived-analysis-mesh" }),
+    ]);
+    expect(handoff.relationships.map((relationship) => relationship.targetModule)).toEqual(["Surfaces", "Mesh"]);
+  });
+
   it("publishes sheet mesh, seam, and scalar artifacts with two downstream relations", () => {
     const document = makeDocument();
     const registry = createInMemoryArtifactRegistry({ resolveSource: () => ({ documentId: document.identity.id, revision: document.identity.revision, structuralHash: document.identity.structuralHash, generation: document.identity.revision }) });

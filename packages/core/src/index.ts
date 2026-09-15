@@ -12,6 +12,7 @@ export * from "./localZ2Homology";
 export * from "./sageIntegerHomology";
 export * from "./analysisResults";
 export * from "./documentIdentity";
+export * from "./documentRelations";
 export * from "./geometry";
 export * from "./math";
 export * from "./sceneDocument";

@@ -1,4 +1,11 @@
 import {
+  createDocumentRelation,
+  createStableDocumentId,
+  structuralHash,
+  type DocumentRelation,
+  type ScientificSourceGeneration,
+} from "@math3d/core";
+import {
   analyzeCanonicalTopologyObject,
   canonicalizeMeshTopologySnapshot,
   hashTopologyValue,
@@ -51,6 +58,43 @@ export type TopologyMeshHandoffFreshness = Readonly<{
   resultState: "current" | "stale";
   reason: string;
 }>;
+
+const relationRevision = (revision: string): number => {
+  const match = /(\d+)$/.exec(revision.trim());
+  if (!match) return 1;
+  const value = Number(match[1]);
+  return Number.isSafeInteger(value) && value > 0 ? value : 1;
+};
+
+export const adaptTopologyMeshSnapshotHandoffRelation = (
+  handoff: TopologyMeshSnapshotHandoff
+): DocumentRelation => {
+  const revision = relationRevision(handoff.source.meshRevision);
+  const source: ScientificSourceGeneration = {
+    documentId: createStableDocumentId("mesh", handoff.source.meshId),
+    revision,
+    structuralHash: structuralHash(handoff.snapshot),
+    generation: revision,
+  };
+  return createDocumentRelation({
+    kind: "snapshot-of",
+    sources: [source],
+    sourceOrder: "unordered",
+    target: {
+      type: "artifact",
+      artifactId: handoff.handoffId,
+      artifactKind: "table",
+      role: "topology/mesh-snapshot",
+    },
+    operation: "topology.mesh-snapshot",
+    parameters: {
+      sourceMeshId: handoff.source.meshId,
+      sourceMeshRevision: handoff.source.meshRevision,
+      snapshotHash: handoff.snapshotHash,
+    },
+    tool: { name: "Math3D Mesh-to-Topology adapter", version: "1" },
+  });
+};
 
 const parseIndexedId = (id: string, prefix: "v" | "f"): number | null => {
   const match = new RegExp(`^${prefix}(\\d+)$`).exec(id);

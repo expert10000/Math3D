@@ -1,9 +1,11 @@
+import { createDocumentRelation } from "@math3d/core";
 import type {
   AnalysisArtifactHandle,
   ComplexAnalysisDocument,
   ComplexBranchPolicy,
   ComplexExpressionAst,
   ComplexResultReference,
+  DocumentRelation,
   ScientificSourceGeneration,
 } from "@math3d/core";
 import type { InMemoryArtifactRegistry } from "@math3d/kernel";
@@ -173,6 +175,35 @@ export const locateComplexRiemannSurfaceVertex = (
     generation: handoff.generation,
   });
 };
+
+export const adaptComplexRiemannSurfaceHandoffRelations = (
+  handoff: ComplexRiemannSurfaceHandoff
+): readonly DocumentRelation[] => Object.freeze(handoff.relationships.map((relationship) =>
+  createDocumentRelation({
+    kind: "derived-from",
+    sources: [handoff.source],
+    sourceOrder: "unordered",
+    target: {
+      type: "artifact",
+      artifactId: handoff.artifacts.sheetMesh.artifactId,
+      artifactKind: handoff.artifacts.sheetMesh.kind,
+      role: handoff.artifacts.sheetMesh.role,
+    },
+    operation: "complex.riemann-surface",
+    parameters: {
+      targetModule: relationship.targetModule,
+      relationshipKind: relationship.kind,
+      quantity: handoff.generation.quantity,
+      columns: handoff.generation.columns,
+      rows: handoff.generation.rows,
+      sheetCount: handoff.generation.sheetCount,
+    },
+    ...(handoff.resultReferences.length
+      ? { producer: { resultIds: handoff.resultReferences.map((reference) => reference.resultId) } }
+      : {}),
+    tool: { name: "Math3D Complex Riemann-surface adapter", version: "1" },
+  })
+));
 
 export const isComplexRiemannSurfaceHandoffCurrent = (
   handoff: ComplexRiemannSurfaceHandoff,

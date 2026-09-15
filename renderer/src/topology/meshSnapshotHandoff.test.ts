@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 import {
+  adaptTopologyMeshSnapshotHandoffRelation,
   analyzeRevisionedMeshTopologyHandoff,
   createRevisionedMeshTopologyHandoff,
   evaluateMeshTopologyHandoffFreshness,
@@ -25,6 +26,25 @@ const tetrahedron = (): SurfaceMeshData => ({
 });
 
 describe("revisioned Mesh to Topology handoff", () => {
+  it("adapts the T12 handoff to a shared relation without changing its schema", () => {
+    const handoff = createRevisionedMeshTopologyHandoff({
+      mesh: tetrahedron(),
+      sourceObjectId: "mesh-relation",
+      sourceObjectRevision: "r7",
+    }, { capturedAt: 42 });
+    const relation = adaptTopologyMeshSnapshotHandoffRelation(handoff);
+
+    expect(relation.kind).toBe("snapshot-of");
+    expect(relation.sources[0]).toMatchObject({ revision: 7, generation: 7 });
+    expect(relation.target).toMatchObject({
+      type: "artifact",
+      artifactId: handoff.handoffId,
+      role: "topology/mesh-snapshot",
+    });
+    expect(relation.parameters).toMatchObject({ snapshotHash: handoff.snapshotHash });
+    expect(handoff.schemaVersion).toBe(1);
+  });
+
   it("captures a read-only snapshot with revision-qualified stable locate references", () => {
     const mesh = tetrahedron();
     const handoff = createRevisionedMeshTopologyHandoff({
