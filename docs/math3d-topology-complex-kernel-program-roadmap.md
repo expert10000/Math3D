@@ -1817,3 +1817,45 @@ semantic and visual-realization journeys; and phone portrait, phone landscape,
 tablet, and desktop responsive smoke checks. The closure, retained compatibility,
 out-of-scope work, and authoritative commands are recorded in
 `docs/topology-v1-release-gates.md`.
+
+### C01 execution plan
+
+**Status:** complete
+
+C01 freezes the existing Complex Analysis product surface with explicit scientific
+evidence before kernel extraction begins. Existing lab entry points, presets, and
+workflows remain unchanged.
+
+1. Add one versioned, machine-readable corpus spanning Function Explorer, Möbius,
+   Riemann Sphere, Residue, Branch, and Covering labs.
+2. Record numerical fixtures for `1/z`, `1/(z^2+1)`, `sin(z)/z`, `exp(z)`, `log(z)`,
+   `sqrt(z)`, `z^(1/3)`, and `sqrt(z^2-1)` against named closed-form oracles and
+   explicit tolerances.
+3. Record contour-integral fixtures for the residue theorem, paired-pole
+   cancellation, a removable singularity, and an entire function.
+4. Record exact branch monodromy, sheet permutation, fiber/deck-transformation,
+   Möbius generalized-circle, and Riemann-sphere conventions.
+5. Freeze domain coloring, grid deformation, vector/level overlays, contour bands,
+   every current path mode, branch-cut profiles, sheet/loop animation, fiber
+   inspection, and 3D value-surface controls as illustrative UI contracts.
+6. Generate representative 3D value meshes only as finite sampled preview checks;
+   do not infer analytic or topological truth from rendering.
+7. Add a focused unit, TypeScript, renderer-build, and Electron reachability gate.
+8. Document the evidence boundary so no visual snapshot alone can satisfy a
+   scientific assertion.
+
+**C01 acceptance:** every fixture names its mathematical oracle or illustrative
+contract; every numerical assertion declares a positive tolerance; all eight
+required functions and six current labs are represented; branch, covering, contour,
+overlay, path, and 3D-preview workflows remain reachable; and no pixel comparison is
+treated as proof.
+
+**Completed verification:** the versioned corpus now contains eight point-value
+fixtures, four contour-integral fixtures, four branch-continuation fixtures, two
+covering-space fixtures, Möbius and Riemann-sphere invariants, two illustrative 3D
+mesh contracts, and a complete UI workflow inventory. The focused suite passes 63
+tests across six files; cross-project TypeScript and the renderer production build
+pass; and all three Electron journeys pass across lab navigation, explorer controls,
+branch/path/3D controls, fibers, and deck transformations. The evidence levels and
+their proof boundary are documented in
+`docs/complex-analysis-scientific-fixture-corpus.md`.

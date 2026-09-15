@@ -1,0 +1,241 @@
+{
+  "format": "math3d.complex-analysis-scientific-corpus",
+  "schemaVersion": 1,
+  "functionCases": [
+    {
+      "id": "reciprocal",
+      "expression": "1/z",
+      "z": [1, 1],
+      "expected": [0.5, -0.5],
+      "status": "numerical",
+      "oracle": "closed form reciprocal (x-iy)/(x^2+y^2)",
+      "tolerance": 1e-12
+    },
+    {
+      "id": "two-simple-poles",
+      "expression": "1/(z^2+1)",
+      "z": [1, 0],
+      "expected": [0.5, 0],
+      "status": "numerical",
+      "oracle": "direct rational evaluation at z=1",
+      "tolerance": 1e-12
+    },
+    {
+      "id": "removable-sine-quotient",
+      "expression": "sin(z)/z",
+      "z": [1, 0],
+      "expected": [0.8414709848078965, 0],
+      "status": "numerical",
+      "oracle": "sin(1) with removable limit 1 at z=0",
+      "tolerance": 1e-12
+    },
+    {
+      "id": "exponential-imaginary-pi",
+      "expression": "exp(z)",
+      "z": [0, 3.141592653589793],
+      "expected": [-1, 0],
+      "status": "numerical",
+      "oracle": "Euler identity exp(i*pi)=-1",
+      "tolerance": 1e-12
+    },
+    {
+      "id": "principal-log-negative-one",
+      "expression": "log(z)",
+      "z": [-1, 0],
+      "expected": [0, 3.141592653589793],
+      "status": "numerical",
+      "oracle": "principal logarithm Log(-1)=i*pi",
+      "tolerance": 1e-12
+    },
+    {
+      "id": "principal-square-root-negative-one",
+      "expression": "sqrt(z)",
+      "z": [-1, 0],
+      "expected": [0, 1],
+      "status": "numerical",
+      "oracle": "principal square root sqrt(-1)=i",
+      "tolerance": 1e-12
+    },
+    {
+      "id": "principal-cube-root-eight",
+      "expression": "z^(1/3)",
+      "z": [8, 0],
+      "expected": [2, 0],
+      "status": "numerical",
+      "oracle": "principal real cube root of 8",
+      "tolerance": 1e-12
+    },
+    {
+      "id": "two-branch-point-principal-value",
+      "expression": "sqrt(z^2-1)",
+      "z": [2, 0],
+      "expected": [1.7320508075688772, 0],
+      "status": "numerical",
+      "oracle": "principal value sqrt(2^2-1)=sqrt(3)",
+      "tolerance": 1e-12
+    }
+  ],
+  "contourCases": [
+    {
+      "id": "reciprocal-unit-circle",
+      "expression": "1/z",
+      "center": [0, 0],
+      "radius": 1,
+      "samples": 4096,
+      "expectedIntegral": [0, 6.283185307179586],
+      "status": "numerical",
+      "oracle": "residue theorem: integral around one positive winding is 2*pi*i",
+      "tolerance": 0.00001
+    },
+    {
+      "id": "paired-poles-cancel",
+      "expression": "1/(z^2+1)",
+      "center": [0, 0],
+      "radius": 2,
+      "samples": 4096,
+      "expectedIntegral": [0, 0],
+      "status": "numerical",
+      "oracle": "residues at i and -i sum to zero",
+      "tolerance": 0.00001
+    },
+    {
+      "id": "removable-singularity-contour",
+      "expression": "sin(z)/z",
+      "center": [0, 0],
+      "radius": 0.5,
+      "samples": 4096,
+      "expectedIntegral": [0, 0],
+      "status": "numerical",
+      "oracle": "Cauchy theorem after removable extension at zero",
+      "tolerance": 0.00001
+    },
+    {
+      "id": "entire-exponential-contour",
+      "expression": "exp(z)",
+      "center": [0, 0],
+      "radius": 1,
+      "samples": 4096,
+      "expectedIntegral": [0, 0],
+      "status": "numerical",
+      "oracle": "Cauchy theorem for the entire exponential",
+      "tolerance": 0.00001
+    }
+  ],
+  "branchCases": [
+    {
+      "id": "log",
+      "expression": "log(z)",
+      "branchPoints": [[0, 0], "infinity"],
+      "loopWinding": 1,
+      "sheetCount": null,
+      "expectedIncrement": [0, 6.283185307179586],
+      "status": "exact",
+      "oracle": "analytic continuation of log around zero adds 2*pi*i"
+    },
+    {
+      "id": "sqrt",
+      "expression": "sqrt(z)",
+      "branchPoints": [[0, 0], "infinity"],
+      "loopWinding": 1,
+      "sheetCount": 2,
+      "expectedPermutation": [1, 0],
+      "status": "exact",
+      "oracle": "one loop around a square-root branch point swaps two sheets"
+    },
+    {
+      "id": "cube-root",
+      "expression": "z^(1/3)",
+      "branchPoints": [[0, 0], "infinity"],
+      "loopWinding": 1,
+      "sheetCount": 3,
+      "expectedPermutation": [1, 2, 0],
+      "status": "exact",
+      "oracle": "one loop around zero acts by the three-cycle k -> k+1 mod 3"
+    },
+    {
+      "id": "sqrt-z2-minus-one",
+      "expression": "sqrt(z^2-1)",
+      "branchPoints": [[-1, 0], [1, 0]],
+      "loopWinding": 1,
+      "sheetCount": 2,
+      "expectedPermutation": [1, 0],
+      "status": "exact",
+      "oracle": "one loop around either simple branch point swaps the two sheets"
+    }
+  ],
+  "coveringCases": [
+    {
+      "id": "exp",
+      "formula": "exp(z)",
+      "basePoint": [1, 0],
+      "fiberIndices": [-2, -1, 0, 1, 2],
+      "deckShift": 1,
+      "status": "exact",
+      "oracle": "exp(z+2*pi*i*k)=exp(z)"
+    },
+    {
+      "id": "power-three",
+      "formula": "z^3",
+      "basePoint": [1, 0],
+      "degree": 3,
+      "deckShift": 1,
+      "status": "exact",
+      "oracle": "cube-root fiber is the orbit of multiplication by exp(2*pi*i/3)"
+    }
+  ],
+  "mobiusCases": [
+    {
+      "id": "inversion-circle-through-pole",
+      "params": [[0, 0], [1, 0], [1, 0], [0, 0]],
+      "inputKind": "circle",
+      "expectedKind": "line",
+      "status": "exact",
+      "oracle": "a generalized circle through the pole maps to a generalized line"
+    }
+  ],
+  "riemannCases": [
+    {
+      "id": "stereographic-round-trip",
+      "z": [0.75, -1.2],
+      "status": "numerical",
+      "oracle": "inverse stereographic projection round trip",
+      "tolerance": 1e-12
+    },
+    {
+      "id": "infinity-north-pole",
+      "status": "exact",
+      "oracle": "the point at infinity is represented by the north pole"
+    }
+  ],
+  "valueSurfaceCases": [
+    {
+      "id": "exp-real-height",
+      "expression": "exp(z)",
+      "outputMode": "re",
+      "mapMode": "standard",
+      "sheetCount": 1,
+      "status": "illustrative",
+      "oracle": "finite sampled mesh contract only; not a proof surface"
+    },
+    {
+      "id": "square-root-two-sheets",
+      "expression": "z",
+      "outputMode": "sweep",
+      "mapMode": "riemann",
+      "sheetCount": 2,
+      "status": "illustrative",
+      "oracle": "two-sheet sampled preview contract only; topology is not inferred from rendering"
+    }
+  ],
+  "uiContract": {
+    "status": "illustrative",
+    "oracle": "interactive reachability and labeling only; no pixel snapshot is a mathematical oracle",
+    "labs": ["Function Explorer", "Möbius Lab", "Riemann Sphere", "Residue Lab", "Branch Lab", "Covering Lab"],
+    "overlays": ["Domain coloring", "Grid deformation", "Path mapping", "Contour bands", "Gradient / vector field", "u-level curves", "v-level curves", "Orthogonality markers", "Singularities", "Critical", "Zeros", "Poles", "Branch cuts", "Selected contour"],
+    "pathModes": ["Circle around selected point", "Circle around pole", "Rectangle contour", "Annulus contour", "Custom polyline", "Freehand contour", "Line segment", "Loop selected branch point", "Loop all branch points", "Figure-eight", "Branch-cut crossing path"],
+    "coveringModels": ["exp: C → C*", "z → z²", "z → zⁿ", "log inverse", "sqrt inverse"],
+    "branchCutProfiles": ["principal", "negative real axis", "positive real axis", "radial", "between branch points", "custom polyline"],
+    "valueSurfaceQuantities": ["height = Re(f)", "height = Im(f)", "height = |f|", "height = arg(f)", "height = sheet index"],
+    "interactions": ["sheet/loop animation", "fiber inspection", "deck transformation", "3D value-surface preview"]
+  }
+}
