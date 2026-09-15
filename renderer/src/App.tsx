@@ -79119,7 +79119,9 @@ case "mobius":
                             entry.id === "more"
                               ? geometryProfessionalExpandedGroup === "existing"
                               : geometryProfessionalExpandedGroup === entry.id;
-                          const active = geometryProfessionalActive.action === entry.id || expanded;
+                          const active =
+                            expanded ||
+                            (geometryProfessionalExpandedGroup == null && geometryProfessionalActive.action === entry.id);
                           return (
                             <button
                               key={`geometry-professional-action-${entry.id}`}
