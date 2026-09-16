@@ -239,6 +239,19 @@ test.describe("Curves canonical workspace", () => {
       await expect(ctx.page.getByTestId("curve-interop-exchange")).toContainText("stale");
       await ctx.page.getByTestId("curve-to-surface-request").click();
       await expect(ctx.page.getByTestId("curve-interop-status")).toContainText("Stale Curve inputs");
+      await ctx.page.getByRole("button", { name: "Open Surface", exact: true }).first().click();
+      await expect(ctx.page.getByTestId("surface-primary-viewer")).toBeVisible();
+      await expect(ctx.page.getByTestId("curve-construction-surface-lineage")).toContainText("tube-surface");
+      await ctx.page.getByTestId("curve-construction-return-source").click();
+      await expect(ctx.page.getByTestId("curve-interoperability")).toBeVisible();
+      await ctx.page.reload();
+      await ctx.page.getByRole("button", { name: "Curves", exact: true }).first().click();
+      await ctx.page.getByTestId("curve-panel-definition").click();
+      await expect(ctx.page.getByTestId("curve-construction-count")).toContainText("Saved constructions: 2");
+      await ctx.page.getByRole("button", { name: "Open Surface", exact: true }).first().click();
+      await expect(ctx.page.getByTestId("curve-construction-surface-lineage")).toContainText("tube-surface");
+      await ctx.page.getByTestId("curve-construction-open-geometry").click();
+      await expect(ctx.page.getByTestId("geometry-left-panel")).toBeVisible();
     } finally {
       await closeSurfaceApp(ctx);
     }

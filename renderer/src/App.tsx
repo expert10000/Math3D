@@ -650,6 +650,8 @@ import { CurveMeshPanel } from "./components/CurveMeshPanel";
 import { CurveBackendPanel } from "./components/CurveBackendPanel";
 import { CurveWorkerPanel } from "./components/CurveWorkerPanel";
 import { CurveDocumentAdapter, curveDocumentFromLegacyDefinition } from "./curveAnalysis/curveDocumentAdapter";
+import { CurveConstructionRealizer, locateCurveConstructionVertex, type CurveConstructionGeometry } from "./curveAnalysis/curveConstructionGeometry";
+import { curveConstructionSourceStatus, type CurveConstructionRecord } from "./curveAnalysis/curveConstructionKernel";
 import { CurveResultLifecyclePanel } from "./components/CurveResultLifecyclePanel";
 import {
   createCurveResultLifecycleState,
@@ -13027,6 +13029,8 @@ const App: React.FC = () => {
     }
   });
   const curveKernelAdaptersRef = useRef<Map<string, CurveDocumentAdapter>>(new Map());
+  const curveConstructionRealizerRef = useRef(new CurveConstructionRealizer());
+  const [openedCurveConstruction, setOpenedCurveConstruction] = useState<{ record: CurveConstructionRecord; geometry: CurveConstructionGeometry } | null>(null);
   const activeCurveKernelAdapter = useMemo(() => {
     const curveId = activeCanonicalCurveDefinition.identity.curveId;
     let adapter = curveKernelAdaptersRef.current.get(curveId);
@@ -37851,7 +37855,12 @@ const App: React.FC = () => {
     const promoted = promoteGeometryToMesh({
       mesh: meshForConversion,
       sourceGeometryId: null,
-      sourceOperationHistory: [`surface-viewer:${surfaceViewerKind}`, buildActiveMeshLabel(), ...topologyHistoryLabels],
+      sourceOperationHistory: [`surface-viewer:${surfaceViewerKind}`, buildActiveMeshLabel(),
+        ...(openedCurveConstruction && meshForConversion.source.kind === "derivedSurface" &&
+          meshForConversion.source.sourceSurfaceId === openedCurveConstruction.record.target.identity.id
+          ? [`curve-construction:${openedCurveConstruction.record.operationId}`,
+            ...openedCurveConstruction.record.sourceGenerations.map((source) => `${source.documentId}@${source.revision}:${source.structuralHash}`)]
+          : []), ...topologyHistoryLabels],
       promotionMode: geometryPromotionMode,
       labelOverride: convertedName,
     });
@@ -86023,6 +86032,26 @@ case "mobius":
                           height: largeSurfaceMeshFullPreviewJob ? undefined : "100%",
                         }}
                       >
+                        {openedCurveConstruction && surfaceMeshData?.source.kind === "derivedSurface" &&
+                          surfaceMeshData.source.sourceSurfaceId === openedCurveConstruction.record.target.identity.id && (
+                          <div data-testid="curve-construction-surface-lineage" style={{ position: "absolute", right: 10, top: 10, zIndex: 25, padding: 7, borderRadius: 7, background: "#eff6ff", border: "1px solid #93c5fd", fontSize: 11 }}>
+                            <div>{openedCurveConstruction.record.request.kind} · {openedCurveConstruction.record.sourceGenerations.length} Curve source{openedCurveConstruction.record.sourceGenerations.length === 1 ? "" : "s"}</div>
+                            <button type="button" data-testid="curve-construction-return-source" onClick={() => {
+                              const geometry = openedCurveConstruction.geometry;
+                              const vertex = inspectIdx != null && inspectIdx >= 0 && inspectIdx < geometry.sourceSlots.length ? inspectIdx : 0;
+                              const location = locateCurveConstructionVertex(openedCurveConstruction.record, geometry, vertex);
+                              const sourceDocument = openedCurveConstruction.record.sourceDocuments[geometry.sourceSlots[vertex]];
+                              const curveId = sourceDocument.metadata.legacyCurveId;
+                              if (curveId && CURVE_PRESET_BY_ID.has(curveId)) setCurvePresetId(curveId);
+                              setCurveProbeU(location.sourceParameter == null ? geometry.normalizedParameters[vertex]
+                                : (location.sourceParameter - sourceDocument.source.domain.min) / (sourceDocument.source.domain.max - sourceDocument.source.domain.min));
+                              setCurveInspectorTab("dependencies");
+                              setCurveWorkspaceTab("definition");
+                              setMode("curves");
+                            }}>Return to source Curve</button>
+                            <button type="button" data-testid="curve-construction-open-geometry" onClick={handleDatasetToGeometryScene}>Open Geometry</button>
+                          </div>
+                        )}
                         {surfacePanelsAsDrawers && !cleanScreenshotSurfaceActive && (
                           <div data-testid="surface-floating-toolbar" style={floatingToolbarStyle}>
                             <div style={floatingToolbarRowStyle}>
@@ -89093,10 +89122,28 @@ case "mobius":
                           definition={activeCanonicalCurveDefinition}
                           normalizedParameter={curveProbeU}
                           constructions={curveAnalysisWorkspaceDocument.constructions}
-                          onCommitConstruction={(record) => setCurveAnalysisWorkspaceDocument((document) => ({
-                            ...document,
-                            constructions: [...document.constructions.filter((entry) => entry.operationId !== record.operationId), record].slice(-64),
-                          }))}
+                          onCommitConstruction={(record) => {
+                            curveConstructionRealizerRef.current.realize(record);
+                            setCurveAnalysisWorkspaceDocument((document) => ({
+                              ...document,
+                              constructions: [...document.constructions.filter((entry) => entry.operationId !== record.operationId), record].slice(-64),
+                            }));
+                          }}
+                          onOpenConstruction={(record) => {
+                            const status = curveConstructionSourceStatus(record, (curveId) => curveKernelAdaptersRef.current.get(curveId)?.document()
+                              ?? curveAnalysisWorkspaceDocument.kernelDocuments.find((document) => document.metadata.legacyCurveId === curveId)
+                              ?? null);
+                            if (status === "stale") throw new TypeError("Source Curve changed. Promote this construction as a snapshot, or recreate it from the current Curve.");
+                            const realization = curveConstructionRealizerRef.current.realize(record);
+                            setOpenedCurveConstruction({ record, geometry: realization.geometry });
+                            setMeshDataset(realization.geometry.mesh, `curve-construction:${record.request.kind}`);
+                            setSurfaceViewerKind("mesh");
+                            setDatasetKind("mesh");
+                            setMode("surfaces");
+                          }}
+                          resolveCurveDocument={(curveId) => curveKernelAdaptersRef.current.get(curveId)?.document()
+                            ?? curveAnalysisWorkspaceDocument.kernelDocuments.find((document) => document.metadata.legacyCurveId === curveId)
+                            ?? null}
                           onOpenSource={() => setCurveInspectorTab("dependencies")}
                           onOpenDerivative={() => setCurveInspectorTab("result")}
                         />

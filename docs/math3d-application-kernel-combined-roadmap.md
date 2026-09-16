@@ -85,7 +85,7 @@ The target outcomes are:
 | C01-C12 | Complex Analysis MVP/v1 vertical migration and gate | Complete |
 | A1-G3 | Original architecture proposal labels | Historical traceability only |
 | G01-G08 | Cross-module milestone groups | Planned/in progress through GK commits |
-| GK01-GK20 | Executable post-C12 integration commits | GK01-GK11 complete; GK12-GK13 in progress; GK14-GK20 planned |
+| GK01-GK20 | Executable post-C12 integration commits | GK01-GK11 and GK13 complete; GK12 in progress; GK14-GK20 planned |
 
 There is one canonical sequential plan. Historical labels may explain intent, but
 they cannot reopen completed work or create duplicate infrastructure. Completion
@@ -695,16 +695,19 @@ promoted documents never update implicitly; correspondence-based locate-back rea
 source curve elements; multi-curve lofts prove normalized multi-source lineage;
 Curve save/reopen/replay preserves construction operations and provenance.
 
-**Implementation in progress (GK13).** Surface construction requests now reject
-duplicate loft/ruled inputs. Committed extrusion, revolution, sweep, tube, ruled,
-and loft specifications create constructed `SurfaceDocument` targets and ordered
-GK01 `generated-by` relations with exact Curve source generations and parameters.
-The Curve workspace saves/reopens these records, exposes locate-back and immutable
-promotion in the UI, and tests multi-source order. `npm run test:kernel:gk13` is
-the focused gate. Still open: evaluate/route these specifications into the Surface
-and Geometry workspaces, preserve full chart correspondence where available, and
-prove generated geometry plus cross-module replay end to end before marking GK13
-complete.
+**Implementation evidence (GK13).** Extrusion, revolution, sweep/tube, ruled,
+and multi-Curve loft operations capture the actual committed Curve generations,
+create constructed `SurfaceDocument` targets, and retain ordered GK01
+`generated-by` lineage. Replayed parametric, spline/NURBS, and polyline sources
+produce triangle Surface geometry with F07 artifacts, F06 numerical results,
+and artifact relations. The Surface viewer opens the generated mesh, maps a picked
+vertex back to its source Curve, and can promote it into Geometry with the exact
+construction/source identities in history. Source changes stale unpromoted
+constructions; promoted snapshots keep their original source documents. Workspace
+save/reopen regenerates the same geometry and retains Surface chart/sample
+correspondence; duplicate loft inputs are rejected. Run `npm run test:kernel:gk13`
+for unit, typecheck, build, and UI round-trip gates. GK12's remaining command/job
+migration is tracked separately and does not alter these exact GK13 snapshots.
 
 ### G06 — Volumes and extraction handoffs
 

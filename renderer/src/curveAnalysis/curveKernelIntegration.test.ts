@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { normalizeCurveDocument } from "@math3d/core";
+import { normalizeCurveDocument, replaceCurveDocumentSource } from "@math3d/core";
 import { adaptCurveDefinition } from "./infrastructure";
 import { CurveDocumentAdapter, curveDocumentFromLegacyDefinition } from "./curveDocumentAdapter";
 import { CurveAnalysisKernelBridge } from "./curveAnalysisKernelBridge";
 import { CurveWorkerCoordinator } from "./curveWorkerCoordinator";
 import {
-  createCurveConstructionRecord, locateCurveConstructionSource, parseCurveConstruction, promoteCurveConstruction,
+  createCurveConstructionRecord, curveConstructionSourceStatus, locateCurveConstructionSource, parseCurveConstruction, promoteCurveConstruction,
   serializeCurveConstruction,
 } from "./curveConstructionKernel";
-import { createCurveToSurfaceRequest, openEvaluatorCurveInCurves, polylineCurve } from "./curveInteroperability";
+import { CurveConstructionRealizer, locateCurveConstructionVertex, runtimeCurveFromDocument } from "./curveConstructionGeometry";
+import { createCurveToSurfaceRequest, openEvaluatorCurveInCurves, openSampledCurvesInCurves, polylineCurve } from "./curveInteroperability";
 import { createCurveAnalysisWorkspaceDocument, parseCurveAnalysisWorkspace, serializeCurveAnalysisWorkspace } from "./persistence";
 
 const definition = adaptCurveDefinition({
@@ -22,6 +23,10 @@ const opened = (id: string) => openEvaluatorCurveInCurves({
   source: { module: "geometry", kind: "analytic-curve", objectId: id, revision: 1, label: id },
   curve: polylineCurve({ id, name: id, points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }),
   exact: true,
+}).branches[0];
+const sampled = (id: string, offset = 0) => openSampledCurvesInCurves({
+  source: { module: "geometry", kind: "construction-path", objectId: id, revision: 1, label: id },
+  branches: [[{ x: 1 + offset, y: 0 }, { x: 1 + offset, y: 1 }]], tolerance: 0.001,
 }).branches[0];
 
 describe("GK12 Curve kernel document", () => {
@@ -100,5 +105,67 @@ describe("GK13 Curve construction lineage", () => {
     const workspace = createCurveAnalysisWorkspaceDocument({ constructions: [frozen] });
     expect(parseCurveAnalysisWorkspace(serializeCurveAnalysisWorkspace(workspace)).constructions).toEqual([frozen]);
     expect(createCurveConstructionRecord("loft", [b, a], { tolerance: 0.002 }).relation.relationId).not.toBe(record.relation.relationId);
+  });
+
+  it("uses the actual committed Curve generation rather than restarting its revision", () => {
+    const exchange = opened("committed");
+    const initial = curveDocumentFromLegacyDefinition(exchange.definition);
+    const advanced = replaceCurveDocumentSource(initial, initial.source);
+    const record = createCurveConstructionRecord("extrusion", [exchange], {}, [advanced]);
+    expect(record.sourceGenerations[0].revision).toBe(advanced.identity.revision);
+    expect(record.relation.sources[0]).toEqual(record.sourceGenerations[0]);
+    expect(() => createCurveConstructionRecord("extrusion", [opened("other")], {}, [advanced])).toThrow(/no longer matches/);
+    expect(curveConstructionSourceStatus(record, () => advanced)).toBe("current");
+    const changed = replaceCurveDocumentSource(advanced, { ...advanced.source, definition: { ...advanced.source.definition, familyId: "changed" } });
+    expect(curveConstructionSourceStatus(record, () => changed)).toBe("stale");
+    expect(curveConstructionSourceStatus(promoteCurveConstruction(record), () => changed)).toBe("snapshot");
+  });
+
+  it("replays constructed Surface tessellation and artifact lineage from saved sources", () => {
+    const source = sampled("profile");
+    for (const kind of ["extrusion", "revolution", "sweep", "tube-surface"] as const) {
+      const record = createCurveConstructionRecord(kind, [source], { uSegments: 12, vSegments: 8, radius: 0.2 });
+      const realizer = new CurveConstructionRealizer();
+      const realized = realizer.realize(record);
+      expect(realized.geometry.mesh.indices!.length).toBeGreaterThan(0);
+      expect(Array.from(realized.geometry.mesh.positions).every(Number.isFinite)).toBe(true);
+      expect(realized.result.artifacts).toHaveLength(1);
+      expect(realized.artifactRelation.sources).toEqual(record.sourceGenerations);
+      expect(realizer.artifacts().resolve(realized.result.artifacts[0], realized.result.provenance.source).ok).toBe(true);
+      expect(locateCurveConstructionVertex(record, realized.geometry, 0).source).toEqual(record.sourceGenerations[0]);
+      const reopened = parseCurveConstruction(serializeCurveConstruction(record));
+      expect(new CurveConstructionRealizer().realize(reopened).geometry.mesh.positions).toEqual(realized.geometry.mesh.positions);
+    }
+  });
+
+  it("tessellates ruled and multi-source lofts in committed source order", () => {
+    const a = sampled("a", 0), b = sampled("b", 1), c = sampled("c", 2);
+    for (const kind of ["ruled-surface", "loft"] as const) {
+      const sources = kind === "loft" ? [a, b, c] : [a, b];
+      const record = createCurveConstructionRecord(kind, sources, { uSegments: 8, vSegments: 8 });
+      const realized = new CurveConstructionRealizer().realize(record);
+      const vertices = realized.geometry.mesh.positions;
+      const rowSize = 9 * 3;
+      expect(vertices[0]).toBeCloseTo(1);
+      expect(vertices[vertices.length - rowSize]).toBeCloseTo(sources.length);
+      expect(locateCurveConstructionVertex(record, realized.geometry, realized.geometry.sourceSlots.length - 1).source).toEqual(record.sourceGenerations[sources.length - 1]);
+    }
+  });
+
+  it("retains Surface chart correspondence through construction save and reopen", () => {
+    const exchange = openSampledCurvesInCurves({
+      source: { module: "surfaces", kind: "geodesic", objectId: "surface-path", revision: 3, label: "path" },
+      branches: [[{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }]],
+      parameterBranches: [[[0, 0], [0.5, 0.25], [1, 0.5]]], tolerance: 0.001,
+    }).branches[0];
+    const record = parseCurveConstruction(serializeCurveConstruction(createCurveConstructionRecord("extrusion", [exchange])));
+    expect(locateCurveConstructionSource(record, 0, 0.5)).toMatchObject({ state: "mapped", sourceEntityId: "surface-path", sampleIndex: 1, chart: [0.5, 0.25] });
+  });
+
+  it("reconstructs a NURBS evaluator from its committed controls, knots and weights", () => {
+    const document = curveDocumentFromLegacyDefinition(definition);
+    const runtime = runtimeCurveFromDocument(document);
+    expect(runtime.eval(0).x).toBeCloseTo(0);
+    expect(runtime.eval(1).x).toBeCloseTo(2);
   });
 });

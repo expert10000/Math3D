@@ -101,9 +101,9 @@ const exchange = (args: {
   warnings: [...args.definition.warnings],
 });
 
-export const openEvaluatorCurveInCurves = (args: { source: CurveInteroperabilitySource; curve: AnyCurve; exact?: boolean; formulas?: { x: string; y: string; z?: string }; correspondence?: CurveSelectionCorrespondence }): CurveExchangeCollection => {
+export const openEvaluatorCurveInCurves = (args: { source: CurveInteroperabilitySource; curve: AnyCurve; exact?: boolean; formulas?: { x: string; y: string; z?: string }; canonicalDefinition?: CanonicalCurveDefinition; correspondence?: CurveSelectionCorrespondence }): CurveExchangeCollection => {
   const dependency: CurveDependency = { module: args.source.module, objectId: args.source.objectId, revision: String(args.source.revision), relation: args.source.kind, correspondence: args.correspondence?.explanation };
-  const definition = adaptCoreCurveDefinition(args.curve, { revision: args.source.revision, sourceModule: args.source.module, formulas: args.formulas, dependencies: [dependency], units: args.source.units });
+  const definition = args.canonicalDefinition ?? adaptCoreCurveDefinition(args.curve, { revision: args.source.revision, sourceModule: args.source.module, formulas: args.formulas, dependencies: [dependency], units: args.source.units });
   const correspondence = args.correspondence ?? { kind: "exact-parameter", sourceEntityIds: [args.source.objectId], explanation: "The curve parameter maps directly to its source analytic entity." };
   return { collectionId: `${args.source.module}:${args.source.objectId}@${args.source.revision}`, source: args.source, branches: [exchange({ source: args.source, curve: args.curve, definition, fidelity: args.exact ? "exact" : "parametric", correspondence, branch: 0 })], warnings: [] };
 };

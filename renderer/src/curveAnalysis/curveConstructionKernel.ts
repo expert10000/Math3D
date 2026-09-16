@@ -6,7 +6,7 @@ import {
 } from "@math3d/core";
 import type { CanonicalCurveExchange, CurveToSurfaceRequest, SurfaceConstructionKind } from "./curveInteroperability";
 import { createCurveToSurfaceRequest } from "./curveInteroperability";
-import { curveDocumentFromLegacyDefinition } from "./curveDocumentAdapter";
+import { curveDocumentFromLegacyDefinition, curveSourceFromLegacyDefinition } from "./curveDocumentAdapter";
 
 export type CurveConstructionRecord = Readonly<{
   version: 1;
@@ -14,7 +14,7 @@ export type CurveConstructionRecord = Readonly<{
   request: CurveToSurfaceRequest;
   sourceGenerations: readonly ScientificSourceGeneration[];
   sourceDocuments: readonly CurveDocument[];
-  correspondence: readonly Readonly<{ kind: "exact-parameter" | "surface-chart" | "sample-index" | "unavailable"; sourceEntityIds: readonly string[]; sequentialSamples: boolean; explanation: string }> [];
+  correspondence: readonly Readonly<{ kind: "exact-parameter" | "surface-chart" | "sample-index" | "unavailable"; sourceEntityIds: readonly string[]; sequentialSamples: boolean; explanation: string; sampleIndices?: readonly number[]; sampleParameters?: readonly number[]; chartCoordinates?: readonly number[] }> [];
   target: SurfaceDocument;
   relation: DocumentRelation;
   promoted: boolean;
@@ -32,9 +32,18 @@ export const createCurveConstructionRecord = (
   kind: SurfaceConstructionKind,
   exchanges: readonly CanonicalCurveExchange[],
   parameters: Record<string, CanonicalJsonValue> = {},
+  committedSources: readonly (CurveDocument | null)[] = [],
 ): CurveConstructionRecord => {
   const request = createCurveToSurfaceRequest(kind, exchanges, parameters);
-  const sourceDocuments = exchanges.map((entry) => curveDocumentFromLegacyDefinition(entry.definition));
+  const sourceDocuments = exchanges.map((entry, index) => {
+    const committed = committedSources[index];
+    if (!committed) return curveDocumentFromLegacyDefinition(entry.definition);
+    if (committed.metadata.legacyCurveId !== entry.definition.identity.curveId ||
+        canonicalJsonStringify(committed.source) !== canonicalJsonStringify(curveSourceFromLegacyDefinition(entry.definition))) {
+      throw new TypeError("The committed Curve generation no longer matches the opened exchange; reopen it before construction.");
+    }
+    return committed;
+  });
   const sourceGenerations = sourceDocuments.map(sourceGeneration);
   if (new Set(sourceGenerations.map((source) => source.documentId)).size !== sourceGenerations.length) throw new TypeError("Curve construction sources must be distinct documents.");
   const correspondence = exchanges.map((entry) => ({
@@ -42,6 +51,9 @@ export const createCurveConstructionRecord = (
     sourceEntityIds: [...entry.correspondence.sourceEntityIds],
     sequentialSamples: !!entry.correspondence.sampleIndices && Array.from(entry.correspondence.sampleIndices).every((index, position) => index === position),
     explanation: entry.correspondence.explanation,
+    ...(entry.correspondence.sampleIndices ? { sampleIndices: Array.from(entry.correspondence.sampleIndices) } : {}),
+    ...(entry.correspondence.parameters ? { sampleParameters: Array.from(entry.correspondence.parameters) } : {}),
+    ...(entry.correspondence.chartCoordinates ? { chartCoordinates: Array.from(entry.correspondence.chartCoordinates) } : {}),
   }));
   const operationId = `curve-construction:${structuralHash({ kind, sourceGenerations, parameters }).slice(7, 47)}`;
   const target = createSurfaceDocument({
@@ -78,12 +90,19 @@ export const locateCurveConstructionSource = (record: CurveConstructionRecord, i
   const u = Math.min(1, Math.max(0, normalizedParameter));
   const domain = source.source.domain;
   const sampleCount = source.source.definition.points?.length ?? source.source.definition.pointCount ?? 0;
+  const correspondenceIndex = correspondence.sampleIndices?.length ? Math.round(u * (correspondence.sampleIndices.length - 1)) : -1;
+  const sampleIndex = correspondenceIndex >= 0 ? correspondence.sampleIndices![correspondenceIndex]
+    : correspondence.sequentialSamples && sampleCount > 0 ? Math.round(u * (sampleCount - 1)) : null;
+  const chart = correspondenceIndex >= 0 && correspondence.chartCoordinates?.length === correspondence.sampleIndices!.length * 2
+    ? [correspondence.chartCoordinates[correspondenceIndex * 2], correspondence.chartCoordinates[correspondenceIndex * 2 + 1]] as const : null;
   return {
     source: record.sourceGenerations[inputIndex],
-    state: correspondence.kind === "exact-parameter" ? "mapped" as const : correspondence.sequentialSamples && sampleCount > 0 ? "mapped" as const : "partial" as const,
+    state: correspondence.kind === "exact-parameter" || sampleIndex != null ? "mapped" as const : "partial" as const,
     sourceEntityId: correspondence.sourceEntityIds[0] ?? null,
-    sourceParameter: correspondence.kind === "exact-parameter" ? domain.min + u * (domain.max - domain.min) : null,
-    sampleIndex: correspondence.sequentialSamples && sampleCount > 0 ? Math.round(u * (sampleCount - 1)) : null,
+    sourceParameter: correspondence.kind === "exact-parameter" ? domain.min + u * (domain.max - domain.min) :
+      correspondenceIndex >= 0 ? correspondence.sampleParameters?.[correspondenceIndex] ?? null : null,
+    sampleIndex,
+    chart,
     explanation: correspondence.explanation,
   };
 };
@@ -91,6 +110,23 @@ export const locateCurveConstructionSource = (record: CurveConstructionRecord, i
 /** Promotion freezes the target specification; later source edits cannot mutate it. */
 export const promoteCurveConstruction = (record: CurveConstructionRecord): CurveConstructionRecord =>
   ({ ...record, promoted: true });
+
+export const curveConstructionSourceStatus = (
+  record: CurveConstructionRecord,
+  resolveCurrent: (legacyCurveId: string) => CurveDocument | null,
+): "current" | "stale" | "snapshot" => {
+  if (record.promoted) return "snapshot";
+  for (const [index, document] of record.sourceDocuments.entries()) {
+    if (record.request.inputs[index].fidelity === "polyline-approximation") continue;
+    const legacyId = document.metadata.legacyCurveId;
+    if (!legacyId) continue;
+    const current = resolveCurrent(legacyId);
+    if (current && (current.identity.id !== document.identity.id ||
+        current.identity.revision !== document.identity.revision ||
+        current.identity.structuralHash !== document.identity.structuralHash)) return "stale";
+  }
+  return "current";
+};
 
 export const serializeCurveConstruction = (record: CurveConstructionRecord): string => canonicalJsonStringify(record);
 export const parseCurveConstruction = (serialized: string): CurveConstructionRecord => {
@@ -103,16 +139,24 @@ export const parseCurveConstruction = (serialized: string): CurveConstructionRec
   if (value.sourceDocuments.some((document) => !normalizeCurveDocument(document).ok)) throw new TypeError("Invalid Curve construction source document.");
   if (value.correspondence.some((entry) => !entry || !["exact-parameter", "surface-chart", "sample-index", "unavailable"].includes(entry.kind) ||
       !Array.isArray(entry.sourceEntityIds) || entry.sourceEntityIds.some((id: unknown) => typeof id !== "string") ||
-      typeof entry.sequentialSamples !== "boolean" || typeof entry.explanation !== "string")) throw new TypeError("Invalid Curve construction correspondence.");
+      typeof entry.sequentialSamples !== "boolean" || typeof entry.explanation !== "string" ||
+      (entry.sampleIndices !== undefined && (!Array.isArray(entry.sampleIndices) || entry.sampleIndices.some((index: unknown) => !Number.isSafeInteger(index) || Number(index) < 0))) ||
+      (entry.sampleParameters !== undefined && (!Array.isArray(entry.sampleParameters) || entry.sampleParameters.some((parameter: unknown) => !Number.isFinite(parameter)))) ||
+      (entry.chartCoordinates !== undefined && (!Array.isArray(entry.chartCoordinates) || entry.chartCoordinates.some((coordinate: unknown) => !Number.isFinite(coordinate)))))) throw new TypeError("Invalid Curve construction correspondence.");
   const target = normalizeSurfaceDocument(value.target);
   const relation = normalizeDocumentRelation(value.relation);
   if (!target.ok || !relation.ok) throw new TypeError("Invalid Curve construction target or lineage.");
   const sources = value.sourceDocuments.map(sourceGeneration);
+  const expectedOperationId = `curve-construction:${structuralHash({ kind: value.request.kind, sourceGenerations: sources, parameters: value.request.parameters }).slice(7, 47)}`;
   if (canonicalJsonStringify(sources) !== canonicalJsonStringify(value.sourceGenerations) ||
       canonicalJsonStringify(sources) !== canonicalJsonStringify(relation.value.sources) ||
       relation.value.target.type !== "document" || relation.value.target.generation.documentId !== target.value.identity.id ||
       relation.value.target.generation.structuralHash !== target.value.identity.structuralHash ||
       relation.value.operation !== `curve.construct.${value.request.kind}` ||
+      value.operationId !== expectedOperationId ||
+      target.value.source.definition.familyId !== value.request.kind ||
+      canonicalJsonStringify(target.value.source.definition.sourceIds) !== canonicalJsonStringify(sources.map((source) => source.documentId)) ||
+      canonicalJsonStringify(target.value.source.parameters.sourceGenerations) !== canonicalJsonStringify(sources) ||
       value.request.inputs.some((input, index) => input.curveId !== value.sourceDocuments[index].metadata.legacyCurveId) ||
       relation.value.producer?.commandId !== value.operationId) throw new TypeError("Curve construction provenance does not match its documents.");
   return value;

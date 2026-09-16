@@ -2505,10 +2505,11 @@ and artifact/document references.
 promoted documents never update implicitly; locate-back reaches source curve
 elements where correspondence exists.
 
-**Status:** in progress. Typed Surface construction specifications, exact ordered
-multi-Curve GK01 lineage, save/reopen, locate-back, and UI promotion exist. Actual
-Surface/Geometry evaluation and cross-module replay remain the completion gate;
-see the combined roadmap. Run `npm run test:kernel:gk13`.
+**Status:** complete. Typed Surface constructions now evaluate to revision-bound
+triangle geometry and artifact/result relations. Surface and Geometry UI routes,
+multi-Curve loft lineage, vertex/chart locate-back, source-stale checks, immutable
+promotion, and save/reopen regeneration are covered by the combined gate. See the
+combined roadmap for evidence. Run `npm run test:kernel:gk13`.
 
 ### GK14 — `feat(volumes): introduce kernel-owned VolumeDocument adapter`
 
