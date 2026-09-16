@@ -117,9 +117,12 @@ test("Geometry UI preserves a complete Script -> Scene -> Script round trip atom
 
     await page.getByTestId("geometry-scene-to-script").click();
     expect(await editor.inputValue()).toBe(canonicalScript);
+    const renderedViewport = page.getByTestId("surface-viewer-canvas-host");
+    await expect(renderedViewport).toHaveAttribute("data-rendered-mesh-count", /^[1-9]\d*$/);
 
     await page.getByTestId("geometry-professional-action-new").click();
     await expect.poll(() => readStats(page)).toEqual({ objects: 0, visible: 0 });
+    await expect(renderedViewport).toHaveAttribute("data-rendered-mesh-count", "0");
     await expect(page.getByTestId("geometry-empty-scene")).toContainText("Empty Geometry scene");
     await expect(page.getByTestId("geometry-professional-expanded-group")).toContainText("New workspace");
     await expect(page.getByTestId("geometry-professional-action-new")).toHaveAttribute("aria-pressed", "true");
@@ -134,6 +137,7 @@ test("Geometry UI preserves a complete Script -> Scene -> Script round trip atom
     await expect(page.getByTestId("geometry-professional-expanded-group")).toContainText("New workspace");
     await page.getByTestId("geometry-professional-expanded-new-object").click();
     await expect.poll(() => readStats(page)).toEqual({ objects: 1, visible: 1 });
+    await expect(renderedViewport).toHaveAttribute("data-rendered-mesh-count", "1");
     await expect(page.getByTestId("geometry-empty-scene")).toHaveCount(0);
     await expect(page.getByTestId("geometry-create-selected-card")).toContainText("Gallery selection: Box");
     await expect(page.getByTestId("geometry-create-object-preset-shortcuts")).toContainText(

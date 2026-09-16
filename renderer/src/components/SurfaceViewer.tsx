@@ -6623,7 +6623,22 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       !!surfaceMeshOverrides?.some((override) => (override.positions?.length ?? 0) >= 3);
     const useOverrides = hasOverrides;
     const useOverride = !useOverrides && !!surfaceMeshOverride?.positions?.length;
-    if (!useOverrides && !useOverride) return;
+    if (!useOverrides && !useOverride) {
+      // An empty override is a scene transition, not a no-op: otherwise the
+      // last rendered mesh remains visible after Geometry's New/clear action.
+      ++chunkedFullMeshUploadRunRef.current;
+      scene.remove(surfaceObj);
+      surfaceObj.traverse(disposeObject3D);
+      const emptySurfaceGroup = new THREE.Group();
+      scene.add(emptySurfaceGroup);
+      surfaceObjRef.current = emptySurfaceGroup;
+      rendererRef.current?.renderLists?.dispose?.();
+      if (mountRef.current) mountRef.current.dataset.renderedMeshCount = "0";
+      const emptySampleSet: SurfaceSampleSet = { samples: [], meshData: [] };
+      sampleSetRef.current = emptySampleSet;
+      onSampleSetRef.current?.(emptySampleSet);
+      return;
+    }
     const runtimeQualityForMesh = canUseMeshInteractionLod
       ? resolveMeshRuntimeQualityForViewport(renderQuality, meshRuntimeQuality)
       : "accurate";
@@ -7273,6 +7288,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         meshList.push(mesh);
       }
     });
+    if (mountRef.current) mountRef.current.dataset.renderedMeshCount = String(meshList.length);
 
     const sampleSetStart = performance.now();
     const aggregatedSamples: SurfaceSampleSet["samples"] = [];
