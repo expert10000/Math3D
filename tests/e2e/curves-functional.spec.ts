@@ -131,6 +131,7 @@ test.describe("Curves canonical workspace", () => {
       await expect(ctx.page.getByTestId("curve-worker-lifecycle")).toContainText("ready", { timeout: 15_000 });
       await expect(ctx.page.getByTestId("curve-worker-lifecycle")).toContainText("Progressive result: coarse-preview");
       await expect(ctx.page.getByTestId("curve-worker-lifecycle")).toContainText(/3,?000 values/);
+      await expect(ctx.page.getByTestId("curve-worker-kernel-publication")).toContainText("numerical");
       await expect(ctx.page.getByTestId("curve-worker-cache")).toContainText("Cache: 1 artifacts");
       await ctx.page.getByTestId("curve-worker-run").click();
       await expect(ctx.page.getByTestId("curve-worker-lifecycle")).toContainText("cached");
@@ -223,7 +224,8 @@ test.describe("Curves canonical workspace", () => {
       await expect(ctx.page.getByTestId("curve-interop-selection")).toContainText("source parameter");
       await ctx.page.getByTestId("curve-to-surface-kind").selectOption("revolution");
       await ctx.page.getByTestId("curve-to-surface-request").click();
-      await expect(ctx.page.getByTestId("curve-interop-status")).toContainText("Surface request ready: revolution");
+      await expect(ctx.page.getByTestId("curve-interop-status")).toContainText("Committed revolution construction");
+      await expect(ctx.page.getByTestId("curve-construction-count")).toContainText("Saved constructions: 1");
 
       await ctx.page.getByTestId("curve-interop-source-kind").selectOption({ label: "Surface geodesic" });
       await ctx.page.getByTestId("curve-interop-open").click();

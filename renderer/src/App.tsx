@@ -649,6 +649,7 @@ import { CurveInteroperabilityPanel } from "./components/CurveInteroperabilityPa
 import { CurveMeshPanel } from "./components/CurveMeshPanel";
 import { CurveBackendPanel } from "./components/CurveBackendPanel";
 import { CurveWorkerPanel } from "./components/CurveWorkerPanel";
+import { CurveDocumentAdapter, curveDocumentFromLegacyDefinition } from "./curveAnalysis/curveDocumentAdapter";
 import { CurveResultLifecyclePanel } from "./components/CurveResultLifecyclePanel";
 import {
   createCurveResultLifecycleState,
@@ -13025,6 +13026,24 @@ const App: React.FC = () => {
       return createCurveAnalysisWorkspaceDocument();
     }
   });
+  const curveKernelAdaptersRef = useRef<Map<string, CurveDocumentAdapter>>(new Map());
+  const activeCurveKernelAdapter = useMemo(() => {
+    const curveId = activeCanonicalCurveDefinition.identity.curveId;
+    let adapter = curveKernelAdaptersRef.current.get(curveId);
+    if (!adapter) {
+      const saved = curveAnalysisWorkspaceDocument.kernelDocuments.find((document) => document.metadata.legacyCurveId === curveId);
+      adapter = new CurveDocumentAdapter(saved ?? curveDocumentFromLegacyDefinition(activeCanonicalCurveDefinition));
+      curveKernelAdaptersRef.current.set(curveId, adapter);
+    }
+    return adapter;
+  }, [activeCanonicalCurveDefinition.identity.curveId]);
+  useEffect(() => {
+    activeCurveKernelAdapter.syncLegacyDefinition(activeCanonicalCurveDefinition);
+    setCurveAnalysisWorkspaceDocument((workspace) => ({
+      ...workspace,
+      kernelDocuments: [...workspace.kernelDocuments.filter((document) => document.metadata.legacyCurveId !== activeCanonicalCurveDefinition.identity.curveId), activeCurveKernelAdapter.document()].slice(-64),
+    }));
+  }, [activeCanonicalCurveDefinition.fingerprint, activeCanonicalCurveDefinition.identity.curveId, activeCurveKernelAdapter]);
   const curveAnalysisRegistryRef = useRef(createCurveAnalysisRegistry());
   const [curveAnalysisResultStore, setCurveAnalysisResultStore] = useState(createCurveAnalysisResultStore);
   const [curveResultLifecycle, setCurveResultLifecycle] = useState(createCurveResultLifecycleState);
@@ -89058,14 +89077,26 @@ case "mobius":
                         <div><strong>Active:</strong> {curveActiveIsImported ? curveImportedSection?.name ?? "Imported section curve" : activeCurvePreset?.label ?? "Curve"}</div>
                         <div><strong>Representation:</strong> {activeCanonicalCurveDefinition.representation}</div>
                         <div><strong>Domain:</strong> {activeCanonicalCurveDefinition.domain.parameter} ∈ [{fmt(activeCanonicalCurveDefinition.domain.min)}, {fmt(activeCanonicalCurveDefinition.domain.max)}]</div>
+                        <div data-testid="curve-kernel-document">Kernel CurveDocument: {activeCurveKernelAdapter.document().identity.id} · revision {activeCurveKernelAdapter.document().identity.revision} · committed controls {activeCurveKernelAdapter.document().selection.controlIds.length}</div>
                         <button type="button" onClick={() => setCurvePresetId("custom2d")}>Open editable custom curve</button>
                         {activeCurvePreset && ["bezier", "bspline", "nurbs"].includes(activeCurvePreset.category) && (
-                          <SplineCurveEditor presetId={activeCurvePreset.id} parameter={curveProbeU} onChange={handleCurveSplineChange} />
+                          <SplineCurveEditor presetId={activeCurvePreset.id} parameter={curveProbeU} onChange={handleCurveSplineChange} onCommitControlSelection={(index) => {
+                            activeCurveKernelAdapter.commitSelection([`control:${index}`]);
+                            setCurveAnalysisWorkspaceDocument((workspace) => ({
+                              ...workspace,
+                              kernelDocuments: [...workspace.kernelDocuments.filter((document) => document.metadata.legacyCurveId !== activeCanonicalCurveDefinition.identity.curveId), activeCurveKernelAdapter.document()].slice(-64),
+                            }));
+                          }} />
                         )}
                         <CurveInteroperabilityPanel
                           curve={curveRenderState.curve}
                           definition={activeCanonicalCurveDefinition}
                           normalizedParameter={curveProbeU}
+                          constructions={curveAnalysisWorkspaceDocument.constructions}
+                          onCommitConstruction={(record) => setCurveAnalysisWorkspaceDocument((document) => ({
+                            ...document,
+                            constructions: [...document.constructions.filter((entry) => entry.operationId !== record.operationId), record].slice(-64),
+                          }))}
                           onOpenSource={() => setCurveInspectorTab("dependencies")}
                           onOpenDerivative={() => setCurveInspectorTab("result")}
                         />
@@ -89710,7 +89741,7 @@ case "mobius":
                         <div>{curveRenderState.arcLengthTableEntries} arc-length entries</div>
                         <div>Sampled length: {fmt(curveRenderState.sampledArcLength)}</div>
                         {curveRenderState.samplingStatistics && <div>{curveRenderState.samplingStatistics.evaluationCount}/{curveRenderState.samplingStatistics.evaluationBudget} evaluations · {curveRenderState.samplingStatistics.subdivisionCount} subdivisions</div>}
-                        <CurveWorkerPanel definition={activeCanonicalCurveDefinition} points={curveRenderState.samplePoints} />
+                        <CurveWorkerPanel definition={activeCanonicalCurveDefinition} points={curveRenderState.samplePoints} documentAdapter={activeCurveKernelAdapter} />
                       </>
                     )}
                     {curveInspectorTab === "dependencies" && (

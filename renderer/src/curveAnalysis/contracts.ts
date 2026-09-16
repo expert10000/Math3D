@@ -117,6 +117,7 @@ export type CurveDefinitionSource = {
   settings?: Readonly<Record<string, number | string | boolean | null>>;
   sourceIds?: readonly string[];
   pointCount?: number;
+  points?: readonly (readonly number[])[];
   controlPointCount?: number;
   controlPoints?: readonly (readonly number[])[];
   knots?: readonly number[];

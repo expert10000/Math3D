@@ -5,6 +5,8 @@ import type {
   CurveResultKind,
 } from "./contracts";
 import type { SemanticCurvePick } from "./probe";
+import { parseCurveConstruction, type CurveConstructionRecord } from "./curveConstructionKernel";
+import { normalizeCurveDocument, type CurveDocument } from "@math3d/core";
 
 export type SavedCurveResultReference = {
   id: string;
@@ -21,6 +23,8 @@ export type CurveAnalysisWorkspaceDocument = {
   savedResults: SavedCurveResultReference[];
   savedProbes: SemanticCurvePick[];
   annotations: SavedCurveAnnotation[];
+  constructions: CurveConstructionRecord[];
+  kernelDocuments: CurveDocument[];
 };
 
 export type CurveAnnotationKind = "distance" | "segment-length" | "point" | "parameter" | "curvature" | "torsion" | "radius" | "tangent" | "frame";
@@ -46,6 +50,8 @@ export const createCurveAnalysisWorkspaceDocument = (
   savedResults: [...(input?.savedResults ?? [])],
   savedProbes: [...(input?.savedProbes ?? [])],
   annotations: [...(input?.annotations ?? [])],
+  constructions: [...(input?.constructions ?? [])],
+  kernelDocuments: [...(input?.kernelDocuments ?? [])],
 });
 
 export const serializeCurveAnalysisWorkspace = (document: CurveAnalysisWorkspaceDocument): string => JSON.stringify(document);
@@ -73,5 +79,13 @@ export const parseCurveAnalysisWorkspace = (serialized: string): CurveAnalysisWo
   }
   if (value.savedProbes != null && !Array.isArray(value.savedProbes)) throw new Error("Invalid saved Curve probes.");
   if (value.annotations != null && !Array.isArray(value.annotations)) throw new Error("Invalid saved Curve annotations.");
-  return createCurveAnalysisWorkspaceDocument({ ...value, savedProbes: value.savedProbes ?? [], annotations: value.annotations ?? [] });
+  if (value.constructions != null && !Array.isArray(value.constructions)) throw new Error("Invalid Curve constructions.");
+  if (value.kernelDocuments != null && !Array.isArray(value.kernelDocuments)) throw new Error("Invalid Curve kernel documents.");
+  const constructions = (value.constructions ?? []).map((entry) => parseCurveConstruction(JSON.stringify(entry)));
+  const kernelDocuments = (value.kernelDocuments ?? []).map((entry) => {
+    const normalized = normalizeCurveDocument(entry);
+    if (!normalized.ok) throw new Error(normalized.errors.join(" "));
+    return normalized.value;
+  });
+  return createCurveAnalysisWorkspaceDocument({ ...value, savedProbes: value.savedProbes ?? [], annotations: value.annotations ?? [], constructions, kernelDocuments });
 };

@@ -2488,6 +2488,11 @@ result/artifact contracts where appropriate.
 **Acceptance.** Curve edits, replay, save/reopen, invalidation, and status
 publication pass GK03. Handle dragging remains preview-only until commit.
 
+**Status:** in progress. Kernel `CurveDocument`, reversible adapter, persisted
+workspace documents, and revision-bound worker result/artifact publication exist.
+Full command-route ownership and F05/F08 worker routing remain the completion gate;
+see the combined roadmap for current evidence. Run `npm run test:kernel:gk12`.
+
 ### GK13 — `feat(curves): add revisioned curve sweep extrusion and surface lineage`
 
 **Milestone:** G05 — Curves and construction handoffs
@@ -2499,6 +2504,11 @@ and artifact/document references.
 **Acceptance.** Generated objects retain exact Curve revision and parameters;
 promoted documents never update implicitly; locate-back reaches source curve
 elements where correspondence exists.
+
+**Status:** in progress. Typed Surface construction specifications, exact ordered
+multi-Curve GK01 lineage, save/reopen, locate-back, and UI promotion exist. Actual
+Surface/Geometry evaluation and cross-module replay remain the completion gate;
+see the combined roadmap. Run `npm run test:kernel:gk13`.
 
 ### GK14 — `feat(volumes): introduce kernel-owned VolumeDocument adapter`
 

@@ -20,6 +20,8 @@ export * from "./math";
 export * from "./meshDocument";
 export * from "./surfaceDocument";
 export * from "./surfaceCommands";
+export * from "./curveDocument";
+export * from "./curveCommands";
 export * from "./meshCommands";
 export * from "./sceneDocument";
 export * from "./sceneObjects";

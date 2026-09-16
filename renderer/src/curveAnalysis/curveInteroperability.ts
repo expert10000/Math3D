@@ -80,11 +80,11 @@ export const polylineCurve = (args: { id: string; name: string; points: readonly
   return { id: args.id, name: args.name, kind: "polyline", family: "polyline", subtype: dimension === 2 ? "2d" : "3d", dimension, domain: normalizeCurveDomain({ tMin: 0, tMax: 1, closed: args.closed, periodic: args.closed }), eval: evaluate } as AnyCurve;
 };
 
-const definitionForPolyline = (curve: AnyCurve, source: CurveInteroperabilitySource, pointCount: number, tolerance: number, correspondence: CurveSelectionCorrespondence) => adaptCurveDefinition({
+const definitionForPolyline = (curve: AnyCurve, source: CurveInteroperabilitySource, points: readonly CurvePoint[], tolerance: number, correspondence: CurveSelectionCorrespondence) => adaptCurveDefinition({
   id: curve.id, revision: source.revision, label: curve.name, representation: "polyline", dimension: curve.dimension,
   domain: { parameter: "u", min: 0, max: 1, closed: Boolean(curve.domain.closed), periodic: Boolean(curve.domain.periodic) },
-  points: Array.from({ length: pointCount }, () => [] as number[]), sourceLabel: `${source.module}:${source.kind}:polyline-approximation`, sourceModule: source.module,
-  sampling: { strategy: "source-samples", tolerance, minimumSamples: pointCount, maximumSamples: pointCount },
+  points: points.map((point) => curve.dimension === 2 ? [point.x, point.y] : [point.x, point.y, "z" in point ? point.z : 0]), sourceLabel: `${source.module}:${source.kind}:polyline-approximation`, sourceModule: source.module,
+  sampling: { strategy: "source-samples", tolerance, minimumSamples: points.length, maximumSamples: points.length },
   units: { position: source.units?.position ?? "scene-unit", parameter: source.units?.parameter ?? "normalized polyline", angle: "rad" },
   dependencies: [{ module: source.module, objectId: source.objectId, revision: String(source.revision), relation: source.kind, correspondence: correspondence.explanation }],
   warnings: [`Polyline approximation at tolerance ${tolerance}. No source evaluator was available.`],
@@ -115,7 +115,7 @@ export const openSampledCurvesInCurves = (args: { source: CurveInteroperabilityS
     const correspondence: CurveSelectionCorrespondence = chart?.length === points.length
       ? { kind: "surface-chart", sourceEntityIds: [args.source.objectId], parameters: Float64Array.from(points.map((_, index) => index / Math.max(1, points.length - 1))), chartCoordinates: Float64Array.from(chart.flatMap((uv) => [uv[0], uv[1]])), sampleIndices: Uint32Array.from(points.map((_, index) => index),), explanation: "Polyline samples retain their host Surface chart coordinates." }
       : { kind: "sample-index", sourceEntityIds: [args.source.objectId], parameters: Float64Array.from(points.map((_, index) => index / Math.max(1, points.length - 1))), sampleIndices: Uint32Array.from(points.map((_, index) => index)), explanation: "Polyline samples retain source order; no continuous evaluator or chart mapping was provided." };
-    return exchange({ source: { ...args.source, branchId: args.source.branchId ?? `branch-${branch}` }, curve, fidelity: "polyline-approximation", definition: definitionForPolyline(curve, args.source, points.length, args.tolerance, correspondence), tolerance: args.tolerance, correspondence, branch });
+    return exchange({ source: { ...args.source, branchId: args.source.branchId ?? `branch-${branch}` }, curve, fidelity: "polyline-approximation", definition: definitionForPolyline(curve, args.source, points, args.tolerance, correspondence), tolerance: args.tolerance, correspondence, branch });
   });
   return { collectionId: `${args.source.module}:${args.source.objectId}@${args.source.revision}:${args.source.kind}`, source: args.source, branches, warnings: branches.length ? [] : ["No branch contains enough finite points to open in Curves."] };
 };
@@ -152,6 +152,8 @@ export const createCurveToSurfaceRequest = (kind: SurfaceConstructionKind, excha
   const required = kind === "ruled-surface" || kind === "loft" ? 2 : 1;
   if (exchanges.length < required) throw new Error(`${kind} requires at least ${required} Curve input${required === 1 ? "" : "s"}.`);
   if (exchanges.some((entry) => entry.state === "stale")) throw new Error("Stale Curve inputs must be regenerated or detached before Surface construction.");
+  if (new Set(exchanges.map((entry) => entry.exchangeId)).size !== exchanges.length) throw new Error("Surface construction requires distinct Curve inputs; one Curve cannot occupy two loft or ruled-surface slots.");
+  if (new Set(exchanges.map((entry) => entry.definition.identity.curveId)).size !== exchanges.length) throw new Error("Surface construction requires distinct Curve identities, not separate views or revisions of one Curve.");
   return { version: 1, requestId: `curve-to-surface:${kind}:${stableHash({ ids: exchanges.map((entry) => entry.exchangeId), parameters })}`, kind, inputs: exchanges.map((entry) => ({ curveId: entry.definition.identity.curveId, curveRevision: entry.definition.identity.curveRevision, exchangeId: entry.exchangeId, fidelity: entry.fidelity })), parameters: { ...parameters }, sourceNavigation: exchanges.map((entry) => entry.navigation.source), warnings: exchanges.filter((entry) => entry.fidelity === "polyline-approximation").map((entry) => `${entry.definition.identity.label} is a polyline approximation at tolerance ${entry.approximationTolerance}.`) };
 };
 

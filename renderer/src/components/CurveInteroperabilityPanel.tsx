@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { sampleUniform, type AnyCurve } from "@math3d/core";
 import type { CanonicalCurveDefinition } from "../curveAnalysis/contracts";
+import { createCurveConstructionRecord, locateCurveConstructionSource, promoteCurveConstruction, type CurveConstructionRecord } from "../curveAnalysis/curveConstructionKernel";
 import {
   createCurveToSurfaceRequest,
   detachCurveExchange,
@@ -37,11 +38,15 @@ export type CurveInteroperabilityPanelProps = {
   normalizedParameter: number;
   onOpenSource?: () => void;
   onOpenDerivative?: () => void;
+  constructions?: readonly CurveConstructionRecord[];
+  onCommitConstruction?: (record: CurveConstructionRecord) => void;
 };
 
-export const CurveInteroperabilityPanel: React.FC<CurveInteroperabilityPanelProps> = ({ curve, definition, normalizedParameter, onOpenSource, onOpenDerivative }) => {
+export const CurveInteroperabilityPanel: React.FC<CurveInteroperabilityPanelProps> = ({ curve, definition, normalizedParameter, onOpenSource, onOpenDerivative, constructions = [], onCommitConstruction }) => {
   const [sourceIndex, setSourceIndex] = useState(0);
   const [exchange, setExchange] = useState<CanonicalCurveExchange | null>(null);
+  const [openedExchanges, setOpenedExchanges] = useState<CanonicalCurveExchange[]>([]);
+  const [secondExchangeId, setSecondExchangeId] = useState("");
   const [surfaceKind, setSurfaceKind] = useState<SurfaceConstructionKind>("extrusion");
   const [status, setStatus] = useState("Choose a source workflow.");
   const option = SOURCE_OPTIONS[sourceIndex];
@@ -64,15 +69,20 @@ export const CurveInteroperabilityPanel: React.FC<CurveInteroperabilityPanelProp
           const chart = option.module === "surfaces" ? [rows.map((_, index) => [index / Math.max(1, rows.length - 1), 0.5] as const)] : undefined;
           return openSampledCurvesInCurves({ source, branches: [rows.map((row) => row.point)], parameterBranches: chart, closed: definition.domain.closed, tolerance: definition.sampling.tolerance ?? 1e-3 }).branches[0];
         })();
-    setExchange(next); setStatus(`Opened ${option.label} as ${next.fidelity}.`);
+    setExchange(next);
+    setOpenedExchanges((entries) => [...entries.filter((entry) => entry.exchangeId !== next.exchangeId), next].slice(-16));
+    setStatus(`Opened ${option.label} as ${next.fidelity}.`);
   };
 
   const routeSurface = () => {
     if (!exchange) return;
     try {
-      const inputs = surfaceKind === "loft" || surfaceKind === "ruled-surface" ? [exchange, exchange] : [exchange];
+      const second = openedExchanges.find((entry) => entry.exchangeId === secondExchangeId);
+      const inputs = surfaceKind === "loft" || surfaceKind === "ruled-surface" ? [exchange, ...(second ? [second] : [])] : [exchange];
       const request = createCurveToSurfaceRequest(surfaceKind, inputs, { tolerance: definition.sampling.tolerance ?? 1e-3 });
-      setStatus(`Surface request ready: ${request.kind} · ${request.inputs.length} Curve input${request.inputs.length === 1 ? "" : "s"} · ${request.warnings.length} warning${request.warnings.length === 1 ? "" : "s"}.`);
+      const record = createCurveConstructionRecord(surfaceKind, inputs, request.parameters);
+      onCommitConstruction?.(record);
+      setStatus(`Committed ${request.kind} construction · ${request.inputs.length} Curve source${request.inputs.length === 1 ? "" : "s"} · ${request.warnings.length} warning${request.warnings.length === 1 ? "" : "s"} · target ${record.target.identity.id}.`);
     } catch (error) { setStatus(error instanceof Error ? error.message : String(error)); }
   };
 
@@ -85,7 +95,10 @@ export const CurveInteroperabilityPanel: React.FC<CurveInteroperabilityPanelProp
     </div>}
     {selection && <div data-testid="curve-interop-selection">Selection: {selection.state} · {selection.chart ? `chart (${selection.chart[0].toFixed(3)}, ${selection.chart[1].toFixed(3)})` : `source parameter ${selection.sourceParameter?.toFixed(3) ?? "n/a"}`}</div>}
     <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}><button type="button" onClick={onOpenSource}>Open source</button><button type="button" onClick={onOpenDerivative} disabled={!exchange?.navigation.derivative}>Open derivative</button><button data-testid="curve-interop-stale" type="button" disabled={!exchange} onClick={() => exchange && setExchange(markCurveExchangeStale(exchange, exchange.source.revision + 1))}>Simulate source revision</button><button type="button" disabled={!exchange} onClick={() => exchange && setExchange(detachCurveExchange(exchange))}>Detach</button></div>
+    {(surfaceKind === "loft" || surfaceKind === "ruled-surface") && <label>Second Curve<select data-testid="curve-to-surface-second" value={secondExchangeId} onChange={(event) => setSecondExchangeId(event.target.value)} style={{ width: "100%" }}><option value="">Choose a previously opened distinct Curve</option>{openedExchanges.filter((entry) => entry.exchangeId !== exchange?.exchangeId && entry.definition.identity.curveId !== exchange?.definition.identity.curveId).map((entry) => <option key={entry.exchangeId} value={entry.exchangeId}>{entry.definition.identity.label} · revision {entry.definition.identity.curveRevision}</option>)}</select></label>}
     <div style={{ display: "flex", gap: 4 }}><select data-testid="curve-to-surface-kind" value={surfaceKind} onChange={(event) => setSurfaceKind(event.target.value as SurfaceConstructionKind)}>{SURFACE_REQUESTS.map((kind) => <option key={kind}>{kind}</option>)}</select><button data-testid="curve-to-surface-request" type="button" disabled={!exchange} onClick={routeSurface}>Send to Surface</button></div>
+    <div data-testid="curve-construction-count">Saved constructions: {constructions.length}</div>
+    {constructions.slice(-3).reverse().map((record) => <div key={record.operationId} style={{ border: "1px solid #d6deea", borderRadius: 6, padding: 5 }}><strong>{record.request.kind}</strong> · {record.sourceGenerations.length} source{record.sourceGenerations.length === 1 ? "" : "s"} · {record.promoted ? "promoted snapshot" : "construction specification"}<div style={{ display: "flex", gap: 4, marginTop: 3 }}><button type="button" onClick={() => { const location = locateCurveConstructionSource(record, 0, normalizedParameter); setStatus(`Source: ${record.sourceDocuments[0].metadata.title} · ${location.source.documentId}@${location.source.revision} · ${location.state} · ${location.sourceParameter == null ? `sample ${location.sampleIndex ?? "n/a"}` : `parameter ${location.sourceParameter.toFixed(3)}`}`); }}>Locate source</button><button type="button" disabled={record.promoted} onClick={() => onCommitConstruction?.(promoteCurveConstruction(record))}>Promote snapshot</button></div></div>)}
     <div data-testid="curve-interop-status" style={{ color: status.includes("Stale") || status.includes("requires") ? "#9a3412" : "#334155" }}>{status}</div>
   </div>;
 };

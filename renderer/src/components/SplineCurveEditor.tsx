@@ -36,12 +36,13 @@ export type SplineCurveEditorProps = {
   presetId: string;
   parameter: number;
   onChange: (definition: CanonicalSplineDefinition, curve: SplineCurve, visuals: SplineVisualState) => void;
+  onCommitControlSelection?: (index: number) => void;
 };
 
 const point3 = (point: CurvePoint): CurveViewerVec3 => ({ x: point.x, y: point.y, z: "z" in point ? point.z : 0 });
 const fixtureFor = (presetId: string) => cloneSplineFixture(presetId === "bezierCubic" ? DEFAULT_BEZIER_CURVE : presetId === "bSplineDemo" ? DEFAULT_BSPLINE_CURVE : presetId === "nurbs-circle" ? RATIONAL_NURBS_CIRCLE : DEFAULT_NURBS_QUARTER_ARC);
 
-export const SplineCurveEditor: React.FC<SplineCurveEditorProps> = ({ presetId, parameter, onChange }) => {
+export const SplineCurveEditor: React.FC<SplineCurveEditorProps> = ({ presetId, parameter, onChange, onCommitControlSelection }) => {
   const [history, setHistory] = useState<SplineHistory>(() => createSplineHistory(fixtureFor(presetId)));
   const [selectionMode, setSelectionMode] = useState<SplineSelectionMode>("control-point");
   const [selectedControl, setSelectedControl] = useState(0);
@@ -83,7 +84,7 @@ export const SplineCurveEditor: React.FC<SplineCurveEditorProps> = ({ presetId, 
     <div data-testid="curve-spline-contract" style={{ border: "1px solid #c4b5fd", background: "#f5f3ff", borderRadius: 7, padding: 7 }}><strong>{definition.kind} · degree {definition.degree}</strong><div>{definition.controlPoints.length} controls · {definition.knotVector.length} knots · revision {definition.revision}</div><div>{definition.closed ? "closed" : "open"} · {definition.periodic ? "periodic" : definition.clamped ? "clamped" : "unclamped"} · [{definition.domain.tMin}, {definition.domain.tMax}]</div></div>
     <label>Selection mode<select data-testid="curve-spline-selection-mode" value={selectionMode} onChange={(event) => setSelectionMode(event.target.value as SplineSelectionMode)} style={{ width: "100%", marginTop: 4 }}>{["curve", "span", "control-point", "knot", "weight"].map((mode) => <option key={mode} value={mode}>{mode}</option>)}</select></label>
     {(selectionMode === "control-point" || selectionMode === "weight") && <>
-      <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>{definition.controlPoints.map((_, index) => <button data-testid={`curve-control-${index}`} key={index} type="button" aria-pressed={selectedControl === index} onClick={() => setSelectedControl(index)}>P{index}</button>)}</div>
+      <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>{definition.controlPoints.map((_, index) => <button data-testid={`curve-control-${index}`} key={index} type="button" aria-pressed={selectedControl === index} onClick={() => { setSelectedControl(index); onCommitControlSelection?.(index); }}>P{index}</button>)}</div>
       <div style={{ display: "grid", gridTemplateColumns: definition.dimension === 3 ? "1fr 1fr 1fr" : "1fr 1fr", gap: 4 }}>{(["x", "y", ...(definition.dimension === 3 ? ["z"] : [])]).map((axis) => <label key={axis}>{axis}<input aria-label={`Control ${axis}`} type="number" step={0.1} value={editPoint[axis as keyof typeof editPoint]} onChange={(event) => setEditPoint((current) => ({ ...current, [axis]: Number(event.target.value) }))} style={{ width: "100%" }} /></label>)}</div>
       <button data-testid="curve-spline-apply-control" type="button" onClick={() => run(() => moveSplineControlPoint(definition, selectedControl, definition.dimension === 2 ? { x: editPoint.x, y: editPoint.y } : editPoint), `Moved P${selectedControl}`)}>Apply control point</button>
       {definition.kind === "nurbs" && <label>Weight<input data-testid="curve-spline-weight" type="number" min={0.01} step={0.05} value={editWeight} onChange={(event) => setEditWeight(Number(event.target.value))} style={{ width: "100%", marginTop: 4 }} /><button data-testid="curve-spline-apply-weight" type="button" onClick={() => run(() => setSplineWeight(definition, selectedControl, editWeight), `Updated weight ${selectedControl}`)}>Apply weight</button></label>}

@@ -85,7 +85,7 @@ The target outcomes are:
 | C01-C12 | Complex Analysis MVP/v1 vertical migration and gate | Complete |
 | A1-G3 | Original architecture proposal labels | Historical traceability only |
 | G01-G08 | Cross-module milestone groups | Planned/in progress through GK commits |
-| GK01-GK20 | Executable post-C12 integration commits | GK01-GK11 complete; GK12-GK20 planned |
+| GK01-GK20 | Executable post-C12 integration commits | GK01-GK11 complete; GK12-GK13 in progress; GK14-GK20 planned |
 
 There is one canonical sequential plan. Historical labels may explain intent, but
 they cannot reopen completed work or create duplicate infrastructure. Completion
@@ -673,6 +673,17 @@ contracts where appropriate. Handle dragging is preview-only until commit.
 status publication, and backend routing pass GK03; exact and numerical authority stay
 distinguishable; no dense samples enter persistent command history.
 
+**Implementation in progress (GK12).** A strict `CurveDocument` and reversible
+command adapter now cover canonical definition sources, controls, knots, weights,
+analysis settings, and committed control selection. The Curves workspace persists
+kernel documents and shows their revision; the worker panel publishes compact
+numerical results with F07 binary artifacts bound to the active source generation.
+Focused Curve tests, the UI round-trip test, typecheck, and the production build
+pass. `npm run test:kernel:gk12` is the combined gate. Still open: make the kernel
+command route authoritative for all spline edits/undo, route Curve worker execution
+through the shared F05/F08 job/broker lifecycle, and run the full GK03 conformance
+matrix before changing GK12 to complete.
+
 #### GK13 — `feat(curves): add revisioned sweep extrusion and surface lineage`
 
 **Scope.** Represent Curve → Surface/Geometry sweep, extrusion, revolution, ruled
@@ -683,6 +694,17 @@ GK01 relation and artifact/document references.
 promoted documents never update implicitly; correspondence-based locate-back reaches
 source curve elements; multi-curve lofts prove normalized multi-source lineage;
 Curve save/reopen/replay preserves construction operations and provenance.
+
+**Implementation in progress (GK13).** Surface construction requests now reject
+duplicate loft/ruled inputs. Committed extrusion, revolution, sweep, tube, ruled,
+and loft specifications create constructed `SurfaceDocument` targets and ordered
+GK01 `generated-by` relations with exact Curve source generations and parameters.
+The Curve workspace saves/reopens these records, exposes locate-back and immutable
+promotion in the UI, and tests multi-source order. `npm run test:kernel:gk13` is
+the focused gate. Still open: evaluate/route these specifications into the Surface
+and Geometry workspaces, preserve full chart correspondence where available, and
+prove generated geometry plus cross-module replay end to end before marking GK13
+complete.
 
 ### G06 — Volumes and extraction handoffs
 
