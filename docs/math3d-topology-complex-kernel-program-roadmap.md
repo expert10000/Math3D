@@ -2564,6 +2564,12 @@ Topology, and Complex relations.
 modules; a selected derived object/result locates back through relation, operation,
 artifact/result, canonical object, and source where mappings exist.
 
+**Status:** complete. Shared pure Viewer evidence and GK01 reverse-lineage queries
+normalize current/stale/snapshot/unavailable status, authority, numerical context,
+artifact availability, and committed selection. The app's Kernel workspace panel
+shows active module evidence and source navigation; hover/preview never persists as
+selection. See the combined roadmap; run `npm run test:kernel:gk16`.
+
 ### GK17 — `feat(workspace): persist cross-module replay and lineage records`
 
 **Milestone:** G07 — shared viewer and workspace
@@ -2575,6 +2581,13 @@ remain cache data and reopen explicitly unavailable or needing recomputation.
 **Acceptance.** A mixed project can save, reopen, and replay Geometry, Surface,
 Mesh, Curve, Volume, Topology, and Complex documents while preserving relation IDs
 and source hashes and never fabricating artifact availability.
+
+**Status:** complete. A strict v1 mixed envelope captures seven module document
+types, compact replay/checkpoint records, active references, F06/F07/GK01 records,
+committed selection, and Scratch/Workbook/Scene Script sources. The shared review
+pane saves, reloads, and replay-verifies the set; unavailable artifacts are explicit
+after restart. Reopening does not silently replace active module editors. See the
+combined roadmap; run `npm run test:kernel:gk17`.
 
 ### GK18 — `perf(kernel): add dependency-local invalidation only behind full-oracle parity`
 

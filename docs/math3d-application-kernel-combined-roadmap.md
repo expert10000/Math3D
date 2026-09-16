@@ -85,7 +85,7 @@ The target outcomes are:
 | C01-C12 | Complex Analysis MVP/v1 vertical migration and gate | Complete |
 | A1-G3 | Original architecture proposal labels | Historical traceability only |
 | G01-G08 | Cross-module milestone groups | Planned/in progress through GK commits |
-| GK01-GK20 | Executable post-C12 integration commits | GK01-GK15 complete; GK16-GK20 planned |
+| GK01-GK20 | Executable post-C12 integration commits | GK01-GK17 complete; GK18-GK20 planned |
 
 There is one canonical sequential plan. Historical labels may explain intent, but
 they cannot reopen completed work or create duplicate infrastructure. Completion
@@ -769,6 +769,17 @@ cannot appear as committed selection; selected derived objects/results navigate
 through relation → operation → artifact/result → canonical object → source where
 mapping exists; UI components do not own competing provenance or selection truth.
 
+**Status:** complete. `@math3d/core` provides one pure Viewer/Inspector evidence
+contract for source generation, authority, operation/method/engine,
+precision/tolerance, artifact availability, lineage, and committed selection.
+Stale results cannot appear current; hover/preview cannot become committed
+selection. Exact GK01 reverse traversal supplies cross-module source navigation.
+The **Kernel workspace** panel shows the same vocabulary for active Geometry,
+Mesh, Surface, Curve, Volume, Topology, and Complex documents, and saved lineage
+records navigate to source modules. Existing module locate-back implementations
+retain entity correspondence. Contract, selection, lineage, and Electron UI gates
+are in `npm run test:kernel:gk16`.
+
 #### GK17 — `feat(workspace): persist cross-module replay and lineage records`
 
 **Scope.** Define the mixed workspace envelope containing compact module checkpoints/
@@ -781,6 +792,17 @@ legacy adapters and replay diagnostics.
 Curve, Volume, Topology, and Complex documents with matching source hashes and
 relation IDs; missing artifacts reopen unavailable; no capability is fabricated;
 browser/desktop formats agree; workspace persistence does not own domain algorithms.
+
+**Status:** complete. The strict `math3d.mixed-workspace` v1 envelope stores compact
+module checkpoints/logs or explicit checkpoint-only Mesh snapshots, exact active
+document identities, F06 results, F07 handles, GK01 relations, committed selection,
+and Scratch/Workbook/Scene Script sources with normalized script representations.
+The renderer bridges existing Geometry, Surface, Curve, Volume, Topology, and Complex
+replay adapters; Mesh bytes remain external. Reopen verifies expected source hashes
+and relation IDs without mutating domain editors. The shared review panel marks
+missing artifacts/results unavailable after reload; module editors continue to use
+their own activation loaders. Pure-format, all-seven-document, module-adapter,
+save/reload/replay, and missing-artifact gates are in `npm run test:kernel:gk17`.
 
 ### G08 — Optimization platform conformance and lifecycle freeze
 
@@ -970,7 +992,7 @@ The combined roadmap is approved. Execute it as follows:
    `docs/math3d-topology-complex-kernel-program-roadmap.md` without reopening it.
 2. Treat A1-G3 and the earlier G01-G08 table as historical requirements mapped by
    Section 6, not as parallel execution sequences.
-3. Execute the first extension, **GK01 — `feat(core): add cross-document relation and
-   lineage contracts`**.
-4. Do not begin module migrations until GK01-GK03 establish relations, deterministic
-   dependency behavior, adapter conformance, and shared selection semantics.
+3. GK01-GK17 are complete. Execute GK18 only behind the full deterministic
+   recomputation oracle and reviewed performance evidence.
+4. After GK18, run GK19 runtime conformance before GK20 freezes contracts and
+   removes only proven-redundant lifecycle paths.

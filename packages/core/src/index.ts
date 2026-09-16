@@ -24,6 +24,8 @@ export * from "./curveDocument";
 export * from "./curveCommands";
 export * from "./volumeDocument";
 export * from "./volumeCommands";
+export * from "./viewerProvenance";
+export * from "./mixedWorkspace";
 export * from "./meshCommands";
 export * from "./sceneDocument";
 export * from "./sceneObjects";

@@ -36,6 +36,7 @@ import { DiskStatsPanel } from "./components/DiskStatsPanel";
 import { WorkbookPanel } from "./components/WorkbookPanel";
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
 import { GeometryAnalysisInspectorPanel } from "./components/GeometryAnalysisInspectorPanel";
+import { KernelWorkspacePanel } from "./components/KernelWorkspacePanel";
 import { GeometryTessellationSettingsPanel } from "./components/GeometryTessellationSettingsPanel";
 import { UnifiedSelectionInspector } from "./components/UnifiedSelectionInspector";
 import { GeometrySemanticNavigatorPanel } from "./components/GeometrySemanticNavigatorPanel";
@@ -693,12 +694,27 @@ import {
   type DerivedConstructionObjectDefinition,
   COMPLEX_COMMAND_TYPES,
   createStableDocumentId,
+  createGeometryDocument,
+  createMixedWorkspaceDocument,
+  createViewerProvenanceEvidence,
+  canonicalJsonByteLength,
+  geometryDocumentFromSceneDocument,
+  MAX_MIXED_WORKSPACE_REPLAY_BYTES,
+  viewerSourceFromDocument,
   type AnalysisResultEnvelope,
   type ComplexContourRecord,
   type CanonicalJsonValue,
   type MeshEditKind,
   type MeshDocument,
+  type TopologyDocument,
+  type TopologyReplayBundle,
+  type KernelWorkspaceModule,
+  type MixedWorkspaceEntry,
+  type MixedWorkspaceDocument,
+  type KernelWorkspaceDocument,
 } from "@math3d/core";
+import { GeometryDocumentAdapter } from "./geometry/geometryDocumentAdapter";
+import { MIXED_REPLAY_FORMATS } from "./kernel/mixedWorkspaceReplay";
 
 import {
   mapMobiusPoint,
@@ -24201,6 +24217,8 @@ const App: React.FC = () => {
   const meshDatasetPublishTraceCounterRef = useRef(0);
   const meshDocumentAdapterRef = useRef<MeshDocumentAdapter | null>(null);
   const [meshKernelDocument, setMeshKernelDocument] = useState<MeshDocument | null>(null);
+  const [topologyKernelDocument, setTopologyKernelDocument] = useState<TopologyDocument | null>(null);
+  const [topologyKernelReplay, setTopologyKernelReplay] = useState<TopologyReplayBundle | null>(null);
   const largeSurfaceMeshResolutionCacheRef = useRef<LargeSurfaceMeshResolutionCache | null>(null);
   const largeSurfaceMeshFullRestorePendingRef = useRef(false);
   const setMeshDataset = useCallback((mesh: SurfaceMeshData | null, traceOperation = "mesh-dataset:set", kernelParameters: Readonly<Record<string, CanonicalJsonValue>> = {}) => {
@@ -77518,6 +77536,111 @@ case "mobius":
   const sageBridgeReady =
     !!sageServiceApi && (typeof sageServiceApi.getStatus === "function" || typeof sageServiceApi.health === "function");
   const sageServiceStatusText = sageBridgeReady ? "available" : "pending";
+  const geometryKernelSceneSnapshot = useMemo(() => {
+    const structuralConstructions = geometryDerivedConstructions.map((entry) =>
+      Object.fromEntries(Object.entries(entry).filter(([key]) =>
+        !["name", "constructionSummary", "frozenSnapshot", "frozenAt", "visible", "createdAt"].includes(key))));
+    const adapted = geometryDocumentFromSceneDocument({
+      id: "active-geometry-workspace", title: "Geometry workspace", createdAt: 0, updatedAt: 0, objects: geometryObjects,
+      extensions: { "math3d.geometry.live-derived.v1": JSON.parse(JSON.stringify(structuralConstructions)) },
+    });
+    return createGeometryDocument({ ...adapted,
+      metadata: { ...adapted.metadata, constructionCreatedAt: Object.fromEntries(geometryDerivedConstructions.map((entry) => [entry.id, entry.createdAt])) },
+      display: { ...adapted.display, constructions: Object.fromEntries(geometryDerivedConstructions.map((entry) => [entry.id,
+        { name: entry.name ?? entry.type, visible: entry.visible, createdAt: entry.createdAt }])) },
+    });
+  }, [geometryObjects, geometryDerivedConstructions]);
+  const geometryKernelAdapterRef = useRef<GeometryDocumentAdapter | null>(null);
+  const [, setGeometryKernelRevision] = useState(1);
+  if (!geometryKernelAdapterRef.current) geometryKernelAdapterRef.current = new GeometryDocumentAdapter(geometryKernelSceneSnapshot);
+  useEffect(() => {
+    const adapter = geometryKernelAdapterRef.current!;
+    const before = adapter.document().identity.revision;
+    adapter.commitSource(geometryKernelSceneSnapshot.source);
+    adapter.commitDisplay(geometryKernelSceneSnapshot.display);
+    const after = adapter.document().identity.revision;
+    if (after !== before) setGeometryKernelRevision(after);
+  }, [geometryKernelSceneSnapshot]);
+  const activeKernelModule: KernelWorkspaceModule | null = mode === "geometry" ? "geometry" : mode === "topology" ? "topology" :
+    mode === "curves" ? "curve" : mode === "surfaces" && datasetKind === "volume" ? "volume" :
+      mode === "surfaces" && surfaceViewerKind === "complex" ? "complex" :
+        mode === "surfaces" && surfaceViewerKind === "mesh" ? "mesh" : mode === "surfaces" ? "surface" : null;
+  const activeKernelDocument: KernelWorkspaceDocument | null = activeKernelModule === "geometry" ? geometryKernelAdapterRef.current.document() :
+    activeKernelModule === "topology" ? topologyKernelDocument : activeKernelModule === "curve" ? activeCurveKernelAdapter.document() :
+      activeKernelModule === "volume" ? activeVolumeKernelAdapter.document() : activeKernelModule === "complex" ? complexPreviewSession.commands.document() :
+        activeKernelModule === "mesh" ? meshKernelDocument : activeKernelModule === "surface" ?
+          surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId)?.document() ?? null : null;
+  const activeKernelSource = activeKernelDocument ? viewerSourceFromDocument(activeKernelDocument) : null;
+  const activeVolumeLineage = activeKernelModule === "volume" ? volumeExtractionRecords.find((record) => !record.promoted) ?? null : null;
+  const activeKernelEvidence = activeKernelSource ? createViewerProvenanceEvidence({
+    source: activeKernelSource, current: activeKernelSource,
+    relations: activeVolumeLineage?.relations ?? [], result: activeVolumeLineage?.result ?? null,
+    artifactAvailable: (artifactId) => volumeExtractionRecords.some((record) => record.artifactId === artifactId &&
+      (volumeExtractionBridgeRef.current?.artifacts().resolve(record.result.artifacts[0], record.source).ok ?? false)),
+    selection: { state: "committed", source: activeKernelSource,
+      entityIds: activeKernelModule === "geometry" ? geometryMultiSelectionSet.keys : activeKernelModule === "mesh" ? meshMultiSelectionSet.keys :
+        activeKernelModule === "curve" ? activeCurveKernelAdapter.document().selection.controlIds : [] },
+  }) : null;
+  const captureMixedKernelWorkspace = (): MixedWorkspaceDocument => {
+    const entries: MixedWorkspaceEntry[] = [];
+    const add = (module: KernelWorkspaceModule, document: KernelWorkspaceDocument | null, checkpoint: KernelWorkspaceDocument | null = document,
+      format: string | null = null, payload: CanonicalJsonValue | null = null) => {
+      if (!document || !checkpoint) return;
+      if (entries.some((entry) => entry.expected.id === document.identity.id)) return;
+      const replay = format && payload && canonicalJsonByteLength(payload) <= MAX_MIXED_WORKSPACE_REPLAY_BYTES ? { format, payload } : null;
+      entries.push({ module, checkpoint: replay ? checkpoint : document, expected: document.identity, replay });
+    };
+    const geometryAdapter = geometryKernelAdapterRef.current!;
+    geometryAdapter.commitSource(geometryKernelSceneSnapshot.source);
+    geometryAdapter.commitDisplay(geometryKernelSceneSnapshot.display);
+    const geometryReplay = geometryAdapter.exportReplay();
+    add("geometry", geometryAdapter.document(), geometryReplay.checkpoint.document, MIXED_REPLAY_FORMATS.geometry, geometryReplay as unknown as CanonicalJsonValue);
+    add("mesh", meshKernelDocument);
+    const surfaceAdapter = surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId);
+    if (surfaceAdapter) { const replay = surfaceAdapter.replayBundle(); add("surface", surfaceAdapter.document(), replay.checkpoint, MIXED_REPLAY_FORMATS.surface, replay as unknown as CanonicalJsonValue); }
+    const curveReplay = activeCurveKernelAdapter.replayBundle();
+    add("curve", activeCurveKernelAdapter.document(), curveReplay.checkpoint, MIXED_REPLAY_FORMATS.curve, curveReplay as unknown as CanonicalJsonValue);
+    const volumeReplay = activeVolumeKernelAdapter.replayBundle();
+    add("volume", activeVolumeKernelAdapter.document(), volumeReplay.checkpoint, MIXED_REPLAY_FORMATS.volume, volumeReplay as unknown as CanonicalJsonValue);
+    if (topologyKernelDocument && topologyKernelReplay) add("topology", topologyKernelDocument, topologyKernelReplay.checkpoint.document,
+      MIXED_REPLAY_FORMATS.topology, topologyKernelReplay as unknown as CanonicalJsonValue);
+    const complexReplay = complexPreviewSession.commands.exportReplay();
+    add("complex", complexPreviewSession.commands.document(), complexReplay.checkpoint.document,
+      MIXED_REPLAY_FORMATS.complex, complexReplay as unknown as CanonicalJsonValue);
+    const activeDocumentIds = entries.map((entry) => entry.expected.id);
+    const surfaceHandoffs = surfaceMeshKernelHandoff.records();
+    for (const record of volumeExtractionRecords) add("surface", record.surface);
+    for (const record of surfaceHandoffs) add("mesh", record.meshDocument);
+    if (openedCurveConstruction) {
+      for (const source of openedCurveConstruction.record.sourceDocuments) add("curve", source);
+      add("surface", openedCurveConstruction.record.target);
+    }
+    const ids = new Set(entries.map((entry) => entry.expected.id));
+    const results = [...volumeExtractionRecords.map((record) => record.result), ...meshAnalysisKernelBridge.results()]
+      .filter((result) => ids.has(result.provenance.source.documentId));
+    const uniqueResults = [...new Map(results.map((result) => [result.resultId, result])).values()];
+    const relations = [...volumeExtractionRecords.flatMap((record) => record.relations), ...surfaceHandoffs.flatMap((record) => record.relations),
+      ...(openedCurveConstruction ? [openedCurveConstruction.record.relation] : [])];
+    const uniqueRelations = [...new Map(relations.map((relation) => [relation.relationId, relation])).values()];
+    const volumeArtifacts = new Map(volumeExtractionRecords.map((record) => [record.artifactId, { contentHash: record.contentHash, byteLength: record.byteLength }]));
+    const meshArtifacts = new Map(meshAnalysisKernelBridge.artifactRegistry().listMetadata().map((entry) => [entry.handle.artifactId,
+      { contentHash: entry.checksum, byteLength: entry.byteLength }]));
+    const handles = [...uniqueResults.flatMap((result) => result.artifacts), ...surfaceHandoffs.flatMap((record) => [record.handle, ...(record.mappingHandle ? [record.mappingHandle] : [])])];
+    const artifacts = [...new Map(handles.map((handle) => [handle.artifactId, { handle,
+      contentHash: volumeArtifacts.get(handle.artifactId)?.contentHash ?? meshArtifacts.get(handle.artifactId)?.contentHash ?? null,
+      byteLength: volumeArtifacts.get(handle.artifactId)?.byteLength ?? meshArtifacts.get(handle.artifactId)?.byteLength ?? null,
+    }])).values()];
+    const sceneScript = serializeSceneToScript(geometryObjects, { selectedObjectId: geometrySelectedObjectId });
+    const constructions = [
+      ...(geometryScratchSceneSeed ? [{ kind: "scratch" as const, source: JSON.parse(JSON.stringify(geometryScratchSceneSeed)) as CanonicalJsonValue, normalizedSceneScript: sceneScript }] : []),
+      ...(Object.keys(geometryWorkbookSceneSeeds).length ? [{ kind: "workbook" as const, source: JSON.parse(JSON.stringify(geometryWorkbookSceneSeeds)) as CanonicalJsonValue, normalizedSceneScript: sceneScript }] : []),
+      { kind: "scene-script" as const, source: sceneScript, normalizedSceneScript: sceneScript },
+    ];
+    return createMixedWorkspaceDocument({ entries, activeDocumentIds,
+      results: uniqueResults, artifacts, relations: uniqueRelations,
+      committedSelection: activeKernelSource ? { state: "committed", source: activeKernelSource, entityIds: activeKernelEvidence?.selectedEntityIds ?? [] } : null,
+      constructions });
+  };
   const cgalServiceColor = cgalServiceReady ? "#1f894f" : "#b42318";
   const meshOperationServiceColor = meshOperationServiceReady ? "#1f894f" : "#b42318";
   const octaveServiceColor = octaveBridgeReady ? "#1f894f" : "#9a6700";
@@ -78585,6 +78708,26 @@ case "mobius":
 
   return (
     <div data-testid="app-shell" style={rootStyle}>
+      <KernelWorkspacePanel
+        capture={captureMixedKernelWorkspace}
+        activeModule={activeKernelModule}
+        activeEvidence={activeKernelEvidence}
+        artifactAvailable={(artifactId) => volumeExtractionRecords.some((record) => record.artifactId === artifactId &&
+          (volumeExtractionBridgeRef.current?.artifacts().resolve(record.result.artifacts[0], record.source).ok ?? false)) ||
+          meshAnalysisKernelBridge.artifactRegistry().listMetadata().some((entry) => entry.handle.artifactId === artifactId && entry.availability === "available")}
+        onNavigateModule={(module) => {
+          if (module === "geometry") setMode("geometry");
+          else if (module === "topology") setMode("topology");
+          else if (module === "curve") setMode("curves");
+          else {
+            setMode("surfaces");
+            if (module === "volume") setDatasetKind("volume");
+            else if (module === "mesh") { setDatasetKind("mesh"); setSurfaceViewerKind("mesh"); }
+            else if (module === "complex") { setDatasetKind("surface"); setSurfaceViewerKind("complex"); }
+            else { setDatasetKind("surface"); setSurfaceViewerKind("param"); }
+          }
+        }}
+      />
       {isDev && devError && (
         <div
           style={{
@@ -89936,6 +90079,8 @@ case "mobius":
               style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", ...viewerTouchContainmentStyle }}
             >
               <TopologyScreen
+                onKernelDocumentChange={setTopologyKernelDocument}
+                onKernelReplayChange={setTopologyKernelReplay}
                 meshAdapterSource={surfaceMeshData && activeMeshAnalysisIdentity ? {
                   mesh: surfaceMeshData,
                   sourceObjectId: activeMeshAnalysisIdentity.meshId,

@@ -9,6 +9,8 @@ import {
   type SageIntegerHomologyOutput,
   type ScientificJobProgress,
   type ScientificSourceGeneration,
+  type TopologyDocument,
+  type TopologyReplayBundle,
   type TopologyPersistenceRecord,
 } from "@math3d/core";
 import {
@@ -97,6 +99,8 @@ type TopologyIntegerHomologyUiState =
   | PublishedTopologyIntegerHomology;
 
 export type TopologyScreenProps = {
+  onKernelDocumentChange?: (document: TopologyDocument) => void;
+  onKernelReplayChange?: (replay: TopologyReplayBundle) => void;
   meshAdapterSource?: TopologyMeshAdapterInput | null;
   meshSnapshotHandoff?: TopologyMeshSnapshotHandoff | null;
   onMeshSnapshotHandoffChange?: (handoff: TopologyMeshSnapshotHandoff) => void;
@@ -1280,6 +1284,8 @@ const DunceMapReference3D: React.FC = () => {
 };
 
 export const TopologyScreen: React.FC<TopologyScreenProps> = ({
+  onKernelDocumentChange,
+  onKernelReplayChange,
   meshAdapterSource = null,
   meshSnapshotHandoff = null,
   onMeshSnapshotHandoffChange,
@@ -1388,6 +1394,10 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
   if (!topologyCommandAdapterRef.current) {
     topologyCommandAdapterRef.current = new TopologyDiagramCommandAdapter(diagram);
   }
+  useEffect(() => {
+    onKernelDocumentChange?.(topologyCommandAdapterRef.current!.document());
+    onKernelReplayChange?.(topologyCommandAdapterRef.current!.exportReplay());
+  }, [diagram, commandHistoryState, onKernelDocumentChange, onKernelReplayChange]);
   const syncCommandHistoryState = () => {
     setCommandHistoryState(topologyCommandAdapterRef.current!.historyState());
   };
