@@ -85,7 +85,7 @@ The target outcomes are:
 | C01-C12 | Complex Analysis MVP/v1 vertical migration and gate | Complete |
 | A1-G3 | Original architecture proposal labels | Historical traceability only |
 | G01-G08 | Cross-module milestone groups | Planned/in progress through GK commits |
-| GK01-GK20 | Executable post-C12 integration commits | GK01-GK08 and GK10-GK11 landed; GK09 remains open; GK12-GK20 planned |
+| GK01-GK20 | Executable post-C12 integration commits | GK01-GK11 complete; GK12-GK20 planned |
 
 There is one canonical sequential plan. Historical labels may explain intent, but
 they cannot reopen completed work or create duplicate infrastructure. Completion
@@ -355,7 +355,7 @@ not a prerequisite for lifecycle migration.
 | E2 capabilities | F08 compute capabilities | GK19 platform capabilities/conformance |
 | E3 routing/admission | F08 broker | Domain adapters and GK19 proof |
 | F1 Geometry migration | Released professional UI, not shared lifecycle | GK04-GK06 |
-| F2 Mesh migration | Released Mesh/Analyze, not shared lifecycle | GK07-GK09 |
+| F2 Mesh migration | Released Mesh/Analyze with shared document, command, job, result, and artifact lifecycle | GK07-GK09 complete |
 | F3 Surface/Volume migration | Released professional workflows | GK10-GK11, GK14-GK15 |
 | F4 Curve/procedural migration | Released Curves and Scene Script | GK05, GK12-GK13 |
 | G1 invalidation conformance | F07 unit oracle | GK02, GK03, GK18 |
@@ -597,6 +597,25 @@ current, stale, failed, unavailable, and scientific authority; backend decisions
 inspectable; the worker adapter proves revision binding, cancellation, deadlines,
 failure semantics, provenance, and resource-state transitions; GK03 analysis gates
 pass.
+
+**Implementation evidence (GK09).** `MeshAnalysisKernelBridge` retains the existing
+Mesh Analyze result/history index as a compact compatibility projection while
+publishing ready normals, curvature, principal directions, quality, diagnostics,
+feature, ridge/valley, and field-calculus payloads as source-bound F07 binary
+artifacts with F06 provenance envelopes. The Gauss-map display remains a transient
+projection rather than a second stored field; pre-existing Surface sampling previews
+remain transient. Topology
+Inspector lists remain bounded summaries while dense quality and diagnostic results
+use the same bridge. Artifact generations are invalidated on
+MeshDocument changes and retained bytes are bounded. The differential-geometry worker
+is the first production F05 job adapter behind F08 capability routing, with optional
+backend registration and truthful unavailable-capability reporting; no uninstalled
+CGAL/VTK/native differential backend is advertised as executable. F05/F08 enforce
+revision checks, cancellation, deadlines, and failure outcomes, while F07 records
+computing/current/dirty/failed resource transitions. The visible Mesh Analyze result
+card displays kernel resource state, F06 scientific authority, and the selected
+backend/transport. Run `npm run test:kernel:gk09` and
+`npx playwright test tests/e2e/mesh-kernel-gk09.spec.ts`.
 
 ### G04 — Surfaces and derived Mesh
 

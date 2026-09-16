@@ -813,11 +813,8 @@ import {
 import {
   createMeshAnalysisMeshIdentity,
   createMeshAnalysisResultStore,
-  getMeshAnalysisResult,
-  getMeshAnalysisResultForParameters,
   meshAnalysisResultKey,
   meshAnalysisResultKindsForMesh,
-  upsertMeshAnalysisResult,
   type MeshAnalysisMeshIdentity,
   type MeshAnalysisComputationRecord,
   type MeshAnalysisResultKind,
@@ -825,6 +822,8 @@ import {
   type MeshCurvatureAnalysisPayload,
   type MeshDiagnosticsAnalysisPayload,
 } from "./mesh/analysisResultStore";
+import { MeshAnalysisKernelBridge } from "./mesh/meshAnalysisKernelBridge";
+import { MeshDifferentialScientificJob } from "./mesh/meshDifferentialScientificJob";
 import {
   inspectMeshEntityScientificFields,
   type MeshEntityScientificFields,
@@ -39831,7 +39830,6 @@ const App: React.FC = () => {
   const complexMapOverlayPointsActive = isComplexMapMesh ? complexMapOverlayPointSets : null;
   const meshQualityWorkerRef = useRef<Worker | null>(null);
   const meshQualityJobRef = useRef<string | null>(null);
-  const meshDifferentialWorkerRef = useRef<Worker | null>(null);
   const meshDifferentialJobRef = useRef<string | null>(null);
   const meshSurfaceFeatureWorkerRef = useRef<Worker | null>(null);
   const meshSurfaceFeatureJobRef = useRef<string | null>(null);
@@ -39856,6 +39854,12 @@ const App: React.FC = () => {
   const [meshQualityShowNonManifoldEdges, setMeshQualityShowNonManifoldEdges] = useState(true);
   const [meshQualityExportStatus, setMeshQualityExportStatus] = useState<string | null>(null);
   const [meshAnalysisResultStore, setMeshAnalysisResultStore] = useState(createMeshAnalysisResultStore);
+  const [meshAnalysisKernelBridge] = useState(() => new MeshAnalysisKernelBridge(() => meshDocumentAdapterRef.current));
+  const [meshDifferentialScientificJob] = useState(() => new MeshDifferentialScientificJob(meshAnalysisKernelBridge));
+  const upsertMeshAnalysisResult = meshAnalysisKernelBridge.upsert;
+  const getMeshAnalysisResult = meshAnalysisKernelBridge.get;
+  const getMeshAnalysisResultForParameters = meshAnalysisKernelBridge.getForParameters;
+  useEffect(() => { meshAnalysisKernelBridge.invalidateCurrentSource(); }, [meshAnalysisKernelBridge, meshKernelDocument]);
   const [meshQualityError, setMeshQualityError] = useState<string | null>(null);
   const [meshQualityBusy, setMeshQualityBusy] = useState(false);
   const [meshQualityProgress, setMeshQualityProgress] = useState(0);
@@ -49949,9 +49953,8 @@ case "mobius":
     };
   }, [surfaceMeshCurvatures, surfaceMeshData]);
   const terminateMeshDifferentialWorker = useCallback(() => {
-    meshDifferentialWorkerRef.current?.terminate();
-    meshDifferentialWorkerRef.current = null;
-  }, []);
+    meshDifferentialScientificJob.cancelAll();
+  }, [meshDifferentialScientificJob]);
   const handleCancelMeshDifferentialCompute = useCallback(() => {
     const jobId = meshDifferentialJobRef.current;
     if (!jobId || !activeMeshAnalysisIdentity) return;
@@ -49993,10 +49996,8 @@ case "mobius":
       return;
     }
     terminateMeshDifferentialWorker();
-    const worker = new Worker(new URL("./workers/meshAnalysisWorker.ts", import.meta.url), { type: "module" });
-    const jobId = makeId();
+    const jobId = `mesh-differential/${makeId().replace(/_/g, "-")}`;
     const analysisIdentity = activeMeshAnalysisIdentity;
-    meshDifferentialWorkerRef.current = worker;
     meshDifferentialJobRef.current = jobId;
     setMeshDifferentialPhase("queued");
     setMeshDifferentialProgress(0);
@@ -50022,33 +50023,33 @@ case "mobius":
         triangles: analysisIdentity.faceCount,
       },
     });
-    const onMessage = (event: MessageEvent<MeshAnalysisWorkerMessage>) => {
-      const message = event.data;
-      if (!message || message.jobId !== jobId || message.meshRevision !== analysisIdentity.revision ||
-          meshDifferentialJobRef.current !== jobId) return;
-      if (message.type === "progress") {
-        setMeshDifferentialPhase(message.phase);
-        setMeshDifferentialProgress(Math.max(0, Math.min(1, message.progress)));
-        setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
-          kind: "curvature",
-          variant: "discrete-differential-geometry-v2",
-          mesh: analysisIdentity,
-          parameters: MESH_DIFFERENTIAL_GEOMETRY_PARAMETERS,
-          state: "running",
-          progress: message.progress,
-          dependencies: [],
-          error: null,
-        }));
-        return;
-      }
-      if (message.type === "differential-result" && message.ok) {
+    let alive = true;
+    void meshDifferentialScientificJob.submit(surfaceMeshData, analysisIdentity, (phase, progress) => {
+      if (!alive || meshDifferentialJobRef.current !== jobId) return;
+      setMeshDifferentialPhase(phase as MeshAnalysisWorkerPhase);
+      setMeshDifferentialProgress(Math.max(0, Math.min(1, progress)));
+      setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+        kind: "curvature",
+        variant: "discrete-differential-geometry-v2",
+        mesh: analysisIdentity,
+        parameters: MESH_DIFFERENTIAL_GEOMETRY_PARAMETERS,
+        state: "running",
+        progress,
+        dependencies: [],
+        error: null,
+      }));
+    }, { jobId }).then((outcome) => {
+      if (!alive || meshDifferentialJobRef.current !== jobId) return;
+      if (outcome.ok) {
+        const differential = outcome.payload;
+        const computeTimeMs = outcome.result.provenance.elapsedMs;
         setMeshAnalysisResultStore((previous) => {
           let next = upsertMeshAnalysisResult(previous, {
             kind: "normals",
             variant: "area-weighted-v1",
             mesh: analysisIdentity,
             parameters: { method: "area-weighted-input-winding" },
-            payload: { values: message.result.normals, validMask: message.result.validMask },
+            payload: { values: differential.normals, validMask: differential.validMask },
           });
           next = upsertMeshAnalysisResult(next, {
             kind: "curvature",
@@ -50057,8 +50058,8 @@ case "mobius":
             parameters: MESH_DIFFERENTIAL_GEOMETRY_PARAMETERS,
             state: "ready",
             progress: 1,
-            computeTimeMs: message.computeTimeMs,
-            payload: message.result,
+            computeTimeMs,
+            payload: differential,
             error: null,
           });
           const normalResult = getMeshAnalysisResult(next, analysisIdentity, "normals", "area-weighted-v1");
@@ -50072,7 +50073,7 @@ case "mobius":
               { kind: "normals", variant: "area-weighted-v1", state: normalResult?.state ?? "stale", key: meshAnalysisResultKey(analysisIdentity, "normals", "area-weighted-v1"), resultVersion: normalResult?.resultVersion },
               { kind: "curvature", variant: "discrete-differential-geometry-v2", state: curvatureResult?.state ?? "stale", key: meshAnalysisResultKey(analysisIdentity, "curvature", "discrete-differential-geometry-v2"), resultVersion: curvatureResult?.resultVersion },
             ],
-            payload: { d1: message.result.d1, d2: message.result.d2, validMask: message.result.directionValidMask, warningMask: message.result.warningMask },
+            payload: { d1: differential.d1, d2: differential.d2, validMask: differential.directionValidMask, warningMask: differential.warningMask },
           });
         });
         setMeshDifferentialPhase("ready");
@@ -50082,7 +50083,7 @@ case "mobius":
         recordMeshDebugEvent({
           kind: "phase",
           label: "analysis:curvatureWorker",
-          ms: message.computeTimeMs,
+          ms: computeTimeMs,
           details: {
             queueAndComputeMs: Math.max(0, benchmarkNowMs() - queuedAt),
             meshRevision: analysisIdentity.revision,
@@ -50090,9 +50091,10 @@ case "mobius":
             triangles: analysisIdentity.faceCount,
           },
         });
-      } else if (message.type === "error") {
+      } else if (outcome.broker.code !== "cancelled") {
+        const message = outcome.broker.message;
         setMeshDifferentialPhase("error");
-        setMeshDifferentialError(message.error);
+        setMeshDifferentialError(message);
         setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
           kind: "curvature",
           variant: "discrete-differential-geometry-v2",
@@ -50100,32 +50102,31 @@ case "mobius":
           parameters: MESH_DIFFERENTIAL_GEOMETRY_PARAMETERS,
           state: "error",
           progress: null,
-          error: message.error,
+          error: message,
         }));
       }
       meshDifferentialJobRef.current = null;
-      if (meshDifferentialWorkerRef.current === worker) meshDifferentialWorkerRef.current = null;
-      worker.removeEventListener("message", onMessage);
-      worker.terminate();
-    };
-    worker.addEventListener("message", onMessage);
-    worker.postMessage({
-      type: "compute-differential",
-      jobId,
-      meshRevision: analysisIdentity.revision,
-      mesh: { positions: surfaceMeshData.positions, indices: surfaceMeshData.indices ?? null },
+    }).catch((error: unknown) => {
+      if (!alive || meshDifferentialJobRef.current !== jobId) return;
+      const message = String((error as Error)?.message ?? error);
+      setMeshDifferentialPhase("error");
+      setMeshDifferentialError(message);
+      setMeshAnalysisResultStore((previous) => upsertMeshAnalysisResult(previous, {
+        kind: "curvature", variant: "discrete-differential-geometry-v2", mesh: analysisIdentity,
+        parameters: MESH_DIFFERENTIAL_GEOMETRY_PARAMETERS, state: "error", progress: null, error: message,
+      }));
+      meshDifferentialJobRef.current = null;
     });
     return () => {
-      worker.removeEventListener("message", onMessage);
-      if (meshDifferentialWorkerRef.current === worker) {
-        worker.terminate();
-        meshDifferentialWorkerRef.current = null;
-      }
+      alive = false;
+      meshDifferentialScientificJob.cancel(jobId);
+      if (meshDifferentialJobRef.current === jobId) meshDifferentialJobRef.current = null;
     };
   }, [
     activeMeshAnalysisIdentity,
     cachedMeshCurvatureResult,
     meshDifferentialComputeNonce,
+    meshDifferentialScientificJob,
     recordMeshDebugEvent,
     surfaceMeshData,
     surfaceViewerKind,
@@ -74759,7 +74760,7 @@ case "mobius":
     !surfacesBrowseModeActive;
   const isMeshAnalysisWorkflowContext =
     showSurfaceWorkflowStrip && surfaceViewerKind === "mesh" && surfacesLeftTab === "analysis";
-  const meshActiveAnalysisResult: MeshActiveAnalysisResultSummary = selectMeshActiveAnalysisResult({
+  const meshActiveAnalysisResultBase: MeshActiveAnalysisResultSummary = selectMeshActiveAnalysisResult({
     section: analysisFocusedSection,
     deferred: !!deferredSurfaceSampleSetInfo,
     qualityMetric: meshAnalyzeQualityMetric,
@@ -74820,6 +74821,58 @@ case "mobius":
     meshLabel: surfaceMeshLabel,
     meshRevision: activeMeshAnalysisIdentity?.revision ?? null,
   });
+  const focusedKernelAnalysisKind: MeshAnalysisResultKind | null = ({
+    "differential-geometry": "curvature", "curvature-lines": "curvature",
+    "vector-calculus": "field-calculus", "surface-features": "surface-features",
+    "ridges-valleys": "ridges-valleys", "mesh-quality": "quality",
+    diagnostics: "diagnostics", geodesics: "geodesic",
+  } as Partial<Record<MeshAnalysisFocusedSection, MeshAnalysisResultKind>>)[analysisFocusedSection] ?? null;
+  const focusedKernelAnalysisRecord = focusedKernelAnalysisKind && activeMeshAnalysisIdentity
+    ? Object.values(meshAnalysisResultStore.entries)
+      .filter((entry) => entry.kind === focusedKernelAnalysisKind && entry.identity.key === activeMeshAnalysisIdentity.key)
+      .sort((left, right) => right.updatedAt - left.updatedAt)[0] ?? null
+    : null;
+  const focusedKernelHydratedResult = focusedKernelAnalysisRecord && activeMeshAnalysisIdentity
+    ? getMeshAnalysisResult(meshAnalysisResultStore, activeMeshAnalysisIdentity, focusedKernelAnalysisRecord.kind, focusedKernelAnalysisRecord.variant)
+    : null;
+  const focusedKernelResourceState = focusedKernelAnalysisRecord == null ? "unavailable"
+    : focusedKernelAnalysisRecord.state === "queued" || focusedKernelAnalysisRecord.state === "running" ? "computing"
+    : focusedKernelHydratedResult?.state === "stale" || focusedKernelAnalysisRecord.state === "stale" ? "stale"
+    : focusedKernelAnalysisRecord.state === "error" ? "failed"
+    : focusedKernelAnalysisRecord.state === "ready" && focusedKernelHydratedResult?.payload ? "current"
+    : "unavailable";
+  const focusedKernelEnvelope = focusedKernelAnalysisKind
+    ? [...meshAnalysisKernelBridge.results()].reverse().find((result) =>
+      result.provenance.operation.type === `mesh.analyze.${focusedKernelAnalysisKind}` &&
+      result.provenance.source.documentId === meshAnalysisKernelBridge.source()?.documentId &&
+      result.provenance.source.revision === meshAnalysisKernelBridge.source()?.revision
+    ) ?? null
+    : null;
+  const focusedWorkerOutcome = focusedKernelAnalysisKind === "curvature"
+    ? [...meshDifferentialScientificJob.outcomes()].reverse().find((outcome) =>
+      outcome.ok && outcome.result.source.documentId === meshAnalysisKernelBridge.source()?.documentId &&
+      outcome.result.source.revision === meshAnalysisKernelBridge.source()?.revision
+    ) ?? null
+    : null;
+  const meshActiveAnalysisResult: MeshActiveAnalysisResultSummary = focusedKernelAnalysisKind
+    ? {
+      ...meshActiveAnalysisResultBase,
+      metadata: [
+        ...meshActiveAnalysisResultBase.metadata.map((entry) =>
+          entry.label === "Backend" && focusedWorkerOutcome?.ok
+            ? { ...entry, value: focusedWorkerOutcome.backend.backendId }
+            : entry
+        ),
+        { label: "Kernel resource", value: focusedKernelResourceState },
+      ],
+      provenance: [
+        ...meshActiveAnalysisResultBase.provenance,
+        { label: "Scientific authority", value: focusedKernelResourceState === "current" ? focusedKernelEnvelope?.status ?? "unavailable" : "unavailable" },
+        { label: "Execution backend", value: focusedWorkerOutcome?.ok ? focusedWorkerOutcome.backend.backendId : focusedKernelEnvelope?.provenance.engine.name ?? "unavailable" },
+        ...(focusedWorkerOutcome?.ok ? [{ label: "Transport", value: focusedWorkerOutcome.backend.transport }] : []),
+      ],
+    }
+    : meshActiveAnalysisResultBase;
   const meshAnalysisWorkflowValidationLabel = surfaceMeshAnalyzeDiagnostics
     ? surfaceMeshAnalyzeDiagnostics.state === "Healthy"
       ? "Validated"

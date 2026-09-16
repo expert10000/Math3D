@@ -60,7 +60,7 @@ export type MeshAnalysisComputationRecord =
 export type MeshAnalysisResultStore =
   AnalysisResultStore<MeshAnalysisResultKind, MeshAnalysisMeshIdentity>;
 
-type UpsertMeshAnalysisResultOptions<TPayload> = {
+export type UpsertMeshAnalysisResultOptions<TPayload> = {
   kind: MeshAnalysisResultKind;
   mesh: MeshAnalysisMeshIdentity;
   variant?: string;

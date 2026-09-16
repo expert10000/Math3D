@@ -2439,6 +2439,19 @@ path. Dense scalar and vector fields remain artifact-backed; summaries stay comp
 results; the UI distinguishes current, computing, stale, failed, unavailable, and
 scientific status; heavy overlays are not retained in React state.
 
+**Status: complete.** The Mesh Analyze compatibility index now stores compact F07
+artifact handles, not dense typed fields. F06 envelopes carry source generation,
+method, engine, scientific authority, and artifact provenance. The first F05/F08
+production adapter runs differential geometry in a worker with cancellation,
+deadline, stale-result rejection, and inspectable capability decisions; absent
+CGAL/VTK/native differential adapters remain explicitly unavailable. Normals,
+curvature, principal directions, quality, diagnostics, and other ready analysis
+payloads share the artifact bridge; the Gauss-map display remains a transient
+projection, Surface sampling previews remain transient, and topology list output is
+bounded. Mesh Analyze exposes lifecycle and
+authority in the result card. Gates: `npm run test:kernel:gk09` and
+`npx playwright test tests/e2e/mesh-kernel-gk09.spec.ts`.
+
 ### GK10 — `feat(surface): introduce kernel-owned SurfaceDocument adapter`
 
 **Milestone:** G04 — Surfaces and derived Mesh
