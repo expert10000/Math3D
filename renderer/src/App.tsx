@@ -684,8 +684,12 @@ import {
   type SplineCurve,
   type DerivedConstructionObjectDefinition,
   COMPLEX_COMMAND_TYPES,
+  createStableDocumentId,
   type AnalysisResultEnvelope,
   type ComplexContourRecord,
+  type CanonicalJsonValue,
+  type MeshEditKind,
+  type MeshDocument,
 } from "@math3d/core";
 
 import {
@@ -732,6 +736,7 @@ import {
   type FastPreviewProxyAlgorithm,
 } from "./mesh/fastPreviewProxy";
 import { exportMeshToGLB, exportMeshToOBJ, exportMeshToPLY } from "./mesh/meshExport";
+import { MeshDocumentAdapter } from "./mesh/meshDocumentAdapter";
 import {
   computeAdjacency,
   computeMeanEdgeLength,
@@ -2858,6 +2863,27 @@ const countMeshConnectedComponents = (mesh: SurfaceMeshData | null): number | nu
 
 const toMeshDataset = (mesh: SurfaceMeshData | null): MeshDataset | null =>
   mesh ? { kind: "mesh", surfaceType: "mesh", mesh } : null;
+
+const meshKernelEditKind = (operation: string): MeshEditKind | "preview" | null => {
+  if (operation.startsWith("mesh-large:") || operation.includes("history-preview") || operation.startsWith("mesh-benchmark:")) return "preview";
+  if (operation.includes("-demo")) return null;
+  if (operation.startsWith("mesh-topology:")) {
+    if (operation.includes("vertex")) return "vertex-edit";
+    if (operation.includes("edge")) return "edge-edit";
+    if (operation.includes("face")) return "face-edit";
+    return "replace";
+  }
+  if (operation.startsWith("mesh-op:") || operation.startsWith("mesh-operation:")) {
+    if (operation.includes("subdivid")) return "subdivide";
+    if (operation.includes("repair") || operation.includes("weld")) return "repair";
+    if (operation.includes("smooth")) return "smooth";
+    if (operation.includes("remesh")) return "remesh";
+    if (operation.includes("split")) return "split";
+    if (operation.includes("offset")) return "offset";
+    return "object-edit";
+  }
+  return null;
+};
 
 const cloneSurfaceMeshData = (mesh: SurfaceMeshData, labelOverride?: string): SurfaceMeshData => ({
   ...mesh,
@@ -24125,9 +24151,11 @@ const App: React.FC = () => {
     details?: Record<string, unknown>;
   } | null>(null);
   const meshDatasetPublishTraceCounterRef = useRef(0);
+  const meshDocumentAdapterRef = useRef<MeshDocumentAdapter | null>(null);
+  const [meshKernelDocument, setMeshKernelDocument] = useState<MeshDocument | null>(null);
   const largeSurfaceMeshResolutionCacheRef = useRef<LargeSurfaceMeshResolutionCache | null>(null);
   const largeSurfaceMeshFullRestorePendingRef = useRef(false);
-  const setMeshDataset = useCallback((mesh: SurfaceMeshData | null, traceOperation = "mesh-dataset:set") => {
+  const setMeshDataset = useCallback((mesh: SurfaceMeshData | null, traceOperation = "mesh-dataset:set", kernelParameters: Readonly<Record<string, CanonicalJsonValue>> = {}) => {
     const publishStart = benchmarkNowMs();
     const token = ++meshDatasetPublishTraceCounterRef.current;
     if (!mesh) {
@@ -24138,6 +24166,8 @@ const App: React.FC = () => {
       };
       largeSurfaceMeshResolutionCacheRef.current = null;
       surfaceMeshTraceStateRef.current = null;
+      meshDocumentAdapterRef.current = null;
+      setMeshKernelDocument(null);
       meshDatasetPublishTraceRef.current = {
         token,
         operation: traceOperation,
@@ -24160,6 +24190,15 @@ const App: React.FC = () => {
     }
     const triangles = surfaceMeshTriangleCount(mesh);
     const vertices = Math.floor(mesh.positions.length / 3);
+    const editKind = meshKernelEditKind(traceOperation);
+    if (editKind !== "preview") {
+      if (editKind && meshDocumentAdapterRef.current) {
+        meshDocumentAdapterRef.current.replaceMesh(mesh, editKind, { traceOperation, ...kernelParameters });
+      } else {
+        meshDocumentAdapterRef.current = MeshDocumentAdapter.fromMesh(mesh);
+      }
+      setMeshKernelDocument(meshDocumentAdapterRef.current.document());
+    }
     meshDebugActiveScopeRef.current = {
       name: `setMeshDataset:${traceOperation}`,
       startedAt: publishStart,
@@ -34806,6 +34845,12 @@ const App: React.FC = () => {
       return null;
     }
   });
+  useEffect(() => {
+    if (meshDataset?.mesh && !meshDocumentAdapterRef.current) {
+      meshDocumentAdapterRef.current = MeshDocumentAdapter.fromMesh(meshDataset.mesh);
+      setMeshKernelDocument(meshDocumentAdapterRef.current.document());
+    }
+  }, []);
   const meshPromotionSnapshotCounterRef = useRef<Map<string, number>>(new Map());
   const [meshPromotionTrace, setMeshPromotionTrace] = useState<MeshPromotionTraceState | null>(null);
   const [meshPromotionStatus, setMeshPromotionStatus] = useState<string | null>(null);
@@ -36390,6 +36435,13 @@ const App: React.FC = () => {
   const [meshMultiSelectionSet, setMeshMultiSelectionSet] = useState<UnifiedSelectionSet>(() =>
     createUnifiedSelectionSet([])
   );
+  useEffect(() => {
+    const adapter = meshDocumentAdapterRef.current;
+    if (!adapter) return;
+    if (largeSurfaceMeshResolutionCacheRef.current?.previewMesh === meshDataset?.mesh) return;
+    const entityIds = meshMultiSelectionSet.keys.map((key) => createStableDocumentId("mesh-selection", key));
+    if (entityIds.join("|") !== adapter.selection().join("|")) adapter.commitSelection(entityIds);
+  }, [meshDataset?.mesh, meshMultiSelectionSet.keys]);
   const [surfaceMeshEdgeSelection, setSurfaceMeshEdgeSelection] = useState<MeshEdgeSelectionResult | null>(null);
   const surfaceMeshEdgeSelectionRef = useRef<MeshEdgeSelectionResult | null>(null);
   useEffect(() => {
@@ -59015,7 +59067,7 @@ case "mobius":
         );
         setSurfaceMeshTopologyHistory((prev) => [historyEntry, ...prev].slice(0, 24));
         setSelectedSurfaceMeshTopologyHistoryId(historyEntry.id);
-        setMeshDataset(edited, traceOperation);
+        setMeshDataset(edited, traceOperation, { actionLabel, targetLabel, paramsLabel });
         if (!options?.preserveSelection) {
           // Most topology edits can reindex faces, edges, and vertices. Do not carry
           // stale element IDs into the next command; the batch remains one history entry.
@@ -61733,7 +61785,11 @@ case "mobius":
         setSurfaceMeshTopologyHistoryPreviewId(null);
         setSurfaceMeshTopologyHistoryPreviewMode("after");
       }
-      setMeshDataset(processed, `mesh-operation:${meta.operation}`);
+      setMeshDataset(processed, `mesh-operation:${meta.operation}`, {
+        operation: meta.operation,
+        engine: meta.engine ?? null,
+        outputMode: meta.resultSummary?.outputMode ?? null,
+      });
       setMeshOperationLastValidation(null);
       setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
@@ -62568,10 +62624,8 @@ case "mobius":
 
   const handleMeshOperationSmoothValidateCurrentMesh = useCallback(async () => {
     if (meshOperationBusy) return;
-    if (cgalHealthState?.ok === false) {
-      setMeshOperationError(cgalHealthState.error ?? "Python worker unavailable.");
-      return;
-    }
+    // Smoothing runs in VTK; a stale CGAL health probe must not block it. The
+    // subsequent validation request will resolve or report robust-worker status.
     const mesh = getMeshForMeshOperation();
     if (!mesh) {
       setMeshOperationError("Surface mesh not ready yet.");
@@ -62661,7 +62715,6 @@ case "mobius":
   }, [
     applyMeshOperationResultToSurfaceMesh,
     buildActiveMeshLabel,
-    cgalHealthState,
     focusMeshOperationRow,
     getMeshForMeshOperation,
     meshOperationBusy,
@@ -85568,6 +85621,8 @@ case "mobius":
                       <div
                         data-testid="mesh-boolean-review-toolbar"
                         style={{
+                          position: "relative",
+                          zIndex: 19,
                           margin: showCurrentSurfaceViewerControls && !surfacePanelsAsDrawers ? "0 8px 6px" : "6px 0",
                           border: "1px solid #93c5fd",
                           borderRadius: 8,
@@ -88367,6 +88422,7 @@ case "mobius":
                     />}
                     <SurfacesRightPanel
                       viewerKind={surfaceViewerKind}
+                      meshKernelDocument={meshKernelDocument}
                       meshAnalysisActive={surfaceViewerKind === "mesh" && surfacesLeftTab === "analysis"}
                       surfaceId={activeEqSurfaceId}
                       paramId={paramSurfaceId}
@@ -126066,6 +126122,7 @@ type MeshAnalyzeDiagnosticsSummary = MeshDiagnosticsAnalysisPayload;
 
 type SurfacesRightPanelProps = {
   viewerKind: SurfaceViewerKind;
+  meshKernelDocument: MeshDocument | null;
   meshAnalysisActive: boolean;
   surfaceId: SurfaceId;
   paramId: ParamSurfaceId;
@@ -126346,6 +126403,7 @@ type MeshAnalysisFeatureRow = {
 
 const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   viewerKind,
+  meshKernelDocument,
   meshAnalysisActive,
   surfaceId,
   paramId,
@@ -128355,6 +128413,11 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             <div style={inspectorSectionCard}>
               <div style={inspectorSectionTitle}>Mesh Details</div>
               <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+                {meshKernelDocument && (
+                  <div data-testid="mesh-kernel-document">
+                    <strong>Document:</strong> revision {meshKernelDocument.identity.revision} · {meshKernelDocument.identity.id.slice(-8)} · artifact {meshKernelDocument.source.resource.checksum.slice(7, 15)}
+                  </div>
+                )}
                 <div><strong>Source/method:</strong> {meshBackendLabel}</div>
                 <div><strong>Vertices:</strong> {formatInspectorCount(meshInspectorStats.vertexCount)}</div>
                 <div><strong>Faces:</strong> {formatInspectorCount(meshInspectorStats.faceCount)}</div>

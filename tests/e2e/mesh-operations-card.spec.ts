@@ -48,23 +48,18 @@ async function firstVisible(locator: Locator): Promise<Locator> {
 }
 
 async function selectSection(page: Page, label: (typeof sectionLabels)[number]): Promise<void> {
-  const button = await firstVisible(page.getByRole("button", { name: label, exact: true }));
+  const idByLabel: Record<(typeof sectionLabels)[number], string> = {
+    Surfaces: "surfaces",
+    Mesh: "mesh",
+    Volume: "volume",
+    Curves: "curves",
+    Topology: "topology",
+    Geometry: "geometry",
+    "Complex Analysis": "complex_analysis",
+  };
+  const button = page.getByTestId(`workspace-nav-${idByLabel[label]}`);
   await button.click();
-  await page.waitForFunction(
-    ({ expectedLabels, expectedLabel }) => {
-      const buttons = Array.from(document.querySelectorAll("button"));
-      for (const candidate of expectedLabels) {
-        const active = buttons.find((button) => {
-          const text = (button.textContent ?? "").trim();
-          return text === candidate && button.getAttribute("aria-pressed") === "true";
-        });
-        if (active) return candidate === expectedLabel;
-      }
-      return false;
-    },
-    { expectedLabels: [...sectionLabels], expectedLabel: label },
-    { timeout: 15_000, polling: 25 }
-  );
+  await expect(button).toHaveAttribute("aria-pressed", "true", { timeout: 15_000 });
 }
 
 async function loadBenchmarkModel(page: Page, id: string): Promise<void> {

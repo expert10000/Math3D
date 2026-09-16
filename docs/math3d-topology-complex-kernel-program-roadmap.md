@@ -2378,6 +2378,10 @@ remain synchronous with a recorded cost justification. See
 
 **Milestone:** G03 — Mesh and Mesh Analyze
 
+**Status:** complete — `014aefa` establishes the v1 document and binary resource
+contract; the GK08 workspace bridge adopts it for current imports and generated
+meshes.
+
 **Scope.** Wrap imported and generated meshes in stable document identity with
 source revision/hash/generation, resource/object IDs, compact metadata, and
 artifact-backed bulk vertex/index/attribute storage. Preserve current importers
@@ -2387,9 +2391,21 @@ through explicit adapters.
 buffers never enter command/history JSON; a structural edit advances revision and
 invalidates dependent analysis.
 
+**Delivered.** `MeshDocument` carries stable document/object/resource IDs,
+revision/hash and compact source metadata. Immutable buffer sidecars use the F07
+artifact registry with checksum verification; document and replay packages keep
+binary bytes separate from JSON. The renderer adapter preserves import provenance,
+round-trips a saved document with its sidecar, and exposes the exact source
+generation for GK09 invalidation. Malformed imported buffers remain available for
+Mesh Health repair. Gate: `npm run test:kernel:gk07`.
+
 ### GK08 — `refactor(mesh): route committed mesh edits through kernel transactions`
 
 **Milestone:** G03 — Mesh and Mesh Analyze
+
+**Status:** complete — the central Mesh publisher and committed-selection bridge
+use kernel transactions; existing edit panels and saved topology examples remain
+compatible.
 
 **Scope.** Migrate completed object/face/edge/vertex edits, split/offset/subdivide,
 repair, smoothing/remeshing, committed selection, and controlled imports to typed
@@ -2398,6 +2414,18 @@ commands. Keep hover and pick previews transient.
 **Acceptance.** GUI edit, undo/redo, replay, and save produce the same canonical
 Mesh source; invalid mixed batches mutate nothing; professional selection semantics
 remain compatible.
+
+**Delivered.** Typed resource, selection, rename, and visibility commands are
+projected atomically. Object/face/edge/vertex and operation-registry edits commit
+compact resource references with action parameters; transient large-mesh and
+history previews do not mutate the Mesh document. Bounded kernel undo/redo and
+deterministic replay restore the same source through binary sidecars. An invalid
+mixed batch leaves both source and selection unchanged. The Mesh Inspector shows
+the current document revision/artifact; the split-edit UI gate verifies a revision
+advance and Geometry handoff. The old topology-session localStorage snapshot format
+is retained only as a compatibility reader/writer; it is not the kernel command
+or replay JSON. Gate: `npm run test:kernel:gk08` plus
+`tests/e2e/mesh-topology-persistence.spec.ts`.
 
 ### GK09 — `feat(mesh): migrate Mesh Analyze to shared jobs results and artifacts`
 

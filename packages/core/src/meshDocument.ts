@@ -56,6 +56,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const safeId = (value: unknown): value is string =>
   typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/.test(value);
 const count = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
+const exact = (value: Record<string, unknown>, fields: readonly string[]): boolean =>
+  Object.keys(value).sort().join("|") === [...fields].sort().join("|");
 const clone = <T>(value: T): T => JSON.parse(canonicalJsonStringify(value)) as T;
 const freeze = <T>(value: T): T => {
   if (value && typeof value === "object" && !Object.isFrozen(value)) {
@@ -70,21 +72,26 @@ export const normalizeMeshDocument = (value: unknown): ValidationResult<MeshDocu
   const errors: string[] = [];
   if (!isRecord(value)) return { ok: false, errors: ["Mesh document must be an object."] };
   try { canonicalJsonStringify(value); } catch { return { ok: false, errors: ["Mesh document must contain only canonical JSON."] }; }
+  if (!exact(value, ["format", "schemaVersion", "identity", "source", "metadata", "display"])) errors.push("Mesh document contains unknown or missing fields.");
   if (value.format !== MESH_DOCUMENT_FORMAT || value.schemaVersion !== MESH_DOCUMENT_SCHEMA_VERSION) errors.push("Mesh format or schema version is unsupported.");
   if (!isDocumentIdentity(value.identity)) errors.push("Mesh identity is invalid.");
   if (!isRecord(value.source) || !safeId(value.source.objectId) || !isRecord(value.source.resource)) {
     errors.push("Mesh source requires an object ID and resource reference.");
   } else {
+    if (!exact(value.source, ["objectId", "resource", "origin"])) errors.push("Mesh source contains unknown or missing fields.");
     const resource = value.source.resource;
+    if (!exact(resource, ["id", "checksum", "vertexCount", "indexCount", "hasNormals", "hasUvs", "encoding"])) errors.push("Mesh resource reference contains unknown or missing fields.");
     if (!safeId(resource.id) || !isStructuralHash(resource.checksum) || !count(resource.vertexCount) || !count(resource.indexCount) ||
         typeof resource.hasNormals !== "boolean" || typeof resource.hasUvs !== "boolean" || resource.encoding !== "math3d.mesh-buffers.v1") {
       errors.push("Mesh resource reference is invalid.");
     }
-    if (value.source.origin === undefined) errors.push("Mesh source origin is required.");
+    if (value.source.origin === undefined || canonicalJsonStringify(value.source.origin).length > 512_000) errors.push("Mesh source origin must be compact metadata.");
   }
   if (!isRecord(value.metadata) || typeof value.metadata.label !== "string" ||
       !(value.metadata.importedFrom === null || typeof value.metadata.importedFrom === "string")) errors.push("Mesh metadata is invalid.");
   if (!isRecord(value.display) || typeof value.display.visible !== "boolean") errors.push("Mesh display is invalid.");
+  if (isRecord(value.metadata) && !exact(value.metadata, ["label", "importedFrom"])) errors.push("Mesh metadata contains unknown or missing fields.");
+  if (isRecord(value.display) && !exact(value.display, ["visible"])) errors.push("Mesh display contains unknown or missing fields.");
   if (errors.length) return { ok: false, errors };
   const document = canonical(value) as MeshDocument;
   if (document.identity.structuralHash !== createDocumentIdentity(document.identity.id, document.source, document.identity.revision).structuralHash) {

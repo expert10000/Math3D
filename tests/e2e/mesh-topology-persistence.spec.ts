@@ -562,6 +562,7 @@ test.describe("Mesh topology persistence and handoff", () => {
 
       await openMeshGallery(page);
       await page.getByTestId("mesh-preset-card-mesh_box").click();
+      await expect(page.getByTestId("mesh-kernel-document")).toContainText(/revision 1/);
       await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true })).then((button) =>
         button.click()
       );
@@ -571,6 +572,7 @@ test.describe("Mesh topology persistence and handoff", () => {
       await expect(page.getByTestId("mesh-context-split-edge")).toBeEnabled();
       await page.getByTestId("mesh-context-split-edge").click();
       await expect(page.getByText(/Done: midpoint vertex on Edge/i).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId("mesh-kernel-document")).toContainText(/revision 2/);
 
       await page.getByTestId("mesh-topology-select-edge-ring").click();
       await expect(page.getByTestId("mesh-edge-selection-summary").first()).toContainText(/Edge ring selected/i);

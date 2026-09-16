@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { normalizeMeshDocument } from "@math3d/core";
 import { MeshDocumentAdapter } from "./meshDocumentAdapter";
 import type { SurfaceMeshData } from "./surfaceMesh";
 
@@ -38,6 +39,11 @@ describe("GK07 MeshDocument adapter", () => {
     expect(adapter.document().source.objectId).toBe(before.source.objectId);
     expect(adapter.document().identity.revision).toBe(before.identity.revision + 1);
     expect(adapter.document().identity.structuralHash).not.toBe(before.identity.structuralHash);
+    expect(adapter.sourceGeneration()).toMatchObject({
+      documentId: before.identity.id,
+      revision: before.identity.revision + 1,
+      generation: before.identity.revision + 1,
+    });
   });
 
   it("rejects corrupt binary sidecars", () => {
@@ -45,5 +51,41 @@ describe("GK07 MeshDocument adapter", () => {
     const corrupted = pkg.resourceBytes.slice();
     corrupted[corrupted.length - 1] ^= 1;
     expect(() => MeshDocumentAdapter.restore({ document: pkg.document, resourceBytes: corrupted })).toThrow(/checksum/);
+  });
+
+  it("rejects accidental bulk arrays embedded in document JSON", () => {
+    const document = MeshDocumentAdapter.fromMesh(triangle()).document();
+    expect(normalizeMeshDocument({ ...document, positions: [0, 1, 2] }).ok).toBe(false);
+    expect(normalizeMeshDocument({ ...document, source: { ...document.source, indices: [0, 1, 2] } }).ok).toBe(false);
+  });
+
+  it("retains invalid imported indices for Mesh Health instead of rejecting the document", () => {
+    const malformed = triangle();
+    malformed.indices = new Uint32Array([0, 1, 99]);
+    const reopened = MeshDocumentAdapter.restore(MeshDocumentAdapter.fromMesh(malformed).exportPackage());
+    expect(Array.from(reopened.mesh().indices ?? [])).toEqual([0, 1, 99]);
+  });
+
+  it("commits edits and selection atomically, replays, and undoes without buffer JSON", () => {
+    const adapter = MeshDocumentAdapter.fromMesh(triangle());
+    const first = adapter.document();
+    const edited = triangle();
+    edited.positions[3] = 2;
+    adapter.replaceMesh(edited, "vertex-edit", { vertexIndex: 1 });
+    adapter.commitSelection([adapter.document().source.objectId]);
+    expect(adapter.document().identity.revision).toBe(first.identity.revision + 1);
+    const replay = adapter.exportReplay();
+    expect(JSON.stringify(replay.transactions)).not.toContain("positions");
+    expect(JSON.stringify(replay.transactions)).not.toContain("indices");
+    const restored = MeshDocumentAdapter.restoreReplay(replay);
+    expect(restored.document()).toEqual(adapter.document());
+    expect(restored.selection()).toEqual(adapter.selection());
+    expect(Array.from(restored.mesh().positions)).toEqual(Array.from(edited.positions));
+    expect(restored.undo()).not.toBeNull(); // selection
+    expect(restored.selection()).toEqual([]);
+    expect(restored.undo()).not.toBeNull(); // vertex edit
+    expect(Array.from(restored.mesh().positions)).toEqual(Array.from(triangle().positions));
+    expect(restored.redo()).not.toBeNull();
+    expect(Array.from(restored.mesh().positions)).toEqual(Array.from(edited.positions));
   });
 });

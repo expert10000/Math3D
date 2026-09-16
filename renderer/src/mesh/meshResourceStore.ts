@@ -21,12 +21,7 @@ export const encodeMeshBuffers = (mesh: SurfaceMeshData): Uint8Array => {
   const indices = mesh.indices;
   const normals = mesh.normals ?? null;
   const uvs = mesh.uvs ?? null;
-  if (positions.length % 3 || (indices && indices.length % 3) ||
-      (normals && normals.length !== positions.length) ||
-      (uvs && uvs.length !== (positions.length / 3) * 2)) {
-    throw new TypeError("Mesh buffers have incompatible component counts.");
-  }
-  for (const value of positions) if (!Number.isFinite(value)) throw new TypeError("Mesh positions must be finite.");
+  // Preserve even malformed imported buffers so Mesh Health can diagnose/repair them.
   const lengths = [positions.length, indices?.length ?? 0, normals?.length ?? 0, uvs?.length ?? 0];
   const size = HEADER_BYTES + lengths.reduce((total, length) => total + length * 4, 0);
   const bytes = new Uint8Array(size);
@@ -46,9 +41,7 @@ export const decodeMeshBuffers = (bytes: Uint8Array): Pick<SurfaceMeshData, "pos
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (view.getUint32(0, true) !== MAGIC || view.getUint32(4, true) !== 1) throw new TypeError("Mesh sidecar header is invalid.");
   const lengths = [8, 12, 16, 20].map((offset) => view.getUint32(offset, true));
-  if (HEADER_BYTES + lengths.reduce((sum, length) => sum + length * 4, 0) !== bytes.length ||
-      lengths[0]! % 3 || lengths[1]! % 3 || (lengths[2] !== 0 && lengths[2] !== lengths[0]) ||
-      (lengths[3] !== 0 && lengths[3] !== (lengths[0]! / 3) * 2)) {
+  if (HEADER_BYTES + lengths.reduce((sum, length) => sum + length * 4, 0) !== bytes.length) {
     throw new TypeError("Mesh sidecar lengths are invalid.");
   }
   let offset = HEADER_BYTES;
@@ -61,8 +54,6 @@ export const decodeMeshBuffers = (bytes: Uint8Array): Pick<SurfaceMeshData, "pos
   const indices = lengths[1] ? read(lengths[1], "uint") as Uint32Array : null;
   const normals = lengths[2] ? read(lengths[2], "float") as Float32Array : null;
   const uvs = lengths[3] ? read(lengths[3], "float") as Float32Array : null;
-  for (const value of positions) if (!Number.isFinite(value)) throw new TypeError("Mesh sidecar contains non-finite positions.");
-  if (indices) for (const index of indices) if (index >= positions.length / 3) throw new TypeError("Mesh sidecar contains an out-of-range index.");
   return { positions, indices, normals, uvs };
 };
 
@@ -71,7 +62,10 @@ export class MeshResourceStore {
   readonly #registry: InMemoryArtifactRegistry;
 
   constructor() {
-    this.#registry = createInMemoryArtifactRegistry({ resolveSource: (documentId) => this.#sources.get(documentId) ?? null });
+    this.#registry = createInMemoryArtifactRegistry({
+      resolveSource: (documentId) => this.#sources.get(documentId) ?? null,
+      maxArtifactBytes: 1024 * 1024 * 1024,
+    });
   }
 
   registry(): InMemoryArtifactRegistry { return this.#registry; }
@@ -81,7 +75,7 @@ export class MeshResourceStore {
     const checksum = sha256Checksum(bytes);
     const id = `mesh-resource:${checksum.slice(7, 39)}`;
     const reference: MeshResourceReference = {
-      id, checksum, vertexCount: mesh.positions.length / 3, indexCount: mesh.indices?.length ?? 0,
+      id, checksum, vertexCount: Math.floor(mesh.positions.length / 3), indexCount: mesh.indices?.length ?? 0,
       hasNormals: !!mesh.normals?.length, hasUvs: !!mesh.uvs?.length, encoding: ENCODING,
     };
     this.import(reference, bytes);
@@ -91,7 +85,7 @@ export class MeshResourceStore {
   import(reference: MeshResourceReference, bytes: Uint8Array): void {
     if (sha256Checksum(bytes) !== reference.checksum) throw new TypeError("Mesh sidecar checksum does not match its reference.");
     const decoded = decodeMeshBuffers(bytes);
-    if (decoded.positions.length / 3 !== reference.vertexCount || (decoded.indices?.length ?? 0) !== reference.indexCount ||
+    if (Math.floor(decoded.positions.length / 3) !== reference.vertexCount || (decoded.indices?.length ?? 0) !== reference.indexCount ||
         !!decoded.normals?.length !== reference.hasNormals || !!decoded.uvs?.length !== reference.hasUvs) {
       throw new TypeError("Mesh sidecar counts do not match its reference.");
     }
