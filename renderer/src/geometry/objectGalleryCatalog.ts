@@ -156,21 +156,6 @@ ${shapeForStyle(style, palette.accent)}
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
 
-const CAPTURED_OBJECT_THUMB_IDS = new Set<string>([
-  "sphere",
-  "box",
-  "cylinder",
-  "cone",
-  "torus",
-  "tetrahedron",
-  "cube",
-  "octahedron",
-  "dodecahedron",
-  "icosahedron",
-  "prism",
-  "pyramid",
-]);
-
 const resolveGalleryAssetPath = (relativePath: string): string => {
   const normalized = relativePath.replace(/^\/+/, "");
   const basePath = (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? "/";
@@ -195,10 +180,10 @@ const resolveGalleryAssetPath = (relativePath: string): string => {
   }
 };
 
-const capturedObjectThumbPath = (objectId: string): string | null =>
-  CAPTURED_OBJECT_THUMB_IDS.has(objectId)
-    ? resolveGalleryAssetPath(`gallery-images/captured/objects/${objectId}.png`)
-    : null;
+// Every gallery recipe has a viewport-captured image. The diagram remains an
+// onError fallback for development builds where captures have not been made.
+const capturedObjectThumbPath = (objectId: string): string =>
+  resolveGalleryAssetPath(`gallery-images/captured/objects/${objectId}.png`);
 
 const preset = (
   cardId: string,

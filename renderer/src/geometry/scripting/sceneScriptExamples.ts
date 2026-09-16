@@ -28,3 +28,114 @@ export const PROCEDURAL_SCENE_SCRIPT_SYNTAX_EXAMPLES = [
   "select box1",
   "delete box1",
 ] as const;
+
+export type PreparedGeometrySceneScript = {
+  id: string;
+  title: string;
+  description: string;
+  objectCount: number;
+  cameraRadius: number;
+  script: string;
+};
+
+const objectAtlasTypes = ["box", "sphere", "cylinder", "cone", "torus"] as const;
+const objectAtlasColors = ["#4169af", "#19a7a0", "#ef9b43", "#ad69c8", "#dc6576"] as const;
+const objectAtlas = [
+  "# Twenty-object atlas: four rows of five editable solids",
+  "clear",
+  ...Array.from({ length: 20 }, (_, index) => {
+    const column = index % 5;
+    const row = Math.floor(index / 5);
+    const type = objectAtlasTypes[(column + row) % objectAtlasTypes.length];
+    const color = objectAtlasColors[(column + row * 2) % objectAtlasColors.length];
+    return `add ${type} as atlas_${index + 1} x=${(column - 2) * 1.8} y=${(1.5 - row) * 1.8} z=0 sx=0.58 sy=0.58 sz=0.58${type === "torus" ? " arc=6.283185" : ""} color=${color} "name=Atlas ${index + 1}" "group=Object atlas"`;
+  }),
+  "select atlas_1",
+].join("\n");
+
+const orbitLab = [
+  "# Orbit lab: central sphere and nine satellite solids",
+  "clear",
+  'add sphere as center radius=0.9 x=0 y=0 z=0 color=#f4b544 "name=Center" "group=Orbit lab"',
+  ...Array.from({ length: 9 }, (_, index) => {
+    const angle = (index / 9) * Math.PI * 2;
+    const x = (Math.cos(angle) * 3.1).toFixed(3);
+    const y = (Math.sin(angle) * 3.1).toFixed(3);
+    const type = index % 3 === 0 ? "torus" : index % 3 === 1 ? "sphere" : "cone";
+    const color = ["#2c8cbe", "#44b49a", "#b77bc9"][index % 3];
+    return `add ${type} as satellite_${index + 1} x=${x} y=${y} z=0 sx=0.42 sy=0.42 sz=0.42${type === "torus" ? " arc=6.283185" : ""} color=${color} "name=Satellite ${index + 1}" "group=Orbit lab"`;
+  }),
+  "select center",
+].join("\n");
+
+export const PREPARED_GEOMETRY_SCENE_SCRIPTS: readonly PreparedGeometrySceneScript[] = [
+  {
+    id: "five-solids",
+    title: "Five solids",
+    description: "Box, sphere, cylinder, cone, and torus for a quick material and transform tour.",
+    objectCount: 5,
+    cameraRadius: 6.5,
+    script: [
+      "# Five solids: a compact editable scene",
+      "clear",
+      'add box as box_1 x=-3.6 y=0 z=0 sx=0.75 sy=0.75 sz=0.75 color=#4169af "name=Blue box"',
+      'add sphere as sphere_1 x=-1.8 y=0 z=0 radius=0.75 color=#1fa79c "name=Teal sphere"',
+      'add cylinder as cylinder_1 x=0 y=0 z=0 sx=0.65 sy=0.65 sz=0.65 color=#e8a13f "name=Amber cylinder"',
+      'add cone as cone_1 x=1.8 y=0 z=0 sx=0.7 sy=0.7 sz=0.7 color=#b36ac8 "name=Violet cone"',
+      'add torus as torus_1 x=3.6 y=0 z=0 sx=0.65 sy=0.65 sz=0.65 arc=6.283185 color=#d97077 "name=Coral torus"',
+      "select box_1",
+    ].join("\n"),
+  },
+  {
+    id: "five-symmetry",
+    title: "Five-point symmetry",
+    description: "One center and four cardinal markers for symmetry and distance checks.",
+    objectCount: 5,
+    cameraRadius: 4.6,
+    script: [
+      "# Five-point symmetry",
+      "clear",
+      'add sphere as center radius=0.8 color=#efac42 "name=Center"',
+      'add sphere as east radius=0.48 x=2.3 color=#2d8fb9 "name=East"',
+      'add sphere as west radius=0.48 x=-2.3 color=#2d8fb9 "name=West"',
+      'add sphere as north radius=0.48 y=2.3 color=#8e70ce "name=North"',
+      'add sphere as south radius=0.48 y=-2.3 color=#8e70ce "name=South"',
+      "select center",
+    ].join("\n"),
+  },
+  {
+    id: "ten-workshop",
+    title: "Ten-object workshop",
+    description: "Two rows of contrasting primitives for selection, measurement, and comparison.",
+    objectCount: 10,
+    cameraRadius: 6.5,
+    script: [
+      "# Ten-object workshop",
+      "clear",
+      ...Array.from({ length: 10 }, (_, index) => {
+        const column = index % 5;
+        const row = Math.floor(index / 5);
+        const type = objectAtlasTypes[(column + row) % objectAtlasTypes.length];
+        const color = objectAtlasColors[(column + row) % objectAtlasColors.length];
+        return `add ${type} as workshop_${index + 1} x=${(column - 2) * 1.8} y=${row === 0 ? 1.1 : -1.1} sx=0.62 sy=0.62 sz=0.62${type === "torus" ? " arc=6.283185" : ""} color=${color} "name=Workshop ${index + 1}" "group=Workshop"`;
+      }),
+      "select workshop_1",
+    ].join("\n"),
+  },
+  {
+    id: "ten-orbit",
+    title: "Ten-object orbit lab",
+    description: "A central sphere with nine satellite solids arranged on a circular orbit.",
+    objectCount: 10,
+    cameraRadius: 6.1,
+    script: orbitLab,
+  },
+  {
+    id: "twenty-atlas",
+    title: "Twenty-object atlas",
+    description: "A 4 × 5 collection for stress-testing selection, visibility, and Scene Script round trips.",
+    objectCount: 20,
+    cameraRadius: 8.4,
+    script: objectAtlas,
+  },
+];

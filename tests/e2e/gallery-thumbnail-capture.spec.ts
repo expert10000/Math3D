@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { ElectronApplication } from "playwright";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { clickFirstVisible, clickFirstVisibleButton } from "./helpers/uiActions";
@@ -34,6 +34,12 @@ type CaptureManifest = {
   objects: ObjectCaptureEntry[];
   surfaces: SurfaceCaptureEntry[];
   meshes: MeshCaptureEntry[];
+};
+
+const upsertCapturedEntry = <T extends { file: string }>(entries: T[], entry: T): void => {
+  const index = entries.findIndex((current) => current.file === entry.file);
+  if (index >= 0) entries[index] = entry;
+  else entries.push(entry);
 };
 
 type CaptureViewPolicy = {
@@ -397,6 +403,11 @@ const prepareSurfaceCaptureUi = async (page: Page): Promise<void> => {
       div:has(> [data-testid="surface-viewer-canvas-host"]) > :not([data-testid="surface-viewer-canvas-host"]) {
         display: none !important;
       }
+      [data-testid="geometry-viewer-panel"] * { visibility: hidden !important; }
+      [data-testid="geometry-viewer-panel"] [data-testid="surface-viewer-canvas-host"],
+      [data-testid="geometry-viewer-panel"] [data-testid="surface-viewer-canvas-host"] * {
+        visibility: visible !important;
+      }
     `;
     document.head.appendChild(style);
   });
@@ -561,7 +572,7 @@ const captureObjectGallery = async (
 
     const outPath = path.join(outputRoot, "objects", `${id}.png`);
     await captureScene(page, outPath, resolveObjectCapturePolicy(id));
-    manifest.objects.push({ id, file: toPosixRelative(outPath) });
+    upsertCapturedEntry(manifest.objects, { id, file: toPosixRelative(outPath) });
   }
 };
 
@@ -598,7 +609,7 @@ const captureSurfaceCards = async (
     await captureScene(page, outPath, resolveSurfaceCapturePolicy(id, options.family, options.subtype));
     await setSurfacesLayout3PanelMode(page, "browse");
     await setSurfacesLayout(page, 3);
-    manifest.surfaces.push({
+    upsertCapturedEntry(manifest.surfaces, {
       id,
       family: options.family,
       subtype: options.subtype,
@@ -628,7 +639,7 @@ const captureMeshCards = async (page: Page, outputRoot: string, manifest: Captur
     await prepareMeshCaptureUi(page);
     const outPath = path.join(outputRoot, "mesh", `${id}.png`);
     await captureScene(page, outPath, resolveMeshCapturePolicy(id));
-    manifest.meshes.push({
+    upsertCapturedEntry(manifest.meshes, {
       id,
       kind: "preset",
       file: toPosixRelative(outPath),
@@ -653,7 +664,7 @@ const captureMeshCards = async (page: Page, outputRoot: string, manifest: Captur
       await prepareMeshCaptureUi(page);
       const outPath = path.join(outputRoot, "mesh", `${id}.png`);
       await captureScene(page, outPath, resolveMeshCapturePolicy(id));
-      manifest.meshes.push({
+      upsertCapturedEntry(manifest.meshes, {
         id,
         kind: "asset",
         file: toPosixRelative(outPath),
@@ -670,13 +681,17 @@ test("Capture gallery thumbnails for objects and surfaces", async () => {
   const outputRoot = output.path;
   mkdirSync(outputRoot, { recursive: true });
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-thumbs-"));
+  const manifestPath = path.join(outputRoot, "manifest.json");
+  const previousManifest: CaptureManifest | null = existsSync(manifestPath)
+    ? JSON.parse(readFileSync(manifestPath, "utf8")) as CaptureManifest
+    : null;
 
   const manifest: CaptureManifest = {
     generatedAt: new Date().toISOString(),
     outputRoot: toPosixRelative(outputRoot),
-    objects: [],
-    surfaces: [],
-    meshes: [],
+    objects: [...(previousManifest?.objects ?? [])],
+    surfaces: [...(previousManifest?.surfaces ?? [])],
+    meshes: [...(previousManifest?.meshes ?? [])],
   };
 
   let app: ElectronApplication | null = null;
@@ -764,7 +779,7 @@ test("Capture gallery thumbnails for objects and surfaces", async () => {
       await captureMeshCards(page, outputRoot, manifest);
     }
 
-    writeFileSync(path.join(outputRoot, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
   } finally {
     if (app) {
       await app.close();

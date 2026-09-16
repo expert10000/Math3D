@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-16T16:27:29.838Z",
+  "generatedAt": "2026-09-16T08:44:10.254Z",
   "outputRoot": "gallery-images/captured",
   "objects": [
     {
@@ -13,6 +13,14 @@
     {
       "id": "cylinder",
       "file": "gallery-images/captured/objects/cylinder.png"
+    },
+    {
+      "id": "plane",
+      "file": "gallery-images/captured/objects/plane.png"
+    },
+    {
+      "id": "polygon",
+      "file": "gallery-images/captured/objects/polygon.png"
     },
     {
       "id": "sphere",
@@ -49,6 +57,138 @@
     {
       "id": "tetrahedron",
       "file": "gallery-images/captured/objects/tetrahedron.png"
+    },
+    {
+      "id": "arc",
+      "file": "gallery-images/captured/objects/arc.png"
+    },
+    {
+      "id": "circle",
+      "file": "gallery-images/captured/objects/circle.png"
+    },
+    {
+      "id": "helix",
+      "file": "gallery-images/captured/objects/helix.png"
+    },
+    {
+      "id": "line-segment",
+      "file": "gallery-images/captured/objects/line-segment.png"
+    },
+    {
+      "id": "polyline",
+      "file": "gallery-images/captured/objects/polyline.png"
+    },
+    {
+      "id": "axis",
+      "file": "gallery-images/captured/objects/axis.png"
+    },
+    {
+      "id": "frame",
+      "file": "gallery-images/captured/objects/frame.png"
+    },
+    {
+      "id": "grid-plane",
+      "file": "gallery-images/captured/objects/grid-plane.png"
+    },
+    {
+      "id": "measurement-ruler",
+      "file": "gallery-images/captured/objects/measurement-ruler.png"
+    },
+    {
+      "id": "point",
+      "file": "gallery-images/captured/objects/point.png"
+    },
+    {
+      "id": "reference-plane",
+      "file": "gallery-images/captured/objects/reference-plane.png"
+    },
+    {
+      "id": "extrusion",
+      "file": "gallery-images/captured/objects/extrusion.png"
+    },
+    {
+      "id": "loft",
+      "file": "gallery-images/captured/objects/loft.png"
+    },
+    {
+      "id": "revolution",
+      "file": "gallery-images/captured/objects/revolution.png"
+    },
+    {
+      "id": "sweep",
+      "file": "gallery-images/captured/objects/sweep.png"
+    },
+    {
+      "id": "tube-along-curve",
+      "file": "gallery-images/captured/objects/tube-along-curve.png"
+    },
+    {
+      "id": "box-cutter",
+      "file": "gallery-images/captured/objects/box-cutter.png"
+    },
+    {
+      "id": "cylinder-cutter",
+      "file": "gallery-images/captured/objects/cylinder-cutter.png"
+    },
+    {
+      "id": "half-space-plane",
+      "file": "gallery-images/captured/objects/half-space-plane.png"
+    },
+    {
+      "id": "sphere-cutter",
+      "file": "gallery-images/captured/objects/sphere-cutter.png"
+    },
+    {
+      "id": "catenoid",
+      "file": "gallery-images/captured/objects/catenoid.png"
+    },
+    {
+      "id": "edu-conic-sections",
+      "file": "gallery-images/captured/objects/edu-conic-sections.png"
+    },
+    {
+      "id": "enneper",
+      "file": "gallery-images/captured/objects/enneper.png"
+    },
+    {
+      "id": "edu-euler-characteristic",
+      "file": "gallery-images/captured/objects/edu-euler-characteristic.png"
+    },
+    {
+      "id": "explicit-surface",
+      "file": "gallery-images/captured/objects/explicit-surface.png"
+    },
+    {
+      "id": "helicoid",
+      "file": "gallery-images/captured/objects/helicoid.png"
+    },
+    {
+      "id": "implicit-surface",
+      "file": "gallery-images/captured/objects/implicit-surface.png"
+    },
+    {
+      "id": "klein-bottle",
+      "file": "gallery-images/captured/objects/klein-bottle.png"
+    },
+    {
+      "id": "mobius-strip",
+      "file": "gallery-images/captured/objects/mobius-strip.png"
+    },
+    {
+      "id": "parametric-surface",
+      "file": "gallery-images/captured/objects/parametric-surface.png"
+    },
+    {
+      "id": "edu-platonic-solids",
+      "file": "gallery-images/captured/objects/edu-platonic-solids.png"
+    },
+    {
+      "id": "edu-projection-demos",
+      "file": "gallery-images/captured/objects/edu-projection-demos.png"
+    },
+    {
+      "id": "pseudosphere",
+      "file": "gallery-images/captured/objects/pseudosphere.png"
     }
   ],
   "surfaces": [

@@ -128,6 +128,26 @@ test("Geometry UI preserves a complete Script -> Scene -> Script round trip atom
     await expect(page.getByTestId("geometry-professional-action-new")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("geometry-professional-action-gallery")).toHaveAttribute("aria-pressed", "false");
 
+    const preparedShortcuts = page.getByTestId("geometry-prepared-scene-shortcuts");
+    await expect(preparedShortcuts).toBeVisible();
+    const capturedThumbnail = page.getByTestId("geometry-gallery-card-mobius-strip").locator("img");
+    await capturedThumbnail.scrollIntoViewIfNeeded();
+    await expect.poll(() => capturedThumbnail.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+    expect(await capturedThumbnail.getAttribute("src")).toContain("gallery-images/captured/objects/mobius-strip.png");
+    for (const objectCount of [5, 10, 20]) {
+      await page.getByTestId(`geometry-open-prepared-scene-${objectCount}`).click();
+      await expect.poll(() => readStats(page)).toEqual({ objects: objectCount, visible: objectCount });
+      await expect(renderedViewport).toHaveAttribute("data-rendered-mesh-count", String(objectCount));
+      await page.getByTestId("geometry-professional-action-new").click();
+      await expect.poll(() => readStats(page)).toEqual({ objects: 0, visible: 0 });
+      await expect(renderedViewport).toHaveAttribute("data-rendered-mesh-count", "0");
+    }
+    await page.getByTestId("geometry-browse-prepared-scene-scripts").click();
+    await expect(page.getByTestId("geometry-prepared-scene-scripts")).toContainText("Twenty-object atlas");
+    await page.getByTestId("geometry-prepared-scene-edit-five-symmetry").click();
+    expect(await editor.inputValue()).toContain("Five-point symmetry");
+    await page.getByTestId("geometry-professional-action-new").click();
+
     await page.getByTestId("geometry-professional-action-gallery").click();
     await expect(page.getByTestId("geometry-professional-expanded-group")).toContainText("Gallery choices");
     await expect(page.getByTestId("geometry-professional-action-gallery")).toHaveAttribute("aria-pressed", "true");

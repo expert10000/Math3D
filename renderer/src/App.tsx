@@ -464,8 +464,10 @@ import {
 import { formatSceneScriptDiagnostic } from "./geometry/scripting/sceneScriptDiagnostics";
 import { executeSceneScript } from "./geometry/scripting/sceneScriptExecutor";
 import {
+  PREPARED_GEOMETRY_SCENE_SCRIPTS,
   PROCEDURAL_SCENE_SCRIPT_ROUND_TRIP_FIXTURE,
   PROCEDURAL_SCENE_SCRIPT_STARTER,
+  type PreparedGeometrySceneScript,
 } from "./geometry/scripting/sceneScriptExamples";
 import { serializeSceneToScript } from "./geometry/scripting/sceneScriptSerializer";
 import {
@@ -17550,6 +17552,38 @@ const App: React.FC = () => {
     },
     [geometryDatasetMeshObjects, geometryObjects, geometryProceduralScriptText, geometrySelectedObjectId]
   );
+
+  const handleOpenPreparedGeometrySceneScript = useCallback((preset: PreparedGeometrySceneScript) => {
+    const result = executeSceneScript({ script: preset.script, objects: [], datasetObjectIds: [] });
+    if (!result.ok) {
+      setGeometryProceduralScriptStatus(null);
+      setGeometryProceduralScriptError(formatSceneScriptDiagnostic(result.error));
+      return;
+    }
+    handleClearGeometryWorkspace();
+    setGeometryObjects(result.objects);
+    setGeometrySelectedObjectId(result.selectedObjectId);
+    setGeometryProceduralScriptText(preset.script);
+    setGeometryProceduralScriptError(null);
+    setGeometryProceduralScriptStatus(`Opened ${preset.title}: ${result.objects.length} editable objects.`);
+    setGeometryCreateActionStatus(`Opened ${preset.title}: ${result.objects.length} editable objects. Open Script to edit the source.`);
+    setGeometryProfessionalExpandedGroup(null);
+    setGeometryCameraFitCommand((current) => ({
+      token: (current?.token ?? 0) + 1,
+      center: { x: 0, y: 0, z: 0 },
+      radius: preset.cameraRadius,
+      padding: 1.3,
+    }));
+  }, [handleClearGeometryWorkspace]);
+
+  const handleEditPreparedGeometrySceneScript = useCallback((preset: PreparedGeometrySceneScript) => {
+    setGeometryProceduralScriptText(preset.script);
+    setGeometryProceduralScriptStatus(`Loaded ${preset.title} source. Choose Script -> scene to replace the current scene.`);
+    setGeometryProceduralScriptError(null);
+    setGeometryMode("procedural");
+    setGeometryProceduralPanelTab("script");
+    setGeometryProfessionalExpandedGroup(null);
+  }, []);
 
   const handleGenerateProceduralScriptFromScene = useCallback(() => {
     const script = serializeSceneToScript(geometryObjects, { selectedObjectId: geometrySelectedObjectId });
@@ -90350,6 +90384,38 @@ case "mobius":
                     {geometryProceduralPanelTab === "create" && (
                     <>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Object gallery</div>
+                    <div
+                      data-testid="geometry-prepared-scene-shortcuts"
+                      style={{ border: "1px solid #bfdbfe", borderRadius: 8, background: "#eff6ff", padding: "7px 8px", marginBottom: 8, display: "grid", gap: 5 }}
+                    >
+                      <div style={{ fontSize: 11, fontWeight: 800, color: "#1e3a8a" }}>Prepared Scene Script presets</div>
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                        {(["five-solids", "ten-workshop", "twenty-atlas"] as const).map((presetId) => {
+                          const preset = PREPARED_GEOMETRY_SCENE_SCRIPTS.find((entry) => entry.id === presetId)!;
+                          return (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              data-testid={`geometry-open-prepared-scene-${preset.objectCount}`}
+                              title={preset.description}
+                              onClick={() => handleOpenPreparedGeometrySceneScript(preset)}
+                              style={{ fontSize: 10.5, padding: "4px 8px", fontWeight: 800 }}
+                            >
+                              {preset.objectCount} objects
+                            </button>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          data-testid="geometry-browse-prepared-scene-scripts"
+                          onClick={() => setGeometryProceduralPanelTab("script")}
+                          style={{ fontSize: 10.5, padding: "4px 8px" }}
+                        >
+                          Browse scripts
+                        </button>
+                      </div>
+                      <div style={{ fontSize: 10, color: "#475569" }}>Opens an editable scene. Each preset also loads its Scene Script source.</div>
+                    </div>
                     <div style={{ display: "grid", gap: 6, marginBottom: 8, flex: "0 0 auto" }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6 }}>
                         <input
@@ -91660,6 +91726,21 @@ case "mobius":
                     {geometryProceduralPanelTab === "script" && (
                     <div style={{ marginTop: 4, display: "grid", gap: 6 }}>
                       <div style={{ fontSize: 12, fontWeight: 700 }}>Procedural scripting</div>
+                      <div data-testid="geometry-prepared-scene-scripts" style={{ display: "grid", gap: 5 }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: "#1e3a8a" }}>Prepared scenes</div>
+                        {PREPARED_GEOMETRY_SCENE_SCRIPTS.map((preset) => (
+                          <div key={preset.id} style={{ border: "1px solid #dbeafe", borderRadius: 7, background: "#f8fbff", padding: "5px 7px", display: "grid", gap: 4 }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                              <span style={{ fontSize: 10.5, fontWeight: 800 }}>{preset.title} · {preset.objectCount} objects</span>
+                              <span style={{ display: "flex", gap: 4 }}>
+                                <button type="button" data-testid={`geometry-prepared-scene-edit-${preset.id}`} onClick={() => handleEditPreparedGeometrySceneScript(preset)} style={{ fontSize: 10, padding: "2px 7px" }}>Edit script</button>
+                                <button type="button" data-testid={`geometry-prepared-scene-open-${preset.id}`} onClick={() => handleOpenPreparedGeometrySceneScript(preset)} style={{ fontSize: 10, padding: "2px 7px", fontWeight: 800 }}>Open scene</button>
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 10, color: "#475569" }}>{preset.description}</div>
+                          </div>
+                        ))}
+                      </div>
                       <div style={{ fontSize: 10, opacity: 0.72, fontFamily: "monospace" }}>
                         clear | add box as b x=0 y=0 z=0 width=2 color=#8aa4ff | set b opacity=0.8 | delete b
                       </div>
