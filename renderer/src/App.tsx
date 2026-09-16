@@ -649,7 +649,7 @@ import { CurveInteroperabilityPanel } from "./components/CurveInteroperabilityPa
 import { CurveMeshPanel } from "./components/CurveMeshPanel";
 import { CurveBackendPanel } from "./components/CurveBackendPanel";
 import { CurveWorkerPanel } from "./components/CurveWorkerPanel";
-import { CurveDocumentAdapter, curveDocumentFromLegacyDefinition } from "./curveAnalysis/curveDocumentAdapter";
+import { CurveDocumentAdapter, curveDocumentFromLegacyDefinition, splineDefinitionFromCurveDocument } from "./curveAnalysis/curveDocumentAdapter";
 import { CurveConstructionRealizer, locateCurveConstructionVertex, type CurveConstructionGeometry } from "./curveAnalysis/curveConstructionGeometry";
 import { curveConstructionSourceStatus, type CurveConstructionRecord } from "./curveAnalysis/curveConstructionKernel";
 import { CurveResultLifecyclePanel } from "./components/CurveResultLifecyclePanel";
@@ -12846,15 +12846,16 @@ const App: React.FC = () => {
   const curveActiveClosed = curveActiveIsImported ? curveImportedSection.closed : Boolean(activeCurveDomain.closed);
   const curveRevisionTrackerRef = useRef<CurveRevisionTracker>(new Map());
   const curveCanonicalAdapterInput = useMemo<CurveAdapterInput>(() => {
-    const rawMin = curveActiveIsImported ? 0 : activeCurveDomain.tMin;
-    const rawMax = curveActiveIsImported ? 1 : activeCurveDomain.tMax;
+    const spline = curveSplineDefinition?.id === activeCurvePreset?.id ? curveSplineDefinition : null;
+    const rawMin = curveActiveIsImported ? 0 : spline?.domain.tMin ?? activeCurveDomain.tMin;
+    const rawMax = curveActiveIsImported ? 1 : spline?.domain.tMax ?? activeCurveDomain.tMax;
     const validDomain = Number.isFinite(rawMin) && Number.isFinite(rawMax) && rawMax > rawMin;
     const canonicalDomain = {
       parameter: curveActiveIsImported ? "u" : "t",
       min: validDomain ? rawMin : 0,
       max: validDomain ? rawMax : 1,
-      closed: curveActiveClosed,
-      periodic: curveActiveClosed,
+      closed: spline?.closed ?? curveActiveClosed,
+      periodic: spline?.periodic ?? curveActiveClosed,
     };
     const sourceExpressions = {
       x: activeCurveFormulas.x,
@@ -13028,6 +13029,18 @@ const App: React.FC = () => {
       return createCurveAnalysisWorkspaceDocument();
     }
   });
+  const curveAnalysisWorkspaceRef = useRef(curveAnalysisWorkspaceDocument);
+  curveAnalysisWorkspaceRef.current = curveAnalysisWorkspaceDocument;
+  const persistCurveKernelDocument = useCallback((document: ReturnType<CurveDocumentAdapter["document"]>) => {
+    const workspace = curveAnalysisWorkspaceRef.current;
+    const next = {
+      ...workspace,
+      kernelDocuments: [...workspace.kernelDocuments.filter((entry) => entry.metadata.legacyCurveId !== document.metadata.legacyCurveId), document].slice(-64),
+    };
+    curveAnalysisWorkspaceRef.current = next;
+    try { localStorage.setItem(CURVE_ANALYSIS_WORKSPACE_KEY, serializeCurveAnalysisWorkspace(next)); } catch { /* live document remains usable */ }
+    setCurveAnalysisWorkspaceDocument(next);
+  }, []);
   const curveKernelAdaptersRef = useRef<Map<string, CurveDocumentAdapter>>(new Map());
   const curveConstructionRealizerRef = useRef(new CurveConstructionRealizer());
   const [openedCurveConstruction, setOpenedCurveConstruction] = useState<{ record: CurveConstructionRecord; geometry: CurveConstructionGeometry } | null>(null);
@@ -13041,13 +13054,21 @@ const App: React.FC = () => {
     }
     return adapter;
   }, [activeCanonicalCurveDefinition.identity.curveId]);
+  const activeCurveSplineSeed = useMemo(() => {
+    const fixture = activeCurvePreset?.id === "bezierCubic" ? DEFAULT_BEZIER_CURVE
+      : activeCurvePreset?.id === "bSplineDemo" ? DEFAULT_BSPLINE_CURVE
+      : activeCurvePreset?.id === "nurbsQuarterArc" ? DEFAULT_NURBS_QUARTER_ARC
+      : activeCurvePreset?.id === "nurbs-circle" ? RATIONAL_NURBS_CIRCLE : null;
+    return fixture ? splineDefinitionFromCurveDocument(activeCurveKernelAdapter.document(), fixture) : null;
+  }, [activeCurveKernelAdapter, activeCurvePreset?.id]);
   useEffect(() => {
+    if (activeCurveSplineSeed && curveSplineDefinition?.id !== activeCurvePreset?.id) return;
     activeCurveKernelAdapter.syncLegacyDefinition(activeCanonicalCurveDefinition);
     setCurveAnalysisWorkspaceDocument((workspace) => ({
       ...workspace,
       kernelDocuments: [...workspace.kernelDocuments.filter((document) => document.metadata.legacyCurveId !== activeCanonicalCurveDefinition.identity.curveId), activeCurveKernelAdapter.document()].slice(-64),
     }));
-  }, [activeCanonicalCurveDefinition.fingerprint, activeCanonicalCurveDefinition.identity.curveId, activeCurveKernelAdapter]);
+  }, [activeCanonicalCurveDefinition.fingerprint, activeCanonicalCurveDefinition.identity.curveId, activeCurveKernelAdapter, activeCurvePreset?.id, activeCurveSplineSeed, curveSplineDefinition?.id]);
   const curveAnalysisRegistryRef = useRef(createCurveAnalysisRegistry());
   const [curveAnalysisResultStore, setCurveAnalysisResultStore] = useState(createCurveAnalysisResultStore);
   const [curveResultLifecycle, setCurveResultLifecycle] = useState(createCurveResultLifecycleState);
@@ -89109,12 +89130,10 @@ case "mobius":
                         <div data-testid="curve-kernel-document">Kernel CurveDocument: {activeCurveKernelAdapter.document().identity.id} · revision {activeCurveKernelAdapter.document().identity.revision} · committed controls {activeCurveKernelAdapter.document().selection.controlIds.length}</div>
                         <button type="button" onClick={() => setCurvePresetId("custom2d")}>Open editable custom curve</button>
                         {activeCurvePreset && ["bezier", "bspline", "nurbs"].includes(activeCurvePreset.category) && (
-                          <SplineCurveEditor presetId={activeCurvePreset.id} parameter={curveProbeU} onChange={handleCurveSplineChange} onCommitControlSelection={(index) => {
-                            activeCurveKernelAdapter.commitSelection([`control:${index}`]);
-                            setCurveAnalysisWorkspaceDocument((workspace) => ({
-                              ...workspace,
-                              kernelDocuments: [...workspace.kernelDocuments.filter((document) => document.metadata.legacyCurveId !== activeCanonicalCurveDefinition.identity.curveId), activeCurveKernelAdapter.document()].slice(-64),
-                            }));
+                          <SplineCurveEditor key={activeCurvePreset.id} presetId={activeCurvePreset.id} initialDefinition={activeCurveSplineSeed ?? undefined} parameter={curveProbeU} onChange={handleCurveSplineChange} onCommitDefinition={(next) => {
+                            persistCurveKernelDocument(activeCurveKernelAdapter.commitSplineDefinition(next));
+                          }} onCommitControlSelection={(index) => {
+                            persistCurveKernelDocument(activeCurveKernelAdapter.commitSelection([`control:${index}`]));
                           }} />
                         )}
                         <CurveInteroperabilityPanel

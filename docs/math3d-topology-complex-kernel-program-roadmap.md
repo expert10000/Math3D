@@ -2488,10 +2488,13 @@ result/artifact contracts where appropriate.
 **Acceptance.** Curve edits, replay, save/reopen, invalidation, and status
 publication pass GK03. Handle dragging remains preview-only until commit.
 
-**Status:** in progress. Kernel `CurveDocument`, reversible adapter, persisted
-workspace documents, and revision-bound worker result/artifact publication exist.
-Full command-route ownership and F05/F08 worker routing remain the completion gate;
-see the combined roadmap for current evidence. Run `npm run test:kernel:gk12`.
+**Status:** complete. Kernel `CurveDocument` and reversible adapter own spline
+edits, committed selection, and compensating Undo/Redo commands; saved structural
+sources hydrate the editor on reopen. Curve worker execution uses F05/F08 job and
+broker lifecycle with F06/F07 source-bound results/artifacts. The GK03 adapter
+conformance matrix, focused unit and UI save/reopen/worker tests, typecheck, and
+production build pass. See the combined roadmap for evidence. Run
+`npm run test:kernel:gk12`.
 
 ### GK13 — `feat(curves): add revisioned curve sweep extrusion and surface lineage`
 

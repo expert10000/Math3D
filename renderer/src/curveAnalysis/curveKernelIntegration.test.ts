@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { normalizeCurveDocument, replaceCurveDocumentSource } from "@math3d/core";
+import { runDomainAdapterConformance } from "@math3d/kernel";
 import { adaptCurveDefinition } from "./infrastructure";
-import { CurveDocumentAdapter, curveDocumentFromLegacyDefinition } from "./curveDocumentAdapter";
+import { CurveDocumentAdapter, curveDocumentFromLegacyDefinition, splineDefinitionFromCurveDocument } from "./curveDocumentAdapter";
 import { CurveAnalysisKernelBridge } from "./curveAnalysisKernelBridge";
 import { CurveWorkerCoordinator } from "./curveWorkerCoordinator";
 import {
@@ -30,12 +31,56 @@ const sampled = (id: string, offset = 0) => openSampledCurvesInCurves({
 }).branches[0];
 
 describe("GK12 Curve kernel document", () => {
+  it("passes the shared GK03 document adapter conformance matrix", async () => {
+    const report = await runDomainAdapterConformance<CurveDocumentAdapter>({
+      name: "CurveDocumentAdapter",
+      create: () => new CurveDocumentAdapter(curveDocumentFromLegacyDefinition(definition)),
+      snapshot: (adapter) => {
+        const document = adapter.document();
+        const history = adapter.history();
+        return { identity: document.identity, structuralState: document.source, persistentState: document,
+          history: { undoDepth: history.undoDepth, redoDepth: history.redoDepth } };
+      },
+      preview: (adapter) => { adapter.previewSource({ ...adapter.document().source, definition: { ...adapter.document().source.definition, controlPoints: [[0, 0], [1, 4], [2, 0]] } }); },
+      commitStructuralEdit: (adapter) => { adapter.commitControlPoints([[0, 0], [1, 3], [2, 0]]); },
+      attemptInvalidEdit: (adapter) => { adapter.commitSource({ ...adapter.document().source, definition: { ...adapter.document().source.definition, weights: [1, -1, 1] } }); },
+      undo: (adapter) => { adapter.undo(); },
+      redo: (adapter) => { adapter.redo(); },
+      replay: (adapter) => CurveDocumentAdapter.fromReplayBundle(JSON.parse(JSON.stringify(adapter.replayBundle()))),
+      reopen: (adapter) => CurveDocumentAdapter.parse(adapter.serialize()),
+      queryIsolation: (adapter) => {
+        const before = adapter.serialize();
+        try { (adapter.document().source.definition.controlPoints![1] as number[])[1] = 10; } catch { /* immutable query */ }
+        return adapter.serialize() === before;
+      },
+    });
+    expect(report.checks.filter((check) => !check.passed)).toEqual([]);
+    expect(report.passed).toBe(true);
+  });
   it("owns structural controls, knots and weights but excludes sampled buffers", () => {
     const doc = curveDocumentFromLegacyDefinition(definition);
     expect(doc.source.definition).toMatchObject({ controlPoints: [[0, 0], [1, 2], [2, 0]], knots: [0, 0, 0, 1, 1, 1], weights: [1, 0.7, 1] });
     expect(JSON.stringify(doc)).not.toContain("sampleCount");
     expect(normalizeCurveDocument(doc).ok).toBe(true);
     expect(normalizeCurveDocument({ ...doc, source: { ...doc.source, definition: { ...doc.source.definition, weights: [1, -1, 1] } } }).ok).toBe(false);
+  });
+
+  it("reopens edited spline controls, knots, weights and domain from the saved source", () => {
+    const adapter = new CurveDocumentAdapter(curveDocumentFromLegacyDefinition(definition));
+    const fixture = {
+      version: 1 as const, id: "nurbs-gk12", revision: 1, name: "NURBS", kind: "nurbs" as const,
+      dimension: 2 as const, degree: 2, controlPoints: [{ x: 0, y: 0 }, { x: 1, y: 2 }, { x: 2, y: 0 }],
+      knotVector: [0, 0, 0, 1, 1, 1], weights: [1, 0.7, 1], closed: false, periodic: false, clamped: true,
+      domain: { tMin: 0, tMax: 1 },
+    };
+    adapter.commitSplineDefinition({ ...fixture, controlPoints: [{ x: 0, y: 0 }, { x: 1, y: 3 }, { x: 2, y: 0 }], weights: [1, 0.9, 1] });
+    const reopened = CurveDocumentAdapter.parse(adapter.serialize());
+    const hydrated = splineDefinitionFromCurveDocument(reopened.document(), fixture);
+    expect(hydrated.controlPoints[1].y).toBe(3);
+    expect(hydrated.weights[1]).toBe(0.9);
+    expect(hydrated.knotVector).toEqual(fixture.knotVector);
+    expect(hydrated.domain).toEqual(fixture.domain);
+    expect(reopened.document().source).toEqual(adapter.document().source);
   });
 
   it("keeps drag preview out of history and replays edits, selection and settings", () => {

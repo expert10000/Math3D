@@ -85,7 +85,7 @@ The target outcomes are:
 | C01-C12 | Complex Analysis MVP/v1 vertical migration and gate | Complete |
 | A1-G3 | Original architecture proposal labels | Historical traceability only |
 | G01-G08 | Cross-module milestone groups | Planned/in progress through GK commits |
-| GK01-GK20 | Executable post-C12 integration commits | GK01-GK11 and GK13 complete; GK12 in progress; GK14-GK20 planned |
+| GK01-GK20 | Executable post-C12 integration commits | GK01-GK13 complete; GK14-GK20 planned |
 
 There is one canonical sequential plan. Historical labels may explain intent, but
 they cannot reopen completed work or create duplicate infrastructure. Completion
@@ -673,16 +673,18 @@ contracts where appropriate. Handle dragging is preview-only until commit.
 status publication, and backend routing pass GK03; exact and numerical authority stay
 distinguishable; no dense samples enter persistent command history.
 
-**Implementation in progress (GK12).** A strict `CurveDocument` and reversible
-command adapter now cover canonical definition sources, controls, knots, weights,
-analysis settings, and committed control selection. The Curves workspace persists
-kernel documents and shows their revision; the worker panel publishes compact
-numerical results with F07 binary artifacts bound to the active source generation.
-Focused Curve tests, the UI round-trip test, typecheck, and the production build
-pass. `npm run test:kernel:gk12` is the combined gate. Still open: make the kernel
-command route authoritative for all spline edits/undo, route Curve worker execution
-through the shared F05/F08 job/broker lifecycle, and run the full GK03 conformance
-matrix before changing GK12 to complete.
+**Implementation evidence (GK12 complete).** A strict `CurveDocument` and
+reversible command adapter own canonical definition sources, controls, knots,
+weights, analysis settings, and committed control selection. Spline edits and
+Undo/Redo commit structural commands before the editor changes its local display;
+the saved source hydrates controls, knots, weights, and domain on reopen. Commits
+persist synchronously so an immediate reload cannot restore an older preset.
+The Curve worker executes through the shared F05 job service and F08 broker,
+including capability discovery and cancellation, while F06/F07 publish compact
+numerical results and revision-bound binary artifacts. The Curve adapter passes
+the shared GK03 conformance matrix. Focused unit tests, the spline save/reopen
+and worker UI gates, typecheck, and production build pass. Run
+`npm run test:kernel:gk12` for the combined gate.
 
 #### GK13 — `feat(curves): add revisioned sweep extrusion and surface lineage`
 
@@ -706,8 +708,8 @@ construction/source identities in history. Source changes stale unpromoted
 constructions; promoted snapshots keep their original source documents. Workspace
 save/reopen regenerates the same geometry and retains Surface chart/sample
 correspondence; duplicate loft inputs are rejected. Run `npm run test:kernel:gk13`
-for unit, typecheck, build, and UI round-trip gates. GK12's remaining command/job
-migration is tracked separately and does not alter these exact GK13 snapshots.
+for unit, typecheck, build, and UI round-trip gates. GK12's command/job migration
+is complete and the GK13 lineage gates remain green on that foundation.
 
 ### G06 — Volumes and extraction handoffs
 

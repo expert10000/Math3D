@@ -34,16 +34,18 @@ import type { CurveViewerVec3 } from "./CurveViewer";
 export type SplineVisualState = { controlPoints: CurveViewerVec3[]; constructionLevels: CurveViewerVec3[][]; knotPoints: CurveViewerVec3[]; weights: number[] };
 export type SplineCurveEditorProps = {
   presetId: string;
+  initialDefinition?: CanonicalSplineDefinition;
   parameter: number;
   onChange: (definition: CanonicalSplineDefinition, curve: SplineCurve, visuals: SplineVisualState) => void;
+  onCommitDefinition?: (definition: CanonicalSplineDefinition) => void;
   onCommitControlSelection?: (index: number) => void;
 };
 
 const point3 = (point: CurvePoint): CurveViewerVec3 => ({ x: point.x, y: point.y, z: "z" in point ? point.z : 0 });
 const fixtureFor = (presetId: string) => cloneSplineFixture(presetId === "bezierCubic" ? DEFAULT_BEZIER_CURVE : presetId === "bSplineDemo" ? DEFAULT_BSPLINE_CURVE : presetId === "nurbs-circle" ? RATIONAL_NURBS_CIRCLE : DEFAULT_NURBS_QUARTER_ARC);
 
-export const SplineCurveEditor: React.FC<SplineCurveEditorProps> = ({ presetId, parameter, onChange, onCommitControlSelection }) => {
-  const [history, setHistory] = useState<SplineHistory>(() => createSplineHistory(fixtureFor(presetId)));
+export const SplineCurveEditor: React.FC<SplineCurveEditorProps> = ({ presetId, initialDefinition, parameter, onChange, onCommitDefinition, onCommitControlSelection }) => {
+  const [history, setHistory] = useState<SplineHistory>(() => createSplineHistory(initialDefinition ?? fixtureFor(presetId)));
   const [selectionMode, setSelectionMode] = useState<SplineSelectionMode>("control-point");
   const [selectedControl, setSelectedControl] = useState(0);
   const [selectedKnot, setSelectedKnot] = useState(0);
@@ -54,7 +56,7 @@ export const SplineCurveEditor: React.FC<SplineCurveEditorProps> = ({ presetId, 
   const [message, setMessage] = useState("Ready");
   const definition = currentSplineRevision(history);
 
-  useEffect(() => { setHistory(createSplineHistory(fixtureFor(presetId))); setSelectedControl(0); setSelectedKnot(0); setEditKnot(0.5); setMessage("Ready"); }, [presetId]);
+  useEffect(() => { setHistory(createSplineHistory(initialDefinition ?? fixtureFor(presetId))); setSelectedControl(0); setSelectedKnot(0); setEditKnot(0.5); setMessage("Ready"); }, [presetId]);
   useEffect(() => {
     const point = definition.controlPoints[Math.min(selectedControl, definition.controlPoints.length - 1)];
     setEditPoint(point3(point)); setEditWeight(definition.weights[Math.min(selectedControl, definition.weights.length - 1)] ?? 1);
@@ -73,9 +75,14 @@ export const SplineCurveEditor: React.FC<SplineCurveEditorProps> = ({ presetId, 
 
   const apply = (next: CanonicalSplineDefinition | null, success: string, failure = "Edit is not mathematically valid at the current tolerance.") => {
     if (!next) { setMessage(failure); return; }
+    onCommitDefinition?.(next);
     setHistory((current) => pushSplineHistory(current, next)); setMessage(success);
   };
   const run = (action: () => CanonicalSplineDefinition | null, success: string) => { try { apply(action(), success); } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); } };
+  const navigateHistory = (next: SplineHistory, label: string) => {
+    try { onCommitDefinition?.(currentSplineRevision(next)); setHistory(next); setMessage(label); }
+    catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
+  };
 
   const movablePoint = definition.controlPoints[Math.min(selectedControl, definition.controlPoints.length - 1)];
   const editableKnots = definition.knotVector.map((knot, index) => ({ knot, index })).filter(({ index }) => index > definition.degree && index < definition.knotVector.length - definition.degree - 1);
@@ -96,7 +103,7 @@ export const SplineCurveEditor: React.FC<SplineCurveEditorProps> = ({ presetId, 
       <select aria-label="Join continuity" value={continuity} onChange={(event) => setContinuity(event.target.value as SplineContinuity)}>{["C0", "C1", "C2", "G1", "G2"].map((value) => <option key={value}>{value}</option>)}</select>
       <button data-testid="curve-spline-join" type="button" onClick={() => run(() => constrainSplineJoin(definition, { ...cloneSplineFixture(definition), id: `${definition.id}:joined` }, continuity), `Applied ${continuity} endpoint constraint`)}>Constrain join</button>
     </div>
-    <div style={{ display: "flex", gap: 4 }}><button data-testid="curve-spline-undo" type="button" disabled={history.index === 0} onClick={() => { setHistory(undoSplineHistory(history)); setMessage("Undo"); }}>Undo</button><button data-testid="curve-spline-redo" type="button" disabled={history.index >= history.entries.length - 1} onClick={() => { setHistory(redoSplineHistory(history)); setMessage("Redo"); }}>Redo</button></div>
+    <div style={{ display: "flex", gap: 4 }}><button data-testid="curve-spline-undo" type="button" disabled={history.index === 0} onClick={() => navigateHistory(undoSplineHistory(history), "Undo")}>Undo</button><button data-testid="curve-spline-redo" type="button" disabled={history.index >= history.entries.length - 1} onClick={() => navigateHistory(redoSplineHistory(history), "Redo")}>Redo</button></div>
     <div data-testid="curve-spline-evidence">{definition.kind === "bezier" ? "De Casteljau" : "De Boor"} evidence · span {evidence.span} · {evidence.levels.length} levels</div>
     <div data-testid="curve-spline-message" style={{ color: message.includes("not") || message.includes("must") ? "#b91c1c" : "#166534" }}>{message}</div>
   </div>;

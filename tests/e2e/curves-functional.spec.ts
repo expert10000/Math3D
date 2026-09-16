@@ -270,14 +270,32 @@ test.describe("Curves canonical workspace", () => {
       await expect(editor).toBeVisible();
       await expect(ctx.page.getByTestId("curve-spline-contract")).toContainText("bezier · degree 3");
       await expect(ctx.page.getByTestId("curve-spline-evidence")).toContainText("De Casteljau evidence");
+      const kernelRevision = async () => Number((await ctx!.page.getByTestId("curve-kernel-document").textContent())?.match(/revision (\d+)/)?.[1]);
+      const initialKernelRevision = await kernelRevision();
       await ctx.page.getByTestId("curve-control-1").click();
+      await expect(ctx.page.getByTestId("curve-kernel-document")).toContainText("committed controls 1");
       await editor.getByLabel("Control y").fill("2.5");
       await ctx.page.getByTestId("curve-spline-apply-control").click();
       await expect(ctx.page.getByTestId("curve-spline-contract")).toContainText("revision 2");
+      await expect.poll(kernelRevision).toBe(initialKernelRevision + 1);
       await ctx.page.getByTestId("curve-spline-undo").click();
       await expect(ctx.page.getByTestId("curve-spline-contract")).toContainText("revision 1");
+      await expect.poll(kernelRevision).toBe(initialKernelRevision + 2);
       await ctx.page.getByTestId("curve-spline-redo").click();
       await expect(ctx.page.getByTestId("curve-spline-contract")).toContainText("revision 2");
+      await expect.poll(kernelRevision).toBe(initialKernelRevision + 3);
+      const persistedControlY = () => ctx!.page.evaluate(() => {
+        const workspace = JSON.parse(localStorage.getItem("math3d.curveAnalysis.workspace.v1") ?? "{}");
+        return workspace.kernelDocuments?.find((document: { metadata: { legacyCurveId: string } }) => document.metadata.legacyCurveId === "bezierCubic")?.source.definition.controlPoints?.[1]?.[1];
+      });
+      expect(await persistedControlY()).toBe(2.5);
+      await ctx.page.reload();
+      await expect.poll(persistedControlY).toBe(2.5);
+      await ctx.page.getByRole("button", { name: "Curves", exact: true }).first().click();
+      await ctx.page.getByRole("button", { name: /Bezier cubic/ }).first().click();
+      await ctx.page.getByTestId("curve-panel-definition").click();
+      await ctx.page.getByTestId("curve-control-1").click();
+      await expect(ctx.page.getByTestId("curve-spline-editor").getByLabel("Control y")).toHaveValue("2.5");
       await ctx.page.getByTestId("curve-viewport-display-controls").getByLabel("Control polygon", { exact: true }).check();
 
       await ctx.page.getByTestId("curve-panel-gallery").click();

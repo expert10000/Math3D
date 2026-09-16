@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { CurveAnalysisKernelBridge } from "../curveAnalysis/curveAnalysisKernelBridge";
+import { CurveScientificJob, type CurveScientificHandle } from "../curveAnalysis/curveScientificJob";
 import { CurveDocumentAdapter, curveDocumentFromLegacyDefinition } from "../curveAnalysis/curveDocumentAdapter";
 import type { CanonicalCurveDefinition } from "../curveAnalysis/contracts";
 import { CURVE_OUTPUT_LIMITS, CURVE_PERFORMANCE_BUDGETS, type CurveComputationArtifact, type CurveWorkerOperation, type CurveWorkerProgress, type CurveWorkerRequest, type CurveWorkloadClass } from "../curveAnalysis/curveComputation";
-import { createBrowserCurveWorkerCoordinator, type CurveWorkerHandle } from "../curveAnalysis/curveWorkerCoordinator";
+import { createBrowserCurveWorkerCoordinator } from "../curveAnalysis/curveWorkerCoordinator";
 
 export type CurveWorkerPanelProps = { definition: CanonicalCurveDefinition; points: readonly { x: number; y: number; z: number }[]; documentAdapter?: CurveDocumentAdapter };
 const OPERATIONS: CurveWorkerOperation[] = ["sampling", "differential-field", "diagnostics", "intersections", "spline-fit", "derived-operation"];
@@ -18,18 +19,18 @@ export const CurveWorkerPanel: React.FC<CurveWorkerPanelProps> = ({ definition, 
   const identityRef = useRef({ curveId: definition.identity.curveId, curveRevision: definition.identity.curveRevision }); identityRef.current = { curveId: definition.identity.curveId, curveRevision: definition.identity.curveRevision };
   const coordinatorRef = useRef<ReturnType<typeof createBrowserCurveWorkerCoordinator> | null>(null);
   if (!coordinatorRef.current) coordinatorRef.current = createBrowserCurveWorkerCoordinator((curveId) => curveId === identityRef.current.curveId ? identityRef.current.curveRevision : -1);
+  const scientificJobRef = useRef<CurveScientificJob | null>(null);
+  if (!scientificJobRef.current) scientificJobRef.current = new CurveScientificJob(bridgeRef.current, coordinatorRef.current);
   const [operation, setOperation] = useState<CurveWorkerOperation>("sampling"); const [workload, setWorkload] = useState<CurveWorkloadClass>("10k");
-  const [artifact, setArtifact] = useState<CurveComputationArtifact | null>(null); const [progress, setProgress] = useState<CurveWorkerProgress | null>(null); const [previewSeen, setPreviewSeen] = useState(false); const [active, setActive] = useState<CurveWorkerHandle | null>(null); const [lastRequest, setLastRequest] = useState<CurveWorkerRequest | null>(null);
+  const [artifact, setArtifact] = useState<CurveComputationArtifact | null>(null); const [progress, setProgress] = useState<CurveWorkerProgress | null>(null); const [previewSeen, setPreviewSeen] = useState(false); const [active, setActive] = useState<CurveScientificHandle | null>(null); const [lastRequest, setLastRequest] = useState<CurveWorkerRequest | null>(null);
   const [kernelPublication, setKernelPublication] = useState<string | null>(null);
   useEffect(() => { bridgeRef.current?.invalidate(); setKernelPublication(null); }, [activeDocumentAdapter, definition.fingerprint]);
-  useEffect(() => () => coordinatorRef.current?.dispose(), []);
-  const runHandle = (handle: CurveWorkerHandle, request: CurveWorkerRequest) => {
-    const source = bridgeRef.current!.source();
+  useEffect(() => () => scientificJobRef.current?.dispose(), []);
+  const runHandle = (handle: CurveScientificHandle) => {
     setActive(handle); setArtifact(null); setKernelPublication(null);
-    void handle.promise.then((value) => {
+    void handle.promise.then(({ artifact: value, result, broker }) => {
       setArtifact(value); setActive(null);
-      const result = source ? bridgeRef.current!.publish(request, value, source) : null;
-      setKernelPublication(result ? `${result.status} · ${result.artifacts[0].artifactId}` : value.state === "ready" ? "stale result rejected" : value.state);
+      setKernelPublication(result ? `${result.status} · ${result.artifacts[0].artifactId} · ${broker.ok ? broker.backend.backendId : broker.code}` : broker.ok ? "stale result rejected" : broker.code);
     });
   };
   const run = () => {
@@ -37,11 +38,11 @@ export const CurveWorkerPanel: React.FC<CurveWorkerPanelProps> = ({ definition, 
     const targetCount = operation === "sampling" ? budget.maximumSamples : Math.min(points.length, budget.maximumSamples);
     const request = coordinatorRef.current!.createRequest({ definition, operation, positions, targetCount, workload, consumers: ["viewport", "plots", "probes", "diagnostics", "derived", "curve-mesh"], parameters: operation === "spline-fit" ? { controlPoints: Math.min(points.length, budget.maximumControlPoints) } : operation === "derived-operation" ? { operation: "offset", offset: 0.1 } : undefined });
     setLastRequest(request); setProgress(null); setPreviewSeen(false);
-    runHandle(coordinatorRef.current!.submit(request, { onProgress: (value) => { setProgress(value); if (value.previewLabel === "coarse-preview") setPreviewSeen(true); } }), request);
+    runHandle(scientificJobRef.current!.submit(request, (value) => { setProgress(value); if (value.previewLabel === "coarse-preview") setPreviewSeen(true); }));
   };
-  const retry = () => { if (!lastRequest) return; setProgress(null); runHandle(coordinatorRef.current!.retry(lastRequest, { onProgress: setProgress }), lastRequest); };
+  const retry = () => { if (!lastRequest) return; setProgress(null); runHandle(scientificJobRef.current!.submit({ ...lastRequest, requestId: `${lastRequest.requestId}:retry:${Date.now()}` }, setProgress)); };
   return <div data-testid="curve-worker-panel" style={{ marginTop: 8, borderTop: "1px solid #d6deea", paddingTop: 7, display: "grid", gap: 6 }}>
-    <strong>Worker execution and dependency cache</strong>
+    <strong>Scientific job · Curve worker backend and dependency cache</strong>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}><label>Operation<select data-testid="curve-worker-operation" value={operation} onChange={(event) => setOperation(event.target.value as CurveWorkerOperation)} style={{ width: "100%" }}>{OPERATIONS.map((value) => <option key={value}>{value}</option>)}</select></label><label>Budget<select data-testid="curve-worker-workload" value={workload} onChange={(event) => setWorkload(event.target.value as CurveWorkloadClass)} style={{ width: "100%" }}>{WORKLOADS.map((value) => <option key={value}>{value}</option>)}</select></label></div>
     <div>Budget: ≤ {CURVE_PERFORMANCE_BUDGETS[workload].maximumSamples.toLocaleString()} samples · timeout {CURVE_PERFORMANCE_BUDGETS[workload].timeoutMs / 1000}s · transfer ≤ {CURVE_PERFORMANCE_BUDGETS[workload].maximumTransferBytes.toLocaleString()} bytes</div>
     <div style={{ display: "flex", gap: 4 }}><button data-testid="curve-worker-run" type="button" disabled={!!active || points.length < 2} onClick={run}>Run / reuse</button><button data-testid="curve-worker-cancel" type="button" disabled={!active} onClick={() => active?.cancel()}>Cancel</button><button data-testid="curve-worker-retry" type="button" disabled={!!active || !lastRequest || !artifact?.failure?.retryable} onClick={retry}>Retry</button></div>
