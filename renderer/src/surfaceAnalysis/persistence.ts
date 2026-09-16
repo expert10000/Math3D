@@ -1,5 +1,8 @@
 import type { CanonicalSurfaceDefinition, SurfaceIdentity, SurfaceRepresentation, SurfaceResultKind } from "./contracts";
 import type { DerivedSurfaceMeshRecord } from "./derivedSurfaceMesh";
+import { normalizeCommandEnvelope, normalizeDocumentRelation, normalizeMeshDocument, normalizeSurfaceDocument, type SurfaceDocument } from "@math3d/core";
+import type { SurfaceMeshKernelHandoffRecord } from "./surfaceMeshKernelHandoff";
+import type { SurfaceReplayBundle } from "./surfaceDocumentAdapter";
 
 export type SavedSurfaceResultReference = {
   id: string;
@@ -16,6 +19,9 @@ export type SurfaceAnalysisWorkspaceDocument = {
   definitions: CanonicalSurfaceDefinition[];
   savedResults: SavedSurfaceResultReference[];
   derivedMeshes: DerivedSurfaceMeshRecord[];
+  kernelDocuments: SurfaceDocument[];
+  kernelHandoffs: SurfaceMeshKernelHandoffRecord[];
+  kernelReplayBundles: { surfaceId: string; bundle: SurfaceReplayBundle }[];
 };
 
 const REPRESENTATIONS: ReadonlySet<SurfaceRepresentation> = new Set([
@@ -27,6 +33,9 @@ export const createSurfaceAnalysisWorkspaceDocument = (input?: Partial<SurfaceAn
   definitions: [...(input?.definitions ?? [])],
   savedResults: [...(input?.savedResults ?? [])],
   derivedMeshes: [...(input?.derivedMeshes ?? [])],
+  kernelDocuments: [...(input?.kernelDocuments ?? [])],
+  kernelHandoffs: [...(input?.kernelHandoffs ?? [])],
+  kernelReplayBundles: [...(input?.kernelReplayBundles ?? [])],
 });
 
 export const serializeSurfaceAnalysisWorkspace = (document: SurfaceAnalysisWorkspaceDocument): string => JSON.stringify(document);
@@ -52,6 +61,27 @@ export const parseSurfaceAnalysisWorkspace = (serialized: string): SurfaceAnalys
   for (const mesh of value.derivedMeshes ?? []) {
     if (mesh?.version !== 1 || !mesh.identity?.meshId || mesh.identity.version !== 1 || !mesh.identity.source?.surfaceId || !Array.isArray(mesh.history)) {
       throw new Error("Invalid derived SurfaceMesh metadata.");
+    }
+  }
+  for (const document of value.kernelDocuments ?? []) {
+    if (!normalizeSurfaceDocument(document).ok) throw new Error("Invalid kernel Surface document.");
+  }
+  for (const handoff of value.kernelHandoffs ?? []) {
+    if (handoff?.version !== 1 || !handoff.meshId || !handoff.handle?.artifactId || !handoff.source?.documentId || !Array.isArray(handoff.relations)) {
+      throw new Error("Invalid kernel Surface-to-Mesh handoff.");
+    }
+    if (handoff.relations.some((relation) => !normalizeDocumentRelation(relation).ok) ||
+        (handoff.meshDocument && !normalizeMeshDocument(handoff.meshDocument).ok)) {
+      throw new Error("Invalid kernel Surface-to-Mesh lineage.");
+    }
+  }
+  for (const replay of value.kernelReplayBundles ?? []) {
+    if (!replay?.surfaceId || !replay.bundle?.checkpoint || !normalizeSurfaceDocument(replay.bundle.checkpoint).ok || !Array.isArray(replay.bundle.transactions) ||
+        !Number.isSafeInteger(replay.bundle.cursor) || replay.bundle.cursor < 0 || replay.bundle.cursor > replay.bundle.transactions.length) {
+      throw new Error("Invalid Surface command replay bundle.");
+    }
+    if (replay.bundle.transactions.some((transaction) => !normalizeCommandEnvelope(transaction.forward).ok || !normalizeCommandEnvelope(transaction.inverse).ok)) {
+      throw new Error("Invalid Surface command replay transaction.");
     }
   }
   return createSurfaceAnalysisWorkspaceDocument(value);

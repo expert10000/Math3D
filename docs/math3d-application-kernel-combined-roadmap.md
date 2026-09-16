@@ -85,7 +85,7 @@ The target outcomes are:
 | C01-C12 | Complex Analysis MVP/v1 vertical migration and gate | Complete |
 | A1-G3 | Original architecture proposal labels | Historical traceability only |
 | G01-G08 | Cross-module milestone groups | Planned/in progress through GK commits |
-| GK01-GK20 | Executable post-C12 integration commits | Planned; GK01 is next |
+| GK01-GK20 | Executable post-C12 integration commits | GK01-GK08 landed; GK09 remains open; GK10-GK11 implemented in the working tree, pending commit; GK12-GK20 planned |
 
 There is one canonical sequential plan. Historical labels may explain intent, but
 they cannot reopen completed work or create duplicate infrastructure. Completion
@@ -611,6 +611,14 @@ non-authoritative.
 preview changes do not; save/reopen/replay preserves mathematics; old files load
 through explicit adapters; GK03 document/command/persistence gates pass.
 
+**Implementation evidence (GK10).** `SurfaceDocument` and typed Surface commands now
+live in `@math3d/core`. The Surface workspace adapts the existing version-1
+definition into this document and persists canonical documents plus replay bundles
+alongside its legacy-compatible workspace format. Sampling settings remain
+persistent metadata, outside the structural hash. The shared GK03 conformance
+fixture covers preview, one-revision edits, atomic rejection, undo/redo, replay,
+save/reopen, and isolated queries. Run `npm run test:kernel:gk10`.
+
 #### GK11 — `feat(surface): make Surface-to-Mesh a revisioned derived handoff`
 
 **Scope.** Make tessellation an explicit operation publishing a revision-bound mesh
@@ -622,6 +630,16 @@ operation; Surface edits stale the relation/artifact without mutating promoted M
 missing cache data is unavailable/recomputable; multi-surface operations use GK01
 multi-source relations; Surface save/reopen/replay preserves the handoff operation,
 source generation, parameters, and lineage.
+
+**Implementation evidence (GK11).** Live tessellation and regeneration publish
+revision-bound Mesh and locate-back artifacts through the shared F07 registry.
+GK01 relations retain exact Surface generations, ordered multi-source inputs,
+tessellation settings, engine/version, and correspondence identity. Baking creates
+a stable `MeshDocument` snapshot and `promoted-from` relation without changing it
+when the Surface later changes. Reopened workspace metadata keeps documents,
+operations, and lineage; omitted binary cache resolves as unavailable until
+regeneration. The Surface UI continues to expose live/regenerate/bake/open actions.
+Run `npm run test:kernel:gk11`.
 
 ### G05 — Curves and construction handoffs
 

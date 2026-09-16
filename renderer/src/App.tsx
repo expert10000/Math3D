@@ -286,6 +286,8 @@ import {
   parseSurfaceAnalysisWorkspace,
   serializeSurfaceAnalysisWorkspace,
 } from "./surfaceAnalysis/persistence";
+import { SurfaceDocumentAdapter, surfaceDocumentFromLegacyDefinition } from "./surfaceAnalysis/surfaceDocumentAdapter";
+import { SurfaceMeshKernelHandoff } from "./surfaceAnalysis/surfaceMeshKernelHandoff";
 import { createSurfaceCurvatureField, createSurfaceCurvaturePayload, surfaceCurvatureRegionIndices } from "./surfaceAnalysis/surfaceCurvature";
 import {
   SurfaceAnalysisScheduler,
@@ -43646,6 +43648,16 @@ const App: React.FC = () => {
       { fingerprint: definition.fingerprint, revision: definition.identity.surfaceRevision },
     ])
   ));
+  const [surfaceDocumentAdapters] = useState(() => new Map(surfaceAnalysisWorkspaceDocument.kernelDocuments.map((document) => {
+    const surfaceId = document.metadata.legacySurfaceId ?? document.identity.id;
+    const replay = surfaceAnalysisWorkspaceDocument.kernelReplayBundles.find((entry) => entry.surfaceId === surfaceId);
+    try {
+      return [surfaceId, replay ? SurfaceDocumentAdapter.fromReplayBundle(replay.bundle) : new SurfaceDocumentAdapter(document)] as const;
+    } catch {
+      return [surfaceId, new SurfaceDocumentAdapter(document)] as const;
+    }
+  })));
+  const [surfaceMeshKernelHandoff] = useState(() => new SurfaceMeshKernelHandoff(surfaceAnalysisWorkspaceDocument.kernelDocuments, surfaceAnalysisWorkspaceDocument.kernelHandoffs));
   const surfaceAnalysisRegistryRef = useRef(createSurfaceAnalysisRegistry());
   const [surfaceAnalysisResultStore, setSurfaceAnalysisResultStore] = useState(createSurfaceAnalysisResultStore);
   const activeCanonicalSurfaceDefinition = useMemo(() => {
@@ -43784,6 +43796,15 @@ const App: React.FC = () => {
       : "analytic";
   useEffect(() => {
     const definition = activeCanonicalSurfaceDefinition;
+    let adapter = surfaceDocumentAdapters.get(definition.identity.surfaceId);
+    if (!adapter) {
+      adapter = new SurfaceDocumentAdapter(surfaceDocumentFromLegacyDefinition(definition));
+      surfaceDocumentAdapters.set(definition.identity.surfaceId, adapter);
+    } else {
+      adapter.syncLegacyDefinition(definition);
+    }
+    const surfaceDocument = adapter.document();
+    surfaceMeshKernelHandoff.setSource(surfaceDocument);
     const request = createSurfaceAnalysisRequest({
       requestId: `surface-definition:${definition.identity.key}`,
       kind: "surface-definition",
@@ -43813,9 +43834,11 @@ const App: React.FC = () => {
     setSurfaceAnalysisWorkspaceDocument((document) => {
       const definitions = [...document.definitions.filter((entry) => entry.identity.key !== definition.identity.key), definition].slice(-64);
       definitions.sort((left, right) => left.identity.surfaceId.localeCompare(right.identity.surfaceId) || left.identity.surfaceRevision - right.identity.surfaceRevision);
-      return { ...document, definitions };
+      const kernelDocuments = [...document.kernelDocuments.filter((entry) => entry.identity.id !== surfaceDocument.identity.id), surfaceDocument];
+      const kernelReplayBundles = [...document.kernelReplayBundles.filter((entry) => entry.surfaceId !== definition.identity.surfaceId), { surfaceId: definition.identity.surfaceId, bundle: adapter.replayBundle() }];
+      return { ...document, definitions, kernelDocuments, kernelReplayBundles, kernelHandoffs: surfaceMeshKernelHandoff.records().slice(-64) };
     });
-  }, [activeCanonicalSurfaceDefinition, activeSurfaceDefinitionMethod]);
+  }, [activeCanonicalSurfaceDefinition, activeSurfaceDefinitionMethod, surfaceDocumentAdapters, surfaceMeshKernelHandoff]);
   useEffect(() => {
     try {
       localStorage.setItem(SURFACE_ANALYSIS_WORKSPACE_KEY, serializeSurfaceAnalysisWorkspace(surfaceAnalysisWorkspaceDocument));
@@ -51473,6 +51496,24 @@ case "mobius":
       positions: surfaceDerivedMeshCandidate!.positions,
       indices: surfaceDerivedMeshCandidate!.indices,
     });
+    const sourceDocument = surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId)?.document();
+    if (sourceDocument) {
+      try {
+        const handoff = surfaceMeshKernelHandoff.publish({
+          record: compactDerivedSurfaceMesh(payload, `${activeCanonicalSurfaceDefinition.identity.label} live tessellation`),
+          payload,
+          geometry: { positions: surfaceDerivedMeshCandidate!.positions, indices: surfaceDerivedMeshCandidate!.indices },
+          sources: [sourceDocument],
+        });
+        setSurfaceAnalysisWorkspaceDocument((document) => ({
+          ...document,
+          kernelHandoffs: [...document.kernelHandoffs.filter((entry) => entry.meshId !== handoff.meshId), handoff].slice(-64),
+        }));
+      } catch (error) {
+        setSurfaceDerivedMeshStatus(`Kernel handoff unavailable: ${String((error as Error).message ?? error)}`);
+        return;
+      }
+    }
     publishDerivedSurfaceMeshPayload(payload);
     setSurfaceAnalysisWorkspaceDocument((document) => {
       let changed = false;
@@ -51488,7 +51529,7 @@ case "mobius":
       return changed ? { ...document, derivedMeshes: records.slice(-64) } : document;
     });
     setSurfaceDerivedMeshSelectedId(payload.meshId);
-  }, [activeCanonicalSurfaceDefinition, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedCandidateKey, surfaceDerivedMeshCandidate, surfaceMeshAnalysisHandoff]);
+  }, [activeCanonicalSurfaceDefinition, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedCandidateKey, surfaceDerivedMeshCandidate, surfaceMeshAnalysisHandoff, surfaceDocumentAdapters, surfaceMeshKernelHandoff]);
   const activeDerivedSurfaceMeshPayload = activeDerivedSurfaceMeshResult?.state === "ready" && activeDerivedSurfaceMeshResult.payload?.data.kind === "derived-mesh"
     ? activeDerivedSurfaceMeshResult.payload.data
     : null;
@@ -51516,13 +51557,33 @@ case "mobius":
     if (!payload) return;
     surfaceDerivedMeshPayloadCacheRef.current.set(payload.meshId, payload);
     if (surfaceDerivedMeshCandidate) surfaceDerivedMeshGeometryCacheRef.current.set(payload.meshId, { positions: surfaceDerivedMeshCandidate.positions, indices: surfaceDerivedMeshCandidate.indices });
+    const sourceDocument = surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId)?.document();
+    if (sourceDocument && surfaceDerivedMeshCandidate) {
+      try {
+        const handoff = surfaceMeshKernelHandoff.publish({
+          record: compactDerivedSurfaceMesh(payload, `${activeCanonicalSurfaceDefinition.identity.label} live tessellation`),
+          payload,
+          geometry: { positions: surfaceDerivedMeshCandidate.positions, indices: surfaceDerivedMeshCandidate.indices },
+          sources: [sourceDocument],
+        });
+        setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, kernelHandoffs: [...document.kernelHandoffs.filter((entry) => entry.meshId !== handoff.meshId), handoff].slice(-64) }));
+      } catch (error) {
+        setSurfaceDerivedMeshStatus(`Kernel regeneration unavailable: ${String((error as Error).message ?? error)}`);
+        return;
+      }
+    }
     publishDerivedSurfaceMeshPayload(payload);
     const next = record ? regenerateDerivedSurfaceMeshRecord(record, payload) : compactDerivedSurfaceMesh(payload, `${activeCanonicalSurfaceDefinition.identity.label} live tessellation`);
     setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, derivedMeshes: [...document.derivedMeshes.filter((entry) => entry.identity.meshId !== next.identity.meshId), next].slice(-64) }));
     setSurfaceDerivedMeshSelectedId(next.identity.meshId); setSurfaceDerivedMeshStatus(`Regenerated mesh revision ${next.identity.meshRevision} from Surface revision ${next.identity.source.surfaceRevision}.`);
-  }, [activeCanonicalSurfaceDefinition.identity.label, activeSurfaceDerivedMeshRecord, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedMeshCandidate]);
+  }, [activeCanonicalSurfaceDefinition.identity.label, activeCanonicalSurfaceDefinition.identity.surfaceId, activeSurfaceDerivedMeshRecord, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedMeshCandidate, surfaceDocumentAdapters, surfaceMeshKernelHandoff]);
   const handleTransitionDerivedSurfaceMesh = useCallback((state: "frozen-snapshot" | "detached") => {
     if (!activeSurfaceDerivedMeshRecord) return null;
+    if (activeSurfaceDerivedMeshRecord.identity.state === "stale" ||
+        activeSurfaceDerivedMeshRecord.identity.source.key !== activeCanonicalSurfaceDefinition.identity.key) {
+      setSurfaceDerivedMeshStatus("The selected tessellation is not from the current Surface revision; regenerate before creating a snapshot.");
+      return null;
+    }
     const sourcePayload = surfaceDerivedMeshPayloadCacheRef.current.get(activeSurfaceDerivedMeshRecord.identity.meshId);
     const sourceGeometry = surfaceDerivedMeshGeometryCacheRef.current.get(activeSurfaceDerivedMeshRecord.identity.meshId);
     if (!sourcePayload || !sourceGeometry) {
@@ -51537,18 +51598,32 @@ case "mobius":
       indices: sourceGeometry.indices ? Uint32Array.from(sourceGeometry.indices) : null,
       normals: sourceGeometry.normals ? Float32Array.from(sourceGeometry.normals) : null,
     });
+    const sourceDocument = surfaceDocumentAdapters.get(next.identity.source.surfaceId)?.document();
+    if (sourceDocument) {
+      try {
+        const handoff = surfaceMeshKernelHandoff.publish({ record: next, geometry: sourceGeometry, sources: [sourceDocument], payload: nextPayload });
+        const promoted = surfaceMeshKernelHandoff.promote(handoff.meshId, next.label);
+        setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, kernelHandoffs: [...document.kernelHandoffs.filter((entry) => entry.meshId !== promoted.meshId), promoted].slice(-64) }));
+      } catch (error) {
+        surfaceDerivedMeshPayloadCacheRef.current.delete(next.identity.meshId);
+        surfaceDerivedMeshGeometryCacheRef.current.delete(next.identity.meshId);
+        setSurfaceDerivedMeshStatus(`Kernel snapshot unavailable: ${String((error as Error).message ?? error)}`);
+        return null;
+      }
+    }
     setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, derivedMeshes: [...document.derivedMeshes, next].slice(-64) }));
     setSurfaceDerivedMeshSelectedId(next.identity.meshId); setSurfaceDerivedMeshStatus(state === "frozen-snapshot" ? "Frozen snapshot created with immutable source provenance." : "Detached mesh record created; source provenance remains readable.");
     return next;
-  }, [activeSurfaceDerivedMeshRecord]);
+  }, [activeCanonicalSurfaceDefinition.identity.key, activeSurfaceDerivedMeshRecord, surfaceDocumentAdapters, surfaceMeshKernelHandoff]);
   const handleDeleteDerivedSurfaceMesh = useCallback(() => {
     if (!activeSurfaceDerivedMeshRecord) return;
     const removed = activeSurfaceDerivedMeshRecord.identity.meshId;
     surfaceDerivedMeshPayloadCacheRef.current.delete(removed);
     surfaceDerivedMeshGeometryCacheRef.current.delete(removed);
-    setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, derivedMeshes: document.derivedMeshes.filter((entry) => entry.identity.meshId !== removed) }));
+    surfaceMeshKernelHandoff.remove(removed);
+    setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, derivedMeshes: document.derivedMeshes.filter((entry) => entry.identity.meshId !== removed), kernelHandoffs: document.kernelHandoffs.filter((entry) => entry.meshId !== removed) }));
     setSurfaceDerivedMeshSelectedId(null); setSurfaceDerivedMeshStatus("Derived mesh metadata removed.");
-  }, [activeSurfaceDerivedMeshRecord]);
+  }, [activeSurfaceDerivedMeshRecord, surfaceMeshKernelHandoff]);
   const handleOpenDerivedSurfaceSource = useCallback(() => {
     if (!activeSurfaceDerivedMeshRecord) return;
     setSurfacesLeftTab("object"); setSurfaceInspectDerivedMesh(false);
@@ -51569,6 +51644,20 @@ case "mobius":
   }, [activeDerivedSurfaceMeshPayload, inspectIdx, selectSurfaceChartIndices]);
 
   const openDerivedSurfaceMesh = useCallback((record: DerivedSurfaceMeshRecord, analysis: boolean) => {
+    if (record.identity.state === "stale") {
+      setSurfaceDerivedMeshStatus("This Surface-to-Mesh relation is stale; regenerate from the current Surface before opening it.");
+      return;
+    }
+    if (record.identity.state === "live-current") {
+      const handoff = surfaceMeshKernelHandoff.record(record.identity.meshId);
+      if (handoff) {
+        const resolution = surfaceMeshKernelHandoff.resolve(record.identity.meshId);
+        if (!resolution.ok) {
+          setSurfaceDerivedMeshStatus(`Surface tessellation is ${resolution.reason}; regenerate it before opening a live Mesh.`);
+          return;
+        }
+      }
+    }
     const payload = surfaceDerivedMeshPayloadCacheRef.current.get(record.identity.meshId);
     const geometry = surfaceDerivedMeshGeometryCacheRef.current.get(record.identity.meshId);
     if (!payload || !geometry) {
@@ -51624,7 +51713,7 @@ case "mobius":
       setCameraOverrideToken((token) => token + 1);
     }
     setSurfaceDerivedMeshStatus(`${analysis ? "Opened in Mesh Analysis" : "Showing live Mesh"}: ${record.label} · ${record.identity.state} · ${mapping.state} selection mapping · ${camera ? "camera framing transferred" : "mesh fitted"}.`);
-  }, [activeCanonicalSurfaceDefinition.units, cameraOverride, cameraSync, compareEnabled, compareParamId, compareSurfaceId, inspectIdx, selectionMask?.selected, setMeshDataset, surfaceViewerKind]);
+  }, [activeCanonicalSurfaceDefinition.units, cameraOverride, cameraSync, compareEnabled, compareParamId, compareSurfaceId, inspectIdx, selectionMask?.selected, setMeshDataset, surfaceMeshKernelHandoff, surfaceViewerKind]);
 
   const handleShowLiveSurfaceMesh = useCallback(() => {
     const live = activeSourceDerivedMeshRecords.find((record) => record.identity.state === "live-current");
