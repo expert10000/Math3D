@@ -17,6 +17,7 @@ export * from "./geometry";
 export * from "./geometryDocument";
 export * from "./geometryCommands";
 export * from "./math";
+export * from "./meshDocument";
 export * from "./sceneDocument";
 export * from "./sceneObjects";
 export * from "./scientificJobs";
