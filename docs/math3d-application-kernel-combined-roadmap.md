@@ -85,7 +85,7 @@ The target outcomes are:
 | C01-C12 | Complex Analysis MVP/v1 vertical migration and gate | Complete |
 | A1-G3 | Original architecture proposal labels | Historical traceability only |
 | G01-G08 | Cross-module milestone groups | Planned/in progress through GK commits |
-| GK01-GK20 | Executable post-C12 integration commits | GK01-GK08 landed; GK09 remains open; GK10-GK11 implemented in the working tree, pending commit; GK12-GK20 planned |
+| GK01-GK20 | Executable post-C12 integration commits | GK01-GK08 and GK10-GK11 landed; GK09 remains open; GK12-GK20 planned |
 
 There is one canonical sequential plan. Historical labels may explain intent, but
 they cannot reopen completed work or create duplicate infrastructure. Completion
