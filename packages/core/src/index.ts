@@ -22,6 +22,8 @@ export * from "./surfaceDocument";
 export * from "./surfaceCommands";
 export * from "./curveDocument";
 export * from "./curveCommands";
+export * from "./volumeDocument";
+export * from "./volumeCommands";
 export * from "./meshCommands";
 export * from "./sceneDocument";
 export * from "./sceneObjects";

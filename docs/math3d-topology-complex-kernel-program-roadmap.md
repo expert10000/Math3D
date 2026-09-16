@@ -2526,6 +2526,13 @@ sampling and temporary slice state remain non-authoritative.
 invalidate boundary/sampling/mesh resources; view-only changes do not affect the
 structural hash.
 
+**Status:** complete. A validated, compact `VolumeDocument` owns source recipe,
+spatial state, dependencies, payload identity, and analysis settings. The legacy
+adapter uses kernel commands with replay/undo/redo; source revisions invalidate
+derived resources while display/settings remain non-structural. Workspace
+save/reopen and Volume Inspector show the canonical document. See the combined
+roadmap for evidence; run `npm run test:kernel:gk14`.
+
 ### GK15 — `feat(volumes): add revisioned boundary-surface and mesh handoffs`
 
 **Milestone:** G06 — Volumes and extraction handoffs
@@ -2536,6 +2543,13 @@ engine/version, diagnostics, and exact source generation.
 
 **Acceptance.** Derived data cannot appear current after a Volume source change;
 promoted downstream documents remain stable snapshots with explicit stale lineage.
+
+**Status:** complete. Volume isosurface jobs use shared broker admission and
+revision checks, then publish a numerical result, geometry artifact, mesh-backed
+`SurfaceDocument`, and GK01 lineage. The Inspector exposes current/stale/snapshot/
+unavailable status; selected mesh vertices locate back to source voxels. Compact
+workspace records preserve source generations, parameters, and provenance. See
+the combined roadmap for evidence; run `npm run test:kernel:gk15`.
 
 ### GK16 — `feat(viewer): unify provenance status and locate-back across modules`
 

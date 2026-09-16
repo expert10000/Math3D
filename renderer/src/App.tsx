@@ -650,6 +650,9 @@ import { CurveMeshPanel } from "./components/CurveMeshPanel";
 import { CurveBackendPanel } from "./components/CurveBackendPanel";
 import { CurveWorkerPanel } from "./components/CurveWorkerPanel";
 import { CurveDocumentAdapter, curveDocumentFromLegacyDefinition, splineDefinitionFromCurveDocument } from "./curveAnalysis/curveDocumentAdapter";
+import { VolumeDocumentAdapter, volumeDocumentFromLegacyObject } from "./volume/volumeDocumentAdapter";
+import { VolumeExtractionKernelBridge, locateVolumeExtractionVertex, promoteVolumeExtraction, volumeExtractionStatus, type VolumeExtractionRecord } from "./volume/volumeExtractionKernel";
+import { VolumeIsosurfaceScientificJob } from "./volume/volumeScientificJob";
 import { CurveConstructionRealizer, locateCurveConstructionVertex, type CurveConstructionGeometry } from "./curveAnalysis/curveConstructionGeometry";
 import { curveConstructionSourceStatus, type CurveConstructionRecord } from "./curveAnalysis/curveConstructionKernel";
 import { CurveResultLifecyclePanel } from "./components/CurveResultLifecyclePanel";
@@ -35121,6 +35124,23 @@ const App: React.FC = () => {
     volumeCustomExpr,
     volumeParamsResolved,
   ]);
+  const volumeKernelAdaptersRef = useRef<Map<string, VolumeDocumentAdapter>>(new Map());
+  const [, setVolumeKernelDisplayRevision] = useState(0);
+  const [volumeKernelRestoreToken, setVolumeKernelRestoreToken] = useState(0);
+  const activeVolumeKernelAdapter = useMemo(() => {
+    const volumeId = canonicalVolumeObject.identity.volumeId;
+    let adapter = volumeKernelAdaptersRef.current.get(volumeId);
+    if (!adapter) {
+      adapter = new VolumeDocumentAdapter(volumeDocumentFromLegacyObject(canonicalVolumeObject));
+      volumeKernelAdaptersRef.current.set(volumeId, adapter);
+    }
+    return adapter;
+  }, [canonicalVolumeObject.identity.volumeId, volumeKernelRestoreToken]);
+  useEffect(() => {
+    const before = activeVolumeKernelAdapter.document().identity.revision;
+    const after = activeVolumeKernelAdapter.syncLegacyObject(canonicalVolumeObject).identity.revision;
+    if (after !== before) setVolumeKernelDisplayRevision(after);
+  }, [activeVolumeKernelAdapter, canonicalVolumeObject.identity.key]);
   useEffect(() => {
     volumeStorageStoreRef.current.bind("active-volume", canonicalVolumeObject.storage, volumeDataset.grid.scalars);
   }, [canonicalVolumeObject.storage, volumeDataset.grid.scalars]);
@@ -35990,7 +36010,12 @@ const App: React.FC = () => {
     [canonicalVolumeObject.spatial.byteSize, canonicalVolumeObject.spatial.dimensions]
   );
   const [volumeDerivedResults, setVolumeDerivedResults] = useState<VolumeDerivedResult[]>([]);
+  const [volumeExtractionRecords, setVolumeExtractionRecords] = useState<VolumeExtractionRecord[]>([]);
   const volumeDerivedGeometryRef = useRef(new Map<string, VolumeIsosurfaceGeometry>());
+  const volumeKernelAdapterRef = useRef(activeVolumeKernelAdapter);
+  volumeKernelAdapterRef.current = activeVolumeKernelAdapter;
+  const volumeExtractionBridgeRef = useRef<VolumeExtractionKernelBridge | null>(null);
+  if (!volumeExtractionBridgeRef.current) volumeExtractionBridgeRef.current = new VolumeExtractionKernelBridge(() => volumeKernelAdapterRef.current);
   const volumeWorkerRevisionRef = useRef({
     volumeId: canonicalVolumeObject.identity.volumeId,
     volumeRevision: canonicalVolumeObject.identity.volumeRevision,
@@ -36010,6 +36035,8 @@ const App: React.FC = () => {
         : null;
     });
   }
+  const volumeScientificJobRef = useRef<VolumeIsosurfaceScientificJob | null>(null);
+  if (!volumeScientificJobRef.current) volumeScientificJobRef.current = new VolumeIsosurfaceScientificJob(() => volumeKernelAdapterRef.current, volumeWorkerCoordinatorRef.current);
   const activeVolumeWorkerHandleRef = useRef<{ requestId: string; cancel: () => void } | null>(null);
   const volumeWorkerRequestCounterRef = useRef(0);
   const [volumeComputeRuntime, setVolumeComputeRuntime] = useState<{
@@ -36019,7 +36046,8 @@ const App: React.FC = () => {
     message: string;
     lastProfile: VolumeComputeDiagnostics["lastProfile"];
   }>({ lifecycle: "idle", operation: null, progress: 0, message: volumeComputeMemoryPlan.message, lastProfile: null });
-  useEffect(() => () => volumeWorkerCoordinatorRef.current?.dispose(), []);
+  useEffect(() => () => volumeScientificJobRef.current?.dispose(), []);
+  useEffect(() => volumeExtractionBridgeRef.current?.invalidate(), [activeVolumeKernelAdapter, canonicalVolumeObject.identity.key]);
   useEffect(() => {
     const parameters = { isoValue: volumeIsoValue };
     setVolumeDerivedResults((previous) => previous.map((result) =>
@@ -36041,8 +36069,8 @@ const App: React.FC = () => {
     };
   }, [volumeComputeMemoryPlan, volumeComputeRuntime]);
   const handleApplyVolumeIsosurface = useCallback(async (isoOverride?: number) => {
-    const coordinator = volumeWorkerCoordinatorRef.current;
-    if (!coordinator) return;
+    const jobs = volumeScientificJobRef.current;
+    if (!jobs) return;
     const iso = typeof isoOverride === "number" ? isoOverride : volumeIsoValue;
     activeVolumeWorkerHandleRef.current?.cancel();
     setVolumeShowIsosurface(true);
@@ -36056,15 +36084,23 @@ const App: React.FC = () => {
       backend: "native-worker",
       algorithmVersion: "marching-cubes-v1",
     });
-    const handle = coordinator.submit(request, {
-      onLifecycle: (lifecycle) => setVolumeComputeRuntime((previous) => ({ ...previous, lifecycle, operation: "marchingCubes", message: `Isosurface ${lifecycle}.` })),
-      onProgress: (progress) => setVolumeComputeRuntime((previous) => ({ ...previous, progress: progress.progress, message: `Isosurface ${progress.phase} · ${Math.round(progress.progress * 100)}%.` })),
-    });
+    const sourceAtSubmission = activeVolumeKernelAdapter.sourceGeneration();
+    let handle;
+    try {
+      handle = jobs.submit(request, {
+        onLifecycle: (lifecycle) => setVolumeComputeRuntime((previous) => ({ ...previous, lifecycle, operation: "marchingCubes", message: `Isosurface ${lifecycle}.` })),
+        onProgress: (progress) => setVolumeComputeRuntime((previous) => ({ ...previous, progress: progress.progress, message: `Isosurface ${progress.phase} · ${Math.round(progress.progress * 100)}%.` })),
+      });
+    } catch (error) {
+      setVolumeComputeRuntime((previous) => ({ ...previous, lifecycle: "failed", progress: 0, message: error instanceof Error ? error.message : String(error) }));
+      return;
+    }
     activeVolumeWorkerHandleRef.current = handle;
-    const artifact = await handle.promise;
+    const outcome = await handle.promise;
+    const artifact = outcome.artifact;
     if (activeVolumeWorkerHandleRef.current?.requestId === handle.requestId) activeVolumeWorkerHandleRef.current = null;
-    if (artifact.state !== "complete" || !artifact.output.positions?.length || !artifact.output.indices?.length) {
-      setVolumeComputeRuntime((previous) => ({ ...previous, lifecycle: artifact.state, progress: 0, message: artifact.failure?.message ?? "The isosurface produced no triangles.", lastProfile: artifact.profile }));
+    if (!outcome.broker.ok || artifact?.state !== "complete" || !artifact.output.positions?.length || !artifact.output.indices?.length) {
+      setVolumeComputeRuntime((previous) => ({ ...previous, lifecycle: artifact?.state ?? "failed", progress: 0, message: artifact?.failure?.message ?? (!outcome.broker.ok ? outcome.broker.message : "The isosurface produced no triangles."), lastProfile: artifact?.profile ?? null }));
       return;
     }
     const normalResult = computeVolumeIsosurfaceNormals(canonicalVolumeObject, volumeDataset.grid, artifact.output.positions);
@@ -36073,8 +36109,14 @@ const App: React.FC = () => {
       indices: new Uint32Array(artifact.output.indices),
       normals: normalResult.normals,
     };
-    const metrics = analyzeVolumeIsosurface(geometry);
     const resultId = `iso:${canonicalVolumeObject.identity.volumeId}:${canonicalVolumeObject.identity.volumeRevision}:${iso}`;
+    const extraction = volumeExtractionBridgeRef.current?.publish(request, artifact, geometry, sourceAtSubmission, resultId);
+    if (!extraction) {
+      setVolumeComputeRuntime((previous) => ({ ...previous, lifecycle: "stale", progress: 0, message: "Volume source changed before extraction publication." }));
+      return;
+    }
+    setVolumeExtractionRecords((previous) => [extraction, ...previous.filter((entry) => entry.derivedResultId !== resultId)].slice(0, 24));
+    const metrics = analyzeVolumeIsosurface(geometry);
     const warnings = [
       ...artifact.warnings,
       ...normalResult.warnings,
@@ -36116,7 +36158,7 @@ const App: React.FC = () => {
     });
     setVolumeDerivedResults((previous) => [result, ...previous.filter((entry) => entry.id !== resultId)].slice(0, 24));
     setVolumeComputeRuntime({ lifecycle: "complete", operation: "marchingCubes", progress: 1, message: `Applied full isosurface · ${metrics.vertexCount.toLocaleString()} vertices · ${metrics.faceCount.toLocaleString()} faces.`, lastProfile: artifact.profile });
-  }, [canonicalVolumeObject, volumeDataset.grid, volumeIsoSmooth, volumeIsoSmoothIterations, volumeIsoValue]);
+  }, [activeVolumeKernelAdapter, canonicalVolumeObject, volumeDataset.grid, volumeIsoSmooth, volumeIsoSmoothIterations, volumeIsoValue]);
   const handleCancelVolumeIsosurface = useCallback(() => activeVolumeWorkerHandleRef.current?.cancel(), []);
   const handleDeleteVolumeDerivedResult = useCallback((id: string) => {
     volumeDerivedGeometryRef.current.delete(id);
@@ -36136,6 +36178,11 @@ const App: React.FC = () => {
       scalarType: volumeDataset.scientific.scalarType,
       components: volumeDataset.scientific.components,
     }] : [];
+    artifacts.push(...volumeExtractionRecords.filter((record, index, entries) => entries.findIndex((other) => other.artifactId === record.artifactId) === index).map((record) => ({
+      id: record.artifactId, role: "derived-result" as const, storage: "content-addressed" as const,
+      uri: `artifact:${record.artifactId}`, contentHash: record.contentHash, byteLength: record.byteLength,
+      scalarType: "triangle-mesh", components: 3,
+    })));
     const view: VolumeWorkspaceViewState = {
       layout: volumeLayout,
       viewMode: volumeViewMode,
@@ -36165,15 +36212,18 @@ const App: React.FC = () => {
     ];
     return createVolumeWorkspaceDocument({
       volume: canonicalVolumeObject,
+      kernelDocument: activeVolumeKernelAdapter.document(),
       view,
       artifacts,
+      extractions: volumeExtractionRecords,
       probes: volumePinnedProbes,
-      results: volumeDerivedResults.map((result) => resultReferenceFromDerivedVolume(result)),
+      results: volumeDerivedResults.map((result) => resultReferenceFromDerivedVolume(result,
+        volumeExtractionRecords.find((record) => record.derivedResultId === result.id)?.artifactId ?? null)),
       operations: [{ id: `active:${canonicalVolumeObject.identity.key}`, kind: "source", label: canonicalVolumeObject.identity.label, volumeRevision: canonicalVolumeObject.identity.volumeRevision, sampledGridRevision: canonicalVolumeObject.identity.sampledGridRevision, parameters: {}, artifactIds: artifacts.map((artifact) => artifact.id), createdAt: canonicalVolumeObject.provenance.updatedAt }],
       workbookBlocks,
       handoff: { sourceModule: canonicalVolumeObject.provenance.dependencies[0]?.module === "external" ? "volume" : (canonicalVolumeObject.provenance.dependencies[0]?.module ?? "volume"), sourceObjectId: canonicalVolumeObject.provenance.dependencies[0]?.objectId ?? null, returnCamera: view.camera },
     });
-  }, [canonicalVolumeObject, currentVolumeAnalysisSummary, volumeAnalysisThreshold, volumeCameraState, volumeComparisonAlignment, volumeComparisonBaselineLabel, volumeComparisonThreshold, volumeCrosshair, volumeDataset.scientific, volumeDerivedResults, volumeIsoValue, volumeLayout, volumeNavigationLinked, volumeOrientationConvention, volumePaneIndices, volumePinnedProbes, volumeRenderMode, volumeRenderQuality, volumeRenderWindow, volumeSegmentationMap?.labels.length, volumeSegmentationThreshold, volumeTextureSampling, volumeTransferFunction, volumeViewMode, volumeVoxelSnap]);
+  }, [activeVolumeKernelAdapter, canonicalVolumeObject, currentVolumeAnalysisSummary, volumeAnalysisThreshold, volumeCameraState, volumeComparisonAlignment, volumeComparisonBaselineLabel, volumeComparisonThreshold, volumeCrosshair, volumeDataset.scientific, volumeDerivedResults, volumeExtractionRecords, volumeIsoValue, volumeLayout, volumeNavigationLinked, volumeOrientationConvention, volumePaneIndices, volumePinnedProbes, volumeRenderMode, volumeRenderQuality, volumeRenderWindow, volumeSegmentationMap?.labels.length, volumeSegmentationThreshold, volumeTextureSampling, volumeTransferFunction, volumeViewMode, volumeVoxelSnap]);
   const applyVolumeWorkspaceView = useCallback((document: VolumeWorkspaceDocument) => {
     const { view } = document;
     setVolumeLayout(view.layout);
@@ -36195,6 +36245,8 @@ const App: React.FC = () => {
   }, []);
   const handleSaveVolumeWorkspace = useCallback(() => {
     try {
+      activeVolumeKernelAdapter.setAnalysisSettings({ isoValue: volumeIsoValue, analysisThreshold: volumeAnalysisThreshold, segmentationThreshold: volumeSegmentationThreshold,
+        samplingDimensions: [...volumeAppliedSamplingClamped.dims], centering: volumeAppliedCentering, interpolation: volumeAppliedInterpolation, boundaryMode: volumeAppliedBoundaryMode });
       const document = buildCurrentVolumeWorkspace();
       const serialized = serializeVolumeWorkspace(document);
       localStorage.setItem(VOLUME_WORKSPACE_STORAGE_KEY, serialized);
@@ -36206,7 +36258,7 @@ const App: React.FC = () => {
     } catch (error) {
       setVolumePersistenceStatus(error instanceof Error ? `Save failed: ${error.message}` : "Save failed.");
     }
-  }, [buildCurrentVolumeWorkspace, canonicalVolumeObject.identity.volumeId, canonicalVolumeObject.identity.volumeRevision]);
+  }, [activeVolumeKernelAdapter, buildCurrentVolumeWorkspace, canonicalVolumeObject.identity.volumeId, canonicalVolumeObject.identity.volumeRevision, volumeAnalysisThreshold, volumeAppliedBoundaryMode, volumeAppliedCentering, volumeAppliedInterpolation, volumeAppliedSamplingClamped.dims, volumeIsoValue, volumeSegmentationThreshold]);
   const handleRestoreVolumeWorkspace = useCallback(() => {
     try {
       const serialized = localStorage.getItem(VOLUME_WORKSPACE_STORAGE_KEY);
@@ -36215,6 +36267,29 @@ const App: React.FC = () => {
       const activeHash = volumeDataset.scientific?.externalReference.contentHash ?? null;
       const restored = restoreVolumeWorkspace(document, (artifact) => ({ exists: artifact.contentHash === activeHash, contentHash: activeHash ?? undefined }));
       applyVolumeWorkspaceView(document);
+      setVolumeExtractionRecords(document.extractions);
+      if (document.kernelDocument && (document.sourceRecipe.kind === "analytic-preset" || document.sourceRecipe.kind === "custom-field")) {
+        const recipe = document.sourceRecipe;
+        hydrateVolumeRevisionTracker(volumeRevisionTrackerRef.current, document.volume);
+        volumeKernelAdaptersRef.current.set(document.volume.identity.volumeId, new VolumeDocumentAdapter(document.kernelDocument));
+        setVolumeKernelRestoreToken((value) => value + 1);
+        setVolumeDatasetOverride(null);
+        setVolumeSdfPreview(null);
+        if (recipe.kind === "analytic-preset" && VOLUME_PRESETS.some((preset) => preset.id === recipe.presetId)) setVolumePresetId(recipe.presetId as VolumePresetId);
+        if (recipe.kind === "custom-field") { setVolumePresetId("custom"); setVolumeCustomExpr(recipe.expression); }
+        setVolumeParams(recipe.parameters as VolumePresetParams);
+        const spatial = document.volume.spatial;
+        const sampling: VolumeSampling = {
+          dims: [...spatial.dimensions],
+          center: spatial.origin.map((origin, axis) => origin + spatial.spacing[axis] * (spatial.dimensions[axis] - 1) / 2) as [number, number, number],
+          extents: spatial.spacing.map((spacing, axis) => Math.abs(spacing) * (spatial.dimensions[axis] - 1)) as [number, number, number],
+        };
+        setVolumeDims([...sampling.dims]);
+        setVolumeSampling(sampling);
+        setVolumeAppliedSampling(sampling);
+        setVolumeCentering(spatial.centering);
+        setVolumeAppliedCentering(spatial.centering);
+      }
       volumeWorkspaceHistoryRef.current = new VolumeWorkspaceHistory(document);
       setVolumeWorkspaceHistorySummary(volumeWorkspaceHistoryRef.current.summary());
       setVolumePersistenceStatus(restored.relinkRequired ? `${restored.diagnostics.map((entry) => entry.message).join(" ")} Current view and recipe metadata were restored safely.` : `Restored ${document.volume.identity.label} r${document.volume.identity.volumeRevision}.`);
@@ -51837,6 +51912,8 @@ case "mobius":
       indices: new Uint32Array(geometry.indices),
       normals: new Float32Array(geometry.normals),
     });
+    const extraction = volumeExtractionRecords.find((entry) => entry.derivedResultId === id);
+    if (extraction) setVolumeExtractionRecords((previous) => [promoteVolumeExtraction(extraction, snapshotId), ...previous].slice(0, 24));
     setVolumeDerivedResults((previous) => [{
       ...result,
       id: snapshotId,
@@ -51846,7 +51923,7 @@ case "mobius":
       createdAt: now,
       updatedAt: now,
     }, ...previous].slice(0, 24));
-  }, [volumeDerivedResults]);
+  }, [volumeDerivedResults, volumeExtractionRecords]);
 
   const handleDetachVolumeDerivedResult = useCallback((id: string) => {
     setVolumeDerivedResults((previous) => previous.map((result) => result.id === id ? detachVolumeDerivedResult(result) : result));
@@ -51946,21 +52023,25 @@ case "mobius":
 
   const handleReturnToVolumeSource = useCallback(() => {
     if (!volumeMeshAnalysisHandoff) return;
+    const extraction = volumeExtractionRecords.find((entry) => entry.derivedResultId === volumeMeshAnalysisHandoff.resultId);
+    const geometry = volumeDerivedGeometryRef.current.get(volumeMeshAnalysisHandoff.resultId);
+    const selectedVertex = surfaceMeshInspectPick?.vertexIndex ?? inspectIdx;
+    const located = extraction && geometry && selectedVertex !== null ? locateVolumeExtractionVertex(extraction, geometry, selectedVertex) : null;
     setMode("surfaces");
     setDatasetKind("volume");
     setSurfacesPanelState(volumeMeshAnalysisHandoff.panelState);
     setSurfacesLeftTab("analysis");
     setVolumeLayout(volumeMeshAnalysisHandoff.layout);
     setVolumeFocusedPane(volumeMeshAnalysisHandoff.focusedPane);
-    setVolumeCrosshair(volumeMeshAnalysisHandoff.crosshair ? [...volumeMeshAnalysisHandoff.crosshair] : null);
+    setVolumeCrosshair(located?.state === "mapped" ? [...located.world] : volumeMeshAnalysisHandoff.crosshair ? [...volumeMeshAnalysisHandoff.crosshair] : null);
     setVolumeCameraState(volumeMeshAnalysisHandoff.camera ? {
       position: [...volumeMeshAnalysisHandoff.camera.position],
       target: [...volumeMeshAnalysisHandoff.camera.target],
       up: [...volumeMeshAnalysisHandoff.camera.up],
     } : null);
-    setVolumeComputeRuntime((previous) => ({ ...previous, message: `Returned from ${volumeMeshAnalysisHandoff.label}; Volume ${volumeMeshAnalysisHandoff.sourceVolumeId} revision ${volumeMeshAnalysisHandoff.sourceVolumeRevision} restored.` }));
+    setVolumeComputeRuntime((previous) => ({ ...previous, message: `Returned from ${volumeMeshAnalysisHandoff.label}; Volume ${volumeMeshAnalysisHandoff.sourceVolumeId} revision ${volumeMeshAnalysisHandoff.sourceVolumeRevision} restored${located?.state === "mapped" ? ` · voxel (${located.voxel.join(", ")}) located` : ""}.` }));
     setVolumeMeshAnalysisHandoff(null);
-  }, [volumeMeshAnalysisHandoff]);
+  }, [inspectIdx, surfaceMeshInspectPick?.vertexIndex, volumeExtractionRecords, volumeMeshAnalysisHandoff]);
 
   const calculusScalarOptions = useMemo(() => {
     const out: Array<{ value: string; label: string }> = [];
@@ -88428,6 +88509,7 @@ case "mobius":
                       <VolumeInspectorPanel
                         dataset={volumeDataset}
                         volumeObject={canonicalVolumeObject}
+                        kernelDocument={activeVolumeKernelAdapter.document()}
                         valueRange={volumeScalarRange}
                         viewMode={volumeViewMode}
                         crosshair={volumeCrosshair}
@@ -88470,6 +88552,13 @@ case "mobius":
                         definitionError={volumeCustomCompiled.error}
                         computeDiagnostics={volumeComputeDiagnostics}
                         derivedResults={volumeDerivedResults}
+                        extractionEvidence={volumeExtractionRecords.map((record) => ({
+                          derivedResultId: record.derivedResultId,
+                          status: volumeExtractionStatus(record, activeVolumeKernelAdapter.sourceGeneration(),
+                            volumeExtractionBridgeRef.current?.artifacts().resolve(record.result.artifacts[0], record.source).ok ?? false),
+                          relationId: record.relations[0].relationId,
+                          artifactId: record.artifactId,
+                        }))}
                         derivedBusy={volumeComputeRuntime.lifecycle === "queued" || volumeComputeRuntime.lifecycle === "running" || volumeComputeRuntime.lifecycle === "progressive"}
                         analysisSummary={currentVolumeAnalysisSummary}
                         analysisBusy={volumeAnalysisBusy}

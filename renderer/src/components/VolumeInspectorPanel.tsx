@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import type { VolumeDocument } from "@math3d/core";
 
 import type { VolumeDataset } from "../scene/datasets";
 import type { VolumeSliceHover, VolumeSliceReport } from "../scene/volume/sliceVolume";
@@ -36,6 +37,7 @@ type VolumeInspectorTab = "volume" | "field" | "sampling" | "slice" | "rendering
 export type VolumeInspectorPanelProps = {
   dataset: VolumeDataset;
   volumeObject: VolumeObject;
+  kernelDocument?: VolumeDocument;
   valueRange: { min: number; max: number };
   viewMode: "slices" | "3d";
   crosshair: [number, number, number] | null;
@@ -78,6 +80,7 @@ export type VolumeInspectorPanelProps = {
   definitionError: string | null;
   computeDiagnostics: VolumeComputeDiagnostics;
   derivedResults: readonly VolumeDerivedResult[];
+  extractionEvidence?: readonly { derivedResultId: string; status: "current" | "stale" | "snapshot" | "unavailable"; relationId: string; artifactId: string }[];
   derivedBusy: boolean;
   analysisSummary: VolumeAnalysisSummary | null;
   analysisBusy: boolean;
@@ -217,6 +220,7 @@ const DetailRow: React.FC<{ label: string; value: React.ReactNode }> = ({ label,
 export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   dataset,
   volumeObject,
+  kernelDocument,
   valueRange,
   viewMode,
   crosshair,
@@ -259,6 +263,7 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   definitionError,
   computeDiagnostics,
   derivedResults,
+  extractionEvidence,
   derivedBusy,
   analysisSummary,
   analysisBusy,
@@ -418,6 +423,7 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
         <div style={cardStyle} data-testid="volume-details-card">
           <div style={{ fontWeight: 850, fontSize: 12 }}>Volume Details</div>
           <DetailRow label="Identity" value={label} />
+          {kernelDocument && <div data-testid="volume-kernel-document"><DetailRow label="Kernel document" value={`${kernelDocument.identity.id} · revision ${kernelDocument.identity.revision}`} /></div>}
           <DetailRow label="Representation" value={representationLabel} />
           <DetailRow label="Source" value={describeVolumeSource(volumeObject.source)} />
           <DetailRow label="Dimensions" value={spatial.dimensions.join(" × ")} />
@@ -601,6 +607,7 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
               </div>
               <DetailRow label="Source revision" value={result.sourceVolumeRevision} />
               <DetailRow label="Grid revision" value={result.sourceSampledGridRevision} />
+              {extractionEvidence?.filter((entry) => entry.derivedResultId === result.id).map((entry) => <div key={entry.relationId} data-testid="volume-derived-kernel-lineage" style={{ fontSize: 10, color: entry.status === "stale" ? "#b45309" : "#475569" }}>Kernel lineage: {entry.status} · {entry.relationId} · artifact {entry.artifactId}</div>)}
               {result.isosurface && (
                 <>
                   <DetailRow label="Algorithm" value={`${result.isosurface.algorithm} · ${result.isosurface.backend}`} />

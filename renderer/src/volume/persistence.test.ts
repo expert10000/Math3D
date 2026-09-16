@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { adaptAnalyticVolume } from "./infrastructure";
+import { volumeDocumentFromLegacyObject } from "./volumeDocumentAdapter";
 import { getVolumeTransferPreset } from "./transferFunction";
 import {
   createVolumeWorkbookBlock,
@@ -32,11 +33,12 @@ describe("Volume workspace persistence", () => {
   it("round-trips canonical recipes, spatial/view state and compact references without expanding voxel bytes", () => {
     const volume = makeVolume();
     const block = createVolumeWorkbookBlock({ id: "slice-1", operation: "slice", title: "Axial review", sourceVolumeId: volume.identity.volumeId, sourceVolumeRevision: volume.identity.volumeRevision, parameters: { axis: "z", index: 1 }, preview: { label: "Z 2/2", summary: "2 × 2" }, artifactIds: [] });
-    const document = createVolumeWorkspaceDocument({ volume, view, artifacts: [artifact], operations: [{ id: "sample", kind: "sampling", label: "Sample 2³", volumeRevision: 1, sampledGridRevision: 1, parameters: { nx: 2 }, artifactIds: [], createdAt: 11 }], workbookBlocks: [block], savedAt: 12 });
+    const document = createVolumeWorkspaceDocument({ volume, kernelDocument: volumeDocumentFromLegacyObject(volume), view, artifacts: [artifact], operations: [{ id: "sample", kind: "sampling", label: "Sample 2³", volumeRevision: 1, sampledGridRevision: 1, parameters: { nx: 2 }, artifactIds: [], createdAt: 11 }], workbookBlocks: [block], savedAt: 12 });
     const json = serializeVolumeWorkspace(document);
     const parsed = parseVolumeWorkspace(json);
     expect(parsed.volume.spatial).toEqual(volume.spatial);
     expect(parsed.sourceRecipe).toEqual(volume.source);
+    expect(parsed.kernelDocument).toEqual(document.kernelDocument);
     expect(parsed.view).toEqual(view);
     expect(parsed.workbookBlocks[0].operation).toBe("slice");
     expect(json).not.toContain("\"scalars\"");

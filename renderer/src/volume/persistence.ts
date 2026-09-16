@@ -1,4 +1,6 @@
 import type { SerializedVolumeObject, VolumeDerivedResult, VolumeObject, VolumeSource } from "./contracts";
+import { normalizeVolumeDocument, type VolumeDocument } from "@math3d/core";
+import { parseVolumeExtraction, type VolumeExtractionRecord } from "./volumeExtractionKernel";
 import { restoreVolumeObject, serializeVolumeObject } from "./infrastructure";
 import type { PinnedVolumeProbe, VolumeOrientationConvention } from "./probes";
 import type {
@@ -78,11 +80,13 @@ export type VolumeWorkspaceDocument = {
   version: 1;
   savedAt: number;
   volume: SerializedVolumeObject;
+  kernelDocument: VolumeDocument | null;
   sourceRecipe: VolumeSource;
   artifacts: VolumeArtifactReference[];
   view: VolumeWorkspaceViewState;
   probes: PinnedVolumeProbe[];
   results: VolumeResultReference[];
+  extractions: VolumeExtractionRecord[];
   operations: VolumeOperationRecord[];
   workbookBlocks: VolumeWorkbookBlock[];
   handoff: { sourceModule: "surfaces" | "mesh" | "geometry" | "volume"; sourceObjectId: string | null; returnCamera: VolumeWorkspaceViewState["camera"] };
@@ -122,10 +126,12 @@ export const resultReferenceFromDerivedVolume = (result: VolumeDerivedResult, ar
 
 export const createVolumeWorkspaceDocument = (input: {
   volume: VolumeObject;
+  kernelDocument?: VolumeDocument | null;
   view: VolumeWorkspaceViewState;
   artifacts?: readonly VolumeArtifactReference[];
   probes?: readonly PinnedVolumeProbe[];
   results?: readonly VolumeResultReference[];
+  extractions?: readonly VolumeExtractionRecord[];
   operations?: readonly VolumeOperationRecord[];
   workbookBlocks?: readonly VolumeWorkbookBlock[];
   handoff?: VolumeWorkspaceDocument["handoff"];
@@ -135,11 +141,13 @@ export const createVolumeWorkspaceDocument = (input: {
   version: 1,
   savedAt: input.savedAt ?? Date.now(),
   volume: serializeVolumeObject(input.volume),
+  kernelDocument: input.kernelDocument ? clone(input.kernelDocument) : null,
   sourceRecipe: clone(input.volume.source),
   artifacts: input.artifacts?.map(clone) ?? [],
   view: clone(input.view),
   probes: input.probes?.map(clone) ?? [],
   results: input.results?.map(clone) ?? [],
+  extractions: input.extractions?.map(clone) ?? [],
   operations: input.operations?.map(clone) ?? [],
   workbookBlocks: input.workbookBlocks?.map(clone) ?? [],
   handoff: clone(input.handoff ?? { sourceModule: "volume", sourceObjectId: null, returnCamera: input.view.camera }),
@@ -154,6 +162,9 @@ export const parseVolumeWorkspace = (serialized: string): VolumeWorkspaceDocumen
     throw new Error("Incomplete Volume workspace document.");
   }
   restoreVolumeObject(value.volume);
+  const kernelDocument = value.kernelDocument == null ? null : normalizeVolumeDocument(value.kernelDocument);
+  if (kernelDocument && !kernelDocument.ok) throw new Error(kernelDocument.errors.join(" "));
+  if (kernelDocument && kernelDocument.value.metadata.legacyVolumeId !== value.volume.identity.volumeId) throw new Error("Volume kernel document belongs to another source.");
   if (value.volume.source.kind !== value.sourceRecipe.kind) throw new Error("Volume source recipe does not match the canonical object.");
   if (!value.artifacts.every(isArtifactReference)) throw new Error("Invalid Volume artifact reference.");
   const ids = new Set<string>();
@@ -165,10 +176,12 @@ export const parseVolumeWorkspace = (serialized: string): VolumeWorkspaceDocumen
     if (!result.id || !result.sourceVolumeId || result.sourceVolumeRevision < 1) throw new Error("Invalid Volume result reference.");
     if (result.artifactId && !ids.has(result.artifactId)) throw new Error(`Volume result ${result.id} references an unknown artifact.`);
   }
+  if (value.extractions != null && !Array.isArray(value.extractions)) throw new Error("Invalid Volume extraction records.");
+  const extractions = (value.extractions ?? []).map((record) => parseVolumeExtraction(JSON.stringify(record)));
   for (const operation of value.operations) {
     if (!operation.id || operation.volumeRevision < 1 || operation.sampledGridRevision < 1) throw new Error("Invalid Volume operation record.");
   }
-  return clone({ ...value, probes: value.probes ?? [], workbookBlocks: value.workbookBlocks ?? [] });
+  return clone({ ...value, kernelDocument: kernelDocument?.value ?? null, extractions, probes: value.probes ?? [], workbookBlocks: value.workbookBlocks ?? [] });
 };
 
 export const restoreVolumeWorkspace = (

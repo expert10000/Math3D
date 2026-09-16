@@ -85,7 +85,7 @@ The target outcomes are:
 | C01-C12 | Complex Analysis MVP/v1 vertical migration and gate | Complete |
 | A1-G3 | Original architecture proposal labels | Historical traceability only |
 | G01-G08 | Cross-module milestone groups | Planned/in progress through GK commits |
-| GK01-GK20 | Executable post-C12 integration commits | GK01-GK13 complete; GK14-GK20 planned |
+| GK01-GK20 | Executable post-C12 integration commits | GK01-GK15 complete; GK16-GK20 planned |
 
 There is one canonical sequential plan. Historical labels may explain intent, but
 they cannot reopen completed work or create duplicate infrastructure. Completion
@@ -725,6 +725,14 @@ invalidate boundary/sampling/mesh resources; view-only edits do not change the s
 hash; bulk voxels use resource/artifact identity; save/reopen preserves source and
 analysis settings; GK03 passes.
 
+**Status:** complete. `VolumeDocument` owns a compact, validated structural recipe,
+spatial state, dependency and bulk-payload reference. The legacy Volume adapter
+commits source and metadata commands through the document kernel, supports
+undo/redo/replay, and leaves sampled voxels and view state outside the canonical
+source. The Volume Inspector exposes its identity/revision. Workspace save/reopen
+round-trips the kernel document and analysis settings. Domain conformance, unit,
+typecheck, build, and Volume UI acceptance are covered by `npm run test:kernel:gk14`.
+
 #### GK15 — `feat(volumes): add revisioned boundary-surface and mesh handoffs`
 
 **Scope.** Route supported Volume → Surface/Mesh extraction through shared jobs,
@@ -736,6 +744,16 @@ promoted documents are stable snapshots with explicit stale lineage; extraction
 correspondence supports locate-back where available; memory admission rejects unsafe
 work before launch; Volume save/reopen/replay preserves extraction parameters,
 source generation, and provenance.
+
+**Status:** complete. Full isosurface extraction runs through the F05/F08 job
+broker and existing worker under source-generation and memory admission checks.
+Publication creates an F06 numerical result, F07 geometry artifact, mesh-backed
+`SurfaceDocument`, and GK01 relations with operation parameters and engine/version.
+The Inspector reports current/stale/snapshot/unavailable lineage; promoted results
+retain source snapshots, and mesh selection can locate back to the source voxel.
+Compact workspace records preserve extraction parameters and provenance without
+embedding voxel buffers. Unit, typecheck, build, and UI gates are in
+`npm run test:kernel:gk15`.
 
 ### G07 — Shared Viewer Inspector and workspace
 
