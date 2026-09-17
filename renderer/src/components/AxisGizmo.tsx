@@ -1,8 +1,9 @@
 // src/components/AxisGizmo.tsx
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import type { CameraOrientation } from "./cameraOrientation";
 
-export type CameraView = "xy" | "xyNeg" | "xz" | "xzNeg" | "yz" | "yzNeg" | "iso";
+export type CameraView = CameraOrientation;
 type AxisId = "x" | "y" | "z";
 type AxisDirection = `${AxisId}+` | `${AxisId}-`;
 type GizmoTarget = AxisDirection | "center";

@@ -1,7 +1,9 @@
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { configureOrbitControlsForTouch, installViewerTouchGestures } from "../utils/viewerTouchGestures";
+import AxisGizmo from "./AxisGizmo";
+import { applyCameraOrientation, CAMERA_ORIENTATION_LABEL, orbitCameraAroundTarget, type CameraOrientation } from "./cameraOrientation";
 
 export type CurveViewerVec3 = { x: number; y: number; z: number };
 
@@ -101,6 +103,33 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
   onSelectSample,
 }) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
+  const fitSceneRef = useRef<(() => void) | null>(null);
+  const [viewerRevision, setViewerRevision] = useState(0);
+  const [viewMode, setViewMode] = useState<"free" | CameraOrientation>("free");
+  const [orbitLocked, setOrbitLocked] = useState(false);
+
+  const handleGizmoOrbit = useCallback((deltaX: number, deltaY: number) => {
+    if (orbitLocked) return;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls || !orbitCameraAroundTarget(camera, controls, deltaX, deltaY)) return;
+    setViewMode((current) => (current === "free" ? current : "free"));
+  }, [orbitLocked]);
+
+  useEffect(() => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    controls.enableRotate = !orbitLocked;
+    if (viewMode !== "free") applyCameraOrientation(camera, controls, controls.target.clone(), camera.position.distanceTo(controls.target) * 0.5, viewMode);
+  }, [orbitLocked, viewMode, viewerRevision]);
+
+  useEffect(() => {
+    setViewMode("free");
+    setOrbitLocked(false);
+  }, [resetToken]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -123,6 +152,9 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     configureOrbitControlsForTouch(controls);
+    cameraRef.current = camera;
+    controlsRef.current = controls;
+    setViewerRevision((revision) => revision + 1);
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.75));
     const keyLight = new THREE.DirectionalLight(0xffffff, 0.75);
@@ -360,6 +392,20 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
       controls.update();
     };
     refitCamera();
+    fitSceneRef.current = () => {
+      const viewDirection = camera.position.clone().sub(controls.target);
+      if (viewDirection.lengthSq() < 1e-8) viewDirection.set(1, 0.85, 1.12);
+      viewDirection.normalize();
+      camera.position.copy(fitCenter).addScaledVector(viewDirection, fitRadius * 2.6);
+      controls.target.copy(fitCenter);
+      camera.lookAt(fitCenter);
+      controls.update();
+    };
+
+    const handleControlsStart = () => {
+      if (controls.enableRotate) setViewMode("free");
+    };
+    controls.addEventListener("start", handleControlsStart);
 
     const disposeTouchGestures = installViewerTouchGestures(renderer.domElement, {
       onDoubleTap: refitCamera,
@@ -404,6 +450,10 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
       resizeObserver.disconnect();
       disposeTouchGestures();
       renderer.domElement.removeEventListener("click", handleClick);
+      controls.removeEventListener("start", handleControlsStart);
+      if (cameraRef.current === camera) cameraRef.current = null;
+      if (controlsRef.current === controls) controlsRef.current = null;
+      fitSceneRef.current = null;
       controls.dispose();
       disposeSceneObjects(scene);
       renderer.dispose();
@@ -437,5 +487,63 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
     onSelectSample,
   ]);
 
-  return <div data-testid="curve-viewer-canvas" ref={hostRef} style={{ width: "100%", height: "100%", minHeight: 280 }} />;
+  return (
+    <div style={{ position: "relative", width: "100%", height: "100%", minHeight: 280 }}>
+      <div data-testid="curve-viewer-canvas" ref={hostRef} style={{ width: "100%", height: "100%" }} />
+      <div
+        style={{
+          position: "absolute",
+          left: 12,
+          bottom: 12,
+          zIndex: 2,
+          borderRadius: 11,
+          background: "linear-gradient(150deg, rgba(250,252,255,0.95), rgba(226,236,247,0.92))",
+          border: "1px solid rgba(134,153,179,0.52)",
+          boxShadow: "0 10px 18px rgba(30,45,70,0.16), inset 0 1px 1px rgba(255,255,255,0.8)",
+          padding: "7px 7px 6px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 5,
+          width: 146,
+          fontFamily: "\"Avenir Next\", \"Segoe UI\", \"Trebuchet MS\", \"Noto Sans\", sans-serif",
+          color: "#233042",
+          userSelect: "none",
+        }}
+      >
+        <div style={{ padding: "0 2px", display: "flex", justifyContent: "space-between", gap: 8 }}>
+          <span style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 700, color: "#6a7483" }}>View</span>
+          <span title={orbitLocked ? "Orbit lock is on" : "Current camera orientation"} style={{ fontSize: 9, fontWeight: 700, color: orbitLocked ? "#1d4ed8" : "#526174", whiteSpace: "nowrap" }}>
+            {viewMode === "free" ? "Free" : CAMERA_ORIENTATION_LABEL[viewMode]}
+          </span>
+        </div>
+        <AxisGizmo
+          size={132}
+          activeView={viewMode}
+          getMainCamera={() => cameraRef.current}
+          onSelectView={(orientation) => setViewMode(orientation)}
+          onFitScene={() => fitSceneRef.current?.()}
+          onOrbit={handleGizmoOrbit}
+        />
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button
+            type="button"
+            aria-pressed={orbitLocked}
+            title={orbitLocked ? "Unlock orbit" : "Lock orbit"}
+            onClick={() => setOrbitLocked((locked) => !locked)}
+            style={{ flex: 1, height: 28, borderRadius: 7, border: `1px solid ${orbitLocked ? "#2962d9" : "rgba(128,146,171,0.58)"}`, background: orbitLocked ? "rgba(227,239,255,0.95)" : "rgba(255,255,255,0.87)", color: orbitLocked ? "#1d4ed8" : "#495669", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
+          >
+            {orbitLocked ? "Orbit locked" : "Lock orbit"}
+          </button>
+          <button
+            type="button"
+            title="Fit curve to the current view"
+            onClick={() => fitSceneRef.current?.()}
+            style={{ width: 39, height: 28, borderRadius: 7, border: "1px solid rgba(128,146,171,0.58)", background: "rgba(255,255,255,0.87)", color: "#495669", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
+          >
+            Fit
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };

@@ -19,6 +19,7 @@ import { scalarToColor01, type ColorPalette, solidColorForPalette } from "./colo
 import type { GaussPoint } from "./gaussMapUtils";
 import type { MeshValidation } from "../mesh/surfaceMesh";
 import AxisGizmo from "./AxisGizmo";
+import { applyCameraOrientation, CAMERA_ORIENTATION_LABEL, orbitCameraAroundTarget, type CameraOrientation } from "./cameraOrientation";
 import { Slice2DPreview, buildSliceSvgString } from "./Slice2DPreview";
 import { compileExpression } from "../math/expression";
 import type { ColorMode as CoreColorMode, SurfaceId as CoreSurfaceId } from "@math3d/core";
@@ -717,7 +718,7 @@ export type SurfaceTopologyGizmoDragInfo = {
   distance: number;
 };
 
-type GizmoView = "xy" | "xyNeg" | "xz" | "xzNeg" | "yz" | "yzNeg" | "iso";
+type GizmoView = CameraOrientation;
 type GizmoMenuView = "front" | "back" | "left" | "right" | "top" | "bottom" | "iso";
 
 const GIZMO_MENU_ITEMS: Array<{ id: GizmoMenuView; label: string }> = [
@@ -729,16 +730,6 @@ const GIZMO_MENU_ITEMS: Array<{ id: GizmoMenuView; label: string }> = [
   { id: "bottom", label: "Bottom (−Y)" },
   { id: "iso", label: "Isometric" },
 ];
-
-const GIZMO_VIEW_LABEL: Record<GizmoView, string> = {
-  xy: "+Z Front",
-  xyNeg: "−Z Back",
-  xz: "+Y Top",
-  xzNeg: "−Y Bottom",
-  yz: "+X Right",
-  yzNeg: "−X Left",
-  iso: "Isometric",
-};
 
 const iconCommonProps: React.SVGProps<SVGSVGElement> = {
   width: 14,
@@ -2751,37 +2742,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     const cam = cameraRef.current;
     const controls = controlsRef.current;
     if (!cam || !controls) return;
-
-    const center = centerRef.current ?? new THREE.Vector3(0, 0, 0);
-    const d = (radiusRef.current || 3) * 2.0;
-
-    if (view === "xy") {
-      cam.position.set(center.x, center.y, center.z + d);
-      cam.up.set(0, 1, 0);
-    } else if (view === "xyNeg") {
-      cam.position.set(center.x, center.y, center.z - d);
-      cam.up.set(0, 1, 0);
-    } else if (view === "xz") {
-      cam.position.set(center.x, center.y + d, center.z);
-      cam.up.set(0, 0, 1);
-    } else if (view === "xzNeg") {
-      cam.position.set(center.x, center.y - d, center.z);
-      cam.up.set(0, 0, -1);
-    } else if (view === "yz") {
-      cam.position.set(center.x + d, center.y, center.z);
-      cam.up.set(0, 1, 0);
-    } else if (view === "yzNeg") {
-      cam.position.set(center.x - d, center.y, center.z);
-      cam.up.set(0, 1, 0);
-    } else if (view === "iso") {
-      const isoDir = new THREE.Vector3(1, 0.85, 1.12).normalize();
-      cam.position.copy(center).addScaledVector(isoDir, d * 1.08);
-      cam.up.set(0, 1, 0);
-    }
-
-    controls.target.copy(center);
-    cam.lookAt(center);
-    controls.update();
+    applyCameraOrientation(cam, controls, centerRef.current ?? new THREE.Vector3(), radiusRef.current, view);
   };
 
   const applyNamedGizmoView = useCallback((view: GizmoMenuView) => {
@@ -2809,15 +2770,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     const controls = controlsRef.current;
     if (!cam || !controls) return;
 
-    const offset = cam.position.clone().sub(controls.target);
-    if (offset.lengthSq() < 1e-8) return;
-    const spherical = new THREE.Spherical().setFromVector3(offset);
-    spherical.theta -= deltaX * 0.012;
-    spherical.phi = THREE.MathUtils.clamp(spherical.phi + deltaY * 0.012, 0.04, Math.PI - 0.04);
-    offset.setFromSpherical(spherical);
-    cam.position.copy(controls.target).add(offset);
-    cam.lookAt(controls.target);
-    controls.update();
+    if (!orbitCameraAroundTarget(cam, controls, deltaX, deltaY)) return;
     setViewMode((current) => (current === "free" ? current : "free"));
     setViewGizmoMenuOpen(false);
   }, [lockToAxisPlane]);
@@ -12497,7 +12450,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
               View
             </span>
             <span title={lockToAxisPlane ? "Orbit lock is on" : "Current camera orientation"} style={{ fontSize: 9, fontWeight: 700, color: lockToAxisPlane ? "#1d4ed8" : "#526174", whiteSpace: "nowrap" }}>
-              {viewMode === "free" ? "Free" : GIZMO_VIEW_LABEL[viewMode]}
+              {viewMode === "free" ? "Free" : CAMERA_ORIENTATION_LABEL[viewMode]}
             </span>
           </div>
           <AxisGizmo

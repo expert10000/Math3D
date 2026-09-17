@@ -49,6 +49,7 @@ import type {
   ViewportDebugSnapshot,
 } from "./SurfaceViewer";
 import AxisGizmo from "./AxisGizmo";
+import { applyCameraOrientation, CAMERA_ORIENTATION_LABEL, orbitCameraAroundTarget, type CameraOrientation } from "./cameraOrientation";
 import { Slice2DPreview } from "./Slice2DPreview";
 import type { ColorPalette } from "./colorPalette";
 import type { GaussPoint } from "./gaussMapUtils";
@@ -1675,7 +1676,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     end: null,
   });
 
-  type GizmoView = "xy" | "xz" | "yz";
+  type GizmoView = CameraOrientation;
   type ViewMode = "free" | GizmoView;
 
   const [viewMode, setViewMode] = useState<ViewMode>("free");
@@ -1874,25 +1875,20 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const cam = cameraRef.current;
     const controls = controlsRef.current;
     if (!cam || !controls) return;
-
-    const center = centerRef.current ?? new THREE.Vector3(0, 0, 0);
-    const d = (radiusRef.current || 3) * 2.0;
-
-    if (view === "xy") {
-      cam.position.set(center.x, center.y, center.z + d);
-      cam.up.set(0, 1, 0);
-    } else if (view === "xz") {
-      cam.position.set(center.x, center.y + d, center.z);
-      cam.up.set(0, 0, 1);
-    } else {
-      cam.position.set(center.x + d, center.y, center.z);
-      cam.up.set(0, 1, 0);
-    }
-
-    controls.target.copy(center);
-    cam.lookAt(center);
-    controls.update();
+    applyCameraOrientation(cam, controls, centerRef.current ?? new THREE.Vector3(), radiusRef.current, view);
   };
+
+  const handleGizmoOrbit = useCallback((deltaX: number, deltaY: number) => {
+    if (lockToPlane) return;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls || !orbitCameraAroundTarget(camera, controls, deltaX, deltaY)) return;
+    setViewMode((current) => (current === "free" ? current : "free"));
+  }, [lockToPlane]);
+
+  const handleGizmoFit = useCallback(() => {
+    forceReframeRef.current?.();
+  }, []);
 
   useEffect(() => {
     const onCaptureAutoFit = (event: Event) => {
@@ -2141,7 +2137,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const cam = cameraRef.current;
     if (!controls || !cam) return;
 
-    const shouldLock = lockToPlane && viewMode !== "free";
+    const shouldLock = lockToPlane;
     controls.enableRotate = !shouldLock;
 
     if (viewMode === "free") return;
@@ -2674,6 +2670,10 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       emitViewportDebugThrottled("controls");
     };
     controls.addEventListener("change", handleControlsChangeDebug);
+    const handleControlsStart = () => {
+      if (controls.enableRotate) setViewMode("free");
+    };
+    controls.addEventListener("start", handleControlsStart);
 
     if (isCameraLeader && onCameraSync) {
       controls.addEventListener("change", emitCameraSync);
@@ -3971,6 +3971,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         ro.disconnect();
         window.removeEventListener("resize", onResize);
         controls.removeEventListener("change", handleControlsChangeDebug);
+        controls.removeEventListener("start", handleControlsStart);
         disposeTouchGestures();
         renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
         if (isCameraLeader && onCameraSync) {
@@ -7233,29 +7234,53 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
             position: "absolute",
             left: 12,
             bottom: 12,
-            borderRadius: 6,
-            background: "rgba(255,255,255,0.9)",
-            boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-            padding: 6,
+            borderRadius: 11,
+            background: "linear-gradient(150deg, rgba(250,252,255,0.95), rgba(226,236,247,0.92))",
+            border: "1px solid rgba(134,153,179,0.52)",
+            boxShadow: "0 10px 18px rgba(30,45,70,0.16), inset 0 1px 1px rgba(255,255,255,0.8)",
+            padding: "7px 7px 6px",
             display: "flex",
             flexDirection: "column",
-            gap: 4,
-            fontSize: 11,
+            gap: 5,
+            width: 146,
+            fontFamily: "\"Avenir Next\", \"Segoe UI\", \"Trebuchet MS\", \"Noto Sans\", sans-serif",
+            color: "#233042",
+            userSelect: "none",
           }}
         >
+          <div style={{ padding: "0 2px", display: "flex", justifyContent: "space-between", gap: 8 }}>
+            <span style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 700, color: "#6a7483" }}>View</span>
+            <span title={lockToPlane ? "Orbit lock is on" : "Current camera orientation"} style={{ fontSize: 9, fontWeight: 700, color: lockToPlane ? "#1d4ed8" : "#526174", whiteSpace: "nowrap" }}>
+              {viewMode === "free" ? "Free" : CAMERA_ORIENTATION_LABEL[viewMode]}
+            </span>
+          </div>
           <AxisGizmo
-            size={96}
+            size={132}
+            activeView={viewMode}
             getMainCamera={() => cameraRef.current}
             onSelectView={(view) => setViewMode(view)}
+            onFitScene={handleGizmoFit}
+            onOrbit={handleGizmoOrbit}
           />
-          <label style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
-            <input
-              type="checkbox"
-              checked={lockToPlane && viewMode !== "free"}
-              onChange={(e) => setLockToPlane(e.target.checked)}
-            />
-            <span>Lock view to plane</span>
-          </label>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button
+              type="button"
+              aria-pressed={lockToPlane}
+              title={lockToPlane ? "Unlock orbit" : "Lock orbit"}
+              onClick={() => setLockToPlane((locked) => !locked)}
+              style={{ flex: 1, height: 28, borderRadius: 7, border: `1px solid ${lockToPlane ? "#2962d9" : "rgba(128,146,171,0.58)"}`, background: lockToPlane ? "rgba(227,239,255,0.95)" : "rgba(255,255,255,0.87)", color: lockToPlane ? "#1d4ed8" : "#495669", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
+            >
+              {lockToPlane ? "Orbit locked" : "Lock orbit"}
+            </button>
+            <button
+              type="button"
+              title="Fit scene to the current view"
+              onClick={handleGizmoFit}
+              style={{ width: 39, height: 28, borderRadius: 7, border: "1px solid rgba(128,146,171,0.58)", background: "rgba(255,255,255,0.87)", color: "#495669", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
+            >
+              Fit
+            </button>
+          </div>
         </div>
       )}
 
