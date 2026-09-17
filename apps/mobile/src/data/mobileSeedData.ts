@@ -160,6 +160,13 @@ export const mobileFunctionPresets: MobileFunctionPreset[] = [
 
 export const mobileSeedScenes: SceneDocument[] = [
   {
+    id: "scene-catenoid-workspace",
+    title: "Catenoid",
+    createdAt: now - 5 * 86_400_000,
+    updatedAt: now,
+    surfaces: [mobileGallery[6].surface],
+  },
+  {
     id: "scene-implicit-sphere",
     title: "Implicit Sphere",
     createdAt: now - 7 * 86_400_000,

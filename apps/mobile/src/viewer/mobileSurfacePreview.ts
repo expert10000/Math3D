@@ -274,7 +274,7 @@ export const buildSurfacePreviewGeometry = (
       id: surface.id,
       geometry: buildImplicitProxyGeometry(surface, segments),
       color: "#c2410c",
-      warning: "Implicit preview is proxy-only until backend mesh compute is integrated.",
+      warning: "Showing a local placeholder. Configure a reachable worker for the computed implicit mesh.",
     };
   }
 
