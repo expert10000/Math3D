@@ -99,7 +99,7 @@ const RenderReadyPing: React.FC<{ onReady?: () => void }> = ({ onReady }) => {
   return null;
 };
 
-const fitOrbitToPreviews = (previews: MobileSurfacePreview[], current: OrbitState): OrbitState => {
+const fitOrbitToPreviews = (previews: MobileSurfacePreview[], current: OrbitState, aspect: number): OrbitState => {
   if (previews.length === 0) return { ...DEFAULT_ORBIT };
 
   const merged = new THREE.Box3();
@@ -117,7 +117,9 @@ const fitOrbitToPreviews = (previews: MobileSurfacePreview[], current: OrbitStat
   const sphere = merged.getBoundingSphere(new THREE.Sphere());
   const radius = Math.max(0.2, sphere.radius);
   const fovRadians = (52 * Math.PI) / 180;
-  const fitDistance = clamp((radius / Math.sin(fovRadians * 0.5)) * 1.35, 1.5, 40);
+  const horizontalHalfFov = Math.atan(Math.tan(fovRadians * 0.5) * Math.max(0.2, aspect));
+  const limitingHalfFov = Math.min(fovRadians * 0.5, horizontalHalfFov);
+  const fitDistance = clamp((radius / Math.sin(limitingHalfFov)) * 1.35, 1.5, 40);
 
   return {
     azimuth: current.azimuth,
@@ -184,10 +186,11 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   const lastTapRef = useRef<{ at: number; x: number; y: number } | null>(null);
   const [gestureHint, setGestureHint] = useState("1-finger orbit | 2-finger pan + pinch zoom");
   const [doubleTapToken, setDoubleTapToken] = useState(0);
+  const [viewportAspect, setViewportAspect] = useState(1);
 
   useEffect(() => {
-    orbitRef.current = fitOrbitToPreviews(visiblePreviews, orbitRef.current);
-  }, [scene.id, quality, visiblePreviews]);
+    orbitRef.current = fitOrbitToPreviews(visiblePreviews, orbitRef.current, viewportAspect);
+  }, [scene.id, quality, visiblePreviews, viewportAspect]);
 
   useEffect(() => {
     if (!initialOrbit) return;
@@ -205,9 +208,9 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
       return;
     }
     if (cameraCommand.type === "fit") {
-      orbitRef.current = fitOrbitToPreviews(visiblePreviews, orbitRef.current);
+      orbitRef.current = fitOrbitToPreviews(visiblePreviews, orbitRef.current, viewportAspect);
     }
-  }, [cameraCommand, visiblePreviews]);
+  }, [cameraCommand, visiblePreviews, viewportAspect]);
 
   if (forceFallback) {
     return (
@@ -243,7 +246,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
       Math.abs(lastTap.x - current.x) < 22 &&
       Math.abs(lastTap.y - current.y) < 22
     ) {
-      orbitRef.current = fitOrbitToPreviews(visiblePreviews, orbitRef.current);
+      orbitRef.current = fitOrbitToPreviews(visiblePreviews, orbitRef.current, viewportAspect);
       setGestureHint("Focused visible surfaces");
       setDoubleTapToken((value) => value + 1);
       lastTapRef.current = null;
@@ -293,6 +296,13 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   return (
     <View
       style={[styles.viewportRoot, viewportStyle]}
+      onLayout={(event) => {
+        const { width, height } = event.nativeEvent.layout;
+        if (height > 0) setViewportAspect((current) => {
+          const next = width / height;
+          return Math.abs(current - next) > 0.01 ? next : current;
+        });
+      }}
       onStartShouldSetResponder={() => true}
       onMoveShouldSetResponder={() => true}
       onResponderGrant={handleResponderGrant}
