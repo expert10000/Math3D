@@ -90222,6 +90222,8 @@ case "mobius":
               style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", ...viewerTouchContainmentStyle }}
             >
               <TopologyScreen
+                dockLayout={activeDockLayout}
+                onDockLayoutChange={updateActiveDockLayout}
                 onKernelDocumentChange={setTopologyKernelDocument}
                 onKernelReplayChange={setTopologyKernelReplay}
                 meshAdapterSource={surfaceMeshData && activeMeshAnalysisIdentity ? {

@@ -18,6 +18,7 @@ import {
   type InProcessScientificJobService,
 } from "@math3d/kernel";
 import { uiStyles as styles } from "../uiStyles";
+import { recommendedWorkspaceDockLayout, type WorkspaceDockLayout } from "../workspaceDocks";
 import {
   addEdgeToDiagram,
   addFaceFromAttachmentWord,
@@ -107,6 +108,8 @@ export type TopologyScreenProps = {
   geometryAdapterSource?: TopologyGeometryAdapterInput | null;
   onLocateMeshCell?: (dimension: 0 | 1 | 2, sourceCellId: string) => void;
   onLocateGeometryCell?: (dimension: 0 | 1 | 2, sourceCellId: string) => void;
+  dockLayout?: WorkspaceDockLayout;
+  onDockLayoutChange?: (update: (layout: WorkspaceDockLayout) => WorkspaceDockLayout) => void;
 };
 
 const TOPOLOGY_TOPIC_TABS: Array<{ id: TopologyTopicTab; label: string }> = [
@@ -1292,6 +1295,8 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
   geometryAdapterSource = null,
   onLocateMeshCell,
   onLocateGeometryCell,
+  dockLayout,
+  onDockLayoutChange,
 }) => {
   const [diagram, setDiagram] = useState<FundamentalDiagram>(() => {
     const next = initialDiagram();
@@ -6221,10 +6226,36 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
           selectedAdapterCell.id
         )
       : null;
+  const resolvedDockLayout = dockLayout ?? recommendedWorkspaceDockLayout("topology");
+  const topologyLeftDockVisible = !resolvedDockLayout.leftCollapsed && !resolvedDockLayout.viewerMaximized;
+  const startTopologyLeftDrag = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!onDockLayoutChange) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = resolvedDockLayout.left;
+    let nextWidth = startWidth;
+    let frame = 0;
+    const apply = () => {
+      frame = 0;
+      onDockLayoutChange((layout) => ({ ...layout, left: nextWidth }));
+    };
+    const move = (pointer: MouseEvent) => {
+      nextWidth = Math.max(240, Math.min(640, startWidth + pointer.clientX - startX));
+      if (!frame) frame = window.requestAnimationFrame(apply);
+    };
+    const stop = () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      onDockLayoutChange((layout) => ({ ...layout, left: nextWidth }));
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", stop);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", stop);
+  };
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch", gap: 10 }}>
-      <div style={{ ...styles.panelLeft, width: 340, display: "grid", gap: 10 }}>
+      <div data-testid="topology-left-panel" style={{ ...styles.panelLeft, width: resolvedDockLayout.left, display: topologyLeftDockVisible ? "grid" : "none", gap: 10 }}>
         <section
           style={{
             border: "1px solid #dbe4f0",
@@ -6866,7 +6897,15 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
         </section>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto minmax(0,1fr)" }}>
+      {topologyLeftDockVisible && (
+        <div
+          data-testid="topology-left-splitter"
+          onMouseDown={startTopologyLeftDrag}
+          onDoubleClick={() => onDockLayoutChange?.(() => recommendedWorkspaceDockLayout("topology"))}
+          style={{ width: 6, cursor: "col-resize", alignSelf: "stretch", background: "linear-gradient(to right, transparent 0, #ddd 3px, transparent 6px)" }}
+        />
+      )}
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "grid", gridTemplateRows: "auto minmax(0,1fr)" }}>
         <div style={{ display: "grid", gap: 7, marginBottom: 8 }}>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
             {CONSTRUCTION_PROGRESS_STEPS.map((step, index) => {
