@@ -111441,7 +111441,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   const bandStyle: React.CSSProperties = {
     border: "1px solid #dbe4f0",
     borderRadius: 10,
-    background: "#f8fbff",
+    background: "var(--workspace-section-bg)",
     padding: "8px 10px",
     display: "grid",
     gap: 8,
@@ -111452,9 +111452,9 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
     return {
       padding: chipPadding,
       borderRadius: 999,
-      border: "1px solid " + (active ? "#0754a3" : "#d1d5db"),
-      background: active ? fill : "#fff",
-      color: active ? "#0f2a4a" : "#1f2937",
+      border: "1px solid " + (active ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"),
+      background: active ? fill : "var(--workspace-control-bg)",
+      color: active ? "#0f2a4a" : "var(--workspace-control-text)",
       fontWeight: active ? 700 : 550,
       boxShadow: active ? "0 3px 10px rgba(10,102,194,0.22)" : "none",
       cursor: disabled ? "not-allowed" : "pointer",
@@ -112118,9 +112118,9 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                     padding: "4px 10px",
                     fontSize: 11,
                     borderRadius: 999,
-                    border: "1px solid " + (quickEditCustomEnabled ? "#cbd5e1" : "#e2e8f0"),
-                    background: "#fff",
-                    color: quickEditCustomEnabled ? "#1f2937" : "#94a3b8",
+                    border: "1px solid " + (quickEditCustomEnabled ? "var(--workspace-control-border)" : "#e2e8f0"),
+                    background: "var(--workspace-control-bg)",
+                    color: quickEditCustomEnabled ? "var(--workspace-control-text)" : "#94a3b8",
                     fontWeight: 550,
                     cursor: quickEditCustomEnabled ? "pointer" : "not-allowed",
                   }}
@@ -112668,8 +112668,8 @@ const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({
           style={{
             padding: "6px 10px",
             borderRadius: 6,
-            border: "1px solid " + (surfaceId === s.id ? "#0a66c2" : "#ddd"),
-            background: surfaceId === s.id ? "#e6f0ff" : "#fff",
+            border: "1px solid " + (surfaceId === s.id ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"),
+            background: surfaceId === s.id ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)",
             fontWeight: surfaceId === s.id ? 600 : 400,
             cursor: "pointer",
             whiteSpace: "nowrap",
@@ -112833,8 +112833,8 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
   const chipStyle = (active: boolean): React.CSSProperties => ({
     padding: "4px 10px",
     borderRadius: 999,
-    border: "1px solid " + (active ? "#0a66c2" : "#d1d5db"),
-    background: active ? "#dbeafe" : "#fff",
+    border: "1px solid " + (active ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"),
+    background: active ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)",
     fontWeight: active ? 700 : 550,
     boxShadow: active ? "0 2px 8px rgba(10,102,194,0.18)" : "none",
     cursor: "pointer",
@@ -113085,8 +113085,8 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
               style={{
                 padding: "6px 10px",
                 borderRadius: 6,
-                border: "1px solid " + (paramId === s.id ? "#0a66c2" : "#ddd"),
-                background: paramId === s.id ? "#e6f0ff" : "#fff",
+              border: "1px solid " + (paramId === s.id ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"),
+              background: paramId === s.id ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)",
                 fontWeight: paramId === s.id ? 600 : 400,
                 cursor: "pointer",
                 whiteSpace: "nowrap",
@@ -113120,8 +113120,8 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
                 style={{
                   padding: "4px 10px",
                   borderRadius: 999,
-                  border: "1px solid " + (rotationalProfileMode === mode ? "#0a66c2" : "#ddd"),
-                  background: rotationalProfileMode === mode ? "#e6f0ff" : "#fff",
+                  border: "1px solid " + (rotationalProfileMode === mode ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"),
+                  background: rotationalProfileMode === mode ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)",
                   fontWeight: rotationalProfileMode === mode ? 600 : 400,
                   cursor: "pointer",
                 }}
