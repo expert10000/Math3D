@@ -17,6 +17,8 @@ pluginManagement {
   includeBuild(expoPluginsPath)
 }
 
+throw new GradleException("The root Android scaffold is retired. Build apps/mobile/android using the root mobile:android npm scripts.")
+
 plugins {
   id("com.facebook.react.settings")
   id("expo-autolinking-settings")
