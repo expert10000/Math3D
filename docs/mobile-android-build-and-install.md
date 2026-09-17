@@ -10,10 +10,13 @@ commands below from the repository root; the root `android` npm alias routes to
 
 ## Current mobile scope
 
-The companion app has Home, Gallery, Viewer, Functions, Learn, and Settings
-tabs. Home lists locally stored scenes with search and sorting. Gallery demos
-and function presets open in the native 3D viewer, which supports touch camera
-controls. Scenes and viewer settings persist locally. Settings includes a
+The companion app has Home, Explore, Workspace, Files, and Settings destinations.
+Explore contains Gallery demos, function presets, and Learn notes. Files lists
+locally stored scenes with search and sorting. Gallery demos and function presets
+open in Workspace, where a native 3D viewport supports touch camera controls.
+Its collapsible inspector contains Scene, Object, Display, and Analyze tools;
+Object includes visibility, opacity, fit, and camera reset. Scenes and viewer
+settings persist locally. Settings includes a
 configurable worker URL, backend diagnostics, render quality, a mesh resolution
 cap, cache controls, and a limited mode that uses cached previews when remote
 compute is unavailable. Implicit mesh previews require a reachable Math3D
@@ -34,7 +37,7 @@ version, and build number. At this verification point it contains:
 | --- | --- | --- |
 | Application ID | `com.math3d.mobile` | Expo Android/iOS config and Android Gradle |
 | Version | `1.5.0` | Mobile npm package, Expo, Android `versionName`, iOS `CFBundleShortVersionString` on prebuild |
-| Build | `150001` | Android `versionCode`, iOS `CFBundleVersion` on prebuild |
+| Build | `150002` | Android `versionCode`, iOS `CFBundleVersion` on prebuild |
 
 `apps/mobile/app.config.js` supplies the Expo values. Gradle reads
 `version.json` directly. Expo autolinking also needs a literal namespace in
@@ -140,7 +143,7 @@ adb install -r $apk
 ```
 
 `apksigner` should report one signer, and `aapt` should report
-`com.math3d.mobile.internal`, version `1.5.0-internal`, build `150001`.
+`com.math3d.mobile.internal`, version `1.5.0-internal`, build `150002`.
 Testers can also transfer the APK to a phone and open it from a file manager;
 Android may ask them to allow installation from that source. For updates,
 distribute an APK signed by the **same** internal key with a higher build number.
@@ -156,7 +159,9 @@ the full repeat matrix are tracked in
 The local archive
 `artifacts/mobile/Math3D-mobile-1.5.0-internal-b93e9b8.zip` contains the
 signed APK, `build-info.json`, `SHA256SUMS`, tester instructions, and screenshots
-of Home and the 3D viewer. It contains **no signing credentials**.
+of Home and the 3D viewer from the earlier six-tab UI. It contains **no signing
+credentials**. Its hash identifies build `150001`; the Workspace UI starts at
+build `150002` and has a different hash.
 
 | Evidence | Value |
 | --- | --- |

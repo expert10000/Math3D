@@ -2,6 +2,10 @@
 
 React Native / Expo companion app target for Math3D.
 
+The app opens into a 3D Workspace with a collapsible Scene/Object/Display/Analyze
+inspector. Bottom navigation has Home, Explore, Workspace, Files, and Settings.
+Explore contains Gallery, Functions, and Learn; saved scenes live in Files.
+
 Scope for the first version:
 
 - scene gallery

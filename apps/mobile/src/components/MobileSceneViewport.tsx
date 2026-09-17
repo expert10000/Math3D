@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
+import { StyleSheet, Text, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from "react-native";
 import { Canvas, useFrame } from "@react-three/fiber/native";
 import * as THREE from "three";
 import type { SceneDocument } from "@math3d/core";
@@ -25,6 +25,8 @@ type MobileSceneViewportProps = {
   onOrbitChange?: (orbit: OrbitState) => void;
   onSelectedSurfaceChange?: (surfaceId: string) => void;
   renderPaused?: boolean;
+  surfaceOpacityById?: Record<string, number>;
+  viewportStyle?: StyleProp<ViewStyle>;
 };
 
 export type OrbitState = {
@@ -127,7 +129,7 @@ const fitOrbitToPreviews = (previews: MobileSurfacePreview[], current: OrbitStat
   };
 };
 
-const SurfaceMesh: React.FC<{ preview: MobileSurfacePreview }> = ({ preview }) => {
+const SurfaceMesh: React.FC<{ preview: MobileSurfacePreview; opacity: number }> = ({ preview, opacity }) => {
   useEffect(() => {
     return () => {
       preview.geometry.dispose();
@@ -136,7 +138,7 @@ const SurfaceMesh: React.FC<{ preview: MobileSurfacePreview }> = ({ preview }) =
 
   return (
     <mesh geometry={preview.geometry}>
-      <meshBasicMaterial color={preview.color} side={THREE.DoubleSide} />
+      <meshBasicMaterial color={preview.color} side={THREE.DoubleSide} transparent={opacity < 1} opacity={opacity} depthWrite={opacity >= 1} />
     </mesh>
   );
 };
@@ -154,6 +156,8 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   onOrbitChange,
   onSelectedSurfaceChange,
   renderPaused = false,
+  surfaceOpacityById,
+  viewportStyle,
 }) => {
   const previews = useMemo(
     () => buildSceneSurfacePreviews(scene, quality, { implicitMeshBySurfaceId }),
@@ -207,7 +211,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
 
   if (forceFallback) {
     return (
-      <View style={[styles.viewportRoot, styles.fallbackRoot]}>
+      <View style={[styles.viewportRoot, styles.fallbackRoot, viewportStyle]}>
         <View style={styles.overlay} pointerEvents="none">
           <Text style={styles.overlayText}>Android safe mode (GL fallback)</Text>
           <Text style={styles.overlayText}>Visible surfaces: {visiblePreviews.length}</Text>
@@ -288,7 +292,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
 
   return (
     <View
-      style={styles.viewportRoot}
+      style={[styles.viewportRoot, viewportStyle]}
       onStartShouldSetResponder={() => true}
       onMoveShouldSetResponder={() => true}
       onResponderGrant={handleResponderGrant}
@@ -311,7 +315,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
               onSelectedSurfaceChange?.(preview.id);
             }}
           >
-            <SurfaceMesh preview={preview} />
+            <SurfaceMesh preview={preview} opacity={Math.max(0, Math.min(1, surfaceOpacityById?.[preview.id] ?? 1))} />
           </group>
         ))}
 

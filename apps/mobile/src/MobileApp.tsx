@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
@@ -11,6 +11,7 @@ import {
   Text,
   TextInput,
   View,
+  type GestureResponderEvent,
 } from "react-native";
 import { SCENE_PROJECT_VERSION, type SceneDocument, type SurfaceDefinition, type VtkPreviewRequest } from "@math3d/core";
 import Constants from "expo-constants";
@@ -30,7 +31,9 @@ import { clearMeshCache, createMeshCacheKey, readCachedMesh, writeCachedMesh } f
 import { loadMobileSettings, saveMobileSettings } from "./services/mobileSettingsStorage";
 import type { MobileMeshPayload, MobileRenderQuality } from "./viewer/mobileSurfacePreview";
 
-type MobileTab = "home" | "gallery" | "viewer" | "learn" | "functions" | "settings";
+type MobileTab = "home" | "explore" | "workspace" | "files" | "settings";
+type ExploreSection = "gallery" | "functions" | "learn";
+type InspectorSection = "scene" | "object" | "display" | "analyze";
 type StorageStatus = "loading" | "ready" | "error";
 type CameraCommandType = "reset" | "fit";
 type SceneSortMode = "recent" | "updated" | "title";
@@ -38,20 +41,11 @@ const ANDROID_GL_DEFAULT_ENABLED = true;
 const FORCE_ANDROID_SAFE_MODE = false;
 
 const tabs: ReadonlyArray<{ key: MobileTab; label: string }> = [
-  { key: "home", label: "home" },
-  { key: "gallery", label: "gallery" },
-  { key: "viewer", label: "viewer" },
-  { key: "functions", label: "functions" },
-  { key: "learn", label: "learn" },
-  { key: "settings", label: "settings" },
-];
-
-const roadmapSteps: ReadonlyArray<{ id: string; title: string; status: "done" | "in_progress" | "pending" }> = [
-  { id: "m1", title: "Mobile shell and tab navigation", status: "done" },
-  { id: "m2", title: "Gallery and function preset loading", status: "done" },
-  { id: "m3", title: "Scene persistence and validation", status: "done" },
-  { id: "m4", title: "Native 3D viewport integration", status: "done" },
-  { id: "m5", title: "Backend compute integration", status: "done" },
+  { key: "home", label: "Home" },
+  { key: "explore", label: "Explore" },
+  { key: "workspace", label: "Workspace" },
+  { key: "files", label: "Files" },
+  { key: "settings", label: "Settings" },
 ];
 
 const asDate = (timestamp: number) => new Date(timestamp).toLocaleDateString();
@@ -208,8 +202,12 @@ const upsertStoredProject = (
 
 export const MobileApp: React.FC = () => {
   const androidTopInset = Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 0;
-  const [tab, setTab] = useState<MobileTab>("home");
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [tab, setTab] = useState<MobileTab>("workspace");
+  const [exploreSection, setExploreSection] = useState<ExploreSection>("gallery");
+  const [inspectorSection, setInspectorSection] = useState<InspectorSection>("object");
+  const [inspectorExpanded, setInspectorExpanded] = useState(false);
+  const [surfaceOpacityById, setSurfaceOpacityById] = useState<Record<string, number>>({});
+  const inspectorSwipeStartY = useRef<number | null>(null);
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
   const [selectedGalleryId, setSelectedGalleryId] = useState<string | null>(mobileGallery[0]?.id ?? null);
   const [viewerDocument, setViewerDocument] = useState<SceneDocument | null>(null);
@@ -410,6 +408,7 @@ export const MobileApp: React.FC = () => {
     [selectedGalleryId]
   );
   const viewerSurfaces = viewerDocument?.surfaces ?? [];
+  const selectedSurface = viewerSurfaces.find((surface) => surface.id === selectedSurfaceId) ?? viewerSurfaces[0];
   const hasImplicitPreviewErrors = useMemo(
     () =>
       (viewerDocument?.surfaces ?? [])
@@ -448,6 +447,7 @@ export const MobileApp: React.FC = () => {
   useEffect(() => {
     const surfaceIds = (viewerDocument?.surfaces ?? []).map((surface) => surface.id);
     setVisibleSurfaceIds(surfaceIds);
+    setSurfaceOpacityById({});
     setSelectedSurfaceId((current) => (current && surfaceIds.includes(current) ? current : surfaceIds[0] ?? null));
     if (surfaceIds.length > 0) {
       setCameraCommandType("fit");
@@ -459,7 +459,7 @@ export const MobileApp: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    if (!viewerDocument || tab !== "viewer" || !appIsForeground) return;
+    if (!viewerDocument || tab !== "workspace" || !appIsForeground) return;
 
     const implicitSurfaces = (viewerDocument.surfaces ?? []).filter(
       (surface): surface is Extract<SurfaceDefinition, { kind: "implicit" }> => surface.kind === "implicit"
@@ -637,7 +637,7 @@ export const MobileApp: React.FC = () => {
     Platform.OS === "android" &&
     !FORCE_ANDROID_SAFE_MODE &&
     androidGlEnabled &&
-    tab === "viewer" &&
+    tab === "workspace" &&
     Boolean(viewerDocument);
 
   useEffect(() => {
@@ -708,7 +708,8 @@ export const MobileApp: React.FC = () => {
     setStoredProjects(nextProjects);
     setSelectedSceneId(touchedProject.id);
     setViewerDocument(parsed.scene);
-    setTab("viewer");
+    setInspectorExpanded(false);
+    setTab("workspace");
 
     try {
       await saveStoredSceneProjects(nextProjects);
@@ -723,8 +724,8 @@ export const MobileApp: React.FC = () => {
 
   const openViewerWithSurface = (surface: SurfaceDefinition, sourceTitle: string) => {
     setViewerDocument(createViewerSceneFromSurface(surface, sourceTitle));
-    setTab("viewer");
-    setMenuOpen(false);
+    setInspectorExpanded(false);
+    setTab("workspace");
   };
 
   const saveCurrentViewerScene = async () => {
@@ -939,7 +940,18 @@ export const MobileApp: React.FC = () => {
   const openDiagnostics = () => {
     setShowDiagnosticsPanel(true);
     setTab("settings");
-    setMenuOpen(false);
+  };
+
+  const finishInspectorSwipe = (event: GestureResponderEvent) => {
+    const startY = inspectorSwipeStartY.current;
+    inspectorSwipeStartY.current = null;
+    if (startY == null) return;
+    const deltaY = event.nativeEvent.pageY - startY;
+    if (Math.abs(deltaY) > 32) {
+      setInspectorExpanded(deltaY < 0);
+    } else {
+      setInspectorExpanded((value) => !value);
+    }
   };
 
   const toggleAndroidGl = async () => {
@@ -985,53 +997,197 @@ export const MobileApp: React.FC = () => {
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View>
-            <Text style={styles.title}>Math3D Mobile</Text>
-            <Text style={styles.subtitle}>Frontend-first migration (backend last)</Text>
+            <Text style={styles.title}>Math3D</Text>
+            <Text style={styles.subtitle}>{tab === "workspace" ? "Workspace" : "Mobile workspace"}</Text>
           </View>
-          <Pressable onPress={() => setMenuOpen((value) => !value)} style={styles.menuBtn}>
-            <Text style={styles.menuBtnText}>{menuOpen ? "Close" : "Menu"}</Text>
-          </Pressable>
         </View>
       </View>
 
-      {menuOpen && (
-        <View style={styles.menuPanel}>
-          {tabs.map(({ key, label }) => (
-            <Pressable
-              key={`menu-${key}`}
-              onPress={() => {
-                setTab(key);
-                setMenuOpen(false);
-              }}
-              style={[styles.menuItem, tab === key ? styles.menuItemActive : null]}
-            >
-              <Text style={[styles.menuItemText, tab === key ? styles.menuItemTextActive : null]}>{label}</Text>
-            </Pressable>
-          ))}
+      {tab === "workspace" && (
+        <View style={styles.workspaceRoot}>
+          {viewerDocument ? (
+            <>
+              <View style={styles.workspaceStatus}>
+                <Text style={styles.workspaceSceneTitle} numberOfLines={1}>{viewerDocument.title}</Text>
+                <Text style={styles.itemMeta}>{viewerSurfaces.length} object{viewerSurfaces.length === 1 ? "" : "s"} · {renderQuality}</Text>
+                {limitedMode && <Text style={styles.warningNote}>Offline mode: cached previews only</Text>}
+              </View>
+              <View style={styles.workspaceViewportFrame}>
+                <MobileSceneViewport
+                  scene={viewerDocument}
+                  quality={renderQuality}
+                  visibleSurfaceIds={visibleSurfaceIds}
+                  selectedSurfaceId={selectedSurfaceId}
+                  cameraCommand={cameraCommand}
+                  forceFallback={androidFallbackForced}
+                  implicitMeshBySurfaceId={implicitMeshBySurfaceId}
+                  onRenderReady={onViewportRenderReady}
+                  initialOrbit={cameraOrbit}
+                  onOrbitChange={setCameraOrbit}
+                  onSelectedSurfaceChange={setSelectedSurfaceId}
+                  renderPaused={!appIsForeground}
+                  surfaceOpacityById={surfaceOpacityById}
+                  viewportStyle={styles.workspaceViewport}
+                />
+                {viewerLoadingMessage.length > 0 && (
+                  <View style={styles.loadingOverlay} pointerEvents="none">
+                    <ActivityIndicator color="#ffffff" size="small" />
+                    <Text style={styles.loadingOverlayText}>{viewerLoadingMessage}</Text>
+                  </View>
+                )}
+              </View>
+              <View style={styles.inspectorSheet}>
+                <View
+                  style={styles.inspectorHandleArea}
+                  accessibilityRole="button"
+                  accessibilityLabel={inspectorExpanded ? "Collapse inspector" : "Expand inspector"}
+                  onStartShouldSetResponder={() => true}
+                  onResponderGrant={(event) => { inspectorSwipeStartY.current = event.nativeEvent.pageY; }}
+                  onResponderRelease={finishInspectorSwipe}
+                  onResponderTerminate={() => { inspectorSwipeStartY.current = null; }}
+                >
+                  <View style={styles.inspectorGrabber} />
+                  <Text style={styles.inspectorHint}>{inspectorExpanded ? "Swipe down to close" : "Swipe up for tools"}</Text>
+                </View>
+                <View style={styles.inspectorTabs}>
+                  {(["scene", "object", "display", "analyze"] as const).map((section) => (
+                    <Pressable
+                      key={section}
+                      onPress={() => {
+                        setInspectorSection(section);
+                        setInspectorExpanded(true);
+                      }}
+                      style={[styles.inspectorTab, inspectorSection === section ? styles.inspectorTabActive : null]}
+                    >
+                      <Text style={[styles.inspectorTabText, inspectorSection === section ? styles.inspectorTabTextActive : null]}>
+                        {section === "scene" ? "Scene" : section === "object" ? "Object" : section === "display" ? "Display" : "Analyze"}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {inspectorExpanded && (
+                  <ScrollView style={styles.inspectorContent} contentContainerStyle={styles.inspectorContentInner}>
+                    {inspectorSection === "scene" && (
+                      <>
+                        <Text style={styles.panelTitle}>Scene</Text>
+                        <Text style={styles.note}>{viewerDocument.title} · {viewerSurfaces.length} object{viewerSurfaces.length === 1 ? "" : "s"}</Text>
+                        <View style={styles.viewerToolbarRow}>
+                          <Pressable onPress={() => setAllSurfacesVisible(true)} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Show all</Text></Pressable>
+                          <Pressable onPress={() => setAllSurfacesVisible(false)} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Hide all</Text></Pressable>
+                          <Pressable onPress={() => void saveCurrentViewerScene()} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Save to Files</Text></Pressable>
+                        </View>
+                      </>
+                    )}
+                    {inspectorSection === "object" && (
+                      <>
+                        <Text style={styles.panelTitle}>Object</Text>
+                        <View style={styles.viewerToolbarRow}>
+                          {viewerSurfaces.map((surface) => (
+                            <Pressable key={surface.id} onPress={() => setSelectedSurfaceId(surface.id)} style={[styles.pill, selectedSurface?.id === surface.id ? styles.pillActive : null]}>
+                              <Text style={[styles.pillText, selectedSurface?.id === surface.id ? styles.pillTextActive : null]} numberOfLines={1}>
+                                {viewerSurfaces.length === 1 ? viewerDocument.title : surface.id}
+                              </Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                        {selectedSurface && (
+                          <>
+                            <Text style={styles.note}>{surfaceSummary(selectedSurface)}</Text>
+                            <Pressable onPress={() => toggleSurfaceVisibility(selectedSurface.id)} style={styles.inspectorSettingRow}>
+                              <Text style={styles.itemTitle}>Visibility</Text>
+                              <Text style={styles.itemMeta}>{visibleSurfaceIds.includes(selectedSurface.id) ? "On" : "Off"}</Text>
+                            </Pressable>
+                            <View style={styles.inspectorSettingRow}>
+                              <Text style={styles.itemTitle}>Opacity</Text>
+                              <Text style={styles.itemMeta}>{Math.round((surfaceOpacityById[selectedSurface.id] ?? 1) * 100)}%</Text>
+                            </View>
+                            <View style={styles.viewerToolbarRow}>
+                              {([0.25, 0.5, 0.75, 1] as const).map((opacity) => (
+                                <Pressable key={opacity} onPress={() => setSurfaceOpacityById((current) => ({ ...current, [selectedSurface.id]: opacity }))} style={[styles.pill, (surfaceOpacityById[selectedSurface.id] ?? 1) === opacity ? styles.pillActive : null]}>
+                                  <Text style={[styles.pillText, (surfaceOpacityById[selectedSurface.id] ?? 1) === opacity ? styles.pillTextActive : null]}>{Math.round(opacity * 100)}%</Text>
+                                </Pressable>
+                              ))}
+                            </View>
+                            <View style={styles.viewerToolbarRow}>
+                              <Pressable onPress={() => runCameraCommand("fit")} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Fit</Text></Pressable>
+                              <Pressable onPress={() => runCameraCommand("reset")} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Reset camera</Text></Pressable>
+                              <Pressable onPress={() => { if (visibleSurfaceIds.includes(selectedSurface.id)) toggleSurfaceVisibility(selectedSurface.id); }} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Hide</Text></Pressable>
+                            </View>
+                          </>
+                        )}
+                      </>
+                    )}
+                    {inspectorSection === "display" && (
+                      <>
+                        <Text style={styles.panelTitle}>Display</Text>
+                        <Text style={styles.note}>Render quality</Text>
+                        <View style={styles.viewerToolbarRow}>
+                          {(["performance", "balanced", "sharp"] as const).map((quality) => (
+                            <Pressable key={quality} onPress={() => setRenderQuality(quality)} style={[styles.pill, renderQuality === quality ? styles.pillActive : null]}>
+                              <Text style={[styles.pillText, renderQuality === quality ? styles.pillTextActive : null]}>{quality}</Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                        {androidFallbackForced && <Text style={styles.warningNote}>Android safe mode is active.</Text>}
+                      </>
+                    )}
+                    {inspectorSection === "analyze" && (
+                      <>
+                        <Text style={styles.panelTitle}>Analyze</Text>
+                        <Text style={styles.note}>Implicit preview uses the configured worker backend.</Text>
+                        {viewerSurfaces.filter((surface) => surface.kind === "implicit").map((surface) => {
+                          const preview = implicitPreviewBySurfaceId[surface.id];
+                          return <View key={surface.id} style={styles.subPanel}>
+                            <Text style={styles.subPanelTitle}>{surface.id}</Text>
+                            <Text style={styles.itemMeta}>Status: {preview?.status ?? "idle"}{preview?.cached ? " · cached" : ""}</Text>
+                            {preview?.status === "ready" && <Text style={styles.itemMeta}>{preview.vertexCount ?? 0} vertices · {preview.triCount ?? 0} triangles</Text>}
+                            {preview?.status === "error" && <Text style={styles.issueText}>{preview.error}</Text>}
+                          </View>;
+                        })}
+                        {hasImplicitPreviewErrors && <View style={styles.viewerToolbarRow}>
+                          <Pressable onPress={retryImplicitPreviews} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Retry</Text></Pressable>
+                          {!limitedMode && <Pressable onPress={reduceQualityAndRetry} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Reduce quality</Text></Pressable>}
+                        </View>}
+                        <Pressable onPress={openDiagnostics} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Backend diagnostics</Text></Pressable>
+                      </>
+                    )}
+                  </ScrollView>
+                )}
+              </View>
+            </>
+          ) : (
+            <View style={styles.workspaceEmpty}>
+              <Text style={styles.panelTitle}>Workspace is ready</Text>
+              <Text style={styles.note}>Choose a scene or surface to start viewing in 3D.</Text>
+              <Pressable onPress={() => setTab("explore")} style={styles.primaryBtn}><Text style={styles.primaryBtnText}>Explore examples</Text></Pressable>
+              <Pressable onPress={() => setTab("files")} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Open saved file</Text></Pressable>
+            </View>
+          )}
         </View>
       )}
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.navScroll}
-        contentContainerStyle={styles.navRow}
-      >
-        {tabs.map(({ key, label }) => (
-          <Pressable
-            key={key}
-            onPress={() => setTab(key)}
-            style={[styles.navBtn, tab === key ? styles.navBtnActive : null]}
-          >
-            <Text style={[styles.navBtnText, tab === key ? styles.navBtnTextActive : null]}>{label}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-
-      <ScrollView contentContainerStyle={styles.content}>
+      {tab !== "workspace" && <ScrollView contentContainerStyle={styles.content}>
         {tab === "home" && (
           <View style={styles.panel}>
-            <Text style={styles.panelTitle}>Recent scenes</Text>
+            <Text style={styles.panelTitle}>Your Math3D workspace</Text>
+            <Text style={styles.note}>Open the current scene, browse examples, or return to a saved file.</Text>
+            <Pressable onPress={() => setTab("workspace")} style={styles.primaryBtn}>
+              <Text style={styles.primaryBtnText}>Open Workspace{viewerDocument ? ` · ${viewerDocument.title}` : ""}</Text>
+            </Pressable>
+            <View style={styles.viewerToolbarRow}>
+              <Pressable onPress={() => setTab("explore")} style={styles.secondaryBtn}>
+                <Text style={styles.secondaryBtnText}>Explore examples</Text>
+              </Pressable>
+              <Pressable onPress={() => setTab("files")} style={styles.secondaryBtn}>
+                <Text style={styles.secondaryBtnText}>Saved files ({sceneSummaries.length})</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        {tab === "files" && (
+          <View style={styles.panel}>
+            <Text style={styles.panelTitle}>Saved scenes</Text>
             <View style={styles.settingRow}>
               <TextInput
                 value={sceneSearchQuery}
@@ -1084,18 +1240,26 @@ export const MobileApp: React.FC = () => {
             ))}
             {selectedScene && <Text style={styles.note}>Selected: {selectedScene.title}</Text>}
 
-            <View style={styles.subPanel}>
-              <Text style={styles.subPanelTitle}>Migration progress</Text>
-              {roadmapSteps.map((step) => (
-                <Text key={step.id} style={styles.itemMeta}>
-                  {step.status === "done" ? "[done]" : step.status === "in_progress" ? "[in progress]" : "[pending]"} {step.title}
-                </Text>
-              ))}
-            </View>
           </View>
         )}
 
-        {tab === "gallery" && (
+        {tab === "explore" && (
+          <View style={styles.exploreNav}>
+            {(["gallery", "functions", "learn"] as const).map((section) => (
+              <Pressable
+                key={section}
+                onPress={() => setExploreSection(section)}
+                style={[styles.exploreNavBtn, exploreSection === section ? styles.exploreNavBtnActive : null]}
+              >
+                <Text style={[styles.exploreNavText, exploreSection === section ? styles.exploreNavTextActive : null]}>
+                  {section === "gallery" ? "Gallery" : section === "functions" ? "Functions" : "Learn"}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
+        {tab === "explore" && exploreSection === "gallery" && (
           <View style={styles.panel}>
             <Text style={styles.panelTitle}>Gallery demos</Text>
             {mobileGallery.map((item) => (
@@ -1124,170 +1288,18 @@ export const MobileApp: React.FC = () => {
           </View>
         )}
 
-        {tab === "viewer" && (
-          <View style={styles.panel}>
-            <Text style={styles.panelTitle}>Scene viewer</Text>
-            {viewerDocument ? (
-              <>
-                <Text style={styles.itemTitle}>{viewerDocument.title}</Text>
-                <Text style={styles.itemMeta}>Surfaces: {viewerDocument.surfaces?.length ?? 0}</Text>
-                <Text style={styles.itemMeta}>Quality preset: {renderQuality}</Text>
-                <Text style={styles.note}>
-                  Native preview mode is active. This slice runs fully local and keeps backend integration for the final phase.
-                </Text>
-                {limitedMode && (
-                  <Text style={styles.warningNote}>
-                    Limited mode is active. Remote compute is disabled; cached previews will be used when available.
-                  </Text>
-                )}
-                {androidFallbackForced && (
-                  <Text style={styles.warningNote}>
-                    Android safe mode is enforced because `expo-gl` crashes on this device.
-                  </Text>
-                )}
-                {Platform.OS === "android" && androidGlRecoveredFromCrash && (
-                  <Text style={styles.warningNote}>
-                    Android GL crashed on a previous run, so safe mode was auto-enabled.
-                  </Text>
-                )}
-                <View style={styles.viewerToolbarRow}>
-                  <Pressable onPress={() => runCameraCommand("reset")} style={styles.secondaryBtn}>
-                    <Text style={styles.secondaryBtnText}>Reset Camera</Text>
-                  </Pressable>
-                  <Pressable onPress={() => runCameraCommand("fit")} style={styles.secondaryBtn}>
-                    <Text style={styles.secondaryBtnText}>Fit Visible</Text>
-                  </Pressable>
-                  <Pressable onPress={openDiagnostics} style={styles.secondaryBtn}>
-                    <Text style={styles.secondaryBtnText}>Open Diagnostics</Text>
-                  </Pressable>
-                  {hasImplicitPreviewErrors && (
-                    <Pressable onPress={retryImplicitPreviews} style={styles.secondaryBtn}>
-                      <Text style={styles.secondaryBtnText}>Retry Failed Previews</Text>
-                    </Pressable>
-                  )}
-                  {hasImplicitPreviewErrors && !limitedMode && (
-                    <Pressable onPress={reduceQualityAndRetry} style={styles.secondaryBtn}>
-                      <Text style={styles.secondaryBtnText}>Reduce Quality + Retry</Text>
-                    </Pressable>
-                  )}
-                </View>
-                <MobileSceneViewport
-                  scene={viewerDocument}
-                  quality={renderQuality}
-                  visibleSurfaceIds={visibleSurfaceIds}
-                  selectedSurfaceId={selectedSurfaceId}
-                  cameraCommand={cameraCommand}
-                  forceFallback={androidFallbackForced}
-                  implicitMeshBySurfaceId={implicitMeshBySurfaceId}
-                  onRenderReady={onViewportRenderReady}
-                  initialOrbit={cameraOrbit}
-                  onOrbitChange={setCameraOrbit}
-                  onSelectedSurfaceChange={setSelectedSurfaceId}
-                  renderPaused={!appIsForeground}
-                />
-                {viewerLoadingMessage.length > 0 && (
-                  <View style={styles.loadingOverlay} pointerEvents="none">
-                    <ActivityIndicator color="#ffffff" size="small" />
-                    <Text style={styles.loadingOverlayText}>{viewerLoadingMessage}</Text>
-                  </View>
-                )}
-
-                <View style={styles.visibilityPanel}>
-                  <Text style={styles.subPanelTitle}>Surface visibility</Text>
-                  <View style={styles.viewerToolbarRow}>
-                    <Pressable onPress={() => setAllSurfacesVisible(true)} style={styles.smallBtn}>
-                      <Text style={styles.smallBtnText}>Show all</Text>
-                    </Pressable>
-                    <Pressable onPress={() => setAllSurfacesVisible(false)} style={styles.smallBtn}>
-                      <Text style={styles.smallBtnText}>Hide all</Text>
-                    </Pressable>
-                  </View>
-                  {viewerSurfaces.map((surface) => {
-                    const visible = visibleSurfaceIds.includes(surface.id);
-                    return (
-                      <Pressable
-                        key={`surface-visible-${surface.id}`}
-                        onPress={() => toggleSurfaceVisibility(surface.id)}
-                        style={[styles.surfaceToggleRow, visible ? styles.surfaceToggleRowActive : null]}
-                      >
-                        <Text style={[styles.surfaceToggleTitle, visible ? styles.surfaceToggleTitleActive : null]}>
-                          {surface.id}
-                        </Text>
-                        <Text style={[styles.surfaceToggleMeta, visible ? styles.surfaceToggleMetaActive : null]}>
-                          {visible ? "visible" : "hidden"} | {surfaceSummary(surface)}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-                {viewerSurfaces
-                  .filter((surface) => surface.kind === "implicit")
-                  .map((surface) => {
-                    const previewState = implicitPreviewBySurfaceId[surface.id];
-                    return (
-                      <View key={`implicit-status-${surface.id}`} style={styles.backendPanel}>
-                        <Text style={styles.backendPanelTitle}>Implicit Backend Preview</Text>
-                        <Text style={styles.itemMeta}>Surface: {surface.id}</Text>
-                        <Text style={styles.itemMeta}>Backend: {workerBaseUrl}</Text>
-                        <Text style={styles.itemMeta}>Status: {previewState?.status ?? "idle"}</Text>
-                        {previewState?.status === "ready" && (
-                          <Text style={styles.itemMeta}>
-                            Vertices: {previewState.vertexCount ?? 0} | Triangles: {previewState.triCount ?? 0}
-                            {previewState.cached ? " | cached" : ""}
-                          </Text>
-                        )}
-                        {previewState?.status === "error" && (
-                          <>
-                            <Text style={styles.issueText}>Error: {previewState.error}</Text>
-                            {!limitedMode ? (
-                              <View style={styles.viewerToolbarRow}>
-                                <Pressable onPress={retryImplicitPreviews} style={styles.smallBtn}>
-                                  <Text style={styles.smallBtnText}>Retry</Text>
-                                </Pressable>
-                                <Pressable onPress={reduceQualityAndRetry} style={styles.smallBtn}>
-                                  <Text style={styles.smallBtnText}>Reduce + Retry</Text>
-                                </Pressable>
-                                <Pressable onPress={openDiagnostics} style={styles.smallBtn}>
-                                  <Text style={styles.smallBtnText}>Diagnostics</Text>
-                                </Pressable>
-                              </View>
-                            ) : (
-                              <Pressable onPress={openDiagnostics} style={styles.smallBtn}>
-                                <Text style={styles.smallBtnText}>Diagnostics</Text>
-                              </Pressable>
-                            )}
-                          </>
-                        )}
-                      </View>
-                    );
-                  })}
-                <Pressable
-                  onPress={() => {
-                    void saveCurrentViewerScene();
-                  }}
-                  style={styles.primaryBtn}
-                >
-                  <Text style={styles.primaryBtnText}>Save Scene To Local Storage</Text>
-                </Pressable>
-              </>
-            ) : (
-              <Text style={styles.note}>Select a gallery item, function preset, or local scene first.</Text>
-            )}
-          </View>
-        )}
-
-        {tab === "learn" && (
+        {tab === "explore" && exploreSection === "learn" && (
           <View style={styles.panel}>
             <Text style={styles.panelTitle}>Formula notes</Text>
-            <Text style={styles.note}>This tab is reserved for workbook explanations and guided examples.</Text>
+            <Text style={styles.note}>Workbook explanations and guided examples are planned here.</Text>
             <Text style={styles.itemMeta}>Planned first module: implicit surfaces and domain bounds intuition.</Text>
           </View>
         )}
 
-        {tab === "functions" && (
+        {tab === "explore" && exploreSection === "functions" && (
           <View style={styles.panel}>
             <Text style={styles.panelTitle}>Function library</Text>
-            <Text style={styles.note}>Tap any preset to load it directly into viewer workflow.</Text>
+            <Text style={styles.note}>Tap a preset to load it into Workspace.</Text>
             {mobileFunctionPresets.map((preset) => (
               <Pressable
                 key={preset.id}
@@ -1518,7 +1530,21 @@ export const MobileApp: React.FC = () => {
             )}
           </View>
         )}
-      </ScrollView>
+      </ScrollView>}
+
+      <View style={styles.bottomNav} accessibilityRole="tablist">
+        {tabs.map(({ key, label }) => (
+          <Pressable
+            key={key}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: tab === key }}
+            onPress={() => setTab(key)}
+            style={[styles.bottomNavItem, tab === key ? styles.bottomNavItemActive : null]}
+          >
+            <Text style={[styles.bottomNavText, tab === key ? styles.bottomNavTextActive : null]}>{label}</Text>
+          </Pressable>
+        ))}
+      </View>
     </SafeAreaView>
   );
 };
@@ -1548,73 +1574,148 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#566172",
   },
-  menuBtn: {
-    backgroundColor: "#163b66",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  menuBtnText: {
-    color: "#ffffff",
-    fontWeight: "700",
-    fontSize: 12,
-  },
-  menuPanel: {
-    marginHorizontal: 12,
-    marginBottom: 8,
-    borderRadius: 12,
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#d5dbe2",
-    padding: 8,
-    gap: 8,
-  },
-  menuItem: {
-    borderRadius: 8,
-    backgroundColor: "#edf2f7",
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  menuItemActive: {
-    backgroundColor: "#163b66",
-  },
-  menuItemText: {
-    color: "#203047",
-    fontWeight: "600",
-    textTransform: "capitalize",
-  },
-  menuItemTextActive: {
-    color: "#ffffff",
-  },
-  navRow: {
+  bottomNav: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingTop: 2,
+    paddingHorizontal: 6,
+    paddingTop: 7,
     paddingBottom: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#d5dbe2",
+    backgroundColor: "#ffffff",
   },
-  navScroll: {
-    flexGrow: 0,
-    flexShrink: 0,
-    maxHeight: 52,
+  bottomNavItem: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 42,
+    borderRadius: 10,
+    paddingHorizontal: 2,
   },
-  navBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+  bottomNavItemActive: {
+    backgroundColor: "#163b66",
+  },
+  bottomNavText: {
+    color: "#344559",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  bottomNavTextActive: {
+    color: "#ffffff",
+  },
+  exploreNav: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  exploreNavBtn: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 10,
     borderRadius: 10,
     backgroundColor: "#e1e8ef",
   },
-  navBtnActive: {
+  exploreNavBtnActive: {
     backgroundColor: "#163b66",
   },
-  navBtnText: {
-    textTransform: "capitalize",
-    color: "#1f2a36",
-    fontWeight: "600",
+  exploreNavText: {
+    color: "#203047",
+    fontWeight: "700",
+    fontSize: 12,
   },
-  navBtnTextActive: {
+  exploreNavTextActive: {
     color: "#ffffff",
+  },
+  workspaceRoot: {
+    flex: 1,
+    paddingHorizontal: 8,
+    paddingBottom: 4,
+  },
+  workspaceStatus: {
+    paddingHorizontal: 6,
+    paddingBottom: 6,
+  },
+  workspaceSceneTitle: {
+    color: "#203047",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  workspaceViewportFrame: {
+    flex: 1,
+    minHeight: 150,
+  },
+  workspaceViewport: {
+    height: "100%",
+    borderRadius: 12,
+  },
+  workspaceEmpty: {
+    flex: 1,
+    justifyContent: "center",
+    gap: 12,
+    padding: 20,
+  },
+  inspectorSheet: {
+    marginTop: 5,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#d5dbe2",
+    overflow: "hidden",
+  },
+  inspectorHandleArea: {
+    alignItems: "center",
+    paddingTop: 7,
+    paddingBottom: 3,
+  },
+  inspectorGrabber: {
+    width: 36,
+    height: 4,
+    borderRadius: 4,
+    backgroundColor: "#a9b6c5",
+  },
+  inspectorHint: {
+    color: "#667588",
+    fontSize: 10,
+    marginTop: 3,
+  },
+  inspectorTabs: {
+    flexDirection: "row",
+    padding: 5,
+    gap: 4,
+  },
+  inspectorTab: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 9,
+    borderRadius: 8,
+  },
+  inspectorTabActive: {
+    backgroundColor: "#edf4ff",
+  },
+  inspectorTabText: {
+    color: "#506176",
+    fontWeight: "700",
+    fontSize: 11,
+  },
+  inspectorTabTextActive: {
+    color: "#163b66",
+  },
+  inspectorContent: {
+    maxHeight: 235,
+    borderTopWidth: 1,
+    borderTopColor: "#e3e8ef",
+  },
+  inspectorContentInner: {
+    padding: 12,
+    paddingBottom: 20,
+    gap: 10,
+  },
+  inspectorSettingRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e3e8ef",
   },
   content: {
     paddingHorizontal: 12,
@@ -1727,17 +1828,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
   },
-  smallBtn: {
-    backgroundColor: "#edf2f7",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  smallBtnText: {
-    color: "#2a3a50",
-    fontSize: 11,
-    fontWeight: "700",
-  },
   viewerToolbarRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1760,42 +1850,6 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 11,
     fontWeight: "600",
-  },
-  visibilityPanel: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: "#dbe4ee",
-    borderRadius: 10,
-    backgroundColor: "#f8fbff",
-    padding: 10,
-    gap: 8,
-  },
-  surfaceToggleRow: {
-    borderWidth: 1,
-    borderColor: "#dbe4ee",
-    borderRadius: 8,
-    backgroundColor: "#ffffff",
-    padding: 8,
-    gap: 2,
-  },
-  surfaceToggleRowActive: {
-    borderColor: "#163b66",
-    backgroundColor: "#edf4ff",
-  },
-  surfaceToggleTitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#344559",
-  },
-  surfaceToggleTitleActive: {
-    color: "#163b66",
-  },
-  surfaceToggleMeta: {
-    fontSize: 11,
-    color: "#5b6573",
-  },
-  surfaceToggleMetaActive: {
-    color: "#2f4e73",
   },
   settingRow: {
     marginTop: 6,
