@@ -4,6 +4,13 @@ import * as THREE from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
 import { ADDITION, Brush, Evaluator, INTERSECTION, REVERSE_SUBTRACTION, SUBTRACTION } from "three-bvh-csg";
 import { uiStyles as styles } from "./uiStyles";
+import {
+  parseWorkspaceDockLayouts,
+  recommendedWorkspaceDockLayout,
+  WORKSPACE_DOCKS_STORAGE_KEY,
+  type WorkspaceDockId,
+  type WorkspaceDockLayout,
+} from "./workspaceDocks";
 
 import MobiusScreen from "./screens/MobiusScreen";
 import { ChebyshevScreen } from "./screens/ChebyshevScreen";
@@ -45317,12 +45324,52 @@ const App: React.FC = () => {
     setMeshPerfBenchmarkId(null);
   }, [setMeshDataset, setSurfaceViewerKind]);
 
-  // resizable panels
-  const [leftWidth, setLeftWidth] = useState(320);
+  // Workspace docks are deliberately independent: a script-heavy Geometry session
+  // should not change the compact Mesh controls the user set up earlier.
+  const activeDockWorkspace: WorkspaceDockId =
+    mode === "geometry"
+      ? "geometry"
+      : mode === "curves"
+        ? "curves"
+        : mode === "topology"
+          ? "topology"
+          : mode === "mobius" || (mode === "surfaces" && surfaceViewerKind === "complex")
+            ? "complex"
+            : mode === "surfaces" && datasetKind === "volume"
+              ? "volume"
+              : mode === "surfaces" && surfaceViewerKind === "mesh"
+                ? "mesh"
+                : "surfaces";
+  const [workspaceDockLayouts, setWorkspaceDockLayouts] = useState<Partial<Record<WorkspaceDockId, WorkspaceDockLayout>>>(() =>
+    parseWorkspaceDockLayouts(typeof window === "undefined" ? null : localStorage.getItem(WORKSPACE_DOCKS_STORAGE_KEY))
+  );
+  const activeDockLayout = workspaceDockLayouts[activeDockWorkspace] ?? recommendedWorkspaceDockLayout(activeDockWorkspace);
+  const updateActiveDockLayout = useCallback((update: (layout: WorkspaceDockLayout) => WorkspaceDockLayout) => {
+    setWorkspaceDockLayouts((layouts) => ({
+      ...layouts,
+      [activeDockWorkspace]: update(layouts[activeDockWorkspace] ?? recommendedWorkspaceDockLayout(activeDockWorkspace)),
+    }));
+  }, [activeDockWorkspace]);
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    try {
+      localStorage.setItem(WORKSPACE_DOCKS_STORAGE_KEY, JSON.stringify(workspaceDockLayouts));
+    } catch {
+      // A live session remains usable when storage is unavailable.
+    }
+  }, [workspaceDockLayouts]);
+
+  const leftWidth = activeDockLayout.left;
+  const setLeftWidth = useCallback((next: React.SetStateAction<number>) => {
+    updateActiveDockLayout((layout) => ({ ...layout, left: typeof next === "function" ? next(layout.left) : next }));
+  }, [updateActiveDockLayout]);
   const minLeft = 240;
   const maxLeft = 640;
 
-  const [rightWidth, setRightWidth] = useState(320);
+  const rightWidth = activeDockLayout.right;
+  const setRightWidth = useCallback((next: React.SetStateAction<number>) => {
+    updateActiveDockLayout((layout) => ({ ...layout, right: typeof next === "function" ? next(layout.right) : next }));
+  }, [updateActiveDockLayout]);
   const minRight = 240;
   const maxRight = 640;
   const [surfacesLayoutVariant, setSurfacesLayoutVariant] = useState<"layout1" | "layout2" | "layout3" | "layout4">("layout1");
@@ -76430,9 +76477,23 @@ case "mobius":
   const showSurfacesRightPanel =
     !surfacePreviewFocusMode &&
     (mode === "surfaces" ? (isPresentDisplayMode ? true : showRightPanel) : showRightPanel) &&
-    !cleanScreenshotSurfaceActive;
+    !cleanScreenshotSurfaceActive &&
+    !activeDockLayout.rightCollapsed &&
+    !activeDockLayout.viewerMaximized;
+  const showSurfaceLeftPanel =
+    !cleanScreenshotSurfaceActive &&
+    !surfacePreviewFocusMode &&
+    !activeDockLayout.leftCollapsed &&
+    !activeDockLayout.viewerMaximized;
   const showGeometryRightPanel =
-    mode === "geometry" && geometryMode === "procedural" && showRightPanel && !isPresentDisplayMode && !isPhoneLandscapeLayout;
+    mode === "geometry" &&
+    geometryMode === "procedural" &&
+    showRightPanel &&
+    !isPresentDisplayMode &&
+    !isPhoneLandscapeLayout &&
+    !activeDockLayout.rightCollapsed &&
+    !activeDockLayout.viewerMaximized;
+  const showGeometryLeftPanel = !activeDockLayout.leftCollapsed && !activeDockLayout.viewerMaximized;
   const surfaceLeftPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(leftWidth, 280) : leftWidth;
   const surfaceRightPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(rightWidth, 280) : rightWidth;
   const geometryRightPanelWidth = Math.min(rightWidth, geometryRightSidePanelWidth);
@@ -78883,6 +78944,47 @@ case "mobius":
                       );
                     })}
                   </div>
+                  <div style={topNavSegmentStyle} aria-label="Workspace docks">
+                    <button
+                      type="button"
+                      data-testid="workspace-dock-left-toggle"
+                      onClick={() => updateActiveDockLayout((layout) => ({ ...layout, leftCollapsed: !layout.leftCollapsed, viewerMaximized: false }))}
+                      aria-pressed={activeDockLayout.leftCollapsed}
+                      title="Collapse or restore the left dock"
+                      style={topNavButtonStyle(activeDockLayout.leftCollapsed)}
+                    >
+                      Left
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="workspace-dock-right-toggle"
+                      onClick={() => updateActiveDockLayout((layout) => ({ ...layout, rightCollapsed: !layout.rightCollapsed, viewerMaximized: false }))}
+                      aria-pressed={activeDockLayout.rightCollapsed}
+                      title="Collapse or restore the Inspector dock"
+                      style={topNavButtonStyle(activeDockLayout.rightCollapsed)}
+                    >
+                      Right
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="workspace-dock-maximize-viewer"
+                      onClick={() => updateActiveDockLayout((layout) => ({ ...layout, viewerMaximized: !layout.viewerMaximized }))}
+                      aria-pressed={activeDockLayout.viewerMaximized}
+                      title="Maximize viewer"
+                      style={topNavButtonStyle(activeDockLayout.viewerMaximized)}
+                    >
+                      Focus
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="workspace-dock-reset-recommended"
+                      onClick={() => updateActiveDockLayout(() => recommendedWorkspaceDockLayout(activeDockWorkspace))}
+                      title="Restore recommended dock widths for this workspace"
+                      style={topNavButtonStyle(false)}
+                    >
+                      Reset docks
+                    </button>
+                  </div>
                   <div
                     ref={viewMenuRef}
                     style={{ ...topNavSegmentStyle, position: "relative", flexWrap: "nowrap" }}
@@ -80991,7 +81093,7 @@ case "mobius":
                 ...styles.panelLeft,
                 width: isSurfaceStackedLayout ? "100%" : surfaceLeftPanelWidth,
                 maxWidth: isSurfaceStackedLayout ? "100%" : undefined,
-                display: cleanScreenshotSurfaceActive || surfacePreviewFocusMode ? "none" : "flex",
+                display: showSurfaceLeftPanel ? "flex" : "none",
                 flexDirection: "column",
                 minHeight: 0,
                 maxHeight: isSurfaceStackedLayout ? Math.max(180, Math.floor(viewportSize.height * 0.42)) : undefined,
@@ -84691,9 +84793,10 @@ case "mobius":
 
             <div
               onMouseDown={startDragLeft}
+              onDoubleClick={() => updateActiveDockLayout(() => recommendedWorkspaceDockLayout(activeDockWorkspace))}
               style={{
                 ...splitterStyle,
-                display: cleanScreenshotSurfaceActive || surfacePreviewFocusMode || isSurfaceStackedLayout ? "none" : undefined,
+                display: !showSurfaceLeftPanel || isSurfaceStackedLayout ? "none" : undefined,
               }}
             />
 
@@ -88597,7 +88700,7 @@ case "mobius":
             </div>
 
             {showSurfacesRightPanel && !isSurfaceStackedLayout && (
-              <div data-testid="surface-right-splitter" onMouseDown={startDragRight} style={splitterStyle} />
+              <div data-testid="surface-right-splitter" onMouseDown={startDragRight} onDoubleClick={() => updateActiveDockLayout(() => recommendedWorkspaceDockLayout(activeDockWorkspace))} style={splitterStyle} />
             )}
 
             {/* RIGHT */}
@@ -89229,7 +89332,7 @@ case "mobius":
           </div>
         ) : mode === "curves" ? (
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
-            <div style={{ ...styles.panelLeft, width: leftWidth }}>
+            <div style={{ ...styles.panelLeft, width: leftWidth, display: activeDockLayout.leftCollapsed || activeDockLayout.viewerMaximized ? "none" : undefined }}>
               <section>
                 <h2 style={styles.h2}>Curve Core</h2>
                 <div style={{ fontSize: 12, opacity: 0.74, marginBottom: 10 }}>
@@ -89468,7 +89571,7 @@ case "mobius":
               </section>
             </div>
 
-            <div onMouseDown={startDragLeft} style={splitterStyle} />
+            {!activeDockLayout.leftCollapsed && !activeDockLayout.viewerMaximized && <div onMouseDown={startDragLeft} onDoubleClick={() => updateActiveDockLayout(() => recommendedWorkspaceDockLayout(activeDockWorkspace))} style={splitterStyle} />}
 
             <div style={{ flex: 1, minHeight: 0 }}>
               <div
@@ -89924,9 +90027,9 @@ case "mobius":
                 </div>
               </div>
             </div>
-            {!isPhoneViewerPriorityLayout && (
+            {!isPhoneViewerPriorityLayout && !activeDockLayout.rightCollapsed && !activeDockLayout.viewerMaximized && (
               <>
-                <div onMouseDown={startDragRight} style={splitterStyle} />
+                <div onMouseDown={startDragRight} onDoubleClick={() => updateActiveDockLayout(() => recommendedWorkspaceDockLayout(activeDockWorkspace))} style={splitterStyle} />
                 <aside
                   data-testid="curve-inspector"
                   style={{ width: Math.max(260, Math.min(360, rightWidth)), minWidth: 0, overflow: "auto", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: 10 }}
@@ -90885,6 +90988,7 @@ case "mobius":
                 maxHeight: isGeometryStackedLayout ? geometryStackedLeftPanelMaxHeight : undefined,
                 overflowY: compactGeometryCreatePanel ? "hidden" : undefined,
                 order: isGeometryStackedLayout ? 2 : 0,
+                display: showGeometryLeftPanel ? undefined : "none",
                 ...geometryLeftDrawerStyle,
               }}
             >
@@ -102772,7 +102876,7 @@ case "mobius":
               </section>
             </div>
 
-            {!isGeometryStackedLayout && <div onMouseDown={startDragLeft} style={splitterStyle} />}
+            {!isGeometryStackedLayout && showGeometryLeftPanel && <div onMouseDown={startDragLeft} onDoubleClick={() => updateActiveDockLayout(() => recommendedWorkspaceDockLayout(activeDockWorkspace))} style={splitterStyle} />}
 
             {/* RIGHT */}
             <div
