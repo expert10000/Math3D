@@ -1,8 +1,10 @@
 // src/components/RiemannSpherePlot.tsx
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { sphereToStereographic } from "../math/riemannSphere";
+import AxisGizmo from "./AxisGizmo";
+import { applyCameraOrientation, CAMERA_ORIENTATION_LABEL, orbitCameraAroundTarget, type CameraOrientation } from "./cameraOrientation";
 
 export type SphereLine = {
   points: { x: number; y: number; z: number }[];
@@ -39,6 +41,7 @@ type RiemannSpherePlotProps = {
       z: { re: number; im: number } | null
     ) => number | null;
   } | null;
+  showCameraGizmo?: boolean;
   style?: React.CSSProperties;
 };
 
@@ -71,6 +74,7 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({
   points,
   guideSpheres,
   sphereSurfaceColoring,
+  showCameraGizmo = false,
   style,
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -83,6 +87,25 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({
   const guidesGroupRef = useRef<THREE.Group | null>(null);
   const baseSphereRef = useRef<THREE.Mesh<THREE.SphereGeometry, THREE.MeshPhongMaterial> | null>(null);
   const frameRef = useRef<number | null>(null);
+  const [viewerRevision, setViewerRevision] = useState(0);
+  const [viewMode, setViewMode] = useState<"free" | CameraOrientation>("free");
+  const [orbitLocked, setOrbitLocked] = useState(false);
+
+  const handleGizmoOrbit = useCallback((deltaX: number, deltaY: number) => {
+    if (orbitLocked) return;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls || !orbitCameraAroundTarget(camera, controls, deltaX, deltaY)) return;
+    setViewMode((current) => (current === "free" ? current : "free"));
+  }, [orbitLocked]);
+
+  useEffect(() => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    controls.enableRotate = !orbitLocked;
+    if (viewMode !== "free") applyCameraOrientation(camera, controls, new THREE.Vector3(), 1.55, viewMode);
+  }, [orbitLocked, viewMode, viewerRevision]);
 
   const pointBuckets = useMemo(() => {
     if (!points?.length) return [];
@@ -139,6 +162,7 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({
     sceneRef.current = scene;
     cameraRef.current = camera;
     controlsRef.current = controls;
+    setViewerRevision((revision) => revision + 1);
     guidesGroupRef.current = guidesGroup;
     linesGroupRef.current = linesGroup;
     pointsGroupRef.current = pointsGroup;
@@ -155,6 +179,10 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({
 
     const observer = new ResizeObserver(resize);
     observer.observe(mount);
+    const handleControlsStart = () => {
+      if (controls.enableRotate) setViewMode("free");
+    };
+    controls.addEventListener("start", handleControlsStart);
 
     const animate = () => {
       frameRef.current = requestAnimationFrame(animate);
@@ -166,6 +194,7 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({
     return () => {
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
       observer.disconnect();
+      controls.removeEventListener("start", handleControlsStart);
       controls.dispose();
       scene.traverse(disposeObject3D);
       renderer.setAnimationLoop(null);
@@ -313,7 +342,32 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({
     }
   }, [guideSpheres]);
 
-  return <div ref={mountRef} style={{ width: "100%", height: "100%", ...style }} />;
+  return (
+    <div style={{ position: "relative", width: "100%", height: "100%", ...style }}>
+      <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
+      {showCameraGizmo && (
+        <div style={{ position: "absolute", left: 8, bottom: 8, zIndex: 2, borderRadius: 10, background: "rgba(248,251,255,0.95)", border: "1px solid rgba(134,153,179,0.52)", boxShadow: "0 8px 16px rgba(30,45,70,0.14)", padding: 6, display: "grid", gap: 4, width: 118, userSelect: "none" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, fontWeight: 800, letterSpacing: "0.1em", color: "#607086" }}>
+            <span>VIEW</span><span style={{ letterSpacing: 0 }}>{viewMode === "free" ? "Free" : CAMERA_ORIENTATION_LABEL[viewMode]}</span>
+          </div>
+          <AxisGizmo size={104} activeView={viewMode} getMainCamera={() => cameraRef.current} onSelectView={setViewMode} onFitScene={() => {
+            const camera = cameraRef.current;
+            const controls = controlsRef.current;
+            if (!camera || !controls) return;
+            const direction = camera.position.clone().sub(controls.target).normalize();
+            camera.position.copy(direction.multiplyScalar(3.4));
+            controls.target.set(0, 0, 0);
+            camera.lookAt(controls.target);
+            controls.update();
+          }} onOrbit={handleGizmoOrbit} />
+          <div style={{ display: "flex", gap: 5 }}>
+            <button type="button" onClick={() => setOrbitLocked((locked) => !locked)} aria-pressed={orbitLocked} style={{ flex: 1, height: 24, borderRadius: 6, border: `1px solid ${orbitLocked ? "#2962d9" : "rgba(128,146,171,0.58)"}`, background: orbitLocked ? "#e3efff" : "#fff", color: orbitLocked ? "#1d4ed8" : "#495669", fontSize: 9, fontWeight: 700, cursor: "pointer" }}>{orbitLocked ? "Locked" : "Orbit"}</button>
+            <button type="button" onClick={() => { const camera = cameraRef.current; const controls = controlsRef.current; if (!camera || !controls) return; const direction = camera.position.clone().sub(controls.target).normalize(); camera.position.copy(direction.multiplyScalar(3.4)); controls.target.set(0, 0, 0); camera.lookAt(controls.target); controls.update(); }} style={{ width: 31, height: 24, borderRadius: 6, border: "1px solid rgba(128,146,171,0.58)", background: "#fff", color: "#495669", fontSize: 9, fontWeight: 700, cursor: "pointer" }}>Fit</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default RiemannSpherePlot;

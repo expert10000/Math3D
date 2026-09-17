@@ -108686,6 +108686,7 @@ case "mobius":
                                 points={otherComplexSphereView.points}
                                 guideSpheres={otherComplexSphereView.guideSpheres}
                                 sphereSurfaceColoring={otherComplexSphereSurfaceColoring}
+                                showCameraGizmo
                                 style={{ height: 320 }}
                               />
                               <div style={{ fontSize: 11, opacity: 0.74 }}>
