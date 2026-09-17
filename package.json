@@ -19,6 +19,7 @@
     "dev:mobile": "npm --prefix apps/mobile run dev",
     "mobile:version:check": "node scripts/mobile-version.mjs --check",
     "mobile:version:sync": "node scripts/mobile-version.mjs --sync",
+    "mobile:signing:internal:init": "node scripts/mobile-internal-signing.mjs",
     "mobile:android:debug": "node scripts/mobile-android-build.mjs debug",
     "mobile:android:internal": "node scripts/mobile-android-build.mjs internal",
     "mobile:android:release": "node scripts/mobile-android-build.mjs release",

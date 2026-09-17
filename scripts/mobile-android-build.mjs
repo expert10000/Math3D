@@ -36,6 +36,17 @@ run(process.execPath, [resolve(repoRoot, "scripts/mobile-version.mjs"), "--check
 
 if (channel !== "debug") {
   const prefix = `MATH3D_ANDROID_${channel.toUpperCase()}_`;
+  if (channel === "internal" && !process.env[`${prefix}KEYSTORE_PATH`]) {
+    const base = process.platform === "win32" ? process.env.LOCALAPPDATA : process.env.HOME;
+    const configPath = base && resolve(base, process.platform === "win32" ? "Math3D/signing/internal.json" : ".config/Math3D/signing/internal.json");
+    if (configPath && existsSync(configPath)) {
+      const local = JSON.parse(readFileSync(configPath, "utf8"));
+      process.env[`${prefix}KEYSTORE_PATH`] = local.keystorePath;
+      process.env[`${prefix}STORE_PASSWORD`] = local.storePassword;
+      process.env[`${prefix}KEY_ALIAS`] = local.keyAlias;
+      process.env[`${prefix}KEY_PASSWORD`] = local.keyPassword;
+    }
+  }
   const fields = ["KEYSTORE_PATH", "STORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD"];
   const missing = fields.filter((field) => !process.env[`${prefix}${field}`]);
   if (missing.length) throw new Error(`${channel} signing requires ${missing.map((field) => prefix + field).join(", ")}`);

@@ -46,6 +46,7 @@ From the repository root, with Node 24+, Android SDK/JDK installed:
 
 ```bash
 npm ci
+npm run mobile:signing:internal:init
 npm run mobile:android:debug
 npm run mobile:android:internal
 npm run mobile:android:release
@@ -64,6 +65,12 @@ MATH3D_ANDROID_<CHANNEL>_KEY_PASSWORD
 Keep keystores and credentials outside Git. The build fails if signing credentials
 are absent; only debug builds use the checked-in debug keystore. Internal builds
 use an `.internal` application ID suffix so they can coexist with release builds.
+`mobile:signing:internal:init` creates a local internal key and configuration under
+the current user's application data directory. Run it once and back up both files
+securely; subsequent internal builds load that configuration automatically. For
+team builds, set the four `INTERNAL` environment variables to the shared key.
+Release builds always require the four `RELEASE` environment variables and a
+production keystore supplied by the release owner.
 The commands copy output to `artifacts/mobile/` and write `SHA256SUMS` plus
 `build-info.json`. The internal output is an APK; release output is an AAB.
 
