@@ -104895,6 +104895,7 @@ case "mobius":
                 {showGeometryRightPanel && !isGeometryStackedLayout && (
                   <div
                     onMouseDown={startDragRight}
+                    onDoubleClick={() => updateActiveDockLayout(() => recommendedWorkspaceDockLayout(activeDockWorkspace))}
                     style={{
                       ...splitterStyle,
                       gridColumn: "2",
@@ -106882,7 +106883,7 @@ case "mobius":
         ) : (
           <>
             {/* LEFT (2D modes) */}
-            <div style={{ ...styles.panelLeft, width: leftWidth }}>
+            <div style={{ ...styles.panelLeft, width: leftWidth, display: activeDockLayout.leftCollapsed || activeDockLayout.viewerMaximized ? "none" : undefined }}>
               {mode === "mobius" && (
                 functionExplorerScene === "mobius" ? (
                   <MobiusScreen
@@ -108155,7 +108156,9 @@ case "mobius":
               {mode === "maps" && <MapsPanel mapId={mapId} />}
             </div>
 
-            <div onMouseDown={startDragLeft} style={splitterStyle} />
+            {!activeDockLayout.leftCollapsed && !activeDockLayout.viewerMaximized && (
+              <div onMouseDown={startDragLeft} onDoubleClick={() => updateActiveDockLayout(() => recommendedWorkspaceDockLayout(activeDockWorkspace))} style={splitterStyle} />
+            )}
 
             {/* RIGHT (2D planes) */}
             <div style={styles.stack}>
