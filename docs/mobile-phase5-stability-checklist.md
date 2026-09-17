@@ -22,6 +22,13 @@ The app process had no fatal crash in the inspected logs. The user accepted this
 as the internal tester install path for now. USB-free relaunch, remote compute,
 repeated physical-device tests, and production release signing remain pending.
 
+Workspace UI emulator smoke (September 18, 2026): build `150002` from commit
+`e2ed838c7461ddf0edcc85438611289f2517b435` (APK SHA-256
+`7484f071c9cb1eea0a5f342c580bdf227bfd91df12576fd554a6e27c2042ea02`)
+clean-installed on Android 16. Catenoid loaded in Workspace, inspector swipes
+opened/closed the sheet, 50% opacity updated, and no app fatal crash appeared
+in filtered logs. This UX build still needs physical-device validation.
+
 ## 1. Scope
 This checklist is the Phase 5 gate for `apps/mobile` before external release.
 
@@ -32,6 +39,7 @@ This checklist is the Phase 5 gate for `apps/mobile` before external release.
 | Android | Mid-range physical (primary) | Android 16 | Release APK | Pending |
 | Android | Emulator sanity | API 36 | Debug/Release | Pending |
 | Android | Emulator P0 smoke | API 36 | Signed internal APK | Passed once on September 17, 2026; repeat matrix pending |
+| Android | Emulator Workspace UI smoke | API 36 | Signed internal APK, build `150002` | Clean install, native Catenoid, inspector gesture and opacity passed once on September 18, 2026 |
 | Android | Samsung `SM-A566B` physical P0 smoke | Android 16 | Signed internal APK | Install, launch, tabs, and native surface passed once on September 18, 2026; repeat matrix pending |
 | iOS | Current iPhone physical | iOS latest supported by SDK 54 | Release | Pending |
 | iOS | Simulator sanity | iOS latest supported by SDK 54 | Debug/Release | Pending |
@@ -41,8 +49,8 @@ Run each row 10 times unless stated otherwise.
 
 | Test Case | Android | iOS | Pass Criteria |
 | --- | --- | --- | --- |
-| Cold launch -> Home tab visible | Pending | Pending | No crash, app interactive in < 3s on test hardware |
-| Open Gallery -> Catenoid -> Viewer | Pending | Pending | GL viewer renders surface, no fallback unless explicitly enabled |
+| Cold launch -> Workspace and Catenoid visible | Pending | Pending | No crash, app interactive in < 3s on test hardware |
+| Explore -> Gallery -> Catenoid -> Workspace | Pending | Pending | GL viewer renders surface, no fallback unless explicitly enabled |
 | Orbit/pan/zoom for 30 seconds | Pending | Pending | No frame stall > 2s, no crash |
 | Open implicit preset -> preview mesh generation | Pending | Pending | Preview completes or actionable error with retry |
 | Background app for 30 seconds -> resume | Pending | Pending | Viewer recovers, no black screen/crash |

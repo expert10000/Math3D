@@ -181,6 +181,22 @@ path for now. USB was used for installation and diagnostics; a relaunch after
 unplugging has not yet been observed. The repeated physical-device matrix and a
 production-key signed release AAB remain separate release-readiness gates.
 
+## Workspace UI build smoke
+
+The newer internal APK at `artifacts/mobile/Math3D-mobile-1.5.0-internal.apk`
+is build `150002` from source commit
+`e2ed838c7461ddf0edcc85438611289f2517b435`. Its SHA-256 is
+`7484f071c9cb1eea0a5f342c580bdf227bfd91df12576fd554a6e27c2042ea02`.
+It uses the same internal signing certificate as build `150001`.
+
+An Android 16 emulator clean install opened the Catenoid scene in Workspace.
+Home, Explore, Workspace, Files, and Settings navigation, the Scene/Object/
+Display/Analyze inspector, upward/downward sheet swipes, 50% object opacity,
+and portrait camera fit were smoke-tested. The app stayed running with no
+filtered fatal Android or React Native JS errors. This build has **not** yet
+been tested on the Samsung phone; its prior physical-device approval applies
+to build `150001` only.
+
 ## Next release gates
 
 1. Back up the internal keystore and `internal.json` together in secure team
