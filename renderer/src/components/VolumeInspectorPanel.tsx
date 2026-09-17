@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import type { VolumeDocument } from "@math3d/core";
+import { SharedInspectorShell, type SharedInspectorCategory } from "./SharedInspectorShell";
 
 import type { VolumeDataset } from "../scene/datasets";
 import type { VolumeSliceHover, VolumeSliceReport } from "../scene/volume/sliceVolume";
@@ -345,6 +346,7 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   onExportProbes,
 }) => {
   const [activeTab, setActiveTab] = useState<VolumeInspectorTab>("volume");
+  const [category, setCategory] = useState<SharedInspectorCategory>("summary");
   const grid = dataset.grid;
   const { spatial } = volumeObject;
   const spacing = spatial.spacing;
@@ -382,42 +384,36 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
     grid.dims.every((value) => Number.isInteger(value) && value > 0) &&
     grid.scalars.length >= sampleCount &&
     finiteCount > 0;
+  const categoryTabs: Record<SharedInspectorCategory, readonly VolumeInspectorTab[]> = {
+    summary: ["volume"],
+    selection: ["slice", "sampling"],
+    geometry: ["field", "rendering", "sdf", "derived"],
+    analysis: ["analysis", "segmentation", "compare"],
+    diagnostics: ["diagnostics"],
+    provenance: ["io"],
+    history: ["history"],
+  };
+  const selectCategory = (next: SharedInspectorCategory) => {
+    setCategory(next);
+    const choices = categoryTabs[next];
+    if (!choices.includes(activeTab)) setActiveTab(choices[0]);
+  };
 
   return (
-    <section data-testid="volume-inspector" aria-label="Volume Inspector" style={{ display: "grid", gap: 10 }}>
-      <div>
-        <div style={{ fontSize: 12, fontWeight: 900, color: "#1e3a5f" }}>VOLUME INSPECTOR</div>
-        <div data-testid="volume-inspector-selection" style={{ marginTop: 5, fontSize: 11, color: "#475569" }}>
-          Selected: <strong>{label}</strong> · volume grid
-        </div>
-      </div>
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }} aria-label="Volume inspector sections">
-        {tabs.map((tab) => {
-          const active = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              data-testid={`volume-inspector-tab-${tab.id}`}
-              aria-pressed={active}
-              onClick={() => setActiveTab(tab.id)}
-              style={{
-                border: `1px solid ${active ? "#4b8fe2" : "#d4dde9"}`,
-                borderRadius: 999,
-                background: active ? "#eaf3ff" : "#ffffff",
-                color: active ? "#164e8b" : "#334155",
-                padding: "4px 8px",
-                fontSize: 10,
-                fontWeight: 750,
-                cursor: "pointer",
-              }}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
+    <SharedInspectorShell
+      activeCategory={category}
+      onCategoryChange={selectCategory}
+      summary={<div data-testid="volume-inspector-selection" style={{ display: "grid", gap: 2 }}><strong>{label}</strong><span>Volume / {representationLabel}</span><span>{spatial.dimensions.join(" × ")} · {gridValid ? "Ready" : "Invalid"}</span></div>}
+    >
+      <div data-testid="volume-inspector" aria-label="Volume Inspector" style={{ display: "grid", gap: 10 }}>
+      {categoryTabs[category].length > 1 && (
+        <label style={{ display: "grid", gap: 4, fontSize: 10, color: "#475569" }}>
+          {category[0].toUpperCase() + category.slice(1)} view
+          <select value={activeTab} onChange={(event) => setActiveTab(event.target.value as VolumeInspectorTab)}>
+            {categoryTabs[category].map((id) => <option key={id} value={id}>{tabs.find((tab) => tab.id === id)?.label ?? id}</option>)}
+          </select>
+        </label>
+      )}
 
       {activeTab === "volume" && (
         <div style={cardStyle} data-testid="volume-details-card">
@@ -978,6 +974,7 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
           <DetailRow label="Stale retained" value={derivedResults.filter((result) => result.state === "stale").length} />
         </div>
       )}
-    </section>
+      </div>
+    </SharedInspectorShell>
   );
 };
