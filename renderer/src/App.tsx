@@ -3792,7 +3792,7 @@ type GeometryRepeatAxis = "x" | "y" | "z" | "custom";
 type GeometryRepeatGridPlane = "xy" | "xz" | "yz";
 type GeometryRepeatMirrorPlane = "xy" | "xz" | "yz" | "selected-face";
 type GeometryRightPanelMode = "inspector" | "workbook";
-type GeometryRightPanelTab = "selection" | "geometry" | "analysis" | "diagnostics" | "provenance" | "history" | "actions";
+type GeometryRightPanelTab = "summary" | "selection" | "geometry" | "analysis" | "diagnostics" | "provenance" | "history" | "actions";
 type GeometryInspectorPanelTab = "probe" | "dependencies";
 type GeometryConstructPanelTab = "create" | "edit" | "relations" | "measure" | "tree" | "inspect";
 type GeometryConstructCreateFamily = "points" | "lines" | "planes";
@@ -12517,7 +12517,28 @@ const App: React.FC = () => {
   const [curveViewerResetToken, setCurveViewerResetToken] = useState(0);
   const [curveImportedSection, setCurveImportedSection] = useState<CurveImportedSection | null>(null);
   const [curveWorkspaceTab, setCurveWorkspaceTab] = useState<"gallery" | "definition" | "analysis" | "derived" | "curvemesh">("gallery");
-  const [curveInspectorTab, setCurveInspectorTab] = useState<"object" | "result" | "probe" | "diagnostics" | "sampling" | "dependencies" | "backend" | "history">("object");
+  type CurveInspectorTab = "object" | "result" | "probe" | "diagnostics" | "sampling" | "dependencies" | "backend" | "history";
+  const [curveInspectorTab, setCurveInspectorTab] = useState<CurveInspectorTab>("object");
+  const [curveInspectorCategory, setCurveInspectorCategory] = useState<SharedInspectorCategory>("summary");
+  const curveInspectorTabsByCategory: Record<SharedInspectorCategory, readonly CurveInspectorTab[]> = {
+    summary: ["object"],
+    selection: ["probe", "sampling"],
+    geometry: ["result"],
+    analysis: ["result"],
+    diagnostics: ["diagnostics", "backend"],
+    provenance: ["dependencies"],
+    history: ["history"],
+  };
+  const selectCurveInspectorCategory = (category: SharedInspectorCategory) => {
+    setCurveInspectorCategory(category);
+    const tabs = curveInspectorTabsByCategory[category];
+    if (!tabs.includes(curveInspectorTab)) setCurveInspectorTab(tabs[0]);
+  };
+  useEffect(() => {
+    if (curveInspectorTabsByCategory[curveInspectorCategory].includes(curveInspectorTab)) return;
+    const category = (Object.entries(curveInspectorTabsByCategory) as Array<[SharedInspectorCategory, readonly CurveInspectorTab[]]>).find(([, tabs]) => tabs.includes(curveInspectorTab))?.[0];
+    if (category && category !== curveInspectorCategory) setCurveInspectorCategory(category);
+  }, [curveInspectorCategory, curveInspectorTab]);
   const [curveShowCurve, setCurveShowCurve] = useState(true);
   const [curveShowSamples, setCurveShowSamples] = useState(false);
   const [curveShowFrames, setCurveShowFrames] = useState(true);
@@ -34601,6 +34622,25 @@ const App: React.FC = () => {
   const [otherComplexLayoutMode, setOtherComplexLayoutMode] = useState<OtherComplexLayoutMode>("two_pane");
   const [otherComplexLeftPanelView, setOtherComplexLeftPanelView] = useState<OtherComplexLeftPanelView>("setup");
   const [otherComplexInspectorTab, setOtherComplexInspectorTab] = useState<OtherComplexInspectorTab>("branch");
+  const [otherComplexInspectorCategory, setOtherComplexInspectorCategory] = useState<SharedInspectorCategory>("analysis");
+  const otherComplexTabsByCategory: Record<SharedInspectorCategory, readonly OtherComplexInspectorTab[]> = {
+    summary: ["point", "features"],
+    selection: ["path"],
+    geometry: ["branch", "covering"],
+    analysis: ["analysis", "monodromy", "contour"],
+    diagnostics: ["warnings"],
+    provenance: ["residue", "laurent"],
+    history: ["sheet"],
+  };
+  const selectOtherComplexInspectorCategory = (category: SharedInspectorCategory) => {
+    setOtherComplexInspectorCategory(category);
+    const tabs = otherComplexTabsByCategory[category];
+    if (!tabs.includes(otherComplexInspectorTab)) setOtherComplexInspectorTab(tabs[0]);
+  };
+  useEffect(() => {
+    const category = (Object.entries(otherComplexTabsByCategory) as Array<[SharedInspectorCategory, readonly OtherComplexInspectorTab[]]>).find(([, tabs]) => tabs.includes(otherComplexInspectorTab))?.[0];
+    if (category && category !== otherComplexInspectorCategory) setOtherComplexInspectorCategory(category);
+  }, [otherComplexInspectorCategory, otherComplexInspectorTab]);
   const [otherComplexCoveringExample, setOtherComplexCoveringExample] = useState<OtherComplexCoveringExampleId>("exp");
   const [otherComplexCoveringPowerN, setOtherComplexCoveringPowerN] = useState(3);
   const [otherComplexCoveringDeckK, setOtherComplexCoveringDeckK] = useState(1);
@@ -90035,21 +90075,19 @@ case "mobius":
                   data-testid="curve-inspector"
                   style={{ width: Math.max(260, Math.min(360, rightWidth)), minWidth: 0, overflow: "auto", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: 10 }}
                 >
-                  <h2 style={{ ...styles.h2, marginBottom: 8 }}>Inspector</h2>
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 10 }}>
-                    {(["object", "result", "probe", "diagnostics", "sampling", "dependencies", "backend", "history"] as const).map((tab) => (
-                      <button
-                        key={`curve-inspector-${tab}`}
-                        type="button"
-                        data-testid={`curve-inspector-tab-${tab}`}
-                        onClick={() => setCurveInspectorTab(tab)}
-                        aria-pressed={curveInspectorTab === tab}
-                        style={{ ...pill(curveInspectorTab === tab), textTransform: "capitalize", fontSize: 10 }}
-                      >
-                        {tab}
-                      </button>
-                    ))}
-                  </div>
+                  <SharedInspectorShell
+                    activeCategory={curveInspectorCategory}
+                    onCategoryChange={selectCurveInspectorCategory}
+                    summary={<div style={{ display: "grid", gap: 2 }}><strong>{curveActiveIsImported ? curveImportedSection?.name ?? "Imported section curve" : activeCurvePreset?.label ?? "Curve"}</strong><span>Curve / {activeCanonicalCurveDefinition.representation}</span><span>{curveRenderState.samplePoints.length.toLocaleString()} samples · {activeCurveDefinitionResult?.state ?? "queued"}</span></div>}
+                  >
+                  {curveInspectorTabsByCategory[curveInspectorCategory].length > 1 && (
+                    <label style={{ display: "grid", gap: 4, marginBottom: 8, fontSize: 10, color: "#475569" }}>
+                      {curveInspectorCategory[0].toUpperCase() + curveInspectorCategory.slice(1)} view
+                      <select value={curveInspectorTab} onChange={(event) => setCurveInspectorTab(event.target.value as CurveInspectorTab)}>
+                        {curveInspectorTabsByCategory[curveInspectorCategory].map((tab) => <option key={tab} value={tab}>{tab[0].toUpperCase() + tab.slice(1)}</option>)}
+                      </select>
+                    </label>
+                  )}
                   <div data-testid={`curve-inspector-content-${curveInspectorTab}`} style={{ display: "grid", gap: 6, fontSize: 11, color: "#334155" }}>
                     {curveInspectorTab === "object" && (
                       <>
@@ -90171,6 +90209,7 @@ case "mobius":
                       </>
                     )}
                   </div>
+                  </SharedInspectorShell>
                 </aside>
               </>
             )}
@@ -104913,6 +104952,7 @@ case "mobius":
                       <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>INSPECTOR</div>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         {([
+                          ["summary", "Summary"],
                           ["selection", "Selection"],
                           ["geometry", "Geometry"],
                           ["analysis", "Analysis"],
@@ -104936,6 +104976,14 @@ case "mobius":
                             {label}
                           </button>
                         ))}
+                      </div>
+                      <div
+                        data-testid="geometry-inspector-summary"
+                        style={{ position: "sticky", top: 0, zIndex: 1, border: "1px solid #dbe2ea", borderRadius: 8, padding: "7px 8px", background: "#f8fafc", display: "grid", gap: 2, fontSize: 11 }}
+                      >
+                        <strong>{geometrySelectedSceneObject?.name ?? "No object selected"}</strong>
+                        <span>Geometry / {geometrySelectedSceneObject && "type" in geometrySelectedSceneObject ? geometrySelectedSceneObject.type : "scene object"}</span>
+                        <span>{geometrySelectedSceneMeshInfo ? `${geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} V · ${geometrySelectedSceneMeshInfo.triCount.toLocaleString()} F` : "Select an object to inspect geometry"}</span>
                       </div>
                       {geometrySelectedSceneObject && (
                         <button
@@ -104964,7 +105012,14 @@ case "mobius":
                         </button>
                       )}
                     </div>
-                    {geometryRightPanelTab === "selection" ? (
+                    {geometryRightPanelTab === "summary" ? (
+                      <div data-testid="geometry-summary-inspector" style={{ border: "1px solid #dbe2ea", borderRadius: 8, padding: "8px 10px", background: "#fff", display: "grid", gap: 6, fontSize: 11 }}>
+                        <strong>Object Summary</strong>
+                        <div>Selection: {geometrySelectedPick?.label ?? "none"}</div>
+                        <div>Analysis: {geometryActiveAnalysisInspectorRecord?.lifecycle ?? "not run"}</div>
+                        <div>Dependencies: {geometryInspectorDependencyDetails?.inputs.length ?? 0} input{geometryInspectorDependencyDetails?.inputs.length === 1 ? "" : "s"}</div>
+                      </div>
+                    ) : geometryRightPanelTab === "selection" ? (
                           <div
                             style={{
                               border: "1px solid #dbe2ea",
@@ -108835,7 +108890,11 @@ case "mobius":
                         )}
                       </div>
                       <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
-                        <div style={{ fontWeight: 800, fontSize: 12 }}>Inspector</div>
+                        <SharedInspectorShell
+                          activeCategory={otherComplexInspectorCategory}
+                          onCategoryChange={selectOtherComplexInspectorCategory}
+                          summary={<div style={{ display: "grid", gap: 2 }}><strong>Complex Function Explorer</strong><span>Complex / {otherComplexBranchProfile.label}</span><span>{otherComplexCompiled2d.error ? "Needs attention" : "Ready"}</span></div>}
+                        >
                         {otherComplexSheetTracker && otherComplexBranchProfile.id !== "none" && (
                           <div style={{ border: "1px solid #dbe2ea", borderRadius: 8, padding: "6px 8px", background: "#f8fafc", display: "grid", gap: 2, fontSize: 11 }}>
                             <div style={{ fontWeight: 700 }}>Sheet Tracker</div>
@@ -108906,18 +108965,14 @@ case "mobius":
                             )}
                           </div>
                         )}
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          <button type="button" onClick={() => setOtherComplexInspectorTab("branch")} style={pill(otherComplexInspectorTab === "branch")}>Branch</button>
-                          <button type="button" onClick={() => setOtherComplexInspectorTab("path")} style={pill(otherComplexInspectorTab === "path")}>Path</button>
-                          <button type="button" onClick={() => setOtherComplexInspectorTab("monodromy")} style={pill(otherComplexInspectorTab === "monodromy")}>Monodromy</button>
-                          <button type="button" onClick={() => setOtherComplexInspectorTab("covering")} style={pill(otherComplexInspectorTab === "covering")}>Covering</button>
-                          <button type="button" onClick={() => setOtherComplexInspectorTab("sheet")} style={pill(otherComplexInspectorTab === "sheet")}>Sheet</button>
-                          <button type="button" onClick={() => setOtherComplexInspectorTab("analysis")} style={pill(otherComplexInspectorTab === "analysis")}>Analysis</button>
-                          <button type="button" onClick={() => setOtherComplexInspectorTab("contour")} style={pill(otherComplexInspectorTab === "contour")}>Contour</button>
-                          <button type="button" onClick={() => setOtherComplexInspectorTab("residue")} style={pill(otherComplexInspectorTab === "residue")}>Residue</button>
-                          <button type="button" onClick={() => setOtherComplexInspectorTab("laurent")} style={pill(otherComplexInspectorTab === "laurent")}>Laurent</button>
-                          <button type="button" onClick={() => setOtherComplexInspectorTab("warnings")} style={pill(otherComplexInspectorTab === "warnings")}>Warnings</button>
-                        </div>
+                        {otherComplexTabsByCategory[otherComplexInspectorCategory].length > 1 && (
+                          <label style={{ display: "grid", gap: 4, fontSize: 10, color: "#475569" }}>
+                            {otherComplexInspectorCategory[0].toUpperCase() + otherComplexInspectorCategory.slice(1)} view
+                            <select value={otherComplexInspectorTab} onChange={(event) => setOtherComplexInspectorTab(event.target.value as OtherComplexInspectorTab)}>
+                              {otherComplexTabsByCategory[otherComplexInspectorCategory].map((tab) => <option key={tab} value={tab}>{tab[0].toUpperCase() + tab.slice(1)}</option>)}
+                            </select>
+                          </label>
+                        )}
                         {otherComplexInspectorTab === "covering" && (
                           <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
                             {otherComplexCoveringLab ? (
@@ -109648,6 +109703,7 @@ case "mobius":
                             )}
                           </div>
                         )}
+                        </SharedInspectorShell>
                       </div>
                     </div>
                   </div>
