@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type {
   CanonicalSurfaceDefinition,
   SurfaceAnalysisPayload,
@@ -352,8 +352,6 @@ export function SurfaceCurvatureDisplayControls({
   );
 }
 
-type InspectorTab = "result" | "probe" | "provenance" | "history";
-
 export function SurfaceAnalysisInspectorPanel({
   definition,
   result,
@@ -415,44 +413,17 @@ export function SurfaceAnalysisInspectorPanel({
   };
   derivedMeshInspection?: { record: DerivedSurfaceMeshRecord; payload: SurfaceDerivedMeshPayload | null };
 }) {
-  const [tab, setTab] = useState<InspectorTab>("result");
   const payloadKind = result?.payload?.data.kind ?? "none";
   const warnings = result?.payload?.warnings ?? definition.warnings;
   const curvature = result?.payload?.data.kind === "curvature" ? result.payload.data : null;
-  useEffect(() => {
-    if (result?.payload?.data.kind === "local-probe") setTab("probe");
-  }, [result?.payload?.data.kind, result?.resultVersion]);
-  useEffect(() => {
-    if (preferredTab) setTab(preferredTab);
-  }, [preferredTab]);
+  const showProbe = preferredTab === "probe" || result?.payload?.data.kind === "local-probe";
   return (
     <section data-testid="surface-analysis-inspector" style={{ display: "grid", gap: 8, marginBottom: 10 }}>
       <SurfaceAnalysisContractCard definition={definition} result={result} historyCount={historyCount} />
-      <div role="tablist" aria-label="Surface analysis Inspector" style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-        {(["result", "probe", "provenance", "history"] as const).map((id) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            id={`surface-analysis-tab-${id}`}
-            aria-controls="surface-analysis-tabpanel"
-            aria-selected={tab === id}
-            data-testid={`surface-analysis-inspector-${id}`}
-            onClick={() => setTab(id)}
-            style={{ borderColor: tab === id ? "#60a5fa" : "#dbe4f0", background: tab === id ? "#eaf3ff" : "#fff" }}
-          >
-            {id[0].toUpperCase() + id.slice(1)}
-          </button>
-        ))}
-      </div>
       <div
-        id="surface-analysis-tabpanel"
-        role="tabpanel"
-        aria-labelledby={`surface-analysis-tab-${tab}`}
         style={{ border: "1px solid #e2e8f0", borderRadius: 8, background: "#fff", padding: 8, fontSize: 10.5 }}
       >
-        {tab === "result" && (
-          <div style={{ display: "grid", gap: 4 }}>
+        <div style={{ display: "grid", gap: 4 }}>
             <div><strong>State:</strong> {result?.state ?? "queued"}</div>
             <div><strong>Result:</strong> {result?.kind ?? "surface-definition"} · {payloadKind}</div>
             <div><strong>Method:</strong> {result?.payload?.method ?? "source-defined"}</div>
@@ -496,11 +467,10 @@ export function SurfaceAnalysisInspectorPanel({
             {chartActions && <SurfaceChartDiagnosticsInspector {...chartActions} />}
             {derivedMeshInspection && <SurfaceDerivedMeshInspector {...derivedMeshInspection} />}
             {!!warnings.length && <div style={{ color: "#9a3412" }}>{warnings.join(" · ")}</div>}
-          </div>
-        )}
-        {tab === "probe" && probeActions ? (
+        </div>
+        {showProbe && (probeActions ? (
           <SurfaceLocalProbeInspector {...probeActions} />
-        ) : tab === "probe" && (
+        ) : (
           probeRows.length ? (
             <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", gap: "4px 8px" }}>
               {probeRows.map((row) => (
@@ -508,22 +478,24 @@ export function SurfaceAnalysisInspectorPanel({
               ))}
             </div>
           ) : <div style={{ color: "#64748b" }}>Enable Probe and click the Surface to inspect local values.</div>
-        )}
-        {tab === "provenance" && (
-          <div style={{ display: "grid", gap: 4 }}>
+        ))}
+        <details>
+          <summary>Provenance</summary>
+          <div style={{ display: "grid", gap: 4, marginTop: 6 }}>
             <div><strong>Surface:</strong> {definition.identity.surfaceId}@{definition.identity.surfaceRevision}</div>
             <div><strong>Representation:</strong> {definition.representation}</div>
             <div><strong>Orientation:</strong> {definition.orientation.convention} ({definition.orientation.sign > 0 ? "+" : "−"})</div>
             <div><strong>Units:</strong> {definition.units.length}; angles {definition.units.angle}</div>
             <div><strong>Dependencies:</strong> {result?.dependencies.length ?? 0}</div>
           </div>
-        )}
-        {tab === "history" && (
-          <div style={{ display: "grid", gap: 4 }}>
+        </details>
+        <details>
+          <summary>History</summary>
+          <div style={{ display: "grid", gap: 4, marginTop: 6 }}>
             <div><strong>{historyCount}</strong> revision-safe computation {historyCount === 1 ? "record" : "records"} in shared history.</div>
             <div><strong>{savedResultCount}</strong> saved result {savedResultCount === 1 ? "reference" : "references"} in the Surface workspace.</div>
           </div>
-        )}
+        </details>
       </div>
     </section>
   );

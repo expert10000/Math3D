@@ -46,6 +46,7 @@ import { GeometryAnalysisInspectorPanel } from "./components/GeometryAnalysisIns
 import { KernelWorkspacePanel } from "./components/KernelWorkspacePanel";
 import { GeometryTessellationSettingsPanel } from "./components/GeometryTessellationSettingsPanel";
 import { UnifiedSelectionInspector } from "./components/UnifiedSelectionInspector";
+import { SharedInspectorShell, type SharedInspectorCategory } from "./components/SharedInspectorShell";
 import { GeometrySemanticNavigatorPanel } from "./components/GeometrySemanticNavigatorPanel";
 import { GeometryConstructCatalogPanel } from "./components/GeometryConstructCatalogPanel";
 import { GeometryModifyPanel } from "./components/GeometryModifyPanel";
@@ -126962,7 +126963,7 @@ type SurfacesRightPanelProps = {
   onRemoveImplicitDomainPreset: (id: string) => void;
 };
 
-type InspectorPanelTab = "object" | "result" | "selection" | "probe" | "analysis" | "diagnostics" | "history" | "warnings";
+type InspectorPanelTab = SharedInspectorCategory | "object" | "result" | "probe" | "warnings";
 type MeshWorkspaceLeftTab = "operations" | "analyze" | "topology" | "scene" | "snapshots";
 type AnalysisResultsView = "show-all" | "current-screen";
 type MeshAnalysisFeatureState = "ready" | "running" | "deferred" | "not-requested" | "missing" | "unavailable";
@@ -127270,7 +127271,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const [graphDomainLabel, setGraphDomainLabel] = useState("");
   const [implicitDomainLabel, setImplicitDomainLabel] = useState("");
   const [paramDomainLabel, setParamDomainLabel] = useState("");
-  const [inspectorPanelTab, setInspectorPanelTab] = useState<InspectorPanelTab>("object");
+  const [inspectorPanelTab, setInspectorPanelTab] = useState<InspectorPanelTab>("summary");
   const [analysisResultsView, setAnalysisResultsView] = useState<AnalysisResultsView>("current-screen");
   const [selectedAnalysisComputationId, setSelectedAnalysisComputationId] = useState<string | null>(null);
   useEffect(() => {
@@ -127278,19 +127279,15 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   }, [inspectorPanelTab]);
   useEffect(() => {
     if (!requestedInspectorTab) return;
-    if (meshAnalysisActive && requestedInspectorTab === "analysis") {
-      setInspectorPanelTab("result");
-      return;
-    }
-    if (meshAnalysisActive && requestedInspectorTab === "probe") {
+    if (requestedInspectorTab === "probe") {
       setInspectorPanelTab("selection");
       return;
     }
-    setInspectorPanelTab(requestedInspectorTab);
+    setInspectorPanelTab(requestedInspectorTab === "object" ? "summary" : requestedInspectorTab === "result" ? "geometry" : requestedInspectorTab);
   }, [meshAnalysisActive, requestedInspectorTab]);
   useEffect(() => {
     if (!meshAnalysisActive) return;
-    if (inspectorPanelTab === "object" || inspectorPanelTab === "analysis") setInspectorPanelTab("result");
+    if (inspectorPanelTab === "summary" || inspectorPanelTab === "geometry" || inspectorPanelTab === "analysis") setInspectorPanelTab("analysis");
     else if (inspectorPanelTab === "probe" || inspectorPanelTab === "warnings") setInspectorPanelTab("selection");
   }, [inspectorPanelTab, meshAnalysisActive]);
   const selectedAnalysisComputation =
@@ -128442,22 +128439,6 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   ]
     .filter(Boolean)
     .join(", ");
-  const resultsInspectorTabs: Array<{ id: InspectorPanelTab; label: string }> = meshAnalysisActive
-    ? [
-        { id: "result", label: "Result" },
-        { id: "selection", label: "Selection" },
-        { id: "diagnostics", label: `Diagnostics ${diagnosticsTotalCount}` },
-        { id: "history", label: "History" },
-      ]
-    : [
-        { id: "object", label: "Object" },
-        { id: "result", label: "Result" },
-        { id: "selection", label: "Selection" },
-        { id: "probe", label: "Probe" },
-        { id: "analysis", label: "Analysis" },
-        { id: "diagnostics", label: `Diagnostics ${diagnosticsTotalCount}` },
-        { id: "history", label: "History" },
-      ];
   const stickyPickPoint = probeInfo?.point ?? inspectPos;
   const stickyPickLabel = stickyPickPoint
     ? `(${fmt(stickyPickPoint.x)}, ${fmt(stickyPickPoint.y)}, ${fmt(stickyPickPoint.z)})`
@@ -128694,40 +128675,20 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const resultsOnlyInspector = true;
   if (resultsOnlyInspector) {
     return (
-      <section>
-        <h2 style={styles.h2}>INSPECTOR</h2>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-          {resultsInspectorTabs.map((tab) => (
-            <button
-              key={`inspector-tab-${tab.id}`}
-              type="button"
-              data-testid={`mesh-inspector-tab-${tab.id}`}
-              onClick={() => setInspectorPanelTab(tab.id)}
-              style={pill(inspectorPanelTab === tab.id)}
-              aria-pressed={inspectorPanelTab === tab.id}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-        <div
-          style={{
-            position: "sticky",
-            top: 0,
-            zIndex: 1,
-            marginBottom: 10,
-            fontSize: 11,
-            fontWeight: 600,
-            padding: "6px 8px",
-            border: "1px solid #dbe4ee",
-            borderRadius: 8,
-            background: "#f8fafc",
-          }}
-        >
-          Selected: {activeMeta.label} | Pick: {stickyPickLabel}
-        </div>
+      <SharedInspectorShell
+        activeCategory={inspectorPanelTab === "object" ? "summary" : inspectorPanelTab === "result" ? "geometry" : inspectorPanelTab === "probe" ? "selection" : inspectorPanelTab === "warnings" ? "diagnostics" : inspectorPanelTab}
+        onCategoryChange={setInspectorPanelTab}
+        summary={
+          <div style={{ display: "grid", gap: 2 }}>
+            <strong>{activeMeta.label}</strong>
+            <span>{isMeshViewer ? "Surface / Mesh" : activeMeta.formula}</span>
+            <span>{surfaceMeshStats ? `${surfaceMeshStats.vertCount.toLocaleString()} V · ${surfaceMeshStats.triCount.toLocaleString()} F` : "Geometry pending"}</span>
+            <span style={{ color: meshHealthStatusLabel === "Healthy" ? "#166534" : "#475467" }}>{meshHealthStatusDisplay} · pick {stickyPickLabel}</span>
+          </div>
+        }
+      >
 
-        {inspectorPanelTab === "object" && (
+        {inspectorPanelTab === "summary" && (
           <>
             {isMeshViewer && (
               meshWorkspaceSummary.meshCount > 1 ? (
@@ -129041,7 +129002,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           </>
         )}
 
-        {inspectorPanelTab === "result" && !meshAnalysisActive && (
+        {inspectorPanelTab === "geometry" && !meshAnalysisActive && (
           <div style={inspectorSectionCard} data-testid="mesh-operation-result-card">
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 6 }}>
               <div style={inspectorSectionTitle}>Last Operation</div>
@@ -129240,7 +129201,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           </>
         )}
 
-        {inspectorPanelTab === "probe" && !meshAnalysisActive && (
+        {inspectorPanelTab === "selection" && !meshAnalysisActive && (
           <SurfacesInspectPanel
             viewerKind={viewerKind}
             inspectEnabled={inspectEnabled}
@@ -129271,7 +129232,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           />
         )}
 
-        {(inspectorPanelTab === "analysis" || (meshAnalysisActive && inspectorPanelTab === "result")) && (
+        {inspectorPanelTab === "analysis" && (
           <>
             {meshAnalysisActive && (
               <div style={inspectorSectionCard} data-testid="mesh-analysis-active-result">
@@ -130224,7 +130185,16 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             </div>
           </div>
         )}
-      </section>
+        {inspectorPanelTab === "provenance" && (
+          <div data-testid="mesh-inspector-provenance" style={inspectorSectionCard}>
+            <strong>Provenance</strong>
+            <div>Source: {meshSummarySourceLabel}</div>
+            <div>Kernel document: {meshKernelDocument?.identity.id ?? "not available"}</div>
+            <div>Revision: {meshKernelDocument?.identity.revision ?? "n/a"}</div>
+            {meshWorkspaceSelectedProvenanceEntry && <div>Latest operation: {meshWorkspaceSelectedProvenanceEntry.result.label}</div>}
+          </div>
+        )}
+      </SharedInspectorShell>
     );
   }
 
