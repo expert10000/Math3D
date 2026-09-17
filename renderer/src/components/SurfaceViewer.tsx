@@ -721,14 +721,24 @@ type GizmoView = "xy" | "xyNeg" | "xz" | "xzNeg" | "yz" | "yzNeg" | "iso";
 type GizmoMenuView = "front" | "back" | "left" | "right" | "top" | "bottom" | "iso";
 
 const GIZMO_MENU_ITEMS: Array<{ id: GizmoMenuView; label: string }> = [
-  { id: "front", label: "Front" },
-  { id: "back", label: "Back" },
-  { id: "left", label: "Left" },
-  { id: "right", label: "Right" },
-  { id: "top", label: "Top" },
-  { id: "bottom", label: "Bottom" },
-  { id: "iso", label: "Iso" },
+  { id: "front", label: "Front (+Z)" },
+  { id: "back", label: "Back (−Z)" },
+  { id: "left", label: "Left (−X)" },
+  { id: "right", label: "Right (+X)" },
+  { id: "top", label: "Top (+Y)" },
+  { id: "bottom", label: "Bottom (−Y)" },
+  { id: "iso", label: "Isometric" },
 ];
+
+const GIZMO_VIEW_LABEL: Record<GizmoView, string> = {
+  xy: "+Z Front",
+  xyNeg: "−Z Back",
+  xz: "+Y Top",
+  xzNeg: "−Y Bottom",
+  yz: "+X Right",
+  yzNeg: "−X Left",
+  iso: "Isometric",
+};
 
 const iconCommonProps: React.SVGProps<SVGSVGElement> = {
   width: 14,
@@ -746,13 +756,6 @@ const LockGlyph: React.FC<{ locked: boolean }> = ({ locked }) => (
   <svg {...iconCommonProps}>
     <rect x="5" y="11" width="14" height="9" rx="2.3" />
     <path d={locked ? "M8 11V8a4 4 0 1 1 8 0v3" : "M8 11V8a4 4 0 0 1 8 0"} />
-  </svg>
-);
-
-const ResetGlyph: React.FC = () => (
-  <svg {...iconCommonProps}>
-    <path d="M20 12a8 8 0 1 1-2.35-5.66" />
-    <path d="M20 5v5h-5" />
   </svg>
 );
 
@@ -2795,12 +2798,29 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     setViewGizmoMenuOpen(false);
   }, []);
 
-  const handleResetCameraFromGizmo = useCallback(() => {
-    setViewMode("free");
-    setLockToAxisPlane(false);
+  const handleFitSceneFromGizmo = useCallback(() => {
     setViewGizmoMenuOpen(false);
     forceReframeRef.current?.();
   }, []);
+
+  const handleOrbitFromGizmo = useCallback((deltaX: number, deltaY: number) => {
+    if (lockToAxisPlane) return;
+    const cam = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!cam || !controls) return;
+
+    const offset = cam.position.clone().sub(controls.target);
+    if (offset.lengthSq() < 1e-8) return;
+    const spherical = new THREE.Spherical().setFromVector3(offset);
+    spherical.theta -= deltaX * 0.012;
+    spherical.phi = THREE.MathUtils.clamp(spherical.phi + deltaY * 0.012, 0.04, Math.PI - 0.04);
+    offset.setFromSpherical(spherical);
+    cam.position.copy(controls.target).add(offset);
+    cam.lookAt(controls.target);
+    controls.update();
+    setViewMode((current) => (current === "free" ? current : "free"));
+    setViewGizmoMenuOpen(false);
+  }, [lockToAxisPlane]);
 
   useEffect(() => {
     setViewMode("free");
@@ -2830,7 +2850,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     if (!controls || !cam) return;
 
     if (lockToSlicePlane) return;
-    const shouldLock = lockToAxisPlane && viewMode !== "free";
+    const shouldLock = lockToAxisPlane;
     controls.enableRotate = !shouldLock;
 
     if (viewMode === "free") return;
@@ -4215,6 +4235,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     }
     const handleControlsStart = () => {
       interruptCameraTour();
+      if (controls.enableRotate) setViewMode("free");
       beginMeshInteraction();
     };
     const handleControlsEnd = () => {
@@ -12471,26 +12492,24 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
             userSelect: "none",
           }}
         >
-          <div
-            style={{
-              padding: "0 2px",
-              fontSize: 9,
-              textTransform: "uppercase",
-              letterSpacing: "0.12em",
-              fontWeight: 700,
-              color: "#6a7483",
-              opacity: 0.9,
-            }}
-          >
-            View
+          <div style={{ padding: "0 2px", display: "flex", justifyContent: "space-between", gap: 8 }}>
+            <span style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 700, color: "#6a7483", opacity: 0.9 }}>
+              View
+            </span>
+            <span title={lockToAxisPlane ? "Orbit lock is on" : "Current camera orientation"} style={{ fontSize: 9, fontWeight: 700, color: lockToAxisPlane ? "#1d4ed8" : "#526174", whiteSpace: "nowrap" }}>
+              {viewMode === "free" ? "Free" : GIZMO_VIEW_LABEL[viewMode]}
+            </span>
           </div>
           <AxisGizmo
             size={138}
+            activeView={viewMode}
             getMainCamera={() => cameraRef.current}
             onSelectView={(view) => {
               setViewMode(view);
               setViewGizmoMenuOpen(false);
             }}
+            onFitScene={handleFitSceneFromGizmo}
+            onOrbit={handleOrbitFromGizmo}
           />
           <div
             style={{
@@ -12502,42 +12521,47 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           >
             <button
               type="button"
-              title={lockToAxisPlane ? "Unlock axis view" : "Lock view to axis"}
-              aria-label={lockToAxisPlane ? "Unlock axis view" : "Lock view to axis"}
+              title={lockToAxisPlane ? "Unlock orbit" : "Lock orbit"}
+              aria-label={lockToAxisPlane ? "Unlock orbit" : "Lock orbit"}
               aria-pressed={lockToAxisPlane}
               onClick={() => setLockToAxisPlane((v) => !v)}
               style={{
-                width: 31,
+                width: 62,
                 height: 28,
                 borderRadius: 7,
                 border: "1px solid " + (lockToAxisPlane ? "#2962d9" : "rgba(128,146,171,0.58)"),
                 background: lockToAxisPlane ? "rgba(227,239,255,0.95)" : "rgba(255,255,255,0.87)",
                 color: lockToAxisPlane ? "#1d4ed8" : "#495669",
-                display: "grid",
-                placeItems: "center",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
+                fontSize: 10,
+                fontWeight: 700,
                 cursor: "pointer",
               }}
             >
               <LockGlyph locked={lockToAxisPlane} />
+              Orbit
             </button>
             <button
               type="button"
-              title="Reset camera"
-              aria-label="Reset camera"
-              onClick={handleResetCameraFromGizmo}
+              title="Fit scene to the current view"
+              aria-label="Fit scene"
+              onClick={handleFitSceneFromGizmo}
               style={{
-                width: 31,
+                width: 39,
                 height: 28,
                 borderRadius: 7,
                 border: "1px solid rgba(128,146,171,0.58)",
                 background: "rgba(255,255,255,0.87)",
                 color: "#495669",
-                display: "grid",
-                placeItems: "center",
+                fontSize: 10,
+                fontWeight: 700,
                 cursor: "pointer",
               }}
             >
-              <ResetGlyph />
+              Fit
             </button>
             <button
               type="button"
