@@ -2600,6 +2600,16 @@ Full invalidation remains the fallback.
 **Acceptance.** Property tests prove local/full parity, no stale resource survives,
 and reviewed benchmarks justify every production-enabled local strategy.
 
+**Status:** complete for the proved dependency-graph strategy. The GK02 full
+traversal remains the default oracle. An opt-in indexed source-generation closure
+for graphs of at least 512 relations reports `dirty-local`, matches full reports,
+staleness, ordering, and artifact lifecycle across seeded DAGs, and measures
+41.15× faster on the reviewed sparse 640-relation microbenchmark. Validated
+object/cell/face/edge/vertex change sets force `dirty-global` until a resource
+footprint has its own parity proof. See
+`docs/kernel-gk18-invalidation-benchmark.md`; gates:
+`npm run test:kernel:gk18` and `npm run bench:kernel:gk18`.
+
 ### GK19 — `test(platform): prove browser desktop and worker capability conformance`
 
 **Milestone:** G08 — platform conformance

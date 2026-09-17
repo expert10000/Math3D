@@ -21,11 +21,25 @@ export const DEPENDENCY_GRAPH_EVENT_TYPES = ["relation.registered", "dependency.
 
 export type DependencyGraphEventType = (typeof DEPENDENCY_GRAPH_EVENT_TYPES)[number];
 export type DependencyFreshness = "current" | "stale" | "broken" | "unavailable";
+export type DependencyInvalidationStrategy = "full" | "dependency-local";
+export type DependencyChangedElements = Readonly<{
+  kind: "object" | "cell" | "face" | "edge" | "vertex";
+  ids: readonly string[];
+}>;
+export type DependencyAffectedRegion = Readonly<{
+  kind: "document-dependency-closure";
+  rootDocumentId: ScientificSourceGeneration["documentId"];
+  relationIds: readonly DocumentRelationId[];
+  /** Element-level footprints are not yet proved and therefore never prune this closure. */
+  requestedChangeSet?: DependencyChangedElements;
+}>;
 
 export type DependencyInvalidationReport = Readonly<{
   schemaVersion: typeof DEPENDENCY_GRAPH_SCHEMA_VERSION;
   invalidationId: `dependency-invalidation:${string}`;
   currentSource: ScientificSourceGeneration;
+  scope: "dirty-local" | "dirty-global";
+  affectedRegion: DependencyAffectedRegion;
   affectedRelationIds: readonly DocumentRelationId[];
   newlyStaleRelationIds: readonly DocumentRelationId[];
   affectedTargets: readonly DocumentRelationTarget[];
@@ -55,6 +69,10 @@ export type DependencyGraphOptions = Readonly<{
   resolveSource: DocumentRelationSourceResolver;
   relations?: readonly DocumentRelation[];
   artifactRegistry?: InMemoryArtifactRegistry;
+  /** Full deterministic traversal remains the default and correctness oracle. */
+  invalidationStrategy?: DependencyInvalidationStrategy;
+  /** Small graphs use the full oracle even when dependency-local is requested. */
+  localInvalidationMinRelations?: number;
 }>;
 
 export type DependencyGraphListener = (event: DependencyGraphEvent) => void;
@@ -89,7 +107,11 @@ const relationDeclaredFreshness = (status: DocumentRelationStatus): DependencyFr
 export class InMemoryDependencyGraph {
   readonly #resolveSource: DocumentRelationSourceResolver;
   readonly #artifactRegistry?: InMemoryArtifactRegistry;
+  readonly #invalidationStrategy: DependencyInvalidationStrategy;
+  readonly #localInvalidationMinRelations: number;
   readonly #relations = new Map<DocumentRelationId, DocumentRelation>();
+  readonly #relationsBySourceDocument = new Map<string, Set<DocumentRelationId>>();
+  readonly #relationsBySourceGeneration = new Map<string, Set<DocumentRelationId>>();
   readonly #staleRelations = new Set<DocumentRelationId>();
   readonly #staleTargets = new Set<string>();
   readonly #listeners = new Map<number, DependencyGraphListener>();
@@ -100,6 +122,12 @@ export class InMemoryDependencyGraph {
   constructor(options: DependencyGraphOptions) {
     this.#resolveSource = options.resolveSource;
     this.#artifactRegistry = options.artifactRegistry;
+    if (options.invalidationStrategy && !["full", "dependency-local"].includes(options.invalidationStrategy))
+      throw new TypeError("Unknown dependency invalidation strategy.");
+    const minimum = options.localInvalidationMinRelations ?? 512;
+    if (!Number.isSafeInteger(minimum) || minimum < 1) throw new RangeError("localInvalidationMinRelations must be a positive integer.");
+    this.#invalidationStrategy = options.invalidationStrategy ?? "full";
+    this.#localInvalidationMinRelations = minimum;
     for (const relation of options.relations ?? []) this.register(relation);
   }
 
@@ -124,6 +152,17 @@ export class InMemoryDependencyGraph {
     const candidate = [...this.#relations.values(), relation];
     createDocumentRelationIndex(candidate);
     this.#relations.set(relation.relationId, relation);
+    if (this.#invalidationStrategy === "dependency-local") {
+      for (const source of relation.sources) {
+        const byDocument = this.#relationsBySourceDocument.get(source.documentId) ?? new Set<DocumentRelationId>();
+        byDocument.add(relation.relationId);
+        this.#relationsBySourceDocument.set(source.documentId, byDocument);
+        const key = generationKey(source);
+        const byGeneration = this.#relationsBySourceGeneration.get(key) ?? new Set<DocumentRelationId>();
+        byGeneration.add(relation.relationId);
+        this.#relationsBySourceGeneration.set(key, byGeneration);
+      }
+    }
     if (this.#relationFreshness(relation, new Set()) !== "current") {
       this.#staleRelations.add(relation.relationId);
       this.#staleTargets.add(targetKey(relation.target));
@@ -170,7 +209,7 @@ export class InMemoryDependencyGraph {
       : null;
   }
 
-  invalidateDocumentSource(currentSource: ScientificSourceGeneration): DependencyInvalidationReport {
+  invalidateDocumentSource(currentSource: ScientificSourceGeneration, changedElements?: DependencyChangedElements): DependencyInvalidationReport {
     this.#assertMutationAllowed();
     if (!isScientificSourceGeneration(currentSource)) {
       throw new TypeError("Dependency invalidation requires an exact scientific source generation.");
@@ -179,26 +218,42 @@ export class InMemoryDependencyGraph {
     if (!resolved || !matchesScientificSourceGeneration(resolved, currentSource)) {
       throw new TypeError("Dependency invalidation source is not the current document generation.");
     }
-    const roots = this.relations().filter((relation) => relation.sources.some((source) =>
+    if (changedElements && (!(["object", "cell", "face", "edge", "vertex"] as const).includes(changedElements.kind)
+      || !Array.isArray(changedElements.ids) || changedElements.ids.some((id) => typeof id !== "string" || !id.trim() || id.length > 160)
+      || new Set(changedElements.ids).size !== changedElements.ids.length))
+      throw new TypeError("Changed element IDs must be unique, bounded strings for a known entity kind.");
+    // No relation currently declares a proved cell/face/edge/vertex footprint.
+    // An element change request must therefore use the full oracle.
+    const local = !changedElements && this.#invalidationStrategy === "dependency-local" && this.#relations.size >= this.#localInvalidationMinRelations;
+    const rootCandidates = local
+      ? [...(this.#relationsBySourceDocument.get(currentSource.documentId) ?? [])].map((id) => this.#relations.get(id)!)
+      : this.relations();
+    const roots = rootCandidates.filter((relation) => relation.sources.some((source) =>
       source.documentId === currentSource.documentId && !matchesScientificSourceGeneration(source, currentSource)
     ));
     const bySourceGeneration = new Map<string, DocumentRelation[]>();
-    for (const relation of this.relations()) {
-      for (const source of relation.sources) {
-        const key = generationKey(source);
-        const entries = bySourceGeneration.get(key) ?? [];
-        entries.push(relation);
-        bySourceGeneration.set(key, entries);
+    if (!local) {
+      for (const relation of this.relations()) {
+        for (const source of relation.sources) {
+          const key = generationKey(source);
+          const entries = bySourceGeneration.get(key) ?? [];
+          entries.push(relation);
+          bySourceGeneration.set(key, entries);
+        }
       }
+      for (const entries of bySourceGeneration.values()) entries.sort((left, right) => left.relationId.localeCompare(right.relationId));
     }
-    for (const entries of bySourceGeneration.values()) entries.sort((left, right) => left.relationId.localeCompare(right.relationId));
 
     const affected = new Map<DocumentRelationId, DocumentRelation>();
     const visit = (relation: DocumentRelation): void => {
       if (affected.has(relation.relationId)) return;
       affected.set(relation.relationId, relation);
       if (relation.target.type !== "document") return;
-      for (const child of bySourceGeneration.get(generationKey(relation.target.generation)) ?? []) visit(child);
+      const key = generationKey(relation.target.generation);
+      const children = local
+        ? [...(this.#relationsBySourceGeneration.get(key) ?? [])].map((id) => this.#relations.get(id)!).sort((left, right) => left.relationId.localeCompare(right.relationId))
+        : bySourceGeneration.get(key) ?? [];
+      for (const child of children) visit(child);
     };
     for (const relation of roots.sort((left, right) => left.relationId.localeCompare(right.relationId))) visit(relation);
 
@@ -229,6 +284,9 @@ export class InMemoryDependencyGraph {
       schemaVersion: DEPENDENCY_GRAPH_SCHEMA_VERSION,
       invalidationId: `dependency-invalidation:${identity}` as const,
       currentSource,
+      scope: local ? "dirty-local" as const : "dirty-global" as const,
+      affectedRegion: { kind: "document-dependency-closure" as const, rootDocumentId: currentSource.documentId, relationIds: affectedIds,
+        ...(changedElements ? { requestedChangeSet: { kind: changedElements.kind, ids: [...changedElements.ids].sort() } } : {}) },
       affectedRelationIds: affectedIds,
       newlyStaleRelationIds: newlyStale,
       affectedTargets: targets,

@@ -10,7 +10,8 @@
     "build:web:pages": "vite build --base ./ --outDir ../apps/web/dist --emptyOutDir",
     "preview": "vite preview",
     "preview:web": "vite preview --host --port 4173 --strictPort --base / --outDir ../apps/web/dist",
-    "test": "vitest run"
+    "test": "vitest run",
+    "bench:gk18": "vitest bench src/kernel/dependencyLocalInvalidation.bench.ts --run"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
