@@ -1,6 +1,11 @@
+import groovy.json.JsonSlurper
+
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
+
+def mobileIdentity = new JsonSlurper().parse(file("../../version.json"))
+def signingEnv = { channel, field -> System.getenv("MATH3D_ANDROID_${channel}_${field}") }
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
@@ -87,13 +92,13 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.anonymous.math3dmobile'
+    namespace 'com.math3d.mobile' // Generated from apps/mobile/version.json for Expo autolinking.
     defaultConfig {
-        applicationId 'com.anonymous.math3dmobile'
+        applicationId mobileIdentity.applicationId
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "0.0.0"
+        versionCode mobileIdentity.build as int
+        versionName mobileIdentity.version
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -104,21 +109,38 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        internal {
+            if (signingEnv("INTERNAL", "KEYSTORE_PATH")) storeFile file(signingEnv("INTERNAL", "KEYSTORE_PATH"))
+            storePassword signingEnv("INTERNAL", "STORE_PASSWORD")
+            keyAlias signingEnv("INTERNAL", "KEY_ALIAS")
+            keyPassword signingEnv("INTERNAL", "KEY_PASSWORD")
+        }
+        release {
+            if (signingEnv("RELEASE", "KEYSTORE_PATH")) storeFile file(signingEnv("RELEASE", "KEYSTORE_PATH"))
+            storePassword signingEnv("RELEASE", "STORE_PASSWORD")
+            keyAlias signingEnv("RELEASE", "KEY_ALIAS")
+            keyPassword signingEnv("RELEASE", "KEY_PASSWORD")
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
             def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
             crunchPngs enablePngCrunchInRelease.toBoolean()
+        }
+        internal {
+            initWith release
+            signingConfig signingConfigs.internal
+            applicationIdSuffix ".internal"
+            versionNameSuffix "-internal"
+            matchingFallbacks = ["release"]
         }
     }
     packagingOptions {
@@ -129,6 +151,27 @@ android {
     }
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
+}
+
+gradle.taskGraph.whenReady { graph ->
+    ["INTERNAL", "RELEASE"].each { channel ->
+        def selected = graph.allTasks.any { task ->
+            task.path.startsWith(":app:") && task.name ==~ /(?i)(assemble|bundle|package|sign|validateSigning).*${channel.toLowerCase()}.*/
+        }
+        if (selected) {
+            def fields = ["KEYSTORE_PATH", "STORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD"]
+            def missing = fields.findAll { !signingEnv(channel, it) }
+            if (!missing.isEmpty()) {
+                throw new GradleException("${channel.toLowerCase()} signing is required: missing MATH3D_ANDROID_${channel}_" + missing.join(", MATH3D_ANDROID_${channel}_"))
+            }
+            if (!file(signingEnv(channel, "KEYSTORE_PATH")).isFile()) {
+                throw new GradleException("${channel.toLowerCase()} keystore file does not exist")
+            }
+            if (file(signingEnv(channel, "KEYSTORE_PATH")).canonicalFile == file("debug.keystore").canonicalFile) {
+                throw new GradleException("${channel.toLowerCase()} must not use the debug keystore")
+            }
+        }
     }
 }
 

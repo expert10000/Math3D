@@ -11,6 +11,10 @@ apps/mobile/.expo/
 /dist/
 /release/
 /build/
+/artifacts/mobile/
+*.jks
+*.keystore
+!apps/mobile/android/app/debug.keystore
 /playwright-report/
 /test-results/
 /output/ci-*/
