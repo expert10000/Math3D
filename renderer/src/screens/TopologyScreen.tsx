@@ -6902,7 +6902,17 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
           data-testid="topology-left-splitter"
           onMouseDown={startTopologyLeftDrag}
           onDoubleClick={() => onDockLayoutChange?.(() => recommendedWorkspaceDockLayout("topology"))}
-          style={{ width: 6, cursor: "col-resize", alignSelf: "stretch", background: "linear-gradient(to right, transparent 0, #ddd 3px, transparent 6px)" }}
+          style={{
+            width: 8,
+            minWidth: 8,
+            cursor: "col-resize",
+            alignSelf: "stretch",
+            borderRadius: 4,
+            background:
+              "linear-gradient(90deg, transparent 0 1px, #dbe4f0 1px 2px, #f8fbff 2px 6px, #dbe4f0 6px 7px, transparent 7px)",
+            boxShadow:
+              "inset 1px 0 rgba(148, 163, 184, 0.08), inset -1px 0 rgba(148, 163, 184, 0.08)",
+          }}
         />
       )}
       <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "grid", gridTemplateRows: "auto minmax(0,1fr)" }}>
