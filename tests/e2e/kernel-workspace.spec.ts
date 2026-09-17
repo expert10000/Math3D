@@ -9,6 +9,7 @@ test("GK16/GK17 shared provenance and mixed workspace replay are visible in the 
     await ctx.page.getByTestId("workspace-nav-volume").click();
     await ctx.page.getByTestId("kernel-workspace-toggle").click();
     const panel = ctx.page.getByTestId("kernel-workspace-panel");
+    await expect(panel.getByTestId("kernel-platform-capabilities")).toContainText("Platform: desktop");
     await expect(panel.getByTestId("kernel-active-evidence")).toContainText("volume · current");
     await panel.getByTestId("kernel-workspace-save").click();
     await expect(panel.getByTestId("kernel-workspace-message")).toContainText("Saved");

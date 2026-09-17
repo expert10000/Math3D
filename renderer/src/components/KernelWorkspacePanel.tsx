@@ -3,8 +3,10 @@ import {
   createDocumentRelationIndex, inspectMixedWorkspaceAvailability, parseMixedWorkspaceDocument,
   serializeMixedWorkspaceDocument, traceViewerLineage, viewerSourceFromDocument,
   type KernelWorkspaceModule, type MixedWorkspaceDocument, type ViewerProvenanceEvidence,
+  PLATFORM_FACILITIES,
 } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
+import { probeRendererPlatformCapabilities } from "../kernel/rendererPlatformCapabilities";
 
 const STORAGE_KEY = "math3d.mixed-workspace.v1";
 
@@ -20,6 +22,7 @@ export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ capt
   const [open, setOpen] = useState(false);
   const [reopened, setReopened] = useState<MixedWorkspaceDocument | null>(null);
   const [message, setMessage] = useState("No mixed workspace opened.");
+  const [platform] = useState(probeRendererPlatformCapabilities);
   const save = () => {
     try {
       const workspace = capture();
@@ -52,6 +55,11 @@ export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ capt
       {open && <div data-testid="kernel-workspace-panel" style={{ width: 360, maxWidth: "calc(100vw - 28px)", maxHeight: "min(70vh, 620px)", overflow: "auto", marginBottom: 7,
         border: "1px solid #94a3b8", borderRadius: 10, background: "#fff", boxShadow: "0 10px 30px #0f172a30", padding: 12, display: "grid", gap: 8 }}>
         <strong>Shared Viewer / Inspector provenance</strong>
+        <div data-testid="kernel-platform-capabilities" style={{ border: "1px solid #dbeafe", borderRadius: 7, padding: 7 }}>
+          Platform: {platform.runtime} · adapter {platform.adapterVersion} · {PLATFORM_FACILITIES.filter((facility) => platform.facilities[facility].available).length}/{PLATFORM_FACILITIES.length} facilities
+          <div>{PLATFORM_FACILITIES.filter((facility) => !platform.facilities[facility].available)
+            .map((facility) => `${facility}: ${platform.facilities[facility].reason}`).join(" · ") || "All declared facilities available."}</div>
+        </div>
         {activeEvidence ? <div data-testid="kernel-active-evidence" style={{ display: "grid", gap: 3 }}>
           <div>{activeModule} · {activeEvidence.status} · revision {activeEvidence.source.revision}</div>
           <div style={{ wordBreak: "break-all" }}>{activeEvidence.source.documentId}</div>

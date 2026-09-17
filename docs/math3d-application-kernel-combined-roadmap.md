@@ -85,7 +85,7 @@ The target outcomes are:
 | C01-C12 | Complex Analysis MVP/v1 vertical migration and gate | Complete |
 | A1-G3 | Original architecture proposal labels | Historical traceability only |
 | G01-G08 | Cross-module milestone groups | Planned/in progress through GK commits |
-| GK01-GK20 | Executable post-C12 integration commits | GK01-GK18 complete; GK19-GK20 planned |
+| GK01-GK20 | Executable post-C12 integration commits | GK01-GK19 complete; GK20 planned |
 
 There is one canonical sequential plan. Historical labels may explain intent, but
 they cannot reopen completed work or create duplicate infrastructure. Completion
@@ -826,6 +826,13 @@ change sets remain global until resource-specific proofs exist. See
 
 #### GK19 — `test(platform): prove platform capability and execution conformance`
 
+**Completion evidence (2026-09-17).** Schema-v1 platform snapshots and host
+probes, F08 backend admission guard, browser and desktop UI smoke, mobile
+typecheck, worker-failure injection, and 106 domain/kernel unit tests pass.
+Installed VTK and native CGAL verification passes; Sage is unavailable. Mobile
+device execution and the future remote service are not claimed. See
+`docs/kernel-gk19-platform-conformance.md` and `npm run test:kernel:gk19`.
+
 **Scope.** Add one immutable general platform-capability snapshot alongside F08
 compute capabilities. Exercise command, query, event, history, replay, result,
 artifact, job, relation, invalidation, selection, and persistence contracts across
@@ -999,8 +1006,10 @@ The combined roadmap is approved. Execute it as follows:
    `docs/math3d-topology-complex-kernel-program-roadmap.md` without reopening it.
 2. Treat A1-G3 and the earlier G01-G08 table as historical requirements mapped by
    Section 6, not as parallel execution sequences.
-3. GK01-GK18 are complete. The GK18 dependency-local strategy is opt-in and
+3. GK01-GK19 are complete. The GK18 dependency-local strategy is opt-in and
    limited to the proved document-relation closure; full invalidation remains
    the default oracle and all unproved element-level strategies remain global.
-4. Run GK19 runtime conformance before GK20 freezes contracts and
-   removes only proven-redundant lifecycle paths.
+   GK19 covers shipped browser/desktop UI and shared mobile/worker capability
+   adapters with the release-environment limits recorded in its evidence note.
+4. Run GK20 dependency, legacy-readability, and mixed-workspace gates before
+   freezing extension rules or removing any proven-redundant lifecycle path.
