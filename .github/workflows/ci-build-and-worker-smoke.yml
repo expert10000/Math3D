@@ -123,6 +123,9 @@ jobs:
       - name: Run TypeScript noEmit checks
         run: npm run typecheck:noemit
 
+      - name: Verify mobile version metadata
+        run: npm run mobile:version:check
+
       - name: Enforce application-kernel dependency directions
         run: npm run check:kernel:boundaries
 

@@ -2,6 +2,11 @@
 
 Last updated: May 15, 2026
 
+Release foundation update (September 17, 2026): `apps/mobile/android` is now the
+canonical project. Internal and release builds require non-debug signing
+credentials, so the prior May release-build result is historical. Run the new
+`npm run mobile:android:*` commands and repeat the device matrix before release.
+
 ## 1. Scope
 This checklist is the Phase 5 gate for `apps/mobile` before external release.
 

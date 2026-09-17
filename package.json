@@ -17,6 +17,11 @@
     "dev:public-site": "npm --prefix apps/public-site run dev",
     "dev:desktop": "npm --prefix apps/desktop run dev",
     "dev:mobile": "npm --prefix apps/mobile run dev",
+    "mobile:version:check": "node scripts/mobile-version.mjs --check",
+    "mobile:version:sync": "node scripts/mobile-version.mjs --sync",
+    "mobile:android:debug": "node scripts/mobile-android-build.mjs debug",
+    "mobile:android:internal": "node scripts/mobile-android-build.mjs internal",
+    "mobile:android:release": "node scripts/mobile-android-build.mjs release",
     "build:web": "npm --prefix apps/web run build",
     "build:web:pages": "npm --prefix apps/web run build:pages",
     "build:public-site": "npm --prefix apps/public-site run build",
@@ -167,8 +172,8 @@
     "analyze:deps:arkit:apps": "npm run analyze:deps:prepare && arkit apps -o analysis/dependency/arkit/apps-architecture.puml",
     "analyze:deps:arkit": "npm run analyze:deps:arkit:renderer && npm run analyze:deps:arkit:electron && npm run analyze:deps:arkit:packages && npm run analyze:deps:arkit:apps",
     "analyze:deps": "npm run analyze:deps:depcruise && npm run analyze:deps:arkit",
-    "android": "expo run:android",
-    "ios": "expo run:ios"
+    "android": "npm --prefix apps/mobile run android",
+    "ios": "npm --prefix apps/mobile run ios"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
