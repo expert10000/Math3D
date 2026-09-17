@@ -28,6 +28,8 @@ import {
 } from "../services/vtkVolumeClient";
 import { vtkSmooth } from "../services/vtkMeshClient";
 import { configureOrbitControlsForTouch, installViewerTouchGestures } from "../utils/viewerTouchGestures";
+import AxisGizmo from "./AxisGizmo";
+import { applyCameraOrientation, CAMERA_ORIENTATION_LABEL, orbitCameraAroundTarget, type CameraOrientation } from "./cameraOrientation";
 import {
   createVolumeTransferTextureData,
   getVolumeTransferPreset,
@@ -551,6 +553,8 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   const [cameraFitRevision, setCameraFitRevision] = useState(0);
   const [volumeContextToken, setVolumeContextToken] = useState(0);
   const [sceneReady, setSceneReady] = useState(false);
+  const [cameraOrientation, setCameraOrientation] = useState<"free" | CameraOrientation>("free");
+  const [orbitLocked, setOrbitLocked] = useState(false);
   const [sliceRuntimeState, setSliceRuntimeState] = useState<VolumeSliceRuntimeState>({
     kind: dataset ? "loading" : "empty",
     message: dataset ? "Preparing volume slice…" : "No volume dataset selected.",
@@ -580,6 +584,27 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     lastPublishedCameraStateRef.current = state;
     onCameraStateChangeRef.current?.(state);
   }, []);
+
+  const handleGizmoOrbit = useCallback((deltaX: number, deltaY: number) => {
+    if (orbitLocked || viewPreset !== "free") return;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls || !orbitCameraAroundTarget(camera, controls, deltaX, deltaY)) return;
+    setCameraOrientation((current) => (current === "free" ? current : "free"));
+  }, [orbitLocked, viewPreset]);
+
+  const handleGizmoFit = useCallback(() => {
+    if (viewPreset !== "free") return;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    const state = isoMeshRef.current
+      ? fitCameraToGeometry(camera, controls, isoMeshRef.current.geometry)
+      : dataset?.grid
+        ? fitCameraToSphere(camera, controls, new THREE.Vector3(...getGridBounds(dataset.grid).center), Math.max(1e-6, getGridBounds(dataset.grid).diag * 0.5))
+        : null;
+    if (state) publishCameraState(state);
+  }, [dataset, publishCameraState, viewPreset]);
 
   const autoFitIsosurfaceOnce = useCallback((geometry: THREE.BufferGeometry, sourceDataset: VolumeDataset) => {
     const previousAutoFit = lastIsosurfaceAutoFitRef.current;
@@ -709,6 +734,34 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   }, [axis, dataset, index, orientationConvention, viewPreset, sceneReady]);
 
   useEffect(() => {
+    if (!sceneReady || viewPreset !== "free") return;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    controls.enableRotate = !orbitLocked;
+    if (cameraOrientation === "free") return;
+    const bounds = dataset?.grid ? getGridBounds(dataset.grid) : { center: [0, 0, 0] as [number, number, number], diag: 2 };
+    applyCameraOrientation(
+      camera,
+      controls,
+      new THREE.Vector3(...bounds.center),
+      Math.max(1e-6, bounds.diag * 0.5),
+      cameraOrientation
+    );
+    publishCameraState({
+      position: [camera.position.x, camera.position.y, camera.position.z],
+      target: [controls.target.x, controls.target.y, controls.target.z],
+      up: [camera.up.x, camera.up.y, camera.up.z],
+    });
+  }, [cameraOrientation, dataset, orbitLocked, publishCameraState, sceneReady, viewPreset]);
+
+  useEffect(() => {
+    if (viewPreset === "free") return;
+    setCameraOrientation("free");
+    setOrbitLocked(false);
+  }, [viewPreset]);
+
+  useEffect(() => {
     if (!sceneReady || !cameraCommand || cameraCommand.token <= 0 || viewPreset !== "free") return;
     const camera = cameraRef.current;
     const controls = controlsRef.current;
@@ -822,6 +875,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     };
     const beginInteractiveRender = () => {
       cameraInteractingRef.current = true;
+      if (controls.enableRotate) setCameraOrientation("free");
       const material = directVolumeMaterialRef.current;
       if (material) material.uniforms.uStepCount.value = Math.min(80, renderStepCountRef.current);
     };
@@ -2136,6 +2190,62 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
             {orientationLabels.vertical}
           </div>
         </>
+      )}
+      {viewPreset === "free" && (
+        <div
+          style={{
+            position: "absolute",
+            left: 12,
+            bottom: 12,
+            zIndex: 4,
+            borderRadius: 11,
+            background: "linear-gradient(150deg, rgba(250,252,255,0.95), rgba(226,236,247,0.92))",
+            border: "1px solid rgba(134,153,179,0.52)",
+            boxShadow: "0 10px 18px rgba(30,45,70,0.16), inset 0 1px 1px rgba(255,255,255,0.8)",
+            padding: "7px 7px 6px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 5,
+            width: 146,
+            fontFamily: "\"Avenir Next\", \"Segoe UI\", \"Trebuchet MS\", \"Noto Sans\", sans-serif",
+            color: "#233042",
+            userSelect: "none",
+          }}
+        >
+          <div style={{ padding: "0 2px", display: "flex", justifyContent: "space-between", gap: 8 }}>
+            <span style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 700, color: "#6a7483" }}>View</span>
+            <span title={orbitLocked ? "Orbit lock is on" : "Current camera orientation"} style={{ fontSize: 9, fontWeight: 700, color: orbitLocked ? "#1d4ed8" : "#526174", whiteSpace: "nowrap" }}>
+              {cameraOrientation === "free" ? "Free" : CAMERA_ORIENTATION_LABEL[cameraOrientation]}
+            </span>
+          </div>
+          <AxisGizmo
+            size={132}
+            activeView={cameraOrientation}
+            getMainCamera={() => cameraRef.current}
+            onSelectView={(orientation) => setCameraOrientation(orientation)}
+            onFitScene={handleGizmoFit}
+            onOrbit={handleGizmoOrbit}
+          />
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button
+              type="button"
+              aria-pressed={orbitLocked}
+              title={orbitLocked ? "Unlock orbit" : "Lock orbit"}
+              onClick={() => setOrbitLocked((locked) => !locked)}
+              style={{ flex: 1, height: 28, borderRadius: 7, border: `1px solid ${orbitLocked ? "#2962d9" : "rgba(128,146,171,0.58)"}`, background: orbitLocked ? "rgba(227,239,255,0.95)" : "rgba(255,255,255,0.87)", color: orbitLocked ? "#1d4ed8" : "#495669", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
+            >
+              {orbitLocked ? "Orbit locked" : "Lock orbit"}
+            </button>
+            <button
+              type="button"
+              title="Fit volume to the current view"
+              onClick={handleGizmoFit}
+              style={{ width: 39, height: 28, borderRadius: 7, border: "1px solid rgba(128,146,171,0.58)", background: "rgba(255,255,255,0.87)", color: "#495669", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
+            >
+              Fit
+            </button>
+          </div>
+        </div>
       )}
       {(showBlockingState || showProgressState) && (
         <div
