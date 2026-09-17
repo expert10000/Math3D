@@ -79483,6 +79483,7 @@ case "mobius":
                             if (disabled) return;
                             setSurfacesPanelState("work");
                             setSurfacesLeftTab(tab);
+                            setSurfacesWorkGalleryOpen(false);
                           }}
                           disabled={disabled}
                           aria-pressed={active}
