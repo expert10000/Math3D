@@ -1,11 +1,20 @@
 # Mobile Phase 5 Stability Matrix And Release Checklist
 
-Last updated: May 15, 2026
+Last updated: September 17, 2026
 
 Release foundation update (September 17, 2026): `apps/mobile/android` is now the
 canonical project. Internal and release builds require non-debug signing
 credentials, so the prior May release-build result is historical. Run the new
 `npm run mobile:android:*` commands and repeat the device matrix before release.
+
+Internal tester evidence (September 17, 2026): commit
+`b93e9b813373fadfb34cccf7b882bd64f2a33e48` produced the signed
+`Math3D-mobile-1.5.0-internal.apk` (SHA-256
+`0b2d9b5bee1f5babe273c2f95ac43effeae2eed1033ec56dfc4cdca9b12e23ab`).
+`apksigner` verified the internal certificate; Android 16 emulator installation,
+Home launch, Catenoid gallery open, and touch orbit succeeded. The local tester
+archive is `artifacts/mobile/Math3D-mobile-1.5.0-internal-b93e9b8.zip`.
+Physical-device and production-release-signing validation remain pending.
 
 ## 1. Scope
 This checklist is the Phase 5 gate for `apps/mobile` before external release.
