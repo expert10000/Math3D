@@ -77766,38 +77766,47 @@ case "mobius":
     datasetKind === "volume"
       ? (volumePresetId === "custom" ? "Already custom" : "Edit custom F(x,y,z)")
       : surfaceViewerKind === "graph"
-      ? (graphSurfaceId === "graph_custom" ? "Already custom" : "Edit custom z=f(x,y)")
+      ? "Edit custom z=f(x,y)"
       : surfaceViewerKind === "implicit"
-        ? (implicitSurfaceId === "implicit_custom" ? "Already custom" : "Edit custom f(x,y,z)")
+        ? "Edit custom f(x,y,z)"
         : surfaceViewerKind === "param"
-          ? (paramSurfaceId === "custom" ? "Already custom" : "Start as custom σ(u,v)")
+          ? "Edit custom σ(u,v)"
           : null;
   const surfacesQuickEditEnabled =
     datasetKind === "volume"
       ? volumePresetId !== "custom"
       : surfaceViewerKind === "graph"
-      ? canEditGraphAsCustom
+      ? canEditGraphAsCustom || graphSurfaceId === "graph_custom"
       : surfaceViewerKind === "implicit"
-        ? canEditImplicitAsCustom
+        ? canEditImplicitAsCustom || implicitSurfaceId === "implicit_custom"
         : surfaceViewerKind === "param"
-          ? canEditParamAsCustom
+          ? canEditParamAsCustom || paramSurfaceId === "custom"
           : false;
+  const prepareSurfaceCustomEditing = () => {
+    setSurfacesPanelState("work");
+    setSurfacesLeftTab("scene");
+    setSurfacesWorkGalleryOpen(false);
+  };
   const handleSurfacesQuickEdit =
     datasetKind === "volume"
       ? () => {
           setVolumeDatasetOverride(null);
           setVolumeDistanceError(null);
           handleChangeVolumePresetId("custom");
-          setSurfacesPanelState("work");
-          setSurfacesLeftTab("scene");
-          setSurfacesWorkGalleryOpen(false);
+          prepareSurfaceCustomEditing();
         }
-      : surfaceViewerKind === "graph"
-      ? handleEditGraphAsCustom
-      : surfaceViewerKind === "implicit"
-        ? handleEditImplicitAsCustom
+      : surfaceViewerKind === "graph" || surfaceViewerKind === "implicit"
+        ? () => {
+            prepareSurfaceCustomEditing();
+            openSurfaceFormulaEditor();
+          }
         : surfaceViewerKind === "param"
-          ? handleEditParamAsCustom
+          ? () => {
+              prepareSurfaceCustomEditing();
+              handleEditParamAsCustom();
+              setSurfaceFormulaEditorCollapsed(false);
+              setSurfaceFormulaEditorOpen(true);
+            }
           : undefined;
   const topNavBarStyle: React.CSSProperties = {
     border: "1px solid #dbe4f0",
