@@ -25,6 +25,7 @@ This checklist is the Phase 5 gate for `apps/mobile` before external release.
 | --- | --- | --- | --- | --- |
 | Android | Mid-range physical (primary) | Android 16 | Release APK | Pending |
 | Android | Emulator sanity | API 36 | Debug/Release | Pending |
+| Android | Emulator P0 smoke | API 36 | Signed internal APK | Passed once on September 17, 2026; repeat matrix pending |
 | iOS | Current iPhone physical | iOS latest supported by SDK 54 | Release | Pending |
 | iOS | Simulator sanity | iOS latest supported by SDK 54 | Debug/Release | Pending |
 
@@ -54,7 +55,9 @@ Run each row 10 times unless stated otherwise.
 
 ## 5. Regression Gates
 - [x] `npm --prefix apps/mobile run dev` launches.
-- [x] `./gradlew :app:assembleRelease` succeeds for Android.
+- [ ] `npm run mobile:android:release` succeeds with the production signing key
+  and its AAB is verified. The May 15 `assembleRelease` result predates the
+  current signing policy.
 - [x] No new TypeScript errors in `apps/mobile` and `packages/api-client`.
 - [x] `packages/api-client` HTTP backend is used by mobile service layer.
 - [x] Web/desktop builds are not broken by shared client changes.

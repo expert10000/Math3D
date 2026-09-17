@@ -30,49 +30,30 @@ npm --prefix apps/mobile run dev
 
 `apps/mobile/android` is the only Android application project. Run native commands from
 `apps/mobile` or use the root scripts below. `apps/mobile/version.json` defines the
-mobile application ID, version, and build number. Expo reads it through
-`apps/mobile/app.config.js`; Android Gradle reads it directly. Expo autolinking
-requires a literal Android namespace, which the sync script generates and checks.
-Expo's iOS prebuild
-uses its version as `CFBundleShortVersionString` and build number as
-`CFBundleVersion`.
+mobile application ID, version, and build number. See the
+[Android build and install guide](../../docs/mobile-android-build-and-install.md)
+for the canonical project, version sync, signing, artifact verification, tester
+installation, and current release gates.
 
 After changing `version.json`, run `npm run mobile:version:sync` to update the
 mobile package and lockfile metadata. `npm run mobile:version:check` rejects drift.
 
 ## Android builds
 
-From the repository root, with Node 24+, Android SDK/JDK installed:
+From the repository root, with the prerequisites in the Android guide installed:
 
 ```bash
 npm ci
-npm run mobile:signing:internal:init
 npm run mobile:android:debug
+npm run mobile:signing:internal:init
 npm run mobile:android:internal
 npm run mobile:android:release
 ```
 
-Internal and release builds require separate signing credentials in environment
-variables. For each `INTERNAL` or `RELEASE` channel, set:
-
-```text
-MATH3D_ANDROID_<CHANNEL>_KEYSTORE_PATH
-MATH3D_ANDROID_<CHANNEL>_STORE_PASSWORD
-MATH3D_ANDROID_<CHANNEL>_KEY_ALIAS
-MATH3D_ANDROID_<CHANNEL>_KEY_PASSWORD
-```
-
-Keep keystores and credentials outside Git. The build fails if signing credentials
-are absent; only debug builds use the checked-in debug keystore. Internal builds
-use an `.internal` application ID suffix so they can coexist with release builds.
-`mobile:signing:internal:init` creates a local internal key and configuration under
-the current user's application data directory. Run it once and back up both files
-securely; subsequent internal builds load that configuration automatically. For
-team builds, set the four `INTERNAL` environment variables to the shared key.
-Release builds always require the four `RELEASE` environment variables and a
-production keystore supplied by the release owner.
-The commands copy output to `artifacts/mobile/` and write `SHA256SUMS` plus
-`build-info.json`. The internal output is an APK; release output is an AAB.
+The internal signing setup runs once per signing machine; subsequent internal
+builds load its local configuration. Back up the generated key and configuration
+securely. The release command requires production credentials from the release
+owner. Build outputs and hashes are written to `artifacts/mobile/`.
 
 ## Phase 5 Gate Helpers
 

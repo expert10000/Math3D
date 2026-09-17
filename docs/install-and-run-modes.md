@@ -20,6 +20,7 @@ Quick start after install (pick one):
 - Desktop from source: `npm run build` (or `npm run dev`)
 - Browser local: `npm run dev:web`
 - Browser + Docker: `docker compose -f docker-compose.web.yml up --build`
+- Android internal tester APK: follow the [mobile Android build and install guide](mobile-android-build-and-install.md)
 
 ## Run modes (quick guide)
 
@@ -29,6 +30,7 @@ Quick start after install (pick one):
 | Desktop (local source run) | Electron launched from repo | Yes by default for CGAL/VTK: Python + worker deps. Optional: use local `worker.exe` instead | Desktop development from source |
 | Browser (local) | Your local browser + local Node proxy | Yes for CGAL/VTK: provide one backend (`worker.exe` or Python + deps) | Fast local web development and testing |
 | Browser + Docker | Browser UI on host, backend in container | No on host. Backend is inside Docker image (Python venv + deps) | Self-contained, reproducible web runtime |
+| Android mobile (internal) | Signed APK on an Android device | No Python on device; native Android build toolchain required to build | Internal tester install and mobile QA |
 
 Worker setup details:
 
