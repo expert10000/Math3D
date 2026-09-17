@@ -138,7 +138,7 @@ export function SurfaceAnalysisComputationPanel({
           Target: {definition.identity.label} · revision {definition.identity.surfaceRevision}
         </div>
       </div>
-      <section data-testid="surface-analysis-presets" style={{ border: "1px solid #c7d7ee", borderRadius: 8, background: "#f8fbff", padding: 8, display: "grid", gap: 6 }}>
+      <section data-testid="surface-analysis-presets" style={{ border: "1px solid #c7d7ee", borderRadius: 8, background: "var(--workspace-section-bg)", padding: 8, display: "grid", gap: 6 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
           <strong style={{ fontSize: 10.5 }}>Layer presets</strong>
           <span style={{ color: "#64748b", fontSize: 9 }}>Current Surface</span>
@@ -155,12 +155,12 @@ export function SurfaceAnalysisComputationPanel({
               onClick={() => void onApplyPreset?.(preset.id)}
               disabled={!onApplyPreset}
               title={preset.description}
-              style={{ border: `1px solid ${active ? "#60a5fa" : "#dbe4f0"}`, borderRadius: 7, background: active ? "#eaf3ff" : "#fff", padding: "6px 7px", display: "grid", gap: 4, textAlign: "left", color: "#0f172a" }}
+              style={{ border: `1px solid ${active ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"}`, borderRadius: 7, background: active ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)", padding: "6px 7px", display: "grid", gap: 4, textAlign: "left", color: "var(--workspace-control-text)" }}
             >
               <strong style={{ fontSize: 10 }}>{preset.label}</strong>
               <span style={{ color: "#64748b", fontSize: 8.75, lineHeight: 1.25 }}>{preset.description}</span>
               <span style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                {preset.layers.map((layer) => <span key={`${preset.id}-${layer}`} style={{ borderRadius: 999, background: active ? "#dbeafe" : "#eef2f7", padding: "1px 4px", color: "#475467", fontSize: 8 }}>{SURFACE_PRESET_LAYER_LABELS[layer]}</span>)}
+                {preset.layers.map((layer) => <span key={`${preset.id}-${layer}`} style={{ borderRadius: 999, background: active ? "#dbeafe" : "var(--workspace-chip-bg)", padding: "1px 4px", color: "#475467", fontSize: 8 }}>{SURFACE_PRESET_LAYER_LABELS[layer]}</span>)}
               </span>
             </button>;
           })}
@@ -230,10 +230,10 @@ export function SurfaceAnalysisComputationPanel({
                 display: "grid",
                 gap: 1,
                 padding: "6px 8px",
-                border: `1px solid ${active ? "#60a5fa" : "#dbe4f0"}`,
+                border: `1px solid ${active ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"}`,
                 borderRadius: 7,
-                background: active ? "#eaf3ff" : "#fff",
-                color: "#0f172a",
+                background: active ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)",
+                color: "var(--workspace-control-text)",
                 textAlign: "left",
                 cursor: "pointer",
               }}
@@ -255,7 +255,7 @@ export function SurfaceAnalysisComputationPanel({
       </button>
       {!surfaceSourceHandoff && <section
         data-testid="surface-derived-mesh-bridge"
-        style={{ border: "1px solid #c7d7ee", borderRadius: 8, background: "#f8fbff", padding: 8, display: "grid", gap: 5 }}
+        style={{ border: "1px solid #c7d7ee", borderRadius: 8, background: "var(--workspace-section-bg)", padding: 8, display: "grid", gap: 5 }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
           <strong style={{ fontSize: 10.5 }}>Derived SurfaceMesh</strong>

@@ -48,10 +48,10 @@ export function SharedInspectorShell({
               aria-selected={active}
               onClick={() => onCategoryChange(category)}
               style={{
-                border: `1px solid ${active ? "#60a5fa" : "#dbe4f0"}`,
+                border: `1px solid ${active ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"}`,
                 borderRadius: 999,
-                background: active ? "#eaf3ff" : "#fff",
-                color: active ? "#164e8b" : "#334155",
+                background: active ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)",
+                color: active ? "#164e8b" : "var(--workspace-control-text)",
                 padding: "4px 8px",
                 fontSize: 10,
                 fontWeight: 750,
@@ -73,7 +73,7 @@ export function SharedInspectorShell({
           padding: "7px 8px",
           border: "1px solid #dbe4ee",
           borderRadius: 8,
-          background: "#f8fafc",
+          background: "var(--workspace-section-bg)",
           fontSize: 11,
         }}
       >

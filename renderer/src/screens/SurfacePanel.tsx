@@ -43,8 +43,8 @@ const SurfacePanel: React.FC<Props> = ({ surfaceId, onChange }) => {
               marginBottom: 6,
               borderRadius: 6,
               border:
-                "1px solid " + (surfaceId === s.id ? "#0a66c2" : "#ddd"),
-              background: surfaceId === s.id ? "#e6f0ff" : "#fff",
+                "1px solid " + (surfaceId === s.id ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"),
+              background: surfaceId === s.id ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)",
               fontWeight: surfaceId === s.id ? 600 : 400,
               cursor: "pointer",
               whiteSpace: "nowrap",

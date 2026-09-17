@@ -14,7 +14,7 @@
   --shadow-soft: 0 4px 8px rgba(18, 24, 32, 0.06);
   --radius: 12px;
   --radius-sm: 8px;
-  --gallery-card-bg: #ffffff;
+  --gallery-card-bg: #fbfdff;
   --gallery-card-preview-bg: linear-gradient(180deg, #e2e8f0 0%, #dbe5ef 100%);
   --gallery-card-border: #d6deea;
   --gallery-card-border-active: #4d7fbd;
@@ -25,6 +25,14 @@
   --gallery-card-meta-border: #e5edf5;
   --gallery-card-chip-bg: #f9fbff;
   --gallery-card-chip-border: #dbe5ef;
+  --workspace-control-bg: #fbfdff;
+  --workspace-control-hover-bg: #eef5ff;
+  --workspace-control-border: #cbd9ea;
+  --workspace-control-active-bg: #e6f0ff;
+  --workspace-control-active-border: #0a66c2;
+  --workspace-control-text: #1f3556;
+  --workspace-chip-bg: #eef2f7;
+  --workspace-section-bg: #f8fbff;
   --body-bg: linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
   --body-bg-size: auto;
 
@@ -62,6 +70,14 @@ html[data-theme="dark"] {
   --gallery-card-meta-border: #314154;
   --gallery-card-chip-bg: #1f2c3b;
   --gallery-card-chip-border: #465a71;
+  --workspace-control-bg: #1b2838;
+  --workspace-control-hover-bg: #22344a;
+  --workspace-control-border: #41566d;
+  --workspace-control-active-bg: #24466e;
+  --workspace-control-active-border: #6da9e8;
+  --workspace-control-text: #e8eef7;
+  --workspace-chip-bg: #26384b;
+  --workspace-section-bg: #1d2b3c;
   --body-bg: linear-gradient(180deg, #11161f 0%, #1a2330 100%);
   color-scheme: dark;
 }
@@ -147,12 +163,12 @@ h3 {
 /* default button style - your TabButton etc. also add inline styles */
 button {
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
+  border: 1px solid var(--workspace-control-border);
   padding: 0.6em 1.1em;
   font-size: 0.95em;
   font-weight: 600;
   font-family: inherit;
-  background-color: var(--panel-strong);
+  background-color: var(--workspace-control-bg);
   color: var(--text);
   cursor: pointer;
   transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s, transform 0.2s;
@@ -160,8 +176,8 @@ button {
 }
 
 button:hover {
-  border-color: var(--accent);
-  background-color: var(--accent-soft);
+  border-color: var(--workspace-control-active-border);
+  background-color: var(--workspace-control-hover-bg);
 }
 
 button:focus,

@@ -43,11 +43,11 @@ const SELECTORS: readonly { id: GeometrySemanticSelector; label: string }[] = [
 ];
 
 const pill = (active = false): React.CSSProperties => ({
-  border: `1px solid ${active ? "#2563eb" : "#cbd5e1"}`,
+  border: `1px solid ${active ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"}`,
   borderRadius: 999,
   padding: "3px 8px",
-  background: active ? "#dbeafe" : "#fff",
-  color: active ? "#1d4ed8" : "#334155",
+  background: active ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)",
+  color: active ? "#1d4ed8" : "var(--workspace-control-text)",
   fontSize: 10,
   fontWeight: 700,
   cursor: "pointer",

@@ -30,10 +30,10 @@ const panelStyle: React.CSSProperties = {
 };
 
 const toolButtonStyle = (selected: boolean): React.CSSProperties => ({
-  border: `1px solid ${selected ? "#2563eb" : "#cbd5e1"}`,
+  border: `1px solid ${selected ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"}`,
   borderRadius: 7,
-  background: selected ? "#dbeafe" : "#ffffff",
-  color: "#0f172a",
+  background: selected ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)",
+  color: "var(--workspace-control-text)",
   minHeight: 48,
   padding: "6px 7px",
   display: "grid",

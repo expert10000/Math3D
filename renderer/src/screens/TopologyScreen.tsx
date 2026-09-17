@@ -6505,9 +6505,9 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
                       onClick={() => applyPreset(preset.id)}
                       style={{
                         textAlign: "left",
-                        border: "1px solid " + (selected ? "#0a66c2" : "#dbe4f0"),
+                        border: "1px solid " + (selected ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"),
                         borderRadius: 8,
-                        background: selected ? "#e6f0ff" : "#fff",
+                        background: selected ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)",
                         padding: "7px 8px",
                         cursor: "pointer",
                       }}
@@ -6945,8 +6945,8 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
                   }}
                   style={{
                     borderRadius: 999,
-                    border: "1px solid " + (active ? "#0a66c2" : done ? "#bfdbfe" : "#d1d5db"),
-                    background: active ? "#e6f0ff" : done ? "#eff6ff" : "#fff",
+                    border: "1px solid " + (active ? "var(--workspace-control-active-border)" : done ? "#bfdbfe" : "var(--workspace-control-border)"),
+                    background: active ? "var(--workspace-control-active-bg)" : done ? "#eff6ff" : "var(--workspace-control-bg)",
                     fontSize: 10,
                     fontWeight: active ? 700 : 600,
                     padding: "4px 9px",
@@ -6976,8 +6976,8 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
                 }}
                 style={{
                   borderRadius: 999,
-                  border: "1px solid " + (activeView === id ? "#0a66c2" : "#d1d5db"),
-                  background: activeView === id ? "#e6f0ff" : "#fff",
+                  border: "1px solid " + (activeView === id ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"),
+                  background: activeView === id ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)",
                   fontWeight: activeView === id ? 700 : 600,
                   fontSize: 11,
                   padding: "5px 10px",

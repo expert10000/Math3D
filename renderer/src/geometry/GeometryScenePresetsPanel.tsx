@@ -74,8 +74,8 @@ export const GeometryScenePresetsPanel: React.FC<GeometryScenePresetsPanelProps>
                 fontSize: 10.5,
                 padding: "3px 8px",
                 borderRadius: 999,
-                border: `1px solid ${active ? "#0a66c2" : "#cbd5e1"}`,
-                background: active ? "#dbeafe" : "#fff",
+                border: `1px solid ${active ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"}`,
+                background: active ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)",
                 color: active ? "#073763" : "#334155",
                 fontWeight: active ? 800 : 600,
               }}

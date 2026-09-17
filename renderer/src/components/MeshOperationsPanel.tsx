@@ -1505,8 +1505,8 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                                   onClick={() => onChangeBooleanStrategy(strategy.id as MeshBooleanStrategy)}
                                   title={strategy.description}
                                   style={{
-                                    border: `1px solid ${active ? "#2563eb" : enabled ? "#93c5fd" : "#e2e8f0"}`,
-                                    background: active ? "#dbeafe" : enabled ? "#fff" : "#f8fafc",
+                                    border: `1px solid ${active ? "var(--workspace-control-active-border)" : enabled ? "#93c5fd" : "#e2e8f0"}`,
+                                    background: active ? "var(--workspace-control-active-bg)" : enabled ? "var(--workspace-control-bg)" : "#f8fafc",
                                     color: enabled ? "#0f3557" : "#64748b",
                                     borderRadius: 999,
                                     padding: "2px 7px",
