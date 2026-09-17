@@ -1,6 +1,6 @@
 # Mobile Phase 5 Stability Matrix And Release Checklist
 
-Last updated: September 17, 2026
+Last updated: September 18, 2026
 
 Release foundation update (September 17, 2026): `apps/mobile/android` is now the
 canonical project. Internal and release builds require non-debug signing
@@ -14,7 +14,13 @@ Internal tester evidence (September 17, 2026): commit
 `apksigner` verified the internal certificate; Android 16 emulator installation,
 Home launch, Catenoid gallery open, and touch orbit succeeded. The local tester
 archive is `artifacts/mobile/Math3D-mobile-1.5.0-internal-b93e9b8.zip`.
-Physical-device and production-release-signing validation remain pending.
+
+Physical-device P0 smoke (September 18, 2026): the same APK hash installed with
+ADB on a Samsung `SM-A566B` running Android 16. It launched, displayed a native
+3D surface in Viewer, and remained running. The user confirmed the tabs work.
+The app process had no fatal crash in the inspected logs. The user accepted this
+as the internal tester install path for now. USB-free relaunch, remote compute,
+repeated physical-device tests, and production release signing remain pending.
 
 ## 1. Scope
 This checklist is the Phase 5 gate for `apps/mobile` before external release.
@@ -26,6 +32,7 @@ This checklist is the Phase 5 gate for `apps/mobile` before external release.
 | Android | Mid-range physical (primary) | Android 16 | Release APK | Pending |
 | Android | Emulator sanity | API 36 | Debug/Release | Pending |
 | Android | Emulator P0 smoke | API 36 | Signed internal APK | Passed once on September 17, 2026; repeat matrix pending |
+| Android | Samsung `SM-A566B` physical P0 smoke | Android 16 | Signed internal APK | Install, launch, tabs, and native surface passed once on September 18, 2026; repeat matrix pending |
 | iOS | Current iPhone physical | iOS latest supported by SDK 54 | Release | Pending |
 | iOS | Simulator sanity | iOS latest supported by SDK 54 | Debug/Release | Pending |
 

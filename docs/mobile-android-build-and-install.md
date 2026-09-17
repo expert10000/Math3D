@@ -168,8 +168,13 @@ of Home and the 3D viewer. It contains **no signing credentials**.
 | Result | Install, launch, Home, Gallery > Catenoid, native GL viewer, touch orbit passed; no filtered fatal JS/Android errors |
 
 The archive and screenshots are local ignored artifacts, not checked into Git.
-The repository checklist records this P0 smoke result. A physical-device matrix
-and a production-key signed release AAB remain separate release-readiness gates.
+The repository checklist records this P0 smoke result. On September 18, 2026,
+the same APK hash also installed and launched on a Samsung `SM-A566B` running
+Android 16. Its tabs and native surface viewer worked, and no app fatal crash
+appeared in the inspected logs. The user accepted this internal tester install
+path for now. USB was used for installation and diagnostics; a relaunch after
+unplugging has not yet been observed. The repeated physical-device matrix and a
+production-key signed release AAB remain separate release-readiness gates.
 
 ## Next release gates
 
