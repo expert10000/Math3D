@@ -85,7 +85,7 @@ The target outcomes are:
 | C01-C12 | Complex Analysis MVP/v1 vertical migration and gate | Complete |
 | A1-G3 | Original architecture proposal labels | Historical traceability only |
 | G01-G08 | Cross-module milestone groups | Planned/in progress through GK commits |
-| GK01-GK20 | Executable post-C12 integration commits | GK01-GK19 complete; GK20 planned |
+| GK01-GK20 | Executable post-C12 integration commits | GK01-GK20 complete with documented runtime/compatibility exceptions |
 
 There is one canonical sequential plan. Historical labels may explain intent, but
 they cannot reopen completed work or create duplicate infrastructure. Completion
@@ -850,6 +850,15 @@ conformance pass on every supported runtime.
 
 #### GK20 — `refactor(kernel): remove redundant lifecycle paths and freeze architecture`
 
+**Completion evidence (2026-09-17).** CI enforces core/kernel/renderer/mobile
+dependency directions. The 58-test persistence/contract gate, TypeScript checks,
+build, and Electron mixed save/reopen/replay/lineage tests pass. The version-1
+extension and security rules, lifecycle owner matrix, and compatibility-removal
+gates are in `docs/application-kernel-architecture-and-extension.md`. Audit found
+no entire module-local adapter safe to remove; compatibility and feature-specific
+worker coordinators are retained with owners and explicit parity gates. GK19's
+physical-mobile, Sage, and remote-service limits remain declared, not waived.
+
 **Scope.** After GK03-GK19 gates, remove only lifecycle implementations proven
 redundant. Freeze versioned shared contracts, enable dependency-direction checks in
 CI, document remaining adapters with owners/removal criteria, and publish the final
@@ -1006,10 +1015,11 @@ The combined roadmap is approved. Execute it as follows:
    `docs/math3d-topology-complex-kernel-program-roadmap.md` without reopening it.
 2. Treat A1-G3 and the earlier G01-G08 table as historical requirements mapped by
    Section 6, not as parallel execution sequences.
-3. GK01-GK19 are complete. The GK18 dependency-local strategy is opt-in and
+3. GK01-GK20 are complete. The GK18 dependency-local strategy is opt-in and
    limited to the proved document-relation closure; full invalidation remains
    the default oracle and all unproved element-level strategies remain global.
    GK19 covers shipped browser/desktop UI and shared mobile/worker capability
    adapters with the release-environment limits recorded in its evidence note.
-4. Run GK20 dependency, legacy-readability, and mixed-workspace gates before
-   freezing extension rules or removing any proven-redundant lifecycle path.
+4. Keep the GK20 dependency and replay gates in CI. Remove a retained legacy
+   path only after its documented parity gate passes; physical-mobile and
+   installed-Sage checks remain release-environment follow-ups.

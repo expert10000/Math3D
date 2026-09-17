@@ -123,6 +123,9 @@ jobs:
       - name: Run TypeScript noEmit checks
         run: npm run typecheck:noemit
 
+      - name: Enforce application-kernel dependency directions
+        run: npm run check:kernel:boundaries
+
       - name: Install Python dependencies for worker freeze
         shell: pwsh
         run: |

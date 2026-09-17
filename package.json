@@ -154,6 +154,7 @@
     "test:kernel:gk19:web": "playwright test --config playwright.web.config.ts --reporter=list",
     "test:kernel:gk19:optional-backends": "npm run verify:mesh-analyze:v1:backends",
     "check:kernel:boundaries": "depcruise --config analysis/dependency/dependency-cruiser.cjs packages renderer src apps --output-type err-long",
+    "test:kernel:gk20": "npm run check:kernel:boundaries && npm --prefix renderer test -- src/core/mixedWorkspace.test.ts src/kernel/mixedWorkspaceReplay.test.ts src/geometry/geometryDocumentAdapter.test.ts src/mesh/meshDocumentAdapter.test.ts src/surfaceAnalysis/persistence.test.ts src/curveAnalysis/persistence.test.ts src/volume/persistence.test.ts src/topology/topologyPersistence.test.ts src/math/complexPersistence.test.ts src/core/documentRelations.test.ts src/selection/unifiedSelection.test.ts && npm run typecheck:noemit && npm run build:core && playwright test tests/e2e/kernel-workspace.spec.ts --reporter=list",
     "bench:kernel:gk18": "npm --prefix renderer run bench:gk18",
     "analyze:deps:prepare": "node -e \"const fs=require('node:fs');['analysis/dependency/arkit','analysis/dependency/dependency-cruiser'].forEach((d)=>fs.mkdirSync(d,{recursive:true}));\"",
     "analyze:deps:depcruise:err": "npm run analyze:deps:prepare && depcruise --config analysis/dependency/dependency-cruiser.cjs apps packages renderer src scripts --output-type err-long > analysis/dependency/dependency-cruiser/report.err.txt",
