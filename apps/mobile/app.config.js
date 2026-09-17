@@ -1,0 +1,22 @@
+const identity = require("./version.json");
+
+module.exports = {
+  expo: {
+    name: "Math3D Mobile",
+    slug: "math3d-mobile",
+    version: identity.version,
+    entryPoint: "./index.js",
+    orientation: "portrait",
+    userInterfaceStyle: "light",
+    assetBundlePatterns: ["**/*"],
+    android: {
+      package: identity.applicationId,
+      versionCode: identity.build,
+    },
+    ios: {
+      bundleIdentifier: identity.applicationId,
+      buildNumber: String(identity.build),
+    },
+    newArchEnabled: false,
+  },
+};

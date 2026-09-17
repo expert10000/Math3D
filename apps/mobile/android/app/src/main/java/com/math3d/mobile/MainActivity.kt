@@ -1,4 +1,4 @@
-package com.anonymous.math3dmobile
+package com.math3d.mobile
 
 import android.os.Build
 import android.os.Bundle

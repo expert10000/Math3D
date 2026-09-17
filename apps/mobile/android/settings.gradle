@@ -26,7 +26,11 @@ extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
   if (System.getenv('EXPO_USE_COMMUNITY_AUTOLINKING') == '1') {
     ex.autolinkLibrariesFromCommand()
   } else {
-    ex.autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)
+    ex.autolinkLibrariesFromCommand(
+      expoAutolinking.rnConfigCommand,
+      file(".."),
+      files("../yarn.lock", "../package-lock.json", "../package.json", "../react-native.config.js", "app/build.gradle", "../version.json")
+    )
   }
 }
 expoAutolinking.useExpoModules()
