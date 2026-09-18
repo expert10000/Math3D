@@ -38,7 +38,7 @@ version, and build number. At this verification point it contains:
 | --- | --- | --- |
 | Application ID | `com.math3d.mobile` | Expo Android/iOS config and Android Gradle |
 | Version | `1.5.0` | Mobile npm package, Expo, Android `versionName`, iOS `CFBundleShortVersionString` on prebuild |
-| Build | `150003` | Android `versionCode`, iOS `CFBundleVersion` on prebuild |
+| Build | `150004` | Android `versionCode`, iOS `CFBundleVersion` on prebuild |
 
 `apps/mobile/app.config.js` supplies the Expo values. Gradle reads
 `version.json` directly. Expo autolinking also needs a literal namespace in
@@ -144,7 +144,7 @@ adb install -r $apk
 ```
 
 `apksigner` should report one signer, and `aapt` should report
-`com.math3d.mobile.internal`, version `1.5.0-internal`, build `150003`.
+`com.math3d.mobile.internal`, version `1.5.0-internal`, build `150004`.
 Testers can also transfer the APK to a phone and open it from a file manager;
 Android may ask them to allow installation from that source. For updates,
 distribute an APK signed by the **same** internal key with a higher build number.
@@ -190,10 +190,11 @@ contents that differ from the tested commit. It runs with:
 npm run mobile:device:signoff:check
 ```
 
-The record currently says `pending` for build `150003`. Keep it pending until
-that APK has been updated or installed on a physical phone, relaunched after
-USB is disconnected, and the seven checks have actually passed. Attach test
-notes or logs to the release review; only commit factual results to the JSON.
+The record is approved for the exact build `150004` internal APK after Samsung
+installation, USB-free relaunch, and the seven focused checks. See the
+[physical evidence](mobile-mob24-physical-evidence.md). This approval does not
+complete the Wi-Fi worker, shared CI signing, production AAB, or wider device
+matrix gates.
 
 The release workflow also needs these GitHub Actions secrets for the **shared
 internal** signing identity:
@@ -220,7 +221,7 @@ The local archive
 signed APK, `build-info.json`, `SHA256SUMS`, tester instructions, and screenshots
 of Home and the 3D viewer from the earlier six-tab UI. It contains **no signing
 credentials**. Its hash identifies build `150001`; the Workspace UI starts at
-build `150003` and has a different hash.
+build `150004` and has a different hash.
 
 | Evidence | Value |
 | --- | --- |
@@ -243,9 +244,9 @@ production-key signed release AAB remain separate release-readiness gates.
 ## Workspace UI build smoke
 
 The current internal APK at `artifacts/mobile/Math3D-mobile-1.5.0-internal.apk`
-is build `150003` from source commit
-`150671d9d09d4ac79cac2f22b89e402d08345d08`. Its SHA-256 is
-`89ea4c9e4885ec01b131fe4c19cc334258cb3d57f85294c69f84646822d1f28a`.
+is build `150004` from source commit
+`2ed879a534ca1e5c396280484c2d02971857ba48`. Its SHA-256 is
+`b2e798e7a14585b53c3786ee74b175169c3922da0f31e83e6813c448f9eee10b`.
 It uses the same internal signing certificate as build `150001`.
 
 An Android 16 emulator clean install opened the Catenoid scene in Workspace.
@@ -254,8 +255,11 @@ Display/Analyze inspector, upward/downward sheet swipes, 50% object opacity,
 and portrait camera fit were smoke-tested. The app stayed running with no
 filtered fatal Android or React Native JS errors. This was build `150002`;
 on the Samsung its bottom tabs overlapped the three-button system navigation.
-The safe-area correction is in build `150003`, now installed on the Samsung
-with physical navigation and persistence checks still pending.
+The safe-area correction is in build `150003`. It passed connected-device
+navigation and saved-project checks, but a last-viewed Explore example reverted
+to an older project on relaunch. Build `150004` adds session restore and passed
+the emulator regression and the exact-build Samsung checks, including USB-free
+Helicoid restore and Files persistence. Its focused device signoff is approved.
 
 ## Remaining release gates
 

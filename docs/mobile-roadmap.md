@@ -16,7 +16,7 @@ The intended navigation is **Home | Explore | Workspace | Projects | Settings**,
 
 ## Current-to-target corrections
 
-| Current in build `150003` | Target | Reason / boundary |
+| Current in build `150004` | Target | Reason / boundary |
 | --- | --- | --- |
 | Analyze shows preview, cache, and errors | **Compute** | Reserve Analyze for geometry, topology, mesh metrics, and overlays. |
 | Files | **Projects** | These are serialized MATH3D scenes, not arbitrary files. |
@@ -32,7 +32,7 @@ The intended navigation is **Home | Explore | Workspace | Projects | Settings**,
 
 | Phase | Goal | Deliverable and exit evidence |
 | --- | --- | --- |
-| **M0 — beta baseline (P0)** | Freeze build `150003` | Build `150002` failed Samsung navigation signoff because its bottom tabs overlapped the Android system bar. On Samsung `SM-A566B`, test the **exact** `150003` internal APK identified by commit, SHA-256, app ID, build number, and signing certificate. Record launch, Explore, Workspace interaction, project save, kill, USB unplug, relaunch/restore, Wi-Fi worker check, background/resume, and fatal-log review in [device signoff](mobile-device-signoff.json). Establish shared internal signing; verify a separately production-signed AAB. The record remains **pending**. Do not mark an artifact approved merely because emulator CI passed. |
+| **M0 — beta baseline (P0)** | Freeze build `150004` | Build `150002` failed Samsung navigation signoff because its bottom tabs overlapped the Android system bar; `150003` revealed that an unsaved Explore scene did not restore. The **exact** `150004` internal APK is identified by commit, SHA-256, app ID, build number, and signing certificate. Samsung launch, Explore, Workspace, project save/reopen, USB-free relaunch, and fatal-log checks passed; its focused [device signoff](mobile-device-signoff.json) is **approved**. Wi-Fi worker access, the repeated stability matrix, shared CI internal signing, and a separately production-signed AAB remain to complete M0. |
 | **M1 — structure and semantics (P1)** | Make the current app safe to extend | Split `MobileApp.tsx` into navigation, screens, workspace inspectors, viewer, services, and persistent state with behavior preserved. Rename Analyze→Compute and Display→View; move camera actions to viewport; remove misleading implicit proxy. Typecheck, navigation smoke, and offline/implicit-state checks pass. |
 | **M2 — Projects (P1)** | Trustworthy offline project library | Rename, duplicate, reversible delete, real scene thumbnails, import/export/share. Before expanding import/export, add atomic save (temp file then rename), schema validation/migration, corrupt-project and storage-full recovery, and backup copy. Project cards show a rendered thumbnail, object count, and update time. Save/restore and failure recovery pass on device. |
 | **M3 — compute platform (P1)** | Reachable, capability-driven worker jobs | Default to unconfigured backend; add desktop-to-phone QR pairing with temporary token and manual Advanced URL. Negotiate protocol/server versions and named capabilities before exposing actions. Submit jobs with operation, parameters, input hash, and engine identity; persist job IDs; support progress, cancel, retry, resume, diagnostics, and cache provenance. Test network loss and app background/restore. |
@@ -70,7 +70,7 @@ The IDs below are planning labels, not claims of implementation. Each commit sho
 
 | ID / phase | Planned commit |
 | --- | --- |
-| MOB24 / M0 | `test(mobile): freeze build 150003 physical-device baseline` |
+| MOB24 / M0 | `test(mobile): freeze build 150004 physical-device baseline` |
 | MOB25 / M0 | `build(mobile): establish shared internal and production signing paths` |
 | MOB26 / M1 | `refactor(mobile): split monolithic app into screen and workspace modules` |
 | MOB27 / M1 | `refactor(mobile): establish explicit navigation and workspace state boundaries` |

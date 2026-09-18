@@ -2,16 +2,19 @@
 
 Last updated: September 18, 2026
 
-MOB24 physical-device update (September 18, 2026): build `150002` installed on
-Samsung `SM-A566B`, but its bottom tabs were obscured by the phone's three-button
-system navigation bar. It is **not** the approved baseline. Safe-area handling
-was corrected in commit `150671d9d09d4ac79cac2f22b89e402d08345d08` and
-internal build `150003` was installed on the Samsung. Its APK SHA-256 is
-`89ea4c9e4885ec01b131fe4c19cc334258cb3d57f85294c69f84646822d1f28a`;
-the internal signing certificate remains
+MOB24 physical-device update (September 18, 2026): build `150002` failed
+Samsung `SM-A566B` navigation because its bottom tabs overlapped the system
+bar. Build `150003` corrected the safe area but reopened an older project when
+an unsaved Explore example was the last view. Commit
+`2ed879a534ca1e5c396280484c2d02971857ba48` preserves the last viewed
+scene; internal build `150004` has APK SHA-256
+`b2e798e7a14585b53c3786ee74b175169c3922da0f31e83e6813c448f9eee10b`
+and signing certificate
 `39ab9388fa174bf9c1973577dab4ee33eedbacb9b231c9b79068e5143480fc82`.
-Navigation, persistence, USB-free relaunch, and log review still need `150003`
-evidence before [device signoff](mobile-device-signoff.json) can be approved.
+The emulator restart regression, USB-free Samsung Helicoid restore, Files
+persistence, and final fatal-log review passed. The focused exact-build
+[device signoff](mobile-device-signoff.json) is approved; wider release work
+below remains pending.
 
 Release foundation update (September 17, 2026): `apps/mobile/android` is now the
 canonical project. Internal and release builds require non-debug signing
@@ -30,23 +33,25 @@ Physical-device P0 smoke (September 18, 2026): the same APK hash installed with
 ADB on a Samsung `SM-A566B` running Android 16. It launched, displayed a native
 3D surface in Viewer, and remained running. The user confirmed the tabs work.
 The app process had no fatal crash in the inspected logs. The user accepted this
-as the internal tester install path for now. USB-free relaunch, remote compute,
-repeated physical-device tests, and production release signing remain pending.
+as the internal tester install path at that point. The later `150004` device
+signoff covers USB-free relaunch; remote compute, repeated physical-device
+tests, and production release signing remain pending.
 
 Workspace UI emulator smoke (September 18, 2026): build `150002` from commit
 `e2ed838c7461ddf0edcc85438611289f2517b435` (APK SHA-256
 `7484f071c9cb1eea0a5f342c580bdf227bfd91df12576fd554a6e27c2042ea02`)
 clean-installed on Android 16. Catenoid loaded in Workspace, inspector swipes
 opened/closed the sheet, 50% opacity updated, and no app fatal crash appeared
-in filtered logs. This UX build still needs physical-device validation.
+in filtered logs. The later Samsung test found its bottom navigation overlapped
+the phone's system bar; this build failed physical-device signoff.
 
 CI gate (September 18, 2026): `.github/workflows/mobile-android.yml` now runs
 mobile version/typecheck, an internal APK build, checksum and signature checks,
 and a focused Android 16 emulator smoke, then captures the APK and evidence.
 The desktop release workflow waits for this gate. A tagged release additionally
 requires an approved `docs/mobile-device-signoff.json` record for the tested
-mobile source and signing certificate. The record is pending for build `150003`;
-the local emulator pass does not count as physical-device signoff. Shared CI
+mobile source and signing certificate. The Samsung record is approved for build
+`150004`; the local emulator pass alone does not count as physical-device signoff. Shared CI
 internal signing secrets and the production AAB signing key also remain pending.
 
 ## 1. Scope
@@ -61,7 +66,7 @@ This checklist is the Phase 5 gate for `apps/mobile` before external release.
 | Android | Emulator P0 smoke | API 36 | Signed internal APK | Passed once on September 17, 2026; repeat matrix pending |
 | Android | Emulator Workspace UI smoke | API 36 | Signed internal APK, build `150002` | Clean install, native Catenoid, inspector gesture and opacity passed once on September 18, 2026 |
 | Android | Samsung `SM-A566B` physical P0 smoke | Android 16 | Signed internal APK | Install, launch, tabs, and native surface passed once on September 18, 2026; repeat matrix pending |
-| Android | Samsung `SM-A566B` MOB24 candidate | Android 16 | Signed internal APK, build `150003` | Connected-device navigation, viewer, inspector, save/restart/Files, and log smoke passed; USB-free restore under investigation |
+| Android | Samsung `SM-A566B` MOB24 candidate | Android 16 | Signed internal APK, build `150004` | Focused device signoff approved: USB-free Helicoid restore, Files save/reopen across restart, navigation, inspector, fatal-log review; full matrix pending |
 | iOS | Current iPhone physical | iOS latest supported by SDK 54 | Release | Pending |
 | iOS | Simulator sanity | iOS latest supported by SDK 54 | Debug/Release | Pending |
 
@@ -106,7 +111,7 @@ Run each row 10 times unless stated otherwise.
 ## 7. Release Checklist
 - [x] Lock mobile dependency versions used in final QA build.
 - [x] Capture final tested commit SHA and build artifact hashes.
-- [ ] Approve the build `150003` physical-device record after USB-free relaunch,
+- [x] Approve the build `150004` physical-device record after USB-free relaunch,
   Workspace, Explore, inspector, Files persistence, and crash-log checks.
 - [ ] Archive logcat/iOS crash logs from full matrix run.
 - [x] Update `docs/mobile-migration-implementation-plan.md` status notes.

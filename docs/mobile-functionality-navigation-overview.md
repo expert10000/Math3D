@@ -1,6 +1,6 @@
 # Math3D mobile: functionality and navigation overview
 
-Snapshot: September 18, 2026, Android build `150003` (`1.5.0`). This is the current implementation inventory for planning the next mobile roadmap. Build `150003` corrects the Android bottom safe area without changing the listed features. The app is an Expo/React Native companion viewer in `apps/mobile`; the canonical Android project is `apps/mobile/android`.
+Snapshot: September 18, 2026, Android build `150004` (`1.5.0`). This is the current implementation inventory for planning the next mobile roadmap. Build `150003` corrected the Android bottom safe area, and `150004` restores the last viewed Explore scene after restart without adding it to Files. The app is an Expo/React Native companion viewer in `apps/mobile`; the canonical Android project is `apps/mobile/android`.
 
 ## Navigation at a glance
 
@@ -61,11 +61,11 @@ The default worker URL is `http://127.0.0.1:8787/api/worker`. On a standalone ph
 
 - The [Android CI gate](../.github/workflows/mobile-android.yml) passed on source commit `f34fa0ee4457b62c5214f639e0087130df748138`: mobile version/typecheck, internal APK build, signature/hash checks, clean emulator install, Workspace launch, inspector swipe/opacity, five-destination navigation, Explore sections, and fatal-log check. The [run and artifact](https://github.com/expert10000/Math3D/actions/runs/35362388071) contain the APK, metadata, screenshot, and smoke result. CI APK SHA-256: `25e6478d5c4f65640968d38c0a384dea72a40cded8ac5d7fddf0500ea2022189`.
 - The CI APK uses a disposable key. It cannot update an install signed with the shared internal tester key.
-- Samsung `SM-A566B` passed a basic physical smoke on older build `150001`. Build `150002` then exposed bottom navigation overlap with the Samsung system bar and was not approved. Build `150003` fixes the safe area; connected-device navigation, viewer, inspector, Files, restart, and filtered-log checks passed. USB-free restore is under investigation and [device signoff](mobile-device-signoff.json) remains pending. Production AAB signing and the broader Android/iOS matrix also remain pending; see the [MOB24 evidence](mobile-mob24-physical-evidence.md), [build/install guide](mobile-android-build-and-install.md), and [Phase 5 checklist](mobile-phase5-stability-checklist.md).
+- Samsung `SM-A566B` passed a basic physical smoke on older build `150001`. Build `150002` exposed bottom navigation overlap; build `150003` fixed the safe area but failed unsaved Explore scene restore. Build `150004` passed the emulator restart regression and exact-build Samsung checks, including USB-free Helicoid restore and Files persistence. Its focused [device signoff](mobile-device-signoff.json) is approved. Wi-Fi worker access, production AAB signing, and the broader Android/iOS matrix remain pending; see the [MOB24 evidence](mobile-mob24-physical-evidence.md), [build/install guide](mobile-android-build-and-install.md), and [Phase 5 checklist](mobile-phase5-stability-checklist.md).
 
 ## Roadmap starting points
 
-The [current mobile roadmap](mobile-roadmap.md) integrates this inventory into a product direction: **offline-capable companion viewer + network-backed compute client + lightweight scene editing**. Its M0–M8 phases and MOB24–MOB54 commit sequence distinguish planned work from the implemented build `150003`.
+The [current mobile roadmap](mobile-roadmap.md) integrates this inventory into a product direction: **offline-capable companion viewer + network-backed compute client + lightweight scene editing**. Its M0–M8 phases and MOB24–MOB54 commit sequence distinguish planned work from the implemented build `150004`.
 
 The immediate gate is exact-artifact Samsung signoff and signing (M0). Then split `MobileApp.tsx`, correct the Analyze/Compute and Display/View terminology, and remove the implicit proxy geometry (M1). Projects, worker jobs, multi-object Workspace, mathematical Analyze, shared Examples/Learn, small authoring, and platform hardening follow with their acceptance criteria in the roadmap.
 
