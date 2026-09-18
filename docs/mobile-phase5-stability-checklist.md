@@ -12,9 +12,12 @@ scene; internal build `150004` has APK SHA-256
 and signing certificate
 `39ab9388fa174bf9c1973577dab4ee33eedbacb9b231c9b79068e5143480fc82`.
 The emulator restart regression, USB-free Samsung Helicoid restore, Files
-persistence, and final fatal-log review passed. The focused exact-build
-[device signoff](mobile-device-signoff.json) is approved; wider release work
-below remains pending.
+persistence, and final fatal-log review passed for `150004`. Its focused
+exact-build device signoff was approved. Current internal build `150006`
+adds phone-to-worker Wi-Fi support: ten repeated Samsung cycles, live implicit
+preview, Files persistence, and shared-key CI passed. Its owner-observed
+USB-free [device signoff](mobile-device-signoff.json) remains pending; see
+the [current matrix evidence](mobile-150006-release-matrix.md).
 
 Release foundation update (September 17, 2026): `apps/mobile/android` is now the
 canonical project. Internal and release builds require non-debug signing
@@ -34,8 +37,8 @@ ADB on a Samsung `SM-A566B` running Android 16. It launched, displayed a native
 3D surface in Viewer, and remained running. The user confirmed the tabs work.
 The app process had no fatal crash in the inspected logs. The user accepted this
 as the internal tester install path at that point. The later `150004` device
-signoff covers USB-free relaunch; remote compute, repeated physical-device
-tests, and production release signing remain pending.
+signoff covered USB-free relaunch; later `150006` covered phone-to-worker Wi-Fi
+and a ten-cycle subset. Remaining matrix rows and production signing are pending.
 
 Workspace UI emulator smoke (September 18, 2026): build `150002` from commit
 `e2ed838c7461ddf0edcc85438611289f2517b435` (APK SHA-256
@@ -51,8 +54,9 @@ and a focused Android 16 emulator smoke, then captures the APK and evidence.
 The desktop release workflow waits for this gate. A tagged release additionally
 requires an approved `docs/mobile-device-signoff.json` record for the tested
 mobile source and signing certificate. The Samsung record is approved for build
-`150004`; the local emulator pass alone does not count as physical-device signoff. Shared CI
-internal signing secrets and the production AAB signing key also remain pending.
+`150004`; the local emulator pass alone does not count as physical-device signoff.
+For `150006`, shared CI internal signing and its certificate comparison pass.
+The production AAB signing identity still needs confirmation.
 
 ## 1. Scope
 This checklist is the Phase 5 gate for `apps/mobile` before external release.
@@ -67,6 +71,7 @@ This checklist is the Phase 5 gate for `apps/mobile` before external release.
 | Android | Emulator Workspace UI smoke | API 36 | Signed internal APK, build `150002` | Clean install, native Catenoid, inspector gesture and opacity passed once on September 18, 2026 |
 | Android | Samsung `SM-A566B` physical P0 smoke | Android 16 | Signed internal APK | Install, launch, tabs, and native surface passed once on September 18, 2026; repeat matrix pending |
 | Android | Samsung `SM-A566B` MOB24 candidate | Android 16 | Signed internal APK, build `150004` | Focused device signoff approved: USB-free Helicoid restore, Files save/reopen across restart, navigation, inspector, fatal-log review; full matrix pending |
+| Android | Samsung `SM-A566B` network candidate | Android 16 | Signed internal APK, build `150006` | 10/10 repeated launch/Gallery/orbit/quality/health/background cycles, implicit preview, Files persistence; USB-free owner check pending |
 | iOS | Current iPhone physical | iOS latest supported by SDK 54 | Release | Pending |
 | iOS | Simulator sanity | iOS latest supported by SDK 54 | Debug/Release | Pending |
 
@@ -75,15 +80,15 @@ Run each row 10 times unless stated otherwise.
 
 | Test Case | Android | iOS | Pass Criteria |
 | --- | --- | --- | --- |
-| Cold launch -> Workspace and Catenoid visible | Pending | Pending | No crash, app interactive in < 3s on test hardware |
-| Explore -> Gallery -> Catenoid -> Workspace | Pending | Pending | GL viewer renders surface, no fallback unless explicitly enabled |
+| Cold launch -> Workspace and Catenoid visible | Samsung `150006`: 10/10 visible; first interactive frame timing pending | Pending | No crash, app interactive in < 3s on test hardware |
+| Explore -> Gallery -> Catenoid -> Workspace | Samsung `150006`: 10/10; final screenshot rendered | Pending | GL viewer renders surface, no fallback unless explicitly enabled |
 | Orbit/pan/zoom for 30 seconds | Pending | Pending | No frame stall > 2s, no crash |
-| Open implicit preset -> preview mesh generation | Pending | Pending | Preview completes or actionable error with retry |
-| Background app for 30 seconds -> resume | Pending | Pending | Viewer recovers, no black screen/crash |
-| Kill app -> relaunch -> reopen recent scene | Pending | Pending | Scene list and open flow preserved |
-| Toggle quality presets (`performance`, `balanced`, `sharp`) | Pending | Pending | Mesh refreshes, no crash |
-| Backend URL health check with valid endpoint | Pending | Pending | Health = ok |
-| Backend URL health check with invalid endpoint | Pending | Pending | Health = error with clear message |
+| Open implicit preset -> preview mesh generation | Samsung `150006`: 1/10 remote previews ready; repeat pending | Pending | Preview completes or actionable error with retry |
+| Background app for 30 seconds -> resume | Samsung `150006`: 10/10 | Pending | Viewer recovers, no black screen/crash |
+| Kill app -> relaunch -> reopen recent scene | Samsung `150006`: 10/10 Catenoid; Files save/reopen checked once | Pending | Scene list and open flow preserved |
+| Toggle quality presets (`performance`, `balanced`, `sharp`) | Samsung `150006`: 10/10 taps with app alive; visual refresh timing pending | Pending | Mesh refreshes, no crash |
+| Backend URL health check with valid endpoint | Samsung `150006`: 10/10 warmed checks, plus initial health | Pending | Health = ok |
+| Backend URL health check with invalid endpoint | Samsung `150006`: 1/10 with actionable message; repeat pending | Pending | Health = error with clear message |
 
 ## 4. Performance Budgets
 
@@ -111,8 +116,9 @@ Run each row 10 times unless stated otherwise.
 ## 7. Release Checklist
 - [x] Lock mobile dependency versions used in final QA build.
 - [x] Capture final tested commit SHA and build artifact hashes.
-- [x] Approve the build `150004` physical-device record after USB-free relaunch,
+- [x] Approve the historical build `150004` physical-device record after USB-free relaunch,
   Workspace, Explore, inspector, Files persistence, and crash-log checks.
+- [ ] Approve the exact `150006` record after owner-observed USB-free relaunch and Wi-Fi health.
 - [ ] Archive logcat/iOS crash logs from full matrix run.
 - [x] Update `docs/mobile-migration-implementation-plan.md` status notes.
 - [ ] Sign off from engineering + QA before external distribution.

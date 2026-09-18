@@ -38,7 +38,7 @@ version, and build number. At this verification point it contains:
 | --- | --- | --- |
 | Application ID | `com.math3d.mobile` | Expo Android/iOS config and Android Gradle |
 | Version | `1.5.0` | Mobile npm package, Expo, Android `versionName`, iOS `CFBundleShortVersionString` on prebuild |
-| Build | `150004` | Android `versionCode`, iOS `CFBundleVersion` on prebuild |
+| Build | `150006` | Android `versionCode`, iOS `CFBundleVersion` on prebuild |
 
 `apps/mobile/app.config.js` supplies the Expo values. Gradle reads
 `version.json` directly. Expo autolinking also needs a literal namespace in
@@ -55,6 +55,11 @@ tester artifact. A new Android application ID is a new app to Android: existing
 installs under the old `com.anonymous.math3dmobile` ID cannot update in place.
 Internal builds use `com.math3d.mobile.internal` and can coexist with the main
 app.
+
+The internal Android variant permits HTTP worker URLs for trusted LAN testing.
+The release variant keeps Android's default cleartext restriction and therefore
+needs an HTTPS worker URL for network-backed compute. The [build 150006 matrix](mobile-150006-release-matrix.md)
+records a phone-to-worker Wi-Fi check.
 
 ## Build prerequisites
 
@@ -144,7 +149,7 @@ adb install -r $apk
 ```
 
 `apksigner` should report one signer, and `aapt` should report
-`com.math3d.mobile.internal`, version `1.5.0-internal`, build `150004`.
+`com.math3d.mobile.internal`, version `1.5.0-internal`, build `150006`.
 Testers can also transfer the APK to a phone and open it from a file manager;
 Android may ask them to allow installation from that source. For updates,
 distribute an APK signed by the **same** internal key with a higher build number.
@@ -190,11 +195,11 @@ contents that differ from the tested commit. It runs with:
 npm run mobile:device:signoff:check
 ```
 
-The record is approved for the exact build `150004` internal APK after Samsung
-installation, USB-free relaunch, and the seven focused checks. See the
-[physical evidence](mobile-mob24-physical-evidence.md). This approval does not
-complete the Wi-Fi worker, shared CI signing, production AAB, or wider device
-matrix gates.
+Build `150004` has a historical approved Samsung record, but the current
+`150006` APK has a different hash. Its [device signoff](mobile-device-signoff.json)
+is pending owner-observed USB-free relaunch and Wi-Fi health. The
+[current matrix evidence](mobile-150006-release-matrix.md) records the checks
+already complete. No previous APK approval transfers to a new build.
 
 The release workflow also needs these GitHub Actions secrets for the **shared
 internal** signing identity:
@@ -207,12 +212,12 @@ internal** signing identity:
 | `MATH3D_ANDROID_INTERNAL_KEY_PASSWORD` | Key password from that backup |
 
 Base64 is a transport encoding, not protection; store the encoded keystore as
-a secret. The workflow compares the built APK certificate with the physical
-device record, so a new disposable key cannot silently replace the tested
-signing identity. The CI artifact is a fresh validation build and may have a
-different APK hash; distribute the exact APK identified by the signoff hash to
-testers. These gates do not create the production release AAB. That still
-requires the separately held `RELEASE` keystore and production-signing review.
+a secret. All four repository secrets are now configured from the existing
+internal key. The [shared-signing CI run](https://github.com/expert10000/Math3D/actions/runs/35397425202)
+passed certificate comparison and emulator smoke for `150006`. Its APK hash
+differs from the local Samsung-tested APK, so distribute the exact APK
+identified by device signoff. The production AAB still requires a separate
+`RELEASE` keystore and signing review.
 
 ## Verified tester archive
 
@@ -221,7 +226,7 @@ The local archive
 signed APK, `build-info.json`, `SHA256SUMS`, tester instructions, and screenshots
 of Home and the 3D viewer from the earlier six-tab UI. It contains **no signing
 credentials**. Its hash identifies build `150001`; the Workspace UI starts at
-build `150004` and has a different hash.
+build `150006` and has a different hash.
 
 | Evidence | Value |
 | --- | --- |
@@ -244,9 +249,9 @@ production-key signed release AAB remain separate release-readiness gates.
 ## Workspace UI build smoke
 
 The current internal APK at `artifacts/mobile/Math3D-mobile-1.5.0-internal.apk`
-is build `150004` from source commit
-`2ed879a534ca1e5c396280484c2d02971857ba48`. Its SHA-256 is
-`b2e798e7a14585b53c3786ee74b175169c3922da0f31e83e6813c448f9eee10b`.
+is build `150006` from source commit
+`e36ec7ba90b8da2b3e53b4cdbf6c5df6cab5eb1c`. Its SHA-256 is
+`9d1a002d677a32a6ea75b84d018b4c632eccafb15ff9c3d0c9ff7799bc8d0227`.
 It uses the same internal signing certificate as build `150001`.
 
 An Android 16 emulator clean install opened the Catenoid scene in Workspace.
@@ -257,14 +262,16 @@ filtered fatal Android or React Native JS errors. This was build `150002`;
 on the Samsung its bottom tabs overlapped the three-button system navigation.
 The safe-area correction is in build `150003`. It passed connected-device
 navigation and saved-project checks, but a last-viewed Explore example reverted
-to an older project on relaunch. Build `150004` adds session restore and passed
-the emulator regression and the exact-build Samsung checks, including USB-free
-Helicoid restore and Files persistence. Its focused device signoff is approved.
+to an older project on relaunch. Build `150004` added session restore and
+passed its exact-build Samsung signoff. Build `150006` adds the internal LAN
+worker path and clearer connection errors. Its emulator and repeated Samsung
+checks pass; owner-observed USB-free `150006` signoff remains pending.
 
 ## Remaining release gates
 
 1. Back up the internal keystore and `internal.json` together in secure team
-   storage, and establish who owns future internal updates.
+   storage, and establish who owns future internal updates. The CI secrets are
+   configured but are not a recoverable backup.
 2. Have the release owner supply the production keystore and four `RELEASE`
    variables outside Git, then build and verify the release AAB.
 3. Run the repeated Android physical-device matrix and record crashes,

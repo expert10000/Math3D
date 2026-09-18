@@ -1,6 +1,6 @@
 # Math3D mobile: functionality and navigation overview
 
-Snapshot: September 18, 2026, Android build `150004` (`1.5.0`). This is the current implementation inventory for planning the next mobile roadmap. Build `150003` corrected the Android bottom safe area, and `150004` restores the last viewed Explore scene after restart without adding it to Files. The app is an Expo/React Native companion viewer in `apps/mobile`; the canonical Android project is `apps/mobile/android`.
+Snapshot: September 18, 2026, Android build `150006` (`1.5.0`). This is the current implementation inventory for planning the next mobile roadmap. Build `150003` corrected the Android bottom safe area, `150004` restored the last viewed Explore scene, and `150006` enables worker HTTP on the internal Android variant with clearer connection errors. The app is an Expo/React Native companion viewer in `apps/mobile`; the canonical Android project is `apps/mobile/android`.
 
 ## Navigation at a glance
 
@@ -48,7 +48,7 @@ On a compact screen, lower Object controls require scrolling inside the inspecto
 | **Local persistence** | Scene projects use the shared `math3d.scene-project` serializer in the app document directory. Settings save the worker URL, resolution cap, last scene/object, camera orbit, GL state, and selected diagnostics. Mesh previews have a bounded local cache. |
 | **App lifecycle** | Rendering pauses when backgrounded; the last scene and camera state are restored. Android GL has a fallback/recovery path. |
 
-The default worker URL is `http://127.0.0.1:8787/api/worker`. On a standalone phone, `127.0.0.1` is the phone itself. A real worker needs a URL reachable from the phone's network; USB is not required for the installed APK to run.
+The default worker URL is `http://127.0.0.1:8787/api/worker`. On a standalone phone, `127.0.0.1` is the phone itself. A real worker needs a URL reachable from the phone's network; USB is not required for the installed APK to run. Internal Android build `150006` permits HTTP to a trusted LAN worker; a production build requires HTTPS.
 
 ## Main user flows today
 
@@ -60,12 +60,12 @@ The default worker URL is `http://127.0.0.1:8787/api/worker`. On a standalone ph
 ## Verified state and release limits
 
 - The [Android CI gate](../.github/workflows/mobile-android.yml) passed on source commit `f34fa0ee4457b62c5214f639e0087130df748138`: mobile version/typecheck, internal APK build, signature/hash checks, clean emulator install, Workspace launch, inspector swipe/opacity, five-destination navigation, Explore sections, and fatal-log check. The [run and artifact](https://github.com/expert10000/Math3D/actions/runs/35362388071) contain the APK, metadata, screenshot, and smoke result. CI APK SHA-256: `25e6478d5c4f65640968d38c0a384dea72a40cded8ac5d7fddf0500ea2022189`.
-- The CI APK uses a disposable key. It cannot update an install signed with the shared internal tester key.
-- Samsung `SM-A566B` passed a basic physical smoke on older build `150001`. Build `150002` exposed bottom navigation overlap; build `150003` fixed the safe area but failed unsaved Explore scene restore. Build `150004` passed the emulator restart regression and exact-build Samsung checks, including USB-free Helicoid restore and Files persistence. Its focused [device signoff](mobile-device-signoff.json) is approved. Wi-Fi worker access, production AAB signing, and the broader Android/iOS matrix remain pending; see the [MOB24 evidence](mobile-mob24-physical-evidence.md), [build/install guide](mobile-android-build-and-install.md), and [Phase 5 checklist](mobile-phase5-stability-checklist.md).
+- Normal CI uses a disposable signing key. An on-demand [shared-key CI run](https://github.com/expert10000/Math3D/actions/runs/35397425202) passed for `150006` with the Samsung-tested signing certificate; its APK has its own hash.
+- Samsung `SM-A566B` passed basic physical smoke on older builds. Build `150002` exposed bottom navigation overlap; build `150003` fixed the safe area but failed unsaved Explore scene restore. Build `150004` passed focused exact-build signoff, including USB-free restore. Build `150006` passed ten repeated Samsung launch/Gallery/orbit/quality/worker-health/background cycles, exact-build Files persistence, and an implicit preview over Wi-Fi. Owner-observed USB-free `150006` signoff, production AAB signing, and the remaining Android/iOS matrix rows are pending; see the [current evidence](mobile-150006-release-matrix.md), [MOB24 history](mobile-mob24-physical-evidence.md), [build/install guide](mobile-android-build-and-install.md), and [Phase 5 checklist](mobile-phase5-stability-checklist.md).
 
 ## Roadmap starting points
 
-The [current mobile roadmap](mobile-roadmap.md) integrates this inventory into a product direction: **offline-capable companion viewer + network-backed compute client + lightweight scene editing**. Its M0–M8 phases and MOB24–MOB54 commit sequence distinguish planned work from the implemented build `150004`.
+The [current mobile roadmap](mobile-roadmap.md) integrates this inventory into a product direction: **offline-capable companion viewer + network-backed compute client + lightweight scene editing**. Its M0–M8 phases and MOB24–MOB54 commit sequence distinguish planned work from the implemented build `150006`.
 
 The immediate gate is exact-artifact Samsung signoff and signing (M0). Then split `MobileApp.tsx`, correct the Analyze/Compute and Display/View terminology, and remove the implicit proxy geometry (M1). Projects, worker jobs, multi-object Workspace, mathematical Analyze, shared Examples/Learn, small authoring, and platform hardening follow with their acceptance criteria in the roadmap.
 
