@@ -4,7 +4,6 @@ import {
   AppState,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   StatusBar,
@@ -13,6 +12,7 @@ import {
   View,
   type GestureResponderEvent,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { SCENE_PROJECT_VERSION, type SceneDocument, type SurfaceDefinition, type VtkPreviewRequest } from "@math3d/core";
 import Constants from "expo-constants";
 import { MobileSceneViewport, type OrbitState } from "./components/MobileSceneViewport";
@@ -201,7 +201,6 @@ const upsertStoredProject = (
 };
 
 export const MobileApp: React.FC = () => {
-  const androidTopInset = Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 0;
   const [tab, setTab] = useState<MobileTab>("workspace");
   const [exploreSection, setExploreSection] = useState<ExploreSection>("gallery");
   const [inspectorSection, setInspectorSection] = useState<InspectorSection>("object");
@@ -992,7 +991,7 @@ export const MobileApp: React.FC = () => {
   ]);
 
   return (
-    <SafeAreaView style={[styles.root, androidTopInset > 0 ? { paddingTop: androidTopInset } : null]}>
+    <SafeAreaView style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor="#f4f6f8" translucent={false} />
       <View style={styles.header}>
         <View style={styles.headerTop}>
