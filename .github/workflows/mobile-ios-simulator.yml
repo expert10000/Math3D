@@ -53,10 +53,19 @@ jobs:
       - name: Install and launch on iPhone simulator
         shell: bash
         run: |
-          device="$(xcrun simctl list devices available -j | node -e 'let value="";process.stdin.on("data",part=>value+=part).on("end",()=>{const devices=Object.values(JSON.parse(value).devices).flat();const phone=devices.find(item=>item.name.startsWith("iPhone")&&item.isAvailable);if(!phone)process.exit(1);console.log(phone.udid)})')"
+          xcrun simctl list devices available
+          device="$(xcrun simctl list devices available -j | node -e 'let value="";process.stdin.on("data",part=>value+=part).on("end",()=>{const devices=Object.values(JSON.parse(value).devices).flat();const phone=devices.find(item=>item.name.startsWith("iPhone"));if(phone)console.log(phone.udid)})')"
+          if [[ -z "$device" ]]; then
+            runtime="$(xcrun simctl list runtimes available -j | node -e 'let value="";process.stdin.on("data",part=>value+=part).on("end",()=>{const item=JSON.parse(value).runtimes.find(runtime=>runtime.identifier.includes(".iOS-"));if(item)console.log(item.identifier)})')"
+            device_type="$(xcrun simctl list devicetypes -j | node -e 'let value="";process.stdin.on("data",part=>value+=part).on("end",()=>{const item=JSON.parse(value).devicetypes.find(type=>type.name.startsWith("iPhone 16"));if(item)console.log(item.identifier)})')"
+            test -n "$runtime" && test -n "$device_type"
+            device="$(xcrun simctl create 'Math3D QA iPhone' "$device_type" "$runtime")"
+          fi
           app="$(find "$RUNNER_TEMP/mobile-ios-build/Build/Products/Debug-iphonesimulator" -maxdepth 1 -name '*.app' -print -quit)"
           test -n "$device" && test -n "$app"
-          xcrun simctl boot "$device"
+          echo "Simulator: $device"
+          echo "App: $app"
+          xcrun simctl boot "$device" || true
           xcrun simctl bootstatus "$device" -b
           xcrun simctl install "$device" "$app"
           xcrun simctl launch "$device" com.math3d.mobile
