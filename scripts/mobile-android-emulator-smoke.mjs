@@ -74,6 +74,22 @@ const tap = (text) => {
   const [x1, y1, x2, y2] = node.bounds;
   adb("shell", "input", "tap", String(Math.round((x1 + x2) / 2)), String(Math.round((y1 + y2) / 2)));
 };
+const tapVisibleInspectorControl = (text) => {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const node = expectText(text);
+    const nav = expectText("Explore");
+    const navTop = nav.bounds[1] - 20;
+    if (node.bounds[3] < navTop) {
+      tap(text);
+      return;
+    }
+    const workspace = expectText("Workspace");
+    const x = Math.round((workspace.bounds[0] + workspace.bounds[2]) / 2);
+    const fromY = navTop - 45;
+    adb("shell", "input", "swipe", String(x), String(fromY), String(x), String(fromY - 120), "350");
+  }
+  throw new Error(`${text} inspector control could not be scrolled above bottom navigation.`);
+};
 const swipeHandle = (text, deltaY) => {
   const node = expectText(text);
   const [x1, y1, x2, y2] = node.bounds;
@@ -97,7 +113,7 @@ try {
   check("inspector swipe and opacity", () => {
     swipeHandle("Swipe up for tools", -350);
     expectText("Swipe down to close");
-    tap("50%");
+    tapVisibleInspectorControl("50%");
     let opacityUpdated = false;
     for (let attempt = 0; attempt < 8; attempt += 1) {
       if (nodes().filter((node) => node.text === "50%").length >= 2) {
