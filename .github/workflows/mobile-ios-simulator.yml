@@ -46,7 +46,7 @@ jobs:
           test -n "$workspace"
           scheme="$(basename "$workspace" .xcworkspace)"
           xcodebuild -list -json -workspace "$workspace" | node -e 'const expected=process.argv[1];let value="";process.stdin.on("data",part=>value+=part).on("end",()=>{if(!JSON.parse(value).workspace.schemes.includes(expected))process.exit(1)})' "$scheme"
-          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Debug \
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/mobile-ios-build" CODE_SIGNING_ALLOWED=NO build
 
@@ -61,7 +61,7 @@ jobs:
             test -n "$runtime" && test -n "$device_type"
             device="$(xcrun simctl create 'Math3D QA iPhone' "$device_type" "$runtime")"
           fi
-          app="$(find "$RUNNER_TEMP/mobile-ios-build/Build/Products/Debug-iphonesimulator" -maxdepth 1 -name '*.app' -print -quit)"
+          app="$(find "$RUNNER_TEMP/mobile-ios-build/Build/Products/Release-iphonesimulator" -maxdepth 1 -name '*.app' -print -quit)"
           test -n "$device" && test -n "$app"
           echo "Simulator: $device"
           echo "App: $app"
@@ -69,7 +69,7 @@ jobs:
           xcrun simctl bootstatus "$device" -b
           xcrun simctl install "$device" "$app"
           xcrun simctl launch "$device" com.math3d.mobile
-          sleep 8
+          sleep 15
           mkdir -p output/mobile-ios-simulator
           xcrun simctl io "$device" screenshot output/mobile-ios-simulator/launch.png
 
