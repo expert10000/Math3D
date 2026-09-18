@@ -6,6 +6,7 @@ import {
   type StableDocumentId,
   type StructuralHash,
 } from "./documentIdentity";
+import { isM3DResourceReference, type M3DResourceReference } from "./m3dBinaryResources";
 import { immutableCanonicalJsonClone } from "./commands";
 import type { ValidationResult } from "./validation";
 
@@ -36,6 +37,7 @@ export type ScientificJobRequest = Readonly<{
   jobId: string;
   source: ScientificSourceGeneration;
   operation: ScientificJobOperation;
+  resources?: readonly M3DResourceReference[];
   limits: ScientificJobLimits;
 }>;
 
@@ -104,7 +106,7 @@ export type ScientificJobEvent = Readonly<{
   failureCode?: ScientificJobFailureCode;
 }>;
 
-const REQUEST_FIELDS = new Set(["schemaVersion", "jobId", "source", "operation", "limits"]);
+const REQUEST_FIELDS = new Set(["schemaVersion", "jobId", "source", "operation", "resources", "limits"]);
 const SOURCE_FIELDS = new Set(["documentId", "revision", "structuralHash", "generation"]);
 const OPERATION_FIELDS = new Set(["type", "payload"]);
 const LIMIT_FIELDS = new Set([
@@ -214,6 +216,24 @@ export const normalizeScientificJobRequest = (
     for (const field of ["maxInputBytes", "maxOutputBytes", "maxMemoryBytes", "maxWorkUnits"] as const) {
       if (!isPositiveSafeInteger(value.limits[field])) {
         errors.push(`job.limits.${field} must be a positive safe integer.`);
+      }
+    }
+  }
+
+  if (value.resources !== undefined) {
+    if (!Array.isArray(value.resources) || value.resources.some((resource) => !isM3DResourceReference(resource))) {
+      errors.push("job.resources must contain valid M3D resource references.");
+    } else {
+      const resourceIds = new Set<string>();
+      let resourceBytes = 0;
+      for (const resource of value.resources) {
+        if (resourceIds.has(resource.resourceId)) errors.push(`job.resources contains duplicate resource '${resource.resourceId}'.`);
+        resourceIds.add(resource.resourceId);
+        resourceBytes += resource.descriptor.byteLength;
+      }
+      if (!Number.isSafeInteger(resourceBytes)) errors.push("job.resources byte length is too large.");
+      else if (isRecord(value.limits) && Number.isSafeInteger(value.limits.maxInputBytes) && resourceBytes > value.limits.maxInputBytes) {
+        errors.push("job.resources exceed job.limits.maxInputBytes.");
       }
     }
   }

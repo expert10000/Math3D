@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeM3DMeshResource, encodeM3DMeshResource, verifyM3DMeshResource } from "@math3d/core";
+import { decodeM3DMeshResource, encodeM3DMeshResource, isM3DResourceReference, verifyM3DMeshResource } from "@math3d/core";
 
 describe("math3d.mesh.v1 binary resource", () => {
   it("round-trips indexed typed arrays with a verified checksum", () => {
@@ -13,6 +13,7 @@ describe("math3d.mesh.v1 binary resource", () => {
     expect(decoded.positions).toEqual(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]));
     expect(decoded.indices).toEqual(new Uint32Array([0, 1, 2]));
     expect(verifyM3DMeshResource(resource)).toBe(true);
+    expect(isM3DResourceReference({ resourceId: `m3d:${resource.descriptor.checksum.slice(7)}`, descriptor: resource.descriptor })).toBe(true);
   });
 
   it("rejects corrupted or non-finite mesh resources", () => {

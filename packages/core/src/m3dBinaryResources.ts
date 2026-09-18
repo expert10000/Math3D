@@ -1,4 +1,4 @@
-import { sha256Checksum, type StructuralHash } from "./documentIdentity";
+import { isStructuralHash, sha256Checksum, type StructuralHash } from "./documentIdentity";
 
 export const M3D_BINARY_RESOURCE_SCHEMA_VERSION = 1 as const;
 export const M3D_MESH_FORMAT = "math3d.mesh.v1" as const;
@@ -10,6 +10,11 @@ export type M3DResourceDescriptor = Readonly<{
   format: typeof M3D_MESH_FORMAT;
   byteLength: number;
   checksum: StructuralHash;
+}>;
+
+export type M3DResourceReference = Readonly<{
+  resourceId: `m3d:${string}`;
+  descriptor: M3DResourceDescriptor;
 }>;
 
 export type M3DMeshResource = Readonly<{
@@ -119,3 +124,16 @@ export const verifyM3DMeshResource = (resource: M3DMeshResource): boolean =>
   resource.descriptor.format === M3D_MESH_FORMAT &&
   resource.descriptor.byteLength === resource.bytes.byteLength &&
   resource.descriptor.checksum === sha256Checksum(resource.bytes);
+
+export const isM3DResourceReference = (value: unknown): value is M3DResourceReference => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const reference = value as Record<string, unknown>;
+  if (Object.keys(reference).length !== 2 || typeof reference.resourceId !== "string" || !reference.resourceId.startsWith("m3d:")) return false;
+  if (!reference.descriptor || typeof reference.descriptor !== "object" || Array.isArray(reference.descriptor)) return false;
+  const descriptor = reference.descriptor as Record<string, unknown>;
+  return Object.keys(descriptor).length === 4 &&
+    descriptor.schemaVersion === M3D_BINARY_RESOURCE_SCHEMA_VERSION &&
+    descriptor.format === M3D_MESH_FORMAT &&
+    Number.isSafeInteger(descriptor.byteLength) && Number(descriptor.byteLength) > 0 &&
+    isStructuralHash(descriptor.checksum) && reference.resourceId === `m3d:${descriptor.checksum.slice("sha256:".length)}`;
+};

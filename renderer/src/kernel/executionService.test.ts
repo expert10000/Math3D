@@ -3,6 +3,7 @@ import {
   canonicalJsonByteLength,
   createScientificJobRequest,
   createStableDocumentId,
+  encodeM3DMeshResource,
   getMath3DWorkerOperationForLegacyRequest,
   structuralHash,
 } from "@math3d/core";
@@ -103,5 +104,20 @@ describe("worker platform phase 1", () => {
     });
 
     await expect(service.submit(unknown)).rejects.toThrow(/not registered/);
+  });
+
+  it("accounts for resource references during capability admission without serializing their bytes", async () => {
+    const resource = encodeM3DMeshResource({
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), indices: new Uint32Array([0, 1, 2]),
+    });
+    const broker = createScientificExecutionBroker({ backends: [backend], resolveSource: () => source });
+    const service = createExecutionService(broker);
+    const withResource = createScientificJobRequest({
+      ...request(),
+      jobId: "job:resource",
+      resources: [{ resourceId: `m3d:${resource.descriptor.checksum.slice(7)}`, descriptor: resource.descriptor }],
+      limits: { ...request().limits, maxInputBytes: resource.descriptor.byteLength + 1 },
+    });
+    await expect(service.submit(withResource)).resolves.toMatchObject({ ok: true });
   });
 });

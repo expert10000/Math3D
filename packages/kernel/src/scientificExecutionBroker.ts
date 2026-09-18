@@ -277,7 +277,7 @@ const unavailableSnapshot = (
 }) as ScientificBackendCapabilitySnapshot;
 
 const validatesLimits = (request: ScientificJobRequest, capability: ScientificOperationCapability): boolean =>
-  canonicalJsonByteLength(request.operation.payload) <= capability.maxInputBytes &&
+  canonicalJsonByteLength(request.operation.payload) + (request.resources ?? []).reduce((total, resource) => total + resource.descriptor.byteLength, 0) <= capability.maxInputBytes &&
   request.limits.maxOutputBytes <= capability.maxOutputBytes &&
   request.limits.maxMemoryBytes <= capability.maxMemoryBytes &&
   request.limits.maxWorkUnits <= capability.maxWorkUnits;
