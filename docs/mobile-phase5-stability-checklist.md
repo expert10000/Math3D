@@ -73,7 +73,7 @@ This checklist is the Phase 5 gate for `apps/mobile` before external release.
 | Android | Samsung `SM-A566B` MOB24 candidate | Android 16 | Signed internal APK, build `150004` | Focused device signoff approved: USB-free Helicoid restore, Files save/reopen across restart, navigation, inspector, fatal-log review; full matrix pending |
 | Android | Samsung `SM-A566B` network candidate | Android 16 | Signed internal APK, build `150006` | 10/10 repeated launch/Gallery/orbit/quality/health/background cycles, implicit preview, Files persistence; USB-free owner check pending |
 | iOS | Current iPhone physical | iOS latest supported by SDK 54 | Release | Pending |
-| iOS | Simulator sanity | iOS 18.5 on hosted iPhone 16 Pro | Unsigned Release | App shell and tabs visible; 3D viewport blank in captured screenshot, so viewer smoke fails |
+| iOS | Simulator sanity | iOS 18.5 on hosted iPhone 16 Pro | Unsigned Release | App shell and tabs visible; 3D viewport blank at 15s and 45s, and the screenshot gate fails |
 
 ## 3. Stability Smoke Matrix
 Run each row 10 times unless stated otherwise.

@@ -105,7 +105,12 @@ shows the Workspace shell, Catenoid title, inspector, and five destinations.
 The viewport is a uniform pale rectangle: 0 of 5,135 sampled viewport pixels
 varied materially from its center. iOS simulator **shell launch passes; 3D
 rendering does not pass**. A screenshot gate now rejects a blank app or blank
-viewport in future runs. Physical iPhone rendering remains untested.
+viewport. Its [45-second gate run](https://github.com/expert10000/Math3D/actions/runs/35403064988)
+failed specifically with `Simulator 3D viewport is blank after launch` and
+`0` varied samples. The 15- and 45-second screenshots were byte identical
+(each SHA-256 `b94e1d97441349836ac2b1f7313483df5b51581878c293881fe9ffd1de804562`).
+Physical iPhone rendering remains untested. The cause of the blank simulator
+GL viewport is not yet established.
 
 ## Still open
 
