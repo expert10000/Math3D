@@ -70,6 +70,8 @@ const phase5ChecklistPath = resolve(repoRoot, "docs", "mobile-phase5-stability-c
 
 try {
   const mobilePkg = readJson(mobilePackagePath);
+  const mobileLock = readJson(mobileLockPath);
+  const lockRoot = mobileLock.packages?.[""] || {};
   addCheck(
     "Mobile dev script exists",
     typeof mobilePkg.scripts?.dev === "string" ? "pass" : "fail",
@@ -84,13 +86,19 @@ try {
     ["devDependencies", mobilePkg.devDependencies || {}],
   ]) {
     for (const [dep, version] of Object.entries(entries)) {
-      if (!isPinnedVersion(version)) depIssues.push(`${scope}.${dep}=${String(version)}`);
+      const lockedSpec = lockRoot[scope]?.[dep];
+      const lockedPackage = mobileLock.packages?.[`node_modules/${dep}`];
+      const localFileMatches = version.startsWith("file:") && lockedPackage?.resolved === version.slice(5);
+      const registryPackageMatches = lockedPackage?.version && (isPinnedVersion(version) || lockedPackage.integrity);
+      if (lockedSpec !== version || !(localFileMatches || registryPackageMatches)) {
+        depIssues.push(`${scope}.${dep}=${String(version)}`);
+      }
     }
   }
   addCheck(
     "Mobile dependency versions are pinned",
     depIssues.length === 0 ? "pass" : "fail",
-    depIssues.length === 0 ? "All dependency versions are exact." : `Unpinned versions: ${depIssues.join(", ")}`
+    depIssues.length === 0 ? "All declared dependencies match resolved versions in the npm lockfile." : `Missing or mismatched lock entries: ${depIssues.join(", ")}`
   );
 } catch (error) {
   addCheck("Read apps/mobile/package.json", "fail", String(error instanceof Error ? error.message : error));

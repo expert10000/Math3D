@@ -44,8 +44,8 @@ jobs:
         run: |
           workspace="$(find apps/mobile/ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
           test -n "$workspace"
-          scheme="$(xcodebuild -list -json -workspace "$workspace" | node -e 'let value="";process.stdin.on("data",part=>value+=part).on("end",()=>console.log(JSON.parse(value).workspace.schemes.find(name=>!name.includes("Tests"))))')"
-          test -n "$scheme"
+          scheme="$(basename "$workspace" .xcworkspace)"
+          xcodebuild -list -json -workspace "$workspace" | node -e 'const expected=process.argv[1];let value="";process.stdin.on("data",part=>value+=part).on("end",()=>{if(!JSON.parse(value).workspace.schemes.includes(expected))process.exit(1)})' "$scheme"
           xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/mobile-ios-build" CODE_SIGNING_ALLOWED=NO build
