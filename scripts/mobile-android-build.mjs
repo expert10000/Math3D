@@ -70,13 +70,17 @@ const sha256 = createHash("sha256").update(readFileSync(destination)).digest("he
 
 const git = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" });
 const gitStatus = spawnSync("git", ["status", "--porcelain", "--untracked-files=no"], { cwd: repoRoot, encoding: "utf8" });
+const trackedSourceChanges = gitStatus.status === 0
+  ? gitStatus.stdout.trim().split(/\r?\n/).filter(Boolean)
+  : null;
 const info = {
   applicationId: identity.applicationId + (channel === "internal" ? ".internal" : ""),
   version: identity.version,
   build: identity.build,
   channel,
   gitCommit: git.status === 0 ? git.stdout.trim() : null,
-  trackedSourceDirty: gitStatus.status === 0 ? gitStatus.stdout.trim().length > 0 : null,
+  trackedSourceDirty: trackedSourceChanges === null ? null : trackedSourceChanges.length > 0,
+  trackedSourceChanges,
   artifact: name,
   sha256,
 };

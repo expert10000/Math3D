@@ -82,8 +82,8 @@ npm run mobile:version:check
 
 Each successful command also updates `artifacts/mobile/SHA256SUMS` and
 `artifacts/mobile/build-info.json`. The metadata records the app ID, version,
-build, channel, Git commit, whether tracked source files were modified, artifact
-name, and SHA-256. `build-info.json` describes the **last** build, so copy it
+build, channel, Git commit, whether tracked source files were modified and
+their paths, artifact name, and SHA-256. `build-info.json` describes the **last** build, so copy it
 into the tester archive immediately after building that channel. The artifacts
 directory is ignored by Git. The release command produces an AAB for store
 distribution; the internal command produces the installable tester APK.

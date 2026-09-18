@@ -78,6 +78,9 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Inspect tracked source after install
+        run: git status --short --untracked-files=no
+
       - name: Verify mobile identity and typecheck
         run: |
           npm run mobile:version:check
@@ -113,6 +116,11 @@ jobs:
 
       - name: Build installable internal APK
         run: npm run mobile:android:internal
+
+      - name: Inspect tracked source after build
+        run: |
+          git status --short --untracked-files=no
+          node -p "JSON.stringify(require('./artifacts/mobile/build-info.json').trackedSourceChanges)"
 
       - name: Verify APK signature and SHA-256
         run: |
