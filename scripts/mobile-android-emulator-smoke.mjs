@@ -98,8 +98,15 @@ try {
     swipeHandle("Swipe up for tools", -350);
     expectText("Swipe down to close");
     tap("50%");
-    const fiftyLabels = nodes().filter((node) => node.text === "50%");
-    if (fiftyLabels.length < 2) throw new Error("Object opacity did not update to 50%.");
+    let opacityUpdated = false;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      if (nodes().filter((node) => node.text === "50%").length >= 2) {
+        opacityUpdated = true;
+        break;
+      }
+      pause(700);
+    }
+    if (!opacityUpdated) throw new Error("Object opacity did not update to 50%.");
     swipeHandle("Swipe down to close", 350);
     expectText("Swipe up for tools");
   });
@@ -119,13 +126,14 @@ try {
     writeFileSync(resolve(resultDir, "filtered-logcat.txt"), `${log}\n`);
     if (/FATAL EXCEPTION|E\/ReactNativeJS/.test(log)) throw new Error("Fatal error found in app logs.");
   });
-  const screenshot = spawnSync(adbPath, ["-s", serial, "exec-out", "screencap", "-p"], { maxBuffer: 16 * 1024 * 1024 });
-  if (screenshot.status === 0) writeFileSync(resolve(resultDir, "workspace.png"), screenshot.stdout);
   report.ok = true;
 } catch (error) {
   report.error = String(error?.message || error);
+  try { report.visibleText = nodes().map((node) => node.text).filter(Boolean); } catch { /* Preserve original error. */ }
   console.error(report.error);
   process.exitCode = 1;
 } finally {
+  const screenshot = spawnSync(adbPath, ["-s", serial, "exec-out", "screencap", "-p"], { maxBuffer: 16 * 1024 * 1024 });
+  if (screenshot.status === 0) writeFileSync(resolve(resultDir, "workspace.png"), screenshot.stdout);
   writeFileSync(resolve(resultDir, "smoke-result.json"), `${JSON.stringify(report, null, 2)}\n`);
 }
