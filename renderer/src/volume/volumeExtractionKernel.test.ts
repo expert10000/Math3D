@@ -51,6 +51,8 @@ describe("GK15 Volume extraction kernel", () => {
     const outcome = await jobs.submit(request).promise;
     expect(outcome.broker.ok).toBe(true);
     const artifact = outcome.artifact!;
+    expect(artifact.meshResourceId).toMatch(/^m3d:/);
+    expect(jobs.resources()).toHaveLength(1);
     expect(artifact.output.positions!.length).toBeGreaterThan(0);
     const geometry = { positions: artifact.output.positions!, indices: artifact.output.indices!, normals: computeVolumeIsosurfaceNormals(volume, grid, artifact.output.positions!).normals };
     const record = bridge.publish(request, artifact, geometry, source, "iso:volume-gk15:1:0")!;
@@ -75,6 +77,7 @@ describe("GK15 Volume extraction kernel", () => {
     expect(volumeExtractionStatus(snapshot, adapter.sourceGeneration())).toBe("snapshot");
     expect(bridge.artifacts().resolve(record.result.artifacts[0], source).ok).toBe(false);
     jobs.dispose();
+    expect(jobs.resources()).toEqual([]);
   });
 
   it("rejects unsafe memory plans before scheduling the worker", () => {

@@ -90,6 +90,7 @@ export type VolumeJobArtifact = {
   volumeRevision: number;
   sampledGridRevision: number;
   output: VolumeJobOutput;
+  meshResourceId?: `m3d:${string}`;
   profile: VolumeJobProfile;
   warnings: string[];
   failure?: VolumeJobFailure;

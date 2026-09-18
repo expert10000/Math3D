@@ -7,3 +7,4 @@ export * from "./executionService";
 export * from "./dependencyGraph";
 export * from "./platformBackendAdapter";
 export * from "./domainAdapterConformance";
+export * from "./m3dResourceStore";

@@ -1,5 +1,5 @@
-import { createScientificJobRequest, type ScientificSourceGeneration } from "@math3d/core";
-import { createExecutionService, createInProcessScientificJobService, createScientificExecutionBroker, type ScientificBrokerOutcome, type ScientificExecutionBroker, type ScientificJobExecutionContext } from "@math3d/kernel";
+import { createScientificJobRequest, decodeM3DMeshResource, encodeM3DMeshResource, type ScientificSourceGeneration } from "@math3d/core";
+import { createExecutionService, createInMemoryM3DResourceStore, createInProcessScientificJobService, createScientificExecutionBroker, type ScientificBrokerOutcome, type ScientificExecutionBroker, type ScientificJobExecutionContext } from "@math3d/kernel";
 import { createVolumeMemoryPlan, VOLUME_MEMORY_LIMITS, type VolumeJobArtifact, type VolumeJobProgress, type VolumeJobRequest, type VolumeJobLifecycle } from "./computation";
 import { VolumeWorkerCoordinator, type VolumeWorkerHandle } from "./workerCoordinator";
 import type { VolumeDocumentAdapter } from "./volumeDocumentAdapter";
@@ -18,6 +18,8 @@ export class VolumeIsosurfaceScientificJob {
   readonly #service;
   readonly #broker: ScientificExecutionBroker;
   readonly #execution;
+  readonly #resources = createInMemoryM3DResourceStore();
+  readonly #resourceOwners = new Set<string>();
 
   constructor(adapter: () => VolumeDocumentAdapter, coordinator: VolumeWorkerCoordinator) {
     this.#adapter = adapter;
@@ -44,7 +46,13 @@ export class VolumeIsosurfaceScientificJob {
   capabilities() { return this.#broker.discoverCapabilities(); }
   executionCapabilities() { return this.#execution.discoverCapabilities(); }
   cancel(jobId: string) { return this.#execution.cancel(jobId); }
-  dispose() { for (const jobId of this.#pending.keys()) this.cancel(jobId); this.#coordinator.dispose(); }
+  resources() { return this.#resources.list(); }
+  dispose() {
+    for (const jobId of this.#pending.keys()) this.cancel(jobId);
+    for (const ownerId of this.#resourceOwners) this.#resources.releaseOwner(ownerId);
+    this.#resourceOwners.clear();
+    this.#coordinator.dispose();
+  }
 
   submit(request: VolumeJobRequest, options: Pick<Pending, "onProgress" | "onLifecycle"> = {}): VolumeScientificHandle {
     const plan = createVolumeMemoryPlan(request.operation, request.dimensions, request.scalars.byteLength);
@@ -77,7 +85,26 @@ export class VolumeIsosurfaceScientificJob {
         pending.onProgress?.(progress);
       } });
       this.#handles.set(jobId, handle);
-      const artifact = await handle.promise;
+      let artifact = await handle.promise;
+      if (artifact.state === "complete" && artifact.output.positions && artifact.output.indices) {
+        const stored = this.#resources.retain(artifact.artifactId, encodeM3DMeshResource({
+          positions: artifact.output.positions,
+          indices: artifact.output.indices,
+        }));
+        this.#resourceOwners.add(artifact.artifactId);
+        const lease = this.#resources.acquire(stored.resourceId);
+        if (!lease) throw new Error("Volume mesh resource was collected before publication.");
+        try {
+          const decoded = decodeM3DMeshResource(lease.bytes);
+          artifact = {
+            ...artifact,
+            meshResourceId: stored.resourceId,
+            output: { ...artifact.output, positions: decoded.positions, indices: decoded.indices },
+          };
+        } finally {
+          lease.release();
+        }
+      }
       pending.artifact = artifact;
       context.checkpoint();
       if (artifact.state !== "complete") throw new Error(artifact.failure?.message ?? `Volume extraction ${artifact.state}.`);

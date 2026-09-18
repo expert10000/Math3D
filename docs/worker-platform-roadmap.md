@@ -16,7 +16,9 @@ Phase 1 is complete.
 
 Phase 2 is in progress: `math3d.mesh.v1` now defines a checksum-verified,
 typed-array binary resource for indexed mesh payloads. OBJ-worker migration and
-resource lifecycle hand-off are the next increments.
+resource lifecycle hand-off are the next increments. The kernel resource store
+now provides checksum-addressed ownership, leases, and deterministic cleanup.
+Volume isosurface results are now retained as managed M3D mesh resources.
 
 - Completed foundation: canonical worker operation/ownership registry in
   `@math3d/core`; `ExecutionService` facade over the existing scientific
