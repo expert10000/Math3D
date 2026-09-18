@@ -1,5 +1,7 @@
 # Mobile Migration Implementation Plan
 
+This document records the original migration phases and vertical-slice scope. For current priorities after build `150002`, use the [mobile roadmap](mobile-roadmap.md) and the [implementation inventory](mobile-functionality-navigation-overview.md).
+
 ## 1. Objective
 Ship a production-ready `apps/mobile` companion app (Expo + React Native) that can:
 

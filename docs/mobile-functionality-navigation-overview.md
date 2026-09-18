@@ -65,18 +65,9 @@ The default worker URL is `http://127.0.0.1:8787/api/worker`. On a standalone ph
 
 ## Roadmap starting points
 
-These are candidate work packages, ordered by dependency and user impact. They are not marked implemented by this inventory.
+The [current mobile roadmap](mobile-roadmap.md) integrates this inventory into a product direction: **offline-capable companion viewer + network-backed compute client + lightweight scene editing**. Its M0–M8 phases and MOB24–MOB54 commit sequence distinguish planned work from the implemented build `150002`.
 
-| Order | Candidate | Concrete outcome to plan |
-| --- | --- | --- |
-| **P0** | Finish device and signing readiness | Test build `150002` on Samsung after USB disconnect, verify Files persistence and logs, approve the exact APK hash, configure the shared internal CI key, and separately produce/verify a production-signed AAB. |
-| **P1** | Make Files a usable project library | Add scene rename, delete/undo, real preview thumbnails, import/export/share, and explicit storage error recovery. Keep the shared scene format. |
-| **P1** | Decide and expose the compute model | Provide a phone-reachable worker setup, clear implicit placeholder/compute states, and end-to-end tests for offline/cache/retry behavior. Decide which typed CGAL/volume/geodesic methods become mobile features. |
-| **P1** | Grow Workspace editing deliberately | Define the first editable surface properties and scene actions, then extend the inspector with Transform/Compute only when controls have working operations behind them. |
-| **P2** | Turn Explore into content | Add searchable/categorized examples, custom function entry if in scope, and the first guided Learn module. |
-| **P2** | Scale navigation and quality | Split the large `MobileApp.tsx` into screen/inspector modules, add route state/deep links if needed, complete performance/accessibility checks and iOS validation. |
-
-Before scheduling those packages, decide whether the next release is an **offline companion viewer**, a **network-backed compute client**, or a **mobile authoring workspace**. That choice determines the worker, Files, and inspector priorities.
+The immediate gate is exact-artifact Samsung signoff and signing (M0). Then split `MobileApp.tsx`, correct the Analyze/Compute and Display/View terminology, and remove the implicit proxy geometry (M1). Projects, worker jobs, multi-object Workspace, mathematical Analyze, shared Examples/Learn, small authoring, and platform hardening follow with their acceptance criteria in the roadmap.
 
 ## Source map
 
