@@ -135,6 +135,15 @@ try {
     tap("Settings"); expectText("Worker base URL");
     tap("Workspace"); expectText("Catenoid");
   });
+  check("Explore example survives process restart without saving to Files", () => {
+    tap("Explore");
+    tap("Functions");
+    tap("Helicoid");
+    expectText("Helicoid");
+    adb("shell", "am", "force-stop", packageName);
+    adb("shell", "am", "start", "-n", `${packageName}/com.math3d.mobile.MainActivity`);
+    expectText("Helicoid");
+  });
   check("app remains alive with no fatal JS or Android errors", () => {
     const pid = adb("shell", "pidof", packageName);
     if (!/^\d+$/.test(pid)) throw new Error("Math3D process is not running.");

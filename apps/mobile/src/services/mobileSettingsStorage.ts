@@ -11,6 +11,7 @@ type PersistedSettingsPayload = {
   androidGlProbePending?: boolean;
   meshResolutionCap?: number;
   lastSceneId?: string;
+  lastViewerProject?: string;
   lastSelectedSurfaceId?: string;
   lastBackendError?: string;
   lastBackendLatencyMs?: number;
@@ -31,6 +32,7 @@ export type MobileSettingsLoad = {
   androidGlProbePending: boolean | null;
   meshResolutionCap: number | null;
   lastSceneId: string | null;
+  lastViewerProject: string | null;
   lastSelectedSurfaceId: string | null;
   lastBackendError: string | null;
   lastBackendLatencyMs: number | null;
@@ -68,6 +70,7 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
         androidGlProbePending: null,
         meshResolutionCap: null,
         lastSceneId: null,
+        lastViewerProject: null,
         lastSelectedSurfaceId: null,
         lastBackendError: null,
         lastBackendLatencyMs: null,
@@ -85,6 +88,7 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
         androidGlProbePending: null,
         meshResolutionCap: null,
         lastSceneId: null,
+        lastViewerProject: null,
         lastSelectedSurfaceId: null,
         lastBackendError: null,
         lastBackendLatencyMs: null,
@@ -104,6 +108,7 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
         androidGlProbePending: null,
         meshResolutionCap: null,
         lastSceneId: null,
+        lastViewerProject: null,
         lastSelectedSurfaceId: null,
         lastBackendError: null,
         lastBackendLatencyMs: null,
@@ -120,6 +125,7 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
         androidGlProbePending: null,
         meshResolutionCap: null,
         lastSceneId: null,
+        lastViewerProject: null,
         lastSelectedSurfaceId: null,
         lastBackendError: null,
         lastBackendLatencyMs: null,
@@ -146,6 +152,7 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
         androidGlProbePending: null,
         meshResolutionCap: null,
         lastSceneId: null,
+        lastViewerProject: null,
         lastSelectedSurfaceId: null,
         lastBackendError: null,
         lastBackendLatencyMs: null,
@@ -172,6 +179,7 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
       androidGlProbePending: typeof payload.androidGlProbePending === "boolean" ? payload.androidGlProbePending : null,
       meshResolutionCap: typeof payload.meshResolutionCap === "number" ? payload.meshResolutionCap : null,
       lastSceneId: typeof payload.lastSceneId === "string" ? payload.lastSceneId : null,
+      lastViewerProject: typeof payload.lastViewerProject === "string" ? payload.lastViewerProject : null,
       lastSelectedSurfaceId:
         typeof payload.lastSelectedSurfaceId === "string" ? payload.lastSelectedSurfaceId : null,
       lastBackendError: typeof payload.lastBackendError === "string" ? payload.lastBackendError : null,
@@ -189,6 +197,7 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
       androidGlProbePending: null,
       meshResolutionCap: null,
       lastSceneId: null,
+      lastViewerProject: null,
       lastSelectedSurfaceId: null,
       lastBackendError: null,
       lastBackendLatencyMs: null,
@@ -205,6 +214,7 @@ export const saveMobileSettings = async (settings: {
   androidGlProbePending?: boolean;
   meshResolutionCap?: number;
   lastSceneId?: string;
+  lastViewerProject?: string;
   lastSelectedSurfaceId?: string;
   lastBackendError?: string;
   lastBackendLatencyMs?: number;
@@ -226,6 +236,7 @@ export const saveMobileSettings = async (settings: {
     androidGlProbePending: typeof settings.androidGlProbePending === "boolean" ? settings.androidGlProbePending : false,
     meshResolutionCap: typeof settings.meshResolutionCap === "number" ? settings.meshResolutionCap : undefined,
     lastSceneId: typeof settings.lastSceneId === "string" ? settings.lastSceneId : undefined,
+    lastViewerProject: typeof settings.lastViewerProject === "string" ? settings.lastViewerProject : undefined,
     lastSelectedSurfaceId:
       typeof settings.lastSelectedSurfaceId === "string" ? settings.lastSelectedSurfaceId : undefined,
     lastBackendError: typeof settings.lastBackendError === "string" ? settings.lastBackendError : undefined,

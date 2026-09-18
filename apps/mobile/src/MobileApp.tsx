@@ -13,7 +13,15 @@ import {
   type GestureResponderEvent,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { SCENE_PROJECT_VERSION, type SceneDocument, type SurfaceDefinition, type VtkPreviewRequest } from "@math3d/core";
+import {
+  SCENE_PROJECT_VERSION,
+  createSceneProjectDocument,
+  deserializeSceneProject,
+  serializeSceneProject,
+  type SceneDocument,
+  type SurfaceDefinition,
+  type VtkPreviewRequest,
+} from "@math3d/core";
 import Constants from "expo-constants";
 import { MobileSceneViewport, type OrbitState } from "./components/MobileSceneViewport";
 import { mobileFunctionPresets, mobileGallery, mobileSeedScenes } from "./data/mobileSeedData";
@@ -186,6 +194,9 @@ const createViewerSceneFromSurface = (surface: SurfaceDefinition, title: string)
   };
 };
 
+const serializeViewerScene = (scene: SceneDocument): string =>
+  serializeSceneProject(createSceneProjectDocument(scene));
+
 const upsertStoredProject = (
   projects: MobileStoredSceneProject[],
   nextProject: MobileStoredSceneProject
@@ -327,6 +338,7 @@ export const MobileApp: React.FC = () => {
           androidGlProbePending: false,
           meshResolutionCap: loadedMeshResolutionCap,
           lastSceneId: loadedSettings.lastSceneId || undefined,
+          lastViewerProject: loadedSettings.lastViewerProject || undefined,
           lastSelectedSurfaceId: loadedSettings.lastSelectedSurfaceId || undefined,
           cameraOrbit: loadedSettings.cameraOrbit || undefined,
           lastBackendError: loadedSettings.lastBackendError || undefined,
@@ -348,8 +360,21 @@ export const MobileApp: React.FC = () => {
 
       const initialSceneId = loadedSettings.lastSceneId || projects[0]?.id || null;
       const firstProject = initialSceneId ? projects.find((project) => project.id === initialSceneId) ?? projects[0] ?? null : null;
-      setSelectedSceneId(firstProject?.id ?? null);
-      if (firstProject) {
+      const lastViewerProject = loadedSettings.lastViewerProject
+        ? deserializeSceneProject(loadedSettings.lastViewerProject)
+        : null;
+      if (lastViewerProject && !lastViewerProject.ok) {
+        issues.push(`Last viewed scene is invalid: ${lastViewerProject.errors.join("; ")}`);
+        setStorageIssues(issues);
+      }
+      if (lastViewerProject?.ok) {
+        setViewerDocument(lastViewerProject.value.scene);
+        setSelectedSceneId(projects.some((project) => project.id === lastViewerProject.value.scene.id)
+          ? lastViewerProject.value.scene.id
+          : null);
+        setStorageStatus(issues.length > 0 ? "error" : "ready");
+      } else if (firstProject) {
+        setSelectedSceneId(firstProject.id);
         const parsed = readSceneFromStoredProject(firstProject);
         if (parsed.ok) {
           setViewerDocument(parsed.scene);
@@ -359,6 +384,7 @@ export const MobileApp: React.FC = () => {
           setStorageIssues((current) => [...current, ...parsed.errors]);
         }
       } else {
+        setSelectedSceneId(null);
         setViewerDocument(null);
         setStorageStatus(issues.length > 0 ? "error" : "ready");
       }
@@ -709,6 +735,10 @@ export const MobileApp: React.FC = () => {
     setViewerDocument(parsed.scene);
     setInspectorExpanded(false);
     setTab("workspace");
+    void persistMobileSettings({
+      lastSceneId: touchedProject.id,
+      lastViewerProject: touchedProject.serializedProject,
+    }).catch(() => undefined);
 
     try {
       await saveStoredSceneProjects(nextProjects);
@@ -722,9 +752,13 @@ export const MobileApp: React.FC = () => {
   };
 
   const openViewerWithSurface = (surface: SurfaceDefinition, sourceTitle: string) => {
-    setViewerDocument(createViewerSceneFromSurface(surface, sourceTitle));
+    const scene = createViewerSceneFromSurface(surface, sourceTitle);
+    setViewerDocument(scene);
+    setSelectedSceneId(null);
     setInspectorExpanded(false);
     setTab("workspace");
+    void persistMobileSettings({ lastSceneId: undefined, lastViewerProject: serializeViewerScene(scene) })
+      .catch(() => undefined);
   };
 
   const saveCurrentViewerScene = async () => {
@@ -736,6 +770,8 @@ export const MobileApp: React.FC = () => {
 
     setStoredProjects(nextProjects);
     setSelectedSceneId(stored.id);
+    void persistMobileSettings({ lastSceneId: stored.id, lastViewerProject: stored.serializedProject })
+      .catch(() => undefined);
 
     try {
       await saveStoredSceneProjects(nextProjects);
@@ -781,6 +817,7 @@ export const MobileApp: React.FC = () => {
       androidGlProbePending,
       meshResolutionCap,
       lastSceneId: selectedSceneId || undefined,
+      lastViewerProject: viewerDocument ? serializeViewerScene(viewerDocument) : undefined,
       lastSelectedSurfaceId: selectedSurfaceId || undefined,
       cameraOrbit,
       lastBackendError: backendDiagnostics.lastError || undefined,
@@ -981,6 +1018,7 @@ export const MobileApp: React.FC = () => {
     };
   }, [
     selectedSceneId,
+    viewerDocument,
     selectedSurfaceId,
     cameraOrbit,
     storageStatus,
