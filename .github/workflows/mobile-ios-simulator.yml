@@ -71,8 +71,10 @@ jobs:
           xcrun simctl launch "$device" com.math3d.mobile
           sleep 15
           mkdir -p output/mobile-ios-simulator
-          xcrun simctl io "$device" screenshot output/mobile-ios-simulator/launch.png
-          swift .github/scripts/mobile-ios-screenshot-check.swift output/mobile-ios-simulator/launch.png
+          xcrun simctl io "$device" screenshot output/mobile-ios-simulator/launch-15s.png
+          sleep 30
+          xcrun simctl io "$device" screenshot output/mobile-ios-simulator/launch-45s.png
+          swift .github/scripts/mobile-ios-screenshot-check.swift output/mobile-ios-simulator/launch-45s.png
 
       - name: Upload simulator screenshot
         if: always()
