@@ -17,6 +17,7 @@ import {
   type VtkMeshRequest,
   type VtkPreviewRequest,
 } from "./vtkMeshClient";
+import { runLegacyVtkCleanNormals } from "./legacyVtkNormalsExecution";
 
 export type MeshOperationEngine = "auto" | "vtk" | "cgal";
 export type ResolvedMeshOperationEngine = "vtk" | "cgal";
@@ -543,7 +544,7 @@ export async function runMeshOperation(
     const options = vtkOptionsFromParameters(request.parameters);
     const res =
       request.operation === "clean-normals"
-        ? await vtkCleanNormals(mesh.positions, mesh.indices, options)
+        ? await runLegacyVtkCleanNormals(mesh.positions, mesh.indices, options)
         : request.operation === "decimate"
           ? await vtkDecimate(mesh.positions, mesh.indices, options)
           : await vtkSmooth(mesh.positions, mesh.indices, options);

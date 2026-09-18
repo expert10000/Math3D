@@ -37,6 +37,45 @@ describe("mesh operation model", () => {
     expect(MESH_OPERATION_CAPABILITIES.some((entry) => entry.operation === "implicit-mesh" && entry.engines.includes("cgal"))).toBe(true);
   });
 
+  it("keeps the established Electron and proxy VTK bridge protocol behind the execution facade", async () => {
+    const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+    const calls: any[] = [];
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        vtkMesh: {
+          cleanNormals: async (request: any) => {
+            calls.push(request);
+            return {
+              ok: true,
+              positions: request.positions.buffer,
+              indices: request.indices.buffer,
+              normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]).buffer,
+              vertexCount: 3,
+              triCount: 1,
+            };
+          },
+        },
+      },
+    });
+    try {
+      const result = await runMeshOperation({
+        operation: "clean-normals", inputs: ["fixture"], engine: "vtk", parameters: { computeNormals: true }, outputMode: "replace",
+      }, {
+        primaryMesh: {
+          label: "Triangle", positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), indices: new Uint32Array([0, 1, 2]),
+        },
+      });
+      expect(result.status).toBe("success");
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ options: { computeNormals: true } });
+      expect(calls[0].jobId).toEqual(expect.any(String));
+    } finally {
+      if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+      else delete (globalThis as { window?: unknown }).window;
+    }
+  });
+
   it("rejects unsafe open boolean operands before calling native VTK", async () => {
     const request: MeshOperationRequest = {
       operation: "boolean-union",

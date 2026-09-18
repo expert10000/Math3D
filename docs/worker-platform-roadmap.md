@@ -12,7 +12,7 @@ mathematics merely to change its transport.
 
 ## Status
 
-Phase 1 is in progress.
+Phase 1 is complete.
 
 - Completed foundation: canonical worker operation/ownership registry in
   `@math3d/core`; `ExecutionService` facade over the existing scientific
@@ -21,6 +21,9 @@ Phase 1 is in progress.
 - Routed browser-worker slices: Curve analysis, Mesh differential analysis, and
   Volume isosurface extraction now submit through `ExecutionService` while
   preserving their existing worker protocols and typed-array caches.
+- Legacy mesh normal cleanup now reaches the same facade through a VTK
+  compatibility adapter. It retains the current Electron IPC and web-proxy
+  bridge protocol; unavailable bridges surface as explicit capabilities.
 - Deliberately deferred: migrating binary-heavy mesh/OBJ payloads to M3D
   resources, and splitting the bundled Python worker into independently
   deployed VTK/CGAL services.
