@@ -14,6 +14,10 @@ mathematics merely to change its transport.
 
 Phase 1 is complete.
 
+Phase 2 is in progress: `math3d.mesh.v1` now defines a checksum-verified,
+typed-array binary resource for indexed mesh payloads. OBJ-worker migration and
+resource lifecycle hand-off are the next increments.
+
 - Completed foundation: canonical worker operation/ownership registry in
   `@math3d/core`; `ExecutionService` facade over the existing scientific
   execution broker; capability diagnostics; compatibility mapping for the

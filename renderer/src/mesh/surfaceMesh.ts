@@ -4,6 +4,7 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader.js";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { decodeM3DMeshResource, verifyM3DMeshResource } from "@math3d/core";
 import type { MeshObjImportWorkerResponse } from "../workers/meshObjImportTypes";
 
 export type MeshImportFormat = "stl" | "obj" | "ply" | "gltf" | "glb";
@@ -601,11 +602,14 @@ const parseSimpleObjSurfaceMeshInWorker = async (
     if (response.type !== "simple-obj-ready") {
       return { mesh: null, response };
     }
+    const resource = { descriptor: response.resource, bytes: response.resourceBytes, vertexCount: response.vertexCount, triangleCount: response.triangleCount };
+    if (!verifyM3DMeshResource(resource)) throw new Error("OBJ import worker returned a corrupt M3D mesh resource.");
+    const decoded = decodeM3DMeshResource(response.resourceBytes);
     const integrateStart = nowMs();
     const mesh: SurfaceMeshData = {
       label,
-      positions: response.positions,
-      indices: response.indices,
+      positions: decoded.positions,
+      indices: decoded.indices,
       normals: null,
       uvs: null,
       source,

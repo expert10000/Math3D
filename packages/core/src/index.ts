@@ -40,3 +40,4 @@ export * from "./validation";
 export * from "./viewerTypes";
 export * from "./workerContracts";
 export * from "./workerOperationRegistry";
+export * from "./m3dBinaryResources";

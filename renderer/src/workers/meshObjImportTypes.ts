@@ -10,8 +10,8 @@ export type MeshObjImportWorkerSuccess = {
   type: "simple-obj-ready";
   jobId: number;
   label: string;
-  positions: Float32Array;
-  indices: Uint32Array;
+  resource: M3DResourceDescriptor;
+  resourceBytes: Uint8Array;
   sentAt: number;
   workerStartedAt: number;
   workerFinishedAt: number;
@@ -46,3 +46,4 @@ export type MeshObjImportWorkerFallback = {
 };
 
 export type MeshObjImportWorkerResponse = MeshObjImportWorkerSuccess | MeshObjImportWorkerFallback;
+import type { M3DResourceDescriptor } from "@math3d/core";

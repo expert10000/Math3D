@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 
+import { encodeM3DMeshResource } from "@math3d/core";
 import type {
   MeshObjImportWorkerFallback,
   MeshObjImportWorkerRequest,
@@ -149,17 +150,17 @@ ctx.onmessage = (event: MessageEvent<MeshObjImportWorkerRequest>) => {
     return;
   }
 
+  const resource = encodeM3DMeshResource({ positions: parsed.positions, indices: parsed.indices });
   const response: MeshObjImportWorkerSuccess = {
     type: "simple-obj-ready",
     ...base,
-    positions: parsed.positions,
-    indices: parsed.indices,
+    resource: resource.descriptor,
+    resourceBytes: resource.bytes,
     vertexCount: parsed.vertexCount,
     triangleCount: parsed.triangleCount,
     timings,
   };
   ctx.postMessage(response satisfies MeshObjImportWorkerResponse, [
-    response.positions.buffer,
-    response.indices.buffer,
+    response.resourceBytes.buffer,
   ]);
 };
