@@ -6,6 +6,12 @@ on:
   push:
     branches: [main, master]
   workflow_dispatch:
+    inputs:
+      use_shared_internal_signing:
+        description: Validate the shared internal signing key without requiring device signoff
+        required: false
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       release_ref:
@@ -15,6 +21,11 @@ on:
         default: ""
       require_device_signoff:
         description: Require signed-off physical-device evidence
+        required: false
+        type: boolean
+        default: false
+      use_shared_internal_signing:
+        description: Use the shared internal signing key for a non-release validation run
         required: false
         type: boolean
         default: false
@@ -99,11 +110,11 @@ jobs:
         run: node scripts/mobile-device-signoff.mjs
 
       - name: Generate disposable CI signing key
-        if: ${{ !inputs.require_device_signoff }}
+        if: ${{ !inputs.require_device_signoff && !inputs.use_shared_internal_signing }}
         run: npm run mobile:signing:internal:init
 
-      - name: Provision shared internal signing key for release
-        if: ${{ inputs.require_device_signoff }}
+      - name: Provision shared internal signing key
+        if: ${{ inputs.require_device_signoff || inputs.use_shared_internal_signing }}
         env:
           KEYSTORE_BASE64: ${{ secrets.MATH3D_ANDROID_INTERNAL_KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.MATH3D_ANDROID_INTERNAL_STORE_PASSWORD }}
@@ -136,7 +147,7 @@ jobs:
           (cd artifacts/mobile && sha256sum -c SHA256SUMS)
           apk="$(node -p "'artifacts/mobile/' + require('./artifacts/mobile/build-info.json').artifact")"
           "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/mobile-apksigner.txt"
-          if [[ "${{ inputs.require_device_signoff }}" == "true" ]]; then
+          if [[ "${{ inputs.require_device_signoff }}" == "true" || "${{ inputs.use_shared_internal_signing }}" == "true" ]]; then
             expected="$(node -p "require('./docs/mobile-device-signoff.json').signingCertSha256")"
             actual="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/mobile-apksigner.txt")"
             test "$actual" = "$expected" || {
