@@ -29,12 +29,20 @@ target API 36 retains [Android's HTTPS-only default](https://developer.android.c
 The phone joined `Tenda_235898_5G` at `192.168.0.166`. The PC was on the same
 LAN at `192.168.0.150`; the worker proxy listened on that address, backed by
 the local Python worker. Phone `ping` and TCP connection to port `8787` passed.
+ADB reported no USB port reverse mapping; the phone routed `192.168.0.0/24`
+through `wlan0` at `192.168.0.166`.
 The Math3D Settings health check returned `Health: ok` (97 ms warmed on build
 `150005`, then 54 ms warmed on `150006`). Explore → Gallery → Implicit Torus
 ran a worker preview on `150006`: Analyze reported `ready`, 14,056 vertices
 and 28,000 triangles, with no cached marker. An invalid port returned
 `Health: error` and an actionable URL/Wi-Fi/server message; restoring port
 `8787` returned `Health: ok`.
+
+The invalid-port check was repeated nine more times: 9/9 showed `Health: error`
+and the actionable message, for 10/10 including the initial observation. The
+working `8787` URL was restored afterward and returned `Health: ok` in 53 ms.
+Evidence: `output/mobile-invalid-health-150006.json` (SHA-256
+`4ff914ae8f124775649ec4b88e5ba98ca776291c3281ab9cfd00aba434b3d385`).
 
 Ten automated physical cycles on the exact `150006` APK passed cold launch into
 Catenoid, Explore/Gallery reopen, one-finger orbit, rotating quality presets,
@@ -59,6 +67,15 @@ Workspace and Files retained Catenoid; opening the saved card returned to
 Workspace. The owner-observed USB-free relaunch and health check on this exact
 APK are pending in [device signoff](mobile-device-signoff.json).
 
+A corrected inspector-aware repeat ran nine further network-backed implicit
+previews, alternating Gyroid Slice and Implicit Torus. All 9/9 reported
+`Status: ready` without the cached fallback and kept the process alive. Along
+with the first Torus preview above, that is 10/10 fresh implicit previews.
+Evidence: `output/mobile-extra-matrix-150006/result.json` (SHA-256
+`256f5f3ed1741170444a48093af0eda50f84c6029d23cb2e13637c4fa3b4ba91`).
+The first automation attempt missed the inspector on two cycles because it
+tapped before the sheet opened; opening the sheet showed the preview ready.
+
 ## Emulator and CI
 
 The local Android 16 emulator passed clean install, offline Catenoid launch,
@@ -77,11 +94,18 @@ The CI APK hash differs from the locally tested APK; the two artifacts must not
 be treated as interchangeable for physical signoff. Normal CI still uses a
 disposable key.
 
+The [iOS simulator run](https://github.com/expert10000/Math3D/actions/runs/35399420885)
+built and launched a Debug app, but its screenshot was blank white. That is not
+accepted as a visual smoke pass. The workflow now builds an unsigned Release
+simulator app to embed JavaScript; its
+[Release rerun](https://github.com/expert10000/Math3D/actions/runs/35401091401)
+is pending.
+
 ## Still open
 
 - Complete the owner-observed USB-free `150006` relaunch and Wi-Fi health check.
-- Run the remaining repeated physical cases: implicit previews, invalid health,
-  30-second multi-touch pan/zoom, and measured first interactive frame.
+- Run the remaining physical cases: 30-second multi-touch pan/zoom and measured
+  first interactive frame.
 - Build and verify a release AAB with the existing production signing identity,
   or establish the first production key if no identity exists.
 - Run iOS simulator sanity and physical iPhone checks where available.

@@ -73,7 +73,7 @@ This checklist is the Phase 5 gate for `apps/mobile` before external release.
 | Android | Samsung `SM-A566B` MOB24 candidate | Android 16 | Signed internal APK, build `150004` | Focused device signoff approved: USB-free Helicoid restore, Files save/reopen across restart, navigation, inspector, fatal-log review; full matrix pending |
 | Android | Samsung `SM-A566B` network candidate | Android 16 | Signed internal APK, build `150006` | 10/10 repeated launch/Gallery/orbit/quality/health/background cycles, implicit preview, Files persistence; USB-free owner check pending |
 | iOS | Current iPhone physical | iOS latest supported by SDK 54 | Release | Pending |
-| iOS | Simulator sanity | iOS latest supported by SDK 54 | Debug/Release | Pending |
+| iOS | Simulator sanity | iOS latest supported by SDK 54 | Release | Debug app launched to a blank screen; Release build and visual check pending |
 
 ## 3. Stability Smoke Matrix
 Run each row 10 times unless stated otherwise.
@@ -83,12 +83,12 @@ Run each row 10 times unless stated otherwise.
 | Cold launch -> Workspace and Catenoid visible | Samsung `150006`: 10/10 visible; first interactive frame timing pending | Pending | No crash, app interactive in < 3s on test hardware |
 | Explore -> Gallery -> Catenoid -> Workspace | Samsung `150006`: 10/10; final screenshot rendered | Pending | GL viewer renders surface, no fallback unless explicitly enabled |
 | Orbit/pan/zoom for 30 seconds | Pending | Pending | No frame stall > 2s, no crash |
-| Open implicit preset -> preview mesh generation | Samsung `150006`: 1/10 remote previews ready; repeat pending | Pending | Preview completes or actionable error with retry |
+| Open implicit preset -> preview mesh generation | Samsung `150006`: 10/10 fresh remote previews ready, no cached fallback | Pending | Preview completes or actionable error with retry |
 | Background app for 30 seconds -> resume | Samsung `150006`: 10/10 | Pending | Viewer recovers, no black screen/crash |
 | Kill app -> relaunch -> reopen recent scene | Samsung `150006`: 10/10 Catenoid; Files save/reopen checked once | Pending | Scene list and open flow preserved |
 | Toggle quality presets (`performance`, `balanced`, `sharp`) | Samsung `150006`: 10/10 taps with app alive; visual refresh timing pending | Pending | Mesh refreshes, no crash |
 | Backend URL health check with valid endpoint | Samsung `150006`: 10/10 warmed checks, plus initial health | Pending | Health = ok |
-| Backend URL health check with invalid endpoint | Samsung `150006`: 1/10 with actionable message; repeat pending | Pending | Health = error with clear message |
+| Backend URL health check with invalid endpoint | Samsung `150006`: 10/10 error with actionable message; valid URL restored | Pending | Health = error with clear message |
 
 ## 4. Performance Budgets
 
