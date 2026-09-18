@@ -256,6 +256,16 @@ its SHA-256 is `c0f9f9d9cd11f27a7ee737adae43a3e45df0ca564d38928ec7714195caaaa19f
 The archive is local and ignored by Git. AABs are for store upload, not direct
 phone installation.
 
+The [production AAB CI run](https://github.com/expert10000/Math3D/actions/runs/35405368898)
+passed the same certificate gate using GitHub Actions secrets. Its downloadable
+artifact ID is `10572113936`; the separately built AAB SHA-256 is
+`52681593987e20250d780a63cf89691720d0bf44bf86029df69c96fc499fc4f0`.
+The downloaded AAB's embedded certificate independently matched the public
+release fingerprint. The CI artifact ZIP SHA-256 is
+`9e19a44fbaf4568b9aab18923cc6c80bf93770cbec816db9cc5511df2818171f`.
+Use the AAB's own hash for store upload; local and CI builds have distinct
+bytes and verification records.
+
 ## Verified tester archive
 
 The earlier local archive

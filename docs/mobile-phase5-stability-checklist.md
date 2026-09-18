@@ -59,7 +59,9 @@ mobile source and signing certificate. The Samsung record is approved for build
 For `150006`, shared CI internal signing and its certificate comparison pass.
 The first production/upload key is recorded in
 [mobile-release-signing.json](mobile-release-signing.json), and the local AAB
-passed checksum and embedded certificate verification. Owner-controlled
+passed checksum and embedded certificate verification. The
+[production AAB CI run](https://github.com/expert10000/Math3D/actions/runs/35405368898)
+also passed; its downloaded AAB matched the release certificate. Owner-controlled
 off-device key backup remains open.
 
 ## 1. Scope

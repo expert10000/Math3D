@@ -106,6 +106,14 @@ certificate, and `jarsigner` verification. Its SHA-256 is
 `008620ed336ba77fcc4f1d734f65781dcd53e2a1fd492af6fa5d052db47693c1`.
 The local [AAB archive](../artifacts/mobile/Math3D-mobile-1.5.0-release-150006-6c128cd.zip)
 has SHA-256 `c0f9f9d9cd11f27a7ee737adae43a3e45df0ca564d38928ec7714195caaaa19f`.
+The [production AAB CI run](https://github.com/expert10000/Math3D/actions/runs/35405368898)
+also passed. Its downloadable artifact (ID `10572113936`) contains a separately
+built AAB with SHA-256
+`52681593987e20250d780a63cf89691720d0bf44bf86029df69c96fc499fc4f0`.
+Its build metadata and verification report match that hash and source commit;
+independent `keytool` inspection of the downloaded AAB matched the public
+release certificate. The CI artifact ZIP has SHA-256
+`9e19a44fbaf4568b9aab18923cc6c80bf93770cbec816db9cc5511df2818171f`.
 
 The [iOS simulator run](https://github.com/expert10000/Math3D/actions/runs/35399420885)
 built and launched a Debug app, but its screenshot was blank white. That is not
@@ -131,7 +139,6 @@ GL viewport is not yet established.
   explicit external release criterion; the observed traffic already used Wi-Fi.
 - Run the remaining physical cases: 30-second multi-touch pan/zoom and measured
   first interactive frame.
-- Confirm the on-demand production AAB CI run and its artifact certificate.
 - Resolve the blank iOS simulator viewport and test rendering on a physical
   iPhone where available.
 - Back up signing keys and configuration in owner-controlled secure storage
