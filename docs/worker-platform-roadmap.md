@@ -10,6 +10,18 @@ particular runtime, language, executable, container, or URL.
 This roadmap evolves the existing system; it does not replace working
 mathematics merely to change its transport.
 
+## Status
+
+Phase 1 is in progress.
+
+- Completed foundation: canonical worker operation/ownership registry in
+  `@math3d/core`; `ExecutionService` facade over the existing scientific
+  execution broker; capability diagnostics; compatibility mapping for the
+  current CGAL/VTK request kinds; focused conformance tests.
+- Deliberately deferred: wiring feature modules to the facade, converting large
+  payloads to M3D binary resources, and splitting the bundled Python worker
+  into independently deployed VTK/CGAL services.
+
 ```text
 Feature / application kernel
              |

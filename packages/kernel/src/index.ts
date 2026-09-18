@@ -3,6 +3,7 @@ export * from "./contracts";
 export * from "./inMemoryDocumentKernel";
 export * from "./scientificJobService";
 export * from "./scientificExecutionBroker";
+export * from "./executionService";
 export * from "./dependencyGraph";
 export * from "./platformBackendAdapter";
 export * from "./domainAdapterConformance";

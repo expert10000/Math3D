@@ -39,3 +39,4 @@ export * from "./serialization";
 export * from "./validation";
 export * from "./viewerTypes";
 export * from "./workerContracts";
+export * from "./workerOperationRegistry";
