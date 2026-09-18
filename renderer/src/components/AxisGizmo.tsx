@@ -43,10 +43,10 @@ const AxisGizmo: React.FC<AxisGizmoProps> = ({
   getMainCamera,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const getMainCameraRef = useRef<AxisGizmoProps["getMainCamera"]>();
-  const onSelectViewRef = useRef<AxisGizmoProps["onSelectView"]>();
-  const onFitSceneRef = useRef<AxisGizmoProps["onFitScene"]>();
-  const onOrbitRef = useRef<AxisGizmoProps["onOrbit"]>();
+  const getMainCameraRef = useRef<AxisGizmoProps["getMainCamera"]>(undefined);
+  const onSelectViewRef = useRef<AxisGizmoProps["onSelectView"]>(undefined);
+  const onFitSceneRef = useRef<AxisGizmoProps["onFitScene"]>(undefined);
+  const onOrbitRef = useRef<AxisGizmoProps["onOrbit"]>(undefined);
   const activeViewRef = useRef<AxisGizmoProps["activeView"]>(activeView);
   const axis2DRef = useRef<Axis2DState | null>(null);
   const dragRef = useRef<{ pointerId: number; x: number; y: number; moved: boolean } | null>(null);

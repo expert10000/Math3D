@@ -123,6 +123,10 @@ export default defineConfig({
         manualChunks(id) {
           const mod = id.replace(/\\/g, "/");
 
+          // Keep the CommonJS base-64 helper out of feature-services. React's
+          // CJS bridge also uses that helper; assigning it to a feature chunk
+          // creates a cycle that runs feature UI before React is initialized.
+          if (mod.includes("/node_modules/base-64/")) return "vendor-compat";
           if (mod.includes("/node_modules/three/examples/")) return "vendor-three-examples";
           if (mod.includes("/node_modules/three/src/renderers/")) return "vendor-three-renderers";
           if (mod.includes("/node_modules/three/")) return "vendor-three-core";
