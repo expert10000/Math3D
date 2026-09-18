@@ -1,5 +1,5 @@
 {
-  "status": "pending",
+  "status": "approved",
   "applicationId": "com.math3d.mobile.internal",
   "version": "1.5.0",
   "build": 150006,
@@ -10,11 +10,11 @@
     "model": "SM-A566B",
     "androidVersion": "16"
   },
-  "tester": "",
-  "testedAt": "",
+  "tester": "Samsung device owner (USB-free relaunch); Codex-assisted ADB checks",
+  "testedAt": "2026-09-18T23:14:42Z",
   "checks": {
     "installOrUpdate": true,
-    "standaloneRelaunch": false,
+    "standaloneRelaunch": true,
     "workspaceViewport": true,
     "exploreNavigation": true,
     "inspectorControls": true,

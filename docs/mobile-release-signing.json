@@ -1,0 +1,10 @@
+{
+  "applicationId": "com.math3d.mobile",
+  "version": "1.5.0",
+  "build": 150006,
+  "role": "first production upload key",
+  "keyAlias": "math3d-mobile-upload",
+  "certificateSha256": "66a86e95eaf60f8d2224dd06ad5ef4eec6c856ca2b5e32dc954384bc6ad41be3",
+  "createdAt": "2026-09-18T23:16:03Z",
+  "ownerBackupVerified": false
+}

@@ -1,0 +1,100 @@
+name: Mobile Android Production AAB
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-aab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: >-
+            platform-tools
+            platforms;android-36
+            build-tools;36.0.0
+            ndk;27.1.12297006
+            cmake;3.22.1
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Restore npm install lockfile churn
+        run: |
+          changes="$(git status --porcelain --untracked-files=no)"
+          if [[ -n "$changes" && "$changes" != ' M yarn.lock' ]]; then
+            echo "Unexpected tracked changes after npm ci: $changes" >&2
+            exit 1
+          fi
+          if [[ "$changes" == ' M yarn.lock' ]]; then git restore -- yarn.lock; fi
+
+      - name: Check identity, types, and physical signoff
+        run: |
+          npm run mobile:version:check
+          npm --prefix apps/mobile run typecheck
+          npm run mobile:device:signoff:check
+
+      - name: Provision first production upload key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.MATH3D_ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.MATH3D_ANDROID_RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.MATH3D_ANDROID_RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.MATH3D_ANDROID_RELEASE_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_BASE64" && test -n "$STORE_PASSWORD" && test -n "$KEY_ALIAS" && test -n "$KEY_PASSWORD" || {
+            echo 'Production upload key secrets are required.' >&2
+            exit 1
+          }
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/mobile-release.jks"
+          chmod 600 "$RUNNER_TEMP/mobile-release.jks"
+          {
+            echo "MATH3D_ANDROID_RELEASE_KEYSTORE_PATH=$RUNNER_TEMP/mobile-release.jks"
+            echo "MATH3D_ANDROID_RELEASE_STORE_PASSWORD=$STORE_PASSWORD"
+            echo "MATH3D_ANDROID_RELEASE_KEY_ALIAS=$KEY_ALIAS"
+            echo "MATH3D_ANDROID_RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Build production-signed AAB
+        run: npm run mobile:android:release
+
+      - name: Verify AAB, metadata, and signing certificate
+        run: |
+          test -z "$(git status --porcelain --untracked-files=no)"
+          (cd artifacts/mobile && sha256sum -c SHA256SUMS)
+          npm run mobile:android:release:verify
+
+      - name: Upload signed AAB and verification evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mobile-android-production-aab-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            artifacts/mobile/Math3D-mobile-*-release.aab
+            artifacts/mobile/build-info.json
+            artifacts/mobile/SHA256SUMS
+            artifacts/mobile/release-verification.json
+            output/mobile-device-signoff-gate.json
