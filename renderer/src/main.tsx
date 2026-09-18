@@ -3,6 +3,9 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
 import { installWebWorkerProxyBridge } from "./services/webWorkerProxyBridge";
+import { readBrowserThemePreference, resolveTheme, systemPrefersDark } from "./themePreference";
+
+document.documentElement.dataset.theme = resolveTheme(readBrowserThemePreference(), systemPrefersDark());
 
 const ignoredResizeObserverMessages = new Set([
   "ResizeObserver loop completed with undelivered notifications.",

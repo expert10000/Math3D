@@ -33,6 +33,7 @@
   --workspace-control-text: #1f3556;
   --workspace-chip-bg: #eef2f7;
   --workspace-section-bg: #f8fbff;
+  --viewer-bg: #f8f9fb;
   --body-bg: linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
   --body-bg-size: auto;
 
@@ -42,6 +43,7 @@
 
   color: var(--text);
   background-color: var(--bg);
+  color-scheme: light;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -78,6 +80,7 @@ html[data-theme="dark"] {
   --workspace-control-text: #e8eef7;
   --workspace-chip-bg: #26384b;
   --workspace-section-bg: #1d2b3c;
+  --viewer-bg: #182231;
   --body-bg: linear-gradient(180deg, #11161f 0%, #1a2330 100%);
   color-scheme: dark;
 }

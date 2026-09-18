@@ -180,7 +180,7 @@ export type SurfacePerformanceSnapshot = {
 export type RenderQuality = "performance" | "balanced" | "sharp";
 export type MeshRuntimeQuality = "interactive-preview" | "balanced" | "accurate";
 export type MeshInteractionQualityMode = "full" | "adaptive" | "fast-preview";
-export type SceneBackgroundMode = "default" | "calm" | "transparent";
+export type SceneBackgroundMode = "default" | "calm" | "dark" | "transparent";
 export type CameraTourMode =
   | "balanced"
   | "orbit"
@@ -2058,7 +2058,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const planeGridAutoScale = planeGridSettings.autoGridScale;
   const planeGridDensity = planeGridSettings.gridDensity;
   const planeGridOpacity = planeGridSettings.planeOpacity;
-  const sceneBackgroundColor = sceneBackgroundMode === "calm" ? 0xf1f5fb : 0xf8f9fb;
+  const sceneBackgroundColor = sceneBackgroundMode === "calm" ? 0xf1f5fb : sceneBackgroundMode === "dark" ? 0x182231 : 0xf8f9fb;
   const sceneBackgroundAlpha = sceneBackgroundMode === "transparent" ? 0 : 1;
   const initialMeshRuntimeQuality: MeshRuntimeQuality =
     surfaceId === "surface_mesh" && meshInteractionQualityMode === "fast-preview"

@@ -5,6 +5,13 @@ import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js"
 import { ADDITION, Brush, Evaluator, INTERSECTION, REVERSE_SUBTRACTION, SUBTRACTION } from "three-bvh-csg";
 import { uiStyles as styles } from "./uiStyles";
 import {
+  readBrowserThemePreference,
+  resolveTheme,
+  systemPrefersDark,
+  THEME_PREFERENCE_KEY,
+  type ThemePreference,
+} from "./themePreference";
+import {
   parseWorkspaceDockLayouts,
   recommendedWorkspaceDockLayout,
   WORKSPACE_DOCKS_STORAGE_KEY,
@@ -1466,7 +1473,6 @@ type CommandPaletteItem = {
   run: () => void | Promise<void>;
 };
 type GallerySortPreset = "name" | "family" | "complexity" | "demoReady";
-type AppTheme = "light" | "dark" | "dot";
 type DisplayMode = "workspace" | "present" | "inspect";
 type ViewportPreset = "minimal" | "study" | "analysis" | "debug";
 type MeshAnalyzeMode = "clean" | "curvature" | "quality" | "diagnostics" | "probe";
@@ -2011,7 +2017,6 @@ const SURFACE_MESH_TOPOLOGY_SESSION_MAX_CHARS = 3_400_000;
 const SURFACE_MESH_TOPOLOGY_PERSIST_HISTORY_LIMIT = 4;
 const SURFACE_MESH_TOPOLOGY_SAVED_PRESET_LIMIT = 8;
 const SURFACE_RENDER_QUALITY_KEY = "math3d.surface.renderQuality.v1";
-const UI_THEME_KEY = "math3d.ui.theme.v1";
 const UI_ACCENT_KEY = "math3d.ui.accent.v1";
 const UI_DISPLAY_MODE_KEY = "math3d.ui.displayMode.v1";
 const UI_VIEWPORT_PRESET_KEY = "math3d.ui.viewportPreset.v1";
@@ -2033,7 +2038,6 @@ const WORKBOOK_AUTOSAVE_DEBOUNCE_MS = 1800;
 const WORKBOOK_AUTOSAVE_JOURNAL_LIMIT = 20;
 const WORKBOOK_SNAPSHOT_HISTORY_LIMIT = 20;
 const WORKBOOK_COMPUTE_RUN_HISTORY_LIMIT = 20;
-const APP_THEMES: AppTheme[] = ["light", "dark", "dot"];
 const ACCENT_PRESETS: Record<
   AccentPresetId,
   { label: string; accent: string; strong: string; soft: string }
@@ -2043,8 +2047,6 @@ const ACCENT_PRESETS: Record<
   amber: { label: "Amber", accent: "#b45309", strong: "#92400e", soft: "#fff2dd" },
   rose: { label: "Rose", accent: "#be185d", strong: "#9f1239", soft: "#ffe3ef" },
 };
-const isAppTheme = (value: string | null | undefined): value is AppTheme =>
-  !!value && APP_THEMES.includes(value as AppTheme);
 const isAccentPresetId = (value: string | null | undefined): value is AccentPresetId =>
   !!value && Object.prototype.hasOwnProperty.call(ACCENT_PRESETS, value);
 const isDisplayMode = (value: string | null | undefined): value is DisplayMode =>
@@ -3597,7 +3599,7 @@ const splitterStyle: React.CSSProperties = {
   alignSelf: "stretch",
   borderRadius: 4,
   background:
-    "linear-gradient(90deg, transparent 0 1px, #dbe4f0 1px 2px, #f8fbff 2px 6px, #dbe4f0 6px 7px, transparent 7px)",
+    "linear-gradient(90deg, transparent 0 1px, var(--border) 1px 2px, var(--workspace-section-bg) 2px 6px, var(--border) 6px 7px, transparent 7px)",
   boxShadow:
     "inset 1px 0 rgba(148, 163, 184, 0.08), inset -1px 0 rgba(148, 163, 184, 0.08)",
 };
@@ -34106,11 +34108,11 @@ const App: React.FC = () => {
   });
   const responsiveLayout = useResponsiveLayout();
   const viewportSize = responsiveLayout.viewport;
-  const [uiTheme, setUiTheme] = useState<AppTheme>(() => {
-    if (IS_REPLAY_MODE) return "light";
-    const saved = localStorage.getItem(UI_THEME_KEY);
-    return isAppTheme(saved) ? saved : "light";
-  });
+  const [uiThemePreference, setUiThemePreference] = useState<ThemePreference>(() =>
+    IS_REPLAY_MODE ? "light" : readBrowserThemePreference()
+  );
+  const [prefersDark, setPrefersDark] = useState(systemPrefersDark);
+  const uiTheme = resolveTheme(uiThemePreference, prefersDark);
   const [uiAccent, setUiAccent] = useState<AccentPresetId>(() => {
     if (IS_REPLAY_MODE) return "blue";
     const saved = localStorage.getItem(UI_ACCENT_KEY);
@@ -34128,9 +34130,22 @@ const App: React.FC = () => {
   }, [uiTheme, uiAccent]);
 
   useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = (event: MediaQueryListEvent) => setPrefersDark(event.matches);
+    setPrefersDark(media.matches);
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", onChange);
+      return () => media.removeEventListener("change", onChange);
+    }
+    media.addListener(onChange);
+    return () => media.removeListener(onChange);
+  }, []);
+
+  useEffect(() => {
     if (IS_REPLAY_MODE) return;
-    localStorage.setItem(UI_THEME_KEY, uiTheme);
-  }, [uiTheme]);
+    localStorage.setItem(THEME_PREFERENCE_KEY, uiThemePreference);
+  }, [uiThemePreference]);
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
@@ -74982,9 +74997,9 @@ case "mobius":
     ? cleanScreenshotBackground === "transparent"
       ? "transparent"
       : "calm"
-    : "default";
+    : uiTheme === "dark" ? "dark" : "default";
   const cleanScreenshotSceneContainerBackground =
-    cleanScreenshotSurfaceActive && cleanScreenshotBackground === "transparent" ? "transparent" : "#f8f9fb";
+    cleanScreenshotSurfaceActive && cleanScreenshotBackground === "transparent" ? "transparent" : "var(--viewer-bg)";
   const isSurfacePreviewMode = mode === "surfaces" && surfacePreviewFocusMode;
   const isPhoneViewerPriorityLayout = responsiveLayout.mobile || responsiveLayout.phoneLandscape;
   const isPhonePortraitViewerPriorityLayout = responsiveLayout.mobile && !responsiveLayout.phoneLandscape;
@@ -77809,9 +77824,9 @@ case "mobius":
             }
           : undefined;
   const topNavBarStyle: React.CSSProperties = {
-    border: "1px solid #dbe4f0",
+    border: "1px solid var(--border)",
     borderRadius: isPhoneLandscapeLayout ? 8 : 10,
-    background: "#f8fbff",
+    background: "var(--workspace-section-bg)",
     paddingTop: isPhoneLandscapeLayout ? 3 : 5,
     paddingRight: isPhoneLandscapeLayout ? 6 : 8,
     paddingBottom: isPhoneLandscapeLayout ? 3 : 5,
@@ -77825,9 +77840,9 @@ case "mobius":
     overflow: isPhoneLandscapeLayout ? "hidden" : undefined,
   };
   const topNavContextBarStyle: React.CSSProperties = {
-    border: "1px solid #dbe4f0",
+    border: "1px solid var(--border)",
     borderRadius: 10,
-    background: "#f8fbff",
+    background: "var(--workspace-section-bg)",
     padding: "4px 7px",
     display: "flex",
     alignItems: "center",
@@ -77840,8 +77855,8 @@ case "mobius":
     gap: isPhoneLandscapeLayout ? 2 : 3,
     padding: isPhoneLandscapeLayout ? 1 : 2,
     borderRadius: 999,
-    border: "1px solid #d1d9e5",
-    background: "#fff",
+    border: "1px solid var(--workspace-control-border)",
+    background: "var(--panel-strong)",
     flexWrap: isPhoneLandscapeLayout ? "nowrap" : "wrap",
     minWidth: 0,
     overflow: isPhoneLandscapeLayout ? "hidden" : undefined,
@@ -77849,9 +77864,9 @@ case "mobius":
   const topNavButtonStyle = (active: boolean): React.CSSProperties => ({
     padding: isPhoneLandscapeLayout ? "3px 7px" : "4px 9px",
     borderRadius: 999,
-    border: "1px solid " + (active ? "#0a66c2" : "#d1d5db"),
-    background: active ? "#dbeafe" : "#fff",
-    color: active ? "#0f2a4a" : "var(--text)",
+    border: "1px solid " + (active ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"),
+    background: active ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)",
+    color: "var(--workspace-control-text)",
     fontSize: isPhoneLandscapeLayout ? 9.5 : 10,
     fontWeight: active ? 700 : 600,
     cursor: "pointer",
@@ -77869,9 +77884,9 @@ case "mobius":
   const headerFamilyButtonStyle = (active: boolean, variant: "family" | "aux" = "family"): React.CSSProperties => ({
     padding: "3px 9px",
     borderRadius: 999,
-    border: "1px solid " + (active ? "#0754a3" : "#d1d5db"),
-    background: active ? (variant === "family" ? "#dbeafe" : "#f1f5f9") : "#fff",
-    color: active ? "#0f2a4a" : "#1f2937",
+    border: "1px solid " + (active ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"),
+    background: active ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)",
+    color: "var(--workspace-control-text)",
     fontWeight: active ? 700 : 550,
     fontSize: 10,
     whiteSpace: "nowrap",
@@ -77883,9 +77898,9 @@ case "mobius":
     gap: 8,
     flexWrap: "wrap",
     padding: "3px 4px",
-    border: "1px solid #cfd9e8",
+    border: "1px solid var(--border)",
     borderRadius: 12,
-    background: "linear-gradient(180deg, #f8fafd 0%, #eef2f8 100%)",
+    background: "var(--panel)",
   };
   const surfacesModeGroupStyle = (tone: "panel" | "actions"): React.CSSProperties => ({
     display: "inline-flex",
@@ -77895,9 +77910,9 @@ case "mobius":
     minWidth: 0,
     padding: "4px 8px",
     borderRadius: 12,
-    border: tone === "panel" ? "1px solid #efc46f" : "1px solid #9fb9eb",
+    border: uiTheme === "dark" ? "1px solid var(--workspace-control-border)" : tone === "panel" ? "1px solid #efc46f" : "1px solid #9fb9eb",
     background:
-      tone === "panel"
+      uiTheme === "dark" ? "var(--workspace-section-bg)" : tone === "panel"
         ? "linear-gradient(180deg, #fffcf2 0%, #fff2cf 100%)"
         : "linear-gradient(180deg, #f5f9ff 0%, #e9f0ff 100%)",
   });
@@ -77906,7 +77921,7 @@ case "mobius":
     fontWeight: 800,
     letterSpacing: "0.06em",
     textTransform: "uppercase",
-    color: tone === "panel" ? "#7a4b00" : "#1e3a8a",
+    color: uiTheme === "dark" ? "var(--text)" : tone === "panel" ? "#7a4b00" : "#1e3a8a",
     marginRight: 2,
   });
   const surfacesModeButtonStyle = (
@@ -77916,19 +77931,19 @@ case "mobius":
   ): React.CSSProperties => ({
     padding: "3px 10px",
     borderRadius: 999,
-    border: `1px solid ${
+    border: uiTheme === "dark" ? `1px solid ${active ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"}` : `1px solid ${
       active
         ? tone === "panel"
           ? "#b7791f"
           : "#2563eb"
         : "#9aa7bc"
     }`,
-    background: active
+    background: uiTheme === "dark" ? (active ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)") : active
       ? tone === "panel"
         ? "linear-gradient(180deg, #ffe9a8 0%, #ffd36d 100%)"
         : "linear-gradient(180deg, #e0ecff 0%, #c8dcff 100%)"
       : "#f8fafc",
-    color: active ? (tone === "panel" ? "#6b3f00" : "#123071") : "#1f2937",
+    color: uiTheme === "dark" ? "var(--workspace-control-text)" : active ? (tone === "panel" ? "#6b3f00" : "#123071") : "#1f2937",
     fontWeight: active ? 800 : 600,
     fontSize: 10,
     whiteSpace: "nowrap",
@@ -79061,9 +79076,9 @@ case "mobius":
                           zIndex: 40,
                           width: 420,
                           maxWidth: "min(92vw, 420px)",
-                          border: "1px solid #dbe4f0",
+                          border: "1px solid var(--border)",
                           borderRadius: 10,
-                          background: "#fff",
+                          background: "var(--panel-strong)",
                           boxShadow: "0 10px 24px rgba(15,23,42,0.16)",
                           padding: 10,
                           display: "grid",
@@ -79083,7 +79098,12 @@ case "mobius":
                       </div>
                       {showThemeTools && (
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                          <select value={uiTheme} onChange={(e) => setUiTheme(e.target.value as AppTheme)}>
+                          <select
+                            aria-label="Theme"
+                            value={uiThemePreference}
+                            onChange={(e) => setUiThemePreference(e.target.value as ThemePreference)}
+                          >
+                            <option value="system">System</option>
                             <option value="light">Light</option>
                             <option value="dark">Dark</option>
                             <option value="dot">Dot Accent</option>
@@ -127391,15 +127411,15 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const inspectorSectionCard: React.CSSProperties = {
     marginBottom: 12,
     padding: "10px 10px 12px",
-    border: "1px solid #dbe4ee",
+    border: "1px solid var(--border)",
     borderRadius: 10,
-    background: "#f8fafc",
+    background: "var(--workspace-section-bg)",
   };
   const inspectorSectionTitle: React.CSSProperties = {
     fontSize: 12,
     fontWeight: 700,
     marginBottom: 7,
-    color: "#0f172a",
+    color: "var(--text)",
   };
   const topologyFlagTone = {
     good: { background: "#ecfdf3", border: "#abefc6", color: "#067647" },
