@@ -25,8 +25,9 @@ viewer, not a full desktop authoring or workbook editor.
 
 The [mobile migration plan](mobile-migration-implementation-plan.md) describes
 the feature phases. Its early “Current State Snapshot” is historical; use this
-guide and the [Phase 5 checklist](mobile-phase5-stability-checklist.md) for the
-current build and release status.
+guide, the [functionality and navigation overview](mobile-functionality-navigation-overview.md),
+and the [Phase 5 checklist](mobile-phase5-stability-checklist.md) for the
+current feature and release status.
 
 ## Application identity and version
 
