@@ -1,0 +1,74 @@
+name: Mobile iOS Simulator Gate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios-simulator:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - name: Checkout mobile source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Check mobile types and identity
+        run: |
+          npm run mobile:version:check
+          npm --prefix apps/mobile run typecheck
+
+      - name: Generate iOS project
+        working-directory: apps/mobile
+        env:
+          CI: "1"
+          EXPO_NO_TELEMETRY: "1"
+        run: npx expo prebuild --platform ios --no-install --clean
+
+      - name: Install CocoaPods
+        working-directory: apps/mobile/ios
+        run: pod install
+
+      - name: Build unsigned iOS simulator app
+        shell: bash
+        run: |
+          workspace="$(find apps/mobile/ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
+          test -n "$workspace"
+          scheme="$(xcodebuild -list -json -workspace "$workspace" | node -e 'let value="";process.stdin.on("data",part=>value+=part).on("end",()=>console.log(JSON.parse(value).workspace.schemes.find(name=>!name.includes("Tests"))))')"
+          test -n "$scheme"
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/mobile-ios-build" CODE_SIGNING_ALLOWED=NO build
+
+      - name: Install and launch on iPhone simulator
+        shell: bash
+        run: |
+          device="$(xcrun simctl list devices available -j | node -e 'let value="";process.stdin.on("data",part=>value+=part).on("end",()=>{const devices=Object.values(JSON.parse(value).devices).flat();const phone=devices.find(item=>item.name.startsWith("iPhone")&&item.isAvailable);if(!phone)process.exit(1);console.log(phone.udid)})')"
+          app="$(find "$RUNNER_TEMP/mobile-ios-build/Build/Products/Debug-iphonesimulator" -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$device" && test -n "$app"
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl install "$device" "$app"
+          xcrun simctl launch "$device" com.math3d.mobile
+          sleep 8
+          mkdir -p output/mobile-ios-simulator
+          xcrun simctl io "$device" screenshot output/mobile-ios-simulator/launch.png
+
+      - name: Upload simulator screenshot
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mobile-ios-simulator-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: output/mobile-ios-simulator/**
