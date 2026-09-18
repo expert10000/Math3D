@@ -182,7 +182,7 @@ function resolveWorkerExeCandidates() {
   const fromEnv = String(process.env.MATH3D_WORKER_EXE || "").trim();
   return dedupePaths([
     ...(fromEnv ? [path.resolve(fromEnv)] : []),
-    path.join(ROOT_DIR, "build", "python-worker-dist", "worker.exe"),
+    path.join(ROOT_DIR, "build", "python-worker-dist", "worker", "worker.exe"),
   ]);
 }
 

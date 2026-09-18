@@ -8,7 +8,7 @@ Set-Location $repo
 
 node (Join-Path $repo "scripts/build-python-worker.mjs")
 
-$exe = Join-Path $repo "build/python-worker-dist/worker.exe"
+$exe = Join-Path $repo "build/python-worker-dist/worker/worker.exe"
 if (!(Test-Path $exe)) {
   throw "worker.exe not found at $exe"
 }

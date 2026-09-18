@@ -25,7 +25,7 @@ npm run build:python-worker
 
 Output:
 
-- `build/python-worker-dist/worker.exe`
+- `build/python-worker-dist/worker/worker.exe`
 
 ## Tests
 

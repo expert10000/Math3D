@@ -1464,7 +1464,7 @@ function resolveBundledWorkerExeCandidates(): string[] {
       : []),
     ...workerExeNames.flatMap((name) => [
       path.join(path.dirname(process.execPath), "resources", "python-worker", name),
-      path.join(process.cwd(), "build", "python-worker-dist", name),
+      path.join(process.cwd(), "build", "python-worker-dist", "worker", name),
     ]),
   ];
   return dedupePaths(candidates);

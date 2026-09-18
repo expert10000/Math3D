@@ -41,7 +41,7 @@ Worker setup details:
 
 How `worker.exe` is created:
 - Build command: `npm run build:python-worker` (runs `python python/worker/freeze.py` via PyInstaller).
-- Output: `build/python-worker-dist/worker.exe`.
+- Output: `build/python-worker-dist/worker/worker.exe` plus its native runtime files.
 - Optional smoke verification: `npm run build:python-worker:smoke`.
 - Installer packaging (`npm run dist`) already builds and embeds this artifact into `resources/python-worker/worker.exe`.
 

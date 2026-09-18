@@ -94,7 +94,10 @@ def main() -> int:
         "PyInstaller",
         "--noconfirm",
         "--clean",
-        "--onefile",
+        # A one-file PyInstaller executable extracts its full VTK/CGAL runtime into
+        # %TEMP%\_MEI* on every launch. A native DLL lock can strand that nearly
+        # 500 MB extraction; the directory bundle avoids the extraction entirely.
+        "--onedir",
         "--console",
         "--name",
         "worker",
@@ -176,12 +179,18 @@ def main() -> int:
     env.setdefault("PYTHONUTF8", "1")
     env.setdefault("PYTHONNOUSERSITE", "1")
     env.setdefault("PYTHONPATH", "")
+    exe_name = "worker.exe" if sys.platform.startswith("win") else "worker"
+    # Remove only the obsolete one-file artifact from older builds. Without this,
+    # a successful directory build can be reported as the stale top-level file.
+    legacy_onefile_path = os.path.join(dist_dir, exe_name)
+    if os.path.isfile(legacy_onefile_path):
+        os.remove(legacy_onefile_path)
+
     result = subprocess.run(cmd, cwd=root, env=env)
     if result.returncode != 0:
         return result.returncode
 
-    exe_name = "worker.exe" if sys.platform.startswith("win") else "worker"
-    exe_path = os.path.join(dist_dir, exe_name)
+    exe_path = os.path.join(dist_dir, "worker", exe_name)
     if not os.path.exists(exe_path):
         print(f"[freeze] expected output missing: {exe_path}", file=sys.stderr)
         return 3

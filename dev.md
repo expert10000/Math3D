@@ -44,7 +44,7 @@ User-facing setup/run/build instructions are now in [readme.md](readme.md).
 - Proxy route base: `/api/worker`.
 - Preferred browser worker backend for distribution:
   - `MATH3D_WORKER_MODE=exe`
-  - worker binary at `build/python-worker-dist/worker.exe`
+  - worker binary at `build/python-worker-dist/worker/worker.exe`
 - Script backend remains supported for local development:
   - `MATH3D_WORKER_MODE=python` or `auto`
   - uses `MATH3D_PYTHON` + `python/worker/main.py`

@@ -150,7 +150,7 @@ async function main() {
   const args = parseArgs(process.argv);
   const exePath = args.exe
     ? path.resolve(args.exe)
-    : path.resolve(process.cwd(), "build", "python-worker-dist", "worker.exe");
+    : path.resolve(process.cwd(), "build", "python-worker-dist", "worker", "worker.exe");
 
   const client = new WorkerClient(exePath);
   try {

@@ -2,7 +2,7 @@
 
 ## Output artifact
 
-- `build/python-worker-dist/worker.exe`
+- `build/python-worker-dist/worker/worker.exe` and its adjacent native runtime files. The worker intentionally uses a directory bundle rather than PyInstaller `--onefile`, preventing large `%TEMP%\\_MEI*` extractions on every launch.
 
 ## Reproducible build commands
 

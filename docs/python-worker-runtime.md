@@ -15,7 +15,7 @@
 
 Configured in `package.json` via `build.extraResources`:
 
-- `from: build/python-worker-dist`
+- `from: build/python-worker-dist/worker`
 - `to: python-worker`
 
 ## Installer validation (Windows)
