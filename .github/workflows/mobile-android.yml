@@ -78,8 +78,16 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Inspect tracked source after install
-        run: git status --short --untracked-files=no
+      - name: Restore npm install lockfile churn
+        run: |
+          changes="$(git status --porcelain --untracked-files=no)"
+          if [[ -n "$changes" && "$changes" != ' M yarn.lock' ]]; then
+            echo "Unexpected tracked changes after npm ci: $changes" >&2
+            exit 1
+          fi
+          if [[ "$changes" == ' M yarn.lock' ]]; then
+            git restore -- yarn.lock
+          fi
 
       - name: Verify mobile identity and typecheck
         run: |
@@ -117,10 +125,11 @@ jobs:
       - name: Build installable internal APK
         run: npm run mobile:android:internal
 
-      - name: Inspect tracked source after build
+      - name: Verify tracked source stayed clean
         run: |
-          git status --short --untracked-files=no
-          node -p "JSON.stringify(require('./artifacts/mobile/build-info.json').trackedSourceChanges)"
+          changes="$(git status --porcelain --untracked-files=no)"
+          test -z "$changes" || { echo "Tracked source changed during build: $changes" >&2; exit 1; }
+          node -e "if (require('./artifacts/mobile/build-info.json').trackedSourceDirty) process.exit(1)"
 
       - name: Verify APK signature and SHA-256
         run: |

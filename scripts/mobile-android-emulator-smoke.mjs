@@ -40,7 +40,7 @@ if (adb("shell", "getprop", "ro.kernel.qemu") !== "1") {
 const sha256 = createHash("sha256").update(readFileSync(apk)).digest("hex");
 if (buildInfo.sha256 !== sha256 || buildInfo.build !== identity.build ||
     buildInfo.applicationId !== packageName || buildInfo.trackedSourceDirty !== false) {
-  throw new Error("APK and build-info.json do not match clean mobile source metadata.");
+  throw new Error(`APK and build-info.json do not match clean mobile source metadata: ${JSON.stringify(buildInfo.trackedSourceChanges)}`);
 }
 
 mkdirSync(resultDir, { recursive: true });
