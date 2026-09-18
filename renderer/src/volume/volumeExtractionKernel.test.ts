@@ -73,6 +73,7 @@ describe("GK15 Volume extraction kernel", () => {
     const snapshot = promoteVolumeExtraction(record, "iso:volume-gk15:1:0:snapshot");
     adapter.commitSource({ ...adapter.document().source, recipe: { ...adapter.document().source.recipe, expression: "x+y+z" } });
     bridge.invalidate();
+    expect(jobs.resources()).toEqual([]);
     expect(volumeExtractionStatus(record, adapter.sourceGeneration())).toBe("stale");
     expect(volumeExtractionStatus(snapshot, adapter.sourceGeneration())).toBe("snapshot");
     expect(bridge.artifacts().resolve(record.result.artifacts[0], source).ok).toBe(false);

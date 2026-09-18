@@ -5,6 +5,7 @@ import {
 } from "@math3d/core";
 
 export const M3D_RESOURCE_STORE_SCHEMA_VERSION = 1 as const;
+export const DEFAULT_M3D_RESOURCE_STORE_MAX_BYTES = 1024 * 1024 * 1024;
 
 export type M3DResourceId = `m3d:${string}`;
 export type M3DResourceMetadata = Readonly<{
@@ -39,6 +40,15 @@ const resourceIdFor = (resource: M3DMeshResource): M3DResourceId => `m3d:${resou
  */
 export class InMemoryM3DResourceStore {
   readonly #resources = new Map<M3DResourceId, StoredResource>();
+  readonly #maxBytes: number;
+  #totalBytes = 0;
+
+  constructor(maxBytes = DEFAULT_M3D_RESOURCE_STORE_MAX_BYTES) {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new RangeError("M3D resource store maxBytes must be positive.");
+    this.#maxBytes = maxBytes;
+  }
+
+  usage() { return Object.freeze({ bytes: this.#totalBytes, maxBytes: this.#maxBytes, resources: this.#resources.size }); }
 
   retain(ownerId: string, resource: M3DMeshResource): M3DResourceMetadata {
     if (!OWNER.test(ownerId)) throw new TypeError("M3D resource ownerId must be an ID-safe string.");
@@ -49,7 +59,9 @@ export class InMemoryM3DResourceStore {
       existing.owners.add(ownerId);
       return this.#metadata(resourceId, existing);
     }
+    if (this.#totalBytes + resource.bytes.byteLength > this.#maxBytes) throw new RangeError("M3D resource store byte budget exceeded.");
     this.#resources.set(resourceId, { resource, owners: new Set([ownerId]), leaseCount: 0 });
+    this.#totalBytes += resource.bytes.byteLength;
     return this.#metadata(resourceId, this.#resources.get(resourceId)!);
   }
 
@@ -96,6 +108,7 @@ export class InMemoryM3DResourceStore {
   #collect(resourceId: M3DResourceId, stored: StoredResource): boolean {
     if (stored.owners.size > 0 || stored.leaseCount > 0) return false;
     this.#resources.delete(resourceId);
+    this.#totalBytes -= stored.resource.bytes.byteLength;
     return true;
   }
 
@@ -110,4 +123,4 @@ export class InMemoryM3DResourceStore {
   }
 }
 
-export const createInMemoryM3DResourceStore = (): InMemoryM3DResourceStore => new InMemoryM3DResourceStore();
+export const createInMemoryM3DResourceStore = (maxBytes?: number): InMemoryM3DResourceStore => new InMemoryM3DResourceStore(maxBytes);

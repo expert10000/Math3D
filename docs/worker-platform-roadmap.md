@@ -14,11 +14,13 @@ mathematics merely to change its transport.
 
 Phase 1 is complete.
 
-Phase 2 is in progress: `math3d.mesh.v1` now defines a checksum-verified,
-typed-array binary resource for indexed mesh payloads. OBJ-worker migration and
-resource lifecycle hand-off are the next increments. The kernel resource store
-now provides checksum-addressed ownership, leases, and deterministic cleanup.
-Volume isosurface results are now retained as managed M3D mesh resources.
+Phase 2 is complete for the current local-worker scope. `math3d.mesh.v1` defines
+checksum-verified, typed-array binary resources for indexed mesh payloads. OBJ
+import and Volume isosurface results use managed M3D mesh resources. The kernel
+resource store provides checksum-addressed ownership, leases, byte quotas, and
+deterministic cleanup. The bundled Python worker now has bounded admission,
+interactive priority, startup protocol/health checks, a restart budget, and
+structured lifecycle diagnostics.
 
 - Completed foundation: canonical worker operation/ownership registry in
   `@math3d/core`; `ExecutionService` facade over the existing scientific
@@ -30,9 +32,9 @@ Volume isosurface results are now retained as managed M3D mesh resources.
 - Legacy mesh normal cleanup now reaches the same facade through a VTK
   compatibility adapter. It retains the current Electron IPC and web-proxy
   bridge protocol; unavailable bridges surface as explicit capabilities.
-- Deliberately deferred: migrating binary-heavy mesh/OBJ payloads to M3D
-  resources, and splitting the bundled Python worker into independently
-  deployed VTK/CGAL services.
+- Deliberately deferred to Phase 3 and later: splitting the bundled Python
+  worker into independently deployed VTK/CGAL services and adding remote
+  resource transport.
 
 ```text
 Feature / application kernel

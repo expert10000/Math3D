@@ -232,7 +232,7 @@ export const normalizeScientificJobRequest = (
         resourceBytes += resource.descriptor.byteLength;
       }
       if (!Number.isSafeInteger(resourceBytes)) errors.push("job.resources byte length is too large.");
-      else if (isRecord(value.limits) && Number.isSafeInteger(value.limits.maxInputBytes) && resourceBytes > value.limits.maxInputBytes) {
+      else if (isRecord(value.limits) && typeof value.limits.maxInputBytes === "number" && Number.isSafeInteger(value.limits.maxInputBytes) && resourceBytes > value.limits.maxInputBytes) {
         errors.push("job.resources exceed job.limits.maxInputBytes.");
       }
     }

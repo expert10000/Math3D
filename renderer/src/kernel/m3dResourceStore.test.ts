@@ -21,5 +21,13 @@ describe("M3D resource store", () => {
     expect(store.metadata(first.resourceId)).not.toBeNull();
     expect(store.releaseOwner("volume-job:two")).toEqual([first.resourceId]);
     expect(store.metadata(first.resourceId)).toBeNull();
+    expect(store.usage().bytes).toBe(0);
+  });
+
+  it("rejects a resource that exceeds the store byte budget", () => {
+    const encoded = resource();
+    const store = createInMemoryM3DResourceStore(encoded.bytes.byteLength - 1);
+    expect(() => store.retain("mesh-job:one", encoded)).toThrow(/byte budget/);
+    expect(store.usage().bytes).toBe(0);
   });
 });

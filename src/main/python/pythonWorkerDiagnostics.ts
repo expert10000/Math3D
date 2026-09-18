@@ -32,6 +32,9 @@ export type PythonWorkerDiagnosticsSnapshot = {
   logPath: string;
   lastCheckAt: number;
   lastError?: PythonWorkerDiagnosticsError;
+  restartFailuresInWindow?: number;
+  restartRetryAfter?: number | null;
+  admission?: { active: number; queued: number; queuedBytes: number };
 };
 
 type MutableDiagnosticsState = PythonWorkerDiagnosticsSnapshot;
@@ -259,6 +262,21 @@ export function getPythonWorkerDiagnosticsSnapshot(): PythonWorkerDiagnosticsSna
     args: state.args ? [...state.args] : undefined,
     lastError: state.lastError ? { ...state.lastError } : undefined,
   };
+}
+
+export function recordPythonWorkerRuntimeEvent(
+  event: "worker-exit" | "startup-rejected" | "restart-blocked" | "admission-rejected" | "job-start" | "job-finish",
+  fields: Record<string, unknown>,
+  policy?: { failuresInWindow: number; retryAfter: number | null },
+  admission?: { active: number; queued: number; queuedBytes: number }
+): void {
+  state.lastCheckAt = Date.now();
+  if (policy) {
+    state.restartFailuresInWindow = policy.failuresInWindow;
+    state.restartRetryAfter = policy.retryAfter;
+  }
+  if (admission) state.admission = { ...admission };
+  appendDiagnosticsLog(event === "worker-exit" ? "error" : event === "job-start" || event === "job-finish" ? "info" : "warn", event, fields);
 }
 
 export function registerPythonWorkerDiagnosticsIpc(): void {

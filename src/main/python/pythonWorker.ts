@@ -3,6 +3,8 @@ import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { mainDebugLog } from "../debugLog";
+import { recordPythonWorkerRuntimeEvent } from "./pythonWorkerDiagnostics";
+import { WorkerAdmissionQueue, WorkerRestartBudget } from "./workerRuntimePolicy";
 import type {
   CgalMeshRequest,
   CgalMeshResponse,
@@ -264,6 +266,8 @@ class PythonWorker {
   private stderrLastLine = "";
   private stdoutBuffer = Buffer.alloc(0);
   private pendingBinary: PendingBinary | null = null;
+  private readonly admission = new WorkerAdmissionQueue();
+  private expectedStop = false;
 
   constructor(proc: ChildProcessWithoutNullStreams) {
     this.proc = proc;
@@ -307,6 +311,12 @@ class PythonWorker {
         p.reject(err);
       }
       this.pending.clear();
+      this.admission.close(err);
+    });
+    proc.on("error", (error) => {
+      for (const [, pending] of this.pending) { clearTimeout(pending.timeout); pending.reject(error); }
+      this.pending.clear();
+      this.admission.close(error);
     });
   }
 
@@ -399,27 +409,49 @@ class PythonWorker {
     }
   }
 
-  private request(job: any, timeoutMs = 120000, payloads?: Buffer[]): Promise<any> {
+  private async request(job: any, timeoutMs = 120000, payloads?: Buffer[]): Promise<any> {
     const jobId: string = job.jobId;
-    return new Promise((resolve, reject) => {
-      if (!jobId) {
-        reject(new Error("Missing jobId for Python worker request"));
-        return;
-      }
-
-      const timeout = setTimeout(() => {
-        this.pending.delete(jobId);
-        reject(new Error(`Python worker timeout for jobId=${jobId}`));
-      }, timeoutMs);
-
-      this.pending.set(jobId, { resolve, reject, timeout });
-      this.proc.stdin.write(JSON.stringify(job) + "\n");
-      if (payloads && payloads.length) {
-        for (const payload of payloads) {
-          if (payload?.length) this.proc.stdin.write(payload);
+    if (!jobId) throw new Error("Missing jobId for Python worker request");
+    const line = JSON.stringify(job) + "\n";
+    const bytes = Buffer.byteLength(line) + (payloads ?? []).reduce((total, payload) => total + payload.byteLength, 0);
+    const deadlineAt = Date.now() + timeoutMs;
+    const priority = ["ping", "version", "health", "mesh.preview"].includes(String(job.type)) ? "interactive" : "normal";
+    let release: () => void;
+    try {
+      release = await this.admission.acquire(jobId, bytes, deadlineAt, priority);
+    } catch (error) {
+      recordPythonWorkerRuntimeEvent("admission-rejected", { jobId, bytes, reason: String((error as Error).message) }, undefined, this.admission.snapshot());
+      throw error;
+    }
+    const startedAt = Date.now();
+    recordPythonWorkerRuntimeEvent("job-start", { jobId, operation: job.type, bytes, priority }, undefined, this.admission.snapshot());
+    try {
+      return await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          this.pending.delete(jobId);
+          const error = new Error(`Python worker timeout for jobId=${jobId}`);
+          this.admission.close(error);
+          reject(error);
+          this.proc.kill();
+        }, Math.max(1, deadlineAt - Date.now()));
+        this.pending.set(jobId, { resolve, reject, timeout });
+        try {
+          this.proc.stdin.write(line);
+          for (const payload of payloads ?? []) {
+            if (payload?.length) this.proc.stdin.write(payload);
+          }
+        } catch (error) {
+          clearTimeout(timeout);
+          this.pending.delete(jobId);
+          this.admission.close(error instanceof Error ? error : new Error(String(error)));
+          reject(error);
+          this.proc.kill();
         }
-      }
-    });
+      });
+    } finally {
+      release();
+      recordPythonWorkerRuntimeEvent("job-finish", { jobId, operation: job.type, elapsedMs: Date.now() - startedAt }, undefined, this.admission.snapshot());
+    }
   }
 
   async ping(timeoutMs = 15000): Promise<{ ok: boolean; pong: boolean }> {
@@ -1257,13 +1289,17 @@ class PythonWorker {
   }
 
   kill() {
+    this.expectedStop = true;
     this.proc.kill();
   }
+
+  isExpectedStop() { return this.expectedStop; }
 }
 
 let singleton: PythonWorker | null = null;
 let spawnPromise: Promise<PythonWorker> | null = null;
 let lastLaunchConfig: WorkerLaunchConfig | null = null;
+const restartBudget = new WorkerRestartBudget();
 
 type WorkerResolutionMode = "auto" | "python" | "exe";
 type WorkerFailureInjectionMode =
@@ -1597,6 +1633,11 @@ function launchStatusFields(config: WorkerLaunchConfig) {
 export async function getPythonWorker(): Promise<PythonWorker> {
   if (singleton) return singleton;
   if (spawnPromise) return spawnPromise;
+  if (!restartBudget.canStart()) {
+    const policy = restartBudget.snapshot();
+    recordPythonWorkerRuntimeEvent("restart-blocked", { retryAfter: policy.retryAfter }, policy);
+    throw new Error(`Python worker restart budget exhausted; retry after ${new Date(policy.retryAfter!).toISOString()}.`);
+  }
 
   spawnPromise = (async () => {
     const launch = resolveWorkerLaunch();
@@ -1609,11 +1650,20 @@ export async function getPythonWorker(): Promise<PythonWorker> {
     });
 
     const worker = new PythonWorker(proc);
+    let failureRecorded = false;
+    const recordUnexpectedFailure = (event: "worker-exit" | "startup-rejected", detail: string) => {
+      if (failureRecorded) return;
+      failureRecorded = true;
+      restartBudget.recordFailure();
+      recordPythonWorkerRuntimeEvent(event, { detail, backend: launch.backend }, restartBudget.snapshot());
+    };
     proc.on("exit", () => {
       if (singleton === worker) singleton = null;
+      if (!worker.isExpectedStop()) recordUnexpectedFailure("worker-exit", "Python worker process exited unexpectedly.");
     });
     proc.on("error", () => {
       if (singleton === worker) singleton = null;
+      if (!worker.isExpectedStop()) recordUnexpectedFailure("worker-exit", "Python worker process failed.");
     });
 
     try {
@@ -1621,9 +1671,12 @@ export async function getPythonWorker(): Promise<PythonWorker> {
       if (!ping.ok) {
         throw new Error(`Python worker ping failed (${launch.backend})`);
       }
-      await worker.version(workerStartupHealthTimeoutMs);
-      await worker.health(workerStartupHealthTimeoutMs);
+      const version = await worker.version(workerStartupHealthTimeoutMs);
+      if (version.protocol !== "2026-03-15") throw new Error(`Unsupported Python worker protocol ${version.protocol}.`);
+      const health = await worker.health(workerStartupHealthTimeoutMs);
+      if (!health?.ok) throw new Error(`Python worker health check failed: ${health?.error ?? "unknown error"}.`);
     } catch (err) {
+      recordUnexpectedFailure("startup-rejected", String((err as Error)?.message ?? err));
       worker.kill();
       throw err;
     }
