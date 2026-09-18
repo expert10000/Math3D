@@ -22,6 +22,7 @@ export type Math3DWorkerOperationId =
   | "volume.contour"
   | "volume.distance-field"
   | "volume.streamlines"
+  | "curve.analyze"
   | "symbolic.simplify"
   | "symbolic.solve"
   | "symbolic.factor";
@@ -181,6 +182,14 @@ const definitions = [
     method: "numerical",
     environments: ["desktop", "server"],
     legacyRequestKinds: ["vtk.volume.streamlines"],
+  },
+  {
+    id: "curve.analyze",
+    title: "Curve analysis",
+    canonicalOwner: "math3d-js",
+    method: "numerical",
+    environments: ["browser", "desktop", "server", "mobile"],
+    legacyRequestKinds: [],
   },
   {
     id: "symbolic.simplify",

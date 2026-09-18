@@ -1,10 +1,10 @@
 import { createScientificJobRequest, matchesScientificSourceGeneration, type AnalysisResultEnvelope, type ScientificSourceGeneration } from "@math3d/core";
-import { createInProcessScientificJobService, createScientificExecutionBroker, type ScientificBrokerOutcome, type ScientificJobExecutionContext } from "@math3d/kernel";
+import { createExecutionService, createInProcessScientificJobService, createScientificExecutionBroker, type ScientificBrokerOutcome, type ScientificExecutionBroker, type ScientificJobExecutionContext } from "@math3d/kernel";
 import { CURVE_PERFORMANCE_BUDGETS, type CurveComputationArtifact, type CurveWorkerProgress, type CurveWorkerRequest } from "./curveComputation";
 import { CurveWorkerCoordinator } from "./curveWorkerCoordinator";
 import { CurveAnalysisKernelBridge } from "./curveAnalysisKernelBridge";
 
-export const CURVE_SCIENTIFIC_OPERATION = "curve.analyze.worker";
+export const CURVE_SCIENTIFIC_OPERATION = "curve.analyze";
 type Pending = { request: CurveWorkerRequest; onProgress?: (progress: CurveWorkerProgress) => void; artifact?: CurveComputationArtifact; result?: AnalysisResultEnvelope };
 export type CurveScientificOutcome = { artifact: CurveComputationArtifact | null; result: AnalysisResultEnvelope | null; broker: ScientificBrokerOutcome };
 export type CurveScientificHandle = { requestId: string; promise: Promise<CurveScientificOutcome>; cancel: () => void };
@@ -17,7 +17,8 @@ export class CurveScientificJob {
   readonly #workerHandles = new Map<string, ReturnType<CurveWorkerCoordinator["submit"]>>();
   readonly #resultsByCacheKey = new Map<string, AnalysisResultEnvelope>();
   readonly #service;
-  readonly #broker;
+  readonly #broker: ScientificExecutionBroker;
+  readonly #execution;
 
   constructor(bridge: CurveAnalysisKernelBridge, coordinator: CurveWorkerCoordinator) {
     this.#bridge = bridge;
@@ -39,11 +40,13 @@ export class CurveScientificJob {
         cancel: (jobId) => { this.#service.cancel(jobId); this.#workerHandles.get(jobId)?.cancel(); },
       }],
     });
+    this.#execution = createExecutionService(this.#broker);
   }
 
   capabilities() { return this.#broker.discoverCapabilities(); }
+  executionCapabilities() { return this.#execution.discoverCapabilities(); }
   cache() { return this.#coordinator.cache; }
-  cancel(jobId: string) { return this.#broker.cancel(jobId); }
+  cancel(jobId: string) { return this.#execution.cancel(jobId); }
   dispose() { for (const jobId of this.#pending.keys()) this.cancel(jobId); this.#coordinator.dispose(); }
 
   submit(request: CurveWorkerRequest, onProgress?: Pending["onProgress"]): CurveScientificHandle {
@@ -58,7 +61,7 @@ export class CurveScientificJob {
       operation: { type: CURVE_SCIENTIFIC_OPERATION, payload: { operation: request.operation, curveId: request.curveId, curveRevision: request.curveRevision, workload: request.workload, targetCount: request.targetCount, tolerance: request.tolerance } },
       limits: { deadlineAt: Date.now() + budget.timeoutMs + 1_000, maxInputBytes: 64 * 1024, maxOutputBytes: 64 * 1024, maxMemoryBytes: Math.max(16 * 1024 * 1024, budget.maximumTransferBytes * 2), maxWorkUnits: 100_000_000 },
     });
-    const promise = this.#broker.submit(job).then((broker): CurveScientificOutcome => ({ artifact: pending.artifact ?? null, result: pending.result ?? null, broker })).finally(() => {
+    const promise = this.#execution.submit(job).then((broker): CurveScientificOutcome => ({ artifact: pending.artifact ?? null, result: pending.result ?? null, broker })).finally(() => {
       this.#pending.delete(jobId);
       this.#workerHandles.delete(jobId);
     });

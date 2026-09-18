@@ -41,6 +41,7 @@ describe("GK12 Curve scientific job", () => {
     const coordinator = new CurveWorkerCoordinator(() => worker, undefined, () => 1);
     const jobs = new CurveScientificJob(bridge, coordinator);
     expect((await jobs.capabilities()).some((backend) => backend.operations.some((operation) => operation.operationType === CURVE_SCIENTIFIC_OPERATION))).toBe(true);
+    expect((await jobs.executionCapabilities()).find((capability) => capability.operation.id === CURVE_SCIENTIFIC_OPERATION)?.availableBackends.map((backend) => backend.backendId)).toEqual(["curve-worker"]);
     const request = coordinator.createRequest({ definition, operation: "sampling", positions: new Float64Array([0, 0, 0, 1, 1, 0, 2, 0, 0]), targetCount: 1_000, workload: "1k" });
     const progress: string[] = [];
     const first = await jobs.submit(request, (value) => progress.push(value.phase)).promise;
