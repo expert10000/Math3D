@@ -29,6 +29,15 @@ clean-installed on Android 16. Catenoid loaded in Workspace, inspector swipes
 opened/closed the sheet, 50% opacity updated, and no app fatal crash appeared
 in filtered logs. This UX build still needs physical-device validation.
 
+CI gate (September 18, 2026): `.github/workflows/mobile-android.yml` now runs
+mobile version/typecheck, an internal APK build, checksum and signature checks,
+and a focused Android 16 emulator smoke, then captures the APK and evidence.
+The desktop release workflow waits for this gate. A tagged release additionally
+requires an approved `docs/mobile-device-signoff.json` record for the tested
+mobile source and signing certificate. The record is pending for build `150002`;
+the local emulator pass does not count as physical-device signoff. Shared CI
+internal signing secrets and the production AAB signing key also remain pending.
+
 ## 1. Scope
 This checklist is the Phase 5 gate for `apps/mobile` before external release.
 
@@ -85,6 +94,8 @@ Run each row 10 times unless stated otherwise.
 ## 7. Release Checklist
 - [x] Lock mobile dependency versions used in final QA build.
 - [x] Capture final tested commit SHA and build artifact hashes.
+- [ ] Approve the build `150002` physical-device record after USB-free relaunch,
+  Workspace, Explore, inspector, Files persistence, and crash-log checks.
 - [ ] Archive logcat/iOS crash logs from full matrix run.
 - [x] Update `docs/mobile-migration-implementation-plan.md` status notes.
 - [ ] Sign off from engineering + QA before external distribution.

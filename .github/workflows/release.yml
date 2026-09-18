@@ -19,7 +19,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  mobile-release-gate:
+    uses: ./.github/workflows/mobile-android.yml
+    with:
+      release_ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+      require_device_signoff: true
+    secrets: inherit
+
   windows-release:
+    needs: mobile-release-gate
     runs-on: windows-latest
     timeout-minutes: 150
     env:
@@ -233,7 +241,7 @@ jobs:
           files: ${{ steps.assets.outputs.asset_glob }}
 
   linux-release:
-    needs: windows-release
+    needs: [mobile-release-gate, windows-release]
     runs-on: ubuntu-22.04
     timeout-minutes: 150
     env:

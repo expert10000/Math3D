@@ -148,11 +148,69 @@ Testers can also transfer the APK to a phone and open it from a file manager;
 Android may ask them to allow installation from that source. For updates,
 distribute an APK signed by the **same** internal key with a higher build number.
 
-For a minimum smoke test, launch the app, confirm Home and saved scenes render,
-open Gallery > Catenoid in Viewer, orbit the surface, and inspect filtered
-`AndroidRuntime`/`ReactNativeJS` logs. Device performance, remote compute, and
-the full repeat matrix are tracked in
+For a minimum phone smoke test, launch Workspace and inspect the Catenoid,
+open Explore > Gallery and return to Workspace, swipe the inspector, change
+opacity, save and reopen a scene in Files, then unplug USB and relaunch from
+the phone launcher. Inspect filtered `AndroidRuntime`/`ReactNativeJS` logs.
+Device performance, remote compute, and the full repeat matrix are tracked in
 `docs/mobile-phase5-stability-checklist.md`.
+
+## Automated build and release gates
+
+`.github/workflows/mobile-android.yml` runs on pull requests and pushes to
+`main`/`master`, and can be started manually. It checks version consistency and
+mobile TypeScript, builds a signed internal APK, verifies its checksum and
+signature, then runs a focused Android 16 emulator smoke test. That test covers
+clean installation, offline Workspace launch, inspector swipe and opacity,
+Home/Explore/Workspace/Files/Settings navigation, and fatal app logs. The run
+uploads the APK, `build-info.json`, `SHA256SUMS`, screenshot, filtered log, and
+machine-readable smoke result as a GitHub Actions artifact for 14 days.
+
+Normal CI uses a **disposable** internal signing key. Its APK proves that the
+source builds and installs, but cannot update a tester install signed by the
+shared key. For a repeatable local smoke run on an Android emulator after an
+internal build:
+
+```bash
+npm run mobile:android:smoke
+```
+
+The smoke command deliberately clears only an emulator install. It refuses a
+physical device. Its evidence is written to `output/mobile-android-smoke/`.
+
+`.github/workflows/release.yml` calls the same gate before publishing the
+desktop installers. A release run requires the physical-device record in
+`docs/mobile-device-signoff.json` to be `approved`, with the exact tested
+source commit, APK SHA-256, internal signing certificate SHA-256, device,
+tester, date, and all listed checks. The validator rejects mobile source
+contents that differ from the tested commit. It runs with:
+
+```bash
+npm run mobile:device:signoff:check
+```
+
+The record currently says `pending` for build `150002`. Keep it pending until
+that APK has been updated or installed on a physical phone, relaunched after
+USB is disconnected, and the seven checks have actually passed. Attach test
+notes or logs to the release review; only commit factual results to the JSON.
+
+The release workflow also needs these GitHub Actions secrets for the **shared
+internal** signing identity:
+
+| Secret | Value |
+| --- | --- |
+| `MATH3D_ANDROID_INTERNAL_KEYSTORE_BASE64` | Base64 of the backed-up `mobile-internal.jks` |
+| `MATH3D_ANDROID_INTERNAL_STORE_PASSWORD` | Store password from the secure `internal.json` backup |
+| `MATH3D_ANDROID_INTERNAL_KEY_ALIAS` | Alias from that backup |
+| `MATH3D_ANDROID_INTERNAL_KEY_PASSWORD` | Key password from that backup |
+
+Base64 is a transport encoding, not protection; store the encoded keystore as
+a secret. The workflow compares the built APK certificate with the physical
+device record, so a new disposable key cannot silently replace the tested
+signing identity. The CI artifact is a fresh validation build and may have a
+different APK hash; distribute the exact APK identified by the signoff hash to
+testers. These gates do not create the production release AAB. That still
+requires the separately held `RELEASE` keystore and production-signing review.
 
 ## Verified tester archive
 
@@ -197,7 +255,7 @@ filtered fatal Android or React Native JS errors. This build has **not** yet
 been tested on the Samsung phone; its prior physical-device approval applies
 to build `150001` only.
 
-## Next release gates
+## Remaining release gates
 
 1. Back up the internal keystore and `internal.json` together in secure team
    storage, and establish who owns future internal updates.

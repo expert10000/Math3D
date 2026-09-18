@@ -23,6 +23,8 @@
     "mobile:android:debug": "node scripts/mobile-android-build.mjs debug",
     "mobile:android:internal": "node scripts/mobile-android-build.mjs internal",
     "mobile:android:release": "node scripts/mobile-android-build.mjs release",
+    "mobile:android:smoke": "node scripts/mobile-android-emulator-smoke.mjs",
+    "mobile:device:signoff:check": "node scripts/mobile-device-signoff.mjs",
     "build:web": "npm --prefix apps/web run build",
     "build:web:pages": "npm --prefix apps/web run build:pages",
     "build:public-site": "npm --prefix apps/public-site run build",
