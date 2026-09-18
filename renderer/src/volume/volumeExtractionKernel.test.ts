@@ -45,6 +45,7 @@ describe("GK15 Volume extraction kernel", () => {
     const coordinator = new VolumeWorkerCoordinator(() => new InlineWorker(), undefined, () => ({ volumeRevision: volume.identity.volumeRevision, sampledGridRevision: volume.identity.sampledGridRevision }));
     const jobs = new VolumeIsosurfaceScientificJob(() => adapter, coordinator);
     expect((await jobs.capabilities()).some((backend) => backend.operations.some((operation) => operation.operationType === VOLUME_ISOSURFACE_OPERATION))).toBe(true);
+    expect((await jobs.executionCapabilities()).find((capability) => capability.operation.id === VOLUME_ISOSURFACE_OPERATION)?.availableBackends.map((backend) => backend.backendId)).toEqual(["volume-native-worker"]);
     const request = createVolumeJobRequest({ requestId: "volume-gk15-extract", operation: "marchingCubes", volume, grid, parameters: { isoValue: 0 }, backend: "native-worker", algorithmVersion: "marching-cubes-v1" });
     const source = adapter.sourceGeneration();
     const outcome = await jobs.submit(request).promise;

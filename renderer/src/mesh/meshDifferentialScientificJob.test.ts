@@ -45,6 +45,7 @@ describe("GK09 Mesh differential scientific job", () => {
     const { mesh, bridge, worker, jobs, identity } = setup();
     const capabilities = await jobs.capabilities();
     expect(capabilities[0]).toMatchObject({ backendId: "mesh-analysis-worker", transport: "worker", availability: "available" });
+    expect((await jobs.executionCapabilities()).find((capability) => capability.operation.id === "mesh.analyze.differential")?.availableBackends.map((backend) => backend.backendId)).toEqual(["mesh-analysis-worker"]);
     const pending = jobs.submit(mesh, identity, undefined, { jobId: "mesh-differential/test-success" });
     const request = await awaitRequest(worker);
     if (request.type !== "compute-differential") throw new Error("Wrong worker request.");

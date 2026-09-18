@@ -1,10 +1,10 @@
 import { createScientificJobRequest, type ScientificSourceGeneration } from "@math3d/core";
-import { createInProcessScientificJobService, createScientificExecutionBroker, type ScientificBrokerOutcome, type ScientificJobExecutionContext } from "@math3d/kernel";
+import { createExecutionService, createInProcessScientificJobService, createScientificExecutionBroker, type ScientificBrokerOutcome, type ScientificExecutionBroker, type ScientificJobExecutionContext } from "@math3d/kernel";
 import { createVolumeMemoryPlan, VOLUME_MEMORY_LIMITS, type VolumeJobArtifact, type VolumeJobProgress, type VolumeJobRequest, type VolumeJobLifecycle } from "./computation";
 import { VolumeWorkerCoordinator, type VolumeWorkerHandle } from "./workerCoordinator";
 import type { VolumeDocumentAdapter } from "./volumeDocumentAdapter";
 
-export const VOLUME_ISOSURFACE_OPERATION = "volume.extract.isosurface";
+export const VOLUME_ISOSURFACE_OPERATION = "volume.contour";
 type Pending = { request: VolumeJobRequest; onProgress?: (progress: VolumeJobProgress) => void; onLifecycle?: (lifecycle: VolumeJobLifecycle) => void; artifact?: VolumeJobArtifact };
 export type VolumeScientificOutcome = { artifact: VolumeJobArtifact | null; broker: ScientificBrokerOutcome };
 export type VolumeScientificHandle = { requestId: string; promise: Promise<VolumeScientificOutcome>; cancel: () => void };
@@ -16,7 +16,8 @@ export class VolumeIsosurfaceScientificJob {
   readonly #pending = new Map<string, Pending>();
   readonly #handles = new Map<string, VolumeWorkerHandle>();
   readonly #service;
-  readonly #broker;
+  readonly #broker: ScientificExecutionBroker;
+  readonly #execution;
 
   constructor(adapter: () => VolumeDocumentAdapter, coordinator: VolumeWorkerCoordinator) {
     this.#adapter = adapter;
@@ -38,9 +39,11 @@ export class VolumeIsosurfaceScientificJob {
         cancel: (jobId) => { this.#service.cancel(jobId); this.#handles.get(jobId)?.cancel(); },
       }],
     });
+    this.#execution = createExecutionService(this.#broker);
   }
   capabilities() { return this.#broker.discoverCapabilities(); }
-  cancel(jobId: string) { return this.#broker.cancel(jobId); }
+  executionCapabilities() { return this.#execution.discoverCapabilities(); }
+  cancel(jobId: string) { return this.#execution.cancel(jobId); }
   dispose() { for (const jobId of this.#pending.keys()) this.cancel(jobId); this.#coordinator.dispose(); }
 
   submit(request: VolumeJobRequest, options: Pick<Pending, "onProgress" | "onLifecycle"> = {}): VolumeScientificHandle {
@@ -56,7 +59,7 @@ export class VolumeIsosurfaceScientificJob {
       limits: { deadlineAt: Date.now() + VOLUME_MEMORY_LIMITS.defaultTimeoutMs + 1_000, maxInputBytes: 64 * 1024, maxOutputBytes: 64 * 1024,
         maxMemoryBytes: Math.max(16 * 1024 * 1024, plan.peakWorkingSetBytes), maxWorkUnits: 100_000_000 },
     });
-    const promise = this.#broker.submit(job).then((broker): VolumeScientificOutcome => ({ artifact: pending.artifact ?? null, broker })).finally(() => {
+    const promise = this.#execution.submit(job).then((broker): VolumeScientificOutcome => ({ artifact: pending.artifact ?? null, broker })).finally(() => {
       this.#pending.delete(jobId); this.#handles.delete(jobId);
     });
     return { requestId: jobId, promise, cancel: () => { this.cancel(jobId); } };

@@ -3,7 +3,7 @@ import {
   type AnalysisResultEnvelope, type ScientificJobLimits, type ScientificSourceGeneration,
 } from "@math3d/core";
 import {
-  createInProcessScientificJobService, createScientificExecutionBroker,
+  createExecutionService, createInProcessScientificJobService, createScientificExecutionBroker,
   type ScientificBrokerOutcome, type ScientificExecutionBackend, type ScientificExecutionBroker,
   type ScientificJobExecutionContext,
 } from "@math3d/kernel";
@@ -41,6 +41,7 @@ export class MeshDifferentialScientificJob {
   readonly #workers = new Map<string, WorkerPort>();
   readonly #service;
   readonly #broker: ScientificExecutionBroker;
+  readonly #execution;
   readonly #results = new Map<string, AnalysisResultEnvelope>();
   readonly #outcomes = new Map<string, ScientificBrokerOutcome>();
   #sequence = 0;
@@ -69,13 +70,15 @@ export class MeshDifferentialScientificJob {
         cancel: (jobId) => { this.#service.cancel(jobId); this.#workers.get(jobId)?.terminate(); },
       }],
     });
+    this.#execution = createExecutionService(this.#broker);
   }
 
   async capabilities() { return this.#broker.discoverCapabilities(); }
+  executionCapabilities() { return this.#execution.discoverCapabilities(); }
   results(): readonly AnalysisResultEnvelope[] { return [...this.#results.values()]; }
   outcomes(): readonly ScientificBrokerOutcome[] { return [...this.#outcomes.values()]; }
   cancel(jobId: string): boolean {
-    const cancelled = this.#broker.cancel(jobId);
+    const cancelled = this.#execution.cancel(jobId);
     if (cancelled) this.#workers.get(jobId)?.terminate();
     return cancelled;
   }
@@ -97,7 +100,7 @@ export class MeshDifferentialScientificJob {
       limits: options.limits ?? limitsFor(mesh),
     });
     try {
-      const broker = await this.#broker.submit(job);
+      const broker = await this.#execution.submit(job);
       this.#outcomes.set(jobId, broker);
       if (this.#outcomes.size > 24) this.#outcomes.delete(this.#outcomes.keys().next().value!);
       if (!broker.ok) {

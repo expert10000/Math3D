@@ -16,6 +16,7 @@ export type Math3DWorkerOperationId =
   | "mesh.smooth"
   | "mesh.geodesic.heat"
   | "mesh.geodesic.shortest-path"
+  | "mesh.analyze.differential"
   | "surface.implicit.preview"
   | "surface.implicit.mesh"
   | "volume.slice"
@@ -134,6 +135,14 @@ const definitions = [
     method: "exact",
     environments: ["desktop", "server"],
     legacyRequestKinds: ["cgal.geodesic-surface-path"],
+  },
+  {
+    id: "mesh.analyze.differential",
+    title: "Mesh differential analysis",
+    canonicalOwner: "math3d-js",
+    method: "numerical",
+    environments: ["browser", "desktop", "server", "mobile"],
+    legacyRequestKinds: [],
   },
   {
     id: "surface.implicit.preview",

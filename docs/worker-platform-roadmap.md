@@ -18,8 +18,9 @@ Phase 1 is in progress.
   `@math3d/core`; `ExecutionService` facade over the existing scientific
   execution broker; capability diagnostics; compatibility mapping for the
   current CGAL/VTK request kinds; focused conformance tests.
-- First vertical slice: Curve analysis now submits through `ExecutionService`
-  while preserving its existing browser-worker protocol and typed-array cache.
+- Routed browser-worker slices: Curve analysis, Mesh differential analysis, and
+  Volume isosurface extraction now submit through `ExecutionService` while
+  preserving their existing worker protocols and typed-array caches.
 - Deliberately deferred: migrating binary-heavy mesh/OBJ payloads to M3D
   resources, and splitting the bundled Python worker into independently
   deployed VTK/CGAL services.
