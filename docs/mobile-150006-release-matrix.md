@@ -99,7 +99,13 @@ built and launched a Debug app, but its screenshot was blank white. That is not
 accepted as a visual smoke pass. The workflow now builds an unsigned Release
 simulator app to embed JavaScript; its
 [Release rerun](https://github.com/expert10000/Math3D/actions/runs/35401091401)
-is pending.
+passed build, install, and launch. Its screenshot (SHA-256
+`ff481a5cb375413faeec902deae31d52bbce27613dc04fa0fee44d69e6a7eb7f`)
+shows the Workspace shell, Catenoid title, inspector, and five destinations.
+The viewport is a uniform pale rectangle: 0 of 5,135 sampled viewport pixels
+varied materially from its center. iOS simulator **shell launch passes; 3D
+rendering does not pass**. A screenshot gate now rejects a blank app or blank
+viewport in future runs. Physical iPhone rendering remains untested.
 
 ## Still open
 
@@ -108,6 +114,7 @@ is pending.
   first interactive frame.
 - Build and verify a release AAB with the existing production signing identity,
   or establish the first production key if no identity exists.
-- Run iOS simulator sanity and physical iPhone checks where available.
+- Resolve the blank iOS simulator viewport and test rendering on a physical
+  iPhone where available.
 - Back up signing keys and configuration in owner-controlled secure storage
   before external distribution.

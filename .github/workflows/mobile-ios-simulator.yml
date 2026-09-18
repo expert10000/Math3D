@@ -72,6 +72,7 @@ jobs:
           sleep 15
           mkdir -p output/mobile-ios-simulator
           xcrun simctl io "$device" screenshot output/mobile-ios-simulator/launch.png
+          swift .github/scripts/mobile-ios-screenshot-check.swift output/mobile-ios-simulator/launch.png
 
       - name: Upload simulator screenshot
         if: always()
