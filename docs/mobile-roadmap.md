@@ -32,7 +32,7 @@ The intended navigation is **Home | Explore | Workspace | Projects | Settings**,
 
 | Phase | Goal | Deliverable and exit evidence |
 | --- | --- | --- |
-| **M0 — beta baseline (P0)** | Freeze build `150006` | Builds `150002` and `150003` exposed navigation and last-viewed-scene restore defects; `150004` passed focused Samsung signoff. Build `150006` adds internal LAN worker access and clearer connection errors. Its [matrix evidence](mobile-150006-release-matrix.md) records ten repeated Samsung cycles, Wi-Fi implicit preview, Files persistence, and shared-key CI. Its [exact-build signoff](mobile-device-signoff.json) awaits owner-observed USB-free relaunch. Complete remaining physical rows, confirm production signing identity, and verify a separately signed release AAB before M0 closes. |
+| **M0 — beta baseline (P0)** | Freeze build `150006` | Builds `150002` and `150003` exposed navigation and last-viewed-scene restore defects; `150004` passed focused Samsung signoff. Build `150006` adds internal LAN worker access and clearer connection errors. Its [matrix evidence](mobile-150006-release-matrix.md) records ten repeated Samsung cycles, Wi-Fi implicit preview, Files persistence, and shared-key CI. Its [exact-build signoff](mobile-device-signoff.json) is approved after USB-free Catenoid restore. The first production/upload key and a locally verified release AAB are established. Complete key backup, remaining physical rows, and the production CI gate before M0 closes. |
 | **M1 — structure and semantics (P1)** | Make the current app safe to extend | Split `MobileApp.tsx` into navigation, screens, workspace inspectors, viewer, services, and persistent state with behavior preserved. Rename Analyze→Compute and Display→View; move camera actions to viewport; remove misleading implicit proxy. Typecheck, navigation smoke, and offline/implicit-state checks pass. |
 | **M2 — Projects (P1)** | Trustworthy offline project library | Rename, duplicate, reversible delete, real scene thumbnails, import/export/share. Before expanding import/export, add atomic save (temp file then rename), schema validation/migration, corrupt-project and storage-full recovery, and backup copy. Project cards show a rendered thumbnail, object count, and update time. Save/restore and failure recovery pass on device. |
 | **M3 — compute platform (P1)** | Reachable, capability-driven worker jobs | Default to unconfigured backend; add desktop-to-phone QR pairing with temporary token and manual Advanced URL. Negotiate protocol/server versions and named capabilities before exposing actions. Submit jobs with operation, parameters, input hash, and engine identity; persist job IDs; support progress, cancel, retry, resume, diagnostics, and cache provenance. Test network loss and app background/restore. |
@@ -66,7 +66,10 @@ M0 is the release gate for a trusted baseline. M1 follows immediately. M2 and M3
 
 ## Planned commit sequence
 
-The IDs below are planning labels, not claims of implementation. Each commit should include focused acceptance evidence.
+The IDs below are planning labels. MOB24's exact-build Samsung signoff and
+MOB25's shared internal and first production signing paths are implemented;
+remaining matrix and backup gates are tracked above. Each later commit should
+include focused acceptance evidence.
 
 | ID / phase | Planned commit |
 | --- | --- |

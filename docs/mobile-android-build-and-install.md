@@ -118,8 +118,23 @@ keystore password and must be treated as a secret. Do not add either file to
 Git, the tester archive, or issue attachments. The internal build command loads
 this local configuration automatically.
 
-For a shared build machine, or to override local internal configuration, supply
-all four environment variables for the chosen channel (`INTERNAL` or `RELEASE`):
+The first production/upload key for `com.math3d.mobile` was created with:
+
+```bash
+npm run mobile:signing:release:init
+```
+
+This command refuses to replace a key. It writes `mobile-release.jks` and
+`release.json` alongside the internal signing files outside Git. The public
+certificate fingerprint is recorded in [mobile-release-signing.json](mobile-release-signing.json).
+The release build reads this local configuration when no release environment
+variables are set. **Back up both release files in owner-controlled, off-device
+secure storage before external distribution.** The CI secrets are not a
+recoverable backup; `ownerBackupVerified` remains false until that copy is
+confirmed.
+
+For a shared build machine, or to override local configuration, supply all
+four environment variables for the chosen channel (`INTERNAL` or `RELEASE`):
 
 ```text
 MATH3D_ANDROID_<CHANNEL>_KEYSTORE_PATH
@@ -128,8 +143,9 @@ MATH3D_ANDROID_<CHANNEL>_KEY_ALIAS
 MATH3D_ANDROID_<CHANNEL>_KEY_PASSWORD
 ```
 
-Production release builds **always** require the `RELEASE` variables and a
-release-owner keystore. They never fall back to the internal or debug key.
+Production release builds require the release key through the local
+`release.json` or all four `RELEASE` variables. They never fall back to the
+internal or debug key.
 Gradle itself rejects missing credentials, and both the npm wrapper and Gradle
 reject the checked-in debug keystore for internal/release signing. Do not
 generate a new production key for each build: updates need continuity of the
@@ -195,11 +211,11 @@ contents that differ from the tested commit. It runs with:
 npm run mobile:device:signoff:check
 ```
 
-Build `150004` has a historical approved Samsung record, but the current
-`150006` APK has a different hash. Its [device signoff](mobile-device-signoff.json)
-is pending owner-observed USB-free relaunch and Wi-Fi health. The
-[current matrix evidence](mobile-150006-release-matrix.md) records the checks
-already complete. No previous APK approval transfers to a new build.
+Build `150004` has a historical approved Samsung record. The current `150006`
+APK has its own [approved device signoff](mobile-device-signoff.json), including
+the owner-observed USB-free Catenoid relaunch. The
+[current matrix evidence](mobile-150006-release-matrix.md) records the broader
+checks. No previous APK approval transfers to a new build.
 
 The release workflow also needs these GitHub Actions secrets for the **shared
 internal** signing identity:
@@ -216,12 +232,33 @@ a secret. All four repository secrets are now configured from the existing
 internal key. The [shared-signing CI run](https://github.com/expert10000/Math3D/actions/runs/35397425202)
 passed certificate comparison and emulator smoke for `150006`. Its APK hash
 differs from the local Samsung-tested APK, so distribute the exact APK
-identified by device signoff. The production AAB still requires a separate
-`RELEASE` keystore and signing review.
+identified by device signoff. The production AAB uses the separate release
+upload key described below.
+
+`.github/workflows/mobile-android-production-aab.yml` is a manual gate. It
+checks the approved device record, restores the release key from four separate
+GitHub Actions secrets, builds the AAB, and compares the embedded signing
+certificate against the public fingerprint in `mobile-release-signing.json`.
+The secret names mirror the internal set, replacing `INTERNAL` with `RELEASE`.
+The keystore secret holds base64 encoded bytes; the password and alias secrets
+hold their respective values. All four are configured in the repository.
+
+The locally verified AAB is
+`artifacts/mobile/Math3D-mobile-1.5.0-release.aab` (SHA-256
+`008620ed336ba77fcc4f1d734f65781dcd53e2a1fd492af6fa5d052db47693c1`).
+Its source is commit `6c128cd87351b3010fa801aeb543ea0ca2db5080`, and its
+certificate SHA-256 is
+`66a86e95eaf60f8d2224dd06ad5ef4eec6c856ca2b5e32dc954384bc6ad41be3`.
+Verify locally with `npm run mobile:android:release:verify`. The
+[archive](../artifacts/mobile/Math3D-mobile-1.5.0-release-150006-6c128cd.zip)
+contains this exact AAB, metadata, checksums, and the public certificate record;
+its SHA-256 is `c0f9f9d9cd11f27a7ee737adae43a3e45df0ca564d38928ec7714195caaaa19f`.
+The archive is local and ignored by Git. AABs are for store upload, not direct
+phone installation.
 
 ## Verified tester archive
 
-The local archive
+The earlier local archive
 `artifacts/mobile/Math3D-mobile-1.5.0-internal-b93e9b8.zip` contains the
 signed APK, `build-info.json`, `SHA256SUMS`, tester instructions, and screenshots
 of Home and the 3D viewer from the earlier six-tab UI. It contains **no signing
@@ -242,9 +279,9 @@ The repository checklist records this P0 smoke result. On September 18, 2026,
 the same APK hash also installed and launched on a Samsung `SM-A566B` running
 Android 16. Its tabs and native surface viewer worked, and no app fatal crash
 appeared in the inspected logs. The user accepted this internal tester install
-path for now. USB was used for installation and diagnostics; a relaunch after
-unplugging has not yet been observed. The repeated physical-device matrix and a
-production-key signed release AAB remain separate release-readiness gates.
+path for that build. USB was used for its installation and diagnostics; this
+historical build `150001` did not have a recorded unplugged relaunch. Later
+builds `150004` and `150006` did pass owner-observed USB-free scene restore.
 
 ## Workspace UI build smoke
 
@@ -253,6 +290,11 @@ is build `150006` from source commit
 `e36ec7ba90b8da2b3e53b4cdbf6c5df6cab5eb1c`. Its SHA-256 is
 `9d1a002d677a32a6ea75b84d018b4c632eccafb15ff9c3d0c9ff7799bc8d0227`.
 It uses the same internal signing certificate as build `150001`.
+Its exact [approved tester archive](../artifacts/mobile/Math3D-mobile-1.5.0-internal-150006-approved.zip)
+has SHA-256 `6ad8e93ad0e8241352650e6d653f8fc82603e685ac9a7d4c1045afdd81f74f6f`.
+The archive contains the APK, metadata, checksums, and install note, with no
+signing credentials. The [device signoff](mobile-device-signoff.json) records
+the exact APK hash and owner-observed USB-free Catenoid restore.
 
 An Android 16 emulator clean install opened the Catenoid scene in Workspace.
 Home, Explore, Workspace, Files, and Settings navigation, the Scene/Object/
@@ -265,16 +307,15 @@ navigation and saved-project checks, but a last-viewed Explore example reverted
 to an older project on relaunch. Build `150004` added session restore and
 passed its exact-build Samsung signoff. Build `150006` adds the internal LAN
 worker path and clearer connection errors. Its emulator and repeated Samsung
-checks pass; owner-observed USB-free `150006` signoff remains pending.
+checks pass; the owner confirmed USB-free Catenoid restore on the exact APK.
 
 ## Remaining release gates
 
-1. Back up the internal keystore and `internal.json` together in secure team
-   storage, and establish who owns future internal updates. The CI secrets are
-   configured but are not a recoverable backup.
-2. Have the release owner supply the production keystore and four `RELEASE`
-   variables outside Git, then build and verify the release AAB.
-3. Run the repeated Android physical-device matrix and record crashes,
-   performance, backend behavior, and signing/update continuity in the
-   [Phase 5 checklist](mobile-phase5-stability-checklist.md). Complete the iOS
-   matrix before a cross-platform external release.
+1. Back up the internal and release keystores with their respective JSON
+   configuration files in owner-controlled, off-device secure storage. CI
+   secrets are configured but are not recoverable backups.
+2. Complete the remaining physical checks: 30-second two-finger pan/zoom and
+   first interactive frame timing. See the
+   [Phase 5 checklist](mobile-phase5-stability-checklist.md).
+3. Resolve the blank iOS simulator GL viewport and complete physical iPhone
+   rendering checks before a cross-platform external release.

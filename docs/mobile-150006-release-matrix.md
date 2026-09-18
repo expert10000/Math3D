@@ -3,7 +3,7 @@
 Date: September 18, 2026. This record separates checks completed on the exact
 internal APK from release work that still needs a credential or physical device.
 
-## Exact internal candidate
+## Approved internal APK
 
 | Field | Value |
 | --- | --- |
@@ -15,11 +15,12 @@ internal APK from release work that still needs a credential or physical device.
 
 The APK was built from clean tracked source. `apksigner` verified the same
 internal signing certificate used on the Samsung for build `150004`.
-The local candidate archive is
-`artifacts/mobile/Math3D-mobile-1.5.0-internal-150006-candidate.zip` (SHA-256
-`ff9f88aaca5f2c5a7691ff89e4e6129866737017528ed1869cd8752f4ba82dab`).
-It contains the exact tested APK, build metadata, checksum, and tester note;
-its candidate label remains until owner-observed signoff is complete.
+The [approved device signoff](mobile-device-signoff.json) covers this exact
+APK, including the owner's USB-free Catenoid restore after closing the app.
+The local approved archive is
+`artifacts/mobile/Math3D-mobile-1.5.0-internal-150006-approved.zip` (SHA-256
+`6ad8e93ad0e8241352650e6d653f8fc82603e685ac9a7d4c1045afdd81f74f6f`).
+It contains the exact tested APK, build metadata, checksum, and tester note.
 `aapt` verified the internal variant allows cleartext HTTP for development
 worker addresses. The merged release manifest has no cleartext override, so its
 target API 36 retains [Android's HTTPS-only default](https://developer.android.com/guide/topics/manifest/application-element).
@@ -64,8 +65,10 @@ Raw logs are not committed because they may contain device data.
 
 Save to Files produced a Catenoid card. After force-stop and relaunch, both
 Workspace and Files retained Catenoid; opening the saved card returned to
-Workspace. The owner-observed USB-free relaunch and health check on this exact
-APK are pending in [device signoff](mobile-device-signoff.json).
+Workspace. The owner then confirmed a USB-free relaunch restored Catenoid on
+this exact APK. Worker health and implicit previews used the phone's Wi-Fi
+route without ADB reverse while USB was connected for diagnostics; a separate
+owner-observed USB-free health check was not recorded.
 
 A corrected inspector-aware repeat ran nine further network-backed implicit
 previews, alternating Gyroid Slice and Implicit Torus. All 9/9 reported
@@ -94,6 +97,16 @@ The CI APK hash differs from the locally tested APK; the two artifacts must not
 be treated as interchangeable for physical signoff. Normal CI still uses a
 disposable key.
 
+The first production/upload key was created outside Git. Its public certificate
+SHA-256 is `66a86e95eaf60f8d2224dd06ad5ef4eec6c856ca2b5e32dc954384bc6ad41be3`
+in [mobile-release-signing.json](mobile-release-signing.json). All four release
+signing secrets are configured in GitHub Actions. A local production AAB from
+commit `6c128cd87351b3010fa801aeb543ea0ca2db5080` passed checksum, embedded
+certificate, and `jarsigner` verification. Its SHA-256 is
+`008620ed336ba77fcc4f1d734f65781dcd53e2a1fd492af6fa5d052db47693c1`.
+The local [AAB archive](../artifacts/mobile/Math3D-mobile-1.5.0-release-150006-6c128cd.zip)
+has SHA-256 `c0f9f9d9cd11f27a7ee737adae43a3e45df0ca564d38928ec7714195caaaa19f`.
+
 The [iOS simulator run](https://github.com/expert10000/Math3D/actions/runs/35399420885)
 built and launched a Debug app, but its screenshot was blank white. That is not
 accepted as a visual smoke pass. The workflow now builds an unsigned Release
@@ -114,11 +127,11 @@ GL viewport is not yet established.
 
 ## Still open
 
-- Complete the owner-observed USB-free `150006` relaunch and Wi-Fi health check.
+- Confirm worker health from the unplugged phone if USB-free compute is an
+  explicit external release criterion; the observed traffic already used Wi-Fi.
 - Run the remaining physical cases: 30-second multi-touch pan/zoom and measured
   first interactive frame.
-- Build and verify a release AAB with the existing production signing identity,
-  or establish the first production key if no identity exists.
+- Confirm the on-demand production AAB CI run and its artifact certificate.
 - Resolve the blank iOS simulator viewport and test rendering on a physical
   iPhone where available.
 - Back up signing keys and configuration in owner-controlled secure storage

@@ -16,7 +16,7 @@ persistence, and final fatal-log review passed for `150004`. Its focused
 exact-build device signoff was approved. Current internal build `150006`
 adds phone-to-worker Wi-Fi support: ten repeated Samsung cycles, live implicit
 preview, Files persistence, and shared-key CI passed. Its owner-observed
-USB-free [device signoff](mobile-device-signoff.json) remains pending; see
+USB-free [device signoff](mobile-device-signoff.json) is approved; see
 the [current matrix evidence](mobile-150006-release-matrix.md).
 
 Release foundation update (September 17, 2026): `apps/mobile/android` is now the
@@ -38,7 +38,8 @@ ADB on a Samsung `SM-A566B` running Android 16. It launched, displayed a native
 The app process had no fatal crash in the inspected logs. The user accepted this
 as the internal tester install path at that point. The later `150004` device
 signoff covered USB-free relaunch; later `150006` covered phone-to-worker Wi-Fi
-and a ten-cycle subset. Remaining matrix rows and production signing are pending.
+and a ten-cycle subset. The first production AAB is locally signed and
+verified; remaining physical and iOS matrix rows are pending.
 
 Workspace UI emulator smoke (September 18, 2026): build `150002` from commit
 `e2ed838c7461ddf0edcc85438611289f2517b435` (APK SHA-256
@@ -56,7 +57,10 @@ requires an approved `docs/mobile-device-signoff.json` record for the tested
 mobile source and signing certificate. The Samsung record is approved for build
 `150004`; the local emulator pass alone does not count as physical-device signoff.
 For `150006`, shared CI internal signing and its certificate comparison pass.
-The production AAB signing identity still needs confirmation.
+The first production/upload key is recorded in
+[mobile-release-signing.json](mobile-release-signing.json), and the local AAB
+passed checksum and embedded certificate verification. Owner-controlled
+off-device key backup remains open.
 
 ## 1. Scope
 This checklist is the Phase 5 gate for `apps/mobile` before external release.
@@ -71,7 +75,7 @@ This checklist is the Phase 5 gate for `apps/mobile` before external release.
 | Android | Emulator Workspace UI smoke | API 36 | Signed internal APK, build `150002` | Clean install, native Catenoid, inspector gesture and opacity passed once on September 18, 2026 |
 | Android | Samsung `SM-A566B` physical P0 smoke | Android 16 | Signed internal APK | Install, launch, tabs, and native surface passed once on September 18, 2026; repeat matrix pending |
 | Android | Samsung `SM-A566B` MOB24 candidate | Android 16 | Signed internal APK, build `150004` | Focused device signoff approved: USB-free Helicoid restore, Files save/reopen across restart, navigation, inspector, fatal-log review; full matrix pending |
-| Android | Samsung `SM-A566B` network candidate | Android 16 | Signed internal APK, build `150006` | 10/10 repeated launch/Gallery/orbit/quality/health/background cycles, implicit preview, Files persistence; USB-free owner check pending |
+| Android | Samsung `SM-A566B` network candidate | Android 16 | Signed internal APK, build `150006` | 10/10 repeated launch/Gallery/orbit/quality/health/background cycles, implicit preview, Files persistence; USB-free Catenoid restore approved; full matrix pending |
 | iOS | Current iPhone physical | iOS latest supported by SDK 54 | Release | Pending |
 | iOS | Simulator sanity | iOS 18.5 on hosted iPhone 16 Pro | Unsigned Release | App shell and tabs visible; 3D viewport blank at 15s and 45s, and the screenshot gate fails |
 
@@ -101,7 +105,7 @@ Run each row 10 times unless stated otherwise.
 
 ## 5. Regression Gates
 - [x] `npm --prefix apps/mobile run dev` launches.
-- [ ] `npm run mobile:android:release` succeeds with the production signing key
+- [x] `npm run mobile:android:release` succeeds with the production signing key
   and its AAB is verified. The May 15 `assembleRelease` result predates the
   current signing policy.
 - [x] No new TypeScript errors in `apps/mobile` and `packages/api-client`.
@@ -118,7 +122,10 @@ Run each row 10 times unless stated otherwise.
 - [x] Capture final tested commit SHA and build artifact hashes.
 - [x] Approve the historical build `150004` physical-device record after USB-free relaunch,
   Workspace, Explore, inspector, Files persistence, and crash-log checks.
-- [ ] Approve the exact `150006` record after owner-observed USB-free relaunch and Wi-Fi health.
+- [x] Approve the exact `150006` record after owner-observed USB-free Catenoid
+  restore. The earlier worker health and implicit preview used Wi-Fi without
+  ADB reverse while USB remained connected for diagnostics.
+- [ ] Confirm off-device backup of both signing keys and credential files.
 - [ ] Archive logcat/iOS crash logs from full matrix run.
 - [x] Update `docs/mobile-migration-implementation-plan.md` status notes.
 - [ ] Sign off from engineering + QA before external distribution.
