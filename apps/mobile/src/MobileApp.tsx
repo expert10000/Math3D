@@ -889,8 +889,9 @@ export const MobileApp: React.FC = () => {
     }
 
     const timeoutDetected = /timeout|aborted|abort/i.test(response.error || "");
+    const healthError = `Cannot reach worker at ${normalizedUrl}. Check the URL, Wi-Fi, and that the worker is running. (${response.error || "Unknown network error"})`;
     setBackendHealthStatus("error");
-    setBackendHealthMessage(response.error || `Health check failed for ${normalizedUrl}`);
+    setBackendHealthMessage(healthError);
     setBackendDiagnostics((current) => ({
       ...current,
       status: "error",
@@ -898,7 +899,7 @@ export const MobileApp: React.FC = () => {
       latencyMs,
       workerVersion,
       workerProtocol,
-      lastError: response.error || `Health check failed for ${normalizedUrl}`,
+      lastError: healthError,
       timeoutDetected,
     }));
     setLimitedMode(true);
@@ -906,7 +907,7 @@ export const MobileApp: React.FC = () => {
     await persistMobileSettings({
       workerBaseUrl: normalizedUrl,
       lastBackendLatencyMs: latencyMs,
-      lastBackendError: response.error || `Health check failed for ${normalizedUrl}`,
+      lastBackendError: healthError,
       lastRequestTimeout: timeoutDetected,
     }).catch(() => undefined);
   };
