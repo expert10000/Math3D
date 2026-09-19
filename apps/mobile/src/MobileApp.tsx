@@ -25,6 +25,7 @@ import {
 import Constants from "expo-constants";
 import { MobileSceneViewport, type OrbitState } from "./components/MobileSceneViewport";
 import { mobileFunctionPresets, mobileGallery, mobileSeedScenes } from "./data/mobileSeedData";
+import { DEFAULT_MOBILE_GRID_PLANES, MOBILE_GRID_PLANES, type MobileGridPlane } from "./models/mobileCoordinateGrid";
 import type { MobileSceneSummary, MobileStoredSceneProject } from "./models/mobileScene";
 import {
   buildSceneSummary,
@@ -222,6 +223,9 @@ export const MobileApp: React.FC = () => {
   const [selectedGalleryId, setSelectedGalleryId] = useState<string | null>(mobileGallery[0]?.id ?? null);
   const [viewerDocument, setViewerDocument] = useState<SceneDocument | null>(null);
   const [renderQuality, setRenderQuality] = useState<MobileRenderQuality>("balanced");
+  const [showGrid, setShowGrid] = useState(true);
+  const [showAxes, setShowAxes] = useState(true);
+  const [gridPlanes, setGridPlanes] = useState<MobileGridPlane[]>([...DEFAULT_MOBILE_GRID_PLANES]);
   const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(true);
   const [storedProjects, setStoredProjects] = useState<MobileStoredSceneProject[]>([]);
   const [storageIssues, setStorageIssues] = useState<string[]>([]);
@@ -313,6 +317,9 @@ export const MobileApp: React.FC = () => {
       setWorkerBaseUrlDraft(loadedWorkerBaseUrl);
       setMeshResolutionCap(loadedMeshResolutionCap);
       setMeshResolutionCapDraft(String(loadedMeshResolutionCap));
+      setShowGrid(loadedSettings.showGrid ?? true);
+      setShowAxes(loadedSettings.showAxes ?? true);
+      setGridPlanes(loadedSettings.gridPlanes ?? [...DEFAULT_MOBILE_GRID_PLANES]);
       setSelectedSceneId(loadedSettings.lastSceneId || null);
       setSelectedSurfaceId(loadedSettings.lastSelectedSurfaceId || null);
       setCameraOrbit(loadedSettings.cameraOrbit || null);
@@ -337,6 +344,9 @@ export const MobileApp: React.FC = () => {
           androidGlEnabled: effectiveAndroidGlEnabled,
           androidGlProbePending: false,
           meshResolutionCap: loadedMeshResolutionCap,
+          showGrid: loadedSettings.showGrid ?? true,
+          showAxes: loadedSettings.showAxes ?? true,
+          gridPlanes: loadedSettings.gridPlanes ?? [...DEFAULT_MOBILE_GRID_PLANES],
           lastSceneId: loadedSettings.lastSceneId || undefined,
           lastViewerProject: loadedSettings.lastViewerProject || undefined,
           lastSelectedSurfaceId: loadedSettings.lastSelectedSurfaceId || undefined,
@@ -816,6 +826,9 @@ export const MobileApp: React.FC = () => {
       androidGlEnabled,
       androidGlProbePending,
       meshResolutionCap,
+      showGrid,
+      showAxes,
+      gridPlanes,
       lastSceneId: selectedSceneId || undefined,
       lastViewerProject: viewerDocument ? serializeViewerScene(viewerDocument) : undefined,
       lastSelectedSurfaceId: selectedSurfaceId || undefined,
@@ -1027,6 +1040,9 @@ export const MobileApp: React.FC = () => {
     backendDiagnostics.latencyMs,
     backendDiagnostics.timeoutDetected,
     meshResolutionCap,
+    showGrid,
+    showAxes,
+    gridPlanes,
   ]);
 
   return (
@@ -1065,6 +1081,9 @@ export const MobileApp: React.FC = () => {
                   onSelectedSurfaceChange={setSelectedSurfaceId}
                   renderPaused={!appIsForeground}
                   surfaceOpacityById={surfaceOpacityById}
+                  showGrid={showGrid}
+                  showAxes={showAxes}
+                  gridPlanes={gridPlanes}
                   viewportStyle={styles.workspaceViewport}
                 />
                 {viewerLoadingMessage.length > 0 && (
@@ -1166,6 +1185,51 @@ export const MobileApp: React.FC = () => {
                             </Pressable>
                           ))}
                         </View>
+                        <Text style={styles.note}>Coordinate grids · choose one or more planes</Text>
+                        <View style={styles.viewerToolbarRow}>
+                          <Pressable
+                            testID="mobile-display-grid-toggle"
+                            accessibilityRole="switch"
+                            accessibilityLabel="Coordinate grid"
+                            accessibilityState={{ checked: showGrid }}
+                            onPress={() => setShowGrid((value) => !value)}
+                            style={[styles.pill, showGrid ? styles.pillActive : null]}
+                          >
+                            <Text style={[styles.pillText, showGrid ? styles.pillTextActive : null]}>Grid {showGrid ? "On" : "Off"}</Text>
+                          </Pressable>
+                          <Pressable
+                            testID="mobile-display-axes-toggle"
+                            accessibilityRole="switch"
+                            accessibilityLabel="Coordinate axes"
+                            accessibilityState={{ checked: showAxes }}
+                            onPress={() => setShowAxes((value) => !value)}
+                            style={[styles.pill, showAxes ? styles.pillActive : null]}
+                          >
+                            <Text style={[styles.pillText, showAxes ? styles.pillTextActive : null]}>Axes {showAxes ? "On" : "Off"}</Text>
+                          </Pressable>
+                        </View>
+                        <View style={styles.viewerToolbarRow}>
+                          {MOBILE_GRID_PLANES.map((plane) => {
+                            const selected = gridPlanes.includes(plane);
+                            return (
+                              <Pressable
+                                key={plane}
+                                testID={`mobile-display-grid-plane-${plane}`}
+                                accessibilityRole="checkbox"
+                                accessibilityLabel={`${plane.toUpperCase()} grid plane`}
+                                accessibilityState={{ checked: selected, disabled: selected && gridPlanes.length === 1 }}
+                                onPress={() => setGridPlanes((current) => {
+                                  if (current.includes(plane)) return current.length > 1 ? current.filter((item) => item !== plane) : current;
+                                  return MOBILE_GRID_PLANES.filter((item) => item === plane || current.includes(item));
+                                })}
+                                style={[styles.pill, selected ? styles.pillActive : null]}
+                              >
+                                <Text style={[styles.pillText, selected ? styles.pillTextActive : null]}>{plane.toUpperCase()}</Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                        <Text style={styles.itemMeta}>Grids sit just beyond the visible scene. X red · Y green · Z blue. Spacing adapts to the scene.</Text>
                         {androidFallbackForced && <Text style={styles.warningNote}>Android safe mode is active.</Text>}
                       </>
                     )}

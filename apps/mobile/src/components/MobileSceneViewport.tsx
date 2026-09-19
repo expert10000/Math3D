@@ -3,14 +3,13 @@ import { StyleSheet, Text, View, type GestureResponderEvent, type StyleProp, typ
 import { Canvas, useFrame } from "@react-three/fiber/native";
 import * as THREE from "three";
 import type { SceneDocument } from "@math3d/core";
+import { DEFAULT_MOBILE_GRID_PLANES, type MobileGridPlane } from "../models/mobileCoordinateGrid";
 import {
   buildSceneSurfacePreviews,
   type MobileMeshPayload,
   type MobileRenderQuality,
   type MobileSurfacePreview,
 } from "../viewer/mobileSurfacePreview";
-
-const SHOW_GRID = false;
 
 type MobileSceneViewportProps = {
   scene: SceneDocument;
@@ -26,6 +25,9 @@ type MobileSceneViewportProps = {
   onSelectedSurfaceChange?: (surfaceId: string) => void;
   renderPaused?: boolean;
   surfaceOpacityById?: Record<string, number>;
+  showGrid?: boolean;
+  showAxes?: boolean;
+  gridPlanes?: MobileGridPlane[];
   viewportStyle?: StyleProp<ViewStyle>;
 };
 
@@ -45,6 +47,14 @@ type TouchPoint = {
 };
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+type FiniteBounds = {
+  min: { x: number; y: number; z: number };
+  max: { x: number; y: number; z: number };
+};
+const hasFiniteBounds = (box: FiniteBounds | null | undefined): box is FiniteBounds => {
+  if (!box) return false;
+  return [box.min.x, box.min.y, box.min.z, box.max.x, box.max.y, box.max.z].every(Number.isFinite);
+};
 const DEFAULT_ORBIT: OrbitState = {
   azimuth: 0.8,
   polar: 1.1,
@@ -79,10 +89,10 @@ const CameraRig: React.FC<{ orbitRef: React.MutableRefObject<OrbitState> }> = ({
 
     camera.position.set(
       orbit.targetX + orbit.distance * sinPolar * Math.cos(orbit.azimuth),
-      orbit.targetY + orbit.distance * Math.cos(orbit.polar),
-      orbit.targetZ + orbit.distance * sinPolar * Math.sin(orbit.azimuth)
+      orbit.targetY + orbit.distance * sinPolar * Math.sin(orbit.azimuth),
+      orbit.targetZ + orbit.distance * Math.cos(orbit.polar)
     );
-    camera.up.set(0, 1, 0);
+    camera.up.set(0, 0, 1);
     camera.lookAt(orbit.targetX, orbit.targetY, orbit.targetZ);
   });
 
@@ -108,7 +118,7 @@ const fitOrbitToPreviews = (previews: MobileSurfacePreview[], current: OrbitStat
   for (const preview of previews) {
     const geometry = preview.geometry;
     if (!geometry.boundingBox) geometry.computeBoundingBox();
-    if (!geometry.boundingBox) continue;
+    if (!hasFiniteBounds(geometry.boundingBox)) continue;
     merged.union(geometry.boundingBox);
   }
 
@@ -145,6 +155,43 @@ const SurfaceMesh: React.FC<{ preview: MobileSurfacePreview; opacity: number }> 
   );
 };
 
+type GridRange = { min: number; max: number };
+
+const PlaneGrid: React.FC<{
+  plane: MobileGridPlane;
+  first: GridRange;
+  second: GridRange;
+  offset: number;
+  spacing: number;
+  color: string;
+}> = ({ plane, first, second, offset, spacing, color }) => {
+  const geometry = useMemo(() => {
+    const vertices: number[] = [];
+    const point = (a: number, b: number): number[] =>
+      plane === "xy" ? [a, b, offset] : plane === "xz" ? [a, offset, b] : [offset, a, b];
+    const line = (a0: number, b0: number, a1: number, b1: number) => {
+      vertices.push(...point(a0, b0), ...point(a1, b1));
+    };
+    for (let a = first.min; a <= first.max + spacing * 0.01; a += spacing) {
+      line(a, second.min, a, second.max);
+    }
+    for (let b = second.min; b <= second.max + spacing * 0.01; b += spacing) {
+      line(first.min, b, first.max, b);
+    }
+    const next = new THREE.BufferGeometry();
+    next.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+    return next;
+  }, [plane, first.min, first.max, second.min, second.max, offset, spacing]);
+
+  useEffect(() => () => geometry.dispose(), [geometry]);
+
+  return (
+    <lineSegments geometry={geometry}>
+      <lineBasicMaterial color={color} transparent opacity={plane === "xy" ? 0.55 : 0.38} depthWrite={false} />
+    </lineSegments>
+  );
+};
+
 export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   scene,
   quality,
@@ -159,6 +206,9 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   onSelectedSurfaceChange,
   renderPaused = false,
   surfaceOpacityById,
+  showGrid = true,
+  showAxes = true,
+  gridPlanes = DEFAULT_MOBILE_GRID_PLANES,
   viewportStyle,
 }) => {
   const previews = useMemo(
@@ -179,6 +229,49 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
     () => visiblePreviews.map((item) => item.warning).filter((value): value is string => typeof value === "string"),
     [visiblePreviews]
   );
+  const coordinateFrame = useMemo(() => {
+    const bounds = new THREE.Box3().makeEmpty();
+    for (const preview of visiblePreviews) {
+      if (!preview.geometry.boundingBox) preview.geometry.computeBoundingBox();
+      if (hasFiniteBounds(preview.geometry.boundingBox)) bounds.union(preview.geometry.boundingBox);
+    }
+    const empty = bounds.isEmpty();
+    const extent = (min: number, max: number) => empty ? 2 : Math.max(0, max - min);
+    const widestSpan = Math.max(
+      extent(bounds.min.x, bounds.max.x),
+      extent(bounds.min.y, bounds.max.y),
+      extent(bounds.min.z, bounds.max.z),
+      2
+    );
+    const roughSpacing = widestSpan / 6;
+    const magnitude = 10 ** Math.floor(Math.log10(roughSpacing));
+    const spacing = [1, 2, 5, 10].map((step) => step * magnitude).find((step) => step >= roughSpacing) ?? magnitude * 10;
+    const gridRange = (min: number, max: number): GridRange => {
+      if (empty) return { min: -2, max: 2 };
+      const padding = Math.max(spacing, (max - min) * 0.15);
+      return {
+        min: Math.floor((min - padding) / spacing) * spacing,
+        max: Math.ceil((max + padding) / spacing) * spacing,
+      };
+    };
+    const xRange = gridRange(bounds.min.x, bounds.max.x);
+    const yRange = gridRange(bounds.min.y, bounds.max.y);
+    const zRange = gridRange(bounds.min.z, bounds.max.z);
+    const offsetBehind = (min: number) => Math.floor((min - spacing * 0.4) / spacing) * spacing;
+    const planeX = empty ? 0 : offsetBehind(bounds.min.x);
+    const planeY = empty ? 0 : offsetBehind(bounds.min.y);
+    const planeZ = empty ? 0 : offsetBehind(bounds.min.z);
+    return {
+      xRange,
+      yRange,
+      zRange,
+      spacing,
+      planeX,
+      planeY,
+      planeZ,
+      axisLength: clamp(Math.max(spacing * 2, widestSpan * 0.35), 2, 8),
+    };
+  }, [visiblePreviews]);
 
   const orbitRef = useRef<OrbitState>(initialOrbit ? { ...initialOrbit } : { ...DEFAULT_ORBIT });
 
@@ -198,19 +291,19 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   }, [initialOrbit]);
 
   useEffect(() => {
-    onOrbitChange?.(orbitRef.current);
-  }, [onOrbitChange, cameraCommand?.token, visiblePreviews, doubleTapToken]);
-
-  useEffect(() => {
     if (!cameraCommand) return;
     if (cameraCommand.type === "reset") {
-      orbitRef.current = { ...DEFAULT_ORBIT };
+      orbitRef.current = fitOrbitToPreviews(visiblePreviews, { ...DEFAULT_ORBIT }, viewportAspect);
       return;
     }
     if (cameraCommand.type === "fit") {
       orbitRef.current = fitOrbitToPreviews(visiblePreviews, orbitRef.current, viewportAspect);
     }
   }, [cameraCommand, visiblePreviews, viewportAspect]);
+
+  useEffect(() => {
+    onOrbitChange?.(orbitRef.current);
+  }, [onOrbitChange, cameraCommand?.token, visiblePreviews, doubleTapToken]);
 
   if (forceFallback) {
     return (
@@ -277,8 +370,11 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
       const zoomRatio = previousDistance > 1e-3 ? currentDistance / previousDistance : 1;
 
       const panScale = orbitRef.current.distance * 0.003;
-      orbitRef.current.targetX -= centerDx * panScale;
-      orbitRef.current.targetY += centerDy * panScale;
+      const azimuth = orbitRef.current.azimuth;
+      const polar = orbitRef.current.polar;
+      orbitRef.current.targetX += (centerDx * Math.sin(azimuth) - centerDy * Math.cos(polar) * Math.cos(azimuth)) * panScale;
+      orbitRef.current.targetY += (-centerDx * Math.cos(azimuth) - centerDy * Math.cos(polar) * Math.sin(azimuth)) * panScale;
+      orbitRef.current.targetZ += centerDy * Math.sin(polar) * panScale;
 
       orbitRef.current.distance = clamp(orbitRef.current.distance / clamp(zoomRatio, 0.7, 1.4), 1.5, 40);
       setGestureHint("Panning / Zooming");
@@ -312,11 +408,20 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
     >
       <Canvas
         style={styles.canvas}
-        camera={{ fov: 52, near: 0.01, far: 1000, position: [0, 0, 6] }}
+        camera={{ fov: 52, near: 0.01, far: 1000, position: [4, 4, 4], up: [0, 0, 1] }}
         gl={{ antialias: true }}
         frameloop={renderPaused ? "demand" : "always"}
       >
-        {SHOW_GRID ? <gridHelper args={[12, 12, "#8ea3bb", "#b7c6d7"]} /> : null}
+        {showGrid && gridPlanes.includes("xy") ? (
+          <PlaneGrid plane="xy" first={coordinateFrame.xRange} second={coordinateFrame.yRange} offset={coordinateFrame.planeZ} spacing={coordinateFrame.spacing} color="#afc1d4" />
+        ) : null}
+        {showGrid && gridPlanes.includes("xz") ? (
+          <PlaneGrid plane="xz" first={coordinateFrame.xRange} second={coordinateFrame.zRange} offset={coordinateFrame.planeY} spacing={coordinateFrame.spacing} color="#baa8d4" />
+        ) : null}
+        {showGrid && gridPlanes.includes("yz") ? (
+          <PlaneGrid plane="yz" first={coordinateFrame.yRange} second={coordinateFrame.zRange} offset={coordinateFrame.planeX} spacing={coordinateFrame.spacing} color="#8fbbb3" />
+        ) : null}
+        {showAxes ? <axesHelper args={[coordinateFrame.axisLength]} /> : null}
 
         {visiblePreviews.map((preview, index) => (
           <group
@@ -339,6 +444,22 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
         {selectedSurfaceId ? <Text style={styles.overlayText}>Selected: {selectedSurfaceId}</Text> : null}
         {renderPaused ? <Text style={styles.overlayText}>Paused in background</Text> : null}
       </View>
+
+      {(showGrid || showAxes) && (
+        <View style={styles.coordinateBadge} pointerEvents="none" testID="mobile-coordinate-grid-legend">
+          {showGrid && gridPlanes.includes("xy") && <Text style={styles.coordinateBadgeTitle}>XY · z={coordinateFrame.planeZ}</Text>}
+          {showGrid && gridPlanes.includes("xz") && <Text style={styles.coordinateBadgeTitle}>XZ · y={coordinateFrame.planeY}</Text>}
+          {showGrid && gridPlanes.includes("yz") && <Text style={styles.coordinateBadgeTitle}>YZ · x={coordinateFrame.planeX}</Text>}
+          {showGrid && <Text style={styles.coordinateBadgeScale}>{coordinateFrame.spacing} unit grid</Text>}
+          {showAxes && (
+            <View style={styles.axisLegend}>
+              <Text style={[styles.axisLabel, styles.axisX]}>X</Text>
+              <Text style={[styles.axisLabel, styles.axisY]}>Y</Text>
+              <Text style={[styles.axisLabel, styles.axisZ]}>Z</Text>
+            </View>
+          )}
+        </View>
+      )}
 
       {warnings.length > 0 && (
         <View style={styles.warningPanel} pointerEvents="none">
@@ -372,6 +493,7 @@ const styles = StyleSheet.create({
     top: 8,
     borderRadius: 8,
     backgroundColor: "rgba(24,38,56,0.74)",
+    maxWidth: "62%",
     paddingHorizontal: 8,
     paddingVertical: 6,
     gap: 2,
@@ -381,6 +503,39 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "600",
   },
+  coordinateBadge: {
+    position: "absolute",
+    right: 8,
+    top: 8,
+    borderRadius: 8,
+    backgroundColor: "rgba(248,251,255,0.94)",
+    borderWidth: 1,
+    borderColor: "#cbd8e6",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    alignItems: "center",
+    gap: 2,
+  },
+  coordinateBadgeTitle: {
+    color: "#1d3854",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  coordinateBadgeScale: {
+    color: "#52677d",
+    fontSize: 9,
+  },
+  axisLegend: {
+    flexDirection: "row",
+    gap: 7,
+  },
+  axisLabel: {
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  axisX: { color: "#c62828" },
+  axisY: { color: "#2e7d32" },
+  axisZ: { color: "#1565c0" },
   warningPanel: {
     position: "absolute",
     left: 8,
