@@ -64,7 +64,7 @@ const baseObject = (obj: Partial<GeometryObject> & Pick<GeometryObject, "id" | "
   },
   visible: obj.visible ?? true,
   material: obj.material ?? { color: 0x8aa4ff, opacity: 1 },
-  group: obj.group,
+  ...(obj.group ? { group: obj.group } : {}),
 });
 
 const sceneDoc = (
