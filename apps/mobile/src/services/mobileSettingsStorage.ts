@@ -1,4 +1,5 @@
 import { Directory, File, Paths } from "expo-file-system";
+import { normalizeMobileGridPlanes, type MobileGridPlane } from "../models/mobileCoordinateGrid";
 
 const SETTINGS_SCHEMA_VERSION = 1;
 const STORAGE_DIR_NAME = "math3d-mobile";
@@ -12,6 +13,7 @@ type PersistedSettingsPayload = {
   meshResolutionCap?: number;
   showGrid?: boolean;
   showAxes?: boolean;
+  gridPlanes?: MobileGridPlane[];
   lastSceneId?: string;
   lastViewerProject?: string;
   lastSelectedSurfaceId?: string;
@@ -36,6 +38,7 @@ export type MobileSettingsLoad = {
   meshResolutionCap: number | null;
   showGrid: boolean | null;
   showAxes: boolean | null;
+  gridPlanes?: MobileGridPlane[];
   lastSceneId: string | null;
   lastViewerProject: string | null;
   lastSelectedSurfaceId: string | null;
@@ -196,6 +199,7 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
       meshResolutionCap: typeof payload.meshResolutionCap === "number" ? payload.meshResolutionCap : null,
       showGrid: typeof payload.showGrid === "boolean" ? payload.showGrid : null,
       showAxes: typeof payload.showAxes === "boolean" ? payload.showAxes : null,
+      gridPlanes: normalizeMobileGridPlanes(payload.gridPlanes),
       lastSceneId: typeof payload.lastSceneId === "string" ? payload.lastSceneId : null,
       lastViewerProject: typeof payload.lastViewerProject === "string" ? payload.lastViewerProject : null,
       lastSelectedSurfaceId:
@@ -235,6 +239,7 @@ export const saveMobileSettings = async (settings: {
   meshResolutionCap?: number;
   showGrid?: boolean;
   showAxes?: boolean;
+  gridPlanes?: MobileGridPlane[];
   lastSceneId?: string;
   lastViewerProject?: string;
   lastSelectedSurfaceId?: string;
@@ -259,6 +264,7 @@ export const saveMobileSettings = async (settings: {
     meshResolutionCap: typeof settings.meshResolutionCap === "number" ? settings.meshResolutionCap : undefined,
     showGrid: typeof settings.showGrid === "boolean" ? settings.showGrid : undefined,
     showAxes: typeof settings.showAxes === "boolean" ? settings.showAxes : undefined,
+    gridPlanes: normalizeMobileGridPlanes(settings.gridPlanes),
     lastSceneId: typeof settings.lastSceneId === "string" ? settings.lastSceneId : undefined,
     lastViewerProject: typeof settings.lastViewerProject === "string" ? settings.lastViewerProject : undefined,
     lastSelectedSurfaceId:

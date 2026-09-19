@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, type GestureResponderEvent, type StyleProp, typ
 import { Canvas, useFrame } from "@react-three/fiber/native";
 import * as THREE from "three";
 import type { SceneDocument } from "@math3d/core";
+import { DEFAULT_MOBILE_GRID_PLANES, type MobileGridPlane } from "../models/mobileCoordinateGrid";
 import {
   buildSceneSurfacePreviews,
   type MobileMeshPayload,
@@ -26,6 +27,7 @@ type MobileSceneViewportProps = {
   surfaceOpacityById?: Record<string, number>;
   showGrid?: boolean;
   showAxes?: boolean;
+  gridPlanes?: MobileGridPlane[];
   viewportStyle?: StyleProp<ViewStyle>;
 };
 
@@ -153,6 +155,43 @@ const SurfaceMesh: React.FC<{ preview: MobileSurfacePreview; opacity: number }> 
   );
 };
 
+type GridRange = { min: number; max: number };
+
+const PlaneGrid: React.FC<{
+  plane: MobileGridPlane;
+  first: GridRange;
+  second: GridRange;
+  offset: number;
+  spacing: number;
+  color: string;
+}> = ({ plane, first, second, offset, spacing, color }) => {
+  const geometry = useMemo(() => {
+    const vertices: number[] = [];
+    const point = (a: number, b: number): number[] =>
+      plane === "xy" ? [a, b, offset] : plane === "xz" ? [a, offset, b] : [offset, a, b];
+    const line = (a0: number, b0: number, a1: number, b1: number) => {
+      vertices.push(...point(a0, b0), ...point(a1, b1));
+    };
+    for (let a = first.min; a <= first.max + spacing * 0.01; a += spacing) {
+      line(a, second.min, a, second.max);
+    }
+    for (let b = second.min; b <= second.max + spacing * 0.01; b += spacing) {
+      line(first.min, b, first.max, b);
+    }
+    const next = new THREE.BufferGeometry();
+    next.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+    return next;
+  }, [plane, first.min, first.max, second.min, second.max, offset, spacing]);
+
+  useEffect(() => () => geometry.dispose(), [geometry]);
+
+  return (
+    <lineSegments geometry={geometry}>
+      <lineBasicMaterial color={color} transparent opacity={plane === "xy" ? 0.55 : 0.38} depthWrite={false} />
+    </lineSegments>
+  );
+};
+
 export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   scene,
   quality,
@@ -169,6 +208,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   surfaceOpacityById,
   showGrid = true,
   showAxes = true,
+  gridPlanes = DEFAULT_MOBILE_GRID_PLANES,
   viewportStyle,
 }) => {
   const previews = useMemo(
@@ -195,23 +235,41 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
       if (!preview.geometry.boundingBox) preview.geometry.computeBoundingBox();
       if (hasFiniteBounds(preview.geometry.boundingBox)) bounds.union(preview.geometry.boundingBox);
     }
-    const horizontalExtent = bounds.isEmpty()
-      ? 2
-      : Math.max(
-          Math.abs(bounds.min.x), Math.abs(bounds.max.x),
-          Math.abs(bounds.min.y), Math.abs(bounds.max.y)
-        );
-    const desiredHalfSize = clamp(horizontalExtent * 1.2, 2, 40);
-    const spacing = [0.5, 1, 2, 5, 10].find((step) => step >= desiredHalfSize / 4) ?? 10;
-    const halfSize = Math.min(40, Math.ceil(desiredHalfSize / spacing) * spacing);
-    const planeZ = bounds.isEmpty() ? 0 : Math.floor((bounds.min.z - spacing * 0.4) / spacing) * spacing;
-    const verticalRise = bounds.isEmpty() ? 2 : bounds.max.z - planeZ;
+    const empty = bounds.isEmpty();
+    const extent = (min: number, max: number) => empty ? 2 : Math.max(0, max - min);
+    const widestSpan = Math.max(
+      extent(bounds.min.x, bounds.max.x),
+      extent(bounds.min.y, bounds.max.y),
+      extent(bounds.min.z, bounds.max.z),
+      2
+    );
+    const roughSpacing = widestSpan / 6;
+    const magnitude = 10 ** Math.floor(Math.log10(roughSpacing));
+    const spacing = [1, 2, 5, 10].map((step) => step * magnitude).find((step) => step >= roughSpacing) ?? magnitude * 10;
+    const gridRange = (min: number, max: number): GridRange => {
+      if (empty) return { min: -2, max: 2 };
+      const padding = Math.max(spacing, (max - min) * 0.15);
+      return {
+        min: Math.floor((min - padding) / spacing) * spacing,
+        max: Math.ceil((max + padding) / spacing) * spacing,
+      };
+    };
+    const xRange = gridRange(bounds.min.x, bounds.max.x);
+    const yRange = gridRange(bounds.min.y, bounds.max.y);
+    const zRange = gridRange(bounds.min.z, bounds.max.z);
+    const offsetBehind = (min: number) => Math.floor((min - spacing * 0.4) / spacing) * spacing;
+    const planeX = empty ? 0 : offsetBehind(bounds.min.x);
+    const planeY = empty ? 0 : offsetBehind(bounds.min.y);
+    const planeZ = empty ? 0 : offsetBehind(bounds.min.z);
     return {
-      size: halfSize * 2,
-      divisions: Math.round((halfSize * 2) / spacing),
+      xRange,
+      yRange,
+      zRange,
       spacing,
+      planeX,
+      planeY,
       planeZ,
-      axisLength: clamp(Math.max(halfSize * 0.85, verticalRise * 0.95), 2, 40),
+      axisLength: clamp(Math.max(spacing * 2, widestSpan * 0.35), 2, 8),
     };
   }, [visiblePreviews]);
 
@@ -354,14 +412,16 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
         gl={{ antialias: true }}
         frameloop={renderPaused ? "demand" : "always"}
       >
-        {showGrid ? (
-          <gridHelper
-            args={[coordinateFrame.size, coordinateFrame.divisions, "#b6c6d8", "#d8e2ed"]}
-            rotation={[Math.PI / 2, 0, 0]}
-            position={[0, 0, coordinateFrame.planeZ]}
-          />
+        {showGrid && gridPlanes.includes("xy") ? (
+          <PlaneGrid plane="xy" first={coordinateFrame.xRange} second={coordinateFrame.yRange} offset={coordinateFrame.planeZ} spacing={coordinateFrame.spacing} color="#afc1d4" />
         ) : null}
-        {showAxes ? <axesHelper args={[coordinateFrame.axisLength]} position={[0, 0, coordinateFrame.planeZ]} /> : null}
+        {showGrid && gridPlanes.includes("xz") ? (
+          <PlaneGrid plane="xz" first={coordinateFrame.xRange} second={coordinateFrame.zRange} offset={coordinateFrame.planeY} spacing={coordinateFrame.spacing} color="#baa8d4" />
+        ) : null}
+        {showGrid && gridPlanes.includes("yz") ? (
+          <PlaneGrid plane="yz" first={coordinateFrame.yRange} second={coordinateFrame.zRange} offset={coordinateFrame.planeX} spacing={coordinateFrame.spacing} color="#8fbbb3" />
+        ) : null}
+        {showAxes ? <axesHelper args={[coordinateFrame.axisLength]} /> : null}
 
         {visiblePreviews.map((preview, index) => (
           <group
@@ -387,7 +447,9 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
 
       {(showGrid || showAxes) && (
         <View style={styles.coordinateBadge} pointerEvents="none" testID="mobile-coordinate-grid-legend">
-          {showGrid && <Text style={styles.coordinateBadgeTitle}>XY · z={coordinateFrame.planeZ}</Text>}
+          {showGrid && gridPlanes.includes("xy") && <Text style={styles.coordinateBadgeTitle}>XY · z={coordinateFrame.planeZ}</Text>}
+          {showGrid && gridPlanes.includes("xz") && <Text style={styles.coordinateBadgeTitle}>XZ · y={coordinateFrame.planeY}</Text>}
+          {showGrid && gridPlanes.includes("yz") && <Text style={styles.coordinateBadgeTitle}>YZ · x={coordinateFrame.planeX}</Text>}
           {showGrid && <Text style={styles.coordinateBadgeScale}>{coordinateFrame.spacing} unit grid</Text>}
           {showAxes && (
             <View style={styles.axisLegend}>
