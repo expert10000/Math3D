@@ -61,7 +61,7 @@ M0 is the release gate for a trusted baseline. M1 follows immediately. M2 and M3
 ### Workspace and View
 
 - Scene lists all objects with visibility and selection. Tapping an object opens Object; object actions are scoped to that selection. Camera actions live in the viewport toolbar or View.
-- The pre-MOB24 mobile viewer now has selectable adaptive XY/XZ/YZ grids, colored X/Y/Z axes, and persistent Grid/Axes and plane controls. View still needs Auto/manual quality, bounding box, solid/wireframe/edges, and smooth/flat shading. Auto is measured on devices before it becomes the default.
+- The pre-MOB24 mobile viewer now has selectable adaptive XY/XZ/YZ reference planes through the origin with subtle fills and major/minor grids, colored X/Y/Z axes, and persistent Grid/Axes and plane controls. View still needs Auto/manual quality, bounding box, solid/wireframe/edges, and smooth/flat shading. Auto is measured on devices before it becomes the default.
 - Analyze reports only mathematically meaningful, valid data; one heavy visual overlay at a time limits mobile GPU/memory cost.
 
 ## Planned commit sequence

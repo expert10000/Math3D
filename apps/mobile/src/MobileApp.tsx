@@ -1185,7 +1185,7 @@ export const MobileApp: React.FC = () => {
                             </Pressable>
                           ))}
                         </View>
-                        <Text style={styles.note}>Coordinate grids · choose one or more planes</Text>
+                        <Text style={styles.note}>Reference planes at zero · choose one or more</Text>
                         <View style={styles.viewerToolbarRow}>
                           <Pressable
                             testID="mobile-display-grid-toggle"
@@ -1211,6 +1211,7 @@ export const MobileApp: React.FC = () => {
                         <View style={styles.viewerToolbarRow}>
                           {MOBILE_GRID_PLANES.map((plane) => {
                             const selected = gridPlanes.includes(plane);
+                            const selectedStyle = plane === "xy" ? styles.planePillXY : plane === "xz" ? styles.planePillXZ : styles.planePillYZ;
                             return (
                               <Pressable
                                 key={plane}
@@ -1222,14 +1223,14 @@ export const MobileApp: React.FC = () => {
                                   if (current.includes(plane)) return current.length > 1 ? current.filter((item) => item !== plane) : current;
                                   return MOBILE_GRID_PLANES.filter((item) => item === plane || current.includes(item));
                                 })}
-                                style={[styles.pill, selected ? styles.pillActive : null]}
+                                style={[styles.pill, selected ? selectedStyle : null]}
                               >
-                                <Text style={[styles.pillText, selected ? styles.pillTextActive : null]}>{plane.toUpperCase()}</Text>
+                                <Text style={styles.pillText}>{plane.toUpperCase()}</Text>
                               </Pressable>
                             );
                           })}
                         </View>
-                        <Text style={styles.itemMeta}>Grids sit just beyond the visible scene. X red · Y green · Z blue. Spacing adapts to the scene.</Text>
+                        <Text style={styles.itemMeta}>XY blue · XZ green · YZ orange. Each plane has major and minor lines; X red · Y green · Z blue.</Text>
                         {androidFallbackForced && <Text style={styles.warningNote}>Android safe mode is active.</Text>}
                       </>
                     )}
@@ -1984,6 +1985,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#163b66",
     borderColor: "#163b66",
   },
+  planePillXY: { backgroundColor: "#dbeafe", borderColor: "#74abff" },
+  planePillXZ: { backgroundColor: "#dcf5e3", borderColor: "#69ca84" },
+  planePillYZ: { backgroundColor: "#fff0e5", borderColor: "#ffa877" },
   pillText: {
     fontSize: 12,
     fontWeight: "600",

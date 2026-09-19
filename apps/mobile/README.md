@@ -5,7 +5,7 @@ React Native / Expo companion app target for Math3D.
 The app opens into a 3D Workspace with a collapsible Scene/Object/Display/Analyze
 inspector. Bottom navigation has Home, Explore, Workspace, Files, and Settings.
 Explore contains Gallery, Functions, and Learn; saved scenes live in Files.
-The Workspace viewer uses Z-up coordinates with selectable XY, XZ, and YZ grids and X/Y/Z axes. Display can show one or more grid planes, toggle all grids and axes separately, and remembers those choices. XY is selected by default.
+The Workspace viewer uses Z-up coordinates with selectable XY, XZ, and YZ reference planes through the origin. Each plane has a subtle fill plus major and minor grid lines. Display can show one or more planes, toggle all grids and axes separately, and remembers those choices. All three planes are selected by default on a new install; existing choices are preserved.
 
 Scope for the first version:
 
