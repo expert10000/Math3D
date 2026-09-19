@@ -1,6 +1,6 @@
 # MATH3D mobile roadmap
 
-Updated September 18, 2026. This is the current forward plan for `apps/mobile`. The [functionality and navigation overview](mobile-functionality-navigation-overview.md) records what is implemented; the [migration implementation plan](mobile-migration-implementation-plan.md) records the earlier vertical slice. A roadmap item here is planned until its acceptance evidence is recorded.
+Updated September 19, 2026. This is the current forward plan for `apps/mobile`. The [functionality and navigation overview](mobile-functionality-navigation-overview.md) records what is implemented; the [migration implementation plan](mobile-migration-implementation-plan.md) records the earlier vertical slice. A roadmap item here is planned until its acceptance evidence is recorded.
 
 ## Product direction
 
@@ -16,7 +16,7 @@ The intended navigation is **Home | Explore | Workspace | Projects | Settings**,
 
 ## Current-to-target corrections
 
-| Current in build `150006` | Target | Reason / boundary |
+| Current in build `150007` | Target | Reason / boundary |
 | --- | --- | --- |
 | Analyze shows preview, cache, and errors | **Compute** | Reserve Analyze for geometry, topology, mesh metrics, and overlays. |
 | Files | **Projects** | These are serialized MATH3D scenes, not arbitrary files. |
@@ -32,7 +32,7 @@ The intended navigation is **Home | Explore | Workspace | Projects | Settings**,
 
 | Phase | Goal | Deliverable and exit evidence |
 | --- | --- | --- |
-| **M0 — beta baseline (P0)** | Freeze build `150006` | Builds `150002` and `150003` exposed navigation and last-viewed-scene restore defects; `150004` passed focused Samsung signoff. Build `150006` adds internal LAN worker access and clearer connection errors. Its [matrix evidence](mobile-150006-release-matrix.md) records ten repeated Samsung cycles, Wi-Fi implicit preview, Files persistence, and shared-key CI. Its [exact-build signoff](mobile-device-signoff.json) is approved after USB-free Catenoid restore. The first production/upload key and both local and CI release AAB verification are established. Complete key backup and remaining physical rows before M0 closes. |
+| **M0 — beta baseline (P0)** | Close Android `1.5.1`, build `150007` | Builds `150002` and `150003` exposed navigation and last-viewed-scene restore defects; `150004` passed focused Samsung signoff. Build `150006` added internal LAN worker access and clearer connection errors. Its [matrix evidence](mobile-150006-release-matrix.md) records ten repeated Samsung cycles, Wi-Fi implicit preview, Files persistence, and shared-key CI. Its [exact-build signoff](mobile-device-signoff-150006.json) was approved after USB-free Catenoid restore. The first production/upload key and both local and CI release AAB verification were established for `1.5.0`. The [1.5.1 candidate](mobile-1.5.1-release-readiness.md) has new signed binaries and emulator smoke; complete exact-build Samsung signoff, owner key backup, and durable AAB publication before M0 closes. |
 | **M1 — structure and semantics (P1)** | Make the current app safe to extend | Split `MobileApp.tsx` into navigation, screens, workspace inspectors, viewer, services, and persistent state with behavior preserved. Rename Analyze→Compute and Display→View; move camera actions to viewport; remove misleading implicit proxy. Typecheck, navigation smoke, and offline/implicit-state checks pass. |
 | **M2 — Projects (P1)** | Trustworthy offline project library | Rename, duplicate, reversible delete, real scene thumbnails, import/export/share. Before expanding import/export, add atomic save (temp file then rename), schema validation/migration, corrupt-project and storage-full recovery, and backup copy. Project cards show a rendered thumbnail, object count, and update time. Save/restore and failure recovery pass on device. |
 | **M3 — compute platform (P1)** | Reachable, capability-driven worker jobs | Default to unconfigured backend; add desktop-to-phone QR pairing with temporary token and manual Advanced URL. Negotiate protocol/server versions and named capabilities before exposing actions. Submit jobs with operation, parameters, input hash, and engine identity; persist job IDs; support progress, cancel, retry, resume, diagnostics, and cache provenance. Test network loss and app background/restore. |

@@ -1,6 +1,10 @@
 # Mobile Phase 5 Stability Matrix And Release Checklist
 
-Last updated: September 18, 2026
+Last updated: September 19, 2026
+
+The active Android candidate is [version 1.5.1, build 150007](mobile-1.5.1-release-readiness.md).
+Its signed APK and AAB and emulator smoke pass; physical-device signoff and
+off-device key backup are pending. The `150006` evidence below is historical.
 
 MOB24 physical-device update (September 18, 2026): build `150002` failed
 Samsung `SM-A566B` navigation because its bottom tabs overlapped the system
@@ -13,11 +17,11 @@ and signing certificate
 `39ab9388fa174bf9c1973577dab4ee33eedbacb9b231c9b79068e5143480fc82`.
 The emulator restart regression, USB-free Samsung Helicoid restore, Files
 persistence, and final fatal-log review passed for `150004`. Its focused
-exact-build device signoff was approved. Current internal build `150006`
+exact-build device signoff was approved. Internal build `150006`
 adds phone-to-worker Wi-Fi support: ten repeated Samsung cycles, live implicit
 preview, Files persistence, and shared-key CI passed. Its owner-observed
-USB-free [device signoff](mobile-device-signoff.json) is approved; see
-the [current matrix evidence](mobile-150006-release-matrix.md).
+USB-free [device signoff](mobile-device-signoff-150006.json) is approved; see
+the [historical matrix evidence](mobile-150006-release-matrix.md).
 
 Release foundation update (September 17, 2026): `apps/mobile/android` is now the
 canonical project. Internal and release builds require non-debug signing
@@ -128,6 +132,7 @@ Run each row 10 times unless stated otherwise.
   restore. The earlier worker health and implicit preview used Wi-Fi without
   ADB reverse while USB remained connected for diagnostics.
 - [ ] Confirm off-device backup of both signing keys and credential files.
+- [ ] Approve exact `150007` physical-device signoff before publishing 1.5.1.
 - [ ] Archive logcat/iOS crash logs from full matrix run.
 - [x] Update `docs/mobile-migration-implementation-plan.md` status notes.
 - [ ] Sign off from engineering + QA before external distribution.

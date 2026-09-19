@@ -1,6 +1,6 @@
 # Math3D Mobile: Android build, signing, and tester install
 
-Last verified: September 18, 2026
+Last verified: September 19, 2026
 
 This is the build and installation guide for the Expo/React Native companion app.
 The authoritative Android project is `apps/mobile/android`. The root `android/`
@@ -37,8 +37,8 @@ version, and build number. At this verification point it contains:
 | Field | Value | Consumers |
 | --- | --- | --- |
 | Application ID | `com.math3d.mobile` | Expo Android/iOS config and Android Gradle |
-| Version | `1.5.0` | Mobile npm package, Expo, Android `versionName`, iOS `CFBundleShortVersionString` on prebuild |
-| Build | `150006` | Android `versionCode`, iOS `CFBundleVersion` on prebuild |
+| Version | `1.5.1` | Mobile npm package, Expo, Android `versionName`, iOS `CFBundleShortVersionString` on prebuild |
+| Build | `150007` | Android `versionCode`, iOS `CFBundleVersion` on prebuild |
 
 `apps/mobile/app.config.js` supplies the Expo values. Gradle reads
 `version.json` directly. Expo autolinking also needs a literal namespace in
@@ -82,9 +82,9 @@ npm run mobile:version:check
 
 | Command | Gradle task | Output | Signing |
 | --- | --- | --- | --- |
-| `npm run mobile:android:debug` | `:app:assembleDebug` | `artifacts/mobile/Math3D-mobile-1.5.0-debug.apk` | Checked-in debug key; development only |
-| `npm run mobile:android:internal` | `:app:assembleInternal` | `artifacts/mobile/Math3D-mobile-1.5.0-internal.apk` | Separate internal key |
-| `npm run mobile:android:release` | `:app:bundleRelease` | `artifacts/mobile/Math3D-mobile-1.5.0-release.aab` | Release-owner production key |
+| `npm run mobile:android:debug` | `:app:assembleDebug` | `artifacts/mobile/Math3D-mobile-1.5.1-debug.apk` | Checked-in debug key; development only |
+| `npm run mobile:android:internal` | `:app:assembleInternal` | `artifacts/mobile/Math3D-mobile-1.5.1-internal.apk` | Separate internal key |
+| `npm run mobile:android:release` | `:app:bundleRelease` | `artifacts/mobile/Math3D-mobile-1.5.1-release.aab` | Release-owner production key |
 
 Each successful command also updates `artifacts/mobile/SHA256SUMS` and
 `artifacts/mobile/build-info.json`. The metadata records the app ID, version,
@@ -156,7 +156,7 @@ production signing identity.
 From PowerShell, after `npm run mobile:android:internal`:
 
 ```powershell
-$apk = 'artifacts/mobile/Math3D-mobile-1.5.0-internal.apk'
+$apk = 'artifacts/mobile/Math3D-mobile-1.5.1-internal.apk'
 $env:ANDROID_HOME = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:LOCALAPPDATA 'Android\Sdk' }
 Get-FileHash -Algorithm SHA256 -LiteralPath $apk
 & "$env:ANDROID_HOME/build-tools/36.0.0/apksigner.bat" verify --verbose --print-certs $apk
@@ -211,11 +211,13 @@ contents that differ from the tested commit. It runs with:
 npm run mobile:device:signoff:check
 ```
 
-Build `150004` has a historical approved Samsung record. The current `150006`
-APK has its own [approved device signoff](mobile-device-signoff.json), including
-the owner-observed USB-free Catenoid relaunch. The
-[current matrix evidence](mobile-150006-release-matrix.md) records the broader
-checks. No previous APK approval transfers to a new build.
+Build `150004` has a historical approved Samsung record. Build `150006`
+has its own [archived approved signoff](mobile-device-signoff-150006.json),
+including the owner-observed USB-free Catenoid relaunch. Its
+[matrix evidence](mobile-150006-release-matrix.md) records broader checks.
+The [current `1.5.1` candidate](mobile-1.5.1-release-readiness.md), build
+`150007`, needs a new exact-APK [device signoff](mobile-device-signoff.json).
+No previous APK approval transfers to a new build.
 
 The release workflow also needs these GitHub Actions secrets for the **shared
 internal** signing identity:
@@ -242,8 +244,13 @@ certificate against the public fingerprint in `mobile-release-signing.json`.
 The secret names mirror the internal set, replacing `INTERNAL` with `RELEASE`.
 The keystore secret holds base64 encoded bytes; the password and alias secrets
 hold their respective values. All four are configured in the repository.
+After exact-build signoff and key backup, dispatch it with `release_tag` set
+to an existing tag matching the mobile version, such as `v1.5.1`. It then
+builds from that tag, verifies the signed AAB, and attaches the AAB, checksum,
+metadata, and verification report to the existing GitHub release. Leave
+`release_tag` empty for a verification-only run with a temporary CI artifact.
 
-The locally verified AAB is
+The earlier `1.5.0` locally verified AAB was
 `artifacts/mobile/Math3D-mobile-1.5.0-release.aab` (SHA-256
 `008620ed336ba77fcc4f1d734f65781dcd53e2a1fd492af6fa5d052db47693c1`).
 Its source is commit `6c128cd87351b3010fa801aeb543ea0ca2db5080`, and its
@@ -256,7 +263,7 @@ its SHA-256 is `c0f9f9d9cd11f27a7ee737adae43a3e45df0ca564d38928ec7714195caaaa19f
 The archive is local and ignored by Git. AABs are for store upload, not direct
 phone installation.
 
-The [production AAB CI run](https://github.com/expert10000/Math3D/actions/runs/35405368898)
+The earlier `1.5.0` [production AAB CI run](https://github.com/expert10000/Math3D/actions/runs/35405368898)
 passed the same certificate gate using GitHub Actions secrets. Its downloadable
 artifact ID is `10572113936`; the separately built AAB SHA-256 is
 `52681593987e20250d780a63cf89691720d0bf44bf86029df69c96fc499fc4f0`.
@@ -295,7 +302,7 @@ builds `150004` and `150006` did pass owner-observed USB-free scene restore.
 
 ## Workspace UI build smoke
 
-The current internal APK at `artifacts/mobile/Math3D-mobile-1.5.0-internal.apk`
+The earlier internal APK at `artifacts/mobile/Math3D-mobile-1.5.0-internal.apk`
 is build `150006` from source commit
 `e36ec7ba90b8da2b3e53b4cdbf6c5df6cab5eb1c`. Its SHA-256 is
 `9d1a002d677a32a6ea75b84d018b4c632eccafb15ff9c3d0c9ff7799bc8d0227`.
@@ -303,7 +310,7 @@ It uses the same internal signing certificate as build `150001`.
 Its exact [approved tester archive](../artifacts/mobile/Math3D-mobile-1.5.0-internal-150006-approved.zip)
 has SHA-256 `6ad8e93ad0e8241352650e6d653f8fc82603e685ac9a7d4c1045afdd81f74f6f`.
 The archive contains the APK, metadata, checksums, and install note, with no
-signing credentials. The [device signoff](mobile-device-signoff.json) records
+signing credentials. The [archived device signoff](mobile-device-signoff-150006.json) records
 the exact APK hash and owner-observed USB-free Catenoid restore.
 
 An Android 16 emulator clean install opened the Catenoid scene in Workspace.
@@ -318,6 +325,9 @@ to an older project on relaunch. Build `150004` added session restore and
 passed its exact-build Samsung signoff. Build `150006` adds the internal LAN
 worker path and clearer connection errors. Its emulator and repeated Samsung
 checks pass; the owner confirmed USB-free Catenoid restore on the exact APK.
+The new `1.5.1` internal APK is build `150007` from commit `0022cf5`; its
+[release readiness record](mobile-1.5.1-release-readiness.md) contains the
+exact hashes, emulator smoke, and pending phone/backup gates.
 
 ## Remaining release gates
 
