@@ -3,8 +3,9 @@
 Last updated: September 19, 2026
 
 The active Android candidate is [version 1.5.1, build 150007](mobile-1.5.1-release-readiness.md).
-Its signed APK and AAB and emulator smoke pass; physical-device signoff and
-off-device key backup are pending. The `150006` evidence below is historical.
+Its signed APK and AAB and emulator smoke pass; physical-device signoff is
+pending. The owner-controlled encrypted USB key backup is verified. The `150006`
+evidence below is historical.
 
 MOB24 physical-device update (September 18, 2026): build `150002` failed
 Samsung `SM-A566B` navigation because its bottom tabs overlapped the system
@@ -66,7 +67,7 @@ The first production/upload key is recorded in
 passed checksum and embedded certificate verification. The
 [production AAB CI run](https://github.com/expert10000/Math3D/actions/runs/35405368898)
 also passed; its downloaded AAB matched the release certificate. Owner-controlled
-off-device key backup remains open.
+off-device key backup is verified for `1.5.1`.
 
 ## 1. Scope
 This checklist is the Phase 5 gate for `apps/mobile` before external release.
@@ -131,7 +132,7 @@ Run each row 10 times unless stated otherwise.
 - [x] Approve the exact `150006` record after owner-observed USB-free Catenoid
   restore. The earlier worker health and implicit preview used Wi-Fi without
   ADB reverse while USB remained connected for diagnostics.
-- [ ] Confirm off-device backup of both signing keys and credential files.
+- [x] Confirm off-device encrypted backup of both signing keys and credential files.
 - [ ] Approve exact `150007` physical-device signoff before publishing 1.5.1.
 - [ ] Archive logcat/iOS crash logs from full matrix run.
 - [x] Update `docs/mobile-migration-implementation-plan.md` status notes.

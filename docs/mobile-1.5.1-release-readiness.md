@@ -26,20 +26,31 @@ passed offline Catenoid launch, inspector swipe/opacity, five destinations,
 Explore sections, last-example process restore, and fatal-log review. The
 emulator was left running.
 
+The [normal Android PR gate](https://github.com/expert10000/Math3D/actions/runs/35447603606)
+and [shared-key Android gate](https://github.com/expert10000/Math3D/actions/runs/35447640901)
+passed for `1.5.1`. The downloaded shared-key CI APK has SHA-256
+`54b43ae628785bfc0ea6edabdd4811e0e1015c71c7170cd509c06fedcf6477ab`
+and the same internal certificate as the local candidate. Its CI artifact ZIP
+has SHA-256 `ac231d311d2bb19794b0ec84674019ccbc9f1bc8a5f8d01f5775531f19f17547`.
+The CI APK bytes differ from the locally tested candidate, so they require
+separate hashes and do not share physical-device approval.
+
 ## Gates before publication
 
-- [ ] Back up `mobile-release.jks` and `release.json`, plus the internal key and
-  credential file, to owner-controlled encrypted storage off this laptop.
-  Verify the copied files and restore procedure. CI secrets do not replace a
-  recoverable backup; [public signing status](mobile-release-signing.json)
-  remains `ownerBackupVerified: false`.
+- [x] Back up `mobile-release.jks` and `release.json`, plus the internal key and
+  credential file, to an AES-256-GCM encrypted archive on the owner's removable
+  USB drive. The archive was decrypted and compared with all four source files;
+  the restore procedure passed with a synthetic archive, and the owner confirmed
+  the recovery code is stored separately. Its SHA-256 is
+  `14a36e8bd069db8f84af5c0782fe6ca19121a1a512108a9d0e2940ff9d57c8da`.
+  The [public signing record](mobile-release-signing.json) records verification
+  without exposing the recovery code.
 - [ ] Install the exact `150007` APK on the Samsung and complete the current
   [device signoff](mobile-device-signoff.json), including USB-free relaunch,
   Catenoid restore, Files, inspector, worker health over Wi-Fi, a 30-second
   two-finger pan/zoom check, first interactive 3D frame timing, and logs.
-- [ ] Run the shared-key Android CI gate for `1.5.1` and compare its certificate
-  with the phone-tested APK. The APK bytes will differ, so their hashes stay
-  separate.
+- [x] Run the shared-key Android CI gate for `1.5.1` and compare its certificate
+  with the local candidate. The APK bytes differ, so their hashes stay separate.
 - [ ] Run the production AAB workflow from the final release tag. Its publish
   option attaches the verified AAB, checksum, metadata, and verification report
   to the existing GitHub release; the temporary CI artifact expires after 14

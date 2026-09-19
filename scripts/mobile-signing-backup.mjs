@@ -60,7 +60,8 @@ function readPassphrase(label) {
     process.stdin.resume();
     const finish = (error) => {
       process.stdin.off("data", onData);
-      process.stdin.setRawMode(previousRaw);
+      process.stdin.setRawMode(Boolean(previousRaw));
+      process.stdin.pause();
       process.stdout.write("\n");
       if (error) reject(error);
       else resolvePassphrase(value);

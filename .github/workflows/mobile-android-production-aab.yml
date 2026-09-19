@@ -127,6 +127,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout release record
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release_tag }}
+
       - name: Download verified AAB from this run
         uses: actions/download-artifact@v4
         with:
@@ -137,6 +142,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
+          node scripts/mobile-release-backup-check.mjs
           (cd artifacts/mobile && sha256sum -c SHA256SUMS)
           gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
           gh release upload "$RELEASE_TAG" \

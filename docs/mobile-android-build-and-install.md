@@ -130,8 +130,9 @@ certificate fingerprint is recorded in [mobile-release-signing.json](mobile-rele
 The release build reads this local configuration when no release environment
 variables are set. **Back up both release files in owner-controlled, off-device
 secure storage before external distribution.** The CI secrets are not a
-recoverable backup; `ownerBackupVerified` remains false until that copy is
-confirmed.
+recoverable backup. The owner verified an encrypted USB archive on September
+19, 2026 and retained its recovery code separately; the public signing record
+contains its SHA-256 and verification time.
 
 For an unencrypted removable drive, create a passphrase-encrypted backup of
 both signing identities. The tool reads the four local files, asks for a
@@ -342,13 +343,12 @@ worker path and clearer connection errors. Its emulator and repeated Samsung
 checks pass; the owner confirmed USB-free Catenoid restore on the exact APK.
 The new `1.5.1` internal APK is build `150007` from commit `0022cf5`; its
 [release readiness record](mobile-1.5.1-release-readiness.md) contains the
-exact hashes, emulator smoke, and pending phone/backup gates.
+exact hashes, emulator smoke, verified backup, and pending phone gate.
 
 ## Remaining release gates
 
-1. Back up the internal and release keystores with their respective JSON
-   configuration files in owner-controlled, off-device secure storage. CI
-   secrets are configured but are not recoverable backups.
+1. Complete exact-build `150007` Samsung signoff, including USB-free relaunch,
+   worker health over Wi-Fi, Files and inspector checks, and fatal-log review.
 2. Complete the remaining physical checks: 30-second two-finger pan/zoom and
    first interactive frame timing. See the
    [Phase 5 checklist](mobile-phase5-stability-checklist.md).

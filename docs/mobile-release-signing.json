@@ -6,5 +6,8 @@
   "keyAlias": "math3d-mobile-upload",
   "certificateSha256": "66a86e95eaf60f8d2224dd06ad5ef4eec6c856ca2b5e32dc954384bc6ad41be3",
   "createdAt": "2026-09-18T23:16:03Z",
-  "ownerBackupVerified": false
+  "ownerBackupVerified": true,
+  "ownerBackupVerifiedAt": "2026-09-19T14:16:09Z",
+  "ownerBackupMethod": "AES-256-GCM encrypted removable USB; owner retained recovery code separately",
+  "ownerBackupArchiveSha256": "14a36e8bd069db8f84af5c0782fe6ca19121a1a512108a9d0e2940ff9d57c8da"
 }
