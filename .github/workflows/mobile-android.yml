@@ -107,7 +107,9 @@ jobs:
 
       - name: Validate physical-device signoff for release
         if: ${{ inputs.require_device_signoff }}
-        run: node scripts/mobile-device-signoff.mjs
+        run: |
+          node scripts/mobile-device-signoff.mjs
+          node scripts/mobile-release-backup-check.mjs
 
       - name: Generate disposable CI signing key
         if: ${{ !inputs.require_device_signoff && !inputs.use_shared_internal_signing }}
