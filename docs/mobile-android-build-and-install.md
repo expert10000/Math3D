@@ -133,6 +133,21 @@ secure storage before external distribution.** The CI secrets are not a
 recoverable backup; `ownerBackupVerified` remains false until that copy is
 confirmed.
 
+For an unencrypted removable drive, create a passphrase-encrypted backup of
+both signing identities. The tool reads the four local files, asks for a
+passphrase in an interactive terminal without echoing it, writes one AES-256-GCM
+archive, then decrypts it and compares every recovered file in memory:
+
+```powershell
+npm run mobile:signing:backup -- 'G:\Math3D\mobile-signing-keys.m3dbak'
+npm run mobile:signing:backup:verify -- 'G:\Math3D\mobile-signing-keys.m3dbak'
+```
+
+Keep the passphrase separately in owner-controlled storage. The archive alone
+cannot recover the keys without it. The tool refuses to overwrite an existing
+archive; the `restore` command can recover the four files to an empty signing
+directory and rewrites the JSON keystore paths for that directory.
+
 For a shared build machine, or to override local configuration, supply all
 four environment variables for the chosen channel (`INTERNAL` or `RELEASE`):
 

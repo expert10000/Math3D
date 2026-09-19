@@ -21,6 +21,8 @@
     "mobile:version:sync": "node scripts/mobile-version.mjs --sync",
     "mobile:signing:internal:init": "node scripts/mobile-internal-signing.mjs",
     "mobile:signing:release:init": "node scripts/mobile-release-signing.mjs",
+    "mobile:signing:backup": "node scripts/mobile-signing-backup.mjs backup",
+    "mobile:signing:backup:verify": "node scripts/mobile-signing-backup.mjs verify",
     "mobile:android:debug": "node scripts/mobile-android-build.mjs debug",
     "mobile:android:internal": "node scripts/mobile-android-build.mjs internal",
     "mobile:android:release": "node scripts/mobile-android-build.mjs release",
