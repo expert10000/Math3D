@@ -222,6 +222,8 @@ export const MobileApp: React.FC = () => {
   const [selectedGalleryId, setSelectedGalleryId] = useState<string | null>(mobileGallery[0]?.id ?? null);
   const [viewerDocument, setViewerDocument] = useState<SceneDocument | null>(null);
   const [renderQuality, setRenderQuality] = useState<MobileRenderQuality>("balanced");
+  const [showGrid, setShowGrid] = useState(true);
+  const [showAxes, setShowAxes] = useState(true);
   const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(true);
   const [storedProjects, setStoredProjects] = useState<MobileStoredSceneProject[]>([]);
   const [storageIssues, setStorageIssues] = useState<string[]>([]);
@@ -313,6 +315,8 @@ export const MobileApp: React.FC = () => {
       setWorkerBaseUrlDraft(loadedWorkerBaseUrl);
       setMeshResolutionCap(loadedMeshResolutionCap);
       setMeshResolutionCapDraft(String(loadedMeshResolutionCap));
+      setShowGrid(loadedSettings.showGrid ?? true);
+      setShowAxes(loadedSettings.showAxes ?? true);
       setSelectedSceneId(loadedSettings.lastSceneId || null);
       setSelectedSurfaceId(loadedSettings.lastSelectedSurfaceId || null);
       setCameraOrbit(loadedSettings.cameraOrbit || null);
@@ -337,6 +341,8 @@ export const MobileApp: React.FC = () => {
           androidGlEnabled: effectiveAndroidGlEnabled,
           androidGlProbePending: false,
           meshResolutionCap: loadedMeshResolutionCap,
+          showGrid: loadedSettings.showGrid ?? true,
+          showAxes: loadedSettings.showAxes ?? true,
           lastSceneId: loadedSettings.lastSceneId || undefined,
           lastViewerProject: loadedSettings.lastViewerProject || undefined,
           lastSelectedSurfaceId: loadedSettings.lastSelectedSurfaceId || undefined,
@@ -816,6 +822,8 @@ export const MobileApp: React.FC = () => {
       androidGlEnabled,
       androidGlProbePending,
       meshResolutionCap,
+      showGrid,
+      showAxes,
       lastSceneId: selectedSceneId || undefined,
       lastViewerProject: viewerDocument ? serializeViewerScene(viewerDocument) : undefined,
       lastSelectedSurfaceId: selectedSurfaceId || undefined,
@@ -1027,6 +1035,8 @@ export const MobileApp: React.FC = () => {
     backendDiagnostics.latencyMs,
     backendDiagnostics.timeoutDetected,
     meshResolutionCap,
+    showGrid,
+    showAxes,
   ]);
 
   return (
@@ -1065,6 +1075,8 @@ export const MobileApp: React.FC = () => {
                   onSelectedSurfaceChange={setSelectedSurfaceId}
                   renderPaused={!appIsForeground}
                   surfaceOpacityById={surfaceOpacityById}
+                  showGrid={showGrid}
+                  showAxes={showAxes}
                   viewportStyle={styles.workspaceViewport}
                 />
                 {viewerLoadingMessage.length > 0 && (
@@ -1166,6 +1178,30 @@ export const MobileApp: React.FC = () => {
                             </Pressable>
                           ))}
                         </View>
+                        <Text style={styles.note}>Coordinates · XY grid below the scene, Z vertical</Text>
+                        <View style={styles.viewerToolbarRow}>
+                          <Pressable
+                            testID="mobile-display-grid-toggle"
+                            accessibilityRole="switch"
+                            accessibilityLabel="Coordinate grid"
+                            accessibilityState={{ checked: showGrid }}
+                            onPress={() => setShowGrid((value) => !value)}
+                            style={[styles.pill, showGrid ? styles.pillActive : null]}
+                          >
+                            <Text style={[styles.pillText, showGrid ? styles.pillTextActive : null]}>Grid {showGrid ? "On" : "Off"}</Text>
+                          </Pressable>
+                          <Pressable
+                            testID="mobile-display-axes-toggle"
+                            accessibilityRole="switch"
+                            accessibilityLabel="Coordinate axes"
+                            accessibilityState={{ checked: showAxes }}
+                            onPress={() => setShowAxes((value) => !value)}
+                            style={[styles.pill, showAxes ? styles.pillActive : null]}
+                          >
+                            <Text style={[styles.pillText, showAxes ? styles.pillTextActive : null]}>Axes {showAxes ? "On" : "Off"}</Text>
+                          </Pressable>
+                        </View>
+                        <Text style={styles.itemMeta}>X red · Y green · Z blue. Grid spacing adjusts to the visible scene.</Text>
                         {androidFallbackForced && <Text style={styles.warningNote}>Android safe mode is active.</Text>}
                       </>
                     )}

@@ -10,6 +10,8 @@ type PersistedSettingsPayload = {
   androidGlEnabled?: boolean;
   androidGlProbePending?: boolean;
   meshResolutionCap?: number;
+  showGrid?: boolean;
+  showAxes?: boolean;
   lastSceneId?: string;
   lastViewerProject?: string;
   lastSelectedSurfaceId?: string;
@@ -24,6 +26,7 @@ type PersistedSettingsPayload = {
     targetY: number;
     targetZ: number;
   };
+  cameraOrbitFrame?: "z-up-v1";
 };
 
 export type MobileSettingsLoad = {
@@ -31,6 +34,8 @@ export type MobileSettingsLoad = {
   androidGlEnabled: boolean | null;
   androidGlProbePending: boolean | null;
   meshResolutionCap: number | null;
+  showGrid: boolean | null;
+  showAxes: boolean | null;
   lastSceneId: string | null;
   lastViewerProject: string | null;
   lastSelectedSurfaceId: string | null;
@@ -69,6 +74,8 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
         androidGlEnabled: null,
         androidGlProbePending: null,
         meshResolutionCap: null,
+        showGrid: null,
+        showAxes: null,
         lastSceneId: null,
         lastViewerProject: null,
         lastSelectedSurfaceId: null,
@@ -87,6 +94,8 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
         androidGlEnabled: null,
         androidGlProbePending: null,
         meshResolutionCap: null,
+        showGrid: null,
+        showAxes: null,
         lastSceneId: null,
         lastViewerProject: null,
         lastSelectedSurfaceId: null,
@@ -107,6 +116,8 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
         androidGlEnabled: null,
         androidGlProbePending: null,
         meshResolutionCap: null,
+        showGrid: null,
+        showAxes: null,
         lastSceneId: null,
         lastViewerProject: null,
         lastSelectedSurfaceId: null,
@@ -124,6 +135,8 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
         androidGlEnabled: null,
         androidGlProbePending: null,
         meshResolutionCap: null,
+        showGrid: null,
+        showAxes: null,
         lastSceneId: null,
         lastViewerProject: null,
         lastSelectedSurfaceId: null,
@@ -151,6 +164,8 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
         androidGlEnabled: null,
         androidGlProbePending: null,
         meshResolutionCap: null,
+        showGrid: null,
+        showAxes: null,
         lastSceneId: null,
         lastViewerProject: null,
         lastSelectedSurfaceId: null,
@@ -163,6 +178,7 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
     }
 
     const cameraOrbit =
+      payload.cameraOrbitFrame === "z-up-v1" &&
       payload.cameraOrbit &&
       typeof payload.cameraOrbit.azimuth === "number" &&
       typeof payload.cameraOrbit.polar === "number" &&
@@ -178,6 +194,8 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
       androidGlEnabled: typeof payload.androidGlEnabled === "boolean" ? payload.androidGlEnabled : null,
       androidGlProbePending: typeof payload.androidGlProbePending === "boolean" ? payload.androidGlProbePending : null,
       meshResolutionCap: typeof payload.meshResolutionCap === "number" ? payload.meshResolutionCap : null,
+      showGrid: typeof payload.showGrid === "boolean" ? payload.showGrid : null,
+      showAxes: typeof payload.showAxes === "boolean" ? payload.showAxes : null,
       lastSceneId: typeof payload.lastSceneId === "string" ? payload.lastSceneId : null,
       lastViewerProject: typeof payload.lastViewerProject === "string" ? payload.lastViewerProject : null,
       lastSelectedSurfaceId:
@@ -196,6 +214,8 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
       androidGlEnabled: null,
       androidGlProbePending: null,
       meshResolutionCap: null,
+      showGrid: null,
+      showAxes: null,
       lastSceneId: null,
       lastViewerProject: null,
       lastSelectedSurfaceId: null,
@@ -213,6 +233,8 @@ export const saveMobileSettings = async (settings: {
   androidGlEnabled: boolean;
   androidGlProbePending?: boolean;
   meshResolutionCap?: number;
+  showGrid?: boolean;
+  showAxes?: boolean;
   lastSceneId?: string;
   lastViewerProject?: string;
   lastSelectedSurfaceId?: string;
@@ -235,6 +257,8 @@ export const saveMobileSettings = async (settings: {
     androidGlEnabled: settings.androidGlEnabled,
     androidGlProbePending: typeof settings.androidGlProbePending === "boolean" ? settings.androidGlProbePending : false,
     meshResolutionCap: typeof settings.meshResolutionCap === "number" ? settings.meshResolutionCap : undefined,
+    showGrid: typeof settings.showGrid === "boolean" ? settings.showGrid : undefined,
+    showAxes: typeof settings.showAxes === "boolean" ? settings.showAxes : undefined,
     lastSceneId: typeof settings.lastSceneId === "string" ? settings.lastSceneId : undefined,
     lastViewerProject: typeof settings.lastViewerProject === "string" ? settings.lastViewerProject : undefined,
     lastSelectedSurfaceId:
@@ -245,6 +269,7 @@ export const saveMobileSettings = async (settings: {
     lastRequestTimeout:
       typeof settings.lastRequestTimeout === "boolean" ? settings.lastRequestTimeout : undefined,
     cameraOrbit: settings.cameraOrbit && typeof settings.cameraOrbit === "object" ? settings.cameraOrbit : undefined,
+    cameraOrbitFrame: "z-up-v1",
   };
   settingsFile.write(JSON.stringify(payload, null, 2), { encoding: "utf8" });
 };
