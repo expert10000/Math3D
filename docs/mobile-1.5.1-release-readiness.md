@@ -1,6 +1,6 @@
 # Mobile 1.5.1 Android release readiness
 
-Updated September 19, 2026. This is the active release record for Android
+Updated September 19, 2026. This is the completed release record for Android
 version `1.5.1`, build `150007`. The [build 150006 matrix](mobile-150006-release-matrix.md)
 and its [approved signoff](mobile-device-signoff-150006.json) remain historical
 evidence; approval does not transfer to a new APK.
@@ -35,7 +35,7 @@ has SHA-256 `ac231d311d2bb19794b0ec84674019ccbc9f1bc8a5f8d01f5775531f19f17547`.
 The CI APK bytes differ from the locally tested candidate, so they require
 separate hashes and do not share physical-device approval.
 
-## Gates before publication
+## Release gates
 
 - [x] Back up `mobile-release.jks` and `release.json`, plus the internal key and
   credential file, to an AES-256-GCM encrypted archive on the owner's removable
@@ -51,13 +51,29 @@ separate hashes and do not share physical-device approval.
   two-finger pan/zoom check, first visible 3D frame timing, and logs.
 - [x] Run the shared-key Android CI gate for `1.5.1` and compare its certificate
   with the local candidate. The APK bytes differ, so their hashes stay separate.
-- [ ] Run the production AAB workflow from the final release tag. Its publish
-  option attaches the verified AAB, checksum, metadata, and verification report
-  to the existing GitHub release; the temporary CI artifact expires after 14
-  days.
-- [ ] Create and publish `v1.5.1` only after the exact-build signoff and key
-  backup. The existing `v1.5.0` tag points to earlier source and must remain
-  unchanged.
+- [x] Run the [production AAB workflow](https://github.com/expert10000/Math3D/actions/runs/35451199120)
+  from the final release tag. It published the verified AAB, checksum,
+  metadata, and verification report to the GitHub release.
+- [x] Create and publish [`v1.5.1`](https://github.com/expert10000/Math3D/releases/tag/v1.5.1)
+  only after exact-build signoff and key backup. The tag resolves to merge
+  commit `3aad812cd4d5d19a3cdf260be26accba8fed92f9`. The existing
+  `v1.5.0` tag remains unchanged. The [release workflow](https://github.com/expert10000/Math3D/actions/runs/35450068115)
+  passed its mobile gate and Windows and Linux packaging jobs.
+
+## Published Android artifact
+
+The public release asset `Math3D-mobile-1.5.1-release.aab` has SHA-256
+`07fcad1bbe315569d2aed744c35e1b30e44bcc7cfaf7bef219c9e9ea3db3cf67`.
+The downloaded asset matched the published `SHA256SUMS`. Its metadata records
+application ID `com.math3d.mobile`, version `1.5.1`, build `150007`, clean tag
+commit `3aad812cd4d5d19a3cdf260be26accba8fed92f9`, and production
+certificate SHA-256
+`66a86e95eaf60f8d2224dd06ad5ef4eec6c856ca2b5e32dc954384bc6ad41be3`.
+This tagged CI AAB has a different byte hash from the earlier local and
+branch-CI AABs; the certificate and release identity match. The
+[verification-only branch CI run](https://github.com/expert10000/Math3D/actions/runs/35449219698)
+produced AAB SHA-256
+`129dc45d2f5be253f8aedc7c839d1de7f64b192d401503807e0bcb231ec3a216`.
 
 The iOS simulator still launches a shell with a blank 3D viewport. An iOS
 release requires a separate rendering fix and physical-device validation.

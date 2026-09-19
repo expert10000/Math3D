@@ -231,9 +231,9 @@ Build `150004` has a historical approved Samsung record. Build `150006`
 has its own [archived approved signoff](mobile-device-signoff-150006.json),
 including the owner-observed USB-free Catenoid relaunch. Its
 [matrix evidence](mobile-150006-release-matrix.md) records broader checks.
-The [current `1.5.1` candidate](mobile-1.5.1-release-readiness.md), build
-`150007`, needs a new exact-APK [device signoff](mobile-device-signoff.json).
-No previous APK approval transfers to a new build.
+The [released `1.5.1` build](mobile-1.5.1-release-readiness.md), build
+`150007`, has its own approved exact-APK [device signoff](mobile-device-signoff.json).
+No previous APK approval transferred to this build.
 
 The release workflow also needs these GitHub Actions secrets for the **shared
 internal** signing identity:
@@ -265,6 +265,10 @@ to an existing tag matching the mobile version, such as `v1.5.1`. It then
 builds from that tag, verifies the signed AAB, and attaches the AAB, checksum,
 metadata, and verification report to the existing GitHub release. Leave
 `release_tag` empty for a verification-only run with a temporary CI artifact.
+The [`v1.5.1` tagged run](https://github.com/expert10000/Math3D/actions/runs/35451199120)
+passed and published AAB SHA-256
+`07fcad1bbe315569d2aed744c35e1b30e44bcc7cfaf7bef219c9e9ea3db3cf67`
+to the [release page](https://github.com/expert10000/Math3D/releases/tag/v1.5.1).
 
 The earlier `1.5.0` locally verified AAB was
 `artifacts/mobile/Math3D-mobile-1.5.0-release.aab` (SHA-256
@@ -341,16 +345,17 @@ to an older project on relaunch. Build `150004` added session restore and
 passed its exact-build Samsung signoff. Build `150006` adds the internal LAN
 worker path and clearer connection errors. Its emulator and repeated Samsung
 checks pass; the owner confirmed USB-free Catenoid restore on the exact APK.
-The new `1.5.1` internal APK is build `150007` from commit `0022cf5`; its
-[release readiness record](mobile-1.5.1-release-readiness.md) contains the
-exact hashes, emulator smoke, verified backup, and pending phone gate.
+The `1.5.1` internal APK is build `150007` from commit `0022cf5`; its
+[release record](mobile-1.5.1-release-readiness.md) contains the exact hashes,
+emulator smoke, verified backup, Samsung signoff, and public AAB. The local
+internal tester archive is
+`artifacts/mobile/Math3D-mobile-1.5.1-internal-150007-candidate.zip` with
+SHA-256 `5b441ae7c3926736acef6c814ab16b049d45c53bfe0ada7fa042be0046f32620`.
+It is ignored by Git and contains the signed-off APK and its metadata.
 
-## Remaining release gates
+## Subsequent platform work
 
-1. Complete exact-build `150007` Samsung signoff, including USB-free relaunch,
-   worker health over Wi-Fi, Files and inspector checks, and fatal-log review.
-2. Complete the remaining physical checks: 30-second two-finger pan/zoom and
-   first interactive frame timing. See the
-   [Phase 5 checklist](mobile-phase5-stability-checklist.md).
-3. Resolve the blank iOS simulator GL viewport and complete physical iPhone
-   rendering checks before a cross-platform external release.
+The Android `1.5.1` release gates are closed. Resolve the blank iOS simulator
+GL viewport and complete physical iPhone rendering checks before an iOS
+release. The [Phase 5 checklist](mobile-phase5-stability-checklist.md) retains
+the wider device matrix for future hardening.

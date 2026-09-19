@@ -2,10 +2,11 @@
 
 Last updated: September 19, 2026
 
-The active Android candidate is [version 1.5.1, build 150007](mobile-1.5.1-release-readiness.md).
+The released Android baseline is [version 1.5.1, build 150007](mobile-1.5.1-release-readiness.md).
 Its signed APK and AAB, emulator smoke, and exact-build Samsung signoff pass.
-The owner-controlled encrypted USB key backup is verified. Publication remains
-pending. The `150006` evidence below is historical.
+The owner-controlled encrypted USB key backup is verified. The production AAB
+is published on the [GitHub release](https://github.com/expert10000/Math3D/releases/tag/v1.5.1).
+The `150006` evidence below is historical.
 
 MOB24 physical-device update (September 18, 2026): build `150002` failed
 Samsung `SM-A566B` navigation because its bottom tabs overlapped the system
@@ -83,6 +84,7 @@ This checklist is the Phase 5 gate for `apps/mobile` before external release.
 | Android | Samsung `SM-A566B` physical P0 smoke | Android 16 | Signed internal APK | Install, launch, tabs, and native surface passed once on September 18, 2026; repeat matrix pending |
 | Android | Samsung `SM-A566B` MOB24 candidate | Android 16 | Signed internal APK, build `150004` | Focused device signoff approved: USB-free Helicoid restore, Files save/reopen across restart, navigation, inspector, fatal-log review; full matrix pending |
 | Android | Samsung `SM-A566B` network candidate | Android 16 | Signed internal APK, build `150006` | 10/10 repeated launch/Gallery/orbit/quality/health/background cycles, implicit preview, Files persistence; USB-free Catenoid restore approved; full matrix pending |
+| Android | Samsung `SM-A566B` release baseline | Android 16 | Signed internal APK, build `150007` | Exact-APK signoff approved: USB-free Catenoid restore and Wi-Fi worker health, Files, Explore, inspector, 30-second two-finger gestures, 32-second resume, fatal-log review; visible 3D frame in three unlocked cold launches within 1301/1160/1206 ms |
 | iOS | Current iPhone physical | iOS latest supported by SDK 54 | Release | Pending |
 | iOS | Simulator sanity | iOS 18.5 on hosted iPhone 16 Pro | Unsigned Release | App shell and tabs visible; 3D viewport blank at 15s and 45s, and the screenshot gate fails |
 
@@ -136,7 +138,8 @@ Run each row 10 times unless stated otherwise.
 - [x] Approve exact `150007` physical-device signoff before publishing 1.5.1.
 - [ ] Archive logcat/iOS crash logs from full matrix run.
 - [x] Update `docs/mobile-migration-implementation-plan.md` status notes.
-- [ ] Sign off from engineering + QA before external distribution.
+- [x] Record engineering and owner device signoff for Android `1.5.1`
+  distribution. iOS release validation remains separate.
 
 Automation note:
 - Generate/update Phase 5 metadata report with `npm run phase5:mobile:release-metadata` (writes `output/mobile-phase5-release-metadata.md`).

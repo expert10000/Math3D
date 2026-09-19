@@ -1,6 +1,6 @@
 # Math3D mobile: functionality and navigation overview
 
-Snapshot: September 19, 2026, Android candidate build `150007` (`1.5.1`). This is the current implementation inventory for planning the next mobile roadmap. Build `150003` corrected the Android bottom safe area, `150004` restored the last viewed Explore scene, and `150006` enabled worker HTTP on the internal Android variant with clearer connection errors. Build `150007` advances the release identity with the same mobile functionality. The app is an Expo/React Native companion viewer in `apps/mobile`; the canonical Android project is `apps/mobile/android`.
+Snapshot: September 19, 2026, released Android build `150007` (`1.5.1`). This is the current implementation inventory for planning the next mobile roadmap. Build `150003` corrected the Android bottom safe area, `150004` restored the last viewed Explore scene, and `150006` enabled worker HTTP on the internal Android variant with clearer connection errors. Build `150007` advances the release identity with the same mobile functionality. The app is an Expo/React Native companion viewer in `apps/mobile`; the canonical Android project is `apps/mobile/android`.
 
 ## Navigation at a glance
 
@@ -66,9 +66,9 @@ The default worker URL is `http://127.0.0.1:8787/api/worker`. On a standalone ph
 
 ## Roadmap starting points
 
-The [current mobile roadmap](mobile-roadmap.md) integrates this inventory into a product direction: **offline-capable companion viewer + network-backed compute client + lightweight scene editing**. Its M0–M8 phases and MOB24–MOB54 commit sequence distinguish planned work from the `150007` candidate.
+The [current mobile roadmap](mobile-roadmap.md) integrates this inventory into a product direction: **offline-capable companion viewer + network-backed compute client + lightweight scene editing**. Its M0–M8 phases and MOB24–MOB54 commit sequence distinguish planned work from the released `150007` baseline.
 
-The remaining M0 gate is durable release publication. Then split `MobileApp.tsx`, correct the Analyze/Compute and Display/View terminology, and remove the implicit proxy geometry (M1). Projects, worker jobs, multi-object Workspace, mathematical Analyze, shared Examples/Learn, small authoring, and platform hardening follow with their acceptance criteria in the roadmap.
+M0 closed with the published `v1.5.1` AAB. Next split `MobileApp.tsx`, correct the Analyze/Compute and Display/View terminology, and remove the implicit proxy geometry (M1). Projects, worker jobs, multi-object Workspace, mathematical Analyze, shared Examples/Learn, small authoring, and platform hardening follow with their acceptance criteria in the roadmap.
 
 ## Source map
 
