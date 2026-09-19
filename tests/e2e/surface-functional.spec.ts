@@ -79,8 +79,9 @@ test.describe("Surface functional flow", () => {
       await expect(ctx.page.getByTestId("surface-analysis-contract-state")).toHaveText("ready");
       await expect(ctx.page.getByTestId("surface-analysis-contract-identity")).toContainText("implicit");
       await expect(ctx.page.getByTestId("surface-analysis-contract-identity")).toContainText("revision 1");
-      await ctx.page.getByTestId("surface-analysis-inspector-provenance").click();
-      await expect(ctx.page.getByRole("tabpanel")).toContainText("Representation:");
+      const provenance = ctx.page.getByTestId("surface-analysis-inspector").locator("details").first();
+      await provenance.locator("summary").click();
+      await expect(provenance).toContainText("Representation:");
       await ctx.page.getByTestId("surfaces-left-tab-view").click();
       await expect(ctx.page.getByTestId("surface-analysis-display-controls")).toBeVisible();
       await expect.poll(async () => ctx!.page.evaluate(() => {
@@ -424,7 +425,6 @@ test.describe("Surface functional flow", () => {
       const localFrame = ctx.page.getByTestId("surface-analysis-preset-local-frame");
       await localFrame.click();
       await expect(ctx.page.getByTestId("surface-analysis-preset-status")).toContainText("Local frame applied");
-      await ctx.page.getByTestId("surface-analysis-inspector-probe").click();
       await expect(ctx.page.getByTestId("surface-local-probe-result")).toBeVisible();
 
       const principalFlow = ctx.page.getByTestId("surface-analysis-preset-principal-flow");

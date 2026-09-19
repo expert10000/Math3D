@@ -184,7 +184,7 @@ export async function expectActiveSelectionPreviewAccessibilityHandoff(
   const activeCard = page.getByTestId(`${workspace}-active-selection-card`);
   if (!(await activeCard.isVisible().catch(() => false))) {
     const selectionTab = page.getByTestId(
-      workspace === "geometry" ? "geometry-right-panel-tab-selection" : "mesh-inspector-tab-selection"
+      workspace === "geometry" ? "geometry-right-panel-tab-selection" : "shared-inspector-tab-selection"
     );
     if (await selectionTab.isVisible().catch(() => false)) await selectionTab.click();
   }
@@ -414,7 +414,9 @@ export async function runContextualEntityModeCheck({
   await expectViewportPreviewOverlay(page, workspace, viewportPreview);
   const activeCard = page.getByTestId(`${workspace}-active-selection-card`);
   if (!(await activeCard.isVisible().catch(() => false))) {
-    const selectionTab = page.getByTestId(`${workspace}-inspector-tab-selection`);
+    const selectionTab = page.getByTestId(
+      workspace === "geometry" ? "geometry-right-panel-tab-selection" : "shared-inspector-tab-selection"
+    );
     if (await selectionTab.isVisible().catch(() => false)) await selectionTab.click();
   }
   await expect(activeCard).toBeVisible();
