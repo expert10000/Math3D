@@ -15,7 +15,7 @@ internal APK from release work that still needs a credential or physical device.
 
 The APK was built from clean tracked source. `apksigner` verified the same
 internal signing certificate used on the Samsung for build `150004`.
-The [approved device signoff](mobile-device-signoff.json) covers this exact
+The [approved device signoff](mobile-device-signoff-150006.json) covers this exact
 APK, including the owner's USB-free Catenoid restore after closing the app.
 The local approved archive is
 `artifacts/mobile/Math3D-mobile-1.5.0-internal-150006-approved.zip` (SHA-256
