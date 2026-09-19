@@ -120,6 +120,9 @@ jobs:
       - name: Run renderer unit tests
         run: npm --prefix renderer run test
 
+      - name: Run main-process worker policy unit tests
+        run: npm run test:main:worker-runtime-policy
+
       - name: Run TypeScript noEmit checks
         run: npm run typecheck:noemit
 
