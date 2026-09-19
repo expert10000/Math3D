@@ -31,7 +31,7 @@ Workspace opens first. The five destinations are a custom bottom navigation bar 
 | --- | --- | --- |
 | **Scene** | Show all, hide all, save current scene to Files. | No scene tree editing, object add/remove, or scene metadata editor. |
 | **Object** | Select an object, toggle visibility, set opacity to 25/50/75/100%, fit, reset camera, hide. | No transform, material, formula, or geometry editing. |
-| **Display** | Switch render quality among performance, balanced, and sharp; select one or more XY/XZ/YZ planes; toggle all grids and axes separately. All three planes, Grid, and Axes default on for a new install; saved choices persist across launches. | No lighting, color, bounding-box, wireframe, or advanced rendering controls. |
+| **Display** | Switch render quality among performance, balanced, and sharp; switch each XY/XZ/YZ plane independently, including all off; use Show all/Hide all for the set and toggle axes separately. All three planes and axes default on for a new install; saved choices persist across launches. | No lighting, color, bounding-box, wireframe, or advanced rendering controls. |
 | **Analyze** | Show implicit preview status, vertex/triangle counts, cache state, and errors; retry failed previews, lower quality and retry, or open diagnostics. | No mobile analysis result views or general compute controls yet. |
 
 On a compact screen, lower Object controls require scrolling inside the inspector. The Android emulator smoke test covers this layout at 320×640.

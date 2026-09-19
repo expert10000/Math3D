@@ -6,6 +6,5 @@ export const DEFAULT_MOBILE_GRID_PLANES: MobileGridPlane[] = [...MOBILE_GRID_PLA
 
 export const normalizeMobileGridPlanes = (value: unknown): MobileGridPlane[] => {
   if (!Array.isArray(value)) return [...DEFAULT_MOBILE_GRID_PLANES];
-  const selected = MOBILE_GRID_PLANES.filter((plane) => value.includes(plane));
-  return selected.length > 0 ? selected : [...DEFAULT_MOBILE_GRID_PLANES];
+  return MOBILE_GRID_PLANES.filter((plane) => value.includes(plane));
 };

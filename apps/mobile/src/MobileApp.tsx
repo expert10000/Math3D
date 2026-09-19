@@ -223,9 +223,9 @@ export const MobileApp: React.FC = () => {
   const [selectedGalleryId, setSelectedGalleryId] = useState<string | null>(mobileGallery[0]?.id ?? null);
   const [viewerDocument, setViewerDocument] = useState<SceneDocument | null>(null);
   const [renderQuality, setRenderQuality] = useState<MobileRenderQuality>("balanced");
-  const [showGrid, setShowGrid] = useState(true);
   const [showAxes, setShowAxes] = useState(true);
   const [gridPlanes, setGridPlanes] = useState<MobileGridPlane[]>([...DEFAULT_MOBILE_GRID_PLANES]);
+  const showGrid = gridPlanes.length > 0;
   const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(true);
   const [storedProjects, setStoredProjects] = useState<MobileStoredSceneProject[]>([]);
   const [storageIssues, setStorageIssues] = useState<string[]>([]);
@@ -286,6 +286,9 @@ export const MobileApp: React.FC = () => {
         typeof loadedSettings.meshResolutionCap === "number"
           ? clampInt(loadedSettings.meshResolutionCap, MESH_RESOLUTION_CAP_MIN, MESH_RESOLUTION_CAP_MAX)
           : DEFAULT_MESH_RESOLUTION_CAP;
+      const loadedGridPlanes = loadedSettings.showGrid === false
+        ? []
+        : loadedSettings.gridPlanes ?? [...DEFAULT_MOBILE_GRID_PLANES];
       const loadedAndroidGlEnabled =
         typeof loadedSettings.androidGlEnabled === "boolean"
           ? loadedSettings.androidGlEnabled
@@ -317,9 +320,8 @@ export const MobileApp: React.FC = () => {
       setWorkerBaseUrlDraft(loadedWorkerBaseUrl);
       setMeshResolutionCap(loadedMeshResolutionCap);
       setMeshResolutionCapDraft(String(loadedMeshResolutionCap));
-      setShowGrid(loadedSettings.showGrid ?? true);
       setShowAxes(loadedSettings.showAxes ?? true);
-      setGridPlanes(loadedSettings.gridPlanes ?? [...DEFAULT_MOBILE_GRID_PLANES]);
+      setGridPlanes(loadedGridPlanes);
       setSelectedSceneId(loadedSettings.lastSceneId || null);
       setSelectedSurfaceId(loadedSettings.lastSelectedSurfaceId || null);
       setCameraOrbit(loadedSettings.cameraOrbit || null);
@@ -344,9 +346,9 @@ export const MobileApp: React.FC = () => {
           androidGlEnabled: effectiveAndroidGlEnabled,
           androidGlProbePending: false,
           meshResolutionCap: loadedMeshResolutionCap,
-          showGrid: loadedSettings.showGrid ?? true,
+          showGrid: loadedGridPlanes.length > 0,
           showAxes: loadedSettings.showAxes ?? true,
-          gridPlanes: loadedSettings.gridPlanes ?? [...DEFAULT_MOBILE_GRID_PLANES],
+          gridPlanes: loadedGridPlanes,
           lastSceneId: loadedSettings.lastSceneId || undefined,
           lastViewerProject: loadedSettings.lastViewerProject || undefined,
           lastSelectedSurfaceId: loadedSettings.lastSelectedSurfaceId || undefined,
@@ -1185,17 +1187,16 @@ export const MobileApp: React.FC = () => {
                             </Pressable>
                           ))}
                         </View>
-                        <Text style={styles.note}>Reference planes at zero · choose one or more</Text>
+                        <Text style={styles.note}>Reference planes at zero · show or hide each plane</Text>
                         <View style={styles.viewerToolbarRow}>
                           <Pressable
                             testID="mobile-display-grid-toggle"
-                            accessibilityRole="switch"
-                            accessibilityLabel="Coordinate grid"
-                            accessibilityState={{ checked: showGrid }}
-                            onPress={() => setShowGrid((value) => !value)}
-                            style={[styles.pill, showGrid ? styles.pillActive : null]}
+                            accessibilityRole="button"
+                            accessibilityLabel={gridPlanes.length === MOBILE_GRID_PLANES.length ? "Hide all reference planes" : "Show all reference planes"}
+                            onPress={() => setGridPlanes((current) => current.length === MOBILE_GRID_PLANES.length ? [] : [...MOBILE_GRID_PLANES])}
+                            style={styles.pill}
                           >
-                            <Text style={[styles.pillText, showGrid ? styles.pillTextActive : null]}>Grid {showGrid ? "On" : "Off"}</Text>
+                            <Text style={styles.pillText}>{gridPlanes.length === MOBILE_GRID_PLANES.length ? "Hide all" : "Show all"}</Text>
                           </Pressable>
                           <Pressable
                             testID="mobile-display-axes-toggle"
@@ -1216,16 +1217,16 @@ export const MobileApp: React.FC = () => {
                               <Pressable
                                 key={plane}
                                 testID={`mobile-display-grid-plane-${plane}`}
-                                accessibilityRole="checkbox"
+                                accessibilityRole="switch"
                                 accessibilityLabel={`${plane.toUpperCase()} grid plane`}
-                                accessibilityState={{ checked: selected, disabled: selected && gridPlanes.length === 1 }}
+                                accessibilityState={{ checked: selected }}
                                 onPress={() => setGridPlanes((current) => {
-                                  if (current.includes(plane)) return current.length > 1 ? current.filter((item) => item !== plane) : current;
+                                  if (current.includes(plane)) return current.filter((item) => item !== plane);
                                   return MOBILE_GRID_PLANES.filter((item) => item === plane || current.includes(item));
                                 })}
                                 style={[styles.pill, selected ? selectedStyle : null]}
                               >
-                                <Text style={styles.pillText}>{plane.toUpperCase()}</Text>
+                                <Text style={styles.pillText}>{plane.toUpperCase()} {selected ? "On" : "Off"}</Text>
                               </Pressable>
                             );
                           })}
