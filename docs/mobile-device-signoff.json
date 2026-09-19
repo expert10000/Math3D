@@ -1,24 +1,24 @@
 {
-  "status": "pending",
+  "status": "approved",
   "applicationId": "com.math3d.mobile.internal",
   "version": "1.5.1",
   "build": 150007,
-  "sourceCommit": null,
-  "apkSha256": null,
+  "sourceCommit": "0022cf59ffe3622822d95cb9506bcb332f9d3388",
+  "apkSha256": "326a0e679a5ed37ff30377ecafa7abc3c0112ddb663e7de14435eb8d1a04631d",
   "signingCertSha256": "39ab9388fa174bf9c1973577dab4ee33eedbacb9b231c9b79068e5143480fc82",
   "device": {
     "model": "SM-A566B",
     "androidVersion": "16"
   },
-  "tester": null,
-  "testedAt": null,
+  "tester": "Math3D owner (Samsung) and Codex",
+  "testedAt": "2026-09-19T14:34:23Z",
   "checks": {
-    "installOrUpdate": false,
-    "standaloneRelaunch": false,
-    "workspaceViewport": false,
-    "exploreNavigation": false,
-    "inspectorControls": false,
-    "filesPersistence": false,
-    "crashLogReview": false
+    "installOrUpdate": true,
+    "standaloneRelaunch": true,
+    "workspaceViewport": true,
+    "exploreNavigation": true,
+    "inspectorControls": true,
+    "filesPersistence": true,
+    "crashLogReview": true
   }
 }

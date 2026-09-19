@@ -45,10 +45,10 @@ separate hashes and do not share physical-device approval.
   `14a36e8bd069db8f84af5c0782fe6ca19121a1a512108a9d0e2940ff9d57c8da`.
   The [public signing record](mobile-release-signing.json) records verification
   without exposing the recovery code.
-- [ ] Install the exact `150007` APK on the Samsung and complete the current
+- [x] Install the exact `150007` APK on the Samsung and complete the current
   [device signoff](mobile-device-signoff.json), including USB-free relaunch,
   Catenoid restore, Files, inspector, worker health over Wi-Fi, a 30-second
-  two-finger pan/zoom check, first interactive 3D frame timing, and logs.
+  two-finger pan/zoom check, first visible 3D frame timing, and logs.
 - [x] Run the shared-key Android CI gate for `1.5.1` and compare its certificate
   with the local candidate. The APK bytes differ, so their hashes stay separate.
 - [ ] Run the production AAB workflow from the final release tag. Its publish
@@ -61,3 +61,17 @@ separate hashes and do not share physical-device approval.
 
 The iOS simulator still launches a shell with a blank 3D viewport. An iOS
 release requires a separate rendering fix and physical-device validation.
+
+## Samsung build 150007 signoff
+
+The exact APK above installed on the SM-A566B running Android 16. Catenoid
+rendered in Workspace, reopened from Files, and survived a 32-second background
+resume. Explore showed Gallery, Functions, and Learn. The Object sheet showed
+visibility, opacity, fit, reset camera, and hide controls. The owner panned and
+pinch-zoomed for about 30 seconds without a crash. Three unlocked cold launches
+reached a visible 3D frame within 1301, 1160, and 1206 ms respectively; these
+are screenshot-sampling upper bounds. Android and React fatal-log review found
+no crash. With USB unplugged, the owner closed and reopened the app, confirmed
+Catenoid restored, and received `Health: ok` from the saved Wi-Fi worker URL.
+ADB had no reverse tunnel configured; the phone's route to the worker used
+`wlan0`.
