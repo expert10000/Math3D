@@ -16666,7 +16666,9 @@ const App: React.FC = () => {
                 },
                 visible: typeof sceneObject.visible === "boolean" ? sceneObject.visible : seeded.visible,
                 material: normalizeGeometryMaterial((sceneObject as { material?: unknown }).material ?? seeded.material),
-                group: (sceneObject as { group?: string }).group,
+                ...((sceneObject as { group?: string }).group
+                  ? { group: (sceneObject as { group: string }).group }
+                  : {}),
               };
             })
           : [];
@@ -55220,7 +55222,7 @@ case "mobius":
           visible: obj.visible,
           material: normalizeGeometryMaterial((obj as { material?: unknown })?.material),
           name: obj.name,
-          group: obj.group,
+          ...(obj.group ? { group: obj.group } : {}),
         })),
         datasetMeshObjects: geometryDatasetMeshObjects.map((obj) => serializeGeometryDatasetMeshObject(obj)),
         historyById: serializeGeometryObjectHistoryById(geometryObjectHistoryById),
