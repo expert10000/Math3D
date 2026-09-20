@@ -1,6 +1,6 @@
 # Math3D mobile: functionality and navigation overview
 
-Snapshot: September 20, 2026, released Android build `150007` (`1.5.1`) plus unreleased coordinate-grid changes. The selectable XY/XZ/YZ grids and axes described below are in source on the mobile coordinate-grid branch; they are **not** in the published `1.5.1` APK/AAB. Build `150003` corrected the Android bottom safe area, `150004` restored the last viewed Explore scene, and `150006` enabled worker HTTP on the internal Android variant with clearer connection errors. Build `150007` advances the release identity with the same mobile functionality. The app is an Expo/React Native companion viewer in `apps/mobile`; the canonical Android project is `apps/mobile/android`.
+Snapshot: September 20, 2026, released Android build `150007` (`1.5.1`) plus unreleased viewer and structure changes. The selectable XY/XZ/YZ grids, axes, and curvature colors described below are in source on the mobile development branch; they are **not** in the published `1.5.1` APK/AAB. Build `150003` corrected the Android bottom safe area, `150004` restored the last viewed Explore scene, and `150006` enabled worker HTTP on the internal Android variant with clearer connection errors. Build `150007` advances the release identity with the same mobile functionality. The app is an Expo/React Native companion viewer in `apps/mobile`; the canonical Android project is `apps/mobile/android`.
 
 ## Navigation at a glance
 
@@ -11,7 +11,7 @@ Home | Explore | Workspace | Files | Settings
         +-- Gallery | Functions | Learn
 ```
 
-Workspace opens first. The five destinations are a custom bottom navigation bar controlled by state in `MobileApp.tsx`; Gallery, Functions, and Learn are sections inside Explore. The Workspace inspector is a collapsible, scrollable sheet. These are currently rendered by one main component rather than separate route components.
+Workspace opens first. The five destinations are a custom bottom navigation bar controlled by `useMobileNavigationState`; Gallery, Functions, and Learn are sections inside Explore. Each destination has a screen component. The Workspace inspector is a separate collapsible, scrollable component.
 
 ## Screen and tab inventory
 
@@ -31,7 +31,7 @@ Workspace opens first. The five destinations are a custom bottom navigation bar 
 | --- | --- | --- |
 | **Scene** | Show all, hide all, save current scene to Files. | No scene tree editing, object add/remove, or scene metadata editor. |
 | **Object** | Select an object, toggle visibility, set opacity to 25/50/75/100%, fit, reset camera, hide. | No transform, material, formula, or geometry editing. |
-| **Display** | Switch render quality among performance, balanced, and sharp; switch each XY/XZ/YZ plane independently, including all off; use Show all/Hide all for the set and toggle axes separately. All three planes and axes default on for a new install; saved choices persist across launches. | No lighting, color, bounding-box, wireframe, or advanced rendering controls. |
+| **Display** | Switch render quality among performance, balanced, and sharp; switch each XY/XZ/YZ plane independently, including all off; use Show all/Hide all for the set and toggle axes separately. All three planes and axes default on for a new install. Solid, smooth Curvature, and per-face Faces colors are available; saved choices persist across launches. | No lighting, bounding-box, wireframe, or advanced rendering controls. |
 | **Analyze** | Show implicit preview status, vertex/triangle counts, cache state, and errors; retry failed previews, lower quality and retry, or open diagnostics. | No mobile analysis result views or general compute controls yet. |
 
 On a compact screen, lower Object controls require scrolling inside the inspector. The Android emulator smoke test covers this layout at 320×640.
@@ -45,7 +45,7 @@ On a compact screen, lower Object controls require scrolling inside the inspecto
 | **Implicit surfaces** | The app requests a VTK preview through the configured worker. Without a computed or cached mesh it shows a local placeholder shape and warning, not the mathematical implicit result. |
 | **Remote compute transport** | `@math3d/api-client` supplies HTTP transport with a 25-second timeout and one retry. The mobile service has typed methods for health, version, CGAL mesh, VTK preview, volume isosurface, and geodesic heat. The UI currently calls health/version and VTK implicit preview; the other methods are not feature screens. |
 | **Offline behavior** | Bundled explicit/parametric scenes and saved local scenes can open without a worker. Limited mode disables remote compute and uses a cached implicit preview when available. |
-| **Local persistence** | Scene projects use the shared `math3d.scene-project` serializer in the app document directory. Settings save the worker URL, resolution cap, last scene/object, camera orbit, selected grid planes, grid/axes visibility, GL state, and selected diagnostics. Mesh previews have a bounded local cache. |
+| **Local persistence** | Scene projects use the shared `math3d.scene-project` serializer in the app document directory. Settings save the worker URL, resolution cap, last scene/object, camera orbit, selected grid planes, grid/axes visibility, surface color mode, GL state, and selected diagnostics. Mesh previews have a bounded local cache. |
 | **App lifecycle** | Rendering pauses when backgrounded; the last scene and Z-up camera state are restored. An older Y-up saved orbit is refitted once when upgrading to the new coordinate convention. Android GL has a fallback/recovery path. |
 
 The default worker URL is `http://127.0.0.1:8787/api/worker`. On a standalone phone, `127.0.0.1` is the phone itself. A real worker needs a URL reachable from the phone's network; USB is not required for the installed APK to run. Internal Android build `150006` permits HTTP to a trusted LAN worker; a production build requires HTTPS.

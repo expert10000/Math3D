@@ -6,6 +6,9 @@ The app opens into a 3D Workspace with a collapsible Scene/Object/Display/Analyz
 inspector. Bottom navigation has Home, Explore, Workspace, Files, and Settings.
 Explore contains Gallery, Functions, and Learn; saved scenes live in Files.
 The Workspace viewer uses Z-up coordinates with selectable XY, XZ, and YZ reference planes through the origin. Each plane has a subtle fill plus major and minor grid lines. Display has independent On/Off switches for each plane, Show all/Hide all, and a separate Axes switch. Choices persist across launches. All three planes are selected by default on a new install; existing visible-plane choices remain selected after an update.
+Display also offers Solid, Curvature, and Faces surface colors. Curvature colors use local normal change across mesh edges (blue low, orange high); Faces applies one color per triangle. This selection persists across launches. Uncomputed implicit placeholders retain their warning and solid color.
+
+The app entry point delegates state to `mobileAppController.ts` and rendering to separate Home, Explore, Workspace, Files, and Settings screens. Navigation, workspace, and local project state each have a dedicated hook; the Workspace inspector is its own component.
 
 Scope for the first version:
 

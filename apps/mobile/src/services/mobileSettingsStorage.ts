@@ -1,5 +1,6 @@
 import { Directory, File, Paths } from "expo-file-system";
 import { normalizeMobileGridPlanes, type MobileGridPlane } from "../models/mobileCoordinateGrid";
+import type { MobileSurfaceColorMode } from "../viewer/mobileCurvatureColors";
 
 const SETTINGS_SCHEMA_VERSION = 1;
 const STORAGE_DIR_NAME = "math3d-mobile";
@@ -14,6 +15,7 @@ type PersistedSettingsPayload = {
   showGrid?: boolean;
   showAxes?: boolean;
   gridPlanes?: MobileGridPlane[];
+  surfaceColorMode?: MobileSurfaceColorMode;
   lastSceneId?: string;
   lastViewerProject?: string;
   lastSelectedSurfaceId?: string;
@@ -39,6 +41,7 @@ export type MobileSettingsLoad = {
   showGrid: boolean | null;
   showAxes: boolean | null;
   gridPlanes?: MobileGridPlane[];
+  surfaceColorMode?: MobileSurfaceColorMode;
   lastSceneId: string | null;
   lastViewerProject: string | null;
   lastSelectedSurfaceId: string | null;
@@ -200,6 +203,8 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
       showGrid: typeof payload.showGrid === "boolean" ? payload.showGrid : null,
       showAxes: typeof payload.showAxes === "boolean" ? payload.showAxes : null,
       gridPlanes: normalizeMobileGridPlanes(payload.gridPlanes),
+      surfaceColorMode: payload.surfaceColorMode === "curvature" || payload.surfaceColorMode === "curvature-faces"
+        ? payload.surfaceColorMode : "solid",
       lastSceneId: typeof payload.lastSceneId === "string" ? payload.lastSceneId : null,
       lastViewerProject: typeof payload.lastViewerProject === "string" ? payload.lastViewerProject : null,
       lastSelectedSurfaceId:
@@ -240,6 +245,7 @@ export const saveMobileSettings = async (settings: {
   showGrid?: boolean;
   showAxes?: boolean;
   gridPlanes?: MobileGridPlane[];
+  surfaceColorMode?: MobileSurfaceColorMode;
   lastSceneId?: string;
   lastViewerProject?: string;
   lastSelectedSurfaceId?: string;
@@ -265,6 +271,8 @@ export const saveMobileSettings = async (settings: {
     showGrid: typeof settings.showGrid === "boolean" ? settings.showGrid : undefined,
     showAxes: typeof settings.showAxes === "boolean" ? settings.showAxes : undefined,
     gridPlanes: normalizeMobileGridPlanes(settings.gridPlanes),
+    surfaceColorMode: settings.surfaceColorMode === "curvature" || settings.surfaceColorMode === "curvature-faces"
+      ? settings.surfaceColorMode : "solid",
     lastSceneId: typeof settings.lastSceneId === "string" ? settings.lastSceneId : undefined,
     lastViewerProject: typeof settings.lastViewerProject === "string" ? settings.lastViewerProject : undefined,
     lastSelectedSurfaceId:

@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, type GestureResponderEvent, type StyleProp, typ
 import { Canvas, useFrame } from "@react-three/fiber/native";
 import * as THREE from "three";
 import type { SceneDocument } from "@math3d/core";
+import type { MobileSurfaceColorMode } from "../viewer/mobileCurvatureColors";
 import { DEFAULT_MOBILE_GRID_PLANES, type MobileGridPlane } from "../models/mobileCoordinateGrid";
 import {
   buildSceneSurfacePreviews,
@@ -25,6 +26,7 @@ type MobileSceneViewportProps = {
   onSelectedSurfaceChange?: (surfaceId: string) => void;
   renderPaused?: boolean;
   surfaceOpacityById?: Record<string, number>;
+  colorMode?: MobileSurfaceColorMode;
   showGrid?: boolean;
   showAxes?: boolean;
   gridPlanes?: MobileGridPlane[];
@@ -150,7 +152,7 @@ const SurfaceMesh: React.FC<{ preview: MobileSurfacePreview; opacity: number }> 
 
   return (
     <mesh geometry={preview.geometry}>
-      <meshBasicMaterial color={preview.color} side={THREE.DoubleSide} transparent={opacity < 1} opacity={opacity} depthWrite={opacity >= 1} />
+      <meshBasicMaterial color={preview.geometry.getAttribute("color") ? "#ffffff" : preview.color} vertexColors={!!preview.geometry.getAttribute("color")} side={THREE.DoubleSide} transparent={opacity < 1} opacity={opacity} depthWrite={opacity >= 1} />
     </mesh>
   );
 };
@@ -251,14 +253,15 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   onSelectedSurfaceChange,
   renderPaused = false,
   surfaceOpacityById,
+  colorMode = "solid",
   showGrid = true,
   showAxes = true,
   gridPlanes = DEFAULT_MOBILE_GRID_PLANES,
   viewportStyle,
 }) => {
   const previews = useMemo(
-    () => buildSceneSurfacePreviews(scene, quality, { implicitMeshBySurfaceId }),
-    [scene, quality, implicitMeshBySurfaceId]
+    () => buildSceneSurfacePreviews(scene, quality, { implicitMeshBySurfaceId, colorMode }),
+    [scene, quality, implicitMeshBySurfaceId, colorMode]
   );
   const visibleSet = useMemo(() => {
     if (!visibleSurfaceIds) return null;
@@ -340,7 +343,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
           {visiblePreviews.map((preview, index) => (
             <View key={`fallback-${preview.id}-${index}`} style={styles.fallbackItem}>
               <Text style={styles.fallbackTitle}>{preview.id}</Text>
-              <Text style={styles.fallbackText}>preview color: {preview.color}</Text>
+              <Text style={styles.fallbackText}>{colorMode === "solid" ? `preview color: ${preview.color}` : "Curvature colors require the 3D renderer."}</Text>
               {preview.warning ? <Text style={styles.fallbackWarn}>{preview.warning}</Text> : null}
             </View>
           ))}
