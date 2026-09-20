@@ -1,6 +1,6 @@
 # Math3D mobile: functionality and navigation overview
 
-Snapshot: September 20, 2026, released Android build `150007` (`1.5.1`) plus unreleased coordinate-grid changes. The selectable XY/XZ/YZ grids and axes described below are in source on the mobile coordinate-grid branch; they are **not** in the published `1.5.1` APK/AAB. Build `150003` corrected the Android bottom safe area, `150004` restored the last viewed Explore scene, and `150006` enabled worker HTTP on the internal Android variant with clearer connection errors. Build `150007` advances the release identity with the same mobile functionality. The app is an Expo/React Native companion viewer in `apps/mobile`; the canonical Android project is `apps/mobile/android`.
+Snapshot: September 20, 2026, released Android build `150007` (`1.5.1`) plus unreleased viewer and structure changes. The selectable XY/XZ/YZ grids, axes, and curvature colors described below are in source on the mobile development branch; they are **not** in the published `1.5.1` APK/AAB. Build `150003` corrected the Android bottom safe area, `150004` restored the last viewed Explore scene, and `150006` enabled worker HTTP on the internal Android variant with clearer connection errors. Build `150007` advances the release identity with the same mobile functionality. The app is an Expo/React Native companion viewer in `apps/mobile`; the canonical Android project is `apps/mobile/android`.
 
 ## Navigation at a glance
 
@@ -11,7 +11,7 @@ Home | Explore | Workspace | Files | Settings
         +-- Gallery | Functions | Learn
 ```
 
-Workspace opens first. The five destinations are a custom bottom navigation bar controlled by state in `MobileApp.tsx`; Gallery, Functions, and Learn are sections inside Explore. The Workspace inspector is a collapsible, scrollable sheet. These are currently rendered by one main component rather than separate route components.
+Workspace opens first. The five destinations are a custom bottom navigation bar controlled by `useMobileNavigationState`; Gallery, Functions, and Learn are sections inside Explore. Each destination has a screen component. The Workspace inspector is a separate collapsible, scrollable component.
 
 ## Screen and tab inventory
 
@@ -21,7 +21,7 @@ Workspace opens first. The five destinations are a custom bottom navigation bar 
 | **Explore → Gallery** | Browse nine bundled surface examples and open one directly in Workspace. Includes implicit, explicit, and parametric examples. | Catalog is hardcoded in `mobileSeedData.ts`; no search, categories, remote catalog, or user submissions. |
 | **Explore → Functions** | Load one of three bundled presets (Sphere, Paraboloid, Helicoid) into Workspace. | Preset list is hardcoded; no formula editor or custom function creation. |
 | **Explore → Learn** | See the Formula notes landing panel. | Guided explanations and lessons are explicitly planned but not implemented. |
-| **Workspace** | View the current scene with selectable XY, XZ, and YZ coordinate grids placed just beyond the visible surfaces, colored X/Y/Z axes, and a compact badge showing each plane's position and shared unit spacing. Orbit with one finger, pan and pinch zoom with two fingers, double tap to fit, select visible objects, and use the inspector. A saved/seed scene is restored on launch. | Companion viewer, not desktop authoring parity. Implicit computed meshes depend on a worker; a local proxy shape appears without one. |
+| **Workspace** | View the current scene with selectable XY (z=0), XZ (y=0), and YZ (x=0) reference planes through the origin. Each has a subtle fill and major/minor grid lines, alongside colored X/Y/Z axes and a compact spacing badge. Orbit with one finger, pan and pinch zoom with two fingers, double tap to fit, select visible objects, and use the inspector. A saved/seed scene is restored on launch. | Companion viewer, not desktop authoring parity. Implicit computed meshes depend on a worker; a local proxy shape appears without one. |
 | **Files** | Search local scenes by title/ID, sort by recent open, update time, or title, and open a scene in Workspace. Shows update/open times and surface count. | Local app sandbox only; no file picker, import/export, rename, delete, cloud sync, or sharing UI. Thumbnail is a two-letter title tile. |
 | **Settings** | Configure and test worker URL; set mesh resolution cap and render quality; inspect backend status; clear caches; toggle limited mode and Android GL behavior; view version, protocol, and storage state. | Requires a separately reachable worker for backend checks and implicit compute. No account, sync, or production release-management UI. |
 
@@ -31,7 +31,7 @@ Workspace opens first. The five destinations are a custom bottom navigation bar 
 | --- | --- | --- |
 | **Scene** | Show all, hide all, save current scene to Files. | No scene tree editing, object add/remove, or scene metadata editor. |
 | **Object** | Select an object, toggle visibility, set opacity to 25/50/75/100%, fit, reset camera, hide. | No transform, material, formula, or geometry editing. |
-| **Display** | Switch render quality among performance, balanced, and sharp; select one or more XY/XZ/YZ planes; toggle all grids and axes separately. XY, Grid, and Axes default on, and choices persist across launches. | No lighting, color, bounding-box, wireframe, or advanced rendering controls. |
+| **Display** | Switch render quality among performance, balanced, and sharp; switch each XY/XZ/YZ plane independently, including all off; use Show all/Hide all for the set and toggle axes separately. All three planes and axes default on for a new install. Solid, smooth Curvature, and per-face Faces colors are available; saved choices persist across launches. | No lighting, bounding-box, wireframe, or advanced rendering controls. |
 | **Analyze** | Show implicit preview status, vertex/triangle counts, cache state, and errors; retry failed previews, lower quality and retry, or open diagnostics. | No mobile analysis result views or general compute controls yet. |
 
 On a compact screen, lower Object controls require scrolling inside the inspector. The Android emulator smoke test covers this layout at 320×640.
@@ -40,12 +40,12 @@ On a compact screen, lower Object controls require scrolling inside the inspecto
 
 | Capability | Current implementation |
 | --- | --- |
-| **Local 3D rendering** | Expo GL with React Three Fiber renders explicit and parametric surface previews. The camera uses Z-up coordinates, matching the surface expressions; selectable adaptive XY/XZ/YZ grids, colored axes, and a badge with the visible planes' positions and unit spacing give spatial reference for Catenoid and other scenes. Touch camera controls, visibility, selection, opacity, and camera fit/reset are wired to the viewport. |
+| **Local 3D rendering** | Expo GL with React Three Fiber renders explicit and parametric surface previews. The camera uses Z-up coordinates, matching the surface expressions; selectable adaptive XY/XZ/YZ origin planes with major/minor grids, colored axes, and a spacing badge give spatial reference for Catenoid and other scenes. Touch camera controls, visibility, selection, opacity, and camera fit/reset are wired to the viewport. |
 | **Weierstrass surfaces** | A local Enneper-style approximation is shown, with a warning that it is a mobile v1 preview. |
 | **Implicit surfaces** | The app requests a VTK preview through the configured worker. Without a computed or cached mesh it shows a local placeholder shape and warning, not the mathematical implicit result. |
 | **Remote compute transport** | `@math3d/api-client` supplies HTTP transport with a 25-second timeout and one retry. The mobile service has typed methods for health, version, CGAL mesh, VTK preview, volume isosurface, and geodesic heat. The UI currently calls health/version and VTK implicit preview; the other methods are not feature screens. |
 | **Offline behavior** | Bundled explicit/parametric scenes and saved local scenes can open without a worker. Limited mode disables remote compute and uses a cached implicit preview when available. |
-| **Local persistence** | Scene projects use the shared `math3d.scene-project` serializer in the app document directory. Settings save the worker URL, resolution cap, last scene/object, camera orbit, selected grid planes, grid/axes visibility, GL state, and selected diagnostics. Mesh previews have a bounded local cache. |
+| **Local persistence** | Scene projects use the shared `math3d.scene-project` serializer in the app document directory. Settings save the worker URL, resolution cap, last scene/object, camera orbit, selected grid planes, grid/axes visibility, surface color mode, GL state, and selected diagnostics. Mesh previews have a bounded local cache. |
 | **App lifecycle** | Rendering pauses when backgrounded; the last scene and Z-up camera state are restored. An older Y-up saved orbit is refitted once when upgrading to the new coordinate convention. Android GL has a fallback/recovery path. |
 
 The default worker URL is `http://127.0.0.1:8787/api/worker`. On a standalone phone, `127.0.0.1` is the phone itself. A real worker needs a URL reachable from the phone's network; USB is not required for the installed APK to run. Internal Android build `150006` permits HTTP to a trusted LAN worker; a production build requires HTTPS.

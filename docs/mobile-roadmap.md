@@ -26,7 +26,7 @@ The intended navigation is **Home | Explore | Workspace | Projects | Settings**,
 | An uncomputed implicit surface can show proxy geometry | Explicit **mesh not computed** state | A proxy must never resemble a mathematical answer. Cached results carry provenance. |
 | Production fallback `127.0.0.1` | **No backend configured** | On a standalone phone localhost is the phone. Manual URL remains in Advanced. |
 | 25-second request/retry | Persistent asynchronous compute job | Long operations need progress, cancellation, resume, and result retrieval. |
-| One large `MobileApp.tsx` | Screen, workspace, viewer, service, storage boundaries | Split before Projects and jobs increase coupling. |
+| Screen rendering and state lived in one `MobileApp.tsx` | Screen, workspace, viewer, service, storage boundaries | MOB26–27 split screens, the inspector, and navigation/workspace/project state. The controller still coordinates effects and service calls before Projects and jobs expand. |
 
 ## Phases and release gates
 
@@ -61,13 +61,14 @@ M0 is the release gate for a trusted baseline. M1 follows immediately. M2 and M3
 ### Workspace and View
 
 - Scene lists all objects with visibility and selection. Tapping an object opens Object; object actions are scoped to that selection. Camera actions live in the viewport toolbar or View.
-- The pre-MOB24 mobile viewer now has selectable adaptive XY/XZ/YZ grids, colored X/Y/Z axes, and persistent Grid/Axes and plane controls. View still needs Auto/manual quality, bounding box, solid/wireframe/edges, and smooth/flat shading. Auto is measured on devices before it becomes the default.
+- The mobile viewer now has adaptive XY/XZ/YZ reference planes through the origin with subtle fills and major/minor grids, colored X/Y/Z axes, persistent independent plane switches, Show all/Hide all, and an Axes switch. It also has persisted smooth and per-face curvature intensity colors based on neighboring triangle normals. View still needs Auto/manual quality, bounding box, wireframe/edges, and smooth/flat shading. Auto is measured on devices before it becomes the default.
 - Analyze reports only mathematically meaningful, valid data; one heavy visual overlay at a time limits mobile GPU/memory cost.
 
 ## Planned commit sequence
 
 The IDs below are planning labels. MOB24's exact-build Samsung signoff and
 MOB25's shared internal and first production signing paths are implemented;
+MOB26–27 are implemented on the mobile development branch;
 remaining matrix and backup gates are tracked above. Each later commit should
 include focused acceptance evidence.
 

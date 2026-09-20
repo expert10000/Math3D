@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { SceneDocument, SurfaceDefinition } from "@math3d/core";
+import { colorizeSurfaceCurvature, type MobileSurfaceColorMode } from "./mobileCurvatureColors";
 
 export type MobileRenderQuality = "performance" | "balanced" | "sharp";
 
@@ -22,6 +23,7 @@ export type MobileSurfacePreview = {
 
 type SurfacePreviewBuildOptions = {
   implicitMeshBySurfaceId?: Record<string, MobileMeshPayload | undefined>;
+  colorMode?: MobileSurfaceColorMode;
 };
 
 const QUALITY_CAP: Record<MobileRenderQuality, number> = {
@@ -291,5 +293,14 @@ export const buildSceneSurfacePreviews = (
   quality: MobileRenderQuality,
   options?: SurfacePreviewBuildOptions
 ): MobileSurfacePreview[] => {
-  return (scene.surfaces ?? []).map((surface) => buildSurfacePreviewGeometry(surface, quality, options));
+  return (scene.surfaces ?? []).map((surface) => {
+    const preview = buildSurfacePreviewGeometry(surface, quality, options);
+    if (options?.colorMode && options.colorMode !== "solid" && surface.kind !== "mesh" &&
+        !(surface.kind === "implicit" && !options.implicitMeshBySurfaceId?.[surface.id])) {
+      const colored = colorizeSurfaceCurvature(preview.geometry, options.colorMode);
+      if (colored !== preview.geometry) preview.geometry.dispose();
+      return { ...preview, geometry: colored };
+    }
+    return preview;
+  });
 };
