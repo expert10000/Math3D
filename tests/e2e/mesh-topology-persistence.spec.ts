@@ -254,7 +254,7 @@ async function runTopologyDemo(
           contextualSelectionLabelPatterns.edge
         );
         await expect(page.getByTestId("mesh-context-toolbar")).toContainText(contextualSelectionLabelPatterns.edge);
-        await page.getByTestId("mesh-inspector-tab-selection").click();
+        await page.getByTestId("shared-inspector-tab-selection").click();
         await expect(page.getByTestId("mesh-active-selection-card")).toBeVisible();
         await expect(page.getByTestId("mesh-active-selection-card-workspace")).toHaveText("Mesh");
         await expect(page.getByTestId("mesh-active-selection-card-type")).toHaveText("Edge");
@@ -297,6 +297,7 @@ test.describe("Mesh topology persistence and handoff", () => {
     try {
       ctx = await launchApp();
       const { page } = ctx;
+      await page.setViewportSize({ width: 1600, height: 900 });
 
       await runContextualObjectModeCheck({
         page,
@@ -323,13 +324,13 @@ test.describe("Mesh topology persistence and handoff", () => {
         forbiddenSelectionHints: ["Click a face to enable Subdivide", "Click an edge to enable Split / Collapse / Bevel"],
       });
 
-      await page.getByTestId("mesh-inspector-tab-object").click();
+      await page.getByTestId("shared-inspector-tab-summary").click();
       await expect(page.getByTestId("mesh-summary-card")).toBeVisible();
-      const diagnosticsTab = page.getByTestId("mesh-inspector-tab-diagnostics");
+      const diagnosticsTab = page.getByTestId("shared-inspector-tab-diagnostics");
       await diagnosticsTab.evaluate((button) => {
         if (button instanceof HTMLButtonElement) button.click();
       });
-      await expect(diagnosticsTab).toHaveAttribute("aria-pressed", "true");
+      await expect(diagnosticsTab).toHaveAttribute("aria-selected", "true");
       await page.getByTestId("mesh-workspace-left-tab-topology").click();
       await page.getByTestId("mesh-selection-filter-kind-face").click();
       await expect(page.getByTestId("mesh-context-pick-face")).toBeDisabled();
@@ -413,6 +414,7 @@ test.describe("Mesh topology persistence and handoff", () => {
     try {
       ctx = await launchApp();
       const { page } = ctx;
+      await page.setViewportSize({ width: 1600, height: 900 });
 
       await runContextualEntityModeCheck({
         page,
@@ -531,6 +533,7 @@ test.describe("Mesh topology persistence and handoff", () => {
     try {
       ctx = await launchApp();
       const { page } = ctx;
+      await page.setViewportSize({ width: 1600, height: 900 });
 
       await openMeshGallery(page);
       await page.getByTestId("mesh-topology-preset-card-topology_demo_bevel_edge").click();
@@ -544,7 +547,7 @@ test.describe("Mesh topology persistence and handoff", () => {
       await expect(page.getByText(/0 steps?/i).first()).toBeVisible();
       await page.getByTestId("geometry-open-mesh-source").click();
       await expect(page.getByText(/Mesh \/ Workspace/i).first()).toBeVisible();
-      await expect(page.getByText(/Selected: Demo: bevel edge mesh object \(Mesh source\)/i).first()).toBeVisible({
+      await expect(page.getByTestId("shared-inspector-summary")).toContainText(/Demo: bevel edge mesh object \(Mesh source\)/i, {
         timeout: 15_000,
       });
     } finally {
@@ -596,6 +599,7 @@ test.describe("Mesh topology persistence and handoff", () => {
     try {
       ctx = await launchApp();
       const { page } = ctx;
+      await page.setViewportSize({ width: 1600, height: 900 });
 
       await runTopologyDemo(page, "topology_demo_split_edge", "Split Edge", /Split edge/i);
       await firstVisible(page.getByRole("button", { name: "Preview Before", exact: true })).then((button) => button.click());
@@ -610,7 +614,7 @@ test.describe("Mesh topology persistence and handoff", () => {
       await page.reload();
       await page.waitForLoadState("domcontentloaded");
       await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true })).then((button) => button.click());
-      await page.getByTestId("mesh-inspector-tab-history").click();
+      await page.getByTestId("shared-inspector-tab-history").click();
       await expect(page.getByText(/Mesh History/i).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText(/Split edge/i).first()).toBeVisible();
 

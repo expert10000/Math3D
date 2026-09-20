@@ -16666,7 +16666,7 @@ const App: React.FC = () => {
                 },
                 visible: typeof sceneObject.visible === "boolean" ? sceneObject.visible : seeded.visible,
                 material: normalizeGeometryMaterial((sceneObject as { material?: unknown }).material ?? seeded.material),
-                group: (sceneObject as { group?: string }).group,
+                group: (sceneObject as { group?: string }).group ?? seeded.group,
               };
             })
           : [];

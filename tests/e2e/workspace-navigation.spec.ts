@@ -74,6 +74,7 @@ test.describe("Workspace navigation", () => {
     try {
       ctx = await launchSurfaceApp();
       await resetSurfaceAppState(ctx.page);
+      await ctx.page.setViewportSize({ width: 1480, height: 900 });
       const volumeShaderErrors: string[] = [];
       ctx.page.on("console", (message) => {
         const text = message.text();
