@@ -4,12 +4,15 @@ export type MobileSurfaceColorMode = "solid" | "curvature" | "curvature-faces";
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 
-const colorForIntensity = (intensity: number) => {
-  const low = new THREE.Color("#2563eb");
-  const middle = new THREE.Color("#2dd4bf");
-  const high = new THREE.Color("#f97316");
+const lowColor = new THREE.Color("#2563eb");
+const middleColor = new THREE.Color("#2dd4bf");
+const highColor = new THREE.Color("#f97316");
+
+const colorForIntensity = (intensity: number, target: any) => {
   const t = clamp01(intensity);
-  return t <= 0.5 ? low.lerp(middle, t * 2) : middle.lerp(high, (t - 0.5) * 2);
+  return t <= 0.5
+    ? target.copy(lowColor).lerp(middleColor, t * 2)
+    : target.copy(middleColor).lerp(highColor, (t - 0.5) * 2);
 };
 
 /** Color each triangle by normal change per unit edge length across neighboring faces. */
@@ -76,8 +79,9 @@ export const colorizeSurfaceCurvature = (
   if (mode === "curvature-faces") {
     const geometry = index ? source.toNonIndexed() : source;
     const colors = new Float32Array(faceCount * 9);
+    const color = new THREE.Color();
     for (let face = 0; face < faceCount; face += 1) {
-      const color = colorForIntensity(normalized(scores[face]));
+      colorForIntensity(normalized(scores[face]), color);
       for (let corner = 0; corner < 3; corner += 1) color.toArray(colors, face * 9 + corner * 3);
     }
     geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
@@ -94,9 +98,10 @@ export const colorizeSurfaceCurvature = (
     }
   }
   const colors = new Float32Array(position.count * 3);
+  const color = new THREE.Color();
   for (let vertex = 0; vertex < position.count; vertex += 1) {
     const score = vertexCounts[vertex] ? vertexScores[vertex] / vertexCounts[vertex] : 0;
-    colorForIntensity(normalized(score)).toArray(colors, vertex * 3);
+    colorForIntensity(normalized(score), color).toArray(colors, vertex * 3);
   }
   source.setAttribute("color", new THREE.BufferAttribute(colors, 3));
   return source;
