@@ -139,12 +139,6 @@ async function clickFirstVisibleByTestId(scope: Page | Locator, testId: string):
   throw new Error(`Visible test-id target not found: ${testId}`);
 }
 
-function getInspectorSection(page: Page): Locator {
-  return page.locator("section", {
-    has: page.getByRole("heading", { name: /^INSPECTOR$/ }),
-  }).first();
-}
-
 async function resolveSurfaceInput(page: Page, timeoutMs = 20_000): Promise<Locator> {
   const byTestId = page.getByTestId("surface-input").first();
   const byPlaceholder = page.getByPlaceholder("e.g. x*x + y*y + z*z - 1").first();
@@ -159,11 +153,6 @@ async function resolveSurfaceInput(page: Page, timeoutMs = 20_000): Promise<Loca
   throw new Error("Implicit surface input not visible.");
 }
 
-async function clickInspectorTab(page: Page, tabName: RegExp): Promise<void> {
-  const inspector = getInspectorSection(page);
-  await clickFirstVisibleButtonByNamePattern(inspector, tabName);
-}
-
 export async function openSurfaceGenerator(page: Page): Promise<void> {
   await resetSurfaceAppState(page);
   await clickFirstVisibleButton(page, "Surfaces");
@@ -172,8 +161,6 @@ export async function openSurfaceGenerator(page: Page): Promise<void> {
   const showTabs = page.getByRole("button", { name: /^Show Scene\/Object tabs$/i }).first();
   if ((await showTabs.count()) > 0 && (await showTabs.isVisible())) await showTabs.click();
   await ensureSurfaceEditorOpen(page);
-  await clickFirstVisibleButton(page, "Inspector");
-  await clickInspectorTab(page, /^Object\b/i);
   await resolveSurfaceInput(page);
   await expect(page.getByRole("button", { name: /^Preview$/i }).first()).toBeVisible();
 }
