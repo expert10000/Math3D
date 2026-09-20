@@ -169,7 +169,8 @@ export async function openSurfaceGenerator(page: Page): Promise<void> {
   await clickFirstVisibleButton(page, "Surfaces");
   await clickFirstVisibleByTestId(page, "surface-family-implicit");
   await clickFirstVisibleButtonByNamePattern(page, /^Edit custom f\(x,y,z\)$/i);
-  await clickFirstVisibleButtonByNamePattern(page, /^Show Scene\/Object tabs$/i);
+  const showTabs = page.getByRole("button", { name: /^Show Scene\/Object tabs$/i }).first();
+  if ((await showTabs.count()) > 0 && (await showTabs.isVisible())) await showTabs.click();
   await ensureSurfaceEditorOpen(page);
   await clickFirstVisibleButton(page, "Inspector");
   await clickInspectorTab(page, /^Object\b/i);

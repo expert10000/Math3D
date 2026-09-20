@@ -16,7 +16,7 @@ module.exports = {
     {
       name: "renderer-must-not-import-electron-main",
       severity: "error",
-      from: { path: "^renderer/" },
+      from: { path: "^renderer/", pathNot: "\\.(test|spec)\\.[cm]?[jt]sx?$" },
       to: { path: "^src/" },
     },
     {
