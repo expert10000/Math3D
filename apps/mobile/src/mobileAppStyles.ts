@@ -229,6 +229,34 @@ export const styles = StyleSheet.create({
   sceneListMeta: {
     flex: 1,
   },
+  projectThumbnail: {
+    width: 76,
+    height: 58,
+    borderRadius: 9,
+    overflow: "hidden",
+    backgroundColor: "#edf4fb",
+    borderWidth: 1,
+    borderColor: "#bed0e1",
+    flexShrink: 0,
+  },
+  projectThumbnailAxis: {
+    position: "absolute",
+    height: 1,
+    backgroundColor: "#c4d2df",
+  },
+  projectThumbnailSegment: {
+    position: "absolute",
+    height: 1.2,
+    borderRadius: 1,
+    opacity: 0.82,
+  },
+  projectThumbnailFallback: {
+    color: "#315779",
+    fontSize: 14,
+    fontWeight: "800",
+    textAlign: "center",
+    marginTop: 18,
+  },
   projectActions: {
     flexDirection: "row",
     flexWrap: "wrap",

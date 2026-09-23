@@ -13,6 +13,8 @@ import { useMobileNavigationState, type MobileTab } from "./models/useMobileNavi
 import { useMobileWorkspaceState, type CameraCommandType } from "./models/useMobileWorkspaceState";
 import { useMobileProjectState } from "./models/useMobileProjectState";
 import { duplicateMobileProject, renameMobileProject } from "./models/mobileProjectOperations";
+import { clearMobileThumbnailCache, loadMobileThumbnailCache, saveMobileThumbnailCache, type MobileThumbnailCache } from "./services/mobileThumbnailCacheStorage";
+import { createMobileThumbnailCacheKey, generateMobileSceneThumbnail } from "./viewer/mobileSceneThumbnail";
 
 const ANDROID_GL_DEFAULT_ENABLED = true;
 export const FORCE_ANDROID_SAFE_MODE = false;
@@ -192,7 +194,8 @@ export const useMobileAppController = () => {
   } = useMobileWorkspaceState();
   const { selectedSceneId, setSelectedSceneId, storedProjects, setStoredProjects, storageIssues, setStorageIssues,
     storageStatus, setStorageStatus, sceneSearchQuery, setSceneSearchQuery, sceneSortMode, setSceneSortMode,
-    deletedProject, setDeletedProject, projectActionMessage, setProjectActionMessage } = useMobileProjectState();
+    deletedProject, setDeletedProject, projectActionMessage, setProjectActionMessage,
+    sceneThumbnailsById, setSceneThumbnailsById } = useMobileProjectState();
   const inspectorSwipeStartY = useRef<number | null>(null);
   const [selectedGalleryId, setSelectedGalleryId] = useState<string | null>(mobileGallery[0]?.id ?? null);
   const showGrid = gridPlanes.length > 0;
@@ -383,6 +386,44 @@ export const useMobileAppController = () => {
     () => storedProjects.map((project) => buildSceneSummary(project)),
     [storedProjects]
   );
+
+  useEffect(() => {
+    if (storageStatus === "loading") return;
+    let active = true;
+
+    const refreshThumbnails = async () => {
+      const cached = await loadMobileThumbnailCache();
+      const nextCache: MobileThumbnailCache = {};
+      const nextThumbnails: typeof sceneThumbnailsById = {};
+
+      for (const project of storedProjects) {
+        if (!active) return;
+        const cacheKey = createMobileThumbnailCacheKey(project);
+        const existing = cached[project.id];
+        if (existing?.cacheKey === cacheKey) {
+          nextCache[project.id] = existing;
+          nextThumbnails[project.id] = existing.thumbnail;
+          continue;
+        }
+        const parsed = readSceneFromStoredProject(project);
+        if (!parsed.ok) continue;
+        const thumbnail = generateMobileSceneThumbnail(parsed.scene);
+        const entry = { cacheKey, thumbnail };
+        nextCache[project.id] = entry;
+        nextThumbnails[project.id] = thumbnail;
+        await Promise.resolve();
+      }
+
+      if (!active) return;
+      setSceneThumbnailsById(nextThumbnails);
+      await saveMobileThumbnailCache(nextCache).catch(() => undefined);
+    };
+
+    void refreshThumbnails();
+    return () => {
+      active = false;
+    };
+  }, [storageStatus, storedProjects]);
 
   const selectedScene = useMemo(
     () => sceneSummaries.find((scene) => scene.id === selectedSceneId) ?? null,
@@ -994,7 +1035,9 @@ export const useMobileAppController = () => {
     setSettingsActionMessage("");
     try {
       await clearStoredSceneProjects();
+      await clearMobileThumbnailCache();
       setStoredProjects([]);
+      setSceneThumbnailsById({});
       setSelectedSceneId(null);
       setViewerDocument(null);
       setImplicitMeshBySurfaceId({});
@@ -1143,6 +1186,7 @@ export const useMobileAppController = () => {
     setSceneSortMode,
     deletedProject,
     projectActionMessage,
+    sceneThumbnailsById,
     visibleSurfaceIds,
     workerBaseUrl,
     workerBaseUrlDraft,

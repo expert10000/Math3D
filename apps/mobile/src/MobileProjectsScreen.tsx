@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { asDate, type MobileAppController } from "./mobileAppController";
 import { styles } from "./mobileAppStyles";
+import { MobileProjectThumbnail } from "./components/MobileProjectThumbnail";
 
 export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({ model }) => {
   const {
@@ -15,6 +16,7 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
     filteredSceneSummaries,
     deletedProject,
     projectActionMessage,
+    sceneThumbnailsById,
     openStoredScene,
     renameStoredScene,
     duplicateStoredScene,
@@ -70,9 +72,7 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
         return <View key={scene.id} style={[styles.item, selectedScene?.id === scene.id ? styles.itemActive : null]}>
           <Pressable testID={`mobile-project-open-${scene.id}`} onPress={() => void openStoredScene(scene.id)}>
             <View style={styles.sceneListRow}>
-              <View style={styles.sceneThumb}>
-                <Text style={styles.sceneThumbText}>{scene.title.slice(0, 2).toUpperCase()}</Text>
-              </View>
+              <MobileProjectThumbnail thumbnail={sceneThumbnailsById[scene.id]} title={scene.title} />
               <View style={styles.sceneListMeta}>
                 <Text style={styles.itemTitle}>{scene.title}</Text>
                 <Text style={styles.itemMeta}>
