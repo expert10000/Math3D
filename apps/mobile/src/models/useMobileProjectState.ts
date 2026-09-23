@@ -11,8 +11,11 @@ export const useMobileProjectState = () => {
   const [storageStatus, setStorageStatus] = useState<StorageStatus>("loading");
   const [sceneSearchQuery, setSceneSearchQuery] = useState("");
   const [sceneSortMode, setSceneSortMode] = useState<SceneSortMode>("recent");
+  const [deletedProject, setDeletedProject] = useState<MobileStoredSceneProject | null>(null);
+  const [projectActionMessage, setProjectActionMessage] = useState("");
   return {
     selectedSceneId, setSelectedSceneId, storedProjects, setStoredProjects, storageIssues, setStorageIssues,
     storageStatus, setStorageStatus, sceneSearchQuery, setSceneSearchQuery, sceneSortMode, setSceneSortMode,
+    deletedProject, setDeletedProject, projectActionMessage, setProjectActionMessage,
   };
 };

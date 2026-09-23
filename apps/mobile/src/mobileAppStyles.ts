@@ -229,6 +229,41 @@ export const styles = StyleSheet.create({
   sceneListMeta: {
     flex: 1,
   },
+  projectActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 7,
+    marginTop: 10,
+  },
+  projectEditor: {
+    gap: 7,
+    marginTop: 10,
+  },
+  projectDeleteBtn: {
+    backgroundColor: "#fff5f5",
+    borderWidth: 1,
+    borderColor: "#e4aaaa",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  projectDeleteText: {
+    color: "#9f2626",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  projectUndoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    borderRadius: 10,
+    backgroundColor: "#edf4ff",
+    borderWidth: 1,
+    borderColor: "#b8cce2",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
   itemActive: {
     borderColor: "#163b66",
     backgroundColor: "#edf4ff",

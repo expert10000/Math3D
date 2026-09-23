@@ -9,7 +9,7 @@ export const MobileHomeScreen: React.FC<{ model: MobileAppController }> = ({ mod
 
     <View style={styles.panel}>
       <Text style={styles.panelTitle}>Your Math3D workspace</Text>
-      <Text style={styles.note}>Open the current scene, browse examples, or return to a saved file.</Text>
+      <Text style={styles.note}>Open the current scene, browse examples, or return to a saved project.</Text>
       <Pressable onPress={() => setTab("workspace")} style={styles.primaryBtn}>
         <Text style={styles.primaryBtnText}>Open Workspace{viewerDocument ? ` · ${viewerDocument.title}` : ""}</Text>
       </Pressable>
@@ -17,8 +17,8 @@ export const MobileHomeScreen: React.FC<{ model: MobileAppController }> = ({ mod
         <Pressable onPress={() => setTab("explore")} style={styles.secondaryBtn}>
           <Text style={styles.secondaryBtnText}>Explore examples</Text>
         </Pressable>
-        <Pressable onPress={() => setTab("files")} style={styles.secondaryBtn}>
-          <Text style={styles.secondaryBtnText}>Saved files ({sceneSummaries.length})</Text>
+        <Pressable onPress={() => setTab("projects")} style={styles.secondaryBtn}>
+          <Text style={styles.secondaryBtnText}>Projects ({sceneSummaries.length})</Text>
         </Pressable>
       </View>
     </View>

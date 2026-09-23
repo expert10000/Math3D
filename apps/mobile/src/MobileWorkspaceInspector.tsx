@@ -85,7 +85,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
               <View style={styles.viewerToolbarRow}>
                 <Pressable onPress={() => setAllSurfacesVisible(true)} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Show all</Text></Pressable>
                 <Pressable onPress={() => setAllSurfacesVisible(false)} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Hide all</Text></Pressable>
-                <Pressable onPress={() => void saveCurrentViewerScene()} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Save to Files</Text></Pressable>
+                <Pressable onPress={() => void saveCurrentViewerScene()} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Save project</Text></Pressable>
               </View>
             </>
           )}

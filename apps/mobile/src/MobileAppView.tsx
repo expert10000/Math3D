@@ -5,7 +5,7 @@ import { tabs, type MobileAppController } from "./mobileAppController";
 import { styles } from "./mobileAppStyles";
 import { MobileWorkspaceScreen } from "./MobileWorkspaceScreen";
 import { MobileHomeScreen } from "./MobileHomeScreen";
-import { MobileFilesScreen } from "./MobileFilesScreen";
+import { MobileProjectsScreen } from "./MobileProjectsScreen";
 import { MobileExploreScreen } from "./MobileExploreScreen";
 import { MobileSettingsScreen } from "./MobileSettingsScreen";
 
@@ -27,7 +27,7 @@ export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model 
 
       {tab !== "workspace" && <ScrollView contentContainerStyle={styles.content}>
         {tab === "home" && <MobileHomeScreen model={model} />}
-        {tab === "files" && <MobileFilesScreen model={model} />}
+        {tab === "projects" && <MobileProjectsScreen model={model} />}
         {tab === "explore" && <MobileExploreScreen model={model} />}
         {tab === "settings" && <MobileSettingsScreen model={model} />}
       </ScrollView>}

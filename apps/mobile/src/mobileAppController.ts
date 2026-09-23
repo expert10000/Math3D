@@ -12,6 +12,7 @@ import type { MobileMeshPayload, MobileRenderQuality } from "./viewer/mobileSurf
 import { useMobileNavigationState, type MobileTab } from "./models/useMobileNavigationState";
 import { useMobileWorkspaceState, type CameraCommandType } from "./models/useMobileWorkspaceState";
 import { useMobileProjectState } from "./models/useMobileProjectState";
+import { duplicateMobileProject, renameMobileProject } from "./models/mobileProjectOperations";
 
 const ANDROID_GL_DEFAULT_ENABLED = true;
 export const FORCE_ANDROID_SAFE_MODE = false;
@@ -20,7 +21,7 @@ export const tabs: ReadonlyArray<{ key: MobileTab; label: string }> = [
   { key: "home", label: "Home" },
   { key: "explore", label: "Explore" },
   { key: "workspace", label: "Workspace" },
-  { key: "files", label: "Files" },
+  { key: "projects", label: "Projects" },
   { key: "settings", label: "Settings" },
 ];
 
@@ -190,7 +191,8 @@ export const useMobileAppController = () => {
     cameraCommandToken, setCameraCommandToken,
   } = useMobileWorkspaceState();
   const { selectedSceneId, setSelectedSceneId, storedProjects, setStoredProjects, storageIssues, setStorageIssues,
-    storageStatus, setStorageStatus, sceneSearchQuery, setSceneSearchQuery, sceneSortMode, setSceneSortMode } = useMobileProjectState();
+    storageStatus, setStorageStatus, sceneSearchQuery, setSceneSearchQuery, sceneSortMode, setSceneSortMode,
+    deletedProject, setDeletedProject, projectActionMessage, setProjectActionMessage } = useMobileProjectState();
   const inspectorSwipeStartY = useRef<number | null>(null);
   const [selectedGalleryId, setSelectedGalleryId] = useState<string | null>(mobileGallery[0]?.id ?? null);
   const showGrid = gridPlanes.length > 0;
@@ -765,6 +767,81 @@ export const useMobileAppController = () => {
     }
   };
 
+  const persistProjectMutation = async (
+    nextProjects: MobileStoredSceneProject[],
+    successMessage: string,
+    failureLabel: string
+  ): Promise<boolean> => {
+    try {
+      await saveStoredSceneProjects(nextProjects);
+      setStoredProjects(nextProjects);
+      setStorageStatus(storageIssues.length > 0 ? "error" : "ready");
+      setProjectActionMessage(successMessage);
+      return true;
+    } catch (error) {
+      setStorageIssues((current) => [
+        ...current,
+        `${failureLabel}: ${String((error as Error).message ?? error)}`,
+      ]);
+      setStorageStatus("error");
+      return false;
+    }
+  };
+
+  const renameStoredScene = async (projectId: string, title: string): Promise<boolean> => {
+    const target = storedProjects.find((project) => project.id === projectId);
+    if (!target) return false;
+    const result = renameMobileProject(target, title);
+    if (!result.ok) {
+      setProjectActionMessage(result.error);
+      return false;
+    }
+    const nextProjects = upsertStoredProject(storedProjects, result.project);
+    const saved = await persistProjectMutation(nextProjects, `Renamed to ${result.project.title}.`, "Failed to rename project");
+    if (!saved) return false;
+    if (selectedSceneId === projectId) {
+      const parsed = readSceneFromStoredProject(result.project);
+      if (parsed.ok) setViewerDocument(parsed.scene);
+      void persistMobileSettings({ lastViewerProject: result.project.serializedProject }).catch(() => undefined);
+    }
+    return true;
+  };
+
+  const duplicateStoredScene = async (projectId: string): Promise<boolean> => {
+    const target = storedProjects.find((project) => project.id === projectId);
+    if (!target) return false;
+    const result = duplicateMobileProject(target, storedProjects);
+    if (!result.ok) {
+      setProjectActionMessage(result.error);
+      return false;
+    }
+    const nextProjects = upsertStoredProject(storedProjects, result.project);
+    return persistProjectMutation(nextProjects, `Created ${result.project.title}.`, "Failed to duplicate project");
+  };
+
+  const deleteStoredScene = async (projectId: string): Promise<boolean> => {
+    const target = storedProjects.find((project) => project.id === projectId);
+    if (!target) return false;
+    const nextProjects = storedProjects.filter((project) => project.id !== projectId);
+    const saved = await persistProjectMutation(nextProjects, `Deleted ${target.title}.`, "Failed to delete project");
+    if (!saved) return false;
+    setDeletedProject(target);
+    if (selectedSceneId === projectId) {
+      setSelectedSceneId(null);
+      void persistMobileSettings({ lastSceneId: undefined }).catch(() => undefined);
+    }
+    return true;
+  };
+
+  const undoDeleteStoredScene = async (): Promise<boolean> => {
+    if (!deletedProject) return false;
+    const restored = deletedProject;
+    const nextProjects = upsertStoredProject(storedProjects, restored);
+    const saved = await persistProjectMutation(nextProjects, `Restored ${restored.title}.`, "Failed to restore project");
+    if (saved) setDeletedProject(null);
+    return saved;
+  };
+
   const runCameraCommand = (type: CameraCommandType) => {
     setCameraCommandType(type);
     setCameraCommandToken((value) => value + 1);
@@ -1064,6 +1141,8 @@ export const useMobileAppController = () => {
     setSceneSearchQuery,
     sceneSortMode,
     setSceneSortMode,
+    deletedProject,
+    projectActionMessage,
     visibleSurfaceIds,
     workerBaseUrl,
     workerBaseUrlDraft,
@@ -1104,6 +1183,10 @@ export const useMobileAppController = () => {
     androidFallbackForced,
     onViewportRenderReady,
     openStoredScene,
+    renameStoredScene,
+    duplicateStoredScene,
+    deleteStoredScene,
+    undoDeleteStoredScene,
     openViewerWithSurface,
     saveCurrentViewerScene,
     runCameraCommand,
