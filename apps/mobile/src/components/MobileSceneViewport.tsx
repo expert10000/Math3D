@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, Text, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from "react-native";
+import { Pressable, StyleSheet, Text, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from "react-native";
 import { Canvas, useFrame } from "@react-three/fiber/native";
 import * as THREE from "three";
 import type { SceneDocument } from "@math3d/core";
 import type { MobileSurfaceColorMode } from "../viewer/mobileCurvatureColors";
+import type { MobileSurfaceRenderMode, MobileSurfaceShading } from "../viewer/mobileViewModes";
 import { DEFAULT_MOBILE_GRID_PLANES, type MobileGridPlane } from "../models/mobileCoordinateGrid";
 import {
   buildSceneSurfacePreviews,
@@ -24,9 +25,13 @@ type MobileSceneViewportProps = {
   initialOrbit?: OrbitState | null;
   onOrbitChange?: (orbit: OrbitState) => void;
   onSelectedSurfaceChange?: (surfaceId: string) => void;
+  onOpenCompute?: () => void;
   renderPaused?: boolean;
   surfaceOpacityById?: Record<string, number>;
   colorMode?: MobileSurfaceColorMode;
+  renderMode?: MobileSurfaceRenderMode;
+  shading?: MobileSurfaceShading;
+  showBoundingBox?: boolean;
   showGrid?: boolean;
   showAxes?: boolean;
   gridPlanes?: MobileGridPlane[];
@@ -119,6 +124,7 @@ const fitOrbitToPreviews = (previews: MobileSurfacePreview[], current: OrbitStat
 
   for (const preview of previews) {
     const geometry = preview.geometry;
+    if (!geometry) continue;
     if (!geometry.boundingBox) geometry.computeBoundingBox();
     if (!hasFiniteBounds(geometry.boundingBox)) continue;
     merged.union(geometry.boundingBox);
@@ -143,18 +149,57 @@ const fitOrbitToPreviews = (previews: MobileSurfacePreview[], current: OrbitStat
   };
 };
 
-const SurfaceMesh: React.FC<{ preview: MobileSurfacePreview; opacity: number }> = ({ preview, opacity }) => {
+const SurfaceMesh: React.FC<{
+  preview: MobileSurfacePreview;
+  opacity: number;
+  renderMode: MobileSurfaceRenderMode;
+  shading: MobileSurfaceShading;
+}> = ({ preview, opacity, renderMode, shading }) => {
+  const geometry = preview.geometry;
   useEffect(() => {
     return () => {
-      preview.geometry.dispose();
+      geometry?.dispose();
     };
-  }, [preview.geometry]);
+  }, [geometry]);
 
-  return (
-    <mesh geometry={preview.geometry}>
-      <meshBasicMaterial color={preview.geometry.getAttribute("color") ? "#ffffff" : preview.color} vertexColors={!!preview.geometry.getAttribute("color")} side={THREE.DoubleSide} transparent={opacity < 1} opacity={opacity} depthWrite={opacity >= 1} />
-    </mesh>
-  );
+  if (!geometry) return null;
+
+  const hasVertexColors = !!geometry.getAttribute("color");
+  const materialColor = hasVertexColors ? "#ffffff" : preview.color;
+
+  return <group>
+    {renderMode !== "wireframe" ? (
+      <mesh geometry={geometry}>
+        <meshStandardMaterial
+          color={materialColor}
+          vertexColors={hasVertexColors}
+          side={THREE.DoubleSide}
+          flatShading={shading === "flat"}
+          roughness={0.72}
+          metalness={0.04}
+          transparent={opacity < 1}
+          opacity={opacity}
+          depthWrite={opacity >= 1}
+          polygonOffset={renderMode === "solid-edges"}
+          polygonOffsetFactor={renderMode === "solid-edges" ? 1 : 0}
+          polygonOffsetUnits={renderMode === "solid-edges" ? 1 : 0}
+        />
+      </mesh>
+    ) : null}
+    {renderMode !== "solid" ? (
+      <mesh geometry={geometry}>
+        <meshBasicMaterial
+          color={renderMode === "wireframe" ? materialColor : "#18324a"}
+          vertexColors={renderMode === "wireframe" && hasVertexColors}
+          wireframe
+          side={THREE.DoubleSide}
+          transparent={opacity < 1 || renderMode === "solid-edges"}
+          opacity={renderMode === "solid-edges" ? Math.min(0.62, opacity) : opacity}
+          depthWrite={renderMode === "wireframe" && opacity >= 1}
+        />
+      </mesh>
+    ) : null}
+  </group>;
 };
 
 const PlaneGrid: React.FC<{
@@ -239,6 +284,30 @@ const CoordinateAxes: React.FC<{ halfSize: number }> = ({ halfSize }) => {
   );
 };
 
+const SurfaceBounds: React.FC<{ previews: MobileSurfacePreview[] }> = ({ previews }) => {
+  const { geometry, center } = useMemo(() => {
+    const bounds = new THREE.Box3().makeEmpty();
+    for (const preview of previews) {
+      const geometry = preview.geometry;
+      if (!geometry) continue;
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      if (hasFiniteBounds(geometry.boundingBox)) bounds.union(geometry.boundingBox);
+    }
+    if (bounds.isEmpty()) return { geometry: null, center: new THREE.Vector3() };
+    const size = bounds.getSize(new THREE.Vector3());
+    const boxGeometry = new THREE.BoxGeometry(size.x, size.y, size.z);
+    const next = new THREE.EdgesGeometry(boxGeometry);
+    boxGeometry.dispose();
+    return { geometry: next, center: bounds.getCenter(new THREE.Vector3()) };
+  }, [previews]);
+
+  useEffect(() => () => geometry?.dispose(), [geometry]);
+  if (!geometry) return null;
+  return <lineSegments geometry={geometry} position={[center.x, center.y, center.z]}>
+    <lineBasicMaterial color="#234d73" transparent opacity={0.88} depthWrite={false} />
+  </lineSegments>;
+};
+
 export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   scene,
   quality,
@@ -251,9 +320,13 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   initialOrbit,
   onOrbitChange,
   onSelectedSurfaceChange,
+  onOpenCompute,
   renderPaused = false,
   surfaceOpacityById,
   colorMode = "solid",
+  renderMode = "solid",
+  shading = "smooth",
+  showBoundingBox = false,
   showGrid = true,
   showAxes = true,
   gridPlanes = DEFAULT_MOBILE_GRID_PLANES,
@@ -273,6 +346,14 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
     if (!visibleSet) return previews;
     return previews.filter((preview) => visibleSet.has(preview.id));
   }, [previews, visibleSet]);
+  const renderablePreviews = useMemo(
+    () => visiblePreviews.filter((preview) => preview.geometry !== null),
+    [visiblePreviews]
+  );
+  const firstUncomputedPreview = useMemo(
+    () => visiblePreviews.find((preview) => preview.state === "uncomputed"),
+    [visiblePreviews]
+  );
   const warnings = useMemo(
     () => visiblePreviews.map((item) => item.warning).filter((value): value is string => typeof value === "string"),
     [visiblePreviews]
@@ -280,8 +361,10 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   const coordinateFrame = useMemo(() => {
     const bounds = new THREE.Box3().makeEmpty();
     for (const preview of visiblePreviews) {
-      if (!preview.geometry.boundingBox) preview.geometry.computeBoundingBox();
-      if (hasFiniteBounds(preview.geometry.boundingBox)) bounds.union(preview.geometry.boundingBox);
+      const geometry = preview.geometry;
+      if (!geometry) continue;
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      if (hasFiniteBounds(geometry.boundingBox)) bounds.union(geometry.boundingBox);
     }
     const coordinateExtent = bounds.isEmpty() ? 2 : Math.max(
       Math.abs(bounds.min.x), Math.abs(bounds.max.x),
@@ -336,14 +419,22 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
       <View style={[styles.viewportRoot, styles.fallbackRoot, viewportStyle]}>
         <View style={styles.overlay} pointerEvents="none">
           <Text style={styles.overlayText}>Android safe mode (GL fallback)</Text>
-          <Text style={styles.overlayText}>Visible surfaces: {visiblePreviews.length}</Text>
+          <Text style={styles.overlayText}>Rendered surfaces: {renderablePreviews.length}</Text>
         </View>
         <View style={styles.fallbackList}>
           {visiblePreviews.length === 0 && <Text style={styles.fallbackText}>No visible surfaces selected.</Text>}
           {visiblePreviews.map((preview, index) => (
             <View key={`fallback-${preview.id}-${index}`} style={styles.fallbackItem}>
               <Text style={styles.fallbackTitle}>{preview.id}</Text>
-              <Text style={styles.fallbackText}>{colorMode === "solid" ? `preview color: ${preview.color}` : "Curvature colors require the 3D renderer."}</Text>
+              {preview.state === "uncomputed" ? (
+                <>
+                  <Text style={styles.fallbackWarn}>Mesh not computed</Text>
+                  <Text style={styles.fallbackText}>Formula: {preview.uncomputed?.formula}</Text>
+                  <Text style={styles.fallbackText}>Requires: {preview.uncomputed?.capability}</Text>
+                </>
+              ) : (
+                <Text style={styles.fallbackText}>{colorMode === "solid" ? `preview color: ${preview.color}` : "Curvature colors require the 3D renderer."}</Text>
+              )}
               {preview.warning ? <Text style={styles.fallbackWarn}>{preview.warning}</Text> : null}
             </View>
           ))}
@@ -438,6 +529,9 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
         gl={{ antialias: true }}
         frameloop={renderPaused ? "demand" : "always"}
       >
+        <ambientLight intensity={1.25} />
+        <directionalLight position={[5, -4, 8]} intensity={1.55} />
+        <directionalLight position={[-4, 3, 1]} intensity={0.55} />
         {showGrid && gridPlanes.includes("xy") ? (
           <PlaneGrid plane="xy" halfSize={coordinateFrame.halfSize} majorStep={coordinateFrame.majorStep} color="#74abff" />
         ) : null}
@@ -448,15 +542,21 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
           <PlaneGrid plane="yz" halfSize={coordinateFrame.halfSize} majorStep={coordinateFrame.majorStep} color="#ffa877" />
         ) : null}
         {showAxes ? <CoordinateAxes halfSize={coordinateFrame.halfSize} /> : null}
+        {showBoundingBox ? <SurfaceBounds previews={renderablePreviews} /> : null}
 
-        {visiblePreviews.map((preview, index) => (
+        {renderablePreviews.map((preview, index) => (
           <group
             key={`surface-preview-${preview.id}-${index}`}
             onPointerDown={() => {
               onSelectedSurfaceChange?.(preview.id);
             }}
           >
-            <SurfaceMesh preview={preview} opacity={Math.max(0, Math.min(1, surfaceOpacityById?.[preview.id] ?? 1))} />
+            <SurfaceMesh
+              preview={preview}
+              opacity={Math.max(0, Math.min(1, surfaceOpacityById?.[preview.id] ?? 1))}
+              renderMode={renderMode}
+              shading={shading}
+            />
           </group>
         ))}
 
@@ -466,10 +566,21 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
 
       <View style={styles.overlay} pointerEvents="none">
         <Text style={styles.overlayText}>{gestureHint}</Text>
-        <Text style={styles.overlayText}>Visible surfaces: {visiblePreviews.length}</Text>
+        <Text style={styles.overlayText}>Rendered surfaces: {renderablePreviews.length}</Text>
         {selectedSurfaceId ? <Text style={styles.overlayText}>Selected: {selectedSurfaceId}</Text> : null}
         {renderPaused ? <Text style={styles.overlayText}>Paused in background</Text> : null}
       </View>
+
+      {firstUncomputedPreview?.uncomputed ? (
+        <View style={styles.uncomputedPanel} pointerEvents="box-none">
+          <Text style={styles.uncomputedTitle}>Mesh not computed</Text>
+          <Text style={styles.uncomputedText} numberOfLines={2}>Formula: {firstUncomputedPreview.uncomputed.formula}</Text>
+          <Text style={styles.uncomputedText}>Requires: {firstUncomputedPreview.uncomputed.capability}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open Compute" onPress={onOpenCompute} style={styles.uncomputedAction}>
+            <Text style={styles.uncomputedActionText}>Open Compute</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {(showGrid || showAxes) && (
         <View style={styles.coordinateBadge} pointerEvents="none" testID="mobile-coordinate-grid-legend">
@@ -580,6 +691,42 @@ const styles = StyleSheet.create({
     color: "#fff7ed",
     fontSize: 10,
     lineHeight: 14,
+  },
+  uncomputedPanel: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    top: "38%",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#9eafc0",
+    backgroundColor: "rgba(248,251,255,0.96)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4,
+  },
+  uncomputedTitle: {
+    color: "#263d53",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  uncomputedText: {
+    color: "#52677d",
+    fontSize: 10,
+    lineHeight: 14,
+  },
+  uncomputedAction: {
+    alignSelf: "flex-start",
+    marginTop: 4,
+    borderRadius: 7,
+    backgroundColor: "#194a7a",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  uncomputedActionText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "700",
   },
   fallbackRoot: {
     paddingTop: 50,

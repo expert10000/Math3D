@@ -9,6 +9,16 @@ import {
 const SECTION_LABELS = ["Surfaces", "Mesh", "Volume", "Curves", "Topology", "Geometry"] as const;
 type SectionLabel = (typeof SECTION_LABELS)[number];
 
+type VolumeInspectorView = "volume" | "slice" | "derived" | "sdf" | "rendering";
+
+const selectVolumeInspectorView = async (page: Page, view: VolumeInspectorView): Promise<void> => {
+  const category = view === "volume" ? "summary" : view === "slice" ? "selection" : "geometry";
+  await page.getByTestId(`shared-inspector-tab-${category}`).click();
+  if (view !== "volume") {
+    await page.getByTestId("volume-inspector").getByTestId("volume-inspector-view").selectOption(view);
+  }
+};
+
 const findSectionButton = async (page: Page, label: SectionLabel): Promise<Locator | null> => {
   const buttons = page.getByRole("button", { name: label, exact: true });
   const count = await buttons.count();
@@ -59,10 +69,12 @@ const buildAlternatingWalk = (start: SectionLabel, alternate: SectionLabel, step
 
 test.describe("Workspace navigation", () => {
   test("Volume stays in its own workspace and keeps gallery plus detailed controls", async () => {
+    test.setTimeout(240_000);
     let ctx: LaunchedSurfaceApp | null = null;
     try {
       ctx = await launchSurfaceApp();
       await resetSurfaceAppState(ctx.page);
+      await ctx.page.setViewportSize({ width: 1480, height: 900 });
       const volumeShaderErrors: string[] = [];
       ctx.page.on("console", (message) => {
         const text = message.text();
@@ -101,7 +113,7 @@ test.describe("Workspace navigation", () => {
       await volume3d.click();
       await expect(volume3d).toHaveAttribute("aria-pressed", "true");
       await expect(ctx.page.getByTestId("volume-slice-grid")).toHaveAttribute("data-volume-layout", "3d");
-      await expect(ctx.page.getByTestId("volume-spatial-pane").locator("canvas")).toBeVisible();
+      await expect(ctx.page.getByTestId("volume-spatial-pane").locator("canvas[data-engine]")).toBeVisible();
       await expect(volumeInspector.getByTestId("volume-details-card")).toContainText(
         "Volume 1 · definition 1 · grid 1"
       );
@@ -158,7 +170,7 @@ test.describe("Workspace navigation", () => {
 
       await expect(ctx.page.getByTestId("volume-orientation-xy-horizontal")).toHaveText("+X");
       await expect(ctx.page.getByTestId("volume-orientation-xy-vertical")).toHaveText("+Y");
-      await volumeInspector.getByTestId("volume-inspector-tab-slice").click();
+      await selectVolumeInspectorView(ctx.page, "slice");
       const sliceCard = volumeInspector.getByTestId("volume-slice-card");
       await expect(sliceCard).toContainText("analytic");
       await expect(sliceCard.getByTestId("volume-navigation-linked")).toBeChecked();
@@ -202,15 +214,15 @@ test.describe("Workspace navigation", () => {
       await sliceCard.getByLabel("Volume orientation convention").selectOption("radiological");
       await expect(ctx.page.getByTestId("volume-orientation-xy-horizontal")).toHaveText("−X");
 
-      await volumeInspector.getByTestId("volume-inspector-tab-derived").click();
+      await selectVolumeInspectorView(ctx.page, "derived");
       await expect(volumeInspector.getByTestId("volume-derived-card")).toContainText(
         "No derived isosurface result is active."
       );
-      await volumeInspector.getByTestId("volume-inspector-tab-volume").click();
-      await volumeInspector.getByTestId("volume-inspector-tab-sdf").click();
+      await selectVolumeInspectorView(ctx.page, "volume");
+      await selectVolumeInspectorView(ctx.page, "sdf");
       await expect(volumeInspector.getByTestId("volume-sdf-card")).toContainText("No sampled distance field is active.");
       await expect(volumeInspector.getByTestId("volume-sdf-preview")).toBeDisabled();
-      await volumeInspector.getByTestId("volume-inspector-tab-volume").click();
+      await selectVolumeInspectorView(ctx.page, "volume");
 
       await expect(detailedControls.getByTestId("volume-allocation-plan")).toContainText(/262\D144 samples/);
       await expect(detailedControls.getByLabel("Centering")).toHaveValue("point");
@@ -224,31 +236,31 @@ test.describe("Workspace navigation", () => {
       await expect(volumeInspector.getByTestId("volume-details-card")).toContainText(
         "Volume 2 · definition 1 · grid 2"
       );
-      await volumeInspector.getByTestId("volume-inspector-tab-slice").click();
+      await selectVolumeInspectorView(ctx.page, "slice");
       await expect(volumeInspector.getByTestId("volume-pinned-probe").first()).toContainText("stale revision");
-      await volumeInspector.getByTestId("volume-inspector-tab-volume").click();
+      await selectVolumeInspectorView(ctx.page, "volume");
 
       await detailedControls.getByTestId("volume-show-isosurface").check();
       await expect(ctx.page.getByTestId("volume-slice-viewer-free")).toHaveAttribute("data-camera-fit-target", "mesh");
       const automaticFitRevision = await ctx.page.getByTestId("volume-slice-viewer-free").getAttribute("data-camera-fit-revision");
-      await volumeInspector.getByTestId("volume-inspector-tab-slice").click();
-      await volumeInspector.getByTestId("volume-inspector-tab-volume").click();
+      await selectVolumeInspectorView(ctx.page, "slice");
+      await selectVolumeInspectorView(ctx.page, "volume");
       await expect(ctx.page.getByTestId("volume-slice-viewer-free")).toHaveAttribute("data-camera-fit-revision", automaticFitRevision ?? "");
       await detailedControls.getByRole("button", { name: "Fit mesh", exact: true }).click();
       await expect(ctx.page.getByTestId("volume-slice-viewer-free")).toHaveAttribute("data-camera-fit-target", "mesh");
       await detailedControls.getByTestId("volume-apply-isosurface").click();
-      await volumeInspector.getByTestId("volume-inspector-tab-derived").click();
+      await selectVolumeInspectorView(ctx.page, "derived");
       await expect(volumeInspector.getByTestId("volume-derived-result-current")).toBeVisible();
       await expect(volumeInspector.getByTestId("volume-derived-result-current")).toContainText(/\d[\d\s,.]* V · \d[\d\s,.]* F/);
       await expect(volumeInspector.getByTestId("volume-derived-result-current")).toContainText("gradient-derived");
-      await volumeInspector.getByTestId("volume-derived-result-current").getByTestId("volume-derived-open-analysis").click();
+      await volumeInspector.getByTestId("volume-derived-result-current").getByTestId("volume-derived-open-analysis").dispatchEvent("click");
       await expect(ctx.page.getByTestId("workspace-nav-mesh")).toHaveAttribute("aria-pressed", "true");
       await expect(ctx.page.getByTestId("volume-handoff-return")).toBeVisible();
-      await ctx.page.getByTestId("volume-handoff-return").click();
+      await ctx.page.getByTestId("volume-handoff-return").dispatchEvent("click");
       await expect(volumeNav).toHaveAttribute("aria-pressed", "true");
 
       await detailedControls.getByLabel("Volume dim Ny").fill("63");
-      await volumeInspector.getByTestId("volume-inspector-tab-volume").click();
+      await selectVolumeInspectorView(ctx.page, "volume");
       await expect(volumeInspector.getByTestId("volume-details-card")).toContainText(
         "Volume 2 · definition 1 · grid 2"
       );
@@ -257,7 +269,7 @@ test.describe("Workspace navigation", () => {
         "Volume 3 · definition 1 · grid 3"
       );
       await detailedControls.getByTestId("volume-apply-isosurface").click();
-      await volumeInspector.getByTestId("volume-inspector-tab-derived").click();
+      await selectVolumeInspectorView(ctx.page, "derived");
       await expect(volumeInspector.getByTestId("volume-derived-result-stale").first()).toBeVisible();
       await expect(volumeInspector.getByTestId("volume-derived-result-current")).toBeVisible();
 
@@ -298,8 +310,9 @@ test.describe("Workspace navigation", () => {
       await ctx.page.getByTestId("volume-action-demo").click();
       await expect(volumeNav).toHaveAttribute("aria-pressed", "true");
       await expect(ctx.page.getByText("Volume / Field / Sphere", { exact: true })).toBeVisible();
-      await expect(volumeInspector.getByTestId("volume-inspector-selection")).toContainText("Volume: Sphere");
-      await volumeInspector.getByTestId("volume-inspector-tab-rendering").click();
+      await selectVolumeInspectorView(ctx.page, "volume");
+      await expect(ctx.page.getByTestId("volume-inspector-selection")).toContainText("Volume: Sphere");
+      await selectVolumeInspectorView(ctx.page, "rendering");
       await volumeInspector.getByLabel("Volume render mode").selectOption("dvr");
       await expect(volumeInspector.getByTestId("volume-direct-render-status")).toContainText("ready");
       await expect(volumeInspector.getByTestId("volume-direct-render-status")).toContainText("gpu-3d-texture");

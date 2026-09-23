@@ -2,7 +2,10 @@ import * as THREE from "three";
 import type { SceneDocument, SurfaceDefinition } from "@math3d/core";
 import { colorizeSurfaceCurvature, type MobileSurfaceColorMode } from "./mobileCurvatureColors";
 
-export type MobileRenderQuality = "performance" | "balanced" | "sharp";
+export type MobileRenderQuality = "auto" | "performance" | "balanced" | "quality";
+
+export const normalizeMobileRenderQuality = (value: unknown): MobileRenderQuality =>
+  value === "auto" || value === "performance" || value === "quality" ? value : "balanced";
 
 type MobileIndexArray = Uint16Array | Uint32Array;
 
@@ -16,9 +19,14 @@ export type MobileMeshPayload = {
 
 export type MobileSurfacePreview = {
   id: string;
-  geometry: any;
+  state: "ready" | "uncomputed";
+  geometry: any | null;
   color: string;
   warning?: string;
+  uncomputed?: {
+    formula: string;
+    capability: string;
+  };
 };
 
 type SurfacePreviewBuildOptions = {
@@ -27,9 +35,10 @@ type SurfacePreviewBuildOptions = {
 };
 
 const QUALITY_CAP: Record<MobileRenderQuality, number> = {
+  auto: 56,
   performance: 36,
   balanced: 56,
-  sharp: 80,
+  quality: 80,
 };
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
@@ -201,20 +210,6 @@ const buildWeierstrassPreviewGeometry = (surface: Extract<SurfaceDefinition, { k
   });
 };
 
-const buildImplicitProxyGeometry = (surface: Extract<SurfaceDefinition, { kind: "implicit" }>, segments: number) => {
-  const expression = surface.expression.replace(/\s+/g, "").toLowerCase();
-
-  if (expression.includes("(x*x+y*y+z*z+3-4)^2-4*(x*x+y*y)")) {
-    return new THREE.TorusGeometry(1.4, 0.48, Math.max(12, Math.floor(segments / 2)), segments);
-  }
-
-  if (expression.includes("x*x+y*y+z*z-1")) {
-    return new THREE.SphereGeometry(1, segments, segments);
-  }
-
-  return new THREE.SphereGeometry(1.1, segments, segments);
-};
-
 const buildGeometryFromMeshPayload = (mesh: MobileMeshPayload): any => {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(mesh.positions, 3));
@@ -241,6 +236,7 @@ export const buildSurfacePreviewGeometry = (
   if (surface.kind === "explicit") {
     return {
       id: surface.id,
+      state: "ready",
       geometry: buildExplicitGeometry(surface, segments),
       color: "#3b82f6",
     };
@@ -249,6 +245,7 @@ export const buildSurfacePreviewGeometry = (
   if (surface.kind === "parametric") {
     return {
       id: surface.id,
+      state: "ready",
       geometry: buildParametricGeometry(surface, segments),
       color: "#0f766e",
     };
@@ -257,6 +254,7 @@ export const buildSurfacePreviewGeometry = (
   if (surface.kind === "weierstrass") {
     return {
       id: surface.id,
+      state: "ready",
       geometry: buildWeierstrassPreviewGeometry(surface, segments),
       color: "#7c3aed",
       warning: "Weierstrass preview uses local Enneper-style approximation in mobile v1.",
@@ -268,20 +266,26 @@ export const buildSurfacePreviewGeometry = (
     if (implicitMesh) {
       return {
         id: surface.id,
+        state: "ready",
         geometry: buildGeometryFromMeshPayload(implicitMesh),
         color: "#b45309",
       };
     }
     return {
       id: surface.id,
-      geometry: buildImplicitProxyGeometry(surface, segments),
-      color: "#c2410c",
-      warning: "Showing a local placeholder. Configure a reachable worker for the computed implicit mesh.",
+      state: "uncomputed",
+      geometry: null,
+      color: "#64748b",
+      uncomputed: {
+        formula: surface.expression,
+        capability: "VTK implicit preview",
+      },
     };
   }
 
   return {
     id: surface.id,
+    state: "ready",
     geometry: new THREE.BoxGeometry(1, 1, 1),
     color: "#374151",
     warning: "Mesh source token preview placeholder.",
@@ -295,8 +299,7 @@ export const buildSceneSurfacePreviews = (
 ): MobileSurfacePreview[] => {
   return (scene.surfaces ?? []).map((surface) => {
     const preview = buildSurfacePreviewGeometry(surface, quality, options);
-    if (options?.colorMode && options.colorMode !== "solid" && surface.kind !== "mesh" &&
-        !(surface.kind === "implicit" && !options.implicitMeshBySurfaceId?.[surface.id])) {
+    if (preview.geometry && options?.colorMode && options.colorMode !== "solid" && surface.kind !== "mesh") {
       const colored = colorizeSurfaceCurvature(preview.geometry, options.colorMode);
       if (colored !== preview.geometry) preview.geometry.dispose();
       return { ...preview, geometry: colored };

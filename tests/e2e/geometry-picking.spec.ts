@@ -125,7 +125,7 @@ const configureGeometryViewerForConstructionPicking = async (page: Page) => {
     return true;
   }).toBe(true);
 
-  const showControls = page.getByTestId("geometry-viewer-controls-show");
+  const showControls = page.getByRole("button", { name: "Show viewer controls" });
   if (await showControls.isVisible().catch(() => false)) {
     await showControls.click();
   }
@@ -526,6 +526,7 @@ test("Geometry scene gallery filters and opens construct operations playground",
     const page = launched.page;
 
     await resetStorage(page);
+    await page.setViewportSize({ width: 1600, height: 900 });
     await openProceduralGeometry(page, "box");
     await page.getByTestId("geometry-workflow-command-create-presets").click();
     await expect(page.getByText("Scene presets", { exact: true })).toBeVisible();
@@ -784,6 +785,7 @@ test("Geometry construct: plane method readiness uses stable messages and preset
     const page = launched.page;
 
     await resetStorage(page);
+    await page.setViewportSize({ width: 1600, height: 900 });
     await clickFirstVisibleButton(page, "Geometry");
     await clickFirstVisibleButton(page, "Procedural");
     await clickFirstVisibleButton(page, "Construct");
@@ -864,6 +866,7 @@ test("Geometry preset: torus line-plane construction restores lines and plane", 
     const page = launched.page;
 
     await resetStorage(page);
+    await page.setViewportSize({ width: 1600, height: 900 });
     await clickFirstVisibleButton(page, "Geometry");
     await clickFirstVisibleButton(page, "Presets");
     await page.getByTestId("geometry-debug-scene-open-scene:torus-line-plane-construction").click();

@@ -286,6 +286,15 @@ test("Geometry professional shell keeps current workspaces and tools reachable",
     await page.getByTestId("geometry-construct-commit").click();
     await expect(page.getByText(/Committed Bézier/)).toBeVisible();
 
+    await page.getByTestId("geometry-professional-action-more").click();
+    await expect(page.getByText("Procedural scripting", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("geometry-professional-expanded-script")).toBeVisible();
+    await page.getByTestId("geometry-scene-to-script").click();
+    await expect(page.getByTestId("geometry-procedural-script-editor")).toContainText("constructionKind=surface-bezier");
+    await expect(page.getByTestId("geometry-procedural-script-editor")).toContainText("authoringSource=professional-construct");
+    await page.getByTestId("geometry-scene-script-roundtrip").click();
+    await expect(page.getByText(/Scene -> script -> render matched/)).toBeVisible();
+
     await page.getByTestId("geometry-professional-action-new").click();
     await page.getByTestId("geometry-professional-expanded-new-scratch").click();
     await expect(page.getByTestId("geometry-mode-scratch")).toHaveAttribute("aria-pressed", "true");
@@ -297,15 +306,6 @@ test("Geometry professional shell keeps current workspaces and tools reachable",
     if (!(await newWorkbookEntry.isVisible())) await page.getByTestId("geometry-professional-action-new").click();
     await newWorkbookEntry.click();
     await expect(page.getByTestId("geometry-mode-workbook")).toHaveAttribute("aria-pressed", "true");
-
-    await page.getByTestId("geometry-professional-action-more").click();
-    await expect(page.getByText("Procedural scripting", { exact: true })).toBeVisible();
-    await expect(page.getByTestId("geometry-professional-expanded-script")).toBeVisible();
-    await page.getByTestId("geometry-scene-to-script").click();
-    await expect(page.getByTestId("geometry-procedural-script-editor")).toContainText("constructionKind=surface-bezier");
-    await expect(page.getByTestId("geometry-procedural-script-editor")).toContainText("authoringSource=professional-construct");
-    await page.getByTestId("geometry-scene-script-roundtrip").click();
-    await expect(page.getByText(/Scene -> script -> render matched/)).toBeVisible();
 
     await page.getByTestId("geometry-professional-action-demo").click();
     await expect(page.getByTestId("geometry-mode-demo")).toHaveAttribute("aria-pressed", "true");

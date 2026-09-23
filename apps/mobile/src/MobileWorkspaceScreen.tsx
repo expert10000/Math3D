@@ -10,6 +10,9 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
     setTab,
     surfaceOpacityById,
     surfaceColorMode,
+    surfaceRenderMode,
+    surfaceShading,
+    showBoundingBox,
     viewerDocument,
     renderQuality,
     showAxes,
@@ -18,6 +21,8 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
     visibleSurfaceIds,
     selectedSurfaceId,
     setSelectedSurfaceId,
+    setInspectorSection,
+    setInspectorExpanded,
     cameraOrbit,
     setCameraOrbit,
     appIsForeground,
@@ -52,9 +57,16 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
               initialOrbit={cameraOrbit}
               onOrbitChange={setCameraOrbit}
               onSelectedSurfaceChange={setSelectedSurfaceId}
+              onOpenCompute={() => {
+                setInspectorSection("compute");
+                setInspectorExpanded(true);
+              }}
               renderPaused={!appIsForeground}
               surfaceOpacityById={surfaceOpacityById}
               colorMode={surfaceColorMode}
+              renderMode={surfaceRenderMode}
+              shading={surfaceShading}
+              showBoundingBox={showBoundingBox}
               showGrid={showGrid}
               showAxes={showAxes}
               gridPlanes={gridPlanes}
@@ -74,7 +86,7 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
           <Text style={styles.panelTitle}>Workspace is ready</Text>
           <Text style={styles.note}>Choose a scene or surface to start viewing in 3D.</Text>
           <Pressable onPress={() => setTab("explore")} style={styles.primaryBtn}><Text style={styles.primaryBtnText}>Explore examples</Text></Pressable>
-          <Pressable onPress={() => setTab("files")} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Open saved file</Text></Pressable>
+          <Pressable onPress={() => setTab("projects")} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Open project</Text></Pressable>
         </View>
       )}
     </View>

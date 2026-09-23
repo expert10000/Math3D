@@ -1,8 +1,8 @@
 import { useState } from "react";
 
-export type MobileTab = "home" | "explore" | "workspace" | "files" | "settings";
+export type MobileTab = "home" | "explore" | "workspace" | "projects" | "settings";
 export type ExploreSection = "gallery" | "functions" | "learn";
-export type InspectorSection = "scene" | "object" | "display" | "analyze";
+export type InspectorSection = "scene" | "object" | "view" | "compute";
 
 export const useMobileNavigationState = () => {
   const [tab, setTab] = useState<MobileTab>("workspace");

@@ -409,7 +409,7 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
       {categoryTabs[category].length > 1 && (
         <label style={{ display: "grid", gap: 4, fontSize: 10, color: "#475569" }}>
           {category[0].toUpperCase() + category.slice(1)} view
-          <select value={activeTab} onChange={(event) => setActiveTab(event.target.value as VolumeInspectorTab)}>
+          <select data-testid="volume-inspector-view" value={activeTab} onChange={(event) => setActiveTab(event.target.value as VolumeInspectorTab)}>
             {categoryTabs[category].map((id) => <option key={id} value={id}>{tabs.find((tab) => tab.id === id)?.label ?? id}</option>)}
           </select>
         </label>

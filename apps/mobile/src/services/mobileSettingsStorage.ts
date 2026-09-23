@@ -1,6 +1,13 @@
 import { Directory, File, Paths } from "expo-file-system";
 import { normalizeMobileGridPlanes, type MobileGridPlane } from "../models/mobileCoordinateGrid";
 import type { MobileSurfaceColorMode } from "../viewer/mobileCurvatureColors";
+import { normalizeMobileRenderQuality, type MobileRenderQuality } from "../viewer/mobileSurfacePreview";
+import {
+  normalizeMobileSurfaceRenderMode,
+  normalizeMobileSurfaceShading,
+  type MobileSurfaceRenderMode,
+  type MobileSurfaceShading,
+} from "../viewer/mobileViewModes";
 
 const SETTINGS_SCHEMA_VERSION = 1;
 const STORAGE_DIR_NAME = "math3d-mobile";
@@ -16,6 +23,10 @@ type PersistedSettingsPayload = {
   showAxes?: boolean;
   gridPlanes?: MobileGridPlane[];
   surfaceColorMode?: MobileSurfaceColorMode;
+  surfaceRenderMode?: MobileSurfaceRenderMode;
+  surfaceShading?: MobileSurfaceShading;
+  renderQuality?: MobileRenderQuality;
+  showBoundingBox?: boolean;
   lastSceneId?: string;
   lastViewerProject?: string;
   lastSelectedSurfaceId?: string;
@@ -42,6 +53,10 @@ export type MobileSettingsLoad = {
   showAxes: boolean | null;
   gridPlanes?: MobileGridPlane[];
   surfaceColorMode?: MobileSurfaceColorMode;
+  surfaceRenderMode?: MobileSurfaceRenderMode;
+  surfaceShading?: MobileSurfaceShading;
+  renderQuality?: MobileRenderQuality;
+  showBoundingBox?: boolean;
   lastSceneId: string | null;
   lastViewerProject: string | null;
   lastSelectedSurfaceId: string | null;
@@ -205,6 +220,10 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
       gridPlanes: normalizeMobileGridPlanes(payload.gridPlanes),
       surfaceColorMode: payload.surfaceColorMode === "curvature" || payload.surfaceColorMode === "curvature-faces"
         ? payload.surfaceColorMode : "solid",
+      surfaceRenderMode: normalizeMobileSurfaceRenderMode(payload.surfaceRenderMode),
+      surfaceShading: normalizeMobileSurfaceShading(payload.surfaceShading),
+      renderQuality: normalizeMobileRenderQuality(payload.renderQuality),
+      showBoundingBox: typeof payload.showBoundingBox === "boolean" ? payload.showBoundingBox : false,
       lastSceneId: typeof payload.lastSceneId === "string" ? payload.lastSceneId : null,
       lastViewerProject: typeof payload.lastViewerProject === "string" ? payload.lastViewerProject : null,
       lastSelectedSurfaceId:
@@ -246,6 +265,10 @@ export const saveMobileSettings = async (settings: {
   showAxes?: boolean;
   gridPlanes?: MobileGridPlane[];
   surfaceColorMode?: MobileSurfaceColorMode;
+  surfaceRenderMode?: MobileSurfaceRenderMode;
+  surfaceShading?: MobileSurfaceShading;
+  renderQuality?: MobileRenderQuality;
+  showBoundingBox?: boolean;
   lastSceneId?: string;
   lastViewerProject?: string;
   lastSelectedSurfaceId?: string;
@@ -273,6 +296,10 @@ export const saveMobileSettings = async (settings: {
     gridPlanes: normalizeMobileGridPlanes(settings.gridPlanes),
     surfaceColorMode: settings.surfaceColorMode === "curvature" || settings.surfaceColorMode === "curvature-faces"
       ? settings.surfaceColorMode : "solid",
+    surfaceRenderMode: normalizeMobileSurfaceRenderMode(settings.surfaceRenderMode),
+    surfaceShading: normalizeMobileSurfaceShading(settings.surfaceShading),
+    renderQuality: normalizeMobileRenderQuality(settings.renderQuality),
+    showBoundingBox: settings.showBoundingBox === true,
     lastSceneId: typeof settings.lastSceneId === "string" ? settings.lastSceneId : undefined,
     lastViewerProject: typeof settings.lastViewerProject === "string" ? settings.lastViewerProject : undefined,
     lastSelectedSurfaceId:

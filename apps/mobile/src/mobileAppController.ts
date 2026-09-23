@@ -12,6 +12,9 @@ import type { MobileMeshPayload, MobileRenderQuality } from "./viewer/mobileSurf
 import { useMobileNavigationState, type MobileTab } from "./models/useMobileNavigationState";
 import { useMobileWorkspaceState, type CameraCommandType } from "./models/useMobileWorkspaceState";
 import { useMobileProjectState } from "./models/useMobileProjectState";
+import { duplicateMobileProject, renameMobileProject } from "./models/mobileProjectOperations";
+import { clearMobileThumbnailCache, loadMobileThumbnailCache, saveMobileThumbnailCache, type MobileThumbnailCache } from "./services/mobileThumbnailCacheStorage";
+import { createMobileThumbnailCacheKey, generateMobileSceneThumbnail } from "./viewer/mobileSceneThumbnail";
 
 const ANDROID_GL_DEFAULT_ENABLED = true;
 export const FORCE_ANDROID_SAFE_MODE = false;
@@ -20,7 +23,7 @@ export const tabs: ReadonlyArray<{ key: MobileTab; label: string }> = [
   { key: "home", label: "Home" },
   { key: "explore", label: "Explore" },
   { key: "workspace", label: "Workspace" },
-  { key: "files", label: "Files" },
+  { key: "projects", label: "Projects" },
   { key: "settings", label: "Settings" },
 ];
 
@@ -183,12 +186,16 @@ export const useMobileAppController = () => {
   const { tab, setTab, exploreSection, setExploreSection, inspectorSection, setInspectorSection, inspectorExpanded, setInspectorExpanded } = useMobileNavigationState();
   const {
     viewerDocument, setViewerDocument, selectedSurfaceId, setSelectedSurfaceId, visibleSurfaceIds, setVisibleSurfaceIds,
-    surfaceOpacityById, setSurfaceOpacityById, surfaceColorMode, setSurfaceColorMode, renderQuality, setRenderQuality,
+    surfaceOpacityById, setSurfaceOpacityById, surfaceColorMode, setSurfaceColorMode,
+    surfaceRenderMode, setSurfaceRenderMode, surfaceShading, setSurfaceShading, renderQuality, setRenderQuality,
+    showBoundingBox, setShowBoundingBox,
     showAxes, setShowAxes, gridPlanes, setGridPlanes, cameraOrbit, setCameraOrbit, cameraCommandType, setCameraCommandType,
     cameraCommandToken, setCameraCommandToken,
   } = useMobileWorkspaceState();
   const { selectedSceneId, setSelectedSceneId, storedProjects, setStoredProjects, storageIssues, setStorageIssues,
-    storageStatus, setStorageStatus, sceneSearchQuery, setSceneSearchQuery, sceneSortMode, setSceneSortMode } = useMobileProjectState();
+    storageStatus, setStorageStatus, sceneSearchQuery, setSceneSearchQuery, sceneSortMode, setSceneSortMode,
+    deletedProject, setDeletedProject, projectActionMessage, setProjectActionMessage,
+    sceneThumbnailsById, setSceneThumbnailsById } = useMobileProjectState();
   const inspectorSwipeStartY = useRef<number | null>(null);
   const [selectedGalleryId, setSelectedGalleryId] = useState<string | null>(mobileGallery[0]?.id ?? null);
   const showGrid = gridPlanes.length > 0;
@@ -279,6 +286,10 @@ export const useMobileAppController = () => {
       setShowAxes(loadedSettings.showAxes ?? true);
       setGridPlanes(loadedGridPlanes);
       setSurfaceColorMode(loadedSettings.surfaceColorMode ?? "solid");
+      setSurfaceRenderMode(loadedSettings.surfaceRenderMode ?? "solid");
+      setSurfaceShading(loadedSettings.surfaceShading ?? "smooth");
+      setRenderQuality(loadedSettings.renderQuality ?? "balanced");
+      setShowBoundingBox(loadedSettings.showBoundingBox ?? false);
       setSelectedSceneId(loadedSettings.lastSceneId || null);
       setSelectedSurfaceId(loadedSettings.lastSelectedSurfaceId || null);
       setCameraOrbit(loadedSettings.cameraOrbit || null);
@@ -307,6 +318,10 @@ export const useMobileAppController = () => {
           showAxes: loadedSettings.showAxes ?? true,
           gridPlanes: loadedGridPlanes,
           surfaceColorMode: loadedSettings.surfaceColorMode ?? "solid",
+          surfaceRenderMode: loadedSettings.surfaceRenderMode ?? "solid",
+          surfaceShading: loadedSettings.surfaceShading ?? "smooth",
+          renderQuality: loadedSettings.renderQuality ?? "balanced",
+          showBoundingBox: loadedSettings.showBoundingBox ?? false,
           lastSceneId: loadedSettings.lastSceneId || undefined,
           lastViewerProject: loadedSettings.lastViewerProject || undefined,
           lastSelectedSurfaceId: loadedSettings.lastSelectedSurfaceId || undefined,
@@ -371,6 +386,44 @@ export const useMobileAppController = () => {
     () => storedProjects.map((project) => buildSceneSummary(project)),
     [storedProjects]
   );
+
+  useEffect(() => {
+    if (storageStatus === "loading") return;
+    let active = true;
+
+    const refreshThumbnails = async () => {
+      const cached = await loadMobileThumbnailCache();
+      const nextCache: MobileThumbnailCache = {};
+      const nextThumbnails: typeof sceneThumbnailsById = {};
+
+      for (const project of storedProjects) {
+        if (!active) return;
+        const cacheKey = createMobileThumbnailCacheKey(project);
+        const existing = cached[project.id];
+        if (existing?.cacheKey === cacheKey) {
+          nextCache[project.id] = existing;
+          nextThumbnails[project.id] = existing.thumbnail;
+          continue;
+        }
+        const parsed = readSceneFromStoredProject(project);
+        if (!parsed.ok) continue;
+        const thumbnail = generateMobileSceneThumbnail(parsed.scene);
+        const entry = { cacheKey, thumbnail };
+        nextCache[project.id] = entry;
+        nextThumbnails[project.id] = thumbnail;
+        await Promise.resolve();
+      }
+
+      if (!active) return;
+      setSceneThumbnailsById(nextThumbnails);
+      await saveMobileThumbnailCache(nextCache).catch(() => undefined);
+    };
+
+    void refreshThumbnails();
+    return () => {
+      active = false;
+    };
+  }, [storageStatus, storedProjects]);
 
   const selectedScene = useMemo(
     () => sceneSummaries.find((scene) => scene.id === selectedSceneId) ?? null,
@@ -477,7 +530,7 @@ export const useMobileAppController = () => {
         const xSpan = Math.max(0.5, surface.domain?.xSpan ?? 2.4);
         const ySpan = Math.max(0.5, surface.domain?.ySpan ?? 2.4);
         const zSpan = Math.max(0.5, surface.domain?.zSpan ?? Math.max(xSpan, ySpan));
-        const baseResolution = renderQuality === "performance" ? 52 : renderQuality === "balanced" ? 72 : 96;
+        const baseResolution = renderQuality === "performance" ? 52 : renderQuality === "quality" ? 96 : 72;
         const resolution = Math.min(baseResolution, meshResolutionCap);
         const requestPayload: Omit<VtkPreviewRequest, "jobId"> = {
           expr: surface.expression,
@@ -755,6 +808,81 @@ export const useMobileAppController = () => {
     }
   };
 
+  const persistProjectMutation = async (
+    nextProjects: MobileStoredSceneProject[],
+    successMessage: string,
+    failureLabel: string
+  ): Promise<boolean> => {
+    try {
+      await saveStoredSceneProjects(nextProjects);
+      setStoredProjects(nextProjects);
+      setStorageStatus(storageIssues.length > 0 ? "error" : "ready");
+      setProjectActionMessage(successMessage);
+      return true;
+    } catch (error) {
+      setStorageIssues((current) => [
+        ...current,
+        `${failureLabel}: ${String((error as Error).message ?? error)}`,
+      ]);
+      setStorageStatus("error");
+      return false;
+    }
+  };
+
+  const renameStoredScene = async (projectId: string, title: string): Promise<boolean> => {
+    const target = storedProjects.find((project) => project.id === projectId);
+    if (!target) return false;
+    const result = renameMobileProject(target, title);
+    if (!result.ok) {
+      setProjectActionMessage(result.error);
+      return false;
+    }
+    const nextProjects = upsertStoredProject(storedProjects, result.project);
+    const saved = await persistProjectMutation(nextProjects, `Renamed to ${result.project.title}.`, "Failed to rename project");
+    if (!saved) return false;
+    if (selectedSceneId === projectId) {
+      const parsed = readSceneFromStoredProject(result.project);
+      if (parsed.ok) setViewerDocument(parsed.scene);
+      void persistMobileSettings({ lastViewerProject: result.project.serializedProject }).catch(() => undefined);
+    }
+    return true;
+  };
+
+  const duplicateStoredScene = async (projectId: string): Promise<boolean> => {
+    const target = storedProjects.find((project) => project.id === projectId);
+    if (!target) return false;
+    const result = duplicateMobileProject(target, storedProjects);
+    if (!result.ok) {
+      setProjectActionMessage(result.error);
+      return false;
+    }
+    const nextProjects = upsertStoredProject(storedProjects, result.project);
+    return persistProjectMutation(nextProjects, `Created ${result.project.title}.`, "Failed to duplicate project");
+  };
+
+  const deleteStoredScene = async (projectId: string): Promise<boolean> => {
+    const target = storedProjects.find((project) => project.id === projectId);
+    if (!target) return false;
+    const nextProjects = storedProjects.filter((project) => project.id !== projectId);
+    const saved = await persistProjectMutation(nextProjects, `Deleted ${target.title}.`, "Failed to delete project");
+    if (!saved) return false;
+    setDeletedProject(target);
+    if (selectedSceneId === projectId) {
+      setSelectedSceneId(null);
+      void persistMobileSettings({ lastSceneId: undefined }).catch(() => undefined);
+    }
+    return true;
+  };
+
+  const undoDeleteStoredScene = async (): Promise<boolean> => {
+    if (!deletedProject) return false;
+    const restored = deletedProject;
+    const nextProjects = upsertStoredProject(storedProjects, restored);
+    const saved = await persistProjectMutation(nextProjects, `Restored ${restored.title}.`, "Failed to restore project");
+    if (saved) setDeletedProject(null);
+    return saved;
+  };
+
   const runCameraCommand = (type: CameraCommandType) => {
     setCameraCommandType(type);
     setCameraCommandToken((value) => value + 1);
@@ -790,6 +918,10 @@ export const useMobileAppController = () => {
       showAxes,
       gridPlanes,
       surfaceColorMode,
+      surfaceRenderMode,
+      surfaceShading,
+      renderQuality,
+      showBoundingBox,
       lastSceneId: selectedSceneId || undefined,
       lastViewerProject: viewerDocument ? serializeViewerScene(viewerDocument) : undefined,
       lastSelectedSurfaceId: selectedSurfaceId || undefined,
@@ -903,7 +1035,9 @@ export const useMobileAppController = () => {
     setSettingsActionMessage("");
     try {
       await clearStoredSceneProjects();
+      await clearMobileThumbnailCache();
       setStoredProjects([]);
+      setSceneThumbnailsById({});
       setSelectedSceneId(null);
       setViewerDocument(null);
       setImplicitMeshBySurfaceId({});
@@ -944,7 +1078,7 @@ export const useMobileAppController = () => {
   };
 
   const reduceQualityAndRetry = () => {
-    setRenderQuality((current) => (current === "sharp" ? "balanced" : current === "balanced" ? "performance" : "performance"));
+    setRenderQuality((current) => (current === "quality" ? "balanced" : "performance"));
     retryImplicitPreviews();
   };
 
@@ -1005,6 +1139,10 @@ export const useMobileAppController = () => {
     showAxes,
     gridPlanes,
     surfaceColorMode,
+    surfaceRenderMode,
+    surfaceShading,
+    renderQuality,
+    showBoundingBox,
   ]);
 
   return {
@@ -1020,6 +1158,12 @@ export const useMobileAppController = () => {
     setSurfaceOpacityById,
     surfaceColorMode,
     setSurfaceColorMode,
+    surfaceRenderMode,
+    setSurfaceRenderMode,
+    surfaceShading,
+    setSurfaceShading,
+    showBoundingBox,
+    setShowBoundingBox,
     inspectorSwipeStartY,
     selectedGalleryId,
     setSelectedGalleryId,
@@ -1040,6 +1184,9 @@ export const useMobileAppController = () => {
     setSceneSearchQuery,
     sceneSortMode,
     setSceneSortMode,
+    deletedProject,
+    projectActionMessage,
+    sceneThumbnailsById,
     visibleSurfaceIds,
     workerBaseUrl,
     workerBaseUrlDraft,
@@ -1080,6 +1227,10 @@ export const useMobileAppController = () => {
     androidFallbackForced,
     onViewportRenderReady,
     openStoredScene,
+    renameStoredScene,
+    duplicateStoredScene,
+    deleteStoredScene,
+    undoDeleteStoredScene,
     openViewerWithSurface,
     saveCurrentViewerScene,
     runCameraCommand,
