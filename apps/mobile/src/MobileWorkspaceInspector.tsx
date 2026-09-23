@@ -15,6 +15,10 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     setSurfaceOpacityById,
     surfaceColorMode,
     setSurfaceColorMode,
+    surfaceRenderMode,
+    setSurfaceRenderMode,
+    surfaceShading,
+    setSurfaceShading,
     inspectorSwipeStartY,
     renderQuality,
     setRenderQuality,
@@ -124,6 +128,42 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
           {inspectorSection === "display" && (
             <>
               <Text style={styles.panelTitle}>Display</Text>
+              <Text style={styles.note}>Surface style</Text>
+              <View style={styles.viewerToolbarRow}>
+                {([[
+                  "solid", "Solid"
+                ], [
+                  "wireframe", "Wireframe"
+                ], [
+                  "solid-edges", "Solid + edges"
+                ]] as const).map(([mode, label]) => (
+                  <Pressable
+                    key={mode}
+                    testID={`mobile-render-mode-${mode}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: surfaceRenderMode === mode }}
+                    onPress={() => setSurfaceRenderMode(mode)}
+                    style={[styles.pill, surfaceRenderMode === mode ? styles.pillActive : null]}
+                  >
+                    <Text style={[styles.pillText, surfaceRenderMode === mode ? styles.pillTextActive : null]}>{label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={styles.note}>Shading</Text>
+              <View style={styles.viewerToolbarRow}>
+                {(["smooth", "flat"] as const).map((mode) => (
+                  <Pressable
+                    key={mode}
+                    testID={`mobile-surface-shading-${mode}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: surfaceShading === mode }}
+                    onPress={() => setSurfaceShading(mode)}
+                    style={[styles.pill, surfaceShading === mode ? styles.pillActive : null]}
+                  >
+                    <Text style={[styles.pillText, surfaceShading === mode ? styles.pillTextActive : null]}>{mode === "smooth" ? "Smooth" : "Flat"}</Text>
+                  </Pressable>
+                ))}
+              </View>
               <Text style={styles.note}>Render quality</Text>
               <View style={styles.viewerToolbarRow}>
                 {(["performance", "balanced", "sharp"] as const).map((quality) => (

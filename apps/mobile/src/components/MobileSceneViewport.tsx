@@ -4,6 +4,7 @@ import { Canvas, useFrame } from "@react-three/fiber/native";
 import * as THREE from "three";
 import type { SceneDocument } from "@math3d/core";
 import type { MobileSurfaceColorMode } from "../viewer/mobileCurvatureColors";
+import type { MobileSurfaceRenderMode, MobileSurfaceShading } from "../viewer/mobileViewModes";
 import { DEFAULT_MOBILE_GRID_PLANES, type MobileGridPlane } from "../models/mobileCoordinateGrid";
 import {
   buildSceneSurfacePreviews,
@@ -27,6 +28,8 @@ type MobileSceneViewportProps = {
   renderPaused?: boolean;
   surfaceOpacityById?: Record<string, number>;
   colorMode?: MobileSurfaceColorMode;
+  renderMode?: MobileSurfaceRenderMode;
+  shading?: MobileSurfaceShading;
   showGrid?: boolean;
   showAxes?: boolean;
   gridPlanes?: MobileGridPlane[];
@@ -143,18 +146,54 @@ const fitOrbitToPreviews = (previews: MobileSurfacePreview[], current: OrbitStat
   };
 };
 
-const SurfaceMesh: React.FC<{ preview: MobileSurfacePreview; opacity: number }> = ({ preview, opacity }) => {
+const SurfaceMesh: React.FC<{
+  preview: MobileSurfacePreview;
+  opacity: number;
+  renderMode: MobileSurfaceRenderMode;
+  shading: MobileSurfaceShading;
+}> = ({ preview, opacity, renderMode, shading }) => {
   useEffect(() => {
     return () => {
       preview.geometry.dispose();
     };
   }, [preview.geometry]);
 
-  return (
-    <mesh geometry={preview.geometry}>
-      <meshBasicMaterial color={preview.geometry.getAttribute("color") ? "#ffffff" : preview.color} vertexColors={!!preview.geometry.getAttribute("color")} side={THREE.DoubleSide} transparent={opacity < 1} opacity={opacity} depthWrite={opacity >= 1} />
-    </mesh>
-  );
+  const hasVertexColors = !!preview.geometry.getAttribute("color");
+  const materialColor = hasVertexColors ? "#ffffff" : preview.color;
+
+  return <group>
+    {renderMode !== "wireframe" ? (
+      <mesh geometry={preview.geometry}>
+        <meshStandardMaterial
+          color={materialColor}
+          vertexColors={hasVertexColors}
+          side={THREE.DoubleSide}
+          flatShading={shading === "flat"}
+          roughness={0.72}
+          metalness={0.04}
+          transparent={opacity < 1}
+          opacity={opacity}
+          depthWrite={opacity >= 1}
+          polygonOffset={renderMode === "solid-edges"}
+          polygonOffsetFactor={renderMode === "solid-edges" ? 1 : 0}
+          polygonOffsetUnits={renderMode === "solid-edges" ? 1 : 0}
+        />
+      </mesh>
+    ) : null}
+    {renderMode !== "solid" ? (
+      <mesh geometry={preview.geometry}>
+        <meshBasicMaterial
+          color={renderMode === "wireframe" ? materialColor : "#18324a"}
+          vertexColors={renderMode === "wireframe" && hasVertexColors}
+          wireframe
+          side={THREE.DoubleSide}
+          transparent={opacity < 1 || renderMode === "solid-edges"}
+          opacity={renderMode === "solid-edges" ? Math.min(0.62, opacity) : opacity}
+          depthWrite={renderMode === "wireframe" && opacity >= 1}
+        />
+      </mesh>
+    ) : null}
+  </group>;
 };
 
 const PlaneGrid: React.FC<{
@@ -254,6 +293,8 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   renderPaused = false,
   surfaceOpacityById,
   colorMode = "solid",
+  renderMode = "solid",
+  shading = "smooth",
   showGrid = true,
   showAxes = true,
   gridPlanes = DEFAULT_MOBILE_GRID_PLANES,
@@ -438,6 +479,9 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
         gl={{ antialias: true }}
         frameloop={renderPaused ? "demand" : "always"}
       >
+        <ambientLight intensity={1.25} />
+        <directionalLight position={[5, -4, 8]} intensity={1.55} />
+        <directionalLight position={[-4, 3, 1]} intensity={0.55} />
         {showGrid && gridPlanes.includes("xy") ? (
           <PlaneGrid plane="xy" halfSize={coordinateFrame.halfSize} majorStep={coordinateFrame.majorStep} color="#74abff" />
         ) : null}
@@ -456,7 +500,12 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
               onSelectedSurfaceChange?.(preview.id);
             }}
           >
-            <SurfaceMesh preview={preview} opacity={Math.max(0, Math.min(1, surfaceOpacityById?.[preview.id] ?? 1))} />
+            <SurfaceMesh
+              preview={preview}
+              opacity={Math.max(0, Math.min(1, surfaceOpacityById?.[preview.id] ?? 1))}
+              renderMode={renderMode}
+              shading={shading}
+            />
           </group>
         ))}
 

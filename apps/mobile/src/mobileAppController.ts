@@ -183,7 +183,8 @@ export const useMobileAppController = () => {
   const { tab, setTab, exploreSection, setExploreSection, inspectorSection, setInspectorSection, inspectorExpanded, setInspectorExpanded } = useMobileNavigationState();
   const {
     viewerDocument, setViewerDocument, selectedSurfaceId, setSelectedSurfaceId, visibleSurfaceIds, setVisibleSurfaceIds,
-    surfaceOpacityById, setSurfaceOpacityById, surfaceColorMode, setSurfaceColorMode, renderQuality, setRenderQuality,
+    surfaceOpacityById, setSurfaceOpacityById, surfaceColorMode, setSurfaceColorMode,
+    surfaceRenderMode, setSurfaceRenderMode, surfaceShading, setSurfaceShading, renderQuality, setRenderQuality,
     showAxes, setShowAxes, gridPlanes, setGridPlanes, cameraOrbit, setCameraOrbit, cameraCommandType, setCameraCommandType,
     cameraCommandToken, setCameraCommandToken,
   } = useMobileWorkspaceState();
@@ -279,6 +280,8 @@ export const useMobileAppController = () => {
       setShowAxes(loadedSettings.showAxes ?? true);
       setGridPlanes(loadedGridPlanes);
       setSurfaceColorMode(loadedSettings.surfaceColorMode ?? "solid");
+      setSurfaceRenderMode(loadedSettings.surfaceRenderMode ?? "solid");
+      setSurfaceShading(loadedSettings.surfaceShading ?? "smooth");
       setSelectedSceneId(loadedSettings.lastSceneId || null);
       setSelectedSurfaceId(loadedSettings.lastSelectedSurfaceId || null);
       setCameraOrbit(loadedSettings.cameraOrbit || null);
@@ -307,6 +310,8 @@ export const useMobileAppController = () => {
           showAxes: loadedSettings.showAxes ?? true,
           gridPlanes: loadedGridPlanes,
           surfaceColorMode: loadedSettings.surfaceColorMode ?? "solid",
+          surfaceRenderMode: loadedSettings.surfaceRenderMode ?? "solid",
+          surfaceShading: loadedSettings.surfaceShading ?? "smooth",
           lastSceneId: loadedSettings.lastSceneId || undefined,
           lastViewerProject: loadedSettings.lastViewerProject || undefined,
           lastSelectedSurfaceId: loadedSettings.lastSelectedSurfaceId || undefined,
@@ -790,6 +795,8 @@ export const useMobileAppController = () => {
       showAxes,
       gridPlanes,
       surfaceColorMode,
+      surfaceRenderMode,
+      surfaceShading,
       lastSceneId: selectedSceneId || undefined,
       lastViewerProject: viewerDocument ? serializeViewerScene(viewerDocument) : undefined,
       lastSelectedSurfaceId: selectedSurfaceId || undefined,
@@ -1005,6 +1012,8 @@ export const useMobileAppController = () => {
     showAxes,
     gridPlanes,
     surfaceColorMode,
+    surfaceRenderMode,
+    surfaceShading,
   ]);
 
   return {
@@ -1020,6 +1029,10 @@ export const useMobileAppController = () => {
     setSurfaceOpacityById,
     surfaceColorMode,
     setSurfaceColorMode,
+    surfaceRenderMode,
+    setSurfaceRenderMode,
+    surfaceShading,
+    setSurfaceShading,
     inspectorSwipeStartY,
     selectedGalleryId,
     setSelectedGalleryId,

@@ -10,6 +10,8 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
     setTab,
     surfaceOpacityById,
     surfaceColorMode,
+    surfaceRenderMode,
+    surfaceShading,
     viewerDocument,
     renderQuality,
     showAxes,
@@ -55,6 +57,8 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
               renderPaused={!appIsForeground}
               surfaceOpacityById={surfaceOpacityById}
               colorMode={surfaceColorMode}
+              renderMode={surfaceRenderMode}
+              shading={surfaceShading}
               showGrid={showGrid}
               showAxes={showAxes}
               gridPlanes={gridPlanes}

@@ -4,6 +4,7 @@ import type { OrbitState } from "../components/MobileSceneViewport";
 import { DEFAULT_MOBILE_GRID_PLANES, type MobileGridPlane } from "./mobileCoordinateGrid";
 import type { MobileSurfaceColorMode } from "../viewer/mobileCurvatureColors";
 import type { MobileRenderQuality } from "../viewer/mobileSurfacePreview";
+import type { MobileSurfaceRenderMode, MobileSurfaceShading } from "../viewer/mobileViewModes";
 
 export type CameraCommandType = "reset" | "fit";
 
@@ -13,6 +14,8 @@ export const useMobileWorkspaceState = () => {
   const [visibleSurfaceIds, setVisibleSurfaceIds] = useState<string[]>([]);
   const [surfaceOpacityById, setSurfaceOpacityById] = useState<Record<string, number>>({});
   const [surfaceColorMode, setSurfaceColorMode] = useState<MobileSurfaceColorMode>("solid");
+  const [surfaceRenderMode, setSurfaceRenderMode] = useState<MobileSurfaceRenderMode>("solid");
+  const [surfaceShading, setSurfaceShading] = useState<MobileSurfaceShading>("smooth");
   const [renderQuality, setRenderQuality] = useState<MobileRenderQuality>("balanced");
   const [showAxes, setShowAxes] = useState(true);
   const [gridPlanes, setGridPlanes] = useState<MobileGridPlane[]>([...DEFAULT_MOBILE_GRID_PLANES]);
@@ -21,7 +24,8 @@ export const useMobileWorkspaceState = () => {
   const [cameraCommandToken, setCameraCommandToken] = useState(0);
   return {
     viewerDocument, setViewerDocument, selectedSurfaceId, setSelectedSurfaceId, visibleSurfaceIds, setVisibleSurfaceIds,
-    surfaceOpacityById, setSurfaceOpacityById, surfaceColorMode, setSurfaceColorMode, renderQuality, setRenderQuality,
+    surfaceOpacityById, setSurfaceOpacityById, surfaceColorMode, setSurfaceColorMode,
+    surfaceRenderMode, setSurfaceRenderMode, surfaceShading, setSurfaceShading, renderQuality, setRenderQuality,
     showAxes, setShowAxes, gridPlanes, setGridPlanes, cameraOrbit, setCameraOrbit, cameraCommandType, setCameraCommandType,
     cameraCommandToken, setCameraCommandToken,
   };
