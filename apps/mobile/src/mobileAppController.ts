@@ -4,7 +4,7 @@ import { createSceneProjectDocument, deserializeSceneProject, serializeSceneProj
 import { mobileGallery, mobileSeedScenes } from "./data/mobileSeedData";
 import { DEFAULT_MOBILE_GRID_PLANES } from "./models/mobileCoordinateGrid";
 import type { MobileSceneSummary, MobileStoredSceneProject } from "./models/mobileScene";
-import { buildSceneSummary, clearStoredSceneProjects, createStoredProjectFromScene, loadStoredSceneProjects, readSceneFromStoredProject, saveStoredSceneProjects } from "./services/mobileSceneStorage";
+import { buildSceneSummary, clearStoredSceneProjects, createStoredProjectFromScene, describeMobileSceneStorageError, loadStoredSceneProjects, readSceneFromStoredProject, saveStoredSceneProjects } from "./services/mobileSceneStorage";
 import { createMobileMeshBackend } from "./services/mobileMeshBackend";
 import { createMeshCacheKey, readCachedMesh, writeCachedMesh } from "./services/mobileMeshCacheStorage";
 import { loadMobileSettings, saveMobileSettings } from "./services/mobileSettingsStorage";
@@ -266,12 +266,12 @@ export const useMobileAppController = () => {
         issues.push("Android GL auto-disabled after previous startup crash. Re-enable in Settings to retry.");
       }
 
-      if (projects.length === 0) {
+      if (projects.length === 0 && loaded.source === "empty") {
         projects = mobileSeedScenes.map((scene) => createStoredProjectFromScene(scene, scene.updatedAt));
         try {
           await saveStoredSceneProjects(projects);
         } catch (error) {
-          issues.push(`Failed to write initial seed scenes: ${String((error as Error).message ?? error)}`);
+          issues.push(`Failed to write initial seed scenes: ${describeMobileSceneStorageError(error)}`);
         }
       }
 
@@ -766,9 +766,10 @@ export const useMobileAppController = () => {
     try {
       await saveStoredSceneProjects(nextProjects);
     } catch (error) {
+      const message = describeMobileSceneStorageError(error);
       setStorageIssues((current) => [
         ...current,
-        `Failed to persist scene open state: ${String((error as Error).message ?? error)}`,
+        `Failed to persist scene open state: ${message}`,
       ]);
       setStorageStatus("error");
     }
@@ -791,20 +792,21 @@ export const useMobileAppController = () => {
     const stored = createStoredProjectFromScene(scene, Date.now());
     const nextProjects = upsertStoredProject(storedProjects, stored);
 
-    setStoredProjects(nextProjects);
-    setSelectedSceneId(stored.id);
-    void persistMobileSettings({ lastSceneId: stored.id, lastViewerProject: stored.serializedProject })
-      .catch(() => undefined);
-
     try {
       await saveStoredSceneProjects(nextProjects);
+      setStoredProjects(nextProjects);
+      setSelectedSceneId(stored.id);
+      void persistMobileSettings({ lastSceneId: stored.id, lastViewerProject: stored.serializedProject })
+        .catch(() => undefined);
       setStorageStatus(storageIssues.length > 0 ? "error" : "ready");
     } catch (error) {
+      const message = describeMobileSceneStorageError(error);
       setStorageIssues((current) => [
         ...current,
-        `Failed to persist scene save: ${String((error as Error).message ?? error)}`,
+        `Failed to persist scene save: ${message}`,
       ]);
       setStorageStatus("error");
+      setProjectActionMessage(message);
     }
   };
 
@@ -820,11 +822,13 @@ export const useMobileAppController = () => {
       setProjectActionMessage(successMessage);
       return true;
     } catch (error) {
+      const message = describeMobileSceneStorageError(error);
       setStorageIssues((current) => [
         ...current,
-        `${failureLabel}: ${String((error as Error).message ?? error)}`,
+        `${failureLabel}: ${message}`,
       ]);
       setStorageStatus("error");
+      setProjectActionMessage(message);
       return false;
     }
   };

@@ -8,6 +8,7 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
   const {
     storedProjects,
     storageStatus,
+    storageIssues,
     sceneSearchQuery,
     setSceneSearchQuery,
     sceneSortMode,
@@ -54,6 +55,15 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
         </View>
       </View>
       {projectActionMessage ? <Text style={styles.note}>{projectActionMessage}</Text> : null}
+      {storageIssues.length > 0 ? (
+        <View style={styles.issuePanel}>
+          <Text style={styles.issuePanelTitle}>Project storage needs attention</Text>
+          <Text style={styles.issueText}>{storageIssues[0]}</Text>
+          {storageIssues.length > 1 ? (
+            <Text style={styles.itemMeta}>See Settings for {storageIssues.length - 1} more detail{storageIssues.length === 2 ? "" : "s"}.</Text>
+          ) : null}
+        </View>
+      ) : null}
       {deletedProject ? (
         <View style={styles.projectUndoRow}>
           <Text style={styles.itemMeta} numberOfLines={1}>{deletedProject.title} can be restored.</Text>
