@@ -58,9 +58,10 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
         <Text style={styles.inspectorHint}>{inspectorExpanded ? "Swipe down to close" : "Swipe up for tools"}</Text>
       </View>
       <View style={styles.inspectorTabs}>
-        {(["scene", "object", "display", "analyze"] as const).map((section) => (
+        {(["scene", "object", "display", "compute"] as const).map((section) => (
           <Pressable
             key={section}
+            testID={`mobile-inspector-tab-${section}`}
             onPress={() => {
               setInspectorSection(section);
               setInspectorExpanded(true);
@@ -68,7 +69,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
             style={[styles.inspectorTab, inspectorSection === section ? styles.inspectorTabActive : null]}
           >
             <Text style={[styles.inspectorTabText, inspectorSection === section ? styles.inspectorTabTextActive : null]}>
-              {section === "scene" ? "Scene" : section === "object" ? "Object" : section === "display" ? "Display" : "Analyze"}
+              {section === "scene" ? "Scene" : section === "object" ? "Object" : section === "display" ? "Display" : "Compute"}
             </Text>
           </Pressable>
         ))}
@@ -240,10 +241,10 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
               {androidFallbackForced && <Text style={styles.warningNote}>Android safe mode is active.</Text>}
             </>
           )}
-          {inspectorSection === "analyze" && (
+          {inspectorSection === "compute" && (
             <>
-              <Text style={styles.panelTitle}>Analyze</Text>
-              <Text style={styles.note}>Implicit preview uses the configured worker backend.</Text>
+              <Text style={styles.panelTitle}>Compute</Text>
+              <Text style={styles.note}>Mesh generation, cache status, and worker diagnostics for implicit surfaces.</Text>
               {viewerSurfaces.filter((surface) => surface.kind === "implicit").map((surface) => {
                 const preview = implicitPreviewBySurfaceId[surface.id];
                 return <View key={surface.id} style={styles.subPanel}>
