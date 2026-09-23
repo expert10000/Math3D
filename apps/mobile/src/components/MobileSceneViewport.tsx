@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, Text, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from "react-native";
+import { Pressable, StyleSheet, Text, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from "react-native";
 import { Canvas, useFrame } from "@react-three/fiber/native";
 import * as THREE from "three";
 import type { SceneDocument } from "@math3d/core";
@@ -25,6 +25,7 @@ type MobileSceneViewportProps = {
   initialOrbit?: OrbitState | null;
   onOrbitChange?: (orbit: OrbitState) => void;
   onSelectedSurfaceChange?: (surfaceId: string) => void;
+  onOpenCompute?: () => void;
   renderPaused?: boolean;
   surfaceOpacityById?: Record<string, number>;
   colorMode?: MobileSurfaceColorMode;
@@ -123,6 +124,7 @@ const fitOrbitToPreviews = (previews: MobileSurfacePreview[], current: OrbitStat
 
   for (const preview of previews) {
     const geometry = preview.geometry;
+    if (!geometry) continue;
     if (!geometry.boundingBox) geometry.computeBoundingBox();
     if (!hasFiniteBounds(geometry.boundingBox)) continue;
     merged.union(geometry.boundingBox);
@@ -153,18 +155,21 @@ const SurfaceMesh: React.FC<{
   renderMode: MobileSurfaceRenderMode;
   shading: MobileSurfaceShading;
 }> = ({ preview, opacity, renderMode, shading }) => {
+  const geometry = preview.geometry;
   useEffect(() => {
     return () => {
-      preview.geometry.dispose();
+      geometry?.dispose();
     };
-  }, [preview.geometry]);
+  }, [geometry]);
 
-  const hasVertexColors = !!preview.geometry.getAttribute("color");
+  if (!geometry) return null;
+
+  const hasVertexColors = !!geometry.getAttribute("color");
   const materialColor = hasVertexColors ? "#ffffff" : preview.color;
 
   return <group>
     {renderMode !== "wireframe" ? (
-      <mesh geometry={preview.geometry}>
+      <mesh geometry={geometry}>
         <meshStandardMaterial
           color={materialColor}
           vertexColors={hasVertexColors}
@@ -182,7 +187,7 @@ const SurfaceMesh: React.FC<{
       </mesh>
     ) : null}
     {renderMode !== "solid" ? (
-      <mesh geometry={preview.geometry}>
+      <mesh geometry={geometry}>
         <meshBasicMaterial
           color={renderMode === "wireframe" ? materialColor : "#18324a"}
           vertexColors={renderMode === "wireframe" && hasVertexColors}
@@ -283,8 +288,10 @@ const SurfaceBounds: React.FC<{ previews: MobileSurfacePreview[] }> = ({ preview
   const { geometry, center } = useMemo(() => {
     const bounds = new THREE.Box3().makeEmpty();
     for (const preview of previews) {
-      if (!preview.geometry.boundingBox) preview.geometry.computeBoundingBox();
-      if (hasFiniteBounds(preview.geometry.boundingBox)) bounds.union(preview.geometry.boundingBox);
+      const geometry = preview.geometry;
+      if (!geometry) continue;
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      if (hasFiniteBounds(geometry.boundingBox)) bounds.union(geometry.boundingBox);
     }
     if (bounds.isEmpty()) return { geometry: null, center: new THREE.Vector3() };
     const size = bounds.getSize(new THREE.Vector3());
@@ -313,6 +320,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   initialOrbit,
   onOrbitChange,
   onSelectedSurfaceChange,
+  onOpenCompute,
   renderPaused = false,
   surfaceOpacityById,
   colorMode = "solid",
@@ -338,6 +346,14 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
     if (!visibleSet) return previews;
     return previews.filter((preview) => visibleSet.has(preview.id));
   }, [previews, visibleSet]);
+  const renderablePreviews = useMemo(
+    () => visiblePreviews.filter((preview) => preview.geometry !== null),
+    [visiblePreviews]
+  );
+  const firstUncomputedPreview = useMemo(
+    () => visiblePreviews.find((preview) => preview.state === "uncomputed"),
+    [visiblePreviews]
+  );
   const warnings = useMemo(
     () => visiblePreviews.map((item) => item.warning).filter((value): value is string => typeof value === "string"),
     [visiblePreviews]
@@ -345,8 +361,10 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   const coordinateFrame = useMemo(() => {
     const bounds = new THREE.Box3().makeEmpty();
     for (const preview of visiblePreviews) {
-      if (!preview.geometry.boundingBox) preview.geometry.computeBoundingBox();
-      if (hasFiniteBounds(preview.geometry.boundingBox)) bounds.union(preview.geometry.boundingBox);
+      const geometry = preview.geometry;
+      if (!geometry) continue;
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      if (hasFiniteBounds(geometry.boundingBox)) bounds.union(geometry.boundingBox);
     }
     const coordinateExtent = bounds.isEmpty() ? 2 : Math.max(
       Math.abs(bounds.min.x), Math.abs(bounds.max.x),
@@ -401,14 +419,22 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
       <View style={[styles.viewportRoot, styles.fallbackRoot, viewportStyle]}>
         <View style={styles.overlay} pointerEvents="none">
           <Text style={styles.overlayText}>Android safe mode (GL fallback)</Text>
-          <Text style={styles.overlayText}>Visible surfaces: {visiblePreviews.length}</Text>
+          <Text style={styles.overlayText}>Rendered surfaces: {renderablePreviews.length}</Text>
         </View>
         <View style={styles.fallbackList}>
           {visiblePreviews.length === 0 && <Text style={styles.fallbackText}>No visible surfaces selected.</Text>}
           {visiblePreviews.map((preview, index) => (
             <View key={`fallback-${preview.id}-${index}`} style={styles.fallbackItem}>
               <Text style={styles.fallbackTitle}>{preview.id}</Text>
-              <Text style={styles.fallbackText}>{colorMode === "solid" ? `preview color: ${preview.color}` : "Curvature colors require the 3D renderer."}</Text>
+              {preview.state === "uncomputed" ? (
+                <>
+                  <Text style={styles.fallbackWarn}>Mesh not computed</Text>
+                  <Text style={styles.fallbackText}>Formula: {preview.uncomputed?.formula}</Text>
+                  <Text style={styles.fallbackText}>Requires: {preview.uncomputed?.capability}</Text>
+                </>
+              ) : (
+                <Text style={styles.fallbackText}>{colorMode === "solid" ? `preview color: ${preview.color}` : "Curvature colors require the 3D renderer."}</Text>
+              )}
               {preview.warning ? <Text style={styles.fallbackWarn}>{preview.warning}</Text> : null}
             </View>
           ))}
@@ -516,9 +542,9 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
           <PlaneGrid plane="yz" halfSize={coordinateFrame.halfSize} majorStep={coordinateFrame.majorStep} color="#ffa877" />
         ) : null}
         {showAxes ? <CoordinateAxes halfSize={coordinateFrame.halfSize} /> : null}
-        {showBoundingBox ? <SurfaceBounds previews={visiblePreviews} /> : null}
+        {showBoundingBox ? <SurfaceBounds previews={renderablePreviews} /> : null}
 
-        {visiblePreviews.map((preview, index) => (
+        {renderablePreviews.map((preview, index) => (
           <group
             key={`surface-preview-${preview.id}-${index}`}
             onPointerDown={() => {
@@ -540,10 +566,21 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
 
       <View style={styles.overlay} pointerEvents="none">
         <Text style={styles.overlayText}>{gestureHint}</Text>
-        <Text style={styles.overlayText}>Visible surfaces: {visiblePreviews.length}</Text>
+        <Text style={styles.overlayText}>Rendered surfaces: {renderablePreviews.length}</Text>
         {selectedSurfaceId ? <Text style={styles.overlayText}>Selected: {selectedSurfaceId}</Text> : null}
         {renderPaused ? <Text style={styles.overlayText}>Paused in background</Text> : null}
       </View>
+
+      {firstUncomputedPreview?.uncomputed ? (
+        <View style={styles.uncomputedPanel} pointerEvents="box-none">
+          <Text style={styles.uncomputedTitle}>Mesh not computed</Text>
+          <Text style={styles.uncomputedText} numberOfLines={2}>Formula: {firstUncomputedPreview.uncomputed.formula}</Text>
+          <Text style={styles.uncomputedText}>Requires: {firstUncomputedPreview.uncomputed.capability}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open Compute" onPress={onOpenCompute} style={styles.uncomputedAction}>
+            <Text style={styles.uncomputedActionText}>Open Compute</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {(showGrid || showAxes) && (
         <View style={styles.coordinateBadge} pointerEvents="none" testID="mobile-coordinate-grid-legend">
@@ -654,6 +691,42 @@ const styles = StyleSheet.create({
     color: "#fff7ed",
     fontSize: 10,
     lineHeight: 14,
+  },
+  uncomputedPanel: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    top: "38%",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#9eafc0",
+    backgroundColor: "rgba(248,251,255,0.96)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4,
+  },
+  uncomputedTitle: {
+    color: "#263d53",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  uncomputedText: {
+    color: "#52677d",
+    fontSize: 10,
+    lineHeight: 14,
+  },
+  uncomputedAction: {
+    alignSelf: "flex-start",
+    marginTop: 4,
+    borderRadius: 7,
+    backgroundColor: "#194a7a",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  uncomputedActionText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "700",
   },
   fallbackRoot: {
     paddingTop: 50,

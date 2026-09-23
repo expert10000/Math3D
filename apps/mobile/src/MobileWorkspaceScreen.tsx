@@ -21,6 +21,8 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
     visibleSurfaceIds,
     selectedSurfaceId,
     setSelectedSurfaceId,
+    setInspectorSection,
+    setInspectorExpanded,
     cameraOrbit,
     setCameraOrbit,
     appIsForeground,
@@ -55,6 +57,10 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
               initialOrbit={cameraOrbit}
               onOrbitChange={setCameraOrbit}
               onSelectedSurfaceChange={setSelectedSurfaceId}
+              onOpenCompute={() => {
+                setInspectorSection("compute");
+                setInspectorExpanded(true);
+              }}
               renderPaused={!appIsForeground}
               surfaceOpacityById={surfaceOpacityById}
               colorMode={surfaceColorMode}
