@@ -17,6 +17,7 @@ export const useMobileWorkspaceState = () => {
   const [surfaceRenderMode, setSurfaceRenderMode] = useState<MobileSurfaceRenderMode>("solid");
   const [surfaceShading, setSurfaceShading] = useState<MobileSurfaceShading>("smooth");
   const [renderQuality, setRenderQuality] = useState<MobileRenderQuality>("balanced");
+  const [showBoundingBox, setShowBoundingBox] = useState(false);
   const [showAxes, setShowAxes] = useState(true);
   const [gridPlanes, setGridPlanes] = useState<MobileGridPlane[]>([...DEFAULT_MOBILE_GRID_PLANES]);
   const [cameraOrbit, setCameraOrbit] = useState<OrbitState | null>(null);
@@ -26,6 +27,7 @@ export const useMobileWorkspaceState = () => {
     viewerDocument, setViewerDocument, selectedSurfaceId, setSelectedSurfaceId, visibleSurfaceIds, setVisibleSurfaceIds,
     surfaceOpacityById, setSurfaceOpacityById, surfaceColorMode, setSurfaceColorMode,
     surfaceRenderMode, setSurfaceRenderMode, surfaceShading, setSurfaceShading, renderQuality, setRenderQuality,
+    showBoundingBox, setShowBoundingBox,
     showAxes, setShowAxes, gridPlanes, setGridPlanes, cameraOrbit, setCameraOrbit, cameraCommandType, setCameraCommandType,
     cameraCommandToken, setCameraCommandToken,
   };

@@ -12,6 +12,7 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
     surfaceColorMode,
     surfaceRenderMode,
     surfaceShading,
+    showBoundingBox,
     viewerDocument,
     renderQuality,
     showAxes,
@@ -59,6 +60,7 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
               colorMode={surfaceColorMode}
               renderMode={surfaceRenderMode}
               shading={surfaceShading}
+              showBoundingBox={showBoundingBox}
               showGrid={showGrid}
               showAxes={showAxes}
               gridPlanes={gridPlanes}

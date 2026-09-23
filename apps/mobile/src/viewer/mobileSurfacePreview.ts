@@ -2,7 +2,10 @@ import * as THREE from "three";
 import type { SceneDocument, SurfaceDefinition } from "@math3d/core";
 import { colorizeSurfaceCurvature, type MobileSurfaceColorMode } from "./mobileCurvatureColors";
 
-export type MobileRenderQuality = "performance" | "balanced" | "sharp";
+export type MobileRenderQuality = "auto" | "performance" | "balanced" | "quality";
+
+export const normalizeMobileRenderQuality = (value: unknown): MobileRenderQuality =>
+  value === "auto" || value === "performance" || value === "quality" ? value : "balanced";
 
 type MobileIndexArray = Uint16Array | Uint32Array;
 
@@ -27,9 +30,10 @@ type SurfacePreviewBuildOptions = {
 };
 
 const QUALITY_CAP: Record<MobileRenderQuality, number> = {
+  auto: 56,
   performance: 36,
   balanced: 56,
-  sharp: 80,
+  quality: 80,
 };
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));

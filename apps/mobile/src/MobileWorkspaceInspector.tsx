@@ -19,6 +19,8 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     setSurfaceRenderMode,
     surfaceShading,
     setSurfaceShading,
+    showBoundingBox,
+    setShowBoundingBox,
     inspectorSwipeStartY,
     renderQuality,
     setRenderQuality,
@@ -58,7 +60,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
         <Text style={styles.inspectorHint}>{inspectorExpanded ? "Swipe down to close" : "Swipe up for tools"}</Text>
       </View>
       <View style={styles.inspectorTabs}>
-        {(["scene", "object", "display", "compute"] as const).map((section) => (
+        {(["scene", "object", "view", "compute"] as const).map((section) => (
           <Pressable
             key={section}
             testID={`mobile-inspector-tab-${section}`}
@@ -69,7 +71,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
             style={[styles.inspectorTab, inspectorSection === section ? styles.inspectorTabActive : null]}
           >
             <Text style={[styles.inspectorTabText, inspectorSection === section ? styles.inspectorTabTextActive : null]}>
-              {section === "scene" ? "Scene" : section === "object" ? "Object" : section === "display" ? "Display" : "Compute"}
+              {section === "scene" ? "Scene" : section === "object" ? "Object" : section === "view" ? "View" : "Compute"}
             </Text>
           </Pressable>
         ))}
@@ -118,17 +120,20 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                     ))}
                   </View>
                   <View style={styles.viewerToolbarRow}>
-                    <Pressable onPress={() => runCameraCommand("fit")} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Fit</Text></Pressable>
-                    <Pressable onPress={() => runCameraCommand("reset")} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Reset camera</Text></Pressable>
                     <Pressable onPress={() => { if (visibleSurfaceIds.includes(selectedSurface.id)) toggleSurfaceVisibility(selectedSurface.id); }} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Hide</Text></Pressable>
                   </View>
                 </>
               )}
             </>
           )}
-          {inspectorSection === "display" && (
+          {inspectorSection === "view" && (
             <>
-              <Text style={styles.panelTitle}>Display</Text>
+              <Text style={styles.panelTitle}>View</Text>
+              <Text style={styles.note}>Camera</Text>
+              <View style={styles.viewerToolbarRow}>
+                <Pressable testID="mobile-view-fit" onPress={() => runCameraCommand("fit")} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Fit scene</Text></Pressable>
+                <Pressable testID="mobile-view-reset" onPress={() => runCameraCommand("reset")} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Reset view</Text></Pressable>
+              </View>
               <Text style={styles.note}>Surface style</Text>
               <View style={styles.viewerToolbarRow}>
                 {([[
@@ -167,16 +172,17 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
               </View>
               <Text style={styles.note}>Render quality</Text>
               <View style={styles.viewerToolbarRow}>
-                {(["performance", "balanced", "sharp"] as const).map((quality) => (
+                {(["auto", "performance", "balanced", "quality"] as const).map((quality) => (
                   <Pressable key={quality} onPress={() => setRenderQuality(quality)} style={[styles.pill, renderQuality === quality ? styles.pillActive : null]}>
-                    <Text style={[styles.pillText, renderQuality === quality ? styles.pillTextActive : null]}>{quality}</Text>
+                    <Text style={[styles.pillText, renderQuality === quality ? styles.pillTextActive : null]}>{quality[0].toUpperCase() + quality.slice(1)}</Text>
                   </Pressable>
                 ))}
               </View>
+              <Text style={styles.itemMeta}>Auto currently uses the balanced baseline while device measurements are collected.</Text>
               <Text style={styles.note}>Reference planes at zero · show or hide each plane</Text>
               <View style={styles.viewerToolbarRow}>
                 <Pressable
-                  testID="mobile-display-grid-toggle"
+                  testID="mobile-view-grid-toggle"
                   accessibilityRole="button"
                   accessibilityLabel={gridPlanes.length === MOBILE_GRID_PLANES.length ? "Hide all reference planes" : "Show all reference planes"}
                   onPress={() => setGridPlanes((current) => current.length === MOBILE_GRID_PLANES.length ? [] : [...MOBILE_GRID_PLANES])}
@@ -185,7 +191,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                   <Text style={styles.pillText}>{gridPlanes.length === MOBILE_GRID_PLANES.length ? "Hide all" : "Show all"}</Text>
                 </Pressable>
                 <Pressable
-                  testID="mobile-display-axes-toggle"
+                  testID="mobile-view-axes-toggle"
                   accessibilityRole="switch"
                   accessibilityLabel="Coordinate axes"
                   accessibilityState={{ checked: showAxes }}
@@ -202,7 +208,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                   return (
                     <Pressable
                       key={plane}
-                      testID={`mobile-display-grid-plane-${plane}`}
+                      testID={`mobile-view-grid-plane-${plane}`}
                       accessibilityRole="switch"
                       accessibilityLabel={`${plane.toUpperCase()} grid plane`}
                       accessibilityState={{ checked: selected }}
@@ -217,6 +223,17 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                   );
                 })}
               </View>
+              <Pressable
+                testID="mobile-view-bounds-toggle"
+                accessibilityRole="switch"
+                accessibilityLabel="Surface bounding box"
+                accessibilityState={{ checked: showBoundingBox }}
+                onPress={() => setShowBoundingBox((value) => !value)}
+                style={[styles.inspectorSettingRow, showBoundingBox ? styles.pillActive : null]}
+              >
+                <Text style={showBoundingBox ? styles.pillTextActive : styles.itemTitle}>Bounding box</Text>
+                <Text style={showBoundingBox ? styles.pillTextActive : styles.itemMeta}>{showBoundingBox ? "On" : "Off"}</Text>
+              </Pressable>
               <Text style={styles.itemMeta}>XY blue · XZ green · YZ orange. Each plane has major and minor lines; X red · Y green · Z blue.</Text>
               <Text style={styles.itemMeta}>Surface color</Text>
               <View style={styles.viewerToolbarRow}>

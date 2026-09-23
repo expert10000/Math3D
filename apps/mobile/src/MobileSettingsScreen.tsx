@@ -101,14 +101,14 @@ export const MobileSettingsScreen: React.FC<{ model: MobileAppController }> = ({
       <View style={styles.settingRow}>
         <Text style={styles.itemMeta}>Render quality</Text>
         <View style={styles.settingChoiceRow}>
-          {(["performance", "balanced", "sharp"] as const).map((quality) => (
+          {(["auto", "performance", "balanced", "quality"] as const).map((quality) => (
             <Pressable
               key={`quality-${quality}`}
               onPress={() => setRenderQuality(quality)}
               style={[styles.pill, renderQuality === quality ? styles.pillActive : null]}
             >
               <Text style={[styles.pillText, renderQuality === quality ? styles.pillTextActive : null]}>
-                {quality}
+                {quality[0].toUpperCase() + quality.slice(1)}
               </Text>
             </Pressable>
           ))}

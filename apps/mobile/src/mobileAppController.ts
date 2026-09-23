@@ -185,6 +185,7 @@ export const useMobileAppController = () => {
     viewerDocument, setViewerDocument, selectedSurfaceId, setSelectedSurfaceId, visibleSurfaceIds, setVisibleSurfaceIds,
     surfaceOpacityById, setSurfaceOpacityById, surfaceColorMode, setSurfaceColorMode,
     surfaceRenderMode, setSurfaceRenderMode, surfaceShading, setSurfaceShading, renderQuality, setRenderQuality,
+    showBoundingBox, setShowBoundingBox,
     showAxes, setShowAxes, gridPlanes, setGridPlanes, cameraOrbit, setCameraOrbit, cameraCommandType, setCameraCommandType,
     cameraCommandToken, setCameraCommandToken,
   } = useMobileWorkspaceState();
@@ -282,6 +283,8 @@ export const useMobileAppController = () => {
       setSurfaceColorMode(loadedSettings.surfaceColorMode ?? "solid");
       setSurfaceRenderMode(loadedSettings.surfaceRenderMode ?? "solid");
       setSurfaceShading(loadedSettings.surfaceShading ?? "smooth");
+      setRenderQuality(loadedSettings.renderQuality ?? "balanced");
+      setShowBoundingBox(loadedSettings.showBoundingBox ?? false);
       setSelectedSceneId(loadedSettings.lastSceneId || null);
       setSelectedSurfaceId(loadedSettings.lastSelectedSurfaceId || null);
       setCameraOrbit(loadedSettings.cameraOrbit || null);
@@ -312,6 +315,8 @@ export const useMobileAppController = () => {
           surfaceColorMode: loadedSettings.surfaceColorMode ?? "solid",
           surfaceRenderMode: loadedSettings.surfaceRenderMode ?? "solid",
           surfaceShading: loadedSettings.surfaceShading ?? "smooth",
+          renderQuality: loadedSettings.renderQuality ?? "balanced",
+          showBoundingBox: loadedSettings.showBoundingBox ?? false,
           lastSceneId: loadedSettings.lastSceneId || undefined,
           lastViewerProject: loadedSettings.lastViewerProject || undefined,
           lastSelectedSurfaceId: loadedSettings.lastSelectedSurfaceId || undefined,
@@ -482,7 +487,7 @@ export const useMobileAppController = () => {
         const xSpan = Math.max(0.5, surface.domain?.xSpan ?? 2.4);
         const ySpan = Math.max(0.5, surface.domain?.ySpan ?? 2.4);
         const zSpan = Math.max(0.5, surface.domain?.zSpan ?? Math.max(xSpan, ySpan));
-        const baseResolution = renderQuality === "performance" ? 52 : renderQuality === "balanced" ? 72 : 96;
+        const baseResolution = renderQuality === "performance" ? 52 : renderQuality === "quality" ? 96 : 72;
         const resolution = Math.min(baseResolution, meshResolutionCap);
         const requestPayload: Omit<VtkPreviewRequest, "jobId"> = {
           expr: surface.expression,
@@ -797,6 +802,8 @@ export const useMobileAppController = () => {
       surfaceColorMode,
       surfaceRenderMode,
       surfaceShading,
+      renderQuality,
+      showBoundingBox,
       lastSceneId: selectedSceneId || undefined,
       lastViewerProject: viewerDocument ? serializeViewerScene(viewerDocument) : undefined,
       lastSelectedSurfaceId: selectedSurfaceId || undefined,
@@ -951,7 +958,7 @@ export const useMobileAppController = () => {
   };
 
   const reduceQualityAndRetry = () => {
-    setRenderQuality((current) => (current === "sharp" ? "balanced" : current === "balanced" ? "performance" : "performance"));
+    setRenderQuality((current) => (current === "quality" ? "balanced" : "performance"));
     retryImplicitPreviews();
   };
 
@@ -1014,6 +1021,8 @@ export const useMobileAppController = () => {
     surfaceColorMode,
     surfaceRenderMode,
     surfaceShading,
+    renderQuality,
+    showBoundingBox,
   ]);
 
   return {
@@ -1033,6 +1042,8 @@ export const useMobileAppController = () => {
     setSurfaceRenderMode,
     surfaceShading,
     setSurfaceShading,
+    showBoundingBox,
+    setShowBoundingBox,
     inspectorSwipeStartY,
     selectedGalleryId,
     setSelectedGalleryId,

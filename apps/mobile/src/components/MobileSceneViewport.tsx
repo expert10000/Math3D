@@ -30,6 +30,7 @@ type MobileSceneViewportProps = {
   colorMode?: MobileSurfaceColorMode;
   renderMode?: MobileSurfaceRenderMode;
   shading?: MobileSurfaceShading;
+  showBoundingBox?: boolean;
   showGrid?: boolean;
   showAxes?: boolean;
   gridPlanes?: MobileGridPlane[];
@@ -278,6 +279,28 @@ const CoordinateAxes: React.FC<{ halfSize: number }> = ({ halfSize }) => {
   );
 };
 
+const SurfaceBounds: React.FC<{ previews: MobileSurfacePreview[] }> = ({ previews }) => {
+  const { geometry, center } = useMemo(() => {
+    const bounds = new THREE.Box3().makeEmpty();
+    for (const preview of previews) {
+      if (!preview.geometry.boundingBox) preview.geometry.computeBoundingBox();
+      if (hasFiniteBounds(preview.geometry.boundingBox)) bounds.union(preview.geometry.boundingBox);
+    }
+    if (bounds.isEmpty()) return { geometry: null, center: new THREE.Vector3() };
+    const size = bounds.getSize(new THREE.Vector3());
+    const boxGeometry = new THREE.BoxGeometry(size.x, size.y, size.z);
+    const next = new THREE.EdgesGeometry(boxGeometry);
+    boxGeometry.dispose();
+    return { geometry: next, center: bounds.getCenter(new THREE.Vector3()) };
+  }, [previews]);
+
+  useEffect(() => () => geometry?.dispose(), [geometry]);
+  if (!geometry) return null;
+  return <lineSegments geometry={geometry} position={[center.x, center.y, center.z]}>
+    <lineBasicMaterial color="#234d73" transparent opacity={0.88} depthWrite={false} />
+  </lineSegments>;
+};
+
 export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   scene,
   quality,
@@ -295,6 +318,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   colorMode = "solid",
   renderMode = "solid",
   shading = "smooth",
+  showBoundingBox = false,
   showGrid = true,
   showAxes = true,
   gridPlanes = DEFAULT_MOBILE_GRID_PLANES,
@@ -492,6 +516,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
           <PlaneGrid plane="yz" halfSize={coordinateFrame.halfSize} majorStep={coordinateFrame.majorStep} color="#ffa877" />
         ) : null}
         {showAxes ? <CoordinateAxes halfSize={coordinateFrame.halfSize} /> : null}
+        {showBoundingBox ? <SurfaceBounds previews={visiblePreviews} /> : null}
 
         {visiblePreviews.map((preview, index) => (
           <group
