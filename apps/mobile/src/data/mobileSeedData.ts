@@ -33,13 +33,25 @@ export const mobileExamples: Math3DExample[] = [
   example({
     id: "implicit-torus", title: "Implicit Torus", description: "Reference implicit setup", category: "implicit",
     capabilities: [IMPLICIT_CAPABILITY],
-    learnTopic: { title: "Implicit level sets", summary: "A surface is the zero set of a scalar function in three variables." },
+    learnTopic: {
+      title: "Implicit level sets",
+      summary: "A surface is the zero set of a scalar function in three variables.",
+      prompt: "Change the viewing angle and identify the torus hole without relying on a graph direction.",
+      insight: "Implicit surfaces have no preferred parameter direction; the worker extracts triangles from the sampled scalar field.",
+      recommendedOverlay: "normals",
+    },
     surface: { id: "surface-implicit-torus", kind: "implicit", expression: "(x*x + y*y + z*z + 3 - 4)^2 - 4*(x*x + y*y)", domain: { xSpan: 2.4, ySpan: 2.4, zSpan: 2.4 }, resolution: 84 },
   }),
   example({
     id: "gyroid", title: "Gyroid Slice", description: "Triply periodic implicit structure", category: "periodic",
     capabilities: [IMPLICIT_CAPABILITY],
-    learnTopic: { title: "Triply periodic surfaces", summary: "Repeating trigonometric fields form connected structures without straight lines." },
+    learnTopic: {
+      title: "Triply periodic surfaces",
+      summary: "Repeating trigonometric fields form connected structures without straight lines.",
+      prompt: "Look for where the surface exits one side of the sampled domain and continues on the opposite side.",
+      insight: "The clipped preview has boundary edges even though the ideal gyroid repeats without a boundary.",
+      recommendedOverlay: "boundaries",
+    },
     surface: { id: "surface-implicit-gyroid", kind: "implicit", expression: "sin(x)*cos(y) + sin(y)*cos(z) + sin(z)*cos(x)", domain: { xSpan: 3.2, ySpan: 3.2, zSpan: 3.2 }, resolution: 80 },
   }),
   example({
@@ -49,7 +61,13 @@ export const mobileExamples: Math3DExample[] = [
   }),
   example({
     id: "graph-saddle", title: "Graph Saddle", description: "Classic z = x² - y² shape", category: "graphs",
-    learnTopic: { title: "Gaussian curvature", summary: "A saddle bends in opposite directions and has negative Gaussian curvature." },
+    learnTopic: {
+      title: "Gaussian curvature",
+      summary: "A saddle bends in opposite directions and has negative Gaussian curvature.",
+      prompt: "Predict where neighboring triangle normals change most rapidly before enabling curvature colors.",
+      insight: "The mobile curvature map estimates bending from normal changes per edge length; it is a mesh approximation.",
+      recommendedOverlay: "curvature",
+    },
     surface: { id: "surface-explicit-saddle", kind: "explicit", expression: "x*x - y*y", domain: { xSpan: 2.6, ySpan: 2.6 }, resolution: 96 },
   }),
   example({
@@ -62,7 +80,13 @@ export const mobileExamples: Math3DExample[] = [
   }),
   example({
     id: "catenoid", title: "Catenoid", description: "Minimal parametric surface", category: "minimal",
-    learnTopic: { title: "Minimal surfaces", summary: "Minimal surfaces have zero mean curvature at regular points." },
+    learnTopic: {
+      title: "Minimal surfaces",
+      summary: "Minimal surfaces have zero mean curvature at regular points.",
+      prompt: "Inspect the neck and compare its two principal bending directions.",
+      insight: "At a regular point on a minimal surface, the two principal curvatures cancel in their signed mean.",
+      recommendedOverlay: "curvature",
+    },
     surface: { id: "surface-param-catenoid", kind: "parametric", xExpr: "cosh(v)*cos(u)", yExpr: "cosh(v)*sin(u)", zExpr: "v", domain: { uMin: -Math.PI, uMax: Math.PI, vMin: -1.4, vMax: 1.4 }, resolution: 90 },
   }),
   example({
@@ -76,7 +100,13 @@ export const mobileExamples: Math3DExample[] = [
   example({
     id: "sphere", title: "Sphere", description: "Implicit unit sphere", category: "classic",
     capabilities: [IMPLICIT_CAPABILITY],
-    learnTopic: { title: "Closed surface topology", summary: "A triangulated sphere is closed, connected, and has Euler characteristic 2." },
+    learnTopic: {
+      title: "Closed surface topology",
+      summary: "A triangulated sphere is closed, connected, and has Euler characteristic 2.",
+      prompt: "After computing the sphere, verify that boundary edges are zero and Euler characteristic is two.",
+      insight: "For a closed triangulated sphere, V − E + F equals 2 regardless of mesh resolution.",
+      recommendedOverlay: "boundaries",
+    },
     surface: { id: "surface-func-sphere", kind: "implicit", expression: "x*x + y*y + z*z - 1", resolution: 96 },
   }),
   example({
@@ -85,7 +115,13 @@ export const mobileExamples: Math3DExample[] = [
   }),
   example({
     id: "enneper", title: "Enneper Surface", description: "Classic Weierstrass minimal surface", category: "minimal",
-    learnTopic: { title: "Weierstrass representation", summary: "Complex data can parameterize a minimal surface in three-dimensional space." },
+    learnTopic: {
+      title: "Weierstrass representation",
+      summary: "Complex data can parameterize a minimal surface in three-dimensional space.",
+      prompt: "Rotate the Enneper patch and locate its self-overlapping regions.",
+      insight: "A parameterization can be regular locally while its image intersects itself globally.",
+      recommendedOverlay: "normals",
+    },
     surface: { id: "surface-enneper-weierstrass", kind: "weierstrass", gExpr: "z", phiExpr: "1", domain: { uMin: -1.4, uMax: 1.4, vMin: -1.4, vMax: 1.4 }, resolution: 80 },
   }),
 ];

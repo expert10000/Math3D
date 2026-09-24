@@ -36,6 +36,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     selectedSurface,
     sceneObjectItems,
     selectedSurfaceAnalysis,
+    contextualLearnExample,
     activeAnalysisOverlay,
     analysisOverlayAvailability,
     objectNameDraft,
@@ -52,6 +53,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     toggleSurfaceVisibility,
     setAllSurfacesVisible,
     selectAnalysisOverlay,
+    showLearnExample,
     renameSelectedWorkspaceObject,
     duplicateSelectedWorkspaceObject,
     deleteSelectedWorkspaceObject,
@@ -385,6 +387,27 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
             <>
               <Text style={styles.panelTitle}>Analyze</Text>
               {!selectedSurface && <Text style={styles.itemMeta}>Select an object to inspect its geometry, topology, and mesh health.</Text>}
+              {contextualLearnExample?.learnTopic && (
+                <View testID="mobile-contextual-learn-card" style={styles.subPanel}>
+                  <Text style={styles.subPanelTitle}>Learn · {contextualLearnExample.learnTopic.title}</Text>
+                  <Text style={styles.itemMeta}>{contextualLearnExample.learnTopic.summary}</Text>
+                  <Text style={styles.note}>{contextualLearnExample.learnTopic.prompt}</Text>
+                  <View style={styles.viewerToolbarRow}>
+                    {selectedSurfaceAnalysis?.status === "ready" && contextualLearnExample.learnTopic.recommendedOverlay ? (
+                      <Pressable
+                        testID="mobile-contextual-learn-overlay"
+                        onPress={() => selectAnalysisOverlay(contextualLearnExample.learnTopic!.recommendedOverlay!)}
+                        style={styles.secondaryBtn}
+                      >
+                        <Text style={styles.secondaryBtnText}>Show {contextualLearnExample.learnTopic.recommendedOverlay}</Text>
+                      </Pressable>
+                    ) : null}
+                    <Pressable onPress={() => showLearnExample(contextualLearnExample.id)} style={styles.secondaryBtn}>
+                      <Text style={styles.secondaryBtnText}>Open lesson</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
               {selectedSurface && selectedSurfaceAnalysis?.status === "unavailable" && (
                 <View style={styles.subPanel}>
                   <Text style={styles.subPanelTitle}>{selectedSurface.id}</Text>

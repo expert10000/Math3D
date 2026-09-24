@@ -31,6 +31,9 @@ export type Math3DExample = {
   learnTopic?: {
     title: string;
     summary: string;
+    prompt: string;
+    insight: string;
+    recommendedOverlay?: "curvature" | "normals" | "boundaries" | "non-manifold";
   };
 };
 

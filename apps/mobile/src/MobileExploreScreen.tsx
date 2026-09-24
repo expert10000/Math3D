@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { mobileExamples } from "./data/mobileSeedData";
 import { surfaceSummary, type MobileAppController } from "./mobileAppController";
@@ -23,8 +23,10 @@ export const MobileExploreScreen: React.FC<{ model: MobileAppController }> = ({ 
     exampleRequiredCapabilities,
     isExampleAvailable,
     openViewerWithExample,
+    openLearningExample,
   } = model;
   const learningExamples = mobileExamples.filter((example) => example.learnTopic);
+  const [revealedLearnTopics, setRevealedLearnTopics] = useState<string[]>([]);
 
   return (
     <>
@@ -124,12 +126,32 @@ export const MobileExploreScreen: React.FC<{ model: MobileAppController }> = ({ 
           <Text style={styles.panelTitle}>Learn with examples</Text>
           <Text style={styles.note}>Each topic opens the same scene used by the Examples catalog.</Text>
           {learningExamples.map((example) => (
-            <View key={`learn-${example.id}`} style={styles.item}>
+            <View key={`learn-${example.id}`} testID={`mobile-learn-card-${example.id}`} style={styles.item}>
               <Text style={styles.itemTitle}>{example.learnTopic?.title}</Text>
               <Text style={styles.itemMeta}>{example.learnTopic?.summary}</Text>
-              <Pressable onPress={() => openViewerWithExample(example)} style={styles.secondaryBtn}>
-                <Text style={styles.secondaryBtnText}>Open {example.title}</Text>
-              </Pressable>
+              <Text style={styles.note}>Try this</Text>
+              <Text style={styles.itemMeta}>{example.learnTopic?.prompt}</Text>
+              {revealedLearnTopics.includes(example.id) && (
+                <Text testID={`mobile-learn-insight-${example.id}`} style={styles.note}>{example.learnTopic?.insight}</Text>
+              )}
+              <View style={styles.viewerToolbarRow}>
+                <Pressable
+                  testID={`mobile-learn-try-${example.id}`}
+                  onPress={() => openLearningExample(example)}
+                  style={styles.primaryBtn}
+                >
+                  <Text style={styles.primaryBtnText}>Try {example.title}</Text>
+                </Pressable>
+                <Pressable
+                  testID={`mobile-learn-reveal-${example.id}`}
+                  onPress={() => setRevealedLearnTopics((current) => current.includes(example.id)
+                    ? current.filter((id) => id !== example.id)
+                    : [...current, example.id])}
+                  style={styles.secondaryBtn}
+                >
+                  <Text style={styles.secondaryBtnText}>{revealedLearnTopics.includes(example.id) ? "Hide insight" : "Reveal insight"}</Text>
+                </Pressable>
+              </View>
             </View>
           ))}
         </View>

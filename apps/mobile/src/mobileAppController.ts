@@ -517,6 +517,12 @@ export const useMobileAppController = () => {
   const isExampleAvailable = (example: Math3DExample) => mobileExampleIsAvailable(example, availableExampleCapabilities);
   const viewerSurfaces = viewerDocument?.surfaces ?? [];
   const selectedSurface = viewerSurfaces.find((surface) => surface.id === selectedSurfaceId) ?? null;
+  const contextualLearnExample = useMemo(
+    () => selectedSurface
+      ? mobileExamples.find((example) => (example.scene.surfaces ?? []).some((surface) => surface.id === selectedSurface.id) && example.learnTopic) ?? null
+      : null,
+    [selectedSurface]
+  );
   const sceneObjectItems = useMemo(
     () => viewerDocument ? buildMobileSceneObjectItems(viewerDocument, visibleSurfaceIds, selectedSurfaceId) : [],
     [selectedSurfaceId, viewerDocument, visibleSurfaceIds]
@@ -1021,6 +1027,29 @@ export const useMobileAppController = () => {
     setTab("workspace");
     void persistMobileSettings({ lastSceneId: undefined, lastViewerProject: serializeViewerScene(scene) })
       .catch(() => undefined);
+  };
+
+  const openLearningExample = (example: Math3DExample) => {
+    openViewerWithExample(example);
+    setSelectedExampleId(example.id);
+    setInspectorSection("analyze");
+    setInspectorExpanded(true);
+    const surface = example.scene.surfaces?.[0];
+    const overlay = example.learnTopic?.recommendedOverlay;
+    if (surface && surface.kind !== "implicit" && overlay) {
+      setActiveAnalysisOverlay(overlay);
+      setSurfaceColorMode(overlay === "curvature" ? "curvature" : "solid");
+    } else {
+      setActiveAnalysisOverlay("none");
+      setSurfaceColorMode("solid");
+    }
+  };
+
+  const showLearnExample = (exampleId: string) => {
+    if (!mobileExamples.some((example) => example.id === exampleId && example.learnTopic)) return;
+    setSelectedExampleId(exampleId);
+    setExploreSection("learn");
+    setTab("explore");
   };
 
   const saveCurrentViewerScene = async () => {
@@ -1744,6 +1773,7 @@ export const useMobileAppController = () => {
     isExampleAvailable,
     viewerSurfaces,
     selectedSurface,
+    contextualLearnExample,
     sceneObjectItems,
     selectedSurfaceAnalysis,
     activeAnalysisOverlay,
@@ -1773,6 +1803,8 @@ export const useMobileAppController = () => {
     exportStoredScene,
     shareStoredScene,
     openViewerWithExample,
+    openLearningExample,
+    showLearnExample,
     saveCurrentViewerScene,
     runCameraCommand,
     selectWorkspaceObject,

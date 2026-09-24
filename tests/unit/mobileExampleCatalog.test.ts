@@ -10,6 +10,10 @@ describe("mobile example catalog", () => {
       expect(example.scene.surfaces).toHaveLength(1);
       expect(example.scene.surfaces?.[0]?.kind).toBe(example.surfaceType);
       expect(Array.isArray(example.capabilities)).toBe(true);
+      if (example.learnTopic) {
+        expect(example.learnTopic.prompt.length).toBeGreaterThan(0);
+        expect(example.learnTopic.insight.length).toBeGreaterThan(0);
+      }
     }
   });
 
