@@ -402,7 +402,11 @@ class PythonWorkerClient {
   resolveMessage(msg) {
     const jobId = msg?.jobId;
     if (!jobId) return;
-    if (msg.type === "progress") return;
+    if (msg.type === "progress") {
+      const pending = this.pending.get(jobId);
+      if (pending?.onProgress) pending.onProgress(msg);
+      return;
+    }
 
     const pending = this.pending.get(jobId);
     if (!pending) return;
@@ -417,7 +421,7 @@ class PythonWorkerClient {
     pending.resolve(msg);
   }
 
-  request(job, timeoutMs = 180000, payloads = []) {
+  request(job, timeoutMs = 180000, payloads = [], onProgress) {
     return new Promise((resolve, reject) => {
       const jobId = String(job?.jobId || "");
       if (!jobId) {
@@ -428,7 +432,7 @@ class PythonWorkerClient {
         this.pending.delete(jobId);
         reject(new Error(`Python worker timeout for jobId=${jobId}`));
       }, timeoutMs);
-      this.pending.set(jobId, { resolve, reject, timeout });
+      this.pending.set(jobId, { resolve, reject, timeout, onProgress });
       this.proc.stdin.write(`${JSON.stringify(job)}\n`);
       for (const payload of payloads) {
         if (payload?.length) this.proc.stdin.write(payload);
@@ -594,7 +598,7 @@ class PythonWorkerClient {
     };
   }
 
-  async vtkPreviewImplicit(req) {
+  async vtkPreviewImplicit(req, onProgress) {
     const msg = {
       type: "mesh.preview",
       jobId: req.jobId,
@@ -605,7 +609,7 @@ class PythonWorkerClient {
       targetFaces: req.targetFaces,
       targetReduction: req.targetReduction,
     };
-    const res = await this.request(msg, 180000);
+    const res = await this.request(msg, 180000, [], onProgress);
     if (!res || res.type !== "vtk_result") {
       return { ok: false, error: workerErrorText(res, "Unknown VTK preview response") };
     }
@@ -932,11 +936,20 @@ async function executeComputeJob(job) {
   job.updatedAt = Date.now();
   try {
     const worker = await getPythonWorker();
+    if (job.status === "cancelled") return;
     job.engine = {
       id: "math3d-python-worker",
       version: String(diagnosticsState.version || "unknown"),
     };
-    const result = await worker.vtkPreviewImplicit({ ...job.parameters, jobId: job.jobId });
+    const result = await worker.vtkPreviewImplicit({ ...job.parameters, jobId: job.jobId }, (progress) => {
+      if (job.status === "cancelled") return;
+      const pct = Number(progress?.pct);
+      if (Number.isFinite(pct)) job.progress = Math.max(job.progress, Math.min(99, Math.max(1, Math.round(pct))));
+      job.phase = String(progress?.phase || job.phase || "running");
+      job.message = String(progress?.msg || progress?.message || job.message || "Computing mesh.");
+      job.updatedAt = Date.now();
+    });
+    if (job.status === "cancelled") return;
     if (!result.ok) throw new Error(result.error || "VTK preview job failed");
     job.status = "succeeded";
     job.progress = 100;
@@ -945,6 +958,7 @@ async function executeComputeJob(job) {
     job.result = result;
     recordWorkerSuccess();
   } catch (error) {
+    if (job.status === "cancelled") return;
     job.status = "failed";
     job.phase = "failed";
     job.error = String(error?.message || error || "Compute job failed");
@@ -1015,6 +1029,26 @@ async function handleRoute(req, res, pathname) {
       if (!job) {
         json(res, 404, { ok: false, error: `Compute job '${jobId}' was not found.` });
         return;
+      }
+      json(res, 200, computeJobSnapshot(job));
+      return;
+    }
+
+    const computeJobCancelMatch = pathname.match(/^\/api\/worker\/jobs\/([^/]+)\/cancel$/);
+    if (req.method === "POST" && computeJobCancelMatch) {
+      const jobId = decodeURIComponent(computeJobCancelMatch[1]);
+      const job = computeJobs.get(jobId);
+      if (!job) {
+        json(res, 404, { ok: false, error: `Compute job '${jobId}' was not found.` });
+        return;
+      }
+      if (job.status === "queued" || job.status === "running") {
+        const wasRunning = job.status === "running";
+        job.status = "cancelled";
+        job.phase = "cancelled";
+        job.message = "Cancelled by the mobile client.";
+        job.updatedAt = Date.now();
+        if (wasRunning) stopPythonWorker();
       }
       json(res, 200, computeJobSnapshot(job));
       return;

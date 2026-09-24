@@ -44,6 +44,8 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     toggleSurfaceVisibility,
     setAllSurfacesVisible,
     retryImplicitPreviews,
+    retryImplicitPreview,
+    cancelImplicitPreview,
     reduceQualityAndRetry,
     openDiagnostics,
     finishInspectorSwipe
@@ -265,6 +267,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
             <>
               <Text style={styles.panelTitle}>Compute</Text>
               <Text style={styles.note}>Mesh generation, cache status, and worker diagnostics for implicit surfaces.</Text>
+              <Text style={styles.itemMeta}>Active job IDs are saved locally. They resume after backgrounding, or after worker authorization is restored following an app restart.</Text>
               <Text style={styles.itemMeta}>Worker: {workerNegotiation.status}</Text>
               {!workerCanPreviewImplicit && <Text style={styles.warningNote}>{workerNegotiation.message}</Text>}
               {viewerSurfaces.filter((surface) => surface.kind === "implicit").map((surface) => {
@@ -274,8 +277,19 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                   <Text style={styles.subPanelTitle}>{surface.id}</Text>
                   <Text style={styles.itemMeta}>Status: {job?.status ?? preview?.status ?? "idle"}{preview?.cached ? " · cached" : ""}</Text>
                   {job && <Text style={styles.itemMeta}>Job {job.jobId} · {job.progress}%{job.phase ? ` · ${job.phase}` : ""}</Text>}
+                  {job?.message && <Text style={styles.itemMeta}>{job.message}</Text>}
                   {preview?.status === "ready" && <Text style={styles.itemMeta}>{preview.vertexCount ?? 0} vertices · {preview.triCount ?? 0} triangles</Text>}
                   {(job?.error || preview?.status === "error") && <Text style={styles.issueText}>{job?.error || preview?.error}</Text>}
+                  {job && (job.status === "queued" || job.status === "running") && (
+                    <Pressable testID={`mobile-compute-cancel-${surface.id}`} onPress={() => void cancelImplicitPreview(surface.id)} style={styles.secondaryBtn}>
+                      <Text style={styles.secondaryBtnText}>Cancel</Text>
+                    </Pressable>
+                  )}
+                  {job && (job.status === "failed" || job.status === "cancelled") && workerCanPreviewImplicit && (
+                    <Pressable testID={`mobile-compute-retry-${surface.id}`} onPress={() => retryImplicitPreview(surface.id)} style={styles.secondaryBtn}>
+                      <Text style={styles.secondaryBtnText}>Retry</Text>
+                    </Pressable>
+                  )}
                 </View>;
               })}
               {workerCanPreviewImplicit && hasImplicitPreviewErrors && <View style={styles.viewerToolbarRow}>

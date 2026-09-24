@@ -1298,6 +1298,7 @@ export const useMobileAppController = () => {
   };
 
   const retryImplicitPreviews = () => {
+    if (workerCanPreviewImplicit) setLimitedMode(false);
     setImplicitPreviewBySurfaceId((current) => {
       const next: ImplicitPreviewBySurfaceId = { ...current };
       for (const [surfaceId, state] of Object.entries(next)) {
@@ -1308,6 +1309,36 @@ export const useMobileAppController = () => {
       return next;
     });
     setImplicitPreviewRetryToken((value) => value + 1);
+  };
+
+  const retryImplicitPreview = (surfaceId: string) => {
+    if (workerCanPreviewImplicit) setLimitedMode(false);
+    setImplicitPreviewBySurfaceId((current) => ({
+      ...current,
+      [surfaceId]: { status: "loading" },
+    }));
+    setImplicitPreviewRetryToken((value) => value + 1);
+  };
+
+  const cancelImplicitPreview = async (surfaceId: string) => {
+    const job = computeJobBySurfaceId[surfaceId];
+    if (!job || isMobileComputeJobTerminal(job.status)) return;
+    const backend = createMobileMeshBackend(workerBaseUrl, activeWorkerAuthorizationToken);
+    try {
+      const snapshot = await backend.cancelPreviewJob(job.jobId);
+      const merged = mergeMobileComputeJobSnapshot(job, snapshot);
+      updateMobileComputeJob(merged);
+      setImplicitPreviewBySurfaceId((current) => ({
+        ...current,
+        [surfaceId]: { status: "error", error: snapshot.message || "Compute job cancelled." },
+      }));
+    } catch (error) {
+      const message = String((error as Error).message ?? error);
+      setImplicitPreviewBySurfaceId((current) => ({
+        ...current,
+        [surfaceId]: { status: "error", error: `Cancellation failed: ${message}` },
+      }));
+    }
   };
 
   const clearSceneCache = async () => {
@@ -1532,6 +1563,8 @@ export const useMobileAppController = () => {
     cancelWorkerPairing,
     completeWorkerPairing,
     retryImplicitPreviews,
+    retryImplicitPreview,
+    cancelImplicitPreview,
     clearSceneCache,
     clearPreviewCache,
     applyMeshResolutionCap,
