@@ -14,7 +14,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     surfaceOpacityById,
     setSurfaceOpacityById,
     surfaceColorMode,
-    setSurfaceColorMode,
+    selectSurfaceColorMode,
     surfaceRenderMode,
     setSurfaceRenderMode,
     surfaceShading,
@@ -36,6 +36,8 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     selectedSurface,
     sceneObjectItems,
     selectedSurfaceAnalysis,
+    activeAnalysisOverlay,
+    analysisOverlayAvailability,
     objectNameDraft,
     setObjectNameDraft,
     objectActionMessage,
@@ -49,6 +51,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     selectWorkspaceObject,
     toggleSurfaceVisibility,
     setAllSurfacesVisible,
+    selectAnalysisOverlay,
     renameSelectedWorkspaceObject,
     duplicateSelectedWorkspaceObject,
     deleteSelectedWorkspaceObject,
@@ -325,7 +328,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                     testID={`mobile-surface-color-${mode}`}
                     accessibilityRole="button"
                     accessibilityState={{ selected: surfaceColorMode === mode }}
-                    onPress={() => setSurfaceColorMode(mode)}
+                    onPress={() => selectSurfaceColorMode(mode)}
                     style={[styles.pill, surfaceColorMode === mode ? styles.pillActive : null]}
                   >
                     <Text style={[styles.pillText, surfaceColorMode === mode ? styles.pillTextActive : null]}>{label}</Text>
@@ -393,6 +396,32 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                 <>
                   <Text style={styles.subPanelTitle}>{selectedSurface.id}</Text>
                   <Text style={styles.itemMeta}>{selectedSurfaceAnalysis.source}. Measurements use the displayed triangle approximation.</Text>
+                  <Text style={styles.note}>Visualization · one overlay at a time</Text>
+                  <View style={styles.viewerToolbarRow}>
+                    {([[
+                      "none", "Off"
+                    ], [
+                      "curvature", "Curvature"
+                    ], [
+                      "normals", "Normals"
+                    ], [
+                      "boundaries", "Boundaries"
+                    ], [
+                      "non-manifold", "Nonmanifold"
+                    ]] as const).map(([overlay, label]) => (
+                      <Pressable
+                        key={overlay}
+                        testID={`mobile-analysis-overlay-${overlay}`}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: activeAnalysisOverlay === overlay }}
+                        onPress={() => selectAnalysisOverlay(overlay)}
+                        style={[styles.pill, activeAnalysisOverlay === overlay ? styles.pillActive : null]}
+                      >
+                        <Text style={[styles.pillText, activeAnalysisOverlay === overlay ? styles.pillTextActive : null]}>{label}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <Text style={styles.itemMeta}>{analysisOverlayAvailability.message}</Text>
                   <View style={styles.subPanel}>
                     <Text style={styles.subPanelTitle}>Geometry</Text>
                     <View style={styles.inspectorSettingRow}><Text style={styles.itemTitle}>Vertices</Text><Text style={styles.itemMeta}>{selectedSurfaceAnalysis.vertexCount.toLocaleString()}</Text></View>

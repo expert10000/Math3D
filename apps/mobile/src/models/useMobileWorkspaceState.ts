@@ -5,6 +5,7 @@ import { DEFAULT_MOBILE_GRID_PLANES, type MobileGridPlane } from "./mobileCoordi
 import type { MobileSurfaceColorMode } from "../viewer/mobileCurvatureColors";
 import type { MobileRenderQuality } from "../viewer/mobileSurfacePreview";
 import type { MobileSurfaceRenderMode, MobileSurfaceShading } from "../viewer/mobileViewModes";
+import type { MobileAnalysisOverlay } from "../viewer/mobileAnalysisOverlays";
 
 export type CameraCommandType = "reset" | "fit" | "fit-selection";
 
@@ -24,6 +25,7 @@ export const useMobileWorkspaceState = () => {
   const [cameraCommandType, setCameraCommandType] = useState<CameraCommandType | null>(null);
   const [cameraCommandToken, setCameraCommandToken] = useState(0);
   const [viewportSelectionEnabled, setViewportSelectionEnabled] = useState(true);
+  const [activeAnalysisOverlay, setActiveAnalysisOverlay] = useState<MobileAnalysisOverlay>("none");
   return {
     viewerDocument, setViewerDocument, selectedSurfaceId, setSelectedSurfaceId, visibleSurfaceIds, setVisibleSurfaceIds,
     surfaceOpacityById, setSurfaceOpacityById, surfaceColorMode, setSurfaceColorMode,
@@ -31,5 +33,6 @@ export const useMobileWorkspaceState = () => {
     showBoundingBox, setShowBoundingBox,
     showAxes, setShowAxes, gridPlanes, setGridPlanes, cameraOrbit, setCameraOrbit, cameraCommandType, setCameraCommandType,
     cameraCommandToken, setCameraCommandToken, viewportSelectionEnabled, setViewportSelectionEnabled,
+    activeAnalysisOverlay, setActiveAnalysisOverlay,
   };
 };

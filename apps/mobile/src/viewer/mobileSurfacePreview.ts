@@ -32,6 +32,7 @@ export type MobileSurfacePreview = {
 type SurfacePreviewBuildOptions = {
   implicitMeshBySurfaceId?: Record<string, MobileMeshPayload | undefined>;
   colorMode?: MobileSurfaceColorMode;
+  colorSurfaceId?: string | null;
 };
 
 const QUALITY_CAP: Record<MobileRenderQuality, number> = {
@@ -299,7 +300,13 @@ export const buildSceneSurfacePreviews = (
 ): MobileSurfacePreview[] => {
   return (scene.surfaces ?? []).map((surface) => {
     const preview = buildSurfacePreviewGeometry(surface, quality, options);
-    if (preview.geometry && options?.colorMode && options.colorMode !== "solid" && surface.kind !== "mesh") {
+    if (
+      preview.geometry &&
+      options?.colorMode &&
+      options.colorMode !== "solid" &&
+      surface.kind !== "mesh" &&
+      (!options.colorSurfaceId || surface.id === options.colorSurfaceId)
+    ) {
       const colored = colorizeSurfaceCurvature(preview.geometry, options.colorMode);
       if (colored !== preview.geometry) preview.geometry.dispose();
       return { ...preview, geometry: colored };

@@ -5,6 +5,7 @@ import * as THREE from "three";
 import type { SceneDocument } from "@math3d/core";
 import type { MobileSurfaceColorMode } from "../viewer/mobileCurvatureColors";
 import type { MobileSurfaceRenderMode, MobileSurfaceShading } from "../viewer/mobileViewModes";
+import { buildMobileEdgeOverlayGeometry, buildMobileNormalOverlayGeometry, type MobileAnalysisOverlay } from "../viewer/mobileAnalysisOverlays";
 import { DEFAULT_MOBILE_GRID_PLANES, type MobileGridPlane } from "../models/mobileCoordinateGrid";
 import {
   buildSceneSurfacePreviews,
@@ -26,6 +27,7 @@ type MobileSceneViewportProps = {
   onOrbitChange?: (orbit: OrbitState) => void;
   onSelectedSurfaceChange?: (surfaceId: string) => void;
   selectionEnabled?: boolean;
+  analysisOverlay?: MobileAnalysisOverlay;
   onOpenCompute?: () => void;
   renderPaused?: boolean;
   surfaceOpacityById?: Record<string, number>;
@@ -216,6 +218,20 @@ const SurfaceMesh: React.FC<{
   </group>;
 };
 
+const AnalysisLineOverlay: React.FC<{ preview: MobileSurfacePreview; overlay: MobileAnalysisOverlay }> = ({ preview, overlay }) => {
+  const geometry = useMemo(() => {
+    if (!preview.geometry || overlay === "none" || overlay === "curvature") return null;
+    if (overlay === "normals") return buildMobileNormalOverlayGeometry(preview.geometry);
+    return buildMobileEdgeOverlayGeometry(preview.geometry, overlay);
+  }, [overlay, preview.geometry]);
+  useEffect(() => () => geometry?.dispose(), [geometry]);
+  if (!geometry) return null;
+  const color = overlay === "normals" ? "#16a34a" : overlay === "boundaries" ? "#ef4444" : "#d946ef";
+  return <lineSegments geometry={geometry}>
+    <lineBasicMaterial color={color} transparent opacity={0.98} depthWrite={false} />
+  </lineSegments>;
+};
+
 const PlaneGrid: React.FC<{
   plane: MobileGridPlane;
   halfSize: number;
@@ -335,6 +351,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   onOrbitChange,
   onSelectedSurfaceChange,
   selectionEnabled = true,
+  analysisOverlay = "none",
   onOpenCompute,
   renderPaused = false,
   surfaceOpacityById,
@@ -348,8 +365,12 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   viewportStyle,
 }) => {
   const previews = useMemo(
-    () => buildSceneSurfacePreviews(scene, quality, { implicitMeshBySurfaceId, colorMode }),
-    [scene, quality, implicitMeshBySurfaceId, colorMode]
+    () => buildSceneSurfacePreviews(scene, quality, {
+      implicitMeshBySurfaceId,
+      colorMode: analysisOverlay === "curvature" ? colorMode : "solid",
+      colorSurfaceId: selectedSurfaceId,
+    }),
+    [scene, quality, implicitMeshBySurfaceId, colorMode, analysisOverlay, selectedSurfaceId]
   );
   const visibleSet = useMemo(() => {
     if (!visibleSurfaceIds) return null;
@@ -584,6 +605,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
               shading={shading}
               selected={preview.id === selectedSurfaceId}
             />
+            {preview.id === selectedSurfaceId ? <AnalysisLineOverlay preview={preview} overlay={analysisOverlay} /> : null}
           </group>
         ))}
 

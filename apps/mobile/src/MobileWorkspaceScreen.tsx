@@ -10,6 +10,7 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
     setTab,
     surfaceOpacityById,
     surfaceColorMode,
+    activeAnalysisOverlay,
     surfaceRenderMode,
     surfaceShading,
     showBoundingBox,
@@ -68,6 +69,7 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
               renderPaused={!appIsForeground}
               surfaceOpacityById={surfaceOpacityById}
               colorMode={surfaceColorMode}
+              analysisOverlay={activeAnalysisOverlay}
               renderMode={surfaceRenderMode}
               shading={surfaceShading}
               showBoundingBox={showBoundingBox}

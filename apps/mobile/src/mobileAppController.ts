@@ -31,6 +31,7 @@ import { clearMobileThumbnailCache, loadMobileThumbnailCache, saveMobileThumbnai
 import { exportMobileSceneProject, pickMobileSceneProject, shareMobileSceneProject } from "./services/mobileProjectTransferService";
 import { createMobileThumbnailCacheKey, generateMobileSceneThumbnail } from "./viewer/mobileSceneThumbnail";
 import { buildMobileSurfaceAnalysis } from "./viewer/mobileSurfaceAnalysis";
+import { mobileAnalysisOverlayAvailability, type MobileAnalysisOverlay } from "./viewer/mobileAnalysisOverlays";
 
 const ANDROID_GL_DEFAULT_ENABLED = true;
 export const FORCE_ANDROID_SAFE_MODE = false;
@@ -204,6 +205,7 @@ export const useMobileAppController = () => {
     showAxes, setShowAxes, gridPlanes, setGridPlanes, cameraOrbit, setCameraOrbit, cameraCommandType, setCameraCommandType,
     cameraCommandToken, setCameraCommandToken,
     viewportSelectionEnabled, setViewportSelectionEnabled,
+    activeAnalysisOverlay, setActiveAnalysisOverlay,
   } = useMobileWorkspaceState();
   const { selectedSceneId, setSelectedSceneId, storedProjects, setStoredProjects, storageIssues, setStorageIssues,
     storageStatus, setStorageStatus, sceneSearchQuery, setSceneSearchQuery, sceneSortMode, setSceneSortMode,
@@ -321,7 +323,9 @@ export const useMobileAppController = () => {
       setMeshResolutionCapDraft(String(loadedMeshResolutionCap));
       setShowAxes(loadedSettings.showAxes ?? true);
       setGridPlanes(loadedGridPlanes);
-      setSurfaceColorMode(loadedSettings.surfaceColorMode ?? "solid");
+      const loadedSurfaceColorMode = loadedSettings.surfaceColorMode ?? "solid";
+      setSurfaceColorMode(loadedSurfaceColorMode);
+      setActiveAnalysisOverlay(loadedSurfaceColorMode === "solid" ? "none" : "curvature");
       setSurfaceRenderMode(loadedSettings.surfaceRenderMode ?? "solid");
       setSurfaceShading(loadedSettings.surfaceShading ?? "smooth");
       setRenderQuality(loadedSettings.renderQuality ?? "balanced");
@@ -500,10 +504,14 @@ export const useMobileAppController = () => {
     [selectedSurfaceId, viewerDocument, visibleSurfaceIds]
   );
   const selectedSurfaceAnalysis = useMemo(
-    () => inspectorSection === "analyze" && selectedSurface
+    () => (inspectorSection === "analyze" || activeAnalysisOverlay !== "none") && selectedSurface
       ? buildMobileSurfaceAnalysis(selectedSurface, renderQuality, implicitMeshBySurfaceId[selectedSurface.id])
       : null,
-    [implicitMeshBySurfaceId, inspectorSection, renderQuality, selectedSurface]
+    [activeAnalysisOverlay, implicitMeshBySurfaceId, inspectorSection, renderQuality, selectedSurface]
+  );
+  const analysisOverlayAvailability = useMemo(
+    () => mobileAnalysisOverlayAvailability(activeAnalysisOverlay, selectedSurfaceAnalysis),
+    [activeAnalysisOverlay, selectedSurfaceAnalysis]
   );
   useEffect(() => {
     setObjectNameDraft(selectedSurface?.id ?? "");
@@ -1183,6 +1191,22 @@ export const useMobileAppController = () => {
     if (visible) runCameraCommand("fit");
   };
 
+  const selectAnalysisOverlay = (overlay: MobileAnalysisOverlay) => {
+    const availability = mobileAnalysisOverlayAvailability(overlay, selectedSurfaceAnalysis);
+    if (!availability.available) return;
+    setActiveAnalysisOverlay(overlay);
+    if (overlay === "curvature") {
+      setSurfaceColorMode((current) => current === "curvature-faces" ? current : "curvature");
+    } else {
+      setSurfaceColorMode("solid");
+    }
+  };
+
+  const selectSurfaceColorMode = (mode: typeof surfaceColorMode) => {
+    setSurfaceColorMode(mode);
+    setActiveAnalysisOverlay(mode === "solid" ? "none" : "curvature");
+  };
+
   const remapObjectSessionState = (oldId: string, nextId: string) => {
     setVisibleSurfaceIds((current) => current.includes(oldId)
       ? current.map((id) => id === oldId ? nextId : id)
@@ -1628,6 +1652,7 @@ export const useMobileAppController = () => {
     setSurfaceOpacityById,
     surfaceColorMode,
     setSurfaceColorMode,
+    selectSurfaceColorMode,
     surfaceRenderMode,
     setSurfaceRenderMode,
     surfaceShading,
@@ -1693,6 +1718,8 @@ export const useMobileAppController = () => {
     selectedSurface,
     sceneObjectItems,
     selectedSurfaceAnalysis,
+    activeAnalysisOverlay,
+    analysisOverlayAvailability,
     objectNameDraft,
     setObjectNameDraft,
     objectActionMessage,
@@ -1723,6 +1750,7 @@ export const useMobileAppController = () => {
     selectWorkspaceObject,
     toggleSurfaceVisibility,
     setAllSurfacesVisible,
+    selectAnalysisOverlay,
     renameSelectedWorkspaceObject,
     duplicateSelectedWorkspaceObject,
     deleteSelectedWorkspaceObject,
