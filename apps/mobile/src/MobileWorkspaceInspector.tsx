@@ -29,18 +29,19 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     gridPlanes,
     setGridPlanes,
     visibleSurfaceIds,
-    setSelectedSurfaceId,
     limitedMode,
     implicitPreviewBySurfaceId,
     computeJobBySurfaceId,
     viewerSurfaces,
     selectedSurface,
+    sceneObjectItems,
     hasImplicitPreviewErrors,
     workerNegotiation,
     workerCanPreviewImplicit,
     androidFallbackForced,
     saveCurrentViewerScene,
     runCameraCommand,
+    selectWorkspaceObject,
     toggleSurfaceVisibility,
     setAllSurfacesVisible,
     retryImplicitPreviews,
@@ -92,22 +93,52 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                 <Pressable onPress={() => setAllSurfacesVisible(false)} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Hide all</Text></Pressable>
                 <Pressable onPress={() => void saveCurrentViewerScene()} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Save project</Text></Pressable>
               </View>
+              <Text style={styles.note}>Objects</Text>
+              {sceneObjectItems.length === 0 && <Text style={styles.itemMeta}>This scene has no surface objects.</Text>}
+              {sceneObjectItems.map((item) => (
+                <View
+                  key={item.id}
+                  testID={`mobile-scene-object-${item.id}`}
+                  style={[styles.objectListRow, item.selected ? styles.objectListRowSelected : null]}
+                >
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select ${item.label}`}
+                    accessibilityState={{ selected: item.selected }}
+                    onPress={() => selectWorkspaceObject(item.id)}
+                    style={styles.objectListSelection}
+                  >
+                    <View style={[styles.objectKindBadge, item.selected ? styles.objectKindBadgeSelected : null]}>
+                      <Text style={[styles.objectKindBadgeText, item.selected ? styles.objectKindBadgeTextSelected : null]}>
+                        {item.kind === "parametric" ? "P" : item.kind === "implicit" ? "I" : item.kind === "explicit" ? "E" : item.kind === "weierstrass" ? "W" : "M"}
+                      </Text>
+                    </View>
+                    <View style={styles.objectListMeta}>
+                      <Text style={[styles.itemTitle, item.selected ? styles.objectListTitleSelected : null]} numberOfLines={1}>{item.label}</Text>
+                      <Text style={styles.itemMeta}>{item.kindLabel} · {item.visible ? "Visible" : "Hidden"}{item.selected ? " · Selected" : ""}</Text>
+                    </View>
+                  </Pressable>
+                  <Pressable
+                    testID={`mobile-scene-object-visibility-${item.id}`}
+                    accessibilityRole="switch"
+                    accessibilityLabel={`${item.label} visibility`}
+                    accessibilityState={{ checked: item.visible }}
+                    onPress={() => toggleSurfaceVisibility(item.id)}
+                    style={[styles.objectVisibilityButton, item.visible ? styles.objectVisibilityButtonActive : null]}
+                  >
+                    <Text style={[styles.objectVisibilityText, item.visible ? styles.objectVisibilityTextActive : null]}>{item.visible ? "Shown" : "Hidden"}</Text>
+                  </Pressable>
+                </View>
+              ))}
             </>
           )}
           {inspectorSection === "object" && (
             <>
               <Text style={styles.panelTitle}>Object</Text>
-              <View style={styles.viewerToolbarRow}>
-                {viewerSurfaces.map((surface) => (
-                  <Pressable key={surface.id} onPress={() => setSelectedSurfaceId(surface.id)} style={[styles.pill, selectedSurface?.id === surface.id ? styles.pillActive : null]}>
-                    <Text style={[styles.pillText, selectedSurface?.id === surface.id ? styles.pillTextActive : null]} numberOfLines={1}>
-                      {viewerSurfaces.length === 1 ? viewerDocument.title : surface.id}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
+              {!selectedSurface && <Text style={styles.itemMeta}>Select an object from the Scene list or tap a visible surface.</Text>}
               {selectedSurface && (
                 <>
+                  <Text style={styles.subPanelTitle}>{sceneObjectItems.find((item) => item.id === selectedSurface.id)?.label ?? selectedSurface.id}</Text>
                   <Text style={styles.note}>{surfaceSummary(selectedSurface)}</Text>
                   <Pressable onPress={() => toggleSurfaceVisibility(selectedSurface.id)} style={styles.inspectorSettingRow}>
                     <Text style={styles.itemTitle}>Visibility</Text>
@@ -125,7 +156,9 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                     ))}
                   </View>
                   <View style={styles.viewerToolbarRow}>
-                    <Pressable onPress={() => { if (visibleSurfaceIds.includes(selectedSurface.id)) toggleSurfaceVisibility(selectedSurface.id); }} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Hide</Text></Pressable>
+                    <Pressable onPress={() => toggleSurfaceVisibility(selectedSurface.id)} style={styles.secondaryBtn}>
+                      <Text style={styles.secondaryBtnText}>{visibleSurfaceIds.includes(selectedSurface.id) ? "Hide" : "Show"}</Text>
+                    </Pressable>
                   </View>
                 </>
               )}

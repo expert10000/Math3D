@@ -20,7 +20,7 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
     showGrid,
     visibleSurfaceIds,
     selectedSurfaceId,
-    setSelectedSurfaceId,
+    selectWorkspaceObject,
     setInspectorSection,
     setInspectorExpanded,
     cameraOrbit,
@@ -56,7 +56,7 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
               onRenderReady={onViewportRenderReady}
               initialOrbit={cameraOrbit}
               onOrbitChange={setCameraOrbit}
-              onSelectedSurfaceChange={setSelectedSurfaceId}
+              onSelectedSurfaceChange={selectWorkspaceObject}
               onOpenCompute={() => {
                 setInspectorSection("compute");
                 setInspectorExpanded(true);

@@ -24,6 +24,7 @@ import {
 import { parseMobileWorkerPairing } from "./models/mobileWorkerPairing";
 import { canResumeMobileComputeJob, createMobileComputeJob, createMobileComputeJobId, isMobileComputeJobTerminal, mergeMobileComputeJobSnapshot, type MobileComputeJob } from "./models/mobileComputeJobs";
 import { createMobileComputeCacheKey, type MobileComputeCacheLookup } from "./models/mobileComputeCache";
+import { buildMobileSceneObjectItems } from "./models/mobileSceneObjects";
 import { clearMobileComputeJobs, loadMobileComputeJobs, saveMobileComputeJobs } from "./services/mobileComputeJobStorage";
 import { clearMobileThumbnailCache, loadMobileThumbnailCache, saveMobileThumbnailCache, type MobileThumbnailCache } from "./services/mobileThumbnailCacheStorage";
 import { exportMobileSceneProject, pickMobileSceneProject, shareMobileSceneProject } from "./services/mobileProjectTransferService";
@@ -480,7 +481,11 @@ export const useMobileAppController = () => {
     [selectedGalleryId]
   );
   const viewerSurfaces = viewerDocument?.surfaces ?? [];
-  const selectedSurface = viewerSurfaces.find((surface) => surface.id === selectedSurfaceId) ?? viewerSurfaces[0];
+  const selectedSurface = viewerSurfaces.find((surface) => surface.id === selectedSurfaceId) ?? null;
+  const sceneObjectItems = useMemo(
+    () => viewerDocument ? buildMobileSceneObjectItems(viewerDocument, visibleSurfaceIds, selectedSurfaceId) : [],
+    [selectedSurfaceId, viewerDocument, visibleSurfaceIds]
+  );
   const hasImplicitPreviewErrors = useMemo(
     () =>
       (viewerDocument?.surfaces ?? [])
@@ -1133,15 +1138,18 @@ export const useMobileAppController = () => {
     setCameraCommandToken((value) => value + 1);
   };
 
+  const selectWorkspaceObject = (surfaceId: string) => {
+    if (!viewerSurfaces.some((surface) => surface.id === surfaceId)) return;
+    setSelectedSurfaceId(surfaceId);
+    setInspectorSection("object");
+    setInspectorExpanded(true);
+  };
+
   const toggleSurfaceVisibility = (surfaceId: string) => {
     setVisibleSurfaceIds((current) => {
-      const next = current.includes(surfaceId)
+      return current.includes(surfaceId)
         ? current.filter((value) => value !== surfaceId)
         : [...current, surfaceId];
-      if (!next.includes(selectedSurfaceId || "")) {
-        setSelectedSurfaceId(next[0] ?? null);
-      }
-      return next;
     });
   };
 
@@ -1149,7 +1157,6 @@ export const useMobileAppController = () => {
     if (!viewerDocument) return;
     const ids = visible ? (viewerDocument.surfaces ?? []).map((surface) => surface.id) : [];
     setVisibleSurfaceIds(ids);
-    setSelectedSurfaceId(ids[0] ?? null);
     if (visible) runCameraCommand("fit");
   };
 
@@ -1556,6 +1563,7 @@ export const useMobileAppController = () => {
     selectedGallery,
     viewerSurfaces,
     selectedSurface,
+    sceneObjectItems,
     hasImplicitPreviewErrors,
     backendSecurityWarning,
     workerProtocolCompatibility,
@@ -1577,6 +1585,7 @@ export const useMobileAppController = () => {
     openViewerWithSurface,
     saveCurrentViewerScene,
     runCameraCommand,
+    selectWorkspaceObject,
     toggleSurfaceVisibility,
     setAllSurfacesVisible,
     applyWorkerBaseUrl,

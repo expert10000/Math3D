@@ -168,6 +168,74 @@ export const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#e3e8ef",
   },
+  objectListRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#d9e1ea",
+    borderRadius: 11,
+    backgroundColor: "#f8fafc",
+    padding: 8,
+    gap: 8,
+  },
+  objectListRowSelected: {
+    borderColor: "#296fa8",
+    backgroundColor: "#edf6fd",
+  },
+  objectListSelection: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+  },
+  objectKindBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#e7edf3",
+  },
+  objectKindBadgeSelected: {
+    backgroundColor: "#296fa8",
+  },
+  objectKindBadgeText: {
+    color: "#496075",
+    fontWeight: "800",
+    fontSize: 12,
+  },
+  objectKindBadgeTextSelected: {
+    color: "#ffffff",
+  },
+  objectListMeta: {
+    flex: 1,
+    minWidth: 0,
+  },
+  objectListTitleSelected: {
+    color: "#174f7c",
+  },
+  objectVisibilityButton: {
+    minWidth: 58,
+    borderWidth: 1,
+    borderColor: "#c6d1dc",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    alignItems: "center",
+  },
+  objectVisibilityButtonActive: {
+    borderColor: "#55916a",
+    backgroundColor: "#edf8f0",
+  },
+  objectVisibilityText: {
+    color: "#6d7784",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  objectVisibilityTextActive: {
+    color: "#356848",
+  },
   content: {
     paddingHorizontal: 12,
     paddingBottom: 24,

@@ -154,7 +154,8 @@ const SurfaceMesh: React.FC<{
   opacity: number;
   renderMode: MobileSurfaceRenderMode;
   shading: MobileSurfaceShading;
-}> = ({ preview, opacity, renderMode, shading }) => {
+  selected: boolean;
+}> = ({ preview, opacity, renderMode, shading, selected }) => {
   const geometry = preview.geometry;
   useEffect(() => {
     return () => {
@@ -196,6 +197,18 @@ const SurfaceMesh: React.FC<{
           transparent={opacity < 1 || renderMode === "solid-edges"}
           opacity={renderMode === "solid-edges" ? Math.min(0.62, opacity) : opacity}
           depthWrite={renderMode === "wireframe" && opacity >= 1}
+        />
+      </mesh>
+    ) : null}
+    {selected ? (
+      <mesh geometry={geometry} scale={[1.002, 1.002, 1.002]}>
+        <meshBasicMaterial
+          color="#ffd166"
+          wireframe
+          side={THREE.DoubleSide}
+          transparent
+          opacity={0.92}
+          depthWrite={false}
         />
       </mesh>
     ) : null}
@@ -424,7 +437,13 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
         <View style={styles.fallbackList}>
           {visiblePreviews.length === 0 && <Text style={styles.fallbackText}>No visible surfaces selected.</Text>}
           {visiblePreviews.map((preview, index) => (
-            <View key={`fallback-${preview.id}-${index}`} style={styles.fallbackItem}>
+            <Pressable
+              key={`fallback-${preview.id}-${index}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected: preview.id === selectedSurfaceId }}
+              onPress={() => onSelectedSurfaceChange?.(preview.id)}
+              style={[styles.fallbackItem, preview.id === selectedSurfaceId ? styles.fallbackItemSelected : null]}
+            >
               <Text style={styles.fallbackTitle}>{preview.id}</Text>
               {preview.state === "uncomputed" ? (
                 <>
@@ -436,7 +455,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
                 <Text style={styles.fallbackText}>{colorMode === "solid" ? `preview color: ${preview.color}` : "Curvature colors require the 3D renderer."}</Text>
               )}
               {preview.warning ? <Text style={styles.fallbackWarn}>{preview.warning}</Text> : null}
-            </View>
+            </Pressable>
           ))}
         </View>
       </View>
@@ -556,6 +575,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
               opacity={Math.max(0, Math.min(1, surfaceOpacityById?.[preview.id] ?? 1))}
               renderMode={renderMode}
               shading={shading}
+              selected={preview.id === selectedSurfaceId}
             />
           </group>
         ))}
@@ -744,6 +764,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     gap: 2,
+  },
+  fallbackItemSelected: {
+    borderColor: "#296fa8",
+    backgroundColor: "#edf6fd",
   },
   fallbackTitle: {
     fontSize: 12,
