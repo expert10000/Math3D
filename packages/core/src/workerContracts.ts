@@ -166,7 +166,34 @@ export type CgalBooleanMeshResponse =
 
 export type CgalHealthResponse = { ok: boolean; error?: string };
 export type CgalPingResponse = { ok: boolean; pong?: boolean; error?: string };
-export type CgalVersionResponse = { ok: boolean; version?: string; protocol?: string; error?: string };
+export const WORKER_CAPABILITY_IDS = [
+  "cgal.health",
+  "cgal.mesh",
+  "cgal.geodesic-heat",
+  "vtk.preview-implicit",
+  "vtk.clean-normals",
+  "vtk.decimate",
+  "vtk.smooth",
+  "vtk.boolean",
+  "volume.slice",
+  "volume.isosurface",
+  "volume.distance",
+  "volume.streamlines",
+] as const;
+export type WorkerCapabilityId = (typeof WORKER_CAPABILITY_IDS)[number];
+export type WorkerEngineIdentity = {
+  id: string;
+  version: string;
+};
+export type CgalVersionResponse = {
+  ok: boolean;
+  version?: string;
+  protocol?: string;
+  serverVersion?: string;
+  engine?: WorkerEngineIdentity;
+  capabilities?: WorkerCapabilityId[];
+  error?: string;
+};
 export type CgalStopResponse = { ok: boolean; error?: string };
 
 export type GeodesicHeatRequest = {

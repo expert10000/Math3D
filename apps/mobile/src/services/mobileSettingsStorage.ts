@@ -178,8 +178,8 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
       );
     }
 
-    if (typeof payload.workerBaseUrl !== "string" || payload.workerBaseUrl.trim().length === 0) {
-      issues.push("Settings workerBaseUrl is missing or invalid.");
+    if (typeof payload.workerBaseUrl !== "string") {
+      issues.push("Settings workerBaseUrl is invalid.");
       return {
         workerBaseUrl: null,
         androidGlEnabled: null,

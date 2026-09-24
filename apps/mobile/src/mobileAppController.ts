@@ -14,6 +14,13 @@ import { useMobileWorkspaceState, type CameraCommandType } from "./models/useMob
 import { useMobileProjectState } from "./models/useMobileProjectState";
 import { duplicateMobileProject, renameMobileProject } from "./models/mobileProjectOperations";
 import { importMobileSceneProject } from "./models/mobileProjectTransfer";
+import {
+  evaluateMobileWorkerCapabilities,
+  MOBILE_IMPLICIT_PREVIEW_CAPABILITY,
+  mobileWorkerHasCapability,
+  negotiatingMobileWorker,
+  unconfiguredMobileWorker,
+} from "./models/mobileWorkerCapabilities";
 import { clearMobileThumbnailCache, loadMobileThumbnailCache, saveMobileThumbnailCache, type MobileThumbnailCache } from "./services/mobileThumbnailCacheStorage";
 import { exportMobileSceneProject, pickMobileSceneProject, shareMobileSceneProject } from "./services/mobileProjectTransferService";
 import { createMobileThumbnailCacheKey, generateMobileSceneThumbnail } from "./viewer/mobileSceneThumbnail";
@@ -61,13 +68,16 @@ type BackendDiagnostics = {
   latencyMs: number | null;
   workerVersion: string | null;
   workerProtocol: string | null;
+  serverVersion: string | null;
+  engineId: string | null;
+  engineVersion: string | null;
+  capabilities: string[];
   lastError: string | null;
   timeoutDetected: boolean;
   lastPayloadBytes: number | null;
 };
 
-const DEFAULT_WORKER_BASE_URL =
-  process.env.EXPO_PUBLIC_MATH3D_WORKER_BASE_URL || "http://127.0.0.1:8787/api/worker";
+const DEFAULT_WORKER_BASE_URL = process.env.EXPO_PUBLIC_MATH3D_WORKER_BASE_URL || "";
 export const EXPECTED_WORKER_PROTOCOL = process.env.EXPO_PUBLIC_MATH3D_WORKER_PROTOCOL || "2026-03-15";
 const DEFAULT_MESH_RESOLUTION_CAP = 96;
 export const MESH_RESOLUTION_CAP_MIN = 36;
@@ -105,6 +115,7 @@ const inspectWorkerBaseUrl = (
 ):
   | { supported: true; insecure: boolean; host: string; isLocal: boolean }
   | { supported: false; reason: string } => {
+  if (!value.trim()) return { supported: false, reason: "No worker configured" };
   try {
     const parsed = new URL(value);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
@@ -212,10 +223,15 @@ export const useMobileAppController = () => {
     latencyMs: null,
     workerVersion: null,
     workerProtocol: null,
+    serverVersion: null,
+    engineId: null,
+    engineVersion: null,
+    capabilities: [],
     lastError: null,
     timeoutDetected: false,
     lastPayloadBytes: null,
   });
+  const [workerNegotiation, setWorkerNegotiation] = useState(unconfiguredMobileWorker);
   const [settingsActionMessage, setSettingsActionMessage] = useState("");
   const [meshResolutionCap, setMeshResolutionCap] = useState(DEFAULT_MESH_RESOLUTION_CAP);
   const [meshResolutionCapDraft, setMeshResolutionCapDraft] = useState(String(DEFAULT_MESH_RESOLUTION_CAP));
@@ -468,6 +484,7 @@ export const useMobileAppController = () => {
   );
   const backendUrlStatus = useMemo(() => inspectWorkerBaseUrl(workerBaseUrl), [workerBaseUrl]);
   const backendSecurityWarning = useMemo(() => {
+    if (!workerBaseUrl.trim()) return null;
     if (!backendUrlStatus.supported) return `Backend URL warning: ${backendUrlStatus.reason}.`;
     if (backendUrlStatus.insecure && !backendUrlStatus.isLocal) {
       return "Backend URL warning: non-HTTPS endpoint outside local network may expose traffic.";
@@ -475,11 +492,14 @@ export const useMobileAppController = () => {
     return null;
   }, [backendUrlStatus]);
   const workerProtocolCompatibility = useMemo(() => {
-    const protocol = backendDiagnostics.workerProtocol;
-    if (!protocol) return "unknown";
-    if (protocol === EXPECTED_WORKER_PROTOCOL) return "compatible";
-    return "mismatch";
-  }, [backendDiagnostics.workerProtocol]);
+    if (workerNegotiation.status === "ready") return "compatible";
+    if (workerNegotiation.status === "incompatible") return "mismatch";
+    return "unknown";
+  }, [workerNegotiation.status]);
+  const workerCanPreviewImplicit = useMemo(
+    () => mobileWorkerHasCapability(workerNegotiation, MOBILE_IMPLICIT_PREVIEW_CAPABILITY),
+    [workerNegotiation]
+  );
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (next) => {
@@ -561,7 +581,7 @@ export const useMobileAppController = () => {
           }));
         }
 
-        if (limitedMode) {
+        if (limitedMode || !workerCanPreviewImplicit) {
           const cached = await readCachedMesh(cacheKey);
           if (cancelled) return;
           if (cached) {
@@ -580,7 +600,9 @@ export const useMobileAppController = () => {
               ...current,
               [surface.id]: {
                 status: "error",
-                error: "Remote compute disabled in limited mode and no cached preview is available.",
+                error: limitedMode
+                  ? "Remote compute disabled in limited mode and no cached preview is available."
+                  : `A negotiated worker with ${MOBILE_IMPLICIT_PREVIEW_CAPABILITY} is required.`,
               },
             }));
             setImplicitMeshBySurfaceId((current) => ({ ...current, [surface.id]: undefined }));
@@ -672,6 +694,7 @@ export const useMobileAppController = () => {
     implicitPreviewRetryToken,
     meshResolutionCap,
     limitedMode,
+    workerCanPreviewImplicit,
     appIsForeground,
     tab,
   ]);
@@ -1002,6 +1025,7 @@ export const useMobileAppController = () => {
     setWorkerBaseUrlDraft(normalizedUrl);
     setBackendHealthStatus("idle");
     setBackendHealthMessage("");
+    setWorkerNegotiation(unconfiguredMobileWorker());
 
     try {
       await persistMobileSettings({ workerBaseUrl: normalizedUrl });
@@ -1016,26 +1040,39 @@ export const useMobileAppController = () => {
 
   const runBackendHealthCheck = async () => {
     const normalizedUrl = normalizeWorkerBaseUrl(workerBaseUrlDraft);
+    if (!normalizedUrl) {
+      const unconfigured = unconfiguredMobileWorker();
+      setWorkerBaseUrl("");
+      setWorkerNegotiation(unconfigured);
+      setBackendHealthStatus("idle");
+      setBackendHealthMessage(unconfigured.message);
+      setLimitedMode(true);
+      await persistMobileSettings({ workerBaseUrl: "" }).catch(() => undefined);
+      return;
+    }
+
+    setWorkerBaseUrl(normalizedUrl);
     setBackendHealthStatus("loading");
     setBackendHealthMessage(`Checking ${normalizedUrl} ...`);
     setSettingsActionMessage("");
     setBackendDiagnostics((current) => ({ ...current, status: "running" }));
+    setWorkerNegotiation(negotiatingMobileWorker());
 
     const backend = createMobileMeshBackend(normalizedUrl);
     const startedAt = Date.now();
-    const response = await backend
-      .health()
-      .catch((error) => ({ ok: false, error: String((error as Error).message ?? error) }));
+    const [response, versionResponse] = await Promise.all([
+      backend.health().catch((error) => ({ ok: false, error: String((error as Error).message ?? error) })),
+      backend.version().catch((error) => ({ ok: false as const, error: String((error as Error).message ?? error) })),
+    ]);
     const latencyMs = Date.now() - startedAt;
-    const versionResponse = await backend
-      .version()
-      .catch((error) => ({ ok: false as const, error: String((error as Error).message ?? error) }));
+    const negotiation = evaluateMobileWorkerCapabilities(versionResponse, EXPECTED_WORKER_PROTOCOL);
     const workerVersion = versionResponse.ok ? versionResponse.version || null : null;
     const workerProtocol = versionResponse.ok ? versionResponse.protocol || null : null;
+    setWorkerNegotiation(negotiation);
 
-    if (response.ok) {
+    if (response.ok && negotiation.status === "ready") {
       setBackendHealthStatus("ok");
-      setBackendHealthMessage(`Backend healthy at ${normalizedUrl} (${latencyMs} ms)`);
+      setBackendHealthMessage(`Backend healthy at ${normalizedUrl} (${latencyMs} ms). ${negotiation.message}`);
       setBackendDiagnostics((current) => ({
         ...current,
         status: "ready",
@@ -1043,6 +1080,10 @@ export const useMobileAppController = () => {
         latencyMs,
         workerVersion,
         workerProtocol,
+        serverVersion: negotiation.serverVersion,
+        engineId: negotiation.engine?.id ?? null,
+        engineVersion: negotiation.engine?.version ?? null,
+        capabilities: negotiation.capabilities,
         lastError: null,
         timeoutDetected: false,
       }));
@@ -1057,8 +1098,13 @@ export const useMobileAppController = () => {
       return;
     }
 
-    const timeoutDetected = /timeout|aborted|abort/i.test(response.error || "");
-    const healthError = `Cannot reach worker at ${normalizedUrl}. Check the URL, Wi-Fi, and that the worker is running. (${response.error || "Unknown network error"})`;
+    const failureDetail = response.ok
+      ? negotiation.message
+      : response.error || versionResponse.error || "Unknown network error";
+    const timeoutDetected = /timeout|aborted|abort/i.test(failureDetail);
+    const healthError = response.ok
+      ? `Worker at ${normalizedUrl} is incompatible. ${failureDetail}`
+      : `Cannot reach worker at ${normalizedUrl}. Check the URL, Wi-Fi, and that the worker is running. (${failureDetail})`;
     setBackendHealthStatus("error");
     setBackendHealthMessage(healthError);
     setBackendDiagnostics((current) => ({
@@ -1068,6 +1114,10 @@ export const useMobileAppController = () => {
       latencyMs,
       workerVersion,
       workerProtocol,
+      serverVersion: negotiation.serverVersion,
+      engineId: negotiation.engine?.id ?? null,
+      engineVersion: negotiation.engine?.version ?? null,
+      capabilities: negotiation.capabilities,
       lastError: healthError,
       timeoutDetected,
     }));
@@ -1286,6 +1336,8 @@ export const useMobileAppController = () => {
     hasImplicitPreviewErrors,
     backendSecurityWarning,
     workerProtocolCompatibility,
+    workerNegotiation,
+    workerCanPreviewImplicit,
     cameraCommand,
     androidFallbackForced,
     onViewportRenderReady,

@@ -10,6 +10,21 @@ const PORT = Number(process.env.MATH3D_WEB_WORKER_PROXY_PORT || 8787);
 const BODY_LIMIT_MB = Math.max(1, Number(process.env.MATH3D_WEB_WORKER_PROXY_BODY_LIMIT_MB || 256));
 const BODY_LIMIT_BYTES = BODY_LIMIT_MB * 1024 * 1024;
 const ROOT_DIR = path.resolve(__dirname, "..", "..", "..");
+const SERVER_VERSION = String(require(path.join(ROOT_DIR, "package.json")).version || "unknown");
+const WORKER_CAPABILITIES = Object.freeze([
+  "cgal.health",
+  "cgal.mesh",
+  "cgal.geodesic-heat",
+  "vtk.preview-implicit",
+  "vtk.clean-normals",
+  "vtk.decimate",
+  "vtk.smooth",
+  "vtk.boolean",
+  "volume.slice",
+  "volume.isosurface",
+  "volume.distance",
+  "volume.streamlines",
+]);
 
 const diagnosticsState = {
   startupChecked: false,
@@ -868,7 +883,14 @@ async function handleRoute(req, res, pathname) {
       const worker = await getPythonWorker();
       const result = await worker.version();
       recordWorkerSuccess({ version: result.version, protocol: result.protocol });
-      json(res, 200, { ok: true, version: result.version, protocol: result.protocol });
+      json(res, 200, {
+        ok: true,
+        version: result.version,
+        protocol: result.protocol,
+        serverVersion: SERVER_VERSION,
+        engine: { id: "math3d-python-worker", version: result.version },
+        capabilities: WORKER_CAPABILITIES,
+      });
       return;
     }
 

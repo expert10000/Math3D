@@ -36,6 +36,8 @@ export const MobileSettingsScreen: React.FC<{ model: MobileAppController }> = ({
     sceneSummaries,
     backendSecurityWarning,
     workerProtocolCompatibility,
+    workerNegotiation,
+    workerCanPreviewImplicit,
     applyWorkerBaseUrl,
     runBackendHealthCheck,
     clearSceneCache,
@@ -48,7 +50,7 @@ export const MobileSettingsScreen: React.FC<{ model: MobileAppController }> = ({
 
     <View style={styles.panel}>
       <Text style={styles.panelTitle}>Settings</Text>
-      <Text style={styles.note}>Configure backend endpoint used by implicit preview and future compute calls.</Text>
+      <Text style={styles.note}>Connect a compatible worker to enable remote compute. The app remains usable offline.</Text>
 
       <View style={styles.settingRow}>
         <Text style={styles.itemMeta}>Worker base URL</Text>
@@ -68,8 +70,13 @@ export const MobileSettingsScreen: React.FC<{ model: MobileAppController }> = ({
             <Text style={styles.secondaryBtnText}>Health Check</Text>
           </Pressable>
         </View>
-        <Text style={styles.itemMeta}>Applied URL: {workerBaseUrl}</Text>
+        <Text style={styles.itemMeta}>Applied URL: {workerBaseUrl || "Not configured"}</Text>
         <Text style={styles.itemMeta}>Health: {backendHealthStatus}</Text>
+        <Text style={styles.itemMeta}>Negotiation: {workerNegotiation.status}</Text>
+        <Text style={styles.itemMeta}>{workerNegotiation.message}</Text>
+        <Text style={styles.itemMeta}>
+          Implicit preview: {workerCanPreviewImplicit ? "available" : "unavailable"}
+        </Text>
         <Text style={styles.itemMeta}>Request policy: timeout 25s + 1 automatic retry</Text>
         {backendSecurityWarning ? <Text style={styles.warningNote}>{backendSecurityWarning}</Text> : null}
         {backendHealthMessage.length > 0 && (
@@ -202,7 +209,11 @@ export const MobileSettingsScreen: React.FC<{ model: MobileAppController }> = ({
             : "n/a"}
       </Text>
       <Text style={styles.itemMeta}>Worker/proxy version: {backendDiagnostics.workerVersion || "unknown"}</Text>
+      <Text style={styles.itemMeta}>Server version: {backendDiagnostics.serverVersion || "unknown"}</Text>
       <Text style={styles.itemMeta}>Worker protocol: {backendDiagnostics.workerProtocol || "unknown"}</Text>
+      <Text style={styles.itemMeta}>
+        Engine: {backendDiagnostics.engineId || "unknown"}{backendDiagnostics.engineVersion ? ` ${backendDiagnostics.engineVersion}` : ""}
+      </Text>
       <Text style={styles.itemMeta}>Expected protocol: {EXPECTED_WORKER_PROTOCOL}</Text>
       <Text style={styles.itemMeta}>Scene schema version: {SCENE_PROJECT_VERSION}</Text>
       <Text style={styles.itemMeta}>Protocol compatibility: {workerProtocolCompatibility}</Text>
@@ -223,6 +234,7 @@ export const MobileSettingsScreen: React.FC<{ model: MobileAppController }> = ({
           <Text style={styles.itemMeta}>Latency: {backendDiagnostics.latencyMs == null ? "n/a" : `${backendDiagnostics.latencyMs} ms`}</Text>
           <Text style={styles.itemMeta}>Worker version: {backendDiagnostics.workerVersion || "unknown"}</Text>
           <Text style={styles.itemMeta}>Worker protocol: {backendDiagnostics.workerProtocol || "unknown"}</Text>
+          <Text style={styles.itemMeta}>Capabilities: {backendDiagnostics.capabilities.length > 0 ? backendDiagnostics.capabilities.join(", ") : "none"}</Text>
           <Text style={styles.itemMeta}>
             Endpoints: /cgal/health, /cgal/version, /vtk/preview, /volume/isosurface
           </Text>

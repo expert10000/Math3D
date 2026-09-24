@@ -35,6 +35,8 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     viewerSurfaces,
     selectedSurface,
     hasImplicitPreviewErrors,
+    workerNegotiation,
+    workerCanPreviewImplicit,
     androidFallbackForced,
     saveCurrentViewerScene,
     runCameraCommand,
@@ -262,6 +264,8 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
             <>
               <Text style={styles.panelTitle}>Compute</Text>
               <Text style={styles.note}>Mesh generation, cache status, and worker diagnostics for implicit surfaces.</Text>
+              <Text style={styles.itemMeta}>Worker: {workerNegotiation.status}</Text>
+              {!workerCanPreviewImplicit && <Text style={styles.warningNote}>{workerNegotiation.message}</Text>}
               {viewerSurfaces.filter((surface) => surface.kind === "implicit").map((surface) => {
                 const preview = implicitPreviewBySurfaceId[surface.id];
                 return <View key={surface.id} style={styles.subPanel}>
@@ -271,7 +275,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                   {preview?.status === "error" && <Text style={styles.issueText}>{preview.error}</Text>}
                 </View>;
               })}
-              {hasImplicitPreviewErrors && <View style={styles.viewerToolbarRow}>
+              {workerCanPreviewImplicit && hasImplicitPreviewErrors && <View style={styles.viewerToolbarRow}>
                 <Pressable onPress={retryImplicitPreviews} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Retry</Text></Pressable>
                 {!limitedMode && <Pressable onPress={reduceQualityAndRetry} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Reduce quality</Text></Pressable>}
               </View>}
