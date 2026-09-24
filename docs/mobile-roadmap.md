@@ -1,6 +1,6 @@
 # MATH3D mobile roadmap
 
-Updated September 19, 2026. This is the current forward plan for `apps/mobile`. The [functionality and navigation overview](mobile-functionality-navigation-overview.md) records what is implemented; the [migration implementation plan](mobile-migration-implementation-plan.md) records the earlier vertical slice. A roadmap item here is planned until its acceptance evidence is recorded.
+Updated September 25, 2026. MOB24–MOB54 are complete on `main`. This is the current forward plan for `apps/mobile`; the next executable sequence is MOB55–MOB68 in the [Projects, creation, and import extension](mobile-projects-create-import-extension-roadmap.md). The [functionality and navigation overview](mobile-functionality-navigation-overview.md) records the released baseline and implementation history, while the [migration implementation plan](mobile-migration-implementation-plan.md) records the earlier vertical slice.
 
 ## Product direction
 
@@ -14,9 +14,9 @@ Local projects + examples -> shared scene -> mobile viewer
 
 The intended navigation is **Home | Explore | Workspace | Projects | Settings**, with Workspace as the primary destination. Home earns its slot by showing Continue, recent projects, compute connection status, and quick actions; if that does not prove useful, fold its content into Projects. Explore becomes **Examples | Learn**, with Gallery and Functions backed by one example catalog. Workspace exposes **Scene | Object | View | Compute** first, then **Analyze** when it contains mathematical results. Only show an inspector section when it has a working purpose.
 
-## Current-to-target corrections
+## Historical baseline corrections completed by MOB54
 
-| Current in build `150007` | Target | Reason / boundary |
+| Released build `150007` baseline | Implemented direction | Reason / boundary |
 | --- | --- | --- |
 | Analyze shows preview, cache, and errors | **Compute** | Reserve Analyze for geometry, topology, mesh metrics, and overlays. |
 | Files | **Projects** | These are serialized MATH3D scenes, not arbitrary files. |
@@ -41,8 +41,12 @@ The intended navigation is **Home | Explore | Workspace | Projects | Settings**,
 | **M6 — Explore and Learn (P2)** | Shared examples and contextual learning | One typed example descriptor (`id`, title, category, surface type, scene, capabilities, learn topic) drives presets, search, categories, capability filters, and learn cards. Learn starts alongside examples and analysis, not as an independent lesson platform. No remote catalog or submissions in this phase. |
 | **M7 — lightweight authoring (P2)** | Create small scenes on a phone | Primitive creation first, then explicit and parametric formula entry with preview and domains, then implicit creation through compute jobs. Defer full transforms, mesh editing, and desktop CAD workflows. |
 | **M8 — platform hardening (P2)** | Broader device/release readiness | Adaptive quality using frame time, mesh size, screen density, and memory pressure; large-mesh admission before GPU upload (full, reduced preview, remote simplify, reject); accessibility and layout matrix; lifecycle/storage/network cases; first validated iOS companion build. Set resource thresholds from measured devices. |
+| **M9 — project-first entry flows (P1)** | Make Projects the entry and persistence boundary | Unified New Project and Add to Project flows plus offline reusable templates. Every source produces or updates the same validated scene project. |
+| **M10 — object transfer (P1)** | Import and export individual semantic or mesh objects | Shared semantic object envelope, Math3D object import, bounded OBJ/STL/PLY/GLB/glTF adapters, derived-mesh export, and native sharing. All meshes pass MOB52 admission. |
+| **M11 — project composition (P1)** | Reuse objects across projects safely | Shared collision-safe identity/provenance rules, selective add-from-project, and Projects organization for imported, shared, and file sources. |
+| **M12 — desktop/mobile round trip (P1)** | Preserve project identity across a manual handoff | Versioned revision manifest, compatibility preview, divergence handling, resumable desktop/mobile handoff, and a golden cross-runtime transfer matrix. |
 
-M0 is the release gate for a trusted baseline. M1 follows immediately. M2 and M3 can have separate implementation tracks after the M1 boundaries, while M4 should land before broad authoring. M5 depends on valid scene/compute results; M6 reuses the same scene catalog and analysis controls.
+M0–M8 are implemented. M9 begins from the existing project, workspace, authoring, compute, and large-mesh boundaries. M10 defines shared transfer contracts before platform UI; M11 consumes those contracts for safe project composition; M12 adds revision-aware handoff and closes with the cross-runtime release gate.
 
 ## Design contracts for the next packages
 
@@ -61,16 +65,15 @@ M0 is the release gate for a trusted baseline. M1 follows immediately. M2 and M3
 ### Workspace and View
 
 - Scene lists all objects with visibility and selection. Tapping an object opens Object; object actions are scoped to that selection. Camera actions live in the viewport toolbar or View.
-- The mobile viewer now has adaptive XY/XZ/YZ reference planes through the origin with subtle fills and major/minor grids, colored X/Y/Z axes, persistent independent plane switches, Show all/Hide all, and an Axes switch. It also has persisted smooth and per-face curvature intensity colors based on neighboring triangle normals. View still needs Auto/manual quality, bounding box, wireframe/edges, and smooth/flat shading. Auto is measured on devices before it becomes the default.
+- The mobile viewer has adaptive XY/XZ/YZ reference planes through the origin, colored axes, persistent plane switches, Auto/manual quality, bounding box, solid/wireframe/solid-with-edges modes, and persisted solid, smooth-curvature, and per-face curvature colors. Auto quality uses measured frame and mesh pressure through the MOB51 controller.
 - Analyze reports only mathematically meaningful, valid data; one heavy visual overlay at a time limits mobile GPU/memory cost.
 
-## Planned commit sequence
+## Commit sequence
 
-The IDs below are planning labels. MOB24's exact-build Samsung signoff and
-MOB25's shared internal and first production signing paths are implemented;
-MOB26–27 are implemented on the mobile development branch;
-remaining matrix and backup gates are tracked above. Each later commit should
-include focused acceptance evidence.
+MOB24–MOB54 are implemented on `main`. MOB55–MOB68 are planning labels; each
+must include the focused acceptance evidence defined in the extension roadmap.
+The former MOB34A proposal is represented by MOB55 so completed history remains
+sequential and unchanged.
 
 | ID / phase | Planned commit |
 | --- | --- |
@@ -105,6 +108,20 @@ include focused acceptance evidence.
 | MOB52 / M8 | `perf(mobile): add large-mesh admission and simplification workflow` |
 | MOB53 / M8 | `test(mobile): expand layout lifecycle accessibility and network matrix` |
 | MOB54 / M8 | `feat(mobile-ios): establish first validated iOS companion build` |
+| MOB55 / M9 | `feat(mobile-projects): add unified project creation flow` |
+| MOB56 / M9 | `feat(mobile-workspace): add unified add-to-project launcher` |
+| MOB57 / M9 | `feat(mobile-projects): add reusable project templates` |
+| MOB58 / M10 | `feat(core): define semantic scene-object transfer contract` |
+| MOB59 / M10 | `feat(mobile-import): preserve semantic definitions during object import` |
+| MOB60 / M10 | `feat(mobile-import): add OBJ STL and PLY mesh import` |
+| MOB61 / M10 | `feat(mobile-import): add GLB and managed glTF import` |
+| MOB62 / M10 | `feat(mobile-export): add object export and native sharing` |
+| MOB63 / M11 | `feat(core): add collision-safe object remapping and provenance` |
+| MOB64 / M11 | `feat(mobile-projects): add objects from another Math3D project` |
+| MOB65 / M11 | `feat(mobile-projects): organize imported shared and file sources` |
+| MOB66 / M12 | `feat(core): define project handoff revision manifest` |
+| MOB67 / M12 | `feat(mobile-projects): add desktop-mobile project round trip` |
+| MOB68 / M12 | `test(project-transfer): add golden round-trip and recovery matrix` |
 
 ## Verification matrix to grow with the roadmap
 

@@ -14,6 +14,8 @@ This site combines:
 - Curves v1 freeze: `curves-v1-freeze.md` (canonical workflow, mathematical conventions, result lifecycle, interoperability, QA, screenshot baselines, and change policy).
 - Curve spline conventions: `curves-spline-conventions.md` (Bézier/B-spline/NURBS basis, knot, weight, continuity, editing, and serialization rules).
 - Repository folder map: `repository-layout.md`.
+- Mobile roadmap: `mobile-roadmap.md` (completed MOB24–MOB54 baseline and the next phase sequence).
+- Mobile Projects/Create/Import extension: `mobile-projects-create-import-extension-roadmap.md` (MOB55–MOB68 contracts, commit scopes, dependencies, and acceptance gates).
 
 ## Public frontend
 
