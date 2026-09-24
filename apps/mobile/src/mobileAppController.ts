@@ -48,6 +48,7 @@ import { createMobileThumbnailCacheKey, generateMobileSceneThumbnail } from "./v
 import { buildMobileSurfaceAnalysis } from "./viewer/mobileSurfaceAnalysis";
 import { mobileAnalysisOverlayAvailability, type MobileAnalysisOverlay } from "./viewer/mobileAnalysisOverlays";
 import { INITIAL_MOBILE_ADAPTIVE_QUALITY, updateMobileAdaptiveQuality, type MobilePerformanceSample } from "./viewer/mobileAdaptiveQuality";
+import { admitMobileMeshForRendering, type MobileMeshAdmissionAction } from "./models/mobileMeshAdmission";
 
 const ANDROID_GL_DEFAULT_ENABLED = true;
 export const FORCE_ANDROID_SAFE_MODE = false;
@@ -85,6 +86,9 @@ type ImplicitPreviewState = {
   computedAt?: number;
   engineLabel?: string;
   stale?: boolean;
+  admission?: MobileMeshAdmissionAction;
+  sourceTriCount?: number;
+  admissionMessage?: string;
 };
 type ImplicitPreviewBySurfaceId = Record<string, ImplicitPreviewState | undefined>;
 type BackendHealthStatus = "idle" | "loading" | "ok" | "error";
@@ -701,26 +705,45 @@ export const useMobileAppController = () => {
           ...current,
           [surfaceId]: snapshot.status === "failed" || snapshot.status === "cancelled"
             ? { status: "error", error: snapshot.error || snapshot.message || `Compute job ${snapshot.status}.` }
-            : { status: "loading" },
+            : { ...current[surfaceId], status: "loading", error: undefined },
         }));
       }
       return merged;
     };
 
-    const showCachedMesh = (surfaceId: string, cached: MobileCachedMesh) => {
-      setImplicitMeshBySurfaceId((current) => ({ ...current, [surfaceId]: cached.mesh }));
+    const showCachedMesh = (surfaceId: string, cached: MobileCachedMesh): boolean => {
+      const admitted = admitMobileMeshForRendering(cached.mesh, effectiveRenderQuality, false);
+      if (!admitted.mesh) {
+        setImplicitMeshBySurfaceId((current) => ({ ...current, [surfaceId]: undefined }));
+        setImplicitPreviewBySurfaceId((current) => ({
+          ...current,
+          [surfaceId]: {
+            status: "error",
+            error: admitted.admission.reason,
+            admission: admitted.admission.action,
+            sourceTriCount: admitted.admission.sourceTriangles,
+            admissionMessage: admitted.admission.reason,
+          },
+        }));
+        return false;
+      }
+      setImplicitMeshBySurfaceId((current) => ({ ...current, [surfaceId]: admitted.mesh }));
       setImplicitPreviewBySurfaceId((current) => ({
         ...current,
         [surfaceId]: {
           status: "ready",
-          vertexCount: cached.mesh.vertexCount,
-          triCount: cached.mesh.triCount,
+          vertexCount: admitted.mesh?.vertexCount,
+          triCount: admitted.mesh?.triCount,
           cached: true,
           computedAt: cached.provenance.computedAt,
           engineLabel: `${cached.provenance.engine.id} ${cached.provenance.engine.version}`,
           stale: cached.stale,
+          admission: admitted.admission.action,
+          sourceTriCount: admitted.admission.sourceTriangles,
+          admissionMessage: admitted.admission.reason,
         },
       }));
+      return true;
     };
 
     const loadImplicitPreviews = async () => {
@@ -800,8 +823,7 @@ export const useMobileAppController = () => {
         }
 
         if (cachedForInput && !cachedForInput.stale) {
-          showCachedMesh(surface.id, cachedForInput);
-          continue;
+          if (showCachedMesh(surface.id, cachedForInput)) continue;
         }
         if (cachedForInput) showCachedMesh(surface.id, cachedForInput);
 
@@ -862,7 +884,7 @@ export const useMobileAppController = () => {
 
         if (cancelled) return;
 
-        const response = snapshot.result;
+        let response = snapshot.result;
         if (snapshot.status !== "succeeded" || !response?.ok) {
           const responseError = snapshot.error || snapshot.message || (response && !response.ok ? response.error : "Compute job failed.");
           const timeoutDetected = /timeout|aborted|abort/i.test(responseError);
@@ -896,28 +918,149 @@ export const useMobileAppController = () => {
         setLimitedMode(false);
         setLastPreviewTimeout(false);
 
-        const meshPayload: MobileMeshPayload = {
+        let resultSnapshot = snapshot;
+        let meshPayload: MobileMeshPayload = {
           positions: toFloat32(response.positions),
           indices: toUint32(response.indices),
           normals: response.normals ? toFloat32(response.normals) : undefined,
           vertexCount: Number(response.vertexCount) || 0,
           triCount: Number(response.triCount) || 0,
         };
+        let admitted = admitMobileMeshForRendering(meshPayload, effectiveRenderQuality, true);
+        const admissionSourceTriangles = admitted.admission.sourceTriangles;
+        let remoteSimplificationUsed = false;
 
-        setImplicitMeshBySurfaceId((current) => ({ ...current, [surface.id]: meshPayload }));
+        if (admitted.admission.action === "remote-simplify") {
+          remoteSimplificationUsed = true;
+          setImplicitPreviewBySurfaceId((current) => ({
+            ...current,
+            [surface.id]: {
+              status: "loading",
+              admission: "remote-simplify",
+              sourceTriCount: admitted.admission.sourceTriangles,
+              admissionMessage: admitted.admission.reason,
+            },
+          }));
+
+          const simplifiedPayload: Omit<VtkPreviewRequest, "jobId"> = {
+            ...requestPayload,
+            targetFaces: Math.min(
+              admitted.admission.targetTriangles,
+              Math.max(4_000, Math.floor((requestPayload.targetFaces ?? admitted.admission.targetTriangles) / 2))
+            ),
+          };
+          const simplifiedHash = buildImplicitParameterHash(simplifiedPayload, effectiveRenderQuality);
+          const simplifiedJobId = createMobileComputeJobId();
+          const simplifiedRequest = {
+            jobId: simplifiedJobId,
+            operation: "vtk.preview-implicit" as const,
+            inputHash: simplifiedHash,
+            sceneId: viewerDocument.id,
+            sceneSchemaVersion: SCENE_PROJECT_VERSION,
+            parameters: simplifiedPayload,
+          };
+          let simplifiedJob = createMobileComputeJob({
+            surfaceId: surface.id,
+            workerBaseUrl,
+            request: simplifiedRequest,
+          });
+          let simplifiedSnapshot: VtkPreviewJobSnapshot;
+          updateMobileComputeJob(simplifiedJob);
+          await saveMobileComputeJobs(mobileComputeJobsRef.current);
+          try {
+            simplifiedSnapshot = await backend.submitPreviewJob(simplifiedRequest);
+            simplifiedJob = trackSnapshot(surface.id, simplifiedJob, simplifiedSnapshot);
+            while (!cancelled && !isMobileComputeJobTerminal(simplifiedSnapshot.status)) {
+              await new Promise((resolve) => setTimeout(resolve, 500));
+              if (cancelled) return;
+              simplifiedSnapshot = await backend.getPreviewJob(simplifiedJob.jobId);
+              simplifiedJob = trackSnapshot(surface.id, simplifiedJob, simplifiedSnapshot);
+            }
+          } catch (error) {
+            const message = String((error as Error).message ?? error);
+            const now = Date.now();
+            simplifiedSnapshot = {
+              jobId: simplifiedJob.jobId,
+              operation: "vtk.preview-implicit",
+              inputHash: simplifiedHash,
+              sceneId: viewerDocument.id,
+              sceneSchemaVersion: SCENE_PROJECT_VERSION,
+              status: "failed",
+              progress: simplifiedJob.progress,
+              createdAt: simplifiedJob.createdAt,
+              updatedAt: now,
+              error: message,
+              diagnostics: [message],
+            };
+            simplifiedJob = trackSnapshot(surface.id, simplifiedJob, simplifiedSnapshot);
+          }
+
+          const simplifiedResponse = simplifiedSnapshot.result;
+          if (simplifiedSnapshot.status !== "succeeded" || !simplifiedResponse?.ok) {
+            const simplifyError = simplifiedSnapshot.error || simplifiedSnapshot.message ||
+              (simplifiedResponse && !simplifiedResponse.ok ? simplifiedResponse.error : "Remote simplification failed.");
+            setImplicitMeshBySurfaceId((current) => ({ ...current, [surface.id]: undefined }));
+            setImplicitPreviewBySurfaceId((current) => ({
+              ...current,
+              [surface.id]: {
+                status: "error",
+                error: simplifyError,
+                admission: "reject",
+                sourceTriCount: admissionSourceTriangles,
+                admissionMessage: "The oversized mesh could not be simplified by the worker.",
+              },
+            }));
+            continue;
+          }
+
+          resultSnapshot = simplifiedSnapshot;
+          response = simplifiedResponse;
+          meshPayload = {
+            positions: toFloat32(response.positions),
+            indices: toUint32(response.indices),
+            normals: response.normals ? toFloat32(response.normals) : undefined,
+            vertexCount: Number(response.vertexCount) || 0,
+            triCount: Number(response.triCount) || 0,
+          };
+          admitted = admitMobileMeshForRendering(meshPayload, effectiveRenderQuality, false);
+        }
+
+        if (!admitted.mesh) {
+          setImplicitMeshBySurfaceId((current) => ({ ...current, [surface.id]: undefined }));
+          setImplicitPreviewBySurfaceId((current) => ({
+            ...current,
+            [surface.id]: {
+              status: "error",
+              error: admitted.admission.reason,
+              admission: admitted.admission.action,
+              sourceTriCount: admissionSourceTriangles,
+              admissionMessage: admitted.admission.reason,
+            },
+          }));
+          continue;
+        }
+
+        const renderMesh = admitted.mesh;
+
+        setImplicitMeshBySurfaceId((current) => ({ ...current, [surface.id]: renderMesh }));
         setImplicitPreviewBySurfaceId((current) => ({
           ...current,
           [surface.id]: {
             status: "ready",
-            vertexCount: meshPayload.vertexCount,
-            triCount: meshPayload.triCount,
+            vertexCount: renderMesh.vertexCount,
+            triCount: renderMesh.triCount,
             cached: false,
             computedAt: Date.now(),
-            engineLabel: snapshot.engine ? `${snapshot.engine.id} ${snapshot.engine.version}` : undefined,
+            engineLabel: resultSnapshot.engine ? `${resultSnapshot.engine.id} ${resultSnapshot.engine.version}` : undefined,
             stale: false,
+            admission: remoteSimplificationUsed ? "remote-simplify" : admitted.admission.action,
+            sourceTriCount: admissionSourceTriangles,
+            admissionMessage: remoteSimplificationUsed
+              ? "The worker returned a smaller mesh before GPU upload."
+              : admitted.admission.reason,
           },
         }));
-        const resultEngine = snapshot.engine ?? workerNegotiation.engine;
+        const resultEngine = resultSnapshot.engine ?? workerNegotiation.engine;
         if (resultEngine) {
           const provenance = {
             operation: "vtk.preview-implicit" as const,
@@ -929,7 +1072,7 @@ export const useMobileAppController = () => {
             resolution,
             serverVersion: workerNegotiation.serverVersion ?? undefined,
           };
-          void writeCachedMesh(createMobileComputeCacheKey(provenance), meshPayload, provenance);
+          void writeCachedMesh(createMobileComputeCacheKey(provenance), renderMesh, provenance);
         }
       }
       if (!cancelled) setViewerLoadingMessage("");

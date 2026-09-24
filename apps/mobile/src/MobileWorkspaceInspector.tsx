@@ -475,6 +475,15 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                   {job && <Text style={styles.itemMeta}>Job {job.jobId} · {job.progress}%{job.phase ? ` · ${job.phase}` : ""}</Text>}
                   {job?.message && <Text style={styles.itemMeta}>{job.message}</Text>}
                   {preview?.status === "ready" && <Text style={styles.itemMeta}>{preview.vertexCount ?? 0} vertices · {preview.triCount ?? 0} triangles</Text>}
+                  {preview?.admission && (
+                    <Text style={preview.admission === "reject" ? styles.issueText : styles.itemMeta}>
+                      Admission: {preview.admission === "full" ? "full mesh" : preview.admission === "reduced" ? "reduced preview" : preview.admission === "remote-simplify" ? "worker simplification" : "rejected"}
+                      {preview.sourceTriCount != null && preview.triCount != null && preview.sourceTriCount !== preview.triCount
+                        ? ` · ${preview.sourceTriCount.toLocaleString()} → ${preview.triCount.toLocaleString()} triangles`
+                        : ""}
+                    </Text>
+                  )}
+                  {preview?.admissionMessage && <Text style={styles.itemMeta}>{preview.admissionMessage}</Text>}
                   {preview?.cached && preview.engineLabel && (
                     <Text style={preview.stale ? styles.warningNote : styles.itemMeta}>
                       Cache: {preview.stale ? "stale" : "current"} · {preview.engineLabel}
