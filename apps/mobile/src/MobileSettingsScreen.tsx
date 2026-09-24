@@ -78,6 +78,7 @@ export const MobileSettingsScreen: React.FC<{ model: MobileAppController }> = ({
       <View style={styles.settingRow}>
         <Text style={styles.itemMeta}>Advanced manual worker URL</Text>
         <TextInput
+          accessibilityLabel="Worker base URL"
           value={workerBaseUrlDraft}
           onChangeText={setWorkerBaseUrlDraft}
           autoCapitalize="none"
@@ -110,6 +111,7 @@ export const MobileSettingsScreen: React.FC<{ model: MobileAppController }> = ({
       <View style={styles.settingRow}>
         <Text style={styles.itemMeta}>Mesh resolution cap</Text>
         <TextInput
+          accessibilityLabel="Mesh resolution cap"
           value={meshResolutionCapDraft}
           onChangeText={setMeshResolutionCapDraft}
           keyboardType="numeric"

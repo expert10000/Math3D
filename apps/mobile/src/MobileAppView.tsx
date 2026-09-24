@@ -37,6 +37,7 @@ export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model 
           <Pressable
             key={key}
             accessibilityRole="tab"
+            accessibilityLabel={label}
             accessibilityState={{ selected: tab === key }}
             onPress={() => setTab(key)}
             style={[styles.bottomNavItem, tab === key ? styles.bottomNavItemActive : null]}

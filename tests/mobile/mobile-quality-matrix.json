@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "layouts": [
+    { "id": "compact-portrait", "width": 320, "height": 640, "fontScale": 1, "appearance": "light", "orientation": "portrait" },
+    { "id": "standard-portrait", "width": 360, "height": 800, "fontScale": 1.3, "appearance": "dark", "orientation": "portrait" },
+    { "id": "current-portrait", "width": 412, "height": 915, "fontScale": 1.5, "appearance": "light", "orientation": "portrait" },
+    { "id": "phone-landscape", "width": 800, "height": 360, "fontScale": 1.3, "appearance": "dark", "orientation": "landscape" }
+  ],
+  "lifecycle": [
+    { "id": "background-foreground", "runner": "android-emulator" },
+    { "id": "network-loss", "runner": "android-emulator" },
+    { "id": "gl-context-recreation", "runner": "android-emulator" },
+    { "id": "process-kill-restore", "runner": "android-emulator" },
+    { "id": "corrupt-scene", "runner": "tests/unit/mobileSceneStorage.test.ts" },
+    { "id": "storage-full", "runner": "tests/unit/mobileSceneStorage.test.ts" },
+    { "id": "cache-full", "runner": "tests/unit/mobileMeshCacheCapacity.test.ts" }
+  ]
+}

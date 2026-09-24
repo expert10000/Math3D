@@ -28,6 +28,7 @@
     "mobile:android:release": "node scripts/mobile-android-build.mjs release",
     "mobile:android:release:verify": "node scripts/mobile-verify-release-aab.mjs",
     "mobile:android:smoke": "node scripts/mobile-android-emulator-smoke.mjs",
+    "mobile:android:matrix": "node scripts/mobile-android-quality-matrix.mjs",
     "mobile:worker:pair": "node scripts/mobile-worker-pairing.mjs",
     "mobile:device:signoff:check": "node scripts/mobile-device-signoff.mjs",
     "build:web": "npm --prefix apps/web run build",

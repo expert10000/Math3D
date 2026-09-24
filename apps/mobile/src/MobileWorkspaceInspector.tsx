@@ -256,7 +256,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
               {surfaceEditorMode === "explicit" ? (
                 <View style={styles.settingRow}>
                   <Text style={styles.itemMeta}>Object name</Text>
-                  <TextInput testID="mobile-create-explicit-id" value={explicitSurfaceDraft.id} onChangeText={(id) => setExplicitSurfaceDraft((draft) => ({ ...draft, id }))} autoCapitalize="none" autoCorrect={false} style={styles.textInput} />
+                  <TextInput testID="mobile-create-explicit-id" accessibilityLabel="Object ID" value={explicitSurfaceDraft.id} onChangeText={(id) => setExplicitSurfaceDraft((draft) => ({ ...draft, id }))} autoCapitalize="none" autoCorrect={false} style={styles.textInput} />
                   <Text style={styles.itemMeta}>z expression using x and y</Text>
                   <TextInput testID="mobile-create-explicit-expression" value={explicitSurfaceDraft.expression} onChangeText={(expression) => setExplicitSurfaceDraft((draft) => ({ ...draft, expression }))} autoCapitalize="none" autoCorrect={false} style={styles.textInput} />
                   <Text style={styles.itemMeta}>X span</Text>

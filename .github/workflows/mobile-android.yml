@@ -165,7 +165,9 @@ jobs:
           target: google_apis
           arch: x86_64
           disable-animations: true
-          script: node scripts/mobile-android-emulator-smoke.mjs
+          script: |
+            node scripts/mobile-android-emulator-smoke.mjs
+            node scripts/mobile-android-quality-matrix.mjs
 
       - name: Upload APK, hashes, and smoke evidence
         if: always()
@@ -179,4 +181,5 @@ jobs:
             artifacts/mobile/build-info.json
             artifacts/mobile/SHA256SUMS
             output/mobile-android-smoke/**
+            output/mobile-android-matrix/**
             output/mobile-device-signoff-gate.json

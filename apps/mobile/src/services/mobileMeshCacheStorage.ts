@@ -8,12 +8,15 @@ import {
   type MobileComputeCacheLookup,
   type MobileComputeCacheProvenance,
 } from "../models/mobileComputeCache";
+import {
+  admitMobileMeshCacheCandidate,
+  MOBILE_MESH_CACHE_MAX_ENTRIES,
+  MOBILE_MESH_CACHE_MAX_ENTRY_BYTES,
+} from "../models/mobileMeshCacheCapacity";
 
 const CACHE_SCHEMA_VERSION = MOBILE_COMPUTE_CACHE_SCHEMA_VERSION;
 const STORAGE_DIR_NAME = "math3d-mobile";
 const CACHE_FILE_NAME = "mesh-cache.json";
-const MAX_ENTRIES = 20;
-const MAX_ENTRY_BYTES = 12 * 1024 * 1024;
 
 const storageDirectory = new Directory(Paths.document, STORAGE_DIR_NAME);
 const cacheFile = new File(storageDirectory, CACHE_FILE_NAME);
@@ -102,7 +105,7 @@ const readCachePayload = async (): Promise<PersistedCachePayload> => {
     }) as PersistedCacheEntry[];
     return {
       schemaVersion: CACHE_SCHEMA_VERSION,
-      entries: entries.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_ENTRIES),
+      entries: entries.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MOBILE_MESH_CACHE_MAX_ENTRIES),
     };
   } catch {
     return { schemaVersion: CACHE_SCHEMA_VERSION, entries: [] };
@@ -155,7 +158,7 @@ export const writeCachedMesh = async (
   const indicesB64 = encodeBase64(mesh.indices);
   const normalsB64 = mesh.normals ? encodeBase64(mesh.normals) : undefined;
   const estimatedBytes = positionsB64.length + indicesB64.length + (normalsB64?.length ?? 0);
-  if (estimatedBytes > MAX_ENTRY_BYTES) return;
+  if (estimatedBytes > MOBILE_MESH_CACHE_MAX_ENTRY_BYTES) return;
 
   const payload = await readCachePayload();
   const nextEntry: PersistedCacheEntry = {
@@ -168,8 +171,12 @@ export const writeCachedMesh = async (
     updatedAt: Date.now(),
     provenance,
   };
-  const withoutExisting = payload.entries.filter((entry) => entry.key !== key);
-  const entries = [nextEntry, ...withoutExisting].slice(0, MAX_ENTRIES);
+  const admitted = admitMobileMeshCacheCandidate(
+    payload.entries.map((entry) => ({ key: entry.key, encodedBytes: 0, updatedAt: entry.updatedAt })),
+    { key, encodedBytes: estimatedBytes, updatedAt: nextEntry.updatedAt }
+  );
+  const byKey = new Map([...payload.entries, nextEntry].map((entry) => [entry.key, entry]));
+  const entries = admitted.map((entry) => byKey.get(entry.key)).filter((entry): entry is PersistedCacheEntry => Boolean(entry));
   await writeCachePayload({ schemaVersion: CACHE_SCHEMA_VERSION, entries });
 };
 
