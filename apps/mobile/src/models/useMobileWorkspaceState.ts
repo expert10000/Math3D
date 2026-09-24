@@ -6,7 +6,7 @@ import type { MobileSurfaceColorMode } from "../viewer/mobileCurvatureColors";
 import type { MobileRenderQuality } from "../viewer/mobileSurfacePreview";
 import type { MobileSurfaceRenderMode, MobileSurfaceShading } from "../viewer/mobileViewModes";
 
-export type CameraCommandType = "reset" | "fit";
+export type CameraCommandType = "reset" | "fit" | "fit-selection";
 
 export const useMobileWorkspaceState = () => {
   const [viewerDocument, setViewerDocument] = useState<SceneDocument | null>(null);
@@ -23,12 +23,13 @@ export const useMobileWorkspaceState = () => {
   const [cameraOrbit, setCameraOrbit] = useState<OrbitState | null>(null);
   const [cameraCommandType, setCameraCommandType] = useState<CameraCommandType | null>(null);
   const [cameraCommandToken, setCameraCommandToken] = useState(0);
+  const [viewportSelectionEnabled, setViewportSelectionEnabled] = useState(true);
   return {
     viewerDocument, setViewerDocument, selectedSurfaceId, setSelectedSurfaceId, visibleSurfaceIds, setVisibleSurfaceIds,
     surfaceOpacityById, setSurfaceOpacityById, surfaceColorMode, setSurfaceColorMode,
     surfaceRenderMode, setSurfaceRenderMode, surfaceShading, setSurfaceShading, renderQuality, setRenderQuality,
     showBoundingBox, setShowBoundingBox,
     showAxes, setShowAxes, gridPlanes, setGridPlanes, cameraOrbit, setCameraOrbit, cameraCommandType, setCameraCommandType,
-    cameraCommandToken, setCameraCommandToken,
+    cameraCommandToken, setCameraCommandToken, viewportSelectionEnabled, setViewportSelectionEnabled,
   };
 };

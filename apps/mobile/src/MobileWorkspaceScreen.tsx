@@ -31,6 +31,9 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
     implicitMeshBySurfaceId,
     viewerSurfaces,
     cameraCommand,
+    runCameraCommand,
+    viewportSelectionEnabled,
+    setViewportSelectionEnabled,
     androidFallbackForced,
     onViewportRenderReady
   } = model;
@@ -57,6 +60,7 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
               initialOrbit={cameraOrbit}
               onOrbitChange={setCameraOrbit}
               onSelectedSurfaceChange={selectWorkspaceObject}
+              selectionEnabled={viewportSelectionEnabled}
               onOpenCompute={() => {
                 setInspectorSection("compute");
                 setInspectorExpanded(true);
@@ -72,6 +76,35 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
               gridPlanes={gridPlanes}
               viewportStyle={styles.workspaceViewport}
             />
+            <View style={styles.viewportActionToolbar} pointerEvents="box-none">
+              <Pressable
+                testID="mobile-viewport-fit-selection"
+                accessibilityRole="button"
+                accessibilityLabel="Fit selected object"
+                accessibilityState={{ disabled: !selectedSurfaceId }}
+                disabled={!selectedSurfaceId}
+                onPress={() => runCameraCommand("fit-selection")}
+                style={[styles.viewportActionButton, !selectedSurfaceId ? styles.viewportActionButtonDisabled : null]}
+              >
+                <Text style={styles.viewportActionText}>Fit selected</Text>
+              </Pressable>
+              <Pressable testID="mobile-viewport-fit-scene" accessibilityRole="button" onPress={() => runCameraCommand("fit")} style={styles.viewportActionButton}>
+                <Text style={styles.viewportActionText}>Fit scene</Text>
+              </Pressable>
+              <Pressable testID="mobile-viewport-reset" accessibilityRole="button" onPress={() => runCameraCommand("reset")} style={styles.viewportActionButton}>
+                <Text style={styles.viewportActionText}>Reset</Text>
+              </Pressable>
+              <Pressable
+                testID="mobile-viewport-selection-mode"
+                accessibilityRole="switch"
+                accessibilityLabel="Tap object selection mode"
+                accessibilityState={{ checked: viewportSelectionEnabled }}
+                onPress={() => setViewportSelectionEnabled((enabled) => !enabled)}
+                style={[styles.viewportActionButton, viewportSelectionEnabled ? styles.viewportActionButtonActive : null]}
+              >
+                <Text style={[styles.viewportActionText, viewportSelectionEnabled ? styles.viewportActionTextActive : null]}>Select</Text>
+              </Pressable>
+            </View>
             {viewerLoadingMessage.length > 0 && (
               <View style={styles.loadingOverlay} pointerEvents="none">
                 <ActivityIndicator color="#ffffff" size="small" />

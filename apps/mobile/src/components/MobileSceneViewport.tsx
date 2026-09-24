@@ -18,13 +18,14 @@ type MobileSceneViewportProps = {
   quality: MobileRenderQuality;
   visibleSurfaceIds?: string[];
   selectedSurfaceId?: string | null;
-  cameraCommand?: { type: "reset" | "fit"; token: number } | null;
+  cameraCommand?: { type: "reset" | "fit" | "fit-selection"; token: number } | null;
   forceFallback?: boolean;
   implicitMeshBySurfaceId?: Record<string, MobileMeshPayload | undefined>;
   onRenderReady?: () => void;
   initialOrbit?: OrbitState | null;
   onOrbitChange?: (orbit: OrbitState) => void;
   onSelectedSurfaceChange?: (surfaceId: string) => void;
+  selectionEnabled?: boolean;
   onOpenCompute?: () => void;
   renderPaused?: boolean;
   surfaceOpacityById?: Record<string, number>;
@@ -333,6 +334,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   initialOrbit,
   onOrbitChange,
   onSelectedSurfaceChange,
+  selectionEnabled = true,
   onOpenCompute,
   renderPaused = false,
   surfaceOpacityById,
@@ -420,8 +422,13 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
     }
     if (cameraCommand.type === "fit") {
       orbitRef.current = fitOrbitToPreviews(visiblePreviews, orbitRef.current, viewportAspect);
+      return;
     }
-  }, [cameraCommand, visiblePreviews, viewportAspect]);
+    if (cameraCommand.type === "fit-selection") {
+      const selected = previews.find((preview) => preview.id === selectedSurfaceId);
+      orbitRef.current = fitOrbitToPreviews(selected ? [selected] : visiblePreviews, orbitRef.current, viewportAspect);
+    }
+  }, [cameraCommand, previews, selectedSurfaceId, visiblePreviews, viewportAspect]);
 
   useEffect(() => {
     onOrbitChange?.(orbitRef.current);
@@ -441,7 +448,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
               key={`fallback-${preview.id}-${index}`}
               accessibilityRole="button"
               accessibilityState={{ selected: preview.id === selectedSurfaceId }}
-              onPress={() => onSelectedSurfaceChange?.(preview.id)}
+              onPress={() => { if (selectionEnabled) onSelectedSurfaceChange?.(preview.id); }}
               style={[styles.fallbackItem, preview.id === selectedSurfaceId ? styles.fallbackItemSelected : null]}
             >
               <Text style={styles.fallbackTitle}>{preview.id}</Text>
@@ -567,7 +574,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
           <group
             key={`surface-preview-${preview.id}-${index}`}
             onPointerDown={() => {
-              onSelectedSurfaceChange?.(preview.id);
+              if (selectionEnabled) onSelectedSurfaceChange?.(preview.id);
             }}
           >
             <SurfaceMesh

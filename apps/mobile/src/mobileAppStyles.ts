@@ -97,6 +97,38 @@ export const styles = StyleSheet.create({
     height: "100%",
     borderRadius: 12,
   },
+  viewportActionToolbar: {
+    position: "absolute",
+    left: 8,
+    bottom: 8,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 5,
+    maxWidth: "88%",
+  },
+  viewportActionButton: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(211,226,239,0.9)",
+    backgroundColor: "rgba(25,55,82,0.88)",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  viewportActionButtonActive: {
+    borderColor: "#ffd166",
+    backgroundColor: "rgba(35,82,119,0.96)",
+  },
+  viewportActionButtonDisabled: {
+    opacity: 0.42,
+  },
+  viewportActionText: {
+    color: "#f7fbff",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  viewportActionTextActive: {
+    color: "#ffe59a",
+  },
   workspaceEmpty: {
     flex: 1,
     justifyContent: "center",

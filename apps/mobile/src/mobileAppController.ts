@@ -202,6 +202,7 @@ export const useMobileAppController = () => {
     showBoundingBox, setShowBoundingBox,
     showAxes, setShowAxes, gridPlanes, setGridPlanes, cameraOrbit, setCameraOrbit, cameraCommandType, setCameraCommandType,
     cameraCommandToken, setCameraCommandToken,
+    viewportSelectionEnabled, setViewportSelectionEnabled,
   } = useMobileWorkspaceState();
   const { selectedSceneId, setSelectedSceneId, storedProjects, setStoredProjects, storageIssues, setStorageIssues,
     storageStatus, setStorageStatus, sceneSearchQuery, setSceneSearchQuery, sceneSortMode, setSceneSortMode,
@@ -1696,6 +1697,8 @@ export const useMobileAppController = () => {
     workerPairingScannerVisible,
     workerPairingExpiresAt: workerAuthorization?.expiresAt ?? null,
     cameraCommand,
+    viewportSelectionEnabled,
+    setViewportSelectionEnabled,
     androidFallbackForced,
     onViewportRenderReady,
     openStoredScene,
