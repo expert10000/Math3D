@@ -275,11 +275,17 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                 const job = computeJobBySurfaceId[surface.id];
                 return <View key={surface.id} style={styles.subPanel}>
                   <Text style={styles.subPanelTitle}>{surface.id}</Text>
-                  <Text style={styles.itemMeta}>Status: {job?.status ?? preview?.status ?? "idle"}{preview?.cached ? " · cached" : ""}</Text>
+                  <Text style={styles.itemMeta}>Status: {preview?.cached ? "ready · cached" : job?.status ?? preview?.status ?? "idle"}</Text>
                   {job && <Text style={styles.itemMeta}>Job {job.jobId} · {job.progress}%{job.phase ? ` · ${job.phase}` : ""}</Text>}
                   {job?.message && <Text style={styles.itemMeta}>{job.message}</Text>}
                   {preview?.status === "ready" && <Text style={styles.itemMeta}>{preview.vertexCount ?? 0} vertices · {preview.triCount ?? 0} triangles</Text>}
-                  {(job?.error || preview?.status === "error") && <Text style={styles.issueText}>{job?.error || preview?.error}</Text>}
+                  {preview?.cached && preview.engineLabel && (
+                    <Text style={preview.stale ? styles.warningNote : styles.itemMeta}>
+                      Cache: {preview.stale ? "stale" : "current"} · {preview.engineLabel}
+                      {preview.computedAt ? ` · ${new Date(preview.computedAt).toLocaleString()}` : ""}
+                    </Text>
+                  )}
+                  {(!preview?.cached && (job?.error || preview?.status === "error")) && <Text style={styles.issueText}>{job?.error || preview?.error}</Text>}
                   {job && (job.status === "queued" || job.status === "running") && (
                     <Pressable testID={`mobile-compute-cancel-${surface.id}`} onPress={() => void cancelImplicitPreview(surface.id)} style={styles.secondaryBtn}>
                       <Text style={styles.secondaryBtnText}>Cancel</Text>

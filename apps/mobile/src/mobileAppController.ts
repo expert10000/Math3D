@@ -6,7 +6,7 @@ import { DEFAULT_MOBILE_GRID_PLANES } from "./models/mobileCoordinateGrid";
 import type { MobileSceneSummary, MobileStoredSceneProject } from "./models/mobileScene";
 import { buildSceneSummary, clearStoredSceneProjects, createStoredProjectFromScene, describeMobileSceneStorageError, loadStoredSceneProjects, readSceneFromStoredProject, saveStoredSceneProjects } from "./services/mobileSceneStorage";
 import { createMobileMeshBackend } from "./services/mobileMeshBackend";
-import { createMeshCacheKey, readCachedMesh, writeCachedMesh } from "./services/mobileMeshCacheStorage";
+import { readCachedMesh, readLatestCachedMesh, writeCachedMesh, type MobileCachedMesh } from "./services/mobileMeshCacheStorage";
 import { loadMobileSettings, saveMobileSettings } from "./services/mobileSettingsStorage";
 import type { MobileMeshPayload, MobileRenderQuality } from "./viewer/mobileSurfacePreview";
 import { useMobileNavigationState, type MobileTab } from "./models/useMobileNavigationState";
@@ -23,6 +23,7 @@ import {
 } from "./models/mobileWorkerCapabilities";
 import { parseMobileWorkerPairing } from "./models/mobileWorkerPairing";
 import { canResumeMobileComputeJob, createMobileComputeJob, createMobileComputeJobId, isMobileComputeJobTerminal, mergeMobileComputeJobSnapshot, type MobileComputeJob } from "./models/mobileComputeJobs";
+import { createMobileComputeCacheKey, type MobileComputeCacheLookup } from "./models/mobileComputeCache";
 import { clearMobileComputeJobs, loadMobileComputeJobs, saveMobileComputeJobs } from "./services/mobileComputeJobStorage";
 import { clearMobileThumbnailCache, loadMobileThumbnailCache, saveMobileThumbnailCache, type MobileThumbnailCache } from "./services/mobileThumbnailCacheStorage";
 import { exportMobileSceneProject, pickMobileSceneProject, shareMobileSceneProject } from "./services/mobileProjectTransferService";
@@ -61,6 +62,9 @@ type ImplicitPreviewState = {
   vertexCount?: number;
   triCount?: number;
   cached?: boolean;
+  computedAt?: number;
+  engineLabel?: string;
+  stale?: boolean;
 };
 type ImplicitPreviewBySurfaceId = Record<string, ImplicitPreviewState | undefined>;
 type BackendHealthStatus = "idle" | "loading" | "ok" | "error";
@@ -86,7 +90,6 @@ const DEFAULT_MESH_RESOLUTION_CAP = 96;
 export const MESH_RESOLUTION_CAP_MIN = 36;
 export const MESH_RESOLUTION_CAP_MAX = 192;
 export const PREVIEW_PAYLOAD_WARNING_BYTES = 25_000;
-const PREVIEW_SCHEMA_VERSION = 1;
 
 const normalizeWorkerBaseUrl = (value: string): string => {
   const trimmed = value.trim();
@@ -145,16 +148,6 @@ const hashText = (value: string): string => {
   }
   return (hash >>> 0).toString(16);
 };
-
-const buildSceneHash = (scene: SceneDocument): string =>
-  hashText(
-    JSON.stringify({
-      id: scene.id,
-      updatedAt: scene.updatedAt,
-      title: scene.title,
-      surfaceIds: (scene.surfaces ?? []).map((surface) => surface.id),
-    })
-  );
 
 const buildImplicitParameterHash = (payload: Omit<VtkPreviewRequest, "jobId">, quality: MobileRenderQuality): string =>
   hashText(JSON.stringify({ payload, quality }));
@@ -617,6 +610,22 @@ export const useMobileAppController = () => {
       return merged;
     };
 
+    const showCachedMesh = (surfaceId: string, cached: MobileCachedMesh) => {
+      setImplicitMeshBySurfaceId((current) => ({ ...current, [surfaceId]: cached.mesh }));
+      setImplicitPreviewBySurfaceId((current) => ({
+        ...current,
+        [surfaceId]: {
+          status: "ready",
+          vertexCount: cached.mesh.vertexCount,
+          triCount: cached.mesh.triCount,
+          cached: true,
+          computedAt: cached.provenance.computedAt,
+          engineLabel: `${cached.provenance.engine.id} ${cached.provenance.engine.version}`,
+          stale: cached.stale,
+        },
+      }));
+    };
+
     const loadImplicitPreviews = async () => {
       const loadingState: ImplicitPreviewBySurfaceId = {};
       for (const surface of implicitSurfaces) {
@@ -644,14 +653,27 @@ export const useMobileAppController = () => {
           targetFaces: renderQuality === "performance" ? 16000 : 28000,
         };
         const requestPayloadBytes = JSON.stringify(requestPayload).length;
-        const sceneHash = buildSceneHash(viewerDocument);
         const parameterHash = buildImplicitParameterHash(requestPayload, renderQuality);
-        const cacheKey = createMeshCacheKey([
-          PREVIEW_SCHEMA_VERSION,
-          sceneHash,
-          surface.id,
-          parameterHash,
-        ]);
+        const latestJob = [...mobileComputeJobsRef.current]
+          .sort((a, b) => b.updatedAt - a.updatedAt)
+          .find((job) =>
+            job.surfaceId === surface.id &&
+            job.request.sceneId === viewerDocument.id &&
+            job.request.inputHash === parameterHash
+          );
+        const expectedEngine = workerNegotiation.engine ?? latestJob?.engine;
+        const cacheLookup: MobileComputeCacheLookup = {
+          operation: "vtk.preview-implicit",
+          inputHash: parameterHash,
+          sceneId: viewerDocument.id,
+          sceneSchemaVersion: SCENE_PROJECT_VERSION,
+          engine: expectedEngine,
+        };
+        const exactCacheKey = expectedEngine
+          ? createMobileComputeCacheKey({ ...cacheLookup, engine: expectedEngine })
+          : null;
+        let cachedForInput = exactCacheKey ? await readCachedMesh(exactCacheKey) : null;
+        if (!cachedForInput) cachedForInput = await readLatestCachedMesh(cacheLookup);
 
         if (!cancelled) {
           setBackendDiagnostics((current) => ({
@@ -661,19 +683,9 @@ export const useMobileAppController = () => {
         }
 
         if (limitedMode || !workerCanPreviewImplicit) {
-          const cached = await readCachedMesh(cacheKey);
           if (cancelled) return;
-          if (cached) {
-            setImplicitMeshBySurfaceId((current) => ({ ...current, [surface.id]: cached }));
-            setImplicitPreviewBySurfaceId((current) => ({
-              ...current,
-              [surface.id]: {
-                status: "ready",
-                vertexCount: cached.vertexCount,
-                triCount: cached.triCount,
-                cached: true,
-              },
-            }));
+          if (cachedForInput) {
+            showCachedMesh(surface.id, cachedForInput);
           } else {
             setImplicitPreviewBySurfaceId((current) => ({
               ...current,
@@ -689,13 +701,15 @@ export const useMobileAppController = () => {
           continue;
         }
 
-        const existingJob = [...mobileComputeJobsRef.current]
-          .sort((a, b) => b.updatedAt - a.updatedAt)
-          .find((job) =>
-            job.surfaceId === surface.id &&
-            job.request.sceneId === viewerDocument.id &&
-            canResumeMobileComputeJob(job, workerBaseUrl, parameterHash)
-          );
+        if (cachedForInput && !cachedForInput.stale) {
+          showCachedMesh(surface.id, cachedForInput);
+          continue;
+        }
+        if (cachedForInput) showCachedMesh(surface.id, cachedForInput);
+
+        const existingJob = latestJob && canResumeMobileComputeJob(latestJob, workerBaseUrl, parameterHash)
+          ? latestJob
+          : undefined;
 
         let mobileJob = existingJob;
         let snapshot: VtkPreviewJobSnapshot;
@@ -754,18 +768,8 @@ export const useMobileAppController = () => {
         if (snapshot.status !== "succeeded" || !response?.ok) {
           const responseError = snapshot.error || snapshot.message || (response && !response.ok ? response.error : "Compute job failed.");
           const timeoutDetected = /timeout|aborted|abort/i.test(responseError);
-          const cached = await readCachedMesh(cacheKey);
-          if (cached) {
-            setImplicitMeshBySurfaceId((current) => ({ ...current, [surface.id]: cached }));
-            setImplicitPreviewBySurfaceId((current) => ({
-              ...current,
-              [surface.id]: {
-                status: "ready",
-                vertexCount: cached.vertexCount,
-                triCount: cached.triCount,
-                cached: true,
-              },
-            }));
+          if (cachedForInput) {
+            showCachedMesh(surface.id, cachedForInput);
             setBackendDiagnostics((current) => ({
               ...current,
               lastError: `Using cached preview: ${responseError}`,
@@ -810,9 +814,25 @@ export const useMobileAppController = () => {
             vertexCount: meshPayload.vertexCount,
             triCount: meshPayload.triCount,
             cached: false,
+            computedAt: Date.now(),
+            engineLabel: snapshot.engine ? `${snapshot.engine.id} ${snapshot.engine.version}` : undefined,
+            stale: false,
           },
         }));
-        void writeCachedMesh(cacheKey, meshPayload);
+        const resultEngine = snapshot.engine ?? workerNegotiation.engine;
+        if (resultEngine) {
+          const provenance = {
+            operation: "vtk.preview-implicit" as const,
+            inputHash: parameterHash,
+            sceneId: viewerDocument.id,
+            sceneSchemaVersion: SCENE_PROJECT_VERSION,
+            engine: resultEngine,
+            computedAt: Date.now(),
+            resolution,
+            serverVersion: workerNegotiation.serverVersion ?? undefined,
+          };
+          void writeCachedMesh(createMobileComputeCacheKey(provenance), meshPayload, provenance);
+        }
       }
       if (!cancelled) setViewerLoadingMessage("");
     };
@@ -832,6 +852,8 @@ export const useMobileAppController = () => {
     meshResolutionCap,
     limitedMode,
     workerCanPreviewImplicit,
+    workerNegotiation.engine,
+    workerNegotiation.serverVersion,
     appIsForeground,
     tab,
   ]);

@@ -1,8 +1,15 @@
 import { decode as decodeBase64String, encode as encodeBase64String } from "base-64";
 import { Directory, File, Paths } from "expo-file-system";
 import type { MobileMeshPayload } from "../viewer/mobileSurfacePreview";
+import {
+  MOBILE_COMPUTE_CACHE_SCHEMA_VERSION,
+  isMobileComputeCacheStale,
+  mobileComputeCacheMatchesLookup,
+  type MobileComputeCacheLookup,
+  type MobileComputeCacheProvenance,
+} from "../models/mobileComputeCache";
 
-const CACHE_SCHEMA_VERSION = 1;
+const CACHE_SCHEMA_VERSION = MOBILE_COMPUTE_CACHE_SCHEMA_VERSION;
 const STORAGE_DIR_NAME = "math3d-mobile";
 const CACHE_FILE_NAME = "mesh-cache.json";
 const MAX_ENTRIES = 20;
@@ -19,6 +26,7 @@ type PersistedCacheEntry = {
   vertexCount: number;
   triCount: number;
   updatedAt: number;
+  provenance: MobileComputeCacheProvenance;
 };
 
 type PersistedCachePayload = {
@@ -79,7 +87,17 @@ const readCachePayload = async (): Promise<PersistedCachePayload> => {
         typeof value.indices_b64 === "string" &&
         typeof value.vertexCount === "number" &&
         typeof value.triCount === "number" &&
-        typeof value.updatedAt === "number"
+        typeof value.updatedAt === "number" &&
+        typeof value.provenance === "object" &&
+        value.provenance !== null &&
+        typeof value.provenance.inputHash === "string" &&
+        typeof value.provenance.sceneId === "string" &&
+        typeof value.provenance.sceneSchemaVersion === "number" &&
+        typeof value.provenance.engine === "object" &&
+        value.provenance.engine !== null &&
+        typeof value.provenance.engine.id === "string" &&
+        typeof value.provenance.engine.version === "string" &&
+        typeof value.provenance.computedAt === "number"
       );
     }) as PersistedCacheEntry[];
     return {
@@ -96,22 +114,43 @@ const writeCachePayload = async (payload: PersistedCachePayload): Promise<void> 
   cacheFile.write(JSON.stringify(payload, null, 2), { encoding: "utf8" });
 };
 
-export const createMeshCacheKey = (parts: ReadonlyArray<string | number>): string => parts.join("|");
+export type MobileCachedMesh = {
+  mesh: MobileMeshPayload;
+  provenance: MobileComputeCacheProvenance;
+  stale: boolean;
+};
 
-export const readCachedMesh = async (key: string): Promise<MobileMeshPayload | null> => {
-  const payload = await readCachePayload();
-  const entry = payload.entries.find((item) => item.key === key);
-  if (!entry) return null;
-  return {
+const decodeCacheEntry = (entry: PersistedCacheEntry, stale: boolean): MobileCachedMesh => ({
+  mesh: {
     positions: new Float32Array(decodeBase64ToArrayBuffer(entry.positions_b64)),
     indices: new Uint32Array(decodeBase64ToArrayBuffer(entry.indices_b64)),
     normals: entry.normals_b64 ? new Float32Array(decodeBase64ToArrayBuffer(entry.normals_b64)) : undefined,
     vertexCount: entry.vertexCount,
     triCount: entry.triCount,
-  };
+  },
+  provenance: entry.provenance,
+  stale,
+});
+
+export const readCachedMesh = async (key: string): Promise<MobileCachedMesh | null> => {
+  const payload = await readCachePayload();
+  const entry = payload.entries.find((item) => item.key === key);
+  if (!entry) return null;
+  return decodeCacheEntry(entry, false);
 };
 
-export const writeCachedMesh = async (key: string, mesh: MobileMeshPayload): Promise<void> => {
+export const readLatestCachedMesh = async (lookup: MobileComputeCacheLookup): Promise<MobileCachedMesh | null> => {
+  const payload = await readCachePayload();
+  const entry = payload.entries.find((item) => mobileComputeCacheMatchesLookup(item.provenance, lookup));
+  if (!entry) return null;
+  return decodeCacheEntry(entry, isMobileComputeCacheStale(entry.provenance, lookup.engine));
+};
+
+export const writeCachedMesh = async (
+  key: string,
+  mesh: MobileMeshPayload,
+  provenance: MobileComputeCacheProvenance
+): Promise<void> => {
   const positionsB64 = encodeBase64(mesh.positions);
   const indicesB64 = encodeBase64(mesh.indices);
   const normalsB64 = mesh.normals ? encodeBase64(mesh.normals) : undefined;
@@ -127,6 +166,7 @@ export const writeCachedMesh = async (key: string, mesh: MobileMeshPayload): Pro
     vertexCount: mesh.vertexCount,
     triCount: mesh.triCount,
     updatedAt: Date.now(),
+    provenance,
   };
   const withoutExisting = payload.entries.filter((entry) => entry.key !== key);
   const entries = [nextEntry, ...withoutExisting].slice(0, MAX_ENTRIES);
