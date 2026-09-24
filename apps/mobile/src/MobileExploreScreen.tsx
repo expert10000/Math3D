@@ -1,84 +1,87 @@
 import React from "react";
 import { Pressable, Text, View } from "react-native";
-import { mobileFunctionPresets, mobileGallery } from "./data/mobileSeedData";
+import { mobileExamples } from "./data/mobileSeedData";
 import { surfaceSummary, type MobileAppController } from "./mobileAppController";
 import { styles } from "./mobileAppStyles";
 
 export const MobileExploreScreen: React.FC<{ model: MobileAppController }> = ({ model }) => {
-  const { tab, exploreSection, setExploreSection, selectedGalleryId, setSelectedGalleryId, selectedGallery, openViewerWithSurface } = model;
+  const {
+    tab,
+    exploreSection,
+    setExploreSection,
+    selectedExampleId,
+    setSelectedExampleId,
+    selectedExample,
+    openViewerWithExample,
+  } = model;
+  const learningExamples = mobileExamples.filter((example) => example.learnTopic);
+
   return (
     <>
-        {tab === "explore" && (
-          <View style={styles.exploreNav}>
-            {(["gallery", "functions", "learn"] as const).map((section) => (
-              <Pressable
-                key={section}
-                onPress={() => setExploreSection(section)}
-                style={[styles.exploreNavBtn, exploreSection === section ? styles.exploreNavBtnActive : null]}
-              >
-                <Text style={[styles.exploreNavText, exploreSection === section ? styles.exploreNavTextActive : null]}>
-                  {section === "gallery" ? "Gallery" : section === "functions" ? "Functions" : "Learn"}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        )}
+      {tab === "explore" && (
+        <View style={styles.exploreNav}>
+          {(["examples", "learn"] as const).map((section) => (
+            <Pressable
+              key={section}
+              testID={`mobile-explore-${section}`}
+              onPress={() => setExploreSection(section)}
+              style={[styles.exploreNavBtn, exploreSection === section ? styles.exploreNavBtnActive : null]}
+            >
+              <Text style={[styles.exploreNavText, exploreSection === section ? styles.exploreNavTextActive : null]}>
+                {section === "examples" ? "Examples" : "Learn"}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
 
-        {tab === "explore" && exploreSection === "gallery" && (
-          <View style={styles.panel}>
-            <Text style={styles.panelTitle}>Gallery demos</Text>
-            {mobileGallery.map((item) => (
+      {tab === "explore" && exploreSection === "examples" && (
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Examples</Text>
+          <Text style={styles.note}>One catalog supplies graphs, parametric surfaces, implicit jobs, and learning links.</Text>
+          {mobileExamples.map((example) => {
+            const surface = example.scene.surfaces?.[0];
+            return (
               <Pressable
-                key={item.id}
+                key={example.id}
+                testID={`mobile-example-${example.id}`}
                 onPress={() => {
-                  setSelectedGalleryId(item.id);
-                  openViewerWithSurface(item.surface, item.title);
+                  setSelectedExampleId(example.id);
+                  openViewerWithExample(example);
                 }}
-                style={[styles.item, selectedGalleryId === item.id ? styles.itemActive : null]}
+                style={[styles.item, selectedExampleId === example.id ? styles.itemActive : null]}
               >
-                <Text style={styles.itemTitle}>{item.title}</Text>
-                <Text style={styles.itemMeta}>{item.description}</Text>
-                <Text style={styles.itemMeta}>{surfaceSummary(item.surface)}</Text>
+                <Text style={styles.itemTitle}>{example.title}</Text>
+                <Text style={styles.itemMeta}>{example.description}</Text>
+                <Text style={styles.itemMeta}>{example.category} · {example.surfaceType}</Text>
+                {surface ? <Text style={styles.itemMeta}>{surfaceSummary(surface)}</Text> : null}
               </Pressable>
-            ))}
+            );
+          })}
 
-            {selectedGallery && (
-              <Pressable
-                onPress={() => openViewerWithSurface(selectedGallery.surface, selectedGallery.title)}
-                style={styles.primaryBtn}
-              >
-                <Text style={styles.primaryBtnText}>Open In Viewer ({selectedGallery.title})</Text>
+          {selectedExample && (
+            <Pressable onPress={() => openViewerWithExample(selectedExample)} style={styles.primaryBtn}>
+              <Text style={styles.primaryBtnText}>Open in Workspace ({selectedExample.title})</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+
+      {tab === "explore" && exploreSection === "learn" && (
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Learn with examples</Text>
+          <Text style={styles.note}>Each topic opens the same scene used by the Examples catalog.</Text>
+          {learningExamples.map((example) => (
+            <View key={`learn-${example.id}`} style={styles.item}>
+              <Text style={styles.itemTitle}>{example.learnTopic?.title}</Text>
+              <Text style={styles.itemMeta}>{example.learnTopic?.summary}</Text>
+              <Pressable onPress={() => openViewerWithExample(example)} style={styles.secondaryBtn}>
+                <Text style={styles.secondaryBtnText}>Open {example.title}</Text>
               </Pressable>
-            )}
-          </View>
-        )}
-
-        {tab === "explore" && exploreSection === "learn" && (
-          <View style={styles.panel}>
-            <Text style={styles.panelTitle}>Formula notes</Text>
-            <Text style={styles.note}>Workbook explanations and guided examples are planned here.</Text>
-            <Text style={styles.itemMeta}>Planned first module: implicit surfaces and domain bounds intuition.</Text>
-          </View>
-        )}
-
-        {tab === "explore" && exploreSection === "functions" && (
-          <View style={styles.panel}>
-            <Text style={styles.panelTitle}>Function library</Text>
-            <Text style={styles.note}>Tap a preset to load it into Workspace.</Text>
-            {mobileFunctionPresets.map((preset) => (
-              <Pressable
-                key={preset.id}
-                onPress={() => openViewerWithSurface(preset.surface, preset.name)}
-                style={styles.item}
-              >
-                <Text style={styles.itemTitle}>{preset.name}</Text>
-                <Text style={styles.itemMeta}>{preset.description}</Text>
-                <Text style={styles.itemMeta}>{surfaceSummary(preset.surface)}</Text>
-              </Pressable>
-            ))}
-          </View>
-        )}
-
+            </View>
+          ))}
+        </View>
+      )}
     </>
   );
 };

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Platform, type GestureResponderEvent } from "react-native";
 import { SCENE_PROJECT_VERSION, createSceneProjectDocument, deserializeSceneProject, serializeSceneProject, type SceneDocument, type SurfaceDefinition, type VtkPreviewJobSnapshot, type VtkPreviewRequest } from "@math3d/core";
-import { mobileGallery, mobileSeedScenes } from "./data/mobileSeedData";
+import { mobileExamples, mobileSeedScenes } from "./data/mobileSeedData";
 import { DEFAULT_MOBILE_GRID_PLANES } from "./models/mobileCoordinateGrid";
-import type { MobileSceneSummary, MobileStoredSceneProject } from "./models/mobileScene";
+import type { Math3DExample, MobileSceneSummary, MobileStoredSceneProject } from "./models/mobileScene";
 import { buildSceneSummary, clearStoredSceneProjects, createStoredProjectFromScene, describeMobileSceneStorageError, loadStoredSceneProjects, readSceneFromStoredProject, saveStoredSceneProjects } from "./services/mobileSceneStorage";
 import { createMobileMeshBackend } from "./services/mobileMeshBackend";
 import { readCachedMesh, readLatestCachedMesh, writeCachedMesh, type MobileCachedMesh } from "./services/mobileMeshCacheStorage";
@@ -167,14 +167,15 @@ const toArrayBuffer = (input: ArrayBuffer | ArrayBufferView): ArrayBuffer => {
 const toFloat32 = (input: ArrayBuffer | ArrayBufferView): Float32Array => new Float32Array(toArrayBuffer(input));
 const toUint32 = (input: ArrayBuffer | ArrayBufferView): Uint32Array => new Uint32Array(toArrayBuffer(input));
 
-const createViewerSceneFromSurface = (surface: SurfaceDefinition, title: string): SceneDocument => {
+const createViewerSceneFromExample = (example: Math3DExample): SceneDocument => {
   const now = Date.now();
   return {
-    id: `scene-mobile-${surface.id}-${now}`,
-    title,
+    ...example.scene,
+    id: `scene-mobile-${example.id}-${now}`,
+    title: example.title,
     createdAt: now,
     updatedAt: now,
-    surfaces: [surface],
+    surfaces: (example.scene.surfaces ?? []).map((surface) => ({ ...surface })),
   };
 };
 
@@ -212,7 +213,7 @@ export const useMobileAppController = () => {
     deletedProject, setDeletedProject, projectActionMessage, setProjectActionMessage,
     sceneThumbnailsById, setSceneThumbnailsById } = useMobileProjectState();
   const inspectorSwipeStartY = useRef<number | null>(null);
-  const [selectedGalleryId, setSelectedGalleryId] = useState<string | null>(mobileGallery[0]?.id ?? null);
+  const [selectedExampleId, setSelectedExampleId] = useState<string | null>(mobileExamples[0]?.id ?? null);
   const showGrid = gridPlanes.length > 0;
   const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(true);
   const [workerBaseUrl, setWorkerBaseUrl] = useState(DEFAULT_WORKER_BASE_URL);
@@ -493,9 +494,9 @@ export const useMobileAppController = () => {
     return sorted;
   }, [sceneSearchQuery, sceneSortMode, sceneSummaries, storedProjects]);
 
-  const selectedGallery = useMemo(
-    () => mobileGallery.find((item) => item.id === selectedGalleryId) ?? null,
-    [selectedGalleryId]
+  const selectedExample = useMemo(
+    () => mobileExamples.find((item) => item.id === selectedExampleId) ?? null,
+    [selectedExampleId]
   );
   const viewerSurfaces = viewerDocument?.surfaces ?? [];
   const selectedSurface = viewerSurfaces.find((surface) => surface.id === selectedSurfaceId) ?? null;
@@ -995,8 +996,8 @@ export const useMobileAppController = () => {
     }
   };
 
-  const openViewerWithSurface = (surface: SurfaceDefinition, sourceTitle: string) => {
-    const scene = createViewerSceneFromSurface(surface, sourceTitle);
+  const openViewerWithExample = (example: Math3DExample) => {
+    const scene = createViewerSceneFromExample(example);
     setViewerDocument(scene);
     setSelectedSceneId(null);
     setInspectorExpanded(false);
@@ -1660,8 +1661,8 @@ export const useMobileAppController = () => {
     showBoundingBox,
     setShowBoundingBox,
     inspectorSwipeStartY,
-    selectedGalleryId,
-    setSelectedGalleryId,
+    selectedExampleId,
+    setSelectedExampleId,
     viewerDocument,
     renderQuality,
     setRenderQuality,
@@ -1713,7 +1714,7 @@ export const useMobileAppController = () => {
     sceneSummaries,
     selectedScene,
     filteredSceneSummaries,
-    selectedGallery,
+    selectedExample,
     viewerSurfaces,
     selectedSurface,
     sceneObjectItems,
@@ -1744,7 +1745,7 @@ export const useMobileAppController = () => {
     importStoredScene,
     exportStoredScene,
     shareStoredScene,
-    openViewerWithSurface,
+    openViewerWithExample,
     saveCurrentViewerScene,
     runCameraCommand,
     selectWorkspaceObject,

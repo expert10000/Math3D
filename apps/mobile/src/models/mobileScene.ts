@@ -1,10 +1,10 @@
 import type {
-  CameraPreset,
   MeshResult,
   SceneDocument,
   SurfaceDefinition,
   WorkerRequest,
   WorkerResponse,
+  WorkerCapabilityId,
 } from "@math3d/core";
 
 export type MobileSceneSummary = {
@@ -18,19 +18,20 @@ export type MobileViewerScene = Pick<SceneDocument, "id" | "title" | "surfaces" 
   previewMesh?: MeshResult;
 };
 
-export type MobileGalleryItem = {
+export type Math3DExampleCategory = "implicit" | "graphs" | "minimal" | "periodic" | "classic";
+
+export type Math3DExample = {
   id: string;
   title: string;
   description: string;
-  surface: SurfaceDefinition;
-  defaultCamera?: CameraPreset;
-};
-
-export type MobileFunctionPreset = {
-  id: string;
-  name: string;
-  description: string;
-  surface: SurfaceDefinition;
+  category: Math3DExampleCategory;
+  surfaceType: SurfaceDefinition["kind"];
+  scene: SceneDocument;
+  capabilities: WorkerCapabilityId[];
+  learnTopic?: {
+    title: string;
+    summary: string;
+  };
 };
 
 export type MobileStoredSceneProject = {

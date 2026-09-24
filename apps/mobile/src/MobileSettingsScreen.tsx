@@ -2,7 +2,7 @@ import React from "react";
 import { Platform, Pressable, Text, TextInput, View } from "react-native";
 import { SCENE_PROJECT_VERSION } from "@math3d/core";
 import Constants from "expo-constants";
-import { mobileFunctionPresets, mobileGallery } from "./data/mobileSeedData";
+import { mobileExamples } from "./data/mobileSeedData";
 import { clearMeshCache } from "./services/mobileMeshCacheStorage";
 import { MobileWorkerPairingScanner } from "./components/MobileWorkerPairingScanner";
 import { FORCE_ANDROID_SAFE_MODE, EXPECTED_WORKER_PROTOCOL, MESH_RESOLUTION_CAP_MIN, MESH_RESOLUTION_CAP_MAX, PREVIEW_PAYLOAD_WARNING_BYTES, type MobileAppController } from "./mobileAppController";
@@ -245,7 +245,7 @@ export const MobileSettingsScreen: React.FC<{ model: MobileAppController }> = ({
         </Text>
       ) : null}
       <Text style={styles.itemMeta}>
-        Scenes: {sceneSummaries.length} | Gallery items: {mobileGallery.length} | Presets: {mobileFunctionPresets.length}
+        Scenes: {sceneSummaries.length} | Bundled examples: {mobileExamples.length}
       </Text>
 
       {(showDiagnosticsPanel || diagnosticsEnabled) && (
