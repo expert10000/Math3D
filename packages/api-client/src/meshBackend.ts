@@ -23,6 +23,8 @@ import type {
   VtkMeshRequest,
   VtkMeshResponse,
   VtkPreviewRequest,
+  VtkPreviewJobRequest,
+  VtkPreviewJobSnapshot,
   VtkVolumeDistanceRequest,
   VtkVolumeDistanceResponse,
   VtkVolumeIsosurfaceRequest,
@@ -47,6 +49,9 @@ export interface MeshBackend {
   runGeodesicHeat(req: Omit<GeodesicHeatRequest, "jobId">): Promise<GeodesicHeatResponse>;
   runGeodesicSurfacePath(req: Omit<GeodesicSurfacePathRequest, "jobId">): Promise<GeodesicSurfacePathResponse>;
   vtkPreviewImplicit(req: Omit<VtkPreviewRequest, "jobId">): Promise<VtkMeshResponse>;
+  submitVtkPreviewJob(req: VtkPreviewJobRequest): Promise<VtkPreviewJobSnapshot>;
+  getVtkPreviewJob(jobId: string): Promise<VtkPreviewJobSnapshot>;
+  cancelVtkPreviewJob(jobId: string): Promise<VtkPreviewJobSnapshot>;
   vtkCleanNormals(req: Omit<VtkMeshRequest, "jobId">): Promise<VtkMeshResponse>;
   vtkDecimate(req: Omit<VtkMeshRequest, "jobId">): Promise<VtkMeshResponse>;
   vtkSmooth(req: Omit<VtkMeshRequest, "jobId">): Promise<VtkMeshResponse>;
@@ -78,6 +83,10 @@ type VtkMeshProxyResponse =
       triCount?: number;
     }
   | { ok: false; error: string };
+
+type VtkPreviewJobProxySnapshot = Omit<VtkPreviewJobSnapshot, "result"> & {
+  result?: VtkMeshProxyResponse;
+};
 
 type VtkVolumeSliceProxyResponse =
   | {
@@ -262,6 +271,11 @@ const toVtkMeshResponse = (payload: VtkMeshProxyResponse): VtkMeshResponse => {
   };
 };
 
+const toVtkPreviewJobSnapshot = (payload: VtkPreviewJobProxySnapshot): VtkPreviewJobSnapshot => ({
+  ...payload,
+  result: payload.result ? toVtkMeshResponse(payload.result) : undefined,
+});
+
 export function createElectronMeshBackend(): MeshBackend {
   return {
     getCapabilities() {
@@ -326,6 +340,57 @@ export function createElectronMeshBackend(): MeshBackend {
       const api = (getWindowObject() as any)?.vtkMesh;
       if (!api?.previewImplicit) return { ok: false, error: "VTK IPC unavailable" };
       return api.previewImplicit({ ...req, jobId: makeJobId() });
+    },
+    async submitVtkPreviewJob(req) {
+      const api = (getWindowObject() as any)?.vtkMesh;
+      if (!api?.previewImplicit) {
+        return {
+          ...req,
+          status: "failed",
+          progress: 0,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          error: "VTK IPC unavailable",
+        };
+      }
+      const createdAt = Date.now();
+      const result = await api.previewImplicit({ ...req.parameters, jobId: req.jobId });
+      return {
+        ...req,
+        status: result.ok ? "succeeded" : "failed",
+        progress: result.ok ? 100 : 0,
+        createdAt,
+        updatedAt: Date.now(),
+        result: result.ok ? result : undefined,
+        error: result.ok ? undefined : result.error,
+      };
+    },
+    async getVtkPreviewJob(jobId) {
+      return {
+        jobId,
+        operation: "vtk.preview-implicit",
+        inputHash: "",
+        sceneId: "",
+        sceneSchemaVersion: 0,
+        status: "failed",
+        progress: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        error: "Persistent compute jobs are unavailable in Electron IPC mode.",
+      };
+    },
+    async cancelVtkPreviewJob(jobId) {
+      return {
+        jobId,
+        operation: "vtk.preview-implicit",
+        inputHash: "",
+        sceneId: "",
+        sceneSchemaVersion: 0,
+        status: "cancelled",
+        progress: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
     },
     async vtkCleanNormals(req) {
       const api = (getWindowObject() as any)?.vtkMesh;
@@ -484,6 +549,23 @@ export function createHttpMeshBackend(baseUrl: string, options?: HttpMeshBackend
       } catch (error) {
         return { ok: false, error: asErrorMessage(error, "VTK preview request failed") };
       }
+    },
+    async submitVtkPreviewJob(req) {
+      const payload = await http.postJson<VtkPreviewJobProxySnapshot>(
+        "/jobs",
+        req as unknown as JsonRecord
+      );
+      return toVtkPreviewJobSnapshot(payload);
+    },
+    async getVtkPreviewJob(jobId) {
+      const payload = await http.getJson<VtkPreviewJobProxySnapshot>(`/jobs/${encodeURIComponent(jobId)}`);
+      return toVtkPreviewJobSnapshot(payload);
+    },
+    async cancelVtkPreviewJob(jobId) {
+      const payload = await http.postJson<VtkPreviewJobProxySnapshot>(
+        `/jobs/${encodeURIComponent(jobId)}/cancel`
+      );
+      return toVtkPreviewJobSnapshot(payload);
     },
     async vtkCleanNormals(req) {
       try {

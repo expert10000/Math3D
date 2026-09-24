@@ -167,6 +167,8 @@ export type CgalBooleanMeshResponse =
 export type CgalHealthResponse = { ok: boolean; error?: string };
 export type CgalPingResponse = { ok: boolean; pong?: boolean; error?: string };
 export const WORKER_CAPABILITY_IDS = [
+  "jobs.async",
+  "jobs.cancel",
   "cgal.health",
   "cgal.mesh",
   "cgal.geodesic-heat",
@@ -287,6 +289,35 @@ export type VtkPreviewRequest = {
   resolution: number;
   targetFaces?: number;
   targetReduction?: number;
+};
+
+export type WorkerComputeJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+export type VtkPreviewJobRequest = {
+  jobId: string;
+  operation: "vtk.preview-implicit";
+  inputHash: string;
+  sceneId: string;
+  sceneSchemaVersion: number;
+  parameters: Omit<VtkPreviewRequest, "jobId">;
+};
+
+export type VtkPreviewJobSnapshot = {
+  jobId: string;
+  operation: "vtk.preview-implicit";
+  inputHash: string;
+  sceneId: string;
+  sceneSchemaVersion: number;
+  status: WorkerComputeJobStatus;
+  progress: number;
+  phase?: string;
+  message?: string;
+  createdAt: number;
+  updatedAt: number;
+  engine?: WorkerEngineIdentity;
+  result?: VtkMeshResponse;
+  error?: string;
+  diagnostics?: string[];
 };
 
 export type SliceAxis = "x" | "y" | "z";

@@ -32,6 +32,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     setSelectedSurfaceId,
     limitedMode,
     implicitPreviewBySurfaceId,
+    computeJobBySurfaceId,
     viewerSurfaces,
     selectedSurface,
     hasImplicitPreviewErrors,
@@ -268,11 +269,13 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
               {!workerCanPreviewImplicit && <Text style={styles.warningNote}>{workerNegotiation.message}</Text>}
               {viewerSurfaces.filter((surface) => surface.kind === "implicit").map((surface) => {
                 const preview = implicitPreviewBySurfaceId[surface.id];
+                const job = computeJobBySurfaceId[surface.id];
                 return <View key={surface.id} style={styles.subPanel}>
                   <Text style={styles.subPanelTitle}>{surface.id}</Text>
-                  <Text style={styles.itemMeta}>Status: {preview?.status ?? "idle"}{preview?.cached ? " · cached" : ""}</Text>
+                  <Text style={styles.itemMeta}>Status: {job?.status ?? preview?.status ?? "idle"}{preview?.cached ? " · cached" : ""}</Text>
+                  {job && <Text style={styles.itemMeta}>Job {job.jobId} · {job.progress}%{job.phase ? ` · ${job.phase}` : ""}</Text>}
                   {preview?.status === "ready" && <Text style={styles.itemMeta}>{preview.vertexCount ?? 0} vertices · {preview.triCount ?? 0} triangles</Text>}
-                  {preview?.status === "error" && <Text style={styles.issueText}>{preview.error}</Text>}
+                  {(job?.error || preview?.status === "error") && <Text style={styles.issueText}>{job?.error || preview?.error}</Text>}
                 </View>;
               })}
               {workerCanPreviewImplicit && hasImplicitPreviewErrors && <View style={styles.viewerToolbarRow}>

@@ -13,6 +13,8 @@ const BODY_LIMIT_BYTES = BODY_LIMIT_MB * 1024 * 1024;
 const ROOT_DIR = path.resolve(__dirname, "..", "..", "..");
 const SERVER_VERSION = String(require(path.join(ROOT_DIR, "package.json")).version || "unknown");
 const WORKER_CAPABILITIES = Object.freeze([
+  "jobs.async",
+  "jobs.cancel",
   "cgal.health",
   "cgal.mesh",
   "cgal.geodesic-heat",
@@ -874,6 +876,85 @@ function nextJobId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+const COMPUTE_JOB_LIMIT = 100;
+const computeJobs = new Map();
+
+function computeJobSnapshot(job) {
+  return {
+    jobId: job.jobId,
+    operation: job.operation,
+    inputHash: job.inputHash,
+    sceneId: job.sceneId,
+    sceneSchemaVersion: job.sceneSchemaVersion,
+    status: job.status,
+    progress: job.progress,
+    phase: job.phase,
+    message: job.message,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    engine: job.engine,
+    result: job.result,
+    error: job.error,
+    diagnostics: job.diagnostics,
+  };
+}
+
+function pruneComputeJobs() {
+  if (computeJobs.size < COMPUTE_JOB_LIMIT) return;
+  const terminal = [...computeJobs.values()]
+    .filter((job) => job.status === "succeeded" || job.status === "failed" || job.status === "cancelled")
+    .sort((a, b) => a.updatedAt - b.updatedAt);
+  while (computeJobs.size >= COMPUTE_JOB_LIMIT && terminal.length) {
+    computeJobs.delete(terminal.shift().jobId);
+  }
+}
+
+function validateVtkPreviewJobBody(body) {
+  if (!body || body.operation !== "vtk.preview-implicit") return "Unsupported compute job operation.";
+  if (typeof body.inputHash !== "string" || !body.inputHash.trim()) return "Compute job inputHash is required.";
+  if (typeof body.sceneId !== "string" || !body.sceneId.trim()) return "Compute job sceneId is required.";
+  if (!Number.isInteger(body.sceneSchemaVersion) || body.sceneSchemaVersion < 1) {
+    return "Compute job sceneSchemaVersion is invalid.";
+  }
+  const parameters = body.parameters;
+  if (!parameters || typeof parameters !== "object" || typeof parameters.expr !== "string") {
+    return "Compute job parameters are invalid.";
+  }
+  return null;
+}
+
+async function executeComputeJob(job) {
+  if (job.status !== "queued") return;
+  job.status = "running";
+  job.progress = 1;
+  job.phase = "starting";
+  job.message = "Starting desktop worker.";
+  job.updatedAt = Date.now();
+  try {
+    const worker = await getPythonWorker();
+    job.engine = {
+      id: "math3d-python-worker",
+      version: String(diagnosticsState.version || "unknown"),
+    };
+    const result = await worker.vtkPreviewImplicit({ ...job.parameters, jobId: job.jobId });
+    if (!result.ok) throw new Error(result.error || "VTK preview job failed");
+    job.status = "succeeded";
+    job.progress = 100;
+    job.phase = "complete";
+    job.message = "Computed mesh is ready.";
+    job.result = result;
+    recordWorkerSuccess();
+  } catch (error) {
+    job.status = "failed";
+    job.phase = "failed";
+    job.error = String(error?.message || error || "Compute job failed");
+    job.message = job.error;
+    job.diagnostics = [job.error];
+  } finally {
+    job.updatedAt = Date.now();
+  }
+}
+
 async function handleRoute(req, res, pathname) {
   if (req.method === "GET" && pathname === "/api/worker/diagnostics") {
     json(res, 200, { ...diagnosticsState });
@@ -887,6 +968,58 @@ async function handleRoute(req, res, pathname) {
   }
 
   try {
+    if (req.method === "POST" && pathname === "/api/worker/jobs") {
+      const body = await readJsonBody(req);
+      const validationError = validateVtkPreviewJobBody(body);
+      if (validationError) {
+        json(res, 400, { ok: false, error: validationError });
+        return;
+      }
+      const jobId = String(body.jobId || nextJobId("mobile-vtk-preview"));
+      const existing = computeJobs.get(jobId);
+      if (existing) {
+        json(res, 200, computeJobSnapshot(existing));
+        return;
+      }
+      pruneComputeJobs();
+      if (computeJobs.size >= COMPUTE_JOB_LIMIT) {
+        json(res, 503, { ok: false, error: "Compute job queue is full." });
+        return;
+      }
+      const now = Date.now();
+      const job = {
+        jobId,
+        operation: "vtk.preview-implicit",
+        inputHash: body.inputHash.trim(),
+        sceneId: body.sceneId.trim(),
+        sceneSchemaVersion: body.sceneSchemaVersion,
+        parameters: body.parameters,
+        status: "queued",
+        progress: 0,
+        phase: "queued",
+        message: "Waiting for desktop worker.",
+        createdAt: now,
+        updatedAt: now,
+        diagnostics: [],
+      };
+      computeJobs.set(jobId, job);
+      setImmediate(() => void executeComputeJob(job));
+      json(res, 202, computeJobSnapshot(job));
+      return;
+    }
+
+    const computeJobMatch = pathname.match(/^\/api\/worker\/jobs\/([^/]+)$/);
+    if (req.method === "GET" && computeJobMatch) {
+      const jobId = decodeURIComponent(computeJobMatch[1]);
+      const job = computeJobs.get(jobId);
+      if (!job) {
+        json(res, 404, { ok: false, error: `Compute job '${jobId}' was not found.` });
+        return;
+      }
+      json(res, 200, computeJobSnapshot(job));
+      return;
+    }
+
     if (req.method === "GET" && pathname === "/api/worker/cgal/health") {
       const worker = await getPythonWorker();
       const result = await worker.health();

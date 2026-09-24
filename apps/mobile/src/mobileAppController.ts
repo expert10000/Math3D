@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Platform, type GestureResponderEvent } from "react-native";
-import { createSceneProjectDocument, deserializeSceneProject, serializeSceneProject, type SceneDocument, type SurfaceDefinition, type VtkPreviewRequest } from "@math3d/core";
+import { SCENE_PROJECT_VERSION, createSceneProjectDocument, deserializeSceneProject, serializeSceneProject, type SceneDocument, type SurfaceDefinition, type VtkPreviewJobSnapshot, type VtkPreviewRequest } from "@math3d/core";
 import { mobileGallery, mobileSeedScenes } from "./data/mobileSeedData";
 import { DEFAULT_MOBILE_GRID_PLANES } from "./models/mobileCoordinateGrid";
 import type { MobileSceneSummary, MobileStoredSceneProject } from "./models/mobileScene";
@@ -22,6 +22,8 @@ import {
   unconfiguredMobileWorker,
 } from "./models/mobileWorkerCapabilities";
 import { parseMobileWorkerPairing } from "./models/mobileWorkerPairing";
+import { canResumeMobileComputeJob, createMobileComputeJob, createMobileComputeJobId, isMobileComputeJobTerminal, mergeMobileComputeJobSnapshot, type MobileComputeJob } from "./models/mobileComputeJobs";
+import { clearMobileComputeJobs, loadMobileComputeJobs, saveMobileComputeJobs } from "./services/mobileComputeJobStorage";
 import { clearMobileThumbnailCache, loadMobileThumbnailCache, saveMobileThumbnailCache, type MobileThumbnailCache } from "./services/mobileThumbnailCacheStorage";
 import { exportMobileSceneProject, pickMobileSceneProject, shareMobileSceneProject } from "./services/mobileProjectTransferService";
 import { createMobileThumbnailCacheKey, generateMobileSceneThumbnail } from "./viewer/mobileSceneThumbnail";
@@ -251,13 +253,19 @@ export const useMobileAppController = () => {
   >({});
   const [implicitPreviewBySurfaceId, setImplicitPreviewBySurfaceId] = useState<ImplicitPreviewBySurfaceId>({});
   const [implicitPreviewRetryToken, setImplicitPreviewRetryToken] = useState(0);
+  const [mobileComputeJobs, setMobileComputeJobs] = useState<MobileComputeJob[]>([]);
+  const mobileComputeJobsRef = useRef<MobileComputeJob[]>([]);
 
   useEffect(() => {
     let active = true;
 
     const loadStorage = async () => {
       setStorageStatus("loading");
-      const [loaded, loadedSettings] = await Promise.all([loadStoredSceneProjects(), loadMobileSettings()]);
+      const [loaded, loadedSettings, loadedComputeJobs] = await Promise.all([
+        loadStoredSceneProjects(),
+        loadMobileSettings(),
+        loadMobileComputeJobs(),
+      ]);
 
       let projects = loaded.projects;
       const issues = [...loaded.issues];
@@ -324,6 +332,8 @@ export const useMobileAppController = () => {
       setAndroidGlEnabled(effectiveAndroidGlEnabled);
       setAndroidGlProbePending(false);
       setAndroidGlRecoveredFromCrash(recoveredFromCrash);
+      mobileComputeJobsRef.current = loadedComputeJobs;
+      setMobileComputeJobs(loadedComputeJobs);
 
       if (
         recoveredFromCrash ||
@@ -507,6 +517,34 @@ export const useMobileAppController = () => {
     () => workerAuthorization && workerAuthorization.expiresAt > Date.now() ? workerAuthorization.token : "",
     [workerAuthorization]
   );
+  const computeJobBySurfaceId = useMemo(() => {
+    const sceneId = viewerDocument?.id;
+    const result: Record<string, MobileComputeJob | undefined> = {};
+    if (!sceneId) return result;
+    const newestFirst = [...mobileComputeJobs].sort((a, b) => b.updatedAt - a.updatedAt);
+    for (const job of newestFirst) {
+      if (job.request.sceneId === sceneId && result[job.surfaceId] == null) result[job.surfaceId] = job;
+    }
+    return result;
+  }, [mobileComputeJobs, viewerDocument?.id]);
+
+  const updateMobileComputeJob = (job: MobileComputeJob) => {
+    const current = mobileComputeJobsRef.current;
+    const index = current.findIndex((item) => item.jobId === job.jobId);
+    const next = index >= 0
+      ? current.map((item, itemIndex) => itemIndex === index ? job : item)
+      : [job, ...current];
+    mobileComputeJobsRef.current = next;
+    setMobileComputeJobs(next);
+  };
+
+  useEffect(() => {
+    if (storageStatus === "loading") return;
+    const timer = setTimeout(() => {
+      void saveMobileComputeJobs(mobileComputeJobsRef.current).catch(() => undefined);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [mobileComputeJobs, storageStatus]);
 
   useEffect(() => {
     if (!workerAuthorization) return;
@@ -564,6 +602,20 @@ export const useMobileAppController = () => {
     if (implicitSurfaces.length === 0) return;
 
     const backend = createMobileMeshBackend(workerBaseUrl, activeWorkerAuthorizationToken);
+
+    const trackSnapshot = (surfaceId: string, job: MobileComputeJob, snapshot: VtkPreviewJobSnapshot) => {
+      const merged = mergeMobileComputeJobSnapshot(job, snapshot);
+      updateMobileComputeJob(merged);
+      if (!cancelled) {
+        setImplicitPreviewBySurfaceId((current) => ({
+          ...current,
+          [surfaceId]: snapshot.status === "failed" || snapshot.status === "cancelled"
+            ? { status: "error", error: snapshot.error || snapshot.message || `Compute job ${snapshot.status}.` }
+            : { status: "loading" },
+        }));
+      }
+      return merged;
+    };
 
     const loadImplicitPreviews = async () => {
       const loadingState: ImplicitPreviewBySurfaceId = {};
@@ -637,14 +689,71 @@ export const useMobileAppController = () => {
           continue;
         }
 
-        const response = await backend
-          .previewImplicit(requestPayload)
-          .catch((error) => ({ ok: false as const, error: String((error as Error).message ?? error) }));
+        const existingJob = [...mobileComputeJobsRef.current]
+          .sort((a, b) => b.updatedAt - a.updatedAt)
+          .find((job) =>
+            job.surfaceId === surface.id &&
+            job.request.sceneId === viewerDocument.id &&
+            canResumeMobileComputeJob(job, workerBaseUrl, parameterHash)
+          );
+
+        let mobileJob = existingJob;
+        let snapshot: VtkPreviewJobSnapshot;
+        try {
+          if (mobileJob) {
+            snapshot = await backend.getPreviewJob(mobileJob.jobId);
+          } else {
+            const jobId = createMobileComputeJobId();
+            const request = {
+              jobId,
+              operation: "vtk.preview-implicit" as const,
+              inputHash: parameterHash,
+              sceneId: viewerDocument.id,
+              sceneSchemaVersion: SCENE_PROJECT_VERSION,
+              parameters: requestPayload,
+            };
+            mobileJob = createMobileComputeJob({
+              surfaceId: surface.id,
+              workerBaseUrl,
+              request,
+            });
+            updateMobileComputeJob(mobileJob);
+            await saveMobileComputeJobs(mobileComputeJobsRef.current);
+            snapshot = await backend.submitPreviewJob(request);
+          }
+
+          mobileJob = trackSnapshot(surface.id, mobileJob, snapshot);
+          while (!cancelled && !isMobileComputeJobTerminal(snapshot.status)) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            if (cancelled) return;
+            snapshot = await backend.getPreviewJob(mobileJob.jobId);
+            mobileJob = trackSnapshot(surface.id, mobileJob, snapshot);
+          }
+        } catch (error) {
+          const message = String((error as Error).message ?? error);
+          const now = Date.now();
+          snapshot = {
+            jobId: mobileJob?.jobId ?? createMobileComputeJobId(now),
+            operation: "vtk.preview-implicit",
+            inputHash: parameterHash,
+            sceneId: viewerDocument.id,
+            sceneSchemaVersion: SCENE_PROJECT_VERSION,
+            status: "failed",
+            progress: mobileJob?.progress ?? 0,
+            createdAt: mobileJob?.createdAt ?? now,
+            updatedAt: now,
+            error: message,
+            diagnostics: [message],
+          };
+          if (mobileJob) mobileJob = trackSnapshot(surface.id, mobileJob, snapshot);
+        }
 
         if (cancelled) return;
 
-        if (!response.ok) {
-          const timeoutDetected = /timeout|aborted|abort/i.test(response.error || "");
+        const response = snapshot.result;
+        if (snapshot.status !== "succeeded" || !response?.ok) {
+          const responseError = snapshot.error || snapshot.message || (response && !response.ok ? response.error : "Compute job failed.");
+          const timeoutDetected = /timeout|aborted|abort/i.test(responseError);
           const cached = await readCachedMesh(cacheKey);
           if (cached) {
             setImplicitMeshBySurfaceId((current) => ({ ...current, [surface.id]: cached }));
@@ -659,7 +768,7 @@ export const useMobileAppController = () => {
             }));
             setBackendDiagnostics((current) => ({
               ...current,
-              lastError: `Using cached preview: ${response.error}`,
+              lastError: `Using cached preview: ${responseError}`,
               timeoutDetected,
             }));
             setLastPreviewTimeout(timeoutDetected);
@@ -668,13 +777,13 @@ export const useMobileAppController = () => {
 
           setImplicitPreviewBySurfaceId((current) => ({
             ...current,
-            [surface.id]: { status: "error", error: response.error },
+            [surface.id]: { status: "error", error: responseError },
           }));
           setImplicitMeshBySurfaceId((current) => ({ ...current, [surface.id]: undefined }));
           setBackendDiagnostics((current) => ({
             ...current,
             status: "error",
-            lastError: response.error,
+            lastError: responseError,
             timeoutDetected,
           }));
           setLastPreviewTimeout(timeoutDetected);
@@ -1206,12 +1315,15 @@ export const useMobileAppController = () => {
     try {
       await clearStoredSceneProjects();
       await clearMobileThumbnailCache();
+      await clearMobileComputeJobs();
       setStoredProjects([]);
       setSceneThumbnailsById({});
       setSelectedSceneId(null);
       setViewerDocument(null);
       setImplicitMeshBySurfaceId({});
       setImplicitPreviewBySurfaceId({});
+      mobileComputeJobsRef.current = [];
+      setMobileComputeJobs([]);
       setStorageStatus("ready");
       setSettingsActionMessage("Local scene cache cleared.");
     } catch (error) {
@@ -1384,6 +1496,7 @@ export const useMobileAppController = () => {
     androidGlRecoveredFromCrash,
     implicitMeshBySurfaceId,
     implicitPreviewBySurfaceId,
+    computeJobBySurfaceId,
     sceneSummaries,
     selectedScene,
     filteredSceneSummaries,

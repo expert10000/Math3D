@@ -8,6 +8,8 @@ import type {
   GeodesicHeatResponse,
   VtkMeshResponse,
   VtkPreviewRequest,
+  VtkPreviewJobRequest,
+  VtkPreviewJobSnapshot,
   VtkVolumeIsosurfaceRequest,
   VtkVolumeIsosurfaceResponse,
 } from "@math3d/core";
@@ -17,6 +19,9 @@ export interface MobileMeshBackend {
   version(): Promise<CgalVersionResponse>;
   generateImplicitMesh(request: Omit<CgalMeshRequest, "jobId">): Promise<CgalMeshResponse>;
   previewImplicit(request: Omit<VtkPreviewRequest, "jobId">): Promise<VtkMeshResponse>;
+  submitPreviewJob(request: VtkPreviewJobRequest): Promise<VtkPreviewJobSnapshot>;
+  getPreviewJob(jobId: string): Promise<VtkPreviewJobSnapshot>;
+  cancelPreviewJob(jobId: string): Promise<VtkPreviewJobSnapshot>;
   volumeIsosurface(
     request: Omit<VtkVolumeIsosurfaceRequest, "jobId">
   ): Promise<VtkVolumeIsosurfaceResponse>;
@@ -37,6 +42,9 @@ export const createMobileMeshBackend = (baseUrl: string, authorizationToken?: st
       version: () => backend.cgalVersion(),
       generateImplicitMesh: (request: Omit<CgalMeshRequest, "jobId">) => backend.runCgalMesh(request),
       previewImplicit: (request: Omit<VtkPreviewRequest, "jobId">) => backend.vtkPreviewImplicit(request),
+      submitPreviewJob: (request: VtkPreviewJobRequest) => backend.submitVtkPreviewJob(request),
+      getPreviewJob: (jobId: string) => backend.getVtkPreviewJob(jobId),
+      cancelPreviewJob: (jobId: string) => backend.cancelVtkPreviewJob(jobId),
       volumeIsosurface: (request: Omit<VtkVolumeIsosurfaceRequest, "jobId">) =>
         backend.vtkVolumeIsosurface(request),
       geodesicHeat: (request: Omit<GeodesicHeatRequest, "jobId">) => backend.runGeodesicHeat(request),
