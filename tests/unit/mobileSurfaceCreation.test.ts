@@ -4,9 +4,11 @@ import {
   appendMobileSurface,
   buildMobileExplicitSurface,
   buildMobileParametricSurface,
+  buildMobileImplicitSurface,
   createMobilePrimitiveSurface,
   DEFAULT_MOBILE_EXPLICIT_DRAFT,
   DEFAULT_MOBILE_PARAMETRIC_DRAFT,
+  DEFAULT_MOBILE_IMPLICIT_DRAFT,
   validateMobileSurfaceExpression,
 } from "../../apps/mobile/src/models/mobileSurfaceCreation";
 
@@ -42,5 +44,19 @@ describe("mobile primitive creation", () => {
     expect(validateMobileSurfaceExpression("x^2", ["x", "y"])).toContain("not exponentiation");
     expect(validateMobileSurfaceExpression("unknown(x)", ["x", "y"])).toContain("Unknown name");
     expect(validateMobileSurfaceExpression("1/0", ["x", "y"])).toContain("finite");
+  });
+
+  it("builds an implicit definition for the compute job pipeline", () => {
+    expect(buildMobileImplicitSurface(scene, DEFAULT_MOBILE_IMPLICIT_DRAFT)).toMatchObject({
+      ok: true,
+      surface: {
+        id: "implicit-surface",
+        kind: "implicit",
+        expression: "x*x + y*y + z*z - 1",
+        domain: { xSpan: 1.5, ySpan: 1.5, zSpan: 1.5 },
+        resolution: 72,
+      },
+    });
+    expect(buildMobileImplicitSurface(scene, { ...DEFAULT_MOBILE_IMPLICIT_DRAFT, zSpan: "0" })).toMatchObject({ ok: false });
   });
 });

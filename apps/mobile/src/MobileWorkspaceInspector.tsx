@@ -49,6 +49,8 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     setExplicitSurfaceDraft,
     parametricSurfaceDraft,
     setParametricSurfaceDraft,
+    implicitSurfaceDraft,
+    setImplicitSurfaceDraft,
     createActionMessage,
     previewAuthoredSurface,
     addAuthoredSurfaceToWorkspace,
@@ -237,14 +239,14 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
               <Text style={styles.itemMeta}>Primitives are editable surface definitions and work offline.</Text>
               <Text style={styles.note}>Formula surface</Text>
               <View style={styles.viewerToolbarRow}>
-                {(["explicit", "parametric"] as const).map((mode) => (
+                {(["explicit", "parametric", "implicit"] as const).map((mode) => (
                   <Pressable
                     key={mode}
                     testID={`mobile-create-mode-${mode}`}
                     onPress={() => setSurfaceEditorMode(mode)}
                     style={[styles.pill, surfaceEditorMode === mode ? styles.pillActive : null]}
                   >
-                    <Text style={[styles.pillText, surfaceEditorMode === mode ? styles.pillTextActive : null]}>{mode === "explicit" ? "Explicit z=f(x,y)" : "Parametric"}</Text>
+                    <Text style={[styles.pillText, surfaceEditorMode === mode ? styles.pillTextActive : null]}>{mode === "explicit" ? "Explicit z=f(x,y)" : mode === "parametric" ? "Parametric" : "Implicit f=0"}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -261,7 +263,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                   <Text style={styles.itemMeta}>Resolution · 12–192</Text>
                   <TextInput value={explicitSurfaceDraft.resolution} onChangeText={(resolution) => setExplicitSurfaceDraft((draft) => ({ ...draft, resolution }))} keyboardType="number-pad" style={styles.textInput} />
                 </View>
-              ) : (
+              ) : surfaceEditorMode === "parametric" ? (
                 <View style={styles.settingRow}>
                   <Text style={styles.itemMeta}>Object name</Text>
                   <TextInput testID="mobile-create-parametric-id" value={parametricSurfaceDraft.id} onChangeText={(id) => setParametricSurfaceDraft((draft) => ({ ...draft, id }))} autoCapitalize="none" autoCorrect={false} style={styles.textInput} />
@@ -280,13 +282,36 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                   <Text style={styles.itemMeta}>Resolution · 12–192</Text>
                   <TextInput value={parametricSurfaceDraft.resolution} onChangeText={(resolution) => setParametricSurfaceDraft((draft) => ({ ...draft, resolution }))} keyboardType="number-pad" style={styles.textInput} />
                 </View>
+              ) : (
+                <View style={styles.settingRow}>
+                  <Text style={styles.itemMeta}>Object name</Text>
+                  <TextInput testID="mobile-create-implicit-id" value={implicitSurfaceDraft.id} onChangeText={(id) => setImplicitSurfaceDraft((draft) => ({ ...draft, id }))} autoCapitalize="none" autoCorrect={false} style={styles.textInput} />
+                  <Text style={styles.itemMeta}>f(x,y,z) expression · zero level set</Text>
+                  <TextInput testID="mobile-create-implicit-expression" value={implicitSurfaceDraft.expression} onChangeText={(expression) => setImplicitSurfaceDraft((draft) => ({ ...draft, expression }))} autoCapitalize="none" autoCorrect={false} style={styles.textInput} />
+                  {(["xSpan", "ySpan", "zSpan"] as const).map((field) => (
+                    <React.Fragment key={field}>
+                      <Text style={styles.itemMeta}>{field[0].toUpperCase()} span</Text>
+                      <TextInput value={implicitSurfaceDraft[field]} onChangeText={(value) => setImplicitSurfaceDraft((draft) => ({ ...draft, [field]: value }))} keyboardType="numbers-and-punctuation" style={styles.textInput} />
+                    </React.Fragment>
+                  ))}
+                  <Text style={styles.itemMeta}>Resolution · 12–192</Text>
+                  <TextInput value={implicitSurfaceDraft.resolution} onChangeText={(resolution) => setImplicitSurfaceDraft((draft) => ({ ...draft, resolution }))} keyboardType="number-pad" style={styles.textInput} />
+                  <Text style={workerCanPreviewImplicit ? styles.note : styles.warningNote}>
+                    {workerCanPreviewImplicit ? "Worker capability ready. Add submits a persistent compute job." : "Pair a compatible worker to create and compute this surface."}
+                  </Text>
+                </View>
               )}
               <View style={styles.viewerToolbarRow}>
                 <Pressable testID="mobile-create-preview" onPress={previewAuthoredSurface} style={styles.secondaryBtn}>
                   <Text style={styles.secondaryBtnText}>Preview</Text>
                 </Pressable>
-                <Pressable testID="mobile-create-add" onPress={addAuthoredSurfaceToWorkspace} style={styles.primaryBtn}>
-                  <Text style={styles.primaryBtnText}>Add to scene</Text>
+                <Pressable
+                  testID="mobile-create-add"
+                  disabled={surfaceEditorMode === "implicit" && !workerCanPreviewImplicit}
+                  onPress={addAuthoredSurfaceToWorkspace}
+                  style={[styles.primaryBtn, surfaceEditorMode === "implicit" && !workerCanPreviewImplicit ? styles.viewportActionButtonDisabled : null]}
+                >
+                  <Text style={styles.primaryBtnText}>{surfaceEditorMode === "implicit" ? "Add & compute" : "Add to scene"}</Text>
                 </Pressable>
               </View>
               {createActionMessage ? <Text style={createActionMessage.startsWith("Previewing") ? styles.note : styles.warningNote}>{createActionMessage}</Text> : null}

@@ -23,6 +23,15 @@ export type MobileParametricSurfaceDraft = {
   resolution: string;
 };
 
+export type MobileImplicitSurfaceDraft = {
+  id: string;
+  expression: string;
+  xSpan: string;
+  ySpan: string;
+  zSpan: string;
+  resolution: string;
+};
+
 export const DEFAULT_MOBILE_EXPLICIT_DRAFT: MobileExplicitSurfaceDraft = {
   id: "graph",
   expression: "sin(x)*cos(y)",
@@ -41,6 +50,15 @@ export const DEFAULT_MOBILE_PARAMETRIC_DRAFT: MobileParametricSurfaceDraft = {
   vMin: String(-Math.PI),
   vMax: String(Math.PI),
   resolution: "56",
+};
+
+export const DEFAULT_MOBILE_IMPLICIT_DRAFT: MobileImplicitSurfaceDraft = {
+  id: "implicit-surface",
+  expression: "x*x + y*y + z*z - 1",
+  xSpan: "1.5",
+  ySpan: "1.5",
+  zSpan: "1.5",
+  resolution: "72",
 };
 
 type MobileSurfaceBuildResult =
@@ -155,6 +173,37 @@ export const buildMobileParametricSurface = (
       yExpr: draft.yExpr.trim(),
       zExpr: draft.zExpr.trim(),
       domain: { uMin, uMax, vMin, vMax },
+      resolution: resolution.value,
+    },
+  };
+};
+
+export const buildMobileImplicitSurface = (
+  scene: SceneDocument | null,
+  draft: MobileImplicitSurfaceDraft
+): MobileSurfaceBuildResult => {
+  const id = validateObjectId(scene, draft.id);
+  if (!id.ok) return id;
+  const expressionError = validateMobileSurfaceExpression(draft.expression, ["x", "y", "z"]);
+  if (expressionError) return { ok: false, message: expressionError };
+  const xSpan = parseNumber(draft.xSpan, "X span");
+  if (!xSpan.ok) return xSpan;
+  const ySpan = parseNumber(draft.ySpan, "Y span");
+  if (!ySpan.ok) return ySpan;
+  const zSpan = parseNumber(draft.zSpan, "Z span");
+  if (!zSpan.ok) return zSpan;
+  if ([xSpan.value, ySpan.value, zSpan.value].some((span) => span <= 0 || span > 100)) {
+    return { ok: false, message: "Domain spans must be greater than 0 and at most 100." };
+  }
+  const resolution = parseResolution(draft.resolution);
+  if (!resolution.ok) return resolution;
+  return {
+    ok: true,
+    surface: {
+      id: id.value,
+      kind: "implicit",
+      expression: draft.expression.trim(),
+      domain: { xSpan: xSpan.value, ySpan: ySpan.value, zSpan: zSpan.value },
       resolution: resolution.value,
     },
   };

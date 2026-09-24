@@ -31,11 +31,14 @@ import {
   appendMobileSurface,
   buildMobileExplicitSurface,
   buildMobileParametricSurface,
+  buildMobileImplicitSurface,
   createMobilePrimitiveSurface,
   DEFAULT_MOBILE_EXPLICIT_DRAFT,
   DEFAULT_MOBILE_PARAMETRIC_DRAFT,
+  DEFAULT_MOBILE_IMPLICIT_DRAFT,
   type MobileExplicitSurfaceDraft,
   type MobileParametricSurfaceDraft,
+  type MobileImplicitSurfaceDraft,
   type MobilePrimitiveKind,
 } from "./models/mobileSurfaceCreation";
 import { clearMobileComputeJobs, loadMobileComputeJobs, saveMobileComputeJobs } from "./services/mobileComputeJobStorage";
@@ -280,9 +283,10 @@ export const useMobileAppController = () => {
     mesh?: MobileMeshPayload;
     preview?: ImplicitPreviewState;
   } | null>(null);
-  const [surfaceEditorMode, setSurfaceEditorMode] = useState<"explicit" | "parametric">("explicit");
+  const [surfaceEditorMode, setSurfaceEditorMode] = useState<"explicit" | "parametric" | "implicit">("explicit");
   const [explicitSurfaceDraft, setExplicitSurfaceDraft] = useState<MobileExplicitSurfaceDraft>(DEFAULT_MOBILE_EXPLICIT_DRAFT);
   const [parametricSurfaceDraft, setParametricSurfaceDraft] = useState<MobileParametricSurfaceDraft>(DEFAULT_MOBILE_PARAMETRIC_DRAFT);
+  const [implicitSurfaceDraft, setImplicitSurfaceDraft] = useState<MobileImplicitSurfaceDraft>(DEFAULT_MOBILE_IMPLICIT_DRAFT);
   const [authoringPreviewSurface, setAuthoringPreviewSurface] = useState<SurfaceDefinition | null>(null);
   const [createActionMessage, setCreateActionMessage] = useState("");
 
@@ -730,7 +734,8 @@ export const useMobileAppController = () => {
         const ySpan = Math.max(0.5, surface.domain?.ySpan ?? 2.4);
         const zSpan = Math.max(0.5, surface.domain?.zSpan ?? Math.max(xSpan, ySpan));
         const baseResolution = renderQuality === "performance" ? 52 : renderQuality === "quality" ? 96 : 72;
-        const resolution = Math.min(baseResolution, meshResolutionCap);
+        const requestedResolution = clampInt(surface.resolution ?? baseResolution, 12, MESH_RESOLUTION_CAP_MAX);
+        const resolution = Math.min(requestedResolution, baseResolution, meshResolutionCap);
         const requestPayload: Omit<VtkPreviewRequest, "jobId"> = {
           expr: surface.expression,
           iso: 0,
@@ -1284,13 +1289,20 @@ export const useMobileAppController = () => {
 
   const buildAuthoredSurface = () => surfaceEditorMode === "explicit"
     ? buildMobileExplicitSurface(viewerDocument, explicitSurfaceDraft)
-    : buildMobileParametricSurface(viewerDocument, parametricSurfaceDraft);
+    : surfaceEditorMode === "parametric"
+      ? buildMobileParametricSurface(viewerDocument, parametricSurfaceDraft)
+      : buildMobileImplicitSurface(viewerDocument, implicitSurfaceDraft);
 
   const previewAuthoredSurface = () => {
     const result = buildAuthoredSurface();
     if (!result.ok) {
       setAuthoringPreviewSurface(null);
       setCreateActionMessage(result.message);
+      return;
+    }
+    if (result.surface.kind === "implicit") {
+      setAuthoringPreviewSurface(null);
+      setCreateActionMessage("Implicit surfaces are previewed by a compute job. Use Add & compute.");
       return;
     }
     setAuthoringPreviewSurface(result.surface);
@@ -1303,6 +1315,10 @@ export const useMobileAppController = () => {
       setCreateActionMessage(result.message);
       return;
     }
+    if (result.surface.kind === "implicit" && !workerCanPreviewImplicit) {
+      setCreateActionMessage("Pair a compatible worker before adding an implicit surface.");
+      return;
+    }
     const wasEmpty = !viewerDocument;
     const scene = appendMobileSurface(viewerDocument, result.surface);
     setAuthoringPreviewSurface(null);
@@ -1311,7 +1327,7 @@ export const useMobileAppController = () => {
     setSelectedSurfaceId(result.surface.id);
     setDeletedWorkspaceObject(null);
     setObjectActionMessage(`Added ${result.surface.id}. Save project to keep this scene in the project library.`);
-    setInspectorSection("object");
+    setInspectorSection(result.surface.kind === "implicit" ? "compute" : "object");
     setInspectorExpanded(true);
   };
 
@@ -1866,6 +1882,8 @@ export const useMobileAppController = () => {
     setExplicitSurfaceDraft,
     parametricSurfaceDraft,
     setParametricSurfaceDraft,
+    implicitSurfaceDraft,
+    setImplicitSurfaceDraft,
     createActionMessage,
     hasImplicitPreviewErrors,
     backendSecurityWarning,
