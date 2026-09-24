@@ -16,6 +16,7 @@
     "@react-three/fiber": "9.4.2",
     "base-64": "1.0.0",
     "expo": "54.0.34",
+    "expo-camera": "~17.0.10",
     "expo-constants": "18.0.10",
     "expo-file-system": "19.0.22",
     "expo-gl": "16.0.7",

@@ -21,6 +21,7 @@ import {
   negotiatingMobileWorker,
   unconfiguredMobileWorker,
 } from "./models/mobileWorkerCapabilities";
+import { parseMobileWorkerPairing } from "./models/mobileWorkerPairing";
 import { clearMobileThumbnailCache, loadMobileThumbnailCache, saveMobileThumbnailCache, type MobileThumbnailCache } from "./services/mobileThumbnailCacheStorage";
 import { exportMobileSceneProject, pickMobileSceneProject, shareMobileSceneProject } from "./services/mobileProjectTransferService";
 import { createMobileThumbnailCacheKey, generateMobileSceneThumbnail } from "./viewer/mobileSceneThumbnail";
@@ -232,6 +233,8 @@ export const useMobileAppController = () => {
     lastPayloadBytes: null,
   });
   const [workerNegotiation, setWorkerNegotiation] = useState(unconfiguredMobileWorker);
+  const [workerAuthorization, setWorkerAuthorization] = useState<{ token: string; expiresAt: number } | null>(null);
+  const [workerPairingScannerVisible, setWorkerPairingScannerVisible] = useState(false);
   const [settingsActionMessage, setSettingsActionMessage] = useState("");
   const [meshResolutionCap, setMeshResolutionCap] = useState(DEFAULT_MESH_RESOLUTION_CAP);
   const [meshResolutionCapDraft, setMeshResolutionCapDraft] = useState(String(DEFAULT_MESH_RESOLUTION_CAP));
@@ -500,6 +503,30 @@ export const useMobileAppController = () => {
     () => mobileWorkerHasCapability(workerNegotiation, MOBILE_IMPLICIT_PREVIEW_CAPABILITY),
     [workerNegotiation]
   );
+  const activeWorkerAuthorizationToken = useMemo(
+    () => workerAuthorization && workerAuthorization.expiresAt > Date.now() ? workerAuthorization.token : "",
+    [workerAuthorization]
+  );
+
+  useEffect(() => {
+    if (!workerAuthorization) return;
+    const remainingMs = workerAuthorization.expiresAt - Date.now();
+    const expire = () => {
+      setWorkerAuthorization(null);
+      setWorkerNegotiation((current) => ({
+        ...current,
+        status: "unavailable",
+        message: "Desktop pairing expired. Scan a new pairing code to continue remote compute.",
+      }));
+      setLimitedMode(true);
+    };
+    if (remainingMs <= 0) {
+      expire();
+      return;
+    }
+    const timer = setTimeout(expire, remainingMs);
+    return () => clearTimeout(timer);
+  }, [workerAuthorization]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (next) => {
@@ -536,7 +563,7 @@ export const useMobileAppController = () => {
     );
     if (implicitSurfaces.length === 0) return;
 
-    const backend = createMobileMeshBackend(workerBaseUrl);
+    const backend = createMobileMeshBackend(workerBaseUrl, activeWorkerAuthorizationToken);
 
     const loadImplicitPreviews = async () => {
       const loadingState: ImplicitPreviewBySurfaceId = {};
@@ -691,6 +718,7 @@ export const useMobileAppController = () => {
     viewerDocument,
     renderQuality,
     workerBaseUrl,
+    activeWorkerAuthorizationToken,
     implicitPreviewRetryToken,
     meshResolutionCap,
     limitedMode,
@@ -1026,6 +1054,7 @@ export const useMobileAppController = () => {
     setBackendHealthStatus("idle");
     setBackendHealthMessage("");
     setWorkerNegotiation(unconfiguredMobileWorker());
+    setWorkerAuthorization(null);
 
     try {
       await persistMobileSettings({ workerBaseUrl: normalizedUrl });
@@ -1038,8 +1067,9 @@ export const useMobileAppController = () => {
     }
   };
 
-  const runBackendHealthCheck = async () => {
-    const normalizedUrl = normalizeWorkerBaseUrl(workerBaseUrlDraft);
+  const runBackendHealthCheck = async (explicitUrl?: string, explicitToken?: string) => {
+    const normalizedUrl = normalizeWorkerBaseUrl(explicitUrl ?? workerBaseUrlDraft);
+    const authorizationToken = explicitToken ?? activeWorkerAuthorizationToken;
     if (!normalizedUrl) {
       const unconfigured = unconfiguredMobileWorker();
       setWorkerBaseUrl("");
@@ -1058,7 +1088,7 @@ export const useMobileAppController = () => {
     setBackendDiagnostics((current) => ({ ...current, status: "running" }));
     setWorkerNegotiation(negotiatingMobileWorker());
 
-    const backend = createMobileMeshBackend(normalizedUrl);
+    const backend = createMobileMeshBackend(normalizedUrl, authorizationToken);
     const startedAt = Date.now();
     const [response, versionResponse] = await Promise.all([
       backend.health().catch((error) => ({ ok: false, error: String((error as Error).message ?? error) })),
@@ -1129,6 +1159,33 @@ export const useMobileAppController = () => {
       lastBackendError: healthError,
       lastRequestTimeout: timeoutDetected,
     }).catch(() => undefined);
+  };
+
+  const startWorkerPairing = () => {
+    setSettingsActionMessage("");
+    setWorkerPairingScannerVisible(true);
+  };
+
+  const cancelWorkerPairing = () => {
+    setWorkerPairingScannerVisible(false);
+  };
+
+  const completeWorkerPairing = async (rawValue: string): Promise<boolean> => {
+    setWorkerPairingScannerVisible(false);
+    const parsed = parseMobileWorkerPairing(rawValue, EXPECTED_WORKER_PROTOCOL);
+    if (!parsed.ok) {
+      setSettingsActionMessage(parsed.error);
+      return false;
+    }
+
+    const { endpoint, token, expiresAt } = parsed.pairing;
+    setWorkerAuthorization({ token, expiresAt });
+    setWorkerBaseUrl(endpoint);
+    setWorkerBaseUrlDraft(endpoint);
+    setSettingsActionMessage("Pairing code accepted. Verifying the desktop worker...");
+    await persistMobileSettings({ workerBaseUrl: endpoint }).catch(() => undefined);
+    await runBackendHealthCheck(endpoint, token);
+    return true;
   };
 
   const retryImplicitPreviews = () => {
@@ -1338,6 +1395,8 @@ export const useMobileAppController = () => {
     workerProtocolCompatibility,
     workerNegotiation,
     workerCanPreviewImplicit,
+    workerPairingScannerVisible,
+    workerPairingExpiresAt: workerAuthorization?.expiresAt ?? null,
     cameraCommand,
     androidFallbackForced,
     onViewportRenderReady,
@@ -1356,6 +1415,9 @@ export const useMobileAppController = () => {
     setAllSurfacesVisible,
     applyWorkerBaseUrl,
     runBackendHealthCheck,
+    startWorkerPairing,
+    cancelWorkerPairing,
+    completeWorkerPairing,
     retryImplicitPreviews,
     clearSceneCache,
     clearPreviewCache,

@@ -9,6 +9,14 @@ module.exports = {
     orientation: "portrait",
     userInterfaceStyle: "light",
     assetBundlePatterns: ["**/*"],
+    plugins: [[
+      "expo-camera",
+      {
+        cameraPermission: "Allow Math3D to scan a temporary desktop worker pairing code.",
+        microphonePermission: false,
+        recordAudioAndroid: false,
+      },
+    ]],
     android: {
       package: identity.applicationId,
       versionCode: identity.build,

@@ -1472,6 +1472,7 @@
     "@react-three/fiber" "9.4.2"
     base-64 "1.0.0"
     expo "54.0.34"
+    expo-camera "~17.0.10"
     expo-constants "18.0.10"
     expo-file-system "19.0.22"
     expo-gl "16.0.7"
@@ -4001,6 +4002,13 @@ expo-asset@>=8.4, expo-asset@~12.0.13:
     "@expo/image-utils" "^0.8.8"
     expo-constants "~18.0.13"
 
+expo-camera@~17.0.10:
+  version "17.0.10"
+  resolved "https://registry.npmjs.org/expo-camera/-/expo-camera-17.0.10.tgz"
+  integrity sha512-w1RBw83mAGVk4BPPwNrCZyFop0VLiVSRE3c2V9onWbdFwonpRhzmB4drygG8YOUTl1H3wQvALJHyMPTbgsK1Jg==
+  dependencies:
+    invariant "^2.2.4"
+
 expo-constants@~18.0.13:
   version "18.0.13"
   resolved "https://registry.npmjs.org/expo-constants/-/expo-constants-18.0.13.tgz"
@@ -6504,6 +6512,11 @@ qrcode-terminal@0.11.0:
   version "0.11.0"
   resolved "https://registry.npmjs.org/qrcode-terminal/-/qrcode-terminal-0.11.0.tgz"
   integrity sha512-Uu7ii+FQy4Qf82G4xu7ShHhjhGahEpCWc3x8UavY3CTcWV+ufmmCtwkr7ZKsX42jdL0kr1B5FKUeqJvAn51jzQ==
+
+qrcode-terminal@^0.12.0:
+  version "0.12.0"
+  resolved "https://registry.npmjs.org/qrcode-terminal/-/qrcode-terminal-0.12.0.tgz"
+  integrity sha512-EXtzRZmC+YGmGlDFbXKxQiMZNwCLEO6BANKXG4iCtSIM0yqc/pappSx3RIKr4r0uh5JsBckOXeKrB3Iz7mdQpQ==
 
 queue-microtask@^1.2.2:
   version "1.2.3"

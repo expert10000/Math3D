@@ -1,6 +1,7 @@
 "use strict";
 
 const http = require("node:http");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
@@ -25,6 +26,29 @@ const WORKER_CAPABILITIES = Object.freeze([
   "volume.distance",
   "volume.streamlines",
 ]);
+const MOBILE_PAIR_TOKEN = String(process.env.MATH3D_MOBILE_PAIR_TOKEN || "").trim();
+const MOBILE_PAIR_EXPIRES_AT = Number(process.env.MATH3D_MOBILE_PAIR_EXPIRES_AT || 0);
+
+function secureTokenMatches(received, expected) {
+  const receivedBytes = Buffer.from(String(received || ""), "utf8");
+  const expectedBytes = Buffer.from(String(expected || ""), "utf8");
+  return receivedBytes.length === expectedBytes.length && crypto.timingSafeEqual(receivedBytes, expectedBytes);
+}
+
+function authorizeMobilePairingRequest(req, res) {
+  if (!MOBILE_PAIR_TOKEN) return true;
+  if (!Number.isFinite(MOBILE_PAIR_EXPIRES_AT) || Date.now() >= MOBILE_PAIR_EXPIRES_AT) {
+    json(res, 401, { ok: false, error: "Math3D mobile pairing token expired." });
+    return false;
+  }
+  const authorization = String(req.headers.authorization || "");
+  const received = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+  if (!secureTokenMatches(received, MOBILE_PAIR_TOKEN)) {
+    json(res, 401, { ok: false, error: "A valid Math3D mobile pairing token is required." });
+    return false;
+  }
+  return true;
+}
 
 const diagnosticsState = {
   startupChecked: false,
@@ -195,9 +219,14 @@ function resolveWorkerScriptCandidates() {
 
 function resolveWorkerExeCandidates() {
   const fromEnv = String(process.env.MATH3D_WORKER_EXE || "").trim();
+  const localAppData = String(process.env.LOCALAPPDATA || "").trim();
   return dedupePaths([
     ...(fromEnv ? [path.resolve(fromEnv)] : []),
     path.join(ROOT_DIR, "build", "python-worker-dist", "worker", "worker.exe"),
+    path.join(ROOT_DIR, "release", "win-unpacked", "resources", "python-worker", "worker.exe"),
+    ...(localAppData
+      ? [path.join(localAppData, "Programs", "Math3D", "resources", "python-worker", "worker.exe")]
+      : []),
   ]);
 }
 
@@ -1118,11 +1147,13 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
     });
     res.end();
     return;
   }
+
+  if (!authorizeMobilePairingRequest(req, res)) return;
 
   await handleRoute(req, res, url.pathname);
 });

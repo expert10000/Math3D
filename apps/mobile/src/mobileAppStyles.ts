@@ -441,4 +441,19 @@ export const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#274567",
   },
+  pairingPanel: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#8cb3dc",
+    borderRadius: 12,
+    backgroundColor: "#f2f8ff",
+    padding: 10,
+    gap: 8,
+  },
+  pairingCamera: {
+    width: "100%",
+    height: 280,
+    borderRadius: 10,
+    overflow: "hidden",
+  },
 });

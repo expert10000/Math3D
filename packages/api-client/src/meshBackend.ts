@@ -61,6 +61,7 @@ export type HttpMeshBackendOptions = {
   timeoutMs?: number;
   retries?: number;
   retryDelayMs?: number;
+  authorizationToken?: string;
 };
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
@@ -204,6 +205,7 @@ const createHttpRequester = (baseUrl: string, options?: HttpMeshBackendOptions) 
   const timeoutMs = options?.timeoutMs ?? 20_000;
   const retries = Math.max(0, options?.retries ?? 1);
   const retryDelayMs = Math.max(0, options?.retryDelayMs ?? 500);
+  const authorizationToken = options?.authorizationToken?.trim() || "";
 
   const requestJson = async <T>(
     method: "GET" | "POST",
@@ -217,7 +219,10 @@ const createHttpRequester = (baseUrl: string, options?: HttpMeshBackendOptions) 
       try {
         const response = await fetch(`${normalizedBaseUrl}${path}`, {
           method,
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(authorizationToken ? { Authorization: `Bearer ${authorizationToken}` } : {}),
+          },
           body: body == null ? undefined : JSON.stringify(body),
           signal: controller.signal,
         });

@@ -4,6 +4,7 @@ import { SCENE_PROJECT_VERSION } from "@math3d/core";
 import Constants from "expo-constants";
 import { mobileFunctionPresets, mobileGallery } from "./data/mobileSeedData";
 import { clearMeshCache } from "./services/mobileMeshCacheStorage";
+import { MobileWorkerPairingScanner } from "./components/MobileWorkerPairingScanner";
 import { FORCE_ANDROID_SAFE_MODE, EXPECTED_WORKER_PROTOCOL, MESH_RESOLUTION_CAP_MIN, MESH_RESOLUTION_CAP_MAX, PREVIEW_PAYLOAD_WARNING_BYTES, type MobileAppController } from "./mobileAppController";
 import { styles } from "./mobileAppStyles";
 
@@ -38,8 +39,13 @@ export const MobileSettingsScreen: React.FC<{ model: MobileAppController }> = ({
     workerProtocolCompatibility,
     workerNegotiation,
     workerCanPreviewImplicit,
+    workerPairingScannerVisible,
+    workerPairingExpiresAt,
     applyWorkerBaseUrl,
     runBackendHealthCheck,
+    startWorkerPairing,
+    cancelWorkerPairing,
+    completeWorkerPairing,
     clearSceneCache,
     clearPreviewCache,
     applyMeshResolutionCap,
@@ -53,7 +59,24 @@ export const MobileSettingsScreen: React.FC<{ model: MobileAppController }> = ({
       <Text style={styles.note}>Connect a compatible worker to enable remote compute. The app remains usable offline.</Text>
 
       <View style={styles.settingRow}>
-        <Text style={styles.itemMeta}>Worker base URL</Text>
+        <Text style={styles.itemMeta}>Desktop worker pairing</Text>
+        <Pressable testID="mobile-worker-pair" onPress={startWorkerPairing} style={styles.primaryBtn}>
+          <Text style={styles.primaryBtnText}>Pair with desktop</Text>
+        </Pressable>
+        {workerPairingExpiresAt ? (
+          <Text style={styles.itemMeta}>Temporary access expires {new Date(workerPairingExpiresAt).toLocaleTimeString()}.</Text>
+        ) : null}
+        {workerPairingScannerVisible ? (
+          <MobileWorkerPairingScanner
+            onCancel={cancelWorkerPairing}
+            onScanned={(value) => void completeWorkerPairing(value)}
+          />
+        ) : null}
+        {settingsActionMessage.length > 0 ? <Text style={styles.note}>{settingsActionMessage}</Text> : null}
+      </View>
+
+      <View style={styles.settingRow}>
+        <Text style={styles.itemMeta}>Advanced manual worker URL</Text>
         <TextInput
           value={workerBaseUrlDraft}
           onChangeText={setWorkerBaseUrlDraft}
@@ -151,7 +174,6 @@ export const MobileSettingsScreen: React.FC<{ model: MobileAppController }> = ({
             <Text style={styles.secondaryBtnText}>Clear mesh cache</Text>
           </Pressable>
         </View>
-        {settingsActionMessage.length > 0 && <Text style={styles.note}>{settingsActionMessage}</Text>}
       </View>
 
       <View style={styles.settingRow}>

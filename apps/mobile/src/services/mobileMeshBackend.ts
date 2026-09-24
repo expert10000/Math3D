@@ -23,13 +23,14 @@ export interface MobileMeshBackend {
   geodesicHeat(request: Omit<GeodesicHeatRequest, "jobId">): Promise<GeodesicHeatResponse>;
 }
 
-export const createMobileMeshBackend = (baseUrl: string): MobileMeshBackend => ({
+export const createMobileMeshBackend = (baseUrl: string, authorizationToken?: string): MobileMeshBackend => ({
   // Delegate worker transport and retry/timeout policy to shared api client.
   ...(() => {
     const backend = createHttpMeshBackend(baseUrl, {
       timeoutMs: 25_000,
       retries: 1,
       retryDelayMs: 500,
+      authorizationToken,
     });
     return {
       health: () => backend.cgalHealth(),
