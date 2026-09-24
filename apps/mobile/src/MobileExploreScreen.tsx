@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 import { mobileExamples } from "./data/mobileSeedData";
 import { surfaceSummary, type MobileAppController } from "./mobileAppController";
 import { styles } from "./mobileAppStyles";
@@ -12,6 +12,16 @@ export const MobileExploreScreen: React.FC<{ model: MobileAppController }> = ({ 
     selectedExampleId,
     setSelectedExampleId,
     selectedExample,
+    filteredExamples,
+    exampleSearchQuery,
+    setExampleSearchQuery,
+    exampleCategoryFilter,
+    setExampleCategoryFilter,
+    exampleCapabilityFilter,
+    setExampleCapabilityFilter,
+    exampleCategories,
+    exampleRequiredCapabilities,
+    isExampleAvailable,
     openViewerWithExample,
   } = model;
   const learningExamples = mobileExamples.filter((example) => example.learnTopic);
@@ -39,8 +49,47 @@ export const MobileExploreScreen: React.FC<{ model: MobileAppController }> = ({ 
         <View style={styles.panel}>
           <Text style={styles.panelTitle}>Examples</Text>
           <Text style={styles.note}>One catalog supplies graphs, parametric surfaces, implicit jobs, and learning links.</Text>
-          {mobileExamples.map((example) => {
+          <TextInput
+            testID="mobile-example-search"
+            value={exampleSearchQuery}
+            onChangeText={setExampleSearchQuery}
+            placeholder="Search examples"
+            autoCorrect={false}
+            style={styles.textInput}
+          />
+          <Text style={styles.itemMeta}>Category</Text>
+          <View style={styles.viewerToolbarRow}>
+            {(["all", ...exampleCategories] as const).map((category) => (
+              <Pressable
+                key={category}
+                testID={`mobile-example-category-${category}`}
+                onPress={() => setExampleCategoryFilter(category)}
+                style={[styles.pill, exampleCategoryFilter === category ? styles.pillActive : null]}
+              >
+                <Text style={[styles.pillText, exampleCategoryFilter === category ? styles.pillTextActive : null]}>{category === "all" ? "All" : category}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.itemMeta}>Capability</Text>
+          <View style={styles.viewerToolbarRow}>
+            {(["all", "ready", "offline", ...exampleRequiredCapabilities] as const).map((capability) => (
+              <Pressable
+                key={capability}
+                testID={`mobile-example-capability-${capability}`}
+                onPress={() => setExampleCapabilityFilter(capability)}
+                style={[styles.pill, exampleCapabilityFilter === capability ? styles.pillActive : null]}
+              >
+                <Text style={[styles.pillText, exampleCapabilityFilter === capability ? styles.pillTextActive : null]}>
+                  {capability === "all" ? "All" : capability === "ready" ? "Ready now" : capability === "offline" ? "Offline" : "Implicit worker"}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.itemMeta}>{filteredExamples.length} of {mobileExamples.length} examples</Text>
+          {filteredExamples.length === 0 && <Text style={styles.warningNote}>No examples match these filters.</Text>}
+          {filteredExamples.map((example) => {
             const surface = example.scene.surfaces?.[0];
+            const available = isExampleAvailable(example);
             return (
               <Pressable
                 key={example.id}
@@ -54,6 +103,9 @@ export const MobileExploreScreen: React.FC<{ model: MobileAppController }> = ({ 
                 <Text style={styles.itemTitle}>{example.title}</Text>
                 <Text style={styles.itemMeta}>{example.description}</Text>
                 <Text style={styles.itemMeta}>{example.category} · {example.surfaceType}</Text>
+                <Text style={available ? styles.itemMeta : styles.warningNote}>
+                  {example.capabilities.length === 0 ? "Works offline" : available ? "Worker capability ready" : "Worker capability required"}
+                </Text>
                 {surface ? <Text style={styles.itemMeta}>{surfaceSummary(surface)}</Text> : null}
               </Pressable>
             );

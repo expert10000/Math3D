@@ -25,6 +25,7 @@ import { parseMobileWorkerPairing } from "./models/mobileWorkerPairing";
 import { canResumeMobileComputeJob, createMobileComputeJob, createMobileComputeJobId, isMobileComputeJobTerminal, mergeMobileComputeJobSnapshot, type MobileComputeJob } from "./models/mobileComputeJobs";
 import { createMobileComputeCacheKey, type MobileComputeCacheLookup } from "./models/mobileComputeCache";
 import { buildMobileSceneObjectItems } from "./models/mobileSceneObjects";
+import { filterMobileExamples, mobileExampleCategories, mobileExampleIsAvailable, mobileExampleRequiredCapabilities, type MobileExampleCapabilityFilter, type MobileExampleCategoryFilter } from "./models/mobileExampleCatalog";
 import { deleteMobileSceneObject, duplicateMobileSceneObject, renameMobileSceneObject, restoreMobileSceneObject, type MobileDeletedSceneObject } from "./models/mobileSceneObjectOperations";
 import { clearMobileComputeJobs, loadMobileComputeJobs, saveMobileComputeJobs } from "./services/mobileComputeJobStorage";
 import { clearMobileThumbnailCache, loadMobileThumbnailCache, saveMobileThumbnailCache, type MobileThumbnailCache } from "./services/mobileThumbnailCacheStorage";
@@ -214,6 +215,9 @@ export const useMobileAppController = () => {
     sceneThumbnailsById, setSceneThumbnailsById } = useMobileProjectState();
   const inspectorSwipeStartY = useRef<number | null>(null);
   const [selectedExampleId, setSelectedExampleId] = useState<string | null>(mobileExamples[0]?.id ?? null);
+  const [exampleSearchQuery, setExampleSearchQuery] = useState("");
+  const [exampleCategoryFilter, setExampleCategoryFilter] = useState<MobileExampleCategoryFilter>("all");
+  const [exampleCapabilityFilter, setExampleCapabilityFilter] = useState<MobileExampleCapabilityFilter>("all");
   const showGrid = gridPlanes.length > 0;
   const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(true);
   const [workerBaseUrl, setWorkerBaseUrl] = useState(DEFAULT_WORKER_BASE_URL);
@@ -498,6 +502,19 @@ export const useMobileAppController = () => {
     () => mobileExamples.find((item) => item.id === selectedExampleId) ?? null,
     [selectedExampleId]
   );
+  const availableExampleCapabilities = workerNegotiation.status === "ready" ? workerNegotiation.capabilities : [];
+  const filteredExamples = useMemo(
+    () => filterMobileExamples(mobileExamples, {
+      query: exampleSearchQuery,
+      category: exampleCategoryFilter,
+      capability: exampleCapabilityFilter,
+      availableCapabilities: availableExampleCapabilities,
+    }),
+    [availableExampleCapabilities, exampleCapabilityFilter, exampleCategoryFilter, exampleSearchQuery]
+  );
+  const exampleCategories = useMemo(() => mobileExampleCategories(mobileExamples), []);
+  const exampleRequiredCapabilities = useMemo(() => mobileExampleRequiredCapabilities(mobileExamples), []);
+  const isExampleAvailable = (example: Math3DExample) => mobileExampleIsAvailable(example, availableExampleCapabilities);
   const viewerSurfaces = viewerDocument?.surfaces ?? [];
   const selectedSurface = viewerSurfaces.find((surface) => surface.id === selectedSurfaceId) ?? null;
   const sceneObjectItems = useMemo(
@@ -1663,6 +1680,12 @@ export const useMobileAppController = () => {
     inspectorSwipeStartY,
     selectedExampleId,
     setSelectedExampleId,
+    exampleSearchQuery,
+    setExampleSearchQuery,
+    exampleCategoryFilter,
+    setExampleCategoryFilter,
+    exampleCapabilityFilter,
+    setExampleCapabilityFilter,
     viewerDocument,
     renderQuality,
     setRenderQuality,
@@ -1715,6 +1738,10 @@ export const useMobileAppController = () => {
     selectedScene,
     filteredSceneSummaries,
     selectedExample,
+    filteredExamples,
+    exampleCategories,
+    exampleRequiredCapabilities,
+    isExampleAvailable,
     viewerSurfaces,
     selectedSurface,
     sceneObjectItems,
