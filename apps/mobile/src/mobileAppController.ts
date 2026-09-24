@@ -27,6 +27,7 @@ import { createMobileComputeCacheKey, type MobileComputeCacheLookup } from "./mo
 import { buildMobileSceneObjectItems } from "./models/mobileSceneObjects";
 import { filterMobileExamples, mobileExampleCategories, mobileExampleIsAvailable, mobileExampleRequiredCapabilities, type MobileExampleCapabilityFilter, type MobileExampleCategoryFilter } from "./models/mobileExampleCatalog";
 import { deleteMobileSceneObject, duplicateMobileSceneObject, renameMobileSceneObject, restoreMobileSceneObject, type MobileDeletedSceneObject } from "./models/mobileSceneObjectOperations";
+import { appendMobileSurface, createMobilePrimitiveSurface, type MobilePrimitiveKind } from "./models/mobileSurfaceCreation";
 import { clearMobileComputeJobs, loadMobileComputeJobs, saveMobileComputeJobs } from "./services/mobileComputeJobStorage";
 import { clearMobileThumbnailCache, loadMobileThumbnailCache, saveMobileThumbnailCache, type MobileThumbnailCache } from "./services/mobileThumbnailCacheStorage";
 import { exportMobileSceneProject, pickMobileSceneProject, shareMobileSceneProject } from "./services/mobileProjectTransferService";
@@ -539,7 +540,6 @@ export const useMobileAppController = () => {
   );
   useEffect(() => {
     setObjectNameDraft(selectedSurface?.id ?? "");
-    setObjectActionMessage("");
   }, [selectedSurface?.id]);
   const hasImplicitPreviewErrors = useMemo(
     () =>
@@ -1218,6 +1218,7 @@ export const useMobileAppController = () => {
 
   const selectWorkspaceObject = (surfaceId: string) => {
     if (!viewerSurfaces.some((surface) => surface.id === surfaceId)) return;
+    setObjectActionMessage("");
     setSelectedSurfaceId(surfaceId);
     setInspectorSection("object");
     setInspectorExpanded(true);
@@ -1236,6 +1237,20 @@ export const useMobileAppController = () => {
     const ids = visible ? (viewerDocument.surfaces ?? []).map((surface) => surface.id) : [];
     setVisibleSurfaceIds(ids);
     if (visible) runCameraCommand("fit");
+  };
+
+  const addPrimitiveToWorkspace = (kind: MobilePrimitiveKind) => {
+    const wasEmpty = !viewerDocument;
+    const surface = createMobilePrimitiveSurface(kind, viewerDocument);
+    const scene = appendMobileSurface(viewerDocument, surface);
+    setViewerDocument(scene);
+    if (!wasEmpty) setVisibleSurfaceIds((current) => [...current, surface.id]);
+    setSelectedSurfaceId(surface.id);
+    setDeletedWorkspaceObject(null);
+    setObjectActionMessage(`Added ${surface.id}. Save project to keep this scene in the project library.`);
+    setTab("workspace");
+    setInspectorSection("object");
+    setInspectorExpanded(true);
   };
 
   const selectAnalysisOverlay = (overlay: MobileAnalysisOverlay) => {
@@ -1810,6 +1825,7 @@ export const useMobileAppController = () => {
     selectWorkspaceObject,
     toggleSurfaceVisibility,
     setAllSurfacesVisible,
+    addPrimitiveToWorkspace,
     selectAnalysisOverlay,
     renameSelectedWorkspaceObject,
     duplicateSelectedWorkspaceObject,

@@ -122,6 +122,14 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
           <Text style={styles.note}>Choose a scene or surface to start viewing in 3D.</Text>
           <Pressable onPress={() => setTab("explore")} style={styles.primaryBtn}><Text style={styles.primaryBtnText}>Explore examples</Text></Pressable>
           <Pressable onPress={() => setTab("projects")} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Open project</Text></Pressable>
+          <Text style={styles.note}>Or start a scene with a primitive:</Text>
+          <View style={styles.viewerToolbarRow}>
+            {(["plane", "sphere", "cylinder", "torus"] as const).map((kind) => (
+              <Pressable key={kind} testID={`mobile-empty-create-${kind}`} onPress={() => model.addPrimitiveToWorkspace(kind)} style={styles.secondaryBtn}>
+                <Text style={styles.secondaryBtnText}>{kind[0].toUpperCase() + kind.slice(1)}</Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
       )}
     </View>

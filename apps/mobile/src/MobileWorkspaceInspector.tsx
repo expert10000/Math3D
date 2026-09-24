@@ -80,7 +80,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
         <Text style={styles.inspectorHint}>{inspectorExpanded ? "Swipe down to close" : "Swipe up for tools"}</Text>
       </View>
       <View style={styles.inspectorTabs}>
-        {(["scene", "object", "view", "compute", "analyze"] as const).map((section) => (
+        {(["scene", "object", "create", "view", "compute", "analyze"] as const).map((section) => (
           <Pressable
             key={section}
             testID={`mobile-inspector-tab-${section}`}
@@ -91,7 +91,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
             style={[styles.inspectorTab, inspectorSection === section ? styles.inspectorTabActive : null]}
           >
             <Text style={[styles.inspectorTabText, inspectorSection === section ? styles.inspectorTabTextActive : null]}>
-              {section === "scene" ? "Scene" : section === "object" ? "Object" : section === "view" ? "View" : section === "compute" ? "Compute" : "Analyze"}
+              {section === "scene" ? "Scene" : section === "object" ? "Object" : section === "create" ? "Create" : section === "view" ? "View" : section === "compute" ? "Compute" : "Analyze"}
             </Text>
           </Pressable>
         ))}
@@ -207,6 +207,25 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                   <Text style={styles.secondaryBtnText}>Undo last delete</Text>
                 </Pressable>
               )}
+            </>
+          )}
+          {inspectorSection === "create" && (
+            <>
+              <Text style={styles.panelTitle}>Create</Text>
+              <Text style={styles.note}>Add a locally rendered primitive to this scene.</Text>
+              <View style={styles.viewerToolbarRow}>
+                {(["plane", "sphere", "cylinder", "torus"] as const).map((kind) => (
+                  <Pressable
+                    key={kind}
+                    testID={`mobile-create-primitive-${kind}`}
+                    onPress={() => model.addPrimitiveToWorkspace(kind)}
+                    style={styles.secondaryBtn}
+                  >
+                    <Text style={styles.secondaryBtnText}>{kind[0].toUpperCase() + kind.slice(1)}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={styles.itemMeta}>Primitives are editable surface definitions and work offline.</Text>
             </>
           )}
           {inspectorSection === "view" && (

@@ -2,7 +2,7 @@ import { useState } from "react";
 
 export type MobileTab = "home" | "explore" | "workspace" | "projects" | "settings";
 export type ExploreSection = "examples" | "learn";
-export type InspectorSection = "scene" | "object" | "view" | "compute" | "analyze";
+export type InspectorSection = "scene" | "object" | "create" | "view" | "compute" | "analyze";
 
 export const useMobileNavigationState = () => {
   const [tab, setTab] = useState<MobileTab>("workspace");
