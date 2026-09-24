@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from "react-native";
 import { Canvas, useFrame } from "@react-three/fiber/native";
 import * as THREE from "three";
 import type { SceneDocument } from "@math3d/core";
@@ -7,6 +7,7 @@ import type { MobileSurfaceColorMode } from "../viewer/mobileCurvatureColors";
 import type { MobileSurfaceRenderMode, MobileSurfaceShading } from "../viewer/mobileViewModes";
 import { buildMobileEdgeOverlayGeometry, buildMobileNormalOverlayGeometry, type MobileAnalysisOverlay } from "../viewer/mobileAnalysisOverlays";
 import type { MobilePerformanceSample } from "../viewer/mobileAdaptiveQuality";
+import { MobileProjectedScene } from "./MobileProjectedScene";
 import { DEFAULT_MOBILE_GRID_PLANES, type MobileGridPlane } from "../models/mobileCoordinateGrid";
 import {
   buildSceneSurfacePreviews,
@@ -602,49 +603,58 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
       onResponderRelease={handleResponderEnd}
       onResponderTerminate={handleResponderEnd}
     >
-      <Canvas
-        style={styles.canvas}
-        camera={{ fov: 52, near: 0.01, far: 1000, position: [4, 4, 4], up: [0, 0, 1] }}
-        gl={{ antialias: true }}
-        frameloop={renderPaused ? "demand" : "always"}
-      >
-        <ambientLight intensity={1.25} />
-        <directionalLight position={[5, -4, 8]} intensity={1.55} />
-        <directionalLight position={[-4, 3, 1]} intensity={0.55} />
-        {showGrid && gridPlanes.includes("xy") ? (
-          <PlaneGrid plane="xy" halfSize={coordinateFrame.halfSize} majorStep={coordinateFrame.majorStep} color="#74abff" />
-        ) : null}
-        {showGrid && gridPlanes.includes("xz") ? (
-          <PlaneGrid plane="xz" halfSize={coordinateFrame.halfSize} majorStep={coordinateFrame.majorStep} color="#69ca84" />
-        ) : null}
-        {showGrid && gridPlanes.includes("yz") ? (
-          <PlaneGrid plane="yz" halfSize={coordinateFrame.halfSize} majorStep={coordinateFrame.majorStep} color="#ffa877" />
-        ) : null}
-        {showAxes ? <CoordinateAxes halfSize={coordinateFrame.halfSize} /> : null}
-        {showBoundingBox ? <SurfaceBounds previews={renderablePreviews} /> : null}
+      {Platform.OS === "ios" ? (
+        <MobileProjectedScene
+          previews={renderablePreviews}
+          orbit={orbitRef.current}
+          selectedSurfaceId={selectedSurfaceId ?? null}
+          onReady={onRenderReady}
+        />
+      ) : (
+        <Canvas
+          style={styles.canvas}
+          camera={{ fov: 52, near: 0.01, far: 1000, position: [4, 4, 4], up: [0, 0, 1] }}
+          gl={{ antialias: true }}
+          frameloop={renderPaused ? "demand" : "always"}
+        >
+          <ambientLight intensity={1.25} />
+          <directionalLight position={[5, -4, 8]} intensity={1.55} />
+          <directionalLight position={[-4, 3, 1]} intensity={0.55} />
+          {showGrid && gridPlanes.includes("xy") ? (
+            <PlaneGrid plane="xy" halfSize={coordinateFrame.halfSize} majorStep={coordinateFrame.majorStep} color="#74abff" />
+          ) : null}
+          {showGrid && gridPlanes.includes("xz") ? (
+            <PlaneGrid plane="xz" halfSize={coordinateFrame.halfSize} majorStep={coordinateFrame.majorStep} color="#69ca84" />
+          ) : null}
+          {showGrid && gridPlanes.includes("yz") ? (
+            <PlaneGrid plane="yz" halfSize={coordinateFrame.halfSize} majorStep={coordinateFrame.majorStep} color="#ffa877" />
+          ) : null}
+          {showAxes ? <CoordinateAxes halfSize={coordinateFrame.halfSize} /> : null}
+          {showBoundingBox ? <SurfaceBounds previews={renderablePreviews} /> : null}
 
-        {renderablePreviews.map((preview, index) => (
-          <group
-            key={`surface-preview-${preview.id}-${index}`}
-            onPointerDown={() => {
-              if (selectionEnabled) onSelectedSurfaceChange?.(preview.id);
-            }}
-          >
-            <SurfaceMesh
-              preview={preview}
-              opacity={Math.max(0, Math.min(1, surfaceOpacityById?.[preview.id] ?? 1))}
-              renderMode={renderMode}
-              shading={shading}
-              selected={preview.id === selectedSurfaceId}
-            />
-            {preview.id === selectedSurfaceId ? <AnalysisLineOverlay preview={preview} overlay={analysisOverlay} /> : null}
-          </group>
-        ))}
+          {renderablePreviews.map((preview, index) => (
+            <group
+              key={`surface-preview-${preview.id}-${index}`}
+              onPointerDown={() => {
+                if (selectionEnabled) onSelectedSurfaceChange?.(preview.id);
+              }}
+            >
+              <SurfaceMesh
+                preview={preview}
+                opacity={Math.max(0, Math.min(1, surfaceOpacityById?.[preview.id] ?? 1))}
+                renderMode={renderMode}
+                shading={shading}
+                selected={preview.id === selectedSurfaceId}
+              />
+              {preview.id === selectedSurfaceId ? <AnalysisLineOverlay preview={preview} overlay={analysisOverlay} /> : null}
+            </group>
+          ))}
 
-        <CameraRig orbitRef={orbitRef} />
-        <RenderReadyPing onReady={onRenderReady} />
-        <FrameTimeReporter triangleCount={renderLoad.triangleCount} estimatedGpuBytes={renderLoad.estimatedGpuBytes} onSample={onPerformanceSample} />
-      </Canvas>
+          <CameraRig orbitRef={orbitRef} />
+          <RenderReadyPing onReady={onRenderReady} />
+          <FrameTimeReporter triangleCount={renderLoad.triangleCount} estimatedGpuBytes={renderLoad.estimatedGpuBytes} onSample={onPerformanceSample} />
+        </Canvas>
+      )}
 
       <View style={styles.overlay} pointerEvents="none">
         <Text style={styles.overlayText}>{gestureHint}</Text>

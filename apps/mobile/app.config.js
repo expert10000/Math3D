@@ -6,7 +6,7 @@ module.exports = {
     slug: "math3d-mobile",
     version: identity.version,
     entryPoint: "./index.js",
-    orientation: "portrait",
+    orientation: "default",
     userInterfaceStyle: "light",
     assetBundlePatterns: ["**/*"],
     plugins: [[

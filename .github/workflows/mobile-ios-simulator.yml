@@ -1,13 +1,28 @@
-name: Mobile iOS Simulator Gate
+name: Mobile iOS Companion Gate
 
 on:
+  push:
+    branches: [main, master]
+    paths:
+      - "apps/mobile/**"
+      - "packages/api-client/**"
+      - "packages/core/**"
+      - ".github/scripts/mobile-ios-screenshot-check.swift"
+      - ".github/workflows/mobile-ios-simulator.yml"
+      - "package-lock.json"
+      - "tests/unit/mobileProjectedScene.test.ts"
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: mobile-ios-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ios-simulator:
+    name: Unsigned build and small/current iPhone smoke
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -23,10 +38,11 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Check mobile types and identity
+      - name: Check mobile types, projection, and identity
         run: |
           npm run mobile:version:check
           npm --prefix apps/mobile run typecheck
+          npm exec vitest run tests/unit/mobileProjectedScene.test.ts
 
       - name: Generate iOS project
         working-directory: apps/mobile
@@ -39,7 +55,7 @@ jobs:
         working-directory: apps/mobile/ios
         run: pod install
 
-      - name: Build unsigned iOS simulator app
+      - name: Build unsigned iOS companion app
         shell: bash
         run: |
           workspace="$(find apps/mobile/ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
@@ -50,37 +66,53 @@ jobs:
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/mobile-ios-build" CODE_SIGNING_ALLOWED=NO build
 
-      - name: Install and launch on iPhone simulator
+      - name: Package and hash simulator build
         shell: bash
         run: |
-          xcrun simctl list devices available
-          device="$(xcrun simctl list devices available -j | node -e 'let value="";process.stdin.on("data",part=>value+=part).on("end",()=>{const devices=Object.values(JSON.parse(value).devices).flat();const phone=devices.find(item=>item.name.startsWith("iPhone"));if(phone)console.log(phone.udid)})')"
-          if [[ -z "$device" ]]; then
-            runtime="$(xcrun simctl list runtimes available -j | node -e 'let value="";process.stdin.on("data",part=>value+=part).on("end",()=>{const item=JSON.parse(value).runtimes.find(runtime=>runtime.identifier.includes(".iOS-"));if(item)console.log(item.identifier)})')"
-            device_type="$(xcrun simctl list devicetypes -j | node -e 'let value="";process.stdin.on("data",part=>value+=part).on("end",()=>{const item=JSON.parse(value).devicetypes.find(type=>type.name.startsWith("iPhone 16"));if(item)console.log(item.identifier)})')"
-            test -n "$runtime" && test -n "$device_type"
-            device="$(xcrun simctl create 'Math3D QA iPhone' "$device_type" "$runtime")"
-          fi
           app="$(find "$RUNNER_TEMP/mobile-ios-build/Build/Products/Release-iphonesimulator" -maxdepth 1 -name '*.app' -print -quit)"
-          test -n "$device" && test -n "$app"
-          echo "Simulator: $device"
-          echo "App: $app"
-          xcrun simctl boot "$device" || true
-          xcrun simctl bootstatus "$device" -b
-          xcrun simctl install "$device" "$app"
-          xcrun simctl launch "$device" com.math3d.mobile
-          sleep 15
-          mkdir -p output/mobile-ios-simulator
-          xcrun simctl io "$device" screenshot output/mobile-ios-simulator/launch-15s.png
-          sleep 30
-          xcrun simctl io "$device" screenshot output/mobile-ios-simulator/launch-45s.png
-          swift .github/scripts/mobile-ios-screenshot-check.swift output/mobile-ios-simulator/launch-45s.png
+          test -n "$app"
+          mkdir -p output/mobile-ios-companion
+          ditto -c -k --sequesterRsrc --keepParent "$app" output/mobile-ios-companion/Math3D-mobile-ios-simulator.app.zip
+          (cd output/mobile-ios-companion && shasum -a 256 Math3D-mobile-ios-simulator.app.zip > SHA256SUMS)
+          node -e 'const fs=require("node:fs");const crypto=require("node:crypto");const path="output/mobile-ios-companion/Math3D-mobile-ios-simulator.app.zip";const identity=require("./apps/mobile/version.json");fs.writeFileSync("output/mobile-ios-companion/build-info.json",JSON.stringify({platform:"ios-simulator",version:identity.version,build:identity.build,bundleIdentifier:identity.applicationId,gitCommit:process.env.GITHUB_SHA,sha256:crypto.createHash("sha256").update(fs.readFileSync(path)).digest("hex")},null,2)+"\n")'
 
-      - name: Upload simulator screenshot
+      - name: Launch on small and current iPhone simulators
+        shell: bash
+        run: |
+          runtime="$(xcrun simctl list runtimes available -j | node -e 'let value="";process.stdin.on("data",part=>value+=part).on("end",()=>{const items=JSON.parse(value).runtimes.filter(item=>item.identifier.includes(".iOS-")&&item.isAvailable!==false);if(items.length)console.log(items.at(-1).identifier)})')"
+          types="$(xcrun simctl list devicetypes -j | node -e 'let value="";process.stdin.on("data",part=>value+=part).on("end",()=>{const phones=JSON.parse(value).devicetypes.filter(item=>item.name.startsWith("iPhone"));const small=phones.find(item=>item.name.includes("SE (3rd"))||phones.find(item=>item.name.includes("16e"))||phones.at(-1);const current=phones.find(item=>item.name==="iPhone 16 Pro")||phones.find(item=>item.name.includes("Pro"))||phones[0];if(small&&current)console.log(`${small.identifier}|${current.identifier}`)})')"
+          IFS='|' read -r small_type current_type <<< "$types"
+          app="$(find "$RUNNER_TEMP/mobile-ios-build/Build/Products/Release-iphonesimulator" -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$runtime" && test -n "$small_type" && test -n "$current_type" && test -n "$app"
+          for spec in "small:$small_type" "current:$current_type"; do
+            label="${spec%%:*}"
+            device_type="${spec#*:}"
+            device="$(xcrun simctl create "Math3D QA $label" "$device_type" "$runtime")"
+            xcrun simctl boot "$device"
+            xcrun simctl bootstatus "$device" -b
+            xcrun simctl install "$device" "$app"
+            xcrun simctl launch "$device" com.math3d.mobile
+            sleep 15
+            xcrun simctl io "$device" screenshot "output/mobile-ios-companion/$label-iphone.png"
+            swift .github/scripts/mobile-ios-screenshot-check.swift "output/mobile-ios-companion/$label-iphone.png"
+            xcrun simctl spawn "$device" log show --style compact --last 3m --predicate 'process CONTAINS "Math3D"' > "output/mobile-ios-companion/$label-iphone.log" || true
+            xcrun simctl terminate "$device" com.math3d.mobile
+            xcrun simctl launch "$device" com.math3d.mobile
+            sleep 5
+            xcrun simctl io "$device" screenshot "output/mobile-ios-companion/$label-iphone-resumed.png"
+            swift .github/scripts/mobile-ios-screenshot-check.swift "output/mobile-ios-companion/$label-iphone-resumed.png"
+            xcrun simctl shutdown "$device"
+            xcrun simctl delete "$device"
+          done
+
+      - name: Verify packaged hash
+        run: cd output/mobile-ios-companion && shasum -a 256 -c SHA256SUMS
+
+      - name: Upload iOS companion build and evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: mobile-ios-simulator-${{ github.run_id }}-${{ github.run_attempt }}
-          if-no-files-found: warn
+          name: mobile-ios-companion-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
           retention-days: 14
-          path: output/mobile-ios-simulator/**
+          path: output/mobile-ios-companion/**
