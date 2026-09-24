@@ -15,6 +15,7 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
     surfaceShading,
     showBoundingBox,
     viewerDocument,
+    authoringPreviewScene,
     renderQuality,
     showAxes,
     gridPlanes,
@@ -38,22 +39,24 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
     androidFallbackForced,
     onViewportRenderReady
   } = model;
+  const viewportDocument = authoringPreviewScene ?? viewerDocument;
+  const previewSurfaceId = authoringPreviewScene?.surfaces?.[0]?.id ?? null;
   return (
 
     <View style={styles.workspaceRoot}>
       {viewerDocument ? (
         <>
           <View style={styles.workspaceStatus}>
-            <Text style={styles.workspaceSceneTitle} numberOfLines={1}>{viewerDocument.title}</Text>
-            <Text style={styles.itemMeta}>{viewerSurfaces.length} object{viewerSurfaces.length === 1 ? "" : "s"} · {renderQuality}</Text>
+            <Text style={styles.workspaceSceneTitle} numberOfLines={1}>{authoringPreviewScene ? "Formula preview" : viewerDocument.title}</Text>
+            <Text style={styles.itemMeta}>{authoringPreviewScene ? "Scene unchanged · " : `${viewerSurfaces.length} object${viewerSurfaces.length === 1 ? "" : "s"} · `}{renderQuality}</Text>
             {limitedMode && <Text style={styles.warningNote}>Offline mode: cached previews only</Text>}
           </View>
           <View style={styles.workspaceViewportFrame}>
             <MobileSceneViewport
-              scene={viewerDocument}
+              scene={viewportDocument!}
               quality={renderQuality}
-              visibleSurfaceIds={visibleSurfaceIds}
-              selectedSurfaceId={selectedSurfaceId}
+              visibleSurfaceIds={authoringPreviewScene && previewSurfaceId ? [previewSurfaceId] : visibleSurfaceIds}
+              selectedSurfaceId={previewSurfaceId ?? selectedSurfaceId}
               cameraCommand={cameraCommand}
               forceFallback={androidFallbackForced}
               implicitMeshBySurfaceId={implicitMeshBySurfaceId}
@@ -61,7 +64,7 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
               initialOrbit={cameraOrbit}
               onOrbitChange={setCameraOrbit}
               onSelectedSurfaceChange={selectWorkspaceObject}
-              selectionEnabled={viewportSelectionEnabled}
+              selectionEnabled={viewportSelectionEnabled && !authoringPreviewScene}
               onOpenCompute={() => {
                 setInspectorSection("compute");
                 setInspectorExpanded(true);

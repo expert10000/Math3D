@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { SceneDocument } from "@math3d/core";
-import { appendMobileSurface, createMobilePrimitiveSurface } from "../../apps/mobile/src/models/mobileSurfaceCreation";
+import {
+  appendMobileSurface,
+  buildMobileExplicitSurface,
+  buildMobileParametricSurface,
+  createMobilePrimitiveSurface,
+  DEFAULT_MOBILE_EXPLICIT_DRAFT,
+  DEFAULT_MOBILE_PARAMETRIC_DRAFT,
+  validateMobileSurfaceExpression,
+} from "../../apps/mobile/src/models/mobileSurfaceCreation";
 
 const scene: SceneDocument = {
   id: "scene",
@@ -22,5 +30,17 @@ describe("mobile primitive creation", () => {
     const plane = createMobilePrimitiveSurface("plane", scene);
     expect(appendMobileSurface(scene, plane, 10)).toMatchObject({ updatedAt: 10, surfaces: [{ id: "sphere" }, { id: "plane" }] });
     expect(appendMobileSurface(null, plane, 20)).toMatchObject({ id: "scene-mobile-created-20", title: "Untitled scene", surfaces: [{ id: "plane" }] });
+  });
+
+  it("validates and builds explicit and parametric drafts", () => {
+    expect(buildMobileExplicitSurface(scene, { ...DEFAULT_MOBILE_EXPLICIT_DRAFT, id: "wave" })).toMatchObject({ ok: true, surface: { id: "wave", kind: "explicit" } });
+    expect(buildMobileParametricSurface(scene, DEFAULT_MOBILE_PARAMETRIC_DRAFT)).toMatchObject({ ok: true, surface: { kind: "parametric" } });
+    expect(buildMobileParametricSurface(scene, { ...DEFAULT_MOBILE_PARAMETRIC_DRAFT, uMax: "-4" })).toMatchObject({ ok: false });
+  });
+
+  it("rejects unsafe, unknown, and non-finite expressions", () => {
+    expect(validateMobileSurfaceExpression("x^2", ["x", "y"])).toContain("not exponentiation");
+    expect(validateMobileSurfaceExpression("unknown(x)", ["x", "y"])).toContain("Unknown name");
+    expect(validateMobileSurfaceExpression("1/0", ["x", "y"])).toContain("finite");
   });
 });

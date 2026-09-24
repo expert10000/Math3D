@@ -27,7 +27,17 @@ import { createMobileComputeCacheKey, type MobileComputeCacheLookup } from "./mo
 import { buildMobileSceneObjectItems } from "./models/mobileSceneObjects";
 import { filterMobileExamples, mobileExampleCategories, mobileExampleIsAvailable, mobileExampleRequiredCapabilities, type MobileExampleCapabilityFilter, type MobileExampleCategoryFilter } from "./models/mobileExampleCatalog";
 import { deleteMobileSceneObject, duplicateMobileSceneObject, renameMobileSceneObject, restoreMobileSceneObject, type MobileDeletedSceneObject } from "./models/mobileSceneObjectOperations";
-import { appendMobileSurface, createMobilePrimitiveSurface, type MobilePrimitiveKind } from "./models/mobileSurfaceCreation";
+import {
+  appendMobileSurface,
+  buildMobileExplicitSurface,
+  buildMobileParametricSurface,
+  createMobilePrimitiveSurface,
+  DEFAULT_MOBILE_EXPLICIT_DRAFT,
+  DEFAULT_MOBILE_PARAMETRIC_DRAFT,
+  type MobileExplicitSurfaceDraft,
+  type MobileParametricSurfaceDraft,
+  type MobilePrimitiveKind,
+} from "./models/mobileSurfaceCreation";
 import { clearMobileComputeJobs, loadMobileComputeJobs, saveMobileComputeJobs } from "./services/mobileComputeJobStorage";
 import { clearMobileThumbnailCache, loadMobileThumbnailCache, saveMobileThumbnailCache, type MobileThumbnailCache } from "./services/mobileThumbnailCacheStorage";
 import { exportMobileSceneProject, pickMobileSceneProject, shareMobileSceneProject } from "./services/mobileProjectTransferService";
@@ -270,6 +280,11 @@ export const useMobileAppController = () => {
     mesh?: MobileMeshPayload;
     preview?: ImplicitPreviewState;
   } | null>(null);
+  const [surfaceEditorMode, setSurfaceEditorMode] = useState<"explicit" | "parametric">("explicit");
+  const [explicitSurfaceDraft, setExplicitSurfaceDraft] = useState<MobileExplicitSurfaceDraft>(DEFAULT_MOBILE_EXPLICIT_DRAFT);
+  const [parametricSurfaceDraft, setParametricSurfaceDraft] = useState<MobileParametricSurfaceDraft>(DEFAULT_MOBILE_PARAMETRIC_DRAFT);
+  const [authoringPreviewSurface, setAuthoringPreviewSurface] = useState<SurfaceDefinition | null>(null);
+  const [createActionMessage, setCreateActionMessage] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -534,6 +549,20 @@ export const useMobileAppController = () => {
       : null,
     [activeAnalysisOverlay, implicitMeshBySurfaceId, inspectorSection, renderQuality, selectedSurface]
   );
+  const authoringPreviewScene = useMemo<SceneDocument | null>(() => {
+    if (!authoringPreviewSurface) return null;
+    const now = Date.now();
+    return {
+      id: `${viewerDocument?.id ?? "scene-mobile"}-authoring-preview`,
+      title: "Formula preview",
+      createdAt: viewerDocument?.createdAt ?? now,
+      updatedAt: now,
+      surfaces: [authoringPreviewSurface],
+    };
+  }, [authoringPreviewSurface, viewerDocument?.createdAt, viewerDocument?.id]);
+  useEffect(() => {
+    if (inspectorSection !== "create") setAuthoringPreviewSurface(null);
+  }, [inspectorSection]);
   const analysisOverlayAvailability = useMemo(
     () => mobileAnalysisOverlayAvailability(activeAnalysisOverlay, selectedSurfaceAnalysis),
     [activeAnalysisOverlay, selectedSurfaceAnalysis]
@@ -1253,6 +1282,39 @@ export const useMobileAppController = () => {
     setInspectorExpanded(true);
   };
 
+  const buildAuthoredSurface = () => surfaceEditorMode === "explicit"
+    ? buildMobileExplicitSurface(viewerDocument, explicitSurfaceDraft)
+    : buildMobileParametricSurface(viewerDocument, parametricSurfaceDraft);
+
+  const previewAuthoredSurface = () => {
+    const result = buildAuthoredSurface();
+    if (!result.ok) {
+      setAuthoringPreviewSurface(null);
+      setCreateActionMessage(result.message);
+      return;
+    }
+    setAuthoringPreviewSurface(result.surface);
+    setCreateActionMessage(`Previewing ${result.surface.id}. The scene has not changed.`);
+  };
+
+  const addAuthoredSurfaceToWorkspace = () => {
+    const result = buildAuthoredSurface();
+    if (!result.ok) {
+      setCreateActionMessage(result.message);
+      return;
+    }
+    const wasEmpty = !viewerDocument;
+    const scene = appendMobileSurface(viewerDocument, result.surface);
+    setAuthoringPreviewSurface(null);
+    setViewerDocument(scene);
+    if (!wasEmpty) setVisibleSurfaceIds((current) => [...current, result.surface.id]);
+    setSelectedSurfaceId(result.surface.id);
+    setDeletedWorkspaceObject(null);
+    setObjectActionMessage(`Added ${result.surface.id}. Save project to keep this scene in the project library.`);
+    setInspectorSection("object");
+    setInspectorExpanded(true);
+  };
+
   const selectAnalysisOverlay = (overlay: MobileAnalysisOverlay) => {
     const availability = mobileAnalysisOverlayAvailability(overlay, selectedSurfaceAnalysis);
     if (!availability.available) return;
@@ -1731,6 +1793,7 @@ export const useMobileAppController = () => {
     exampleCapabilityFilter,
     setExampleCapabilityFilter,
     viewerDocument,
+    authoringPreviewScene,
     renderQuality,
     setRenderQuality,
     showAxes,
@@ -1797,6 +1860,13 @@ export const useMobileAppController = () => {
     setObjectNameDraft,
     objectActionMessage,
     canUndoDeleteWorkspaceObject: deletedWorkspaceObject?.sceneId === viewerDocument?.id,
+    surfaceEditorMode,
+    setSurfaceEditorMode,
+    explicitSurfaceDraft,
+    setExplicitSurfaceDraft,
+    parametricSurfaceDraft,
+    setParametricSurfaceDraft,
+    createActionMessage,
     hasImplicitPreviewErrors,
     backendSecurityWarning,
     workerProtocolCompatibility,
@@ -1826,6 +1896,8 @@ export const useMobileAppController = () => {
     toggleSurfaceVisibility,
     setAllSurfacesVisible,
     addPrimitiveToWorkspace,
+    previewAuthoredSurface,
+    addAuthoredSurfaceToWorkspace,
     selectAnalysisOverlay,
     renameSelectedWorkspaceObject,
     duplicateSelectedWorkspaceObject,
