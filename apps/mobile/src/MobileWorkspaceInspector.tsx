@@ -35,6 +35,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     viewerSurfaces,
     selectedSurface,
     sceneObjectItems,
+    selectedSurfaceAnalysis,
     objectNameDraft,
     setObjectNameDraft,
     objectActionMessage,
@@ -74,7 +75,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
         <Text style={styles.inspectorHint}>{inspectorExpanded ? "Swipe down to close" : "Swipe up for tools"}</Text>
       </View>
       <View style={styles.inspectorTabs}>
-        {(["scene", "object", "view", "compute"] as const).map((section) => (
+        {(["scene", "object", "view", "compute", "analyze"] as const).map((section) => (
           <Pressable
             key={section}
             testID={`mobile-inspector-tab-${section}`}
@@ -85,7 +86,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
             style={[styles.inspectorTab, inspectorSection === section ? styles.inspectorTabActive : null]}
           >
             <Text style={[styles.inspectorTabText, inspectorSection === section ? styles.inspectorTabTextActive : null]}>
-              {section === "scene" ? "Scene" : section === "object" ? "Object" : section === "view" ? "View" : "Compute"}
+              {section === "scene" ? "Scene" : section === "object" ? "Object" : section === "view" ? "View" : section === "compute" ? "Compute" : "Analyze"}
             </Text>
           </Pressable>
         ))}
@@ -375,6 +376,46 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                 {!limitedMode && <Pressable onPress={reduceQualityAndRetry} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Reduce quality</Text></Pressable>}
               </View>}
               <Pressable onPress={openDiagnostics} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Backend diagnostics</Text></Pressable>
+            </>
+          )}
+          {inspectorSection === "analyze" && (
+            <>
+              <Text style={styles.panelTitle}>Analyze</Text>
+              {!selectedSurface && <Text style={styles.itemMeta}>Select an object to inspect its geometry, topology, and mesh health.</Text>}
+              {selectedSurface && selectedSurfaceAnalysis?.status === "unavailable" && (
+                <View style={styles.subPanel}>
+                  <Text style={styles.subPanelTitle}>{selectedSurface.id}</Text>
+                  <Text style={styles.warningNote}>Analysis unavailable</Text>
+                  <Text style={styles.itemMeta}>{selectedSurfaceAnalysis.reason}</Text>
+                </View>
+              )}
+              {selectedSurface && selectedSurfaceAnalysis?.status === "ready" && (
+                <>
+                  <Text style={styles.subPanelTitle}>{selectedSurface.id}</Text>
+                  <Text style={styles.itemMeta}>{selectedSurfaceAnalysis.source}. Measurements use the displayed triangle approximation.</Text>
+                  <View style={styles.subPanel}>
+                    <Text style={styles.subPanelTitle}>Geometry</Text>
+                    <View style={styles.inspectorSettingRow}><Text style={styles.itemTitle}>Vertices</Text><Text style={styles.itemMeta}>{selectedSurfaceAnalysis.vertexCount.toLocaleString()}</Text></View>
+                    <View style={styles.inspectorSettingRow}><Text style={styles.itemTitle}>Triangles</Text><Text style={styles.itemMeta}>{selectedSurfaceAnalysis.triangleCount.toLocaleString()}</Text></View>
+                    <View style={styles.inspectorSettingRow}><Text style={styles.itemTitle}>Surface area</Text><Text style={styles.itemMeta}>{selectedSurfaceAnalysis.surfaceArea.toPrecision(6)}</Text></View>
+                    <View style={styles.inspectorSettingRow}><Text style={styles.itemTitle}>Enclosed volume</Text><Text style={styles.itemMeta}>{selectedSurfaceAnalysis.enclosedVolume == null ? "Unavailable" : selectedSurfaceAnalysis.enclosedVolume.toPrecision(6)}</Text></View>
+                  </View>
+                  <View style={styles.subPanel}>
+                    <Text style={styles.subPanelTitle}>Topology</Text>
+                    <View style={styles.inspectorSettingRow}><Text style={styles.itemTitle}>Components</Text><Text style={styles.itemMeta}>{selectedSurfaceAnalysis.componentCount}</Text></View>
+                    <View style={styles.inspectorSettingRow}><Text style={styles.itemTitle}>Boundary edges</Text><Text style={styles.itemMeta}>{selectedSurfaceAnalysis.boundaryEdgeCount}</Text></View>
+                    <View style={styles.inspectorSettingRow}><Text style={styles.itemTitle}>Euler characteristic</Text><Text style={styles.itemMeta}>{selectedSurfaceAnalysis.eulerCharacteristic}</Text></View>
+                    <View style={styles.inspectorSettingRow}><Text style={styles.itemTitle}>Manifold / closed</Text><Text style={styles.itemMeta}>{selectedSurfaceAnalysis.manifold ? "Yes" : "No"} / {selectedSurfaceAnalysis.closed ? "Yes" : "No"}</Text></View>
+                  </View>
+                  <View style={styles.subPanel}>
+                    <Text style={styles.subPanelTitle}>Mesh health · {selectedSurfaceAnalysis.healthy ? "Good" : "Issues found"}</Text>
+                    <View style={styles.inspectorSettingRow}><Text style={styles.itemTitle}>Degenerate triangles</Text><Text style={styles.itemMeta}>{selectedSurfaceAnalysis.degenerateTriangleCount}</Text></View>
+                    <View style={styles.inspectorSettingRow}><Text style={styles.itemTitle}>Nonmanifold edges</Text><Text style={styles.itemMeta}>{selectedSurfaceAnalysis.nonManifoldEdgeCount}</Text></View>
+                    <View style={styles.inspectorSettingRow}><Text style={styles.itemTitle}>Orientation mismatches</Text><Text style={styles.itemMeta}>{selectedSurfaceAnalysis.orientationMismatchEdgeCount}</Text></View>
+                    <View style={styles.inspectorSettingRow}><Text style={styles.itemTitle}>Isolated vertices</Text><Text style={styles.itemMeta}>{selectedSurfaceAnalysis.isolatedVertexCount}</Text></View>
+                  </View>
+                </>
+              )}
             </>
           )}
         </ScrollView>

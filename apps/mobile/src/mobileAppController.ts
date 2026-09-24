@@ -30,6 +30,7 @@ import { clearMobileComputeJobs, loadMobileComputeJobs, saveMobileComputeJobs } 
 import { clearMobileThumbnailCache, loadMobileThumbnailCache, saveMobileThumbnailCache, type MobileThumbnailCache } from "./services/mobileThumbnailCacheStorage";
 import { exportMobileSceneProject, pickMobileSceneProject, shareMobileSceneProject } from "./services/mobileProjectTransferService";
 import { createMobileThumbnailCacheKey, generateMobileSceneThumbnail } from "./viewer/mobileSceneThumbnail";
+import { buildMobileSurfaceAnalysis } from "./viewer/mobileSurfaceAnalysis";
 
 const ANDROID_GL_DEFAULT_ENABLED = true;
 export const FORCE_ANDROID_SAFE_MODE = false;
@@ -497,6 +498,12 @@ export const useMobileAppController = () => {
   const sceneObjectItems = useMemo(
     () => viewerDocument ? buildMobileSceneObjectItems(viewerDocument, visibleSurfaceIds, selectedSurfaceId) : [],
     [selectedSurfaceId, viewerDocument, visibleSurfaceIds]
+  );
+  const selectedSurfaceAnalysis = useMemo(
+    () => inspectorSection === "analyze" && selectedSurface
+      ? buildMobileSurfaceAnalysis(selectedSurface, renderQuality, implicitMeshBySurfaceId[selectedSurface.id])
+      : null,
+    [implicitMeshBySurfaceId, inspectorSection, renderQuality, selectedSurface]
   );
   useEffect(() => {
     setObjectNameDraft(selectedSurface?.id ?? "");
@@ -1685,6 +1692,7 @@ export const useMobileAppController = () => {
     viewerSurfaces,
     selectedSurface,
     sceneObjectItems,
+    selectedSurfaceAnalysis,
     objectNameDraft,
     setObjectNameDraft,
     objectActionMessage,
