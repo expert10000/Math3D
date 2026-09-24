@@ -1475,6 +1475,7 @@
     expo-constants "18.0.10"
     expo-file-system "19.0.22"
     expo-gl "16.0.7"
+    expo-sharing "~14.0.8"
     react "19.1.0"
     react-native "0.81.5"
     react-native-safe-area-context "~5.6.0"
@@ -4062,6 +4063,11 @@ expo-server@^1.0.6:
   version "1.0.6"
   resolved "https://registry.npmjs.org/expo-server/-/expo-server-1.0.6.tgz"
   integrity sha512-vb5TBtskvEdzYuW79lATXutOEBfW5m6U4EFpNjCVZTnI7S//SAsLQkYEpn+EDfn84m6VQfzSGkIVR6YPaScKFA==
+
+expo-sharing@~14.0.8:
+  version "14.0.8"
+  resolved "https://registry.npmjs.org/expo-sharing/-/expo-sharing-14.0.8.tgz"
+  integrity sha512-A1pPr2iBrxypFDCWVAESk532HK+db7MFXbvO2sCV9ienaFXAk7lIBm6bkqgE6vzRd9O3RGdEGzYx80cYlc089Q==
 
 expo@*, expo@>=43.0, expo@~54.0.34, expo@54.0.34:
   version "54.0.34"

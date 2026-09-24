@@ -13,7 +13,9 @@ import { useMobileNavigationState, type MobileTab } from "./models/useMobileNavi
 import { useMobileWorkspaceState, type CameraCommandType } from "./models/useMobileWorkspaceState";
 import { useMobileProjectState } from "./models/useMobileProjectState";
 import { duplicateMobileProject, renameMobileProject } from "./models/mobileProjectOperations";
+import { importMobileSceneProject } from "./models/mobileProjectTransfer";
 import { clearMobileThumbnailCache, loadMobileThumbnailCache, saveMobileThumbnailCache, type MobileThumbnailCache } from "./services/mobileThumbnailCacheStorage";
+import { exportMobileSceneProject, pickMobileSceneProject, shareMobileSceneProject } from "./services/mobileProjectTransferService";
 import { createMobileThumbnailCacheKey, generateMobileSceneThumbnail } from "./viewer/mobileSceneThumbnail";
 
 const ANDROID_GL_DEFAULT_ENABLED = true;
@@ -887,6 +889,63 @@ export const useMobileAppController = () => {
     return saved;
   };
 
+  const importStoredScene = async (): Promise<boolean> => {
+    setProjectActionMessage("Choose a Math3D scene project to import.");
+    try {
+      const picked = await pickMobileSceneProject();
+      if (picked.status === "cancelled") {
+        setProjectActionMessage("Import cancelled.");
+        return false;
+      }
+      const imported = importMobileSceneProject(picked.serializedProject, storedProjects);
+      if (!imported.ok) {
+        setProjectActionMessage(imported.error);
+        return false;
+      }
+      const nextProjects = upsertStoredProject(storedProjects, imported.project);
+      return persistProjectMutation(
+        nextProjects,
+        `Imported ${imported.project.title} from ${picked.sourceName}.`,
+        "Failed to import project"
+      );
+    } catch (error) {
+      setProjectActionMessage(`Import failed: ${String((error as Error).message ?? error)}`);
+      return false;
+    }
+  };
+
+  const exportStoredScene = async (projectId: string): Promise<boolean> => {
+    const project = storedProjects.find((candidate) => candidate.id === projectId);
+    if (!project) return false;
+    setProjectActionMessage(`Choose a folder for ${project.title}.`);
+    try {
+      const exported = await exportMobileSceneProject(project);
+      if (exported.status === "cancelled") {
+        setProjectActionMessage("Export cancelled.");
+        return false;
+      }
+      setProjectActionMessage(`Exported ${exported.fileName}.`);
+      return true;
+    } catch (error) {
+      setProjectActionMessage(`Export failed: ${String((error as Error).message ?? error)}`);
+      return false;
+    }
+  };
+
+  const shareStoredScene = async (projectId: string): Promise<boolean> => {
+    const project = storedProjects.find((candidate) => candidate.id === projectId);
+    if (!project) return false;
+    setProjectActionMessage(`Preparing ${project.title} for sharing.`);
+    try {
+      await shareMobileSceneProject(project);
+      setProjectActionMessage(`${project.title} is ready to share.`);
+      return true;
+    } catch (error) {
+      setProjectActionMessage(`Share failed: ${String((error as Error).message ?? error)}`);
+      return false;
+    }
+  };
+
   const runCameraCommand = (type: CameraCommandType) => {
     setCameraCommandType(type);
     setCameraCommandToken((value) => value + 1);
@@ -1235,6 +1294,9 @@ export const useMobileAppController = () => {
     duplicateStoredScene,
     deleteStoredScene,
     undoDeleteStoredScene,
+    importStoredScene,
+    exportStoredScene,
+    shareStoredScene,
     openViewerWithSurface,
     saveCurrentViewerScene,
     runCameraCommand,

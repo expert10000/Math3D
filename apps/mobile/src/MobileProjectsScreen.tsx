@@ -23,14 +23,38 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
     duplicateStoredScene,
     deleteStoredScene,
     undoDeleteStoredScene,
+    importStoredScene,
+    exportStoredScene,
+    shareStoredScene,
   } = model;
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [titleDraft, setTitleDraft] = useState("");
+  const [transferBusy, setTransferBusy] = useState<string | null>(null);
+
+  const runTransfer = async (key: string, action: () => Promise<boolean>) => {
+    if (transferBusy) return;
+    setTransferBusy(key);
+    try {
+      await action();
+    } finally {
+      setTransferBusy(null);
+    }
+  };
 
   return (
     <View style={styles.panel}>
       <Text style={styles.panelTitle}>Projects</Text>
       <Text style={styles.note}>Saved Math3D scenes available offline on this device.</Text>
+      <View style={styles.projectActions}>
+        <Pressable
+          testID="mobile-project-import"
+          disabled={transferBusy !== null}
+          onPress={() => void runTransfer("import", importStoredScene)}
+          style={styles.primaryBtn}
+        >
+          <Text style={styles.primaryBtnText}>{transferBusy === "import" ? "Importing..." : "Import project"}</Text>
+        </Pressable>
+      </View>
       <View style={styles.settingRow}>
         <TextInput
           value={sceneSearchQuery}
@@ -133,6 +157,22 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
               </Pressable>
               <Pressable testID={`mobile-project-delete-${scene.id}`} onPress={() => void deleteStoredScene(scene.id)} style={styles.projectDeleteBtn}>
                 <Text style={styles.projectDeleteText}>Delete</Text>
+              </Pressable>
+              <Pressable
+                testID={`mobile-project-export-${scene.id}`}
+                disabled={transferBusy !== null}
+                onPress={() => void runTransfer(`export-${scene.id}`, () => exportStoredScene(scene.id))}
+                style={styles.secondaryBtn}
+              >
+                <Text style={styles.secondaryBtnText}>{transferBusy === `export-${scene.id}` ? "Exporting..." : "Export"}</Text>
+              </Pressable>
+              <Pressable
+                testID={`mobile-project-share-${scene.id}`}
+                disabled={transferBusy !== null}
+                onPress={() => void runTransfer(`share-${scene.id}`, () => shareStoredScene(scene.id))}
+                style={styles.secondaryBtn}
+              >
+                <Text style={styles.secondaryBtnText}>{transferBusy === `share-${scene.id}` ? "Sharing..." : "Share"}</Text>
               </Pressable>
             </View>
           )}
