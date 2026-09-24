@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { type SceneDocument } from "@math3d/core";
 import { MOBILE_GRID_PLANES } from "./models/mobileCoordinateGrid";
 import { surfaceSummary, type MobileAppController } from "./mobileAppController";
@@ -35,6 +35,10 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     viewerSurfaces,
     selectedSurface,
     sceneObjectItems,
+    objectNameDraft,
+    setObjectNameDraft,
+    objectActionMessage,
+    canUndoDeleteWorkspaceObject,
     hasImplicitPreviewErrors,
     workerNegotiation,
     workerCanPreviewImplicit,
@@ -44,6 +48,10 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     selectWorkspaceObject,
     toggleSurfaceVisibility,
     setAllSurfacesVisible,
+    renameSelectedWorkspaceObject,
+    duplicateSelectedWorkspaceObject,
+    deleteSelectedWorkspaceObject,
+    undoDeleteWorkspaceObject,
     retryImplicitPreviews,
     retryImplicitPreview,
     cancelImplicitPreview,
@@ -140,6 +148,17 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                 <>
                   <Text style={styles.subPanelTitle}>{sceneObjectItems.find((item) => item.id === selectedSurface.id)?.label ?? selectedSurface.id}</Text>
                   <Text style={styles.note}>{surfaceSummary(selectedSurface)}</Text>
+                  <Text style={styles.note}>Object name</Text>
+                  <TextInput
+                    testID="mobile-object-name-input"
+                    value={objectNameDraft}
+                    onChangeText={setObjectNameDraft}
+                    onSubmitEditing={renameSelectedWorkspaceObject}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="done"
+                    style={styles.textInput}
+                  />
                   <Pressable onPress={() => toggleSurfaceVisibility(selectedSurface.id)} style={styles.inspectorSettingRow}>
                     <Text style={styles.itemTitle}>Visibility</Text>
                     <Text style={styles.itemMeta}>{visibleSurfaceIds.includes(selectedSurface.id) ? "On" : "Off"}</Text>
@@ -156,11 +175,31 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                     ))}
                   </View>
                   <View style={styles.viewerToolbarRow}>
+                    <Pressable testID="mobile-object-rename" onPress={renameSelectedWorkspaceObject} style={styles.secondaryBtn}>
+                      <Text style={styles.secondaryBtnText}>Rename</Text>
+                    </Pressable>
+                    <Pressable testID="mobile-object-duplicate" onPress={duplicateSelectedWorkspaceObject} style={styles.secondaryBtn}>
+                      <Text style={styles.secondaryBtnText}>Duplicate</Text>
+                    </Pressable>
                     <Pressable onPress={() => toggleSurfaceVisibility(selectedSurface.id)} style={styles.secondaryBtn}>
                       <Text style={styles.secondaryBtnText}>{visibleSurfaceIds.includes(selectedSurface.id) ? "Hide" : "Show"}</Text>
                     </Pressable>
+                    <Pressable testID="mobile-object-delete" onPress={deleteSelectedWorkspaceObject} style={styles.dangerBtn}>
+                      <Text style={styles.dangerBtnText}>Delete</Text>
+                    </Pressable>
                   </View>
+                  {objectActionMessage ? <Text style={styles.itemMeta}>{objectActionMessage}</Text> : null}
                 </>
+              )}
+              {!selectedSurface && canUndoDeleteWorkspaceObject && (
+                <Pressable testID="mobile-object-undo-delete" onPress={undoDeleteWorkspaceObject} style={styles.secondaryBtn}>
+                  <Text style={styles.secondaryBtnText}>Undo delete</Text>
+                </Pressable>
+              )}
+              {selectedSurface && canUndoDeleteWorkspaceObject && (
+                <Pressable testID="mobile-object-undo-delete" onPress={undoDeleteWorkspaceObject} style={styles.secondaryBtn}>
+                  <Text style={styles.secondaryBtnText}>Undo last delete</Text>
+                </Pressable>
               )}
             </>
           )}

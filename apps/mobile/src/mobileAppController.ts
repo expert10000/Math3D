@@ -25,6 +25,7 @@ import { parseMobileWorkerPairing } from "./models/mobileWorkerPairing";
 import { canResumeMobileComputeJob, createMobileComputeJob, createMobileComputeJobId, isMobileComputeJobTerminal, mergeMobileComputeJobSnapshot, type MobileComputeJob } from "./models/mobileComputeJobs";
 import { createMobileComputeCacheKey, type MobileComputeCacheLookup } from "./models/mobileComputeCache";
 import { buildMobileSceneObjectItems } from "./models/mobileSceneObjects";
+import { deleteMobileSceneObject, duplicateMobileSceneObject, renameMobileSceneObject, restoreMobileSceneObject, type MobileDeletedSceneObject } from "./models/mobileSceneObjectOperations";
 import { clearMobileComputeJobs, loadMobileComputeJobs, saveMobileComputeJobs } from "./services/mobileComputeJobStorage";
 import { clearMobileThumbnailCache, loadMobileThumbnailCache, saveMobileThumbnailCache, type MobileThumbnailCache } from "./services/mobileThumbnailCacheStorage";
 import { exportMobileSceneProject, pickMobileSceneProject, shareMobileSceneProject } from "./services/mobileProjectTransferService";
@@ -249,6 +250,16 @@ export const useMobileAppController = () => {
   const [implicitPreviewRetryToken, setImplicitPreviewRetryToken] = useState(0);
   const [mobileComputeJobs, setMobileComputeJobs] = useState<MobileComputeJob[]>([]);
   const mobileComputeJobsRef = useRef<MobileComputeJob[]>([]);
+  const [objectNameDraft, setObjectNameDraft] = useState("");
+  const [objectActionMessage, setObjectActionMessage] = useState("");
+  const [deletedWorkspaceObject, setDeletedWorkspaceObject] = useState<{
+    sceneId: string;
+    deleted: MobileDeletedSceneObject;
+    visible: boolean;
+    opacity?: number;
+    mesh?: MobileMeshPayload;
+    preview?: ImplicitPreviewState;
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -486,6 +497,10 @@ export const useMobileAppController = () => {
     () => viewerDocument ? buildMobileSceneObjectItems(viewerDocument, visibleSurfaceIds, selectedSurfaceId) : [],
     [selectedSurfaceId, viewerDocument, visibleSurfaceIds]
   );
+  useEffect(() => {
+    setObjectNameDraft(selectedSurface?.id ?? "");
+    setObjectActionMessage("");
+  }, [selectedSurface?.id]);
   const hasImplicitPreviewErrors = useMemo(
     () =>
       (viewerDocument?.surfaces ?? [])
@@ -588,7 +603,7 @@ export const useMobileAppController = () => {
     }
     setImplicitMeshBySurfaceId({});
     setImplicitPreviewBySurfaceId({});
-  }, [viewerDocument]);
+  }, [viewerDocument?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1160,6 +1175,111 @@ export const useMobileAppController = () => {
     if (visible) runCameraCommand("fit");
   };
 
+  const remapObjectSessionState = (oldId: string, nextId: string) => {
+    setVisibleSurfaceIds((current) => current.includes(oldId)
+      ? current.map((id) => id === oldId ? nextId : id)
+      : current);
+    setSurfaceOpacityById((current) => {
+      if (current[oldId] == null) return current;
+      const { [oldId]: opacity, ...rest } = current;
+      return { ...rest, [nextId]: opacity };
+    });
+    setImplicitMeshBySurfaceId((current) => {
+      if (current[oldId] == null) return current;
+      const { [oldId]: mesh, ...rest } = current;
+      return { ...rest, [nextId]: mesh };
+    });
+    setImplicitPreviewBySurfaceId((current) => {
+      if (current[oldId] == null) return current;
+      const { [oldId]: preview, ...rest } = current;
+      return { ...rest, [nextId]: preview };
+    });
+    const nextJobs = mobileComputeJobsRef.current.map((job) =>
+      job.request.sceneId === viewerDocument?.id && job.surfaceId === oldId
+        ? { ...job, surfaceId: nextId }
+        : job
+    );
+    mobileComputeJobsRef.current = nextJobs;
+    setMobileComputeJobs(nextJobs);
+  };
+
+  const renameSelectedWorkspaceObject = () => {
+    if (!viewerDocument || !selectedSurfaceId) return;
+    const result = renameMobileSceneObject(viewerDocument, selectedSurfaceId, objectNameDraft);
+    if (!result.ok) {
+      setObjectActionMessage(result.message);
+      return;
+    }
+    const previousId = selectedSurfaceId;
+    setViewerDocument(result.scene);
+    if (result.objectId !== previousId) remapObjectSessionState(previousId, result.objectId);
+    setSelectedSurfaceId(result.objectId);
+    setObjectNameDraft(result.objectId);
+    setDeletedWorkspaceObject(null);
+    setObjectActionMessage(`Renamed to ${result.objectId}. Save project to keep this change in the project library.`);
+  };
+
+  const duplicateSelectedWorkspaceObject = () => {
+    if (!viewerDocument || !selectedSurfaceId) return;
+    const result = duplicateMobileSceneObject(viewerDocument, selectedSurfaceId);
+    if (!result.ok) {
+      setObjectActionMessage(result.message);
+      return;
+    }
+    const sourceId = selectedSurfaceId;
+    setViewerDocument(result.scene);
+    setVisibleSurfaceIds((current) => current.includes(sourceId) ? [...current, result.objectId] : current);
+    setSurfaceOpacityById((current) => current[sourceId] == null ? current : { ...current, [result.objectId]: current[sourceId] });
+    setImplicitMeshBySurfaceId((current) => current[sourceId] == null ? current : { ...current, [result.objectId]: current[sourceId] });
+    setImplicitPreviewBySurfaceId((current) => current[sourceId] == null ? current : { ...current, [result.objectId]: current[sourceId] });
+    setSelectedSurfaceId(result.objectId);
+    setDeletedWorkspaceObject(null);
+    setObjectActionMessage(`Duplicated as ${result.objectId}.`);
+  };
+
+  const deleteSelectedWorkspaceObject = () => {
+    if (!viewerDocument || !selectedSurfaceId) return;
+    const objectId = selectedSurfaceId;
+    const result = deleteMobileSceneObject(viewerDocument, objectId);
+    if (!result.ok) {
+      setObjectActionMessage(result.message);
+      return;
+    }
+    setDeletedWorkspaceObject({
+      sceneId: viewerDocument.id,
+      deleted: result.deleted,
+      visible: visibleSurfaceIds.includes(objectId),
+      opacity: surfaceOpacityById[objectId],
+      mesh: implicitMeshBySurfaceId[objectId],
+      preview: implicitPreviewBySurfaceId[objectId],
+    });
+    setViewerDocument(result.scene);
+    setVisibleSurfaceIds((current) => current.filter((id) => id !== objectId));
+    setSurfaceOpacityById((current) => { const { [objectId]: _removed, ...rest } = current; return rest; });
+    setImplicitMeshBySurfaceId((current) => { const { [objectId]: _removed, ...rest } = current; return rest; });
+    setImplicitPreviewBySurfaceId((current) => { const { [objectId]: _removed, ...rest } = current; return rest; });
+    setSelectedSurfaceId(result.nextSelectedId);
+    setObjectActionMessage(`Deleted ${objectId}.`);
+  };
+
+  const undoDeleteWorkspaceObject = () => {
+    if (!viewerDocument || !deletedWorkspaceObject || deletedWorkspaceObject.sceneId !== viewerDocument.id) return;
+    const result = restoreMobileSceneObject(viewerDocument, deletedWorkspaceObject.deleted);
+    if (!result.ok) {
+      setObjectActionMessage(result.message);
+      return;
+    }
+    const restoredId = result.objectId;
+    setViewerDocument(result.scene);
+    if (deletedWorkspaceObject.visible) setVisibleSurfaceIds((current) => [...current, restoredId]);
+    if (deletedWorkspaceObject.opacity != null) setSurfaceOpacityById((current) => ({ ...current, [restoredId]: deletedWorkspaceObject.opacity! }));
+    if (deletedWorkspaceObject.mesh) setImplicitMeshBySurfaceId((current) => ({ ...current, [restoredId]: deletedWorkspaceObject.mesh }));
+    if (deletedWorkspaceObject.preview) setImplicitPreviewBySurfaceId((current) => ({ ...current, [restoredId]: deletedWorkspaceObject.preview }));
+    setSelectedSurfaceId(restoredId);
+    setDeletedWorkspaceObject(null);
+    setObjectActionMessage(`Restored ${restoredId}.`);
+  };
+
   const persistMobileSettings = async (overrides?: Partial<Parameters<typeof saveMobileSettings>[0]>) => {
     await saveMobileSettings({
       workerBaseUrl: normalizeWorkerBaseUrl(workerBaseUrl),
@@ -1564,6 +1684,10 @@ export const useMobileAppController = () => {
     viewerSurfaces,
     selectedSurface,
     sceneObjectItems,
+    objectNameDraft,
+    setObjectNameDraft,
+    objectActionMessage,
+    canUndoDeleteWorkspaceObject: deletedWorkspaceObject?.sceneId === viewerDocument?.id,
     hasImplicitPreviewErrors,
     backendSecurityWarning,
     workerProtocolCompatibility,
@@ -1588,6 +1712,10 @@ export const useMobileAppController = () => {
     selectWorkspaceObject,
     toggleSurfaceVisibility,
     setAllSurfacesVisible,
+    renameSelectedWorkspaceObject,
+    duplicateSelectedWorkspaceObject,
+    deleteSelectedWorkspaceObject,
+    undoDeleteWorkspaceObject,
     applyWorkerBaseUrl,
     runBackendHealthCheck,
     startWorkerPairing,

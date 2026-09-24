@@ -410,6 +410,19 @@ export const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
   },
+  dangerBtn: {
+    backgroundColor: "#fff5f5",
+    borderWidth: 1,
+    borderColor: "#d99a9a",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  dangerBtnText: {
+    color: "#9b2c2c",
+    fontSize: 12,
+    fontWeight: "700",
+  },
   viewerToolbarRow: {
     flexDirection: "row",
     alignItems: "center",
