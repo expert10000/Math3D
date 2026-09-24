@@ -17,6 +17,8 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
     viewerDocument,
     authoringPreviewScene,
     renderQuality,
+    effectiveRenderQuality,
+    adaptiveQualityState,
     showAxes,
     gridPlanes,
     showGrid,
@@ -37,7 +39,8 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
     viewportSelectionEnabled,
     setViewportSelectionEnabled,
     androidFallbackForced,
-    onViewportRenderReady
+    onViewportRenderReady,
+    onViewportPerformanceSample
   } = model;
   const viewportDocument = authoringPreviewScene ?? viewerDocument;
   const previewSurfaceId = authoringPreviewScene?.surfaces?.[0]?.id ?? null;
@@ -48,19 +51,20 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
         <>
           <View style={styles.workspaceStatus}>
             <Text style={styles.workspaceSceneTitle} numberOfLines={1}>{authoringPreviewScene ? "Formula preview" : viewerDocument.title}</Text>
-            <Text style={styles.itemMeta}>{authoringPreviewScene ? "Scene unchanged · " : `${viewerSurfaces.length} object${viewerSurfaces.length === 1 ? "" : "s"} · `}{renderQuality}</Text>
+            <Text style={styles.itemMeta}>{authoringPreviewScene ? "Scene unchanged · " : `${viewerSurfaces.length} object${viewerSurfaces.length === 1 ? "" : "s"} · `}{renderQuality === "auto" ? `auto → ${effectiveRenderQuality}` : renderQuality}</Text>
             {limitedMode && <Text style={styles.warningNote}>Offline mode: cached previews only</Text>}
           </View>
           <View style={styles.workspaceViewportFrame}>
             <MobileSceneViewport
               scene={viewportDocument!}
-              quality={renderQuality}
+              quality={effectiveRenderQuality}
               visibleSurfaceIds={authoringPreviewScene && previewSurfaceId ? [previewSurfaceId] : visibleSurfaceIds}
               selectedSurfaceId={previewSurfaceId ?? selectedSurfaceId}
               cameraCommand={cameraCommand}
               forceFallback={androidFallbackForced}
               implicitMeshBySurfaceId={implicitMeshBySurfaceId}
               onRenderReady={onViewportRenderReady}
+              onPerformanceSample={onViewportPerformanceSample}
               initialOrbit={cameraOrbit}
               onOrbitChange={setCameraOrbit}
               onSelectedSurfaceChange={selectWorkspaceObject}
@@ -81,6 +85,12 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
               gridPlanes={gridPlanes}
               viewportStyle={styles.workspaceViewport}
             />
+            {renderQuality === "auto" && (
+              <View style={styles.adaptiveQualityBadge} pointerEvents="none">
+                <Text style={styles.adaptiveQualityText}>Auto · {effectiveRenderQuality}</Text>
+                <Text style={styles.adaptiveQualityDetail}>{adaptiveQualityState.reason}</Text>
+              </View>
+            )}
             <View style={styles.viewportActionToolbar} pointerEvents="box-none">
               <Pressable
                 testID="mobile-viewport-fit-selection"

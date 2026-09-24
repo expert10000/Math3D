@@ -129,6 +129,25 @@ export const styles = StyleSheet.create({
   viewportActionTextActive: {
     color: "#ffe59a",
   },
+  adaptiveQualityBadge: {
+    position: "absolute",
+    right: 8,
+    bottom: 54,
+    maxWidth: "48%",
+    borderRadius: 8,
+    backgroundColor: "rgba(18,48,72,0.86)",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  adaptiveQualityText: {
+    color: "#ffffff",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  adaptiveQualityDetail: {
+    color: "#dceaf5",
+    fontSize: 8,
+  },
   workspaceEmpty: {
     flex: 1,
     justifyContent: "center",

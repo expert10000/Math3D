@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AppState, Platform, type GestureResponderEvent } from "react-native";
+import { AppState, PixelRatio, Platform, type GestureResponderEvent } from "react-native";
 import { SCENE_PROJECT_VERSION, createSceneProjectDocument, deserializeSceneProject, serializeSceneProject, type SceneDocument, type SurfaceDefinition, type VtkPreviewJobSnapshot, type VtkPreviewRequest } from "@math3d/core";
 import { mobileExamples, mobileSeedScenes } from "./data/mobileSeedData";
 import { DEFAULT_MOBILE_GRID_PLANES } from "./models/mobileCoordinateGrid";
@@ -47,6 +47,7 @@ import { exportMobileSceneProject, pickMobileSceneProject, shareMobileSceneProje
 import { createMobileThumbnailCacheKey, generateMobileSceneThumbnail } from "./viewer/mobileSceneThumbnail";
 import { buildMobileSurfaceAnalysis } from "./viewer/mobileSurfaceAnalysis";
 import { mobileAnalysisOverlayAvailability, type MobileAnalysisOverlay } from "./viewer/mobileAnalysisOverlays";
+import { INITIAL_MOBILE_ADAPTIVE_QUALITY, updateMobileAdaptiveQuality, type MobilePerformanceSample } from "./viewer/mobileAdaptiveQuality";
 
 const ANDROID_GL_DEFAULT_ENABLED = true;
 export const FORCE_ANDROID_SAFE_MODE = false;
@@ -289,6 +290,9 @@ export const useMobileAppController = () => {
   const [implicitSurfaceDraft, setImplicitSurfaceDraft] = useState<MobileImplicitSurfaceDraft>(DEFAULT_MOBILE_IMPLICIT_DRAFT);
   const [authoringPreviewSurface, setAuthoringPreviewSurface] = useState<SurfaceDefinition | null>(null);
   const [createActionMessage, setCreateActionMessage] = useState("");
+  const [adaptiveQualityState, setAdaptiveQualityState] = useState(INITIAL_MOBILE_ADAPTIVE_QUALITY);
+  const [lastPerformanceSample, setLastPerformanceSample] = useState<MobilePerformanceSample | null>(null);
+  const effectiveRenderQuality = renderQuality === "auto" ? adaptiveQualityState.tier : renderQuality;
 
   useEffect(() => {
     let active = true;
@@ -549,9 +553,9 @@ export const useMobileAppController = () => {
   );
   const selectedSurfaceAnalysis = useMemo(
     () => (inspectorSection === "analyze" || activeAnalysisOverlay !== "none") && selectedSurface
-      ? buildMobileSurfaceAnalysis(selectedSurface, renderQuality, implicitMeshBySurfaceId[selectedSurface.id])
+      ? buildMobileSurfaceAnalysis(selectedSurface, effectiveRenderQuality, implicitMeshBySurfaceId[selectedSurface.id])
       : null,
-    [activeAnalysisOverlay, implicitMeshBySurfaceId, inspectorSection, renderQuality, selectedSurface]
+    [activeAnalysisOverlay, effectiveRenderQuality, implicitMeshBySurfaceId, inspectorSection, selectedSurface]
   );
   const authoringPreviewScene = useMemo<SceneDocument | null>(() => {
     if (!authoringPreviewSurface) return null;
@@ -733,7 +737,7 @@ export const useMobileAppController = () => {
         const xSpan = Math.max(0.5, surface.domain?.xSpan ?? 2.4);
         const ySpan = Math.max(0.5, surface.domain?.ySpan ?? 2.4);
         const zSpan = Math.max(0.5, surface.domain?.zSpan ?? Math.max(xSpan, ySpan));
-        const baseResolution = renderQuality === "performance" ? 52 : renderQuality === "quality" ? 96 : 72;
+        const baseResolution = effectiveRenderQuality === "performance" ? 52 : effectiveRenderQuality === "quality" ? 96 : 72;
         const requestedResolution = clampInt(surface.resolution ?? baseResolution, 12, MESH_RESOLUTION_CAP_MAX);
         const resolution = Math.min(requestedResolution, baseResolution, meshResolutionCap);
         const requestPayload: Omit<VtkPreviewRequest, "jobId"> = {
@@ -744,10 +748,10 @@ export const useMobileAppController = () => {
             max: [xSpan, ySpan, zSpan],
           },
           resolution,
-          targetFaces: renderQuality === "performance" ? 16000 : 28000,
+          targetFaces: effectiveRenderQuality === "performance" ? 16000 : 28000,
         };
         const requestPayloadBytes = JSON.stringify(requestPayload).length;
-        const parameterHash = buildImplicitParameterHash(requestPayload, renderQuality);
+        const parameterHash = buildImplicitParameterHash(requestPayload, effectiveRenderQuality);
         const latestJob = [...mobileComputeJobsRef.current]
           .sort((a, b) => b.updatedAt - a.updatedAt)
           .find((job) =>
@@ -939,7 +943,7 @@ export const useMobileAppController = () => {
     };
   }, [
     viewerDocument,
-    renderQuality,
+    effectiveRenderQuality,
     workerBaseUrl,
     activeWorkerAuthorizationToken,
     implicitPreviewRetryToken,
@@ -1248,6 +1252,14 @@ export const useMobileAppController = () => {
   const runCameraCommand = (type: CameraCommandType) => {
     setCameraCommandType(type);
     setCameraCommandToken((value) => value + 1);
+  };
+
+  const onViewportPerformanceSample = (sample: Omit<MobilePerformanceSample, "pixelRatio">) => {
+    const measured = { ...sample, pixelRatio: PixelRatio.get() };
+    setLastPerformanceSample(measured);
+    if (renderQuality === "auto") {
+      setAdaptiveQualityState((current) => updateMobileAdaptiveQuality(current, measured));
+    }
   };
 
   const selectWorkspaceObject = (surfaceId: string) => {
@@ -1811,6 +1823,9 @@ export const useMobileAppController = () => {
     viewerDocument,
     authoringPreviewScene,
     renderQuality,
+    effectiveRenderQuality,
+    adaptiveQualityState,
+    lastPerformanceSample,
     setRenderQuality,
     showAxes,
     setShowAxes,
@@ -1897,6 +1912,7 @@ export const useMobileAppController = () => {
     setViewportSelectionEnabled,
     androidFallbackForced,
     onViewportRenderReady,
+    onViewportPerformanceSample,
     openStoredScene,
     renameStoredScene,
     duplicateStoredScene,

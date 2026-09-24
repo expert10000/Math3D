@@ -23,6 +23,9 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     setShowBoundingBox,
     inspectorSwipeStartY,
     renderQuality,
+    effectiveRenderQuality,
+    adaptiveQualityState,
+    lastPerformanceSample,
     setRenderQuality,
     showAxes,
     setShowAxes,
@@ -369,7 +372,14 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                   </Pressable>
                 ))}
               </View>
-              <Text style={styles.itemMeta}>Auto currently uses the balanced baseline while device measurements are collected.</Text>
+              {renderQuality === "auto" ? (
+                <Text style={styles.itemMeta}>
+                  Auto is using {effectiveRenderQuality}. {adaptiveQualityState.reason}
+                  {lastPerformanceSample ? ` Median frame ${lastPerformanceSample.frameTimeMs.toFixed(1)} ms · ${lastPerformanceSample.triangleCount.toLocaleString()} triangles · density ${lastPerformanceSample.pixelRatio.toFixed(1)}×.` : ""}
+                </Text>
+              ) : (
+                <Text style={styles.itemMeta}>Choose Auto to adapt from measured frame time, mesh load, display density, and memory estimate.</Text>
+              )}
               <Text style={styles.note}>Reference planes at zero · show or hide each plane</Text>
               <View style={styles.viewerToolbarRow}>
                 <Pressable

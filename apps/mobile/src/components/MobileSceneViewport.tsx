@@ -6,6 +6,7 @@ import type { SceneDocument } from "@math3d/core";
 import type { MobileSurfaceColorMode } from "../viewer/mobileCurvatureColors";
 import type { MobileSurfaceRenderMode, MobileSurfaceShading } from "../viewer/mobileViewModes";
 import { buildMobileEdgeOverlayGeometry, buildMobileNormalOverlayGeometry, type MobileAnalysisOverlay } from "../viewer/mobileAnalysisOverlays";
+import type { MobilePerformanceSample } from "../viewer/mobileAdaptiveQuality";
 import { DEFAULT_MOBILE_GRID_PLANES, type MobileGridPlane } from "../models/mobileCoordinateGrid";
 import {
   buildSceneSurfacePreviews,
@@ -39,6 +40,7 @@ type MobileSceneViewportProps = {
   showAxes?: boolean;
   gridPlanes?: MobileGridPlane[];
   viewportStyle?: StyleProp<ViewStyle>;
+  onPerformanceSample?: (sample: Omit<MobilePerformanceSample, "pixelRatio">) => void;
 };
 
 export type OrbitState = {
@@ -115,6 +117,24 @@ const RenderReadyPing: React.FC<{ onReady?: () => void }> = ({ onReady }) => {
     if (sentRef.current || !onReady) return;
     sentRef.current = true;
     onReady();
+  });
+  return null;
+};
+
+const FrameTimeReporter: React.FC<{
+  triangleCount: number;
+  estimatedGpuBytes: number;
+  onSample?: (sample: Omit<MobilePerformanceSample, "pixelRatio">) => void;
+}> = ({ triangleCount, estimatedGpuBytes, onSample }) => {
+  const samplesRef = useRef<number[]>([]);
+  useFrame((_state, delta) => {
+    if (!onSample || !Number.isFinite(delta) || delta <= 0 || delta > 0.25) return;
+    samplesRef.current.push(delta * 1000);
+    if (samplesRef.current.length < 30) return;
+    const sorted = [...samplesRef.current].sort((a, b) => a - b);
+    const frameTimeMs = sorted[Math.floor(sorted.length / 2)] ?? 16;
+    samplesRef.current = [];
+    onSample({ frameTimeMs, triangleCount, estimatedGpuBytes });
   });
   return null;
 };
@@ -363,6 +383,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   showAxes = true,
   gridPlanes = DEFAULT_MOBILE_GRID_PLANES,
   viewportStyle,
+  onPerformanceSample,
 }) => {
   const previews = useMemo(
     () => buildSceneSurfacePreviews(scene, quality, {
@@ -386,6 +407,17 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
     () => visiblePreviews.filter((preview) => preview.geometry !== null),
     [visiblePreviews]
   );
+  const renderLoad = useMemo(() => renderablePreviews.reduce((total, preview) => {
+    const geometry = preview.geometry;
+    if (!geometry) return total;
+    const position = geometry.getAttribute("position");
+    const normal = geometry.getAttribute("normal");
+    const color = geometry.getAttribute("color");
+    const index = geometry.getIndex();
+    const triangleCount = Math.floor((index?.count ?? position?.count ?? 0) / 3);
+    const estimatedGpuBytes = (position?.count ?? 0) * 12 + (normal?.count ?? 0) * 12 + (color?.count ?? 0) * 12 + (index?.count ?? 0) * 4;
+    return { triangleCount: total.triangleCount + triangleCount, estimatedGpuBytes: total.estimatedGpuBytes + estimatedGpuBytes };
+  }, { triangleCount: 0, estimatedGpuBytes: 0 }), [renderablePreviews]);
   const firstUncomputedPreview = useMemo(
     () => visiblePreviews.find((preview) => preview.state === "uncomputed"),
     [visiblePreviews]
@@ -611,6 +643,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
 
         <CameraRig orbitRef={orbitRef} />
         <RenderReadyPing onReady={onRenderReady} />
+        <FrameTimeReporter triangleCount={renderLoad.triangleCount} estimatedGpuBytes={renderLoad.estimatedGpuBytes} onSample={onPerformanceSample} />
       </Canvas>
 
       <View style={styles.overlay} pointerEvents="none">
