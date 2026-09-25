@@ -5,6 +5,7 @@ import { styles } from "./mobileAppStyles";
 import { MobileProjectThumbnail } from "./components/MobileProjectThumbnail";
 import { mobileExamples } from "./data/mobileSeedData";
 import { mobileProjectCreationLayout, type MobileProjectCreationRequest } from "./models/mobileProjectCreation";
+import { mobileProjectTemplates } from "./models/mobileProjectTemplates";
 
 export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({ model }) => {
   const {
@@ -78,7 +79,6 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
     styles.projectCreationOption,
     { width: creationLayout.optionWidth, minHeight: creationLayout.minTouchHeight },
   ];
-  const surfaceStudyExample = mobileExamples.find((example) => example.id === "graph-saddle") ?? mobileExamples[0];
 
   return (
     <View style={styles.panel}>
@@ -151,15 +151,24 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
                 <Text style={styles.itemMeta}>Example · {example.category}</Text>
               </Pressable>
             ))}
-            <Pressable
-              testID="mobile-new-project-template"
-              disabled={transferBusy !== null}
-              onPress={() => void runCreation("template", { route: "template", templateId: "surface-study", scene: surfaceStudyExample.scene, title: newProjectTitle.trim() || "Surface study" })}
-              style={optionStyle}
-            >
-              <Text style={styles.itemTitle}>Surface study</Text>
-              <Text style={styles.itemMeta}>Offline starter template</Text>
-            </Pressable>
+            {mobileProjectTemplates.map((template) => (
+              <Pressable
+                key={template.id}
+                testID={`mobile-new-project-template-${template.id}`}
+                disabled={transferBusy !== null}
+                onPress={() => void runCreation(`template-${template.id}`, {
+                  route: "template",
+                  templateId: template.id,
+                  templateVersion: template.version,
+                  scene: template.scene,
+                  title: newProjectTitle.trim() || template.title,
+                })}
+                style={optionStyle}
+              >
+                <Text style={styles.itemTitle}>{template.title}</Text>
+                <Text style={styles.itemMeta}>{template.description} · v{template.version}</Text>
+              </Pressable>
+            ))}
             <Pressable testID="mobile-new-project-desktop" disabled={transferBusy !== null} onPress={() => void runFileCreation("desktop")} style={optionStyle}>
               <Text style={styles.itemTitle}>{transferBusy === "desktop" ? "Choosing..." : "Desktop project"}</Text>
               <Text style={styles.itemMeta}>Open a compatible desktop export.</Text>

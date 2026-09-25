@@ -32,7 +32,7 @@ const routes: MobileProjectCreationRequest[] = [
   { route: "primitive", primitive: "sphere" },
   { route: "surface", surfaceKind: "parametric" },
   { route: "example", example: mobileExamples[0] },
-  { route: "template", templateId: "surface-study", scene: templateScene },
+  { route: "template", templateId: "surface-study", templateVersion: 1, scene: templateScene },
   { route: "import", serializedProject, sourceName: "study.math3d.scene.json" },
   { route: "desktop", serializedProject, sourceName: "desktop.math3d.scene.json" },
 ];

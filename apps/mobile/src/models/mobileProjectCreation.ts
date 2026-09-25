@@ -2,6 +2,7 @@ import {
   createSceneProjectDocument,
   deserializeSceneProject,
   serializeSceneProject,
+  structuralHash,
   type SceneDocument,
   type SurfaceDefinition,
 } from "@math3d/core";
@@ -26,7 +27,7 @@ export type MobileProjectCreationRequest =
   | { route: "primitive"; primitive: MobilePrimitiveKind; title?: string }
   | { route: "surface"; surfaceKind: MobileProjectSurfaceKind; title?: string }
   | { route: "example"; example: Math3DExample; title?: string }
-  | { route: "template"; templateId: string; scene: SceneDocument; title?: string }
+  | { route: "template"; templateId: string; templateVersion: number; scene: SceneDocument; title?: string }
   | { route: "import"; serializedProject: string; sourceName: string }
   | { route: "desktop"; serializedProject: string; sourceName: string };
 
@@ -74,16 +75,28 @@ const createStoredProject = (
   surfaces: SurfaceDefinition[],
   projects: readonly MobileStoredSceneProject[],
   now: number,
-  sourceScene?: SceneDocument
+  sourceScene?: SceneDocument,
+  template?: { id: string; version: number }
 ): MobileStoredSceneProject => {
   const id = nextProjectId(title, projects);
+  const instanceSurfaces = template
+    ? surfaces.map((surface, index) => ({
+        ...surface,
+        id: `${slug(surface.id)}-${structuralHash({ projectId: id, templateId: template.id, templateVersion: template.version, index }).slice(7, 15)}`,
+      } as SurfaceDefinition))
+    : surfaces.map((surface) => ({ ...surface }));
   const scene: SceneDocument = {
     ...(sourceScene ?? {}),
     id,
     title,
     createdAt: now,
     updatedAt: now,
-    surfaces: surfaces.map((surface) => ({ ...surface })),
+    surfaces: instanceSurfaces,
+    metadata: template ? {
+      ...(sourceScene?.metadata ?? {}),
+      "math3d.template.id": template.id,
+      "math3d.template.version": template.version,
+    } : sourceScene?.metadata,
   };
   return {
     id,
@@ -149,7 +162,14 @@ export const planMobileProjectCreation = (
   }
 
   if (!title) return { ok: false, error: "Project name cannot be empty." };
-  const project = createStoredProject(title, surfaces, projects, now, sourceScene);
+  const project = createStoredProject(
+    title,
+    surfaces,
+    projects,
+    now,
+    sourceScene,
+    request.route === "template" ? { id: request.templateId, version: request.templateVersion } : undefined
+  );
   const parsed = deserializeSceneProject(project.serializedProject);
   if (!parsed.ok) return { ok: false, error: `Project validation failed: ${parsed.errors.join("; ")}` };
   return { ok: true, project, message: `Created ${project.title}.` };
