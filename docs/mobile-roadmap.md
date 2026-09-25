@@ -1,6 +1,6 @@
 # MATH3D mobile roadmap
 
-Updated September 26, 2026. MOB24–MOB58 are complete. This is the current forward plan for `apps/mobile`; the next executable sequence is MOB59–MOB68 in the [Projects, creation, and import extension](mobile-projects-create-import-extension-roadmap.md). The [functionality and navigation overview](mobile-functionality-navigation-overview.md) records the released baseline and implementation history, while the [migration implementation plan](mobile-migration-implementation-plan.md) records the earlier vertical slice.
+Updated September 26, 2026. MOB24–MOB59 are complete. This is the current forward plan for `apps/mobile`; the next executable sequence is MOB60–MOB68 in the [Projects, creation, and import extension](mobile-projects-create-import-extension-roadmap.md). The [functionality and navigation overview](mobile-functionality-navigation-overview.md) records the released baseline and implementation history, while the [migration implementation plan](mobile-migration-implementation-plan.md) records the earlier vertical slice.
 
 ## Product direction
 
@@ -46,7 +46,7 @@ The intended navigation is **Home | Explore | Workspace | Projects | Settings**,
 | **M11 — project composition (P1)** | Reuse objects across projects safely | Shared collision-safe identity/provenance rules, selective add-from-project, and Projects organization for imported, shared, and file sources. |
 | **M12 — desktop/mobile round trip (P1)** | Preserve project identity across a manual handoff | Versioned revision manifest, compatibility preview, divergence handling, resumable desktop/mobile handoff, and a golden cross-runtime transfer matrix. |
 
-M0–M9 are implemented. MOB55 establishes the saved-project creation boundary used by every New Project source, MOB56 routes Workspace Create and Explore additions through one saved, undoable project mutation, and MOB57 supplies the validated offline template catalog. MOB58 starts M10 with the shared, versioned semantic scene-object transfer contract; the remaining M10 work adds platform import/export UI and bounded mesh adapters. M11 consumes those contracts for safe project composition; M12 adds revision-aware handoff and closes with the cross-runtime release gate.
+M0–M9 are implemented. MOB55 establishes the saved-project creation boundary used by every New Project source, MOB56 routes Workspace Create and Explore additions through one saved, undoable project mutation, and MOB57 supplies the validated offline template catalog. MOB58 starts M10 with the shared, versioned semantic scene-object transfer contract, and MOB59 adds previewed, atomic semantic-object import on mobile. The remaining M10 work adds bounded mesh adapters and object export/sharing. M11 consumes those contracts for safe project composition; M12 adds revision-aware handoff and closes with the cross-runtime release gate.
 
 ## Design contracts for the next packages
 
@@ -70,7 +70,7 @@ M0–M9 are implemented. MOB55 establishes the saved-project creation boundary u
 
 ## Commit sequence
 
-MOB24–MOB58 are implemented. MOB59–MOB68 are planning labels; each
+MOB24–MOB59 are implemented. MOB60–MOB68 are planning labels; each
 must include the focused acceptance evidence defined in the extension roadmap.
 The former MOB34A proposal is represented by MOB55 so completed history remains
 sequential and unchanged.

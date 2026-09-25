@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-na
 import { mobileExamples } from "../data/mobileSeedData";
 import type { MobileAppController } from "../mobileAppController";
 import { styles } from "../mobileAppStyles";
+import type { MobileSceneObjectImportPreview } from "../models/mobileSceneObjectImport";
 import { mobileWorkspaceAddLayout } from "../models/mobileWorkspaceAdd";
 
 const presetIds = new Set(["sphere", "paraboloid", "helicoid"]);
@@ -15,6 +16,7 @@ export const MobileWorkspaceAddLauncher: React.FC<{
   const layout = mobileWorkspaceAddLayout(width);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [objectPreview, setObjectPreview] = useState<MobileSceneObjectImportPreview | null>(null);
   const presets = mobileExamples.filter((example) => presetIds.has(example.id));
 
   const optionStyle = [
@@ -26,6 +28,21 @@ export const MobileWorkspaceAddLauncher: React.FC<{
     setBusy(true);
     try {
       if (await action()) onClose();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const chooseMath3DObject = async () => {
+    if (busy) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const result = await model.pickSceneObjectForWorkspace();
+      if (result.status === "ready") setObjectPreview(result.preview);
+      else {
+        setObjectPreview(null);
+        if (result.status === "error") setMessage(result.error);
+      }
     } finally {
       setBusy(false);
     }
@@ -79,13 +96,47 @@ export const MobileWorkspaceAddLauncher: React.FC<{
           <Pressable testID="mobile-workspace-add-mesh" onPress={() => unavailable("Mesh import is prepared here and becomes available with MOB60.")} style={optionStyle}>
             <Text style={styles.itemTitle}>Mesh</Text><Text style={styles.itemMeta}>OBJ, STL, PLY</Text>
           </Pressable>
-          <Pressable testID="mobile-workspace-add-object" onPress={() => unavailable("Math3D object import becomes available after the MOB58 transfer contract.")} style={optionStyle}>
-            <Text style={styles.itemTitle}>Math3D object</Text><Text style={styles.itemMeta}>Semantic object file</Text>
+          <Pressable testID="mobile-workspace-add-object" disabled={busy} onPress={() => void chooseMath3DObject()} style={optionStyle}>
+            <Text style={styles.itemTitle}>{busy ? "Choosing..." : "Math3D object"}</Text><Text style={styles.itemMeta}>Pick and preview semantic content</Text>
           </Pressable>
           <Pressable testID="mobile-workspace-add-from-project" onPress={() => unavailable("Object selection from another project becomes available with MOB64.")} style={optionStyle}>
             <Text style={styles.itemTitle}>Objects from project</Text><Text style={styles.itemMeta}>Copy compatible objects</Text>
           </Pressable>
         </View>
+        {objectPreview ? (
+          <View testID="mobile-workspace-object-import-preview" style={styles.subPanel}>
+            <Text style={styles.subPanelTitle}>{objectPreview.envelope.object.kind} · {objectPreview.envelope.object.id}</Text>
+            <Text style={styles.itemMeta} numberOfLines={2}>{objectPreview.definitionSummary}</Text>
+            <Text style={styles.itemMeta}>
+              Contract v{objectPreview.sourceVersion}{objectPreview.migrated ? " · migrated to v1" : ""} · {objectPreview.sourceName}
+            </Text>
+            {objectPreview.hasIdentityCollision ? (
+              <Text style={styles.warningNote}>Object ID already exists. It will be added as {objectPreview.destinationObjectId}.</Text>
+            ) : null}
+            <Text style={styles.itemMeta}>Preserves definition, domain, resolution, transform, style, provenance{objectPreview.analysisMetadataKeys.length > 0 ? `, and analysis metadata (${objectPreview.analysisMetadataKeys.join(", ")})` : ""}.</Text>
+            <View style={styles.viewerToolbarRow}>
+              <Pressable
+                testID="mobile-workspace-object-import-confirm"
+                disabled={busy}
+                onPress={() => void run(() => model.importSceneObjectToWorkspace(objectPreview))}
+                style={styles.primaryBtn}
+              >
+                <Text style={styles.primaryBtnText}>Import object</Text>
+              </Pressable>
+              <Pressable
+                testID="mobile-workspace-object-import-cancel"
+                disabled={busy}
+                onPress={() => {
+                  setObjectPreview(null);
+                  setMessage("Object import cancelled. The project was not changed.");
+                }}
+                style={styles.secondaryBtn}
+              >
+                <Text style={styles.secondaryBtnText}>Cancel</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
 
         <Text style={styles.projectCreationGroupTitle}>Explore</Text>
         <View style={styles.projectCreationGrid}>

@@ -21,3 +21,9 @@ Self-contained embedded meshes are limited to 250,000 vertices and 500,000 trian
 The reader migrates the legacy v0 semantic-surface fixture to v1 with identity transform, visible state, empty style, no cached geometry, and limited provenance. Legacy mesh records are rejected because they do not contain reconstructable geometry. Unknown future versions are rejected without mutation.
 
 The reviewed fixture corpus is in `packages/core/fixtures/scene-object`.
+
+## Mobile import boundary
+
+MOB59 adds a two-step picker and compatibility preview before any project mutation. Confirming an import appends the editable mathematical definition to `scene.surfaces`, remaps a colliding object ID, and saves the project once. Cancellation, validation failure, unsupported mesh content, and storage failure leave the existing project unchanged.
+
+Because the current scene surface schema does not natively carry every transfer attribute, mobile stores the complete validated source envelope under the versioned `math3d.scene-object.imports.v1` scene extension keyed by the destination object ID. This retains transform, style, original identity, provenance, analysis metadata, and content hash without weakening the editable surface representation. Imported visibility and opacity are restored from that record when the project reopens. Mesh objects remain routed to MOB60's bounded mesh-admission path.

@@ -46,7 +46,7 @@ import {
 } from "./models/mobileSurfaceCreation";
 import { clearMobileComputeJobs, loadMobileComputeJobs, saveMobileComputeJobs } from "./services/mobileComputeJobStorage";
 import { clearMobileThumbnailCache, loadMobileThumbnailCache, saveMobileThumbnailCache, type MobileThumbnailCache } from "./services/mobileThumbnailCacheStorage";
-import { exportMobileSceneProject, pickMobileSceneProject, shareMobileSceneProject } from "./services/mobileProjectTransferService";
+import { exportMobileSceneProject, pickMobileSceneObject, pickMobileSceneProject, shareMobileSceneProject } from "./services/mobileProjectTransferService";
 import { createMobileThumbnailCacheKey, generateMobileSceneThumbnail } from "./viewer/mobileSceneThumbnail";
 import { buildMobileSurfaceAnalysis } from "./viewer/mobileSurfaceAnalysis";
 import { mobileAnalysisOverlayAvailability, type MobileAnalysisOverlay } from "./viewer/mobileAnalysisOverlays";
@@ -57,6 +57,12 @@ import {
   restoreMobileWorkspaceAdd,
   type MobileWorkspaceAddRequest,
 } from "./models/mobileWorkspaceAdd";
+import {
+  prepareMobileSceneObjectImport,
+  readMobileImportedObjectPresentations,
+  type MobileSceneObjectImportPreparation,
+  type MobileSceneObjectImportPreview,
+} from "./models/mobileSceneObjectImport";
 
 const ANDROID_GL_DEFAULT_ENABLED = true;
 export const FORCE_ANDROID_SAFE_MODE = false;
@@ -691,8 +697,13 @@ export const useMobileAppController = () => {
 
   useEffect(() => {
     const surfaceIds = (viewerDocument?.surfaces ?? []).map((surface) => surface.id);
-    setVisibleSurfaceIds(surfaceIds);
-    setSurfaceOpacityById({});
+    const importedPresentations = viewerDocument ? readMobileImportedObjectPresentations(viewerDocument) : {};
+    setVisibleSurfaceIds(surfaceIds.filter((id) => importedPresentations[id]?.visible !== false));
+    setSurfaceOpacityById(Object.fromEntries(
+      Object.entries(importedPresentations).flatMap(([id, presentation]) =>
+        presentation.opacity === undefined ? [] : [[id, presentation.opacity]]
+      )
+    ));
     setSelectedSurfaceId((current) => (current && surfaceIds.includes(current) ? current : surfaceIds[0] ?? null));
     if (surfaceIds.length > 0) {
       setCameraCommandType("fit");
@@ -1515,9 +1526,20 @@ export const useMobileAppController = () => {
     }
 
     const selectedId = result.addedObjectIds.at(-1) ?? null;
+    const visibleAddedIds = result.addedObjectIds.filter(
+      (id) => result.importedPresentationById[id]?.visible !== false
+    );
     setStoredProjects(result.projects);
     setViewerDocument(result.scene);
-    setVisibleSurfaceIds((current) => [...new Set([...current, ...result.addedObjectIds])]);
+    setVisibleSurfaceIds((current) => [...new Set([...current, ...visibleAddedIds])]);
+    setSurfaceOpacityById((current) => ({
+      ...current,
+      ...Object.fromEntries(
+        Object.entries(result.importedPresentationById).flatMap(([id, presentation]) =>
+          presentation.opacity === undefined ? [] : [[id, presentation.opacity]]
+        )
+      ),
+    }));
     setSelectedSurfaceId(selectedId);
     setDeletedWorkspaceObject(null);
     setWorkspaceAddUndo({
@@ -1546,6 +1568,40 @@ export const useMobileAppController = () => {
 
   const addExampleToWorkspace = (example: Math3DExample, route: "preset" | "example"): Promise<boolean> =>
     commitWorkspaceAdd({ route, example });
+
+  const pickSceneObjectForWorkspace = async (): Promise<MobileSceneObjectImportPreparation> => {
+    if (!selectedSceneId || !viewerDocument) {
+      const error = "Open or create a saved project before importing an object.";
+      setWorkspaceAddMessage(error);
+      return { status: "error", error };
+    }
+    setWorkspaceAddMessage("Choose a Math3D object file to preview.");
+    try {
+      const picked = await pickMobileSceneObject();
+      if (picked.status === "cancelled") {
+        setWorkspaceAddMessage("Object import cancelled. The project was not changed.");
+        return { status: "cancelled" };
+      }
+      const prepared = prepareMobileSceneObjectImport(
+        picked.serializedObject,
+        picked.sourceName,
+        viewerDocument
+      );
+      if (prepared.status === "error") {
+        setWorkspaceAddMessage(`Nothing was added: ${prepared.error}`);
+      } else if (prepared.status === "ready") {
+        setWorkspaceAddMessage(`Previewing ${prepared.preview.envelope.object.id}. Confirm to update the project.`);
+      }
+      return prepared;
+    } catch (error) {
+      const message = `Object import failed: ${String((error as Error).message ?? error)}`;
+      setWorkspaceAddMessage(message);
+      return { status: "error", error: message };
+    }
+  };
+
+  const importSceneObjectToWorkspace = (preview: MobileSceneObjectImportPreview): Promise<boolean> =>
+    commitWorkspaceAdd({ route: "math3d-object", preview });
 
   const openSurfaceAddEditor = (mode: "explicit" | "parametric" | "implicit") => {
     setSurfaceEditorMode(mode);
@@ -2228,6 +2284,8 @@ export const useMobileAppController = () => {
     setAllSurfacesVisible,
     addPrimitiveToWorkspace,
     addExampleToWorkspace,
+    pickSceneObjectForWorkspace,
+    importSceneObjectToWorkspace,
     openSurfaceAddEditor,
     previewAuthoredSurface,
     addAuthoredSurfaceToWorkspace,

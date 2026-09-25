@@ -1,3 +1,4 @@
+import { MAX_SCENE_OBJECT_BYTES } from "@math3d/core";
 import { Directory, File, Paths } from "expo-file-system";
 import { isAvailableAsync, shareAsync } from "expo-sharing";
 import type { MobileStoredSceneProject } from "../models/mobileScene";
@@ -12,6 +13,10 @@ const exportCacheDirectory = new Directory(Paths.cache, "math3d-mobile-exports")
 
 export type MobileProjectPickResult =
   | { status: "selected"; serializedProject: string; sourceName: string }
+  | { status: "cancelled" };
+
+export type MobileSceneObjectPickResult =
+  | { status: "selected"; serializedObject: string; sourceName: string }
   | { status: "cancelled" };
 
 export type MobileProjectExportResult =
@@ -42,6 +47,25 @@ export const pickMobileSceneProject = async (): Promise<MobileProjectPickResult>
     return {
       status: "selected",
       serializedProject: await file.text(),
+      sourceName: fileNameFromUri(file.uri),
+    };
+  } catch (error) {
+    if (pickerWasCancelled(error)) return { status: "cancelled" };
+    throw error;
+  }
+};
+
+export const pickMobileSceneObject = async (): Promise<MobileSceneObjectPickResult> => {
+  try {
+    const selected = await File.pickFileAsync(undefined, JSON_MIME_TYPE);
+    const file = Array.isArray(selected) ? selected[0] : selected;
+    if (!file) return { status: "cancelled" };
+    if (file.size > MAX_SCENE_OBJECT_BYTES) {
+      throw new Error(`The selected object is larger than the ${MAX_SCENE_OBJECT_BYTES / (1024 * 1024)} MB mobile import limit.`);
+    }
+    return {
+      status: "selected",
+      serializedObject: await file.text(),
       sourceName: fileNameFromUri(file.uri),
     };
   } catch (error) {
