@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { MobileSceneViewport } from "./components/MobileSceneViewport";
 import { type MobileAppController } from "./mobileAppController";
 import { styles } from "./mobileAppStyles";
 import { MobileWorkspaceInspector } from "./MobileWorkspaceInspector";
+import { MobileWorkspaceAddLauncher } from "./components/MobileWorkspaceAddLauncher";
 
 export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = ({ model }) => {
   const {
@@ -40,8 +41,12 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
     setViewportSelectionEnabled,
     androidFallbackForced,
     onViewportRenderReady,
-    onViewportPerformanceSample
+    onViewportPerformanceSample,
+    workspaceAddMessage,
+    canUndoWorkspaceAdd,
+    undoWorkspaceAdd,
   } = model;
+  const [addLauncherOpen, setAddLauncherOpen] = useState(false);
   const viewportDocument = authoringPreviewScene ?? viewerDocument;
   const previewSurfaceId = authoringPreviewScene?.surfaces?.[0]?.id ?? null;
   return (
@@ -50,8 +55,27 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
       {viewerDocument ? (
         <>
           <View style={styles.workspaceStatus}>
-            <Text style={styles.workspaceSceneTitle} numberOfLines={1}>{authoringPreviewScene ? "Formula preview" : viewerDocument.title}</Text>
-            <Text style={styles.itemMeta}>{authoringPreviewScene ? "Scene unchanged · " : `${viewerSurfaces.length} object${viewerSurfaces.length === 1 ? "" : "s"} · `}{renderQuality === "auto" ? `auto → ${effectiveRenderQuality}` : renderQuality}</Text>
+            <View style={styles.workspaceStatusRow}>
+              <View style={styles.workspaceStatusText}>
+                <Text style={styles.workspaceSceneTitle} numberOfLines={1}>{authoringPreviewScene ? "Formula preview" : viewerDocument.title}</Text>
+                <Text style={styles.itemMeta}>{authoringPreviewScene ? "Scene unchanged · " : `${viewerSurfaces.length} object${viewerSurfaces.length === 1 ? "" : "s"} · `}{renderQuality === "auto" ? `auto → ${effectiveRenderQuality}` : renderQuality}</Text>
+              </View>
+              {canUndoWorkspaceAdd ? (
+                <Pressable testID="mobile-workspace-add-undo" onPress={() => void undoWorkspaceAdd()} style={styles.secondaryBtn}>
+                  <Text style={styles.secondaryBtnText}>Undo add</Text>
+                </Pressable>
+              ) : null}
+              <Pressable
+                testID="mobile-workspace-add"
+                accessibilityRole="button"
+                accessibilityLabel={addLauncherOpen ? "Close Add to Project" : "Add to Project"}
+                onPress={() => setAddLauncherOpen((open) => !open)}
+                style={styles.workspaceAddButton}
+              >
+                <Text style={styles.workspaceAddButtonText}>{addLauncherOpen ? "×" : "+"}</Text>
+              </Pressable>
+            </View>
+            {workspaceAddMessage ? <Text style={styles.itemMeta}>{workspaceAddMessage}</Text> : null}
             {limitedMode && <Text style={styles.warningNote}>Offline mode: cached previews only</Text>}
           </View>
           <View style={styles.workspaceViewportFrame}>
@@ -126,23 +150,16 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
                 <Text style={styles.loadingOverlayText}>{viewerLoadingMessage}</Text>
               </View>
             )}
+            {addLauncherOpen ? <MobileWorkspaceAddLauncher model={model} onClose={() => setAddLauncherOpen(false)} /> : null}
           </View>
           <MobileWorkspaceInspector model={model} viewerDocument={viewerDocument} />
         </>
       ) : (
         <View style={styles.workspaceEmpty}>
           <Text style={styles.panelTitle}>Workspace is ready</Text>
-          <Text style={styles.note}>Choose a scene or surface to start viewing in 3D.</Text>
+          <Text style={styles.note}>Create or open a saved project before adding objects.</Text>
           <Pressable onPress={() => setTab("explore")} style={styles.primaryBtn}><Text style={styles.primaryBtnText}>Explore examples</Text></Pressable>
-          <Pressable onPress={() => setTab("projects")} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>Open project</Text></Pressable>
-          <Text style={styles.note}>Or start a scene with a primitive:</Text>
-          <View style={styles.viewerToolbarRow}>
-            {(["plane", "sphere", "cylinder", "torus"] as const).map((kind) => (
-              <Pressable key={kind} testID={`mobile-empty-create-${kind}`} onPress={() => model.addPrimitiveToWorkspace(kind)} style={styles.secondaryBtn}>
-                <Text style={styles.secondaryBtnText}>{kind[0].toUpperCase() + kind.slice(1)}</Text>
-              </Pressable>
-            ))}
-          </View>
+          <Pressable testID="mobile-workspace-new-project" onPress={() => setTab("projects")} style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>New or open project</Text></Pressable>
         </View>
       )}
     </View>

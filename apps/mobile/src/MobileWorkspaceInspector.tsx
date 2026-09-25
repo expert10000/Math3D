@@ -232,7 +232,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                   <Pressable
                     key={kind}
                     testID={`mobile-create-primitive-${kind}`}
-                    onPress={() => model.addPrimitiveToWorkspace(kind)}
+                    onPress={() => void model.addPrimitiveToWorkspace(kind)}
                     style={styles.secondaryBtn}
                   >
                     <Text style={styles.secondaryBtnText}>{kind[0].toUpperCase() + kind.slice(1)}</Text>
@@ -311,7 +311,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                 <Pressable
                   testID="mobile-create-add"
                   disabled={surfaceEditorMode === "implicit" && !workerCanPreviewImplicit}
-                  onPress={addAuthoredSurfaceToWorkspace}
+                  onPress={() => void addAuthoredSurfaceToWorkspace()}
                   style={[styles.primaryBtn, surfaceEditorMode === "implicit" && !workerCanPreviewImplicit ? styles.viewportActionButtonDisabled : null]}
                 >
                   <Text style={styles.primaryBtnText}>{surfaceEditorMode === "implicit" ? "Add & compute" : "Add to scene"}</Text>

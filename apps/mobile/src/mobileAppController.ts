@@ -33,11 +33,9 @@ import { buildMobileSceneObjectItems } from "./models/mobileSceneObjects";
 import { filterMobileExamples, mobileExampleCategories, mobileExampleIsAvailable, mobileExampleRequiredCapabilities, type MobileExampleCapabilityFilter, type MobileExampleCategoryFilter } from "./models/mobileExampleCatalog";
 import { deleteMobileSceneObject, duplicateMobileSceneObject, renameMobileSceneObject, restoreMobileSceneObject, type MobileDeletedSceneObject } from "./models/mobileSceneObjectOperations";
 import {
-  appendMobileSurface,
   buildMobileExplicitSurface,
   buildMobileParametricSurface,
   buildMobileImplicitSurface,
-  createMobilePrimitiveSurface,
   DEFAULT_MOBILE_EXPLICIT_DRAFT,
   DEFAULT_MOBILE_PARAMETRIC_DRAFT,
   DEFAULT_MOBILE_IMPLICIT_DRAFT,
@@ -54,6 +52,11 @@ import { buildMobileSurfaceAnalysis } from "./viewer/mobileSurfaceAnalysis";
 import { mobileAnalysisOverlayAvailability, type MobileAnalysisOverlay } from "./viewer/mobileAnalysisOverlays";
 import { INITIAL_MOBILE_ADAPTIVE_QUALITY, updateMobileAdaptiveQuality, type MobilePerformanceSample } from "./viewer/mobileAdaptiveQuality";
 import { admitMobileMeshForRendering, type MobileMeshAdmissionAction } from "./models/mobileMeshAdmission";
+import {
+  commitMobileWorkspaceAdd,
+  restoreMobileWorkspaceAdd,
+  type MobileWorkspaceAddRequest,
+} from "./models/mobileWorkspaceAdd";
 
 const ANDROID_GL_DEFAULT_ENABLED = true;
 export const FORCE_ANDROID_SAFE_MODE = false;
@@ -299,6 +302,14 @@ export const useMobileAppController = () => {
   const [implicitSurfaceDraft, setImplicitSurfaceDraft] = useState<MobileImplicitSurfaceDraft>(DEFAULT_MOBILE_IMPLICIT_DRAFT);
   const [authoringPreviewSurface, setAuthoringPreviewSurface] = useState<SurfaceDefinition | null>(null);
   const [createActionMessage, setCreateActionMessage] = useState("");
+  const [workspaceAddMessage, setWorkspaceAddMessage] = useState("");
+  const [workspaceAddUndo, setWorkspaceAddUndo] = useState<{
+    projectId: string;
+    previousProject: MobileStoredSceneProject;
+    addedObjectIds: string[];
+    selectedSurfaceId: string | null;
+    visibleSurfaceIds: string[];
+  } | null>(null);
   const [adaptiveQualityState, setAdaptiveQualityState] = useState(INITIAL_MOBILE_ADAPTIVE_QUALITY);
   const [lastPerformanceSample, setLastPerformanceSample] = useState<MobilePerformanceSample | null>(null);
   const effectiveRenderQuality = renderQuality === "auto" ? adaptiveQualityState.tier : renderQuality;
@@ -1186,6 +1197,8 @@ export const useMobileAppController = () => {
     setStoredProjects(nextProjects);
     setSelectedSceneId(touchedProject.id);
     setViewerDocument(parsed.scene);
+    setWorkspaceAddUndo(null);
+    setWorkspaceAddMessage("");
     setInspectorExpanded(false);
     setTab("workspace");
     void persistMobileSettings({
@@ -1209,6 +1222,8 @@ export const useMobileAppController = () => {
     const scene = createViewerSceneFromExample(example);
     setViewerDocument(scene);
     setSelectedSceneId(null);
+    setWorkspaceAddUndo(null);
+    setWorkspaceAddMessage("");
     setInspectorExpanded(false);
     setTab("workspace");
     void persistMobileSettings({ lastSceneId: undefined, lastViewerProject: serializeViewerScene(scene) })
@@ -1382,6 +1397,8 @@ export const useMobileAppController = () => {
     setStoredProjects(result.projects);
     setSelectedSceneId(result.project.id);
     setViewerDocument(parsed.scene);
+    setWorkspaceAddUndo(null);
+    setWorkspaceAddMessage("");
     setInspectorExpanded(false);
     setStorageStatus(storageIssues.length > 0 ? "error" : "ready");
     setProjectActionMessage(result.message);
@@ -1482,17 +1499,58 @@ export const useMobileAppController = () => {
     if (visible) runCameraCommand("fit");
   };
 
-  const addPrimitiveToWorkspace = (kind: MobilePrimitiveKind) => {
-    const wasEmpty = !viewerDocument;
-    const surface = createMobilePrimitiveSurface(kind, viewerDocument);
-    const scene = appendMobileSurface(viewerDocument, surface);
-    setViewerDocument(scene);
-    if (!wasEmpty) setVisibleSurfaceIds((current) => [...current, surface.id]);
-    setSelectedSurfaceId(surface.id);
+  const commitWorkspaceAdd = async (request: MobileWorkspaceAddRequest): Promise<boolean> => {
+    const previousSelection = selectedSurfaceId;
+    const previousVisibility = [...visibleSurfaceIds];
+    const result = await commitMobileWorkspaceAdd(
+      storedProjects,
+      selectedSceneId,
+      viewerDocument,
+      request,
+      saveStoredSceneProjects
+    );
+    if (!result.ok) {
+      setWorkspaceAddMessage(`Nothing was added: ${result.error}`);
+      return false;
+    }
+
+    const selectedId = result.addedObjectIds.at(-1) ?? null;
+    setStoredProjects(result.projects);
+    setViewerDocument(result.scene);
+    setVisibleSurfaceIds((current) => [...new Set([...current, ...result.addedObjectIds])]);
+    setSelectedSurfaceId(selectedId);
     setDeletedWorkspaceObject(null);
-    setObjectActionMessage(`Added ${surface.id}. Save project to keep this scene in the project library.`);
+    setWorkspaceAddUndo({
+      projectId: result.project.id,
+      previousProject: result.previousProject,
+      addedObjectIds: result.addedObjectIds,
+      selectedSurfaceId: previousSelection,
+      visibleSurfaceIds: previousVisibility,
+    });
+    setWorkspaceAddMessage(result.message);
+    setObjectActionMessage(`${result.message} The project was saved.`);
+    setStorageStatus(storageIssues.length > 0 ? "error" : "ready");
     setTab("workspace");
-    setInspectorSection("object");
+    if (selectedId) setInspectorSection("object");
+    setInspectorExpanded(true);
+    void persistMobileSettings({
+      lastSceneId: result.project.id,
+      lastViewerProject: result.project.serializedProject,
+      lastSelectedSurfaceId: selectedId ?? undefined,
+    }).catch(() => undefined);
+    return true;
+  };
+
+  const addPrimitiveToWorkspace = (kind: MobilePrimitiveKind): Promise<boolean> =>
+    commitWorkspaceAdd({ route: "primitive", primitive: kind });
+
+  const addExampleToWorkspace = (example: Math3DExample, route: "preset" | "example"): Promise<boolean> =>
+    commitWorkspaceAdd({ route, example });
+
+  const openSurfaceAddEditor = (mode: "explicit" | "parametric" | "implicit") => {
+    setSurfaceEditorMode(mode);
+    setWorkspaceAddMessage("");
+    setInspectorSection("create");
     setInspectorExpanded(true);
   };
 
@@ -1518,26 +1576,60 @@ export const useMobileAppController = () => {
     setCreateActionMessage(`Previewing ${result.surface.id}. The scene has not changed.`);
   };
 
-  const addAuthoredSurfaceToWorkspace = () => {
+  const addAuthoredSurfaceToWorkspace = async (): Promise<boolean> => {
     const result = buildAuthoredSurface();
     if (!result.ok) {
       setCreateActionMessage(result.message);
-      return;
+      return false;
     }
     if (result.surface.kind === "implicit" && !workerCanPreviewImplicit) {
       setCreateActionMessage("Pair a compatible worker before adding an implicit surface.");
-      return;
+      return false;
     }
-    const wasEmpty = !viewerDocument;
-    const scene = appendMobileSurface(viewerDocument, result.surface);
+    const added = await commitWorkspaceAdd({ route: "surface", surface: result.surface });
+    if (!added) {
+      setCreateActionMessage("The surface could not be added. Check the Workspace message.");
+      return false;
+    }
     setAuthoringPreviewSurface(null);
-    setViewerDocument(scene);
-    if (!wasEmpty) setVisibleSurfaceIds((current) => [...current, result.surface.id]);
-    setSelectedSurfaceId(result.surface.id);
-    setDeletedWorkspaceObject(null);
-    setObjectActionMessage(`Added ${result.surface.id}. Save project to keep this scene in the project library.`);
-    setInspectorSection(result.surface.kind === "implicit" ? "compute" : "object");
-    setInspectorExpanded(true);
+    setCreateActionMessage(`Added ${result.surface.id} and saved the project.`);
+    if (result.surface.kind === "implicit") setInspectorSection("compute");
+    return true;
+  };
+
+  const undoWorkspaceAdd = async (): Promise<boolean> => {
+    if (!workspaceAddUndo || workspaceAddUndo.projectId !== selectedSceneId) return false;
+    const result = await restoreMobileWorkspaceAdd(
+      storedProjects,
+      workspaceAddUndo.previousProject,
+      saveStoredSceneProjects
+    );
+    if (!result.ok) {
+      setWorkspaceAddMessage(`Undo failed: ${result.error}`);
+      return false;
+    }
+    setStoredProjects(result.projects);
+    setViewerDocument(result.scene);
+    setSelectedSurfaceId(workspaceAddUndo.selectedSurfaceId);
+    setVisibleSurfaceIds(workspaceAddUndo.visibleSurfaceIds);
+    setSurfaceOpacityById((current) => Object.fromEntries(
+      Object.entries(current).filter(([id]) => !workspaceAddUndo.addedObjectIds.includes(id))
+    ));
+    setImplicitMeshBySurfaceId((current) => Object.fromEntries(
+      Object.entries(current).filter(([id]) => !workspaceAddUndo.addedObjectIds.includes(id))
+    ));
+    setImplicitPreviewBySurfaceId((current) => Object.fromEntries(
+      Object.entries(current).filter(([id]) => !workspaceAddUndo.addedObjectIds.includes(id))
+    ));
+    setWorkspaceAddUndo(null);
+    setWorkspaceAddMessage("Undid the last Add to Project action.");
+    const restored = result.projects.find((project) => project.id === selectedSceneId);
+    void persistMobileSettings({
+      lastSceneId: selectedSceneId ?? undefined,
+      lastViewerProject: restored?.serializedProject,
+      lastSelectedSurfaceId: workspaceAddUndo.selectedSurfaceId ?? undefined,
+    }).catch(() => undefined);
+    return true;
   };
 
   const selectAnalysisOverlay = (overlay: MobileAnalysisOverlay) => {
@@ -1597,6 +1689,7 @@ export const useMobileAppController = () => {
     setSelectedSurfaceId(result.objectId);
     setObjectNameDraft(result.objectId);
     setDeletedWorkspaceObject(null);
+    setWorkspaceAddUndo(null);
     setObjectActionMessage(`Renamed to ${result.objectId}. Save project to keep this change in the project library.`);
   };
 
@@ -1615,6 +1708,7 @@ export const useMobileAppController = () => {
     setImplicitPreviewBySurfaceId((current) => current[sourceId] == null ? current : { ...current, [result.objectId]: current[sourceId] });
     setSelectedSurfaceId(result.objectId);
     setDeletedWorkspaceObject(null);
+    setWorkspaceAddUndo(null);
     setObjectActionMessage(`Duplicated as ${result.objectId}.`);
   };
 
@@ -1640,6 +1734,7 @@ export const useMobileAppController = () => {
     setImplicitMeshBySurfaceId((current) => { const { [objectId]: _removed, ...rest } = current; return rest; });
     setImplicitPreviewBySurfaceId((current) => { const { [objectId]: _removed, ...rest } = current; return rest; });
     setSelectedSurfaceId(result.nextSelectedId);
+    setWorkspaceAddUndo(null);
     setObjectActionMessage(`Deleted ${objectId}.`);
   };
 
@@ -1658,6 +1753,7 @@ export const useMobileAppController = () => {
     if (deletedWorkspaceObject.preview) setImplicitPreviewBySurfaceId((current) => ({ ...current, [restoredId]: deletedWorkspaceObject.preview }));
     setSelectedSurfaceId(restoredId);
     setDeletedWorkspaceObject(null);
+    setWorkspaceAddUndo(null);
     setObjectActionMessage(`Restored ${restoredId}.`);
   };
 
@@ -2097,6 +2193,8 @@ export const useMobileAppController = () => {
     implicitSurfaceDraft,
     setImplicitSurfaceDraft,
     createActionMessage,
+    workspaceAddMessage,
+    canUndoWorkspaceAdd: workspaceAddUndo?.projectId === selectedSceneId,
     hasImplicitPreviewErrors,
     backendSecurityWarning,
     workerProtocolCompatibility,
@@ -2129,8 +2227,11 @@ export const useMobileAppController = () => {
     toggleSurfaceVisibility,
     setAllSurfacesVisible,
     addPrimitiveToWorkspace,
+    addExampleToWorkspace,
+    openSurfaceAddEditor,
     previewAuthoredSurface,
     addAuthoredSurfaceToWorkspace,
+    undoWorkspaceAdd,
     selectAnalysisOverlay,
     renameSelectedWorkspaceObject,
     duplicateSelectedWorkspaceObject,
