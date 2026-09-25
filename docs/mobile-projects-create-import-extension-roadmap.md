@@ -1,10 +1,10 @@
 # Math3D Mobile projects, creation, and import extension
 
-Updated September 25, 2026. This document turns the proposed Projects/Create/Import extension into the next executable mobile sequence after MOB54. The canonical phase summary remains in the [mobile roadmap](mobile-roadmap.md).
+Updated September 26, 2026. This document turns the proposed Projects/Create/Import extension into the executable mobile sequence after MOB54. The canonical phase summary remains in the [mobile roadmap](mobile-roadmap.md).
 
 ## Starting point
 
-MOB24–MOB57 are complete. Mobile already has:
+MOB24–MOB58 are complete. Mobile already has:
 
 - a persistent multi-object `SceneDocument` inside `math3d.scene-project`;
 - atomic project storage, recovery, thumbnails, rename, duplicate, reversible delete, full-project import/export, and native project sharing;
@@ -12,9 +12,10 @@ MOB24–MOB57 are complete. Mobile already has:
 - one New Project flow that atomically creates, saves, and opens empty, authored, imported, example, starter-template, and compatible desktop projects;
 - one Workspace Add to Project launcher whose working Create and Explore routes commit atomically, select the added object, remain undoable, and refresh saved-project thumbnails;
 - six versioned, validated offline templates that instantiate with fresh project/object identities and persisted template provenance;
+- a versioned `math3d.scene-object` contract with deterministic serialization, content hashing, v0 migration, bounded embedded geometry, and reviewed validity/rejection fixtures;
 - a shared example catalog, worker pairing and jobs, analysis overlays, large-mesh admission, and Android/iOS companion gates.
 
-The current transfer path restores a complete JSON project. It does not yet import one semantic Math3D object, parse general mesh formats, merge objects from another project, create projects from a single unified entry flow, or preserve a desktop/mobile handoff revision.
+The shared layer can now validate and normalize one semantic Math3D object, while the current mobile UI still restores only a complete JSON project. It does not yet expose semantic-object import, parse general mesh formats, merge objects from another project, or preserve a desktop/mobile handoff revision.
 
 The governing model is:
 

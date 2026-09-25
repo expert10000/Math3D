@@ -1,0 +1,16 @@
+{
+  "format": "math3d.scene-object",
+  "version": 0,
+  "producerVersion": "1.4.0",
+  "sourceProjectId": "legacy-project",
+  "surface": {
+    "id": "legacy-graph",
+    "kind": "explicit",
+    "expression": "sin(x)*cos(y)",
+    "domain": { "xSpan": 3.14, "ySpan": 3.14 },
+    "resolution": 48
+  },
+  "analysisMetadata": {
+    "legacy": true
+  }
+}

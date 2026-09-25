@@ -1,0 +1,34 @@
+{
+  "format": "math3d.scene-object",
+  "version": 1,
+  "producer": { "name": "Math3D", "version": "1.5.1", "platform": "fixture" },
+  "object": {
+    "id": "external-mesh",
+    "kind": "mesh",
+    "definition": {
+      "id": "external-mesh",
+      "kind": "mesh",
+      "source": "file:///private/device/mesh.obj"
+    },
+    "transform": {
+      "position": { "x": 0, "y": 0, "z": 0 },
+      "rotation": { "x": 0, "y": 0, "z": 0 },
+      "scale": { "x": 1, "y": 1, "z": 1 }
+    },
+    "visible": true,
+    "style": {}
+  },
+  "geometry": {
+    "kind": "computed-result-reference",
+    "resultId": "mesh-result:1",
+    "contentHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "provenance": {
+    "sourceFormat": "obj",
+    "sourceProjectId": null,
+    "sourceObjectId": "external-mesh",
+    "importedAt": null
+  },
+  "analysisMetadata": {},
+  "contentHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+}

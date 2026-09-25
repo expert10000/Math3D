@@ -1,0 +1,45 @@
+{
+  "format": "math3d.scene-object",
+  "version": 1,
+  "producer": {
+    "name": "Math3D",
+    "version": "1.5.1",
+    "platform": "fixture"
+  },
+  "object": {
+    "id": "surface-saddle",
+    "kind": "explicit",
+    "definition": {
+      "id": "surface-saddle",
+      "kind": "explicit",
+      "expression": "x*x-y*y",
+      "domain": {
+        "xSpan": 2,
+        "ySpan": 2
+      },
+      "resolution": 64
+    },
+    "transform": {
+      "position": { "x": 0, "y": 0, "z": 0 },
+      "rotation": { "x": 0, "y": 0, "z": 0 },
+      "scale": { "x": 1, "y": 1, "z": 1 }
+    },
+    "visible": true,
+    "style": {
+      "color": "#3366cc",
+      "opacity": 0.9
+    }
+  },
+  "geometry": null,
+  "provenance": {
+    "sourceFormat": "math3d.scene-project",
+    "sourceProjectId": "project-saddle",
+    "sourceObjectId": "surface-saddle",
+    "importedAt": null
+  },
+  "analysisMetadata": {
+    "analysisKind": "curvature",
+    "compatible": true
+  },
+  "contentHash": "sha256:cb83a65d358f2537b9b4e8be19ee14bf5c939b911b71af57eb09b11346d12e72"
+}

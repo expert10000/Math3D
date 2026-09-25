@@ -31,6 +31,7 @@ export * from "./workerPlatformCapabilities";
 export * from "./meshCommands";
 export * from "./sceneDocument";
 export * from "./sceneObjects";
+export * from "./sceneObjectTransfer";
 export * from "./scientificJobs";
 export * from "./topologyDocument";
 export * from "./topologyPersistence";
