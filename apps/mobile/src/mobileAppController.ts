@@ -15,6 +15,11 @@ import { useMobileProjectState } from "./models/useMobileProjectState";
 import { duplicateMobileProject, renameMobileProject } from "./models/mobileProjectOperations";
 import { importMobileSceneProject } from "./models/mobileProjectTransfer";
 import {
+  commitMobileProjectCreation,
+  type MobileProjectCreationRequest,
+  type MobileProjectFileSource,
+} from "./models/mobileProjectCreation";
+import {
   evaluateMobileWorkerCapabilities,
   MOBILE_IMPLICIT_PREVIEW_CAPABILITY,
   mobileWorkerHasCapability,
@@ -1360,6 +1365,55 @@ export const useMobileAppController = () => {
     }
   };
 
+  const createNewProject = async (request: MobileProjectCreationRequest): Promise<boolean> => {
+    setProjectActionMessage("Creating project...");
+    const result = await commitMobileProjectCreation(request, storedProjects, saveStoredSceneProjects);
+    if (!result.ok) {
+      setProjectActionMessage(`Project was not created: ${result.error}`);
+      return false;
+    }
+
+    const parsed = readSceneFromStoredProject(result.project);
+    if (!parsed.ok) {
+      setProjectActionMessage(`Project was not created: ${parsed.errors.join("; ")}`);
+      return false;
+    }
+
+    setStoredProjects(result.projects);
+    setSelectedSceneId(result.project.id);
+    setViewerDocument(parsed.scene);
+    setInspectorExpanded(false);
+    setStorageStatus(storageIssues.length > 0 ? "error" : "ready");
+    setProjectActionMessage(result.message);
+    setTab("workspace");
+    void persistMobileSettings({
+      lastSceneId: result.project.id,
+      lastViewerProject: result.project.serializedProject,
+    }).catch(() => undefined);
+    return true;
+  };
+
+  const createNewProjectFromFile = async (source: MobileProjectFileSource): Promise<boolean> => {
+    setProjectActionMessage(source === "desktop"
+      ? "Choose a Math3D project exported from desktop."
+      : "Choose a Math3D scene project to import.");
+    try {
+      const picked = await pickMobileSceneProject();
+      if (picked.status === "cancelled") {
+        setProjectActionMessage("New project cancelled. No project was created.");
+        return false;
+      }
+      return createNewProject({
+        route: source,
+        serializedProject: picked.serializedProject,
+        sourceName: picked.sourceName,
+      });
+    } catch (error) {
+      setProjectActionMessage(`Project was not created: ${String((error as Error).message ?? error)}`);
+      return false;
+    }
+  };
+
   const exportStoredScene = async (projectId: string): Promise<boolean> => {
     const project = storedProjects.find((candidate) => candidate.id === projectId);
     if (!project) return false;
@@ -2062,6 +2116,8 @@ export const useMobileAppController = () => {
     deleteStoredScene,
     undoDeleteStoredScene,
     importStoredScene,
+    createNewProject,
+    createNewProjectFromFile,
     exportStoredScene,
     shareStoredScene,
     openViewerWithExample,

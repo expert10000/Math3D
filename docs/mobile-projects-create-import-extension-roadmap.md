@@ -4,11 +4,12 @@ Updated September 25, 2026. This document turns the proposed Projects/Create/Imp
 
 ## Starting point
 
-MOB24–MOB54 are complete on `main`. Mobile already has:
+MOB24–MOB55 are complete. Mobile already has:
 
 - a persistent multi-object `SceneDocument` inside `math3d.scene-project`;
 - atomic project storage, recovery, thumbnails, rename, duplicate, reversible delete, full-project import/export, and native project sharing;
 - primitive, explicit, parametric, and implicit surface creation;
+- one New Project flow that atomically creates, saves, and opens empty, authored, imported, example, starter-template, and compatible desktop projects;
 - a shared example catalog, worker pairing and jobs, analysis overlays, large-mesh admission, and Android/iOS companion gates.
 
 The current transfer path restores a complete JSON project. It does not yet import one semantic Math3D object, parse general mesh formats, merge objects from another project, create projects from a single unified entry flow, or preserve a desktop/mobile handoff revision.

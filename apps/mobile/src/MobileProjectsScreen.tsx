@@ -1,8 +1,10 @@
 import React, { useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Pressable, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { asDate, type MobileAppController } from "./mobileAppController";
 import { styles } from "./mobileAppStyles";
 import { MobileProjectThumbnail } from "./components/MobileProjectThumbnail";
+import { mobileExamples } from "./data/mobileSeedData";
+import { mobileProjectCreationLayout, type MobileProjectCreationRequest } from "./models/mobileProjectCreation";
 
 export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({ model }) => {
   const {
@@ -23,13 +25,18 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
     duplicateStoredScene,
     deleteStoredScene,
     undoDeleteStoredScene,
-    importStoredScene,
+    createNewProject,
+    createNewProjectFromFile,
     exportStoredScene,
     shareStoredScene,
   } = model;
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [titleDraft, setTitleDraft] = useState("");
   const [transferBusy, setTransferBusy] = useState<string | null>(null);
+  const [creationOpen, setCreationOpen] = useState(false);
+  const [newProjectTitle, setNewProjectTitle] = useState("");
+  const { width } = useWindowDimensions();
+  const creationLayout = mobileProjectCreationLayout(width);
 
   const runTransfer = async (key: string, action: () => Promise<boolean>) => {
     if (transferBusy) return;
@@ -41,20 +48,136 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
     }
   };
 
+  const runCreation = async (key: string, request: MobileProjectCreationRequest) => {
+    if (transferBusy) return;
+    setTransferBusy(key);
+    try {
+      const title = newProjectTitle.trim() || ("title" in request ? request.title : undefined);
+      const created = await createNewProject({ ...request, title } as MobileProjectCreationRequest);
+      if (created) {
+        setCreationOpen(false);
+        setNewProjectTitle("");
+      }
+    } finally {
+      setTransferBusy(null);
+    }
+  };
+
+  const runFileCreation = async (source: "import" | "desktop") => {
+    if (transferBusy) return;
+    setTransferBusy(source);
+    try {
+      const created = await createNewProjectFromFile(source);
+      if (created) setCreationOpen(false);
+    } finally {
+      setTransferBusy(null);
+    }
+  };
+
+  const optionStyle = [
+    styles.projectCreationOption,
+    { width: creationLayout.optionWidth, minHeight: creationLayout.minTouchHeight },
+  ];
+  const surfaceStudyExample = mobileExamples.find((example) => example.id === "graph-saddle") ?? mobileExamples[0];
+
   return (
     <View style={styles.panel}>
       <Text style={styles.panelTitle}>Projects</Text>
       <Text style={styles.note}>Saved Math3D scenes available offline on this device.</Text>
       <View style={styles.projectActions}>
         <Pressable
-          testID="mobile-project-import"
+          testID="mobile-new-project"
           disabled={transferBusy !== null}
-          onPress={() => void runTransfer("import", importStoredScene)}
+          onPress={() => setCreationOpen((open) => !open)}
           style={styles.primaryBtn}
         >
-          <Text style={styles.primaryBtnText}>{transferBusy === "import" ? "Importing..." : "Import project"}</Text>
+          <Text style={styles.primaryBtnText}>{creationOpen ? "Close New Project" : "New Project"}</Text>
         </Pressable>
       </View>
+      {creationOpen ? (
+        <View
+          testID="mobile-project-creation-flow"
+          accessibilityLabel={`New Project, ${creationLayout.columns} column layout`}
+          style={[styles.projectCreationPanel, { paddingHorizontal: creationLayout.horizontalPadding }]}
+        >
+          <Text style={styles.subPanelTitle}>New Project</Text>
+          <Text style={styles.note}>Choose a starting point. Math3D saves the project before opening Workspace.</Text>
+          <TextInput
+            testID="mobile-new-project-title"
+            value={newProjectTitle}
+            onChangeText={setNewProjectTitle}
+            placeholder="Project name (optional)"
+            maxLength={80}
+            style={styles.textInput}
+          />
+
+          <Text style={styles.projectCreationGroupTitle}>Empty</Text>
+          <View style={styles.projectCreationGrid}>
+            <Pressable testID="mobile-new-project-empty" disabled={transferBusy !== null} onPress={() => void runCreation("empty", { route: "empty" })} style={optionStyle}>
+              <Text style={styles.itemTitle}>Empty project</Text>
+              <Text style={styles.itemMeta}>Start with a saved blank scene.</Text>
+            </Pressable>
+          </View>
+
+          <Text style={styles.projectCreationGroupTitle}>Create</Text>
+          <View style={styles.projectCreationGrid}>
+            {(["plane", "sphere", "cylinder", "torus"] as const).map((primitive) => (
+              <Pressable key={primitive} testID={`mobile-new-project-primitive-${primitive}`} disabled={transferBusy !== null} onPress={() => void runCreation(`primitive-${primitive}`, { route: "primitive", primitive })} style={optionStyle}>
+                <Text style={styles.itemTitle}>{primitive[0].toUpperCase() + primitive.slice(1)}</Text>
+                <Text style={styles.itemMeta}>Primitive project</Text>
+              </Pressable>
+            ))}
+            {(["explicit", "parametric", "implicit"] as const).map((surfaceKind) => (
+              <Pressable key={surfaceKind} testID={`mobile-new-project-surface-${surfaceKind}`} disabled={transferBusy !== null} onPress={() => void runCreation(`surface-${surfaceKind}`, { route: "surface", surfaceKind })} style={optionStyle}>
+                <Text style={styles.itemTitle}>{surfaceKind[0].toUpperCase() + surfaceKind.slice(1)} surface</Text>
+                <Text style={styles.itemMeta}>Editable surface project</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={styles.projectCreationGroupTitle}>Import</Text>
+          <View style={styles.projectCreationGrid}>
+            <Pressable testID="mobile-new-project-import" disabled={transferBusy !== null} onPress={() => void runFileCreation("import")} style={optionStyle}>
+              <Text style={styles.itemTitle}>{transferBusy === "import" ? "Choosing..." : "Math3D project"}</Text>
+              <Text style={styles.itemMeta}>Create a separate project from a file.</Text>
+            </Pressable>
+          </View>
+
+          <Text style={styles.projectCreationGroupTitle}>Start from</Text>
+          <View style={styles.projectCreationGrid}>
+            {mobileExamples.map((example) => (
+              <Pressable key={example.id} testID={`mobile-new-project-example-${example.id}`} disabled={transferBusy !== null} onPress={() => void runCreation(`example-${example.id}`, { route: "example", example })} style={optionStyle}>
+                <Text style={styles.itemTitle}>{example.title}</Text>
+                <Text style={styles.itemMeta}>Example · {example.category}</Text>
+              </Pressable>
+            ))}
+            <Pressable
+              testID="mobile-new-project-template"
+              disabled={transferBusy !== null}
+              onPress={() => void runCreation("template", { route: "template", templateId: "surface-study", scene: surfaceStudyExample.scene, title: newProjectTitle.trim() || "Surface study" })}
+              style={optionStyle}
+            >
+              <Text style={styles.itemTitle}>Surface study</Text>
+              <Text style={styles.itemMeta}>Offline starter template</Text>
+            </Pressable>
+            <Pressable testID="mobile-new-project-desktop" disabled={transferBusy !== null} onPress={() => void runFileCreation("desktop")} style={optionStyle}>
+              <Text style={styles.itemTitle}>{transferBusy === "desktop" ? "Choosing..." : "Desktop project"}</Text>
+              <Text style={styles.itemMeta}>Open a compatible desktop export.</Text>
+            </Pressable>
+          </View>
+          <Pressable
+            testID="mobile-new-project-cancel"
+            disabled={transferBusy !== null}
+            onPress={() => {
+              setCreationOpen(false);
+              setNewProjectTitle("");
+            }}
+            style={styles.secondaryBtn}
+          >
+            <Text style={styles.secondaryBtnText}>Cancel</Text>
+          </Pressable>
+        </View>
+      ) : null}
       <View style={styles.settingRow}>
         <TextInput
           value={sceneSearchQuery}
