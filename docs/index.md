@@ -20,6 +20,7 @@ This site combines:
 - Mobile mesh import: `mobile-mesh-import.md` (supported formats, unit/axis assumptions, admission, persistence, and failure boundary).
 - Mobile object export: `mobile-object-export.md` (lossless semantic export, derived OBJ/PLY/STL, validation, naming, and native sharing).
 - Scene-object composition: `scene-object-composition.md` (deterministic collision remapping, internal-reference rewriting, dependency validation, and provenance).
+- Graph2D desktop/mobile roadmap: `math3d-graph2d-desktop-mobile-roadmap.md` (shared 2D graph engine, desktop workspace, mathematical analysis, mobile parity, interop, and release gates).
 
 ## Public frontend
 
