@@ -13,13 +13,16 @@ import {
   type MobileSceneObjectImportPreview,
 } from "./mobileSceneObjectImport";
 import { createMobilePrimitiveSurface, type MobilePrimitiveKind } from "./mobileSurfaceCreation";
+import type { MobileMeshImportPreview } from "./mobileMeshImport";
+import type { MobileMeshPayload } from "../viewer/mobileSurfacePreview";
 
 export type MobileWorkspaceAddRequest =
   | { route: "primitive"; primitive: MobilePrimitiveKind }
   | { route: "surface"; surface: SurfaceDefinition }
   | { route: "preset"; example: Math3DExample }
   | { route: "example"; example: Math3DExample }
-  | { route: "math3d-object"; preview: MobileSceneObjectImportPreview };
+  | { route: "math3d-object"; preview: MobileSceneObjectImportPreview }
+  | { route: "mesh"; preview: MobileMeshImportPreview };
 
 export const MOBILE_WORKSPACE_ADD_GROUPS = [
   { id: "create", label: "Create", routes: ["primitive", "surface"] },
@@ -42,6 +45,7 @@ export type MobileWorkspaceAddPlan = {
   scene: SceneDocument;
   addedObjectIds: string[];
   importedPresentationById: Record<string, MobileImportedObjectPresentation>;
+  importedMeshById: Record<string, MobileMeshPayload>;
   message: string;
 };
 
@@ -85,18 +89,22 @@ export const planMobileWorkspaceAdd = (
     ? [createMobilePrimitiveSurface(request.primitive, activeScene)]
     : request.route === "surface"
       ? [request.surface]
-      : request.route === "math3d-object"
+      : request.route === "math3d-object" || request.route === "mesh"
         ? []
         : request.example.scene.surfaces ?? [];
-  if (request.route === "math3d-object") {
-    const validated = validateSceneObjectEnvelope(request.preview.envelope);
+  if (request.route === "math3d-object" || request.route === "mesh") {
+    const transferPreview = request.route === "mesh" ? request.preview.transferPreview : request.preview;
+    const validated = validateSceneObjectEnvelope(transferPreview.envelope);
     if (!validated.ok) return { ok: false, error: `The selected object is no longer valid: ${validated.errors.join("; ")}` };
-    if (validated.value.object.kind === "mesh") {
+    if (request.route === "math3d-object" && validated.value.object.kind === "mesh") {
       return { ok: false, error: "Mesh scene objects use the bounded mesh importer introduced in MOB60." };
+    }
+    if (request.route === "mesh" && validated.value.object.kind !== "mesh") {
+      return { ok: false, error: "The selected mesh preview no longer contains a mesh object." };
     }
     const imported = addMobileSceneObjectImportToScene(
       activeScene,
-      { ...request.preview, envelope: validated.value },
+      { ...transferPreview, envelope: validated.value },
       now
     );
     const previousProject: MobileStoredSceneProject = {
@@ -117,7 +125,8 @@ export const planMobileWorkspaceAdd = (
       scene: imported.scene,
       addedObjectIds: [imported.objectId],
       importedPresentationById: { [imported.objectId]: imported.presentation },
-      message: `Imported ${imported.objectId} from ${request.preview.sourceName} into ${activeProject.title}.`,
+      importedMeshById: request.route === "mesh" ? { [imported.objectId]: request.preview.mesh } : {},
+      message: `Imported ${imported.objectId} from ${transferPreview.sourceName} into ${activeProject.title}.`,
     };
   }
   if (sources.length === 0) return { ok: false, error: "The selected source contains no supported objects." };
@@ -146,6 +155,7 @@ export const planMobileWorkspaceAdd = (
     scene: appended.scene,
     addedObjectIds: appended.addedObjectIds,
     importedPresentationById: {},
+    importedMeshById: {},
     message: `Added ${label} to ${activeProject.title}.`,
   };
 };

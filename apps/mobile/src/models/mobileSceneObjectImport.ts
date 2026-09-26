@@ -7,6 +7,7 @@ import {
   type SurfaceDefinition,
 } from "@math3d/core";
 import { createUniqueMobileSceneObjectId } from "./mobileSceneObjectOperations";
+import type { MobileMeshPayload } from "../viewer/mobileSurfacePreview";
 
 export const MOBILE_SCENE_OBJECT_IMPORTS_EXTENSION = "math3d.scene-object.imports.v1";
 
@@ -178,5 +179,25 @@ export const readMobileImportedObjectPresentations = (
       ...(style.color === undefined ? {} : { color: style.color }),
       transform,
     } satisfies MobileImportedObjectPresentation]];
+  })
+);
+
+export const readMobileImportedObjectMeshes = (scene: SceneDocument): Record<string, MobileMeshPayload> => Object.fromEntries(
+  Object.keys(importedRecords(scene)).flatMap((objectId) => {
+    const record = readMobileImportedSceneObject(scene, objectId);
+    const geometry = record?.envelope.geometry;
+    if (!record || geometry?.kind !== "embedded-mesh") return [];
+    const positions = new Float32Array(geometry.positions);
+    const indices = positions.length / 3 <= 65_535
+      ? new Uint16Array(geometry.indices)
+      : new Uint32Array(geometry.indices);
+    const mesh: MobileMeshPayload = {
+      positions,
+      indices,
+      ...(geometry.normals ? { normals: new Float32Array(geometry.normals) } : {}),
+      vertexCount: positions.length / 3,
+      triCount: indices.length / 3,
+    };
+    return [[objectId, mesh]];
   })
 );

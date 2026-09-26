@@ -49,11 +49,19 @@ const canonicalJson = (value: unknown, ancestors: Set<object>, path: string): st
   try {
     if (Array.isArray(value)) {
       const ownKeys = Reflect.ownKeys(value).filter((key) => key !== "length");
-      const expectedKeys = Array.from({ length: value.length }, (_, index) => String(index));
+      let dense = true;
+      for (let index = 0; index < value.length; index += 1) {
+        if (!Object.prototype.hasOwnProperty.call(value, index)) {
+          dense = false;
+          break;
+        }
+      }
       if (
+        ownKeys.length !== value.length ||
         ownKeys.some((key) => typeof key !== "string") ||
-        ownKeys.some((key) => typeof key === "string" && !expectedKeys.includes(key)) ||
-        expectedKeys.some((key) => !Object.prototype.hasOwnProperty.call(value, key))
+        ownKeys.some((key) => typeof key === "string" && (
+          !/^(?:0|[1-9]\d*)$/.test(key) || Number(key) >= value.length
+        )) || !dense
       ) {
         throw new TypeError(`${path} must be a dense JSON array without custom properties.`);
       }

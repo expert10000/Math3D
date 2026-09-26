@@ -46,7 +46,7 @@ import {
 } from "./models/mobileSurfaceCreation";
 import { clearMobileComputeJobs, loadMobileComputeJobs, saveMobileComputeJobs } from "./services/mobileComputeJobStorage";
 import { clearMobileThumbnailCache, loadMobileThumbnailCache, saveMobileThumbnailCache, type MobileThumbnailCache } from "./services/mobileThumbnailCacheStorage";
-import { exportMobileSceneProject, pickMobileSceneObject, pickMobileSceneProject, shareMobileSceneProject } from "./services/mobileProjectTransferService";
+import { exportMobileSceneProject, pickMobileMeshFile, pickMobileSceneObject, pickMobileSceneProject, shareMobileSceneProject } from "./services/mobileProjectTransferService";
 import { createMobileThumbnailCacheKey, generateMobileSceneThumbnail } from "./viewer/mobileSceneThumbnail";
 import { buildMobileSurfaceAnalysis } from "./viewer/mobileSurfaceAnalysis";
 import { mobileAnalysisOverlayAvailability, type MobileAnalysisOverlay } from "./viewer/mobileAnalysisOverlays";
@@ -59,10 +59,16 @@ import {
 } from "./models/mobileWorkspaceAdd";
 import {
   prepareMobileSceneObjectImport,
+  readMobileImportedObjectMeshes,
   readMobileImportedObjectPresentations,
   type MobileSceneObjectImportPreparation,
   type MobileSceneObjectImportPreview,
 } from "./models/mobileSceneObjectImport";
+import {
+  prepareMobileMeshImport,
+  type MobileMeshImportPreparation,
+  type MobileMeshImportPreview,
+} from "./models/mobileMeshImport";
 
 const ANDROID_GL_DEFAULT_ENABLED = true;
 export const FORCE_ANDROID_SAFE_MODE = false;
@@ -709,7 +715,13 @@ export const useMobileAppController = () => {
       setCameraCommandType("fit");
       setCameraCommandToken((value) => value + 1);
     }
-    setImplicitMeshBySurfaceId({});
+    const importedMeshes = viewerDocument ? readMobileImportedObjectMeshes(viewerDocument) : {};
+    setImplicitMeshBySurfaceId(Object.fromEntries(
+      Object.entries(importedMeshes).flatMap(([id, mesh]) => {
+        const admitted = admitMobileMeshForRendering(mesh, effectiveRenderQuality, false);
+        return admitted.mesh ? [[id, admitted.mesh]] : [];
+      })
+    ));
     setImplicitPreviewBySurfaceId({});
   }, [viewerDocument?.id]);
 
@@ -1540,6 +1552,7 @@ export const useMobileAppController = () => {
         )
       ),
     }));
+    setImplicitMeshBySurfaceId((current) => ({ ...current, ...result.importedMeshById }));
     setSelectedSurfaceId(selectedId);
     setDeletedWorkspaceObject(null);
     setWorkspaceAddUndo({
@@ -1602,6 +1615,33 @@ export const useMobileAppController = () => {
 
   const importSceneObjectToWorkspace = (preview: MobileSceneObjectImportPreview): Promise<boolean> =>
     commitWorkspaceAdd({ route: "math3d-object", preview });
+
+  const pickMeshForWorkspace = async (): Promise<MobileMeshImportPreparation> => {
+    if (!selectedSceneId || !viewerDocument) {
+      const error = "Open or create a saved project before importing a mesh.";
+      setWorkspaceAddMessage(error);
+      return { status: "error", error };
+    }
+    setWorkspaceAddMessage("Choose an OBJ, STL, or PLY file to preview.");
+    try {
+      const picked = await pickMobileMeshFile();
+      if (picked.status === "cancelled") {
+        setWorkspaceAddMessage("Mesh import cancelled. The project was not changed.");
+        return { status: "cancelled" };
+      }
+      const prepared = prepareMobileMeshImport(picked.source, viewerDocument, effectiveRenderQuality);
+      if (prepared.status === "error") setWorkspaceAddMessage(`Nothing was added: ${prepared.error}`);
+      else if (prepared.status === "ready") setWorkspaceAddMessage(`Previewing ${prepared.preview.format.toUpperCase()} mesh. Confirm to update the project.`);
+      return prepared;
+    } catch (error) {
+      const message = `Mesh import failed: ${String((error as Error).message ?? error)}`;
+      setWorkspaceAddMessage(message);
+      return { status: "error", error: message };
+    }
+  };
+
+  const importMeshToWorkspace = (preview: MobileMeshImportPreview): Promise<boolean> =>
+    commitWorkspaceAdd({ route: "mesh", preview });
 
   const openSurfaceAddEditor = (mode: "explicit" | "parametric" | "implicit") => {
     setSurfaceEditorMode(mode);
@@ -2286,6 +2326,8 @@ export const useMobileAppController = () => {
     addExampleToWorkspace,
     pickSceneObjectForWorkspace,
     importSceneObjectToWorkspace,
+    pickMeshForWorkspace,
+    importMeshToWorkspace,
     openSurfaceAddEditor,
     previewAuthoredSurface,
     addAuthoredSurfaceToWorkspace,

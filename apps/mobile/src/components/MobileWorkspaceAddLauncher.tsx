@@ -4,6 +4,7 @@ import { mobileExamples } from "../data/mobileSeedData";
 import type { MobileAppController } from "../mobileAppController";
 import { styles } from "../mobileAppStyles";
 import type { MobileSceneObjectImportPreview } from "../models/mobileSceneObjectImport";
+import type { MobileMeshImportPreview } from "../models/mobileMeshImport";
 import { mobileWorkspaceAddLayout } from "../models/mobileWorkspaceAdd";
 
 const presetIds = new Set(["sphere", "paraboloid", "helicoid"]);
@@ -17,6 +18,7 @@ export const MobileWorkspaceAddLauncher: React.FC<{
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [objectPreview, setObjectPreview] = useState<MobileSceneObjectImportPreview | null>(null);
+  const [meshPreview, setMeshPreview] = useState<MobileMeshImportPreview | null>(null);
   const presets = mobileExamples.filter((example) => presetIds.has(example.id));
 
   const optionStyle = [
@@ -41,6 +43,21 @@ export const MobileWorkspaceAddLauncher: React.FC<{
       if (result.status === "ready") setObjectPreview(result.preview);
       else {
         setObjectPreview(null);
+        if (result.status === "error") setMessage(result.error);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+  const chooseMesh = async () => {
+    if (busy) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const result = await model.pickMeshForWorkspace();
+      if (result.status === "ready") setMeshPreview(result.preview);
+      else {
+        setMeshPreview(null);
         if (result.status === "error") setMessage(result.error);
       }
     } finally {
@@ -93,8 +110,8 @@ export const MobileWorkspaceAddLauncher: React.FC<{
 
         <Text style={styles.projectCreationGroupTitle}>Import</Text>
         <View style={styles.projectCreationGrid}>
-          <Pressable testID="mobile-workspace-add-mesh" onPress={() => unavailable("Mesh import is prepared here and becomes available with MOB60.")} style={optionStyle}>
-            <Text style={styles.itemTitle}>Mesh</Text><Text style={styles.itemMeta}>OBJ, STL, PLY</Text>
+          <Pressable testID="mobile-workspace-add-mesh" disabled={busy} onPress={() => void chooseMesh()} style={optionStyle}>
+            <Text style={styles.itemTitle}>{busy ? "Choosing..." : "Mesh"}</Text><Text style={styles.itemMeta}>OBJ, STL, PLY</Text>
           </Pressable>
           <Pressable testID="mobile-workspace-add-object" disabled={busy} onPress={() => void chooseMath3DObject()} style={optionStyle}>
             <Text style={styles.itemTitle}>{busy ? "Choosing..." : "Math3D object"}</Text><Text style={styles.itemMeta}>Pick and preview semantic content</Text>
@@ -103,6 +120,29 @@ export const MobileWorkspaceAddLauncher: React.FC<{
             <Text style={styles.itemTitle}>Objects from project</Text><Text style={styles.itemMeta}>Copy compatible objects</Text>
           </Pressable>
         </View>
+        {meshPreview ? (
+          <View testID="mobile-workspace-mesh-import-preview" style={styles.subPanel}>
+            <Text style={styles.subPanelTitle}>{meshPreview.format.toUpperCase()} mesh</Text>
+            <Text style={styles.itemMeta}>{meshPreview.sourceVertexCount.toLocaleString()} vertices · {meshPreview.sourceTriangleCount.toLocaleString()} triangles</Text>
+            <Text style={styles.itemMeta}>Normals: {meshPreview.normalsGenerated ? "generated" : "source"} · Admission: {meshPreview.admission.action}</Text>
+            <Text style={styles.itemMeta}>{meshPreview.axisAssumption}</Text>
+            <Text style={styles.itemMeta}>{meshPreview.unitAssumption}</Text>
+            {meshPreview.admission.action === "reduced" ? <Text style={styles.warningNote}>A reduced preview will render on this device; the validated source mesh remains in the project.</Text> : null}
+            {meshPreview.transferPreview.hasIdentityCollision ? <Text style={styles.warningNote}>Object ID already exists. It will be added as {meshPreview.transferPreview.destinationObjectId}.</Text> : null}
+            {meshPreview.warnings.map((warning) => <Text key={warning} style={styles.warningNote}>{warning}</Text>)}
+            <View style={styles.viewerToolbarRow}>
+              <Pressable testID="mobile-workspace-mesh-import-confirm" disabled={busy} onPress={() => void run(() => model.importMeshToWorkspace(meshPreview))} style={styles.primaryBtn}>
+                <Text style={styles.primaryBtnText}>Import mesh</Text>
+              </Pressable>
+              <Pressable testID="mobile-workspace-mesh-import-cancel" disabled={busy} onPress={() => {
+                setMeshPreview(null);
+                setMessage("Mesh import cancelled. The project was not changed.");
+              }} style={styles.secondaryBtn}>
+                <Text style={styles.secondaryBtnText}>Cancel</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
         {objectPreview ? (
           <View testID="mobile-workspace-object-import-preview" style={styles.subPanel}>
             <Text style={styles.subPanelTitle}>{objectPreview.envelope.object.kind} · {objectPreview.envelope.object.id}</Text>

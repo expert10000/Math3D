@@ -2,6 +2,7 @@ import { MAX_SCENE_OBJECT_BYTES } from "@math3d/core";
 import { Directory, File, Paths } from "expo-file-system";
 import { isAvailableAsync, shareAsync } from "expo-sharing";
 import type { MobileStoredSceneProject } from "../models/mobileScene";
+import { MAX_MOBILE_MESH_IMPORT_BYTES, type MobileMeshImportSource } from "../models/mobileMeshImport";
 import {
   createMobileProjectExportName,
   validateMobileProjectForTransfer,
@@ -17,6 +18,10 @@ export type MobileProjectPickResult =
 
 export type MobileSceneObjectPickResult =
   | { status: "selected"; serializedObject: string; sourceName: string }
+  | { status: "cancelled" };
+
+export type MobileMeshPickResult =
+  | { status: "selected"; source: MobileMeshImportSource }
   | { status: "cancelled" };
 
 export type MobileProjectExportResult =
@@ -67,6 +72,24 @@ export const pickMobileSceneObject = async (): Promise<MobileSceneObjectPickResu
       status: "selected",
       serializedObject: await file.text(),
       sourceName: fileNameFromUri(file.uri),
+    };
+  } catch (error) {
+    if (pickerWasCancelled(error)) return { status: "cancelled" };
+    throw error;
+  }
+};
+
+export const pickMobileMeshFile = async (): Promise<MobileMeshPickResult> => {
+  try {
+    const selected = await File.pickFileAsync();
+    const file = Array.isArray(selected) ? selected[0] : selected;
+    if (!file) return { status: "cancelled" };
+    if (file.size > MAX_MOBILE_MESH_IMPORT_BYTES) {
+      throw new Error(`The selected mesh is larger than the ${MAX_MOBILE_MESH_IMPORT_BYTES / (1024 * 1024)} MB mobile import limit.`);
+    }
+    return {
+      status: "selected",
+      source: { sourceName: fileNameFromUri(file.uri), bytes: await file.bytes() },
     };
   } catch (error) {
     if (pickerWasCancelled(error)) return { status: "cancelled" };
