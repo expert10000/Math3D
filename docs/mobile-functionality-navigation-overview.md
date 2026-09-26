@@ -68,7 +68,7 @@ The default worker URL is `http://127.0.0.1:8787/api/worker`. On a standalone ph
 
 The [current mobile roadmap](mobile-roadmap.md) integrates this inventory into a product direction: **offline-capable companion viewer + network-backed compute client + lightweight scene editing**. M0–M11 and MOB24–MOB65 are complete in the current source; the published `150007` build remains the earlier release baseline described on this page.
 
-The next sequence is MOB66–MOB68 in the [Projects, creation, and import extension](mobile-projects-create-import-extension-roadmap.md): revision-aware desktop/mobile handoff. The current transfer boundaries are documented in [Mobile mesh import](mobile-mesh-import.md), [Mobile object export](mobile-object-export.md), [Scene-object composition](scene-object-composition.md), [Mobile add from project](mobile-add-from-project.md), and [Mobile project library](mobile-project-library.md).
+MOB66–MOB68 implement revision-aware desktop/mobile file handoff and its focused transfer gate. The [gate evidence](mobile-project-transfer-gate.md) records the Android USB smoke and the remaining iOS native-picker/share signoff. Transfer boundaries are documented in [Mobile mesh import](mobile-mesh-import.md), [Mobile object export](mobile-object-export.md), [Scene-object composition](scene-object-composition.md), [Mobile add from project](mobile-add-from-project.md), and [Mobile project library](mobile-project-library.md).
 
 ## Source map
 

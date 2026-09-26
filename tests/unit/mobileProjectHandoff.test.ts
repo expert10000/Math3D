@@ -60,10 +60,10 @@ describe("mobile project handoff", () => {
   it("reports unsupported content before open and leaves storage untouched on failure", async () => {
     const unsupported = serializeProjectHandoff(createProjectHandoff(source, {
       producer: { platform: "desktop", name: "Math3D Desktop", version: "1.5.0" },
-      requiredCapabilities: ["surface.weierstrass"],
+      requiredCapabilities: ["analysis.curvature"],
     }));
     const inspected = inspectMobileProjectHandoff(unsupported, "unsupported.json", []);
-    expect(inspected).toMatchObject({ ok: true, preview: { unsupported: ["surface.weierstrass"] } });
+    expect(inspected).toMatchObject({ ok: true, preview: { unsupported: ["analysis.curvature"] } });
     if (!inspected.ok) return;
     const failed = await commitMobileProjectHandoff(inspected.preview, "copy", [], async () => { throw new Error("disk full"); });
     expect(failed).toMatchObject({ ok: false, error: "disk full" });

@@ -2,7 +2,7 @@ import { deserializeProjectHandoff, deserializeSceneProject, sceneProjectRevisio
 import type { MobileStoredSceneProject } from "./mobileScene";
 import { importMobileSceneProject } from "./mobileProjectTransfer";
 
-const MOBILE_HANDOFF_CAPABILITIES = new Set(["surface.explicit", "surface.parametric", "surface.implicit"]);
+const MOBILE_HANDOFF_CAPABILITIES = new Set(["surface.explicit", "surface.parametric", "surface.implicit", "surface.weierstrass"]);
 
 export type MobileHandoffPreview = {
   manifest: ProjectHandoffManifest;

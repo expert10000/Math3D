@@ -23,6 +23,7 @@ This site combines:
 - Mobile add from project: `mobile-add-from-project.md` (selective source preview, dependencies, collision plan, and atomic Workspace commit).
 - Mobile project library: `mobile-project-library.md` (source metadata, My Projects/Imported/Shared/Files filters, search, sorting, and card status).
 - Desktop/mobile project handoff: `mobile-desktop-project-round-trip.md` (revision-aware file exchange and conflict choices).
+- Mobile project-transfer gate: `mobile-project-transfer-gate.md` (golden matrix, Android USB evidence, and iOS gate status).
 - Graph2D desktop/mobile roadmap: `math3d-graph2d-desktop-mobile-roadmap.md` (shared 2D graph engine, desktop workspace, mathematical analysis, mobile parity, interop, and release gates).
 
 ## Public frontend

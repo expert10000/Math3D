@@ -36,4 +36,15 @@ describe("project handoff manifest", () => {
     expect(deserializeProjectHandoff(serialized.replace("x+y", "x-y")).ok).toBe(false);
     expect(deserializeProjectHandoff(serialized.replace('"version":1', '"version":2')).ok).toBe(false);
   });
+
+  it("keeps result descriptors as verified references, without implying embedded result bytes", () => {
+    const resultHash = sceneProjectRevision(project);
+    const manifest = createProjectHandoff(project, {
+      producer: { platform: "desktop", name: "Math3D", version: "1.5.0" },
+      results: [{ id: "curvature", kind: "analysis.curvature", contentHash: resultHash }],
+    });
+    expect(deserializeProjectHandoff(serializeProjectHandoff(manifest))).toMatchObject({ ok: true, value: { results: manifest.results } });
+    const corrupt = JSON.stringify({ ...manifest, results: [{ ...manifest.results[0], contentHash: "bad" }] });
+    expect(deserializeProjectHandoff(corrupt)).toMatchObject({ ok: false });
+  });
 });

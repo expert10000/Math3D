@@ -1,6 +1,6 @@
 # MATH3D mobile roadmap
 
-Updated September 26, 2026. MOB24–MOB67 are complete. This is the current forward plan for `apps/mobile`; the remaining gate is MOB68 in the [Projects, creation, and import extension](mobile-projects-create-import-extension-roadmap.md). The [functionality and navigation overview](mobile-functionality-navigation-overview.md) records the released baseline and implementation history, while the [migration implementation plan](mobile-migration-implementation-plan.md) records the earlier vertical slice.
+Updated September 26, 2026. MOB24–MOB68 are implemented; the iOS native picker/share signoff remains open before advertising the file-based desktop/mobile round trip as fully released. The [Projects, creation, and import extension](mobile-projects-create-import-extension-roadmap.md) and [transfer gate](mobile-project-transfer-gate.md) record acceptance evidence. The [functionality and navigation overview](mobile-functionality-navigation-overview.md) records the released baseline and implementation history, while the [migration implementation plan](mobile-migration-implementation-plan.md) records the earlier vertical slice.
 
 ## Product direction
 
@@ -70,7 +70,7 @@ M0–M10 are implemented. MOB55 establishes the saved-project creation boundary 
 
 ## Commit sequence
 
-MOB24–MOB67 are implemented. MOB68 is the remaining gate; it
+MOB24–MOB68 are implemented. Native iOS picker/share signoff remains; each
 must include the focused acceptance evidence defined in the extension roadmap.
 The former MOB34A proposal is represented by MOB55 so completed history remains
 sequential and unchanged.

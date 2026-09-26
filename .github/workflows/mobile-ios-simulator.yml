@@ -11,6 +11,9 @@ on:
       - ".github/workflows/mobile-ios-simulator.yml"
       - "package-lock.json"
       - "tests/unit/mobileProjectedScene.test.ts"
+      - "tests/unit/mobileProjectTransferService.test.ts"
+      - "tests/unit/projectTransferMatrix.test.ts"
+      - "tests/fixtures/projectHandoffGolden.ts"
   workflow_dispatch:
 
 permissions:
@@ -42,7 +45,7 @@ jobs:
         run: |
           npm run mobile:version:check
           npm --prefix apps/mobile run typecheck
-          npm exec vitest run tests/unit/mobileProjectedScene.test.ts
+          npm exec vitest run tests/unit/mobileProjectedScene.test.ts tests/unit/mobileProjectTransferService.test.ts tests/unit/projectTransferMatrix.test.ts
 
       - name: Generate iOS project
         working-directory: apps/mobile

@@ -4,7 +4,7 @@ Updated September 26, 2026. This document turns the proposed Projects/Create/Imp
 
 ## Starting point
 
-MOB24–MOB67 are complete. Mobile already has:
+MOB24–MOB68 are implemented. The Android USB handoff smoke passed; iOS native picker/share interaction remains a release signoff item. Mobile already has:
 
 - a persistent multi-object `SceneDocument` inside `math3d.scene-project`;
 - atomic project storage, recovery, thumbnails, rename, duplicate, reversible delete, full-project import/export, and native project sharing;
