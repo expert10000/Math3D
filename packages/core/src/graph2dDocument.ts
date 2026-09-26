@@ -4,6 +4,7 @@ import {
   type CanonicalJsonValue, type DocumentIdentity,
 } from "./documentIdentity";
 import type { ValidationResult } from "./validation";
+import { parseGraph2DExpression, type Graph2DExpressionAst } from "./graph2dExpression";
 
 export const GRAPH2D_DOCUMENT_FORMAT = "math3d.graph2d-document" as const;
 export const GRAPH2D_DOCUMENT_SCHEMA_VERSION = 1 as const;
@@ -20,7 +21,7 @@ export type Graph2DExplicitObject = Readonly<{
   id: string;
   kind: "explicit-cartesian";
   label: string;
-  expression: Readonly<{ source: string; variable: "x" }>;
+  expression: Readonly<{ source: string; variable: "x"; ast: Graph2DExpressionAst }>;
   domain: Graph2DDomain;
 }>;
 export type Graph2DSource = Readonly<{
@@ -72,26 +73,33 @@ const variableName = (value: unknown): value is string => typeof value === "stri
 const integerWithin = (value: unknown, min: number, max: number): value is number =>
   Number.isSafeInteger(value) && Number(value) >= min && Number(value) <= max;
 const clone = <T>(value: T): T => JSON.parse(canonicalJsonStringify(value)) as T;
+const validExpression = (value: unknown, variables: readonly string[]): boolean => {
+  if (!record(value) || !exact(value, ["source", "variable", "ast"]) ||
+      !bounded(value.source, GRAPH2D_MAX_EXPRESSION_LENGTH) || value.variable !== "x") return false;
+  const parsed = parseGraph2DExpression(value.source, variables);
+  if (!parsed.ok) return false;
+  try { return canonicalJsonStringify(value.ast) === canonicalJsonStringify(parsed.ast); }
+  catch { return false; }
+};
 
 const validDomain = (value: unknown): value is Graph2DDomain => record(value) &&
   exact(value, ["min", "max", "includeMin", "includeMax"]) && finite(value.min) && finite(value.max) &&
   value.min < value.max && typeof value.includeMin === "boolean" && typeof value.includeMax === "boolean";
-const validObject = (value: unknown): value is Graph2DExplicitObject => record(value) &&
+const validObject = (value: unknown, variables: readonly string[]): value is Graph2DExplicitObject => record(value) &&
   exact(value, ["id", "kind", "label", "expression", "domain"]) && objectId(value.id) &&
-  value.kind === "explicit-cartesian" && bounded(value.label, 160) && record(value.expression) &&
-  exact(value.expression, ["source", "variable"]) && bounded(value.expression.source, GRAPH2D_MAX_EXPRESSION_LENGTH) &&
-  value.expression.variable === "x" && validDomain(value.domain);
+  value.kind === "explicit-cartesian" && bounded(value.label, 160) && validExpression(value.expression, variables) && validDomain(value.domain);
 const validSource = (value: unknown): value is Graph2DSource => {
   if (!record(value) || !exact(value, ["objects", "variables", "assumptions"]) || !Array.isArray(value.objects) ||
-      value.objects.length > GRAPH2D_MAX_OBJECTS || !value.objects.every(validObject) ||
-      new Set(value.objects.map((entry: Graph2DExplicitObject) => entry.id)).size !== value.objects.length ||
+      value.objects.length > GRAPH2D_MAX_OBJECTS ||
       !Array.isArray(value.variables) || value.variables.length > 16 ||
       !value.variables.every((entry: unknown) => record(entry) && exact(entry, ["name", "value"]) && variableName(entry.name) &&
         entry.name !== "x" && finite(entry.value)) ||
       new Set(value.variables.map((entry: { name: string }) => entry.name)).size !== value.variables.length ||
       !Array.isArray(value.assumptions) || value.assumptions.length > 32 ||
       !value.assumptions.every((entry: unknown) => bounded(entry, 160))) return false;
-  return true;
+  const names = ["x", ...value.variables.map((entry: { name: string }) => entry.name)];
+  return parseGraph2DExpression("x", names).ok && value.objects.every((entry: unknown) => validObject(entry, names)) &&
+    new Set(value.objects.map((entry: Graph2DExplicitObject) => entry.id)).size === value.objects.length;
 };
 const validDisplay = (value: unknown, source: Graph2DSource): value is Graph2DDisplay => {
   if (!record(value) || !exact(value, ["viewport", "axes", "objects", "sampling"]) ||

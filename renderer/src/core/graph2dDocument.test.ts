@@ -2,14 +2,17 @@ import { describe, expect, it } from "vitest";
 import {
   createDocumentIdentity, createEmptyGraph2DDocument, createGraph2DDocument, normalizeGraph2DDocument,
   parseGraph2DDocument, serializeGraph2DDocument, GRAPH2D_DOCUMENT_FIELD_POLICY, type Graph2DDocument,
+  parseGraph2DExpression,
 } from "@math3d/core";
 import goldenEmptyFixture from "./fixtures/graph2d-empty-v1.json";
 import invalidUnknownFixture from "./fixtures/graph2d-invalid-unknown-v1.json";
 
 const goldenEmpty = createEmptyGraph2DDocument("golden-empty");
+const parsedExpression = parseGraph2DExpression("x^2");
+if (!parsedExpression.ok) throw new Error("Invalid test expression");
 const explicit = {
   id: "function_1", kind: "explicit-cartesian" as const, label: "Parabola",
-  expression: { source: "x^2", variable: "x" as const },
+  expression: { source: "x^2", variable: "x" as const, ast: parsedExpression.ast },
   domain: { min: -5, max: 5, includeMin: true, includeMax: true },
 };
 const withFunction = (): Graph2DDocument => {
@@ -36,6 +39,7 @@ describe("Graph2D canonical document v1", () => {
     invalid(invalidUnknownFixture);
     invalid({ ...valid, extra: true });
     invalid({ ...valid, source: { ...valid.source, objects: [{ ...explicit, kind: "polar" }] } });
+    invalid({ ...valid, source: { ...valid.source, objects: [{ ...explicit, expression: { ...explicit.expression, source: "x^3" } }] } });
     invalid({ ...valid, source: { ...valid.source, objects: [explicit, explicit] } });
     invalid({ ...valid, source: { ...valid.source, objects: Array.from({ length: 65 }, (_, index) => ({ ...explicit, id: `function_${index}` })) } });
     invalid({ ...valid, display: { ...valid.display, objects: [] } });
