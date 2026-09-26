@@ -43,6 +43,12 @@ export type MobileStoredSceneProject = {
   updatedAt: number;
   lastOpenedAt: number;
   serializedProject: string;
+  source?: {
+    kind: "imported" | "shared" | "desktop";
+    name: string;
+    sourceProjectId: string;
+    importedAt: number;
+  };
 };
 
 export type MobileWorkerJob = {

@@ -14,6 +14,7 @@ import { useMobileWorkspaceState, type CameraCommandType } from "./models/useMob
 import { useMobileProjectState } from "./models/useMobileProjectState";
 import { duplicateMobileProject, renameMobileProject } from "./models/mobileProjectOperations";
 import { importMobileSceneProject } from "./models/mobileProjectTransfer";
+import { buildMobileProjectLibraryCards, countMobileProjectLibrarySections } from "./models/mobileProjectLibrary";
 import {
   commitMobileProjectCreation,
   type MobileProjectCreationRequest,
@@ -262,6 +263,7 @@ export const useMobileAppController = () => {
   } = useMobileWorkspaceState();
   const { selectedSceneId, setSelectedSceneId, storedProjects, setStoredProjects, storageIssues, setStorageIssues,
     storageStatus, setStorageStatus, sceneSearchQuery, setSceneSearchQuery, sceneSortMode, setSceneSortMode,
+    librarySection, setLibrarySection,
     deletedProject, setDeletedProject, projectActionMessage, setProjectActionMessage,
     sceneThumbnailsById, setSceneThumbnailsById } = useMobileProjectState();
   const inspectorSwipeStartY = useRef<number | null>(null);
@@ -565,6 +567,16 @@ export const useMobileAppController = () => {
     sorted.sort((a, b) => (lastOpenedById.get(b.id) ?? 0) - (lastOpenedById.get(a.id) ?? 0));
     return sorted;
   }, [sceneSearchQuery, sceneSortMode, sceneSummaries, storedProjects]);
+
+  const projectLibraryCards = useMemo(() => buildMobileProjectLibraryCards(storedProjects, {
+    section: librarySection,
+    query: sceneSearchQuery,
+    sort: sceneSortMode,
+    jobs: mobileComputeJobs,
+    readyResultProjectId: Object.values(implicitPreviewBySurfaceId).some((preview) => preview?.status === "ready")
+      ? selectedSceneId : null,
+  }), [storedProjects, librarySection, sceneSearchQuery, sceneSortMode, mobileComputeJobs, implicitPreviewBySurfaceId, selectedSceneId]);
+  const projectLibraryCounts = useMemo(() => countMobileProjectLibrarySections(storedProjects), [storedProjects]);
 
   const selectedExample = useMemo(
     () => mobileExamples.find((item) => item.id === selectedExampleId) ?? null,
@@ -1292,7 +1304,10 @@ export const useMobileAppController = () => {
     if (!viewerDocument) return;
 
     const scene = cloneSceneWithNewTimestamp(viewerDocument);
-    const stored = createStoredProjectFromScene(scene, Date.now());
+    const stored = {
+      ...createStoredProjectFromScene(scene, Date.now()),
+      source: storedProjects.find((project) => project.id === scene.id)?.source,
+    };
     const nextProjects = upsertStoredProject(storedProjects, stored);
 
     try {
@@ -1398,7 +1413,7 @@ export const useMobileAppController = () => {
         setProjectActionMessage("Import cancelled.");
         return false;
       }
-      const imported = importMobileSceneProject(picked.serializedProject, storedProjects);
+      const imported = importMobileSceneProject(picked.serializedProject, storedProjects, Date.now(), { kind: "imported", name: picked.sourceName });
       if (!imported.ok) {
         setProjectActionMessage(imported.error);
         return false;
@@ -1448,7 +1463,7 @@ export const useMobileAppController = () => {
   const createNewProjectFromFile = async (source: MobileProjectFileSource): Promise<boolean> => {
     setProjectActionMessage(source === "desktop"
       ? "Choose a Math3D project exported from desktop."
-      : "Choose a Math3D scene project to import.");
+      : source === "shared" ? "Choose a shared Math3D project file." : "Choose a Math3D scene project to import.");
     try {
       const picked = await pickMobileSceneProject();
       if (picked.status === "cancelled") {
@@ -2330,6 +2345,10 @@ export const useMobileAppController = () => {
     setSceneSearchQuery,
     sceneSortMode,
     setSceneSortMode,
+    librarySection,
+    setLibrarySection,
+    projectLibraryCards,
+    projectLibraryCounts,
     deletedProject,
     projectActionMessage,
     sceneThumbnailsById,

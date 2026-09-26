@@ -66,6 +66,17 @@ describe("mobile project transfer", () => {
     });
   });
 
+  it("records file provenance separately from the remapped local project identity", () => {
+    const imported = importMobileSceneProject(serializedProject, [project], 20, { kind: "shared", name: "received.math3d.scene.json" });
+    expect(imported).toMatchObject({
+      ok: true,
+      project: {
+        id: "stored-saddle-import",
+        source: { kind: "shared", name: "received.math3d.scene.json", sourceProjectId: "stored-saddle", importedAt: 20 },
+      },
+    });
+  });
+
   it("rejects invalid or inconsistent projects before transfer", () => {
     expect(importMobileSceneProject("{broken", [], 10)).toMatchObject({
       ok: false,

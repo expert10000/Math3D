@@ -6,18 +6,21 @@ import { MobileProjectThumbnail } from "./components/MobileProjectThumbnail";
 import { mobileExamples } from "./data/mobileSeedData";
 import { mobileProjectCreationLayout, type MobileProjectCreationRequest } from "./models/mobileProjectCreation";
 import { mobileProjectTemplates } from "./models/mobileProjectTemplates";
+import { MOBILE_PROJECT_LIBRARY_SECTIONS } from "./models/mobileProjectLibrary";
 
 export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({ model }) => {
   const {
-    storedProjects,
     storageStatus,
     storageIssues,
     sceneSearchQuery,
     setSceneSearchQuery,
     sceneSortMode,
     setSceneSortMode,
+    librarySection,
+    setLibrarySection,
+    projectLibraryCards,
+    projectLibraryCounts,
     selectedScene,
-    filteredSceneSummaries,
     deletedProject,
     projectActionMessage,
     sceneThumbnailsById,
@@ -64,7 +67,7 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
     }
   };
 
-  const runFileCreation = async (source: "import" | "desktop") => {
+  const runFileCreation = async (source: "import" | "desktop" | "shared") => {
     if (transferBusy) return;
     setTransferBusy(source);
     try {
@@ -173,6 +176,10 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
               <Text style={styles.itemTitle}>{transferBusy === "desktop" ? "Choosing..." : "Desktop project"}</Text>
               <Text style={styles.itemMeta}>Open a compatible desktop export.</Text>
             </Pressable>
+            <Pressable testID="mobile-new-project-shared" disabled={transferBusy !== null} onPress={() => void runFileCreation("shared")} style={optionStyle}>
+              <Text style={styles.itemTitle}>{transferBusy === "shared" ? "Choosing..." : "Shared project"}</Text>
+              <Text style={styles.itemMeta}>Add a project received from someone else.</Text>
+            </Pressable>
           </View>
           <Pressable
             testID="mobile-new-project-cancel"
@@ -188,6 +195,15 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
         </View>
       ) : null}
       <View style={styles.settingRow}>
+        <View style={[styles.settingChoiceRow, { flexWrap: "wrap" }]}>
+          {MOBILE_PROJECT_LIBRARY_SECTIONS.map((section) => (
+            <Pressable key={section} testID={`mobile-project-section-${section}`} accessibilityRole="tab" accessibilityState={{ selected: librarySection === section }} onPress={() => setLibrarySection(section)} style={[styles.pill, { minHeight: 44, justifyContent: "center" }, librarySection === section ? styles.pillActive : null]}>
+              <Text style={[styles.pillText, librarySection === section ? styles.pillTextActive : null]}>
+                {section === "my" ? "My Projects" : section[0].toUpperCase() + section.slice(1)} ({projectLibraryCounts[section]})
+              </Text>
+            </Pressable>
+          ))}
+        </View>
         <TextInput
           value={sceneSearchQuery}
           onChangeText={setSceneSearchQuery}
@@ -229,11 +245,10 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
         </View>
       ) : null}
       {storageStatus === "loading" && <Text style={styles.note}>Updating local projects...</Text>}
-      {storageStatus !== "loading" && filteredSceneSummaries.length === 0 && (
-        <Text style={styles.note}>No local projects available.</Text>
+      {storageStatus !== "loading" && projectLibraryCards.length === 0 && (
+        <Text style={styles.note}>No projects match this section and search.</Text>
       )}
-      {filteredSceneSummaries.map((scene) => {
-        const project = storedProjects.find((candidate) => candidate.id === scene.id);
+      {projectLibraryCards.map((scene) => {
         const editing = editingProjectId === scene.id;
         return <View key={scene.id} style={[styles.item, selectedScene?.id === scene.id ? styles.itemActive : null]}>
           <Pressable testID={`mobile-project-open-${scene.id}`} onPress={() => void openStoredScene(scene.id)}>
@@ -242,8 +257,10 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
               <View style={styles.sceneListMeta}>
                 <Text style={styles.itemTitle}>{scene.title}</Text>
                 <Text style={styles.itemMeta}>
-                  updated {asDate(scene.updatedAt)} · opened {asDate(project?.lastOpenedAt ?? scene.updatedAt)} · {scene.surfaceCount} object{scene.surfaceCount === 1 ? "" : "s"}
+                  {scene.origin} · {scene.compatibilityMessage} · {scene.objectCount} object{scene.objectCount === 1 ? "" : "s"} · updated {asDate(scene.updatedAt)}
                 </Text>
+                {scene.sourceName ? <Text style={styles.itemMeta} numberOfLines={1}>File: {scene.sourceName}</Text> : null}
+                {scene.workerStatus || scene.resultStatus ? <Text style={styles.itemMeta}>{scene.workerStatus ? `Worker: ${scene.workerStatus}` : ""}{scene.resultStatus ? `${scene.workerStatus ? " · " : ""}Result: ${scene.resultStatus}` : ""}</Text> : null}
               </View>
             </View>
           </Pressable>

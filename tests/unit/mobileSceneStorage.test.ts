@@ -91,6 +91,19 @@ describe("mobile scene storage recovery", () => {
     expect(decoded).toMatchObject({ ok: true, migrated: true, projects: [project] });
   });
 
+  it("preserves source metadata in the one project record and rejects malformed provenance", () => {
+    const sourced = { ...project, source: {
+      kind: "shared" as const,
+      name: "received.math3d.scene.json",
+      sourceProjectId: "desktop-source",
+      importedAt: 10,
+    } };
+    expect(decodeMobileSceneStorage(payload([sourced]))).toMatchObject({ ok: true, projects: [sourced] });
+    expect(decodeMobileSceneStorage(payload([{ ...sourced, source: { ...sourced.source, importedAt: -1 } }]))).toMatchObject({
+      ok: false, issues: [expect.stringContaining("source is invalid")],
+    });
+  });
+
   it("rejects unsupported schemas and inconsistent scene metadata", () => {
     expect(decodeMobileSceneStorage(JSON.stringify({ schemaVersion: 99, projects: [project] }))).toMatchObject({
       ok: false,

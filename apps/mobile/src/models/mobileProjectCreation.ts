@@ -20,7 +20,7 @@ import {
 } from "./mobileSurfaceCreation";
 
 export type MobileProjectSurfaceKind = "explicit" | "parametric" | "implicit";
-export type MobileProjectFileSource = "import" | "desktop";
+export type MobileProjectFileSource = "import" | "desktop" | "shared";
 
 export type MobileProjectCreationRequest =
   | { route: "empty"; title?: string }
@@ -29,7 +29,8 @@ export type MobileProjectCreationRequest =
   | { route: "example"; example: Math3DExample; title?: string }
   | { route: "template"; templateId: string; templateVersion: number; scene: SceneDocument; title?: string }
   | { route: "import"; serializedProject: string; sourceName: string }
-  | { route: "desktop"; serializedProject: string; sourceName: string };
+  | { route: "desktop"; serializedProject: string; sourceName: string }
+  | { route: "shared"; serializedProject: string; sourceName: string };
 
 export type MobileProjectCreationResult =
   | { ok: true; project: MobileStoredSceneProject; projects: MobileStoredSceneProject[]; message: string }
@@ -39,7 +40,7 @@ export const MOBILE_PROJECT_CREATION_GROUPS = [
   { id: "empty", label: "Empty", routes: ["empty"] },
   { id: "create", label: "Create", routes: ["primitive", "surface"] },
   { id: "import", label: "Import", routes: ["import"] },
-  { id: "start", label: "Start from", routes: ["example", "template", "desktop"] },
+  { id: "start", label: "Start from", routes: ["example", "template", "desktop", "shared"] },
 ] as const;
 
 export const mobileProjectCreationLayout = (width: number) => ({
@@ -122,10 +123,13 @@ export const planMobileProjectCreation = (
   projects: readonly MobileStoredSceneProject[],
   now = Date.now()
 ): Omit<MobileProjectCreationResult & { ok: true }, "projects"> | { ok: false; error: string } => {
-  if (request.route === "import" || request.route === "desktop") {
-    const imported = importMobileSceneProject(request.serializedProject, [...projects], now);
+  if (request.route === "import" || request.route === "desktop" || request.route === "shared") {
+    const imported = importMobileSceneProject(request.serializedProject, [...projects], now, {
+      kind: request.route === "import" ? "imported" : request.route,
+      name: request.sourceName,
+    });
     if (!imported.ok) return imported;
-    const origin = request.route === "desktop" ? "desktop project" : "project";
+    const origin = request.route === "desktop" ? "desktop project" : request.route === "shared" ? "shared project" : "project";
     return {
       ok: true,
       project: imported.project,

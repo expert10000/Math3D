@@ -106,12 +106,24 @@ const normalizeStoredProject = (
     return null;
   }
 
+  const source = value.source;
+  if (source !== undefined && (
+    !source || !["imported", "shared", "desktop"].includes(source.kind) ||
+    typeof source.name !== "string" || source.name.length === 0 || source.name.length > 240 ||
+    typeof source.sourceProjectId !== "string" || source.sourceProjectId.length === 0 || source.sourceProjectId.length > 160 ||
+    !isFiniteNumber(source.importedAt) || source.importedAt < 0
+  )) {
+    issues.push(`projects[${index}].source is invalid.`);
+    return null;
+  }
+
   return {
     id: value.id,
     title: value.title,
     updatedAt: value.updatedAt,
     lastOpenedAt: value.lastOpenedAt,
     serializedProject: value.serializedProject,
+    ...(source ? { source } : {}),
   };
 };
 

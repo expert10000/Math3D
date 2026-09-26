@@ -4,7 +4,7 @@ Updated September 26, 2026. This document turns the proposed Projects/Create/Imp
 
 ## Starting point
 
-MOB24–MOB64 are complete. Mobile already has:
+MOB24–MOB65 are complete. Mobile already has:
 
 - a persistent multi-object `SceneDocument` inside `math3d.scene-project`;
 - atomic project storage, recovery, thumbnails, rename, duplicate, reversible delete, full-project import/export, and native project sharing;
@@ -19,9 +19,10 @@ MOB24–MOB64 are complete. Mobile already has:
 - lossless single-object export/share with semantic read-back validation, collision-safe names, and confirmed derived OBJ/PLY/STL export;
 - a shared deterministic composition planner for collision-safe IDs, declared internal-reference rewriting, dependency closure validation, and portable source provenance;
 - selective Add from project using local or file sources, compatibility and dependency preview, collision/size impact, and a single undoable destination save;
+- one project library with My Projects, Imported, Shared, and Files filters, persisted source metadata, search/sort, compatibility, object counts, and worker/result status where available;
 - a shared example catalog, worker pairing and jobs, analysis overlays, large-mesh admission, and Android/iOS companion gates.
 
-The shared layer and mobile UI now validate, preview, import, export, and share semantic Math3D objects, plus import OBJ/STL/PLY/GLB/glTF meshes and export derived OBJ/PLY/STL geometry. Shared core plans a collision-safe multi-object composition without dangling references, and mobile commits a selected source snapshot once. The app does not yet organize library sources or preserve a desktop/mobile handoff revision.
+The shared layer and mobile UI now validate, preview, import, export, and share semantic Math3D objects, plus import OBJ/STL/PLY/GLB/glTF meshes and export derived OBJ/PLY/STL geometry. Shared core plans a collision-safe multi-object composition without dangling references, and mobile commits a selected source snapshot once. The project library now organizes those sources; the remaining work is revision-aware desktop/mobile handoff.
 
 The governing model is:
 

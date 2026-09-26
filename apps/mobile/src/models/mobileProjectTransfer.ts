@@ -43,7 +43,8 @@ export const validateMobileProjectForTransfer = (
 export const importMobileSceneProject = (
   serializedProject: string,
   projects: MobileStoredSceneProject[],
-  now = Date.now()
+  now = Date.now(),
+  sourceDescriptor?: { kind: "imported" | "shared" | "desktop"; name: string }
 ): MobileProjectImportResult => {
   const parsed = deserializeSceneProject(serializedProject);
   if (!parsed.ok) return { ok: false, error: `Invalid Math3D scene project: ${parsed.errors.join("; ")}` };
@@ -71,6 +72,12 @@ export const importMobileSceneProject = (
       updatedAt: scene.updatedAt,
       lastOpenedAt: now,
       serializedProject: serializeSceneProject({ ...parsed.value, scene }),
+      ...(sourceDescriptor ? { source: {
+        kind: sourceDescriptor.kind,
+        name: sourceDescriptor.name.trim().slice(0, 240) || "Math3D project",
+        sourceProjectId: parsed.value.scene.id,
+        importedAt: now,
+      } } : {}),
     },
   };
 };

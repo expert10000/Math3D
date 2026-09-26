@@ -35,12 +35,13 @@ const routes: MobileProjectCreationRequest[] = [
   { route: "template", templateId: "surface-study", templateVersion: 1, scene: templateScene },
   { route: "import", serializedProject, sourceName: "study.math3d.scene.json" },
   { route: "desktop", serializedProject, sourceName: "desktop.math3d.scene.json" },
+  { route: "shared", serializedProject, sourceName: "shared.math3d.scene.json" },
 ];
 
 describe("unified mobile project creation", () => {
   it("exposes every MOB55 route in the grouped launcher", () => {
     expect(MOBILE_PROJECT_CREATION_GROUPS.flatMap((group) => group.routes)).toEqual([
-      "empty", "primitive", "surface", "import", "example", "template", "desktop",
+      "empty", "primitive", "surface", "import", "example", "template", "desktop", "shared",
     ]);
   });
 
