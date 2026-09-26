@@ -12,11 +12,18 @@ export const GRAPH2D_DEFAULT_VIEWPORT: Graph2DViewport = Object.freeze({ xMin: -
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const validSize = (size: Graph2DScreenSize): boolean => finite(size.width) && finite(size.height) &&
   size.width > 0 && size.height > 0 && size.width <= 16384 && size.height <= 16384;
-const validViewport = (viewport: Graph2DViewport): boolean => finite(viewport.xMin) && finite(viewport.xMax) &&
-  finite(viewport.yMin) && finite(viewport.yMax) && viewport.xMin < viewport.xMax && viewport.yMin < viewport.yMax &&
-  viewport.xMax - viewport.xMin >= GRAPH2D_MIN_SPAN && viewport.xMax - viewport.xMin <= GRAPH2D_MAX_SPAN &&
-  viewport.yMax - viewport.yMin >= GRAPH2D_MIN_SPAN && viewport.yMax - viewport.yMin <= GRAPH2D_MAX_SPAN &&
-  ["free", "equal"].includes(viewport.aspect);
+export const isGraph2DViewport = (viewport: unknown): viewport is Graph2DViewport => {
+  if (!viewport || typeof viewport !== "object" || Array.isArray(viewport) ||
+      Object.keys(viewport).sort().join("|") !== "aspect|xMax|xMin|yMax|yMin") return false;
+  const candidate = viewport as Graph2DViewport;
+  return finite(candidate.xMin) && finite(candidate.xMax) && finite(candidate.yMin) && finite(candidate.yMax) &&
+    candidate.xMin < candidate.xMax && candidate.yMin < candidate.yMax &&
+    candidate.xMax - candidate.xMin >= GRAPH2D_MIN_SPAN && candidate.xMax - candidate.xMin <= GRAPH2D_MAX_SPAN &&
+    candidate.yMax - candidate.yMin >= GRAPH2D_MIN_SPAN && candidate.yMax - candidate.yMin <= GRAPH2D_MAX_SPAN &&
+    ["free", "equal"].includes(candidate.aspect);
+};
+/* Kept as a named internal alias for transform validation. */
+const validViewport = (viewport: Graph2DViewport): boolean => isGraph2DViewport(viewport);
 const checked = (viewport: Graph2DViewport, size: Graph2DScreenSize): void => {
   if (!validViewport(viewport) || !validSize(size)) throw new TypeError("Invalid Graph2D viewport or screen size.");
 };

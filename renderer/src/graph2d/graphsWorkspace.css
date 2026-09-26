@@ -29,6 +29,11 @@
 .graph2d-inspector-details dt { font-weight: 700; }
 .graph2d-inspector-details dd { margin: 0; overflow-wrap: anywhere; }
 .graph2d-viewer { display: grid; place-items: center; position: relative; overflow: auto; }
+.graph2d-viewer { touch-action: none; cursor: grab; }
+.graph2d-viewer:active { cursor: grabbing; }
+.graph2d-viewer:focus-visible { outline: 2px solid #2563eb; outline-offset: -3px; }
+.graph2d-toolbar { position: absolute; top: 8px; left: 8px; z-index: 2; display: flex; gap: 6px; }
+.graph2d-toolbar button { border: 1px solid var(--border); border-radius: 6px; background: var(--panel-strong); padding: 5px 10px; font-weight: 700; cursor: pointer; }
 .graph2d-plot { position: absolute; inset: 0; width: 100%; height: 100%; }
 .graph2d-plot-background { fill: var(--panel-strong); }
 .graph2d-grid-minor { stroke: var(--border); stroke-width: .55; opacity: .45; }
@@ -58,4 +63,5 @@
   .graph2d-left { display: none; }
   .graph2d-compact-panels { left: 8px; right: 8px; display: flex; align-items: flex-start; gap: 6px; }
   .graph2d-compact-panels details:first-child { display: block; }
+  .graph2d-toolbar { top: auto; bottom: 8px; }
 }

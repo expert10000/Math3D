@@ -19,6 +19,7 @@ import {
   type WorkspaceDockLayout,
 } from "./workspaceDocks";
 import { GraphsWorkspace } from "./graph2d/GraphsWorkspace";
+import { Graph2DCommandAdapter } from "./graph2d/Graph2DCommandAdapter";
 
 import MobiusScreen from "./screens/MobiusScreen";
 import { ChebyshevScreen } from "./screens/ChebyshevScreen";
@@ -724,6 +725,7 @@ import {
   type MeshEditKind,
   type MeshDocument,
   type Graph2DDocument,
+  type Graph2DViewport,
   type TopologyDocument,
   type TopologyReplayBundle,
   type KernelWorkspaceModule,
@@ -24257,7 +24259,20 @@ const App: React.FC = () => {
   const meshDatasetPublishTraceCounterRef = useRef(0);
   const meshDocumentAdapterRef = useRef<MeshDocumentAdapter | null>(null);
   const [meshKernelDocument, setMeshKernelDocument] = useState<MeshDocument | null>(null);
-  const [graph2dDocument] = useState<Graph2DDocument>(() => createEmptyGraph2DDocument("desktop-web-default"));
+  const [graph2dDocument, setGraph2dDocument] = useState<Graph2DDocument>(() => createEmptyGraph2DDocument("desktop-web-default"));
+  const graph2dAdapterRef = useRef<Graph2DCommandAdapter | null>(null);
+  if (!graph2dAdapterRef.current) graph2dAdapterRef.current = new Graph2DCommandAdapter(graph2dDocument);
+  const commitGraph2DViewport = useCallback((viewport: Graph2DViewport) => {
+    setGraph2dDocument(graph2dAdapterRef.current!.commitViewport(viewport));
+  }, []);
+  const undoGraph2DViewport = useCallback(() => {
+    const document = graph2dAdapterRef.current!.undo();
+    if (document) setGraph2dDocument(document);
+  }, []);
+  const redoGraph2DViewport = useCallback(() => {
+    const document = graph2dAdapterRef.current!.redo();
+    if (document) setGraph2dDocument(document);
+  }, []);
   const [topologyKernelDocument, setTopologyKernelDocument] = useState<TopologyDocument | null>(null);
   const [topologyKernelReplay, setTopologyKernelReplay] = useState<TopologyReplayBundle | null>(null);
   const largeSurfaceMeshResolutionCacheRef = useRef<LargeSurfaceMeshResolutionCache | null>(null);
@@ -89427,7 +89442,8 @@ case "mobius":
             )}
           </div>
         ) : mode === "graphs" ? (
-          <GraphsWorkspace dockLayout={activeDockLayout} document={graph2dDocument} />
+          <GraphsWorkspace dockLayout={activeDockLayout} document={graph2dDocument}
+            onViewportCommit={commitGraph2DViewport} onUndo={undoGraph2DViewport} onRedo={redoGraph2DViewport} />
         ) : mode === "curves" ? (
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
             <div style={{ ...styles.panelLeft, width: leftWidth, display: activeDockLayout.leftCollapsed || activeDockLayout.viewerMaximized ? "none" : undefined }}>

@@ -43,3 +43,33 @@ test("Graphs uses desktop side panels and compact controls on narrow windows", a
     await closeSurfaceApp(app);
   }
 });
+
+test("Graphs pans with one gesture, supports keyboard undo, and resets the viewport", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    const viewer = app.page.getByTestId("main-viewer");
+    const verticalAxis = viewer.locator(".graph2d-axis").nth(1);
+    const before = Number(await verticalAxis.getAttribute("x1"));
+    const box = await viewer.boundingBox();
+    if (!box) throw new Error("Graph viewer has no bounds");
+    const startX = box.x + box.width / 2;
+    const startY = box.y + box.height / 2;
+    await app.page.mouse.move(startX, startY);
+    await app.page.mouse.down();
+    await app.page.mouse.move(startX + 90, startY, { steps: 5 });
+    await app.page.mouse.up();
+    await expect.poll(async () => Number(await verticalAxis.getAttribute("x1"))).toBeGreaterThan(before + 50);
+    await viewer.focus();
+    await app.page.keyboard.press("Control+z");
+    await expect.poll(async () => Number(await verticalAxis.getAttribute("x1"))).toBeCloseTo(before, 1);
+    await app.page.mouse.wheel(0, -240);
+    await app.page.waitForTimeout(250);
+    await viewer.getByRole("button", { name: "Reset" }).click();
+    await expect.poll(async () => Number(await verticalAxis.getAttribute("x1"))).toBeCloseTo(before, 1);
+  } finally {
+    await closeSurfaceApp(app);
+  }
+});
