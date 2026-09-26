@@ -14,6 +14,7 @@ import { useMobileWorkspaceState, type CameraCommandType } from "./models/useMob
 import { useMobileProjectState } from "./models/useMobileProjectState";
 import { duplicateMobileProject, renameMobileProject } from "./models/mobileProjectOperations";
 import { importMobileSceneProject } from "./models/mobileProjectTransfer";
+import { commitMobileProjectHandoff, inspectMobileProjectHandoff, type MobileHandoffPreview } from "./models/mobileProjectHandoff";
 import { buildMobileProjectLibraryCards, countMobileProjectLibrarySections } from "./models/mobileProjectLibrary";
 import {
   commitMobileProjectCreation,
@@ -268,6 +269,7 @@ export const useMobileAppController = () => {
     sceneThumbnailsById, setSceneThumbnailsById } = useMobileProjectState();
   const inspectorSwipeStartY = useRef<number | null>(null);
   const [selectedExampleId, setSelectedExampleId] = useState<string | null>(mobileExamples[0]?.id ?? null);
+  const [pendingProjectHandoff, setPendingProjectHandoff] = useState<MobileHandoffPreview | null>(null);
   const [exampleSearchQuery, setExampleSearchQuery] = useState("");
   const [exampleCategoryFilter, setExampleCategoryFilter] = useState<MobileExampleCategoryFilter>("all");
   const [exampleCapabilityFilter, setExampleCapabilityFilter] = useState<MobileExampleCapabilityFilter>("all");
@@ -1470,6 +1472,16 @@ export const useMobileAppController = () => {
         setProjectActionMessage("New project cancelled. No project was created.");
         return false;
       }
+      if (source === "desktop") {
+        const inspected = inspectMobileProjectHandoff(picked.serializedProject, picked.sourceName, storedProjects);
+        if (!inspected.ok) {
+          setProjectActionMessage(`Project was not created: ${inspected.error}`);
+          return false;
+        }
+        setPendingProjectHandoff(inspected.preview);
+        setProjectActionMessage("Review the desktop handoff before importing it.");
+        return false;
+      }
       return createNewProject({
         route: source,
         serializedProject: picked.serializedProject,
@@ -1479,6 +1491,31 @@ export const useMobileAppController = () => {
       setProjectActionMessage(`Project was not created: ${String((error as Error).message ?? error)}`);
       return false;
     }
+  };
+
+  const resolvePendingProjectHandoff = async (resolution: "copy" | "replace"): Promise<boolean> => {
+    if (!pendingProjectHandoff) return false;
+    const result = await commitMobileProjectHandoff(
+      pendingProjectHandoff, resolution, storedProjects, saveStoredSceneProjects
+    );
+    if (!result.ok) {
+      setProjectActionMessage(`Handoff was not imported: ${result.error}`);
+      return false;
+    }
+    const parsed = readSceneFromStoredProject(result.project);
+    if (!parsed.ok) {
+      setProjectActionMessage(`Handoff could not open: ${parsed.errors.join("; ")}`);
+      return false;
+    }
+    setStoredProjects(result.projects);
+    setSelectedSceneId(result.project.id);
+    setViewerDocument(parsed.scene);
+    setPendingProjectHandoff(null);
+    setStorageStatus(storageIssues.length > 0 ? "error" : "ready");
+    setProjectActionMessage(`Imported ${result.project.title} from desktop as ${resolution === "replace" ? "a revision update" : "a project"}.`);
+    setTab("workspace");
+    void persistMobileSettings({ lastSceneId: result.project.id, lastViewerProject: result.project.serializedProject }).catch(() => undefined);
+    return true;
   };
 
   const exportStoredScene = async (projectId: string): Promise<boolean> => {
@@ -2351,6 +2388,8 @@ export const useMobileAppController = () => {
     projectLibraryCounts,
     deletedProject,
     projectActionMessage,
+    pendingProjectHandoff,
+    setPendingProjectHandoff,
     sceneThumbnailsById,
     visibleSurfaceIds,
     workerBaseUrl,
@@ -2431,6 +2470,7 @@ export const useMobileAppController = () => {
     importStoredScene,
     createNewProject,
     createNewProjectFromFile,
+    resolvePendingProjectHandoff,
     exportStoredScene,
     shareStoredScene,
     openViewerWithExample,

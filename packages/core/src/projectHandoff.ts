@@ -38,6 +38,9 @@ export const createProjectHandoff = (
     results?: ProjectHandoffManifest["results"];
   }
 ): ProjectHandoffManifest => {
+  const normalized = deserializeSceneProject(JSON.stringify(project));
+  if (!normalized.ok) throw new TypeError(normalized.errors.join("; "));
+  project = JSON.parse(JSON.stringify(normalized.value)) as SceneProjectDocument;
   const manifest: ProjectHandoffManifest = {
     format: PROJECT_HANDOFF_FORMAT,
     version: PROJECT_HANDOFF_VERSION,

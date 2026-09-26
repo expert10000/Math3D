@@ -8,8 +8,8 @@ import {
 } from "../models/mobileObjectExport";
 import { listMobileGltfDependencies, MAX_MOBILE_MESH_IMPORT_BYTES, type MobileMeshImportSource } from "../models/mobileMeshImport";
 import {
-  createMobileProjectExportName,
-  validateMobileProjectForTransfer,
+  createMobileHandoffExportName,
+  serializeMobileProjectHandoff,
 } from "../models/mobileProjectTransfer";
 
 const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
@@ -119,11 +119,7 @@ export const pickMobileMeshFile = async (): Promise<MobileMeshPickResult> => {
   }
 };
 
-const validatedExport = (project: MobileStoredSceneProject) => {
-  const validated = validateMobileProjectForTransfer(project);
-  if (!validated.ok) throw new Error(validated.error);
-  return validated.serializedProject;
-};
+const validatedExport = (project: MobileStoredSceneProject) => serializeMobileProjectHandoff(project);
 
 export const exportMobileSceneProject = async (
   project: MobileStoredSceneProject
@@ -131,7 +127,7 @@ export const exportMobileSceneProject = async (
   const serializedProject = validatedExport(project);
   try {
     const directory = await Directory.pickDirectoryAsync();
-    const fileName = createMobileProjectExportName(project);
+    const fileName = createMobileHandoffExportName(project);
     const output = directory.createFile(fileName, JSON_MIME_TYPE);
     output.write(serializedProject, { encoding: "utf8" });
     if ((await output.text()) !== serializedProject) {
@@ -148,7 +144,7 @@ export const shareMobileSceneProject = async (project: MobileStoredSceneProject)
   if (!(await isAvailableAsync())) throw new Error("Native sharing is unavailable on this device.");
   const serializedProject = validatedExport(project);
   exportCacheDirectory.create({ idempotent: true, intermediates: true });
-  const file = new File(exportCacheDirectory, createMobileProjectExportName(project));
+  const file = new File(exportCacheDirectory, createMobileHandoffExportName(project));
   if (file.exists) file.delete();
   file.create({ intermediates: true, overwrite: true });
   file.write(serializedProject, { encoding: "utf8" });

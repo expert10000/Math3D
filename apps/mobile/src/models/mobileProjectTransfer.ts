@@ -1,7 +1,8 @@
-import { deserializeSceneProject, serializeSceneProject } from "@math3d/core";
+import { createProjectHandoff, deserializeProjectHandoff, deserializeSceneProject, serializeProjectHandoff, serializeSceneProject } from "@math3d/core";
 import type { MobileStoredSceneProject } from "./mobileScene";
 
 export const MOBILE_SCENE_EXPORT_EXTENSION = ".math3d.scene.json";
+export const MOBILE_HANDOFF_EXPORT_EXTENSION = ".math3d.handoff.json";
 
 export type MobileProjectImportResult =
   | { ok: true; project: MobileStoredSceneProject }
@@ -29,6 +30,21 @@ export const createMobileProjectExportName = (project: MobileStoredSceneProject,
   return `${safeFileStem(project.title)}-${timestamp}${MOBILE_SCENE_EXPORT_EXTENSION}`;
 };
 
+export const createMobileHandoffExportName = (project: MobileStoredSceneProject, now = new Date()): string =>
+  createMobileProjectExportName(project, now).replace(MOBILE_SCENE_EXPORT_EXTENSION, MOBILE_HANDOFF_EXPORT_EXTENSION);
+
+export const serializeMobileProjectHandoff = (project: MobileStoredSceneProject): string => {
+  const checked = validateMobileProjectForTransfer(project);
+  if (!checked.ok) throw new Error(checked.error);
+  const parsed = deserializeSceneProject(checked.serializedProject);
+  if (!parsed.ok) throw new Error(parsed.errors.join("; "));
+  return serializeProjectHandoff(createProjectHandoff(parsed.value, {
+    producer: { platform: "mobile", name: "Math3D Mobile", version: "1.5.1" },
+    baseRevision: project.source?.handoffRevision ?? null,
+    requiredCapabilities: (parsed.value.scene.surfaces ?? []).map((surface) => `surface.${surface.kind}`),
+  }));
+};
+
 export const validateMobileProjectForTransfer = (
   project: MobileStoredSceneProject
 ): { ok: true; serializedProject: string } | { ok: false; error: string } => {
@@ -46,12 +62,12 @@ export const importMobileSceneProject = (
   now = Date.now(),
   sourceDescriptor?: { kind: "imported" | "shared" | "desktop"; name: string }
 ): MobileProjectImportResult => {
-  const parsed = deserializeSceneProject(serializedProject);
+  const parsed = deserializeProjectHandoff(serializedProject);
   if (!parsed.ok) return { ok: false, error: `Invalid Math3D scene project: ${parsed.errors.join("; ")}` };
 
   const existingIds = new Set(projects.map((project) => project.id.toLocaleLowerCase()));
   const existingTitles = new Set(projects.map((project) => project.title.trim().toLocaleLowerCase()));
-  const source = parsed.value.scene;
+  const source = parsed.value.project.scene;
   const hasIdConflict = existingIds.has(source.id.toLocaleLowerCase());
   const hasTitleConflict = existingTitles.has(source.title.trim().toLocaleLowerCase());
   const id = hasIdConflict
@@ -71,12 +87,14 @@ export const importMobileSceneProject = (
       title,
       updatedAt: scene.updatedAt,
       lastOpenedAt: now,
-      serializedProject: serializeSceneProject({ ...parsed.value, scene }),
+      serializedProject: serializeSceneProject({ ...parsed.value.project, scene }),
       ...(sourceDescriptor ? { source: {
         kind: sourceDescriptor.kind,
         name: sourceDescriptor.name.trim().slice(0, 240) || "Math3D project",
-        sourceProjectId: parsed.value.scene.id,
+        sourceProjectId: parsed.value.projectId,
         importedAt: now,
+        ...(id === parsed.value.projectId && parsed.value.producer.platform !== "legacy"
+          ? { handoffRevision: parsed.value.projectRevision } : {}),
       } } : {}),
     },
   };

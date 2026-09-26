@@ -23,6 +23,8 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
     selectedScene,
     deletedProject,
     projectActionMessage,
+    pendingProjectHandoff,
+    setPendingProjectHandoff,
     sceneThumbnailsById,
     openStoredScene,
     renameStoredScene,
@@ -31,6 +33,7 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
     undoDeleteStoredScene,
     createNewProject,
     createNewProjectFromFile,
+    resolvePendingProjectHandoff,
     exportStoredScene,
     shareStoredScene,
   } = model;
@@ -43,10 +46,10 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
   const creationLayout = mobileProjectCreationLayout(width);
 
   const runTransfer = async (key: string, action: () => Promise<boolean>) => {
-    if (transferBusy) return;
+    if (transferBusy) return false;
     setTransferBusy(key);
     try {
-      await action();
+      return await action();
     } finally {
       setTransferBusy(null);
     }
@@ -181,12 +184,33 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
               <Text style={styles.itemMeta}>Add a project received from someone else.</Text>
             </Pressable>
           </View>
+          {pendingProjectHandoff ? (
+            <View testID="mobile-project-handoff-preview" style={styles.issuePanel}>
+              <Text style={styles.issuePanelTitle}>Desktop handoff: {pendingProjectHandoff.manifest.project.scene.title}</Text>
+              <Text style={styles.itemMeta}>From {pendingProjectHandoff.manifest.producer.name} · {pendingProjectHandoff.manifest.project.scene.surfaces?.length ?? 0} surfaces · revision {pendingProjectHandoff.manifest.projectRevision.slice(7, 19)}</Text>
+              <Text style={styles.itemMeta}>Source file: {pendingProjectHandoff.sourceName}</Text>
+              {pendingProjectHandoff.unsupported.length > 0 ? <Text style={styles.issueText}>Unsupported on mobile: {pendingProjectHandoff.unsupported.join(", ")}. These definitions stay in the saved project but may not render here.</Text> : <Text style={styles.itemMeta}>All declared content is supported on mobile.</Text>}
+              {pendingProjectHandoff.diverged ? <Text style={styles.issueText}>An existing project has diverged or has no matching base revision. Import a copy; replacement is disabled.</Text> : null}
+              <View style={styles.projectActions}>
+                <Pressable testID="mobile-project-handoff-copy" disabled={transferBusy !== null} onPress={() => void runTransfer("handoff-copy", () => resolvePendingProjectHandoff("copy")).then((created) => { if (created) setCreationOpen(false); })} style={styles.primaryBtn}>
+                  <Text style={styles.primaryBtnText}>Import {pendingProjectHandoff.existingProjectId ? "as copy" : "and open"}</Text>
+                </Pressable>
+                {pendingProjectHandoff.canReplace ? <Pressable testID="mobile-project-handoff-replace" disabled={transferBusy !== null} onPress={() => void runTransfer("handoff-replace", () => resolvePendingProjectHandoff("replace")).then((created) => { if (created) setCreationOpen(false); })} style={styles.secondaryBtn}>
+                  <Text style={styles.secondaryBtnText}>Replace matching revision</Text>
+                </Pressable> : null}
+                <Pressable testID="mobile-project-handoff-cancel" onPress={() => setPendingProjectHandoff(null)} style={styles.secondaryBtn}>
+                  <Text style={styles.secondaryBtnText}>Cancel handoff</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
           <Pressable
             testID="mobile-new-project-cancel"
             disabled={transferBusy !== null}
             onPress={() => {
               setCreationOpen(false);
               setNewProjectTitle("");
+              setPendingProjectHandoff(null);
             }}
             style={styles.secondaryBtn}
           >

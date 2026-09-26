@@ -48,6 +48,7 @@ export type MobileStoredSceneProject = {
     name: string;
     sourceProjectId: string;
     importedAt: number;
+    handoffRevision?: string;
   };
 };
 

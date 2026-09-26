@@ -111,7 +111,8 @@ const normalizeStoredProject = (
     !source || !["imported", "shared", "desktop"].includes(source.kind) ||
     typeof source.name !== "string" || source.name.length === 0 || source.name.length > 240 ||
     typeof source.sourceProjectId !== "string" || source.sourceProjectId.length === 0 || source.sourceProjectId.length > 160 ||
-    !isFiniteNumber(source.importedAt) || source.importedAt < 0
+    !isFiniteNumber(source.importedAt) || source.importedAt < 0 ||
+    (source.handoffRevision !== undefined && !/^sha256:[0-9a-f]{64}$/.test(source.handoffRevision))
   )) {
     issues.push(`projects[${index}].source is invalid.`);
     return null;

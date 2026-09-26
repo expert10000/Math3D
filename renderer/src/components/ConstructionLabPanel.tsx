@@ -3,7 +3,11 @@ import type { OverlayLabelSet } from "./SurfaceViewer";
 import type { GeometryScene } from "../geometry/types";
 import {
   createSceneProjectDocument,
+  createProjectHandoff,
+  deserializeProjectHandoff,
   deserializeSceneProject,
+  sceneProjectRevision,
+  serializeProjectHandoff,
   serializeSceneProject,
   type SceneDocument,
 } from "@math3d/core";
@@ -819,6 +823,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [operationStatus, setOperationStatus] = useState<string | null>(null);
 
   const [sceneName, setSceneName] = useState("Olympiad construction");
+  const handoffSceneRef = useRef<SceneDocument | null>(null);
   const [sceneType, setSceneType] = useState<SceneType>("task");
   const [sceneMode, setSceneMode] = useState<SceneMode>("plane2d");
   const [sceneMetadata, setSceneMetadata] = useState(
@@ -1852,7 +1857,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     saveScriptPreset(suggestedName, cloneScript);
   }, [checkDefs, constraints, nodes, saveScriptPreset, sceneName]);
 
-  const exportSceneBundle = useCallback(() => {
+  const currentSceneProject = useCallback(() => {
     const extension: ConstructionLabExtension = {
       sceneType,
       sceneMode,
@@ -1863,19 +1868,22 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       constraints,
     };
     const doc: SceneDocument = {
-      id: cleanId(sceneName) || `scene_${Date.now()}`,
+      id: handoffSceneRef.current?.id ?? (cleanId(sceneName) || "problem_scene"),
       title: sceneName,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAt: handoffSceneRef.current?.createdAt ?? 0,
+      updatedAt: handoffSceneRef.current?.updatedAt ?? 0,
       geometry: solved.scene,
       metadata: sceneMetadata ? { description: sceneMetadata } : undefined,
       extensions: {
         [CONSTRUCTION_LAB_EXTENSION_KEY]: extension,
       },
     };
-    const project = createSceneProjectDocument(doc);
+    return createSceneProjectDocument(doc);
+  }, [checkDefs, constraints, nodes, sceneMetadata, sceneMode, sceneName, sceneType, scriptText, solved.scene]);
+
+  const exportSceneBundle = useCallback(() => {
     try {
-      const blob = new Blob([serializeSceneProject(project)], { type: "application/json" });
+      const blob = new Blob([serializeSceneProject(currentSceneProject())], { type: "application/json" });
       const href = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = href;
@@ -1885,7 +1893,27 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     } catch (err) {
       setScriptError(`Scene export failed: ${String(err)}`);
     }
-  }, [checkDefs, constraints, nodes, sceneMetadata, sceneMode, sceneName, sceneType, scriptText, solved.scene]);
+  }, [currentSceneProject, sceneName]);
+
+  const exportDesktopHandoff = useCallback(() => {
+    try {
+      const project = currentSceneProject();
+      handoffSceneRef.current = project.scene;
+      const handoff = createProjectHandoff(project, {
+        producer: { platform: "desktop", name: "Math3D Desktop", version: "1.5.0" },
+        requiredCapabilities: ["scene.geometry", "constructionLab"],
+      });
+      const blob = new Blob([serializeProjectHandoff(handoff)], { type: "application/json" });
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = `${cleanId(sceneName) || "problem_scene"}.math3d.handoff.json`;
+      a.click();
+      URL.revokeObjectURL(href);
+    } catch (err) {
+      setScriptError(`Handoff export failed: ${String(err)}`);
+    }
+  }, [currentSceneProject, sceneName]);
 
   const exportSceneScript = useCallback(() => {
     try {
@@ -1906,7 +1934,24 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     reader.onload = () => {
       try {
         const raw = String(reader.result ?? "");
-        const parsedProject = deserializeSceneProject(raw);
+        const parsedHandoff = deserializeProjectHandoff(raw);
+        const parsedProject = parsedHandoff.ok
+          ? { ok: true as const, value: parsedHandoff.value.project }
+          : deserializeSceneProject(raw);
+        if (!parsedHandoff.ok && raw.includes('"math3d.project-handoff"'))
+          throw new Error(parsedHandoff.errors.join("; "));
+        let importedScene = parsedProject.ok ? parsedProject.value.scene : null;
+        if (parsedHandoff.ok && parsedHandoff.value.producer.platform !== "legacy" && importedScene) {
+          const current = currentSceneProject();
+          if (current.scene.id === parsedHandoff.value.projectId) {
+            const matchesBase = parsedHandoff.value.baseRevision === sceneProjectRevision(current);
+            const useCopy = matchesBase
+              ? !window.confirm("Matching base revision found. OK: replace this project. Cancel: import a copy.")
+              : window.confirm("This handoff diverged from the current project. OK: import a copy. Cancel: stop importing.");
+            if (!matchesBase && !useCopy) return;
+            if (useCopy) importedScene = { ...importedScene, id: `${importedScene.id}-copy-${Date.now()}`, title: `${importedScene.title} copy` };
+          }
+        }
 
         let nextNodes: ConstructionNode[] | null = null;
         let nextChecks: ProblemCheckDef[] | null = null;
@@ -1918,21 +1963,21 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
         let nextMetadata = "";
 
         if (parsedProject.ok) {
-          const ext = parsedProject.value.scene.extensions?.[CONSTRUCTION_LAB_EXTENSION_KEY];
+          const ext = importedScene?.extensions?.[CONSTRUCTION_LAB_EXTENSION_KEY];
           const extObj = ext && typeof ext === "object" ? (ext as Partial<ConstructionLabExtension>) : null;
           if (extObj && Array.isArray(extObj.nodes) && Array.isArray(extObj.checks)) {
             nextNodes = extObj.nodes as ConstructionNode[];
             nextChecks = extObj.checks as ProblemCheckDef[];
             nextConstraints = Array.isArray(extObj.constraints) ? (extObj.constraints as ConstructionConstraintDef[]) : [];
             nextScript = typeof extObj.script === "string" ? extObj.script : null;
-            nextSceneName = parsedProject.value.scene.title || "Imported scene";
+            nextSceneName = importedScene?.title || "Imported scene";
             nextSceneType = extObj.sceneType === "demo" || extObj.sceneType === "free" ? extObj.sceneType : "task";
             nextSceneMode = extObj.sceneMode === "space3d" ? "space3d" : "plane2d";
             nextMetadata =
               typeof extObj.metadata === "string"
                 ? extObj.metadata
-                : typeof parsedProject.value.scene.metadata?.description === "string"
-                  ? parsedProject.value.scene.metadata.description
+                : typeof importedScene?.metadata?.description === "string"
+                  ? importedScene.metadata.description
                   : "";
           }
         }
@@ -1966,6 +2011,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             : buildScriptFromState(nextNodes, nextChecks, nextConstraints)
         );
         setSceneName(nextSceneName ?? "Imported scene");
+        handoffSceneRef.current = importedScene;
         setSceneType(nextSceneType);
         setSceneMode(nextSceneMode);
         setSceneMetadata(nextMetadata);
@@ -1977,7 +2023,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     };
     reader.onerror = () => setScriptError("Scene import failed while reading file.");
     reader.readAsText(file);
-  }, []);
+  }, [currentSceneProject]);
 
   const insertScriptTemplate = useCallback(() => {
     if (!selectedScriptTemplate) return;
@@ -3547,6 +3593,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             <button type="button" onClick={cloneSceneToPreset}>Duplicate</button>
             <button type="button" onClick={() => importSceneInputRef.current?.click()}>Import</button>
             <button type="button" onClick={exportSceneBundle}>Export scene JSON</button>
+            <button type="button" onClick={exportDesktopHandoff}>Export mobile handoff</button>
             <button type="button" onClick={exportSceneScript}>Export scene script</button>
             <button type="button" onClick={cloneIntoGeometry3D}>Clone into Geometry 3D</button>
           </div>
