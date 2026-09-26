@@ -64,7 +64,7 @@ M0–M10 are implemented. MOB55 establishes the saved-project creation boundary 
 
 ### Workspace and View
 
-- Scene lists all objects with visibility and selection. Tapping an object opens Object; object actions are scoped to that selection. Camera actions live in the viewport toolbar or View.
+- Scene lists all objects with visibility and selection. Tapping a selected row again, or turning off the viewport Select switch, clears the selection and its mesh highlight. Object actions are scoped to a selection. Camera actions live in the viewport toolbar or View; viewport warnings stay clear of that toolbar and the adaptive-quality badge.
 - The mobile viewer has adaptive XY/XZ/YZ reference planes through the origin, colored axes, persistent plane switches, Auto/manual quality, bounding box, solid/wireframe/solid-with-edges modes, and persisted solid, smooth-curvature, and per-face curvature colors. Auto quality uses measured frame and mesh pressure through the MOB51 controller.
 - Analyze reports only mathematically meaningful, valid data; one heavy visual overlay at a time limits mobile GPU/memory cost.
 

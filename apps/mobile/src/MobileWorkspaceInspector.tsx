@@ -65,6 +65,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     saveCurrentViewerScene,
     runCameraCommand,
     selectWorkspaceObject,
+    clearWorkspaceSelection,
     toggleSurfaceVisibility,
     setAllSurfacesVisible,
     selectAnalysisOverlay,
@@ -134,9 +135,9 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                 >
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={`Select ${item.label}`}
+                    accessibilityLabel={item.selected ? `Deselect ${item.label}` : `Select ${item.label}`}
                     accessibilityState={{ selected: item.selected }}
-                    onPress={() => selectWorkspaceObject(item.id)}
+                    onPress={() => item.selected ? clearWorkspaceSelection() : selectWorkspaceObject(item.id)}
                     style={styles.objectListSelection}
                   >
                     <View style={[styles.objectKindBadge, item.selected ? styles.objectKindBadgeSelected : null]}>

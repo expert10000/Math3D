@@ -26,6 +26,7 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
     visibleSurfaceIds,
     selectedSurfaceId,
     selectWorkspaceObject,
+    clearWorkspaceSelection,
     setInspectorSection,
     setInspectorExpanded,
     cameraOrbit,
@@ -47,8 +48,12 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
     undoWorkspaceAdd,
   } = model;
   const [addLauncherOpen, setAddLauncherOpen] = useState(false);
+  const [viewportToolbarHeight, setViewportToolbarHeight] = useState(0);
+  const [adaptiveBadgeHeight, setAdaptiveBadgeHeight] = useState(0);
   const viewportDocument = authoringPreviewScene ?? viewerDocument;
   const previewSurfaceId = authoringPreviewScene?.surfaces?.[0]?.id ?? null;
+  const adaptiveBadgeBottom = viewportToolbarHeight + 16;
+  const warningBottomInset = viewportToolbarHeight + 16 + (renderQuality === "auto" ? adaptiveBadgeHeight + 8 : 0);
   return (
 
     <View style={styles.workspaceRoot}>
@@ -108,14 +113,23 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
               showAxes={showAxes}
               gridPlanes={gridPlanes}
               viewportStyle={styles.workspaceViewport}
+              warningBottomInset={warningBottomInset}
             />
             {renderQuality === "auto" && (
-              <View style={styles.adaptiveQualityBadge} pointerEvents="none">
+              <View
+                style={[styles.adaptiveQualityBadge, { bottom: adaptiveBadgeBottom }]}
+                pointerEvents="none"
+                onLayout={(event) => setAdaptiveBadgeHeight(event.nativeEvent.layout.height)}
+              >
                 <Text style={styles.adaptiveQualityText}>Auto · {effectiveRenderQuality}</Text>
                 <Text style={styles.adaptiveQualityDetail}>{adaptiveQualityState.reason}</Text>
               </View>
             )}
-            <View style={styles.viewportActionToolbar} pointerEvents="box-none">
+            <View
+              style={styles.viewportActionToolbar}
+              pointerEvents="box-none"
+              onLayout={(event) => setViewportToolbarHeight(event.nativeEvent.layout.height)}
+            >
               <Pressable
                 testID="mobile-viewport-fit-selection"
                 accessibilityRole="button"
@@ -138,7 +152,10 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
                 accessibilityRole="switch"
                 accessibilityLabel="Tap object selection mode"
                 accessibilityState={{ checked: viewportSelectionEnabled }}
-                onPress={() => setViewportSelectionEnabled((enabled) => !enabled)}
+                onPress={() => {
+                  if (viewportSelectionEnabled) clearWorkspaceSelection();
+                  setViewportSelectionEnabled(!viewportSelectionEnabled);
+                }}
                 style={[styles.viewportActionButton, viewportSelectionEnabled ? styles.viewportActionButtonActive : null]}
               >
                 <Text style={[styles.viewportActionText, viewportSelectionEnabled ? styles.viewportActionTextActive : null]}>Select</Text>

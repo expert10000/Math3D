@@ -736,7 +736,7 @@ export const useMobileAppController = () => {
         presentation.opacity === undefined ? [] : [[id, presentation.opacity]]
       )
     ));
-    setSelectedSurfaceId((current) => (current && surfaceIds.includes(current) ? current : surfaceIds[0] ?? null));
+    setSelectedSurfaceId((current) => (current && surfaceIds.includes(current) ? current : null));
     if (surfaceIds.length > 0) {
       setCameraCommandType("fit");
       setCameraCommandToken((value) => value + 1);
@@ -1569,6 +1569,11 @@ export const useMobileAppController = () => {
     setSelectedSurfaceId(surfaceId);
     setInspectorSection("object");
     setInspectorExpanded(true);
+  };
+
+  const clearWorkspaceSelection = () => {
+    setSelectedSurfaceId(null);
+    setObjectActionMessage("");
   };
 
   const toggleSurfaceVisibility = (surfaceId: string) => {
@@ -2479,6 +2484,7 @@ export const useMobileAppController = () => {
     saveCurrentViewerScene,
     runCameraCommand,
     selectWorkspaceObject,
+    clearWorkspaceSelection,
     toggleSurfaceVisibility,
     setAllSurfacesVisible,
     addPrimitiveToWorkspace,

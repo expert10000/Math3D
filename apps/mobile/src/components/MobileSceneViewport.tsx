@@ -41,6 +41,7 @@ type MobileSceneViewportProps = {
   showAxes?: boolean;
   gridPlanes?: MobileGridPlane[];
   viewportStyle?: StyleProp<ViewStyle>;
+  warningBottomInset?: number;
   onPerformanceSample?: (sample: Omit<MobilePerformanceSample, "pixelRatio">) => void;
 };
 
@@ -384,6 +385,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   showAxes = true,
   gridPlanes = DEFAULT_MOBILE_GRID_PLANES,
   viewportStyle,
+  warningBottomInset = 8,
   onPerformanceSample,
 }) => {
   const previews = useMemo(
@@ -691,7 +693,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
       )}
 
       {warnings.length > 0 && (
-        <View style={styles.warningPanel} pointerEvents="none">
+        <View style={[styles.warningPanel, { bottom: warningBottomInset }]} pointerEvents="none">
           {warnings.slice(0, 2).map((warning, index) => (
             <Text key={`warning-${index}`} style={styles.warningText}>
               {warning}
