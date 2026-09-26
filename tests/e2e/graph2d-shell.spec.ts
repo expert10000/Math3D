@@ -23,3 +23,22 @@ test("Graphs opens an empty desktop workspace and participates in normal navigat
     await closeSurfaceApp(app);
   }
 });
+
+test("Graphs uses desktop side panels and compact controls on narrow windows", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    await expect(app.page.getByLabel("Graph functions")).toBeVisible();
+    await expect(app.page.getByLabel("Graph inspector")).toBeVisible();
+    await app.page.setViewportSize({ width: 620, height: 800 });
+    await expect(app.page.getByLabel("Graph functions")).toBeHidden();
+    await expect(app.page.getByLabel("Graph inspector")).toBeHidden();
+    await expect(app.page.getByText("Functions (0)")).toBeVisible();
+    await app.page.getByText("Functions (0)").click();
+    await expect(app.page.getByLabel("Empty graph scene")).toBeVisible();
+  } finally {
+    await closeSurfaceApp(app);
+  }
+});

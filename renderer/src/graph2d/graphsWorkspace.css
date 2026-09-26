@@ -1,0 +1,55 @@
+.graph2d-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.graph2d-workspace[data-left="true"][data-right="true"] { grid-template-columns: var(--graph2d-left-width) minmax(0, 1fr) var(--graph2d-right-width); }
+.graph2d-workspace[data-left="true"][data-right="false"] { grid-template-columns: var(--graph2d-left-width) minmax(0, 1fr); }
+.graph2d-workspace[data-left="false"][data-right="true"] { grid-template-columns: minmax(0, 1fr) var(--graph2d-right-width); }
+
+.graph2d-panel, .graph2d-viewer {
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-strong);
+}
+
+.graph2d-panel { padding: 16px; overflow: auto; }
+.graph2d-panel h2 { margin: 0 0 12px; font-size: 17px; }
+.graph2d-muted { margin: 0; font-size: 13px; opacity: .7; }
+.graph2d-function-list { display: grid; gap: 8px; padding-left: 20px; margin: 0; }
+.graph2d-function-list li { font-size: 13px; overflow-wrap: anywhere; }
+.graph2d-function-list strong, .graph2d-function-list code { display: block; }
+.graph2d-function-list code { margin-top: 3px; }
+.graph2d-inspector-details { display: grid; grid-template-columns: auto 1fr; gap: 8px; margin: 0; font-size: 13px; }
+.graph2d-inspector-details dt { font-weight: 700; }
+.graph2d-inspector-details dd { margin: 0; overflow-wrap: anywhere; }
+.graph2d-viewer { display: grid; place-items: center; position: relative; overflow: auto; }
+.graph2d-viewer-message { text-align: center; padding: 24px; max-width: 400px; }
+.graph2d-viewer-message h2 { margin: 0 0 8px; }
+.graph2d-viewer-message p { margin: 0 0 8px; }
+.graph2d-viewer-message small { opacity: .7; }
+.graph2d-compact-panels { display: none; }
+
+@media (max-width: 1100px) {
+  .graph2d-workspace[data-left="true"] { grid-template-columns: var(--graph2d-left-width) minmax(0, 1fr); }
+  .graph2d-workspace[data-left="false"] { grid-template-columns: minmax(0, 1fr); }
+  .graph2d-right { display: none; }
+  .graph2d-compact-panels { display: block; position: absolute; top: 8px; right: 8px; z-index: 1; }
+  .graph2d-compact-panels details { max-width: min(340px, 80vw); padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-strong); }
+  .graph2d-compact-panels details:first-child { display: none; }
+  .graph2d-compact-panels summary { cursor: pointer; font-size: 13px; font-weight: 700; }
+  .graph2d-compact-panels details[open] { max-height: 45vh; overflow: auto; }
+  .graph2d-compact-panels details[open] > :not(summary) { margin-top: 10px; }
+}
+
+@media (max-width: 700px) {
+  .graph2d-workspace[data-left] { grid-template-columns: minmax(0, 1fr); }
+  .graph2d-left { display: none; }
+  .graph2d-compact-panels { left: 8px; right: 8px; display: flex; align-items: flex-start; gap: 6px; }
+  .graph2d-compact-panels details:first-child { display: block; }
+}
