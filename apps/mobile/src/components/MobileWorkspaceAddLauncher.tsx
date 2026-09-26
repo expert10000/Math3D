@@ -6,6 +6,7 @@ import { styles } from "../mobileAppStyles";
 import type { MobileSceneObjectImportPreview } from "../models/mobileSceneObjectImport";
 import type { MobileMeshImportPreview } from "../models/mobileMeshImport";
 import { mobileWorkspaceAddLayout } from "../models/mobileWorkspaceAdd";
+import type { MobileProjectCompositionPreview, MobileProjectCompositionSource } from "../models/mobileProjectComposition";
 
 const presetIds = new Set(["sphere", "paraboloid", "helicoid"]);
 
@@ -19,6 +20,10 @@ export const MobileWorkspaceAddLauncher: React.FC<{
   const [message, setMessage] = useState("");
   const [objectPreview, setObjectPreview] = useState<MobileSceneObjectImportPreview | null>(null);
   const [meshPreview, setMeshPreview] = useState<MobileMeshImportPreview | null>(null);
+  const [projectSourceOpen, setProjectSourceOpen] = useState(false);
+  const [projectSource, setProjectSource] = useState<MobileProjectCompositionSource | null>(null);
+  const [projectObjectIds, setProjectObjectIds] = useState<string[]>([]);
+  const [projectPreview, setProjectPreview] = useState<MobileProjectCompositionPreview | null>(null);
   const presets = mobileExamples.filter((example) => presetIds.has(example.id));
 
   const optionStyle = [
@@ -65,6 +70,37 @@ export const MobileWorkspaceAddLauncher: React.FC<{
     }
   };
   const unavailable = (next: string) => setMessage(next);
+  const acceptProjectSource = (result: ReturnType<typeof model.projectSourceFromLibrary>) => {
+    setProjectPreview(null);
+    if (result.status === "ready") {
+      setProjectSource(result.source);
+      setProjectObjectIds([]);
+      setMessage("");
+    } else if (result.status === "error") setMessage(result.error);
+  };
+  const pickProjectSource = async () => {
+    if (busy) return;
+    setBusy(true);
+    try { acceptProjectSource(await model.pickProjectSourceForWorkspace()); }
+    finally { setBusy(false); }
+  };
+  const toggleProjectObject = (objectId: string) => {
+    setProjectPreview(null);
+    setProjectObjectIds((current) => current.includes(objectId)
+      ? current.filter((id) => id !== objectId)
+      : [...current, objectId]);
+  };
+  const previewProjectSelection = () => {
+    if (!projectSource) return;
+    const planned = model.previewProjectObjectsForWorkspace(projectSource, projectObjectIds);
+    if (planned.ok) {
+      setProjectPreview(planned.preview);
+      setMessage("");
+    } else {
+      setProjectPreview(null);
+      setMessage(planned.error);
+    }
+  };
 
   return (
     <View testID="mobile-workspace-add-launcher" style={styles.workspaceAddLauncher}>
@@ -116,10 +152,56 @@ export const MobileWorkspaceAddLauncher: React.FC<{
           <Pressable testID="mobile-workspace-add-object" disabled={busy} onPress={() => void chooseMath3DObject()} style={optionStyle}>
             <Text style={styles.itemTitle}>{busy ? "Choosing..." : "Math3D object"}</Text><Text style={styles.itemMeta}>Pick and preview semantic content</Text>
           </Pressable>
-          <Pressable testID="mobile-workspace-add-from-project" onPress={() => unavailable("Object selection from another project becomes available with MOB64.")} style={optionStyle}>
+          <Pressable testID="mobile-workspace-add-from-project" disabled={busy} onPress={() => { setProjectSourceOpen((open) => !open); setMessage(""); }} style={optionStyle}>
             <Text style={styles.itemTitle}>Objects from project</Text><Text style={styles.itemMeta}>Copy compatible objects</Text>
           </Pressable>
         </View>
+        {projectSourceOpen ? (
+          <View testID="mobile-workspace-project-source" style={styles.subPanel}>
+            <Text style={styles.subPanelTitle}>Add from project</Text>
+            <Text style={styles.itemMeta}>Choose another saved project or a Math3D project file.</Text>
+            <View style={styles.viewerToolbarRow}>
+              {model.storedProjects.filter((project) => project.id !== model.selectedSceneId).map((project) => (
+                <Pressable key={project.id} testID={`mobile-workspace-source-${project.id}`} disabled={busy} onPress={() => acceptProjectSource(model.projectSourceFromLibrary(project.id))} style={styles.secondaryBtn}>
+                  <Text style={styles.secondaryBtnText}>{project.title}</Text>
+                </Pressable>
+              ))}
+              <Pressable testID="mobile-workspace-source-file" disabled={busy} onPress={() => void pickProjectSource()} style={styles.secondaryBtn}>
+                <Text style={styles.secondaryBtnText}>Choose file</Text>
+              </Pressable>
+            </View>
+            {projectSource ? (
+              <View>
+                <Text style={styles.note}>{projectSource.projectTitle} · {projectSource.objects.length} objects</Text>
+                {projectSource.objects.map((object) => {
+                  const selected = projectObjectIds.includes(object.id);
+                  return <Pressable key={object.id} testID={`mobile-workspace-source-object-${object.id}`} disabled={!object.compatible || busy} onPress={() => toggleProjectObject(object.id)} style={styles.inspectorSettingRow} accessibilityRole="checkbox" accessibilityState={{ checked: selected, disabled: !object.compatible }}>
+                    <Text style={styles.itemTitle}>{selected ? "☑" : "☐"} {object.id} · {object.kind}</Text>
+                    <Text style={object.compatible ? styles.itemMeta : styles.warningNote}>{object.compatible ? `${Math.ceil(object.bytes / 1024)} KB${object.dependencies.length ? ` · needs ${object.dependencies.join(", ")}` : ""}` : object.reason}</Text>
+                  </Pressable>;
+                })}
+                <View style={styles.viewerToolbarRow}>
+                  <Pressable testID="mobile-workspace-source-preview" disabled={busy || projectObjectIds.length === 0} onPress={previewProjectSelection} style={styles.primaryBtn}>
+                    <Text style={styles.primaryBtnText}>Preview selection</Text>
+                  </Pressable>
+                  <Pressable testID="mobile-workspace-source-cancel" onPress={() => { setProjectSourceOpen(false); setProjectSource(null); setProjectPreview(null); setProjectObjectIds([]); setMessage("Add from project cancelled. The destination was not changed."); }} style={styles.secondaryBtn}>
+                    <Text style={styles.secondaryBtnText}>Cancel</Text>
+                  </Pressable>
+                </View>
+                {projectPreview ? (
+                  <View testID="mobile-workspace-project-preview" style={styles.subPanel}>
+                    <Text style={styles.subPanelTitle}>Add {projectPreview.selectedObjectIds.length} object{projectPreview.selectedObjectIds.length === 1 ? "" : "s"}</Text>
+                    <Text style={styles.itemMeta}>Estimated transfer: {Math.ceil(projectPreview.estimatedBytes / 1024)} KB · {projectPreview.plan.dependencies.length} internal dependenc{projectPreview.plan.dependencies.length === 1 ? "y" : "ies"}</Text>
+                    {Object.entries(projectPreview.plan.idMap).map(([from, to]) => <Text key={from} style={styles.itemMeta}>{from === to ? from : `${from} → ${to} (copy)`}</Text>)}
+                    <Pressable testID="mobile-workspace-source-confirm" disabled={busy} onPress={() => void run(() => model.addProjectObjectsToWorkspace(projectPreview))} style={styles.primaryBtn}>
+                      <Text style={styles.primaryBtnText}>Add selected objects</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
         {meshPreview ? (
           <View testID="mobile-workspace-mesh-import-preview" style={styles.subPanel}>
             <Text style={styles.subPanelTitle}>{meshPreview.format.toUpperCase()} mesh</Text>
@@ -198,7 +280,7 @@ export const MobileWorkspaceAddLauncher: React.FC<{
             <Text style={styles.itemTitle}>From desktop</Text><Text style={styles.itemMeta}>Revision-aware handoff</Text>
           </Pressable>
         </View>
-        {message ? <Text testID="mobile-workspace-add-message" style={styles.warningNote}>{message}</Text> : null}
+        {message || model.workspaceAddMessage ? <Text testID="mobile-workspace-add-message" style={styles.warningNote}>{message || model.workspaceAddMessage}</Text> : null}
       </ScrollView>
     </View>
   );

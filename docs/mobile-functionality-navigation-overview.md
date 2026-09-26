@@ -1,6 +1,6 @@
 # Math3D mobile: functionality and navigation overview
 
-Snapshot: September 20, 2026, released Android build `150007` (`1.5.1`) plus the post-release source state at that date. This page is retained as the release baseline and implementation map; the [mobile roadmap](mobile-roadmap.md) records the completed MOB24–MOB63 sequence and current plan. The selectable XY/XZ/YZ grids, axes, and curvature colors described below were not in the published `1.5.1` APK/AAB. Build `150003` corrected the Android bottom safe area, `150004` restored the last viewed Explore scene, and `150006` enabled worker HTTP on the internal Android variant with clearer connection errors. Build `150007` advances the release identity with the same mobile functionality. The app is an Expo/React Native companion viewer in `apps/mobile`; the canonical Android project is `apps/mobile/android`.
+Snapshot: September 20, 2026, released Android build `150007` (`1.5.1`) plus the post-release source state at that date. This page is retained as the release baseline and implementation map; the [mobile roadmap](mobile-roadmap.md) records the completed MOB24–MOB64 sequence and current plan. The selectable XY/XZ/YZ grids, axes, and curvature colors described below were not in the published `1.5.1` APK/AAB. Build `150003` corrected the Android bottom safe area, `150004` restored the last viewed Explore scene, and `150006` enabled worker HTTP on the internal Android variant with clearer connection errors. Build `150007` advances the release identity with the same mobile functionality. The app is an Expo/React Native companion viewer in `apps/mobile`; the canonical Android project is `apps/mobile/android`.
 
 ## Navigation at a glance
 
@@ -66,9 +66,9 @@ The default worker URL is `http://127.0.0.1:8787/api/worker`. On a standalone ph
 
 ## Roadmap starting points
 
-The [current mobile roadmap](mobile-roadmap.md) integrates this inventory into a product direction: **offline-capable companion viewer + network-backed compute client + lightweight scene editing**. M0–M10 and MOB24–MOB63 are complete in the current source; the published `150007` build remains the earlier release baseline described on this page.
+The [current mobile roadmap](mobile-roadmap.md) integrates this inventory into a product direction: **offline-capable companion viewer + network-backed compute client + lightweight scene editing**. M0–M10 and MOB24–MOB64 are complete in the current source; the published `150007` build remains the earlier release baseline described on this page.
 
-The next sequence is MOB64–MOB68 in the [Projects, creation, and import extension](mobile-projects-create-import-extension-roadmap.md): selective project composition and revision-aware desktop/mobile handoff. The current transfer boundaries are documented in [Mobile mesh import](mobile-mesh-import.md), [Mobile object export](mobile-object-export.md), and [Scene-object composition](scene-object-composition.md).
+The next sequence is MOB65–MOB68 in the [Projects, creation, and import extension](mobile-projects-create-import-extension-roadmap.md): project library organization and revision-aware desktop/mobile handoff. The current transfer boundaries are documented in [Mobile mesh import](mobile-mesh-import.md), [Mobile object export](mobile-object-export.md), [Scene-object composition](scene-object-composition.md), and [Mobile add from project](mobile-add-from-project.md).
 
 ## Source map
 

@@ -15,6 +15,7 @@ import {
 import { createMobilePrimitiveSurface, type MobilePrimitiveKind } from "./mobileSurfaceCreation";
 import type { MobileMeshImportPreview } from "./mobileMeshImport";
 import type { MobileMeshPayload } from "../viewer/mobileSurfacePreview";
+import { addMobileProjectCompositionToScene, type MobileProjectCompositionPreview } from "./mobileProjectComposition";
 
 export type MobileWorkspaceAddRequest =
   | { route: "primitive"; primitive: MobilePrimitiveKind }
@@ -22,7 +23,8 @@ export type MobileWorkspaceAddRequest =
   | { route: "preset"; example: Math3DExample }
   | { route: "example"; example: Math3DExample }
   | { route: "math3d-object"; preview: MobileSceneObjectImportPreview }
-  | { route: "mesh"; preview: MobileMeshImportPreview };
+  | { route: "mesh"; preview: MobileMeshImportPreview }
+  | { route: "objects-from-project"; preview: MobileProjectCompositionPreview };
 
 export const MOBILE_WORKSPACE_ADD_GROUPS = [
   { id: "create", label: "Create", routes: ["primitive", "surface"] },
@@ -85,13 +87,42 @@ export const planMobileWorkspaceAdd = (
     return { ok: false, error: "The open Workspace scene does not match the active saved project." };
   }
 
+  if (request.route === "objects-from-project") {
+    try {
+      const composed = addMobileProjectCompositionToScene(activeScene, request.preview, now);
+      const previousProject: MobileStoredSceneProject = {
+        ...activeProject,
+        updatedAt: activeScene.updatedAt,
+        serializedProject: serializeSceneProject({ ...parsed.value, scene: activeScene }),
+      };
+      const project: MobileStoredSceneProject = {
+        ...activeProject,
+        updatedAt: now,
+        lastOpenedAt: now,
+        serializedProject: serializeSceneProject({ ...parsed.value, scene: composed.scene }),
+      };
+      return {
+        ok: true,
+        project,
+        previousProject,
+        scene: composed.scene,
+        addedObjectIds: composed.addedObjectIds,
+        importedPresentationById: composed.presentations,
+        importedMeshById: composed.meshes,
+        message: `Added ${composed.addedObjectIds.length} object${composed.addedObjectIds.length === 1 ? "" : "s"} from ${request.preview.source.projectTitle} to ${activeProject.title}.`,
+      };
+    } catch (error) {
+      return { ok: false, error: String((error as Error).message ?? error) };
+    }
+  }
+
   const sources = request.route === "primitive"
     ? [createMobilePrimitiveSurface(request.primitive, activeScene)]
     : request.route === "surface"
       ? [request.surface]
       : request.route === "math3d-object" || request.route === "mesh"
         ? []
-        : request.example.scene.surfaces ?? [];
+      : request.example.scene.surfaces ?? [];
   if (request.route === "math3d-object" || request.route === "mesh") {
     const transferPreview = request.route === "mesh" ? request.preview.transferPreview : request.preview;
     const validated = validateSceneObjectEnvelope(transferPreview.envelope);

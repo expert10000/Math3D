@@ -74,6 +74,13 @@ import {
   prepareMobileSemanticObjectExport,
   type MobileObjectMeshExportFormat,
 } from "./models/mobileObjectExport";
+import {
+  planMobileProjectComposition,
+  prepareMobileProjectCompositionSource,
+  type MobileProjectCompositionPreparation,
+  type MobileProjectCompositionPreview,
+  type MobileProjectCompositionSource,
+} from "./models/mobileProjectComposition";
 
 const ANDROID_GL_DEFAULT_ENABLED = true;
 export const FORCE_ANDROID_SAFE_MODE = false;
@@ -1648,6 +1655,34 @@ export const useMobileAppController = () => {
   const importMeshToWorkspace = (preview: MobileMeshImportPreview): Promise<boolean> =>
     commitWorkspaceAdd({ route: "mesh", preview });
 
+  const projectSourceFromLibrary = (projectId: string): MobileProjectCompositionPreparation => {
+    const source = storedProjects.find((project) => project.id === projectId);
+    if (!source || !selectedSceneId) return { status: "error", error: "Open a destination project and choose another saved project." };
+    return prepareMobileProjectCompositionSource(source.serializedProject, source.title, selectedSceneId);
+  };
+
+  const pickProjectSourceForWorkspace = async (): Promise<MobileProjectCompositionPreparation> => {
+    if (!selectedSceneId) return { status: "error", error: "Open a saved destination project first." };
+    try {
+      const picked = await pickMobileSceneProject();
+      if (picked.status === "cancelled") return { status: "cancelled" };
+      return prepareMobileProjectCompositionSource(picked.serializedProject, picked.sourceName, selectedSceneId);
+    } catch (error) {
+      return { status: "error", error: String((error as Error).message ?? error) };
+    }
+  };
+
+  const previewProjectObjectsForWorkspace = (
+    source: MobileProjectCompositionSource,
+    objectIds: readonly string[]
+  ): { ok: true; preview: MobileProjectCompositionPreview } | { ok: false; error: string } => {
+    if (!viewerDocument) return { ok: false, error: "Open a saved destination project first." };
+    return planMobileProjectComposition(source, objectIds, viewerDocument);
+  };
+
+  const addProjectObjectsToWorkspace = (preview: MobileProjectCompositionPreview): Promise<boolean> =>
+    commitWorkspaceAdd({ route: "objects-from-project", preview });
+
   const openSurfaceAddEditor = (mode: "explicit" | "parametric" | "implicit") => {
     setSurfaceEditorMode(mode);
     setWorkspaceAddMessage("");
@@ -2288,6 +2323,7 @@ export const useMobileAppController = () => {
     diagnosticsEnabled,
     setDiagnosticsEnabled,
     storedProjects,
+    selectedSceneId,
     storageIssues,
     storageStatus,
     sceneSearchQuery,
@@ -2392,6 +2428,10 @@ export const useMobileAppController = () => {
     importSceneObjectToWorkspace,
     pickMeshForWorkspace,
     importMeshToWorkspace,
+    projectSourceFromLibrary,
+    pickProjectSourceForWorkspace,
+    previewProjectObjectsForWorkspace,
+    addProjectObjectsToWorkspace,
     openSurfaceAddEditor,
     previewAuthoredSurface,
     addAuthoredSurfaceToWorkspace,
