@@ -33,6 +33,7 @@ export * from "./sceneDocument";
 export * from "./sceneObjects";
 export * from "./sceneObjectTransfer";
 export * from "./sceneObjectComposition";
+export * from "./projectHandoff";
 export * from "./scientificJobs";
 export * from "./topologyDocument";
 export * from "./topologyPersistence";

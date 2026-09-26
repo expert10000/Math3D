@@ -173,7 +173,7 @@ Cloud synchronization, live collaboration, automatic conflict merging, accounts,
 
 | ID | Commit | Scope and acceptance evidence |
 | --- | --- | --- |
-| **MOB66** | `feat(core): define project handoff revision manifest` | Extend the portable contract with producer/platform metadata, project and base revisions, content hashes, capability requirements, and result descriptors. Older v1 project imports remain valid through migration. |
+| **MOB66** | `feat(core): define project handoff revision manifest` | Extend the portable contract with producer/platform metadata, project and base revisions, content hashes, capability requirements, and result descriptors. Older v1 project imports remain valid through migration. See [contract](project-handoff-contract.md). |
 | **MOB67** | `feat(mobile-projects): add desktop-mobile project round trip` | Accept a desktop handoff, preserve stable IDs, display unsupported content before open, record mobile edits, and export a resumable handoff. Detect divergence from the base revision and require copy/replace resolution instead of silent overwrite. |
 | **MOB68** | `test(project-transfer): add golden round-trip and recovery matrix` | Run desktop-core-mobile golden fixtures for project/object versions, semantic fidelity, mesh formats, merge remapping, unsupported capabilities, corruption, cancellation, storage failure, and divergent revisions. Add focused Android document-provider and native-share smoke plus the maintained iOS import/share gate. |
 
