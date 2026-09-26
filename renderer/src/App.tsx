@@ -18,6 +18,7 @@ import {
   type WorkspaceDockId,
   type WorkspaceDockLayout,
 } from "./workspaceDocks";
+import { GraphsWorkspace } from "./graph2d/GraphsWorkspace";
 
 import MobiusScreen from "./screens/MobiusScreen";
 import { ChebyshevScreen } from "./screens/ChebyshevScreen";
@@ -1180,8 +1181,8 @@ type ContextualActionBindingMap = Partial<Record<ContextualEntityMode, readonly 
 
 /* ---------------- App modes ---------------- */
 
-type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces" | "curves" | "topology" | "geometry";
-const APP_MODE_VALUES: Mode[] = ["mobius", "chebyshev", "transform", "maps", "surfaces", "curves", "topology", "geometry"];
+type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces" | "curves" | "graphs" | "topology" | "geometry";
+const APP_MODE_VALUES: Mode[] = ["mobius", "chebyshev", "transform", "maps", "surfaces", "curves", "graphs", "topology", "geometry"];
 const isAppMode = (value: string | null | undefined): value is Mode => !!value && APP_MODE_VALUES.includes(value as Mode);
 type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh" | "complex";
 type ChartMode = "auto" | "xy" | "uv" | "local";
@@ -1496,7 +1497,7 @@ type GeometryViewportSettings = {
   includeHelpersInFit?: boolean;
 };
 type AccentPresetId = "blue" | "teal" | "amber" | "rose";
-type WorkspaceModule = "surfaces" | "mesh" | "volume" | "curves" | "topology" | "geometry" | "mobius";
+type WorkspaceModule = "surfaces" | "mesh" | "volume" | "curves" | "graphs" | "topology" | "geometry" | "mobius";
 type WorkspaceViewMode = "threeD" | "planar" | "claim" | "stage";
 type WorkspaceCameraPreset =
   | "fit_scene"
@@ -1539,6 +1540,7 @@ const isWorkspaceModuleValue = (value: string | undefined): value is WorkspaceMo
   value === "mesh" ||
   value === "volume" ||
   value === "curves" ||
+  value === "graphs" ||
   value === "topology" ||
   value === "geometry" ||
   value === "mobius";
@@ -45390,6 +45392,8 @@ const App: React.FC = () => {
   const activeDockWorkspace: WorkspaceDockId =
     mode === "geometry"
       ? "geometry"
+      : mode === "graphs"
+        ? "graphs"
       : mode === "curves"
         ? "curves"
         : mode === "topology"
@@ -74937,6 +74941,7 @@ case "mobius":
       return "Surface viewer";
     }
     if (mode === "curves") return "Curve core presets";
+    if (mode === "graphs") return "Empty Cartesian graph scene";
     if (mode === "topology") return "Topology quotient module";
     if (mode === "geometry") return `Geometry viewer (${geometryMode})`;
     if (mode === "mobius") {
@@ -76859,6 +76864,7 @@ case "mobius":
   const showOtherComplexBottomActions = mode === "mobius" && functionExplorerScene === "other_complex";
   const workspaceModule = useMemo<WorkspaceModule>(() => {
     if (mode === "mobius") return "mobius";
+    if (mode === "graphs") return "graphs";
     if (mode === "geometry") return "geometry";
     if (mode === "topology") return "topology";
     if (mode === "curves") return "curves";
@@ -77019,6 +77025,8 @@ case "mobius":
         setDatasetKind("volume");
       } else if (entry.module === "curves") {
         setMode("curves");
+      } else if (entry.module === "graphs") {
+        setMode("graphs");
       } else if (entry.module === "topology") {
         setMode("topology");
       } else if (entry.module === "geometry") {
@@ -77162,7 +77170,7 @@ case "mobius":
     SURFACE_MESH_PRESETS[1]?.id ??
     meshNewPresetId;
   const sectionNavEntries: Array<{
-    id: "surfaces" | "mesh" | "volume" | "curves" | "topology" | "geometry" | "complex_analysis";
+    id: "surfaces" | "mesh" | "volume" | "curves" | "graphs" | "topology" | "geometry" | "complex_analysis";
     label: string;
     active: boolean;
     disabled?: boolean;
@@ -77219,6 +77227,12 @@ case "mobius":
       label: "Curves",
       active: mode === "curves",
       onSelect: () => setMode("curves"),
+    },
+    {
+      id: "graphs",
+      label: "Graphs",
+      active: mode === "graphs",
+      onSelect: () => setMode("graphs"),
     },
     {
       id: "topology",
@@ -80211,7 +80225,7 @@ case "mobius":
               </div>
               )}
             </>
-          ) : mode === "curves" ? (
+          ) : mode === "graphs" ? null : mode === "curves" ? (
             <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                 Category
@@ -81081,7 +81095,7 @@ case "mobius":
                 paddingBottom: isSurfacePreviewMode ? 56 : 74,
               }
             : null),
-          ...(mode === "surfaces" || mode === "curves" || mode === "topology" || mode === "geometry"
+          ...(mode === "surfaces" || mode === "curves" || mode === "graphs" || mode === "topology" || mode === "geometry"
             ? {
               maxWidth: "100%",
               width: "100%",
@@ -89406,6 +89420,8 @@ case "mobius":
             </div>
             )}
           </div>
+        ) : mode === "graphs" ? (
+          <GraphsWorkspace dockLayout={activeDockLayout} />
         ) : mode === "curves" ? (
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
             <div style={{ ...styles.panelLeft, width: leftWidth, display: activeDockLayout.leftCollapsed || activeDockLayout.viewerMaximized ? "none" : undefined }}>

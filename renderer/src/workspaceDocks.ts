@@ -1,4 +1,4 @@
-export type WorkspaceDockId = "surfaces" | "mesh" | "volume" | "curves" | "topology" | "geometry" | "complex";
+export type WorkspaceDockId = "surfaces" | "mesh" | "volume" | "curves" | "graphs" | "topology" | "geometry" | "complex";
 
 export type WorkspaceDockLayout = {
   left: number;
@@ -15,6 +15,7 @@ const recommendedWidths: Record<WorkspaceDockId, Pick<WorkspaceDockLayout, "left
   mesh: { left: 300, right: 420 },
   volume: { left: 340, right: 380 },
   curves: { left: 360, right: 320 },
+  graphs: { left: 320, right: 300 },
   topology: { left: 340, right: 360 },
   geometry: { left: 460, right: 340 },
   complex: { left: 420, right: 380 },

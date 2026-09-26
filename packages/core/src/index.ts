@@ -14,6 +14,7 @@ export * from "./analysisResults";
 export * from "./documentIdentity";
 export * from "./documentRelations";
 export * from "./geometry";
+export * from "./graph2dWorkspace";
 export * from "./geometryDocument";
 export * from "./geometryCommands";
 export * from "./math";
