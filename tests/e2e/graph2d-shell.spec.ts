@@ -8,6 +8,7 @@ test("Graphs opens an empty desktop workspace and participates in normal navigat
     await app.page.getByTestId("workspace-nav-graphs").click();
     await expect(app.page.getByTestId("workspace-nav-graphs")).toHaveAttribute("aria-pressed", "true");
     await expect(app.page.getByTestId("graphs-workspace")).toBeVisible();
+    await expect(app.page.getByTestId("graph2d-plot")).toBeVisible();
     await expect(app.page.getByLabel("Empty graph scene")).toContainText("0 functions");
     await app.page.getByTestId("kernel-workspace-toggle").click();
     await app.page.getByTestId("kernel-workspace-save").click();

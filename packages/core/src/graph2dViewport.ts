@@ -14,6 +14,8 @@ const validSize = (size: Graph2DScreenSize): boolean => finite(size.width) && fi
   size.width > 0 && size.height > 0 && size.width <= 16384 && size.height <= 16384;
 const validViewport = (viewport: Graph2DViewport): boolean => finite(viewport.xMin) && finite(viewport.xMax) &&
   finite(viewport.yMin) && finite(viewport.yMax) && viewport.xMin < viewport.xMax && viewport.yMin < viewport.yMax &&
+  viewport.xMax - viewport.xMin >= GRAPH2D_MIN_SPAN && viewport.xMax - viewport.xMin <= GRAPH2D_MAX_SPAN &&
+  viewport.yMax - viewport.yMin >= GRAPH2D_MIN_SPAN && viewport.yMax - viewport.yMin <= GRAPH2D_MAX_SPAN &&
   ["free", "equal"].includes(viewport.aspect);
 const checked = (viewport: Graph2DViewport, size: Graph2DScreenSize): void => {
   if (!validViewport(viewport) || !validSize(size)) throw new TypeError("Invalid Graph2D viewport or screen size.");

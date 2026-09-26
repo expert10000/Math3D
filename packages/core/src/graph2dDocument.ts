@@ -106,6 +106,8 @@ const validDisplay = (value: unknown, source: Graph2DSource): value is Graph2DDi
       !record(value.viewport) || !exact(value.viewport, ["xMin", "xMax", "yMin", "yMax", "aspect"]) ||
       !finite(value.viewport.xMin) || !finite(value.viewport.xMax) || value.viewport.xMin >= value.viewport.xMax ||
       !finite(value.viewport.yMin) || !finite(value.viewport.yMax) || value.viewport.yMin >= value.viewport.yMax ||
+      value.viewport.xMax - value.viewport.xMin < 1e-9 || value.viewport.xMax - value.viewport.xMin > 1e12 ||
+      value.viewport.yMax - value.viewport.yMin < 1e-9 || value.viewport.yMax - value.viewport.yMin > 1e12 ||
       !["free", "equal"].includes(String(value.viewport.aspect)) ||
       !record(value.axes) || !exact(value.axes, ["x", "y", "grid", "labels"]) ||
       [value.axes.x, value.axes.y, value.axes.grid, value.axes.labels].some((item) => typeof item !== "boolean") ||
