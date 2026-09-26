@@ -1,0 +1,38 @@
+{
+  "sourceFormat": "math3d.scene-project",
+  "sourceProjectId": "source-project",
+  "importedAt": 1727352000000,
+  "destinationObjectIds": ["alpha", "alpha-2", "occupied"],
+  "objects": [
+    {
+      "id": "beta",
+      "expression": "x-y",
+      "analysisMetadata": {
+        "inputObjectId": "alpha"
+      }
+    },
+    {
+      "id": "alpha",
+      "expression": "x+y",
+      "analysisMetadata": {}
+    }
+  ],
+  "dependencies": [
+    {
+      "fromObjectId": "beta",
+      "toObjectId": "alpha",
+      "relation": "analysis.input",
+      "referencePath": "/analysisMetadata/inputObjectId"
+    }
+  ],
+  "expectedIdMap": {
+    "alpha": "alpha-3",
+    "beta": "beta"
+  },
+  "expectedDependency": {
+    "fromObjectId": "beta",
+    "toObjectId": "alpha-3",
+    "relation": "analysis.input",
+    "referencePath": "/analysisMetadata/inputObjectId"
+  }
+}

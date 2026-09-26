@@ -1,0 +1,23 @@
+{
+  "sourceFormat": "math3d.scene-project",
+  "sourceProjectId": "source-project",
+  "importedAt": 1727352000000,
+  "destinationObjectIds": [],
+  "objects": [
+    {
+      "id": "beta",
+      "expression": "x-y",
+      "analysisMetadata": {
+        "inputObjectId": "missing"
+      }
+    }
+  ],
+  "dependencies": [
+    {
+      "fromObjectId": "beta",
+      "toObjectId": "missing",
+      "relation": "analysis.input",
+      "referencePath": "/analysisMetadata/inputObjectId"
+    }
+  ]
+}

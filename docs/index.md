@@ -14,11 +14,12 @@ This site combines:
 - Curves v1 freeze: `curves-v1-freeze.md` (canonical workflow, mathematical conventions, result lifecycle, interoperability, QA, screenshot baselines, and change policy).
 - Curve spline conventions: `curves-spline-conventions.md` (Bézier/B-spline/NURBS basis, knot, weight, continuity, editing, and serialization rules).
 - Repository folder map: `repository-layout.md`.
-- Mobile roadmap: `mobile-roadmap.md` (completed MOB24–MOB62 sequence and the next phase plan).
+- Mobile roadmap: `mobile-roadmap.md` (completed MOB24–MOB63 sequence and the next phase plan).
 - Mobile Projects/Create/Import extension: `mobile-projects-create-import-extension-roadmap.md` (MOB55–MOB68 contracts, commit scopes, dependencies, and acceptance gates).
 - Semantic scene-object transfer: `scene-object-transfer-v1.md` (v1 envelope, supported kinds, safety boundary, hashing, and migration policy).
 - Mobile mesh import: `mobile-mesh-import.md` (supported formats, unit/axis assumptions, admission, persistence, and failure boundary).
 - Mobile object export: `mobile-object-export.md` (lossless semantic export, derived OBJ/PLY/STL, validation, naming, and native sharing).
+- Scene-object composition: `scene-object-composition.md` (deterministic collision remapping, internal-reference rewriting, dependency validation, and provenance).
 
 ## Public frontend
 
