@@ -2,6 +2,10 @@ import { MAX_SCENE_OBJECT_BYTES } from "@math3d/core";
 import { Directory, File, Paths } from "expo-file-system";
 import { isAvailableAsync, shareAsync } from "expo-sharing";
 import type { MobileStoredSceneProject } from "../models/mobileScene";
+import {
+  validateMobileSemanticObjectArtifact,
+  type MobileObjectExportArtifact,
+} from "../models/mobileObjectExport";
 import { listMobileGltfDependencies, MAX_MOBILE_MESH_IMPORT_BYTES, type MobileMeshImportSource } from "../models/mobileMeshImport";
 import {
   createMobileProjectExportName,
@@ -25,6 +29,10 @@ export type MobileMeshPickResult =
   | { status: "cancelled" };
 
 export type MobileProjectExportResult =
+  | { status: "exported"; fileName: string }
+  | { status: "cancelled" };
+
+export type MobileObjectArtifactExportResult =
   | { status: "exported"; fileName: string }
   | { status: "cancelled" };
 
@@ -148,5 +156,62 @@ export const shareMobileSceneProject = async (project: MobileStoredSceneProject)
     dialogTitle: `Share ${project.title}`,
     mimeType: JSON_MIME_TYPE,
     UTI: "public.json",
+  });
+};
+
+const collisionSuffix = (fileName: string, suffix: number): string => {
+  if (suffix === 0) return fileName;
+  const dot = fileName.lastIndexOf(".");
+  return dot < 0
+    ? `${fileName}-${suffix + 1}`
+    : `${fileName.slice(0, dot)}-${suffix + 1}${fileName.slice(dot)}`;
+};
+
+const verifiedArtifactContent = (artifact: MobileObjectExportArtifact): string => {
+  if (artifact.semantic) validateMobileSemanticObjectArtifact(artifact);
+  if (!artifact.content) throw new Error("The prepared object export is empty.");
+  return artifact.content;
+};
+
+export const exportMobileObjectArtifact = async (
+  artifact: MobileObjectExportArtifact
+): Promise<MobileObjectArtifactExportResult> => {
+  const content = verifiedArtifactContent(artifact);
+  try {
+    const directory = await Directory.pickDirectoryAsync();
+    let suffix = 0;
+    let fileName = artifact.fileName;
+    while (new File(directory.uri, fileName).exists) {
+      suffix += 1;
+      if (suffix > 999) throw new Error("Could not create a unique export file name.");
+      fileName = collisionSuffix(artifact.fileName, suffix);
+    }
+    const output = directory.createFile(fileName, artifact.mimeType);
+    output.write(content, { encoding: "utf8" });
+    const readBack = await output.text();
+    if (readBack !== content) throw new Error("The exported file could not be verified.");
+    if (artifact.semantic) validateMobileSemanticObjectArtifact({ ...artifact, content: readBack });
+    return { status: "exported", fileName };
+  } catch (error) {
+    if (pickerWasCancelled(error)) return { status: "cancelled" };
+    throw error;
+  }
+};
+
+export const shareMobileObjectArtifact = async (artifact: MobileObjectExportArtifact): Promise<void> => {
+  if (!(await isAvailableAsync())) throw new Error("Native sharing is unavailable on this device.");
+  const content = verifiedArtifactContent(artifact);
+  exportCacheDirectory.create({ idempotent: true, intermediates: true });
+  const file = new File(exportCacheDirectory, artifact.fileName);
+  if (file.exists) file.delete();
+  file.create({ intermediates: true, overwrite: true });
+  file.write(content, { encoding: "utf8" });
+  const readBack = await file.text();
+  if (readBack !== content) throw new Error("The shared file could not be verified.");
+  if (artifact.semantic) validateMobileSemanticObjectArtifact({ ...artifact, content: readBack });
+  await shareAsync(file.uri, {
+    dialogTitle: `Share ${artifact.objectId} as ${artifact.formatLabel}`,
+    mimeType: artifact.mimeType,
+    UTI: artifact.uti,
   });
 };

@@ -46,7 +46,7 @@ import {
 } from "./models/mobileSurfaceCreation";
 import { clearMobileComputeJobs, loadMobileComputeJobs, saveMobileComputeJobs } from "./services/mobileComputeJobStorage";
 import { clearMobileThumbnailCache, loadMobileThumbnailCache, saveMobileThumbnailCache, type MobileThumbnailCache } from "./services/mobileThumbnailCacheStorage";
-import { exportMobileSceneProject, pickMobileMeshFile, pickMobileSceneObject, pickMobileSceneProject, shareMobileSceneProject } from "./services/mobileProjectTransferService";
+import { exportMobileObjectArtifact, exportMobileSceneProject, pickMobileMeshFile, pickMobileSceneObject, pickMobileSceneProject, shareMobileObjectArtifact, shareMobileSceneProject } from "./services/mobileProjectTransferService";
 import { createMobileThumbnailCacheKey, generateMobileSceneThumbnail } from "./viewer/mobileSceneThumbnail";
 import { buildMobileSurfaceAnalysis } from "./viewer/mobileSurfaceAnalysis";
 import { mobileAnalysisOverlayAvailability, type MobileAnalysisOverlay } from "./viewer/mobileAnalysisOverlays";
@@ -69,6 +69,11 @@ import {
   type MobileMeshImportPreparation,
   type MobileMeshImportPreview,
 } from "./models/mobileMeshImport";
+import {
+  prepareMobileDerivedMeshExport,
+  prepareMobileSemanticObjectExport,
+  type MobileObjectMeshExportFormat,
+} from "./models/mobileObjectExport";
 
 const ANDROID_GL_DEFAULT_ENABLED = true;
 export const FORCE_ANDROID_SAFE_MODE = false;
@@ -1808,6 +1813,65 @@ export const useMobileAppController = () => {
     setObjectActionMessage(`Duplicated as ${result.objectId}.`);
   };
 
+  const selectedObjectExportContext = () => {
+    if (!viewerDocument || !selectedSurfaceId) throw new Error("Select an object to export.");
+    return {
+      scene: viewerDocument,
+      objectId: selectedSurfaceId,
+      visible: visibleSurfaceIds.includes(selectedSurfaceId),
+      opacity: surfaceOpacityById[selectedSurfaceId],
+      mesh: implicitMeshBySurfaceId[selectedSurfaceId],
+      quality: effectiveRenderQuality,
+    } as const;
+  };
+
+  const exportSelectedWorkspaceObject = async (share: boolean): Promise<boolean> => {
+    try {
+      setObjectActionMessage(share ? "Preparing semantic object for sharing..." : "Choose a folder for the semantic object.");
+      const artifact = prepareMobileSemanticObjectExport(selectedObjectExportContext());
+      if (share) {
+        await shareMobileObjectArtifact(artifact);
+        setObjectActionMessage(`${artifact.objectId} is ready to share as a lossless Math3D object.`);
+        return true;
+      }
+      const result = await exportMobileObjectArtifact(artifact);
+      if (result.status === "cancelled") {
+        setObjectActionMessage("Object export cancelled.");
+        return false;
+      }
+      setObjectActionMessage(`Exported ${result.fileName}.`);
+      return true;
+    } catch (error) {
+      setObjectActionMessage(`Object export failed: ${String((error as Error).message ?? error)}`);
+      return false;
+    }
+  };
+
+  const exportSelectedWorkspaceObjectMesh = async (
+    format: MobileObjectMeshExportFormat,
+    share: boolean
+  ): Promise<boolean> => {
+    try {
+      setObjectActionMessage(`Preparing derived ${format.toUpperCase()} mesh...`);
+      const artifact = prepareMobileDerivedMeshExport(selectedObjectExportContext(), format);
+      if (share) {
+        await shareMobileObjectArtifact(artifact);
+        setObjectActionMessage(`${artifact.objectId} is ready to share as ${artifact.formatLabel}.`);
+        return true;
+      }
+      const result = await exportMobileObjectArtifact(artifact);
+      if (result.status === "cancelled") {
+        setObjectActionMessage("Derived mesh export cancelled.");
+        return false;
+      }
+      setObjectActionMessage(`Exported ${result.fileName}.`);
+      return true;
+    } catch (error) {
+      setObjectActionMessage(`Derived mesh export failed: ${String((error as Error).message ?? error)}`);
+      return false;
+    }
+  };
+
   const deleteSelectedWorkspaceObject = () => {
     if (!viewerDocument || !selectedSurfaceId) return;
     const objectId = selectedSurfaceId;
@@ -2335,6 +2399,8 @@ export const useMobileAppController = () => {
     selectAnalysisOverlay,
     renameSelectedWorkspaceObject,
     duplicateSelectedWorkspaceObject,
+    exportSelectedWorkspaceObject,
+    exportSelectedWorkspaceObjectMesh,
     deleteSelectedWorkspaceObject,
     undoDeleteWorkspaceObject,
     applyWorkerBaseUrl,

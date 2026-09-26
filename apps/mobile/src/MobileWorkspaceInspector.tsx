@@ -1,7 +1,8 @@
 import React from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { type SceneDocument } from "@math3d/core";
 import { MOBILE_GRID_PLANES } from "./models/mobileCoordinateGrid";
+import { MOBILE_DERIVED_MESH_SEMANTICS_WARNING, MOBILE_OBJECT_EXPORT_FORMATS } from "./models/mobileObjectExport";
 import { surfaceSummary, type MobileAppController } from "./mobileAppController";
 import { styles } from "./mobileAppStyles";
 
@@ -70,6 +71,8 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     showLearnExample,
     renameSelectedWorkspaceObject,
     duplicateSelectedWorkspaceObject,
+    exportSelectedWorkspaceObject,
+    exportSelectedWorkspaceObjectMesh,
     deleteSelectedWorkspaceObject,
     undoDeleteWorkspaceObject,
     retryImplicitPreviews,
@@ -207,6 +210,37 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                     <Pressable testID="mobile-object-delete" onPress={deleteSelectedWorkspaceObject} style={styles.dangerBtn}>
                       <Text style={styles.dangerBtnText}>Delete</Text>
                     </Pressable>
+                  </View>
+                  <Text style={styles.note}>Export and share</Text>
+                  <View style={styles.viewerToolbarRow}>
+                    <Pressable testID="mobile-object-export-semantic" onPress={() => void exportSelectedWorkspaceObject(false)} style={styles.secondaryBtn}>
+                      <Text style={styles.secondaryBtnText}>Export object</Text>
+                    </Pressable>
+                    <Pressable testID="mobile-object-share-semantic" onPress={() => void exportSelectedWorkspaceObject(true)} style={styles.secondaryBtn}>
+                      <Text style={styles.secondaryBtnText}>Share object</Text>
+                    </Pressable>
+                  </View>
+                  <Text style={styles.itemMeta}>Math3D object preserves its editable definition and provenance.</Text>
+                  <Text style={styles.note}>Derived mesh</Text>
+                  <View style={styles.viewerToolbarRow}>
+                    {MOBILE_OBJECT_EXPORT_FORMATS.map((format) => (
+                      <Pressable
+                        key={format}
+                        testID={`mobile-object-export-${format}`}
+                        onPress={() => Alert.alert(
+                          `Export ${format.toUpperCase()} mesh only?`,
+                          MOBILE_DERIVED_MESH_SEMANTICS_WARNING,
+                          [
+                            { text: "Cancel", style: "cancel" },
+                            { text: "Export", onPress: () => { void exportSelectedWorkspaceObjectMesh(format, false); } },
+                            { text: "Share", onPress: () => { void exportSelectedWorkspaceObjectMesh(format, true); } },
+                          ]
+                        )}
+                        style={styles.secondaryBtn}
+                      >
+                        <Text style={styles.secondaryBtnText}>{format.toUpperCase()}</Text>
+                      </Pressable>
+                    ))}
                   </View>
                   {objectActionMessage ? <Text style={styles.itemMeta}>{objectActionMessage}</Text> : null}
                 </>
