@@ -1,7 +1,7 @@
-import { createEmptyGraph2DScene, GRAPH2D_WORKSPACE_CONTRACT } from "@math3d/core";
+import { createEmptyGraph2DDocument, GRAPH2D_WORKSPACE_CONTRACT } from "@math3d/core";
 import type { WorkspaceDockLayout } from "../workspaceDocks";
 
-const emptyScene = createEmptyGraph2DScene();
+const emptyDocument = createEmptyGraph2DDocument("desktop-web-shell");
 
 type Props = { dockLayout: WorkspaceDockLayout };
 
@@ -22,7 +22,7 @@ export function GraphsWorkspace({ dockLayout }: Props) {
           <h2 style={{ margin: "0 0 8px" }}>Graphs</h2>
           <p style={{ margin: "0 0 8px" }}>An empty Cartesian graph scene is ready.</p>
           <p style={{ margin: 0, fontSize: 12, opacity: 0.75 }}>
-            {emptyScene.objects.length} functions · {GRAPH2D_WORKSPACE_CONTRACT.initialObjectKind} source
+            {emptyDocument.source.objects.length} functions · {GRAPH2D_WORKSPACE_CONTRACT.initialObjectKind} source
           </p>
         </div>
       </div>

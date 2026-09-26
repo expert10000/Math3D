@@ -1,0 +1,20 @@
+{
+  "format": "math3d.graph2d-document",
+  "schemaVersion": 1,
+  "identity": {
+    "schemaVersion": 1,
+    "id": "math3d:graph2d:e15c96fc460f6a70b2e6a6f00b940c00",
+    "revision": 1,
+    "structuralHash": "sha256:495d171e43c897d9e27e949a3e98d742318889355f0f8e748e6e98007f076351"
+  },
+  "requiredCapabilities": ["graph2d.explicit.v1"],
+  "source": { "objects": [], "variables": [], "assumptions": [] },
+  "display": {
+    "viewport": { "xMin": -10, "xMax": 10, "yMin": -10, "yMax": 10, "aspect": "equal" },
+    "axes": { "x": true, "y": true, "grid": true, "labels": true },
+    "objects": [],
+    "sampling": { "maxSamples": 12000, "maxDepth": 12, "tolerancePx": 0.75 }
+  },
+  "selection": { "objectId": null, "probe": null },
+  "metadata": { "title": "Graphs" }
+}
