@@ -9,6 +9,12 @@ test("Graphs opens an empty desktop workspace and participates in normal navigat
     await expect(app.page.getByTestId("workspace-nav-graphs")).toHaveAttribute("aria-pressed", "true");
     await expect(app.page.getByTestId("graphs-workspace")).toBeVisible();
     await expect(app.page.getByLabel("Empty graph scene")).toContainText("0 functions");
+    await app.page.getByTestId("kernel-workspace-toggle").click();
+    await app.page.getByTestId("kernel-workspace-save").click();
+    await expect(app.page.getByTestId("kernel-workspace-message")).toContainText("Saved");
+    await app.page.getByTestId("kernel-workspace-reopen").click();
+    await expect(app.page.getByTestId("kernel-workspace-entry-graph2d")).toBeVisible();
+    await app.page.getByTestId("kernel-workspace-toggle").click();
     await app.page.getByTestId("workspace-nav-curves").click();
     await expect(app.page.getByTestId("graphs-workspace")).toHaveCount(0);
     await app.page.getByRole("button", { name: "Workspace back" }).click();

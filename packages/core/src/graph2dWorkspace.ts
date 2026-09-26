@@ -8,7 +8,7 @@ export const GRAPH2D_WORKSPACE_CONTRACT = Object.freeze({
     documentEditing: false,
     sampling: false,
     analysis: false,
-    projectPersistence: false,
+    projectPersistence: true,
   }),
 } as const);
 

@@ -711,6 +711,7 @@ import {
   COMPLEX_COMMAND_TYPES,
   createStableDocumentId,
   createGeometryDocument,
+  createEmptyGraph2DDocument,
   createMixedWorkspaceDocument,
   createViewerProvenanceEvidence,
   canonicalJsonByteLength,
@@ -722,6 +723,7 @@ import {
   type CanonicalJsonValue,
   type MeshEditKind,
   type MeshDocument,
+  type Graph2DDocument,
   type TopologyDocument,
   type TopologyReplayBundle,
   type KernelWorkspaceModule,
@@ -24255,6 +24257,7 @@ const App: React.FC = () => {
   const meshDatasetPublishTraceCounterRef = useRef(0);
   const meshDocumentAdapterRef = useRef<MeshDocumentAdapter | null>(null);
   const [meshKernelDocument, setMeshKernelDocument] = useState<MeshDocument | null>(null);
+  const [graph2dDocument] = useState<Graph2DDocument>(() => createEmptyGraph2DDocument("desktop-web-default"));
   const [topologyKernelDocument, setTopologyKernelDocument] = useState<TopologyDocument | null>(null);
   const [topologyKernelReplay, setTopologyKernelReplay] = useState<TopologyReplayBundle | null>(null);
   const largeSurfaceMeshResolutionCacheRef = useRef<LargeSurfaceMeshResolutionCache | null>(null);
@@ -77697,11 +77700,12 @@ case "mobius":
     const after = adapter.document().identity.revision;
     if (after !== before) setGeometryKernelRevision(after);
   }, [geometryKernelSceneSnapshot]);
-  const activeKernelModule: KernelWorkspaceModule | null = mode === "geometry" ? "geometry" : mode === "topology" ? "topology" :
+  const activeKernelModule: KernelWorkspaceModule | null = mode === "graphs" ? "graph2d" : mode === "geometry" ? "geometry" : mode === "topology" ? "topology" :
     mode === "curves" ? "curve" : mode === "surfaces" && datasetKind === "volume" ? "volume" :
       mode === "surfaces" && surfaceViewerKind === "complex" ? "complex" :
         mode === "surfaces" && surfaceViewerKind === "mesh" ? "mesh" : mode === "surfaces" ? "surface" : null;
-  const activeKernelDocument: KernelWorkspaceDocument | null = activeKernelModule === "geometry" ? geometryKernelAdapterRef.current.document() :
+  const activeKernelDocument: KernelWorkspaceDocument | null = activeKernelModule === "graph2d" ? graph2dDocument :
+    activeKernelModule === "geometry" ? geometryKernelAdapterRef.current.document() :
     activeKernelModule === "topology" ? topologyKernelDocument : activeKernelModule === "curve" ? activeCurveKernelAdapter.document() :
       activeKernelModule === "volume" ? activeVolumeKernelAdapter.document() : activeKernelModule === "complex" ? complexPreviewSession.commands.document() :
         activeKernelModule === "mesh" ? meshKernelDocument : activeKernelModule === "surface" ?
@@ -77743,6 +77747,7 @@ case "mobius":
     const complexReplay = complexPreviewSession.commands.exportReplay();
     add("complex", complexPreviewSession.commands.document(), complexReplay.checkpoint.document,
       MIXED_REPLAY_FORMATS.complex, complexReplay as unknown as CanonicalJsonValue);
+    add("graph2d", graph2dDocument);
     const activeDocumentIds = entries.map((entry) => entry.expected.id);
     const surfaceHandoffs = surfaceMeshKernelHandoff.records();
     for (const record of volumeExtractionRecords) add("surface", record.surface);
@@ -78864,6 +78869,7 @@ case "mobius":
           if (module === "geometry") setMode("geometry");
           else if (module === "topology") setMode("topology");
           else if (module === "curve") setMode("curves");
+          else if (module === "graph2d") setMode("graphs");
           else {
             setMode("surfaces");
             if (module === "volume") setDatasetKind("volume");
@@ -89421,7 +89427,7 @@ case "mobius":
             )}
           </div>
         ) : mode === "graphs" ? (
-          <GraphsWorkspace dockLayout={activeDockLayout} />
+          <GraphsWorkspace dockLayout={activeDockLayout} document={graph2dDocument} />
         ) : mode === "curves" ? (
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
             <div style={{ ...styles.panelLeft, width: leftWidth, display: activeDockLayout.leftCollapsed || activeDockLayout.viewerMaximized ? "none" : undefined }}>

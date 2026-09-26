@@ -1,12 +1,10 @@
-import { createEmptyGraph2DDocument, GRAPH2D_WORKSPACE_CONTRACT } from "@math3d/core";
+import { GRAPH2D_WORKSPACE_CONTRACT, type Graph2DDocument } from "@math3d/core";
 import type { WorkspaceDockLayout } from "../workspaceDocks";
 
-const emptyDocument = createEmptyGraph2DDocument("desktop-web-shell");
-
-type Props = { dockLayout: WorkspaceDockLayout };
+type Props = { dockLayout: WorkspaceDockLayout; document: Graph2DDocument };
 
 /** Desktop/web projection of the shared Graph2D workspace contract. */
-export function GraphsWorkspace({ dockLayout }: Props) {
+export function GraphsWorkspace({ dockLayout, document }: Props) {
   const showLeft = !dockLayout.viewerMaximized && !dockLayout.leftCollapsed;
   const showRight = !dockLayout.viewerMaximized && !dockLayout.rightCollapsed;
   return (
@@ -22,7 +20,7 @@ export function GraphsWorkspace({ dockLayout }: Props) {
           <h2 style={{ margin: "0 0 8px" }}>Graphs</h2>
           <p style={{ margin: "0 0 8px" }}>An empty Cartesian graph scene is ready.</p>
           <p style={{ margin: 0, fontSize: 12, opacity: 0.75 }}>
-            {emptyDocument.source.objects.length} functions · {GRAPH2D_WORKSPACE_CONTRACT.initialObjectKind} source
+            {document.source.objects.length} functions · {GRAPH2D_WORKSPACE_CONTRACT.initialObjectKind} source
           </p>
         </div>
       </div>
