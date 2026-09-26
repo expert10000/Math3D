@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createSceneProjectDocument, deserializeSceneProject, serializeSceneProject, type SceneDocument } from "@math3d/core";
 import type { MobileStoredSceneProject } from "../../apps/mobile/src/models/mobileScene";
 import {
+  listMobileGltfDependencies,
   parseMobileMeshFile,
   prepareMobileMeshImport,
   type MobileMeshImportSource,
@@ -50,6 +51,52 @@ const binaryPly = (littleEndian: boolean): Uint8Array => {
   const bytes = new Uint8Array(header.length + body.length);
   bytes.set(header);
   bytes.set(body, header.length);
+  return bytes;
+};
+
+const triangleBuffer = (): Uint8Array => {
+  const bytes = new Uint8Array(42);
+  const view = new DataView(bytes.buffer);
+  [0, 0, 0, 1, 0, 0, 0, 1, 0].forEach((value, index) => view.setFloat32(index * 4, value, true));
+  [0, 1, 2].forEach((value, index) => view.setUint16(36 + index * 2, value, true));
+  return bytes;
+};
+
+const triangleGltfDocument = (uri?: string) => ({
+  asset: { version: "2.0" },
+  buffers: [{ ...(uri === undefined ? {} : { uri }), byteLength: 42 }],
+  bufferViews: [
+    { buffer: 0, byteOffset: 0, byteLength: 36 },
+    { buffer: 0, byteOffset: 36, byteLength: 6 },
+  ],
+  accessors: [
+    { bufferView: 0, componentType: 5126, count: 3, type: "VEC3" },
+    { bufferView: 1, componentType: 5123, count: 3, type: "SCALAR" },
+  ],
+  meshes: [{ primitives: [{ attributes: { POSITION: 0 }, indices: 1, mode: 4 }] }],
+  nodes: [{ mesh: 0 }],
+  scenes: [{ nodes: [0] }],
+  scene: 0,
+});
+
+const glb = (document = triangleGltfDocument()): Uint8Array => {
+  const jsonSource = JSON.stringify(document);
+  const jsonPadding = (4 - (new TextEncoder().encode(jsonSource).length % 4)) % 4;
+  const json = new TextEncoder().encode(jsonSource + " ".repeat(jsonPadding));
+  const rawBinary = triangleBuffer();
+  const binLength = Math.ceil(rawBinary.length / 4) * 4;
+  const bytes = new Uint8Array(12 + 8 + json.length + 8 + binLength);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(0, 0x46546c67, true);
+  view.setUint32(4, 2, true);
+  view.setUint32(8, bytes.length, true);
+  view.setUint32(12, json.length, true);
+  view.setUint32(16, 0x4e4f534a, true);
+  bytes.set(json, 20);
+  const binHeader = 20 + json.length;
+  view.setUint32(binHeader, binLength, true);
+  view.setUint32(binHeader + 4, 0x004e4942, true);
+  bytes.set(rawBinary, binHeader + 8);
   return bytes;
 };
 
@@ -134,5 +181,72 @@ describe("MOB60 bounded mobile mesh import", () => {
     expect(failed).toEqual({ ok: false, error: "storage unavailable" });
     expect(scene.surfaces).toEqual([]);
     expect(scene.extensions).toBeUndefined();
+  });
+});
+
+describe("MOB61 GLB and managed glTF import", () => {
+  it.each([
+    ["embedded glTF", source("triangle.gltf", asset("triangle-embedded.gltf")), "gltf"],
+    ["self-contained GLB", source("triangle.glb", glb()), "glb"],
+  ] as const)("imports a %s fixture and converts Y-up to Z-up", (_label, input, format) => {
+    const parsed = parseMobileMeshFile(input);
+    expect(parsed).toMatchObject({ format, mesh: { vertexCount: 3, triCount: 1 }, normalsGenerated: true });
+    expect(parsed.mesh.positions).toEqual(new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 1]));
+    expect(parsed.warnings.join(" ")).toMatch(/Y-up/);
+  });
+
+  it("resolves an external buffer only from an explicitly supplied local package", () => {
+    const document = triangleGltfDocument("mesh.bin");
+    const input = source("triangle.gltf", new TextEncoder().encode(JSON.stringify(document)));
+    expect(listMobileGltfDependencies(input)).toEqual(["mesh.bin"]);
+    expect(() => parseMobileMeshFile(input)).toThrow(/was not supplied/);
+    const parsed = parseMobileMeshFile({ ...input, dependencies: { "mesh.bin": triangleBuffer() } });
+    expect(parsed.mesh).toMatchObject({ vertexCount: 3, triCount: 1 });
+  });
+
+  it("flattens node transforms before the glTF Y-up conversion", () => {
+    const document = triangleGltfDocument("mesh.bin");
+    (document.nodes as Array<Record<string, unknown>>)[0] = { mesh: 0, translation: [1, 2, 3] };
+    const parsed = parseMobileMeshFile({
+      sourceName: "translated.gltf",
+      bytes: new TextEncoder().encode(JSON.stringify(document)),
+      dependencies: { "mesh.bin": triangleBuffer() },
+    });
+    expect(Array.from(parsed.mesh.positions.slice(0, 3))).toEqual([1, -3, 2]);
+  });
+
+  it("rejects remote URIs, path escapes, external GLB files, and unsupported compression", () => {
+    const remote = source("remote.gltf", new TextEncoder().encode(JSON.stringify({
+      ...triangleGltfDocument("https://example.test/mesh.bin"),
+      images: [{ uri: "https://example.test/texture.png" }],
+    })));
+    expect(() => listMobileGltfDependencies(remote)).toThrow(/Remote glTF URI/);
+
+    const escaped = source("escaped.gltf", new TextEncoder().encode(JSON.stringify(triangleGltfDocument("../mesh.bin"))));
+    expect(() => listMobileGltfDependencies(escaped)).toThrow(/outside the selected local package/);
+
+    expect(() => parseMobileMeshFile(source("external.glb", glb(triangleGltfDocument("mesh.bin"))))).toThrow(/self-contained/);
+
+    const compressedDocument = { ...triangleGltfDocument(), extensionsUsed: ["KHR_draco_mesh_compression"] };
+    expect(() => parseMobileMeshFile(source("compressed.glb", glb(compressedDocument)))).toThrow(/Draco/);
+  });
+
+  it("previews and atomically commits admitted GLB geometry", async () => {
+    const prepared = prepareMobileMeshImport(source("triangle.glb", glb()), scene, "balanced");
+    expect(prepared).toMatchObject({
+      status: "ready",
+      preview: {
+        format: "glb",
+        admission: { action: "full" },
+        axisAssumption: expect.stringContaining("Y-up"),
+        unitAssumption: expect.stringContaining("meter"),
+      },
+    });
+    if (prepared.status !== "ready") return;
+    const save = vi.fn(async () => undefined);
+    const committed = await commitMobileWorkspaceAdd([project], project.id, scene, { route: "mesh", preview: prepared.preview }, save, 60);
+    expect(committed.ok).toBe(true);
+    expect(save).toHaveBeenCalledTimes(1);
+    if (committed.ok) expect(committed.importedMeshById.triangle).toMatchObject({ vertexCount: 3, triCount: 1 });
   });
 });

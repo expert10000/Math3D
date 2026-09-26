@@ -1622,7 +1622,7 @@ export const useMobileAppController = () => {
       setWorkspaceAddMessage(error);
       return { status: "error", error };
     }
-    setWorkspaceAddMessage("Choose an OBJ, STL, or PLY file to preview.");
+    setWorkspaceAddMessage("Choose an OBJ, STL, PLY, GLB, or glTF file to preview.");
     try {
       const picked = await pickMobileMeshFile();
       if (picked.status === "cancelled") {

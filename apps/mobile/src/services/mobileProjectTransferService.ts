@@ -2,7 +2,7 @@ import { MAX_SCENE_OBJECT_BYTES } from "@math3d/core";
 import { Directory, File, Paths } from "expo-file-system";
 import { isAvailableAsync, shareAsync } from "expo-sharing";
 import type { MobileStoredSceneProject } from "../models/mobileScene";
-import { MAX_MOBILE_MESH_IMPORT_BYTES, type MobileMeshImportSource } from "../models/mobileMeshImport";
+import { listMobileGltfDependencies, MAX_MOBILE_MESH_IMPORT_BYTES, type MobileMeshImportSource } from "../models/mobileMeshImport";
 import {
   createMobileProjectExportName,
   validateMobileProjectForTransfer,
@@ -87,10 +87,24 @@ export const pickMobileMeshFile = async (): Promise<MobileMeshPickResult> => {
     if (file.size > MAX_MOBILE_MESH_IMPORT_BYTES) {
       throw new Error(`The selected mesh is larger than the ${MAX_MOBILE_MESH_IMPORT_BYTES / (1024 * 1024)} MB mobile import limit.`);
     }
-    return {
-      status: "selected",
-      source: { sourceName: fileNameFromUri(file.uri), bytes: await file.bytes() },
-    };
+    const sourceName = fileNameFromUri(file.uri);
+    const source: MobileMeshImportSource = { sourceName, bytes: await file.bytes() };
+    const extension = sourceName.split(".").at(-1)?.toLocaleLowerCase();
+    if (extension !== "gltf" && extension !== "glb") return { status: "selected", source };
+    const dependencyUris = listMobileGltfDependencies(source);
+    if (dependencyUris.length === 0) return { status: "selected", source };
+    const directory = await Directory.pickDirectoryAsync();
+    const dependencies: Record<string, Uint8Array> = {};
+    let totalBytes = source.bytes.byteLength;
+    for (const uri of dependencyUris) {
+      const decodedPath = decodeURIComponent(uri);
+      const dependency = new File(directory.uri, ...decodedPath.split("/"));
+      if (!dependency.exists) throw new Error(`The selected glTF package is missing '${uri}'.`);
+      totalBytes += dependency.size;
+      if (totalBytes > MAX_MOBILE_MESH_IMPORT_BYTES) throw new Error("The selected glTF package exceeds the 32 MB mobile import limit.");
+      dependencies[uri] = await dependency.bytes();
+    }
+    return { status: "selected", source: { ...source, dependencies } };
   } catch (error) {
     if (pickerWasCancelled(error)) return { status: "cancelled" };
     throw error;

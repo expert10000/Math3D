@@ -4,7 +4,7 @@ Updated September 26, 2026. This document turns the proposed Projects/Create/Imp
 
 ## Starting point
 
-MOB24–MOB60 are complete. Mobile already has:
+MOB24–MOB61 are complete. Mobile already has:
 
 - a persistent multi-object `SceneDocument` inside `math3d.scene-project`;
 - atomic project storage, recovery, thumbnails, rename, duplicate, reversible delete, full-project import/export, and native project sharing;
@@ -15,9 +15,10 @@ MOB24–MOB60 are complete. Mobile already has:
 - a versioned `math3d.scene-object` contract with deterministic serialization, content hashing, v0 migration, bounded embedded geometry, and reviewed validity/rejection fixtures;
 - a pick/preview/confirm mobile importer for semantic Math3D objects that atomically adds editable definitions, remaps collisions, and retains the validated source envelope for lossless attributes and provenance;
 - bounded OBJ, ASCII/binary STL, and ASCII/binary PLY import with normal generation, format degradation summaries, MOB52 admission, and embedded project persistence;
+- self-contained GLB and managed local glTF import with buffer/accessor validation, node-transform flattening, Y-up conversion, and remote/compressed dependency rejection;
 - a shared example catalog, worker pairing and jobs, analysis overlays, large-mesh admission, and Android/iOS companion gates.
 
-The shared layer and mobile UI now validate, preview, and import semantic Math3D objects plus OBJ/STL/PLY meshes into a saved project. The app does not yet import GLB/glTF, export/share one object, merge objects from another project, or preserve a desktop/mobile handoff revision.
+The shared layer and mobile UI now validate, preview, and import semantic Math3D objects plus OBJ/STL/PLY/GLB/glTF meshes into a saved project. The app does not yet export/share one object, merge objects from another project, or preserve a desktop/mobile handoff revision.
 
 The governing model is:
 

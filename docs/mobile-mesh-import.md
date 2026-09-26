@@ -10,8 +10,16 @@ The Workspace **Add to Project → Mesh** flow picks, parses, previews, and atom
 
 OBJ, STL, and PLY coordinates are treated as Math3D Z-up, unitless scene units. The preview states those assumptions before commit.
 
+## MOB61 formats
+
+- GLB 2.x must be self-contained. JSON/BIN chunk structure, declared lengths, accessors, buffer views, triangle modes, and node recursion are bounded and validated.
+- glTF 2.x accepts embedded base64 buffers or relative dependencies from one explicitly selected local package directory. Dependency paths cannot escape that directory.
+- glTF node transforms are flattened into imported geometry and Y-up coordinates are converted to Math3D Z-up. Meter units are retained as scene units.
+
+Remote URLs, absolute/device paths, parent traversal, sparse accessors, skins, non-triangle primitives, Draco, and meshopt compression are rejected. Materials, textures, morph targets, and unsupported vertex attributes are summarized as explicit degradation before commit.
+
 ## Safety and persistence
 
-Source files are capped at 32 MB, embedded imports at 250,000 vertices and 500,000 triangles, and parsing has a processing-time deadline. Truncation, invalid counts, non-finite coordinates, out-of-range indices, and unsupported formats fail before persistence.
+Source files or managed glTF packages are capped at 32 MB, embedded imports at 250,000 vertices and 500,000 triangles, and parsing has a processing-time deadline. Truncation, invalid counts, non-finite coordinates, out-of-range indices, and unsupported formats fail before persistence.
 
 Every decoded mesh passes through the MOB52 admission controller. A full or locally reduced preview may render, while the validated source geometry remains embedded in the project's `math3d.scene-object.imports.v1` record. Reopening the project reconstructs and re-admits that mesh before GPU upload. Cancellation, rejection, and storage failure leave the project unchanged.

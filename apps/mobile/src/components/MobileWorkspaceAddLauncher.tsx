@@ -111,7 +111,7 @@ export const MobileWorkspaceAddLauncher: React.FC<{
         <Text style={styles.projectCreationGroupTitle}>Import</Text>
         <View style={styles.projectCreationGrid}>
           <Pressable testID="mobile-workspace-add-mesh" disabled={busy} onPress={() => void chooseMesh()} style={optionStyle}>
-            <Text style={styles.itemTitle}>{busy ? "Choosing..." : "Mesh"}</Text><Text style={styles.itemMeta}>OBJ, STL, PLY</Text>
+            <Text style={styles.itemTitle}>{busy ? "Choosing..." : "Mesh"}</Text><Text style={styles.itemMeta}>OBJ, STL, PLY, GLB, glTF</Text>
           </Pressable>
           <Pressable testID="mobile-workspace-add-object" disabled={busy} onPress={() => void chooseMath3DObject()} style={optionStyle}>
             <Text style={styles.itemTitle}>{busy ? "Choosing..." : "Math3D object"}</Text><Text style={styles.itemMeta}>Pick and preview semantic content</Text>
