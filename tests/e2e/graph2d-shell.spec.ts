@@ -114,3 +114,39 @@ test("Graphs authors, validates, styles, reorders, hides, and undoes functions",
     await closeSurfaceApp(app);
   }
 });
+
+test("Graphs selects a curve by click, locates its probe, and clears selection", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    const panel = app.page.getByLabel("Graph functions");
+    await panel.getByRole("button", { name: "Add function" }).click();
+    await panel.getByRole("button", { name: "Save function" }).click();
+    const viewer = app.page.getByTestId("main-viewer");
+    const point = await app.page.locator('[data-graph2d-path="function_1"]').evaluate((path) => {
+      const curve = path as SVGPathElement;
+      const sampled = curve.getPointAtLength(curve.getTotalLength() * 0.65);
+      return { x: sampled.x, y: sampled.y };
+    });
+    const box = await viewer.boundingBox();
+    if (!box) throw new Error("Graph viewer has no bounds");
+    await app.page.mouse.click(box.x + point.x, box.y + point.y);
+    await expect(app.page.getByTestId("graph2d-probe-coordinates").last()).toBeVisible();
+    await expect(viewer.locator(".graph2d-probe-selected")).toBeVisible();
+    await app.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await app.page.mouse.down();
+    await app.page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2, { steps: 5 });
+    await app.page.mouse.up();
+    await app.page.getByLabel("Graph inspector").getByRole("button", { name: "Locate" }).click();
+    const marker = viewer.locator(".graph2d-probe-selected circle").first();
+    const plotCenter = await viewer.evaluate((element) => element.clientWidth / 2);
+    await expect.poll(async () => Number(await marker.getAttribute("cx"))).toBeCloseTo(plotCenter, 0);
+    await viewer.focus();
+    await app.page.keyboard.press("Escape");
+    await expect(viewer.locator(".graph2d-probe-selected")).toHaveCount(0);
+  } finally {
+    await closeSurfaceApp(app);
+  }
+});

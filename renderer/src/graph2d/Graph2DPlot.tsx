@@ -1,7 +1,7 @@
 import { useId } from "react";
 import {
   resolveGraph2DViewport, type Graph2DDisplay, type Graph2DSamplingArtifact,
-  type Graph2DScreenSize,
+  graph2DWorldToScreen, type Graph2DProbe, type Graph2DScreenSize,
 } from "@math3d/core";
 import { projectGraph2DGrid } from "./gridProjection";
 
@@ -10,14 +10,24 @@ export type Graph2DPlotSeries = Readonly<{
   artifact: Graph2DSamplingArtifact;
   style: Graph2DDisplay["objects"][number];
 }>;
-type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonly Graph2DPlotSeries[] };
+type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonly Graph2DPlotSeries[];
+  selectedProbe?: Graph2DProbe | null; hoverProbe?: Graph2DProbe | null };
 
-export function Graph2DPlot({ display, size, series }: Props) {
+export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe }: Props) {
   const clipId = useId();
   const grid = projectGraph2DGrid(display.viewport, size);
   const bounds = resolveGraph2DViewport(display.viewport, size);
   const xSpan = bounds.xMax - bounds.xMin;
   const ySpan = bounds.yMax - bounds.yMin;
+  const marker = (probe: Graph2DProbe | null | undefined, kind: "selected" | "hover") => {
+    if (!probe) return null;
+    const screen = graph2DWorldToScreen(display.viewport, size, probe);
+    if (screen.x < 0 || screen.x > size.width || screen.y < 0 || screen.y > size.height) return null;
+    return <g className={"graph2d-probe-marker graph2d-probe-" + kind} aria-hidden="true" key={kind}>
+      <circle cx={screen.x} cy={screen.y} r={kind === "selected" ? 7 : 5} />
+      <circle cx={screen.x} cy={screen.y} r={2} />
+    </g>;
+  };
   const pathFor = (artifact: Graph2DSamplingArtifact): string => artifact.segments.map((segment) => {
     let path = "";
     let drawing = false;
@@ -53,6 +63,8 @@ export function Graph2DPlot({ display, size, series }: Props) {
           strokeDasharray={item.style.lineStyle === "dashed" ? "8 5" : item.style.lineStyle === "dotted" ? "2 4" : undefined}
           strokeLinejoin="round" strokeLinecap="round" />)}
       </g>
+      {marker(hoverProbe, "hover")}
+      {marker(selectedProbe, "selected")}
     </svg>
   );
 }

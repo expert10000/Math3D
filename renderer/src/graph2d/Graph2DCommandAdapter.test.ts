@@ -38,3 +38,19 @@ describe("Graph2D authoring kernel history", () => {
     expect(adapter.redo()?.source.objects).toHaveLength(1);
   });
 });
+
+describe("Graph2D selection kernel history", () => {
+  it("commits a mathematical probe without changing source identity", () => {
+    const before = createEmptyGraph2DDocument("selection-history");
+    const adapter = new Graph2DCommandAdapter(before);
+    const scene = applyGraph2DAuthoring(adapter.document(), { type: "create", draft: {
+      label: "f", expression: "x", domain: { min: -10, max: 10, includeMin: true, includeMax: true },
+      style: { color: "#123456", lineWidth: 2, lineStyle: "solid", visible: true } } });
+    const authored = adapter.commitScene(scene, "create");
+    const selected = adapter.commitSelection({ objectId: "function_1", probe: { objectId: "function_1", x: 2, y: 2 } });
+    expect(selected.identity).toEqual(authored.identity);
+    expect(adapter.history().undoDepth).toBe(2);
+    expect(adapter.undo()?.selection.probe).toBe(null);
+    expect(adapter.redo()?.selection.probe?.x).toBe(2);
+  });
+});

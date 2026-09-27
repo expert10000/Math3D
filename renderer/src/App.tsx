@@ -728,6 +728,7 @@ import {
   type Graph2DDocument,
   type Graph2DAuthoringAction,
   type Graph2DViewport,
+  type Graph2DSelection,
   type TopologyDocument,
   type TopologyReplayBundle,
   type KernelWorkspaceModule,
@@ -24270,6 +24271,9 @@ const App: React.FC = () => {
   const commitGraph2DAuthoring = useCallback((action: Graph2DAuthoringAction) => {
     const adapter = graph2dAdapterRef.current!;
     setGraph2dDocument(adapter.commitScene(applyGraph2DAuthoring(adapter.document(), action), action.type));
+  }, []);
+  const commitGraph2DSelection = useCallback((selection: Graph2DSelection) => {
+    setGraph2dDocument(graph2dAdapterRef.current!.commitSelection(selection));
   }, []);
   const undoGraph2DViewport = useCallback(() => {
     const document = graph2dAdapterRef.current!.undo();
@@ -89450,6 +89454,7 @@ case "mobius":
         ) : mode === "graphs" ? (
           <GraphsWorkspace dockLayout={activeDockLayout} document={graph2dDocument}
             onViewportCommit={commitGraph2DViewport} onAuthoringCommit={commitGraph2DAuthoring}
+            onSelectionCommit={commitGraph2DSelection}
             onUndo={undoGraph2DViewport} onRedo={redoGraph2DViewport} />
         ) : mode === "curves" ? (
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>

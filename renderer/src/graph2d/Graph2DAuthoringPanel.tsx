@@ -2,12 +2,13 @@ import { GRAPH2D_MAX_OBJECTS, validateGraph2DFunctionDraft,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DFunctionDraft } from "@math3d/core";
 import { useState } from "react";
 
-type Props = { document: Graph2DDocument; onCommit?: (action: Graph2DAuthoringAction) => void };
+type Props = { document: Graph2DDocument; onCommit?: (action: Graph2DAuthoringAction) => void;
+  onSelect?: (objectId: string) => void };
 const initialDraft = (): Graph2DFunctionDraft => ({ label: "f", expression: "x",
   domain: { min: -10, max: 10, includeMin: true, includeMax: true },
   style: { visible: true, color: "#2563eb", lineWidth: 2, lineStyle: "solid" } });
 
-export function Graph2DAuthoringPanel({ document, onCommit }: Props) {
+export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Graph2DFunctionDraft>(initialDraft);
   const [open, setOpen] = useState(false);
@@ -43,6 +44,8 @@ export function Graph2DAuthoringPanel({ document, onCommit }: Props) {
           <div className="graph2d-function-summary"><span className="graph2d-function-swatch" style={{ background: style.color }} />
             <div><strong>{object.label}</strong><code>y = {object.expression.source}</code>{!style.visible && <small>Hidden</small>}</div></div>
           <div className="graph2d-function-actions">
+            <button type="button" aria-label={"Select " + object.label} aria-pressed={document.selection.objectId === object.id}
+              onClick={() => onSelect?.(object.id)}>Select</button>
             <button type="button" aria-label={"Edit " + object.label} onClick={() => beginEdit(object.id)}>Edit</button>
             <button type="button" aria-label={(style.visible ? "Hide " : "Show ") + object.label}
               onClick={() => commit({ type: "visibility", objectId: object.id })}>{style.visible ? "Hide" : "Show"}</button>

@@ -2,6 +2,7 @@ import {
   createCommandEnvelope, graph2dCommandDefinitions, GRAPH2D_COMMAND_TYPES,
   normalizeGraph2DDocument, type Graph2DCommandState, type Graph2DDocument, type Graph2DViewport,
   type Graph2DSceneOperation,
+  type Graph2DSelection,
 } from "@math3d/core";
 import { createInMemoryDocumentKernel, type InMemoryDocumentKernel } from "@math3d/kernel";
 
@@ -42,6 +43,20 @@ export class Graph2DCommandAdapter {
       commands: [command(`${transactionId}/forward`, candidate, operation)],
       history: { kind: "reversible", inverseCommands: [command(`${transactionId}/inverse`,
         { source: before.source, display: before.display, selection: before.selection }, "restore")] } });
+    if (!result.ok) throw new TypeError(result.errors.map((error) => error.message).join(" "));
+    return this.document();
+  }
+
+  commitSelection(selection: Graph2DSelection): Graph2DDocument {
+    const before = this.document();
+    if (JSON.stringify(before.selection) === JSON.stringify(selection)) return before;
+    const transactionId = `graph2d/selection/${++this.#sequence}`;
+    const command = (id: string, value: Graph2DSelection) => createCommandEnvelope({ commandId: id,
+      origin: { kind: "interactive", sourceId: "graph2d-workspace" },
+      command: { type: GRAPH2D_COMMAND_TYPES.setSelection, payload: { selection: value } } });
+    const result = this.#kernel.transact({ transactionId,
+      commands: [command(`${transactionId}/forward`, selection)],
+      history: { kind: "reversible", inverseCommands: [command(`${transactionId}/inverse`, before.selection)] } });
     if (!result.ok) throw new TypeError(result.errors.map((error) => error.message).join(" "));
     return this.document();
   }

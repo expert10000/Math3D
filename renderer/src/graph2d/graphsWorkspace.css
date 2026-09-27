@@ -43,6 +43,7 @@
 .graph2d-inspector-details { display: grid; grid-template-columns: auto 1fr; gap: 8px; margin: 0; font-size: 13px; }
 .graph2d-inspector-details dt { font-weight: 700; }
 .graph2d-inspector-details dd { margin: 0; overflow-wrap: anywhere; }
+.graph2d-inspector-details button { margin-left: 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--panel-strong); cursor: pointer; }
 .graph2d-viewer { display: grid; place-items: center; position: relative; overflow: auto; }
 .graph2d-viewer { touch-action: none; cursor: grab; }
 .graph2d-viewer:active { cursor: grabbing; }
@@ -55,6 +56,10 @@
 .graph2d-grid-major { stroke: var(--border); stroke-width: 1; opacity: .85; }
 .graph2d-axis { stroke: currentColor; stroke-width: 1.5; opacity: .75; }
 .graph2d-tick-labels { fill: currentColor; font-size: 10px; opacity: .7; }
+.graph2d-probe-marker { pointer-events: none; }
+.graph2d-probe-marker circle:first-child { fill: var(--panel-strong); stroke: #f59e0b; stroke-width: 2; }
+.graph2d-probe-marker circle:last-child { fill: #f59e0b; }
+.graph2d-probe-hover { opacity: .65; }
 .graph2d-viewer-message { text-align: center; padding: 24px; max-width: 400px; position: relative; z-index: 1; border-radius: 10px; background: var(--panel-strong); box-shadow: 0 4px 24px #0001; }
 .graph2d-viewer-message h2 { margin: 0 0 8px; }
 .graph2d-viewer-message p { margin: 0 0 8px; }
