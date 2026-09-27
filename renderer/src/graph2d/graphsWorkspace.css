@@ -20,7 +20,7 @@
 
 .graph2d-panel { padding: 16px; overflow: auto; }
 .graph2d-panel h2 { margin: 0 0 12px; font-size: 17px; }
-.graph2d-authoring-header { display: flex; align-items: start; justify-content: space-between; gap: 8px; }
+.graph2d-authoring-header { display: flex; align-items: start; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .graph2d-authoring button { border: 1px solid var(--border); border-radius: 5px; background: var(--panel-strong); padding: 3px 6px; cursor: pointer; }
 .graph2d-authoring button:disabled { cursor: default; opacity: .45; }
 .graph2d-muted { margin: 0; font-size: 13px; opacity: .7; }
@@ -115,6 +115,8 @@
 .graph2d-plot-background { fill: var(--panel-strong); }
 .graph2d-grid-minor { stroke: var(--border); stroke-width: .55; opacity: .45; }
 .graph2d-grid-major { stroke: var(--border); stroke-width: 1; opacity: .85; }
+.graph2d-polar-grid ellipse, .graph2d-polar-grid line { fill: none; stroke: var(--border); stroke-width: 1; opacity: .75; }
+.graph2d-polar-grid text { fill: var(--muted); stroke: none; font-size: 10px; }
 .graph2d-axis { stroke: currentColor; stroke-width: 1.5; opacity: .75; }
 .graph2d-tick-labels { fill: currentColor; font-size: 10px; opacity: .7; }
 .graph2d-probe-marker { pointer-events: none; }

@@ -9,6 +9,7 @@ import {
   isGraph2DLocalDifferentialCurrent, queryGraph2DInspector,
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
   sampleGraph2DParametric,
+  sampleGraph2DPolar,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
   type Graph2DIntegralMode,
 } from "@math3d/core";
@@ -25,6 +26,7 @@ type Props = {
   status?: "ready" | "loading" | "error";
   errorMessage?: string;
   onViewportCommit?: (viewport: Graph2DViewport) => void;
+  onGridModeCommit?: (mode: "cartesian" | "polar") => void;
   onAuthoringCommit?: (action: Graph2DAuthoringAction) => void;
   onSelectionCommit?: (selection: Graph2DSelection) => void;
   onUndo?: () => void;
@@ -32,7 +34,8 @@ type Props = {
 };
 
 /** Desktop/web projection of shared Graph2D source and persistent display state. */
-export function GraphsWorkspace({ dockLayout, document, status = "ready", errorMessage, onViewportCommit, onAuthoringCommit, onSelectionCommit, onUndo, onRedo }: Props) {
+export function GraphsWorkspace({ dockLayout, document, status = "ready", errorMessage, onViewportCommit,
+  onGridModeCommit, onAuthoringCommit, onSelectionCommit, onUndo, onRedo }: Props) {
   const viewerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [previewViewport, setPreviewViewport] = useState<Graph2DViewport | null>(null);
@@ -89,7 +92,9 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         tolerancePx: Math.max(2, document.display.sampling.tolerancePx) } : document.display.sampling;
       const artifact = object.kind === "explicit-cartesian" ? sampleGraph2DExplicit({ ast: object.expression.ast,
         variables, domain: object.domain, viewport, width: size.width, height: size.height, policy }) :
-        sampleGraph2DParametric({ object, variables, viewport, width: size.width, height: size.height, policy });
+        object.kind === "parametric" ? sampleGraph2DParametric({ object, variables,
+          viewport, width: size.width, height: size.height, policy }) :
+          sampleGraph2DPolar({ object, variables, viewport, width: size.width, height: size.height, policy });
       return [{ objectId: object.id, style, artifact }];
     });
   }, [document, size, viewport, previewViewport]);
@@ -236,14 +241,16 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
     <dl className="graph2d-inspector-details">
       <dt>Function</dt><dd>{inspected.label}</dd>
       <dt>Source</dt><dd><code>{inspected.kind === "explicit-cartesian" ? `y = ${inspected.expression}` : inspected.expression}</code></dd>
-      <dt>{inspected.kind === "parametric" ? "Parameter t" : "Domain"}</dt>
+      <dt>{inspected.kind === "parametric" ? "Parameter t" : inspected.kind === "polar" ? "Angle θ" : "Domain"}</dt>
       <dd>{inspected.domain.includeMin ? "[" : "("}{inspected.domain.min}, {inspected.domain.max}{inspected.domain.includeMax ? "]" : ")"}</dd>
       <dt>Style</dt><dd><span className="graph2d-inspector-swatch" style={{ background: inspected.style.color }} />
         {inspected.style.lineStyle}, {inspected.style.lineWidth} px · {inspected.style.visible ? "visible" : "hidden"}</dd>
       <dt>Probe</dt><dd>{inspected.probe ? <span data-testid="graph2d-probe-coordinates">
         ({inspected.probe.x.toPrecision(6)}, {inspected.probe.y.toPrecision(6)})</span> : "No point selected"}</dd>
-      {inspected.probe?.parameter !== undefined && <><dt>Parameter t</dt>
+      {inspected.probe?.parameter !== undefined && <><dt>{inspected.kind === "polar" ? "Angle θ" : "Parameter t"}</dt>
         <dd data-testid="graph2d-probe-parameter">{inspected.probe.parameter.toPrecision(8)}</dd></>}
+      {inspected.signedRadius !== null && <><dt>Signed radius</dt>
+        <dd data-testid="graph2d-probe-radius">{inspected.signedRadius.toPrecision(8)}</dd></>}
       <dt>Probe method</dt><dd>{inspected.probeMethod === "direct-expression-floating-point" ?
         "Direct expression evaluation (floating point)" : "Unavailable"}</dd>
       <dt>Sampling</dt><dd data-testid="graph2d-sampling-status">Adaptive bounded polyline · {inspected.sampling.status}</dd>
@@ -435,6 +442,9 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         <div className="graph2d-toolbar" onPointerDown={(event) => event.stopPropagation()}>
           <button type="button" onClick={() => { finishWheel(); onViewportCommit?.({ ...GRAPH2D_DEFAULT_VIEWPORT }); }}>Reset</button>
           <button type="button" onClick={() => { finishWheel(); fitVisible(); }}>Fit</button>
+          <button type="button" aria-label="Toggle polar grid" aria-pressed={(document.display.axes.gridMode ?? "cartesian") === "polar"}
+            onClick={() => onGridModeCommit?.((document.display.axes.gridMode ?? "cartesian") === "polar" ? "cartesian" : "polar")}>
+            {(document.display.axes.gridMode ?? "cartesian") === "polar" ? "Cartesian grid" : "Polar grid"}</button>
         </div>
         <div className="graph2d-compact-panels">
           {showLeft && <details><summary>Functions ({document.source.objects.length})</summary>{functionList}</details>}

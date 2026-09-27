@@ -25,6 +25,12 @@ export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, 
   const bounds = resolveGraph2DViewport(display.viewport, size);
   const xSpan = bounds.xMax - bounds.xMin;
   const ySpan = bounds.yMax - bounds.yMin;
+  const origin = graph2DWorldToScreen(display.viewport, size, { x: 0, y: 0 });
+  const polarMaxRadius = Math.max(...[bounds.xMin, bounds.xMax].flatMap((x) =>
+    [bounds.yMin, bounds.yMax].map((y) => Math.hypot(x, y))));
+  const radialStep = grid.verticalMajor.length >= 2 ?
+    Math.abs(grid.verticalMajor[1]!.value - grid.verticalMajor[0]!.value) : Math.max(xSpan, ySpan) / 8;
+  const radialCount = Math.min(24, Math.ceil(polarMaxRadius / radialStep));
   const marker = (probe: Graph2DProbe | null | undefined, kind: "selected" | "hover") => {
     if (!probe) return null;
     const screen = graph2DWorldToScreen(display.viewport, size, probe);
@@ -51,11 +57,33 @@ export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, 
       viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none">
       <defs><clipPath id={clipId}><rect x="0" y="0" width={size.width} height={size.height} /></clipPath></defs>
       <rect x="0" y="0" width={size.width} height={size.height} className="graph2d-plot-background" />
-      {display.axes.grid && <g className="graph2d-grid" aria-hidden="true">
+      {display.axes.grid && (display.axes.gridMode ?? "cartesian") === "cartesian" &&
+      <g className="graph2d-grid" aria-hidden="true">
         {grid.verticalMinor.map((pixel, index) => <line key={`vm-${index}`} className="graph2d-grid-minor" x1={pixel} x2={pixel} y1="0" y2={size.height} />)}
         {grid.horizontalMinor.map((pixel, index) => <line key={`hm-${index}`} className="graph2d-grid-minor" x1="0" x2={size.width} y1={pixel} y2={pixel} />)}
         {grid.verticalMajor.map((tick) => <line key={`v-${tick.value}`} className="graph2d-grid-major" x1={tick.pixel} x2={tick.pixel} y1="0" y2={size.height} />)}
         {grid.horizontalMajor.map((tick) => <line key={`h-${tick.value}`} className="graph2d-grid-major" x1="0" x2={size.width} y1={tick.pixel} y2={tick.pixel} />)}
+      </g>}
+      {display.axes.grid && display.axes.gridMode === "polar" &&
+      <g data-testid="graph2d-polar-grid" className="graph2d-polar-grid" clipPath={`url(#${clipId})`} aria-hidden="true">
+        {Array.from({ length: radialCount }, (_, index) => (index + 1) * radialStep).map((radius) =>
+          <g key={`r-${radius}`}>
+            <ellipse cx={origin.x} cy={origin.y} rx={radius / xSpan * size.width}
+              ry={radius / ySpan * size.height} />
+            {display.axes.labels && radius <= Math.max(Math.abs(bounds.xMin), Math.abs(bounds.xMax)) &&
+              <text x={origin.x + radius / xSpan * size.width + 3} y={origin.y - 3}>{radius.toPrecision(3)}</text>}
+          </g>)}
+        {Array.from({ length: 12 }, (_, index) => index * Math.PI / 6).map((theta, index) => {
+          const end = graph2DWorldToScreen(display.viewport, size,
+            { x: polarMaxRadius * Math.cos(theta), y: polarMaxRadius * Math.sin(theta) });
+          const labelRadius = Math.min(polarMaxRadius, Math.min(xSpan, ySpan) * 0.42);
+          const label = graph2DWorldToScreen(display.viewport, size,
+            { x: labelRadius * Math.cos(theta), y: labelRadius * Math.sin(theta) });
+          return <g key={`theta-${index}`}>
+            <line x1={origin.x} y1={origin.y} x2={end.x} y2={end.y} />
+            {display.axes.labels && <text x={label.x + 3} y={label.y - 3}>{index * 30}°</text>}
+          </g>;
+        })}
       </g>}
       {display.axes.x && grid.xAxis !== null && <line className="graph2d-axis" x1="0" x2={size.width} y1={grid.xAxis} y2={grid.xAxis} />}
       {display.axes.y && grid.yAxis !== null && <line className="graph2d-axis" x1={grid.yAxis} x2={grid.yAxis} y1="0" y2={size.height} />}

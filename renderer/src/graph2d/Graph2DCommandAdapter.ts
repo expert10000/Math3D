@@ -47,6 +47,13 @@ export class Graph2DCommandAdapter {
     return this.document();
   }
 
+  commitGridMode(mode: "cartesian" | "polar"): Graph2DDocument {
+    const before = this.document();
+    if ((before.display.axes.gridMode ?? "cartesian") === mode) return before;
+    return this.commitScene({ source: before.source, selection: before.selection,
+      display: { ...before.display, axes: { ...before.display.axes, gridMode: mode } } }, "grid-mode");
+  }
+
   commitSelection(selection: Graph2DSelection): Graph2DDocument {
     const before = this.document();
     if (JSON.stringify(before.selection) === JSON.stringify(selection)) return before;

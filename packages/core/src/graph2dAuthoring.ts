@@ -15,11 +15,19 @@ export type Graph2DParametricDraft = Readonly<{
   domain: Graph2DDomain;
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
 }>;
+export type Graph2DPolarDraft = Readonly<{
+  label: string;
+  rExpression: string;
+  domain: Graph2DDomain;
+  style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
+}>;
 export type Graph2DAuthoringAction =
   | Readonly<{ type: "create"; draft: Graph2DFunctionDraft }>
   | Readonly<{ type: "edit"; objectId: string; draft: Graph2DFunctionDraft }>
   | Readonly<{ type: "create-parametric"; draft: Graph2DParametricDraft }>
   | Readonly<{ type: "edit-parametric"; objectId: string; draft: Graph2DParametricDraft }>
+  | Readonly<{ type: "create-polar"; draft: Graph2DPolarDraft }>
+  | Readonly<{ type: "edit-polar"; objectId: string; draft: Graph2DPolarDraft }>
   | Readonly<{ type: "duplicate" | "delete" | "visibility"; objectId: string }>
   | Readonly<{ type: "reorder"; objectId: string; toIndex: number }>;
 
@@ -56,6 +64,27 @@ export const validateGraph2DParametricDraft = (draft: Graph2DParametricDraft,
   if (!Number.isFinite(draft.domain.min) || !Number.isFinite(draft.domain.max) || draft.domain.min >= draft.domain.max ||
     typeof draft.domain.includeMin !== "boolean" || typeof draft.domain.includeMax !== "boolean")
     errors.push("Parameter minimum must be less than maximum.");
+  if (!/^#[0-9a-fA-F]{6}$/.test(draft.style.color) || !Number.isFinite(draft.style.lineWidth) ||
+    draft.style.lineWidth < 0.5 || draft.style.lineWidth > 12 ||
+    !["solid", "dashed", "dotted"].includes(draft.style.lineStyle) || typeof draft.style.visible !== "boolean")
+    errors.push("Choose a valid color, line width, and line style.");
+  return errors;
+};
+
+export const validateGraph2DPolarDraft = (draft: Graph2DPolarDraft,
+  variables: readonly string[] = ["theta"]): readonly string[] => {
+  const errors: string[] = [];
+  if (!draft.label.trim() || draft.label !== draft.label.trim() || draft.label.length > 160)
+    errors.push("Enter a label of 1–160 characters without surrounding spaces.");
+  if (!draft.rExpression.trim() || draft.rExpression !== draft.rExpression.trim() || draft.rExpression.length > 2048)
+    errors.push("Enter a valid r(θ) expression of 1–2048 characters.");
+  else {
+    const parsed = parseGraph2DExpression(draft.rExpression, variables);
+    if (!parsed.ok) errors.push(...parsed.diagnostics.map((diagnostic) => diagnostic.message));
+  }
+  if (!Number.isFinite(draft.domain.min) || !Number.isFinite(draft.domain.max) || draft.domain.min >= draft.domain.max ||
+    typeof draft.domain.includeMin !== "boolean" || typeof draft.domain.includeMax !== "boolean")
+    errors.push("Angular minimum must be less than maximum.");
   if (!/^#[0-9a-fA-F]{6}$/.test(draft.style.color) || !Number.isFinite(draft.style.lineWidth) ||
     draft.style.lineWidth < 0.5 || draft.style.lineWidth > 12 ||
     !["solid", "dashed", "dotted"].includes(draft.style.lineStyle) || typeof draft.style.visible !== "boolean")
@@ -113,6 +142,30 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       domain: action.draft.domain };
     const display = { objectId: id, ...action.draft.style };
     if (action.type === "create-parametric") { objects.push(object); displays.push(display); }
+    else { objects[index] = object; displays[index] = display; }
+    selection = { objectId: id, probe: null };
+  } else if (action.type === "create-polar" || action.type === "edit-polar") {
+    if (action.type === "edit-polar" && objects[index]?.kind !== "polar")
+      throw new TypeError("Selected object is not polar.");
+    if (document.source.variables.some((entry) => entry.name === "theta"))
+      throw new TypeError("The parameter name theta conflicts with a document variable.");
+    const names = ["theta", ...document.source.variables.map((entry) => entry.name)];
+    const errors = validateGraph2DPolarDraft(action.draft, names);
+    if (errors.length) throw new TypeError(errors.join(" "));
+    const parsed = parseGraph2DExpression(action.draft.rExpression, names);
+    if (!parsed.ok) throw new TypeError("Polar expression is invalid.");
+    if (action.type === "create-polar" && objects.length >= GRAPH2D_MAX_OBJECTS)
+      throw new TypeError("Function limit reached.");
+    let id = action.type === "edit-polar" ? action.objectId : "polar_1";
+    if (action.type === "create-polar") {
+      let serial = 1;
+      while (objects.some((entry) => entry.id === id)) id = "polar_" + ++serial;
+    }
+    const object = { id, kind: "polar" as const, label: action.draft.label,
+      rExpression: { source: action.draft.rExpression, variable: "theta" as const, ast: parsed.ast },
+      domain: action.draft.domain };
+    const display = { objectId: id, ...action.draft.style };
+    if (action.type === "create-polar") { objects.push(object); displays.push(display); }
     else { objects[index] = object; displays[index] = display; }
     selection = { objectId: id, probe: null };
   } else if (action.type === "duplicate") {

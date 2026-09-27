@@ -1,5 +1,6 @@
 import type { Graph2DDomain, Graph2DDocument, Graph2DObjectDisplay, Graph2DProbe } from "./graph2dDocument";
 import type { Graph2DSamplingArtifact, Graph2DSamplingDiagnostic } from "./graph2dSampling";
+import { evaluateGraph2DPolar } from "./graph2dPolar";
 
 export type Graph2DInspectorSummary = Readonly<{
   objectId: string;
@@ -9,6 +10,7 @@ export type Graph2DInspectorSummary = Readonly<{
   domain: Graph2DDomain;
   style: Graph2DObjectDisplay;
   probe: Graph2DProbe | null;
+  signedRadius: number | null;
   probeMethod: "direct-expression-floating-point" | "unavailable";
   sampling: Readonly<{
     status: "converged" | "incomplete" | "unavailable";
@@ -38,12 +40,17 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
   if (!style) return null;
   const visibleArtifact = style.visible && observation?.objectId === object.id ? observation.artifact : undefined;
   const diagnostics = visibleArtifact?.diagnostics ?? [];
+  const variables = Object.fromEntries(document.source.variables.map((entry) => [entry.name, entry.value]));
+  const selectedProbe = document.selection.probe?.objectId === object.id ? document.selection.probe : null;
+  const signedRadius = object.kind === "polar" && selectedProbe?.parameter !== undefined ?
+    evaluateGraph2DPolar(object, variables, selectedProbe.parameter)?.radius ?? null : null;
   return {
     objectId: object.id, kind: object.kind, label: object.label,
     expression: object.kind === "explicit-cartesian" ? object.expression.source :
-      `x(t) = ${object.xExpression.source}, y(t) = ${object.yExpression.source}`,
+      object.kind === "parametric" ? `x(t) = ${object.xExpression.source}, y(t) = ${object.yExpression.source}` :
+        `r(θ) = ${object.rExpression.source}`,
     domain: object.domain, style,
-    probe: document.selection.probe?.objectId === object.id ? document.selection.probe : null,
+    probe: selectedProbe, signedRadius,
     probeMethod: document.selection.probe?.objectId === object.id ? "direct-expression-floating-point" : "unavailable",
     sampling: {
       status: !visibleArtifact ? "unavailable" : visibleArtifact.converged ? "converged" : "incomplete",
@@ -54,7 +61,8 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
     },
     provenance: { documentId: document.identity.id, revision: document.identity.revision,
       structuralHash: document.identity.structuralHash,
-      expressionAstVersion: object.kind === "explicit-cartesian" ? object.expression.ast.version : object.xExpression.ast.version,
+      expressionAstVersion: object.kind === "explicit-cartesian" ? object.expression.ast.version :
+        object.kind === "parametric" ? object.xExpression.ast.version : object.rExpression.ast.version,
       samplerVersion: visibleArtifact?.samplerVersion ?? null },
   };
 };

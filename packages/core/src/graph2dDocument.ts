@@ -10,6 +10,7 @@ export const GRAPH2D_DOCUMENT_FORMAT = "math3d.graph2d-document" as const;
 export const GRAPH2D_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export const GRAPH2D_EXPLICIT_CAPABILITY = "graph2d.explicit.v1" as const;
 export const GRAPH2D_PARAMETRIC_CAPABILITY = "graph2d.parametric.v1" as const;
+export const GRAPH2D_POLAR_CAPABILITY = "graph2d.polar.v1" as const;
 export const GRAPH2D_OBJECT_KINDS = ["explicit-cartesian", "parametric", "polar", "implicit", "inequality", "point-series", "piecewise"] as const;
 export type Graph2DObjectKind = (typeof GRAPH2D_OBJECT_KINDS)[number];
 export const GRAPH2D_RESERVED_OBJECT_KINDS = GRAPH2D_OBJECT_KINDS.slice(1);
@@ -33,7 +34,14 @@ export type Graph2DParametricObject = Readonly<{
   yExpression: Readonly<{ source: string; variable: "t"; ast: Graph2DExpressionAst }>;
   domain: Graph2DDomain;
 }>;
-export type Graph2DGraphObject = Graph2DExplicitObject | Graph2DParametricObject;
+export type Graph2DPolarObject = Readonly<{
+  id: string;
+  kind: "polar";
+  label: string;
+  rExpression: Readonly<{ source: string; variable: "theta"; ast: Graph2DExpressionAst }>;
+  domain: Graph2DDomain;
+}>;
+export type Graph2DGraphObject = Graph2DExplicitObject | Graph2DParametricObject | Graph2DPolarObject;
 export type Graph2DSource = Readonly<{
   objects: readonly Graph2DGraphObject[];
   variables: readonly Readonly<{ name: string; value: number }>[];
@@ -41,7 +49,8 @@ export type Graph2DSource = Readonly<{
 }>;
 export const graph2DRequiredCapabilities = (source: Graph2DSource): Graph2DDocument["requiredCapabilities"] =>
   [GRAPH2D_EXPLICIT_CAPABILITY,
-    ...(source.objects.some((object) => object.kind === "parametric") ? [GRAPH2D_PARAMETRIC_CAPABILITY] : [])];
+    ...(source.objects.some((object) => object.kind === "parametric") ? [GRAPH2D_PARAMETRIC_CAPABILITY] : []),
+    ...(source.objects.some((object) => object.kind === "polar") ? [GRAPH2D_POLAR_CAPABILITY] : [])];
 export type Graph2DObjectDisplay = Readonly<{
   objectId: string;
   visible: boolean;
@@ -51,7 +60,8 @@ export type Graph2DObjectDisplay = Readonly<{
 }>;
 export type Graph2DDisplay = Readonly<{
   viewport: Readonly<{ xMin: number; xMax: number; yMin: number; yMax: number; aspect: "free" | "equal" }>;
-  axes: Readonly<{ x: boolean; y: boolean; grid: boolean; labels: boolean }>;
+  axes: Readonly<{ x: boolean; y: boolean; grid: boolean; labels: boolean;
+    gridMode?: "cartesian" | "polar" }>;
   objects: readonly Graph2DObjectDisplay[];
   sampling: Readonly<{ maxSamples: number; maxDepth: number; tolerancePx: number }>;
 }>;
@@ -61,7 +71,8 @@ export type Graph2DDocument = Readonly<{
   format: typeof GRAPH2D_DOCUMENT_FORMAT;
   schemaVersion: typeof GRAPH2D_DOCUMENT_SCHEMA_VERSION;
   identity: DocumentIdentity;
-  requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY)[];
+  requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
+    typeof GRAPH2D_POLAR_CAPABILITY)[];
   source: Graph2DSource;
   display: Graph2DDisplay;
   selection: Graph2DSelection;
@@ -86,7 +97,7 @@ const variableName = (value: unknown): value is string => typeof value === "stri
 const integerWithin = (value: unknown, min: number, max: number): value is number =>
   Number.isSafeInteger(value) && Number(value) >= min && Number(value) <= max;
 const clone = <T>(value: T): T => JSON.parse(canonicalJsonStringify(value)) as T;
-const validExpression = (value: unknown, variables: readonly string[], variable: "x" | "t" = "x"): boolean => {
+const validExpression = (value: unknown, variables: readonly string[], variable: "x" | "t" | "theta" = "x"): boolean => {
   if (!record(value) || !exact(value, ["source", "variable", "ast"]) ||
       !bounded(value.source, GRAPH2D_MAX_EXPRESSION_LENGTH) || value.variable !== variable) return false;
   const parsed = parseGraph2DExpression(value.source, variables);
@@ -106,6 +117,10 @@ const validParametricObject = (value: unknown, variables: readonly string[]): va
   value.kind === "parametric" && bounded(value.label, 160) &&
   validExpression(value.xExpression, variables, "t") && validExpression(value.yExpression, variables, "t") &&
   validDomain(value.domain);
+const validPolarObject = (value: unknown, variables: readonly string[]): value is Graph2DPolarObject => record(value) &&
+  exact(value, ["id", "kind", "label", "rExpression", "domain"]) && objectId(value.id) &&
+  value.kind === "polar" && bounded(value.label, 160) &&
+  validExpression(value.rExpression, variables, "theta") && validDomain(value.domain);
 const validSource = (value: unknown): value is Graph2DSource => {
   if (!record(value) || !exact(value, ["objects", "variables", "assumptions"]) || !Array.isArray(value.objects) ||
       value.objects.length > GRAPH2D_MAX_OBJECTS ||
@@ -117,8 +132,9 @@ const validSource = (value: unknown): value is Graph2DSource => {
       !value.assumptions.every((entry: unknown) => bounded(entry, 160))) return false;
   const names = value.variables.map((entry: { name: string }) => entry.name);
   if (names.includes("t") && value.objects.some((entry: Graph2DGraphObject) => entry.kind === "parametric")) return false;
+  if (names.includes("theta") && value.objects.some((entry: Graph2DGraphObject) => entry.kind === "polar")) return false;
   return value.objects.every((entry: unknown) => validObject(entry, ["x", ...names]) ||
-    validParametricObject(entry, ["t", ...names])) &&
+    validParametricObject(entry, ["t", ...names]) || validPolarObject(entry, ["theta", ...names])) &&
     new Set(value.objects.map((entry: Graph2DGraphObject) => entry.id)).size === value.objects.length;
 };
 const validDisplay = (value: unknown, source: Graph2DSource): value is Graph2DDisplay => {
@@ -129,8 +145,11 @@ const validDisplay = (value: unknown, source: Graph2DSource): value is Graph2DDi
       value.viewport.xMax - value.viewport.xMin < 1e-9 || value.viewport.xMax - value.viewport.xMin > 1e12 ||
       value.viewport.yMax - value.viewport.yMin < 1e-9 || value.viewport.yMax - value.viewport.yMin > 1e12 ||
       !["free", "equal"].includes(String(value.viewport.aspect)) ||
-      !record(value.axes) || !exact(value.axes, ["x", "y", "grid", "labels"]) ||
+      !record(value.axes) || ![4, 5].includes(Object.keys(value.axes).length) ||
+      !["x", "y", "grid", "labels"].every((key) => Object.prototype.hasOwnProperty.call(value.axes, key)) ||
+      Object.keys(value.axes).some((key) => !["x", "y", "grid", "labels", "gridMode"].includes(key)) ||
       [value.axes.x, value.axes.y, value.axes.grid, value.axes.labels].some((item) => typeof item !== "boolean") ||
+      (value.axes.gridMode !== undefined && !["cartesian", "polar"].includes(String(value.axes.gridMode))) ||
       !Array.isArray(value.objects) || value.objects.length !== source.objects.length ||
       !value.objects.every((item: unknown, index: number) => record(item) && exact(item, ["objectId", "visible", "color", "lineWidth", "lineStyle"]) &&
         item.objectId === source.objects[index]?.id && typeof item.visible === "boolean" &&
@@ -150,7 +169,7 @@ const validSelection = (value: unknown, source: Graph2DSource): value is Graph2D
   if (!record(value.probe) || ![3, 4].includes(Object.keys(value.probe).length) ||
     !["objectId", "x", "y"].every((key) => Object.prototype.hasOwnProperty.call(value.probe, key))) return false;
   const selected = source.objects.find((entry) => entry.id === value.objectId);
-  const needsParameter = selected?.kind === "parametric";
+  const needsParameter = selected?.kind === "parametric" || selected?.kind === "polar";
   if (needsParameter !== Object.prototype.hasOwnProperty.call(value.probe, "parameter")) return false;
   return Object.keys(value.probe).every((key) => ["objectId", "x", "y", "parameter"].includes(key)) &&
     typeof value.probe.objectId === "string" && value.probe.objectId === value.objectId &&

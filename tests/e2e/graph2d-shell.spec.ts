@@ -325,3 +325,33 @@ test("Graphs authors a parametric curve and keeps its parameter in the probe", a
     await closeSurfaceApp(app);
   }
 });
+
+test("Graphs renders a signed-radius polar curve and switches grid modes", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    const functions = app.page.getByLabel("Graph functions");
+    await functions.getByRole("button", { name: "Add polar" }).click();
+    await functions.getByLabel("Polar radius expression").fill("-2");
+    await functions.getByRole("button", { name: "Save polar" }).click();
+    await expect(app.page.locator('[data-graph2d-path="polar_1"]')).toHaveAttribute("d", /[ML]/);
+    await app.page.getByRole("button", { name: "Toggle polar grid" }).click();
+    await expect(app.page.getByTestId("graph2d-polar-grid")).toBeVisible();
+    await expect(app.page.getByRole("button", { name: "Toggle polar grid" })).toHaveAttribute("aria-pressed", "true");
+    await functions.getByRole("button", { name: "Select r" }).click();
+    const inspector = app.page.getByLabel("Graph inspector");
+    await expect(inspector.getByTestId("graph2d-probe-parameter")).toBeVisible();
+    await expect(inspector.getByTestId("graph2d-probe-radius")).toContainText("-2.0000000");
+    await expect(inspector.getByTestId("graph2d-probe-coordinates")).toContainText("-2.00000");
+    await functions.getByRole("button", { name: "Edit r" }).click();
+    await functions.getByLabel("Polar radius expression").fill("1+cos(theta)");
+    await functions.getByRole("button", { name: "Save polar" }).click();
+    await expect(inspector).toContainText("r(θ) = 1+cos(theta)");
+    await app.page.getByRole("button", { name: "Toggle polar grid" }).click();
+    await expect(app.page.getByTestId("graph2d-polar-grid")).toHaveCount(0);
+  } finally {
+    await closeSurfaceApp(app);
+  }
+});

@@ -1,5 +1,6 @@
 import { evaluateGraph2DExpression } from "./graph2dExpression";
 import { evaluateGraph2DParametric } from "./graph2dParametric";
+import { evaluateGraph2DPolar } from "./graph2dPolar";
 import type { Graph2DDocument, Graph2DSelection } from "./graph2dDocument";
 import type { Graph2DSamplePoint, Graph2DSamplingArtifact } from "./graph2dSampling";
 import { graph2DScreenToWorld, graph2DWorldToScreen, type Graph2DScreenPoint, type Graph2DScreenSize, type Graph2DViewport } from "./graph2dViewport";
@@ -31,9 +32,10 @@ export const pickGraph2DProbe = (input: Readonly<{
     if (!input.document.display.objects[order]?.visible) return;
     const artifact = artifacts.get(object.id);
     if (!artifact) return;
-    if (object.kind === "parametric") {
+    if (object.kind === "parametric" || object.kind === "polar") {
       const evaluate = (parameter: number) => {
-        const point = evaluateGraph2DParametric(object, variables, parameter);
+        const point = object.kind === "parametric" ? evaluateGraph2DParametric(object, variables, parameter) :
+          evaluateGraph2DPolar(object, variables, parameter);
         if (!point) return null;
         const screen = graph2DWorldToScreen(input.viewport, input.size, point);
         return { ...point, distancePx: Math.hypot(screen.x - input.screen.x, screen.y - input.screen.y) };
@@ -141,13 +143,14 @@ export const selectionForGraph2DObject = (
   const segments = artifact?.segments.filter((entry) => entry.points.length > 0) ?? [];
   if (!segments.length) return { objectId, probe: null };
   const target = Number.isFinite(preferredX) ? preferredX! : (document.display.viewport.xMin + document.display.viewport.xMax) / 2;
-  if (object.kind === "parametric") {
+  if (object.kind === "parametric" || object.kind === "polar") {
     const points = segments.flatMap((segment) => segment.points).filter((point) => point.parameter !== undefined);
     const nearest = points.reduce<Graph2DSamplePoint | null>((best, point) => !best ||
       Math.abs(point.x - target) < Math.abs(best.x - target) ? point : best, null);
     if (!nearest || nearest.parameter === undefined) return { objectId, probe: null };
     const variables = Object.fromEntries(document.source.variables.map((entry) => [entry.name, entry.value]));
-    const exact = evaluateGraph2DParametric(object, variables, nearest.parameter);
+    const exact = object.kind === "parametric" ? evaluateGraph2DParametric(object, variables, nearest.parameter) :
+      evaluateGraph2DPolar(object, variables, nearest.parameter);
     return { objectId, probe: exact ? { objectId, x: exact.x, y: exact.y, parameter: nearest.parameter } : null };
   }
   const included = (candidate: Graph2DSamplePoint) =>

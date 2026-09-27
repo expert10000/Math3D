@@ -24268,6 +24268,9 @@ const App: React.FC = () => {
   const commitGraph2DViewport = useCallback((viewport: Graph2DViewport) => {
     setGraph2dDocument(graph2dAdapterRef.current!.commitViewport(viewport));
   }, []);
+  const commitGraph2DGridMode = useCallback((mode: "cartesian" | "polar") => {
+    setGraph2dDocument(graph2dAdapterRef.current!.commitGridMode(mode));
+  }, []);
   const commitGraph2DAuthoring = useCallback((action: Graph2DAuthoringAction) => {
     const adapter = graph2dAdapterRef.current!;
     setGraph2dDocument(adapter.commitScene(applyGraph2DAuthoring(adapter.document(), action), action.type));
@@ -89453,7 +89456,8 @@ case "mobius":
           </div>
         ) : mode === "graphs" ? (
           <GraphsWorkspace dockLayout={activeDockLayout} document={graph2dDocument}
-            onViewportCommit={commitGraph2DViewport} onAuthoringCommit={commitGraph2DAuthoring}
+            onViewportCommit={commitGraph2DViewport} onGridModeCommit={commitGraph2DGridMode}
+            onAuthoringCommit={commitGraph2DAuthoring}
             onSelectionCommit={commitGraph2DSelection}
             onUndo={undoGraph2DViewport} onRedo={redoGraph2DViewport} />
         ) : mode === "curves" ? (
