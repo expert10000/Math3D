@@ -1,4 +1,5 @@
 import { evaluateGraph2DExpression } from "./graph2dExpression";
+import { evaluateGraph2DParametric } from "./graph2dParametric";
 import type { Graph2DDocument, Graph2DSelection } from "./graph2dDocument";
 import type { Graph2DSamplePoint, Graph2DSamplingArtifact } from "./graph2dSampling";
 import { graph2DScreenToWorld, graph2DWorldToScreen, type Graph2DScreenPoint, type Graph2DScreenSize, type Graph2DViewport } from "./graph2dViewport";
@@ -24,11 +25,47 @@ export const pickGraph2DProbe = (input: Readonly<{
   const right = graph2DScreenToWorld(input.viewport, input.size, { x: input.screen.x + radius, y: input.screen.y }).x;
   const variables = Object.fromEntries(input.document.source.variables.map((entry) => [entry.name, entry.value]));
   const artifacts = new Map(input.series.map((entry) => [entry.objectId, entry.artifact]));
-  const candidates: { objectId: string; x: number; y: number; distancePx: number; order: number }[] = [];
+  const candidates: { objectId: string; x: number; y: number; parameter?: number;
+    distancePx: number; order: number }[] = [];
   input.document.source.objects.forEach((object, order) => {
     if (!input.document.display.objects[order]?.visible) return;
     const artifact = artifacts.get(object.id);
     if (!artifact) return;
+    if (object.kind === "parametric") {
+      const evaluate = (parameter: number) => {
+        const point = evaluateGraph2DParametric(object, variables, parameter);
+        if (!point) return null;
+        const screen = graph2DWorldToScreen(input.viewport, input.size, point);
+        return { ...point, distancePx: Math.hypot(screen.x - input.screen.x, screen.y - input.screen.y) };
+      };
+      const branchCandidates: typeof candidates = [];
+      for (const segment of artifact.segments) for (let index = 0; index < segment.points.length - 1; index += 1) {
+        const a = segment.points[index]!, b = segment.points[index + 1]!;
+        if (a.parameter === undefined || b.parameter === undefined) continue;
+        const sa = graph2DWorldToScreen(input.viewport, input.size, a);
+        const sb = graph2DWorldToScreen(input.viewport, input.size, b);
+        const dx = sb.x - sa.x, dy = sb.y - sa.y;
+        const projection = dx * dx + dy * dy > 0 ? Math.max(0, Math.min(1,
+          ((input.screen.x - sa.x) * dx + (input.screen.y - sa.y) * dy) / (dx * dx + dy * dy))) : 0;
+        if (Math.hypot(sa.x + projection * dx - input.screen.x,
+          sa.y + projection * dy - input.screen.y) > radius + 2) continue;
+        let min = a.parameter, max = b.parameter;
+        for (let step = 0; step < 10; step += 1) {
+          const p1 = min + (max - min) / 3, p2 = max - (max - min) / 3;
+          const d1 = evaluate(p1)?.distancePx ?? Infinity, d2 = evaluate(p2)?.distancePx ?? Infinity;
+          if (d1 <= d2) max = p2; else min = p1;
+        }
+        const best = evaluate((min + max) / 2);
+        if (best && best.distancePx <= radius) branchCandidates.push({ ...best, objectId: object.id, order });
+      }
+      branchCandidates.sort((a, b) => a.distancePx - b.distancePx);
+      const separation = (object.domain.max - object.domain.min) / 128;
+      for (const candidate of branchCandidates) {
+        if (!candidates.some((entry) => entry.objectId === object.id && entry.parameter !== undefined &&
+          Math.abs(entry.parameter - candidate.parameter!) < separation)) candidates.push(candidate);
+      }
+      return;
+    }
     let best = { x: 0, y: 0, distancePx: Number.POSITIVE_INFINITY };
     const evaluate = (x: number) => {
       if ((x <= object.domain.min && !object.domain.includeMin) || (x >= object.domain.max && !object.domain.includeMax)) return null;
@@ -80,11 +117,17 @@ export const pickGraph2DProbe = (input: Readonly<{
   if (input.previous?.objectId && input.previous.probe && overlapping.length > 1) {
     const previousScreen = graph2DWorldToScreen(input.viewport, input.size, input.previous.probe);
     if (Math.hypot(previousScreen.x - input.screen.x, previousScreen.y - input.screen.y) <= radius) {
-      const previousIndex = overlapping.findIndex((entry) => entry.objectId === input.previous!.objectId);
+      const previousIndex = overlapping.findIndex((entry) => entry.objectId === input.previous!.objectId &&
+        (entry.parameter === undefined && input.previous!.probe?.parameter === undefined ||
+          entry.parameter !== undefined && input.previous!.probe?.parameter !== undefined &&
+          Math.abs(entry.parameter - input.previous!.probe!.parameter!) <=
+            (input.document.source.objects.find((object) => object.id === entry.objectId)!.domain.max -
+              input.document.source.objects.find((object) => object.id === entry.objectId)!.domain.min) / 128));
       if (previousIndex >= 0) winner = overlapping[(previousIndex + 1) % overlapping.length]!;
     }
   }
-  return { selection: { objectId: winner.objectId, probe: { objectId: winner.objectId, x: winner.x, y: winner.y } },
+  return { selection: { objectId: winner.objectId, probe: { objectId: winner.objectId,
+    x: winner.x, y: winner.y, ...(winner.parameter === undefined ? {} : { parameter: winner.parameter }) } },
     distancePx: winner.distancePx };
 };
 
@@ -98,6 +141,15 @@ export const selectionForGraph2DObject = (
   const segments = artifact?.segments.filter((entry) => entry.points.length > 0) ?? [];
   if (!segments.length) return { objectId, probe: null };
   const target = Number.isFinite(preferredX) ? preferredX! : (document.display.viewport.xMin + document.display.viewport.xMax) / 2;
+  if (object.kind === "parametric") {
+    const points = segments.flatMap((segment) => segment.points).filter((point) => point.parameter !== undefined);
+    const nearest = points.reduce<Graph2DSamplePoint | null>((best, point) => !best ||
+      Math.abs(point.x - target) < Math.abs(best.x - target) ? point : best, null);
+    if (!nearest || nearest.parameter === undefined) return { objectId, probe: null };
+    const variables = Object.fromEntries(document.source.variables.map((entry) => [entry.name, entry.value]));
+    const exact = evaluateGraph2DParametric(object, variables, nearest.parameter);
+    return { objectId, probe: exact ? { objectId, x: exact.x, y: exact.y, parameter: nearest.parameter } : null };
+  }
   const included = (candidate: Graph2DSamplePoint) =>
     (candidate.x > object.domain.min || object.domain.includeMin) &&
     (candidate.x < object.domain.max || object.domain.includeMax);

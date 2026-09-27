@@ -1,10 +1,12 @@
 import { advanceDocumentIdentity, structuralHash, type CanonicalJsonValue } from "./documentIdentity";
 import { type CommandDefinition } from "./commands";
-import { normalizeGraph2DDocument, type Graph2DDocument, type Graph2DSelection } from "./graph2dDocument";
+import { graph2DRequiredCapabilities, normalizeGraph2DDocument, type Graph2DDocument,
+  type Graph2DSelection } from "./graph2dDocument";
 import { isGraph2DViewport, type Graph2DViewport } from "./graph2dViewport";
 
 export const GRAPH2D_COMMAND_TYPES = { setViewport: "graph2d.viewport.set", replaceScene: "graph2d.scene.replace", setSelection: "graph2d.selection.set" } as const;
-export const GRAPH2D_SCENE_OPERATIONS = ["create", "edit", "duplicate", "reorder", "visibility", "style", "delete", "restore"] as const;
+export const GRAPH2D_SCENE_OPERATIONS = ["create", "edit", "create-parametric", "edit-parametric",
+  "duplicate", "reorder", "visibility", "style", "delete", "restore"] as const;
 export type Graph2DSceneOperation = (typeof GRAPH2D_SCENE_OPERATIONS)[number];
 export type Graph2DCommandState = Readonly<{ document: Graph2DDocument }>;
 
@@ -35,6 +37,7 @@ export const graph2dCommandDefinitions: readonly CommandDefinition<Graph2DComman
     const current = state.document as Graph2DDocument;
     const changed = structuralHash(scene.source) !== current.identity.structuralHash;
     const candidate = { ...current, source: scene.source, display: scene.display, selection: scene.selection,
+      requiredCapabilities: graph2DRequiredCapabilities(scene.source),
       identity: changed ? advanceDocumentIdentity(current.identity, scene.source) : current.identity };
     const normalized = normalizeGraph2DDocument(candidate);
     if (!normalized.ok) throw new TypeError(normalized.errors.join(" "));

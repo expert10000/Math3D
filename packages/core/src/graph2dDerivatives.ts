@@ -168,7 +168,8 @@ export const analyzeGraph2DDerivative = (input: Readonly<{
   tolerance?: number;
 }>): Graph2DDerivativeEstimate => {
   const object = input.document.source.objects.find((entry) => entry.id === input.objectId);
-  if (!object || !Number.isFinite(input.x) || ![1, 2].includes(input.order)) throw new TypeError("Invalid Graph2D derivative request.");
+  if (!object || object.kind !== "explicit-cartesian" || !Number.isFinite(input.x) || ![1, 2].includes(input.order))
+    throw new TypeError("Invalid Graph2D derivative request.");
   const tolerance = input.tolerance ?? GRAPH2D_DERIVATIVE_TOLERANCE;
   if (!Number.isFinite(tolerance) || tolerance <= 0 || tolerance > 0.1) throw new TypeError("Invalid derivative tolerance.");
   const started = Date.now();

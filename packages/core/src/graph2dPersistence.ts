@@ -1,6 +1,7 @@
 import { canonicalJsonStringify, createDocumentIdentity, isDocumentIdentity, structuralHash } from "./documentIdentity";
 import {
   GRAPH2D_DOCUMENT_FORMAT, GRAPH2D_DOCUMENT_SCHEMA_VERSION, GRAPH2D_EXPLICIT_CAPABILITY,
+  GRAPH2D_PARAMETRIC_CAPABILITY,
   GRAPH2D_MAX_DOCUMENT_BYTES, normalizeGraph2DDocument, type Graph2DDocument,
 } from "./graph2dDocument";
 import { parseGraph2DExpression } from "./graph2dExpression";
@@ -29,7 +30,8 @@ export const inspectGraph2DCompatibility = (value: unknown): Graph2DCompatibilit
   if (version > GRAPH2D_DOCUMENT_SCHEMA_VERSION)
     return { status: "unsupported", schemaVersion: version, title, unsupportedCapabilities: [], reason: "Future Graph2D schema version." };
   const required = Array.isArray(value.requiredCapabilities) ? value.requiredCapabilities : [];
-  const unsupportedCapabilities = required.filter((capability): capability is string => typeof capability === "string" && capability !== GRAPH2D_EXPLICIT_CAPABILITY);
+  const supported = [GRAPH2D_EXPLICIT_CAPABILITY, GRAPH2D_PARAMETRIC_CAPABILITY];
+  const unsupportedCapabilities = required.filter((capability): capability is string => typeof capability === "string" && !supported.includes(capability as typeof supported[number]));
   if (unsupportedCapabilities.length)
     return { status: "unsupported", schemaVersion: version, title, unsupportedCapabilities, reason: "Graph2D capabilities are unavailable." };
   if (version === 0)

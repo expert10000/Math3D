@@ -48,7 +48,7 @@ export const analyzeGraph2DIntervals = (input: Readonly<{
   criticalPoints?: Graph2DCriticalPointAnalysis;
 }>): Graph2DIntervalAnalysis => {
   const object = input.document.source.objects.find((entry) => entry.id === input.objectId);
-  if (!object) throw new TypeError("Graph2D function does not exist.");
+  if (!object || object.kind !== "explicit-cartesian") throw new TypeError("Graph2D explicit function does not exist.");
   const requested = input.interval ?? { min: input.document.display.viewport.xMin, max: input.document.display.viewport.xMax };
   if (!Number.isFinite(requested.min) || !Number.isFinite(requested.max) || requested.min >= requested.max)
     throw new TypeError("Invalid Graph2D interval analysis request.");

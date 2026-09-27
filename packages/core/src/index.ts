@@ -18,6 +18,7 @@ export * from "./graph2dWorkspace";
 export * from "./graph2dDocument";
 export * from "./graph2dExpression";
 export * from "./graph2dSampling";
+export * from "./graph2dParametric";
 export * from "./graph2dViewport";
 export * from "./graph2dPersistence";
 export * from "./graph2dCommands";

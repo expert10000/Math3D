@@ -50,7 +50,8 @@ export const analyzeGraph2DIntersections = (input: Readonly<{
 }>): Graph2DIntersectionAnalysis => {
   const first = input.document.source.objects.find((entry) => entry.id === input.firstObjectId);
   const second = input.document.source.objects.find((entry) => entry.id === input.secondObjectId);
-  if (!first || !second || first.id === second.id) throw new TypeError("Select two distinct Graph2D functions.");
+  if (!first || !second || first.kind !== "explicit-cartesian" || second.kind !== "explicit-cartesian" ||
+    first.id === second.id) throw new TypeError("Select two distinct explicit Graph2D functions.");
   const requested = input.interval ?? { min: input.document.display.viewport.xMin, max: input.document.display.viewport.xMax };
   if (!Number.isFinite(requested.min) || !Number.isFinite(requested.max) || requested.min >= requested.max)
     throw new TypeError("Invalid Graph2D intersection interval.");

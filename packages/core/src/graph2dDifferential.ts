@@ -47,7 +47,7 @@ export const analyzeGraph2DLocalDifferential = (document: Graph2DDocument): Grap
   const probe = document.selection.probe;
   if (!probe || !document.selection.objectId || probe.objectId !== document.selection.objectId) return null;
   const object = document.source.objects.find((entry) => entry.id === probe.objectId);
-  if (!object) return null;
+  if (!object || object.kind !== "explicit-cartesian") return null;
   const visible = document.display.objects.find((entry) => entry.objectId === object.id)?.visible === true;
   const started = Date.now();
   const source = sourceGeneration(document);

@@ -299,3 +299,29 @@ test("Graphs measures arc length and withholds a singular full-interval value", 
     await closeSurfaceApp(app);
   }
 });
+
+test("Graphs authors a parametric curve and keeps its parameter in the probe", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    const functions = app.page.getByLabel("Graph functions");
+    await functions.getByRole("button", { name: "Add parametric" }).click();
+    await functions.getByLabel("Parametric name").fill("loop");
+    await functions.getByLabel("Parametric x expression").fill("sin(t)");
+    await functions.getByLabel("Parametric y expression").fill("sin(2*t)");
+    await functions.getByRole("button", { name: "Save parametric" }).click();
+    await expect(app.page.locator('[data-graph2d-path="parametric_1"]')).toHaveAttribute("d", /[ML]/);
+    await functions.getByRole("button", { name: "Select loop" }).click();
+    const inspector = app.page.getByLabel("Graph inspector");
+    await expect(inspector.getByTestId("graph2d-probe-parameter")).toBeVisible();
+    await expect(inspector).toContainText("x(t) = sin(t)");
+    await functions.getByRole("button", { name: "Edit loop" }).click();
+    await functions.getByLabel("Parametric y expression").fill("2*sin(2*t)");
+    await functions.getByRole("button", { name: "Save parametric" }).click();
+    await expect(inspector).toContainText("y(t) = 2*sin(2*t)");
+  } finally {
+    await closeSurfaceApp(app);
+  }
+});

@@ -39,7 +39,7 @@ export const analyzeGraph2DIntegral = (input: Readonly<{
   tolerance?: number;
 }>): Graph2DIntegralAnalysis => {
   const object = input.document.source.objects.find((entry) => entry.id === input.objectId);
-  if (!object || !Number.isFinite(input.interval.min) || !Number.isFinite(input.interval.max) ||
+  if (!object || object.kind !== "explicit-cartesian" || !Number.isFinite(input.interval.min) || !Number.isFinite(input.interval.max) ||
     input.interval.min >= input.interval.max || !["signed", "absolute"].includes(input.mode))
     throw new TypeError("Invalid Graph2D integral request.");
   const tolerance = input.tolerance ?? 1e-6;

@@ -32,7 +32,7 @@ export const analyzeGraph2DArcLength = (input: Readonly<{
   tolerance?: number;
 }>): Graph2DArcLengthAnalysis => {
   const object = input.document.source.objects.find((entry) => entry.id === input.objectId);
-  if (!object || !Number.isFinite(input.interval.min) || !Number.isFinite(input.interval.max) ||
+  if (!object || object.kind !== "explicit-cartesian" || !Number.isFinite(input.interval.min) || !Number.isFinite(input.interval.max) ||
     input.interval.min >= input.interval.max) throw new TypeError("Invalid Graph2D arc-length request.");
   const tolerance = input.tolerance ?? 1e-6;
   if (!Number.isFinite(tolerance) || tolerance <= 0 || tolerance > 0.1)

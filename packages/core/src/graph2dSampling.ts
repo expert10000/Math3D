@@ -4,7 +4,7 @@ import type { Graph2DDomain, Graph2DDisplay } from "./graph2dDocument";
 export const GRAPH2D_SAMPLER_VERSION = 1 as const;
 export const GRAPH2D_MAX_SEGMENTS = 10000;
 export const GRAPH2D_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
-export type Graph2DSamplePoint = Readonly<{ x: number; y: number }>;
+export type Graph2DSamplePoint = Readonly<{ x: number; y: number; parameter?: number }>;
 export type Graph2DSampleSegment = Readonly<{
   points: readonly Graph2DSamplePoint[];
   openStart: boolean;

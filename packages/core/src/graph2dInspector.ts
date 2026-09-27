@@ -3,6 +3,7 @@ import type { Graph2DSamplingArtifact, Graph2DSamplingDiagnostic } from "./graph
 
 export type Graph2DInspectorSummary = Readonly<{
   objectId: string;
+  kind: Graph2DDocument["source"]["objects"][number]["kind"];
   label: string;
   expression: string;
   domain: Graph2DDomain;
@@ -38,7 +39,9 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
   const visibleArtifact = style.visible && observation?.objectId === object.id ? observation.artifact : undefined;
   const diagnostics = visibleArtifact?.diagnostics ?? [];
   return {
-    objectId: object.id, label: object.label, expression: object.expression.source,
+    objectId: object.id, kind: object.kind, label: object.label,
+    expression: object.kind === "explicit-cartesian" ? object.expression.source :
+      `x(t) = ${object.xExpression.source}, y(t) = ${object.yExpression.source}`,
     domain: object.domain, style,
     probe: document.selection.probe?.objectId === object.id ? document.selection.probe : null,
     probeMethod: document.selection.probe?.objectId === object.id ? "direct-expression-floating-point" : "unavailable",
@@ -50,7 +53,8 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
       invalidSampleCount: diagnostics.find((entry) => entry.code === "invalid-sample")?.count ?? 0,
     },
     provenance: { documentId: document.identity.id, revision: document.identity.revision,
-      structuralHash: document.identity.structuralHash, expressionAstVersion: object.expression.ast.version,
+      structuralHash: document.identity.structuralHash,
+      expressionAstVersion: object.kind === "explicit-cartesian" ? object.expression.ast.version : object.xExpression.ast.version,
       samplerVersion: visibleArtifact?.samplerVersion ?? null },
   };
 };

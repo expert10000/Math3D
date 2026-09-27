@@ -9,6 +9,7 @@ import { parseGraph2DExpression, type Graph2DExpressionAst } from "./graph2dExpr
 export const GRAPH2D_DOCUMENT_FORMAT = "math3d.graph2d-document" as const;
 export const GRAPH2D_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export const GRAPH2D_EXPLICIT_CAPABILITY = "graph2d.explicit.v1" as const;
+export const GRAPH2D_PARAMETRIC_CAPABILITY = "graph2d.parametric.v1" as const;
 export const GRAPH2D_OBJECT_KINDS = ["explicit-cartesian", "parametric", "polar", "implicit", "inequality", "point-series", "piecewise"] as const;
 export type Graph2DObjectKind = (typeof GRAPH2D_OBJECT_KINDS)[number];
 export const GRAPH2D_RESERVED_OBJECT_KINDS = GRAPH2D_OBJECT_KINDS.slice(1);
@@ -24,11 +25,23 @@ export type Graph2DExplicitObject = Readonly<{
   expression: Readonly<{ source: string; variable: "x"; ast: Graph2DExpressionAst }>;
   domain: Graph2DDomain;
 }>;
+export type Graph2DParametricObject = Readonly<{
+  id: string;
+  kind: "parametric";
+  label: string;
+  xExpression: Readonly<{ source: string; variable: "t"; ast: Graph2DExpressionAst }>;
+  yExpression: Readonly<{ source: string; variable: "t"; ast: Graph2DExpressionAst }>;
+  domain: Graph2DDomain;
+}>;
+export type Graph2DGraphObject = Graph2DExplicitObject | Graph2DParametricObject;
 export type Graph2DSource = Readonly<{
-  objects: readonly Graph2DExplicitObject[];
+  objects: readonly Graph2DGraphObject[];
   variables: readonly Readonly<{ name: string; value: number }>[];
   assumptions: readonly string[];
 }>;
+export const graph2DRequiredCapabilities = (source: Graph2DSource): Graph2DDocument["requiredCapabilities"] =>
+  [GRAPH2D_EXPLICIT_CAPABILITY,
+    ...(source.objects.some((object) => object.kind === "parametric") ? [GRAPH2D_PARAMETRIC_CAPABILITY] : [])];
 export type Graph2DObjectDisplay = Readonly<{
   objectId: string;
   visible: boolean;
@@ -42,13 +55,13 @@ export type Graph2DDisplay = Readonly<{
   objects: readonly Graph2DObjectDisplay[];
   sampling: Readonly<{ maxSamples: number; maxDepth: number; tolerancePx: number }>;
 }>;
-export type Graph2DProbe = Readonly<{ objectId: string; x: number; y: number }>;
+export type Graph2DProbe = Readonly<{ objectId: string; x: number; y: number; parameter?: number }>;
 export type Graph2DSelection = Readonly<{ objectId: string | null; probe: Graph2DProbe | null }>;
 export type Graph2DDocument = Readonly<{
   format: typeof GRAPH2D_DOCUMENT_FORMAT;
   schemaVersion: typeof GRAPH2D_DOCUMENT_SCHEMA_VERSION;
   identity: DocumentIdentity;
-  requiredCapabilities: readonly [typeof GRAPH2D_EXPLICIT_CAPABILITY];
+  requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY)[];
   source: Graph2DSource;
   display: Graph2DDisplay;
   selection: Graph2DSelection;
@@ -73,9 +86,9 @@ const variableName = (value: unknown): value is string => typeof value === "stri
 const integerWithin = (value: unknown, min: number, max: number): value is number =>
   Number.isSafeInteger(value) && Number(value) >= min && Number(value) <= max;
 const clone = <T>(value: T): T => JSON.parse(canonicalJsonStringify(value)) as T;
-const validExpression = (value: unknown, variables: readonly string[]): boolean => {
+const validExpression = (value: unknown, variables: readonly string[], variable: "x" | "t" = "x"): boolean => {
   if (!record(value) || !exact(value, ["source", "variable", "ast"]) ||
-      !bounded(value.source, GRAPH2D_MAX_EXPRESSION_LENGTH) || value.variable !== "x") return false;
+      !bounded(value.source, GRAPH2D_MAX_EXPRESSION_LENGTH) || value.variable !== variable) return false;
   const parsed = parseGraph2DExpression(value.source, variables);
   if (!parsed.ok) return false;
   try { return canonicalJsonStringify(value.ast) === canonicalJsonStringify(parsed.ast); }
@@ -88,6 +101,11 @@ const validDomain = (value: unknown): value is Graph2DDomain => record(value) &&
 const validObject = (value: unknown, variables: readonly string[]): value is Graph2DExplicitObject => record(value) &&
   exact(value, ["id", "kind", "label", "expression", "domain"]) && objectId(value.id) &&
   value.kind === "explicit-cartesian" && bounded(value.label, 160) && validExpression(value.expression, variables) && validDomain(value.domain);
+const validParametricObject = (value: unknown, variables: readonly string[]): value is Graph2DParametricObject => record(value) &&
+  exact(value, ["id", "kind", "label", "xExpression", "yExpression", "domain"]) && objectId(value.id) &&
+  value.kind === "parametric" && bounded(value.label, 160) &&
+  validExpression(value.xExpression, variables, "t") && validExpression(value.yExpression, variables, "t") &&
+  validDomain(value.domain);
 const validSource = (value: unknown): value is Graph2DSource => {
   if (!record(value) || !exact(value, ["objects", "variables", "assumptions"]) || !Array.isArray(value.objects) ||
       value.objects.length > GRAPH2D_MAX_OBJECTS ||
@@ -97,9 +115,11 @@ const validSource = (value: unknown): value is Graph2DSource => {
       new Set(value.variables.map((entry: { name: string }) => entry.name)).size !== value.variables.length ||
       !Array.isArray(value.assumptions) || value.assumptions.length > 32 ||
       !value.assumptions.every((entry: unknown) => bounded(entry, 160))) return false;
-  const names = ["x", ...value.variables.map((entry: { name: string }) => entry.name)];
-  return parseGraph2DExpression("x", names).ok && value.objects.every((entry: unknown) => validObject(entry, names)) &&
-    new Set(value.objects.map((entry: Graph2DExplicitObject) => entry.id)).size === value.objects.length;
+  const names = value.variables.map((entry: { name: string }) => entry.name);
+  if (names.includes("t") && value.objects.some((entry: Graph2DGraphObject) => entry.kind === "parametric")) return false;
+  return value.objects.every((entry: unknown) => validObject(entry, ["x", ...names]) ||
+    validParametricObject(entry, ["t", ...names])) &&
+    new Set(value.objects.map((entry: Graph2DGraphObject) => entry.id)).size === value.objects.length;
 };
 const validDisplay = (value: unknown, source: Graph2DSource): value is Graph2DDisplay => {
   if (!record(value) || !exact(value, ["viewport", "axes", "objects", "sampling"]) ||
@@ -127,9 +147,16 @@ const validSelection = (value: unknown, source: Graph2DSource): value is Graph2D
   const ids = new Set(source.objects.map((entry) => entry.id));
   if (value.objectId !== null && (typeof value.objectId !== "string" || !ids.has(value.objectId))) return false;
   if (value.probe === null) return true;
-  return record(value.probe) && exact(value.probe, ["objectId", "x", "y"]) &&
+  if (!record(value.probe) || ![3, 4].includes(Object.keys(value.probe).length) ||
+    !["objectId", "x", "y"].every((key) => Object.prototype.hasOwnProperty.call(value.probe, key))) return false;
+  const selected = source.objects.find((entry) => entry.id === value.objectId);
+  const needsParameter = selected?.kind === "parametric";
+  if (needsParameter !== Object.prototype.hasOwnProperty.call(value.probe, "parameter")) return false;
+  return Object.keys(value.probe).every((key) => ["objectId", "x", "y", "parameter"].includes(key)) &&
     typeof value.probe.objectId === "string" && value.probe.objectId === value.objectId &&
-    finite(value.probe.x) && finite(value.probe.y);
+    finite(value.probe.x) && finite(value.probe.y) &&
+    (!needsParameter || finite(value.probe.parameter) && value.probe.parameter >= selected.domain.min &&
+      value.probe.parameter <= selected.domain.max);
 };
 
 export const normalizeGraph2DDocument = (value: unknown): ValidationResult<Graph2DDocument> => {
@@ -141,8 +168,11 @@ export const normalizeGraph2DDocument = (value: unknown): ValidationResult<Graph
   if (!isDocumentIdentity(value.identity) || !record(value.identity) ||
       !exact(value.identity, ["schemaVersion", "id", "revision", "structuralHash"]) ||
       !String(value.identity.id).startsWith("math3d:graph2d:")) errors.push("Invalid Graph2D identity.");
-  if (!Array.isArray(value.requiredCapabilities) || value.requiredCapabilities.length !== 1 ||
-      value.requiredCapabilities[0] !== GRAPH2D_EXPLICIT_CAPABILITY) errors.push("Unsupported Graph2D required capabilities.");
+  const expectedCapabilities = validSource(value.source) ? graph2DRequiredCapabilities(value.source) :
+    [GRAPH2D_EXPLICIT_CAPABILITY];
+  if (!Array.isArray(value.requiredCapabilities) ||
+      canonicalJsonStringify(value.requiredCapabilities) !== canonicalJsonStringify(expectedCapabilities))
+    errors.push("Unsupported Graph2D required capabilities.");
   if (!validSource(value.source)) errors.push("Invalid Graph2D source or object list.");
   if (validSource(value.source) && !validDisplay(value.display, value.source)) errors.push("Invalid Graph2D display intent.");
   if (validSource(value.source) && !validSelection(value.selection, value.source)) errors.push("Invalid Graph2D selection or probe.");
@@ -176,7 +206,7 @@ export const createGraph2DDocument = (input: {
   const candidate = {
     format: GRAPH2D_DOCUMENT_FORMAT, schemaVersion: GRAPH2D_DOCUMENT_SCHEMA_VERSION,
     identity: input.identity ?? createDocumentIdentity(createStableDocumentId("graph2d", input.stableKey), source),
-    requiredCapabilities: [GRAPH2D_EXPLICIT_CAPABILITY], source,
+    requiredCapabilities: graph2DRequiredCapabilities(source), source,
     display,
     selection: input.selection ?? { objectId: null, probe: null }, metadata: { title: input.title ?? "Graphs" },
   };

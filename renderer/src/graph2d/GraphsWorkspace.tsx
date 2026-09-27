@@ -8,6 +8,7 @@ import {
   isGraph2DIntersectionCurrent,
   isGraph2DLocalDifferentialCurrent, queryGraph2DInspector,
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
+  sampleGraph2DParametric,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
   type Graph2DIntegralMode,
 } from "@math3d/core";
@@ -86,8 +87,10 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         maxSamples: Math.min(2000, document.display.sampling.maxSamples),
         maxDepth: Math.min(8, document.display.sampling.maxDepth),
         tolerancePx: Math.max(2, document.display.sampling.tolerancePx) } : document.display.sampling;
-      return [{ objectId: object.id, style, artifact: sampleGraph2DExplicit({ ast: object.expression.ast,
-        variables, domain: object.domain, viewport, width: size.width, height: size.height, policy }) }];
+      const artifact = object.kind === "explicit-cartesian" ? sampleGraph2DExplicit({ ast: object.expression.ast,
+        variables, domain: object.domain, viewport, width: size.width, height: size.height, policy }) :
+        sampleGraph2DParametric({ object, variables, viewport, width: size.width, height: size.height, policy });
+      return [{ objectId: object.id, style, artifact }];
     });
   }, [document, size, viewport, previewViewport]);
   const pick = (x: number, y: number, previous?: Graph2DSelection) => pickGraph2DProbe({ document, series,
@@ -180,13 +183,14 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
     if (key === "f") { event.preventDefault(); fitVisible(); }
   };
   const selectedSeries = series.find((item) => item.objectId === document.selection.objectId);
+  const selectedObject = document.source.objects.find((item) => item.id === document.selection.objectId);
   const inspected = queryGraph2DInspector(document, selectedSeries);
   const criticalPoints = useMemo(() => {
-    if (!document.selection.objectId) return null;
+    if (!selectedObject || selectedObject.kind !== "explicit-cartesian") return null;
     const bounds = resolveGraph2DViewport(document.display.viewport, size);
-    return analyzeGraph2DCriticalPoints({ document, objectId: document.selection.objectId,
+    return analyzeGraph2DCriticalPoints({ document, objectId: selectedObject.id,
       interval: { min: bounds.xMin, max: bounds.xMax } });
-  }, [document, size]);
+  }, [document, size, selectedObject]);
   const intervals = useMemo(() => criticalPoints ? analyzeGraph2DIntervals({ document,
     objectId: criticalPoints.objectId, interval: criticalPoints.interval, criticalPoints }) : null,
   [document, criticalPoints]);
@@ -201,7 +205,8 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const areaMin = areaDraft.min.trim() === "" ? NaN : Number(areaDraft.min);
   const areaMax = areaDraft.max.trim() === "" ? NaN : Number(areaDraft.max);
   const areaValid = Number.isFinite(areaMin) && Number.isFinite(areaMax) && areaMin < areaMax;
-  const otherFunctions = document.source.objects.filter((entry) => entry.id !== document.selection.objectId);
+  const otherFunctions = document.source.objects.filter((entry) => entry.kind === "explicit-cartesian" &&
+    selectedObject?.kind === "explicit-cartesian" && entry.id !== document.selection.objectId);
   const secondId = otherFunctions.some((entry) => entry.id === intersectionDraft.secondId) ?
     intersectionDraft.secondId : otherFunctions[0]?.id ?? "";
   const intersectionMin = intersectionDraft.min.trim() === "" ? NaN : Number(intersectionDraft.min);
@@ -230,12 +235,15 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const inspector = inspected ? <div className="graph2d-inspector">
     <dl className="graph2d-inspector-details">
       <dt>Function</dt><dd>{inspected.label}</dd>
-      <dt>Source</dt><dd><code>y = {inspected.expression}</code></dd>
-      <dt>Domain</dt><dd>{inspected.domain.includeMin ? "[" : "("}{inspected.domain.min}, {inspected.domain.max}{inspected.domain.includeMax ? "]" : ")"}</dd>
+      <dt>Source</dt><dd><code>{inspected.kind === "explicit-cartesian" ? `y = ${inspected.expression}` : inspected.expression}</code></dd>
+      <dt>{inspected.kind === "parametric" ? "Parameter t" : "Domain"}</dt>
+      <dd>{inspected.domain.includeMin ? "[" : "("}{inspected.domain.min}, {inspected.domain.max}{inspected.domain.includeMax ? "]" : ")"}</dd>
       <dt>Style</dt><dd><span className="graph2d-inspector-swatch" style={{ background: inspected.style.color }} />
         {inspected.style.lineStyle}, {inspected.style.lineWidth} px · {inspected.style.visible ? "visible" : "hidden"}</dd>
       <dt>Probe</dt><dd>{inspected.probe ? <span data-testid="graph2d-probe-coordinates">
         ({inspected.probe.x.toPrecision(6)}, {inspected.probe.y.toPrecision(6)})</span> : "No point selected"}</dd>
+      {inspected.probe?.parameter !== undefined && <><dt>Parameter t</dt>
+        <dd data-testid="graph2d-probe-parameter">{inspected.probe.parameter.toPrecision(8)}</dd></>}
       <dt>Probe method</dt><dd>{inspected.probeMethod === "direct-expression-floating-point" ?
         "Direct expression evaluation (floating point)" : "Unavailable"}</dd>
       <dt>Sampling</dt><dd data-testid="graph2d-sampling-status">Adaptive bounded polyline · {inspected.sampling.status}</dd>

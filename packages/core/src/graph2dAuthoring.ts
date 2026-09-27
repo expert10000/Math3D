@@ -8,9 +8,18 @@ export type Graph2DFunctionDraft = Readonly<{
   domain: Graph2DDomain;
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
 }>;
+export type Graph2DParametricDraft = Readonly<{
+  label: string;
+  xExpression: string;
+  yExpression: string;
+  domain: Graph2DDomain;
+  style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
+}>;
 export type Graph2DAuthoringAction =
   | Readonly<{ type: "create"; draft: Graph2DFunctionDraft }>
   | Readonly<{ type: "edit"; objectId: string; draft: Graph2DFunctionDraft }>
+  | Readonly<{ type: "create-parametric"; draft: Graph2DParametricDraft }>
+  | Readonly<{ type: "edit-parametric"; objectId: string; draft: Graph2DParametricDraft }>
   | Readonly<{ type: "duplicate" | "delete" | "visibility"; objectId: string }>
   | Readonly<{ type: "reorder"; objectId: string; toIndex: number }>;
 
@@ -31,6 +40,29 @@ export const validateGraph2DFunctionDraft = (draft: Graph2DFunctionDraft, variab
   return errors;
 };
 
+export const validateGraph2DParametricDraft = (draft: Graph2DParametricDraft,
+  variables: readonly string[] = ["t"]): readonly string[] => {
+  const errors: string[] = [];
+  if (!draft.label.trim() || draft.label !== draft.label.trim() || draft.label.length > 160)
+    errors.push("Enter a label of 1–160 characters without surrounding spaces.");
+  for (const [name, expression] of [["x(t)", draft.xExpression], ["y(t)", draft.yExpression]]) {
+    if (!expression.trim() || expression !== expression.trim() || expression.length > 2048)
+      errors.push(`Enter a valid ${name} expression of 1–2048 characters.`);
+    else {
+      const parsed = parseGraph2DExpression(expression, variables);
+      if (!parsed.ok) errors.push(...parsed.diagnostics.map((diagnostic) => diagnostic.message));
+    }
+  }
+  if (!Number.isFinite(draft.domain.min) || !Number.isFinite(draft.domain.max) || draft.domain.min >= draft.domain.max ||
+    typeof draft.domain.includeMin !== "boolean" || typeof draft.domain.includeMax !== "boolean")
+    errors.push("Parameter minimum must be less than maximum.");
+  if (!/^#[0-9a-fA-F]{6}$/.test(draft.style.color) || !Number.isFinite(draft.style.lineWidth) ||
+    draft.style.lineWidth < 0.5 || draft.style.lineWidth > 12 ||
+    !["solid", "dashed", "dotted"].includes(draft.style.lineStyle) || typeof draft.style.visible !== "boolean")
+    errors.push("Choose a valid color, line width, and line style.");
+  return errors;
+};
+
 export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2DAuthoringAction): Graph2DScene => {
   const objects = [...document.source.objects];
   const displays = [...document.display.objects];
@@ -38,6 +70,8 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
   const index = "objectId" in action ? objects.findIndex((entry) => entry.id === action.objectId) : -1;
   if ("objectId" in action && index < 0) throw new TypeError("Function does not exist.");
   if (action.type === "create" || action.type === "edit") {
+    if (action.type === "edit" && objects[index]?.kind !== "explicit-cartesian")
+      throw new TypeError("Selected object is not an explicit function.");
     const names = ["x", ...document.source.variables.map((entry) => entry.name)];
     const errors = validateGraph2DFunctionDraft(action.draft, names);
     if (errors.length) throw new TypeError(errors.join(" "));
@@ -53,6 +87,32 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       expression: { source: action.draft.expression, variable: "x" as const, ast: parsed.ast }, domain: action.draft.domain };
     const display = { objectId: id, ...action.draft.style };
     if (action.type === "create") { objects.push(object); displays.push(display); }
+    else { objects[index] = object; displays[index] = display; }
+    selection = { objectId: id, probe: null };
+  } else if (action.type === "create-parametric" || action.type === "edit-parametric") {
+    if (action.type === "edit-parametric" && objects[index]?.kind !== "parametric")
+      throw new TypeError("Selected object is not parametric.");
+    if (document.source.variables.some((entry) => entry.name === "t"))
+      throw new TypeError("The parameter name t conflicts with a document variable.");
+    const names = ["t", ...document.source.variables.map((entry) => entry.name)];
+    const errors = validateGraph2DParametricDraft(action.draft, names);
+    if (errors.length) throw new TypeError(errors.join(" "));
+    const parsedX = parseGraph2DExpression(action.draft.xExpression, names);
+    const parsedY = parseGraph2DExpression(action.draft.yExpression, names);
+    if (!parsedX.ok || !parsedY.ok) throw new TypeError("Parametric expressions are invalid.");
+    if (action.type === "create-parametric" && objects.length >= GRAPH2D_MAX_OBJECTS)
+      throw new TypeError("Function limit reached.");
+    let id = action.type === "edit-parametric" ? action.objectId : "parametric_1";
+    if (action.type === "create-parametric") {
+      let serial = 1;
+      while (objects.some((entry) => entry.id === id)) id = "parametric_" + ++serial;
+    }
+    const object = { id, kind: "parametric" as const, label: action.draft.label,
+      xExpression: { source: action.draft.xExpression, variable: "t" as const, ast: parsedX.ast },
+      yExpression: { source: action.draft.yExpression, variable: "t" as const, ast: parsedY.ast },
+      domain: action.draft.domain };
+    const display = { objectId: id, ...action.draft.style };
+    if (action.type === "create-parametric") { objects.push(object); displays.push(display); }
     else { objects[index] = object; displays[index] = display; }
     selection = { objectId: id, probe: null };
   } else if (action.type === "duplicate") {
