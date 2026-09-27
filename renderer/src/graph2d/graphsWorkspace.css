@@ -90,6 +90,17 @@
 .graph2d-area p { margin: 7px 0; }
 .graph2d-area-overlay { pointer-events: none; fill: #3b82f6; opacity: .25; }
 .graph2d-area-absolute { fill: #16a34a; }
+.graph2d-intersections { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 10px; font-size: 12px; }
+.graph2d-intersections h3 { margin: 0 0 8px; font-size: 14px; }
+.graph2d-intersection-controls { display: grid; gap: 6px; }
+.graph2d-intersection-controls label { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.graph2d-intersection-controls select, .graph2d-intersection-controls input { width: 112px; min-width: 0; }
+.graph2d-intersection-controls button { justify-self: start; }
+.graph2d-intersection-list { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 5px; }
+.graph2d-intersection-list li { border: 1px solid var(--border); border-radius: 6px; padding: 5px; }
+.graph2d-intersection-list button { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 2px; }
+.graph2d-intersection-list small, .graph2d-intersections small { display: block; margin-top: 4px; opacity: .7; }
+.graph2d-intersection-overlays { fill: #f59e0b; stroke: #1f2937; stroke-width: 1.5; pointer-events: none; }
 .graph2d-viewer { display: grid; place-items: center; position: relative; overflow: auto; }
 .graph2d-viewer { touch-action: none; cursor: grab; }
 .graph2d-viewer:active { cursor: grabbing; }

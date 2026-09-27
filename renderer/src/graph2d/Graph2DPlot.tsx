@@ -5,6 +5,7 @@ import {
   type Graph2DProbe, type Graph2DScreenSize,
   type Graph2DIntervalAnalysis,
   type Graph2DIntegralAnalysis,
+  type Graph2DIntersectionAnalysis,
 } from "@math3d/core";
 import { projectGraph2DGrid } from "./gridProjection";
 
@@ -16,9 +17,9 @@ export type Graph2DPlotSeries = Readonly<{
 type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonly Graph2DPlotSeries[];
   selectedProbe?: Graph2DProbe | null; hoverProbe?: Graph2DProbe | null;
   overlays?: readonly Graph2DLineOverlay[]; intervals?: Graph2DIntervalAnalysis | null;
-  area?: Graph2DIntegralAnalysis | null };
+  area?: Graph2DIntegralAnalysis | null; intersections?: Graph2DIntersectionAnalysis | null };
 
-export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, overlays = [], intervals, area }: Props) {
+export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, overlays = [], intervals, area, intersections }: Props) {
   const clipId = useId();
   const grid = projectGraph2DGrid(display.viewport, size);
   const bounds = resolveGraph2DViewport(display.viewport, size);
@@ -92,6 +93,14 @@ export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, 
             <rect className={`graph2d-interval-concavity graph2d-interval-${part.concavity}`}
               x={x} y={size.height - 7} width={width} height={5} />
           </g>;
+        })}
+      </g>}
+      {intersections && <g data-testid="graph2d-intersection-overlays" data-result-id={intersections.resultId}
+        className="graph2d-intersection-overlays" clipPath={`url(#${clipId})`} aria-hidden="true">
+        {intersections.candidates.map((candidate) => {
+          const point = graph2DWorldToScreen(display.viewport, size, candidate);
+          return <circle key={candidate.candidateId} data-intersection-id={candidate.candidateId}
+            cx={point.x} cy={point.y} r={5} />;
         })}
       </g>}
       {marker(hoverProbe, "hover")}

@@ -242,3 +242,38 @@ test("Graphs integrates a selected interval and omits fill across a singularity"
     await closeSurfaceApp(app);
   }
 });
+
+test("Graphs solves only the chosen function pair and selects an intersection", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    const functions = app.page.getByLabel("Graph functions");
+    await functions.getByRole("button", { name: "Add function" }).click();
+    await functions.getByLabel("Function expression").fill("x^2");
+    await functions.getByRole("button", { name: "Save function" }).click();
+    await functions.getByRole("button", { name: "Add function" }).click();
+    await functions.getByLabel("Function name").fill("g");
+    await functions.getByLabel("Function expression").fill("1");
+    await functions.getByRole("button", { name: "Save function" }).click();
+    await functions.getByRole("button", { name: "Select f" }).click();
+    const inspector = app.page.getByLabel("Graph inspector");
+    const section = inspector.getByTestId("graph2d-intersections");
+    await expect(section.getByLabel("Intersect with function")).toHaveValue("function_2");
+    await section.getByRole("button", { name: "Solve intersections" }).click();
+    const result = section.getByTestId("graph2d-intersection-result");
+    await expect(result.getByRole("button", { name: /Select intersection at x/ })).toHaveCount(2);
+    await expect(app.page.getByTestId("graph2d-intersection-overlays")).toHaveAttribute("data-result-id",
+      (await result.getAttribute("data-result-id"))!);
+    await result.getByRole("button", { name: /Select intersection at x/ }).first().click();
+    await expect(inspector.getByTestId("graph2d-probe-coordinates")).toContainText("1.00000");
+    await section.getByLabel("Intersection interval").selectOption("custom");
+    await section.getByLabel("Intersection from x").fill("-0.5");
+    await section.getByLabel("Intersection to x").fill("0.5");
+    await section.getByRole("button", { name: "Solve intersections" }).click();
+    await expect(section.getByTestId("graph2d-intersection-result")).toContainText("No isolated candidates found");
+  } finally {
+    await closeSurfaceApp(app);
+  }
+});

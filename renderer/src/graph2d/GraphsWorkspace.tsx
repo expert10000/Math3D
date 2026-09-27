@@ -1,9 +1,11 @@
 import {
   analyzeGraph2DCriticalPoints, analyzeGraph2DIntegral, analyzeGraph2DIntervals,
+  analyzeGraph2DIntersections,
   analyzeGraph2DLocalDifferential, fitGraph2DViewport,
   GRAPH2D_DEFAULT_VIEWPORT, GRAPH2D_WORKSPACE_CONTRACT,
   graph2DWorldToScreen, panGraph2DViewport, pickGraph2DProbe, sampleGraph2DExplicit,
   isGraph2DCriticalPointCurrent, isGraph2DIntegralCurrent, isGraph2DIntervalAnalysisCurrent,
+  isGraph2DIntersectionCurrent,
   isGraph2DLocalDifferentialCurrent, queryGraph2DInspector,
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
@@ -41,6 +43,10 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const [areaDraft, setAreaDraft] = useState({ min: "-1", max: "1", mode: "signed" as Graph2DIntegralMode });
   const [areaRequest, setAreaRequest] = useState<{ objectId: string; min: number; max: number;
     mode: Graph2DIntegralMode } | null>(null);
+  const [intersectionDraft, setIntersectionDraft] = useState({ secondId: "", intervalMode: "visible" as "visible" | "custom",
+    min: "-1", max: "1" });
+  const [intersectionRequest, setIntersectionRequest] = useState<{ firstId: string; secondId: string;
+    intervalMode: "visible" | "custom"; min: number; max: number } | null>(null);
   const setPreview = (viewport: Graph2DViewport | null) => { previewRef.current = viewport; setPreviewViewport(viewport); };
   const finishWheel = () => {
     if (wheelTimerRef.current) clearTimeout(wheelTimerRef.current);
@@ -190,6 +196,22 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const areaMin = areaDraft.min.trim() === "" ? NaN : Number(areaDraft.min);
   const areaMax = areaDraft.max.trim() === "" ? NaN : Number(areaDraft.max);
   const areaValid = Number.isFinite(areaMin) && Number.isFinite(areaMax) && areaMin < areaMax;
+  const otherFunctions = document.source.objects.filter((entry) => entry.id !== document.selection.objectId);
+  const secondId = otherFunctions.some((entry) => entry.id === intersectionDraft.secondId) ?
+    intersectionDraft.secondId : otherFunctions[0]?.id ?? "";
+  const intersectionMin = intersectionDraft.min.trim() === "" ? NaN : Number(intersectionDraft.min);
+  const intersectionMax = intersectionDraft.max.trim() === "" ? NaN : Number(intersectionDraft.max);
+  const intersectionValid = !!secondId && (intersectionDraft.intervalMode === "visible" ||
+    Number.isFinite(intersectionMin) && Number.isFinite(intersectionMax) && intersectionMin < intersectionMax);
+  const intersections = useMemo(() => {
+    if (!intersectionRequest || intersectionRequest.firstId !== document.selection.objectId ||
+      !document.source.objects.some((entry) => entry.id === intersectionRequest.secondId)) return null;
+    const bounds = resolveGraph2DViewport(document.display.viewport, size);
+    return analyzeGraph2DIntersections({ document, firstObjectId: intersectionRequest.firstId,
+      secondObjectId: intersectionRequest.secondId, interval: intersectionRequest.intervalMode === "visible" ?
+        { min: bounds.xMin, max: bounds.xMax } :
+        { min: intersectionRequest.min, max: intersectionRequest.max } });
+  }, [document, size, intersectionRequest]);
   const differential = useMemo(() => analyzeGraph2DLocalDifferential(document), [document]);
   const derivatives = differential?.derivatives ?? null;
   const differentialOverlays = differential && isGraph2DLocalDifferentialCurrent(differential, document) ? differential.overlays : [];
@@ -322,6 +344,48 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         {area.skippedCells > 0 && <p>{area.skippedCells} undefined or unresolved cells skipped; partial area {area.partialValue.toPrecision(7)}.</p>}
       </div>}
     </section>
+    <section className="graph2d-intersections" data-testid="graph2d-intersections" aria-label="Pairwise intersections">
+      <h3>Pairwise intersections</h3>
+      {otherFunctions.length ? <div className="graph2d-intersection-controls">
+        <label>Second function <select aria-label="Intersect with function" value={secondId}
+          onChange={(event) => { setIntersectionDraft({ ...intersectionDraft, secondId: event.target.value }); setIntersectionRequest(null); }}>
+          {otherFunctions.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
+        </select></label>
+        <label>Interval <select aria-label="Intersection interval" value={intersectionDraft.intervalMode}
+          onChange={(event) => { setIntersectionDraft({ ...intersectionDraft,
+            intervalMode: event.target.value as "visible" | "custom" }); setIntersectionRequest(null); }}>
+          <option value="visible">Visible x range</option><option value="custom">Custom [a,b]</option>
+        </select></label>
+        {intersectionDraft.intervalMode === "custom" && <>
+          <label>From x <input aria-label="Intersection from x" type="number" value={intersectionDraft.min}
+            onChange={(event) => { setIntersectionDraft({ ...intersectionDraft, min: event.target.value }); setIntersectionRequest(null); }} /></label>
+          <label>To x <input aria-label="Intersection to x" type="number" value={intersectionDraft.max}
+            onChange={(event) => { setIntersectionDraft({ ...intersectionDraft, max: event.target.value }); setIntersectionRequest(null); }} /></label>
+        </>}
+        <button type="button" disabled={!intersectionValid} onClick={() => document.selection.objectId &&
+          setIntersectionRequest({ firstId: document.selection.objectId, secondId,
+            intervalMode: intersectionDraft.intervalMode, min: intersectionMin, max: intersectionMax })}>
+          Solve intersections</button>
+      </div> : <p>Add another function to compare.</p>}
+      {intersections && <div data-testid="graph2d-intersection-result" data-result-id={intersections.resultId}>
+        <p>{intersections.status} · {intersections.candidates.length} candidates · x ∈
+          [{intersections.interval.min.toPrecision(5)}, {intersections.interval.max.toPrecision(5)}]</p>
+        {intersections.candidates.length > 0 ? <ol className="graph2d-intersection-list">
+          {intersections.candidates.map((candidate) => <li key={candidate.candidateId}>
+            <button type="button" aria-label={`Select intersection at x ${candidate.x.toPrecision(7)}`}
+              disabled={!isGraph2DIntersectionCurrent(intersections, document)}
+              onClick={() => onSelectionCommit?.({ objectId: candidate.firstObjectId,
+                probe: { objectId: candidate.firstObjectId, x: candidate.x, y: candidate.y } })}>
+              ({candidate.x.toPrecision(7)}, {candidate.y.toPrecision(7)})</button>
+            <small>{candidate.classification} · {candidate.confidence} · {candidate.method} · residual {candidate.residual.toExponential(2)}</small>
+          </li>)}
+        </ol> : <p>No isolated candidates found.</p>}
+        {(intersections.invalidCells > 0 || intersections.unresolvedBrackets > 0 || intersections.coincidentCells > 0) &&
+          <small>{intersections.invalidCells} undefined cells · {intersections.unresolvedBrackets} unresolved brackets ·
+            {" "}{intersections.coincidentCells} coincident cells</small>}
+        <small>Tangencies are possible candidates; narrow intersections may be missed.</small>
+      </div>}
+    </section>
     <div className="graph2d-inspector-actions">
       <button type="button" disabled={!inspected.probe} onClick={locateSelected}>Locate</button>
       <button type="button" disabled={!selectedSeries?.artifact.segments.length} onClick={() => selectedSeries && fitSeries([selectedSeries])}>Fit function</button>
@@ -351,7 +415,8 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={series}
           selectedProbe={document.selection.probe} hoverProbe={hoverSelection?.probe} overlays={differentialOverlays}
           intervals={intervals && isGraph2DIntervalAnalysisCurrent(intervals, document) ? intervals : null}
-          area={area && isGraph2DIntegralCurrent(area, document) ? area : null} />}
+          area={area && isGraph2DIntegralCurrent(area, document) ? area : null}
+          intersections={intersections && isGraph2DIntersectionCurrent(intersections, document) ? intersections : null} />}
         {status === "loading" ? <div className="graph2d-viewer-message" role="status">Loading graph…</div> :
           status === "error" ? <div className="graph2d-viewer-message" role="alert">{errorMessage || "Graph could not be opened."}</div> :
           document.source.objects.length === 0 ? <div className="graph2d-viewer-message" aria-label="Empty graph scene">
