@@ -405,6 +405,30 @@ while a heavy job is queued.
 
 ### Phase 3 — CGAL native worker
 
+Phase 3A local Boolean slice (implemented; not the full Phase 3 acceptance gate):
+
+- `native/cgal-worker` is a long-lived, separately supervised CGAL executable.
+  Its v1 little-endian frame carries `math3d.mesh.v1` binary resources, with
+  version, health, and exact Boolean union/difference/intersection operations.
+- Desktop selects this worker for Boolean when its executable is present;
+  otherwise the existing Python CGAL path remains available. An operation
+  error in the native worker is surfaced, not silently changed to VTK output.
+  Browser and mobile keep their existing remote-or-unsupported routing.
+- The native supervisor has bounded admission, startup capability negotiation,
+  timeouts, process termination on cancellation/stop, restart budget, and
+  separate structured diagnostics. The smoke test covers all three Boolean
+  operations, malformed-input recovery, and process restart.
+- Local Windows development: `npm run build:cgal-native-worker`, then
+  `npm run test:cgal-native-worker`. `MATH3D_CGAL_NATIVE_EXE` can select an
+  explicit executable. The executable is deliberately **not** added to
+  installer resources yet: first complete the CGAL/GMP/MPFR licensing review,
+  binary dependency manifest, signed release fixture corpus, and CI license
+  gate. Packaged builds continue using the Python compatibility worker.
+
+Remaining Phase 3 work: robust repair, remesh, and intersection migration;
+broader exact/semantic fixtures; cancellation and crash-injection E2E; container
+parity; and release distribution review.
+
 - Build the standalone C++ transport and local process supervisor.
 - Migrate only robust repair, boolean, remesh, and intersection operations.
 - Add container parity only after local protocol conformance passes.

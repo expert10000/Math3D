@@ -19,21 +19,22 @@ export class WorkerAdmissionQueue {
   private readonly waiting: Waiter[] = [];
   private queuedBytes = 0;
   private closed: Error | null = null;
+  constructor(private readonly label = "Python worker") {}
 
   snapshot() { return { active: this.active ? 1 : 0, queued: this.waiting.length, queuedBytes: this.queuedBytes }; }
 
   acquire(id: string, bytes: number, deadlineAt: number, priority: "interactive" | "normal" = "normal"): Promise<() => void> {
     if (this.closed) return Promise.reject(this.closed);
     if (!Number.isSafeInteger(bytes) || bytes < 0 || bytes > PYTHON_WORKER_MAX_INPUT_BYTES) {
-      return Promise.reject(new RangeError(`Python worker request exceeds ${PYTHON_WORKER_MAX_INPUT_BYTES} input bytes.`));
+      return Promise.reject(new RangeError(`${this.label} request exceeds ${PYTHON_WORKER_MAX_INPUT_BYTES} input bytes.`));
     }
-    if (deadlineAt <= Date.now()) return Promise.reject(new Error(`Python worker request ${id} expired in queue.`));
+    if (deadlineAt <= Date.now()) return Promise.reject(new Error(`${this.label} request ${id} expired in queue.`));
     if (!this.active && this.waiting.length === 0) {
       this.active = true;
       return Promise.resolve(this.release());
     }
     if (this.waiting.length >= PYTHON_WORKER_MAX_QUEUED_JOBS || this.queuedBytes + bytes > PYTHON_WORKER_MAX_QUEUED_BYTES) {
-      return Promise.reject(new Error("Python worker queue is full."));
+      return Promise.reject(new Error(`${this.label} queue is full.`));
     }
     return new Promise((resolve, reject) => {
       const waiter: Waiter = {
@@ -43,7 +44,7 @@ export class WorkerAdmissionQueue {
           if (index < 0) return;
           this.waiting.splice(index, 1);
           this.queuedBytes -= bytes;
-          reject(new Error(`Python worker request ${id} expired in queue.`));
+          reject(new Error(`${this.label} request ${id} expired in queue.`));
         }, deadlineAt - Date.now()),
       };
       if (priority === "interactive") {
