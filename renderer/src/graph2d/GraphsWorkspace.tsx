@@ -1,12 +1,13 @@
 import {
   fitGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, GRAPH2D_WORKSPACE_CONTRACT,
   panGraph2DViewport, sampleGraph2DExplicit, zoomGraph2DViewport,
-  type Graph2DDocument, type Graph2DViewport,
+  type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DViewport,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent, WheelEvent } from "react";
 import type { WorkspaceDockLayout } from "../workspaceDocks";
 import { Graph2DPlot, type Graph2DPlotSeries } from "./Graph2DPlot";
+import { Graph2DAuthoringPanel } from "./Graph2DAuthoringPanel";
 import "./graphsWorkspace.css";
 
 type Props = {
@@ -15,12 +16,13 @@ type Props = {
   status?: "ready" | "loading" | "error";
   errorMessage?: string;
   onViewportCommit?: (viewport: Graph2DViewport) => void;
+  onAuthoringCommit?: (action: Graph2DAuthoringAction) => void;
   onUndo?: () => void;
   onRedo?: () => void;
 };
 
 /** Desktop/web projection of shared Graph2D source and persistent display state. */
-export function GraphsWorkspace({ dockLayout, document, status = "ready", errorMessage, onViewportCommit, onUndo, onRedo }: Props) {
+export function GraphsWorkspace({ dockLayout, document, status = "ready", errorMessage, onViewportCommit, onAuthoringCommit, onUndo, onRedo }: Props) {
   const viewerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [previewViewport, setPreviewViewport] = useState<Graph2DViewport | null>(null);
@@ -80,7 +82,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
     onViewportCommit?.(fitGraph2DViewport({ xMin, xMax, yMin, yMax }, size, viewport.aspect));
   };
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || (event.target as HTMLElement).closest("button,summary,details,input")) return;
+    if (event.button !== 0 || (event.target as HTMLElement).closest("button,summary,details,input,select,textarea,label,form")) return;
     const startingViewport = previewRef.current ?? document.display.viewport;
     finishWheel();
     dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY,
@@ -117,6 +119,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
     wheelTimerRef.current = setTimeout(finishWheel, 180);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest("input,select,textarea,[contenteditable='true']")) return;
     const key = event.key.toLowerCase();
     if ((event.ctrlKey || event.metaKey) && key === "z") {
       event.preventDefault(); if (event.shiftKey) onRedo?.(); else onUndo?.(); return;
@@ -131,17 +134,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
     if (key === "f") { event.preventDefault(); fitVisible(); }
   };
   const selected = document.source.objects.find((object) => object.id === document.selection.objectId) ?? null;
-  const functionList = document.source.objects.length ? (
-    <ol className="graph2d-function-list">
-      {document.source.objects.map((object) => (
-        <li key={object.id} data-graph2d-id={object.id}>
-          <strong>{object.label}</strong>
-          <code>y = {object.expression.source}</code>
-          {!displayById.get(object.id)?.visible && <span>Hidden</span>}
-        </li>
-      ))}
-    </ol>
-  ) : <p className="graph2d-muted">No functions in this graph.</p>;
+  const functionList = <Graph2DAuthoringPanel document={document} onCommit={onAuthoringCommit} />;
   const inspector = selected ? (
     <dl className="graph2d-inspector-details">
       <dt>Function</dt><dd>{selected.label}</dd>
@@ -156,7 +149,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
       style={{ "--graph2d-left-width": showLeft ? `${dockLayout.left}px` : "0px",
         "--graph2d-right-width": showRight ? `${dockLayout.right}px` : "0px" } as CSSProperties}>
       {showLeft && <aside className="graph2d-panel graph2d-left" aria-label="Graph functions">
-        <h2>Functions</h2>{functionList}
+        {functionList}
       </aside>}
       <div data-testid="main-viewer" className="graph2d-viewer" aria-label="Graph scene" ref={viewerRef}
         tabIndex={0} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}

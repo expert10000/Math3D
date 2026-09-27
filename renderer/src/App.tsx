@@ -713,6 +713,7 @@ import {
   createStableDocumentId,
   createGeometryDocument,
   createEmptyGraph2DDocument,
+  applyGraph2DAuthoring,
   createMixedWorkspaceDocument,
   createViewerProvenanceEvidence,
   canonicalJsonByteLength,
@@ -725,6 +726,7 @@ import {
   type MeshEditKind,
   type MeshDocument,
   type Graph2DDocument,
+  type Graph2DAuthoringAction,
   type Graph2DViewport,
   type TopologyDocument,
   type TopologyReplayBundle,
@@ -24264,6 +24266,10 @@ const App: React.FC = () => {
   if (!graph2dAdapterRef.current) graph2dAdapterRef.current = new Graph2DCommandAdapter(graph2dDocument);
   const commitGraph2DViewport = useCallback((viewport: Graph2DViewport) => {
     setGraph2dDocument(graph2dAdapterRef.current!.commitViewport(viewport));
+  }, []);
+  const commitGraph2DAuthoring = useCallback((action: Graph2DAuthoringAction) => {
+    const adapter = graph2dAdapterRef.current!;
+    setGraph2dDocument(adapter.commitScene(applyGraph2DAuthoring(adapter.document(), action), action.type));
   }, []);
   const undoGraph2DViewport = useCallback(() => {
     const document = graph2dAdapterRef.current!.undo();
@@ -89443,7 +89449,8 @@ case "mobius":
           </div>
         ) : mode === "graphs" ? (
           <GraphsWorkspace dockLayout={activeDockLayout} document={graph2dDocument}
-            onViewportCommit={commitGraph2DViewport} onUndo={undoGraph2DViewport} onRedo={redoGraph2DViewport} />
+            onViewportCommit={commitGraph2DViewport} onAuthoringCommit={commitGraph2DAuthoring}
+            onUndo={undoGraph2DViewport} onRedo={redoGraph2DViewport} />
         ) : mode === "curves" ? (
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
             <div style={{ ...styles.panelLeft, width: leftWidth, display: activeDockLayout.leftCollapsed || activeDockLayout.viewerMaximized ? "none" : undefined }}>

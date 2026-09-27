@@ -20,11 +20,26 @@
 
 .graph2d-panel { padding: 16px; overflow: auto; }
 .graph2d-panel h2 { margin: 0 0 12px; font-size: 17px; }
+.graph2d-authoring-header { display: flex; align-items: start; justify-content: space-between; gap: 8px; }
+.graph2d-authoring button { border: 1px solid var(--border); border-radius: 5px; background: var(--panel-strong); padding: 3px 6px; cursor: pointer; }
+.graph2d-authoring button:disabled { cursor: default; opacity: .45; }
 .graph2d-muted { margin: 0; font-size: 13px; opacity: .7; }
-.graph2d-function-list { display: grid; gap: 8px; padding-left: 20px; margin: 0; }
-.graph2d-function-list li { font-size: 13px; overflow-wrap: anywhere; }
+.graph2d-function-list { display: grid; gap: 8px; padding: 0; margin: 0; list-style: none; }
+.graph2d-function-list li { padding: 8px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px; overflow-wrap: anywhere; }
+.graph2d-function-summary { display: flex; align-items: center; gap: 8px; }
+.graph2d-function-swatch { width: 11px; height: 24px; flex: none; border-radius: 3px; }
+.graph2d-function-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
 .graph2d-function-list strong, .graph2d-function-list code { display: block; }
 .graph2d-function-list code { margin-top: 3px; }
+.graph2d-function-list small { display: block; opacity: .7; }
+.graph2d-function-editor { display: grid; gap: 8px; margin-top: 12px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
+.graph2d-function-editor h3 { margin: 0; font-size: 15px; }
+.graph2d-function-editor label { display: grid; gap: 3px; font-size: 12px; }
+.graph2d-function-editor input:not([type="checkbox"]), .graph2d-function-editor select { min-width: 0; width: 100%; box-sizing: border-box; }
+.graph2d-function-editor input[type="checkbox"] { width: auto; }
+.graph2d-function-editor label:has(input[type="checkbox"]) { display: flex; align-items: center; }
+.graph2d-domain-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.graph2d-draft-error { color: #b91c1c; font-size: 12px; margin: 0; }
 .graph2d-inspector-details { display: grid; grid-template-columns: auto 1fr; gap: 8px; margin: 0; font-size: 13px; }
 .graph2d-inspector-details dt { font-weight: 700; }
 .graph2d-inspector-details dd { margin: 0; overflow-wrap: anywhere; }

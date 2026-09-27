@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createEmptyGraph2DDocument, panGraph2DViewport, zoomGraph2DViewport } from "@math3d/core";
+import { applyGraph2DAuthoring, createEmptyGraph2DDocument, panGraph2DViewport, zoomGraph2DViewport } from "@math3d/core";
 import { Graph2DCommandAdapter } from "./Graph2DCommandAdapter";
 
 describe("Graph2D viewport kernel history", () => {
@@ -18,5 +18,23 @@ describe("Graph2D viewport kernel history", () => {
     expect(committed.identity).toEqual(document.identity);
     expect(adapter.undo()?.display.viewport).toEqual(document.display.viewport);
     expect(adapter.redo()?.display.viewport).toEqual(preview3);
+  });
+});
+
+describe("Graph2D authoring kernel history", () => {
+  it("commits source and display atomically and restores both with one undo", () => {
+    const before = createEmptyGraph2DDocument("authoring-history");
+    const adapter = new Graph2DCommandAdapter(before);
+    const draft = { label: "f", expression: "sin(x)", domain: { min: -10, max: 10, includeMin: true, includeMax: true },
+      style: { color: "#123456", lineWidth: 2, lineStyle: "solid" as const, visible: true } };
+    const scene = applyGraph2DAuthoring(adapter.document(), { type: "create", draft });
+    const committed = adapter.commitScene(scene, "create");
+    expect(committed.source.objects).toHaveLength(1);
+    expect(committed.display.objects).toHaveLength(1);
+    expect(committed.identity.revision).toBe(before.identity.revision + 1);
+    expect(adapter.history().undoDepth).toBe(1);
+    expect(adapter.undo()?.source.objects).toHaveLength(0);
+    expect(adapter.document().display.objects).toHaveLength(0);
+    expect(adapter.redo()?.source.objects).toHaveLength(1);
   });
 });

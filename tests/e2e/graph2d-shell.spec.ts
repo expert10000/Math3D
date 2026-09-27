@@ -73,3 +73,44 @@ test("Graphs pans with one gesture, supports keyboard undo, and resets the viewp
     await closeSurfaceApp(app);
   }
 });
+
+test("Graphs authors, validates, styles, reorders, hides, and undoes functions", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    const panel = app.page.getByLabel("Graph functions");
+    await panel.getByRole("button", { name: "Add function" }).click();
+    await panel.getByLabel("Function name").fill("Parabola");
+    await panel.getByLabel("Function expression").fill("sin(");
+    await expect(panel.getByRole("button", { name: "Save function" })).toBeDisabled();
+    await expect(panel.getByRole("alert")).toBeVisible();
+    await panel.getByLabel("Function expression").fill("x^2");
+    await panel.getByRole("button", { name: "Save function" }).click();
+    await expect(panel.locator('[data-graph2d-id="function_1"]')).toContainText("Parabola");
+    await expect(app.page.locator('[data-graph2d-path="function_1"]')).toBeVisible();
+    await panel.getByRole("button", { name: "Edit Parabola" }).click();
+    await panel.getByLabel("Function name").fill("Quadratic");
+    await panel.getByLabel("Line style").selectOption("dotted");
+    await panel.getByLabel("Line width").fill("4");
+    await panel.getByRole("button", { name: "Save function" }).click();
+    await expect(app.page.locator('[data-graph2d-path="function_1"]')).toHaveAttribute("stroke-dasharray", "2 4");
+    await panel.getByRole("button", { name: "Duplicate Quadratic" }).click();
+    await expect(panel.locator("li")).toHaveCount(2);
+    await panel.getByRole("button", { name: "Move Quadratic copy up" }).click();
+    await expect(panel.locator("li").first()).toContainText("Quadratic copy");
+    await panel.getByRole("button", { name: "Hide Quadratic copy" }).click();
+    await expect(app.page.locator('[data-graph2d-path="function_1_copy"]')).toHaveCount(0);
+    await app.page.getByTestId("main-viewer").focus();
+    await app.page.keyboard.press("Control+z");
+    await expect(app.page.locator('[data-graph2d-path="function_1_copy"]')).toBeVisible();
+    await panel.getByRole("button", { name: "Delete Quadratic copy" }).click();
+    await expect(panel.locator("li")).toHaveCount(1);
+    await app.page.getByTestId("kernel-workspace-toggle").click();
+    await app.page.getByTestId("kernel-workspace-save").click();
+    await expect(app.page.getByTestId("kernel-workspace-message")).toContainText("Saved");
+  } finally {
+    await closeSurfaceApp(app);
+  }
+});
