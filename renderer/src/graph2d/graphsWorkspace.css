@@ -70,6 +70,17 @@
 .graph2d-critical-list button { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: inherit; cursor: pointer; padding: 2px; }
 .graph2d-critical-list button:disabled { opacity: .45; cursor: default; }
 .graph2d-critical-list small { display: block; margin-top: 3px; opacity: .7; overflow-wrap: anywhere; }
+.graph2d-intervals { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 10px; font-size: 12px; }
+.graph2d-intervals h3 { margin: 0 0 8px; font-size: 14px; }
+.graph2d-interval-table-wrap { max-height: 240px; overflow: auto; }
+.graph2d-intervals table { border-collapse: collapse; width: 100%; font-size: 11px; }
+.graph2d-intervals th, .graph2d-intervals td { padding: 4px; border-bottom: 1px solid var(--border); text-align: left; }
+.graph2d-intervals small { display: block; margin-top: 6px; opacity: .7; }
+.graph2d-interval-trend, .graph2d-interval-concavity { opacity: .85; pointer-events: none; }
+.graph2d-interval-increasing, .graph2d-interval-up { fill: #16a34a; }
+.graph2d-interval-decreasing, .graph2d-interval-down { fill: #dc2626; }
+.graph2d-interval-constant, .graph2d-interval-linear { fill: #2563eb; }
+.graph2d-interval-unknown { fill: #9ca3af; }
 .graph2d-viewer { display: grid; place-items: center; position: relative; overflow: auto; }
 .graph2d-viewer { touch-action: none; cursor: grab; }
 .graph2d-viewer:active { cursor: grabbing; }

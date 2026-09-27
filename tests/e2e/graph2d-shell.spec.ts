@@ -190,3 +190,26 @@ test("Graphs selects source-linked zeros and refreshes extrema after editing", a
     await closeSurfaceApp(app);
   }
 });
+
+test("Graphs interval table and plot markers share the same analysis result", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    const functions = app.page.getByLabel("Graph functions");
+    await functions.getByRole("button", { name: "Add function" }).click();
+    await functions.getByLabel("Function expression").fill("x^2");
+    await functions.getByRole("button", { name: "Save function" }).click();
+    const inspector = app.page.getByLabel("Graph inspector");
+    const table = inspector.getByTestId("graph2d-intervals");
+    await expect(table).toContainText("decreasing");
+    await expect(table).toContainText("increasing");
+    await expect(table).toContainText("up");
+    const resultId = await table.getAttribute("data-result-id");
+    expect(resultId).toMatch(/^graph2d\.intervals\./);
+    await expect(app.page.getByTestId("graph2d-interval-overlays")).toHaveAttribute("data-result-id", resultId!);
+  } finally {
+    await closeSurfaceApp(app);
+  }
+});

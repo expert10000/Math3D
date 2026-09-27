@@ -3,6 +3,7 @@ import {
   resolveGraph2DViewport, type Graph2DDisplay, type Graph2DSamplingArtifact,
   graph2DWorldToScreen, clipGraph2DLineOverlay, type Graph2DLineOverlay,
   type Graph2DProbe, type Graph2DScreenSize,
+  type Graph2DIntervalAnalysis,
 } from "@math3d/core";
 import { projectGraph2DGrid } from "./gridProjection";
 
@@ -13,9 +14,9 @@ export type Graph2DPlotSeries = Readonly<{
 }>;
 type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonly Graph2DPlotSeries[];
   selectedProbe?: Graph2DProbe | null; hoverProbe?: Graph2DProbe | null;
-  overlays?: readonly Graph2DLineOverlay[] };
+  overlays?: readonly Graph2DLineOverlay[]; intervals?: Graph2DIntervalAnalysis | null };
 
-export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, overlays = [] }: Props) {
+export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, overlays = [], intervals }: Props) {
   const clipId = useId();
   const grid = projectGraph2DGrid(display.viewport, size);
   const bounds = resolveGraph2DViewport(display.viewport, size);
@@ -74,6 +75,18 @@ export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, 
             x1={a.x} y1={a.y} x2={b.x} y2={b.y} />;
         })}
       </g>
+      {intervals && <g data-testid="graph2d-interval-overlays" data-result-id={intervals.resultId} aria-hidden="true">
+        {intervals.partitions.map((part) => {
+          const x = (part.min - bounds.xMin) / xSpan * size.width;
+          const width = (part.max - part.min) / xSpan * size.width;
+          return <g key={part.intervalId} data-interval-id={part.intervalId}>
+            <rect className={`graph2d-interval-trend graph2d-interval-${part.monotonicity}`}
+              x={x} y={size.height - 14} width={width} height={5} />
+            <rect className={`graph2d-interval-concavity graph2d-interval-${part.concavity}`}
+              x={x} y={size.height - 7} width={width} height={5} />
+          </g>;
+        })}
+      </g>}
       {marker(hoverProbe, "hover")}
       {marker(selectedProbe, "selected")}
     </svg>

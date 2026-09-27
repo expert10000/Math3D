@@ -1,8 +1,8 @@
 import {
-  analyzeGraph2DCriticalPoints, analyzeGraph2DLocalDifferential, fitGraph2DViewport,
+  analyzeGraph2DCriticalPoints, analyzeGraph2DIntervals, analyzeGraph2DLocalDifferential, fitGraph2DViewport,
   GRAPH2D_DEFAULT_VIEWPORT, GRAPH2D_WORKSPACE_CONTRACT,
   graph2DWorldToScreen, panGraph2DViewport, pickGraph2DProbe, sampleGraph2DExplicit,
-  isGraph2DCriticalPointCurrent, isGraph2DLocalDifferentialCurrent, queryGraph2DInspector,
+  isGraph2DCriticalPointCurrent, isGraph2DIntervalAnalysisCurrent, isGraph2DLocalDifferentialCurrent, queryGraph2DInspector,
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
 } from "@math3d/core";
@@ -174,6 +174,9 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
     return analyzeGraph2DCriticalPoints({ document, objectId: document.selection.objectId,
       interval: { min: bounds.xMin, max: bounds.xMax } });
   }, [document, size]);
+  const intervals = useMemo(() => criticalPoints ? analyzeGraph2DIntervals({ document,
+    objectId: criticalPoints.objectId, interval: criticalPoints.interval, criticalPoints }) : null,
+  [document, criticalPoints]);
   const differential = useMemo(() => analyzeGraph2DLocalDifferential(document), [document]);
   const derivatives = differential?.derivatives ?? null;
   const differentialOverlays = differential && isGraph2DLocalDifferentialCurrent(differential, document) ? differential.overlays : [];
@@ -271,6 +274,19 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         <ul>{criticalPoints.diagnostics.map((diagnostic) => <li key={diagnostic.code}>{diagnostic.message} ({diagnostic.count})</li>)}</ul>
       </details>}
     </section>}
+    {intervals && <section className="graph2d-intervals" data-testid="graph2d-intervals"
+      data-result-id={intervals.resultId} aria-label="Monotonicity and concavity intervals">
+      <h3>Monotonicity and concavity</h3>
+      <p>{intervals.status} · {intervals.partitions.length} bounded intervals · {intervals.invalidSamples} undefined samples</p>
+      <div className="graph2d-interval-table-wrap"><table><thead><tr>
+        <th>Interval</th><th>Trend</th><th>Concavity</th><th>Boundary</th>
+      </tr></thead><tbody>{intervals.partitions.map((part) => <tr key={part.intervalId}>
+        <td>({part.min.toPrecision(5)}, {part.max.toPrecision(5)})</td>
+        <td>{part.monotonicity}</td><td>{part.concavity}</td>
+        <td>{part.leftBoundary} → {part.rightBoundary}</td>
+      </tr>)}</tbody></table></div>
+      <small>Signs are numerical samples, not proofs. Unknown intervals may contain discontinuities or narrow changes.</small>
+    </section>}
     <div className="graph2d-inspector-actions">
       <button type="button" disabled={!inspected.probe} onClick={locateSelected}>Locate</button>
       <button type="button" disabled={!selectedSeries?.artifact.segments.length} onClick={() => selectedSeries && fitSeries([selectedSeries])}>Fit function</button>
@@ -298,7 +314,8 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
           {showRight && <details><summary>Inspector</summary>{inspector}</details>}
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={series}
-          selectedProbe={document.selection.probe} hoverProbe={hoverSelection?.probe} overlays={differentialOverlays} />}
+          selectedProbe={document.selection.probe} hoverProbe={hoverSelection?.probe} overlays={differentialOverlays}
+          intervals={intervals && isGraph2DIntervalAnalysisCurrent(intervals, document) ? intervals : null} />}
         {status === "loading" ? <div className="graph2d-viewer-message" role="status">Loading graph…</div> :
           status === "error" ? <div className="graph2d-viewer-message" role="alert">{errorMessage || "Graph could not be opened."}</div> :
           document.source.objects.length === 0 ? <div className="graph2d-viewer-message" aria-label="Empty graph scene">
