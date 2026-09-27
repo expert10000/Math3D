@@ -4,6 +4,7 @@ import {
   graph2DWorldToScreen, clipGraph2DLineOverlay, type Graph2DLineOverlay,
   type Graph2DProbe, type Graph2DScreenSize,
   type Graph2DIntervalAnalysis,
+  type Graph2DIntegralAnalysis,
 } from "@math3d/core";
 import { projectGraph2DGrid } from "./gridProjection";
 
@@ -14,9 +15,10 @@ export type Graph2DPlotSeries = Readonly<{
 }>;
 type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonly Graph2DPlotSeries[];
   selectedProbe?: Graph2DProbe | null; hoverProbe?: Graph2DProbe | null;
-  overlays?: readonly Graph2DLineOverlay[]; intervals?: Graph2DIntervalAnalysis | null };
+  overlays?: readonly Graph2DLineOverlay[]; intervals?: Graph2DIntervalAnalysis | null;
+  area?: Graph2DIntegralAnalysis | null };
 
-export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, overlays = [], intervals }: Props) {
+export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, overlays = [], intervals, area }: Props) {
   const clipId = useId();
   const grid = projectGraph2DGrid(display.viewport, size);
   const bounds = resolveGraph2DViewport(display.viewport, size);
@@ -61,6 +63,11 @@ export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, 
         {grid.horizontalMajor.filter((tick) => tick.value !== 0).map((tick) => <text key={`yl-${tick.value}`} x={Math.min(size.width - 32, Math.max(5, (grid.yAxis ?? 0) + 5))} y={tick.pixel - 3}>{tick.label}</text>)}
       </g>}
       <g clipPath={`url(#${clipId})`}>
+        {area && <g data-testid="graph2d-area-overlay" data-result-id={area.resultId}
+          className={`graph2d-area-overlay graph2d-area-${area.mode}`} aria-hidden="true">
+          {area.fillSegments.map((segment) => <polygon key={segment.artifactId} data-area-artifact={segment.artifactId}
+            points={segment.points.map((point) => `${(point.x - bounds.xMin) / xSpan * size.width},${(bounds.yMax - point.y) / ySpan * size.height}`).join(" ")} />)}
+        </g>}
         {series.filter((item) => item.style.visible).map((item) => <path key={item.objectId} data-graph2d-path={item.objectId}
           d={pathFor(item.artifact)} fill="none" stroke={item.style.color} strokeWidth={item.style.lineWidth}
           strokeDasharray={item.style.lineStyle === "dashed" ? "8 5" : item.style.lineStyle === "dotted" ? "2 4" : undefined}

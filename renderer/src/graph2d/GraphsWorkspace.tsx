@@ -1,10 +1,13 @@
 import {
-  analyzeGraph2DCriticalPoints, analyzeGraph2DIntervals, analyzeGraph2DLocalDifferential, fitGraph2DViewport,
+  analyzeGraph2DCriticalPoints, analyzeGraph2DIntegral, analyzeGraph2DIntervals,
+  analyzeGraph2DLocalDifferential, fitGraph2DViewport,
   GRAPH2D_DEFAULT_VIEWPORT, GRAPH2D_WORKSPACE_CONTRACT,
   graph2DWorldToScreen, panGraph2DViewport, pickGraph2DProbe, sampleGraph2DExplicit,
-  isGraph2DCriticalPointCurrent, isGraph2DIntervalAnalysisCurrent, isGraph2DLocalDifferentialCurrent, queryGraph2DInspector,
+  isGraph2DCriticalPointCurrent, isGraph2DIntegralCurrent, isGraph2DIntervalAnalysisCurrent,
+  isGraph2DLocalDifferentialCurrent, queryGraph2DInspector,
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
+  type Graph2DIntegralMode,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent, WheelEvent } from "react";
@@ -35,6 +38,9 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const wheelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hoverFrameRef = useRef<number | null>(null);
   const [hoverSelection, setHoverSelection] = useState<Graph2DSelection | null>(null);
+  const [areaDraft, setAreaDraft] = useState({ min: "-1", max: "1", mode: "signed" as Graph2DIntegralMode });
+  const [areaRequest, setAreaRequest] = useState<{ objectId: string; min: number; max: number;
+    mode: Graph2DIntegralMode } | null>(null);
   const setPreview = (viewport: Graph2DViewport | null) => { previewRef.current = viewport; setPreviewViewport(viewport); };
   const finishWheel = () => {
     if (wheelTimerRef.current) clearTimeout(wheelTimerRef.current);
@@ -177,6 +183,13 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const intervals = useMemo(() => criticalPoints ? analyzeGraph2DIntervals({ document,
     objectId: criticalPoints.objectId, interval: criticalPoints.interval, criticalPoints }) : null,
   [document, criticalPoints]);
+  const area = useMemo(() => areaRequest && areaRequest.objectId === document.selection.objectId ?
+    analyzeGraph2DIntegral({ document, objectId: areaRequest.objectId,
+      interval: { min: areaRequest.min, max: areaRequest.max }, mode: areaRequest.mode }) : null,
+  [document, areaRequest]);
+  const areaMin = areaDraft.min.trim() === "" ? NaN : Number(areaDraft.min);
+  const areaMax = areaDraft.max.trim() === "" ? NaN : Number(areaDraft.max);
+  const areaValid = Number.isFinite(areaMin) && Number.isFinite(areaMax) && areaMin < areaMax;
   const differential = useMemo(() => analyzeGraph2DLocalDifferential(document), [document]);
   const derivatives = differential?.derivatives ?? null;
   const differentialOverlays = differential && isGraph2DLocalDifferentialCurrent(differential, document) ? differential.overlays : [];
@@ -287,6 +300,28 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
       </tr>)}</tbody></table></div>
       <small>Signs are numerical samples, not proofs. Unknown intervals may contain discontinuities or narrow changes.</small>
     </section>}
+    <section className="graph2d-area" data-testid="graph2d-area" aria-label="Interval area">
+      <h3>Interval area</h3>
+      <div className="graph2d-area-controls">
+        <label>From x <input aria-label="Area from x" type="number" value={areaDraft.min}
+          onChange={(event) => { setAreaDraft({ ...areaDraft, min: event.target.value }); setAreaRequest(null); }} /></label>
+        <label>To x <input aria-label="Area to x" type="number" value={areaDraft.max}
+          onChange={(event) => { setAreaDraft({ ...areaDraft, max: event.target.value }); setAreaRequest(null); }} /></label>
+        <label>Measure <select aria-label="Area measure" value={areaDraft.mode}
+          onChange={(event) => { setAreaDraft({ ...areaDraft, mode: event.target.value as Graph2DIntegralMode }); setAreaRequest(null); }}>
+          <option value="signed">Signed area</option><option value="absolute">Absolute area</option>
+        </select></label>
+        <button type="button" disabled={!areaValid} onClick={() => document.selection.objectId &&
+          setAreaRequest({ objectId: document.selection.objectId, min: areaMin, max: areaMax, mode: areaDraft.mode })}>
+          Integrate interval</button>
+      </div>
+      {area && <div data-testid="graph2d-area-result" data-result-id={area.resultId}>
+        <p>{area.mode} area: {area.value === null ? "Unavailable over full interval" : area.value.toPrecision(9)}</p>
+        <small>Adaptive Simpson · tolerance {area.tolerance.toExponential(1)} · estimated error {area.errorEstimate === null ?
+          "unavailable" : area.errorEstimate.toExponential(2)} · {area.evaluations.toLocaleString()} evaluations</small>
+        {area.skippedCells > 0 && <p>{area.skippedCells} undefined or unresolved cells skipped; partial area {area.partialValue.toPrecision(7)}.</p>}
+      </div>}
+    </section>
     <div className="graph2d-inspector-actions">
       <button type="button" disabled={!inspected.probe} onClick={locateSelected}>Locate</button>
       <button type="button" disabled={!selectedSeries?.artifact.segments.length} onClick={() => selectedSeries && fitSeries([selectedSeries])}>Fit function</button>
@@ -315,7 +350,8 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={series}
           selectedProbe={document.selection.probe} hoverProbe={hoverSelection?.probe} overlays={differentialOverlays}
-          intervals={intervals && isGraph2DIntervalAnalysisCurrent(intervals, document) ? intervals : null} />}
+          intervals={intervals && isGraph2DIntervalAnalysisCurrent(intervals, document) ? intervals : null}
+          area={area && isGraph2DIntegralCurrent(area, document) ? area : null} />}
         {status === "loading" ? <div className="graph2d-viewer-message" role="status">Loading graph…</div> :
           status === "error" ? <div className="graph2d-viewer-message" role="alert">{errorMessage || "Graph could not be opened."}</div> :
           document.source.objects.length === 0 ? <div className="graph2d-viewer-message" aria-label="Empty graph scene">

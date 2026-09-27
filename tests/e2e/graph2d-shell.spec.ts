@@ -213,3 +213,32 @@ test("Graphs interval table and plot markers share the same analysis result", as
     await closeSurfaceApp(app);
   }
 });
+
+test("Graphs integrates a selected interval and omits fill across a singularity", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    const functions = app.page.getByLabel("Graph functions");
+    await functions.getByRole("button", { name: "Add function" }).click();
+    await functions.getByLabel("Function expression").fill("x");
+    await functions.getByRole("button", { name: "Save function" }).click();
+    const area = app.page.getByLabel("Graph inspector").getByTestId("graph2d-area");
+    await area.getByRole("button", { name: "Integrate interval" }).click();
+    await expect(area.getByTestId("graph2d-area-result")).toContainText("signed area: 0.00000000");
+    await area.getByLabel("Area measure").selectOption("absolute");
+    await area.getByRole("button", { name: "Integrate interval" }).click();
+    const result = area.getByTestId("graph2d-area-result");
+    await expect(result).toContainText("absolute area: 1.00000000");
+    await expect(app.page.getByTestId("graph2d-area-overlay")).toHaveAttribute("data-result-id",
+      (await result.getAttribute("data-result-id"))!);
+    await functions.getByRole("button", { name: "Edit f" }).click();
+    await functions.getByLabel("Function expression").fill("1/x");
+    await functions.getByRole("button", { name: "Save function" }).click();
+    await expect(result).toContainText("Unavailable over full interval");
+    await expect(result).toContainText("skipped");
+  } finally {
+    await closeSurfaceApp(app);
+  }
+});

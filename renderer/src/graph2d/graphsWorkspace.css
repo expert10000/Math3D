@@ -81,6 +81,15 @@
 .graph2d-interval-decreasing, .graph2d-interval-down { fill: #dc2626; }
 .graph2d-interval-constant, .graph2d-interval-linear { fill: #2563eb; }
 .graph2d-interval-unknown { fill: #9ca3af; }
+.graph2d-area { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 10px; font-size: 12px; }
+.graph2d-area h3 { margin: 0 0 8px; font-size: 14px; }
+.graph2d-area-controls { display: grid; gap: 6px; }
+.graph2d-area-controls label { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.graph2d-area-controls input, .graph2d-area-controls select { width: 105px; min-width: 0; }
+.graph2d-area-controls button { justify-self: start; }
+.graph2d-area p { margin: 7px 0; }
+.graph2d-area-overlay { pointer-events: none; fill: #3b82f6; opacity: .25; }
+.graph2d-area-absolute { fill: #16a34a; }
 .graph2d-viewer { display: grid; place-items: center; position: relative; overflow: auto; }
 .graph2d-viewer { touch-action: none; cursor: grab; }
 .graph2d-viewer:active { cursor: grabbing; }
