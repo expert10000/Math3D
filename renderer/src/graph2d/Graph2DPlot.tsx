@@ -1,7 +1,8 @@
 import { useId } from "react";
 import {
   resolveGraph2DViewport, type Graph2DDisplay, type Graph2DSamplingArtifact,
-  graph2DWorldToScreen, type Graph2DProbe, type Graph2DScreenSize,
+  graph2DWorldToScreen, clipGraph2DLineOverlay, type Graph2DLineOverlay,
+  type Graph2DProbe, type Graph2DScreenSize,
 } from "@math3d/core";
 import { projectGraph2DGrid } from "./gridProjection";
 
@@ -11,9 +12,10 @@ export type Graph2DPlotSeries = Readonly<{
   style: Graph2DDisplay["objects"][number];
 }>;
 type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonly Graph2DPlotSeries[];
-  selectedProbe?: Graph2DProbe | null; hoverProbe?: Graph2DProbe | null };
+  selectedProbe?: Graph2DProbe | null; hoverProbe?: Graph2DProbe | null;
+  overlays?: readonly Graph2DLineOverlay[] };
 
-export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe }: Props) {
+export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, overlays = [] }: Props) {
   const clipId = useId();
   const grid = projectGraph2DGrid(display.viewport, size);
   const bounds = resolveGraph2DViewport(display.viewport, size);
@@ -62,6 +64,15 @@ export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe }
           d={pathFor(item.artifact)} fill="none" stroke={item.style.color} strokeWidth={item.style.lineWidth}
           strokeDasharray={item.style.lineStyle === "dashed" ? "8 5" : item.style.lineStyle === "dotted" ? "2 4" : undefined}
           strokeLinejoin="round" strokeLinecap="round" />)}
+        {overlays.map((overlay) => {
+          const segment = clipGraph2DLineOverlay(overlay, display.viewport, size);
+          if (!segment) return null;
+          const a = graph2DWorldToScreen(display.viewport, size, segment[0]);
+          const b = graph2DWorldToScreen(display.viewport, size, segment[1]);
+          return <line key={overlay.artifactId} data-graph2d-overlay={overlay.kind}
+            className={"graph2d-differential-overlay graph2d-differential-" + overlay.kind}
+            x1={a.x} y1={a.y} x2={b.x} y2={b.y} />;
+        })}
       </g>
       {marker(hoverProbe, "hover")}
       {marker(selectedProbe, "selected")}

@@ -57,6 +57,11 @@
 .graph2d-derivative-result { padding: 8px 0; border-top: 1px solid var(--border); font-size: 12px; }
 .graph2d-derivative-result strong { display: block; margin-bottom: 8px; }
 .graph2d-derivative-diagnostics { padding-left: 18px; margin: 8px 0; font-size: 11px; opacity: .75; }
+.graph2d-local-differential { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 10px; }
+.graph2d-local-differential h3 { margin: 0 0 10px; font-size: 14px; }
+.graph2d-differential-overlay { pointer-events: none; fill: none; stroke-width: 1.8; stroke-dasharray: 7 5; }
+.graph2d-differential-tangent { stroke: #d97706; }
+.graph2d-differential-normal { stroke: #9333ea; }
 .graph2d-viewer { display: grid; place-items: center; position: relative; overflow: auto; }
 .graph2d-viewer { touch-action: none; cursor: grab; }
 .graph2d-viewer:active { cursor: grabbing; }

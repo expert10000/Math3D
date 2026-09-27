@@ -140,6 +140,11 @@ test("Graphs selects a curve by click, locates its probe, and clears selection",
     await expect(inspector.getByText("Direct expression evaluation (floating point)")).toBeVisible();
     await expect(inspector.getByTestId("graph2d-first-derivative")).toContainText("1.0000000");
     await expect(inspector.getByTestId("graph2d-second-derivative")).toContainText("0.0000000");
+    await expect(inspector.getByTestId("graph2d-differentiability")).toContainText("differentiable");
+    await expect(inspector.getByTestId("graph2d-tangent-equation")).toContainText("1(x -");
+    await expect(inspector.getByTestId("graph2d-normal-equation")).toContainText("-1(x -");
+    await expect(viewer.locator('[data-graph2d-overlay="tangent"]')).toBeVisible();
+    await expect(viewer.locator('[data-graph2d-overlay="normal"]')).toBeVisible();
     await inspector.getByText("Provenance").click();
     await expect(inspector.getByText("Source hash")).toBeVisible();
     await app.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -153,6 +158,7 @@ test("Graphs selects a curve by click, locates its probe, and clears selection",
     await viewer.focus();
     await app.page.keyboard.press("Escape");
     await expect(viewer.locator(".graph2d-probe-selected")).toHaveCount(0);
+    await expect(viewer.locator(".graph2d-differential-overlay")).toHaveCount(0);
   } finally {
     await closeSurfaceApp(app);
   }
