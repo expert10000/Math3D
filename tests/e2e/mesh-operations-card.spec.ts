@@ -404,7 +404,7 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-workspace-operation-registry-history")).toContainText(/Inspector → History/i);
     await expect(card.getByTestId("mesh-workspace-operation-registry-undo-last-operation")).toHaveText("Undo");
 
-    await page.getByTestId("mesh-inspector-tab-result").click();
+    await page.getByTestId("shared-inspector-tab-geometry").click();
     await expect(page.getByTestId("mesh-operation-result-card")).toContainText(/Decimate/i);
     await expect(page.getByTestId("mesh-last-operation-verdict")).toBeVisible();
 
@@ -417,7 +417,7 @@ test.describe("Mesh Operations card", () => {
     await savedPresets.getByRole("button", { name: "Use" }).first().click();
     await expect(card.getByTestId("mesh-workspace-operation-registry-row-decimate")).toHaveAttribute("aria-expanded", "true");
 
-    await page.getByTestId("mesh-inspector-tab-history").click();
+    await page.getByTestId("shared-inspector-tab-history").click();
     const inspectorHistory = page.getByTestId("mesh-inspector-history-card");
     await expect(inspectorHistory).toContainText(/Decimate/i);
     const provenanceGraph = page.getByTestId("mesh-operation-provenance-graph");
@@ -428,7 +428,7 @@ test.describe("Mesh Operations card", () => {
     await leftTabs.getByTestId("mesh-workspace-left-tab-scene").click();
     await expect(outliner.getByText("Operation provenance")).toHaveCount(0);
     await outliner.getByRole("button", { name: "History", exact: true }).click();
-    await expect(page.getByTestId("mesh-inspector-tab-history")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("shared-inspector-tab-history")).toHaveAttribute("aria-selected", "true");
     await expect(page.getByTestId("mesh-inspector-history-card")).toContainText(/Decimate/i);
   });
 
@@ -875,7 +875,7 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/A: Boolean demo A/i);
     await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/B: Boolean demo B/i);
     await expect(card.getByTestId("mesh-operation-boolean-card")).toContainText(/Result: Boolean demo A/i);
-    await page.getByTestId("mesh-inspector-tab-history").click();
+    await page.getByTestId("shared-inspector-tab-history").click();
     const booleanProvenance = page.getByTestId("mesh-operation-provenance-graph");
     const booleanNode = booleanProvenance.getByRole("button", { name: /Boolean difference/i }).last();
     await expect(booleanNode).toHaveAttribute("data-parent-count", "1");

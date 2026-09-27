@@ -1,5 +1,6 @@
 import { ipcMain } from "electron";
 import { getPythonWorker, stopPythonWorker } from "../python/pythonWorker";
+import { getNativeCgalWorker, stopNativeCgalWorker } from "../python/nativeCgalWorker";
 import {
   recordPythonWorkerFailure,
   recordPythonWorkerSuccess,
@@ -224,6 +225,8 @@ export type PythonVersionResponse =
 export function registerCgalMeshIpc() {
   ipcMain.handle("mesh:cgal:ping", async (): Promise<PythonPingResponse> => {
     try {
+      const native = getNativeCgalWorker();
+      if (native) return { ok: true, pong: await native.health() };
       const worker = await getPythonWorker();
       const res = await worker.ping();
       recordPythonWorkerSuccess();
@@ -236,6 +239,8 @@ export function registerCgalMeshIpc() {
 
   ipcMain.handle("mesh:cgal:version", async (): Promise<PythonVersionResponse> => {
     try {
+      const native = getNativeCgalWorker();
+      if (native) return { ok: true, version: await native.version(), protocol: "m3d-cgal-binary-v1" };
       const worker = await getPythonWorker();
       const res = await worker.version();
       recordPythonWorkerSuccess({ version: res.version, protocol: res.protocol });
@@ -312,6 +317,10 @@ export function registerCgalMeshIpc() {
 
   ipcMain.handle("mesh:cgal:boolean", async (_evt, req: CgalBooleanMeshRequest): Promise<CgalBooleanMeshResponse> => {
     try {
+      const native = getNativeCgalWorker();
+      if (native) return await native.boolean(req);
+      // Existing Python CGAL/VTK path remains the compatibility backend when
+      // a standalone native worker has not been built or bundled.
       const worker = await getPythonWorker();
       const res = await worker.booleanCgalMesh(req);
       if (!res.ok) {
@@ -321,8 +330,8 @@ export function registerCgalMeshIpc() {
       recordPythonWorkerSuccess();
       return res;
     } catch (e: any) {
-      const diag = recordPythonWorkerFailure(e, "mesh:cgal:boolean", "WORKER_OPERATION_FAILED");
-      return { ok: false, error: diag.message };
+      // Native operation failures are not silently downgraded to approximate VTK.
+      return { ok: false, error: e?.message ?? String(e) };
     }
   });
 
@@ -371,6 +380,8 @@ export function registerCgalMeshIpc() {
 
   ipcMain.handle("mesh:cgal:health", async (): Promise<CgalHealthResponse> => {
     try {
+      const native = getNativeCgalWorker();
+      if (native) return (await native.health()) ? { ok: true } : { ok: false, error: "Native CGAL health check failed" };
       const worker = await getPythonWorker();
       const res = await worker.health();
       if (res?.ok === false) {
@@ -387,6 +398,7 @@ export function registerCgalMeshIpc() {
 
   ipcMain.handle("mesh:cgal:stop", async (): Promise<{ ok: boolean; error?: string }> => {
     try {
+      stopNativeCgalWorker();
       stopPythonWorker();
       return { ok: true };
     } catch (e: any) {

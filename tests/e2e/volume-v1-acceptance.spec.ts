@@ -11,7 +11,7 @@ test.describe("Volume v1 acceptance", () => {
       const inspector = ctx.page.getByTestId("volume-inspector");
       await expect(inspector).toBeVisible();
       await expect(inspector.getByTestId("volume-kernel-document")).toContainText("revision 1");
-      await inspector.getByTestId("volume-inspector-tab-history").click();
+      await ctx.page.getByTestId("shared-inspector-tab-history").click();
       const history = inspector.getByTestId("volume-history-card");
       await expect(history).toContainText("Workspace undo / redo");
       await history.getByTestId("volume-save-workspace").click();
@@ -48,7 +48,8 @@ test.describe("Volume v1 acceptance", () => {
       await ctx.page.getByTestId("workspace-nav-volume").click();
       const inspector = ctx.page.getByTestId("volume-inspector");
       await ctx.page.getByTestId("volume-detailed-controls").getByTestId("volume-apply-isosurface").click();
-      await inspector.getByTestId("volume-inspector-tab-derived").click();
+      await ctx.page.getByTestId("shared-inspector-tab-geometry").click();
+      await inspector.getByLabel("Geometry view").selectOption("derived");
       const current = inspector.getByTestId("volume-derived-result-current");
       await expect(current).toBeVisible();
       await expect(current.getByTestId("volume-derived-kernel-lineage")).toContainText("Kernel lineage: current");
@@ -59,7 +60,7 @@ test.describe("Volume v1 acceptance", () => {
       // Mesh analysis can outlast Playwright's normal click wait; assert the return action independently.
       await ctx.page.getByTestId("volume-handoff-return").evaluate((button: HTMLButtonElement) => button.click());
       await expect(ctx.page.getByTestId("workspace-nav-volume")).toHaveAttribute("aria-pressed", "true");
-      await inspector.getByTestId("volume-inspector-tab-history").click();
+      await ctx.page.getByTestId("shared-inspector-tab-history").click();
       await inspector.getByTestId("volume-save-workspace").click();
       const saved = await ctx.page.evaluate(() => JSON.parse(localStorage.getItem("math3d.volume.workspace.v1") ?? "{}"));
       expect(saved.extractions).toHaveLength(2);

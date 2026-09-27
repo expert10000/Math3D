@@ -405,6 +405,38 @@ while a heavy job is queued.
 
 ### Phase 3 — CGAL native worker
 
+Phase 3A local Boolean slice (implemented; not the full Phase 3 acceptance gate):
+
+- `native/cgal-worker` is a long-lived, separately supervised CGAL executable.
+  Its v1 little-endian frame carries `math3d.mesh.v1` binary resources, with
+  version, health, and exact Boolean union/difference/intersection operations.
+- Desktop selects this worker for Boolean when its executable is present;
+  otherwise the existing Python CGAL path remains available. An operation
+  error in the native worker is surfaced, not silently changed to VTK output.
+  Browser and mobile keep their existing remote-or-unsupported routing.
+- The native supervisor has bounded admission, startup capability negotiation,
+  timeouts, process termination on cancellation/stop, restart budget, and
+  separate structured diagnostics. The smoke test covers all three Boolean
+  operations, malformed-input recovery, and process restart.
+- Local Windows development: `npm run build:cgal-native-worker`, then
+  `npm run test:cgal-native-worker`. `MATH3D_CGAL_NATIVE_EXE` can select an
+  explicit executable. The executable is deliberately **not** added to
+  installer resources yet: first complete the CGAL/GMP/MPFR licensing review,
+  binary dependency manifest, signed release fixture corpus, and CI license
+  gate. Packaged builds continue using the Python compatibility worker.
+
+Phase 3A release-gate follow-up: the real-mesh Boolean and crash/cancellation
+suite is `npm run test:cgal-native-release`. The dependency/license inventory
+and fail-closed installer policy are documented in
+`docs/native-cgal-distribution-review.md`. Native installer inclusion remains
+blocked pending the explicit CGAL distribution decision, transitive SBOM, and
+packaged clean-machine verification; do not mark Phase 3A distribution-ready
+from local tests alone.
+
+Remaining Phase 3 work: robust repair, remesh, and intersection migration;
+packaged clean-machine conformance and crash/cancellation E2E; container
+parity; and the unresolved distribution/license decision.
+
 - Build the standalone C++ transport and local process supervisor.
 - Migrate only robust repair, boolean, remesh, and intersection operations.
 - Add container parity only after local protocol conformance passes.

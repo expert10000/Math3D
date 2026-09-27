@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "distributionStatus": "blocked-pending-license-decision",
+  "protocolVersion": 1,
+  "meshResourceFormat": "math3d.mesh.v1",
+  "windowsReferenceBuild": {
+    "triplet": "x64-windows",
+    "cgal": "6.2.1",
+    "gmp": "6.3.0",
+    "mpfr": "4.2.2",
+    "boost-core": "1.92.0",
+    "runtimeDlls": ["gmp-10.dll", "mpfr-6.dll"]
+  }
+}

@@ -10,6 +10,7 @@ import { registerVtkMeshIpc } from "./main/ipc/vtkMeshIpc";
 import { registerSageServiceIpc } from "./main/ipc/sageServiceIpc";
 import { registerComputeEngineManagerIpc } from "./main/ipc/computeEngineManagerIpc";
 import { runPythonWorkerStartupCheck, stopPythonWorker } from "./main/python/pythonWorker";
+import { stopNativeCgalWorker } from "./main/python/nativeCgalWorker";
 import { recordPythonWorkerStartup, registerPythonWorkerDiagnosticsIpc } from "./main/python/pythonWorkerDiagnostics";
 
 import * as fs from "node:fs";
@@ -1305,6 +1306,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   stopPythonWorker();
+  stopNativeCgalWorker();
 });
 
 app.on("will-quit", () => {
