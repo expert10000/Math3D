@@ -163,3 +163,30 @@ test("Graphs selects a curve by click, locates its probe, and clears selection",
     await closeSurfaceApp(app);
   }
 });
+
+test("Graphs selects source-linked zeros and refreshes extrema after editing", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    const functions = app.page.getByLabel("Graph functions");
+    await functions.getByRole("button", { name: "Add function" }).click();
+    await functions.getByLabel("Function expression").fill("x^2");
+    await functions.getByRole("button", { name: "Save function" }).click();
+    const inspector = app.page.getByLabel("Graph inspector");
+    const results = inspector.getByTestId("graph2d-critical-points");
+    await expect(results.getByRole("button", { name: /Select zero at x/ }).first()).toBeVisible();
+    await expect(results.getByRole("button", { name: /Select minimum at x/ }).first()).toBeVisible();
+    await expect(results.getByRole("button", { name: /Select inflection at x/ })).toHaveCount(0);
+    await results.getByRole("button", { name: /Select zero at x/ }).first().click();
+    await expect(inspector.getByTestId("graph2d-probe-coordinates")).toContainText("0.00000");
+    await functions.getByRole("button", { name: "Edit f" }).click();
+    await functions.getByLabel("Function expression").fill("x^3");
+    await functions.getByRole("button", { name: "Save function" }).click();
+    await expect(results.getByRole("button", { name: /Select inflection at x/ }).first()).toBeVisible();
+    await expect(results.getByRole("button", { name: /Select minimum at x/ })).toHaveCount(0);
+  } finally {
+    await closeSurfaceApp(app);
+  }
+});

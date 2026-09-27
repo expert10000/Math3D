@@ -1,7 +1,9 @@
 import {
-  analyzeGraph2DLocalDifferential, fitGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, GRAPH2D_WORKSPACE_CONTRACT,
+  analyzeGraph2DCriticalPoints, analyzeGraph2DLocalDifferential, fitGraph2DViewport,
+  GRAPH2D_DEFAULT_VIEWPORT, GRAPH2D_WORKSPACE_CONTRACT,
   graph2DWorldToScreen, panGraph2DViewport, pickGraph2DProbe, sampleGraph2DExplicit,
-  isGraph2DLocalDifferentialCurrent, queryGraph2DInspector, selectionForGraph2DObject, zoomGraph2DViewport,
+  isGraph2DCriticalPointCurrent, isGraph2DLocalDifferentialCurrent, queryGraph2DInspector,
+  resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -166,6 +168,12 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   };
   const selectedSeries = series.find((item) => item.objectId === document.selection.objectId);
   const inspected = queryGraph2DInspector(document, selectedSeries);
+  const criticalPoints = useMemo(() => {
+    if (!document.selection.objectId) return null;
+    const bounds = resolveGraph2DViewport(document.display.viewport, size);
+    return analyzeGraph2DCriticalPoints({ document, objectId: document.selection.objectId,
+      interval: { min: bounds.xMin, max: bounds.xMax } });
+  }, [document, size]);
   const differential = useMemo(() => analyzeGraph2DLocalDifferential(document), [document]);
   const derivatives = differential?.derivatives ?? null;
   const differentialOverlays = differential && isGraph2DLocalDifferentialCurrent(differential, document) ? differential.overlays : [];
@@ -241,6 +249,27 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         {result.formula && <details className="graph2d-inspector-more"><summary>Derivative expression</summary>
           <code>{result.formula}</code></details>}
       </div>)}
+    </section>}
+    {criticalPoints && <section className="graph2d-critical-points" data-testid="graph2d-critical-points" aria-label="Zeros extrema and inflections">
+      <h3>Zeros, extrema, inflections</h3>
+      <p>Bounded scan: {criticalPoints.status} · x ∈ [{criticalPoints.interval.min.toPrecision(5)}, {criticalPoints.interval.max.toPrecision(5)}]
+        {" "}· {criticalPoints.evaluations.toLocaleString()} evaluations</p>
+      {criticalPoints.candidates.length ? <ol className="graph2d-critical-list">
+        {criticalPoints.candidates.map((candidate) => <li key={candidate.candidateId}>
+          <button type="button" aria-label={`Select ${candidate.kind} at x ${candidate.x.toPrecision(7)}`}
+            disabled={!isGraph2DCriticalPointCurrent(candidate, document)}
+            onClick={() => onSelectionCommit?.({ objectId: candidate.objectId,
+              probe: { objectId: candidate.objectId, x: candidate.x, y: candidate.y } })}>
+            <strong>{candidate.kind}</strong> ({candidate.x.toPrecision(7)}, {candidate.y.toPrecision(7)})
+          </button>
+          <small>{candidate.confidence} · {candidate.method} · residual {candidate.residual.toExponential(2)}
+            {candidate.multiplicity === "even-possible" ? " · even multiplicity possible" : " · multiplicity unknown"}</small>
+        </li>)}
+      </ol> : <p>No candidates found in the scanned interval.</p>}
+      <small>Candidate locations and multiplicities are not certified; narrow features may be missed.</small>
+      {criticalPoints.diagnostics.length > 0 && <details className="graph2d-inspector-more"><summary>Analysis diagnostics</summary>
+        <ul>{criticalPoints.diagnostics.map((diagnostic) => <li key={diagnostic.code}>{diagnostic.message} ({diagnostic.count})</li>)}</ul>
+      </details>}
     </section>}
     <div className="graph2d-inspector-actions">
       <button type="button" disabled={!inspected.probe} onClick={locateSelected}>Locate</button>
