@@ -135,11 +135,16 @@ test("Graphs selects a curve by click, locates its probe, and clears selection",
     await app.page.mouse.click(box.x + point.x, box.y + point.y);
     await expect(app.page.getByTestId("graph2d-probe-coordinates").last()).toBeVisible();
     await expect(viewer.locator(".graph2d-probe-selected")).toBeVisible();
+    const inspector = app.page.getByLabel("Graph inspector");
+    await expect(inspector.getByTestId("graph2d-sampling-status")).toContainText("converged");
+    await expect(inspector.getByText("Direct expression evaluation (floating point)")).toBeVisible();
+    await inspector.getByText("Provenance").click();
+    await expect(inspector.getByText("Source hash")).toBeVisible();
     await app.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await app.page.mouse.down();
     await app.page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2, { steps: 5 });
     await app.page.mouse.up();
-    await app.page.getByLabel("Graph inspector").getByRole("button", { name: "Locate" }).click();
+    await inspector.getByRole("button", { name: "Locate" }).click();
     const marker = viewer.locator(".graph2d-probe-selected circle").first();
     const plotCenter = await viewer.evaluate((element) => element.clientWidth / 2);
     await expect.poll(async () => Number(await marker.getAttribute("cx"))).toBeCloseTo(plotCenter, 0);

@@ -1,7 +1,7 @@
 import {
   fitGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, GRAPH2D_WORKSPACE_CONTRACT,
   graph2DWorldToScreen, panGraph2DViewport, pickGraph2DProbe, sampleGraph2DExplicit,
-  selectionForGraph2DObject, zoomGraph2DViewport,
+  queryGraph2DInspector, selectionForGraph2DObject, zoomGraph2DViewport,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -59,7 +59,6 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   }, []);
   const showLeft = !dockLayout.viewerMaximized && !dockLayout.leftCollapsed;
   const showRight = !dockLayout.viewerMaximized && !dockLayout.rightCollapsed;
-  const displayById = new Map(document.display.objects.map((entry) => [entry.objectId, entry]));
   const viewport = previewViewport ?? document.display.viewport;
   const renderedDisplay = useMemo(() => ({ ...document.display, viewport }), [document.display, viewport]);
   const series = useMemo<Graph2DPlotSeries[]>(() => {
@@ -82,16 +81,17 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
     const rect = event.currentTarget.getBoundingClientRect();
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   };
-  const fitVisible = () => {
+  const fitSeries = (items: readonly Graph2DPlotSeries[]) => {
     let xMin = Number.POSITIVE_INFINITY, xMax = Number.NEGATIVE_INFINITY;
     let yMin = Number.POSITIVE_INFINITY, yMax = Number.NEGATIVE_INFINITY;
-    for (const item of series) for (const segment of item.artifact.segments) for (const point of segment.points) {
+    for (const item of items) for (const segment of item.artifact.segments) for (const point of segment.points) {
       xMin = Math.min(xMin, point.x); xMax = Math.max(xMax, point.x);
       yMin = Math.min(yMin, point.y); yMax = Math.max(yMax, point.y);
     }
     if (!Number.isFinite(xMin)) { onViewportCommit?.({ ...GRAPH2D_DEFAULT_VIEWPORT }); return; }
     onViewportCommit?.(fitGraph2DViewport({ xMin, xMax, yMin, yMax }, size, viewport.aspect));
   };
+  const fitVisible = () => fitSeries(series);
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || (event.target as HTMLElement).closest("button,summary,details,input,select,textarea,label,form")) return;
     const startingViewport = previewRef.current ?? document.display.viewport;
@@ -164,7 +164,8 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
     if (key === "home") { event.preventDefault(); onViewportCommit?.({ ...GRAPH2D_DEFAULT_VIEWPORT }); return; }
     if (key === "f") { event.preventDefault(); fitVisible(); }
   };
-  const selected = document.source.objects.find((object) => object.id === document.selection.objectId) ?? null;
+  const selectedSeries = series.find((item) => item.objectId === document.selection.objectId);
+  const inspected = queryGraph2DInspector(document, selectedSeries);
   const locateSelected = () => {
     if (!document.selection.probe) return;
     const screen = graph2DWorldToScreen(viewport, size, document.selection.probe);
@@ -172,17 +173,42 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   };
   const functionList = <Graph2DAuthoringPanel document={document} onCommit={onAuthoringCommit}
     onSelect={(objectId) => onSelectionCommit?.(selectionForGraph2DObject(document, series, objectId, document.selection.probe?.x))} />;
-  const inspector = selected ? (
+  const inspector = inspected ? <div className="graph2d-inspector">
     <dl className="graph2d-inspector-details">
-      <dt>Function</dt><dd>{selected.label}</dd>
-      <dt>Expression</dt><dd><code>y = {selected.expression.source}</code></dd>
-      <dt>Domain</dt><dd>{selected.domain.includeMin ? "[" : "("}{selected.domain.min}, {selected.domain.max}{selected.domain.includeMax ? "]" : ")"}</dd>
-      <dt>Visibility</dt><dd>{displayById.get(selected.id)?.visible ? "Visible" : "Hidden"}</dd>
-      {document.selection.probe && <><dt>Probe</dt><dd data-testid="graph2d-probe-coordinates">
-        ({document.selection.probe.x.toPrecision(6)}, {document.selection.probe.y.toPrecision(6)})
-        <button type="button" onClick={locateSelected}>Locate</button></dd></>}
+      <dt>Function</dt><dd>{inspected.label}</dd>
+      <dt>Source</dt><dd><code>y = {inspected.expression}</code></dd>
+      <dt>Domain</dt><dd>{inspected.domain.includeMin ? "[" : "("}{inspected.domain.min}, {inspected.domain.max}{inspected.domain.includeMax ? "]" : ")"}</dd>
+      <dt>Style</dt><dd><span className="graph2d-inspector-swatch" style={{ background: inspected.style.color }} />
+        {inspected.style.lineStyle}, {inspected.style.lineWidth} px · {inspected.style.visible ? "visible" : "hidden"}</dd>
+      <dt>Probe</dt><dd>{inspected.probe ? <span data-testid="graph2d-probe-coordinates">
+        ({inspected.probe.x.toPrecision(6)}, {inspected.probe.y.toPrecision(6)})</span> : "No point selected"}</dd>
+      <dt>Probe method</dt><dd>{inspected.probeMethod === "direct-expression-floating-point" ?
+        "Direct expression evaluation (floating point)" : "Unavailable"}</dd>
+      <dt>Sampling</dt><dd data-testid="graph2d-sampling-status">Adaptive bounded polyline · {inspected.sampling.status}</dd>
+      <dt>Budget</dt><dd>{inspected.sampling.policy.maxSamples.toLocaleString()} samples, depth {inspected.sampling.policy.maxDepth},
+        {" "}{inspected.sampling.policy.tolerancePx} px tolerance</dd>
+      <dt>Observed</dt><dd>{inspected.sampling.samplesEvaluated === null ? "Unavailable" :
+        `${inspected.sampling.samplesEvaluated.toLocaleString()} evaluations · ${inspected.sampling.segmentCount} segments`}</dd>
+      <dt>Jumps</dt><dd>{inspected.sampling.suspectedJumpCount} suspected · {inspected.sampling.invalidSampleCount} invalid samples</dd>
     </dl>
-  ) : <p className="graph2d-muted">Select a function to inspect it.</p>;
+    {inspected.sampling.diagnostics.length > 0 && <details className="graph2d-inspector-more"><summary>Sampling diagnostics</summary>
+      <ul>{inspected.sampling.diagnostics.map((diagnostic) => <li key={diagnostic.code}>{diagnostic.code}: {diagnostic.count}</li>)}</ul>
+    </details>}
+    <details className="graph2d-inspector-more"><summary>Provenance</summary>
+      <dl className="graph2d-inspector-details">
+        <dt>Document</dt><dd>{inspected.provenance.documentId}</dd>
+        <dt>Revision</dt><dd>{inspected.provenance.revision}</dd>
+        <dt>Source hash</dt><dd><code>{inspected.provenance.structuralHash}</code></dd>
+        <dt>Expression AST</dt><dd>v{inspected.provenance.expressionAstVersion}</dd>
+        <dt>Sampler</dt><dd>{inspected.provenance.samplerVersion === null ? "Unavailable" : `v${inspected.provenance.samplerVersion}`}</dd>
+      </dl>
+    </details>
+    <div className="graph2d-inspector-actions">
+      <button type="button" disabled={!inspected.probe} onClick={locateSelected}>Locate</button>
+      <button type="button" disabled={!selectedSeries?.artifact.segments.length} onClick={() => selectedSeries && fitSeries([selectedSeries])}>Fit function</button>
+      <button type="button" onClick={() => onSelectionCommit?.({ objectId: null, probe: null })}>Clear selection</button>
+    </div>
+  </div> : <p className="graph2d-muted">Select a function to inspect it.</p>;
   return (
     <section data-testid="graphs-workspace" aria-label="Graphs workspace" className="graph2d-workspace"
       data-left={showLeft} data-right={showRight}

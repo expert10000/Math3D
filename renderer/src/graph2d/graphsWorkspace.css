@@ -44,6 +44,14 @@
 .graph2d-inspector-details dt { font-weight: 700; }
 .graph2d-inspector-details dd { margin: 0; overflow-wrap: anywhere; }
 .graph2d-inspector-details button { margin-left: 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--panel-strong); cursor: pointer; }
+.graph2d-inspector-swatch { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.graph2d-inspector-more { margin-top: 12px; font-size: 12px; overflow-wrap: anywhere; }
+.graph2d-inspector-more summary { cursor: pointer; font-weight: 700; }
+.graph2d-inspector-more ul { margin: 8px 0; padding-left: 20px; }
+.graph2d-inspector-more dl { margin-top: 8px; }
+.graph2d-inspector-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 14px; }
+.graph2d-inspector-actions button { border: 1px solid var(--border); border-radius: 5px; background: var(--panel-strong); padding: 4px 7px; cursor: pointer; }
+.graph2d-inspector-actions button:disabled { opacity: .45; cursor: default; }
 .graph2d-viewer { display: grid; place-items: center; position: relative; overflow: auto; }
 .graph2d-viewer { touch-action: none; cursor: grab; }
 .graph2d-viewer:active { cursor: grabbing; }

@@ -23,6 +23,7 @@ export * from "./graph2dPersistence";
 export * from "./graph2dCommands";
 export * from "./graph2dAuthoring";
 export * from "./graph2dPicking";
+export * from "./graph2dInspector";
 export * from "./geometryDocument";
 export * from "./geometryCommands";
 export * from "./math";
