@@ -377,3 +377,27 @@ test("Graphs authors and probes an implicit contour", async () => {
     await expect(inspector).toContainText("F(x,y) = x^2+y^2-4 = 0");
   } finally { await closeSurfaceApp(app); }
 });
+
+test("Graphs fills an inequality and distinguishes strict from inclusive boundaries", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    const functions = app.page.getByLabel("Graph functions");
+    await functions.getByRole("button", { name: "Add inequality" }).click();
+    await functions.getByLabel("Region expression 1").fill("x");
+    await functions.getByLabel("Region comparison 1").selectOption(">");
+    await functions.getByRole("button", { name: "Add condition" }).click();
+    await functions.getByLabel("Region expression 2").fill("y");
+    await functions.getByLabel("Region comparison 2").selectOption(">=");
+    await functions.getByRole("button", { name: "Save inequality" }).click();
+    await expect(app.page.locator('[data-graph2d-region="inequality_1"]')).toHaveAttribute("d", /M/);
+    await expect(app.page.locator('[data-graph2d-path="inequality_1"][data-boundary-strict="true"]'))
+      .toHaveAttribute("stroke-dasharray", "6 5");
+    await expect(app.page.locator('[data-graph2d-path="inequality_1"][data-boundary-strict="false"]'))
+      .toHaveAttribute("d", /[ML]/);
+    await functions.getByRole("button", { name: "Select region" }).click();
+    await expect(app.page.getByLabel("Graph inspector")).toContainText("x > 0 AND y >= 0");
+  } finally { await closeSurfaceApp(app); }
+});

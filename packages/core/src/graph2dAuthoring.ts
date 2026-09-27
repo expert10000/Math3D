@@ -28,6 +28,14 @@ export type Graph2DImplicitDraft = Readonly<{
   yDomain: Graph2DDomain;
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
 }>;
+export type Graph2DInequalityDraft = Readonly<{
+  label: string;
+  clauses: readonly Readonly<{ expression: string; comparator: "<" | "<=" | ">" | ">=" }>[];
+  operator: "all" | "any";
+  domain: Graph2DDomain;
+  yDomain: Graph2DDomain;
+  style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
+}>;
 export type Graph2DAuthoringAction =
   | Readonly<{ type: "create"; draft: Graph2DFunctionDraft }>
   | Readonly<{ type: "edit"; objectId: string; draft: Graph2DFunctionDraft }>
@@ -37,6 +45,8 @@ export type Graph2DAuthoringAction =
   | Readonly<{ type: "edit-polar"; objectId: string; draft: Graph2DPolarDraft }>
   | Readonly<{ type: "create-implicit"; draft: Graph2DImplicitDraft }>
   | Readonly<{ type: "edit-implicit"; objectId: string; draft: Graph2DImplicitDraft }>
+  | Readonly<{ type: "create-inequality"; draft: Graph2DInequalityDraft }>
+  | Readonly<{ type: "edit-inequality"; objectId: string; draft: Graph2DInequalityDraft }>
   | Readonly<{ type: "duplicate" | "delete" | "visibility"; objectId: string }>
   | Readonly<{ type: "reorder"; objectId: string; toIndex: number }>;
 
@@ -107,6 +117,22 @@ export const validateGraph2DImplicitDraft = (draft: Graph2DImplicitDraft,
   if (!Number.isFinite(draft.yDomain.min) || !Number.isFinite(draft.yDomain.max) ||
     draft.yDomain.min >= draft.yDomain.max || typeof draft.yDomain.includeMin !== "boolean" ||
     typeof draft.yDomain.includeMax !== "boolean") errors.push("Y bound minimum must be less than maximum.");
+  return errors;
+};
+export const validateGraph2DInequalityDraft = (draft: Graph2DInequalityDraft,
+  variables: readonly string[] = ["x", "y"]): readonly string[] => {
+  const errors = [...validateGraph2DImplicitDraft({ ...draft, expression: draft.clauses[0]?.expression ?? "" }, variables)];
+  if (!["all", "any"].includes(draft.operator)) errors.push("Choose AND or OR for the region.");
+  if (draft.clauses.length < 1 || draft.clauses.length > 8) errors.push("Use 1–8 region conditions.");
+  for (const clause of draft.clauses) {
+    if (!["<", "<=", ">", ">="].includes(clause.comparator)) errors.push("Choose a valid comparison.");
+    if (clause.expression.length < 1 || clause.expression.length > 2048 ||
+      clause.expression !== clause.expression.trim()) errors.push("Enter a valid region expression.");
+    else {
+      const parsed = parseGraph2DExpression(clause.expression, variables);
+      if (!parsed.ok) errors.push(...parsed.diagnostics.map((item) => item.message));
+    }
+  }
   return errors;
 };
 
@@ -208,6 +234,32 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       domain: action.draft.domain, yDomain: action.draft.yDomain };
     const display = { objectId: id, ...action.draft.style };
     if (action.type === "create-implicit") { objects.push(object); displays.push(display); }
+    else { objects[index] = object; displays[index] = display; }
+    selection = { objectId: id, probe: null };
+  } else if (action.type === "create-inequality" || action.type === "edit-inequality") {
+    if (action.type === "edit-inequality" && objects[index]?.kind !== "inequality")
+      throw new TypeError("Selected object is not an inequality region.");
+    if (document.source.variables.some((entry) => entry.name === "y"))
+      throw new TypeError("The coordinate name y conflicts with a document variable.");
+    const names = ["x", "y", ...document.source.variables.map((entry) => entry.name)];
+    const errors = validateGraph2DInequalityDraft(action.draft, names);
+    if (errors.length) throw new TypeError(errors.join(" "));
+    const clauses = action.draft.clauses.map((clause) => {
+      const parsed = parseGraph2DExpression(clause.expression, names);
+      if (!parsed.ok) throw new TypeError("Region condition is invalid.");
+      return { source: clause.expression, variable: "xy" as const, ast: parsed.ast, comparator: clause.comparator };
+    });
+    if (action.type === "create-inequality" && objects.length >= GRAPH2D_MAX_OBJECTS)
+      throw new TypeError("Function limit reached.");
+    let id = action.type === "edit-inequality" ? action.objectId : "inequality_1";
+    if (action.type === "create-inequality") {
+      let serial = 1;
+      while (objects.some((entry) => entry.id === id)) id = "inequality_" + ++serial;
+    }
+    const object = { id, kind: "inequality" as const, label: action.draft.label,
+      clauses, operator: action.draft.operator, domain: action.draft.domain, yDomain: action.draft.yDomain };
+    const display = { objectId: id, ...action.draft.style };
+    if (action.type === "create-inequality") { objects.push(object); displays.push(display); }
     else { objects[index] = object; displays[index] = display; }
     selection = { objectId: id, probe: null };
   } else if (action.type === "duplicate") {

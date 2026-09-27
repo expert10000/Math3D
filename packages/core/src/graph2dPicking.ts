@@ -32,7 +32,7 @@ export const pickGraph2DProbe = (input: Readonly<{
     if (!input.document.display.objects[order]?.visible) return;
     const artifact = artifacts.get(object.id);
     if (!artifact) return;
-    if (object.kind === "implicit") {
+    if (object.kind === "implicit" || object.kind === "inequality") {
       for (const segment of artifact.segments) for (let index = 0; index < segment.points.length - 1; index += 1) {
         const a = segment.points[index]!, b = segment.points[index + 1]!;
         const sa = graph2DWorldToScreen(input.viewport, input.size, a);
@@ -167,7 +167,7 @@ export const selectionForGraph2DObject = (
       evaluateGraph2DPolar(object, variables, nearest.parameter);
     return { objectId, probe: exact ? { objectId, x: exact.x, y: exact.y, parameter: nearest.parameter } : null };
   }
-  if (object.kind === "implicit") {
+  if (object.kind === "implicit" || object.kind === "inequality") {
     const point = segments.flatMap((segment) => segment.points).reduce<Graph2DSamplePoint | null>((best, candidate) =>
       !best || Math.abs(candidate.x - target) < Math.abs(best.x - target) ? candidate : best, null);
     return { objectId, probe: point ? { objectId, x: point.x, y: point.y } : null };

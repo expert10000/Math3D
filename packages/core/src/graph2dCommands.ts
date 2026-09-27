@@ -6,7 +6,8 @@ import { isGraph2DViewport, type Graph2DViewport } from "./graph2dViewport";
 
 export const GRAPH2D_COMMAND_TYPES = { setViewport: "graph2d.viewport.set", replaceScene: "graph2d.scene.replace", setSelection: "graph2d.selection.set" } as const;
 export const GRAPH2D_SCENE_OPERATIONS = ["create", "edit", "create-parametric", "edit-parametric",
-  "create-polar", "edit-polar", "create-implicit", "edit-implicit", "grid-mode", "duplicate", "reorder", "visibility", "style", "delete", "restore"] as const;
+  "create-polar", "edit-polar", "create-implicit", "edit-implicit",
+  "create-inequality", "edit-inequality", "grid-mode", "duplicate", "reorder", "visibility", "style", "delete", "restore"] as const;
 export type Graph2DSceneOperation = (typeof GRAPH2D_SCENE_OPERATIONS)[number];
 export type Graph2DCommandState = Readonly<{ document: Graph2DDocument }>;
 

@@ -12,6 +12,7 @@ export const GRAPH2D_EXPLICIT_CAPABILITY = "graph2d.explicit.v1" as const;
 export const GRAPH2D_PARAMETRIC_CAPABILITY = "graph2d.parametric.v1" as const;
 export const GRAPH2D_POLAR_CAPABILITY = "graph2d.polar.v1" as const;
 export const GRAPH2D_IMPLICIT_CAPABILITY = "graph2d.implicit.v1" as const;
+export const GRAPH2D_INEQUALITY_CAPABILITY = "graph2d.inequality.v1" as const;
 export const GRAPH2D_OBJECT_KINDS = ["explicit-cartesian", "parametric", "polar", "implicit", "inequality", "point-series", "piecewise"] as const;
 export type Graph2DObjectKind = (typeof GRAPH2D_OBJECT_KINDS)[number];
 export const GRAPH2D_RESERVED_OBJECT_KINDS = GRAPH2D_OBJECT_KINDS.slice(1);
@@ -50,7 +51,23 @@ export type Graph2DImplicitObject = Readonly<{
   domain: Graph2DDomain;
   yDomain: Graph2DDomain;
 }>;
-export type Graph2DGraphObject = Graph2DExplicitObject | Graph2DParametricObject | Graph2DPolarObject | Graph2DImplicitObject;
+export type Graph2DInequalityClause = Readonly<{
+  source: string;
+  variable: "xy";
+  ast: Graph2DExpressionAst;
+  comparator: "<" | "<=" | ">" | ">=";
+}>;
+export type Graph2DInequalityObject = Readonly<{
+  id: string;
+  kind: "inequality";
+  label: string;
+  clauses: readonly Graph2DInequalityClause[];
+  operator: "all" | "any";
+  domain: Graph2DDomain;
+  yDomain: Graph2DDomain;
+}>;
+export type Graph2DGraphObject = Graph2DExplicitObject | Graph2DParametricObject | Graph2DPolarObject |
+  Graph2DImplicitObject | Graph2DInequalityObject;
 export type Graph2DSource = Readonly<{
   objects: readonly Graph2DGraphObject[];
   variables: readonly Readonly<{ name: string; value: number }>[];
@@ -60,7 +77,8 @@ export const graph2DRequiredCapabilities = (source: Graph2DSource): Graph2DDocum
   [GRAPH2D_EXPLICIT_CAPABILITY,
     ...(source.objects.some((object) => object.kind === "parametric") ? [GRAPH2D_PARAMETRIC_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "polar") ? [GRAPH2D_POLAR_CAPABILITY] : []),
-    ...(source.objects.some((object) => object.kind === "implicit") ? [GRAPH2D_IMPLICIT_CAPABILITY] : [])];
+    ...(source.objects.some((object) => object.kind === "implicit") ? [GRAPH2D_IMPLICIT_CAPABILITY] : []),
+    ...(source.objects.some((object) => object.kind === "inequality") ? [GRAPH2D_INEQUALITY_CAPABILITY] : [])];
 export type Graph2DObjectDisplay = Readonly<{
   objectId: string;
   visible: boolean;
@@ -82,7 +100,7 @@ export type Graph2DDocument = Readonly<{
   schemaVersion: typeof GRAPH2D_DOCUMENT_SCHEMA_VERSION;
   identity: DocumentIdentity;
   requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
-    typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY)[];
+    typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY | typeof GRAPH2D_INEQUALITY_CAPABILITY)[];
   source: Graph2DSource;
   display: Graph2DDisplay;
   selection: Graph2DSelection;
@@ -135,6 +153,15 @@ const validImplicitObject = (value: unknown, variables: readonly string[]): valu
   exact(value, ["id", "kind", "label", "expression", "domain", "yDomain"]) && objectId(value.id) &&
   value.kind === "implicit" && bounded(value.label, 160) &&
   validExpression(value.expression, variables, "xy") && validDomain(value.domain) && validDomain(value.yDomain);
+const validInequalityObject = (value: unknown, variables: readonly string[]): value is Graph2DInequalityObject => record(value) &&
+  exact(value, ["id", "kind", "label", "clauses", "operator", "domain", "yDomain"]) && objectId(value.id) &&
+  value.kind === "inequality" && bounded(value.label, 160) && ["all", "any"].includes(String(value.operator)) &&
+  Array.isArray(value.clauses) && value.clauses.length >= 1 && value.clauses.length <= 8 &&
+  value.clauses.every((clause: unknown) => record(clause) &&
+    exact(clause, ["source", "variable", "ast", "comparator"]) &&
+    ["<", "<=", ">", ">="].includes(String(clause.comparator)) &&
+    validExpression({ source: clause.source, variable: clause.variable, ast: clause.ast }, variables, "xy")) &&
+  validDomain(value.domain) && validDomain(value.yDomain);
 const validSource = (value: unknown): value is Graph2DSource => {
   if (!record(value) || !exact(value, ["objects", "variables", "assumptions"]) || !Array.isArray(value.objects) ||
       value.objects.length > GRAPH2D_MAX_OBJECTS ||
@@ -147,10 +174,11 @@ const validSource = (value: unknown): value is Graph2DSource => {
   const names = value.variables.map((entry: { name: string }) => entry.name);
   if (names.includes("t") && value.objects.some((entry: Graph2DGraphObject) => entry.kind === "parametric")) return false;
   if (names.includes("theta") && value.objects.some((entry: Graph2DGraphObject) => entry.kind === "polar")) return false;
-  if (names.includes("y") && value.objects.some((entry: Graph2DGraphObject) => entry.kind === "implicit")) return false;
+  if (names.includes("y") && value.objects.some((entry: Graph2DGraphObject) =>
+    entry.kind === "implicit" || entry.kind === "inequality")) return false;
   return value.objects.every((entry: unknown) => validObject(entry, ["x", ...names]) ||
     validParametricObject(entry, ["t", ...names]) || validPolarObject(entry, ["theta", ...names]) ||
-    validImplicitObject(entry, ["x", "y", ...names])) &&
+    validImplicitObject(entry, ["x", "y", ...names]) || validInequalityObject(entry, ["x", "y", ...names])) &&
     new Set(value.objects.map((entry: Graph2DGraphObject) => entry.id)).size === value.objects.length;
 };
 const validDisplay = (value: unknown, source: Graph2DSource): value is Graph2DDisplay => {

@@ -1,7 +1,8 @@
 import { GRAPH2D_MAX_OBJECTS, validateGraph2DFunctionDraft, validateGraph2DParametricDraft,
-  validateGraph2DPolarDraft, validateGraph2DImplicitDraft,
+  validateGraph2DPolarDraft, validateGraph2DImplicitDraft, validateGraph2DInequalityDraft,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DFunctionDraft,
-  type Graph2DParametricDraft, type Graph2DPolarDraft, type Graph2DImplicitDraft } from "@math3d/core";
+  type Graph2DParametricDraft, type Graph2DPolarDraft, type Graph2DImplicitDraft,
+  type Graph2DInequalityDraft } from "@math3d/core";
 import { useState } from "react";
 
 type Props = { document: Graph2DDocument; onCommit?: (action: Graph2DAuthoringAction) => void;
@@ -19,6 +20,11 @@ const initialImplicitDraft = (): Graph2DImplicitDraft => ({ label: "contour", ex
   domain: { min: -10, max: 10, includeMin: true, includeMax: true },
   yDomain: { min: -10, max: 10, includeMin: true, includeMax: true },
   style: { visible: true, color: "#059669", lineWidth: 2, lineStyle: "solid" } });
+const initialInequalityDraft = (): Graph2DInequalityDraft => ({ label: "region",
+  clauses: [{ expression: "x^2+y^2-4", comparator: "<=" }], operator: "all",
+  domain: { min: -10, max: 10, includeMin: true, includeMax: true },
+  yDomain: { min: -10, max: 10, includeMin: true, includeMax: true },
+  style: { visible: true, color: "#0d9488", lineWidth: 2, lineStyle: "solid" } });
 
 export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -26,11 +32,14 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
   const [parametricDraft, setParametricDraft] = useState<Graph2DParametricDraft>(initialParametricDraft);
   const [polarDraft, setPolarDraft] = useState<Graph2DPolarDraft>(initialPolarDraft);
   const [implicitDraft, setImplicitDraft] = useState<Graph2DImplicitDraft>(initialImplicitDraft);
-  const [mode, setMode] = useState<"explicit" | "parametric" | "polar" | "implicit">("explicit");
+  const [inequalityDraft, setInequalityDraft] = useState<Graph2DInequalityDraft>(initialInequalityDraft);
+  const [mode, setMode] = useState<"explicit" | "parametric" | "polar" | "implicit" | "inequality">("explicit");
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const variables = ["x", ...document.source.variables.map((entry) => entry.name)];
   const errors = mode === "explicit" ? validateGraph2DFunctionDraft(draft, variables) :
+    mode === "inequality" ? validateGraph2DInequalityDraft(inequalityDraft,
+      ["x", "y", ...document.source.variables.map((entry) => entry.name)]) :
     mode === "implicit" ? validateGraph2DImplicitDraft(implicitDraft,
       ["x", "y", ...document.source.variables.map((entry) => entry.name)]) :
     mode === "parametric" ? validateGraph2DParametricDraft(parametricDraft,
@@ -47,6 +56,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
     setPolarDraft(initialPolarDraft()); setMessage(""); setOpen(true); };
   const beginCreateImplicit = () => { setMode("implicit"); setEditingId(null);
     setImplicitDraft(initialImplicitDraft()); setMessage(""); setOpen(true); };
+  const beginCreateInequality = () => { setMode("inequality"); setEditingId(null);
+    setInequalityDraft(initialInequalityDraft()); setMessage(""); setOpen(true); };
   const beginEdit = (id: string) => {
     const object = document.source.objects.find((entry) => entry.id === id);
     const style = document.display.objects.find((entry) => entry.objectId === id);
@@ -63,9 +74,14 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
       setMode("polar"); setPolarDraft({ label: object.label, rExpression: object.rExpression.source,
         domain: object.domain,
         style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
-    } else {
+    } else if (object.kind === "implicit") {
       setMode("implicit"); setImplicitDraft({ label: object.label, expression: object.expression.source,
         domain: object.domain, yDomain: object.yDomain,
+        style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
+    } else {
+      setMode("inequality"); setInequalityDraft({ label: object.label,
+        clauses: object.clauses.map((clause) => ({ expression: clause.source, comparator: clause.comparator })),
+        operator: object.operator, domain: object.domain, yDomain: object.yDomain,
         style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
     }
     setMessage(""); setOpen(true);
@@ -74,6 +90,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
     if (errors.length) return;
     const action: Graph2DAuthoringAction = mode === "explicit" ?
       editingId ? { type: "edit", objectId: editingId, draft } : { type: "create", draft } :
+      mode === "inequality" ? editingId ? { type: "edit-inequality", objectId: editingId, draft: inequalityDraft } :
+        { type: "create-inequality", draft: inequalityDraft } :
       mode === "implicit" ? editingId ? { type: "edit-implicit", objectId: editingId, draft: implicitDraft } :
         { type: "create-implicit", draft: implicitDraft } :
       mode === "parametric" ? editingId ? { type: "edit-parametric", objectId: editingId, draft: parametricDraft } :
@@ -84,6 +102,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
       setOpen(false); setEditingId(null); setDraft(initialDraft()); setParametricDraft(initialParametricDraft());
       setPolarDraft(initialPolarDraft());
       setImplicitDraft(initialImplicitDraft());
+      setInequalityDraft(initialInequalityDraft());
     }
   };
   return <div className="graph2d-authoring">
@@ -91,7 +110,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
       <button type="button" onClick={beginCreate} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add function</button>
       <button type="button" onClick={beginCreateParametric} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add parametric</button>
       <button type="button" onClick={beginCreatePolar} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add polar</button>
-      <button type="button" onClick={beginCreateImplicit} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add implicit</button></div>
+      <button type="button" onClick={beginCreateImplicit} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add implicit</button>
+      <button type="button" onClick={beginCreateInequality} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add inequality</button></div>
     {document.source.objects.length ? <ol className="graph2d-function-list">
       {document.source.objects.map((object, index) => {
         const style = document.display.objects[index]!;
@@ -101,7 +121,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
               `y = ${object.expression.source}` : object.kind === "parametric" ?
                 `x(t) = ${object.xExpression.source}; y(t) = ${object.yExpression.source}` :
                 object.kind === "polar" ? `r(θ) = ${object.rExpression.source}` :
-                  `F(x,y) = ${object.expression.source} = 0`}</code>
+                  object.kind === "implicit" ? `F(x,y) = ${object.expression.source} = 0` :
+                    object.clauses.map((clause) => `${clause.source} ${clause.comparator} 0`).join(object.operator === "all" ? " AND " : " OR ")}</code>
               {!style.visible && <small>Hidden</small>}</div></div>
           <div className="graph2d-function-actions">
             <button type="button" aria-label={"Select " + object.label} aria-pressed={document.selection.objectId === object.id}
@@ -271,6 +292,61 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
       {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
       {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
       <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save implicit</button>
+        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+    </form>}
+    {open && mode === "inequality" && <form className="graph2d-function-editor"
+      aria-label={editingId ? "Edit inequality" : "New inequality"}
+      onSubmit={(event) => { event.preventDefault(); save(); }}>
+      <h3>{editingId ? "Edit filled region" : "New filled region"}</h3>
+      <label>Name <input aria-label="Inequality name" value={inequalityDraft.label} maxLength={160}
+        onChange={(event) => setInequalityDraft({ ...inequalityDraft, label: event.target.value })} /></label>
+      {inequalityDraft.clauses.map((clause, index) => <div className="graph2d-domain-row" key={index}>
+        <label>F{index + 1}(x,y) <input aria-label={`Region expression ${index + 1}`} value={clause.expression}
+          spellCheck={false} onChange={(event) => setInequalityDraft({ ...inequalityDraft,
+            clauses: inequalityDraft.clauses.map((item, at) => at === index ? { ...item, expression: event.target.value } : item) })} /></label>
+        <label>Comparison <select aria-label={`Region comparison ${index + 1}`} value={clause.comparator}
+          onChange={(event) => setInequalityDraft({ ...inequalityDraft,
+            clauses: inequalityDraft.clauses.map((item, at) => at === index ? { ...item,
+              comparator: event.target.value as Graph2DInequalityDraft["clauses"][number]["comparator"] } : item) })}>
+          <option value="<">&lt; 0</option><option value="<=">≤ 0</option>
+          <option value=">">&gt; 0</option><option value=">=">≥ 0</option>
+        </select></label>
+        {inequalityDraft.clauses.length > 1 && <button type="button" aria-label={`Remove condition ${index + 1}`}
+          onClick={() => setInequalityDraft({ ...inequalityDraft,
+            clauses: inequalityDraft.clauses.filter((_, at) => at !== index) })}>Remove</button>}
+      </div>)}
+      <div className="graph2d-domain-row">
+        <button type="button" disabled={inequalityDraft.clauses.length >= 8}
+          onClick={() => setInequalityDraft({ ...inequalityDraft,
+            clauses: [...inequalityDraft.clauses, { expression: "y", comparator: ">=" }] })}>Add condition</button>
+        <label>Combine <select aria-label="Region combine" value={inequalityDraft.operator}
+          onChange={(event) => setInequalityDraft({ ...inequalityDraft,
+            operator: event.target.value as Graph2DInequalityDraft["operator"] })}>
+          <option value="all">AND</option><option value="any">OR</option>
+        </select></label>
+      </div>
+      <div className="graph2d-domain-row">
+        <label>X from <input aria-label="Region x minimum" type="number" value={inequalityDraft.domain.min}
+          onChange={(event) => setInequalityDraft({ ...inequalityDraft,
+            domain: { ...inequalityDraft.domain, min: Number(event.target.value) } })} /></label>
+        <label>X to <input aria-label="Region x maximum" type="number" value={inequalityDraft.domain.max}
+          onChange={(event) => setInequalityDraft({ ...inequalityDraft,
+            domain: { ...inequalityDraft.domain, max: Number(event.target.value) } })} /></label>
+      </div>
+      <div className="graph2d-domain-row">
+        <label>Y from <input aria-label="Region y minimum" type="number" value={inequalityDraft.yDomain.min}
+          onChange={(event) => setInequalityDraft({ ...inequalityDraft,
+            yDomain: { ...inequalityDraft.yDomain, min: Number(event.target.value) } })} /></label>
+        <label>Y to <input aria-label="Region y maximum" type="number" value={inequalityDraft.yDomain.max}
+          onChange={(event) => setInequalityDraft({ ...inequalityDraft,
+            yDomain: { ...inequalityDraft.yDomain, max: Number(event.target.value) } })} /></label>
+      </div>
+      <label>Color <input aria-label="Region color" type="color" value={inequalityDraft.style.color}
+        onChange={(event) => setInequalityDraft({ ...inequalityDraft,
+          style: { ...inequalityDraft.style, color: event.target.value } })} /></label>
+      {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
+      {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save inequality</button>
         <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
     </form>}
   </div>;

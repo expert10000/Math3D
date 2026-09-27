@@ -6,6 +6,7 @@ import {
   type Graph2DIntervalAnalysis,
   type Graph2DIntegralAnalysis,
   type Graph2DIntersectionAnalysis,
+  type Graph2DRegionArtifact,
 } from "@math3d/core";
 import { projectGraph2DGrid } from "./gridProjection";
 
@@ -52,6 +53,8 @@ export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, 
     }
     return path;
   }).join("");
+  const isRegion = (artifact: Graph2DSamplingArtifact): artifact is Graph2DRegionArtifact =>
+    "kind" in artifact && artifact.kind === "inequality-region";
   return (
     <svg data-testid="graph2d-plot" role="img" aria-label="Cartesian graph plot" className="graph2d-plot"
       viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none">
@@ -92,15 +95,35 @@ export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, 
         {grid.horizontalMajor.filter((tick) => tick.value !== 0).map((tick) => <text key={`yl-${tick.value}`} x={Math.min(size.width - 32, Math.max(5, (grid.yAxis ?? 0) + 5))} y={tick.pixel - 3}>{tick.label}</text>)}
       </g>}
       <g clipPath={`url(#${clipId})`}>
+        {series.filter((item) => item.style.visible && isRegion(item.artifact)).map((item) => {
+          const region = item.artifact as Graph2DRegionArtifact;
+          const d = region.fills.map((fill) => {
+            const x = (fill.xMin - bounds.xMin) / xSpan * size.width;
+            const y = (bounds.yMax - fill.yMax) / ySpan * size.height;
+            const width = (fill.xMax - fill.xMin) / xSpan * size.width;
+            const height = (fill.yMax - fill.yMin) / ySpan * size.height;
+            return `M${x.toFixed(2)},${y.toFixed(2)}h${width.toFixed(2)}v${height.toFixed(2)}h${(-width).toFixed(2)}Z`;
+          }).join("");
+          return <path key={`fill-${item.objectId}`} data-graph2d-region={item.objectId} data-region-state={region.state}
+            d={d} fill={item.style.color} fillOpacity={0.18} stroke="none" />;
+        })}
         {area && <g data-testid="graph2d-area-overlay" data-result-id={area.resultId}
           className={`graph2d-area-overlay graph2d-area-${area.mode}`} aria-hidden="true">
           {area.fillSegments.map((segment) => <polygon key={segment.artifactId} data-area-artifact={segment.artifactId}
             points={segment.points.map((point) => `${(point.x - bounds.xMin) / xSpan * size.width},${(bounds.yMax - point.y) / ySpan * size.height}`).join(" ")} />)}
         </g>}
-        {series.filter((item) => item.style.visible).map((item) => <path key={item.objectId} data-graph2d-path={item.objectId}
-          d={pathFor(item.artifact)} fill="none" stroke={item.style.color} strokeWidth={item.style.lineWidth}
-          strokeDasharray={item.style.lineStyle === "dashed" ? "8 5" : item.style.lineStyle === "dotted" ? "2 4" : undefined}
-          strokeLinejoin="round" strokeLinecap="round" />)}
+        {series.filter((item) => item.style.visible).flatMap((item) => isRegion(item.artifact) ?
+          item.artifact.boundaries.map((boundary, index) => <path key={`${item.objectId}-${index}`}
+            data-graph2d-path={item.objectId} data-boundary-strict={boundary.strict}
+            d={pathFor({ ...item.artifact, segments: boundary.segments })} fill="none"
+            stroke={item.style.color} strokeWidth={item.style.lineWidth}
+            strokeDasharray={boundary.strict ? "6 5" : item.style.lineStyle === "dashed" ? "8 5" :
+              item.style.lineStyle === "dotted" ? "2 4" : undefined}
+            strokeLinejoin="round" strokeLinecap="round" />) :
+          [<path key={item.objectId} data-graph2d-path={item.objectId}
+            d={pathFor(item.artifact)} fill="none" stroke={item.style.color} strokeWidth={item.style.lineWidth}
+            strokeDasharray={item.style.lineStyle === "dashed" ? "8 5" : item.style.lineStyle === "dotted" ? "2 4" : undefined}
+            strokeLinejoin="round" strokeLinecap="round" />])}
         {overlays.map((overlay) => {
           const segment = clipGraph2DLineOverlay(overlay, display.viewport, size);
           if (!segment) return null;

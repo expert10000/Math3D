@@ -1,6 +1,7 @@
 import type { Graph2DDomain, Graph2DDocument, Graph2DObjectDisplay, Graph2DProbe } from "./graph2dDocument";
 import type { Graph2DSamplingArtifact, Graph2DSamplingDiagnostic } from "./graph2dSampling";
 import { evaluateGraph2DPolar } from "./graph2dPolar";
+import type { Graph2DRegionArtifact } from "./graph2dInequality";
 
 export type Graph2DInspectorSummary = Readonly<{
   objectId: string;
@@ -11,6 +12,7 @@ export type Graph2DInspectorSummary = Readonly<{
   style: Graph2DObjectDisplay;
   probe: Graph2DProbe | null;
   signedRadius: number | null;
+  regionState: "resolved" | "unresolved" | "complexity-limit" | null;
   probeMethod: "direct-expression-floating-point" | "sampled-contour" | "unavailable";
   sampling: Readonly<{
     status: "converged" | "incomplete" | "unavailable";
@@ -48,11 +50,16 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
     objectId: object.id, kind: object.kind, label: object.label,
     expression: object.kind === "explicit-cartesian" ? object.expression.source :
       object.kind === "parametric" ? `x(t) = ${object.xExpression.source}, y(t) = ${object.yExpression.source}` :
-      object.kind === "polar" ? `r(θ) = ${object.rExpression.source}` : `F(x,y) = ${object.expression.source} = 0`,
+      object.kind === "polar" ? `r(θ) = ${object.rExpression.source}` :
+        object.kind === "implicit" ? `F(x,y) = ${object.expression.source} = 0` :
+          object.clauses.map((clause) => `${clause.source} ${clause.comparator} 0`).join(object.operator === "all" ? " AND " : " OR "),
     domain: object.domain, style,
     probe: selectedProbe, signedRadius,
+    regionState: visibleArtifact && "kind" in visibleArtifact && visibleArtifact.kind === "inequality-region" ?
+      (visibleArtifact as unknown as Graph2DRegionArtifact).state : null,
     probeMethod: document.selection.probe?.objectId === object.id ?
-      object.kind === "implicit" ? "sampled-contour" : "direct-expression-floating-point" : "unavailable",
+      object.kind === "implicit" || object.kind === "inequality" ? "sampled-contour" :
+        "direct-expression-floating-point" : "unavailable",
     sampling: {
       status: !visibleArtifact ? "unavailable" : visibleArtifact.converged ? "converged" : "incomplete",
       method: "adaptive-bounded-polyline", samplesEvaluated: visibleArtifact?.samplesEvaluated ?? null,
@@ -64,7 +71,8 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
       structuralHash: document.identity.structuralHash,
       expressionAstVersion: object.kind === "explicit-cartesian" ? object.expression.ast.version :
         object.kind === "parametric" ? object.xExpression.ast.version :
-          object.kind === "polar" ? object.rExpression.ast.version : object.expression.ast.version,
+          object.kind === "polar" ? object.rExpression.ast.version :
+            object.kind === "implicit" ? object.expression.ast.version : object.clauses[0]!.ast.version,
       samplerVersion: visibleArtifact?.samplerVersion ?? null },
   };
 };
