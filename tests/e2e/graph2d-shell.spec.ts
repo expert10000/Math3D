@@ -138,6 +138,8 @@ test("Graphs selects a curve by click, locates its probe, and clears selection",
     const inspector = app.page.getByLabel("Graph inspector");
     await expect(inspector.getByTestId("graph2d-sampling-status")).toContainText("converged");
     await expect(inspector.getByText("Direct expression evaluation (floating point)")).toBeVisible();
+    await expect(inspector.getByTestId("graph2d-first-derivative")).toContainText("1.0000000");
+    await expect(inspector.getByTestId("graph2d-second-derivative")).toContainText("0.0000000");
     await inspector.getByText("Provenance").click();
     await expect(inspector.getByText("Source hash")).toBeVisible();
     await app.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);

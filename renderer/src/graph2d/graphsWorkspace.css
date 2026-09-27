@@ -52,6 +52,11 @@
 .graph2d-inspector-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 14px; }
 .graph2d-inspector-actions button { border: 1px solid var(--border); border-radius: 5px; background: var(--panel-strong); padding: 4px 7px; cursor: pointer; }
 .graph2d-inspector-actions button:disabled { opacity: .45; cursor: default; }
+.graph2d-derivatives { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 10px; }
+.graph2d-derivatives h3 { margin: 0 0 10px; font-size: 14px; }
+.graph2d-derivative-result { padding: 8px 0; border-top: 1px solid var(--border); font-size: 12px; }
+.graph2d-derivative-result strong { display: block; margin-bottom: 8px; }
+.graph2d-derivative-diagnostics { padding-left: 18px; margin: 8px 0; font-size: 11px; opacity: .75; }
 .graph2d-viewer { display: grid; place-items: center; position: relative; overflow: auto; }
 .graph2d-viewer { touch-action: none; cursor: grab; }
 .graph2d-viewer:active { cursor: grabbing; }

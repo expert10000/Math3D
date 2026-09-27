@@ -1,5 +1,5 @@
 import {
-  fitGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, GRAPH2D_WORKSPACE_CONTRACT,
+  analyzeGraph2DDerivatives, fitGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, GRAPH2D_WORKSPACE_CONTRACT,
   graph2DWorldToScreen, panGraph2DViewport, pickGraph2DProbe, sampleGraph2DExplicit,
   queryGraph2DInspector, selectionForGraph2DObject, zoomGraph2DViewport,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
@@ -166,6 +166,8 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   };
   const selectedSeries = series.find((item) => item.objectId === document.selection.objectId);
   const inspected = queryGraph2DInspector(document, selectedSeries);
+  const derivatives = useMemo(() => document.selection.objectId && document.selection.probe ?
+    analyzeGraph2DDerivatives(document, document.selection.objectId, document.selection.probe.x) : null, [document]);
   const locateSelected = () => {
     if (!document.selection.probe) return;
     const screen = graph2DWorldToScreen(viewport, size, document.selection.probe);
@@ -203,6 +205,27 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         <dt>Sampler</dt><dd>{inspected.provenance.samplerVersion === null ? "Unavailable" : `v${inspected.provenance.samplerVersion}`}</dd>
       </dl>
     </details>
+    {derivatives && <section className="graph2d-derivatives" data-testid="graph2d-derivatives" aria-label="Derivatives">
+      <h3>Derivatives at x = {derivatives[0].x.toPrecision(6)}</h3>
+      {derivatives.map((result) => <div className="graph2d-derivative-result" key={result.order}>
+        <strong>{result.order === 1 ? "First derivative" : "Second derivative"}</strong>
+        <dl className="graph2d-inspector-details">
+          <dt>Value</dt><dd data-testid={result.order === 1 ? "graph2d-first-derivative" : "graph2d-second-derivative"}>
+            {result.value === null ? "Unavailable" : result.value.toPrecision(8)}</dd>
+          <dt>Method</dt><dd>{result.method === "symbolic-rules" ? "Symbolic rules; floating point evaluation" :
+            result.method === "finite-difference" ? "Richardson finite difference" : "Unavailable"}</dd>
+          <dt>Domain</dt><dd>{result.domain.includeMin ? "[" : "("}{result.domain.min}, {result.domain.max}{result.domain.includeMax ? "]" : ")"}</dd>
+          <dt>Step</dt><dd>{result.step === null ? "Not applicable" : result.step.toExponential(3)}</dd>
+          <dt>Tolerance</dt><dd>{result.tolerance.toExponential(1)}</dd>
+          <dt>Error</dt><dd>{result.errorEstimate === null ? "No certified bound" : `Estimated ~ ${result.errorEstimate.toExponential(2)} (not certified)`}</dd>
+        </dl>
+        {result.diagnostics.length > 0 && <ul className="graph2d-derivative-diagnostics">
+          {result.diagnostics.map((diagnostic) => <li key={diagnostic.code}>{diagnostic.message}</li>)}
+        </ul>}
+        {result.formula && <details className="graph2d-inspector-more"><summary>Derivative expression</summary>
+          <code>{result.formula}</code></details>}
+      </div>)}
+    </section>}
     <div className="graph2d-inspector-actions">
       <button type="button" disabled={!inspected.probe} onClick={locateSelected}>Locate</button>
       <button type="button" disabled={!selectedSeries?.artifact.segments.length} onClick={() => selectedSeries && fitSeries([selectedSeries])}>Fit function</button>
