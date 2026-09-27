@@ -355,3 +355,25 @@ test("Graphs renders a signed-radius polar curve and switches grid modes", async
     await closeSurfaceApp(app);
   }
 });
+
+test("Graphs authors and probes an implicit contour", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    const functions = app.page.getByLabel("Graph functions");
+    await functions.getByRole("button", { name: "Add implicit" }).click();
+    await functions.getByLabel("Implicit expression").fill("x^2+y^2-1");
+    await functions.getByRole("button", { name: "Save implicit" }).click();
+    await expect(app.page.locator('[data-graph2d-path="implicit_1"]')).toHaveAttribute("d", /[ML]/);
+    await functions.getByRole("button", { name: "Select contour" }).click();
+    const inspector = app.page.getByLabel("Graph inspector");
+    await expect(inspector).toContainText("F(x,y) = x^2+y^2-1 = 0");
+    await expect(inspector.getByTestId("graph2d-probe-coordinates")).toBeVisible();
+    await functions.getByRole("button", { name: "Edit contour" }).click();
+    await functions.getByLabel("Implicit expression").fill("x^2+y^2-4");
+    await functions.getByRole("button", { name: "Save implicit" }).click();
+    await expect(inspector).toContainText("F(x,y) = x^2+y^2-4 = 0");
+  } finally { await closeSurfaceApp(app); }
+});

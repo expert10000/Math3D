@@ -11,7 +11,7 @@ export type Graph2DInspectorSummary = Readonly<{
   style: Graph2DObjectDisplay;
   probe: Graph2DProbe | null;
   signedRadius: number | null;
-  probeMethod: "direct-expression-floating-point" | "unavailable";
+  probeMethod: "direct-expression-floating-point" | "sampled-contour" | "unavailable";
   sampling: Readonly<{
     status: "converged" | "incomplete" | "unavailable";
     method: "adaptive-bounded-polyline";
@@ -48,10 +48,11 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
     objectId: object.id, kind: object.kind, label: object.label,
     expression: object.kind === "explicit-cartesian" ? object.expression.source :
       object.kind === "parametric" ? `x(t) = ${object.xExpression.source}, y(t) = ${object.yExpression.source}` :
-        `r(θ) = ${object.rExpression.source}`,
+      object.kind === "polar" ? `r(θ) = ${object.rExpression.source}` : `F(x,y) = ${object.expression.source} = 0`,
     domain: object.domain, style,
     probe: selectedProbe, signedRadius,
-    probeMethod: document.selection.probe?.objectId === object.id ? "direct-expression-floating-point" : "unavailable",
+    probeMethod: document.selection.probe?.objectId === object.id ?
+      object.kind === "implicit" ? "sampled-contour" : "direct-expression-floating-point" : "unavailable",
     sampling: {
       status: !visibleArtifact ? "unavailable" : visibleArtifact.converged ? "converged" : "incomplete",
       method: "adaptive-bounded-polyline", samplesEvaluated: visibleArtifact?.samplesEvaluated ?? null,
@@ -62,7 +63,8 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
     provenance: { documentId: document.identity.id, revision: document.identity.revision,
       structuralHash: document.identity.structuralHash,
       expressionAstVersion: object.kind === "explicit-cartesian" ? object.expression.ast.version :
-        object.kind === "parametric" ? object.xExpression.ast.version : object.rExpression.ast.version,
+        object.kind === "parametric" ? object.xExpression.ast.version :
+          object.kind === "polar" ? object.rExpression.ast.version : object.expression.ast.version,
       samplerVersion: visibleArtifact?.samplerVersion ?? null },
   };
 };

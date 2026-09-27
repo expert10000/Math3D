@@ -32,6 +32,20 @@ export const pickGraph2DProbe = (input: Readonly<{
     if (!input.document.display.objects[order]?.visible) return;
     const artifact = artifacts.get(object.id);
     if (!artifact) return;
+    if (object.kind === "implicit") {
+      for (const segment of artifact.segments) for (let index = 0; index < segment.points.length - 1; index += 1) {
+        const a = segment.points[index]!, b = segment.points[index + 1]!;
+        const sa = graph2DWorldToScreen(input.viewport, input.size, a);
+        const sb = graph2DWorldToScreen(input.viewport, input.size, b);
+        const dx = sb.x - sa.x, dy = sb.y - sa.y;
+        const fraction = dx * dx + dy * dy > 0 ? Math.max(0, Math.min(1,
+          ((input.screen.x - sa.x) * dx + (input.screen.y - sa.y) * dy) / (dx * dx + dy * dy))) : 0;
+        const distancePx = Math.hypot(sa.x + fraction * dx - input.screen.x, sa.y + fraction * dy - input.screen.y);
+        if (distancePx <= radius) candidates.push({ objectId: object.id,
+          x: a.x + fraction * (b.x - a.x), y: a.y + fraction * (b.y - a.y), distancePx, order });
+      }
+      return;
+    }
     if (object.kind === "parametric" || object.kind === "polar") {
       const evaluate = (parameter: number) => {
         const point = object.kind === "parametric" ? evaluateGraph2DParametric(object, variables, parameter) :
@@ -152,6 +166,11 @@ export const selectionForGraph2DObject = (
     const exact = object.kind === "parametric" ? evaluateGraph2DParametric(object, variables, nearest.parameter) :
       evaluateGraph2DPolar(object, variables, nearest.parameter);
     return { objectId, probe: exact ? { objectId, x: exact.x, y: exact.y, parameter: nearest.parameter } : null };
+  }
+  if (object.kind === "implicit") {
+    const point = segments.flatMap((segment) => segment.points).reduce<Graph2DSamplePoint | null>((best, candidate) =>
+      !best || Math.abs(candidate.x - target) < Math.abs(best.x - target) ? candidate : best, null);
+    return { objectId, probe: point ? { objectId, x: point.x, y: point.y } : null };
   }
   const included = (candidate: Graph2DSamplePoint) =>
     (candidate.x > object.domain.min || object.domain.includeMin) &&

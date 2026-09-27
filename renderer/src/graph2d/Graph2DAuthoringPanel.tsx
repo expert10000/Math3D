@@ -1,7 +1,7 @@
 import { GRAPH2D_MAX_OBJECTS, validateGraph2DFunctionDraft, validateGraph2DParametricDraft,
-  validateGraph2DPolarDraft,
+  validateGraph2DPolarDraft, validateGraph2DImplicitDraft,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DFunctionDraft,
-  type Graph2DParametricDraft, type Graph2DPolarDraft } from "@math3d/core";
+  type Graph2DParametricDraft, type Graph2DPolarDraft, type Graph2DImplicitDraft } from "@math3d/core";
 import { useState } from "react";
 
 type Props = { document: Graph2DDocument; onCommit?: (action: Graph2DAuthoringAction) => void;
@@ -15,17 +15,24 @@ const initialParametricDraft = (): Graph2DParametricDraft => ({ label: "p", xExp
 const initialPolarDraft = (): Graph2DPolarDraft => ({ label: "r", rExpression: "2*cos(theta)",
   domain: { min: 0, max: 2 * Math.PI, includeMin: true, includeMax: true },
   style: { visible: true, color: "#7c3aed", lineWidth: 2, lineStyle: "solid" } });
+const initialImplicitDraft = (): Graph2DImplicitDraft => ({ label: "contour", expression: "x^2+y^2-4",
+  domain: { min: -10, max: 10, includeMin: true, includeMax: true },
+  yDomain: { min: -10, max: 10, includeMin: true, includeMax: true },
+  style: { visible: true, color: "#059669", lineWidth: 2, lineStyle: "solid" } });
 
 export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Graph2DFunctionDraft>(initialDraft);
   const [parametricDraft, setParametricDraft] = useState<Graph2DParametricDraft>(initialParametricDraft);
   const [polarDraft, setPolarDraft] = useState<Graph2DPolarDraft>(initialPolarDraft);
-  const [mode, setMode] = useState<"explicit" | "parametric" | "polar">("explicit");
+  const [implicitDraft, setImplicitDraft] = useState<Graph2DImplicitDraft>(initialImplicitDraft);
+  const [mode, setMode] = useState<"explicit" | "parametric" | "polar" | "implicit">("explicit");
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const variables = ["x", ...document.source.variables.map((entry) => entry.name)];
   const errors = mode === "explicit" ? validateGraph2DFunctionDraft(draft, variables) :
+    mode === "implicit" ? validateGraph2DImplicitDraft(implicitDraft,
+      ["x", "y", ...document.source.variables.map((entry) => entry.name)]) :
     mode === "parametric" ? validateGraph2DParametricDraft(parametricDraft,
       ["t", ...document.source.variables.map((entry) => entry.name)]) :
       validateGraph2DPolarDraft(polarDraft, ["theta", ...document.source.variables.map((entry) => entry.name)]);
@@ -38,6 +45,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
     setParametricDraft(initialParametricDraft()); setMessage(""); setOpen(true); };
   const beginCreatePolar = () => { setMode("polar"); setEditingId(null);
     setPolarDraft(initialPolarDraft()); setMessage(""); setOpen(true); };
+  const beginCreateImplicit = () => { setMode("implicit"); setEditingId(null);
+    setImplicitDraft(initialImplicitDraft()); setMessage(""); setOpen(true); };
   const beginEdit = (id: string) => {
     const object = document.source.objects.find((entry) => entry.id === id);
     const style = document.display.objects.find((entry) => entry.objectId === id);
@@ -50,9 +59,13 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
       setMode("parametric"); setParametricDraft({ label: object.label,
         xExpression: object.xExpression.source, yExpression: object.yExpression.source, domain: object.domain,
         style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
-    } else {
+    } else if (object.kind === "polar") {
       setMode("polar"); setPolarDraft({ label: object.label, rExpression: object.rExpression.source,
         domain: object.domain,
+        style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
+    } else {
+      setMode("implicit"); setImplicitDraft({ label: object.label, expression: object.expression.source,
+        domain: object.domain, yDomain: object.yDomain,
         style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
     }
     setMessage(""); setOpen(true);
@@ -61,6 +74,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
     if (errors.length) return;
     const action: Graph2DAuthoringAction = mode === "explicit" ?
       editingId ? { type: "edit", objectId: editingId, draft } : { type: "create", draft } :
+      mode === "implicit" ? editingId ? { type: "edit-implicit", objectId: editingId, draft: implicitDraft } :
+        { type: "create-implicit", draft: implicitDraft } :
       mode === "parametric" ? editingId ? { type: "edit-parametric", objectId: editingId, draft: parametricDraft } :
         { type: "create-parametric", draft: parametricDraft } :
         editingId ? { type: "edit-polar", objectId: editingId, draft: polarDraft } :
@@ -68,13 +83,15 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
     if (commit(action)) {
       setOpen(false); setEditingId(null); setDraft(initialDraft()); setParametricDraft(initialParametricDraft());
       setPolarDraft(initialPolarDraft());
+      setImplicitDraft(initialImplicitDraft());
     }
   };
   return <div className="graph2d-authoring">
     <div className="graph2d-authoring-header"><h2>Functions</h2>
       <button type="button" onClick={beginCreate} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add function</button>
       <button type="button" onClick={beginCreateParametric} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add parametric</button>
-      <button type="button" onClick={beginCreatePolar} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add polar</button></div>
+      <button type="button" onClick={beginCreatePolar} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add polar</button>
+      <button type="button" onClick={beginCreateImplicit} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add implicit</button></div>
     {document.source.objects.length ? <ol className="graph2d-function-list">
       {document.source.objects.map((object, index) => {
         const style = document.display.objects[index]!;
@@ -83,7 +100,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
             <div><strong>{object.label}</strong><code>{object.kind === "explicit-cartesian" ?
               `y = ${object.expression.source}` : object.kind === "parametric" ?
                 `x(t) = ${object.xExpression.source}; y(t) = ${object.yExpression.source}` :
-                `r(θ) = ${object.rExpression.source}`}</code>
+                object.kind === "polar" ? `r(θ) = ${object.rExpression.source}` :
+                  `F(x,y) = ${object.expression.source} = 0`}</code>
               {!style.visible && <small>Hidden</small>}</div></div>
           <div className="graph2d-function-actions">
             <button type="button" aria-label={"Select " + object.label} aria-pressed={document.selection.objectId === object.id}
@@ -214,6 +232,45 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
       {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
       {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
       <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save polar</button>
+        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+    </form>}
+    {open && mode === "implicit" && <form className="graph2d-function-editor"
+      aria-label={editingId ? "Edit implicit" : "New implicit"}
+      onSubmit={(event) => { event.preventDefault(); save(); }}>
+      <h3>{editingId ? "Edit implicit contour" : "New implicit contour"}</h3>
+      <label>Name <input aria-label="Implicit name" value={implicitDraft.label} maxLength={160}
+        onChange={(event) => setImplicitDraft({ ...implicitDraft, label: event.target.value })} /></label>
+      <label>F(x,y) = <input aria-label="Implicit expression" value={implicitDraft.expression} spellCheck={false}
+        onChange={(event) => setImplicitDraft({ ...implicitDraft, expression: event.target.value })} /> = 0</label>
+      <div className="graph2d-domain-row">
+        <label>X from <input aria-label="Implicit x minimum" type="number" value={implicitDraft.domain.min}
+          onChange={(event) => setImplicitDraft({ ...implicitDraft, domain: { ...implicitDraft.domain, min: Number(event.target.value) } })} /></label>
+        <label>X to <input aria-label="Implicit x maximum" type="number" value={implicitDraft.domain.max}
+          onChange={(event) => setImplicitDraft({ ...implicitDraft, domain: { ...implicitDraft.domain, max: Number(event.target.value) } })} /></label>
+      </div>
+      <div className="graph2d-domain-row">
+        <label>Y from <input aria-label="Implicit y minimum" type="number" value={implicitDraft.yDomain.min}
+          onChange={(event) => setImplicitDraft({ ...implicitDraft, yDomain: { ...implicitDraft.yDomain, min: Number(event.target.value) } })} /></label>
+        <label>Y to <input aria-label="Implicit y maximum" type="number" value={implicitDraft.yDomain.max}
+          onChange={(event) => setImplicitDraft({ ...implicitDraft, yDomain: { ...implicitDraft.yDomain, max: Number(event.target.value) } })} /></label>
+      </div>
+      <div className="graph2d-domain-row">
+        <label>Color <input aria-label="Implicit color" type="color" value={implicitDraft.style.color}
+          onChange={(event) => setImplicitDraft({ ...implicitDraft, style: { ...implicitDraft.style, color: event.target.value } })} /></label>
+        <label>Width <input aria-label="Implicit line width" type="number" min="0.5" max="12" step="0.5"
+          value={implicitDraft.style.lineWidth}
+          onChange={(event) => setImplicitDraft({ ...implicitDraft, style: { ...implicitDraft.style, lineWidth: Number(event.target.value) } })} /></label>
+      </div>
+      <label>Line <select aria-label="Implicit line style" value={implicitDraft.style.lineStyle}
+        onChange={(event) => setImplicitDraft({ ...implicitDraft, style: { ...implicitDraft.style,
+          lineStyle: event.target.value as Graph2DImplicitDraft["style"]["lineStyle"] } })}>
+        <option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option>
+      </select></label>
+      <label><input type="checkbox" checked={implicitDraft.style.visible}
+        onChange={(event) => setImplicitDraft({ ...implicitDraft, style: { ...implicitDraft.style, visible: event.target.checked } })} /> Visible</label>
+      {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
+      {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save implicit</button>
         <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
     </form>}
   </div>;

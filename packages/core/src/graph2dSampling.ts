@@ -11,7 +11,7 @@ export type Graph2DSampleSegment = Readonly<{
   openEnd: boolean;
 }>;
 export type Graph2DSamplingDiagnostic = Readonly<{
-  code: "empty-domain" | "invalid-sample" | "suspected-jump" | "depth-limit" | "sample-limit" | "segment-limit" | "output-limit" | "deadline";
+  code: "empty-domain" | "invalid-sample" | "suspected-jump" | "depth-limit" | "sample-limit" | "segment-limit" | "output-limit" | "deadline" | "ambiguous-cell" | "unresolved-cell";
   count: number;
 }>;
 export type Graph2DSamplingArtifact = Readonly<{

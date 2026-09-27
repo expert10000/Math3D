@@ -10,6 +10,7 @@ import {
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
   sampleGraph2DParametric,
   sampleGraph2DPolar,
+  sampleGraph2DImplicit,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
   type Graph2DIntegralMode,
 } from "@math3d/core";
@@ -94,7 +95,9 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         variables, domain: object.domain, viewport, width: size.width, height: size.height, policy }) :
         object.kind === "parametric" ? sampleGraph2DParametric({ object, variables,
           viewport, width: size.width, height: size.height, policy }) :
-          sampleGraph2DPolar({ object, variables, viewport, width: size.width, height: size.height, policy });
+          object.kind === "polar" ? sampleGraph2DPolar({ object, variables,
+            viewport, width: size.width, height: size.height, policy }) :
+            sampleGraph2DImplicit({ object, variables, viewport, width: size.width, height: size.height, policy });
       return [{ objectId: object.id, style, artifact }];
     });
   }, [document, size, viewport, previewViewport]);
@@ -241,8 +244,10 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
     <dl className="graph2d-inspector-details">
       <dt>Function</dt><dd>{inspected.label}</dd>
       <dt>Source</dt><dd><code>{inspected.kind === "explicit-cartesian" ? `y = ${inspected.expression}` : inspected.expression}</code></dd>
-      <dt>{inspected.kind === "parametric" ? "Parameter t" : inspected.kind === "polar" ? "Angle θ" : "Domain"}</dt>
+      <dt>{inspected.kind === "parametric" ? "Parameter t" : inspected.kind === "polar" ? "Angle θ" : "X domain"}</dt>
       <dd>{inspected.domain.includeMin ? "[" : "("}{inspected.domain.min}, {inspected.domain.max}{inspected.domain.includeMax ? "]" : ")"}</dd>
+      {selectedObject?.kind === "implicit" && <><dt>Y domain</dt>
+        <dd>{selectedObject.yDomain.min}, {selectedObject.yDomain.max}</dd></>}
       <dt>Style</dt><dd><span className="graph2d-inspector-swatch" style={{ background: inspected.style.color }} />
         {inspected.style.lineStyle}, {inspected.style.lineWidth} px · {inspected.style.visible ? "visible" : "hidden"}</dd>
       <dt>Probe</dt><dd>{inspected.probe ? <span data-testid="graph2d-probe-coordinates">
@@ -252,7 +257,8 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
       {inspected.signedRadius !== null && <><dt>Signed radius</dt>
         <dd data-testid="graph2d-probe-radius">{inspected.signedRadius.toPrecision(8)}</dd></>}
       <dt>Probe method</dt><dd>{inspected.probeMethod === "direct-expression-floating-point" ?
-        "Direct expression evaluation (floating point)" : "Unavailable"}</dd>
+        "Direct expression evaluation (floating point)" : inspected.probeMethod === "sampled-contour" ?
+          "Sampled contour projection" : "Unavailable"}</dd>
       <dt>Sampling</dt><dd data-testid="graph2d-sampling-status">Adaptive bounded polyline · {inspected.sampling.status}</dd>
       <dt>Budget</dt><dd>{inspected.sampling.policy.maxSamples.toLocaleString()} samples, depth {inspected.sampling.policy.maxDepth},
         {" "}{inspected.sampling.policy.tolerancePx} px tolerance</dd>

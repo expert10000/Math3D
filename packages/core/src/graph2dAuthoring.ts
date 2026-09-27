@@ -21,6 +21,13 @@ export type Graph2DPolarDraft = Readonly<{
   domain: Graph2DDomain;
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
 }>;
+export type Graph2DImplicitDraft = Readonly<{
+  label: string;
+  expression: string;
+  domain: Graph2DDomain;
+  yDomain: Graph2DDomain;
+  style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
+}>;
 export type Graph2DAuthoringAction =
   | Readonly<{ type: "create"; draft: Graph2DFunctionDraft }>
   | Readonly<{ type: "edit"; objectId: string; draft: Graph2DFunctionDraft }>
@@ -28,6 +35,8 @@ export type Graph2DAuthoringAction =
   | Readonly<{ type: "edit-parametric"; objectId: string; draft: Graph2DParametricDraft }>
   | Readonly<{ type: "create-polar"; draft: Graph2DPolarDraft }>
   | Readonly<{ type: "edit-polar"; objectId: string; draft: Graph2DPolarDraft }>
+  | Readonly<{ type: "create-implicit"; draft: Graph2DImplicitDraft }>
+  | Readonly<{ type: "edit-implicit"; objectId: string; draft: Graph2DImplicitDraft }>
   | Readonly<{ type: "duplicate" | "delete" | "visibility"; objectId: string }>
   | Readonly<{ type: "reorder"; objectId: string; toIndex: number }>;
 
@@ -89,6 +98,15 @@ export const validateGraph2DPolarDraft = (draft: Graph2DPolarDraft,
     draft.style.lineWidth < 0.5 || draft.style.lineWidth > 12 ||
     !["solid", "dashed", "dotted"].includes(draft.style.lineStyle) || typeof draft.style.visible !== "boolean")
     errors.push("Choose a valid color, line width, and line style.");
+  return errors;
+};
+
+export const validateGraph2DImplicitDraft = (draft: Graph2DImplicitDraft,
+  variables: readonly string[] = ["x", "y"]): readonly string[] => {
+  const errors = [...validateGraph2DFunctionDraft(draft, variables)];
+  if (!Number.isFinite(draft.yDomain.min) || !Number.isFinite(draft.yDomain.max) ||
+    draft.yDomain.min >= draft.yDomain.max || typeof draft.yDomain.includeMin !== "boolean" ||
+    typeof draft.yDomain.includeMax !== "boolean") errors.push("Y bound minimum must be less than maximum.");
   return errors;
 };
 
@@ -166,6 +184,30 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       domain: action.draft.domain };
     const display = { objectId: id, ...action.draft.style };
     if (action.type === "create-polar") { objects.push(object); displays.push(display); }
+    else { objects[index] = object; displays[index] = display; }
+    selection = { objectId: id, probe: null };
+  } else if (action.type === "create-implicit" || action.type === "edit-implicit") {
+    if (action.type === "edit-implicit" && objects[index]?.kind !== "implicit")
+      throw new TypeError("Selected object is not an implicit contour.");
+    if (document.source.variables.some((entry) => entry.name === "y"))
+      throw new TypeError("The coordinate name y conflicts with a document variable.");
+    const names = ["x", "y", ...document.source.variables.map((entry) => entry.name)];
+    const errors = validateGraph2DImplicitDraft(action.draft, names);
+    if (errors.length) throw new TypeError(errors.join(" "));
+    const parsed = parseGraph2DExpression(action.draft.expression, names);
+    if (!parsed.ok) throw new TypeError("Implicit expression is invalid.");
+    if (action.type === "create-implicit" && objects.length >= GRAPH2D_MAX_OBJECTS)
+      throw new TypeError("Function limit reached.");
+    let id = action.type === "edit-implicit" ? action.objectId : "implicit_1";
+    if (action.type === "create-implicit") {
+      let serial = 1;
+      while (objects.some((entry) => entry.id === id)) id = "implicit_" + ++serial;
+    }
+    const object = { id, kind: "implicit" as const, label: action.draft.label,
+      expression: { source: action.draft.expression, variable: "xy" as const, ast: parsed.ast },
+      domain: action.draft.domain, yDomain: action.draft.yDomain };
+    const display = { objectId: id, ...action.draft.style };
+    if (action.type === "create-implicit") { objects.push(object); displays.push(display); }
     else { objects[index] = object; displays[index] = display; }
     selection = { objectId: id, probe: null };
   } else if (action.type === "duplicate") {

@@ -40,8 +40,8 @@ describe("Graph2D project adapter and migration", () => {
 
   it("previews future capabilities and fails safely on corrupt or oversized inputs", () => {
     expect(inspectGraph2DCompatibility({ ...empty, schemaVersion: 99 })).toMatchObject({ status: "unsupported", schemaVersion: 99 });
-    expect(inspectGraph2DCompatibility({ ...empty, requiredCapabilities: ["graph2d.implicit.v1"] }))
-      .toMatchObject({ status: "unsupported", unsupportedCapabilities: ["graph2d.implicit.v1"] });
+    expect(inspectGraph2DCompatibility({ ...empty, requiredCapabilities: ["graph2d.future.v1"] }))
+      .toMatchObject({ status: "unsupported", unsupportedCapabilities: ["graph2d.future.v1"] });
     expect(inspectGraph2DCompatibility({ ...empty, extra: true }).status).toBe("corrupt");
     expect(migrateGraph2DDocument({ ...empty, schemaVersion: 99 }).ok).toBe(false);
     expect(migrateGraph2DDocument({ ...empty, schemaVersion: 0, metadata: { title: "x".repeat(300000) } }).ok).toBe(false);
