@@ -7,6 +7,7 @@ import {
   type Graph2DIntegralAnalysis,
   type Graph2DIntersectionAnalysis,
   type Graph2DRegionArtifact,
+  type Graph2DPointSeriesArtifact,
 } from "@math3d/core";
 import { projectGraph2DGrid } from "./gridProjection";
 
@@ -55,6 +56,8 @@ export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, 
   }).join("");
   const isRegion = (artifact: Graph2DSamplingArtifact): artifact is Graph2DRegionArtifact =>
     "kind" in artifact && artifact.kind === "inequality-region";
+  const isPointSeries = (artifact: Graph2DSamplingArtifact): artifact is Graph2DPointSeriesArtifact =>
+    "kind" in artifact && artifact.kind === "point-series";
   return (
     <svg data-testid="graph2d-plot" role="img" aria-label="Cartesian graph plot" className="graph2d-plot"
       viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none">
@@ -121,9 +124,21 @@ export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, 
               item.style.lineStyle === "dotted" ? "2 4" : undefined}
             strokeLinejoin="round" strokeLinecap="round" />) :
           [<path key={item.objectId} data-graph2d-path={item.objectId}
-            d={pathFor(item.artifact)} fill="none" stroke={item.style.color} strokeWidth={item.style.lineWidth}
+            d={isPointSeries(item.artifact) && item.artifact.mode === "points" ? "" : pathFor(item.artifact)}
+            fill="none" stroke={item.style.color} strokeWidth={item.style.lineWidth}
             strokeDasharray={item.style.lineStyle === "dashed" ? "8 5" : item.style.lineStyle === "dotted" ? "2 4" : undefined}
             strokeLinejoin="round" strokeLinecap="round" />])}
+        {series.filter((item) => item.style.visible && isPointSeries(item.artifact)).map((item) => {
+          const artifact = item.artifact as Graph2DPointSeriesArtifact;
+          return <g key={`markers-${item.objectId}`} data-graph2d-series-markers={item.objectId}>
+            {artifact.points.filter((point) => point.x >= bounds.xMin && point.x <= bounds.xMax &&
+              point.y >= bounds.yMin && point.y <= bounds.yMax).map((point) => {
+              const screen = graph2DWorldToScreen(display.viewport, size, point);
+              return <circle key={point.rowId} data-row-id={point.rowId} cx={screen.x} cy={screen.y}
+                r={Math.max(2.5, item.style.lineWidth + 1.5)} fill={item.style.color} />;
+            })}
+          </g>;
+        })}
         {overlays.map((overlay) => {
           const segment = clipGraph2DLineOverlay(overlay, display.viewport, size);
           if (!segment) return null;

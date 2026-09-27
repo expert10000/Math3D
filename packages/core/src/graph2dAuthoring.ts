@@ -1,4 +1,6 @@
-import { GRAPH2D_MAX_OBJECTS, type Graph2DDocument, type Graph2DDomain, type Graph2DObjectDisplay } from "./graph2dDocument";
+import { GRAPH2D_MAX_OBJECTS, validPointTableReference,
+  type Graph2DDocument, type Graph2DDomain, type Graph2DObjectDisplay,
+  type Graph2DPointTableReference } from "./graph2dDocument";
 import { parseGraph2DExpression } from "./graph2dExpression";
 
 export type Graph2DScene = Pick<Graph2DDocument, "source" | "display" | "selection">;
@@ -36,6 +38,13 @@ export type Graph2DInequalityDraft = Readonly<{
   yDomain: Graph2DDomain;
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
 }>;
+export type Graph2DPointSeriesDraft = Readonly<{
+  label: string;
+  table: Graph2DPointTableReference;
+  mode: "points" | "line";
+  domain: Graph2DDomain;
+  style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
+}>;
 export type Graph2DAuthoringAction =
   | Readonly<{ type: "create"; draft: Graph2DFunctionDraft }>
   | Readonly<{ type: "edit"; objectId: string; draft: Graph2DFunctionDraft }>
@@ -47,6 +56,8 @@ export type Graph2DAuthoringAction =
   | Readonly<{ type: "edit-implicit"; objectId: string; draft: Graph2DImplicitDraft }>
   | Readonly<{ type: "create-inequality"; draft: Graph2DInequalityDraft }>
   | Readonly<{ type: "edit-inequality"; objectId: string; draft: Graph2DInequalityDraft }>
+  | Readonly<{ type: "create-point-series"; draft: Graph2DPointSeriesDraft }>
+  | Readonly<{ type: "edit-point-series"; objectId: string; draft: Graph2DPointSeriesDraft }>
   | Readonly<{ type: "duplicate" | "delete" | "visibility"; objectId: string }>
   | Readonly<{ type: "reorder"; objectId: string; toIndex: number }>;
 
@@ -133,6 +144,12 @@ export const validateGraph2DInequalityDraft = (draft: Graph2DInequalityDraft,
       if (!parsed.ok) errors.push(...parsed.diagnostics.map((item) => item.message));
     }
   }
+  return errors;
+};
+export const validateGraph2DPointSeriesDraft = (draft: Graph2DPointSeriesDraft): readonly string[] => {
+  const errors = [...validateGraph2DFunctionDraft({ ...draft, expression: "x" })];
+  if (!validPointTableReference(draft.table)) errors.push("Point table reference is invalid.");
+  if (!["points", "line"].includes(draft.mode)) errors.push("Choose points or connected line mode.");
   return errors;
 };
 
@@ -260,6 +277,24 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       clauses, operator: action.draft.operator, domain: action.draft.domain, yDomain: action.draft.yDomain };
     const display = { objectId: id, ...action.draft.style };
     if (action.type === "create-inequality") { objects.push(object); displays.push(display); }
+    else { objects[index] = object; displays[index] = display; }
+    selection = { objectId: id, probe: null };
+  } else if (action.type === "create-point-series" || action.type === "edit-point-series") {
+    if (action.type === "edit-point-series" && objects[index]?.kind !== "point-series")
+      throw new TypeError("Selected object is not a point series.");
+    const errors = validateGraph2DPointSeriesDraft(action.draft);
+    if (errors.length) throw new TypeError(errors.join(" "));
+    if (action.type === "create-point-series" && objects.length >= GRAPH2D_MAX_OBJECTS)
+      throw new TypeError("Function limit reached.");
+    let id = action.type === "edit-point-series" ? action.objectId : "series_1";
+    if (action.type === "create-point-series") {
+      let serial = 1;
+      while (objects.some((entry) => entry.id === id)) id = "series_" + ++serial;
+    }
+    const object = { id, kind: "point-series" as const, label: action.draft.label,
+      table: action.draft.table, mode: action.draft.mode, missing: "gap" as const, domain: action.draft.domain };
+    const display = { objectId: id, ...action.draft.style };
+    if (action.type === "create-point-series") { objects.push(object); displays.push(display); }
     else { objects[index] = object; displays[index] = display; }
     selection = { objectId: id, probe: null };
   } else if (action.type === "duplicate") {

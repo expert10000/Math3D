@@ -13,6 +13,7 @@ export const GRAPH2D_PARAMETRIC_CAPABILITY = "graph2d.parametric.v1" as const;
 export const GRAPH2D_POLAR_CAPABILITY = "graph2d.polar.v1" as const;
 export const GRAPH2D_IMPLICIT_CAPABILITY = "graph2d.implicit.v1" as const;
 export const GRAPH2D_INEQUALITY_CAPABILITY = "graph2d.inequality.v1" as const;
+export const GRAPH2D_POINT_SERIES_CAPABILITY = "graph2d.point-series.v1" as const;
 export const GRAPH2D_OBJECT_KINDS = ["explicit-cartesian", "parametric", "polar", "implicit", "inequality", "point-series", "piecewise"] as const;
 export type Graph2DObjectKind = (typeof GRAPH2D_OBJECT_KINDS)[number];
 export const GRAPH2D_RESERVED_OBJECT_KINDS = GRAPH2D_OBJECT_KINDS.slice(1);
@@ -66,8 +67,23 @@ export type Graph2DInequalityObject = Readonly<{
   domain: Graph2DDomain;
   yDomain: Graph2DDomain;
 }>;
+export type Graph2DPointTableReference = Readonly<{
+  id: string;
+  checksum: string;
+  rowCount: number;
+  encoding: "math3d.graph2d-point-table.v1";
+}>;
+export type Graph2DPointSeriesObject = Readonly<{
+  id: string;
+  kind: "point-series";
+  label: string;
+  table: Graph2DPointTableReference;
+  mode: "points" | "line";
+  missing: "gap";
+  domain: Graph2DDomain;
+}>;
 export type Graph2DGraphObject = Graph2DExplicitObject | Graph2DParametricObject | Graph2DPolarObject |
-  Graph2DImplicitObject | Graph2DInequalityObject;
+  Graph2DImplicitObject | Graph2DInequalityObject | Graph2DPointSeriesObject;
 export type Graph2DSource = Readonly<{
   objects: readonly Graph2DGraphObject[];
   variables: readonly Readonly<{ name: string; value: number }>[];
@@ -78,7 +94,8 @@ export const graph2DRequiredCapabilities = (source: Graph2DSource): Graph2DDocum
     ...(source.objects.some((object) => object.kind === "parametric") ? [GRAPH2D_PARAMETRIC_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "polar") ? [GRAPH2D_POLAR_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "implicit") ? [GRAPH2D_IMPLICIT_CAPABILITY] : []),
-    ...(source.objects.some((object) => object.kind === "inequality") ? [GRAPH2D_INEQUALITY_CAPABILITY] : [])];
+    ...(source.objects.some((object) => object.kind === "inequality") ? [GRAPH2D_INEQUALITY_CAPABILITY] : []),
+    ...(source.objects.some((object) => object.kind === "point-series") ? [GRAPH2D_POINT_SERIES_CAPABILITY] : [])];
 export type Graph2DObjectDisplay = Readonly<{
   objectId: string;
   visible: boolean;
@@ -93,14 +110,15 @@ export type Graph2DDisplay = Readonly<{
   objects: readonly Graph2DObjectDisplay[];
   sampling: Readonly<{ maxSamples: number; maxDepth: number; tolerancePx: number }>;
 }>;
-export type Graph2DProbe = Readonly<{ objectId: string; x: number; y: number; parameter?: number }>;
+export type Graph2DProbe = Readonly<{ objectId: string; x: number; y: number; parameter?: number; rowId?: string }>;
 export type Graph2DSelection = Readonly<{ objectId: string | null; probe: Graph2DProbe | null }>;
 export type Graph2DDocument = Readonly<{
   format: typeof GRAPH2D_DOCUMENT_FORMAT;
   schemaVersion: typeof GRAPH2D_DOCUMENT_SCHEMA_VERSION;
   identity: DocumentIdentity;
   requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
-    typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY | typeof GRAPH2D_INEQUALITY_CAPABILITY)[];
+    typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY |
+    typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY)[];
   source: Graph2DSource;
   display: Graph2DDisplay;
   selection: Graph2DSelection;
@@ -162,6 +180,16 @@ const validInequalityObject = (value: unknown, variables: readonly string[]): va
     ["<", "<=", ">", ">="].includes(String(clause.comparator)) &&
     validExpression({ source: clause.source, variable: clause.variable, ast: clause.ast }, variables, "xy")) &&
   validDomain(value.domain) && validDomain(value.yDomain);
+export const validPointTableReference = (value: unknown): value is Graph2DPointTableReference => record(value) &&
+  exact(value, ["id", "checksum", "rowCount", "encoding"]) &&
+  typeof value.id === "string" && /^graph2d-table:[0-9a-f]{32}$/.test(value.id) &&
+  typeof value.checksum === "string" && /^sha256:[0-9a-f]{64}$/.test(value.checksum) &&
+  integerWithin(value.rowCount, 1, 10000) && value.encoding === "math3d.graph2d-point-table.v1" &&
+  value.id === `graph2d-table:${value.checksum.slice(7, 39)}`;
+const validPointSeriesObject = (value: unknown): value is Graph2DPointSeriesObject => record(value) &&
+  exact(value, ["id", "kind", "label", "table", "mode", "missing", "domain"]) && objectId(value.id) &&
+  value.kind === "point-series" && bounded(value.label, 160) && validPointTableReference(value.table) &&
+  ["points", "line"].includes(String(value.mode)) && value.missing === "gap" && validDomain(value.domain);
 const validSource = (value: unknown): value is Graph2DSource => {
   if (!record(value) || !exact(value, ["objects", "variables", "assumptions"]) || !Array.isArray(value.objects) ||
       value.objects.length > GRAPH2D_MAX_OBJECTS ||
@@ -178,7 +206,8 @@ const validSource = (value: unknown): value is Graph2DSource => {
     entry.kind === "implicit" || entry.kind === "inequality")) return false;
   return value.objects.every((entry: unknown) => validObject(entry, ["x", ...names]) ||
     validParametricObject(entry, ["t", ...names]) || validPolarObject(entry, ["theta", ...names]) ||
-    validImplicitObject(entry, ["x", "y", ...names]) || validInequalityObject(entry, ["x", "y", ...names])) &&
+    validImplicitObject(entry, ["x", "y", ...names]) || validInequalityObject(entry, ["x", "y", ...names]) ||
+    validPointSeriesObject(entry)) &&
     new Set(value.objects.map((entry: Graph2DGraphObject) => entry.id)).size === value.objects.length;
 };
 const validDisplay = (value: unknown, source: Graph2DSource): value is Graph2DDisplay => {
@@ -215,9 +244,13 @@ const validSelection = (value: unknown, source: Graph2DSource): value is Graph2D
   const selected = source.objects.find((entry) => entry.id === value.objectId);
   const needsParameter = selected?.kind === "parametric" || selected?.kind === "polar";
   if (needsParameter !== Object.prototype.hasOwnProperty.call(value.probe, "parameter")) return false;
-  return Object.keys(value.probe).every((key) => ["objectId", "x", "y", "parameter"].includes(key)) &&
+  const needsRow = selected?.kind === "point-series";
+  if (needsRow !== Object.prototype.hasOwnProperty.call(value.probe, "rowId")) return false;
+  return Object.keys(value.probe).every((key) => ["objectId", "x", "y", "parameter", "rowId"].includes(key)) &&
     typeof value.probe.objectId === "string" && value.probe.objectId === value.objectId &&
     finite(value.probe.x) && finite(value.probe.y) &&
+    (!needsRow || typeof value.probe.rowId === "string" && /^row_[1-9][0-9]{0,4}$/.test(value.probe.rowId) &&
+      Number(value.probe.rowId.slice(4)) <= selected.table.rowCount) &&
     (!needsParameter || finite(value.probe.parameter) && value.probe.parameter >= selected.domain.min &&
       value.probe.parameter <= selected.domain.max);
 };

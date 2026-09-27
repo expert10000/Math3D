@@ -22,6 +22,7 @@ export * from "./graph2dParametric";
 export * from "./graph2dPolar";
 export * from "./graph2dImplicit";
 export * from "./graph2dInequality";
+export * from "./graph2dPointSeries";
 export * from "./graph2dViewport";
 export * from "./graph2dPersistence";
 export * from "./graph2dCommands";

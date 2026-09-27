@@ -1,9 +1,11 @@
 import { GRAPH2D_MAX_OBJECTS, validateGraph2DFunctionDraft, validateGraph2DParametricDraft,
   validateGraph2DPolarDraft, validateGraph2DImplicitDraft, validateGraph2DInequalityDraft,
+  previewGraph2DPointImport, graph2DPointDomain,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DFunctionDraft,
   type Graph2DParametricDraft, type Graph2DPolarDraft, type Graph2DImplicitDraft,
-  type Graph2DInequalityDraft } from "@math3d/core";
+  type Graph2DInequalityDraft, type Graph2DPointSeriesDraft } from "@math3d/core";
 import { useState } from "react";
+import { pointTableStore } from "./pointTableStore";
 
 type Props = { document: Graph2DDocument; onCommit?: (action: Graph2DAuthoringAction) => void;
   onSelect?: (objectId: string) => void };
@@ -25,6 +27,11 @@ const initialInequalityDraft = (): Graph2DInequalityDraft => ({ label: "region",
   domain: { min: -10, max: 10, includeMin: true, includeMax: true },
   yDomain: { min: -10, max: 10, includeMin: true, includeMax: true },
   style: { visible: true, color: "#0d9488", lineWidth: 2, lineStyle: "solid" } });
+type PointDraftState = { label: string; mode: "points" | "line";
+  style: Graph2DPointSeriesDraft["style"]; text: string };
+const initialPointDraft = (): PointDraftState => ({ label: "data", mode: "points",
+  style: { visible: true, color: "#ea580c", lineWidth: 2, lineStyle: "solid" },
+  text: "x,y\n0,0\n1,1\n2,4" });
 
 export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -33,11 +40,16 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
   const [polarDraft, setPolarDraft] = useState<Graph2DPolarDraft>(initialPolarDraft);
   const [implicitDraft, setImplicitDraft] = useState<Graph2DImplicitDraft>(initialImplicitDraft);
   const [inequalityDraft, setInequalityDraft] = useState<Graph2DInequalityDraft>(initialInequalityDraft);
-  const [mode, setMode] = useState<"explicit" | "parametric" | "polar" | "implicit" | "inequality">("explicit");
+  const [pointDraft, setPointDraft] = useState(initialPointDraft);
+  const [mode, setMode] = useState<"explicit" | "parametric" | "polar" | "implicit" | "inequality" | "point-series">("explicit");
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const variables = ["x", ...document.source.variables.map((entry) => entry.name)];
+  const pointPreview = mode === "point-series" ? previewGraph2DPointImport(pointDraft.text) : null;
   const errors = mode === "explicit" ? validateGraph2DFunctionDraft(draft, variables) :
+    mode === "point-series" ? [...(pointPreview?.errors ?? []),
+      ...(!pointDraft.label.trim() || pointDraft.label !== pointDraft.label.trim() || pointDraft.label.length > 160 ?
+        ["Enter a label of 1–160 characters without surrounding spaces."] : [])] :
     mode === "inequality" ? validateGraph2DInequalityDraft(inequalityDraft,
       ["x", "y", ...document.source.variables.map((entry) => entry.name)]) :
     mode === "implicit" ? validateGraph2DImplicitDraft(implicitDraft,
@@ -58,6 +70,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
     setImplicitDraft(initialImplicitDraft()); setMessage(""); setOpen(true); };
   const beginCreateInequality = () => { setMode("inequality"); setEditingId(null);
     setInequalityDraft(initialInequalityDraft()); setMessage(""); setOpen(true); };
+  const beginCreatePointSeries = () => { setMode("point-series"); setEditingId(null);
+    setPointDraft(initialPointDraft()); setMessage(""); setOpen(true); };
   const beginEdit = (id: string) => {
     const object = document.source.objects.find((entry) => entry.id === id);
     const style = document.display.objects.find((entry) => entry.objectId === id);
@@ -78,16 +92,35 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
       setMode("implicit"); setImplicitDraft({ label: object.label, expression: object.expression.source,
         domain: object.domain, yDomain: object.yDomain,
         style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
-    } else {
+    } else if (object.kind === "inequality") {
       setMode("inequality"); setInequalityDraft({ label: object.label,
         clauses: object.clauses.map((clause) => ({ expression: clause.source, comparator: clause.comparator })),
         operator: object.operator, domain: object.domain, yDomain: object.yDomain,
         style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
+    } else {
+      const rows = pointTableStore.resolve(object.table);
+      setMode("point-series"); setPointDraft({ label: object.label, mode: object.mode,
+        style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth,
+          lineStyle: style.lineStyle },
+        text: rows ? `x,y\n${rows.map((row) => `${row.x},${row.y ?? ""}`).join("\n")}` : "" });
     }
     setMessage(""); setOpen(true);
   };
   const save = () => {
     if (errors.length) return;
+    if (mode === "point-series") {
+      try {
+        const rows = pointPreview!.rows;
+        const table = pointTableStore.publish(rows);
+        const pointSeries: Graph2DPointSeriesDraft = { label: pointDraft.label, mode: pointDraft.mode,
+          table, domain: graph2DPointDomain(rows), style: pointDraft.style };
+        const action: Graph2DAuthoringAction = editingId ?
+          { type: "edit-point-series", objectId: editingId, draft: pointSeries } :
+          { type: "create-point-series", draft: pointSeries };
+        if (commit(action)) { setOpen(false); setEditingId(null); setPointDraft(initialPointDraft()); }
+      } catch (error) { setMessage(String((error as Error).message ?? error)); }
+      return;
+    }
     const action: Graph2DAuthoringAction = mode === "explicit" ?
       editingId ? { type: "edit", objectId: editingId, draft } : { type: "create", draft } :
       mode === "inequality" ? editingId ? { type: "edit-inequality", objectId: editingId, draft: inequalityDraft } :
@@ -103,6 +136,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
       setPolarDraft(initialPolarDraft());
       setImplicitDraft(initialImplicitDraft());
       setInequalityDraft(initialInequalityDraft());
+      setPointDraft(initialPointDraft());
     }
   };
   return <div className="graph2d-authoring">
@@ -111,7 +145,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
       <button type="button" onClick={beginCreateParametric} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add parametric</button>
       <button type="button" onClick={beginCreatePolar} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add polar</button>
       <button type="button" onClick={beginCreateImplicit} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add implicit</button>
-      <button type="button" onClick={beginCreateInequality} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add inequality</button></div>
+      <button type="button" onClick={beginCreateInequality} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add inequality</button>
+      <button type="button" onClick={beginCreatePointSeries} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add data series</button></div>
     {document.source.objects.length ? <ol className="graph2d-function-list">
       {document.source.objects.map((object, index) => {
         const style = document.display.objects[index]!;
@@ -122,7 +157,9 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
                 `x(t) = ${object.xExpression.source}; y(t) = ${object.yExpression.source}` :
                 object.kind === "polar" ? `r(θ) = ${object.rExpression.source}` :
                   object.kind === "implicit" ? `F(x,y) = ${object.expression.source} = 0` :
-                    object.clauses.map((clause) => `${clause.source} ${clause.comparator} 0`).join(object.operator === "all" ? " AND " : " OR ")}</code>
+                    object.kind === "inequality" ? object.clauses.map((clause) =>
+                      `${clause.source} ${clause.comparator} 0`).join(object.operator === "all" ? " AND " : " OR ") :
+                      `${object.table.rowCount} rows · ${object.mode} · missing y: gap`}</code>
               {!style.visible && <small>Hidden</small>}</div></div>
           <div className="graph2d-function-actions">
             <button type="button" aria-label={"Select " + object.label} aria-pressed={document.selection.objectId === object.id}
@@ -347,6 +384,33 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
       {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
       {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
       <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save inequality</button>
+        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+    </form>}
+    {open && mode === "point-series" && <form className="graph2d-function-editor"
+      aria-label={editingId ? "Edit data series" : "New data series"}
+      onSubmit={(event) => { event.preventDefault(); save(); }}>
+      <h3>{editingId ? "Edit data series" : "New data series"}</h3>
+      <label>Name <input aria-label="Data series name" value={pointDraft.label} maxLength={160}
+        onChange={(event) => setPointDraft({ ...pointDraft, label: event.target.value })} /></label>
+      <label>CSV or TSV (x,y) <textarea aria-label="Data series import" value={pointDraft.text}
+        onChange={(event) => setPointDraft({ ...pointDraft, text: event.target.value })} rows={7} spellCheck={false} /></label>
+      <div className="graph2d-domain-row">
+        <label>Plot <select aria-label="Data series mode" value={pointDraft.mode}
+          onChange={(event) => setPointDraft({ ...pointDraft, mode: event.target.value as "points" | "line" })}>
+          <option value="points">Points</option><option value="line">Connected line</option>
+        </select></label>
+        <label>Color <input aria-label="Data series color" type="color" value={pointDraft.style.color}
+          onChange={(event) => setPointDraft({ ...pointDraft, style: { ...pointDraft.style, color: event.target.value } })} /></label>
+      </div>
+      <div data-testid="graph2d-import-preview" aria-label="Import preview">
+        <strong>{pointPreview?.rows.length ?? 0} rows · {pointPreview?.missingCount ?? 0} missing y (gaps)</strong>
+        {pointPreview && pointPreview.rows.length > 0 && <table><thead><tr><th>Row</th><th>x</th><th>y</th></tr></thead>
+          <tbody>{pointPreview.rows.slice(0, 5).map((row) => <tr key={row.id}><td>{row.id}</td>
+            <td>{row.x}</td><td>{row.y ?? "gap"}</td></tr>)}</tbody></table>}
+      </div>
+      {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
+      {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save data series</button>
         <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
     </form>}
   </div>;

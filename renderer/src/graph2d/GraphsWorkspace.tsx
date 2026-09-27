@@ -12,6 +12,7 @@ import {
   sampleGraph2DPolar,
   sampleGraph2DImplicit,
   sampleGraph2DInequality,
+  sampleGraph2DPointSeries,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
   type Graph2DIntegralMode,
 } from "@math3d/core";
@@ -20,6 +21,7 @@ import type { CSSProperties, KeyboardEvent, PointerEvent, WheelEvent } from "rea
 import type { WorkspaceDockLayout } from "../workspaceDocks";
 import { Graph2DPlot, type Graph2DPlotSeries } from "./Graph2DPlot";
 import { Graph2DAuthoringPanel } from "./Graph2DAuthoringPanel";
+import { pointTableStore } from "./pointTableStore";
 import "./graphsWorkspace.css";
 
 type Props = {
@@ -100,8 +102,9 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
             viewport, width: size.width, height: size.height, policy }) :
             object.kind === "implicit" ? sampleGraph2DImplicit({ object, variables,
               viewport, width: size.width, height: size.height, policy }) :
-              sampleGraph2DInequality({ object, variables, viewport,
-                width: size.width, height: size.height, policy });
+              object.kind === "inequality" ? sampleGraph2DInequality({ object, variables, viewport,
+                width: size.width, height: size.height, policy }) :
+                sampleGraph2DPointSeries(object, pointTableStore.resolve(object.table), policy.maxSamples);
       return [{ objectId: object.id, style, artifact }];
     });
   }, [document, size, viewport, previewViewport]);
@@ -260,11 +263,13 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         <dd data-testid="graph2d-probe-parameter">{inspected.probe.parameter.toPrecision(8)}</dd></>}
       {inspected.signedRadius !== null && <><dt>Signed radius</dt>
         <dd data-testid="graph2d-probe-radius">{inspected.signedRadius.toPrecision(8)}</dd></>}
+      {inspected.probe?.rowId && <><dt>Row</dt><dd data-testid="graph2d-probe-row">{inspected.probe.rowId}</dd></>}
       <dt>Probe method</dt><dd>{inspected.probeMethod === "direct-expression-floating-point" ?
         "Direct expression evaluation (floating point)" : inspected.probeMethod === "sampled-contour" ?
-          "Sampled contour projection" : "Unavailable"}</dd>
+          "Sampled contour projection" : inspected.probeMethod === "table-row" ? "Table row" : "Unavailable"}</dd>
       <dt>Sampling</dt><dd data-testid="graph2d-sampling-status">Adaptive bounded polyline · {inspected.sampling.status}</dd>
       {inspected.regionState && <><dt>Region</dt><dd data-testid="graph2d-region-status">{inspected.regionState}</dd></>}
+      {inspected.pointState && <><dt>Table</dt><dd data-testid="graph2d-table-status">{inspected.pointState}</dd></>}
       <dt>Budget</dt><dd>{inspected.sampling.policy.maxSamples.toLocaleString()} samples, depth {inspected.sampling.policy.maxDepth},
         {" "}{inspected.sampling.policy.tolerancePx} px tolerance</dd>
       <dt>Observed</dt><dd>{inspected.sampling.samplesEvaluated === null ? "Unavailable" :
@@ -279,7 +284,8 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         <dt>Document</dt><dd>{inspected.provenance.documentId}</dd>
         <dt>Revision</dt><dd>{inspected.provenance.revision}</dd>
         <dt>Source hash</dt><dd><code>{inspected.provenance.structuralHash}</code></dd>
-        <dt>Expression AST</dt><dd>v{inspected.provenance.expressionAstVersion}</dd>
+        <dt>Expression AST</dt><dd>{inspected.provenance.expressionAstVersion === null ? "N/A" :
+          `v${inspected.provenance.expressionAstVersion}`}</dd>
         <dt>Sampler</dt><dd>{inspected.provenance.samplerVersion === null ? "Unavailable" : `v${inspected.provenance.samplerVersion}`}</dd>
       </dl>
     </details>

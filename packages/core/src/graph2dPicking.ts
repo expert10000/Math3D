@@ -26,12 +26,22 @@ export const pickGraph2DProbe = (input: Readonly<{
   const right = graph2DScreenToWorld(input.viewport, input.size, { x: input.screen.x + radius, y: input.screen.y }).x;
   const variables = Object.fromEntries(input.document.source.variables.map((entry) => [entry.name, entry.value]));
   const artifacts = new Map(input.series.map((entry) => [entry.objectId, entry.artifact]));
-  const candidates: { objectId: string; x: number; y: number; parameter?: number;
+  const candidates: { objectId: string; x: number; y: number; parameter?: number; rowId?: string;
     distancePx: number; order: number }[] = [];
   input.document.source.objects.forEach((object, order) => {
     if (!input.document.display.objects[order]?.visible) return;
     const artifact = artifacts.get(object.id);
     if (!artifact) return;
+    if (object.kind === "point-series") {
+      for (const segment of artifact.segments) for (const point of segment.points) {
+        if (!point.rowId) continue;
+        const screen = graph2DWorldToScreen(input.viewport, input.size, point);
+        const distancePx = Math.hypot(screen.x - input.screen.x, screen.y - input.screen.y);
+        if (distancePx <= radius) candidates.push({ objectId: object.id, x: point.x, y: point.y,
+          rowId: point.rowId, distancePx, order });
+      }
+      return;
+    }
     if (object.kind === "implicit" || object.kind === "inequality") {
       for (const segment of artifact.segments) for (let index = 0; index < segment.points.length - 1; index += 1) {
         const a = segment.points[index]!, b = segment.points[index + 1]!;
@@ -134,7 +144,8 @@ export const pickGraph2DProbe = (input: Readonly<{
     const previousScreen = graph2DWorldToScreen(input.viewport, input.size, input.previous.probe);
     if (Math.hypot(previousScreen.x - input.screen.x, previousScreen.y - input.screen.y) <= radius) {
       const previousIndex = overlapping.findIndex((entry) => entry.objectId === input.previous!.objectId &&
-        (entry.parameter === undefined && input.previous!.probe?.parameter === undefined ||
+        (entry.rowId !== undefined ? entry.rowId === input.previous!.probe?.rowId :
+          entry.parameter === undefined && input.previous!.probe?.parameter === undefined ||
           entry.parameter !== undefined && input.previous!.probe?.parameter !== undefined &&
           Math.abs(entry.parameter - input.previous!.probe!.parameter!) <=
             (input.document.source.objects.find((object) => object.id === entry.objectId)!.domain.max -
@@ -143,7 +154,8 @@ export const pickGraph2DProbe = (input: Readonly<{
     }
   }
   return { selection: { objectId: winner.objectId, probe: { objectId: winner.objectId,
-    x: winner.x, y: winner.y, ...(winner.parameter === undefined ? {} : { parameter: winner.parameter }) } },
+    x: winner.x, y: winner.y, ...(winner.parameter === undefined ? {} : { parameter: winner.parameter }),
+    ...(winner.rowId === undefined ? {} : { rowId: winner.rowId }) } },
     distancePx: winner.distancePx };
 };
 
@@ -166,6 +178,11 @@ export const selectionForGraph2DObject = (
     const exact = object.kind === "parametric" ? evaluateGraph2DParametric(object, variables, nearest.parameter) :
       evaluateGraph2DPolar(object, variables, nearest.parameter);
     return { objectId, probe: exact ? { objectId, x: exact.x, y: exact.y, parameter: nearest.parameter } : null };
+  }
+  if (object.kind === "point-series") {
+    const point = segments.flatMap((segment) => segment.points).reduce<Graph2DSamplePoint | null>((best, candidate) =>
+      !best || Math.abs(candidate.x - target) < Math.abs(best.x - target) ? candidate : best, null);
+    return { objectId, probe: point?.rowId ? { objectId, x: point.x, y: point.y, rowId: point.rowId } : null };
   }
   if (object.kind === "implicit" || object.kind === "inequality") {
     const point = segments.flatMap((segment) => segment.points).reduce<Graph2DSamplePoint | null>((best, candidate) =>

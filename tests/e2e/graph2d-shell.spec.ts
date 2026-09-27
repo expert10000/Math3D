@@ -401,3 +401,30 @@ test("Graphs fills an inequality and distinguishes strict from inclusive boundar
     await expect(app.page.getByLabel("Graph inspector")).toContainText("x > 0 AND y >= 0");
   } finally { await closeSurfaceApp(app); }
 });
+
+test("Graphs previews a point table and plots it alongside a function", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    const functions = app.page.getByLabel("Graph functions");
+    await functions.getByRole("button", { name: "Add function" }).click();
+    await functions.getByRole("button", { name: "Save function" }).click();
+    await functions.getByRole("button", { name: "Add data series" }).click();
+    await functions.getByLabel("Data series import").fill("x,y\n0,0\n1,1\n2,NA\n3,4");
+    await expect(functions.getByTestId("graph2d-import-preview")).toContainText("4 rows · 1 missing y");
+    await functions.getByLabel("Data series mode").selectOption("line");
+    await functions.getByRole("button", { name: "Save data series" }).click();
+    await expect(app.page.locator('[data-graph2d-path="function_1"]')).toHaveAttribute("d", /[ML]/);
+    await expect(app.page.locator('[data-graph2d-series-markers="series_1"] circle')).toHaveCount(3);
+    await functions.getByRole("button", { name: "Select data" }).click();
+    const inspector = app.page.getByLabel("Graph inspector");
+    await expect(inspector.getByTestId("graph2d-table-status")).toContainText("ready");
+    await expect(inspector.getByTestId("graph2d-probe-row")).toContainText("row_");
+    await functions.getByRole("button", { name: "Edit data" }).click();
+    await functions.getByLabel("Data series mode").selectOption("points");
+    await functions.getByRole("button", { name: "Save data series" }).click();
+    await expect(app.page.locator('[data-graph2d-series-markers="series_1"] circle')).toHaveCount(3);
+  } finally { await closeSurfaceApp(app); }
+});
