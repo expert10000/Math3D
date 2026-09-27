@@ -1,5 +1,7 @@
 "use strict";
 
+const { assertNativeCgalPackagingPolicy } = require("./scripts/cgal-native-distribution-gate.cjs");
+
 const channel = String(process.env.MATH3D_CHANNEL || "stable").trim().toLowerCase();
 const isDevChannel = channel === "dev";
 
@@ -58,4 +60,5 @@ const config = {
   },
 };
 
+assertNativeCgalPackagingPolicy(config);
 module.exports = config;

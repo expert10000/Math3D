@@ -425,9 +425,17 @@ Phase 3A local Boolean slice (implemented; not the full Phase 3 acceptance gate)
   binary dependency manifest, signed release fixture corpus, and CI license
   gate. Packaged builds continue using the Python compatibility worker.
 
+Phase 3A release-gate follow-up: the real-mesh Boolean and crash/cancellation
+suite is `npm run test:cgal-native-release`. The dependency/license inventory
+and fail-closed installer policy are documented in
+`docs/native-cgal-distribution-review.md`. Native installer inclusion remains
+blocked pending the explicit CGAL distribution decision, transitive SBOM, and
+packaged clean-machine verification; do not mark Phase 3A distribution-ready
+from local tests alone.
+
 Remaining Phase 3 work: robust repair, remesh, and intersection migration;
-broader exact/semantic fixtures; cancellation and crash-injection E2E; container
-parity; and release distribution review.
+packaged clean-machine conformance and crash/cancellation E2E; container
+parity; and the unresolved distribution/license decision.
 
 - Build the standalone C++ transport and local process supervisor.
 - Migrate only robust repair, boolean, remesh, and intersection operations.

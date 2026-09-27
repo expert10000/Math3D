@@ -165,6 +165,17 @@ class NativeCgalWorker {
     } finally { release(); }
   }
 
+  /** Local runtime diagnostics; not exposed through renderer IPC. */
+  snapshot() {
+    return {
+      pid: this.child?.pid ?? null,
+      pendingJobId: this.pending?.jobId ?? null,
+      stopped: this.stopped,
+      queue: this.admission.snapshot(),
+      restart: this.restarts.snapshot(),
+    };
+  }
+
   stop(): void {
     if (this.stopped) return;
     this.stopped = true;
