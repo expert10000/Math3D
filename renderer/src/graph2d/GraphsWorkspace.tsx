@@ -1,5 +1,5 @@
 import {
-  analyzeGraph2DCriticalPoints, analyzeGraph2DIntegral, analyzeGraph2DIntervals,
+  analyzeGraph2DArcLength, analyzeGraph2DCriticalPoints, analyzeGraph2DIntegral, analyzeGraph2DIntervals,
   analyzeGraph2DIntersections,
   analyzeGraph2DLocalDifferential, fitGraph2DViewport,
   GRAPH2D_DEFAULT_VIEWPORT, GRAPH2D_WORKSPACE_CONTRACT,
@@ -43,6 +43,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const [areaDraft, setAreaDraft] = useState({ min: "-1", max: "1", mode: "signed" as Graph2DIntegralMode });
   const [areaRequest, setAreaRequest] = useState<{ objectId: string; min: number; max: number;
     mode: Graph2DIntegralMode } | null>(null);
+  const [arcRequest, setArcRequest] = useState<{ objectId: string; min: number; max: number } | null>(null);
   const [intersectionDraft, setIntersectionDraft] = useState({ secondId: "", intervalMode: "visible" as "visible" | "custom",
     min: "-1", max: "1" });
   const [intersectionRequest, setIntersectionRequest] = useState<{ firstId: string; secondId: string;
@@ -193,6 +194,10 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
     analyzeGraph2DIntegral({ document, objectId: areaRequest.objectId,
       interval: { min: areaRequest.min, max: areaRequest.max }, mode: areaRequest.mode }) : null,
   [document, areaRequest]);
+  const arcLength = useMemo(() => arcRequest && arcRequest.objectId === document.selection.objectId ?
+    analyzeGraph2DArcLength({ document, objectId: arcRequest.objectId,
+      interval: { min: arcRequest.min, max: arcRequest.max } }) : null,
+  [document, arcRequest]);
   const areaMin = areaDraft.min.trim() === "" ? NaN : Number(areaDraft.min);
   const areaMax = areaDraft.max.trim() === "" ? NaN : Number(areaDraft.max);
   const areaValid = Number.isFinite(areaMin) && Number.isFinite(areaMax) && areaMin < areaMax;
@@ -326,9 +331,9 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
       <h3>Interval area</h3>
       <div className="graph2d-area-controls">
         <label>From x <input aria-label="Area from x" type="number" value={areaDraft.min}
-          onChange={(event) => { setAreaDraft({ ...areaDraft, min: event.target.value }); setAreaRequest(null); }} /></label>
+          onChange={(event) => { setAreaDraft({ ...areaDraft, min: event.target.value }); setAreaRequest(null); setArcRequest(null); }} /></label>
         <label>To x <input aria-label="Area to x" type="number" value={areaDraft.max}
-          onChange={(event) => { setAreaDraft({ ...areaDraft, max: event.target.value }); setAreaRequest(null); }} /></label>
+          onChange={(event) => { setAreaDraft({ ...areaDraft, max: event.target.value }); setAreaRequest(null); setArcRequest(null); }} /></label>
         <label>Measure <select aria-label="Area measure" value={areaDraft.mode}
           onChange={(event) => { setAreaDraft({ ...areaDraft, mode: event.target.value as Graph2DIntegralMode }); setAreaRequest(null); }}>
           <option value="signed">Signed area</option><option value="absolute">Absolute area</option>
@@ -342,6 +347,21 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         <small>Adaptive Simpson · tolerance {area.tolerance.toExponential(1)} · estimated error {area.errorEstimate === null ?
           "unavailable" : area.errorEstimate.toExponential(2)} · {area.evaluations.toLocaleString()} evaluations</small>
         {area.skippedCells > 0 && <p>{area.skippedCells} undefined or unresolved cells skipped; partial area {area.partialValue.toPrecision(7)}.</p>}
+      </div>}
+    </section>
+    <section className="graph2d-arc-length" data-testid="graph2d-arc-length" aria-label="Arc length">
+      <h3>Arc length</h3>
+      <p>Measure the selected function over the x interval above.</p>
+      <button type="button" disabled={!areaValid} onClick={() => document.selection.objectId &&
+        setArcRequest({ objectId: document.selection.objectId, min: areaMin, max: areaMax })}>
+        Measure arc length</button>
+      {arcLength && <div data-testid="graph2d-arc-length-result" data-result-id={arcLength.resultId}>
+        <p>Length: {arcLength.value === null ? "Unavailable over full interval" : arcLength.value.toPrecision(9)}</p>
+        <small>{arcLength.method} · tolerance {arcLength.tolerance.toExponential(1)} · estimated error
+          {" "}{arcLength.errorEstimate === null ? "unavailable" : arcLength.errorEstimate.toExponential(2)} ·
+          {" "}{arcLength.evaluations.toLocaleString()} evaluations</small>
+        {arcLength.unresolvedCells > 0 && <p>{arcLength.unresolvedCells} unresolved cells; partial length
+          {" "}{arcLength.partialValue.toPrecision(7)}.</p>}
       </div>}
     </section>
     <section className="graph2d-intersections" data-testid="graph2d-intersections" aria-label="Pairwise intersections">

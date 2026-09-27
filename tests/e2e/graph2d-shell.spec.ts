@@ -277,3 +277,25 @@ test("Graphs solves only the chosen function pair and selects an intersection", 
     await closeSurfaceApp(app);
   }
 });
+
+test("Graphs measures arc length and withholds a singular full-interval value", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    const functions = app.page.getByLabel("Graph functions");
+    await functions.getByRole("button", { name: "Add function" }).click();
+    await functions.getByLabel("Function expression").fill("x");
+    await functions.getByRole("button", { name: "Save function" }).click();
+    const length = app.page.getByLabel("Graph inspector").getByTestId("graph2d-arc-length");
+    await length.getByRole("button", { name: "Measure arc length" }).click();
+    await expect(length.getByTestId("graph2d-arc-length-result")).toContainText("2.82842712");
+    await functions.getByRole("button", { name: "Edit f" }).click();
+    await functions.getByLabel("Function expression").fill("1/x");
+    await functions.getByRole("button", { name: "Save function" }).click();
+    await expect(length.getByTestId("graph2d-arc-length-result")).toContainText("Unavailable over full interval");
+  } finally {
+    await closeSurfaceApp(app);
+  }
+});

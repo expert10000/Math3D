@@ -90,6 +90,10 @@
 .graph2d-area p { margin: 7px 0; }
 .graph2d-area-overlay { pointer-events: none; fill: #3b82f6; opacity: .25; }
 .graph2d-area-absolute { fill: #16a34a; }
+.graph2d-arc-length { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 10px; font-size: 12px; }
+.graph2d-arc-length h3 { margin: 0 0 8px; font-size: 14px; }
+.graph2d-arc-length p { margin: 6px 0; }
+.graph2d-arc-length small { display: block; opacity: .7; }
 .graph2d-intersections { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 10px; font-size: 12px; }
 .graph2d-intersections h3 { margin: 0 0 8px; font-size: 14px; }
 .graph2d-intersection-controls { display: grid; gap: 6px; }

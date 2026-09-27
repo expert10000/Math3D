@@ -30,6 +30,7 @@ export * from "./graph2dCriticalPoints";
 export * from "./graph2dIntervals";
 export * from "./graph2dIntegral";
 export * from "./graph2dIntersections";
+export * from "./graph2dArcLength";
 export * from "./geometryDocument";
 export * from "./geometryCommands";
 export * from "./math";
