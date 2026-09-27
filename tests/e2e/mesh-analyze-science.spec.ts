@@ -36,6 +36,12 @@ async function selectSection(page: Page, label: (typeof sectionLabels)[number]):
   await expect(button).toHaveAttribute("aria-pressed", "true");
 }
 
+async function openLegacyMeshAnalysisControls(page: Page): Promise<void> {
+  const details = page.getByTestId("surface-analysis-legacy-tools");
+  if ((await details.getAttribute("open")) === null) await details.locator(":scope > summary").click();
+  await expect(details).toHaveAttribute("open", "");
+}
+
 async function openGeometryPrimitiveInMeshAnalyze(page: Page, primitive: "sphere" | "box"): Promise<void> {
   await resetSurfaceAppState(page);
   await selectSection(page, "Geometry");
@@ -51,8 +57,8 @@ async function openGeometryPrimitiveInMeshAnalyze(page: Page, primitive: "sphere
   await page.getByTestId("geometry-analysis-open-mesh-analyze").click();
 
   await expect(page.getByText(/Mesh \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText(/MESH \/ ANALYZE/i).first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId("mesh-analysis-context-breadcrumb")).toContainText(/Mesh.*Analysis/i);
+  await openLegacyMeshAnalysisControls(page);
     await expect(page.getByTestId("mesh-analysis-context-validation")).toBeVisible();
     await expect(page.getByTestId("mesh-analyze-target-ghost-others")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("mesh-analyze-construction-overlays")).not.toBeChecked();
@@ -82,8 +88,8 @@ async function openMeshPresetInAnalyze(page: Page, presetId: string): Promise<vo
   await page.getByTestId(`mesh-preset-card-${presetId}`).click();
   await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true })).then((button) => button.click());
   await page.getByTestId("surfaces-left-tab-analysis").click();
-  await expect(page.getByText(/MESH \/ ANALYZE/i).first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId("mesh-analysis-context-breadcrumb")).toContainText(/Mesh.*Analysis/i);
+  await openLegacyMeshAnalysisControls(page);
   await expect(page.getByTestId("mesh-analysis-context-validation")).toBeVisible();
 }
 
@@ -106,13 +112,10 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
 
     await expect(page.getByTestId("mesh-analyze-science-overlay")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("mesh-analyze-science-overlay")).toHaveCSS("pointer-events", "none");
-    await expect(page.getByTestId("mesh-inspector-tab-result")).toBeVisible();
-    await expect(page.getByTestId("mesh-inspector-tab-selection")).toBeVisible();
-    await expect(page.getByTestId("mesh-inspector-tab-diagnostics")).toBeVisible();
-    await expect(page.getByTestId("mesh-inspector-tab-history")).toBeVisible();
-    await expect(page.getByTestId("mesh-inspector-tab-object")).toHaveCount(0);
-    await expect(page.getByTestId("mesh-inspector-tab-probe")).toHaveCount(0);
-    await expect(page.getByTestId("mesh-inspector-tab-analysis")).toHaveCount(0);
+    await expect(page.getByTestId("shared-inspector-tab-analysis")).toBeVisible();
+    await expect(page.getByTestId("shared-inspector-tab-selection")).toBeVisible();
+    await expect(page.getByTestId("shared-inspector-tab-diagnostics")).toBeVisible();
+    await expect(page.getByTestId("shared-inspector-tab-history")).toBeVisible();
     await page.getByTestId("mesh-analyze-hud-toggle").click();
     await expect(page.getByTestId("mesh-analyze-science-overlay")).toHaveCount(0);
     await expect(page.getByTestId("mesh-analyze-hud-toggle")).toHaveAttribute("aria-pressed", "false");
@@ -131,13 +134,13 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await page.getByTestId("mesh-workspace-left-tab-topology").click();
     await page.getByTestId("mesh-context-pick-edge").click();
     await clickSurfaceViewerCanvas(page, 0.52, 0.42);
-    await page.getByTestId("mesh-inspector-tab-selection").click();
+    await page.getByTestId("shared-inspector-tab-selection").click();
     await expect(page.getByTestId("mesh-active-selection-card-type")).toHaveText("Edge");
     await expect(page.getByTestId("mesh-active-selection-card-id")).toContainText(/Edge \d+-\d+/);
     const ordinarySelectionType = await page.getByTestId("mesh-active-selection-card-type").innerText();
     const ordinarySelectionId = await page.getByTestId("mesh-active-selection-card-id").innerText();
     await page.getByTestId("mesh-workspace-left-tab-analyze").click();
-    await page.getByTestId("mesh-inspector-tab-result").click();
+    await page.getByTestId("shared-inspector-tab-analysis").click();
     const analysisProbeToggle = page.getByTestId("mesh-analyze-probe-toggle");
     if ((await analysisProbeToggle.getAttribute("aria-pressed")) === "true") await analysisProbeToggle.click();
     await expect(analysisProbeToggle).toHaveAttribute("aria-pressed", "false");
@@ -162,7 +165,7 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analysis-result-extrema")).toContainText(/Minimum\s*Vertex \d+/i);
     await expect(page.getByTestId("mesh-analysis-result-extrema")).toContainText(/Maximum\s*Vertex \d+/i);
     await expect(page.getByTestId("mesh-analysis-result-histogram")).toBeVisible();
-    await expect(page.getByTestId("mesh-analysis-result-metadata")).toContainText(/Backend\s*Renderer CPU/i);
+    await expect(page.getByTestId("mesh-analysis-result-metadata")).toContainText(/Backend\s*mesh-analysis-worker/i);
     await expect(page.getByTestId("mesh-analysis-result-metadata")).toContainText(/Time\s*(?:< 1 ms|[\d.]+ ms)/i);
     await expect(page.getByTestId("mesh-analysis-result-metadata")).toContainText(/Cached\s*(?:Yes|No)/i);
     await page.getByTestId("mesh-analysis-feature-mean-curvature").click();
@@ -207,12 +210,12 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analysis-quality-field-minimumAngleDeg")).toHaveAttribute("aria-pressed", "true");
     await page.getByTestId("mesh-analyze-quality-select-worst-1").click();
     await expect(page.getByTestId("mesh-analyze-quality-selection-count")).toContainText(/\d+ faces selected/i);
-    await expect(page.getByTestId("mesh-inspector-tab-selection")).toHaveAttribute("aria-pressed", "true");
-    await page.getByTestId("mesh-inspector-tab-result").click();
+    await expect(page.getByTestId("shared-inspector-tab-selection")).toHaveAttribute("aria-selected", "true");
+    await page.getByTestId("shared-inspector-tab-analysis").click();
     if ((await analysisProbeToggle.getAttribute("aria-pressed")) !== "true") await analysisProbeToggle.click();
     await clickSurfaceViewerCanvas(page, 0.58, 0.42);
     await expect(page.getByTestId("mesh-analyze-quality-probe")).toContainText(/Face \d+:/i);
-    await page.getByTestId("mesh-inspector-tab-result").click();
+    await page.getByTestId("shared-inspector-tab-analysis").click();
 
     await page.getByTestId("mesh-analysis-nav-vector-calculus").click();
     const calculusConfig = page.getByTestId("mesh-analyze-field-calculus-config");
@@ -245,8 +248,8 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await page.getByTestId("mesh-analyze-surface-feature-overlay").click();
     await expect(page.getByTestId("mesh-analyze-surface-feature-overlay")).toHaveAttribute("aria-pressed", "true");
     await page.getByTestId("mesh-analyze-surface-feature-select").click();
-    await expect(page.getByTestId("mesh-inspector-tab-selection")).toHaveAttribute("aria-pressed", "true");
-    await page.getByTestId("mesh-inspector-tab-result").click();
+    await expect(page.getByTestId("shared-inspector-tab-selection")).toHaveAttribute("aria-selected", "true");
+    await page.getByTestId("shared-inspector-tab-analysis").click();
 
     await page.getByTestId("mesh-analysis-nav-ridges-valleys").click();
     await expect(page.getByTestId("mesh-analyze-ridge-valley-config")).toBeVisible();
@@ -287,7 +290,7 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     expect(splitterBox).not.toBeNull();
     await page.mouse.move(splitterBox!.x + splitterBox!.width / 2, splitterBox!.y + splitterBox!.height / 2);
     await page.mouse.down();
-    await page.mouse.move(splitterBox!.x + 120, splitterBox!.y + splitterBox!.height / 2, { steps: 5 });
+    await page.mouse.move(splitterBox!.x + 220, splitterBox!.y + splitterBox!.height / 2, { steps: 5 });
     await page.mouse.up();
     await expect.poll(async () => (await rightPanel.boundingBox())?.width ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(270);
     expect((await rightPanel.boundingBox())!.width).toBeLessThan(rightPanelBox!.width - 40);
@@ -323,7 +326,7 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-clamp-toggle")).toBeChecked();
     await page.getByTestId("mesh-analyze-range-preset-full").click();
     await expect(page.getByTestId("mesh-analyze-range-source")).not.toContainText(/clamped/i);
-    await page.getByTestId("mesh-inspector-tab-diagnostics").click();
+    await page.getByTestId("shared-inspector-tab-diagnostics").click();
     await expect(page.getByTestId("mesh-analyze-health-badge")).toContainText(/State check:\s*Warning/i);
     await expect(page.getByTestId("mesh-analyze-health-badge")).toContainText(/3 suspected intersections/i);
     await expect(page.getByTestId("mesh-inspector-diagnostics-card")).toContainText(/Warning/i);
@@ -350,7 +353,7 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-probe-k1")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-probe-k2")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analyze-probe-label")).toContainText(/Probe: vertex \d+ at/i);
-    await expect(page.getByTestId("mesh-inspector-tab-selection")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("shared-inspector-tab-selection")).toHaveAttribute("aria-selected", "true");
     await expect(page.getByTestId("mesh-selection-local-K")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-selection-local-H")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-selection-local-k1")).not.toContainText("n/a");
@@ -373,7 +376,7 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await inspectorProbeHistory.getByRole("button", { name: "Clear", exact: true }).click();
     await expect(inspectorProbeHistory).toContainText(/No recorded probes/i);
 
-    await page.getByTestId("mesh-inspector-tab-history").click();
+    await page.getByTestId("shared-inspector-tab-history").click();
     await expect(page.getByTestId("mesh-analysis-computation-history")).toContainText(/Analysis computations/i);
     await expect(page.getByTestId("mesh-analysis-history-detail")).toContainText(/Status.*Backend.*Duration.*Timestamp.*Revision.*Parameters/is);
 
@@ -413,7 +416,7 @@ test("Mesh Analyze populates curvature range for torus knot preset", async () =>
     await expect(page.getByTestId("mesh-analyze-curvature-max")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analysis-result-stat-mean")).not.toContainText("n/a");
     await expect(page.getByTestId("mesh-analysis-result-stat-sigma")).not.toContainText("n/a");
-    await page.getByTestId("mesh-inspector-tab-diagnostics").click();
+    await page.getByTestId("shared-inspector-tab-diagnostics").click();
     await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Boundary:\s*0/i);
     await expect(page.getByTestId("mesh-analyze-clean-counts")).toContainText(/Coincident:\s*0/i);
     await expect(page.getByTestId("mesh-analyze-reset")).toContainText(/Reset/i);
@@ -456,7 +459,7 @@ test("Mesh Analyze diagnostics highlight boundary and coincident issues in the v
     await page.setViewportSize({ width: 1920, height: 1080 });
 
     await openGeometryPrimitiveInMeshAnalyze(page, "box");
-    await page.getByTestId("mesh-inspector-tab-diagnostics").click();
+    await page.getByTestId("shared-inspector-tab-diagnostics").click();
 
     const boundaryCount = page.getByTestId("mesh-analyze-diagnostics-boundary-count");
     await expect(boundaryCount).toBeVisible({ timeout: 15_000 });

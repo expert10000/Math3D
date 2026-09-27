@@ -127999,7 +127999,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         onOpenResult: curvatureRanges.H
           ? () => {
               onSelectMeshAnalysisCurvatureField("H");
-              setInspectorPanelTab("result");
+              setInspectorPanelTab("analysis");
               window.requestAnimationFrame(() => {
                 document.querySelector('[data-testid="mesh-analysis-active-result"]')?.scrollIntoView({
                   block: "nearest",
@@ -128019,7 +128019,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         onOpenResult: curvatureRanges.K
           ? () => {
               onSelectMeshAnalysisCurvatureField("K");
-              setInspectorPanelTab("result");
+              setInspectorPanelTab("analysis");
               window.requestAnimationFrame(() => {
                 document.querySelector('[data-testid="mesh-analysis-active-result"]')?.scrollIntoView({
                   block: "nearest",

@@ -47,7 +47,9 @@ async function selectSection(page: Page, label: (typeof sectionLabels)[number]):
 async function openMeshAnalyze(page: Page): Promise<void> {
   await firstVisible(page.getByRole("button", { name: "Mesh tools", exact: true })).then((button) => button.click());
   await page.getByTestId("surfaces-left-tab-analysis").click();
-  await expect(page.getByText(/MESH \/ ANALYZE/i).first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("mesh-analysis-context-breadcrumb")).toContainText(/Mesh.*Analysis/i);
+  const legacyTools = page.getByTestId("surface-analysis-legacy-tools");
+  if ((await legacyTools.getAttribute("open")) === null) await legacyTools.locator(":scope > summary").click();
   await expect(page.getByTestId("mesh-analyze-taxonomy")).toBeVisible();
 }
 
@@ -94,7 +96,7 @@ test("v1 clean-sphere workflow preserves clean topology and the left / center / 
     await expect(page.getByTestId("mesh-analyze-health-badge")).toContainText(
       /State check:\s*Warning.*suspected intersections/i
     );
-    await page.getByTestId("mesh-inspector-tab-diagnostics").click();
+    await page.getByTestId("shared-inspector-tab-diagnostics").click();
     await expect(page.getByTestId("mesh-analyze-diagnostics-boundary-count")).toContainText(/Boundary:\s*0 clean/i);
     await expect(page.getByTestId("mesh-analyze-diagnostics-coincident-count")).toContainText(/Coincident:\s*0 clean/i);
 
@@ -129,7 +131,7 @@ test("v1 Stanford Bunny workflow completes analysis in workers", async () => {
     await expect(page.getByTestId("mesh-analyze-curvature-worker-status")).toContainText(/Worker: ready/i, { timeout: 60_000 });
     await page.getByTestId("mesh-analysis-nav-surface-features").click();
     await expect(page.getByTestId("mesh-analyze-surface-feature-config")).toContainText(/classification.*valid vertices/i, { timeout: 60_000 });
-    await page.getByTestId("mesh-inspector-tab-history").click();
+    await page.getByTestId("shared-inspector-tab-history").click();
     await expect(page.getByTestId("mesh-analysis-computation-history")).toContainText(/Mesh analysis worker/i);
   });
 });
@@ -139,7 +141,7 @@ test("v1 problem-mesh workflow exposes open boundaries through canonical diagnos
   await withApp(async (page) => {
     await loadBenchmark(page, "open-boundary");
     await expect(page.getByTestId("mesh-analyze-health-badge")).toContainText(/State check:\s*Invalid/i);
-    await page.getByTestId("mesh-inspector-tab-diagnostics").click();
+    await page.getByTestId("shared-inspector-tab-diagnostics").click();
     const boundary = page.getByTestId("mesh-analyze-diagnostics-boundary-count");
     await expect(boundary).toContainText(/Boundary:\s*4/i);
     await boundary.click();
