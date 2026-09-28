@@ -91,6 +91,10 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
       <Text style={styles.panelTitle}>Projects</Text>
       <Text style={styles.note}>Saved Math3D scenes and Graph projects available offline on this device.</Text>
       <View style={styles.projectActions}>
+        <Pressable testID="mobile-projects-graph-gallery" accessibilityRole="button" accessibilityLabel="Graph Gallery"
+          disabled={transferBusy !== null} onPress={() => model.setGraphGalleryOpen(true)} style={[styles.secondaryBtn, { minHeight: 48, justifyContent: "center" }]}>
+          <Text style={styles.secondaryBtnText}>Graph Gallery</Text>
+        </Pressable>
         <Pressable
           testID="mobile-new-project"
           disabled={transferBusy !== null}
@@ -127,6 +131,10 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
 
           <Text style={styles.projectCreationGroupTitle}>Create</Text>
           <View style={styles.projectCreationGrid}>
+            <Pressable testID="mobile-new-project-graph-gallery" accessibilityRole="button" accessibilityLabel="Browse Graph Gallery"
+              disabled={transferBusy !== null} onPress={() => model.setGraphGalleryOpen(true)} style={optionStyle}>
+              <Text style={styles.itemTitle}>Graph Gallery</Text><Text style={styles.itemMeta}>20 editable examples with offline previews</Text>
+            </Pressable>
             <Pressable testID="mobile-new-project-graph" disabled={transferBusy !== null}
               onPress={() => void runTransfer("graph", () => model.createGraphProject(newProjectTitle, false))} style={optionStyle}>
               <Text style={styles.itemTitle}>Graph project</Text><Text style={styles.itemMeta}>Empty native 2D graph workspace</Text>

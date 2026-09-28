@@ -30,10 +30,11 @@ const Line = ({ a, b, color, width }: MobileGraphLine) => <View pointerEvents="n
   width: Math.hypot(b.x - a.x, b.y - a.y), height: width, backgroundColor: color,
   transform: [{ rotate: `${Math.atan2(b.y - a.y, b.x - a.x)}rad` }] }} />;
 
-export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onHaptic, promotions, onPromotion }: {
+export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onHaptic, promotions, onPromotion, onGallery }: {
   document: Graph2DDocument; onChange: (document: Graph2DDocument) => void;
   onSave: () => Promise<boolean>; message: string; onHaptic?: () => void;
   promotions: readonly Graph2DAnyPromotion[]; onPromotion: (promotion: Graph2DAnyPromotion) => Promise<boolean>;
+  onGallery?: () => void;
 }) => {
   const [adapter] = useState(() => new Graph2DCommandAdapter(document));
   const gesture = useRef(new MobileGraphGesture());
@@ -101,6 +102,11 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     onLayout={(event) => { const { width, height } = event.nativeEvent.layout; if (width > 0 && height > 0)
       setFrame((current) => current.width === width && current.height === height ? current : { width, height }); }}>
     <View style={{ flexDirection: "row", alignItems: "center" }}><Text style={[s.title, { flex: 1 }]} numberOfLines={1}>{document.metadata.title}</Text>
+      {onGallery && button("Gallery", () => {
+        cancel();
+        if (editor || advanced) { setError("Save or cancel the current function edit before opening Gallery."); return; }
+        onGallery();
+      })}
       {button("Display", () => { cancel(); setDestination(destination === "Display" ? "Graph" : "Display"); })}</View>
     <ScrollView horizontal style={{ flexGrow: 0, maxHeight: 48 }} contentContainerStyle={s.toolbar}>{button("Reset", () => commit(() => adapter.commitViewport(GRAPH2D_DEFAULT_VIEWPORT)))}
       {button("Fit", fit)}{button("Undo", () => commit(() => adapter.undo()), history.undoDepth === 0)}

@@ -9,6 +9,7 @@ import { MobileProjectsScreen } from "./MobileProjectsScreen";
 import { MobileExploreScreen } from "./MobileExploreScreen";
 import { MobileSettingsScreen } from "./MobileSettingsScreen";
 import { MobileGraphsWorkspace } from "./MobileGraphsWorkspace";
+import { MobileGraphGallery } from "./MobileGraphGallery";
 
 export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model }) => {
   const { tab, setTab } = model;
@@ -26,7 +27,7 @@ export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model 
 
       {tab === "workspace" && (model.graphDocument ? <MobileGraphsWorkspace key={`${model.graphDocument.identity.id}/${model.graphDocument.metadata.title}`}
         document={model.graphDocument} onChange={model.setGraphDocument} onSave={model.saveGraphProject} message={model.projectActionMessage}
-        promotions={model.graphPromotions} onPromotion={model.createGraphPromotion} /> :
+        promotions={model.graphPromotions} onPromotion={model.createGraphPromotion} onGallery={() => model.setGraphGalleryOpen(true)} /> :
         <MobileWorkspaceScreen model={model} />)}
 
       {tab !== "workspace" && <ScrollView contentContainerStyle={styles.content}>
@@ -36,6 +37,7 @@ export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model 
         {tab === "settings" && <MobileSettingsScreen model={model} />}
       </ScrollView>}
 
+      {model.graphGalleryOpen && <MobileGraphGallery onClose={() => model.setGraphGalleryOpen(false)} />}
       <View style={styles.bottomNav} accessibilityRole="tablist">
         {tabs.map(({ key, label }) => (
           <Pressable

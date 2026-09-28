@@ -273,6 +273,7 @@ export const useMobileAppController = () => {
     sceneThumbnailsById, setSceneThumbnailsById } = useMobileProjectState();
   const inspectorSwipeStartY = useRef<number | null>(null);
   const [graphDocument, setGraphDocument] = useState<Graph2DDocument | null>(null);
+  const [graphGalleryOpen, setGraphGalleryOpen] = useState(false);
   const graphProjectSequence = useRef(0);
   useEffect(() => { if (viewerDocument) setGraphDocument(null); }, [viewerDocument]);
   const [selectedExampleId, setSelectedExampleId] = useState<string | null>(mobileExamples[0]?.id ?? null);
@@ -2411,6 +2412,7 @@ export const useMobileAppController = () => {
   ]);
 
   return {
+    graphGalleryOpen, setGraphGalleryOpen,
     graphDocument, setGraphDocument, createGraphProject, importGraphProject, saveGraphProject, graphPromotions, createGraphPromotion,
     tab,
     setTab,
