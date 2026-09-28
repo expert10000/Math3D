@@ -9,6 +9,8 @@ const WORKSPACE_KEY = "math3d.mixed-workspace.v1", HANDOFF_KEY = "math3d.graph2d
 const prefix = "math3d.mixed-workspace.v1.gallery-checkpoint.";
 type Storage = Pick<globalThis.Storage, "getItem" | "setItem" | "removeItem">;
 export type GraphGalleryCheckpoint = Readonly<{ id: string; title: string }>;
+export const freshGraphGalleryLaunchToken = () => crypto.randomUUID?.() ??
+  Array.from(crypto.getRandomValues(new Uint32Array(4)),value=>value.toString(16).padStart(8,"0")).join("-");
 const graph = (workspace: MixedWorkspaceDocument) => {
   const entries=workspace.entries.filter(e=>e.module==="graph2d");
   if(entries.length!==1 || entries[0]!.checkpoint.format!=="math3d.graph2d-document") throw new Error("Expected one Graph workspace.");
@@ -41,16 +43,16 @@ const currentCheckpoint = (capture: () => MixedWorkspaceDocument, storage: Stora
   })});
   const stored=storage.getItem(HANDOFF_KEY), session=stored ? parseWorkspaceProjectHandoff(stored) : null;
   const matching=session?.projectId===graph(checkpoint).identity.id ? session : null;
-  return { workspace:mergeGraph2DHandoffCheckpoint(matching?.project ?? null,checkpoint),baseRevision:matching?.baseRevision ?? null };
+  return { workspace:mergeGraph2DHandoffCheckpoint(matching?.project ?? null,graph2DCompanionCheckpoint(checkpoint)),baseRevision:matching?.baseRevision ?? null };
 };
 const activate = (capture: () => MixedWorkspaceDocument, incoming: MixedWorkspaceDocument, baseRevision: string|null,
   storage: Storage, sidecars: Graph2DPreset["sidecars"] = [], origin?: {presetId:string;version:number;digest:string}) => {
   const current=currentCheckpoint(capture,storage), before=graph(current.workspace), next=graph(incoming);
   verifyMixedWorkspaceReplay(incoming);
-  const index=listGraphGalleryCheckpoints(storage).filter(entry=>entry.id!==before.identity.id);
+  const index=listGraphGalleryCheckpoints(storage).filter(entry=>entry.id!==before.identity.id && entry.id!==next.identity.id);
   if(index.length>=32)throw new Error("32 Graph checkpoints are preserved. Export saved work before adding another; current work remains open.");
   const checkpoint={format:"math3d.graph2d-gallery-checkpoint",version:1,workspace:current.workspace,baseRevision:current.baseRevision};
-  const manifest=createWorkspaceProjectHandoff(graph2DCompanionCheckpoint(incoming),{
+  const manifest=createWorkspaceProjectHandoff(incoming,{
     producer:{platform:typeof window!=="undefined" && "appRuntime" in window ? "desktop":"browser",name:"Math3D",version:"1.5.0"},baseRevision});
   const writes: [string,string][]=[
     [prefix+before.identity.id,JSON.stringify(checkpoint)],

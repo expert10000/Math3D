@@ -1,6 +1,6 @@
 # MATH3D Graph2D — Desktop and Mobile Roadmap
 
-**Status:** desktop/web baseline through G2D32, mobile MOB-G01–12 and automated G2D33–35 implemented; MOB-G13 physical release validation remains pending, with partial Android USB evidence. Next: planned GGL01–06 desktop/web gallery, then GGL07–09 mobile gallery; professional G2D36–40 follows.
+**Status:** desktop/web baseline through G2D32, mobile MOB-G01–12 and automated G2D33–35 implemented; MOB-G13 physical release validation remains pending, with partial Android USB evidence. GGL01–06 desktop/web gallery is implemented and accepted. Next: GGL07–09 mobile gallery; professional G2D36–40 follows.
 
 **Priority:** P1 after the active mobile project-transfer sequence
 
@@ -18,13 +18,13 @@
 - G2D33 implements checkpointed desktop/mobile handoff with source/result/companion retention and revision conflict checks. G2D34 adds a shared seven-kind numerical/migration corpus and real browser Worker/UI parity checks. G2D35 publishes the [architecture, schema, algorithms and parity guide](graph2d-architecture-schema-algorithms-parity.md).
 - Initial desktop/mobile checks are recorded in [the historical acceptance report](graph2d-acceptance-2026-09-28.md); current software evidence is in [G2D33 round trip](graph2d-g33-round-trip-acceptance.md) and [G2D34 parity corpus](graph2d-g34-parity-corpus.md). A connected SM-A566B Android 16 phone supplied [partial internal-build evidence](mobile-graphs-g13-readiness-2026-09-28.md). Full physical gesture, accessibility, rotation, memory/calibration, production signing and iOS signoff remain release gates.
 
-This does **not** finish the entire roadmap: MOB-G13 physical acceptance, planned GGL gallery work and professional G2D36–40 remain. Automated handoff and corpus checks do not substitute for native release evidence. An existing installer/APK does not gain these changes until rebuilt.
+This does **not** finish the entire roadmap: MOB-G13 physical acceptance, mobile/later GGL gallery work and professional G2D36–40 remain. Automated handoff and corpus checks do not substitute for native release evidence. An existing installer/APK does not gain these changes until rebuilt.
 
 ### Gallery sequencing decision — 2026-09-28
 
 Build a focused gallery **now, before G2D36**, using the already implemented seven-kind engine and canonical Graph documents. Deliver shared content and desktop/web discovery first, then mobile launch through the existing project library. Sliders/animation stay owned by G2D38, project exchange stays owned by the existing Graph/handoff contracts, and full physical acceptance stays owned by MOB-G13.
 
-The [gallery, presets and showcase roadmap](graph2d-gallery-presets-showcase-roadmap.md) adapts the supplied 37-step proposal, maps every proposed GRPH-G ID, and specifies launch safety, 20 initial scenes, generated offline previews and focused acceptance. GGL IDs are planned new commits; they do not renumber G2D milestones or imply implementation.
+The [gallery, presets and showcase roadmap](graph2d-gallery-presets-showcase-roadmap.md) adapts the supplied 37-step proposal, maps every proposed GRPH-G ID, and specifies launch safety, 20 initial scenes, generated offline previews and focused acceptance. GGL IDs do not renumber G2D milestones. GGL01–06 are delivered; later GGL rows remain planned. See [desktop/web acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md).
 
 ## 1. Outcome
 
@@ -69,9 +69,9 @@ Desktop-first means that desktop proves the shared domain. It does **not** autho
 - a second mobile-only graph engine;
 - treating sampled polylines as canonical mathematical source.
 
-### Next product extension — curated gallery
+### Delivered desktop/web extension — curated gallery
 
-After G2D35, add a curated gallery that instantiates normal editable Graph projects, with shared mathematical templates, offline previews and host-local favorites/recent entries. Its acceptance is separate from the original v1 physical release gate. See the planned gallery sequence below.
+After G2D35, GGL01–06 added 20 normal editable Graph scenes, generated offline previews, desktop/web Gallery and host-local favorites/recent entries. Open it through **Graphs → Gallery** or **Explore Graph Gallery** in an empty Graph. Its [desktop/web acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md) is separate from the original v1 physical release gate. Mobile GGL07–09 is next; see the gallery sequence below.
 
 ## 3. Existing architecture this program must reuse
 
@@ -295,7 +295,7 @@ Detailed contracts, content and later GGL10–18 follow-ons live in the [gallery
 | **GGL03** | `feat(graph2d-gallery): generate reproducible offline preview assets` | Implemented 20 generated SVG/PNG pairs from shared sampling/transforms with source/recipe/asset hashes, safe text, gaps/open/strict markers and a 235087-byte compressed bundle. Contact sheet reviewed; domain adjustments and interval-coverage checks prevent truncated starters. Preview/catalog tests and strict types pass; deterministic regeneration checked. |
 | **GGL04** | `feat(graph2d-gallery): add desktop web browse preview and safe project launch` | Implemented visible desktop/web toolbar and empty-state Gallery, static Featured/all/category/search/detail views, fresh project launch and preserved-workspace resume. Transaction rollback retains live state on failures and saves imported companions/results/ancestry in normal checkpoints. 30 focused tests, full renderer/focused types, production build and real Electron edit/switch/resume/save/focus scenario pass; gallery screenshot reviewed. |
 | **GGL05** | `feat(graph2d-gallery): add local favorites recent items and discovery states` | Implemented host-local bounded Favorites/Recent collections, star state, empty/search states, unavailable-entry handling and explicit corrupt-settings reset. Recent IDs join the launch transaction; no Graph payload or parallel user save store is added. 33 focused tests, focused types and two Electron browse/edit/resume/favorites/reload scenarios pass. |
-| **GGL06** | `test(graph2d-gallery): freeze desktop web catalog launch and rendering baseline` | Actual Electron/browser preview/open/edit/undo/save/handoff, source/visual checks, locale contexts, sidecars, current-work preservation and cancelled-job cleanup. |
+| **GGL06** | `test(graph2d-gallery): freeze desktop web catalog launch and rendering baseline` | Implemented desktop/web baseline: all 20 scenes exercise actual browser Worker/UI in two locale/timezone contexts; Electron preview/open/edit/undo/save/handoff/reopen, retained companions/results, rollback and checkpoint capacity pass. 34 focused tests, broader desktop/mobile regressions, types/builds and preview regeneration pass. See [desktop/web acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md). |
 | **GGL07** | `feat(mobile-graphs): add shared offline gallery browse and previews` | Projects/New Project and Graph Workspace entries, static bundled cards, categories/search, accessible small-height/tablet layout and shared default source. |
 | **GGL08** | `feat(mobile-graphs): launch presets through ordinary project persistence` | One-tap ordinary saved project, staged sidecars/rollback, current-edit preservation and existing save/share/export workflows. |
 | **GGL09** | `test(graph2d-gallery): freeze mobile launch and desktop return parity` | Shared model round trip plus physical Android walkthrough; report missing iOS/tablet evidence explicitly. Does not replace MOB-G13. |

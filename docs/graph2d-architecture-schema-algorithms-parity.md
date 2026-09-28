@@ -178,6 +178,7 @@ Maintained fixtures include canonical v1, legacy v0, future, corrupt and unsuppo
 npm run test:graph2d:desktop:unit
 npm run test:graph2d:mobile:unit
 npm run test:graph2d:parity
+npm run test:graph2d:gallery:acceptance
 npm run typecheck:noemit
 npm --prefix apps/mobile run typecheck
 npm run build:core
@@ -192,4 +193,4 @@ G13 remains **not frozen**. [The 2026-09-28 readiness audit](mobile-graphs-g13-r
 
 The committed pending template intentionally fails. Unit-test synthetic attestations must never become release evidence. Preserve exact APK/IPA, build/signing/source metadata, captures, workload reports and review decisions together.
 
-Next planned work is the [shared preset catalog and desktop/web gallery](graph2d-gallery-presets-showcase-roadmap.md), followed by mobile gallery launch, then G2D36–40 professional extensions. Presets instantiate normal Graph documents; gallery metadata/previews do not become another mathematical model. G2D38 retains ownership of shared parameter and animation behavior. Gallery acceptance does not freeze the pending G13 release gate.
+The [shared preset catalog and desktop/web gallery](graph2d-gallery-presets-showcase-roadmap.md) are delivered through GGL06; see [desktop/web acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md). Next is mobile gallery GGL07–09, then G2D36–40 professional extensions. Presets instantiate normal Graph documents; gallery metadata/previews do not become another mathematical model. G2D38 retains ownership of shared parameter and animation behavior. Gallery acceptance does not freeze the pending G13 release gate.

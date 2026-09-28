@@ -23,6 +23,7 @@ nav:
       - Release Smoke Tests: release-smoke-tests.md
       - Graph2D Roadmap: math3d-graph2d-desktop-mobile-roadmap.md
       - Graph2D Gallery Roadmap: graph2d-gallery-presets-showcase-roadmap.md
+      - Graph2D Gallery Desktop/Web Acceptance: graph2d-gallery-ggl01-ggl06-acceptance.md
       - Graph2D Project Round Trip: graph2d-g33-round-trip-acceptance.md
       - Graph2D Parity Corpus: graph2d-g34-parity-corpus.md
       - Mobile Graph Device Acceptance: mobile-graphs-g11-g13-acceptance.md

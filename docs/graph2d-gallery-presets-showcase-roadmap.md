@@ -1,6 +1,6 @@
 # Graph2D gallery, presets and showcase roadmap
 
-**Status:** GGL01–05 implemented (shared catalog, previews and desktop/web discovery); GGL06–18 pending. Mobile gallery remains planned.
+**Status:** GGL01–06 implemented and accepted for desktop/web; GGL07–18 pending. Mobile gallery is next. See [desktop/web acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md).
 
 **Decision — 2026-09-28:** build a focused editable gallery now, after G2D35 and before G2D36. Deliver shared contracts/content and desktop/web first (GGL01–06), then mobile launch from the same catalog (GGL07–09). Continue the professional features afterward. Keep MOB-G13 physical acceptance open throughout.
 
@@ -16,7 +16,7 @@ An initial gallery does not depend on SVG/PNG export, logarithmic axes, statisti
 
 | Order | Delivery | Reason |
 | --- | --- | --- |
-| Now | GGL01–06: shared catalog, 20 reviewed scenes, generated previews, desktop/web gallery and acceptance | Make the implemented engine discoverable and editable |
+| Delivered | GGL01–06: shared catalog, 20 reviewed scenes, generated previews, desktop/web gallery and acceptance | Make the implemented engine discoverable and editable |
 | Next | GGL07–09: mobile gallery, ordinary project creation and native acceptance | Reuse desktop-proven content without a second preset engine |
 | Then | G2D36: publication export | Supports personal scenes, teaching and reproducible captures |
 | Then | G2D38, followed by GGL10: shared parameters/animation and gallery integration | One parameter implementation serves authoring and examples |
@@ -128,7 +128,7 @@ Every GGL ID is a reviewable commit. Focused types/tests and stated UI evidence 
 | **GGL03** | `feat(graph2d-gallery): generate reproducible offline preview assets` | Implemented 20 generated SVG/PNG pairs from shared sampling/transforms with source/recipe/asset hashes, safe text, gaps/open/strict markers and a 235087-byte compressed bundle. Contact sheet reviewed; domain adjustments and interval-coverage checks prevent truncated starters. Preview/catalog tests and strict types pass; deterministic regeneration checked. |
 | **GGL04** | `feat(graph2d-gallery): add desktop web browse preview and safe project launch` | Implemented visible desktop/web toolbar and empty-state Gallery, static Featured/all/category/search/detail views, fresh project launch and preserved-workspace resume. Transaction rollback retains live state on failures and saves imported companions/results/ancestry in normal checkpoints. 30 focused tests, full renderer/focused types, production build and real Electron edit/switch/resume/save/focus scenario pass; gallery screenshot reviewed. |
 | **GGL05** | `feat(graph2d-gallery): add local favorites recent items and discovery states` | Implemented host-local bounded Favorites/Recent collections, star state, empty/search states, unavailable-entry handling and explicit corrupt-settings reset. Recent IDs join the launch transaction; no Graph payload or parallel user save store is added. 33 focused tests, focused types and two Electron browse/edit/resume/favorites/reload scenarios pass. |
-| **GGL06** | `test(graph2d-gallery): freeze desktop web catalog launch and rendering baseline` | Real Electron/browser browse → preview → open → edit → undo → save → handoff/reopen; current-work preservation, data sidecars, two locale contexts, numerical/visual baselines and cancelled-preview cleanup. |
+| **GGL06** | `test(graph2d-gallery): freeze desktop web catalog launch and rendering baseline` | Implemented desktop/web baseline: all 20 scenes exercise actual browser Worker/UI in two locale/timezone contexts; Electron preview/open/edit/undo/save/handoff/reopen, retained companions/results, rollback and checkpoint capacity pass. 34 focused tests, broader desktop/mobile regressions, types/builds and preview regeneration pass. See [desktop/web acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md). |
 
 ### Release B — Mobile from the same catalog
 

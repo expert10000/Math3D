@@ -49,4 +49,22 @@ describe("gallery checkpoint launch transaction",()=>{
     s.setItem(`math3d.mixed-workspace.v1.gallery-checkpoint.${old.doc.identity.id}`,"{}");
     expect(()=>resumeGraphGalleryCheckpoint(()=>second,old.doc.identity.id,s)).toThrow(/Invalid/);
   });
+  it("allows resuming at capacity while refusing another fresh project without losing saved work",()=>{
+    const s=storage(),old=scene(),preset=getGraph2DPresetCatalog().get("lissajous")!;
+    let current=old.workspace;
+    for(let i=0;i<32;i++) {
+      const captured=current;
+      current=launchGraphGalleryPreset(()=>captured,preset,`capacity-${i}`,s);
+    }
+    expect(listGraphGalleryCheckpoints(s)).toHaveLength(32);
+    const before=[...s.values],captured=current;
+    expect(()=>launchGraphGalleryPreset(()=>captured,preset,"overflow",s)).toThrow(/32 Graph checkpoints/);
+    expect([...s.values]).toEqual(before);
+    const restored=resumeGraphGalleryCheckpoint(()=>captured,old.doc.identity.id,s);
+    expect(restored.entries).toEqual(old.workspace.entries);
+    const index=listGraphGalleryCheckpoints(s);
+    expect(index).toHaveLength(32);
+    expect(index.some(entry=>entry.id===old.doc.identity.id)).toBe(false);
+    expect(index.some(entry=>entry.id===captured.entries[0]!.expected.id)).toBe(true);
+  });
 });
