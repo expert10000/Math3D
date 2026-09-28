@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
+import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from "react-native";
 import { fitGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, pickGraph2DProbe,
   resolveGraph2DViewport, sampleGraph2DScene, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
@@ -16,6 +16,7 @@ import { mobileGraphKindAction, type MobileGraphAdvancedEditor } from "./models/
 import { mobileGraphPointTables, pickMobileGraphPointText } from "./services/mobileGraphPointTables";
 import { mobileGraphAdvancedGeometry } from "./viewer/mobileGraphAdvancedProjection";
 import { MobileGraphPromotionPanel } from "./MobileGraphPromotionPanel";
+import { mobileGraphLayout, mobileGraphPanelDestination, type MobileGraphDestination } from "./models/mobileGraphLayout";
 import { MobileGraphAnalysisPanel } from "./MobileGraphAnalysisPanel";
 import { mobileGraphAnalysisDraft, runMobileGraphAnalysis, isMobileGraphAnalysisCurrent, mobileGraphAnalysisProbe,
   type MobileGraphAnalysis } from "./models/mobileGraphAnalysis";
@@ -37,7 +38,11 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const gesture = useRef(new MobileGraphGesture());
   const [size, setSize] = useState({ width: 320, height: 320 });
   const [preview, setPreview] = useState<Graph2DViewport | null>(null);
-  const [destination, setDestination] = useState<"Graph" | "Functions" | "Analyze" | "Display" | "Promote">("Graph");
+  const [destination, setDestination] = useState<MobileGraphDestination>("Graph");
+  const window = useWindowDimensions();
+  const [frame, setFrame] = useState({ width: window.width, height: window.height });
+  const layout = mobileGraphLayout({ ...frame, fontScale: window.fontScale });
+  const panelDestination = mobileGraphPanelDestination(destination, layout.split);
   const [overlays, setOverlays] = useState(MOBILE_GRAPH_DEFAULT_OVERLAYS);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -93,13 +98,17 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const button = (label: string, action: () => void, disabled = false) => <Pressable key={label} accessibilityRole="button"
     accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={action} style={s.button}>
     <Text style={{ color: disabled ? "#94a3b8" : "#1d4ed8" }}>{label}</Text></Pressable>;
-  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={s.root} testID="mobile-graphs-workspace">
+  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={s.root} testID="mobile-graphs-workspace"
+    onLayout={(event) => { const { width, height } = event.nativeEvent.layout; if (width > 0 && height > 0)
+      setFrame((current) => current.width === width && current.height === height ? current : { width, height }); }}>
     <View style={{ flexDirection: "row", alignItems: "center" }}><Text style={[s.title, { flex: 1 }]} numberOfLines={1}>{document.metadata.title}</Text>
       {button("Display", () => { cancel(); setDestination(destination === "Display" ? "Graph" : "Display"); })}</View>
     <ScrollView horizontal style={{ flexGrow: 0, maxHeight: 48 }} contentContainerStyle={s.toolbar}>{button("Reset", () => commit(() => adapter.commitViewport(GRAPH2D_DEFAULT_VIEWPORT)))}
       {button("Fit", fit)}{button("Undo", () => commit(() => adapter.undo()), history.undoDepth === 0)}
       {button("Redo", () => commit(() => adapter.redo()), history.redoDepth === 0)}
       {button(saving ? "Saving…" : "Save", () => { setSaving(true); void onSave().finally(() => setSaving(false)); }, saving)}</ScrollView>
+    <View style={[s.workspace, layout.split && s.split]} testID={layout.split ? "mobile-graph-split-pane" : "mobile-graph-phone-layout"}>
+    <View style={[s.graphPane, layout.split && { minWidth: layout.graphMinWidth }]}>
     <View style={s.plot} testID="mobile-graph-plot" accessibilityLabel="Graph plot. Drag to pan, pinch to zoom, tap to probe."
       onLayout={(event) => { cancel(); const { width, height } = event.nativeEvent.layout; if (width > 0 && height > 0) setSize({ width, height }); }}
       onStartShouldSetResponder={() => true} onMoveShouldSetResponder={() => true}
@@ -158,12 +167,14 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
       `${document.source.objects.find((object) => object.id === probe.objectId)?.label}: x=${probe.x.toPrecision(6)}, y=${probe.y.toPrecision(6)}${probe.parameter !== undefined ? `, parameter=${probe.parameter.toPrecision(6)}` : ""}${probe.rowId ? `, ${probe.rowId}` : ""}` : "Tap a curve to probe. Tap overlaps again to cycle."}</Text>
     {(geometry.truncated || series.some((item) => !item.artifact.converged)) && <Text style={s.readout}>Approximate/incomplete display. Check Display diagnostics; missing data requires its CSV/TSV sidecar.</Text>}
     {error || message ? <Text accessibilityLiveRegion="polite" numberOfLines={2} style={s.readout}>{error || message}</Text> : null}
-    {destination !== "Graph" && <ScrollView keyboardShouldPersistTaps="handled" style={s.sheet} testID={`mobile-graph-${destination.toLowerCase()}-sheet`}>
-      {destination === "Display" ? <MobileGraphDisplayPanel document={document} series={series} overlays={overlays} lineCount={lines.length}
+    </View>
+    {panelDestination && <ScrollView keyboardShouldPersistTaps="handled" style={[s.sheet, layout.split && s.sidePanel, layout.split && { width: layout.panelWidth }]}
+      accessibilityLabel={`${panelDestination} ${layout.split ? "side panel" : "bottom sheet"}`} testID={`mobile-graph-${panelDestination.toLowerCase()}-sheet`}>
+      {panelDestination === "Display" ? <MobileGraphDisplayPanel document={document} series={series} overlays={overlays} lineCount={lines.length}
         onOverlays={setOverlays} onAxis={(key) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "axis", key }), "style"))}
-        onQuality={(quality) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "quality", quality }), "style"))} /> : destination === "Promote" ?
+        onQuality={(quality) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "quality", quality }), "style"))} /> : panelDestination === "Promote" ?
         <MobileGraphPromotionPanel document={document} promotions={promotions} onCreate={onPromotion}
-          onLocate={(id) => commit(() => adapter.commitSelection(selectionForGraph2DObject(document, series, id)))} /> : destination === "Functions" ? <MobileGraphFunctionsPanel document={document} editor={editor} onEditor={setEditor}
+          onLocate={(id) => commit(() => adapter.commitSelection(selectionForGraph2DObject(document, series, id)))} /> : panelDestination === "Functions" ? <MobileGraphFunctionsPanel document={document} editor={editor} onEditor={setEditor}
         advanced={advanced} onAdvanced={setAdvanced}
         onApplyAdvanced={() => { if (!advanced) return; if (commit(() => {
           // Validate using a transient store before any persistent sidecar write or scene command.
@@ -196,6 +207,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
           })} />
       </>}
     </ScrollView>}
+    </View>
     <View style={s.destinations} accessibilityRole="tablist">{(["Graph", "Functions", "Analyze", "Promote"] as const).map((value) =>
       <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: destination === value }} style={s.button}
         onPress={() => { cancel(); setDestination(value); }}><Text>{value}</Text></Pressable>)}</View>
@@ -203,9 +215,11 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
 };
 
 const s = StyleSheet.create({ root: { flex: 1, minHeight: 0, paddingHorizontal: 8 }, title: { fontSize: 18, fontWeight: "600" },
+  workspace: { flex: 1, minHeight: 0 }, split: { flexDirection: "row", gap: 12 }, graphPane: { flex: 1, minHeight: 0, minWidth: 0 },
   toolbar: { flexDirection: "row" }, button: { minWidth: 44, minHeight: 44, padding: 10, justifyContent: "center" },
   plot: { flex: 1, minHeight: 48, backgroundColor: "#fff", overflow: "hidden", borderWidth: 1, borderColor: "#cbd5e1" },
   readout: { fontSize: 12, paddingVertical: 3 }, empty: { padding: 20, color: "#64748b" },
-  sheet: { position: "absolute", bottom: 48, left: 8, right: 8, maxHeight: "45%", flexGrow: 0,
+  sheet: { position: "absolute", bottom: 0, left: 0, right: 0, maxHeight: "45%", flexGrow: 0,
     backgroundColor: "#f8fafc", zIndex: 2, borderWidth: 1, borderColor: "#cbd5e1" },
+  sidePanel: { position: "relative", bottom: undefined, left: undefined, right: undefined, maxHeight: "100%", flexShrink: 0, padding: 8 },
   destinations: { flexDirection: "row", justifyContent: "space-around" } });
