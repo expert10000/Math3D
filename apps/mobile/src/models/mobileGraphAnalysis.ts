@@ -1,13 +1,13 @@
 import { analyzeGraph2DDerivative, analyzeGraph2DLocalDifferential, analyzeGraph2DCriticalPoints,
   analyzeGraph2DIntegral, analyzeGraph2DIntersections, analyzeGraph2DArcLength, evaluateGraph2DExpression,
-  type AnalysisResultEnvelope, type Graph2DDocument, type Graph2DLineOverlay, type Graph2DProbe, structuralHash } from "@math3d/core";
+  type AnalysisResultEnvelope, type Graph2DDocument, type Graph2DLineOverlay, type Graph2DProbe, type Graph2DAreaFillSegment, structuralHash } from "@math3d/core";
 
 export type MobileGraphAnalysisKind = "derivatives" | "tangent" | "features" | "integral" | "intersections" | "arc-length";
 export type MobileGraphAnalysisDraft = { kind: MobileGraphAnalysisKind; objectId: string; secondId: string;
   x: string; min: string; max: string; tolerance: string; mode: "signed" | "absolute" };
 export type MobileGraphAnalysisRow = { label: string; detail: string; probe?: Graph2DProbe };
 export type MobileGraphAnalysis = { kind: MobileGraphAnalysisKind; inputHash: string; publications: readonly AnalysisResultEnvelope[];
-  rows: readonly MobileGraphAnalysisRow[]; overlays: readonly Graph2DLineOverlay[] };
+  rows: readonly MobileGraphAnalysisRow[]; overlays: readonly Graph2DLineOverlay[]; areaSegments?: readonly Graph2DAreaFillSegment[] };
 export const mobileGraphAnalysisDraft = (document: Graph2DDocument): MobileGraphAnalysisDraft => ({ kind: "derivatives",
   objectId: document.selection.objectId ?? document.source.objects.find((object) => object.kind === "explicit-cartesian")?.id ?? "",
   secondId: "", x: String(document.selection.probe?.x ?? 0), min: "-1", max: "1", tolerance: "0.00001", mode: "signed" });
@@ -63,7 +63,7 @@ export const runMobileGraphAnalysis = (document: Graph2DDocument, draft: MobileG
   }
   if (draft.kind === "integral") {
     const analysis = analyzeGraph2DIntegral({ document, objectId: object.id, interval, mode: draft.mode, tolerance });
-    return { ...result, publications: [analysis.publication], rows: [{ label: `${analysis.mode} integral: ${format(analysis.value)}`,
+    return { ...result, publications: [analysis.publication], areaSegments: analysis.fillSegments, rows: [{ label: `${analysis.mode} integral: ${format(analysis.value)}`,
       detail: `${analysis.status} · adaptive Simpson · tolerance ${analysis.tolerance} · estimated error ${format(analysis.errorEstimate)} · ${analysis.evaluations} evaluations · skipped cells ${analysis.skippedCells} · partial value ${format(analysis.partialValue)} (not a full-interval answer)` }] };
   }
   if (draft.kind !== "arc-length") throw new TypeError("Unknown analysis operation.");

@@ -5,6 +5,9 @@ import { fitGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, pic
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { MobileGraphGesture, mobileGraphProbeRadius, type GraphTouch } from "./models/mobileGraphGestures";
 import { mobileGraphCapabilities } from "./models/mobileGraphProject";
+import { mobileGraphSamplingPolicy, mobileGraphDisplayScene, MOBILE_GRAPH_DEFAULT_OVERLAYS } from "./models/mobileGraphDisplay";
+import { MobileGraphDisplayPanel } from "./MobileGraphDisplayPanel";
+import { mobileGraphAreaRects } from "./viewer/mobileGraphOverlays";
 import { editMobileGraphProbes } from "./models/mobileGraphProbes";
 import { MobileGraphProbesPanel } from "./MobileGraphProbesPanel";
 import { MobileGraphFunctionsPanel } from "./MobileGraphFunctionsPanel";
@@ -29,7 +32,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const gesture = useRef(new MobileGraphGesture());
   const [size, setSize] = useState({ width: 320, height: 320 });
   const [preview, setPreview] = useState<Graph2DViewport | null>(null);
-  const [destination, setDestination] = useState<"Graph" | "Functions" | "Analyze">("Graph");
+  const [destination, setDestination] = useState<"Graph" | "Functions" | "Analyze" | "Display">("Graph");
+  const [overlays, setOverlays] = useState(MOBILE_GRAPH_DEFAULT_OVERLAYS);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [editor, setEditor] = useState<MobileGraphEditor | null>(null);
@@ -46,7 +50,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     const indices = document.source.objects.flatMap((object, index) => object.kind === "explicit-cartesian" ? [index] : []);
     const limited = { ...document, source: { ...document.source, objects: indices.map((index) => document.source.objects[index]!) },
       display: { ...document.display, objects: indices.map((index) => document.display.objects[index]!),
-        sampling: { ...document.display.sampling, maxSamples: preview ? 256 : 1024, maxDepth: 8, tolerancePx: preview ? 3 : 1.5 } } };
+        sampling: mobileGraphSamplingPolicy(document, !!preview) } };
     return sampleGraph2DScene({ document: limited, viewport, ...size, interaction: !!preview });
   }, [document.source, document.display, preview, viewport, size]);
   const lines = useMemo(() => projectMobileGraphLines(series, viewport, size, document.selection.objectId), [series, viewport, size, document.selection.objectId]);
@@ -54,6 +58,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const bounds = resolveGraph2DViewport(viewport, size);
   const probe = document.selection.probe;
   const marker = probe ? graph2DWorldToScreen(viewport, size, probe) : null;
+  const analysisCurrent = !!analysis && isMobileGraphAnalysisCurrent(analysis, document, analysisDraft);
   const history = adapter.history();
   const commit = (action: () => Graph2DDocument | null) => {
     cancel(); try { const next = action(); if (next) onChange(next); setError(""); return true; }
@@ -85,7 +90,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={action} style={s.button}>
     <Text style={{ color: disabled ? "#94a3b8" : "#1d4ed8" }}>{label}</Text></Pressable>;
   return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={s.root} testID="mobile-graphs-workspace">
-    <Text style={s.title} numberOfLines={1}>{document.metadata.title}</Text>
+    <View style={{ flexDirection: "row", alignItems: "center" }}><Text style={[s.title, { flex: 1 }]} numberOfLines={1}>{document.metadata.title}</Text>
+      {button("Display", () => { cancel(); setDestination(destination === "Display" ? "Graph" : "Display"); })}</View>
     <ScrollView horizontal style={{ flexGrow: 0, maxHeight: 48 }} contentContainerStyle={s.toolbar}>{button("Reset", () => commit(() => adapter.commitViewport(GRAPH2D_DEFAULT_VIEWPORT)))}
       {button("Fit", fit)}{button("Undo", () => commit(() => adapter.undo()), history.undoDepth === 0)}
       {button("Redo", () => commit(() => adapter.redo()), history.redoDepth === 0)}
@@ -99,26 +105,34 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
       onResponderEnd={(event) => { if (event.nativeEvent.touches.length) setPreview(gesture.current.update(touches(event))); }}
       onResponderRelease={finish} onResponderTerminate={cancel} onResponderTerminationRequest={() => true}>
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {overlays.area && analysisCurrent && analysis && document.display.objects.find((style) => style.objectId === analysisDraft.objectId)?.visible &&
+          mobileGraphAreaRects(analysis, viewport, size).map((rect, index) => <View key={`area${index}`} style={{ position: "absolute", ...rect, backgroundColor: rect.color, opacity: 0.5 }} />)}
         {document.display.axes.x && axis({ x: bounds.xMin, y: 0 }, { x: bounds.xMax, y: 0 })}
         {document.display.axes.y && axis({ x: 0, y: bounds.yMin }, { x: 0, y: bounds.yMax })}
-        {document.display.axes.grid && ticks.x.map((x) => {
+        {(document.display.axes.grid || document.display.axes.labels) && ticks.x.map((x) => {
           const point = graph2DWorldToScreen(viewport, size, { x, y: 0 });
-          return <React.Fragment key={`x${x}`}><View style={{ position: "absolute", left: point.x, height: "100%", width: 1, backgroundColor: "#e2e8f0" }} />
+          return <React.Fragment key={`x${x}`}>{document.display.axes.grid && <View style={{ position: "absolute", left: point.x, height: "100%", width: 1, backgroundColor: "#e2e8f0" }} />}
             {document.display.axes.labels && <Text style={{ position: "absolute", fontSize: 10, left: Math.max(0, Math.min(size.width - 26, point.x + 2)),
               top: size.height - 14 }}>{Number(x.toPrecision(3))}</Text>}</React.Fragment>;
         })}
-        {document.display.axes.grid && ticks.y.map((y) => {
+        {(document.display.axes.grid || document.display.axes.labels) && ticks.y.map((y) => {
           const point = graph2DWorldToScreen(viewport, size, { x: 0, y });
-          return <React.Fragment key={`y${y}`}><View style={{ position: "absolute", top: point.y, width: "100%", height: 1, backgroundColor: "#e2e8f0" }} />
+          return <React.Fragment key={`y${y}`}>{document.display.axes.grid && <View style={{ position: "absolute", top: point.y, width: "100%", height: 1, backgroundColor: "#e2e8f0" }} />}
             {document.display.axes.labels && <Text style={{ position: "absolute", fontSize: 10, left: 2,
               top: Math.max(0, Math.min(size.height - 14, point.y + 2)) }}>{Number(y.toPrecision(3))}</Text>}</React.Fragment>;
         })}
         {lines.map((line, index) => <Line key={index} {...line} />)}
-        {analysis && isMobileGraphAnalysisCurrent(analysis, document, analysisDraft) && analysis.overlays.filter((overlay) =>
+        {overlays.tangent && analysis && analysisCurrent && analysis.overlays.filter((overlay) =>
           document.display.objects.find((style) => style.objectId === overlay.objectId)?.visible).map((overlay) => {
           const points = clipGraph2DLineOverlay(overlay, viewport, size);
           return points && <Line key={overlay.artifactId} a={graph2DWorldToScreen(viewport, size, points[0])}
             b={graph2DWorldToScreen(viewport, size, points[1])} color="#b45309" width={2} />;
+        })}
+        {overlays.features && analysis && analysisCurrent && (analysis.kind === "features" || analysis.kind === "intersections") && analysis.rows.filter((row) =>
+          row.probe && document.display.objects.find((style) => style.objectId === row.probe!.objectId)?.visible).slice(0, 128).map((row, index) => {
+          const point = graph2DWorldToScreen(viewport, size, row.probe!);
+          return point.x >= 0 && point.x <= size.width && point.y >= 0 && point.y <= size.height ? <View key={`feature${index}`} style={{ position: "absolute",
+            left: point.x - 4, top: point.y - 4, width: 8, height: 8, borderRadius: 4, backgroundColor: "#9333ea" }} /> : null;
         })}
         {(document.display.pinnedProbes ?? []).filter((probe) => probe.sourceHash === document.identity.structuralHash &&
           document.display.objects.find((style) => style.objectId === probe.objectId)?.visible).map((probe) => {
@@ -137,7 +151,9 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
       `${document.source.objects.find((object) => object.id === probe.objectId)?.label}: x=${probe.x.toPrecision(6)}, y=${probe.y.toPrecision(6)}` : "Tap a curve to probe. Tap overlaps again to cycle."}</Text>
     {error || message ? <Text accessibilityLiveRegion="polite" numberOfLines={2} style={s.readout}>{error || message}</Text> : null}
     {destination !== "Graph" && <ScrollView keyboardShouldPersistTaps="handled" style={s.sheet} testID={`mobile-graph-${destination.toLowerCase()}-sheet`}>
-      {destination === "Functions" ? <MobileGraphFunctionsPanel document={document} editor={editor} onEditor={setEditor}
+      {destination === "Display" ? <MobileGraphDisplayPanel document={document} series={series} overlays={overlays} lineCount={lines.length}
+        onOverlays={setOverlays} onAxis={(key) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "axis", key }), "style"))}
+        onQuality={(quality) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "quality", quality }), "style"))} /> : destination === "Functions" ? <MobileGraphFunctionsPanel document={document} editor={editor} onEditor={setEditor}
         onApply={(action) => commit(() => adapter.commitScene(applyMobileGraphAuthoring(document, action), action.type))}
         onSelect={(id) => commit(() => adapter.commitSelection(selectionForGraph2DObject(document, series, id)))} /> : <><Text style={s.readout}>{mobileGraphCapabilities(document)}</Text>
         <Text style={s.readout}>Probe method: direct expression evaluation (floating point). Sampling is approximate.</Text>
