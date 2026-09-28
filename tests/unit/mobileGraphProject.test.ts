@@ -37,8 +37,8 @@ describe("mobile Graph projects use the portable core document", () => {
     const duplicate = duplicateMobileProject(stored, [stored]); expect(duplicate.ok).toBe(true); if (!duplicate.ok) return;
     expect(duplicate.project.id).not.toBe(stored.id);
     expect(readMobileGraph(duplicate.project).identity.structuralHash).toBe(graph.identity.structuralHash);
-    expect(parseGraph2DDocument(serializeMobileProjectHandoff(stored))).toEqual(graph);
-    expect(createMobileHandoffExportName(stored)).toMatch(/\.math3d\.graph2d\.json$/);
+    expect(readMobileGraph(importMobileGraph(serializeMobileProjectHandoff(stored), [], "handoff.json"))).toEqual(graph);
+    expect(createMobileHandoffExportName(stored)).toMatch(/\.math3d\.handoff\.json$/);
   });
   it("preserves advanced definitions but advertises their mobile limitations", () => {
     const ast = parseGraph2DExpression("t", ["t"]); if (!ast.ok) throw new Error("parse failed");

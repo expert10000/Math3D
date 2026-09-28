@@ -4,11 +4,14 @@ import {
   serializeMixedWorkspaceDocument, traceViewerLineage, viewerSourceFromDocument,
   type KernelWorkspaceModule, type MixedWorkspaceDocument, type ViewerProvenanceEvidence,
   PLATFORM_FACILITIES,
+  createMixedWorkspaceDocument, createWorkspaceProjectHandoff, serializeWorkspaceProjectHandoff, parseWorkspaceProjectHandoff,
+  graph2DCompanionCheckpoint, mergeGraph2DHandoffCheckpoint, assertWorkspaceHandoffCanReplace,
 } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { probeRendererPlatformCapabilities } from "../kernel/rendererPlatformCapabilities";
 
 const STORAGE_KEY = "math3d.mixed-workspace.v1";
+const HANDOFF_KEY = "math3d.graph2d-handoff.v2";
 
 export type KernelWorkspacePanelProps = {
   capture: () => MixedWorkspaceDocument;
@@ -25,10 +28,57 @@ export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ capt
   const [reopened, setReopened] = useState<MixedWorkspaceDocument | null>(null);
   const [message, setMessage] = useState("No mixed workspace opened.");
   const [platform] = useState(probeRendererPlatformCapabilities);
+  const [handoffSession, setHandoffSession] = useState<{ project: MixedWorkspaceDocument; baseRevision: string | null } | null>(() => {
+    try { const raw = localStorage.getItem(HANDOFF_KEY); if (!raw) return null;
+      const manifest = parseWorkspaceProjectHandoff(raw); return { project: manifest.project, baseRevision: manifest.baseRevision };
+    } catch { return null; }
+  });
+  const checkpointWorkspace = () => {
+    const workspace = capture(), resolved = verifyMixedWorkspaceReplay(workspace);
+    return createMixedWorkspaceDocument({ ...workspace, entries: workspace.entries.map((entry) => {
+      const document = resolved.get(entry.expected.id)!;
+      return { ...entry, checkpoint: document, expected: document.identity, replay: null };
+    }) });
+  };
+  const captureGraph = () => mergeGraph2DHandoffCheckpoint(handoffSession?.project ?? null, graph2DCompanionCheckpoint(checkpointWorkspace()));
+  const exportGraph = () => {
+    try {
+      const project = captureGraph(), manifest = createWorkspaceProjectHandoff(project, {
+        producer: { platform: platform.runtime === "browser" ? "browser" : "desktop", name: "Math3D", version: "1.5.0" },
+        baseRevision: handoffSession?.baseRevision ?? null });
+      const url = URL.createObjectURL(new Blob([serializeWorkspaceProjectHandoff(manifest)], { type: "application/json" }));
+      const link = document.createElement("a"); link.href = url; link.download = "Graph.math3d.handoff.json"; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setHandoffSession({ project, baseRevision: handoffSession?.baseRevision ?? null });
+      localStorage.setItem(HANDOFF_KEY, serializeWorkspaceProjectHandoff(manifest));
+      setMessage("Exported Graph handoff with revision ancestry. Data sidecars transfer separately.");
+    } catch (error) { setMessage(`Graph export failed: ${(error as Error).message}`); }
+  };
+  const importGraph = async (file: File) => {
+    try {
+      if (file.size > 17 * 1024 * 1024) throw new TypeError("Workspace handoff exceeds its size limit.");
+      const incoming = parseWorkspaceProjectHandoff(await file.text()), current = captureGraph();
+      // Recompute after asynchronous file I/O; a viewport edit also counts as local divergence.
+      const currentId = current.entries.find((entry) => entry.module === "graph2d")!.expected.id;
+      if (incoming.projectId === currentId) assertWorkspaceHandoffCanReplace(incoming, current);
+      verifyMixedWorkspaceReplay(incoming.project);
+      localStorage.setItem(`${STORAGE_KEY}.before-handoff`, serializeMixedWorkspaceDocument(capture()));
+      localStorage.setItem(STORAGE_KEY, serializeMixedWorkspaceDocument(incoming.project));
+      localStorage.setItem(HANDOFF_KEY, serializeWorkspaceProjectHandoff({ ...incoming, baseRevision: incoming.projectRevision }));
+      onReopen?.(incoming.project);
+      setHandoffSession({ project: incoming.project, baseRevision: incoming.projectRevision });
+      setReopened(incoming.project);
+      setMessage("Opened Graph handoff. Previous workspace saved locally; compatible result inputs and companions retained. Domain artifacts remain external.");
+    } catch (error) { setMessage(`Graph import failed: ${(error as Error).message}`); }
+  };
   const save = () => {
     try {
-      const workspace = capture();
+      let workspace = capture();
       verifyMixedWorkspaceReplay(workspace);
+      if (handoffSession) {
+        const live = checkpointWorkspace();
+        workspace = createMixedWorkspaceDocument({ ...mergeGraph2DHandoffCheckpoint(handoffSession.project, live), constructions: live.constructions });
+      }
       localStorage.setItem(STORAGE_KEY, serializeMixedWorkspaceDocument(workspace));
       setReopened(workspace);
       setMessage(`Saved ${workspace.entries.length} canonical document(s) and ${workspace.relations.length} relation(s).`);
@@ -78,6 +128,11 @@ export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ capt
           <button type="button" data-testid="kernel-workspace-reopen" onClick={reopen}>Reopen and replay</button>
         </div>
         <div data-testid="kernel-workspace-message">{message}</div>
+        <div style={{ display: "grid", gap: 5 }}>
+          <button type="button" data-testid="graph2d-handoff-export" onClick={exportGraph}>Export Graph handoff</button>
+          <label>Open Graph handoff <input type="file" accept="application/json,.json" data-testid="graph2d-handoff-import"
+            onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void importGraph(file); }} /></label>
+        </div>
         {reopened && <div data-testid="kernel-workspace-reopened" style={{ display: "grid", gap: 5 }}>
           <div>{reopened.entries.length} documents · {reopened.results.length} results · {reopened.relations.length} relations</div>
           <div>{availability?.missingArtifactIds.length ?? 0} missing artifacts · {availability?.unavailableResultIds.length ?? 0} unavailable results</div>

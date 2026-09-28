@@ -15,9 +15,9 @@ describe("MOB-G13 shared companion fixture acceptance (not native hardware signo
     const raw = readFileSync("packages/core/fixtures/graph2d/canonical-v1.json", "utf8"), desktop = parseGraph2DDocument(raw);
     const project = importMobileGraph(raw, [], "canonical-v1.json", 1, "desktop"), mobile = readMobileGraph(project);
     expect(mobile).toEqual(desktop);
-    expect(parseGraph2DDocument(serializeMobileProjectHandoff(project))).toEqual(desktop);
+    expect(readMobileGraph(importMobileGraph(serializeMobileProjectHandoff(project), [], "handoff.json"))).toEqual(desktop);
     const adapter = new Graph2DCommandAdapter(mobile), changed = adapter.commitViewport({ ...mobile.display.viewport, xMin: -3, xMax: 3 });
-    expect(parseGraph2DDocument(serializeMobileProjectHandoff(storeMobileGraph(changed)))).toEqual(changed);
+    expect(readMobileGraph(importMobileGraph(serializeMobileProjectHandoff(storeMobileGraph(changed)), [], "handoff.json"))).toEqual(changed);
     expect(adapter.undo()).toEqual(mobile);
   });
   it("fails closed on committed future/corrupt/unsupported desktop fixtures", () => {

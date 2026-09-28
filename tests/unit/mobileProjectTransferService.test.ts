@@ -35,7 +35,7 @@ vi.mock("expo-file-system", () => ({
 vi.mock("expo-sharing", () => ({ isAvailableAsync: async () => true, shareAsync: state.share }));
 
 import { exportMobileSceneProject, pickMobileSceneProject, shareMobileSceneProject } from "../../apps/mobile/src/services/mobileProjectTransferService";
-import { createMobileGraph, storeMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
+import { createMobileGraph, storeMobileGraph, importMobileGraph, readMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
 import { parseGraph2DDocument } from "@math3d/core";
 
 const scene = createSceneProjectDocument({
@@ -53,8 +53,8 @@ describe("native project document/share boundary", () => {
     const graph = createMobileGraph("Portable Graph", true, "portable");
     const exported = await exportMobileSceneProject(storeMobileGraph(graph));
     expect(exported.status).toBe("exported"); if (exported.status !== "exported") return;
-    expect(exported.fileName).toContain(".math3d.graph2d.json");
-    expect(parseGraph2DDocument(state.files.get(`documents/${exported.fileName}`)!)).toEqual(graph);
+    expect(exported.fileName).toContain(".math3d.handoff.json");
+    expect(readMobileGraph(importMobileGraph(state.files.get(`documents/${exported.fileName}`)!, [], "native.handoff.json"))).toEqual(graph);
     await shareMobileSceneProject(storeMobileGraph(graph));
     expect(state.share).toHaveBeenCalledOnce();
   });

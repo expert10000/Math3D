@@ -3,6 +3,7 @@ import { createEmptyGraph2DDocument, createGraph2DDocument, parseGraph2DDocument
   createMixedWorkspaceDocument, serializeMixedWorkspaceDocument,
   matchesScientificSourceGeneration, viewerSourceFromDocument,
   GRAPH2D_MAX_DOCUMENT_BYTES, type Graph2DDocument, type MixedWorkspaceDocument } from "@math3d/core";
+import { parseWorkspaceProjectHandoff } from "@math3d/core";
 import type { MobileStoredSceneProject } from "./mobileScene";
 
 export const storeMobileGraph = (document: Graph2DDocument, now = Date.now(), workspace?: MixedWorkspaceDocument | null): MobileStoredSceneProject => ({
@@ -60,8 +61,14 @@ export const importMobileGraph = (raw: string, projects: readonly MobileStoredSc
   if (new TextEncoder().encode(raw).length > 32 * 1024 * 1024) throw new TypeError("Graph import exceeds its size limit.");
   let value: unknown = JSON.parse(raw);
   let workspace: MixedWorkspaceDocument | null = null;
+  let handoffRevision: string | undefined;
+  if ((value as { format?: string })?.format === "math3d.project-handoff") {
+    const handoff = parseWorkspaceProjectHandoff(raw);
+    workspace = handoff.project; value = workspace;
+    handoffRevision = handoff.projectRevision;
+  }
   if ((value as { format?: string })?.format === "math3d.mixed-workspace") {
-    workspace = parseMixedWorkspaceDocument(raw);
+    workspace ??= parseMixedWorkspaceDocument(raw);
     const graphs = workspace.entries.filter((entry) => entry.module === "graph2d");
     if (graphs.length !== 1) throw new TypeError("Import a workspace with exactly one Graph document.");
     if (workspace.entries.some((entry) => entry.replay !== null)) throw new TypeError("Export checkpointed documents before importing on mobile.");
@@ -84,5 +91,6 @@ export const importMobileGraph = (raw: string, projects: readonly MobileStoredSc
       title: `${source.metadata.title.slice(0, 140)} import ${suffix}`, stableKey: { importOf: source.identity.id, copy: suffix++ } });
   if (workspace && document.identity.id !== source.identity.id) workspace = null; // Graph-only collision copy, no companions to lose.
   return { ...storeMobileGraph(document, now, workspace), source: { kind: sourceKind, name: sourceName.trim().slice(0, 240) || "Graph file",
-    sourceProjectId: source.identity.id, importedAt: now } };
+    sourceProjectId: source.identity.id, importedAt: now,
+    ...(handoffRevision && document.identity.id === source.identity.id ? { handoffRevision } : {}) } };
 };

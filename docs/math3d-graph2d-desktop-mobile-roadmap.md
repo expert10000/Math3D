@@ -269,7 +269,7 @@ Mobile starts only after G2D30–G2D32 are green. The first mobile slice is expl
 
 | ID | Planned commit | Scope and acceptance evidence |
 | --- | --- | --- |
-| **G2D33** | `test(graph2d): freeze desktop mobile project round trip` | Desktop creates `f,g`; mobile opens, probes, adds `h`, saves; desktop reopens with stable IDs, viewport, source hashes, commands, and compatible saved-result inputs. Divergence follows the normal handoff policy. |
+| **G2D33** | `test(graph2d): freeze desktop mobile project round trip` | Implemented automated checkpoint/handoff baseline: desktop `f,g` → mobile probe/pin/add `h` → desktop reopen with IDs, viewport, source hashes, commands, saved-result inputs and companions preserved. Existing handoff v2 adds workspace revision ancestry and rejects local divergence; built Electron file regression passes. Physical two-app release signoff remains pending MOB-G13. See `graph2d-g33-round-trip-acceptance.md`. |
 | **G2D34** | `test(graph2d): add cross-platform visual numerical and migration corpus` | Cover every graph kind, discontinuities, extreme domains, promotions, schema versions, locale/timezone independence, corruption, cancellation, and deterministic tolerances across supported runtimes. |
 | **G2D35** | `docs(graph2d): publish architecture schema algorithms and parity guide` | Document ownership, schemas, AST, sampling guarantees/limits, result confidence, accessibility, performance profiles, interoperability, migration, troubleshooting, and release evidence. |
 

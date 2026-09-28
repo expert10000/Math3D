@@ -1537,8 +1537,9 @@ export const useMobileAppController = () => {
         setProjectActionMessage("New project cancelled. No project was created.");
         return false;
       }
-      const format = (JSON.parse(picked.serializedProject) as { format?: string })?.format;
-      if (format === "math3d.graph2d-document" || format === "math3d.mixed-workspace") {
+      const envelope = JSON.parse(picked.serializedProject) as { format?: string; version?: number };
+      const format = envelope?.format;
+      if (format === "math3d.graph2d-document" || format === "math3d.mixed-workspace" || (format === "math3d.project-handoff" && envelope.version === 2)) {
         const project = importMobileGraph(picked.serializedProject, storedProjects, picked.sourceName, Date.now(),
           source === "import" ? "imported" : source);
         const saved = await persistProjectMutation(upsertStoredProject(storedProjects, project), `Imported ${project.title}.`, "Could not import Graph");

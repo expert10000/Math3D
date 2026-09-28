@@ -11,6 +11,7 @@ import { renameMobileProject, duplicateMobileProject } from "../../apps/mobile/s
 import { serializeMobileProjectHandoff, createMobileHandoffExportName } from "../../apps/mobile/src/models/mobileProjectTransfer";
 import { snapshotFromMobileProbe } from "../../apps/mobile/src/services/mobilePlatformCapabilities";
 import { projectMobilePromotion } from "../../apps/mobile/src/viewer/mobilePromotionProjection";
+import { parseWorkspaceProjectHandoff } from "@math3d/core";
 
 const platform = snapshotFromMobileProbe({ persistentStorage: true, network: false, touchInput: true });
 describe("MOB-G10 native portable promotions", () => {
@@ -34,11 +35,11 @@ describe("MOB-G10 native portable promotions", () => {
     const created = [promoteGraph2DToCurve(source, "function_1"), revolveGraph2DProfile(source, "function_1", { axis: "x", orientation: "positive" }),
       extrudeGraph2DProfile(source, "function_1", { direction: [0, 0, 2], length: 3, caps: "none" })];
     for (const promotion of created) project = commitMobileGraphPromotion(project, source, promotion, platform, 2);
-    const workspace = parseMixedWorkspaceDocument(serializeMobileProjectHandoff(project));
+    const workspace = parseWorkspaceProjectHandoff(serializeMobileProjectHandoff(project)).project;
     expect(workspace.entries.map((e) => e.module)).toEqual(["graph2d", "curve", "surface", "surface"]);
     expect(workspace.relations).toEqual(created.map((p) => p.relation));
     expect(readMobileGraph(project).identity).toEqual(source.identity); expect(readMobileGraphPromotions(project)).toEqual(created);
-    expect(createMobileHandoffExportName(project)).toMatch(/workspace\.json$/);
+    expect(createMobileHandoffExportName(project)).toMatch(/handoff\.json$/);
     const reopened = importMobileGraph(serializeMobileProjectHandoff(project), [], "portable.workspace.json");
     expect(readMobileGraphPromotions(reopened)).toEqual(created);
     project = updateStoredMobileGraph(project, { ...source, display: { ...source.display, axes: { ...source.display.axes, grid: false } } });
