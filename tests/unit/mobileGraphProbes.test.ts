@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { inspectGraph2DCompatibility, parseGraph2DDocument, serializeGraph2DDocument, normalizeGraph2DDocument } from "@math3d/core";
+import { inspectGraph2DCompatibility, parseGraph2DDocument, serializeGraph2DDocument, normalizeGraph2DDocument,
+  createGraph2DWorkspaceProject, parseMixedWorkspaceDocument, serializeMixedWorkspaceDocument } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { createMobileGraph, storeMobileGraph, readMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
 import { editMobileGraphProbes, compareMobileGraphProbes } from "../../apps/mobile/src/models/mobileGraphProbes";
@@ -22,6 +23,8 @@ describe("MOB-G05 portable bounded probes", () => {
     expect(inspectGraph2DCompatibility(document).status).toBe("current");
     expect(parseGraph2DDocument(serializeGraph2DDocument(document))).toEqual(document);
     expect(readMobileGraph(storeMobileGraph(document))).toEqual(document);
+    const mixed = parseMixedWorkspaceDocument(serializeMixedWorkspaceDocument(createGraph2DWorkspaceProject(document)));
+    expect(parseGraph2DDocument(JSON.stringify(mixed.entries[0]?.checkpoint))).toEqual(document);
     expect(adapter.undo()?.display.pinnedProbes).toBeUndefined(); expect(adapter.redo()).toEqual(document);
   });
   it("compares ordered probes, renames, reorders, deletes, and enforces eight without mutation", () => {

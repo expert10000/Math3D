@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
 import { fitGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, pickGraph2DProbe,
-  resolveGraph2DViewport, sampleGraph2DScene, selectionForGraph2DObject, type Graph2DDocument, type Graph2DViewport } from "@math3d/core";
+  resolveGraph2DViewport, sampleGraph2DScene, selectionForGraph2DObject, clipGraph2DLineOverlay, type Graph2DDocument, type Graph2DViewport } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { MobileGraphGesture, mobileGraphProbeRadius, type GraphTouch } from "./models/mobileGraphGestures";
 import { mobileGraphCapabilities } from "./models/mobileGraphProject";
@@ -9,6 +9,9 @@ import { editMobileGraphProbes } from "./models/mobileGraphProbes";
 import { MobileGraphProbesPanel } from "./MobileGraphProbesPanel";
 import { MobileGraphFunctionsPanel } from "./MobileGraphFunctionsPanel";
 import { applyMobileGraphAuthoring, type MobileGraphEditor } from "./models/mobileGraphAuthoring";
+import { MobileGraphAnalysisPanel } from "./MobileGraphAnalysisPanel";
+import { mobileGraphAnalysisDraft, runMobileGraphAnalysis, isMobileGraphAnalysisCurrent, mobileGraphAnalysisProbe,
+  type MobileGraphAnalysis } from "./models/mobileGraphAnalysis";
 import { clipMobileGraphLine, mobileGraphTicks, projectMobileGraphLines, type MobileGraphLine } from "./viewer/mobileGraphProjection";
 
 const touches = (event: GestureResponderEvent): GraphTouch[] => event.nativeEvent.touches.map((touch) =>
@@ -30,6 +33,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [editor, setEditor] = useState<MobileGraphEditor | null>(null);
+  const [analysisDraft, setAnalysisDraft] = useState(() => mobileGraphAnalysisDraft(document));
+  const [analysis, setAnalysis] = useState<MobileGraphAnalysis | null>(null);
   const viewport = preview ?? document.display.viewport;
   const cancel = () => { gesture.current.cancel(); setPreview(null); };
   useEffect(() => {
@@ -98,18 +103,27 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         {document.display.axes.y && axis({ x: 0, y: bounds.yMin }, { x: 0, y: bounds.yMax })}
         {document.display.axes.grid && ticks.x.map((x) => {
           const point = graph2DWorldToScreen(viewport, size, { x, y: 0 });
-          return <View key={`x${x}`} style={{ position: "absolute", left: point.x, height: "100%", width: 1, backgroundColor: "#e2e8f0" }}>
-            {document.display.axes.labels && <Text style={{ fontSize: 10, top: size.height - 14 }}>{Number(x.toPrecision(3))}</Text>}</View>;
+          return <React.Fragment key={`x${x}`}><View style={{ position: "absolute", left: point.x, height: "100%", width: 1, backgroundColor: "#e2e8f0" }} />
+            {document.display.axes.labels && <Text style={{ position: "absolute", fontSize: 10, left: Math.max(0, Math.min(size.width - 26, point.x + 2)),
+              top: size.height - 14 }}>{Number(x.toPrecision(3))}</Text>}</React.Fragment>;
         })}
         {document.display.axes.grid && ticks.y.map((y) => {
           const point = graph2DWorldToScreen(viewport, size, { x: 0, y });
-          return <View key={`y${y}`} style={{ position: "absolute", top: point.y, width: "100%", height: 1, backgroundColor: "#e2e8f0" }}>
-            {document.display.axes.labels && <Text style={{ fontSize: 10 }}>{Number(y.toPrecision(3))}</Text>}</View>;
+          return <React.Fragment key={`y${y}`}><View style={{ position: "absolute", top: point.y, width: "100%", height: 1, backgroundColor: "#e2e8f0" }} />
+            {document.display.axes.labels && <Text style={{ position: "absolute", fontSize: 10, left: 2,
+              top: Math.max(0, Math.min(size.height - 14, point.y + 2)) }}>{Number(y.toPrecision(3))}</Text>}</React.Fragment>;
         })}
         {lines.map((line, index) => <Line key={index} {...line} />)}
+        {analysis && isMobileGraphAnalysisCurrent(analysis, document, analysisDraft) && analysis.overlays.filter((overlay) =>
+          document.display.objects.find((style) => style.objectId === overlay.objectId)?.visible).map((overlay) => {
+          const points = clipGraph2DLineOverlay(overlay, viewport, size);
+          return points && <Line key={overlay.artifactId} a={graph2DWorldToScreen(viewport, size, points[0])}
+            b={graph2DWorldToScreen(viewport, size, points[1])} color="#b45309" width={2} />;
+        })}
         {(document.display.pinnedProbes ?? []).filter((probe) => probe.sourceHash === document.identity.structuralHash &&
           document.display.objects.find((style) => style.objectId === probe.objectId)?.visible).map((probe) => {
           const point = graph2DWorldToScreen(viewport, size, probe);
+          if (point.x < 0 || point.x > size.width || point.y < 0 || point.y > size.height) return null;
           return <View key={probe.id} style={{ position: "absolute", left: point.x - 5, top: point.y - 5 }}>
             <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: "#b45309" }} /><Text style={{ fontSize: 11 }}>{probe.label}</Text></View>;
         })}
@@ -130,6 +144,13 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         {series.some((item) => !item.artifact.converged) && <Text style={s.readout}>Sampling budget reached; unresolved regions are not a proof of absence.</Text>}
         {button("Clear probe", () => commit(() => adapter.commitSelection({ objectId: null, probe: null })))}
         {probe && button("Cycle overlap", () => tap(graph2DWorldToScreen(document.display.viewport, size, probe)))}
+        <MobileGraphAnalysisPanel document={document} draft={analysisDraft} result={analysis} onDraft={setAnalysisDraft}
+          onRun={() => { cancel(); try { setAnalysis(runMobileGraphAnalysis(document, analysisDraft)); setError(""); }
+            catch (caught) { setError((caught as Error).message); } }}
+          onLocate={(point) => commit(() => {
+            if (!analysis || !isMobileGraphAnalysisCurrent(analysis, document, analysisDraft)) throw new TypeError("Result is stale; run analysis again.");
+            return adapter.commitSelection({ objectId: point.objectId, probe: mobileGraphAnalysisProbe(document, point) });
+          })} />
         <MobileGraphProbesPanel document={document} onAction={(action) => commit(() => adapter.commitScene({ source: document.source,
           selection: document.selection, display: { ...document.display, pinnedProbes: editMobileGraphProbes(document, action) } }, "pinned-probes"))}
           onLocate={(id) => commit(() => {
