@@ -1,6 +1,6 @@
 # Graph2D gallery, presets and showcase roadmap
 
-**Status:** planned; no gallery implementation is claimed by this document.
+**Status:** GGL01 implemented (shared validated preset contract/registry/instantiation); GGL02–18 pending. Gallery UI is not delivered yet.
 
 **Decision — 2026-09-28:** build a focused editable gallery now, after G2D35 and before G2D36. Deliver shared contracts/content and desktop/web first (GGL01–06), then mobile launch from the same catalog (GGL07–09). Continue the professional features afterward. Keep MOB-G13 physical acceptance open throughout.
 
@@ -117,13 +117,13 @@ Reuse the G2D34 pathological corpus as an oracle source, not as a direct marketi
 
 ## 6. Reviewable commit sequence
 
-Every GGL ID is a new planned commit. Focused types/tests and stated UI evidence complete it. Commit and push each delivered milestone independently. This document does not mark any of them delivered.
+Every GGL ID is a reviewable commit. Focused types/tests and stated UI evidence complete it. Commit and push each delivered milestone independently. Delivery is recorded explicitly below.
 
 ### Release A — Desktop/web gallery now
 
 | ID | Planned commit | Scope and acceptance |
 | --- | --- | --- |
-| **GGL01** | `feat(graph2d-presets): add shared versioned catalog contract and instantiation` | Canonical Graph templates, bounded manifest/sidecars, capabilities/digests and immutable registry; unknown/corrupt inputs reject; two launches have independent identities and no ancestry. |
+| **GGL01** | `feat(graph2d-presets): add shared versioned catalog contract and instantiation` | Implemented shared core contract, immutable registry, canonical template/sidecar validation and fresh launch-token identities. Four contract tests and strict shared typecheck pass. |
 | **GGL02** | `feat(graph2d-presets): add curated seven-kind starter scenes` | The 20-scene collection, descriptions, attribution, viewports, named default values and six Featured choices; reference math, gaps/endpoints and low-profile bounded projection reviewed. |
 | **GGL03** | `feat(graph2d-gallery): generate reproducible offline preview assets` | Shared sampling → SVG/native images; manifest hash/recipe invalidation, safe text, asset byte ceiling and reviewed geometry; no live sampler per card. |
 | **GGL04** | `feat(graph2d-gallery): add desktop web browse preview and safe project launch` | Toolbar/empty-state entry, categories/search/details; fresh project activation, durable current-work checkpoint including companions, failure recovery, keyboard/focus and responsive layout. |

@@ -286,11 +286,11 @@ Mobile starts only after G2D30–G2D32 are green. The first mobile slice is expl
 
 ### Gallery insertion — after G2D35, before Phase I
 
-Detailed contracts, content and later GGL10–18 follow-ons live in the [gallery roadmap](graph2d-gallery-presets-showcase-roadmap.md). Every row below is **planned**, not delivered. Desktop/web acceptance precedes mobile delivery; physical checks remain separately reported.
+Detailed contracts, content and later GGL10–18 follow-ons live in the [gallery roadmap](graph2d-gallery-presets-showcase-roadmap.md). Delivered rows are marked explicitly; other rows remain planned. Desktop/web acceptance precedes mobile delivery; physical checks remain separately reported.
 
 | ID | Planned commit | Scope and acceptance evidence |
 | --- | --- | --- |
-| **GGL01** | `feat(graph2d-presets): add shared versioned catalog contract and instantiation` | Immutable core registry and validated normal Graph templates, manifest/sidecar bounds, capabilities/digests and fresh project identities without invented ancestry. |
+| **GGL01** | `feat(graph2d-presets): add shared versioned catalog contract and instantiation` | Implemented shared core contract, immutable registry, canonical template/sidecar validation and fresh launch-token identities. Four contract tests and strict shared typecheck pass. |
 | **GGL02** | `feat(graph2d-presets): add curated seven-kind starter scenes` | 20 reviewed scenes spanning algebra, trigonometry, calculus, parametric, polar, implicit, inequality, piecewise and data; at least six multi-object scenes and six static Featured items. |
 | **GGL03** | `feat(graph2d-gallery): generate reproducible offline preview assets` | Shared sampler, fixed recipes, SVG/native raster assets, digest invalidation, honest gaps/limits, asset ceiling and no live renderer per card. |
 | **GGL04** | `feat(graph2d-gallery): add desktop web browse preview and safe project launch` | Visible Graphs toolbar/empty-state entry, search/categories/details, fresh editable copy, durable preservation of current workspace/companions, rollback and keyboard/focus support. |
