@@ -25,6 +25,9 @@ This site combines:
 - Desktop/mobile project handoff: `mobile-desktop-project-round-trip.md` (revision-aware file exchange and conflict choices).
 - Mobile project-transfer gate: `mobile-project-transfer-gate.md` (golden matrix, Android USB evidence, and iOS gate status).
 - Graph2D desktop/mobile roadmap: `math3d-graph2d-desktop-mobile-roadmap.md` (shared 2D graph engine, desktop workspace, mathematical analysis, mobile parity, interop, and release gates).
+- [Graph2D architecture, schemas, algorithms and parity](graph2d-architecture-schema-algorithms-parity.md): maintained G2D35 guide, mathematical limits, platform behavior and verification commands.
+- Graph2D software acceptance: [desktop/mobile round trip](graph2d-g33-round-trip-acceptance.md) and [numerical, visual and migration corpus](graph2d-g34-parity-corpus.md).
+- Graph2D physical release acceptance: [MOB-G11–13 gate](mobile-graphs-g11-g13-acceptance.md) and [partial Android USB readiness evidence](mobile-graphs-g13-readiness-2026-09-28.md); full G13 signoff remains pending.
 
 ## Public frontend
 

@@ -261,6 +261,10 @@ Release confidence checks and clean-profile installer launch verification are do
 
 ## Docs
 
+[Graph2D architecture, schemas, algorithms and platform parity](docs/graph2d-architecture-schema-algorithms-parity.md)
+includes current handoff, mathematical limits and release evidence. Sequencing is maintained in the
+[Graph2D roadmap](docs/math3d-graph2d-desktop-mobile-roadmap.md).
+
 ```bash
 npm run docs:build
 ```

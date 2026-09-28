@@ -1,6 +1,6 @@
 # MATH3D Graph2D — Desktop and Mobile Roadmap
 
-**Status:** desktop baseline implemented through G2D32; mobile MOB-G01–10 implemented with bounded native previews/local data sidecars, physical-device/iOS validation and advanced worker analyses pending
+**Status:** desktop/web baseline through G2D32, mobile MOB-G01–12 and automated G2D33–35 implemented; MOB-G13 physical release validation remains pending, with partial Android USB evidence. G2D36–40 are next.
 
 **Priority:** P1 after the active mobile project-transfer sequence
 
@@ -13,11 +13,12 @@
 - Desktop promotion is now connected to the UI: Curve, revolution and extrusion previews, ordinary Curve/Surface documents, locate both ways, independent target edits, stale-source state, regenerate/fork, and mixed-workspace save/reopen. Creating or forking again preserves existing targets.
 - Sampling runs in terminable Web Workers. Source/viewport replacement, completion, timeout and unmount release workers; generation guards reject stale results. Scene/piecewise budgets and parametric/polar deadlines are enforced.
 - MOB-G01–04 now use the normal mobile project library and the same core Graph document and kernel command adapter. Included: empty/starter creation, checked import, offline save/reopen, compatibility cards, native Graph/Functions/Analyze destinations, transient pan/pinch, reset/fit, undo/redo, tap probing, overlap cycling and clear selection.
-- MOB-G05–10 add saved explicit probes, explicit authoring/numerical analysis, display/diagnostics, shared sampling and editors for all seven core kinds, CSV/TSV local sidecars, and portable Curve/Surface promotion with bounded 3D wireframe previews. MOB-G11–13 deliver tablet layout, performance policies and device acceptance; advanced Curve/Surface worker analyses remain desktop-only. Mobile mixed-workspace duplication/colliding imports require a desktop identity fork; no companion documents are silently discarded. Sheets have no motion animations, and haptics are optional, capability-injected feedback.
+- MOB-G05–10 add saved explicit probes, explicit authoring/numerical analysis, display/diagnostics, shared sampling and editors for all seven core kinds, CSV/TSV local sidecars, and portable Curve/Surface promotion with bounded 3D wireframe previews. MOB-G11–12 add tablet layout and performance policies; MOB-G13 device acceptance remains pending. Advanced Curve/Surface worker analyses remain desktop-only. Mobile mixed-workspace duplication/colliding imports require a desktop identity fork; no companion documents are silently discarded. Sheets have no motion animations, and haptics are optional, capability-injected feedback.
 - Surface validation is bounded numerical screening, not a proof of global continuity. Extrusion caps currently require a closed, nondegenerate convex profile with included endpoints; open profiles require `none`.
-- Desktop acceptance, mobile model/service tests, typechecks and Android bundle verification are recorded in [the acceptance report](graph2d-acceptance-2026-09-28.md). No Android device/emulator was connected: physical gesture, accessibility, small-height and memory signoff remains a release gate, not a claimed pass.
+- G2D33 implements checkpointed desktop/mobile handoff with source/result/companion retention and revision conflict checks. G2D34 adds a shared seven-kind numerical/migration corpus and real browser Worker/UI parity checks. G2D35 publishes the [architecture, schema, algorithms and parity guide](graph2d-architecture-schema-algorithms-parity.md).
+- Initial desktop/mobile checks are recorded in [the historical acceptance report](graph2d-acceptance-2026-09-28.md); current software evidence is in [G2D33 round trip](graph2d-g33-round-trip-acceptance.md) and [G2D34 parity corpus](graph2d-g34-parity-corpus.md). A connected SM-A566B Android 16 phone supplied [partial internal-build evidence](mobile-graphs-g13-readiness-2026-09-28.md). Full physical gesture, accessibility, rotation, memory/calibration, production signing and iOS signoff remain release gates.
 
-This does **not** finish the entire roadmap: MOB-G05–13, cross-platform G2D33–35 and professional G2D36–40 remain. An existing installer/APK does not gain these changes until rebuilt.
+This does **not** finish the entire roadmap: MOB-G13 physical acceptance and professional G2D36–40 remain. Automated handoff and corpus checks do not substitute for native release evidence. An existing installer/APK does not gain these changes until rebuilt.
 
 ## 1. Outcome
 
@@ -271,7 +272,7 @@ Mobile starts only after G2D30–G2D32 are green. The first mobile slice is expl
 | --- | --- | --- |
 | **G2D33** | `test(graph2d): freeze desktop mobile project round trip` | Implemented automated checkpoint/handoff baseline: desktop `f,g` → mobile probe/pin/add `h` → desktop reopen with IDs, viewport, source hashes, commands, saved-result inputs and companions preserved. Existing handoff v2 adds workspace revision ancestry and rejects local divergence; built Electron file regression passes. Physical two-app release signoff remains pending MOB-G13. See `graph2d-g33-round-trip-acceptance.md`. |
 | **G2D34** | `test(graph2d): add cross-platform visual numerical and migration corpus` | Implemented 13 shared seven-kind fixtures, 16 Node numerical/migration/promotion/corruption/cancellation tests, identical timezone reports, real Chromium worker comparisons and rendered geometry/captures under English/UTC and Polish/Auckland. Half-undefined path refinement is bounded with explicit unresolved diagnostics. Mobile projection runs in Node; physical Hermes/iOS parity remains pending MOB-G13. See `graph2d-g34-parity-corpus.md`. |
-| **G2D35** | `docs(graph2d): publish architecture schema algorithms and parity guide` | Document ownership, schemas, AST, sampling guarantees/limits, result confidence, accessibility, performance profiles, interoperability, migration, troubleshooting, and release evidence. |
+| **G2D35** | `docs(graph2d): publish architecture schema algorithms and parity guide` | Implemented maintained guide covering ownership, schemas, AST, sampling guarantees/limits, result confidence, accessibility, performance profiles, interoperability/handoff v2, migration, troubleshooting, and software versus pending physical release evidence. Linked from docs index/navigation and the handoff contract. See [the guide](graph2d-architecture-schema-algorithms-parity.md). |
 
 ### Phase I — Post-v1 professional extensions
 

@@ -15,11 +15,16 @@ nav:
   - Architecture:
       - Runtime Architecture (Electron + React + Python): runtime-architecture.md
       - Layered Workspace: architecture-layered-workspace.md
+      - Graph2D Architecture and Parity: graph2d-architecture-schema-algorithms-parity.md
       - VTK + CGAL + three.js Pipeline: vtk-cgal-threejs-pipeline.md
   - Guides:
       - Traceability Scenarios: scenarios.md
       - Playwright E2E Tests: playwright-e2e-tests.md
       - Release Smoke Tests: release-smoke-tests.md
+      - Graph2D Roadmap: math3d-graph2d-desktop-mobile-roadmap.md
+      - Graph2D Project Round Trip: graph2d-g33-round-trip-acceptance.md
+      - Graph2D Parity Corpus: graph2d-g34-parity-corpus.md
+      - Mobile Graph Device Acceptance: mobile-graphs-g11-g13-acceptance.md
       - Surface Formula Editor Debug: surface-formula-editor-debug.md
   - Python Worker:
       - Runtime: python-worker-runtime.md

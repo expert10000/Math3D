@@ -1,5 +1,7 @@
 # Graph2D integration acceptance — 2026-09-28
 
+Historical snapshot of the initial desktop/mobile slice. Later delivery and current platform limits are recorded in the [G2D35 guide](graph2d-architecture-schema-algorithms-parity.md), [G2D33 round trip](graph2d-g33-round-trip-acceptance.md), [G2D34 corpus](graph2d-g34-parity-corpus.md) and [G13 USB readiness audit](mobile-graphs-g13-readiness-2026-09-28.md). Device availability and test scope below describe this snapshot, not the later USB run.
+
 Scope: desktop promotion/lifecycle integration after G2D25–32, and the first native mobile slice MOB-G01–04. This report does not declare the complete Graph2D desktop/mobile release gate finished.
 
 ## Delivered behavior
