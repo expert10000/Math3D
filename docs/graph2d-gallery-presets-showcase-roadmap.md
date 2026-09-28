@@ -1,6 +1,6 @@
 # Graph2D gallery, presets and showcase roadmap
 
-**Status:** GGL01–06 implemented and accepted for desktop/web; GGL07–08 native browsing and ordinary project launch implemented; GGL09–18 pending. Native acceptance is next. See [desktop/web acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md).
+**Status:** GGL01–09 implemented: desktop/web gallery and native browse/launch, all-catalog model checks and a physical Android/Electron walkthrough accepted. GGL10–18 remain planned; full MOB-G13 release evidence remains pending. Next: G2D36 publication export. See [desktop/web acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md) and [mobile acceptance](graph2d-gallery-ggl07-ggl09-acceptance.md).
 
 **Decision — 2026-09-28:** build a focused editable gallery now, after G2D35 and before G2D36. Deliver shared contracts/content and desktop/web first (GGL01–06), then mobile launch from the same catalog (GGL07–09). Continue the professional features afterward. Keep MOB-G13 physical acceptance open throughout.
 
@@ -17,8 +17,8 @@ An initial gallery does not depend on SVG/PNG export, logarithmic axes, statisti
 | Order | Delivery | Reason |
 | --- | --- | --- |
 | Delivered | GGL01–06: shared catalog, 20 reviewed scenes, generated previews, desktop/web gallery and acceptance | Make the implemented engine discoverable and editable |
-| Next | GGL07–09: mobile gallery, ordinary project creation and native acceptance | Reuse desktop-proven content without a second preset engine |
-| Then | G2D36: publication export | Supports personal scenes, teaching and reproducible captures |
+| Delivered | GGL07–09: mobile gallery, ordinary project creation and native acceptance | Reuse desktop-proven content without a second preset engine |
+| Next | G2D36: publication export | Supports personal scenes, teaching and reproducible captures |
 | Then | G2D38, followed by GGL10: shared parameters/animation and gallery integration | One parameter implementation serves authoring and examples |
 | Then | G2D37, G2D39, G2D40 | Scale policies, reviewed statistics and professional acceptance |
 | Later | GGL11–18 | Personal collections, lessons, presentation, public viewing, home discovery and cross-module adapters |
@@ -134,9 +134,9 @@ Every GGL ID is a reviewable commit. Focused types/tests and stated UI evidence 
 
 | ID | Planned commit | Scope and acceptance |
 | --- | --- | --- |
-| **GGL07** | `feat(mobile-graphs): add shared offline gallery browse and previews` | Implemented native Projects/New Project and Graph Workspace entries, static bundled PNG cards from the shared catalog, Featured/all/category/search/detail browse, native labels and scrolling phone/short-height/tablet/large-text layout policy. 229 mobile model tests (including two gallery discovery/layout tests) and mobile types pass; production Android Metro export includes all 20 previews. Preset launch follows GGL08; physical walkthrough follows GGL09. |
-| **GGL08** | `feat(mobile-graphs): launch presets through ordinary project persistence` | Implemented one-tap fresh ordinary saved Graph projects, staged/checksum-validated sidecars with rollback, duplicate-launch protection and one atomic library write preserving current Graph/scene edits and retained Graph companions/ancestry. Existing save/reopen/share/export controls remain in use; failed first saves cannot resurrect a new project from backup. All 256 mobile tests and strict mobile/shared types pass. Native walkthrough follows GGL09. |
-| **GGL09** | `test(graph2d-gallery): freeze mobile launch and desktop return parity` | Model/source/sidecar round trip plus actual Android browse/open/edit/restart/return walkthrough; native large-text/focus/lifecycle evidence and iOS/tablet evidence explicitly pending when absent. This does not replace G13's six-slot gate. |
+| **GGL07** | `feat(mobile-graphs): add shared offline gallery browse and previews` | Implemented native Projects/New Project and Graph Workspace entries, static bundled PNG cards from the shared catalog, Featured/all/category/search/detail browse, native labels and scrolling phone/short-height/tablet/large-text layout policy. 229 mobile model tests (including two gallery discovery/layout tests) and mobile types pass; production Android Metro export includes all 20 previews. Preset launch is recorded under GGL08; native acceptance under GGL09. |
+| **GGL08** | `feat(mobile-graphs): launch presets through ordinary project persistence` | Implemented one-tap fresh ordinary saved Graph projects, staged/checksum-validated sidecars with rollback, duplicate-launch protection and one atomic library write preserving current Graph/scene edits and retained Graph companions/ancestry. Existing save/reopen/share/export controls remain in use; failed first saves cannot resurrect a new project from backup. All 256 mobile tests and strict mobile/shared types pass. Native acceptance is recorded under GGL09. |
+| **GGL09** | `test(graph2d-gallery): freeze mobile launch and desktop return parity` | Implemented all-20 model launch/edit/undo/restart/return checks, 276 mobile and 131 desktop tests, three Electron Gallery cases and one actual Android-export/Electron-return case. Rebuilt/installed internal APK; six native scenes cover seven kinds, saved edits survive reopen, native import retains a separate return copy. Basic landscape/large-text captures recorded; full focus/iOS/tablet/G13 release evidence remains pending. See [mobile acceptance](graph2d-gallery-ggl07-ggl09-acceptance.md). |
 
 ### Release C — Interactive, personal and educational
 

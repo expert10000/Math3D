@@ -207,7 +207,9 @@
     "test:graph2d:gallery:typecheck": "tsc -p renderer/tsconfig.graph-gallery.json --noEmit",
     "test:graph2d:gallery:e2e": "playwright test tests/e2e/graph2d-gallery.spec.ts --reporter=list",
     "test:graph2d:gallery:web": "playwright test --config playwright.graph2d.config.ts tests/graph2d-web/gallery.spec.ts",
-    "test:graph2d:gallery:acceptance": "npm run test:graph2d:gallery:unit && npm run test:graph2d:gallery:typecheck && npm run test:graph2d:parity:typecheck && npm run test:graph2d:gallery:previews && npm run typecheck:noemit && npm run build:core && npm run test:graph2d:gallery:e2e && npm run build:web && npm run test:graph2d:gallery:web"
+    "test:graph2d:gallery:acceptance": "npm run test:graph2d:gallery:unit && npm run test:graph2d:gallery:typecheck && npm run test:graph2d:parity:typecheck && npm run test:graph2d:gallery:previews && npm run typecheck:noemit && npm run build:core && npm run test:graph2d:gallery:e2e && npm run build:web && npm run test:graph2d:gallery:web",
+    "test:graph2d:gallery:mobile:return": "node scripts/graph2d-gallery-native-return.mjs",
+    "test:graph2d:gallery:mobile:acceptance": "npm run test:graph2d:mobile:unit && npm --prefix apps/mobile run typecheck && npm run test:graph2d:parity:typecheck && npm run test:graph2d:gallery:previews && npm run typecheck:noemit && npm run build:core && npm run test:graph2d:gallery:e2e && npm run test:graph2d:gallery:mobile:return"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

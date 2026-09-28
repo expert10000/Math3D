@@ -29,6 +29,10 @@ Reviewed captures and hierarchy extracts are in [the physical evidence folder](e
 
 This is partial coverage of one phone, not a completed device slot. Pinch/cancellation, overlap, multi-function analysis, import/share, keyboard/accessibility, full workload recovery, ten-run performance measurement/calibration, production artifacts and the remaining physical matrix are pending. Later G2D33 runtime changes require a rebuilt candidate and another device run.
 
+## Subsequent gallery walkthrough — 2026-09-29
+
+[GGL07–09 mobile acceptance](graph2d-gallery-ggl07-ggl09-acceptance.md) records a newly rebuilt internal APK, six native Gallery examples, saved edits and physical Android/Electron file exchange. It does not complete this gate: clean production Android/iOS artifacts, the full device matrix, focus/gesture/lifecycle cases and performance calibration remain pending.
+
 ## Required completion evidence
 
 Use the [G11–G13 acceptance matrix](mobile-graphs-g11-g13-acceptance.md) and a separate copy of [the pending evidence template](mobile-graph-device-evidence.template.json).

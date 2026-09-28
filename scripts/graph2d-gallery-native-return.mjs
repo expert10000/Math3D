@@ -1,0 +1,11 @@
+import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+const root = fileURLToPath(new URL("..", import.meta.url));
+const path = process.env.MATH3D_GALLERY_NATIVE_HANDOFF;
+if (!path || !existsSync(path)) throw new Error("Set MATH3D_GALLERY_NATIVE_HANDOFF to the Two slopes handoff exported by the physical Android gallery walkthrough. Missing device evidence cannot pass this gate.");
+const require = createRequire(import.meta.url);
+const result = spawnSync(process.execPath, [require.resolve("@playwright/test/cli"), "test", "tests/e2e/graph2d-gallery-mobile-return.spec.ts", "--reporter=list"], { cwd: root, stdio: "inherit" });
+if (result.error) throw result.error;
+process.exit(result.status ?? 1);

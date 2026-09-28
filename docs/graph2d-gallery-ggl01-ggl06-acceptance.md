@@ -2,6 +2,8 @@
 
 **Accepted software scope — 2026-09-28:** shared catalog, generated previews and editable desktop/web launch. Mobile gallery GGL07–09 and the physical MOB-G13 release gate remain pending. See the [gallery roadmap](graph2d-gallery-presets-showcase-roadmap.md) and [architecture guide](graph2d-architecture-schema-algorithms-parity.md).
 
+**Follow-up — 2026-09-29:** GGL07–09 mobile delivery and its physical Android/Electron walkthrough are recorded in [mobile acceptance](graph2d-gallery-ggl07-ggl09-acceptance.md). The pending mobile statements below describe this earlier desktop-only acceptance.
+
 ## Where to find it
 
 Open **Graphs → Gallery** in the toolbar. An empty Graph also offers **Explore Graph Gallery**. Browse Featured, All scenes, Favorites or Recent; filter by category or search. Preview shows an explanation and learning goals. **Open** creates an independent editable Graph. **Preserved projects → Resume** restores previous work.

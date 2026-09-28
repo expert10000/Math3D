@@ -18,9 +18,9 @@ vi.mock("expo-file-system", () => {
   return { Directory, File, Paths: { document: "documents" } };
 });
 import { applyGraph2DAuthoring, createGraph2DWorkspaceProject, createMixedWorkspaceDocument, createWorkspaceProjectHandoff, getGraph2DPresetCatalog,
-  instantiateGraph2DPreset, parseWorkspaceProjectHandoff, promoteGraph2DToCurve, serializeWorkspaceProjectHandoff } from "@math3d/core";
+  instantiateGraph2DPreset, parseWorkspaceProjectHandoff, promoteGraph2DToCurve, serializeWorkspaceProjectHandoff, assertWorkspaceHandoffCanReplace } from "@math3d/core";
 import { planMobileGraphPresetLaunch, commitMobileGraphPresetLaunch } from "../../apps/mobile/src/models/mobileGraphPresetLaunch";
-import { createMobileGraph, importMobileGraph, readMobileGraph, readMobileGraphWorkspace, storeMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
+import { createMobileGraph, importMobileGraph, readMobileGraph, readMobileGraphWorkspace, storeMobileGraph, updateStoredMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
 import { mobileGraphPointTables, stageMobileGraphPresetSidecars } from "../../apps/mobile/src/services/mobileGraphPointTables";
 import { loadStoredSceneProjects, saveStoredSceneProjects } from "../../apps/mobile/src/services/mobileSceneStorage";
 import { serializeMobileProjectHandoff } from "../../apps/mobile/src/models/mobileProjectTransfer";
@@ -90,5 +90,26 @@ describe("ordinary mobile preset creation and atomic current-work preservation",
     faults.move = "documents/math3d-mobile/scene-projects.json";
     await expect(commit(planMobileGraphPresetLaunch(data, "first-fail", [], {}, 1))).rejects.toThrow(/rename/);
     expect((await loadStoredSceneProjects()).projects).toEqual([]); expect(files.has(tablePath)).toBe(false);
+  });
+  it.each(catalog.entries)("GGL09 $id edits/undo/restart and desktop return preserve source, sidecars and ancestry", async preset => {
+    const originalTemplate = JSON.stringify(preset), plan = await commit(planMobileGraphPresetLaunch(preset, `return-${preset.id}`, [], {}, 1));
+    const commands = new Graph2DCommandAdapter(readMobileGraph(plan.project)), before = commands.document();
+    const created = commands.commitScene(applyGraph2DAuthoring(before, { type: "duplicate", objectId: before.source.objects[0]!.id }), "duplicate");
+    const undone = commands.undo()!; expect(undone.source).toEqual(before.source); expect(undone.display).toEqual(before.display);
+    expect(undone.identity.structuralHash).toBe(before.identity.structuralHash); expect(undone.identity.revision).toBeGreaterThan(before.identity.revision);
+    const duplicated = commands.redo()!; expect(duplicated.source).toEqual(created.source); expect(duplicated.display).toEqual(created.display);
+    const edited = updateStoredMobileGraph(plan.project, commands.document(), 2); await saveStoredSceneProjects([edited]);
+    const restarted = (await loadStoredSceneProjects()).projects[0]!;
+    const onDesktop = parseWorkspaceProjectHandoff(serializeMobileProjectHandoff(restarted));
+    expect(onDesktop.baseRevision).toBeNull(); expect(onDesktop.project.entries[0]!.checkpoint).toEqual(duplicated);
+    const desktopExport = createWorkspaceProjectHandoff(onDesktop.project, { producer: { platform: "desktop", name: "Math3D", version: "1.5.0" } });
+    const onMobile = importMobileGraph(serializeWorkspaceProjectHandoff(desktopExport), [], "desktop-return.json", 3, "desktop");
+    const returnedCommands = new Graph2DCommandAdapter(readMobileGraph(onMobile));
+    returnedCommands.commitViewport({ ...duplicated.display.viewport, xMin: duplicated.display.viewport.xMin + 0.1 });
+    const returned = parseWorkspaceProjectHandoff(serializeMobileProjectHandoff(updateStoredMobileGraph(onMobile, returnedCommands.document(), 4)));
+    expect(() => assertWorkspaceHandoffCanReplace(returned, onDesktop.project)).not.toThrow();
+    expect(returned.project.entries[0]!.checkpoint).toEqual(returnedCommands.document());
+    expect(readMobileGraph(onMobile).source).toEqual(duplicated.source); expect(JSON.stringify(preset)).toBe(originalTemplate);
+    for (const object of duplicated.source.objects) if (object.kind === "point-series") expect(mobileGraphPointTables.resolve(object.table)).toEqual(preset.sidecars[0]!.rows);
   });
 });
