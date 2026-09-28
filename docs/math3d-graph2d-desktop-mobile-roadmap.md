@@ -1,12 +1,23 @@
 # MATH3D Graph2D — Desktop and Mobile Roadmap
 
-**Status:** proposed / execution-ready
+**Status:** desktop baseline implemented through G2D32; mobile MOB-G01–04 implemented, device validation pending
 
 **Priority:** P1 after the active mobile project-transfer sequence
 
 **Scope:** shared Graph2D domain, desktop/web workspace, touch-first mobile client, and deterministic desktop/mobile round trip
 
 **Canonical authority:** this file owns Graph2D sequencing, architecture boundaries, acceptance criteria, and release gates. It complements the application-kernel roadmap and does not reopen completed kernel work.
+
+### Delivery update — 2026-09-28
+
+- Desktop promotion is now connected to the UI: Curve, revolution and extrusion previews, ordinary Curve/Surface documents, locate both ways, independent target edits, stale-source state, regenerate/fork, and mixed-workspace save/reopen. Creating or forking again preserves existing targets.
+- Sampling runs in terminable Web Workers. Source/viewport replacement, completion, timeout and unmount release workers; generation guards reject stale results. Scene/piecewise budgets and parametric/polar deadlines are enforced.
+- MOB-G01–04 now use the normal mobile project library and the same core Graph document and kernel command adapter. Included: empty/starter creation, checked import, offline save/reopen, compatibility cards, native Graph/Functions/Analyze destinations, transient pan/pinch, reset/fit, undo/redo, tap probing, overlap cycling and clear selection.
+- The first mobile slice renders explicit functions. Advanced definitions are preserved and visibly marked view-only; mobile authoring/analysis and advanced-kind interfaces remain MOB-G05–12. Sheets have no motion animations, and haptics are optional, capability-injected feedback.
+- Surface validation is bounded numerical screening, not a proof of global continuity. Extrusion caps currently require a closed, nondegenerate convex profile with included endpoints; open profiles require `none`.
+- Desktop acceptance, mobile model/service tests, typechecks and Android bundle verification are recorded in [the acceptance report](graph2d-acceptance-2026-09-28.md). No Android device/emulator was connected: physical gesture, accessibility, small-height and memory signoff remains a release gate, not a claimed pass.
+
+This does **not** finish the entire roadmap: MOB-G05–13, cross-platform G2D33–35 and professional G2D36–40 remain. An existing installer/APK does not gain these changes until rebuilt.
 
 ## 1. Outcome
 

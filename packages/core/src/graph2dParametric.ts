@@ -21,6 +21,7 @@ export type Graph2DPathSamplingRequest = Readonly<{
   height: number;
   policy: Graph2DDisplay["sampling"];
   evaluate: (parameter: number) => Graph2DSamplePoint | null;
+  deadlineMs?: number;
 }>;
 
 /** Shared bounded 2D path sampler for parametric and polar source objects. */
@@ -38,6 +39,7 @@ export const sampleGraph2DPath = (request: Graph2DPathSamplingRequest): Graph2DS
   const point = (parameter: number) => {
     if (cache.has(parameter)) return cache.get(parameter)!;
     if (samplesEvaluated >= request.policy.maxSamples) { note("sample-limit"); ended = true; return null; }
+    if (request.deadlineMs !== undefined && Date.now() > request.deadlineMs) { note("deadline"); ended = true; return null; }
     samplesEvaluated += 1;
     const result = request.evaluate(parameter);
     if (!result || !Number.isFinite(result.x) || !Number.isFinite(result.y)) note("invalid-sample");
@@ -114,7 +116,7 @@ export const sampleGraph2DPath = (request: Graph2DPathSamplingRequest): Graph2DS
   flush();
   const diagnostics = [...counts.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([code, count]) => ({ code, count }));
   return { samplerVersion: GRAPH2D_SAMPLER_VERSION, segments, samplesEvaluated,
-    converged: !diagnostics.some((entry) => ["depth-limit", "sample-limit", "segment-limit", "output-limit"].includes(entry.code)),
+    converged: !diagnostics.some((entry) => ["depth-limit", "sample-limit", "segment-limit", "output-limit", "deadline"].includes(entry.code)),
     diagnostics };
 };
 

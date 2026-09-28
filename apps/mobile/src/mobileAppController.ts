@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { type Graph2DDocument } from "@math3d/core";
+import { createMobileGraph, importMobileGraph, readMobileGraph, storeMobileGraph } from "./models/mobileGraphProject";
 import { AppState, PixelRatio, Platform, type GestureResponderEvent } from "react-native";
 import { SCENE_PROJECT_VERSION, createSceneProjectDocument, deserializeSceneProject, serializeSceneProject, type SceneDocument, type SurfaceDefinition, type VtkPreviewJobSnapshot, type VtkPreviewRequest } from "@math3d/core";
 import { mobileExamples, mobileSeedScenes } from "./data/mobileSeedData";
@@ -268,6 +270,9 @@ export const useMobileAppController = () => {
     deletedProject, setDeletedProject, projectActionMessage, setProjectActionMessage,
     sceneThumbnailsById, setSceneThumbnailsById } = useMobileProjectState();
   const inspectorSwipeStartY = useRef<number | null>(null);
+  const [graphDocument, setGraphDocument] = useState<Graph2DDocument | null>(null);
+  const graphProjectSequence = useRef(0);
+  useEffect(() => { if (viewerDocument) setGraphDocument(null); }, [viewerDocument]);
   const [selectedExampleId, setSelectedExampleId] = useState<string | null>(mobileExamples[0]?.id ?? null);
   const [pendingProjectHandoff, setPendingProjectHandoff] = useState<MobileHandoffPreview | null>(null);
   const [exampleSearchQuery, setExampleSearchQuery] = useState("");
@@ -471,7 +476,12 @@ export const useMobileAppController = () => {
         issues.push(`Last viewed scene is invalid: ${lastViewerProject.errors.join("; ")}`);
         setStorageIssues(issues);
       }
-      if (lastViewerProject?.ok) {
+      if (firstProject?.projectType === "graph2d") {
+        try {
+          setGraphDocument(readMobileGraph(firstProject)); setViewerDocument(null); setSelectedSceneId(firstProject.id);
+          setStorageStatus(issues.length ? "error" : "ready");
+        } catch (error) { setStorageStatus("error"); setStorageIssues([...issues, (error as Error).message]); }
+      } else if (lastViewerProject?.ok) {
         setViewerDocument(lastViewerProject.value.scene);
         setSelectedSceneId(projects.some((project) => project.id === lastViewerProject.value.scene.id)
           ? lastViewerProject.value.scene.id
@@ -1229,6 +1239,17 @@ export const useMobileAppController = () => {
   const openStoredScene = async (projectId: string) => {
     const target = storedProjects.find((item) => item.id === projectId);
     if (!target) return;
+    if (target.projectType === "graph2d") {
+      try {
+        const graph = readMobileGraph(target);
+        setGraphDocument(graph); setViewerDocument(null); setSelectedSceneId(target.id); setTab("workspace");
+        const next = upsertStoredProject(storedProjects, { ...target, lastOpenedAt: Date.now() });
+        await saveStoredSceneProjects(next); setStoredProjects(next);
+        void persistMobileSettings({ lastSceneId: target.id, lastViewerProject: undefined }).catch(() => undefined);
+      } catch (error) { setProjectActionMessage(`Graph could not open: ${(error as Error).message}`); }
+      return;
+    }
+    setGraphDocument(null);
 
     const parsed = readSceneFromStoredProject(target);
     if (!parsed.ok) {
@@ -1365,6 +1386,9 @@ export const useMobileAppController = () => {
     const saved = await persistProjectMutation(nextProjects, `Renamed to ${result.project.title}.`, "Failed to rename project");
     if (!saved) return false;
     if (selectedSceneId === projectId) {
+      if (result.project.projectType === "graph2d") {
+        setGraphDocument(readMobileGraph(result.project)); return true;
+      }
       const parsed = readSceneFromStoredProject(result.project);
       if (parsed.ok) setViewerDocument(parsed.scene);
       void persistMobileSettings({ lastViewerProject: result.project.serializedProject }).catch(() => undefined);
@@ -1393,6 +1417,7 @@ export const useMobileAppController = () => {
     setDeletedProject(target);
     if (selectedSceneId === projectId) {
       setSelectedSceneId(null);
+      if (target.projectType === "graph2d") setGraphDocument(null);
       void persistMobileSettings({ lastSceneId: undefined }).catch(() => undefined);
     }
     return true;
@@ -1462,6 +1487,34 @@ export const useMobileAppController = () => {
     return true;
   };
 
+  const openCreatedGraph = (project: MobileStoredSceneProject) => {
+    setGraphDocument(readMobileGraph(project)); setViewerDocument(null); setSelectedSceneId(project.id); setTab("workspace");
+    void persistMobileSettings({ lastSceneId: project.id, lastViewerProject: undefined }).catch(() => undefined);
+  };
+  const createGraphProject = async (title: string, withExample: boolean): Promise<boolean> => {
+    const graph = createMobileGraph(title, withExample, `mobile-graph/${Date.now()}/${++graphProjectSequence.current}`);
+    const project = storeMobileGraph(graph);
+    const saved = await persistProjectMutation(upsertStoredProject(storedProjects, project), `Created ${project.title}.`, "Could not create Graph project");
+    if (saved) openCreatedGraph(project);
+    return saved;
+  };
+  const saveGraphProject = async (): Promise<boolean> => {
+    if (!graphDocument) return false;
+    const previous = storedProjects.find((project) => project.id === graphDocument.identity.id);
+    const project = { ...previous, ...storeMobileGraph(graphDocument) };
+    return persistProjectMutation(upsertStoredProject(storedProjects, project), "Graph saved.", "Could not save Graph");
+  };
+  const importGraphProject = async (): Promise<boolean> => {
+    try {
+      const picked = await pickMobileSceneProject();
+      if (picked.status === "cancelled") { setProjectActionMessage("Graph import cancelled."); return false; }
+      const project = importMobileGraph(picked.serializedProject, storedProjects, picked.sourceName);
+      const saved = await persistProjectMutation(upsertStoredProject(storedProjects, project), `Imported ${project.title}.`, "Could not import Graph");
+      if (saved) openCreatedGraph(project);
+      return saved;
+    } catch (error) { setProjectActionMessage(`Graph import failed: ${(error as Error).message}`); return false; }
+  };
+
   const createNewProjectFromFile = async (source: MobileProjectFileSource): Promise<boolean> => {
     setProjectActionMessage(source === "desktop"
       ? "Choose a Math3D project exported from desktop."
@@ -1471,6 +1524,14 @@ export const useMobileAppController = () => {
       if (picked.status === "cancelled") {
         setProjectActionMessage("New project cancelled. No project was created.");
         return false;
+      }
+      const format = (JSON.parse(picked.serializedProject) as { format?: string })?.format;
+      if (format === "math3d.graph2d-document" || format === "math3d.mixed-workspace") {
+        const project = importMobileGraph(picked.serializedProject, storedProjects, picked.sourceName, Date.now(),
+          source === "import" ? "imported" : source);
+        const saved = await persistProjectMutation(upsertStoredProject(storedProjects, project), `Imported ${project.title}.`, "Could not import Graph");
+        if (saved) openCreatedGraph(project);
+        return saved;
       }
       if (source === "desktop") {
         const inspected = inspectMobileProjectHandoff(picked.serializedProject, picked.sourceName, storedProjects);
@@ -2337,6 +2398,7 @@ export const useMobileAppController = () => {
   ]);
 
   return {
+    graphDocument, setGraphDocument, createGraphProject, importGraphProject, saveGraphProject,
     tab,
     setTab,
     exploreSection,

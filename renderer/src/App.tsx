@@ -20,6 +20,8 @@ import {
 } from "./workspaceDocks";
 import { GraphsWorkspace } from "./graph2d/GraphsWorkspace";
 import { Graph2DCommandAdapter } from "./graph2d/Graph2DCommandAdapter";
+import { PromotedDocumentWorkspace } from "./graph2d/PromotedDocumentWorkspace";
+import { regenerateGraph2DPromotion, type Graph2DAnyPromotion } from "@math3d/core";
 
 import MobiusScreen from "./screens/MobiusScreen";
 import { ChebyshevScreen } from "./screens/ChebyshevScreen";
@@ -24263,6 +24265,38 @@ const App: React.FC = () => {
   const meshDocumentAdapterRef = useRef<MeshDocumentAdapter | null>(null);
   const [meshKernelDocument, setMeshKernelDocument] = useState<MeshDocument | null>(null);
   const [graph2dDocument, setGraph2dDocument] = useState<Graph2DDocument>(() => createEmptyGraph2DDocument("desktop-web-default"));
+  const [graph2dPromotions, setGraph2dPromotions] = useState<Graph2DAnyPromotion[]>([]);
+  const [activeGraph2DTargetId, setActiveGraph2DTargetId] = useState<string | null>(null);
+  const activeGraph2DTarget = graph2dPromotions.find((item) => item.document.identity.id === activeGraph2DTargetId &&
+    (item.document.format === "math3d.curve-document" ? mode === "curves" : mode === "surfaces")) ?? null;
+  const openGraph2DTarget = (id: string) => {
+    const item = graph2dPromotions.find((entry) => entry.document.identity.id === id);
+    if (!item) return;
+    setActiveGraph2DTargetId(id); setMode(item.document.format === "math3d.curve-document" ? "curves" : "surfaces");
+    if (item.document.format === "math3d.surface-document") { setDatasetKind("surface"); setSurfaceViewerKind("param"); }
+  };
+  const acceptGraph2DPromotion = (promotion: Graph2DAnyPromotion) => {
+    setGraph2dPromotions((previous) => [...previous.filter((item) => item.document.identity.id !== promotion.document.identity.id), promotion]);
+    setActiveGraph2DTargetId(promotion.document.identity.id);
+    setMode(promotion.document.format === "math3d.curve-document" ? "curves" : "surfaces");
+    if (promotion.document.format === "math3d.surface-document") { setDatasetKind("surface"); setSurfaceViewerKind("param"); }
+  };
+  const regenerateGraph2DTarget = (id: string, action: "replace" | "fork") => {
+    const promotion = graph2dPromotions.find((item) => item.document.identity.id === id);
+    if (!promotion) return;
+    try {
+      const next = regenerateGraph2DPromotion(promotion, graph2dDocument, action);
+      if (action === "fork") addGraph2DPromotion(next); else acceptGraph2DPromotion(next);
+    }
+    catch (error) { window.alert((error as Error).message); }
+  };
+  const addGraph2DPromotion = (promotion: Graph2DAnyPromotion) => {
+    // Creating again must never overwrite a previously created or independently edited target.
+    let next = promotion;
+    while (graph2dPromotions.some((item) => item.document.identity.id === next.document.identity.id))
+      next = regenerateGraph2DPromotion(next, graph2dDocument, "fork");
+    acceptGraph2DPromotion(next);
+  };
   const graph2dAdapterRef = useRef<Graph2DCommandAdapter | null>(null);
   if (!graph2dAdapterRef.current) graph2dAdapterRef.current = new Graph2DCommandAdapter(graph2dDocument);
   const commitGraph2DViewport = useCallback((viewport: Graph2DViewport) => {
@@ -76831,6 +76865,13 @@ case "mobius":
     surfaceMeshAnalyzeDiagnostics,
   ]);
   const statusItems = useMemo(() => {
+    if (activeGraph2DTarget) return [
+      activeGraph2DTarget.document.metadata.title,
+      `Graph promotion · ${activeGraph2DTarget.document.source.representation}`,
+      `target r${activeGraph2DTarget.document.identity.revision}`,
+      "snapshot geometry · orbit to inspect",
+      "save via Kernel workspace",
+    ];
     if (mode === "curves") {
       return [
         `Curve ${activeCanonicalCurveDefinition.identity.curveId} · ${curveActiveIsImported ? curveImportedSection?.name ?? "Imported section curve" : activeCurvePreset?.label ?? "Curve"}`,
@@ -76868,6 +76909,7 @@ case "mobius":
     else if (screenshotStatus) items.push(screenshotStatus);
     return items;
   }, [
+    activeGraph2DTarget,
     activeCanonicalCurveDefinition,
     activeCurveDefinitionResult?.backend,
     activeCurveDefinitionResult?.state,
@@ -76894,6 +76936,7 @@ case "mobius":
   ]);
   const showOtherComplexBottomActions = mode === "mobius" && functionExplorerScene === "other_complex";
   const workspaceModule = useMemo<WorkspaceModule>(() => {
+    if (activeGraph2DTarget) return activeGraph2DTarget.document.format === "math3d.curve-document" ? "curves" : "surfaces";
     if (mode === "mobius") return "mobius";
     if (mode === "graphs") return "graphs";
     if (mode === "geometry") return "geometry";
@@ -76905,7 +76948,7 @@ case "mobius":
       return "surfaces";
     }
     return "surfaces";
-  }, [datasetKind, mode, surfaceViewerKind]);
+  }, [activeGraph2DTarget, datasetKind, mode, surfaceViewerKind]);
   const currentWorkspaceLocation = useMemo<WorkspaceLocationEntry>(() => {
     let workspaceMode: string | undefined;
     let panel: string | undefined;
@@ -77324,7 +77367,7 @@ case "mobius":
       ? constructedParamSubtypeFor(paramSurfaceId)
       : null;
   const headerContextLabel =
-    mode === "surfaces"
+    activeGraph2DTarget ? `${activeGraph2DTarget.document.format === "math3d.curve-document" ? "Curves" : "Surfaces"} / Graph promotion / ${activeGraph2DTarget.document.metadata.title}` : mode === "surfaces"
       ? datasetKind === "volume"
         ? "Volume / Workspace"
         : surfaceViewerKind === "mesh" && isSurfaceDatasetKind(datasetKind)
@@ -77728,25 +77771,27 @@ case "mobius":
     const after = adapter.document().identity.revision;
     if (after !== before) setGeometryKernelRevision(after);
   }, [geometryKernelSceneSnapshot]);
-  const activeKernelModule: KernelWorkspaceModule | null = mode === "graphs" ? "graph2d" : mode === "geometry" ? "geometry" : mode === "topology" ? "topology" :
+  const activeKernelModule: KernelWorkspaceModule | null = activeGraph2DTarget ?
+    (activeGraph2DTarget.document.format === "math3d.curve-document" ? "curve" : "surface") : mode === "graphs" ? "graph2d" : mode === "geometry" ? "geometry" : mode === "topology" ? "topology" :
     mode === "curves" ? "curve" : mode === "surfaces" && datasetKind === "volume" ? "volume" :
       mode === "surfaces" && surfaceViewerKind === "complex" ? "complex" :
         mode === "surfaces" && surfaceViewerKind === "mesh" ? "mesh" : mode === "surfaces" ? "surface" : null;
-  const activeKernelDocument: KernelWorkspaceDocument | null = activeKernelModule === "graph2d" ? graph2dDocument :
+  const activeKernelDocument: KernelWorkspaceDocument | null = activeGraph2DTarget?.document ?? (activeKernelModule === "graph2d" ? graph2dDocument :
     activeKernelModule === "geometry" ? geometryKernelAdapterRef.current.document() :
     activeKernelModule === "topology" ? topologyKernelDocument : activeKernelModule === "curve" ? activeCurveKernelAdapter.document() :
       activeKernelModule === "volume" ? activeVolumeKernelAdapter.document() : activeKernelModule === "complex" ? complexPreviewSession.commands.document() :
         activeKernelModule === "mesh" ? meshKernelDocument : activeKernelModule === "surface" ?
-          surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId)?.document() ?? null : null;
+          surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId)?.document() ?? null : null);
   const activeKernelSource = activeKernelDocument ? viewerSourceFromDocument(activeKernelDocument) : null;
   const activeVolumeLineage = activeKernelModule === "volume" ? volumeExtractionRecords.find((record) => !record.promoted) ?? null : null;
   const activeKernelEvidence = activeKernelSource ? createViewerProvenanceEvidence({
     source: activeKernelSource, current: activeKernelSource,
-    relations: activeVolumeLineage?.relations ?? [], result: activeVolumeLineage?.result ?? null,
+    relations: activeGraph2DTarget ? [activeGraph2DTarget.relation] : activeVolumeLineage?.relations ?? [], result: activeVolumeLineage?.result ?? null,
+    resolveSource: (id) => id === graph2dDocument.identity.id ? viewerSourceFromDocument(graph2dDocument) : activeKernelSource,
     artifactAvailable: (artifactId) => volumeExtractionRecords.some((record) => record.artifactId === artifactId &&
       (volumeExtractionBridgeRef.current?.artifacts().resolve(record.result.artifacts[0], record.source).ok ?? false)),
     selection: { state: "committed", source: activeKernelSource,
-      entityIds: activeKernelModule === "geometry" ? geometryMultiSelectionSet.keys : activeKernelModule === "mesh" ? meshMultiSelectionSet.keys :
+      entityIds: activeGraph2DTarget ? [] : activeKernelModule === "geometry" ? geometryMultiSelectionSet.keys : activeKernelModule === "mesh" ? meshMultiSelectionSet.keys :
         activeKernelModule === "curve" ? activeCurveKernelAdapter.document().selection.controlIds : [] },
   }) : null;
   const captureMixedKernelWorkspace = (): MixedWorkspaceDocument => {
@@ -77776,6 +77821,7 @@ case "mobius":
     add("complex", complexPreviewSession.commands.document(), complexReplay.checkpoint.document,
       MIXED_REPLAY_FORMATS.complex, complexReplay as unknown as CanonicalJsonValue);
     add("graph2d", graph2dDocument);
+    for (const promotion of graph2dPromotions) add(promotion.document.format === "math3d.curve-document" ? "curve" : "surface", promotion.document);
     const activeDocumentIds = entries.map((entry) => entry.expected.id);
     const surfaceHandoffs = surfaceMeshKernelHandoff.records();
     for (const record of volumeExtractionRecords) add("surface", record.surface);
@@ -77789,7 +77835,7 @@ case "mobius":
       .filter((result) => ids.has(result.provenance.source.documentId));
     const uniqueResults = [...new Map(results.map((result) => [result.resultId, result])).values()];
     const relations = [...volumeExtractionRecords.flatMap((record) => record.relations), ...surfaceHandoffs.flatMap((record) => record.relations),
-      ...(openedCurveConstruction ? [openedCurveConstruction.record.relation] : [])];
+      ...(openedCurveConstruction ? [openedCurveConstruction.record.relation] : []), ...graph2dPromotions.map((item) => item.relation)];
     const uniqueRelations = [...new Map(relations.map((relation) => [relation.relationId, relation])).values()];
     const volumeArtifacts = new Map(volumeExtractionRecords.map((record) => [record.artifactId, { contentHash: record.contentHash, byteLength: record.byteLength }]));
     const meshArtifacts = new Map(meshAnalysisKernelBridge.artifactRegistry().listMetadata().map((entry) => [entry.handle.artifactId,
@@ -78887,6 +78933,39 @@ case "mobius":
   return (
     <div data-testid="app-shell" style={rootStyle}>
       <KernelWorkspacePanel
+        onNavigateDocument={(id, module) => {
+          const target = graph2dPromotions.find((item) => item.document.identity.id === id);
+          if (target) { openGraph2DTarget(id); return; }
+          setActiveGraph2DTargetId(null);
+          if (module === "graph2d") setMode("graphs");
+          else if (module === "curve") setMode("curves");
+          else if (module === "geometry") setMode("geometry");
+          else if (module === "topology") setMode("topology");
+          else {
+            setMode("surfaces");
+            if (module === "volume") setDatasetKind("volume");
+            else if (module === "mesh") { setDatasetKind("mesh"); setSurfaceViewerKind("mesh"); }
+            else if (module === "complex") { setDatasetKind("surface"); setSurfaceViewerKind("complex"); }
+            else { setDatasetKind("surface"); setSurfaceViewerKind("param"); }
+          }
+        }}
+        onReopen={(workspace) => {
+          const graph = workspace.entries.find((entry) => entry.checkpoint.format === "math3d.graph2d-document")?.checkpoint;
+          if (!graph || graph.format !== "math3d.graph2d-document") return;
+          graph2dAdapterRef.current = new Graph2DCommandAdapter(graph); setGraph2dDocument(graph);
+          const restored: Graph2DAnyPromotion[] = [];
+          for (const relation of workspace.relations) {
+            if (!relation.operation.startsWith("graph2d.") || relation.target.type !== "document") continue;
+            const target = workspace.entries.find((entry) => entry.expected.id === (relation.target.type === "document" ? relation.target.generation.documentId : ""))?.checkpoint;
+            if (!target || target.format !== "math3d.curve-document" && target.format !== "math3d.surface-document") continue;
+            const parameters = relation.parameters as Record<string, CanonicalJsonValue>;
+            const trace = { sourceDocumentId: relation.sources[0]!.documentId, sourceRevision: relation.sources[0]!.revision,
+              sourceObjectId: String(parameters.sourceObjectId), targetDocumentId: target.identity.id,
+              operation: relation.operation as Graph2DAnyPromotion["trace"]["operation"], expressionMap: target.source.definition.expressions ?? {} };
+            restored.push(target.format === "math3d.curve-document" ? { document: target, relation, trace } : { document: target, relation, trace });
+          }
+          setGraph2dPromotions(restored); setActiveGraph2DTargetId(null);
+        }}
         capture={captureMixedKernelWorkspace}
         activeModule={activeKernelModule}
         activeEvidence={activeKernelEvidence}
@@ -78894,6 +78973,7 @@ case "mobius":
           (volumeExtractionBridgeRef.current?.artifacts().resolve(record.result.artifacts[0], record.source).ok ?? false)) ||
           meshAnalysisKernelBridge.artifactRegistry().listMetadata().some((entry) => entry.handle.artifactId === artifactId && entry.availability === "available")}
         onNavigateModule={(module) => {
+          setActiveGraph2DTargetId(null);
           if (module === "geometry") setMode("geometry");
           else if (module === "topology") setMode("topology");
           else if (module === "curve") setMode("curves");
@@ -79306,7 +79386,7 @@ case "mobius":
                       Settings
                     </button>
                   </div>
-                  {mode === "surfaces" && (
+                  {mode === "surfaces" && !activeGraph2DTarget && (
                     <div style={topNavSegmentStyle}>
                       <button
                         type="button"
@@ -79370,7 +79450,7 @@ case "mobius":
                   )}
                 </div>
               </div>
-              {mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind !== "complex" && !isPhoneViewerPriorityLayout && (
+              {mode === "surfaces" && !activeGraph2DTarget && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind !== "complex" && !isPhoneViewerPriorityLayout && (
                 <div style={topNavContextBarStyle}>
                   {headerIsSurface && surfaceViewerKind === "mesh" ? (
                     <>
@@ -79541,7 +79621,7 @@ case "mobius":
                   )}
                 </div>
               )}
-              {mode === "surfaces" && surfaceViewerKind !== "complex" && !isPhoneViewerPriorityLayout && (
+              {mode === "surfaces" && !activeGraph2DTarget && surfaceViewerKind !== "complex" && !isPhoneViewerPriorityLayout && (
                 <div style={topNavContextBarStyle}>
                   <div style={surfacesModeStripWrapStyle}>
                     <div style={surfacesModeGroupStyle("panel")}>
@@ -79956,7 +80036,7 @@ case "mobius":
           )}
         </div>
 
-        {!isSurfacePreviewMode && !isPhoneViewerPriorityLayout && <div style={styles.controls}>
+        {!activeGraph2DTarget && !isSurfacePreviewMode && !isPhoneViewerPriorityLayout && <div style={styles.controls}>
           {(mode === "mobius" || (mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "complex")) && (
             <div
               style={{
@@ -81137,7 +81217,12 @@ case "mobius":
             : null),
         }}
       >
-        {mode === "surfaces" ? (
+        {activeGraph2DTarget ? <PromotedDocumentWorkspace key={`${activeGraph2DTarget.document.identity.id}/${activeGraph2DTarget.document.identity.revision}`}
+          promotion={activeGraph2DTarget} source={graph2dDocument}
+          onEdit={acceptGraph2DPromotion} onClose={() => setActiveGraph2DTargetId(null)}
+          onRegenerate={(action) => regenerateGraph2DTarget(activeGraph2DTarget.document.identity.id, action)}
+          onLocateSource={() => { commitGraph2DSelection({ objectId: activeGraph2DTarget.trace.sourceObjectId, probe: null }); setMode("graphs"); }}
+        /> : mode === "surfaces" ? (
           <div
             style={{
               flex: 1,
@@ -89456,6 +89541,8 @@ case "mobius":
           </div>
         ) : mode === "graphs" ? (
           <GraphsWorkspace dockLayout={activeDockLayout} document={graph2dDocument}
+            promotions={graph2dPromotions} onPromotionCreate={addGraph2DPromotion}
+            onPromotionLocate={openGraph2DTarget} onPromotionRegenerate={regenerateGraph2DTarget}
             onViewportCommit={commitGraph2DViewport} onGridModeCommit={commitGraph2DGridMode}
             onAuthoringCommit={commitGraph2DAuthoring}
             onSelectionCommit={commitGraph2DSelection}

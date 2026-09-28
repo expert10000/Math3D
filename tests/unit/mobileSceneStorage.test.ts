@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSceneProjectDocument, serializeSceneProject, type SceneDocument } from "@math3d/core";
 import type { MobileStoredSceneProject } from "../../apps/mobile/src/models/mobileScene";
+import { createMobileGraph, storeMobileGraph, readMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
 
 const fileContents = vi.hoisted(() => new Map<string, string>());
 const fileFaults = vi.hoisted(() => ({ writePath: "", moveDestination: "" }));
@@ -113,6 +114,17 @@ describe("mobile scene storage recovery", () => {
       ok: false,
       issues: [expect.stringContaining("title does not match")],
     });
+  });
+
+  it("stores Graph and scene projects together and migrates existing v1 storage", async () => {
+    const graph = createMobileGraph("Stored Graph", true, "stored-graph");
+    const storedGraph = storeMobileGraph(graph, 5);
+    await saveStoredSceneProjects([project, storedGraph]);
+    const loaded = await loadStoredSceneProjects();
+    expect(loaded.projects).toHaveLength(2);
+    expect(readMobileGraph(loaded.projects.find((item) => item.projectType === "graph2d")!)).toEqual(graph);
+    expect(decodeMobileSceneStorage(JSON.stringify({ schemaVersion: 1, projects: [project] }))).toMatchObject({ ok: true, migrated: true });
+    expect(decodeMobileSceneStorage(payload([{ ...storedGraph, title: "Wrong title" }]))).toMatchObject({ ok: false });
   });
 
   it("selects a valid backup when the primary file is truncated", () => {

@@ -6,8 +6,9 @@ import {
 } from "@math3d/core";
 import { Directory, File, Paths } from "expo-file-system";
 import type { MobileSceneSummary, MobileStoredSceneProject } from "../models/mobileScene";
+import { readMobileGraph } from "../models/mobileGraphProject";
 
-export const MOBILE_SCENE_STORAGE_SCHEMA_VERSION = 1;
+export const MOBILE_SCENE_STORAGE_SCHEMA_VERSION = 2;
 const STORAGE_DIR_NAME = "math3d-mobile";
 const STORAGE_FILE_NAME = "scene-projects.json";
 const STORAGE_TEMP_FILE_NAME = "scene-projects.tmp";
@@ -92,18 +93,26 @@ const normalizeStoredProject = (
     return null;
   }
 
-  const parsed = deserializeSceneProject(value.serializedProject);
-  if (!parsed.ok) {
-    issues.push(`projects[${index}] has invalid scene payload: ${parsed.errors.join("; ")}`);
-    return null;
+  if (value.projectType !== undefined && value.projectType !== "scene" && value.projectType !== "graph2d") {
+    issues.push(`projects[${index}] has an unsupported project type.`); return null;
   }
-  if (parsed.value.scene.id !== value.id) {
-    issues.push(`projects[${index}].id does not match its scene id.`);
-    return null;
-  }
-  if (parsed.value.scene.title !== value.title) {
-    issues.push(`projects[${index}].title does not match its scene title.`);
-    return null;
+  if (value.projectType === "graph2d") {
+    try { readMobileGraph(value as MobileStoredSceneProject); }
+    catch (error) { issues.push(`projects[${index}] has invalid Graph payload: ${(error as Error).message}`); return null; }
+  } else {
+    const parsed = deserializeSceneProject(value.serializedProject);
+    if (!parsed.ok) {
+      issues.push(`projects[${index}] has invalid scene payload: ${parsed.errors.join("; ")}`);
+      return null;
+    }
+    if (parsed.value.scene.id !== value.id) {
+      issues.push(`projects[${index}].id does not match its scene id.`);
+      return null;
+    }
+    if (parsed.value.scene.title !== value.title) {
+      issues.push(`projects[${index}].title does not match its scene title.`);
+      return null;
+    }
   }
 
   const source = value.source;
@@ -124,6 +133,7 @@ const normalizeStoredProject = (
     updatedAt: value.updatedAt,
     lastOpenedAt: value.lastOpenedAt,
     serializedProject: value.serializedProject,
+    ...(value.projectType ? { projectType: value.projectType } : {}),
     ...(source ? { source } : {}),
   };
 };
@@ -146,8 +156,9 @@ export const decodeMobileSceneStorage = (raw: string): DecodedPayload => {
     if (payload.schemaVersion === undefined || payload.schemaVersion === 0) {
       projectList = payload.projects;
       migrated = true;
-    } else if (payload.schemaVersion === MOBILE_SCENE_STORAGE_SCHEMA_VERSION) {
+    } else if (payload.schemaVersion === 1 || payload.schemaVersion === MOBILE_SCENE_STORAGE_SCHEMA_VERSION) {
       projectList = payload.projects;
+      migrated = payload.schemaVersion === 1;
     } else {
       return {
         ok: false,

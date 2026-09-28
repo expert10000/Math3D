@@ -32,6 +32,7 @@ apps/mobile/.expo/
 
 # TS build
 *.tsbuildinfo
+/output/graph2d-mobile-bundle/
 
 # Python
 .venv/

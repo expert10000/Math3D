@@ -1,6 +1,115 @@
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 
+test("Graph worker replacement, settled rendering and unmount leave no live workers", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await app.page.addInitScript(() => {
+      const NativeWorker = window.Worker;
+      const counts = { created: 0, active: 0 };
+      (window as unknown as { graphWorkerCounts: typeof counts }).graphWorkerCounts = counts;
+      window.Worker = class extends NativeWorker {
+        tracked = false;
+        stopped = false;
+        constructor(url: string | URL, options?: WorkerOptions) {
+          super(url, options);
+          this.tracked = String(url).includes("graph2dSamplingWorker");
+          if (this.tracked) { counts.created += 1; counts.active += 1; }
+        }
+        terminate() {
+          if (this.tracked && !this.stopped) { counts.active -= 1; this.stopped = true; }
+          super.terminate();
+        }
+      };
+    });
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    const functions = app.page.getByLabel("Graph functions");
+    await functions.getByRole("button", { name: "Add function", exact: true }).click();
+    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    for (const expression of ["sin(1000*x)", "1/x", "x^3", "7*x"]) {
+      await functions.getByRole("button", { name: "Edit f", exact: true }).click();
+      await functions.getByLabel("Function expression").fill(expression);
+      await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    }
+    const path = app.page.locator('[data-graph2d-path="function_1"]');
+    await expect(path).toHaveAttribute("d", /[ML]/);
+    await expect.poll(async () => path.evaluate((element) => {
+      const curve = element as SVGPathElement, length = curve.getTotalLength();
+      const a = curve.getPointAtLength(length * 0.4), b = curve.getPointAtLength(length * 0.6);
+      return Math.round((b.y - a.y) / (b.x - a.x) * 1000) / 1000;
+    })).toBe(-7);
+    await expect.poll(async () => app.page.evaluate(() => (window as unknown as { graphWorkerCounts: { active: number } }).graphWorkerCounts.active)).toBe(0);
+    const created = await app.page.evaluate(() => (window as unknown as { graphWorkerCounts: { created: number } }).graphWorkerCounts.created);
+    expect(created).toBeGreaterThan(2);
+    const viewer = app.page.getByTestId("main-viewer");
+    await viewer.focus(); await app.page.keyboard.press("Control+z"); await app.page.keyboard.press("Control+Shift+z");
+    await app.page.getByTestId("workspace-nav-curves").click();
+    await expect.poll(async () => app.page.evaluate(() => (window as unknown as { graphWorkerCounts: { active: number } }).graphWorkerCounts.active)).toBe(0);
+  } finally { await closeSurfaceApp(app); }
+});
+
+test("Graph promotions preview, create, locate, protect edits, fork, and reopen normal documents", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    const functions = app.page.getByLabel("Graph functions");
+    await functions.getByRole("button", { name: "Add function", exact: true }).click();
+    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    const panel = app.page.getByLabel("Graph inspector").getByTestId("graph2d-promotions");
+    await panel.getByRole("button", { name: "Preview promotion" }).click();
+    await expect(panel.getByTestId("promotion-geometry").locator("canvas")).toBeVisible();
+    await expect(panel.getByTestId("promotion-geometry")).toHaveAttribute("data-rendered", "true");
+    await panel.getByRole("button", { name: "Cancel preview" }).click();
+    await expect(panel.getByTestId("graph2d-promotion-record")).toHaveCount(0);
+    await panel.getByRole("button", { name: "Preview promotion" }).click();
+    await panel.getByRole("button", { name: "Create and open" }).click();
+    const target = app.page.getByTestId("promoted-document-workspace");
+    await expect(target.getByRole("heading")).toContainText("Curve");
+    await target.getByLabel("Target y expression").fill("3*x");
+    await target.getByRole("button", { name: "Apply target edit" }).click();
+    await expect(target.getByTestId("promoted-document-status")).toContainText("target edited");
+    await expect(target.getByRole("button", { name: "Regenerate target" })).toBeDisabled();
+    await target.getByRole("button", { name: "Locate graph source" }).click();
+    await functions.getByRole("button", { name: "Edit f", exact: true }).click();
+    await functions.getByLabel("Function expression").fill("2*x");
+    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    await expect(panel.getByTestId("promotion-source-status")).toHaveText("stale");
+    await panel.getByRole("button", { name: "Locate target" }).click();
+    await expect(target.getByLabel("Target y expression")).toHaveValue("3*x");
+    await target.getByRole("button", { name: "Fork target" }).click();
+    await expect(target.getByTestId("promoted-document-status")).toContainText("target unchanged");
+    await target.getByRole("button", { name: "Locate graph source" }).click();
+    await expect(panel.getByTestId("graph2d-promotion-record")).toHaveCount(2);
+    await panel.getByLabel("Promotion operation").selectOption("revolve");
+    await panel.getByRole("button", { name: "Preview promotion" }).click();
+    await panel.getByRole("button", { name: "Create and open" }).click();
+    await expect(target.getByRole("heading")).toContainText("Surface");
+    await target.getByRole("button", { name: "Locate graph source" }).click();
+    await panel.getByLabel("Promotion operation").selectOption("extrude");
+    await panel.getByRole("button", { name: "Preview promotion" }).click();
+    await panel.getByRole("button", { name: "Create and open" }).click();
+    await expect(target.getByRole("heading")).toContainText("extrusion");
+    await expect(target.getByTestId("promotion-geometry").locator("canvas")).toBeVisible();
+    await expect(target.getByTestId("promotion-geometry")).toHaveAttribute("data-rendered", "true");
+    await app.page.screenshot({ path: "output/graph2d-desktop-promotion.png" });
+    await app.page.getByTestId("kernel-workspace-toggle").click();
+    await app.page.getByTestId("kernel-workspace-save").click();
+    await expect(app.page.getByTestId("kernel-workspace-message")).toContainText("Saved");
+    await target.getByRole("button", { name: "Locate graph source" }).click();
+    await functions.getByRole("button", { name: "Delete f", exact: true }).click();
+    await app.page.getByTestId("kernel-workspace-reopen").click();
+    await app.page.getByTestId("kernel-workspace-toggle").click();
+    await expect(functions.getByRole("button", { name: "Select f", exact: true })).toBeVisible();
+    await expect(panel.getByTestId("graph2d-promotion-record")).toHaveCount(4);
+    await panel.getByRole("button", { name: "Locate target" }).first().click();
+    await expect(target.getByLabel("Target y expression")).toHaveValue("3*x");
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("Graphs opens an empty desktop workspace and participates in normal navigation", async () => {
   const app = await launchSurfaceApp();
   try {

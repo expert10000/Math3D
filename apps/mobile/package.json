@@ -13,6 +13,7 @@
   "dependencies": {
     "@math3d/api-client": "file:../../packages/api-client",
     "@math3d/core": "file:../../packages/core",
+    "@math3d/kernel": "file:../../packages/kernel",
     "@react-three/fiber": "9.4.2",
     "base-64": "1.0.0",
     "expo": "54.0.34",

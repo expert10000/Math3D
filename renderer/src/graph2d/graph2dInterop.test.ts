@@ -64,10 +64,10 @@ describe("Graph2D profile extrusion", () => {
   it("reuses the standard Surface infrastructure with normalized direction and cap policy", () => {
     const source = graph({ id: "function_1", kind: "explicit-cartesian", label: "profile",
       expression: { source: "x^2", variable: "x", ast: parsed("x^2", ["x"]) }, domain });
-    const preview = previewGraph2DExtrusion(source, "function_1", { direction: [0, 0, 2], length: 5, caps: "both" });
+    const preview = previewGraph2DExtrusion(source, "function_1", { direction: [0, 0, 2], length: 5, caps: "none" });
     expect(preview).toMatchObject({ representation: "constructed", domain: { kind: "extrusion" },
       orientation: { direction: [0, 0, 1] }, definition: { familyId: "graph2d.extrusion",
-        settings: { capPolicy: "both", length: 5 } } });
+        settings: { capPolicy: "none", length: 5 } } });
     const promotion = extrudeGraph2DProfile(source, "function_1", { direction: [1, 0, 0], length: 3, caps: "none" });
     expect(promotion.document.format).toBe("math3d.surface-document");
     expect(promotion.relation.operation).toBe("graph2d.extrude-surface");

@@ -8,3 +8,4 @@ export * from "./dependencyGraph";
 export * from "./platformBackendAdapter";
 export * from "./domainAdapterConformance";
 export * from "./m3dResourceStore";
+export { Graph2DCommandAdapter } from "./graph2dCommandAdapter";

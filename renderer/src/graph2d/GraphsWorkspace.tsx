@@ -3,19 +3,14 @@ import {
   analyzeGraph2DIntersections,
   analyzeGraph2DLocalDifferential, fitGraph2DViewport,
   GRAPH2D_DEFAULT_VIEWPORT, GRAPH2D_WORKSPACE_CONTRACT,
-  graph2DWorldToScreen, panGraph2DViewport, pickGraph2DProbe, sampleGraph2DExplicit,
+  graph2DWorldToScreen, panGraph2DViewport, pickGraph2DProbe,
   isGraph2DCriticalPointCurrent, isGraph2DIntegralCurrent, isGraph2DIntervalAnalysisCurrent,
   isGraph2DIntersectionCurrent,
   isGraph2DLocalDifferentialCurrent, queryGraph2DInspector,
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
-  sampleGraph2DParametric,
-  sampleGraph2DPolar,
-  sampleGraph2DImplicit,
-  sampleGraph2DInequality,
-  sampleGraph2DPointSeries,
-  sampleGraph2DPiecewise,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
   type Graph2DIntegralMode,
+  type Graph2DAnyPromotion,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent, WheelEvent } from "react";
@@ -23,6 +18,8 @@ import type { WorkspaceDockLayout } from "../workspaceDocks";
 import { Graph2DPlot, type Graph2DPlotSeries } from "./Graph2DPlot";
 import { Graph2DAuthoringPanel } from "./Graph2DAuthoringPanel";
 import { pointTableStore } from "./pointTableStore";
+import { Graph2DPromotionPanel } from "./Graph2DPromotionPanel";
+import { useGraph2DSampling } from "./useGraph2DSampling";
 import "./graphsWorkspace.css";
 
 type Props = {
@@ -36,11 +33,16 @@ type Props = {
   onSelectionCommit?: (selection: Graph2DSelection) => void;
   onUndo?: () => void;
   onRedo?: () => void;
+  promotions?: readonly Graph2DAnyPromotion[];
+  onPromotionCreate?: (promotion: Graph2DAnyPromotion) => void;
+  onPromotionLocate?: (id: string) => void;
+  onPromotionRegenerate?: (id: string, mode: "replace" | "fork") => void;
 };
 
 /** Desktop/web projection of shared Graph2D source and persistent display state. */
 export function GraphsWorkspace({ dockLayout, document, status = "ready", errorMessage, onViewportCommit,
-  onGridModeCommit, onAuthoringCommit, onSelectionCommit, onUndo, onRedo }: Props) {
+  onGridModeCommit, onAuthoringCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
+  onPromotionCreate, onPromotionLocate, onPromotionRegenerate }: Props) {
   const viewerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [previewViewport, setPreviewViewport] = useState<Graph2DViewport | null>(null);
@@ -85,31 +87,13 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const showRight = !dockLayout.viewerMaximized && !dockLayout.rightCollapsed;
   const viewport = previewViewport ?? document.display.viewport;
   const renderedDisplay = useMemo(() => ({ ...document.display, viewport }), [document.display, viewport]);
-  const series = useMemo<Graph2DPlotSeries[]>(() => {
-    const styles = new Map(document.display.objects.map((entry) => [entry.objectId, entry]));
-    const variables = Object.fromEntries(document.source.variables.map((entry) => [entry.name, entry.value]));
-    return document.source.objects.flatMap((object) => {
-      const style = styles.get(object.id);
-      if (!style?.visible) return [];
-      const policy = previewViewport ? { ...document.display.sampling,
-        maxSamples: Math.min(2000, document.display.sampling.maxSamples),
-        maxDepth: Math.min(8, document.display.sampling.maxDepth),
-        tolerancePx: Math.max(2, document.display.sampling.tolerancePx) } : document.display.sampling;
-      const artifact = object.kind === "explicit-cartesian" ? sampleGraph2DExplicit({ ast: object.expression.ast,
-        variables, domain: object.domain, viewport, width: size.width, height: size.height, policy }) :
-        object.kind === "parametric" ? sampleGraph2DParametric({ object, variables,
-          viewport, width: size.width, height: size.height, policy }) :
-          object.kind === "polar" ? sampleGraph2DPolar({ object, variables,
-            viewport, width: size.width, height: size.height, policy }) :
-            object.kind === "implicit" ? sampleGraph2DImplicit({ object, variables,
-              viewport, width: size.width, height: size.height, policy }) :
-              object.kind === "inequality" ? sampleGraph2DInequality({ object, variables, viewport,
-                width: size.width, height: size.height, policy }) :
-                object.kind === "point-series" ? sampleGraph2DPointSeries(object, pointTableStore.resolve(object.table), policy.maxSamples) :
-                  sampleGraph2DPiecewise({ object, variables, viewport, width: size.width, height: size.height, policy });
-      return [{ objectId: object.id, style, artifact }];
-    });
-  }, [document, size, viewport, previewViewport]);
+  const samplingRequest = useMemo(() => ({ document, viewport, width: size.width, height: size.height,
+    interaction: previewViewport !== null,
+    pointTables: Object.fromEntries(document.source.objects.flatMap((object) =>
+      object.kind === "point-series" ? [[object.table.id, pointTableStore.resolve(object.table)]] : [])),
+  }), [document, size, viewport, previewViewport]);
+  const sampling = useGraph2DSampling(samplingRequest);
+  const series = sampling.series;
   const pick = (x: number, y: number, previous?: Graph2DSelection) => pickGraph2DProbe({ document, series,
     viewport, size, screen: { x, y }, previous }).selection;
   const localPoint = (event: PointerEvent<HTMLDivElement>) => {
@@ -250,6 +234,8 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const functionList = <Graph2DAuthoringPanel document={document} onCommit={onAuthoringCommit}
     onSelect={(objectId) => onSelectionCommit?.(selectionForGraph2DObject(document, series, objectId, document.selection.probe?.x))} />;
   const inspector = inspected ? <div className="graph2d-inspector">
+    {onPromotionCreate && onPromotionLocate && onPromotionRegenerate && <Graph2DPromotionPanel document={document}
+      promotions={promotions} onCreate={onPromotionCreate} onLocate={onPromotionLocate} onRegenerate={onPromotionRegenerate} />}
     <dl className="graph2d-inspector-details">
       <dt>Function</dt><dd>{inspected.label}</dd>
       <dt>Source</dt><dd><code>{inspected.kind === "explicit-cartesian" ? `y = ${inspected.expression}` : inspected.expression}</code></dd>
@@ -474,6 +460,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
           intervals={intervals && isGraph2DIntervalAnalysisCurrent(intervals, document) ? intervals : null}
           area={area && isGraph2DIntegralCurrent(area, document) ? area : null}
           intersections={intersections && isGraph2DIntersectionCurrent(intersections, document) ? intersections : null} />}
+        {sampling.error && <div role="alert" className="graph2d-viewer-message">{sampling.error}</div>}
         {status === "loading" ? <div className="graph2d-viewer-message" role="status">Loading graph…</div> :
           status === "error" ? <div className="graph2d-viewer-message" role="alert">{errorMessage || "Graph could not be opened."}</div> :
           document.source.objects.length === 0 ? <div className="graph2d-viewer-message" aria-label="Empty graph scene">

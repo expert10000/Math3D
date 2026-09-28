@@ -89,7 +89,7 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
   return (
     <View style={styles.panel}>
       <Text style={styles.panelTitle}>Projects</Text>
-      <Text style={styles.note}>Saved Math3D scenes available offline on this device.</Text>
+      <Text style={styles.note}>Saved Math3D scenes and Graph projects available offline on this device.</Text>
       <View style={styles.projectActions}>
         <Pressable
           testID="mobile-new-project"
@@ -127,6 +127,14 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
 
           <Text style={styles.projectCreationGroupTitle}>Create</Text>
           <View style={styles.projectCreationGrid}>
+            <Pressable testID="mobile-new-project-graph" disabled={transferBusy !== null}
+              onPress={() => void runTransfer("graph", () => model.createGraphProject(newProjectTitle, false))} style={optionStyle}>
+              <Text style={styles.itemTitle}>Graph project</Text><Text style={styles.itemMeta}>Empty native 2D graph workspace</Text>
+            </Pressable>
+            <Pressable testID="mobile-new-project-graph-starter" disabled={transferBusy !== null}
+              onPress={() => void runTransfer("graph-starter", () => model.createGraphProject(newProjectTitle, true))} style={optionStyle}>
+              <Text style={styles.itemTitle}>Line graph starter</Text><Text style={styles.itemMeta}>Try pan, pinch and tap probing</Text>
+            </Pressable>
             {(["plane", "sphere", "cylinder", "torus"] as const).map((primitive) => (
               <Pressable key={primitive} testID={`mobile-new-project-primitive-${primitive}`} disabled={transferBusy !== null} onPress={() => void runCreation(`primitive-${primitive}`, { route: "primitive", primitive })} style={optionStyle}>
                 <Text style={styles.itemTitle}>{primitive[0].toUpperCase() + primitive.slice(1)}</Text>
@@ -143,6 +151,10 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
 
           <Text style={styles.projectCreationGroupTitle}>Import</Text>
           <View style={styles.projectCreationGrid}>
+            <Pressable testID="mobile-import-graph" disabled={transferBusy !== null}
+              onPress={() => void runTransfer("import-graph", model.importGraphProject)} style={optionStyle}>
+              <Text style={styles.itemTitle}>Graph project file</Text><Text style={styles.itemMeta}>Checked desktop Graph document or mixed workspace</Text>
+            </Pressable>
             <Pressable testID="mobile-new-project-import" disabled={transferBusy !== null} onPress={() => void runFileCreation("import")} style={optionStyle}>
               <Text style={styles.itemTitle}>{transferBusy === "import" ? "Choosing..." : "Math3D project"}</Text>
               <Text style={styles.itemMeta}>Create a separate project from a file.</Text>
@@ -275,7 +287,7 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
       {projectLibraryCards.map((scene) => {
         const editing = editingProjectId === scene.id;
         return <View key={scene.id} style={[styles.item, selectedScene?.id === scene.id ? styles.itemActive : null]}>
-          <Pressable testID={`mobile-project-open-${scene.id}`} onPress={() => void openStoredScene(scene.id)}>
+          <Pressable testID={`mobile-project-open-${scene.id}`} disabled={!scene.compatible} accessibilityState={{ disabled: !scene.compatible }} onPress={() => void openStoredScene(scene.id)}>
             <View style={styles.sceneListRow}>
               <MobileProjectThumbnail thumbnail={sceneThumbnailsById[scene.id]} title={scene.title} />
               <View style={styles.sceneListMeta}>

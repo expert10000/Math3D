@@ -54,13 +54,15 @@ export const sampleGraph2DPiecewise = (request: Readonly<{
   deadlineMs?: number;
 }>): Graph2DPiecewiseArtifact => {
   const diagnostics = new Map<Graph2DSamplingDiagnostic["code"], number>();
-  const segments = [], pieceBudget = Math.max(32, Math.floor(request.policy.maxSamples / request.object.pieces.length));
+  const segments = [], pieceBudget = Math.max(32, Math.floor(request.policy.maxSamples / request.object.pieces.length) - 2);
   let samplesEvaluated = 0, converged = true;
   const endpoints: Graph2DPiecewiseArtifact["endpoints"][number][] = [];
   for (const piece of request.object.pieces) {
+    const remaining = request.policy.maxSamples - samplesEvaluated;
+    if (remaining < 32) { converged = false; diagnostics.set("sample-limit", (diagnostics.get("sample-limit") ?? 0) + 1); break; }
     const artifact = sampleGraph2DExplicit({ ast: piece.expression.ast, variables: request.variables,
       domain: piece.domain, viewport: request.viewport, width: request.width, height: request.height,
-      deadlineMs: request.deadlineMs, policy: { ...request.policy, maxSamples: pieceBudget } });
+      deadlineMs: request.deadlineMs, policy: { ...request.policy, maxSamples: Math.min(pieceBudget, remaining) } });
     samplesEvaluated += artifact.samplesEvaluated;
     converged &&= artifact.converged;
     for (const diagnostic of artifact.diagnostics) diagnostics.set(diagnostic.code,
@@ -69,6 +71,8 @@ export const sampleGraph2DPiecewise = (request: Readonly<{
     if (segments.length >= GRAPH2D_MAX_SEGMENTS) break;
     for (const [x, open, side] of [[piece.domain.min, !piece.domain.includeMin, "start"],
       [piece.domain.max, !piece.domain.includeMax, "end"]] as const) {
+      if (samplesEvaluated >= request.policy.maxSamples) { converged = false; diagnostics.set("sample-limit", (diagnostics.get("sample-limit") ?? 0) + 1); break; }
+      samplesEvaluated += 1;
       const value = evaluateGraph2DExpression(piece.expression.ast, { ...request.variables, x });
       if (value.ok) endpoints.push({ x, y: value.value, open, side });
     }

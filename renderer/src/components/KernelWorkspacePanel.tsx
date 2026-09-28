@@ -16,9 +16,11 @@ export type KernelWorkspacePanelProps = {
   activeEvidence: ViewerProvenanceEvidence | null;
   artifactAvailable?: (artifactId: string) => boolean;
   onNavigateModule?: (module: KernelWorkspaceModule) => void;
+  onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
+  onReopen?: (workspace: MixedWorkspaceDocument) => void;
 };
 
-export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ capture, activeModule, activeEvidence, artifactAvailable, onNavigateModule }) => {
+export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ capture, activeModule, activeEvidence, artifactAvailable, onNavigateModule, onNavigateDocument, onReopen }) => {
   const [open, setOpen] = useState(false);
   const [reopened, setReopened] = useState<MixedWorkspaceDocument | null>(null);
   const [message, setMessage] = useState("No mixed workspace opened.");
@@ -38,6 +40,7 @@ export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ capt
       if (!text) { setMessage("No mixed workspace has been saved in this runtime."); return; }
       const workspace = parseMixedWorkspaceDocument(text);
       verifyMixedWorkspaceReplay(workspace);
+      onReopen?.(workspace);
       setReopened(workspace);
       setMessage(`Reopened and replay-verified ${workspace.entries.length} canonical document(s). Domain artifacts remain external.`);
     } catch (error) { setMessage(`Reopen failed: ${error instanceof Error ? error.message : String(error)}`); }
@@ -79,7 +82,7 @@ export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ capt
           <div>{reopened.entries.length} documents · {reopened.results.length} results · {reopened.relations.length} relations</div>
           <div>{availability?.missingArtifactIds.length ?? 0} missing artifacts · {availability?.unavailableResultIds.length ?? 0} unavailable results</div>
           {reopened.entries.map((entry) => <div key={entry.expected.id} data-testid={`kernel-workspace-entry-${entry.module}`}>
-            <button type="button" onClick={() => onNavigateModule?.(entry.module)} disabled={!onNavigateModule}>
+            <button type="button" onClick={() => onNavigateDocument ? onNavigateDocument(entry.expected.id, entry.module) : onNavigateModule?.(entry.module)} disabled={!onNavigateModule && !onNavigateDocument}>
               {entry.module} r{entry.expected.revision}
             </button> <span style={{ wordBreak: "break-all" }}>{entry.expected.id}</span>
           </div>)}

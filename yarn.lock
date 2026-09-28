@@ -1464,11 +1464,12 @@
   resolved "file:apps/desktop"
 
 "@math3d/app-mobile@file:C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\apps\\mobile":
-  version "1.5.0"
+  version "1.5.1"
   resolved "file:apps/mobile"
   dependencies:
     "@math3d/api-client" "file:../../packages/api-client"
     "@math3d/core" "file:../../packages/core"
+    "@math3d/kernel" "file:../../packages/kernel"
     "@react-three/fiber" "9.4.2"
     base-64 "1.0.0"
     expo "54.0.34"
@@ -1489,6 +1490,12 @@
 "@math3d/core@file:../../packages/core", "@math3d/core@file:../core", "@math3d/core@file:C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\packages\\core":
   version "1.5.0"
   resolved "file:packages/core"
+
+"@math3d/kernel@file:../../packages/kernel", "@math3d/kernel@file:C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\packages\\kernel":
+  version "1.5.0"
+  resolved "file:packages/kernel"
+  dependencies:
+    "@math3d/core" "file:../core"
 
 "@math3d/public-site@file:C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\apps\\public-site":
   version "1.5.0"

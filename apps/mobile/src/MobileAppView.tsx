@@ -8,22 +8,25 @@ import { MobileHomeScreen } from "./MobileHomeScreen";
 import { MobileProjectsScreen } from "./MobileProjectsScreen";
 import { MobileExploreScreen } from "./MobileExploreScreen";
 import { MobileSettingsScreen } from "./MobileSettingsScreen";
+import { MobileGraphsWorkspace } from "./MobileGraphsWorkspace";
 
 export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model }) => {
   const { tab, setTab } = model;
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor="#f4f6f8" translucent={false} />
-      <View style={styles.header}>
+      {!(tab === "workspace" && model.graphDocument) && <View style={styles.header}>
         <View style={styles.headerTop}>
           <View>
             <Text style={styles.title}>Math3D</Text>
             <Text style={styles.subtitle}>{tab === "workspace" ? "Workspace" : "Mobile workspace"}</Text>
           </View>
         </View>
-      </View>
+      </View>}
 
-      {tab === "workspace" && <MobileWorkspaceScreen model={model} />}
+      {tab === "workspace" && (model.graphDocument ? <MobileGraphsWorkspace key={`${model.graphDocument.identity.id}/${model.graphDocument.metadata.title}`}
+        document={model.graphDocument} onChange={model.setGraphDocument} onSave={model.saveGraphProject} message={model.projectActionMessage} /> :
+        <MobileWorkspaceScreen model={model} />)}
 
       {tab !== "workspace" && <ScrollView contentContainerStyle={styles.content}>
         {tab === "home" && <MobileHomeScreen model={model} />}

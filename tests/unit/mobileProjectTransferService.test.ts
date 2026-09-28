@@ -35,6 +35,8 @@ vi.mock("expo-file-system", () => ({
 vi.mock("expo-sharing", () => ({ isAvailableAsync: async () => true, shareAsync: state.share }));
 
 import { exportMobileSceneProject, pickMobileSceneProject, shareMobileSceneProject } from "../../apps/mobile/src/services/mobileProjectTransferService";
+import { createMobileGraph, storeMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
+import { parseGraph2DDocument } from "@math3d/core";
 
 const scene = createSceneProjectDocument({
   id: "native-transfer", title: "Native transfer", createdAt: 1, updatedAt: 2,
@@ -46,6 +48,16 @@ const project = {
 };
 
 describe("native project document/share boundary", () => {
+  it("exports and shares a validated portable Graph source, never sampled geometry", async () => {
+    state.files.clear(); state.share.mockClear();
+    const graph = createMobileGraph("Portable Graph", true, "portable");
+    const exported = await exportMobileSceneProject(storeMobileGraph(graph));
+    expect(exported.status).toBe("exported"); if (exported.status !== "exported") return;
+    expect(exported.fileName).toContain(".math3d.graph2d.json");
+    expect(parseGraph2DDocument(state.files.get(`documents/${exported.fileName}`)!)).toEqual(graph);
+    await shareMobileSceneProject(storeMobileGraph(graph));
+    expect(state.share).toHaveBeenCalledOnce();
+  });
   it("treats picker cancellation as a no-op", async () => {
     state.picked = null;
     expect(await pickMobileSceneProject()).toEqual({ status: "cancelled" });
