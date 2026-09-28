@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
 import { fitGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, pickGraph2DProbe,
-  resolveGraph2DViewport, sampleGraph2DScene, selectionForGraph2DObject, clipGraph2DLineOverlay, type Graph2DDocument, type Graph2DViewport } from "@math3d/core";
+  resolveGraph2DViewport, sampleGraph2DScene, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, type Graph2DDocument, type Graph2DViewport } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { MobileGraphGesture, mobileGraphProbeRadius, type GraphTouch } from "./models/mobileGraphGestures";
 import { mobileGraphCapabilities } from "./models/mobileGraphProject";
@@ -12,6 +12,9 @@ import { editMobileGraphProbes } from "./models/mobileGraphProbes";
 import { MobileGraphProbesPanel } from "./MobileGraphProbesPanel";
 import { MobileGraphFunctionsPanel } from "./MobileGraphFunctionsPanel";
 import { applyMobileGraphAuthoring, type MobileGraphEditor } from "./models/mobileGraphAuthoring";
+import { mobileGraphKindAction, type MobileGraphAdvancedEditor } from "./models/mobileGraphAdvancedAuthoring";
+import { mobileGraphPointTables, pickMobileGraphPointText } from "./services/mobileGraphPointTables";
+import { mobileGraphAdvancedGeometry } from "./viewer/mobileGraphAdvancedProjection";
 import { MobileGraphAnalysisPanel } from "./MobileGraphAnalysisPanel";
 import { mobileGraphAnalysisDraft, runMobileGraphAnalysis, isMobileGraphAnalysisCurrent, mobileGraphAnalysisProbe,
   type MobileGraphAnalysis } from "./models/mobileGraphAnalysis";
@@ -37,6 +40,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [editor, setEditor] = useState<MobileGraphEditor | null>(null);
+  const [advanced, setAdvanced] = useState<MobileGraphAdvancedEditor | null>(null);
   const [analysisDraft, setAnalysisDraft] = useState(() => mobileGraphAnalysisDraft(document));
   const [analysis, setAnalysis] = useState<MobileGraphAnalysis | null>(null);
   const viewport = preview ?? document.display.viewport;
@@ -46,14 +50,12 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     return () => { listener.remove(); gesture.current.cancel(); };
   }, []);
   const series = useMemo(() => {
-    // Advanced definitions stay untouched in the saved source; their mobile UI comes in MOB-G09.
-    const indices = document.source.objects.flatMap((object, index) => object.kind === "explicit-cartesian" ? [index] : []);
-    const limited = { ...document, source: { ...document.source, objects: indices.map((index) => document.source.objects[index]!) },
-      display: { ...document.display, objects: indices.map((index) => document.display.objects[index]!),
-        sampling: mobileGraphSamplingPolicy(document, !!preview) } };
-    return sampleGraph2DScene({ document: limited, viewport, ...size, interaction: !!preview });
+    const limited = { ...document, display: { ...document.display, sampling: mobileGraphSamplingPolicy(document, !!preview) } };
+    const pointTables = Object.fromEntries(document.source.objects.flatMap((object) => object.kind === "point-series" ? [[object.table.id, mobileGraphPointTables.resolve(object.table)]] : []));
+    return sampleGraph2DScene({ document: limited, viewport, ...size, interaction: !!preview, pointTables });
   }, [document.source, document.display, preview, viewport, size]);
-  const lines = useMemo(() => projectMobileGraphLines(series, viewport, size, document.selection.objectId), [series, viewport, size, document.selection.objectId]);
+  const geometry = useMemo(() => mobileGraphAdvancedGeometry(series, viewport, size), [series, viewport, size]);
+  const lines = useMemo(() => projectMobileGraphLines(geometry.boundaries, viewport, size, document.selection.objectId), [geometry, viewport, size, document.selection.objectId]);
   const ticks = mobileGraphTicks(viewport, size);
   const bounds = resolveGraph2DViewport(viewport, size);
   const probe = document.selection.probe;
@@ -105,6 +107,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
       onResponderEnd={(event) => { if (event.nativeEvent.touches.length) setPreview(gesture.current.update(touches(event))); }}
       onResponderRelease={finish} onResponderTerminate={cancel} onResponderTerminationRequest={() => true}>
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {geometry.fills.map((rect, index) => <View key={`region${index}`} style={{ position: "absolute", ...rect, backgroundColor: rect.color, opacity: 0.18 }} />)}
         {overlays.area && analysisCurrent && analysis && document.display.objects.find((style) => style.objectId === analysisDraft.objectId)?.visible &&
           mobileGraphAreaRects(analysis, viewport, size).map((rect, index) => <View key={`area${index}`} style={{ position: "absolute", ...rect, backgroundColor: rect.color, opacity: 0.5 }} />)}
         {document.display.axes.x && axis({ x: bounds.xMin, y: 0 }, { x: bounds.xMax, y: 0 })}
@@ -122,6 +125,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
               top: Math.max(0, Math.min(size.height - 14, point.y + 2)) }}>{Number(y.toPrecision(3))}</Text>}</React.Fragment>;
         })}
         {lines.map((line, index) => <Line key={index} {...line} />)}
+        {geometry.points.map((point, index) => <View key={`data${index}`} style={{ position: "absolute", left: point.x - 3, top: point.y - 3,
+          width: 6, height: 6, borderRadius: 3, borderWidth: point.open ? 1 : 0, borderColor: point.color, backgroundColor: point.open ? "white" : point.color }} />)}
         {overlays.tangent && analysis && analysisCurrent && analysis.overlays.filter((overlay) =>
           document.display.objects.find((style) => style.objectId === overlay.objectId)?.visible).map((overlay) => {
           const points = clipGraph2DLineOverlay(overlay, viewport, size);
@@ -145,18 +150,29 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
           <View style={{ position: "absolute", left: marker.x - 7, top: marker.y - 7, width: 14, height: 14,
             borderRadius: 7, borderWidth: 2, borderColor: "#0f172a", backgroundColor: "#fff" }} />}
       </View>
-      {!document.source.objects.length && <Text pointerEvents="none" style={s.empty}>Empty graph. Open Functions to add y(x), or import a desktop Graph project.</Text>}
+      {!document.source.objects.length && <Text pointerEvents="none" style={s.empty}>Empty graph. Open Functions to add a graph object, or import a desktop Graph project.</Text>}
     </View>
     <Text accessibilityLiveRegion="polite" style={s.readout} numberOfLines={2} testID="mobile-graph-probe">{probe ?
-      `${document.source.objects.find((object) => object.id === probe.objectId)?.label}: x=${probe.x.toPrecision(6)}, y=${probe.y.toPrecision(6)}` : "Tap a curve to probe. Tap overlaps again to cycle."}</Text>
+      `${document.source.objects.find((object) => object.id === probe.objectId)?.label}: x=${probe.x.toPrecision(6)}, y=${probe.y.toPrecision(6)}${probe.parameter !== undefined ? `, parameter=${probe.parameter.toPrecision(6)}` : ""}${probe.rowId ? `, ${probe.rowId}` : ""}` : "Tap a curve to probe. Tap overlaps again to cycle."}</Text>
+    {(geometry.truncated || series.some((item) => !item.artifact.converged)) && <Text style={s.readout}>Approximate/incomplete display. Check Display diagnostics; missing data requires its CSV/TSV sidecar.</Text>}
     {error || message ? <Text accessibilityLiveRegion="polite" numberOfLines={2} style={s.readout}>{error || message}</Text> : null}
     {destination !== "Graph" && <ScrollView keyboardShouldPersistTaps="handled" style={s.sheet} testID={`mobile-graph-${destination.toLowerCase()}-sheet`}>
       {destination === "Display" ? <MobileGraphDisplayPanel document={document} series={series} overlays={overlays} lineCount={lines.length}
         onOverlays={setOverlays} onAxis={(key) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "axis", key }), "style"))}
         onQuality={(quality) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "quality", quality }), "style"))} /> : destination === "Functions" ? <MobileGraphFunctionsPanel document={document} editor={editor} onEditor={setEditor}
+        advanced={advanced} onAdvanced={setAdvanced}
+        onApplyAdvanced={() => { if (!advanced) return; if (commit(() => {
+          // Validate using a transient store before any persistent sidecar write or scene command.
+          applyMobileGraphAuthoring(document, mobileGraphKindAction(advanced, new Graph2DPointTableStore()));
+          const action = mobileGraphKindAction(advanced, mobileGraphPointTables);
+          return adapter.commitScene(applyMobileGraphAuthoring(document, action), action.type);
+        })) setAdvanced(null); }}
+        onPick={() => { const pending = advanced; void pickMobileGraphPointText().then((data) => {
+          if (data !== null) setAdvanced((current) => current && current === pending ? { ...current, draft: { ...current.draft, data } } : current);
+        }).catch((caught: Error) => setError(caught.message)); }}
         onApply={(action) => commit(() => adapter.commitScene(applyMobileGraphAuthoring(document, action), action.type))}
         onSelect={(id) => commit(() => adapter.commitSelection(selectionForGraph2DObject(document, series, id)))} /> : <><Text style={s.readout}>{mobileGraphCapabilities(document)}</Text>
-        <Text style={s.readout}>Probe method: direct expression evaluation (floating point). Sampling is approximate.</Text>
+        <Text style={s.readout}>Probes: evaluated explicit/parametric/polar, interpolated contours, nearest data row. Sampling is approximate. Analysis and saved pins currently require explicit y(x).</Text>
         {series.some((item) => !item.artifact.converged) && <Text style={s.readout}>Sampling budget reached; unresolved regions are not a proof of absence.</Text>}
         {button("Clear probe", () => commit(() => adapter.commitSelection({ objectId: null, probe: null })))}
         {probe && button("Cycle overlap", () => tap(graph2DWorldToScreen(document.display.viewport, size, probe)))}

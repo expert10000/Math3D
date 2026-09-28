@@ -27,9 +27,5 @@ export const mobileGraphAuthoringAction = (editor: MobileGraphEditor): Graph2DAu
 };
 
 export const applyMobileGraphAuthoring = (document: Graph2DDocument, action: Graph2DAuthoringAction) => {
-  if (action.type !== "create" && action.type !== "edit" && action.type !== "duplicate" && action.type !== "reorder" &&
-    action.type !== "visibility" && action.type !== "delete") throw new TypeError("Advanced authoring requires desktop.");
-  if ("objectId" in action && document.source.objects.find((object) => object.id === action.objectId)?.kind !== "explicit-cartesian")
-    throw new TypeError("Advanced objects remain view-only on mobile.");
   return applyGraph2DAuthoring(document, action);
 };

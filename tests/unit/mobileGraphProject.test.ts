@@ -47,6 +47,6 @@ describe("mobile Graph projects use the portable core document", () => {
       domain: { min: 0, max: 1, includeMin: true, includeMax: true } }], variables: [], assumptions: [] } });
     const imported = importMobileGraph(serializeGraph2DDocument(graph), [], "advanced.json");
     expect(structuralHash(readMobileGraph(imported).source)).toBe(graph.identity.structuralHash);
-    expect(mobileGraphCapabilities(graph)).toMatch(/view-only/);
+    expect(mobileGraphCapabilities(graph)).toMatch(/parametric.*authoring and probes/);
   });
 });
