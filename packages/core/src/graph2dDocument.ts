@@ -9,6 +9,10 @@ import { parseGraph2DExpression, type Graph2DExpressionAst } from "./graph2dExpr
 export const GRAPH2D_DOCUMENT_FORMAT = "math3d.graph2d-document" as const;
 export const GRAPH2D_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export const GRAPH2D_EXPLICIT_CAPABILITY = "graph2d.explicit.v1" as const;
+export const GRAPH2D_PROBES_CAPABILITY = "graph2d.probes.v1" as const;
+export const GRAPH2D_MAX_PINNED_PROBES = 8;
+export type Graph2DPinnedProbe = Readonly<{ id: string; label: string; objectId: string;
+  x: number; y: number; sourceHash: string }>;
 export const GRAPH2D_PARAMETRIC_CAPABILITY = "graph2d.parametric.v1" as const;
 export const GRAPH2D_POLAR_CAPABILITY = "graph2d.polar.v1" as const;
 export const GRAPH2D_IMPLICIT_CAPABILITY = "graph2d.implicit.v1" as const;
@@ -100,14 +104,15 @@ export type Graph2DSource = Readonly<{
   variables: readonly Readonly<{ name: string; value: number }>[];
   assumptions: readonly string[];
 }>;
-export const graph2DRequiredCapabilities = (source: Graph2DSource): Graph2DDocument["requiredCapabilities"] =>
+export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pick<Graph2DDisplay, "pinnedProbes">): Graph2DDocument["requiredCapabilities"] =>
   [GRAPH2D_EXPLICIT_CAPABILITY,
     ...(source.objects.some((object) => object.kind === "parametric") ? [GRAPH2D_PARAMETRIC_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "polar") ? [GRAPH2D_POLAR_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "implicit") ? [GRAPH2D_IMPLICIT_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "inequality") ? [GRAPH2D_INEQUALITY_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "point-series") ? [GRAPH2D_POINT_SERIES_CAPABILITY] : []),
-    ...(source.objects.some((object) => object.kind === "piecewise") ? [GRAPH2D_PIECEWISE_CAPABILITY] : [])];
+    ...(source.objects.some((object) => object.kind === "piecewise") ? [GRAPH2D_PIECEWISE_CAPABILITY] : []),
+    ...(display?.pinnedProbes !== undefined ? [GRAPH2D_PROBES_CAPABILITY] : [])];
 export type Graph2DObjectDisplay = Readonly<{
   objectId: string;
   visible: boolean;
@@ -116,6 +121,7 @@ export type Graph2DObjectDisplay = Readonly<{
   lineStyle: "solid" | "dashed" | "dotted";
 }>;
 export type Graph2DDisplay = Readonly<{
+  pinnedProbes?: readonly Graph2DPinnedProbe[];
   viewport: Readonly<{ xMin: number; xMax: number; yMin: number; yMax: number; aspect: "free" | "equal" }>;
   axes: Readonly<{ x: boolean; y: boolean; grid: boolean; labels: boolean;
     gridMode?: "cartesian" | "polar" }>;
@@ -131,7 +137,7 @@ export type Graph2DDocument = Readonly<{
   requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
     typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY |
     typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY |
-    typeof GRAPH2D_PIECEWISE_CAPABILITY)[];
+    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY)[];
   source: Graph2DSource;
   display: Graph2DDisplay;
   selection: Graph2DSelection;
@@ -237,7 +243,7 @@ const validSource = (value: unknown): value is Graph2DSource => {
     new Set(value.objects.map((entry: Graph2DGraphObject) => entry.id)).size === value.objects.length;
 };
 const validDisplay = (value: unknown, source: Graph2DSource): value is Graph2DDisplay => {
-  if (!record(value) || !exact(value, ["viewport", "axes", "objects", "sampling"]) ||
+  if (!record(value) || !exact(value, ["viewport", "axes", "objects", "sampling", ...(value.pinnedProbes !== undefined ? ["pinnedProbes"] : [])]) ||
       !record(value.viewport) || !exact(value.viewport, ["xMin", "xMax", "yMin", "yMax", "aspect"]) ||
       !finite(value.viewport.xMin) || !finite(value.viewport.xMax) || value.viewport.xMin >= value.viewport.xMax ||
       !finite(value.viewport.yMin) || !finite(value.viewport.yMax) || value.viewport.yMin >= value.viewport.yMax ||
@@ -258,6 +264,12 @@ const validDisplay = (value: unknown, source: Graph2DSource): value is Graph2DDi
       !record(value.sampling) || !exact(value.sampling, ["maxSamples", "maxDepth", "tolerancePx"]) ||
       !integerWithin(value.sampling.maxSamples, 32, 200000) || !integerWithin(value.sampling.maxDepth, 1, 24) ||
       !finite(value.sampling.tolerancePx) || value.sampling.tolerancePx < 0.1 || value.sampling.tolerancePx > 16) return false;
+  if (value.pinnedProbes !== undefined && (!Array.isArray(value.pinnedProbes) || value.pinnedProbes.length > GRAPH2D_MAX_PINNED_PROBES ||
+    !value.pinnedProbes.every((probe: unknown) => record(probe) && exact(probe, ["id", "label", "objectId", "x", "y", "sourceHash"]) &&
+      objectId(probe.id) && bounded(probe.label, 80) && finite(probe.x) && finite(probe.y) &&
+      typeof probe.sourceHash === "string" && /^sha256:[0-9a-f]{64}$/.test(probe.sourceHash) &&
+      source.objects.some((object) => object.id === probe.objectId && object.kind === "explicit-cartesian")) ||
+    new Set(value.pinnedProbes.map((probe: Graph2DPinnedProbe) => probe.id)).size !== value.pinnedProbes.length)) return false;
   return true;
 };
 const validSelection = (value: unknown, source: Graph2DSource): value is Graph2DSelection => {
@@ -290,7 +302,7 @@ export const normalizeGraph2DDocument = (value: unknown): ValidationResult<Graph
   if (!isDocumentIdentity(value.identity) || !record(value.identity) ||
       !exact(value.identity, ["schemaVersion", "id", "revision", "structuralHash"]) ||
       !String(value.identity.id).startsWith("math3d:graph2d:")) errors.push("Invalid Graph2D identity.");
-  const expectedCapabilities = validSource(value.source) ? graph2DRequiredCapabilities(value.source) :
+  const expectedCapabilities = validSource(value.source) ? graph2DRequiredCapabilities(value.source, record(value.display) ? value.display : undefined) :
     [GRAPH2D_EXPLICIT_CAPABILITY];
   if (!Array.isArray(value.requiredCapabilities) ||
       canonicalJsonStringify(value.requiredCapabilities) !== canonicalJsonStringify(expectedCapabilities))
@@ -328,7 +340,7 @@ export const createGraph2DDocument = (input: {
   const candidate = {
     format: GRAPH2D_DOCUMENT_FORMAT, schemaVersion: GRAPH2D_DOCUMENT_SCHEMA_VERSION,
     identity: input.identity ?? createDocumentIdentity(createStableDocumentId("graph2d", input.stableKey), source),
-    requiredCapabilities: graph2DRequiredCapabilities(source), source,
+    requiredCapabilities: graph2DRequiredCapabilities(source, display), source,
     display,
     selection: input.selection ?? { objectId: null, probe: null }, metadata: { title: input.title ?? "Graphs" },
   };

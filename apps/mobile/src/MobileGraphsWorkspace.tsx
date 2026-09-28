@@ -5,6 +5,8 @@ import { fitGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, pic
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { MobileGraphGesture, mobileGraphProbeRadius, type GraphTouch } from "./models/mobileGraphGestures";
 import { mobileGraphCapabilities } from "./models/mobileGraphProject";
+import { editMobileGraphProbes } from "./models/mobileGraphProbes";
+import { MobileGraphProbesPanel } from "./MobileGraphProbesPanel";
 import { clipMobileGraphLine, mobileGraphTicks, projectMobileGraphLines, type MobileGraphLine } from "./viewer/mobileGraphProjection";
 
 const touches = (event: GestureResponderEvent): GraphTouch[] => event.nativeEvent.touches.map((touch) =>
@@ -102,6 +104,12 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
             {document.display.axes.labels && <Text style={{ fontSize: 10 }}>{Number(y.toPrecision(3))}</Text>}</View>;
         })}
         {lines.map((line, index) => <Line key={index} {...line} />)}
+        {(document.display.pinnedProbes ?? []).filter((probe) => probe.sourceHash === document.identity.structuralHash &&
+          document.display.objects.find((style) => style.objectId === probe.objectId)?.visible).map((probe) => {
+          const point = graph2DWorldToScreen(viewport, size, probe);
+          return <View key={probe.id} style={{ position: "absolute", left: point.x - 5, top: point.y - 5 }}>
+            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: "#b45309" }} /><Text style={{ fontSize: 11 }}>{probe.label}</Text></View>;
+        })}
         {marker && marker.x >= 0 && marker.x <= size.width && marker.y >= 0 && marker.y <= size.height &&
           <View style={{ position: "absolute", left: marker.x - 7, top: marker.y - 7, width: 14, height: 14,
             borderRadius: 7, borderWidth: 2, borderColor: "#0f172a", backgroundColor: "#fff" }} />}
@@ -111,7 +119,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     <Text accessibilityLiveRegion="polite" style={s.readout} numberOfLines={2} testID="mobile-graph-probe">{probe ?
       `${document.source.objects.find((object) => object.id === probe.objectId)?.label}: x=${probe.x.toPrecision(6)}, y=${probe.y.toPrecision(6)}` : "Tap a curve to probe. Tap overlaps again to cycle."}</Text>
     {error || message ? <Text accessibilityLiveRegion="polite" numberOfLines={2} style={s.readout}>{error || message}</Text> : null}
-    {destination !== "Graph" && <ScrollView style={s.sheet} testID={`mobile-graph-${destination.toLowerCase()}-sheet`}>
+    {destination !== "Graph" && <ScrollView keyboardShouldPersistTaps="handled" style={s.sheet} testID={`mobile-graph-${destination.toLowerCase()}-sheet`}>
       {destination === "Functions" ? document.source.objects.map((object) => <View key={object.id}>
         {button(`${object.label} · ${object.kind}`, () => commit(() => adapter.commitSelection(
           selectionForGraph2DObject(document, series, object.id))))}
@@ -121,6 +129,13 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         {series.some((item) => !item.artifact.converged) && <Text style={s.readout}>Sampling budget reached; unresolved regions are not a proof of absence.</Text>}
         {button("Clear probe", () => commit(() => adapter.commitSelection({ objectId: null, probe: null })))}
         {probe && button("Cycle overlap", () => tap(graph2DWorldToScreen(document.display.viewport, size, probe)))}
+        <MobileGraphProbesPanel document={document} onAction={(action) => commit(() => adapter.commitScene({ source: document.source,
+          selection: document.selection, display: { ...document.display, pinnedProbes: editMobileGraphProbes(document, action) } }, "pinned-probes"))}
+          onLocate={(id) => commit(() => {
+            const pinned = document.display.pinnedProbes?.find((entry) => entry.id === id);
+            if (!pinned || pinned.sourceHash !== document.identity.structuralHash) throw new TypeError("Saved probe is stale.");
+            return adapter.commitSelection({ objectId: pinned.objectId, probe: { objectId: pinned.objectId, x: pinned.x, y: pinned.y } });
+          })} />
       </>}
     </ScrollView>}
     <View style={s.destinations} accessibilityRole="tablist">{(["Graph", "Functions", "Analyze"] as const).map((value) =>

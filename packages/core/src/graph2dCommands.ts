@@ -9,7 +9,7 @@ export const GRAPH2D_SCENE_OPERATIONS = ["create", "edit", "create-parametric", 
   "create-polar", "edit-polar", "create-implicit", "edit-implicit",
   "create-inequality", "edit-inequality", "create-point-series", "edit-point-series",
   "create-piecewise", "edit-piecewise",
-  "grid-mode", "duplicate", "reorder", "visibility", "style", "delete", "restore"] as const;
+  "grid-mode", "pinned-probes", "duplicate", "reorder", "visibility", "style", "delete", "restore"] as const;
 export type Graph2DSceneOperation = (typeof GRAPH2D_SCENE_OPERATIONS)[number];
 export type Graph2DCommandState = Readonly<{ document: Graph2DDocument }>;
 
@@ -40,7 +40,7 @@ export const graph2dCommandDefinitions: readonly CommandDefinition<Graph2DComman
     const current = state.document as Graph2DDocument;
     const changed = structuralHash(scene.source) !== current.identity.structuralHash;
     const candidate = { ...current, source: scene.source, display: scene.display, selection: scene.selection,
-      requiredCapabilities: graph2DRequiredCapabilities(scene.source),
+      requiredCapabilities: graph2DRequiredCapabilities(scene.source, scene.display),
       identity: changed ? advanceDocumentIdentity(current.identity, scene.source) : current.identity };
     const normalized = normalizeGraph2DDocument(candidate);
     if (!normalized.ok) throw new TypeError(normalized.errors.join(" "));

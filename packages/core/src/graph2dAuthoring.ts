@@ -361,5 +361,7 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
     objects.splice(action.toIndex, 0, objects.splice(index, 1)[0]!);
     displays.splice(action.toIndex, 0, displays.splice(index, 1)[0]!);
   }
-  return { source: { ...document.source, objects }, display: { ...document.display, objects: displays }, selection };
+  return { source: { ...document.source, objects }, display: { ...document.display, objects: displays,
+    ...(document.display.pinnedProbes !== undefined ? { pinnedProbes: document.display.pinnedProbes.filter((probe) =>
+      objects.some((object) => object.id === probe.objectId)) } : {}) }, selection };
 };
