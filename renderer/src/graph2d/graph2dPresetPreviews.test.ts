@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { URL } from "node:url";
 import { createHash } from "node:crypto";
 import { getGraph2DPresetCatalog, renderGraph2DPresetPreview, graph2DPresetPreviewKey, sampleGraph2DScene,
   createGraph2DPreset } from "@math3d/core";

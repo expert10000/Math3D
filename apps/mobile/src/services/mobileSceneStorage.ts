@@ -299,6 +299,7 @@ const writeProjectsAtomically = async (projects: MobileStoredSceneProject[]): Pr
   const stagedBackup = storageBackupTempFile();
   const raw = encodeProjects(projects);
   let backupCommitted = false;
+  let initializeBackup = false;
 
   try {
     removeIfPresent(staged);
@@ -328,11 +329,17 @@ const writeProjectsAtomically = async (projects: MobileStoredSceneProject[]): Pr
     } else {
       const backupRaw = await readFile(backup);
       const backupValidation = backupRaw?.trim() ? decodeMobileSceneStorage(backupRaw) : null;
-      if (!backupValidation?.ok) await replaceBackupFrom(staged);
+      if (!backupValidation?.ok) initializeBackup = true;
     }
 
     removeIfPresent(primary);
     staged.move(primary);
+    if (initializeBackup) {
+      // A failed first primary rename must not resurrect an unaccepted new project from backup.
+      // Once the primary commits, a backup failure cannot invalidate that successful save.
+      try { await replaceBackupFrom(primary); }
+      catch { try { removeIfPresent(stagedBackup); } catch { /* The committed primary remains valid. */ } }
+    }
   } catch (error) {
     removeIfPresent(staged);
     if (!backupCommitted) removeIfPresent(stagedBackup);

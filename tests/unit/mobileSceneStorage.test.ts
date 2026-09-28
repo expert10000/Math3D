@@ -173,6 +173,18 @@ describe("mobile scene storage recovery", () => {
     expect(decodeMobileSceneStorage(fileContents.get("documents/math3d-mobile/scene-projects.json") ?? ""))
       .toMatchObject({ ok: true, projects: [project] });
   });
+  it("does not resurrect a failed first project save from a newly written backup", async () => {
+    fileFaults.moveDestination = "documents/math3d-mobile/scene-projects.json";
+    await expect(saveStoredSceneProjects([project])).rejects.toMatchObject({ code: "write-failed" });
+    expect((await loadStoredSceneProjects()).projects).toEqual([]);
+    expect(fileContents.has("documents/math3d-mobile/scene-projects.backup.json")).toBe(false);
+  });
+  it("keeps a successful first primary save when only backup initialization fails", async () => {
+    fileFaults.writePath = "documents/math3d-mobile/scene-projects.backup.tmp";
+    await saveStoredSceneProjects([project]);
+    expect((await loadStoredSceneProjects()).projects).toEqual([project]);
+    expect(fileContents.has("documents/math3d-mobile/scene-projects.tmp")).toBe(false);
+  });
 
   it("reports storage-full and validation failures with actionable messages", () => {
     expect(describeMobileSceneStorageError(new Error("ENOSPC: no space left on device"))).toContain("storage is full");

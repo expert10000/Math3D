@@ -37,7 +37,8 @@ export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model 
         {tab === "settings" && <MobileSettingsScreen model={model} />}
       </ScrollView>}
 
-      {model.graphGalleryOpen && <MobileGraphGallery onClose={() => model.setGraphGalleryOpen(false)} />}
+      {model.graphGalleryOpen && <MobileGraphGallery onClose={() => model.setGraphGalleryOpen(false)} onOpen={model.openGraphGalleryPreset}
+        busy={model.graphGalleryBusy} message={model.graphGalleryMessage} />}
       <View style={styles.bottomNav} accessibilityRole="tablist">
         {tabs.map(({ key, label }) => (
           <Pressable

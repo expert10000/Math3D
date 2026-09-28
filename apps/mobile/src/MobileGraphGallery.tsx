@@ -28,7 +28,7 @@ export function MobileGraphGallery({ onClose, onOpen, busy = false, message = ""
     <SafeAreaView style={s.root} testID="mobile-graph-gallery">
       <View style={s.header}><Text ref={heading} accessibilityRole="header" style={s.heading}>Graph Gallery</Text>{button("Close Graph Gallery", onClose, false, busy, "Close")}</View>
       <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={s.content}>
-        {!layout.compact && <Text style={s.intro}>Explore the mathematics. Open an editable copy. Previews are available offline.</Text>}
+        {!layout.compact && <Text style={s.intro}>Explore the mathematics. Open an editable copy. {onOpen ? "Current work is saved before switching. " : ""}Previews are available offline.</Text>}
         {message ? <Text accessibilityLiveRegion="polite" style={s.message}>{message}</Text> : null}
         <Text style={s.label}>Search graphs</Text><TextInput accessibilityLabel="Search graphs" testID="mobile-graph-gallery-search"
           value={query} onChangeText={text => { setQuery(text); setFeatured(false); setSelected(null); }} maxLength={160}
