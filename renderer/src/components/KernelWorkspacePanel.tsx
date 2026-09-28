@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   createDocumentRelationIndex, inspectMixedWorkspaceAvailability, parseMixedWorkspaceDocument,
   serializeMixedWorkspaceDocument, traceViewerLineage, viewerSourceFromDocument,
@@ -21,9 +21,10 @@ export type KernelWorkspacePanelProps = {
   onNavigateModule?: (module: KernelWorkspaceModule) => void;
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
   onReopen?: (workspace: MixedWorkspaceDocument) => void;
+  graphDocumentId?: string;
 };
 
-export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ capture, activeModule, activeEvidence, artifactAvailable, onNavigateModule, onNavigateDocument, onReopen }) => {
+export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ capture, activeModule, activeEvidence, artifactAvailable, onNavigateModule, onNavigateDocument, onReopen, graphDocumentId }) => {
   const [open, setOpen] = useState(false);
   const [reopened, setReopened] = useState<MixedWorkspaceDocument | null>(null);
   const [message, setMessage] = useState("No mixed workspace opened.");
@@ -33,6 +34,12 @@ export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ capt
       const manifest = parseWorkspaceProjectHandoff(raw); return { project: manifest.project, baseRevision: manifest.baseRevision };
     } catch { return null; }
   });
+  useEffect(() => {
+    if (!graphDocumentId) return;
+    try { const raw = localStorage.getItem(HANDOFF_KEY), manifest = raw ? parseWorkspaceProjectHandoff(raw) : null;
+      setHandoffSession(manifest?.projectId === graphDocumentId ? { project: manifest.project, baseRevision: manifest.baseRevision } : null);
+    } catch { setHandoffSession(null); }
+  }, [graphDocumentId]);
   const checkpointWorkspace = () => {
     const workspace = capture(), resolved = verifyMixedWorkspaceReplay(workspace);
     return createMixedWorkspaceDocument({ ...workspace, entries: workspace.entries.map((entry) => {

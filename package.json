@@ -203,7 +203,8 @@
     "ios": "npm --prefix apps/mobile run ios",
     "generate:graph2d:gallery:previews": "node scripts/graph2d-gallery-previews.mjs",
     "test:graph2d:gallery:previews": "node scripts/graph2d-gallery-previews.mjs --check",
-    "test:graph2d:gallery:unit": "npm --prefix renderer test -- src/graph2d/graph2dPreset src/graph2d/graph2dGallery"
+    "test:graph2d:gallery:unit": "npm --prefix renderer test -- src/graph2d/graph2dPreset src/graph2d/graph2dGallery",
+    "test:graph2d:gallery:typecheck": "tsc -p renderer/tsconfig.graph-gallery.json --noEmit"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

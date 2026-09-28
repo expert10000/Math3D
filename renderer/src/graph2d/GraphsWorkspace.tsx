@@ -11,6 +11,7 @@ import {
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
   type Graph2DIntegralMode,
   type Graph2DAnyPromotion,
+  type Graph2DPreset,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent, WheelEvent } from "react";
@@ -20,6 +21,7 @@ import { Graph2DAuthoringPanel } from "./Graph2DAuthoringPanel";
 import { pointTableStore } from "./pointTableStore";
 import { Graph2DPromotionPanel } from "./Graph2DPromotionPanel";
 import { useGraph2DSampling } from "./useGraph2DSampling";
+import { GraphGalleryDialog } from "./GraphGalleryDialog";
 import "./graphsWorkspace.css";
 
 type Props = {
@@ -37,12 +39,21 @@ type Props = {
   onPromotionCreate?: (promotion: Graph2DAnyPromotion) => void;
   onPromotionLocate?: (id: string) => void;
   onPromotionRegenerate?: (id: string, mode: "replace" | "fork") => void;
+  onOpenPreset?: (preset: Graph2DPreset) => void;
+  onResumeCheckpoint?: (id: string) => void;
 };
 
 /** Desktop/web projection of shared Graph2D source and persistent display state. */
 export function GraphsWorkspace({ dockLayout, document, status = "ready", errorMessage, onViewportCommit,
   onGridModeCommit, onAuthoringCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
-  onPromotionCreate, onPromotionLocate, onPromotionRegenerate }: Props) {
+  onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onOpenPreset, onResumeCheckpoint }: Props) {
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryError, setGalleryError] = useState<string | null>(null);
+  const galleryOpener = useRef<HTMLButtonElement | null>(null);
+  const galleryFocusFrame = useRef<number | null>(null);
+  const closeGallery = () => { setGalleryOpen(false); galleryFocusFrame.current = requestAnimationFrame(() => {
+    galleryFocusFrame.current = null; galleryOpener.current?.focus();
+  }); };
   const viewerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [previewViewport, setPreviewViewport] = useState<Graph2DViewport | null>(null);
@@ -68,6 +79,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
     setPreview(null);
   };
   useEffect(() => () => { if (wheelTimerRef.current) clearTimeout(wheelTimerRef.current);
+    if (galleryFocusFrame.current !== null) cancelAnimationFrame(galleryFocusFrame.current);
     if (hoverFrameRef.current !== null) cancelAnimationFrame(hoverFrameRef.current); }, []);
   useEffect(() => {
     const element = viewerRef.current;
@@ -445,6 +457,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         onPointerCancel={() => { dragRef.current = null; setPreview(null); setHoverSelection(null); }}
         onPointerLeave={() => setHoverSelection(null)} onWheel={onWheel} onKeyDown={onKeyDown}>
         <div className="graph2d-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+          <button type="button" data-testid="graph-gallery-open" onClick={event => { galleryOpener.current = event.currentTarget; finishWheel(); setGalleryError(null); setGalleryOpen(true); }}>Gallery</button>
           <button type="button" onClick={() => { finishWheel(); onViewportCommit?.({ ...GRAPH2D_DEFAULT_VIEWPORT }); }}>Reset</button>
           <button type="button" onClick={() => { finishWheel(); fitVisible(); }}>Fit</button>
           <button type="button" aria-label="Toggle polar grid" aria-pressed={(document.display.axes.gridMode ?? "cartesian") === "polar"}
@@ -466,12 +479,18 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
           document.source.objects.length === 0 ? <div className="graph2d-viewer-message" aria-label="Empty graph scene">
             <h2>Graphs</h2>
             <p>An empty Cartesian graph scene is ready.</p>
+            <button type="button" onClick={event => { galleryOpener.current = event.currentTarget; setGalleryError(null); setGalleryOpen(true); }}>Explore Graph Gallery</button>
             <small>{document.source.objects.length} functions · {GRAPH2D_WORKSPACE_CONTRACT.initialObjectKind} source</small>
           </div> : null}
       </div>
       {showRight && <aside className="graph2d-panel graph2d-right" aria-label="Graph inspector">
         <h2>Inspector</h2>{inspector}
       </aside>}
+      {galleryOpen && <GraphGalleryDialog activeId={document.identity.id} error={galleryError} onClose={closeGallery}
+        onOpen={preset => { try { if (!onOpenPreset) throw new Error("Project storage is unavailable."); onOpenPreset(preset); setGalleryOpen(false); }
+          catch (error) { setGalleryError((error as Error).message); } }}
+        onResume={id => { try { if (!onResumeCheckpoint) throw new Error("Project storage is unavailable."); onResumeCheckpoint(id); setGalleryOpen(false); }
+          catch (error) { setGalleryError((error as Error).message); } }} />}
     </section>
   );
 }

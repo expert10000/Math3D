@@ -19,6 +19,8 @@ import {
   type WorkspaceDockLayout,
 } from "./workspaceDocks";
 import { GraphsWorkspace } from "./graph2d/GraphsWorkspace";
+import { launchGraphGalleryPreset, resumeGraphGalleryCheckpoint } from "./graph2d/graph2dGallerySession";
+import { pointTableStore } from "./graph2d/pointTableStore";
 import { Graph2DCommandAdapter } from "./graph2d/Graph2DCommandAdapter";
 import { PromotedDocumentWorkspace } from "./graph2d/PromotedDocumentWorkspace";
 import { regenerateGraph2DPromotion, type Graph2DAnyPromotion } from "@math3d/core";
@@ -78930,6 +78932,24 @@ case "mobius":
     geometryRenderTraceLastRef.current = snapshot;
   });
 
+  const reopenGraphWorkspace = (workspace: MixedWorkspaceDocument) => {
+          const graph = workspace.entries.find((entry) => entry.checkpoint.format === "math3d.graph2d-document")?.checkpoint;
+          if (!graph || graph.format !== "math3d.graph2d-document") return;
+          graph2dAdapterRef.current = new Graph2DCommandAdapter(graph); setGraph2dDocument(graph);
+          const restored: Graph2DAnyPromotion[] = [];
+          for (const relation of workspace.relations) {
+            if (!relation.operation.startsWith("graph2d.") || relation.target.type !== "document") continue;
+            const target = workspace.entries.find((entry) => entry.expected.id === (relation.target.type === "document" ? relation.target.generation.documentId : ""))?.checkpoint;
+            if (!target || target.format !== "math3d.curve-document" && target.format !== "math3d.surface-document") continue;
+            const parameters = relation.parameters as Record<string, CanonicalJsonValue>;
+            const trace = { sourceDocumentId: relation.sources[0]!.documentId, sourceRevision: relation.sources[0]!.revision,
+              sourceObjectId: String(parameters.sourceObjectId), targetDocumentId: target.identity.id,
+              operation: relation.operation as Graph2DAnyPromotion["trace"]["operation"], expressionMap: target.source.definition.expressions ?? {} };
+            restored.push(target.format === "math3d.curve-document" ? { document: target, relation, trace } : { document: target, relation, trace });
+          }
+          setGraph2dPromotions(restored); setActiveGraph2DTargetId(null);
+          };
+
   return (
     <div data-testid="app-shell" style={rootStyle}>
       <KernelWorkspacePanel
@@ -78949,23 +78969,8 @@ case "mobius":
             else { setDatasetKind("surface"); setSurfaceViewerKind("param"); }
           }
         }}
-        onReopen={(workspace) => {
-          const graph = workspace.entries.find((entry) => entry.checkpoint.format === "math3d.graph2d-document")?.checkpoint;
-          if (!graph || graph.format !== "math3d.graph2d-document") return;
-          graph2dAdapterRef.current = new Graph2DCommandAdapter(graph); setGraph2dDocument(graph);
-          const restored: Graph2DAnyPromotion[] = [];
-          for (const relation of workspace.relations) {
-            if (!relation.operation.startsWith("graph2d.") || relation.target.type !== "document") continue;
-            const target = workspace.entries.find((entry) => entry.expected.id === (relation.target.type === "document" ? relation.target.generation.documentId : ""))?.checkpoint;
-            if (!target || target.format !== "math3d.curve-document" && target.format !== "math3d.surface-document") continue;
-            const parameters = relation.parameters as Record<string, CanonicalJsonValue>;
-            const trace = { sourceDocumentId: relation.sources[0]!.documentId, sourceRevision: relation.sources[0]!.revision,
-              sourceObjectId: String(parameters.sourceObjectId), targetDocumentId: target.identity.id,
-              operation: relation.operation as Graph2DAnyPromotion["trace"]["operation"], expressionMap: target.source.definition.expressions ?? {} };
-            restored.push(target.format === "math3d.curve-document" ? { document: target, relation, trace } : { document: target, relation, trace });
-          }
-          setGraph2dPromotions(restored); setActiveGraph2DTargetId(null);
-        }}
+        onReopen={reopenGraphWorkspace}
+        graphDocumentId={graph2dDocument.identity.id}
         capture={captureMixedKernelWorkspace}
         activeModule={activeKernelModule}
         activeEvidence={activeKernelEvidence}
@@ -89540,7 +89545,15 @@ case "mobius":
             )}
           </div>
         ) : mode === "graphs" ? (
-          <GraphsWorkspace dockLayout={activeDockLayout} document={graph2dDocument}
+          <GraphsWorkspace key={graph2dDocument.identity.id} dockLayout={activeDockLayout} document={graph2dDocument}
+            onOpenPreset={preset => {
+              const workspace = launchGraphGalleryPreset(captureMixedKernelWorkspace, preset, crypto.randomUUID(), localStorage);
+              pointTableStore.clearCache(); reopenGraphWorkspace(workspace);
+            }}
+            onResumeCheckpoint={id => {
+              const workspace = resumeGraphGalleryCheckpoint(captureMixedKernelWorkspace, id, localStorage);
+              pointTableStore.clearCache(); reopenGraphWorkspace(workspace);
+            }}
             promotions={graph2dPromotions} onPromotionCreate={addGraph2DPromotion}
             onPromotionLocate={openGraph2DTarget} onPromotionRegenerate={regenerateGraph2DTarget}
             onViewportCommit={commitGraph2DViewport} onGridModeCommit={commitGraph2DGridMode}

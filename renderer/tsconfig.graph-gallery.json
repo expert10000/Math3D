@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": { "types": ["vite/client", "node"] },
+  "include": ["src/graph2d/GraphGalleryDialog.tsx", "src/graph2d/GraphsWorkspace.tsx", "src/graph2d/graph2dGallery*.ts", "src/graph2d/graph2dPreset*.test.ts", "src/**/*.d.ts"],
+  "exclude": []
+}
