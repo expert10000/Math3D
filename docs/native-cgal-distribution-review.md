@@ -1,6 +1,7 @@
 # Native CGAL worker: Phase 3A release review
 
-Status (2026-09-27): **native executable distribution blocked**. This is a
+Status (2026-09-28): **public GPL distribution selected; standalone native
+executable packaging remains gated on its source bundle and SBOM**. This is a
 technical/license inventory, not legal advice or approval to distribute. The
 existing Electron installer configuration still excludes `native/cgal-worker`
 and `build/native/cgal-worker`; packaged desktop builds continue to select the
@@ -26,11 +27,12 @@ check*, not a complete transitive-dependency SBOM or a cross-platform pin.
 CGAL's [license explanation](https://doc.cgal.org/latest/Manual/license.html)
 states that software distributed based on GPL-covered CGAL components has GPL
 source-distribution obligations, while commercial licenses are available.
-Math3D currently declares Apache-2.0 for its own package. Whether and how the
-native executable, desktop app, and installer can be distributed together
-under the intended terms requires a written decision from the project owner
-and qualified license review. This document intentionally does not assert
-that process isolation settles that question.
+Math3D now declares GPL-3.0-or-later for the combined distribution and
+preserves its earlier Apache-2.0 terms separately. That resolves the selected
+open-source license direction, but each installer still requires exact source,
+notices, an SBOM, and qualified review of its actual dependency closure. This
+document intentionally does not assert that process isolation settles a
+licensing question.
 
 ## Technical conformance added
 
@@ -50,10 +52,9 @@ closure, notices, source offer, signatures, or clean-machine behavior.
 Before adding `native-cgal` to `electron-builder.config.cjs` or any other
 installer path:
 
-1. Record a signed distribution choice for CGAL Boolean Operations: a
-   reviewed GPL compliance plan or a commercial license covering the pinned
-   CGAL version and used packages. Review GMP/MPFR obligations and all
-   transitive native dependencies as part of the same decision.
+1. Apply the selected public GPL-3.0-or-later compliance plan to the standalone
+   worker and review GMP/MPFR obligations and all transitive native
+   dependencies as part of the same release closure.
 2. Produce a version-pinned dependency lock, SBOM, license texts/notices,
    corresponding source or source offer where required, and reproducible
    build instructions. Confirm the exact DLLs and redistributables included

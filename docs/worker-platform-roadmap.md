@@ -429,13 +429,13 @@ Phase 3A release-gate follow-up: the real-mesh Boolean and crash/cancellation
 suite is `npm run test:cgal-native-release`. The dependency/license inventory
 and fail-closed installer policy are documented in
 `docs/native-cgal-distribution-review.md`. Native installer inclusion remains
-blocked pending the explicit CGAL distribution decision, transitive SBOM, and
+blocked pending public source-bundle integration, a transitive SBOM, and
 packaged clean-machine verification; do not mark Phase 3A distribution-ready
 from local tests alone.
 
 Remaining Phase 3 work: robust repair, remesh, and intersection migration;
 packaged clean-machine conformance and crash/cancellation E2E; container
-parity; and the unresolved distribution/license decision.
+parity; and completion of the selected public GPL distribution controls.
 
 - Build the standalone C++ transport and local process supervisor.
 - Migrate only robust repair, boolean, remesh, and intersection operations.

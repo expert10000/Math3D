@@ -8,11 +8,11 @@ const manifest = require("../native/cgal-worker/dependency-manifest.json");
 const nativePattern = /(?:native-cgal|cgal-worker|build[\\/]native)/i;
 
 function assertNativeCgalPackagingPolicy(config) {
-  if (manifest.distributionStatus !== "blocked-pending-license-decision") {
+  if (manifest.distributionStatus !== "blocked-pending-public-source-bundle-integration") {
     throw new Error("Native CGAL distribution policy changed without an approved release gate.");
   }
   if (process.env.MATH3D_BUNDLE_NATIVE_CGAL === "1") {
-    throw new Error("Native CGAL installer bundling is blocked pending a documented license decision.");
+    throw new Error("Native CGAL installer bundling is blocked pending source-bundle and SBOM integration.");
   }
   const inclusions = [
     ...(config.files ?? []),
@@ -23,7 +23,7 @@ function assertNativeCgalPackagingPolicy(config) {
     const from = typeof entry === "string" ? entry : String(entry?.from ?? "");
     const to = typeof entry === "string" ? "" : String(entry?.to ?? "");
     if (nativePattern.test(from) || nativePattern.test(to)) {
-      throw new Error(`Native CGAL installer bundling is blocked: ${from} -> ${to}`);
+      throw new Error(`Native CGAL installer bundling is blocked pending public source assets: ${from} -> ${to}`);
     }
   }
 }
@@ -63,5 +63,5 @@ if (require.main === module) {
   const config = require("../electron-builder.config.cjs");
   assertNativeCgalPackagingPolicy(config);
   if (process.argv.includes("--local")) verifyLocalReferenceBuild();
-  console.log("Native CGAL distribution remains blocked; installers retain the Python fallback.");
+  console.log("Native CGAL distribution remains gated on public source assets; installers retain the Python fallback.");
 }

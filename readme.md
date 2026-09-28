@@ -267,4 +267,14 @@ npm run docs:build
 
 ## License
 
-This project is licensed under Apache-2.0. See [LICENSE](LICENSE).
+Math3D and its combined release distributions are licensed under
+GPL-3.0-or-later. See [LICENSE](LICENSE), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md),
+and [SOURCE_OFFER.md](SOURCE_OFFER.md). The two-path policy and executable
+compliance plan are documented in
+[docs/licensing-and-distribution-roadmap.md](docs/licensing-and-distribution-roadmap.md).
+
+Material previously published by the Math3D project under Apache-2.0 retains
+that license; its text is preserved in [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt).
+When that material is distributed as part of Math3D together with GPL-covered
+CGAL or pygalmesh components, the combined work is distributed under GPLv3 or
+later while component notices remain in force.

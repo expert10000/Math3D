@@ -136,17 +136,15 @@ jobs:
       - name: Set package version from tag
         run: npm version --no-git-tag-version --allow-same-version ${{ steps.meta.outputs.version }}
 
+      - name: Verify public license compliance metadata
+        run: npm run verify:license-compliance
+
       - name: Install Python dependencies for frozen worker
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
           python -m pip install mkdocs
-          python -m pip install pyinstaller numpy scipy sympy vtk
-          python -m pip install pygalmesh
-          if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Optional dependency pygalmesh failed to install; continuing without mesh.generate support."
-            $global:LASTEXITCODE = 0
-          }
+          python -m pip install pyinstaller -r python/worker/requirements.freeze.txt
 
       - name: Build docs bundle
         shell: pwsh
@@ -161,7 +159,15 @@ jobs:
         run: npm run build:web
 
       - name: Build Windows installer
+        env:
+          MATH3D_REQUIRE_PYGALMESH: "1"
+          MATH3D_REQUIRE_CGAL: "1"
         run: npm run dist:ci
+
+      - name: Prepare corresponding source assets
+        shell: pwsh
+        run: |
+          npm run release:source -- --target windows --out release-source --version "${{ steps.meta.outputs.version }}"
 
       - name: Prepare release assets
         id: assets
@@ -204,6 +210,10 @@ jobs:
               -Force
           } else {
             Write-Warning "apps/web/dist not found; skipping web app zip."
+          }
+
+          Get-ChildItem -Path "release-source" -File | ForEach-Object {
+            Copy-Item $_.FullName (Join-Path $assetsDir $_.Name) -Force
           }
 
           $optionalFiles = @(
@@ -335,6 +345,9 @@ jobs:
       - name: Set package version from tag
         run: npm version --no-git-tag-version --allow-same-version ${{ steps.meta.outputs.version }}
 
+      - name: Verify public license compliance metadata
+        run: npm run verify:license-compliance
+
       - name: Ensure Linux Electron binary
         env:
           MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: "600000"
@@ -361,7 +374,11 @@ jobs:
       - name: Build Linux packages
         env:
           MATH3D_REQUIRE_PYGALMESH: "1"
+          MATH3D_REQUIRE_CGAL: "1"
         run: npm run dist:linux:ci
+
+      - name: Prepare corresponding source assets
+        run: npm run release:source -- --target linux --out release-source --version "${{ steps.meta.outputs.version }}"
 
       - name: Prepare Linux release assets
         id: assets
@@ -393,6 +410,8 @@ jobs:
           if [[ -f "release/builder-debug.yml" ]]; then
             cp "release/builder-debug.yml" "$assets_dir/builder-debug-linux.yml"
           fi
+
+          cp release-source/* "$assets_dir/"
 
           (
             cd "$assets_dir"

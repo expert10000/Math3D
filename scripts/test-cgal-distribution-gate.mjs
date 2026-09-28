@@ -23,4 +23,4 @@ try {
   else process.env.MATH3D_BUNDLE_NATIVE_CGAL = previous;
 }
 verifyLocalReferenceBuild();
-console.log("Native CGAL distribution gate rejects unapproved bundle paths and matches local dependency metadata.");
+console.log("Native CGAL distribution gate rejects bundle paths without public source assets and matches local dependency metadata.");

@@ -1,6 +1,6 @@
-numpy
-scipy
-sympy
-CGAL
-pygalmesh
-vtk
+numpy==2.4.6
+scipy==1.17.1
+sympy==1.14.0
+CGAL==6.0.1.post202410241521
+pygalmesh==0.10.7
+vtk==9.7.0

@@ -27,6 +27,22 @@ const config = {
   ],
   extraResources: [
     {
+      from: "LICENSE",
+      to: "LICENSE",
+    },
+    {
+      from: "LICENSES",
+      to: "LICENSES",
+    },
+    {
+      from: "THIRD_PARTY_NOTICES.md",
+      to: "THIRD_PARTY_NOTICES.md",
+    },
+    {
+      from: "SOURCE_OFFER.md",
+      to: "SOURCE_OFFER.md",
+    },
+    {
       from: "build/python-worker-dist/worker",
       to: "python-worker",
     },

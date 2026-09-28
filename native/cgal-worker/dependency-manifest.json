@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "distributionStatus": "blocked-pending-license-decision",
+  "distributionStatus": "blocked-pending-public-source-bundle-integration",
   "protocolVersion": 1,
   "meshResourceFormat": "math3d.mesh.v1",
   "windowsReferenceBuild": {
