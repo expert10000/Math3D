@@ -8,7 +8,7 @@ import { projectMobileGraphLines } from "../../../apps/mobile/src/viewer/mobileG
 
 const functions: Record<string, ((x: number) => number)[]> = {
   "line-comparison": [x => x, x => 2*x+1], "translated-quadratic": [x => x*x, x => (x-1)**2-1],
-  "cubic-extrema": [x => x**3-3*x], "repeated-root": [x => (x-1)**2*(x+2)], "reciprocal-pole": [x => 1/x],
+  "cubic-extrema": [x => x**3-3*x], "repeated-root": [x => (x-1)**2*(x+2)], "reciprocal-pole": [x => 1/x, x => 1/x],
   "exponential-log": [Math.exp, Math.log, x => x], "sine-cosine": [Math.sin, Math.cos],
   "damped-wave": [x => Math.exp(-.2*x)*Math.sin(3*x), x => Math.exp(-.2*x), x => -Math.exp(-.2*x)],
   "wave-beats": [x => Math.sin(4*x)+Math.sin(4.5*x), x => 2*Math.cos(.25*x)],

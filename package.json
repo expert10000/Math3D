@@ -200,7 +200,10 @@
     "analyze:deps:arkit": "npm run analyze:deps:arkit:renderer && npm run analyze:deps:arkit:electron && npm run analyze:deps:arkit:packages && npm run analyze:deps:arkit:apps",
     "analyze:deps": "npm run analyze:deps:depcruise && npm run analyze:deps:arkit",
     "android": "npm --prefix apps/mobile run android",
-    "ios": "npm --prefix apps/mobile run ios"
+    "ios": "npm --prefix apps/mobile run ios",
+    "generate:graph2d:gallery:previews": "node scripts/graph2d-gallery-previews.mjs",
+    "test:graph2d:gallery:previews": "node scripts/graph2d-gallery-previews.mjs --check",
+    "test:graph2d:gallery:unit": "npm --prefix renderer test -- src/graph2d/graph2dPreset src/graph2d/graph2dGallery"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

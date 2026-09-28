@@ -1,8 +1,8 @@
 # Graph2D gallery, presets and showcase roadmap
 
-**Status:** GGL01–02 implemented (shared contract and 20-scene catalog); GGL03–18 pending. Gallery UI is not delivered yet.
+**Status:** GGL01â€“02 implemented (shared contract and 20-scene catalog); GGL03â€“18 pending. Gallery UI is not delivered yet.
 
-**Decision — 2026-09-28:** build a focused editable gallery now, after G2D35 and before G2D36. Deliver shared contracts/content and desktop/web first (GGL01–06), then mobile launch from the same catalog (GGL07–09). Continue the professional features afterward. Keep MOB-G13 physical acceptance open throughout.
+**Decision â€” 2026-09-28:** build a focused editable gallery now, after G2D35 and before G2D36. Deliver shared contracts/content and desktop/web first (GGL01â€“06), then mobile launch from the same catalog (GGL07â€“09). Continue the professional features afterward. Keep MOB-G13 physical acceptance open throughout.
 
 **Authority:** [the Graph2D roadmap](math3d-graph2d-desktop-mobile-roadmap.md) owns overall sequencing and release gates. This companion owns gallery content, launch behavior and acceptance. It adapts the supplied `MATH3D_GRAPH_GALLERY_PRESETS_SHOWCASE_ROADMAP.md` proposal to the existing [architecture](graph2d-architecture-schema-algorithms-parity.md); the proposal's sample types and package layout are design input.
 
@@ -16,12 +16,12 @@ An initial gallery does not depend on SVG/PNG export, logarithmic axes, statisti
 
 | Order | Delivery | Reason |
 | --- | --- | --- |
-| Now | GGL01–06: shared catalog, 20 reviewed scenes, generated previews, desktop/web gallery and acceptance | Make the implemented engine discoverable and editable |
-| Next | GGL07–09: mobile gallery, ordinary project creation and native acceptance | Reuse desktop-proven content without a second preset engine |
+| Now | GGL01â€“06: shared catalog, 20 reviewed scenes, generated previews, desktop/web gallery and acceptance | Make the implemented engine discoverable and editable |
+| Next | GGL07â€“09: mobile gallery, ordinary project creation and native acceptance | Reuse desktop-proven content without a second preset engine |
 | Then | G2D36: publication export | Supports personal scenes, teaching and reproducible captures |
 | Then | G2D38, followed by GGL10: shared parameters/animation and gallery integration | One parameter implementation serves authoring and examples |
 | Then | G2D37, G2D39, G2D40 | Scale policies, reviewed statistics and professional acceptance |
-| Later | GGL11–18 | Personal collections, lessons, presentation, public viewing, home discovery and cross-module adapters |
+| Later | GGL11â€“18 | Personal collections, lessons, presentation, public viewing, home discovery and cross-module adapters |
 
 G2D identifiers stay unchanged; execution order explicitly brings G2D38 forward after G2D36 because interactive examples have higher immediate value than additional scales. GGL10 does not block G2D37. Detailed later dependencies are listed below. G13 device work can proceed when devices/artifacts are available; passing gallery software checks never freezes that gate.
 
@@ -83,7 +83,7 @@ Target **20 accepted scenes**, including all seven kinds, at least six multi-obj
 
 Every scene supplies a useful viewport, finite domains, legible styles, an explanation, applicable limits and an edit/analysis suggestion. Use the normal Analyze UI for requested calculations; opening a gallery scene does not silently compute or label a stored analysis result as current. Keep poles, missing rows, open endpoints and strict boundaries visible in both preview and live view.
 
-Follow-on content: parameter families, Taylor polynomials with documented order/interval, finite harmonic sums, epicycloids/hypocycloids, astroid and heart/butterfly scenes after budget review. Newton iteration, accumulation functions, statistical fits and general guided overlays need their corresponding domain/workflow support. Expand to 12–20 flagship scenes after these experiences are available; initial Featured contains six reviewed static scenes.
+Follow-on content: parameter families, Taylor polynomials with documented order/interval, finite harmonic sums, epicycloids/hypocycloids, astroid and heart/butterfly scenes after budget review. Newton iteration, accumulation functions, statistical fits and general guided overlays need their corresponding domain/workflow support. Expand to 12â€“20 flagship scenes after these experiences are available; initial Featured contains six reviewed static scenes.
 
 ## 4. Gallery UI and launch contract
 
@@ -97,7 +97,7 @@ Gallery selection is transient; source and viewport changes after launch use ord
 
 ### Mobile next
 
-Expose **Graph Gallery** in Projects → New Project and **Gallery** in the Graph workspace. Feed both from the same core catalog. Reuse the existing Explore content surface for featured discovery through an adapter, without replacing the established Home/Explore/Workspace/Projects/Settings navigation.
+Expose **Graph Gallery** in Projects â†’ New Project and **Gallery** in the Graph workspace. Feed both from the same core catalog. Reuse the existing Explore content surface for featured discovery through an adapter, without replacing the established Home/Explore/Workspace/Projects/Settings navigation.
 
 One tap on Open validates the preset and sidecars, saves a new ordinary offline Graph project, then enters Workspace. A generated title is sufficient; renaming remains available later. Cancel/preview creates no project; failed persistence leaves the active project unchanged. Current edits must be checkpointed or explicitly kept before switching. Sidecars stage with the project and roll back on failure; never leave half-created entries. Save/export/desktop reopen use the existing contracts.
 
@@ -105,7 +105,7 @@ Use accessible category chips and bounded static previews. No autoplay carousel 
 
 ## 5. Preview, performance and acceptance rules
 
-Generate thumbnails from the exact validated template with the shared sampler at a fixed viewport/size, theme, sampling budget and preview algorithm version. Initial preview recipe: 320×180, at most 1024 scene samples and bounded line/fill output; tune only through reviewed recipe changes. Reject unsuitable featured output or adjust its domains/viewport within that budget rather than concealing incomplete geometry. Known mathematical gaps are retained and explained.
+Generate thumbnails from the exact validated template with the shared sampler at a fixed viewport/size, theme, sampling budget and preview algorithm version. Initial preview recipe: 320Ă—180, at most 1024 scene samples and bounded line/fill output; tune only through reviewed recipe changes. Reject unsuitable featured output or adjust its domains/viewport within that budget rather than concealing incomplete geometry. Known mathematical gaps are retained and explained.
 
 A build adapter produces sanitized SVG for desktop/web and raster derivatives for native image cards. It does not implement separate mathematics. Escape labels and allow no arbitrary imported SVG/HTML or script. Native delivery bundles the chosen assets; no network or Metro service is needed to browse/open the gallery. Cap initial compressed preview assets at 2 MiB total and test the produced manifest against missing/stale assets.
 
@@ -119,18 +119,18 @@ Reuse the G2D34 pathological corpus as an oracle source, not as a direct marketi
 
 Every GGL ID is a reviewable commit. Focused types/tests and stated UI evidence complete it. Commit and push each delivered milestone independently. Delivery is recorded explicitly below.
 
-### Release A — Desktop/web gallery now
+### Release A â€” Desktop/web gallery now
 
 | ID | Planned commit | Scope and acceptance |
 | --- | --- | --- |
 | **GGL01** | `feat(graph2d-presets): add shared versioned catalog contract and instantiation` | Implemented shared core contract, immutable registry, canonical template/sidecar validation and fresh launch-token identities. Four contract tests and strict shared typecheck pass. |
-| **GGL02** | `feat(graph2d-presets): add curated seven-kind starter scenes` | Implemented 20 canonical seven-kind scenes, eight multi-object comparisons and six Featured entries. Reference-math, gaps/endpoints/strict fills, 512/1024 sample bounds, low-profile projection and portable editable-copy checks pass (25 catalog/contract tests); strict typecheck passes. Generated visual review follows GGL03. |
-| **GGL03** | `feat(graph2d-gallery): generate reproducible offline preview assets` | Shared sampling → SVG/native images; manifest hash/recipe invalidation, safe text, asset byte ceiling and reviewed geometry; no live sampler per card. |
+| **GGL02** | `feat(graph2d-presets): add curated seven-kind starter scenes` | Implemented 20 canonical seven-kind scenes, at least eight multi-object comparisons and six Featured entries. Reference-math, gaps/endpoints/strict fills, 512/1024 sample bounds, low-profile projection and portable editable-copy checks pass (25 catalog/contract tests); strict typecheck passes. Generated visual review follows GGL03. |
+| **GGL03** | `feat(graph2d-gallery): generate reproducible offline preview assets` | Implemented 20 generated SVG/PNG pairs from shared sampling/transforms with source/recipe/asset hashes, safe text, gaps/open/strict markers and a 235087-byte compressed bundle. Contact sheet reviewed; domain adjustments and interval-coverage checks prevent truncated starters. Preview/catalog tests and strict types pass; deterministic regeneration checked. |
 | **GGL04** | `feat(graph2d-gallery): add desktop web browse preview and safe project launch` | Toolbar/empty-state entry, categories/search/details; fresh project activation, durable current-work checkpoint including companions, failure recovery, keyboard/focus and responsive layout. |
 | **GGL05** | `feat(graph2d-gallery): add local favorites recent items and discovery states` | Bounded host preferences keyed by stable catalog IDs; missing/update behavior, empty search and resume links; no saved-scene duplication or analytics. |
-| **GGL06** | `test(graph2d-gallery): freeze desktop web catalog launch and rendering baseline` | Real Electron/browser browse → preview → open → edit → undo → save → handoff/reopen; current-work preservation, data sidecars, two locale contexts, numerical/visual baselines and cancelled-preview cleanup. |
+| **GGL06** | `test(graph2d-gallery): freeze desktop web catalog launch and rendering baseline` | Real Electron/browser browse â†’ preview â†’ open â†’ edit â†’ undo â†’ save â†’ handoff/reopen; current-work preservation, data sidecars, two locale contexts, numerical/visual baselines and cancelled-preview cleanup. |
 
-### Release B — Mobile from the same catalog
+### Release B â€” Mobile from the same catalog
 
 | ID | Planned commit | Scope and acceptance |
 | --- | --- | --- |
@@ -138,7 +138,7 @@ Every GGL ID is a reviewable commit. Focused types/tests and stated UI evidence 
 | **GGL08** | `feat(mobile-graphs): launch presets through ordinary project persistence` | One-tap fresh saved project, staged sidecars and rollback, preserve current edits, no dialogs for default title, normal save/share/export and catalog-independent edits. |
 | **GGL09** | `test(graph2d-gallery): freeze mobile launch and desktop return parity` | Model/source/sidecar round trip plus actual Android browse/open/edit/restart/return walkthrough; native large-text/focus/lifecycle evidence and iOS/tablet evidence explicitly pending when absent. This does not replace G13's six-slot gate. |
 
-### Release C — Interactive, personal and educational
+### Release C â€” Interactive, personal and educational
 
 | ID | Planned commit | Depends on | Scope and acceptance |
 | --- | --- | --- | --- |
@@ -148,7 +148,7 @@ Every GGL ID is a reviewable commit. Focused types/tests and stated UI evidence 
 | **GGL13** | `feat(graph2d-gallery): add guided concept collections and source-linked annotations` | GGL10, reviewed annotation schema/capabilities | Derivative/integral/asymptote/Taylor explanations, beginner/intermediate/advanced paths; add only supported bounded annotation primitives, staleness and keyboard/native parity. Requested results retain numerical confidence. |
 | **GGL14** | `feat(graph2d-showcase): add presentation mode and reproducible capture recipes` | G2D36, GGL06 | Clean graph view with accessible exit/controls; source/view/theme/window capture recipes, attribution and incomplete-result labeling; public export uses G2D36, not a thumbnail-only pipeline. |
 
-### Release D — Discovery and optional expansion
+### Release D â€” Discovery and optional expansion
 
 | ID | Planned commit | Depends on | Scope and acceptance |
 | --- | --- | --- | --- |
@@ -165,23 +165,23 @@ The `GRPH-Gxx` IDs identify the input proposal only. Executable repository work 
 
 | Proposed IDs | Integrated disposition |
 | --- | --- |
-| GRPH-G01–03 | GGL01 and GGL06; canonical templates/registry validation and host regressions |
-| GRPH-G04–05 | GGL02; algebra/trigonometry now, slider families after G2D38/GGL10 |
+| GRPH-G01â€“03 | GGL01 and GGL06; canonical templates/registry validation and host regressions |
+| GRPH-G04â€“05 | GGL02; algebra/trigonometry now, slider families after G2D38/GGL10 |
 | GRPH-G06 | Static supported comparisons in GGL02; guided/live calculus after GGL10/13 and required algorithms |
-| GRPH-G07–09 | Curated parametric/polar/implicit content in GGL02; arbitrary implicit promotion remains unsupported |
-| GRPH-G10–12 | GGL03–05; actual previews, gallery UI and local discovery delivered together |
-| GRPH-G13–14 | One shared G2D38 implementation, integrated through GGL10 |
-| GRPH-G15 | Multi-object canonical scenes in GGL01–02 from the start; richer annotation capability in GGL13 |
-| GRPH-G16–17 | GGL07–09; same catalog, ordinary mobile persistence, evidence |
+| GRPH-G07â€“09 | Curated parametric/polar/implicit content in GGL02; arbitrary implicit promotion remains unsupported |
+| GRPH-G10â€“12 | GGL03â€“05; actual previews, gallery UI and local discovery delivered together |
+| GRPH-G13â€“14 | One shared G2D38 implementation, integrated through GGL10 |
+| GRPH-G15 | Multi-object canonical scenes in GGL01â€“02 from the start; richer annotation capability in GGL13 |
+| GRPH-G16â€“17 | GGL07â€“09; same catalog, ordinary mobile persistence, evidence |
 | GRPH-G18 | GGL16; dedicated manual showcase after the basic mobile flow |
-| GRPH-G19–20 | GGL11; use the project library for My Graphs and saved copies |
-| GRPH-G21–22 | Existing G2D06/31/33 persistence/handoff plus GGL12; no second portable Graph source format |
-| GRPH-G23–24 | GGL15, with a separate explicit transport/hosting decision |
-| GRPH-G25–27 | GGL13; initial category/difficulty metadata already in GGL01 |
-| GRPH-G28 | Six Featured static items in GGL02; expand to 12–20 reviewed flagship scenes through GGL10/13 |
-| GRPH-G29–30 | GGL14 after G2D36; generated thumbnail recipe already GGL03 |
-| GRPH-G31–32 | GGL16; integrate existing home/explore surfaces |
-| GRPH-G33–34 | GGL17 when another module supplies a concrete adapter |
+| GRPH-G19â€“20 | GGL11; use the project library for My Graphs and saved copies |
+| GRPH-G21â€“22 | Existing G2D06/31/33 persistence/handoff plus GGL12; no second portable Graph source format |
+| GRPH-G23â€“24 | GGL15, with a separate explicit transport/hosting decision |
+| GRPH-G25â€“27 | GGL13; initial category/difficulty metadata already in GGL01 |
+| GRPH-G28 | Six Featured static items in GGL02; expand to 12â€“20 reviewed flagship scenes through GGL10/13 |
+| GRPH-G29â€“30 | GGL14 after G2D36; generated thumbnail recipe already GGL03 |
+| GRPH-G31â€“32 | GGL16; integrate existing home/explore surfaces |
+| GRPH-G33â€“34 | GGL17 when another module supplies a concrete adapter |
 | GRPH-G35 | Start in GGL02/03 and freeze in GGL06/09; regressions cannot wait until the end |
 | GRPH-G36 | Static/bounded previews mandatory in GGL03/04/07; measured large-list virtualization in GGL18 |
 | GRPH-G37 | Local favorites/recent in GGL05/11; keep usage data outside mathematical payloads |

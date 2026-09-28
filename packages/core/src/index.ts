@@ -64,6 +64,7 @@ export * from "./projectHandoff";
 export * from "./workspaceProjectHandoff";
 export * from "./graph2dPresets";
 export * from "./graph2dPresets/catalog";
+export * from "./graph2dPresets/preview";
 export * from "./scientificJobs";
 export * from "./topologyDocument";
 export * from "./topologyPersistence";

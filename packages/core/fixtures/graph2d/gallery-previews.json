@@ -1,0 +1,236 @@
+{
+  "format": "math3d.graph2d-gallery-previews",
+  "version": 1,
+  "recipe": {
+    "version": 1,
+    "width": 320,
+    "height": 180,
+    "maxSamples": 1024,
+    "maxDepth": 12,
+    "tolerancePx": 0.75,
+    "theme": "light"
+  },
+  "compressedBytes": 235087,
+  "entries": [
+    {
+      "id": "line-comparison",
+      "presetDigest": "sha256:cc4fc22adc575c83b19a5f5ec5895a8e29d07823ed514e2b697344d398fa8a06",
+      "key": "sha256:c6efdbc6652542ab81e06831c339f0744f4cda92628dffc603b451012e824d7c",
+      "svg": "line-comparison.svg",
+      "png": "line-comparison.png",
+      "svgHash": "sha256:1119043fdbdaa8c1845aef251a2283c7140bfdf9e60d7d703274094cb24029ab",
+      "pngHash": "sha256:8e60c0921bd8feaf0435a740ed9ce61f95d8eb91524da6dd4a908e57f421493c",
+      "samples": 210,
+      "diagnostics": []
+    },
+    {
+      "id": "translated-quadratic",
+      "presetDigest": "sha256:3db48a644d53cdc46a6c74a2343b8d666e97d436c0d05b71f840f0bc4cea6b51",
+      "key": "sha256:2fecf24714e4784b33c5095a34f80fc7b37edc5e9091b54f2793742207db13d9",
+      "svg": "translated-quadratic.svg",
+      "png": "translated-quadratic.png",
+      "svgHash": "sha256:e783ab1c19f0307d886503c2674e654baa6cd7dd05f110725cd42c52347ddcd9",
+      "pngHash": "sha256:b6c8c4aaca39587f91af0033f1991f1158ef4899b5ced36cbb43d5e4ad189f1f",
+      "samples": 210,
+      "diagnostics": []
+    },
+    {
+      "id": "cubic-extrema",
+      "presetDigest": "sha256:3837eedf15233af70dfea67d9b1c293a4fcbb176fb9de49f21fc9baa3b926977",
+      "key": "sha256:d51e32aa15cc6b63cf746c1cbbb1e123077484f82e1b33ee6fd9900b3bd70fe0",
+      "svg": "cubic-extrema.svg",
+      "png": "cubic-extrema.png",
+      "svgHash": "sha256:b6e9f2b8b302a12113c724f18eff03d33406fbaed74096893042dd0915112a81",
+      "pngHash": "sha256:0f959a5e02cac90bc9c2237825dd6e1dbec8ac921ea4540d9851d6e299b4c2c3",
+      "samples": 137,
+      "diagnostics": []
+    },
+    {
+      "id": "repeated-root",
+      "presetDigest": "sha256:f8466089be1af284315c580ca2b64e8a8ad737889f1440179a4643c3d41b155c",
+      "key": "sha256:39d6c5db97c0d19985645fcd768f3cb13db13ba51772eddf3a4eee2e6e4b6fa4",
+      "svg": "repeated-root.svg",
+      "png": "repeated-root.png",
+      "svgHash": "sha256:35c0b6a4b355fb2af6f0ce8eb2b3bfb75ec8644e1b0cf7383fc3b5f0f53e272a",
+      "pngHash": "sha256:360ccea09a6006f9b457c4b1eebe98bea69c77bc2dc4ef1269d4c9fde59b1915",
+      "samples": 161,
+      "diagnostics": []
+    },
+    {
+      "id": "reciprocal-pole",
+      "presetDigest": "sha256:2a166f5f6f4f18e1ecb16bc24b6a44bb7dd810a1e0578562f516d5db3466b88f",
+      "key": "sha256:04593ec04f3fbf7ca32c016ea684bf0e9e7366f5550699cf984c888425cfa022",
+      "svg": "reciprocal-pole.svg",
+      "png": "reciprocal-pole.png",
+      "svgHash": "sha256:6eeb747dff831bbb27ca967c5299117aafe441579f82179f9e34db285af79f59",
+      "pngHash": "sha256:06cf64e3a21b5d29c942bb11000d9dd969e152c0c7e33e1e8102fa4ad84321ec",
+      "samples": 250,
+      "diagnostics": []
+    },
+    {
+      "id": "exponential-log",
+      "presetDigest": "sha256:bf6701ba565e8fd6607d340c201551374ff68028b9e4fd8a87be49178ee11ac0",
+      "key": "sha256:e77b11c7c19a33f77a2178eb36081f3d5c38f8c4eb0ed97b9e9304ba6fa9fa75",
+      "svg": "exponential-log.svg",
+      "png": "exponential-log.png",
+      "svgHash": "sha256:6196155ff8b27e98e50d4a1c8b17a2156fafeff09c44150b8b003f26deea31c6",
+      "pngHash": "sha256:79b760a384fe7dcdf522ca5b090cea69c32b2ddf6c32a6321e795c27e2e20a21",
+      "samples": 273,
+      "diagnostics": []
+    },
+    {
+      "id": "sine-cosine",
+      "presetDigest": "sha256:b6574902f82d6966c050131777f0db0c85fe3af5224ecad3bab5f80a7b75c525",
+      "key": "sha256:038911a9460c8c6bcb0cd55ce7c021fa6528867b7888d678113d24597de51a66",
+      "svg": "sine-cosine.svg",
+      "png": "sine-cosine.png",
+      "svgHash": "sha256:4acc023f03d1b4d99622598cf2273aa5367c04802c082c09ec4bbad45f54c901",
+      "pngHash": "sha256:18b495166a9587183763454852d4a86cee59f2a72c9c7fc52592eb91c2c03c9e",
+      "samples": 370,
+      "diagnostics": []
+    },
+    {
+      "id": "damped-wave",
+      "presetDigest": "sha256:d2f33e19ef1415f3c9425b7862425750903a63dfb48d1749eafd9d040d0cdaa5",
+      "key": "sha256:b1caa71fc49f92b7341d33194ee22366acbe053577aaf0af5b6f1080f28808bd",
+      "svg": "damped-wave.svg",
+      "png": "damped-wave.png",
+      "svgHash": "sha256:b93519addf179b7ad00cc03c659755630d8c7e23542c1684c127bd48edee3011",
+      "pngHash": "sha256:f3f446f4d98643e67f31d0698c0d446e9d4e3e04d86899e011e494c05918a2d9",
+      "samples": 443,
+      "diagnostics": []
+    },
+    {
+      "id": "wave-beats",
+      "presetDigest": "sha256:da44c4e12b37920fdda49bc6130fcfa2347f3e0f9f0ee45ed9a413ff36c5d836",
+      "key": "sha256:03648e4a32c413d2693db4d7eca5d49e0fe113092f5ec62c780ec543c8a13703",
+      "svg": "wave-beats.svg",
+      "png": "wave-beats.png",
+      "svgHash": "sha256:1ef87727da5de39318b1170ad85c2dfff54fb6fbbf9eb189263972dc12610344",
+      "pngHash": "sha256:14df9b8b8f7f9ae57836b8aba8ffb4979391ba3a5e42c60058295909c5120a7e",
+      "samples": 428,
+      "diagnostics": []
+    },
+    {
+      "id": "sine-derivative",
+      "presetDigest": "sha256:63eabaa27a9a98b17e9ac75307b44f9e086cfa9819b0d8fe2d304035fff8bdd6",
+      "key": "sha256:b4da4e816f80d799879c6944eeae3d6cd3df53b854892cda9ee19d3472fae708",
+      "svg": "sine-derivative.svg",
+      "png": "sine-derivative.png",
+      "svgHash": "sha256:e85b156d5326de2f4bfd0f800ff045f08a0ef2626c927307164ed0e10c5de50b",
+      "pngHash": "sha256:18b495166a9587183763454852d4a86cee59f2a72c9c7fc52592eb91c2c03c9e",
+      "samples": 370,
+      "diagnostics": []
+    },
+    {
+      "id": "parabola-tangent",
+      "presetDigest": "sha256:0e583bebdaf70229435262ab046d49235cb0672d214d35a169178757d8450ac7",
+      "key": "sha256:32e43fd8f2d6984ce4ad8be0fd3a74b0cbe5ada750371163ee6d1cbb5aef0218",
+      "svg": "parabola-tangent.svg",
+      "png": "parabola-tangent.png",
+      "svgHash": "sha256:bf925d218d7baec08d2a543b8e526022cb93df7937b685b674f4ca42ea552b00",
+      "pngHash": "sha256:14abbcd8855e0cd704865471b6fe35a33369d4edae9d43e77a5eb1712a3d1107",
+      "samples": 210,
+      "diagnostics": []
+    },
+    {
+      "id": "circle-ellipse",
+      "presetDigest": "sha256:617ba939fec9310048694047ee77084dba47af91ad442d948ec56990ba4588e2",
+      "key": "sha256:68054fbe98e80b13da4157b50ab58e0e65eeb361e54f8538ede40a960fa64475",
+      "svg": "circle-ellipse.svg",
+      "png": "circle-ellipse.png",
+      "svgHash": "sha256:d7dc8540b72058e44ff12828a85fd9cdaef4da5d43f2ac364020485e886cd96f",
+      "pngHash": "sha256:ebf6f2cf4938bdfa3f17f810ff5b6e2d8ee49eb20a0928b42430434c4bc90920",
+      "samples": 258,
+      "diagnostics": []
+    },
+    {
+      "id": "lissajous",
+      "presetDigest": "sha256:8af775fb3f27a4a9f480771f1b0fdf517120fe616e816462e646a8bbcd43e03a",
+      "key": "sha256:b501d6dabb53880588edd1d83e94198d9e100e227b6d37eefd20655285fed063",
+      "svg": "lissajous.svg",
+      "png": "lissajous.png",
+      "svgHash": "sha256:0f860e692ea0701dd1616b68e9b651bc56a5eff4b7d53193d9da263af0269689",
+      "pngHash": "sha256:4d836abba52e3f87b511a5ca33d50afbc77ad2bee06c2ac1630ee4379dda5fe5",
+      "samples": 329,
+      "diagnostics": []
+    },
+    {
+      "id": "cycloid",
+      "presetDigest": "sha256:fbe67cb0e093d34e4ca167bc1ef2274f0201ebf6e6f31aa1af1052621b0e1481",
+      "key": "sha256:2e2d9560bfe24d412c16b26b4946969ca9777ee397cd8a1dbe52d87bcc3ecea6",
+      "svg": "cycloid.svg",
+      "png": "cycloid.png",
+      "svgHash": "sha256:bd7eada93418f3b085440650d7dd53d1b983b28b8182b4381cefe3587c5c0b34",
+      "pngHash": "sha256:42586c41de08b70c376e960f3d883523a47131a70c2928936de90dc2fb22bc0b",
+      "samples": 185,
+      "diagnostics": []
+    },
+    {
+      "id": "polar-rose",
+      "presetDigest": "sha256:329599ebbdb82d6f7b38a114d96cc7aed70ab04fb7765dd6c51a1dbd63edd2b0",
+      "key": "sha256:ea599315c8143c89154157c028798e6a965bd053f36866f686ff05ab6830ffed",
+      "svg": "polar-rose.svg",
+      "png": "polar-rose.png",
+      "svgHash": "sha256:113dc27960cc2f665c670202ed155db558ccd4bea73e27bfb88ace7e3ed7a2fb",
+      "pngHash": "sha256:1809656848200835e4bdddd3df9b86982b4ceaa70c86f987831f0e7871302aaa",
+      "samples": 417,
+      "diagnostics": []
+    },
+    {
+      "id": "archimedean-spiral",
+      "presetDigest": "sha256:fe6a591104c919d528e562b654271428ce7d577a0acd2f59349627d28ec5c7d6",
+      "key": "sha256:9945561a9dabab99fefd163b35cedc3dc4296b60386cf0e7f5d662169e51c973",
+      "svg": "archimedean-spiral.svg",
+      "png": "archimedean-spiral.png",
+      "svgHash": "sha256:60311c262540054439159b65e85ec03e1cf8fe9197f713aa5e16317b29b21064",
+      "pngHash": "sha256:ee395c42e9efce0ea471dff993ad1a9ce0cceaba9d1acc974371f04c6c6f4448",
+      "samples": 291,
+      "diagnostics": []
+    },
+    {
+      "id": "cardioid",
+      "presetDigest": "sha256:af994a8859dd40c0aed89374bf9211535a0b5b839d706e4a032489c71ed2f590",
+      "key": "sha256:c2bbea1ee81609a28485ce71d2cc2e22bdcd35dc27224b61afdea9e92a6042bf",
+      "svg": "cardioid.svg",
+      "png": "cardioid.png",
+      "svgHash": "sha256:527a7967e7bf182b78e06559d59320078717eee29331c9e13297a7009ebbef49",
+      "pngHash": "sha256:97d74c79892682bfc53f0a818ba1fdec5758453dbd5890e6e52eb7c763bddce9",
+      "samples": 157,
+      "diagnostics": []
+    },
+    {
+      "id": "implicit-conics",
+      "presetDigest": "sha256:26fb484b1c8f221ad66acda91a526ff50eda7c6d1d0c67989526b702bb5a73ec",
+      "key": "sha256:9cbd6ac088acfd877fc0937972c25b3f86d1f00d68a4d1b928bcefe4f00aaf56",
+      "svg": "implicit-conics.svg",
+      "png": "implicit-conics.png",
+      "svgHash": "sha256:22fc51d995e45ddacaa484d633b33b5179529a2b7670dca66e14d6f4af52c939",
+      "pngHash": "sha256:234d0a0e313e27b7c0309ff7fb3c54b431de204f021ec5dcb94dc4822656c08f",
+      "samples": 882,
+      "diagnostics": []
+    },
+    {
+      "id": "strict-disk",
+      "presetDigest": "sha256:d474c5a65ab605e0e5580ddc70185a77e68a65ee7325ced5c3571d73801b5418",
+      "key": "sha256:e9f21b70d6caf90fa5d0b5c2f31f95c10cec63a32e34c9407a7bdbc1abc30805",
+      "svg": "strict-disk.svg",
+      "png": "strict-disk.png",
+      "svgHash": "sha256:5a83e59dd9b3eb6923ab6d14ca75ae7e5cffca5bed23204de1d66af6fc44f279",
+      "pngHash": "sha256:bc9c3b77882b6eb6b62dec30149d58a0fab83235f1d097324a11bc66224d38ad",
+      "samples": 613,
+      "diagnostics": []
+    },
+    {
+      "id": "piecewise-data-gaps",
+      "presetDigest": "sha256:af6e3854062647cc0af005ea90ef2fadcbe3563504237b6e794cd5083913add4",
+      "key": "sha256:98f5ae6d5fe9c43dbaf27b128af4c6c8dc501ef2a7c1bb2150277974b8e51f93",
+      "svg": "piecewise-data-gaps.svg",
+      "png": "piecewise-data-gaps.png",
+      "svgHash": "sha256:c323871a38f7860613163269f5eeafadd76bf7c031f819d21c1144a4a06942b4",
+      "pngHash": "sha256:d5874229f7d9edd00a3cbbfb751c4c1df6f10c03681ae32afa95a4492265cbe4",
+      "samples": 219,
+      "diagnostics": []
+    }
+  ]
+}
