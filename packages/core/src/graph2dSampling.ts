@@ -78,6 +78,11 @@ export const sampleGraph2DExplicit = (request: Graph2DSamplingRequest): Graph2DS
     if (middleX === a || middleX === b) { leaves.push({ left, right, split: !left || !right }); return; }
     const middle = evaluate(middleX);
     const pixelWidth = (b - a) / (request.viewport.xMax - request.viewport.xMin) * request.width;
+    // Do not exhaust the scene budget subdividing an entirely undefined screen cell.
+    // A bounded scan can miss narrow valid islands: retain a gap and report uncertainty.
+    if (!left && !right && !middle && pixelWidth <= Math.max(1, request.policy.tolerancePx * 4)) {
+      note("unresolved-cell"); leaves.push({ left, right, split: true }); return;
+    }
     const invalid = !left || !right || !middle;
     let deviation = 0;
     let jump = false;
@@ -138,6 +143,6 @@ export const sampleGraph2DExplicit = (request: Graph2DSamplingRequest): Graph2DS
   }
   flush();
   const diagnostics = [...counts.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([code, count]) => ({ code, count }));
-  const incomplete = diagnostics.some((item) => ["depth-limit", "sample-limit", "segment-limit", "output-limit", "deadline"].includes(item.code));
+  const incomplete = diagnostics.some((item) => ["depth-limit", "sample-limit", "segment-limit", "output-limit", "deadline", "unresolved-cell"].includes(item.code));
   return { samplerVersion: GRAPH2D_SAMPLER_VERSION, segments, samplesEvaluated, converged: !incomplete, diagnostics };
 };

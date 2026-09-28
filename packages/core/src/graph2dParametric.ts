@@ -58,6 +58,11 @@ export const sampleGraph2DPath = (request: Graph2DPathSamplingRequest): Graph2DS
       leaves.push({ left, right, split: !left || !right }); return;
     }
     const mid = (a + b) / 2, middle = point(mid);
+    // Undefined paths have no screen coordinates. Bound their parameter cell resolution
+    // using the larger viewport dimension, and keep the region explicitly unresolved.
+    if (!left && !right && !middle && (b - a) / (request.domain.max - request.domain.min) <= Math.max(1, request.policy.tolerancePx * 4) / Math.max(request.width, request.height)) {
+      note("unresolved-cell"); leaves.push({ left, right, split: true }); return;
+    }
     let deviation = Infinity, jump = false;
     if (left && middle && right) {
       const l = screen(left), m = screen(middle), r = screen(right);
@@ -116,7 +121,7 @@ export const sampleGraph2DPath = (request: Graph2DPathSamplingRequest): Graph2DS
   flush();
   const diagnostics = [...counts.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([code, count]) => ({ code, count }));
   return { samplerVersion: GRAPH2D_SAMPLER_VERSION, segments, samplesEvaluated,
-    converged: !diagnostics.some((entry) => ["depth-limit", "sample-limit", "segment-limit", "output-limit", "deadline"].includes(entry.code)),
+    converged: !diagnostics.some((entry) => ["depth-limit", "sample-limit", "segment-limit", "output-limit", "deadline", "unresolved-cell"].includes(entry.code)),
     diagnostics };
 };
 

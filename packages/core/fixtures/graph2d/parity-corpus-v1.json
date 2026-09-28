@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "tolerance": { "runtimeCoordinate": 1e-8, "implicitResidual": 0.03, "analyticResidual": 1e-10 },
+  "cases": [
+    { "id": "quadratic", "type": "create", "draft": { "expression": "x^2" }, "oracle": "quadratic" },
+    { "id": "pole", "type": "create", "draft": { "expression": "1/x" }, "oracle": "pole" },
+    { "id": "undefined-half", "type": "create", "draft": { "expression": "sqrt(x)" }, "oracle": "sqrt" },
+    { "id": "tiny-domain", "type": "create", "draft": { "expression": "x/0.000000001", "domain": { "min": -1e-9, "max": 1e-9, "includeMin": true, "includeMax": false } }, "viewport": { "xMin": -1e-9, "xMax": 1e-9, "yMin": -2, "yMax": 2, "aspect": "free" }, "oracle": "tiny" },
+    { "id": "extreme-domain", "type": "create", "draft": { "expression": "x/1000000", "domain": { "min": -1e150, "max": 1e150, "includeMin": true, "includeMax": true } }, "viewport": { "xMin": -1e6, "xMax": 1e6, "yMin": -2, "yMax": 2, "aspect": "free" }, "oracle": "extreme" },
+    { "id": "parametric-half", "type": "create-parametric", "draft": { "xExpression": "t", "yExpression": "sqrt(t)" }, "oracle": "sqrt" },
+    { "id": "polar-half", "type": "create-polar", "draft": { "rExpression": "sqrt(theta)" }, "oracle": "polar-sqrt" },
+    { "id": "parametric-circle", "type": "create-parametric", "draft": { "xExpression": "cos(t)", "yExpression": "sin(t)", "domain": { "min": 0, "max": 6.283185307179586, "includeMin": true, "includeMax": true } }, "oracle": "unit-circle" },
+    { "id": "polar-circle", "type": "create-polar", "draft": { "rExpression": "2", "domain": { "min": 0, "max": 6.283185307179586, "includeMin": false, "includeMax": true } }, "oracle": "radius-two" },
+    { "id": "implicit-circle", "type": "create-implicit", "draft": { "expression": "x^2+y^2-1", "yDomain": { "min": -2, "max": 2, "includeMin": true, "includeMax": true } }, "oracle": "implicit-circle" },
+    { "id": "strict-disk", "type": "create-inequality", "draft": { "operator": "all", "clauses": [{ "expression": "x^2+y^2-1", "comparator": "<" }], "yDomain": { "min": -2, "max": 2, "includeMin": true, "includeMax": true } }, "oracle": "strict-disk" },
+    { "id": "piecewise-jump", "type": "create-piecewise", "draft": { "pieces": [{ "expression": "-1", "domain": { "min": -2, "max": 0, "includeMin": true, "includeMax": false } }, { "expression": "1", "domain": { "min": 0, "max": 2, "includeMin": true, "includeMax": true } }] }, "oracle": "jump" },
+    { "id": "data-gap", "type": "create-point-series", "draft": { "mode": "line" }, "rows": [{ "id": "row_1", "x": -2, "y": 4 }, { "id": "row_2", "x": -1, "y": 1 }, { "id": "row_3", "x": 0, "y": null }, { "id": "row_4", "x": 1, "y": 1 }, { "id": "row_5", "x": 2, "y": 4 }], "oracle": "data-gap" }
+  ]
+}

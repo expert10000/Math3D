@@ -17,6 +17,8 @@
   "include": [
     "../../playwright.config.ts",
     "./**/*.ts",
+    "../graph2d-web/**/*.ts",
+    "../../playwright.graph2d.config.ts",
     "../../scripts/**/*.mjs"
   ]
 }

@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "lib": ["ES2022", "DOM"],
+    "module": "ESNext", "moduleResolution": "Bundler", "resolveJsonModule": true,
+    "strict": true, "noEmit": true, "types": ["node"], "skipLibCheck": true,
+    "baseUrl": ".", "paths": { "vitest": ["../../renderer/node_modules/vitest/dist/index.d.ts"] },
+    "esModuleInterop": true
+  },
+  "include": ["../fixtures/graph2dParityCorpus.ts", "../unit/mobileGraphParityCorpus.test.ts", "../unit/mobileGraphRoundTrip.test.ts"]
+}
