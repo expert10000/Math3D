@@ -11,7 +11,7 @@ export const mobileGraphPointTables = new Graph2DPointTableStore({
   write: (id, content) => { directory.create({ intermediates: true, idempotent: true }); const target = file(id);
     // Immutable content-addressed files; an interrupted write is detected by the shared checksum reader.
     target.create({ intermediates: true, overwrite: true }); target.write(content, { encoding: "utf8" }); },
-});
+}, 4 * 1024 * 1024);
 export const pickMobileGraphPointText = async (): Promise<string | null> => {
   try {
   const result = await File.pickFileAsync();

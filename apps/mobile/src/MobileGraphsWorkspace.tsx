@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from "react-native";
 import { fitGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, pickGraph2DProbe,
-  resolveGraph2DViewport, sampleGraph2DScene, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion } from "@math3d/core";
+  resolveGraph2DViewport, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { MobileGraphGesture, mobileGraphProbeRadius, type GraphTouch } from "./models/mobileGraphGestures";
 import { mobileGraphCapabilities } from "./models/mobileGraphProject";
-import { mobileGraphSamplingPolicy, mobileGraphDisplayScene, MOBILE_GRAPH_DEFAULT_OVERLAYS } from "./models/mobileGraphDisplay";
+import { mobileGraphDisplayScene, MOBILE_GRAPH_DEFAULT_OVERLAYS } from "./models/mobileGraphDisplay";
+import { useMobileGraphSampling } from "./useMobileGraphSampling";
 import { MobileGraphDisplayPanel } from "./MobileGraphDisplayPanel";
 import { mobileGraphAreaRects } from "./viewer/mobileGraphOverlays";
 import { editMobileGraphProbes } from "./models/mobileGraphProbes";
@@ -56,13 +57,10 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     const listener = AppState.addEventListener("change", (state) => { if (state !== "active") cancel(); });
     return () => { listener.remove(); gesture.current.cancel(); };
   }, []);
-  const series = useMemo(() => {
-    const limited = { ...document, display: { ...document.display, sampling: mobileGraphSamplingPolicy(document, !!preview) } };
-    const pointTables = Object.fromEntries(document.source.objects.flatMap((object) => object.kind === "point-series" ? [[object.table.id, mobileGraphPointTables.resolve(object.table)]] : []));
-    return sampleGraph2DScene({ document: limited, viewport, ...size, interaction: !!preview, pointTables });
-  }, [document.source, document.display, preview, viewport, size]);
-  const geometry = useMemo(() => mobileGraphAdvancedGeometry(series, viewport, size), [series, viewport, size]);
-  const lines = useMemo(() => projectMobileGraphLines(geometry.boundaries, viewport, size, document.selection.objectId), [geometry, viewport, size, document.selection.objectId]);
+  const sampling = useMobileGraphSampling(document, viewport, size, !!preview, () => setAnalysis(null));
+  const { series, budget } = sampling;
+  const geometry = useMemo(() => mobileGraphAdvancedGeometry(series, viewport, size, budget), [series, viewport, size, budget.fills, budget.markers]);
+  const lines = useMemo(() => projectMobileGraphLines(geometry.boundaries, viewport, size, document.selection.objectId, budget.lines), [geometry, viewport, size, document.selection.objectId, budget.lines]);
   const ticks = mobileGraphTicks(viewport, size);
   const bounds = resolveGraph2DViewport(viewport, size);
   const probe = document.selection.probe;
@@ -74,6 +72,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     catch (caught) { setError((caught as Error).message); return false; }
   };
   const tap = (screen: { x: number; y: number }) => commit(() => {
+    if (!sampling.ready) throw new TypeError("Graph updating; try the probe again after sampling settles.");
     const picked = pickGraph2DProbe({ document, series, viewport: document.display.viewport, size, screen,
       previous: document.selection, radiusPx: mobileGraphProbeRadius(size.width) });
     if (picked.selection.probe) onHaptic?.();
@@ -120,7 +119,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {geometry.fills.map((rect, index) => <View key={`region${index}`} style={{ position: "absolute", ...rect, backgroundColor: rect.color, opacity: 0.18 }} />)}
         {overlays.area && analysisCurrent && analysis && document.display.objects.find((style) => style.objectId === analysisDraft.objectId)?.visible &&
-          mobileGraphAreaRects(analysis, viewport, size).map((rect, index) => <View key={`area${index}`} style={{ position: "absolute", ...rect, backgroundColor: rect.color, opacity: 0.5 }} />)}
+          mobileGraphAreaRects(analysis, viewport, size, budget.fills).map((rect, index) => <View key={`area${index}`} style={{ position: "absolute", ...rect, backgroundColor: rect.color, opacity: 0.5 }} />)}
         {document.display.axes.x && axis({ x: bounds.xMin, y: 0 }, { x: bounds.xMax, y: 0 })}
         {document.display.axes.y && axis({ x: 0, y: bounds.yMin }, { x: 0, y: bounds.yMax })}
         {(document.display.axes.grid || document.display.axes.labels) && ticks.x.map((x) => {
@@ -145,7 +144,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
             b={graph2DWorldToScreen(viewport, size, points[1])} color="#b45309" width={2} />;
         })}
         {overlays.features && analysis && analysisCurrent && (analysis.kind === "features" || analysis.kind === "intersections") && analysis.rows.filter((row) =>
-          row.probe && document.display.objects.find((style) => style.objectId === row.probe!.objectId)?.visible).slice(0, 128).map((row, index) => {
+          row.probe && document.display.objects.find((style) => style.objectId === row.probe!.objectId)?.visible).slice(0, budget.markers).map((row, index) => {
           const point = graph2DWorldToScreen(viewport, size, row.probe!);
           return point.x >= 0 && point.x <= size.width && point.y >= 0 && point.y <= size.height ? <View key={`feature${index}`} style={{ position: "absolute",
             left: point.x - 4, top: point.y - 4, width: 8, height: 8, borderRadius: 4, backgroundColor: "#9333ea" }} /> : null;
@@ -165,12 +164,17 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     </View>
     <Text accessibilityLiveRegion="polite" style={s.readout} numberOfLines={2} testID="mobile-graph-probe">{probe ?
       `${document.source.objects.find((object) => object.id === probe.objectId)?.label}: x=${probe.x.toPrecision(6)}, y=${probe.y.toPrecision(6)}${probe.parameter !== undefined ? `, parameter=${probe.parameter.toPrecision(6)}` : ""}${probe.rowId ? `, ${probe.rowId}` : ""}` : "Tap a curve to probe. Tap overlaps again to cycle."}</Text>
-    {(geometry.truncated || series.some((item) => !item.artifact.converged)) && <Text style={s.readout}>Approximate/incomplete display. Check Display diagnostics; missing data requires its CSV/TSV sidecar.</Text>}
-    {error || message ? <Text accessibilityLiveRegion="polite" numberOfLines={2} style={s.readout}>{error || message}</Text> : null}
+    {/* Fixed status height prevents ready/incomplete changes from resizing and resampling the plot in a loop. */}
+    <Text style={[s.readout, { height: 36 }]} numberOfLines={2}>{[
+      !sampling.ready ? sampling.active ? "Graph updating…" : "Graph sampling paused in background." : "",
+      geometry.truncated || sampling.truncated || lines.length >= budget.lines || series.some((item) => !item.artifact.converged)
+        ? "Approximate/incomplete display. Check Display diagnostics; missing data requires its CSV/TSV sidecar." : "",
+    ].filter(Boolean).join(" ")}</Text>
+    {error || sampling.error || message ? <Text accessibilityLiveRegion="polite" numberOfLines={2} style={s.readout}>{error || sampling.error || message}</Text> : null}
     </View>
     {panelDestination && <ScrollView keyboardShouldPersistTaps="handled" style={[s.sheet, layout.split && s.sidePanel, layout.split && { width: layout.panelWidth }]}
       accessibilityLabel={`${panelDestination} ${layout.split ? "side panel" : "bottom sheet"}`} testID={`mobile-graph-${panelDestination.toLowerCase()}-sheet`}>
-      {panelDestination === "Display" ? <MobileGraphDisplayPanel document={document} series={series} overlays={overlays} lineCount={lines.length}
+      {panelDestination === "Display" ? <MobileGraphDisplayPanel document={document} series={series} overlays={overlays} lineCount={lines.length} sampling={sampling}
         onOverlays={setOverlays} onAxis={(key) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "axis", key }), "style"))}
         onQuality={(quality) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "quality", quality }), "style"))} /> : panelDestination === "Promote" ?
         <MobileGraphPromotionPanel document={document} promotions={promotions} onCreate={onPromotion}

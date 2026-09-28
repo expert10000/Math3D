@@ -71,8 +71,23 @@ export const previewGraph2DPointImport = (text: string): Graph2DPointImportPrevi
 /** Content-addressed sidecar. The Graph2D document stores only its checked reference. */
 export class Graph2DPointTableStore {
   readonly #tables = new Map<string, readonly Graph2DPointRow[]>();
+  readonly #sizes = new Map<string, number>();
   readonly backing?: Graph2DPointTableBacking;
-  constructor(backing?: Graph2DPointTableBacking) { this.backing = backing; }
+  readonly maxCacheBytes: number;
+  constructor(backing?: Graph2DPointTableBacking, maxCacheBytes = Infinity) {
+    if (maxCacheBytes !== Infinity && (!Number.isSafeInteger(maxCacheBytes) || maxCacheBytes < 0)) throw new TypeError("Invalid point table cache budget.");
+    this.backing = backing; this.maxCacheBytes = maxCacheBytes;
+  }
+  clearCache() { this.#tables.clear(); this.#sizes.clear(); }
+  get cachedBytes() { return [...this.#sizes.values()].reduce((sum, bytes) => sum + bytes, 0); }
+  #remember(id: string, rows: readonly Graph2DPointRow[], bytes: number) {
+    this.#tables.delete(id); this.#sizes.delete(id);
+    if (bytes > this.maxCacheBytes) return;
+    while (this.cachedBytes + bytes > this.maxCacheBytes && this.#tables.size) {
+      const oldest = this.#tables.keys().next().value!; this.#tables.delete(oldest); this.#sizes.delete(oldest);
+    }
+    this.#tables.set(id, rows); this.#sizes.set(id, bytes);
+  }
 
   publish(rows: readonly Graph2DPointRow[]): Graph2DPointTableReference {
     if (!validRows(rows)) throw new TypeError("Point table rows or row IDs are invalid.");
@@ -83,7 +98,7 @@ export class Graph2DPointTableStore {
     const reference: Graph2DPointTableReference = { id: `graph2d-table:${checksum.slice(7, 39)}`,
       checksum, rowCount: rows.length, encoding: "math3d.graph2d-point-table.v1" };
     this.backing?.write(reference.id, content);
-    this.#tables.set(reference.id, JSON.parse(content) as Graph2DPointRow[]);
+    this.#remember(reference.id, JSON.parse(content) as Graph2DPointRow[], bytes.length);
     return reference;
   }
 
@@ -97,7 +112,7 @@ export class Graph2DPointTableStore {
         if (!Array.isArray(parsed) || !validRows(parsed) ||
           sha256Checksum(new TextEncoder().encode(canonicalJsonStringify(parsed))) !== reference.checksum) return null;
         rows = parsed;
-        this.#tables.set(reference.id, rows);
+        this.#remember(reference.id, rows, new TextEncoder().encode(content).length);
       } catch { return null; }
     }
     return rows.length === reference.rowCount &&
@@ -127,8 +142,8 @@ export const sampleGraph2DPointSeries = (object: Graph2DPointSeriesObject,
     samplesEvaluated: 0, converged: state === "ready",
     diagnostics: state === "ready" ? [] : [{ code: state === "missing-table" ? "missing-table" : "sample-limit", count: 1 }],
   });
+  if (!Number.isSafeInteger(maxSamples) || maxSamples < object.table.rowCount) return empty("complexity-limit");
   if (!rows || !validRows(rows) || rows.length !== object.table.rowCount) return empty("missing-table");
-  if (!Number.isSafeInteger(maxSamples) || maxSamples < rows.length) return empty("complexity-limit");
   const points = rows.filter((row) => row.y !== null).map((row) => ({ x: row.x, y: row.y!, rowId: row.id }));
   const segments: Graph2DSampleSegment[] = [];
   if (object.mode === "points") for (const point of points)

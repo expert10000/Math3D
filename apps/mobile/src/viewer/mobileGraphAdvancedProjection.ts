@@ -2,7 +2,9 @@ import { graph2DWorldToScreen, type Graph2DRegionArtifact, type Graph2DPointSeri
   type Graph2DSampledSeries, type Graph2DViewport, type Graph2DScreenSize } from "@math3d/core";
 import { mobileGraphFillRect, type MobileGraphRect } from "./mobileGraphOverlays";
 
-export const mobileGraphAdvancedGeometry = (series: readonly Graph2DSampledSeries[], viewport: Graph2DViewport, size: Graph2DScreenSize) => {
+export const mobileGraphAdvancedGeometry = (series: readonly Graph2DSampledSeries[], viewport: Graph2DViewport, size: Graph2DScreenSize,
+  limits = { fills: 256, markers: 128 }) => {
+  const fillLimit = Math.max(0, Math.min(256, limits.fills)), markerLimit = Math.max(0, Math.min(128, limits.markers));
   const fills: MobileGraphRect[] = [], points: { x: number; y: number; color: string; rowId?: string; open?: boolean }[] = [];
   const boundaries: Graph2DSampledSeries[] = [];
   let fillsSeen = 0, pointsSeen = 0;
@@ -11,7 +13,7 @@ export const mobileGraphAdvancedGeometry = (series: readonly Graph2DSampledSerie
       const artifact = item.artifact as Graph2DRegionArtifact;
       for (const fill of artifact.fills) {
         const rect = mobileGraphFillRect(viewport, size, fill, item.style.color);
-        if (rect) { fillsSeen++; if (fills.length < 256) fills.push(rect); }
+        if (rect) { fillsSeen++; if (fills.length < fillLimit) fills.push(rect); }
       }
       for (const boundary of artifact.boundaries) boundaries.push({ ...item, style: { ...item.style, lineStyle: boundary.strict ? "dashed" : "solid" }, artifact: { ...artifact, segments: boundary.segments } });
     } else {
@@ -20,14 +22,14 @@ export const mobileGraphAdvancedGeometry = (series: readonly Graph2DSampledSerie
         if (!point || !open) continue;
         const pixel = graph2DWorldToScreen(viewport, size, point);
         if (pixel.x >= 0 && pixel.x <= size.width && pixel.y >= 0 && pixel.y <= size.height) {
-          pointsSeen++; if (points.length < 128) points.push({ ...pixel, color: item.style.color, open: true });
+          pointsSeen++; if (points.length < markerLimit) points.push({ ...pixel, color: item.style.color, open: true });
         }
       }
       if ("kind" in item.artifact && item.artifact.kind === "point-series") {
         for (const point of (item.artifact as Graph2DPointSeriesArtifact).points) {
           const pixel = graph2DWorldToScreen(viewport, size, point);
           if (pixel.x >= 0 && pixel.x <= size.width && pixel.y >= 0 && pixel.y <= size.height) {
-            pointsSeen++; if (points.length < 128) points.push({ ...pixel, color: item.style.color, rowId: point.rowId });
+            pointsSeen++; if (points.length < markerLimit) points.push({ ...pixel, color: item.style.color, rowId: point.rowId });
           }
         }
       }

@@ -11,8 +11,8 @@ export const mobileGraphFillRect = (viewport: Graph2DViewport, size: Graph2DScre
   return [left, right, top, bottom].every(Number.isFinite) && left < right && top < bottom ? { left, top, width: right - left, height: bottom - top, color } : null;
 };
 /** Reviewed bounded midpoint strips; gaps come directly from the shared integral artifact. */
-export const mobileGraphAreaRects = (analysis: MobileGraphAnalysis, viewport: Graph2DViewport, size: Graph2DScreenSize): MobileGraphRect[] =>
-  (analysis.areaSegments ?? []).slice(0, 256).flatMap((segment) => {
+export const mobileGraphAreaRects = (analysis: MobileGraphAnalysis, viewport: Graph2DViewport, size: Graph2DScreenSize, limit = 256): MobileGraphRect[] =>
+  (analysis.areaSegments ?? []).slice(0, Math.max(0, Math.min(256, limit))).flatMap((segment) => {
     const [a, , mid, , b] = segment.points;
     if (!a || !mid || !b) return [];
     const rect = mobileGraphFillRect(viewport, size, { xMin: a.x, xMax: b.x, yMin: Math.min(0, mid.y), yMax: Math.max(0, mid.y) }, "#bfdbfe");

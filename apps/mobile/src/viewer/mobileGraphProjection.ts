@@ -19,8 +19,10 @@ export const clipMobileGraphLine = (a: Graph2DScreenPoint, b: Graph2DScreenPoint
 
 export const MOBILE_GRAPH_MAX_LINE_VIEWS = 4096;
 export const projectMobileGraphLines = (series: readonly Graph2DSampledSeries[], viewport: Graph2DViewport,
-  size: Graph2DScreenSize, selectedId?: string | null): MobileGraphLine[] => {
+  size: Graph2DScreenSize, selectedId?: string | null, requestedLimit = MOBILE_GRAPH_MAX_LINE_VIEWS): MobileGraphLine[] => {
+  const limit = Math.max(0, Math.min(MOBILE_GRAPH_MAX_LINE_VIEWS, Math.floor(requestedLimit)));
   const lines: MobileGraphLine[] = [];
+  if (!limit) return lines;
   for (const item of series) for (const segment of item.artifact.segments) {
     let phase = 0;
     for (let index = 1; index < segment.points.length; index++) {
@@ -36,7 +38,7 @@ export const projectMobileGraphLines = (series: readonly Graph2DSampledSeries[],
           const visible = Math.hypot(clipped.b.x - clipped.a.x, clipped.b.y - clipped.a.y);
           const offset = Math.hypot(clipped.a.x - a.x, clipped.a.y - a.y);
           const on = item.style.lineStyle === "dotted" ? 2 : 8, cycle = on + (item.style.lineStyle === "dotted" ? 5 : 6);
-          for (let distance = 0; distance < visible && lines.length < MOBILE_GRAPH_MAX_LINE_VIEWS;) {
+          for (let distance = 0; distance < visible && lines.length < limit;) {
             const position = ((phase + offset + distance) % cycle + cycle) % cycle;
             const span = Math.min(visible - distance, (position < on ? on : cycle) - position);
             if (span <= 1e-8) { distance += 1e-7; continue; }
@@ -47,7 +49,7 @@ export const projectMobileGraphLines = (series: readonly Graph2DSampledSeries[],
           }
         }
       }
-      if (lines.length >= MOBILE_GRAPH_MAX_LINE_VIEWS) return lines;
+      if (lines.length >= limit) return lines;
       phase += length;
     }
   }

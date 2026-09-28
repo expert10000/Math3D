@@ -2,10 +2,11 @@ import React, { useState } from "react";
 import { Pressable, Switch, Text, View } from "react-native";
 import type { Graph2DDocument, Graph2DSampledSeries } from "@math3d/core";
 import { MOBILE_GRAPH_QUALITY, mobileGraphSamplingDiagnostics, type MobileGraphQuality, type MobileGraphOverlays } from "./models/mobileGraphDisplay";
-export const MobileGraphDisplayPanel = ({ document, series, overlays, onAxis, onQuality, onOverlays, lineCount }: {
+import type { MobileGraphSamplingStatus } from "./useMobileGraphSampling";
+export const MobileGraphDisplayPanel = ({ document, series, overlays, onAxis, onQuality, onOverlays, lineCount, sampling }: {
   document: Graph2DDocument; series: readonly Graph2DSampledSeries[]; overlays: MobileGraphOverlays;
   onAxis: (key: "x" | "y" | "grid" | "labels") => void; onQuality: (quality: MobileGraphQuality) => void;
-  onOverlays: (overlays: MobileGraphOverlays) => void; lineCount: number }) => {
+  onOverlays: (overlays: MobileGraphOverlays) => void; lineCount: number; sampling: MobileGraphSamplingStatus }) => {
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const toggle = (label: string, value: boolean, onValueChange: () => void) => <View key={label} style={{ flexDirection: "row", alignItems: "center", minHeight: 44 }}>
     <Text style={{ flex: 1 }}>{label}</Text><Switch accessibilityLabel={label} value={value} onValueChange={onValueChange} /></View>;
@@ -19,8 +20,14 @@ export const MobileGraphDisplayPanel = ({ document, series, overlays, onAxis, on
     {(["tangent", "area", "features"] as const).map((key) => toggle(`${key} overlay`, overlays[key], () => onOverlays({ ...overlays, [key]: !overlays[key] })))}
     <Pressable accessibilityRole="button" accessibilityLabel="Sampling diagnostics" accessibilityState={{ expanded: diagnosticsOpen }}
       style={{ minHeight: 44, padding: 10 }} onPress={() => setDiagnosticsOpen(!diagnosticsOpen)}><Text>{diagnosticsOpen ? "Hide" : "Show"} sampling diagnostics</Text></Pressable>
-    {diagnosticsOpen && <View><Text>Mobile limits: 2048 settled / 256 interaction samples; 4096 native line Views; 256 area strips; 128 markers.</Text>
-      <Text>Rendered lines: {lineCount}{lineCount >= 4096 ? " · rendering budget reached, some geometry omitted" : ""}</Text>
+    {diagnosticsOpen && <View><Text>{sampling.budget.tier} profile · {sampling.phase} · {sampling.budget.sampling.maxSamples} samples · cooperative {sampling.budget.cpuMs} ms deadline</Text>
+      <Text>Limits: {sampling.budget.lines} native lines; {sampling.budget.fills} fills per layer; {sampling.budget.markers} markers per layer; {sampling.budget.artifactBytes / 1024} KiB serialized sampling artifacts; 4 MiB point-table cache.</Text>
+      <Text>Measured sampling: {sampling.metrics.samplingMs.toFixed(1)} ms; next-frame delivery: {sampling.metrics.frameDelayMs.toFixed(1)} ms; retained serialized artifacts: {sampling.metrics.bytes} bytes.</Text>
+      <Text>{sampling.performanceState.reason}</Text>
+      <Text>These are policy limits, not measured heap usage or hardware certification. No device thermal sensor is read.</Text>
+      <Pressable accessibilityRole="button" style={{ minHeight: 44, padding: 10 }} onPress={sampling.reduce}><Text>Reduce workload</Text></Pressable>
+      <Pressable accessibilityRole="button" style={{ minHeight: 44, padding: 10 }} onPress={sampling.resume}><Text>Resume adaptive workload</Text></Pressable>
+      <Text>Rendered lines: {lineCount}{lineCount >= sampling.budget.lines ? " · rendering budget reached, some geometry omitted" : ""}</Text>
       {mobileGraphSamplingDiagnostics(series).map((item) => <Text key={item.objectId}>{item.objectId}: {item.converged ? "converged" : "incomplete"} · {item.samples} evaluations · {item.messages.join(", ") || "no sampler diagnostics"}</Text>)}
       <Text>Approximate sampling is not proof of continuity or absence of features. Imported quality intent is retained until explicitly changed.</Text></View>}
   </View>;
