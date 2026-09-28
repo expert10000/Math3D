@@ -115,3 +115,46 @@ export const revolveGraph2DProfile = (source: Graph2DDocument, objectId: string,
     sourceObjectId: objectId, targetDocumentId: document.identity.id,
     operation: "graph2d.revolve-surface", expressionMap } };
 };
+
+export type Graph2DExtrudeOptions = Readonly<{
+  direction: readonly [number, number, number];
+  length: number;
+  caps: "none" | "start" | "end" | "both";
+}>;
+
+export const previewGraph2DExtrusion = (source: Graph2DDocument, objectId: string,
+  options: Graph2DExtrudeOptions): SurfaceDocumentSource => {
+  const object = source.source.objects.find((entry): entry is Graph2DCurvePromotionSource =>
+    entry.id === objectId && (entry.kind === "explicit-cartesian" || entry.kind === "parametric"));
+  const directionLength = Math.hypot(...options.direction);
+  if (!object) throw new TypeError("Extrusion requires an explicit or parametric Graph2D profile.");
+  if (options.direction.length !== 3 || options.direction.some((entry) => !Number.isFinite(entry)) ||
+      directionLength === 0 || !Number.isFinite(options.length) || options.length <= 0 ||
+      !(["none", "start", "end", "both"] as const).includes(options.caps))
+    throw new TypeError("Invalid extrusion direction, length, or cap policy.");
+  const direction = options.direction.map((entry) => entry / directionLength) as unknown as readonly [number, number, number];
+  return { representation: "constructed",
+    domain: { kind: "extrusion", profile: { min: object.domain.min, max: object.domain.max,
+      includeMin: object.domain.includeMin, includeMax: object.domain.includeMax }, distance: { min: 0, max: options.length } },
+    units: { length: "unitless" }, orientation: { direction },
+    definition: { familyId: "graph2d.extrusion", expressions: profileExpressions(object),
+      settings: { capPolicy: options.caps, length: options.length }, sourceIds: [source.identity.id, object.id] },
+    parameters: { direction, length: options.length, capPolicy: options.caps }, branchPolicy: null };
+};
+
+export const extrudeGraph2DProfile = (source: Graph2DDocument, objectId: string,
+  options: Graph2DExtrudeOptions): Graph2DSurfacePromotion => {
+  const surfaceSource = previewGraph2DExtrusion(source, objectId, options);
+  const object = source.source.objects.find((entry) => entry.id === objectId)!;
+  const document = createSurfaceDocument({ source: surfaceSource,
+    stableKey: { operation: "graph2d.extrude-surface", sourceDocumentId: source.identity.id, sourceObjectId: objectId },
+    metadata: { title: `${object.label} extrusion` } });
+  const expressionMap = surfaceSource.definition.expressions!;
+  const relation = createDocumentRelation({ kind: "promoted-from", sources: [viewerSourceFromDocument(source)],
+    sourceOrder: "ordered", target: { type: "document", generation: viewerSourceFromDocument(document) },
+    operation: "graph2d.extrude-surface", parameters: { sourceObjectId: objectId, direction: options.direction,
+      length: options.length, capPolicy: options.caps, expressionMap } as CanonicalJsonValue });
+  return { document, relation, trace: { sourceDocumentId: source.identity.id, sourceRevision: source.identity.revision,
+    sourceObjectId: objectId, targetDocumentId: document.identity.id,
+    operation: "graph2d.extrude-surface", expressionMap } };
+};

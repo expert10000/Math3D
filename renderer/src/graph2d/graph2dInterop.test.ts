@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createGraph2DDocument, locateGraph2DPromotionSource, locateGraph2DPromotionTarget,
   parseGraph2DExpression, promoteGraph2DToCurve, type Graph2DGraphObject } from "@math3d/core";
 import { previewGraph2DRevolution, revolveGraph2DProfile } from "@math3d/core";
+import { extrudeGraph2DProfile, previewGraph2DExtrusion } from "@math3d/core";
 
 const parsed = (source: string, variables: string[]) => {
   const result = parseGraph2DExpression(source, variables);
@@ -34,6 +35,28 @@ describe("Graph2D Curve promotion", () => {
     expect(promotion.document.source).toMatchObject({ representation: "parametric", dimension: 2,
       definition: { expressions: { x: "cos(t)", y: "sin(t)" } } });
     expect(() => promoteGraph2DToCurve(source, "missing")).toThrow(/explicit or parametric/);
+  });
+});
+
+describe("Graph2D profile extrusion", () => {
+  it("reuses the standard Surface infrastructure with normalized direction and cap policy", () => {
+    const source = graph({ id: "function_1", kind: "explicit-cartesian", label: "profile",
+      expression: { source: "x^2", variable: "x", ast: parsed("x^2", ["x"]) }, domain });
+    const preview = previewGraph2DExtrusion(source, "function_1", { direction: [0, 0, 2], length: 5, caps: "both" });
+    expect(preview).toMatchObject({ representation: "constructed", domain: { kind: "extrusion" },
+      orientation: { direction: [0, 0, 1] }, definition: { familyId: "graph2d.extrusion",
+        settings: { capPolicy: "both", length: 5 } } });
+    const promotion = extrudeGraph2DProfile(source, "function_1", { direction: [1, 0, 0], length: 3, caps: "none" });
+    expect(promotion.document.format).toBe("math3d.surface-document");
+    expect(promotion.relation.operation).toBe("graph2d.extrude-surface");
+    expect(promotion.document.source.definition.sourceIds).toEqual([source.identity.id, "function_1"]);
+  });
+
+  it("rejects zero directions and invalid lengths before target creation", () => {
+    const source = graph({ id: "function_1", kind: "explicit-cartesian", label: "profile",
+      expression: { source: "x", variable: "x", ast: parsed("x", ["x"]) }, domain });
+    expect(() => extrudeGraph2DProfile(source, "function_1", { direction: [0, 0, 0], length: 1, caps: "none" }))
+      .toThrow(/Invalid extrusion/);
   });
 });
 
