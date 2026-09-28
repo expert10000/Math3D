@@ -1,0 +1,702 @@
+[
+  {
+    "text": "",
+    "label": "",
+    "class": "android.widget.FrameLayout",
+    "enabled": "true",
+    "bounds": "[0,0][1080,2340]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.widget.LinearLayout",
+    "enabled": "true",
+    "bounds": "[0,0][1080,2340]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.widget.FrameLayout",
+    "enabled": "true",
+    "bounds": "[0,0][1080,2340]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.widget.LinearLayout",
+    "enabled": "true",
+    "bounds": "[0,0][1080,2340]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.widget.FrameLayout",
+    "enabled": "true",
+    "bounds": "[0,0][1080,2340]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.widget.FrameLayout",
+    "enabled": "true",
+    "bounds": "[0,0][1080,2340]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[0,0][1080,2340]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[0,0][1080,2340]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[0,101][1080,2042]"
+  },
+  {
+    "text": "G13-USB-20260928",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[23,129][871,197]"
+  },
+  {
+    "text": "",
+    "label": "Display",
+    "class": "android.widget.Button",
+    "enabled": "true",
+    "bounds": "[872,101][1059,225]"
+  },
+  {
+    "text": "Display",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[900,136][1030,190]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.widget.HorizontalScrollView",
+    "enabled": "true",
+    "bounds": "[23,225][1058,349]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[23,225][744,349]"
+  },
+  {
+    "text": "",
+    "label": "Reset",
+    "class": "android.widget.Button",
+    "enabled": "true",
+    "bounds": "[23,225][180,349]"
+  },
+  {
+    "text": "Reset",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[51,260][152,314]"
+  },
+  {
+    "text": "",
+    "label": "Fit",
+    "class": "android.widget.Button",
+    "enabled": "true",
+    "bounds": "[180,225][304,349]"
+  },
+  {
+    "text": "Fit",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[208,260][275,314]"
+  },
+  {
+    "text": "",
+    "label": "Undo",
+    "class": "android.widget.Button",
+    "enabled": "true",
+    "bounds": "[304,225][454,349]"
+  },
+  {
+    "text": "Undo",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[332,260][426,314]"
+  },
+  {
+    "text": "",
+    "label": "Redo",
+    "class": "android.widget.Button",
+    "enabled": "false",
+    "bounds": "[454,225][602,349]"
+  },
+  {
+    "text": "Redo",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[482,260][574,314]"
+  },
+  {
+    "text": "",
+    "label": "Save",
+    "class": "android.widget.Button",
+    "enabled": "true",
+    "bounds": "[603,225][744,349]"
+  },
+  {
+    "text": "Save",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[631,260][717,314]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[23,349][1058,1918]"
+  },
+  {
+    "text": "",
+    "label": "Graph plot. Drag to pan, pinch to zoom, tap to probe.",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[23,349][1058,1691]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[26,352][1056,1689]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[542,352][546,1689]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[26,1502][64,1543]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[26,352][29,1689]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[26,505][1056,508]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[26,1021][1056,1025]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[26,1023][1056,1026]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[26,1541][1056,1544]"
+  },
+  {
+    "text": "10",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[32,511][64,550]"
+  },
+  {
+    "text": "0",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[32,1029][48,1068]"
+  },
+  {
+    "text": "-10",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[32,1546][72,1585]"
+  },
+  {
+    "text": "-10",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[32,1655][72,1689]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[56,1468][98,1510]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[92,1433][133,1474]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[125,1399][167,1441]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[161,1364][202,1405]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[194,1330][236,1372]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[230,1295][271,1336]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[263,1261][305,1303]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[285,352][288,1689]"
+  },
+  {
+    "text": "-5",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[290,1655][314,1689]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[299,1226][340,1267]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[332,1192][374,1234]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[368,1157][409,1198]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[401,1123][443,1165]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[437,1088][478,1129]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[470,1054][512,1096]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[506,1019][547,1060]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[524,1003][564,1043]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[539,985][581,1027]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[544,352][547,1689]"
+  },
+  {
+    "text": "0",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[549,1655][565,1689]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[575,950][616,991]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[608,916][650,958]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[644,881][685,922]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[677,847][719,889]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[713,812][754,853]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[746,778][788,820]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[782,743][823,784]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[802,352][804,1689]"
+  },
+  {
+    "text": "5",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[808,1655][824,1689]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[815,709][857,751]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[851,674][892,715]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[884,640][926,682]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[920,605][961,646]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[953,571][995,613]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[989,536][1030,577]"
+  },
+  {
+    "text": "10",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[988,1655][1020,1689]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[1022,502][1056,544]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[1061,352][1056,1689]"
+  },
+  {
+    "text": "f: x=0.00483098, y=0.00483098",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[23,1692][1058,1755]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[23,1755][1058,1856]"
+  },
+  {
+    "text": "Created G13-USB-20260928.",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[23,1856][1058,1918]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[23,1918][1058,2042]"
+  },
+  {
+    "text": "",
+    "label": "Graph",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[52,1918][215,2042]"
+  },
+  {
+    "text": "Graph",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[80,1953][187,2007]"
+  },
+  {
+    "text": "",
+    "label": "Functions",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[274,1918][506,2042]"
+  },
+  {
+    "text": "Functions",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[302,1953][478,2007]"
+  },
+  {
+    "text": "",
+    "label": "Analyze",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[564,1918][760,2042]"
+  },
+  {
+    "text": "Analyze",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[592,1953][732,2007]"
+  },
+  {
+    "text": "",
+    "label": "Promote",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[819,1918][1029,2042]"
+  },
+  {
+    "text": "Promote",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[847,1953][1001,2007]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[0,2042][1080,2205]"
+  },
+  {
+    "text": "",
+    "label": "Home",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[17,2065][226,2184]"
+  },
+  {
+    "text": "Home",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[80,2103][164,2145]"
+  },
+  {
+    "text": "",
+    "label": "Explore",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[226,2065][435,2184]"
+  },
+  {
+    "text": "Explore",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[279,2103][383,2145]"
+  },
+  {
+    "text": "",
+    "label": "Workspace",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[435,2065][645,2184]"
+  },
+  {
+    "text": "Workspace",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[462,2103][618,2145]"
+  },
+  {
+    "text": "",
+    "label": "Projects",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[645,2065][854,2184]"
+  },
+  {
+    "text": "Projects",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[692,2103][808,2145]"
+  },
+  {
+    "text": "",
+    "label": "Settings",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[854,2065][1063,2184]"
+  },
+  {
+    "text": "Settings",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[901,2103][1016,2145]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[0,2205][1080,2340]"
+  }
+]

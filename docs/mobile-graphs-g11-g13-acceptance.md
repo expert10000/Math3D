@@ -50,6 +50,8 @@ Each device record has `slot`, `kind: "physical"`, `platform`, `model`, `os`, `t
 
 Physical Android and iOS release acceptance is pending; emulator or unit evidence is not a substitute. Advanced Curve/Surface worker analyses remain desktop-only; MOB-G11/G12 are layout/performance items, not worker-analysis delivery items.
 
+The [2026-09-28 readiness audit](mobile-graphs-g13-readiness-2026-09-28.md) reruns the automated suite/typecheck and records the current device/artifact blockers without promoting them to physical signoff.
+
 Automated evidence: 207 mobile tests in 46 files and mobile type checks, including canonical desktop fixture import/export and seven-kind aggregate native bounds; 97 desktop Graph unit tests in 28 files, root type checks, desktop production build and 18 desktop end-to-end tests. Synthetic gate records exist only inside unit tests and are not device attestations.
 
 Android emulator checks on 2026-09-28: API 35 / Android 15, `sdk_gphone64_x86_64`, `Medium_Phone_API_35`, phone 1080×2400 at density 420. Circle/data source and the parameter probe remained visible; Display showed a measured 11.1 ms sample and 15.8 ms next-frame delivery in one mid-tier observation (not a benchmark). Manual low-tier reduction and Home/resume retained the probe and reduced workload state. A temporary 1600×1000/density-160 configuration showed a Functions side panel beside the graph. Cold low-tier layout exposed deadline-empty geometry, motivating the bounded refinement retries above. The original size/density settings were restored. These partial emulator checks do not certify the complete case matrix, native sharing, real pinch injection, accessibility or physical/iOS behavior.

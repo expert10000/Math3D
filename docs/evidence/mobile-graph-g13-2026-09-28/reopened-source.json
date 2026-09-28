@@ -1,0 +1,786 @@
+[
+  {
+    "text": "",
+    "label": "",
+    "class": "android.widget.FrameLayout",
+    "enabled": "true",
+    "bounds": "[0,0][1080,2340]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.widget.LinearLayout",
+    "enabled": "true",
+    "bounds": "[0,0][1080,2340]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.widget.FrameLayout",
+    "enabled": "true",
+    "bounds": "[0,0][1080,2340]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.widget.LinearLayout",
+    "enabled": "true",
+    "bounds": "[0,0][1080,2340]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.widget.FrameLayout",
+    "enabled": "true",
+    "bounds": "[0,0][1080,2340]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.widget.FrameLayout",
+    "enabled": "true",
+    "bounds": "[0,0][1080,2340]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[0,0][1080,2340]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[0,0][1080,2340]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[0,101][1080,2042]"
+  },
+  {
+    "text": "G13-USB-20260928",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[23,129][871,197]"
+  },
+  {
+    "text": "",
+    "label": "Display",
+    "class": "android.widget.Button",
+    "enabled": "true",
+    "bounds": "[872,101][1059,225]"
+  },
+  {
+    "text": "Display",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[900,136][1030,190]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.widget.HorizontalScrollView",
+    "enabled": "true",
+    "bounds": "[23,225][1058,349]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[23,225][744,349]"
+  },
+  {
+    "text": "",
+    "label": "Reset",
+    "class": "android.widget.Button",
+    "enabled": "true",
+    "bounds": "[23,225][180,349]"
+  },
+  {
+    "text": "Reset",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[51,260][152,314]"
+  },
+  {
+    "text": "",
+    "label": "Fit",
+    "class": "android.widget.Button",
+    "enabled": "true",
+    "bounds": "[180,225][304,349]"
+  },
+  {
+    "text": "Fit",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[208,260][275,314]"
+  },
+  {
+    "text": "",
+    "label": "Undo",
+    "class": "android.widget.Button",
+    "enabled": "false",
+    "bounds": "[304,225][454,349]"
+  },
+  {
+    "text": "Undo",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[332,260][426,314]"
+  },
+  {
+    "text": "",
+    "label": "Redo",
+    "class": "android.widget.Button",
+    "enabled": "false",
+    "bounds": "[454,225][602,349]"
+  },
+  {
+    "text": "Redo",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[482,260][574,314]"
+  },
+  {
+    "text": "",
+    "label": "Save",
+    "class": "android.widget.Button",
+    "enabled": "true",
+    "bounds": "[603,225][744,349]"
+  },
+  {
+    "text": "Save",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[631,260][717,314]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[23,349][1058,1918]"
+  },
+  {
+    "text": "",
+    "label": "Graph plot. Drag to pan, pinch to zoom, tap to probe.",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[23,349][1058,1754]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[26,352][1056,1752]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[642,352][646,1752]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[26,687][1056,690]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[26,1202][1056,1206]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[26,1204][1056,1207]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[26,1722][1056,1725]"
+  },
+  {
+    "text": "10",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[32,693][64,732]"
+  },
+  {
+    "text": "0",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[32,1210][48,1249]"
+  },
+  {
+    "text": "-10",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[32,1718][72,1752]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[126,352][129,1752]"
+  },
+  {
+    "text": "-10",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[132,1718][172,1752]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[371,1676][411,1744]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[363,1738][380,1752]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[385,352][388,1752]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[402,1614][441,1680]"
+  },
+  {
+    "text": "-5",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[390,1718][414,1752]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[433,1552][472,1618]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[465,1489][505,1557]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[496,1426][536,1493]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[527,1364][567,1432]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[558,1302][598,1370]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[589,1240][628,1305]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[620,1178][659,1244]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[652,1115][692,1183]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[643,352][646,1752]"
+  },
+  {
+    "text": "0",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[649,1718][665,1752]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[683,1052][723,1119]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[714,990][754,1058]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[745,928][785,996]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[776,866][815,931]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[807,804][846,870]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[839,741][879,809]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[870,678][910,745]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[901,616][941,684]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[902,352][904,1752]"
+  },
+  {
+    "text": "5",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[908,1718][924,1752]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[932,554][972,622]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[963,492][1002,557]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[994,430][1033,496]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[1026,367][1056,435]"
+  },
+  {
+    "text": "",
+    "label": "Functions bottom sheet",
+    "class": "android.widget.ScrollView",
+    "enabled": "true",
+    "bounds": "[23,1212][1058,1918]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[26,1215][1056,1918]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[26,1215][1056,1918]"
+  },
+  {
+    "text": "Functions",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[26,1215][1056,1276]"
+  },
+  {
+    "text": "",
+    "label": "+ Add graph object",
+    "class": "android.widget.Button",
+    "enabled": "true",
+    "bounds": "[26,1276][1056,1399]"
+  },
+  {
+    "text": "+ Add graph object",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[54,1311][1028,1365]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.ViewGroup",
+    "enabled": "true",
+    "bounds": "[26,1400][1056,1873]"
+  },
+  {
+    "text": "",
+    "label": "Select f",
+    "class": "android.widget.Button",
+    "enabled": "true",
+    "bounds": "[26,1425][1056,1548]"
+  },
+  {
+    "text": "Select f",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[54,1460][1028,1514]"
+  },
+  {
+    "text": "y = 2*x",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[26,1549][1056,1603]"
+  },
+  {
+    "text": "",
+    "label": "Edit f",
+    "class": "android.widget.Button",
+    "enabled": "true",
+    "bounds": "[26,1603][176,1727]"
+  },
+  {
+    "text": "Edit f",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[54,1638][147,1692]"
+  },
+  {
+    "text": "",
+    "label": "Duplicate f",
+    "class": "android.widget.Button",
+    "enabled": "true",
+    "bounds": "[175,1603][422,1727]"
+  },
+  {
+    "text": "Duplicate f",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[203,1638][394,1692]"
+  },
+  {
+    "text": "",
+    "label": "Hide f",
+    "class": "android.widget.Button",
+    "enabled": "true",
+    "bounds": "[423,1603][586,1727]"
+  },
+  {
+    "text": "Hide f",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[451,1638][558,1692]"
+  },
+  {
+    "text": "",
+    "label": "Move f up",
+    "class": "android.widget.Button",
+    "enabled": "false",
+    "bounds": "[586,1603][818,1727]"
+  },
+  {
+    "text": "Move f up",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[614,1638][790,1692]"
+  },
+  {
+    "text": "",
+    "label": "Move f down",
+    "class": "android.widget.Button",
+    "enabled": "false",
+    "bounds": "[26,1727][313,1851]"
+  },
+  {
+    "text": "Move f down",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[54,1762][284,1816]"
+  },
+  {
+    "text": "",
+    "label": "Delete f",
+    "class": "android.widget.Button",
+    "enabled": "true",
+    "bounds": "[312,1727][504,1851]"
+  },
+  {
+    "text": "Delete f",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[340,1762][476,1816]"
+  },
+  {
+    "text": "Invalid drafts change nothing. Apply commits one undo step. Unsaved drafts are not exported.",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[26,1873][1056,1918]"
+  },
+  {
+    "text": "Tap a curve to probe. Tap overlaps again to cycle.",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[23,1755][1058,1818]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[23,1817][1058,1918]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[23,1918][1058,2042]"
+  },
+  {
+    "text": "",
+    "label": "Graph",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[52,1918][215,2042]"
+  },
+  {
+    "text": "Graph",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[80,1953][187,2007]"
+  },
+  {
+    "text": "",
+    "label": "Functions",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[274,1918][506,2042]"
+  },
+  {
+    "text": "Functions",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[302,1953][478,2007]"
+  },
+  {
+    "text": "",
+    "label": "Analyze",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[564,1918][760,2042]"
+  },
+  {
+    "text": "Analyze",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[592,1953][732,2007]"
+  },
+  {
+    "text": "",
+    "label": "Promote",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[819,1918][1029,2042]"
+  },
+  {
+    "text": "Promote",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[847,1953][1001,2007]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[0,2042][1080,2205]"
+  },
+  {
+    "text": "",
+    "label": "Home",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[17,2065][226,2184]"
+  },
+  {
+    "text": "Home",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[80,2103][164,2145]"
+  },
+  {
+    "text": "",
+    "label": "Explore",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[226,2065][435,2184]"
+  },
+  {
+    "text": "Explore",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[279,2103][383,2145]"
+  },
+  {
+    "text": "",
+    "label": "Workspace",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[435,2065][645,2184]"
+  },
+  {
+    "text": "Workspace",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[462,2103][618,2145]"
+  },
+  {
+    "text": "",
+    "label": "Projects",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[645,2065][854,2184]"
+  },
+  {
+    "text": "Projects",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[692,2103][808,2145]"
+  },
+  {
+    "text": "",
+    "label": "Settings",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[854,2065][1063,2184]"
+  },
+  {
+    "text": "Settings",
+    "label": "",
+    "class": "android.widget.TextView",
+    "enabled": "true",
+    "bounds": "[901,2103][1016,2145]"
+  },
+  {
+    "text": "",
+    "label": "",
+    "class": "android.view.View",
+    "enabled": "true",
+    "bounds": "[0,2205][1080,2340]"
+  }
+]
