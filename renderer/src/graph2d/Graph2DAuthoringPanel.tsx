@@ -1,9 +1,10 @@
 import { GRAPH2D_MAX_OBJECTS, validateGraph2DFunctionDraft, validateGraph2DParametricDraft,
   validateGraph2DPolarDraft, validateGraph2DImplicitDraft, validateGraph2DInequalityDraft,
+  validateGraph2DPiecewiseDraft,
   previewGraph2DPointImport, graph2DPointDomain,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DFunctionDraft,
   type Graph2DParametricDraft, type Graph2DPolarDraft, type Graph2DImplicitDraft,
-  type Graph2DInequalityDraft, type Graph2DPointSeriesDraft } from "@math3d/core";
+  type Graph2DInequalityDraft, type Graph2DPointSeriesDraft, type Graph2DPiecewiseDraft } from "@math3d/core";
 import { useState } from "react";
 import { pointTableStore } from "./pointTableStore";
 
@@ -32,6 +33,11 @@ type PointDraftState = { label: string; mode: "points" | "line";
 const initialPointDraft = (): PointDraftState => ({ label: "data", mode: "points",
   style: { visible: true, color: "#ea580c", lineWidth: 2, lineStyle: "solid" },
   text: "x,y\n0,0\n1,1\n2,4" });
+const initialPiecewiseDraft = (): Graph2DPiecewiseDraft => ({ label: "piecewise",
+  pieces: [
+    { expression: "-x", domain: { min: -10, max: 0, includeMin: true, includeMax: false } },
+    { expression: "x", domain: { min: 0, max: 10, includeMin: true, includeMax: true } },
+  ], style: { visible: true, color: "#9333ea", lineWidth: 2, lineStyle: "solid" } });
 
 export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -41,7 +47,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
   const [implicitDraft, setImplicitDraft] = useState<Graph2DImplicitDraft>(initialImplicitDraft);
   const [inequalityDraft, setInequalityDraft] = useState<Graph2DInequalityDraft>(initialInequalityDraft);
   const [pointDraft, setPointDraft] = useState(initialPointDraft);
-  const [mode, setMode] = useState<"explicit" | "parametric" | "polar" | "implicit" | "inequality" | "point-series">("explicit");
+  const [piecewiseDraft, setPiecewiseDraft] = useState<Graph2DPiecewiseDraft>(initialPiecewiseDraft);
+  const [mode, setMode] = useState<"explicit" | "parametric" | "polar" | "implicit" | "inequality" | "point-series" | "piecewise">("explicit");
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const variables = ["x", ...document.source.variables.map((entry) => entry.name)];
@@ -50,6 +57,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
     mode === "point-series" ? [...(pointPreview?.errors ?? []),
       ...(!pointDraft.label.trim() || pointDraft.label !== pointDraft.label.trim() || pointDraft.label.length > 160 ?
         ["Enter a label of 1–160 characters without surrounding spaces."] : [])] :
+    mode === "piecewise" ? validateGraph2DPiecewiseDraft(piecewiseDraft, variables) :
     mode === "inequality" ? validateGraph2DInequalityDraft(inequalityDraft,
       ["x", "y", ...document.source.variables.map((entry) => entry.name)]) :
     mode === "implicit" ? validateGraph2DImplicitDraft(implicitDraft,
@@ -72,6 +80,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
     setInequalityDraft(initialInequalityDraft()); setMessage(""); setOpen(true); };
   const beginCreatePointSeries = () => { setMode("point-series"); setEditingId(null);
     setPointDraft(initialPointDraft()); setMessage(""); setOpen(true); };
+  const beginCreatePiecewise = () => { setMode("piecewise"); setEditingId(null);
+    setPiecewiseDraft(initialPiecewiseDraft()); setMessage(""); setOpen(true); };
   const beginEdit = (id: string) => {
     const object = document.source.objects.find((entry) => entry.id === id);
     const style = document.display.objects.find((entry) => entry.objectId === id);
@@ -103,6 +113,10 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
         style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth,
           lineStyle: style.lineStyle },
         text: rows ? `x,y\n${rows.map((row) => `${row.x},${row.y ?? ""}`).join("\n")}` : "" });
+    } else {
+      setMode("piecewise"); setPiecewiseDraft({ label: object.label,
+        pieces: object.pieces.map((piece) => ({ expression: piece.expression.source, domain: piece.domain })),
+        style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
     }
     setMessage(""); setOpen(true);
   };
@@ -123,6 +137,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
     }
     const action: Graph2DAuthoringAction = mode === "explicit" ?
       editingId ? { type: "edit", objectId: editingId, draft } : { type: "create", draft } :
+      mode === "piecewise" ? editingId ? { type: "edit-piecewise", objectId: editingId, draft: piecewiseDraft } :
+        { type: "create-piecewise", draft: piecewiseDraft } :
       mode === "inequality" ? editingId ? { type: "edit-inequality", objectId: editingId, draft: inequalityDraft } :
         { type: "create-inequality", draft: inequalityDraft } :
       mode === "implicit" ? editingId ? { type: "edit-implicit", objectId: editingId, draft: implicitDraft } :
@@ -137,6 +153,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
       setImplicitDraft(initialImplicitDraft());
       setInequalityDraft(initialInequalityDraft());
       setPointDraft(initialPointDraft());
+      setPiecewiseDraft(initialPiecewiseDraft());
     }
   };
   return <div className="graph2d-authoring">
@@ -146,6 +163,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
       <button type="button" onClick={beginCreatePolar} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add polar</button>
       <button type="button" onClick={beginCreateImplicit} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add implicit</button>
       <button type="button" onClick={beginCreateInequality} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add inequality</button>
+      <button type="button" onClick={beginCreatePiecewise} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add piecewise</button>
       <button type="button" onClick={beginCreatePointSeries} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add data series</button></div>
     {document.source.objects.length ? <ol className="graph2d-function-list">
       {document.source.objects.map((object, index) => {
@@ -385,6 +403,50 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
       {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
       {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
       <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save inequality</button>
+        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+    </form>}
+    {open && mode === "piecewise" && <form className="graph2d-function-editor"
+      aria-label={editingId ? "Edit piecewise function" : "New piecewise function"}
+      onSubmit={(event) => { event.preventDefault(); save(); }}>
+      <h3>{editingId ? "Edit piecewise function" : "New piecewise function"}</h3>
+      <label>Name <input aria-label="Piecewise name" value={piecewiseDraft.label} maxLength={160}
+        onChange={(event) => setPiecewiseDraft({ ...piecewiseDraft, label: event.target.value })} /></label>
+      {piecewiseDraft.pieces.map((piece, index) => <fieldset key={index}>
+        <legend>Piece {index + 1}</legend>
+        <label>y = <input aria-label={`Piece ${index + 1} expression`} value={piece.expression} spellCheck={false}
+          onChange={(event) => setPiecewiseDraft({ ...piecewiseDraft, pieces: piecewiseDraft.pieces.map((entry, at) =>
+            at === index ? { ...entry, expression: event.target.value } : entry) })} /></label>
+        <div className="graph2d-domain-row">
+          <label>From <input aria-label={`Piece ${index + 1} minimum`} type="number" value={piece.domain.min}
+            onChange={(event) => setPiecewiseDraft({ ...piecewiseDraft, pieces: piecewiseDraft.pieces.map((entry, at) =>
+              at === index ? { ...entry, domain: { ...entry.domain, min: Number(event.target.value) } } : entry) })} /></label>
+          <label>To <input aria-label={`Piece ${index + 1} maximum`} type="number" value={piece.domain.max}
+            onChange={(event) => setPiecewiseDraft({ ...piecewiseDraft, pieces: piecewiseDraft.pieces.map((entry, at) =>
+              at === index ? { ...entry, domain: { ...entry.domain, max: Number(event.target.value) } } : entry) })} /></label>
+        </div>
+        <div className="graph2d-domain-row">
+          <label><input type="checkbox" checked={piece.domain.includeMin}
+            onChange={(event) => setPiecewiseDraft({ ...piecewiseDraft, pieces: piecewiseDraft.pieces.map((entry, at) =>
+              at === index ? { ...entry, domain: { ...entry.domain, includeMin: event.target.checked } } : entry) })} /> Include start</label>
+          <label><input type="checkbox" checked={piece.domain.includeMax}
+            onChange={(event) => setPiecewiseDraft({ ...piecewiseDraft, pieces: piecewiseDraft.pieces.map((entry, at) =>
+              at === index ? { ...entry, domain: { ...entry.domain, includeMax: event.target.checked } } : entry) })} /> Include end</label>
+          <button type="button" disabled={piecewiseDraft.pieces.length === 1}
+            onClick={() => setPiecewiseDraft({ ...piecewiseDraft,
+              pieces: piecewiseDraft.pieces.filter((_, at) => at !== index) })}>Remove piece {index + 1}</button>
+        </div>
+      </fieldset>)}
+      <button type="button" disabled={piecewiseDraft.pieces.length >= 16}
+        onClick={() => { const previous = piecewiseDraft.pieces.at(-1)!;
+          setPiecewiseDraft({ ...piecewiseDraft, pieces: [...piecewiseDraft.pieces,
+            { expression: "x", domain: { min: previous.domain.max, max: previous.domain.max + 1,
+              includeMin: !previous.domain.includeMax, includeMax: true } }] }); }}>Add piece</button>
+      <label>Color <input aria-label="Piecewise color" type="color" value={piecewiseDraft.style.color}
+        onChange={(event) => setPiecewiseDraft({ ...piecewiseDraft,
+          style: { ...piecewiseDraft.style, color: event.target.value } })} /></label>
+      {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
+      {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save piecewise</button>
         <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
     </form>}
     {open && mode === "point-series" && <form className="graph2d-function-editor"

@@ -428,3 +428,25 @@ test("Graphs previews a point table and plots it alongside a function", async ()
     await expect(app.page.locator('[data-graph2d-series-markers="series_1"] circle')).toHaveCount(3);
   } finally { await closeSurfaceApp(app); }
 });
+
+test("Graphs authors, edits, and probes piecewise domains without joining boundaries", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    const functions = app.page.getByLabel("Graph functions");
+    await functions.getByRole("button", { name: "Add piecewise" }).click();
+    await expect(functions.getByLabel("Piece 1 expression")).toHaveValue("-x");
+    await expect(functions.getByLabel("Piece 2 expression")).toHaveValue("x");
+    await functions.getByRole("button", { name: "Save piecewise" }).click();
+    await expect(app.page.locator('[data-graph2d-path="piecewise_1"]')).toHaveAttribute("d", /M.*M/);
+    await expect(app.page.locator('[data-graph2d-endpoint="piecewise_1"][data-endpoint-open="true"]')).toHaveCount(1);
+    await functions.getByRole("button", { name: "Select piecewise" }).click();
+    await expect(app.page.getByLabel("Graph inspector")).toContainText("-x on [-10, 0)");
+    await functions.getByRole("button", { name: "Edit piecewise" }).click();
+    await functions.getByLabel("Piece 2 expression").fill("2*x");
+    await functions.getByRole("button", { name: "Save piecewise" }).click();
+    await expect(app.page.getByLabel("Graph inspector")).toContainText("2*x on [0, 10]");
+  } finally { await closeSurfaceApp(app); }
+});

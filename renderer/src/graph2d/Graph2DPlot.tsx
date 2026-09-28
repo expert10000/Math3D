@@ -8,8 +8,12 @@ import {
   type Graph2DIntersectionAnalysis,
   type Graph2DRegionArtifact,
   type Graph2DPointSeriesArtifact,
+  type Graph2DPiecewiseArtifact,
 } from "@math3d/core";
 import { projectGraph2DGrid } from "./gridProjection";
+
+const isPiecewise = (artifact: Graph2DSamplingArtifact): artifact is Graph2DPiecewiseArtifact =>
+  "kind" in artifact && artifact.kind === "piecewise";
 
 export type Graph2DPlotSeries = Readonly<{
   objectId: string;
@@ -128,6 +132,15 @@ export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, 
             fill="none" stroke={item.style.color} strokeWidth={item.style.lineWidth}
             strokeDasharray={item.style.lineStyle === "dashed" ? "8 5" : item.style.lineStyle === "dotted" ? "2 4" : undefined}
             strokeLinejoin="round" strokeLinecap="round" />])}
+        {series.filter((item) => item.style.visible && isPiecewise(item.artifact))
+          .flatMap((item) => (item.artifact as Graph2DPiecewiseArtifact).endpoints.map((endpoint, index) => {
+            const screen = graph2DWorldToScreen(display.viewport, size, endpoint);
+            return <circle key={`${item.objectId}-endpoint-${index}`} className="graph2d-domain-endpoint"
+              data-graph2d-endpoint={item.objectId} data-endpoint-open={endpoint.open}
+              data-endpoint-side={endpoint.side} cx={screen.x} cy={screen.y}
+              r={Math.max(3.5, item.style.lineWidth + 2)} fill={endpoint.open ? "var(--panel-bg, #fff)" : item.style.color}
+              stroke={item.style.color} strokeWidth={Math.max(1.5, item.style.lineWidth)} />;
+          }))}
         {series.filter((item) => item.style.visible && isPointSeries(item.artifact)).map((item) => {
           const artifact = item.artifact as Graph2DPointSeriesArtifact;
           return <g key={`markers-${item.objectId}`} data-graph2d-series-markers={item.objectId}>
