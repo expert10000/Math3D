@@ -113,6 +113,29 @@ platform targets and fails on any altered byte.
 
 **Status:** next
 
+An SBOM (Software Bill of Materials) is the machine-readable ingredient list
+for a software release. It records each shipped component's name, version,
+supplier/source, license, checksum, dependency relationships, and the
+installer files that belong to it.
+
+For Math3D, the SBOM connects the final installer to components such as
+Electron/Chromium, npm packages, the Python runtime, NumPy/SciPy/SymPy, VTK,
+CGAL, pygalmesh, GMP/MPFR, fonts, icons, models, and datasets. It is required
+to:
+
+- prove which GPL, LGPL, Apache, MIT, BSD, and other terms apply;
+- map GPL-covered binaries to their exact corresponding source;
+- detect unexpected or unlicensed files in an installer;
+- identify releases affected by a dependency vulnerability;
+- reproduce the dependency versions used by a release;
+- provide customers and institutions with a verifiable software inventory.
+
+If an installer contains `gmp-10.dll` without a matching GMP SBOM entry, or
+contains CGAL 6.2.1 while the SBOM records CGAL 6.0.1, the release must fail.
+Math3D will use CycloneDX JSON for automated release checks and retain a
+human-readable license summary beside it. SPDX output may also be generated
+when required by a customer or distribution channel.
+
 Generate machine-readable SPDX or CycloneDX documents for:
 
 - root and workspace npm packages;
