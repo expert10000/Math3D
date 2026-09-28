@@ -3,6 +3,8 @@ import { createGraph2DDocument, locateGraph2DPromotionSource, locateGraph2DPromo
   parseGraph2DExpression, promoteGraph2DToCurve, type Graph2DGraphObject } from "@math3d/core";
 import { previewGraph2DRevolution, revolveGraph2DProfile } from "@math3d/core";
 import { extrudeGraph2DProfile, previewGraph2DExtrusion } from "@math3d/core";
+import { advanceDocumentIdentity, compareGraph2DPromotionGenerations, graph2DPromotionStatus,
+  regenerateGraph2DPromotion } from "@math3d/core";
 
 const parsed = (source: string, variables: string[]) => {
   const result = parseGraph2DExpression(source, variables);
@@ -35,6 +37,26 @@ describe("Graph2D Curve promotion", () => {
     expect(promotion.document.source).toMatchObject({ representation: "parametric", dimension: 2,
       definition: { expressions: { x: "cos(t)", y: "sin(t)" } } });
     expect(() => promoteGraph2DToCurve(source, "missing")).toThrow(/explicit or parametric/);
+  });
+});
+
+describe("Graph2D promotion lineage", () => {
+  it("marks source edits stale and supports explicit replacement or forking", () => {
+    const source = graph({ id: "function_1", kind: "explicit-cartesian", label: "line",
+      expression: { source: "x", variable: "x", ast: parsed("x", ["x"]) }, domain });
+    const promotion = promoteGraph2DToCurve(source, "function_1");
+    const nextSource = { ...source.source, objects: [{ ...source.source.objects[0]!,
+      expression: { source: "2*x", variable: "x" as const, ast: parsed("2*x", ["x"]) } }] };
+    const current = createGraph2DDocument({ stableKey: "interop", source: nextSource,
+      identity: advanceDocumentIdentity(source.identity, nextSource), display: source.display, selection: source.selection });
+    expect(graph2DPromotionStatus(promotion, current)).toBe("stale");
+    expect(compareGraph2DPromotionGenerations(promotion, current)).toMatchObject({ status: "changed", structuralChange: true });
+    const replacement = regenerateGraph2DPromotion(promotion, current, "replace");
+    expect(replacement.document.identity.id).toBe(promotion.document.identity.id);
+    expect(replacement.document.identity.revision).toBeGreaterThan(promotion.document.identity.revision);
+    expect(graph2DPromotionStatus(replacement, current)).toBe("current");
+    const fork = regenerateGraph2DPromotion(promotion, current, "fork");
+    expect(fork.document.identity.id).not.toBe(promotion.document.identity.id);
   });
 });
 

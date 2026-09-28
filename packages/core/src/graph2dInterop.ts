@@ -1,6 +1,7 @@
 import { createCurveDocument, type CurveDocument, type CurveDocumentSource } from "./curveDocument";
-import { createDocumentRelation, type DocumentRelation } from "./documentRelations";
-import type { CanonicalJsonValue, StableDocumentId } from "./documentIdentity";
+import { createDocumentRelation, evaluateDocumentRelationStatus, type DocumentRelation,
+  type DocumentRelationStatus } from "./documentRelations";
+import { advanceDocumentIdentity, type CanonicalJsonValue, type StableDocumentId } from "./documentIdentity";
 import type { Graph2DDocument, Graph2DExplicitObject, Graph2DParametricObject } from "./graph2dDocument";
 import { viewerSourceFromDocument } from "./viewerProvenance";
 import { createSurfaceDocument, type SurfaceDocument, type SurfaceDocumentSource } from "./surfaceDocument";
@@ -157,4 +158,59 @@ export const extrudeGraph2DProfile = (source: Graph2DDocument, objectId: string,
   return { document, relation, trace: { sourceDocumentId: source.identity.id, sourceRevision: source.identity.revision,
     sourceObjectId: objectId, targetDocumentId: document.identity.id,
     operation: "graph2d.extrude-surface", expressionMap } };
+};
+
+export type Graph2DAnyPromotion = Graph2DCurvePromotion | Graph2DSurfacePromotion;
+export type Graph2DPromotionGenerationComparison = Readonly<{
+  status: "same" | "changed";
+  capturedRevision: number;
+  currentRevision: number;
+  structuralChange: boolean;
+}>;
+
+export const graph2DPromotionStatus = (promotion: Graph2DAnyPromotion,
+  currentSource: Graph2DDocument | null): DocumentRelationStatus =>
+  evaluateDocumentRelationStatus(promotion.relation, (documentId) => currentSource?.identity.id === documentId ?
+    viewerSourceFromDocument(currentSource) : null);
+
+export const compareGraph2DPromotionGenerations = (promotion: Graph2DAnyPromotion,
+  currentSource: Graph2DDocument): Graph2DPromotionGenerationComparison => {
+  const captured = promotion.relation.sources[0]!;
+  const same = captured.documentId === currentSource.identity.id && captured.revision === currentSource.identity.revision &&
+    captured.structuralHash === currentSource.identity.structuralHash;
+  return { status: same ? "same" : "changed", capturedRevision: captured.revision,
+    currentRevision: currentSource.identity.revision, structuralChange: captured.structuralHash !== currentSource.identity.structuralHash };
+};
+
+/** Regeneration is explicit: replace advances the target generation; fork creates a new stable target id. */
+export const regenerateGraph2DPromotion = (promotion: Graph2DAnyPromotion, currentSource: Graph2DDocument,
+  mode: "replace" | "fork"): Graph2DAnyPromotion => {
+  if (promotion.trace.sourceDocumentId !== currentSource.identity.id)
+    throw new TypeError("The selected Graph2D document is not the promotion source.");
+  const parameters = promotion.relation.parameters as Record<string, unknown>;
+  let generated: Graph2DAnyPromotion;
+  if (promotion.trace.operation === "graph2d.promote-curve") generated = promoteGraph2DToCurve(currentSource, promotion.trace.sourceObjectId);
+  else if (promotion.trace.operation === "graph2d.revolve-surface") generated = revolveGraph2DProfile(currentSource,
+    promotion.trace.sourceObjectId, { axis: parameters.axis as "x" | "y",
+      orientation: parameters.orientation as "positive" | "negative",
+      ...(typeof parameters.angleMin === "number" ? { angleMin: parameters.angleMin } : {}),
+      ...(typeof parameters.angleMax === "number" ? { angleMax: parameters.angleMax } : {}) });
+  else generated = extrudeGraph2DProfile(currentSource, promotion.trace.sourceObjectId, {
+    direction: parameters.direction as unknown as readonly [number, number, number],
+    length: parameters.length as number, caps: parameters.capPolicy as Graph2DExtrudeOptions["caps"] });
+
+  const forkKey = { operation: generated.trace.operation, sourceDocumentId: currentSource.identity.id,
+    sourceObjectId: generated.trace.sourceObjectId, forkOf: promotion.document.identity.id,
+    forkAt: currentSource.identity.structuralHash };
+  const document = generated.document.format === "math3d.curve-document" ?
+    createCurveDocument({ source: generated.document.source,
+      ...(mode === "replace" ? { identity: advanceDocumentIdentity(promotion.document.identity, generated.document.source) } : { stableKey: forkKey }),
+      metadata: generated.document.metadata }) :
+    createSurfaceDocument({ source: generated.document.source,
+      ...(mode === "replace" ? { identity: advanceDocumentIdentity(promotion.document.identity, generated.document.source) } : { stableKey: forkKey }),
+      metadata: generated.document.metadata });
+  const relation = createDocumentRelation({ ...generated.relation,
+    target: { type: "document", generation: viewerSourceFromDocument(document) } });
+  const trace = { ...generated.trace, targetDocumentId: document.identity.id };
+  return document.format === "math3d.curve-document" ? { document, relation, trace } : { document, relation, trace };
 };
