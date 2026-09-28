@@ -37,3 +37,25 @@ test("GGL04 desktop browse/preview creates independent editable scenes and resum
     expect(saved.entries.find((e:{module:string})=>e.module==="graph2d").checkpoint.source.objects[0].expression.source).toBe("3*x");
   } finally {await closeSurfaceApp(app);}
 });
+
+test("GGL05 favorites and recents persist without duplicating saved graphs",async()=>{
+  const app=await launchSurfaceApp();
+  try {
+    const page=app.page;await resetSurfaceAppState(page);await page.setViewportSize({width:1440,height:900});
+    await page.getByTestId("workspace-nav-graphs").click();await page.getByTestId("graph-gallery-open").click();
+    const gallery=page.getByTestId("graph-gallery"),favorite=gallery.getByRole("button",{name:"Favorite A three-petal rose",exact:true});
+    await favorite.click();await expect(favorite).toHaveAttribute("aria-pressed","true");
+    await gallery.getByRole("button",{name:"Favorites",exact:true}).click();await expect(gallery.getByRole("status")).toContainText("1 scene");
+    await gallery.getByRole("button",{name:"Open A three-petal rose",exact:true}).click();
+    await page.getByTestId("graph-gallery-open").click();await gallery.getByRole("button",{name:"Recent",exact:true}).click();
+    await expect(gallery.getByTestId("graph-gallery-card-polar-rose")).toBeVisible();
+    await gallery.getByRole("button",{name:"Close Graph Gallery"}).click();await page.reload();
+    await page.getByTestId("workspace-nav-graphs").click();await page.getByTestId("graph-gallery-open").click();
+    await gallery.getByRole("button",{name:"Favorites",exact:true}).click();await expect(gallery.getByRole("status")).toContainText("1 scene");
+    await gallery.getByRole("button",{name:"Favorite A three-petal rose",exact:true}).click();
+    await expect(gallery.getByRole("status")).toContainText("0 scenes");await expect(gallery.getByText(/Bookmark a scene/)).toBeVisible();
+    await gallery.getByRole("button",{name:"Recent",exact:true}).click();await expect(gallery.getByRole("status")).toContainText("1 scene");
+    const settings=await page.evaluate(()=>JSON.parse(localStorage.getItem("math3d.graph2d.gallery-preferences.v1")!));
+    expect(settings.favorites).toEqual([]);expect(settings.recent).toEqual(["polar-rose"]);
+  } finally {await closeSurfaceApp(app);}
+});

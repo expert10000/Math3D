@@ -31,7 +31,7 @@ describe("gallery checkpoint launch transaction",()=>{
   });
   it("stages point rows and restores all durable keys when any write fails",()=>{
     const old=scene(),preset=getGraph2DPresetCatalog().get("piecewise-data-gaps")!;
-    for(const fail of ["math3d.mixed-workspace.v1.gallery-checkpoints",`math3d.graph2d.table.${preset.sidecars[0]!.id}`,"math3d.mixed-workspace.v1","math3d.graph2d-handoff.v2","math3d.graph2d.gallery-origin"]) {
+    for(const fail of ["math3d.mixed-workspace.v1.gallery-checkpoints",`math3d.graph2d.table.${preset.sidecars[0]!.id}`,"math3d.mixed-workspace.v1","math3d.graph2d-handoff.v2","math3d.graph2d.gallery-origin","math3d.graph2d.gallery-preferences.v1"]) {
       const s=storage();s.setItem("math3d.mixed-workspace.v1","prior data");const before=[...s.values];s.fail(fail);
       expect(()=>launchGraphGalleryPreset(()=>old.workspace,preset,"fail",s)).toThrow(/quota/);
       expect([...s.values].sort()).toEqual(before.sort());expect(old.doc.source.objects).toHaveLength(2);

@@ -2,6 +2,7 @@ import { canonicalJsonStringify, createMixedWorkspaceDocument, createGraph2DWork
   instantiateGraph2DPreset, mergeGraph2DHandoffCheckpoint, parseMixedWorkspaceDocument, parseWorkspaceProjectHandoff,
   serializeMixedWorkspaceDocument, serializeWorkspaceProjectHandoff, type Graph2DPreset, type MixedWorkspaceDocument } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
+import { GRAPH_GALLERY_PREFERENCES_KEY,parseGraphGalleryPreferences,recordGraphGalleryRecent } from "./graph2dGalleryPreferences";
 
 export const GRAPH_GALLERY_CHECKPOINT_INDEX = "math3d.mixed-workspace.v1.gallery-checkpoints";
 const WORKSPACE_KEY = "math3d.mixed-workspace.v1", HANDOFF_KEY = "math3d.graph2d-handoff.v2";
@@ -57,7 +58,11 @@ const activate = (capture: () => MixedWorkspaceDocument, incoming: MixedWorkspac
     ...sidecars.map(s=>[`math3d.graph2d.table.${s.id}`,canonicalJsonStringify(s.rows)] as [string,string]),
     [WORKSPACE_KEY,serializeMixedWorkspaceDocument(incoming)], [HANDOFF_KEY,serializeWorkspaceProjectHandoff(manifest)],
   ];
-  if(origin)writes.push(["math3d.graph2d.gallery-origin",JSON.stringify({documentId:next.identity.id,...origin})]);
+  if(origin) {
+    writes.push(["math3d.graph2d.gallery-origin",JSON.stringify({documentId:next.identity.id,...origin})]);
+    const preferences=recordGraphGalleryRecent(parseGraphGalleryPreferences(storage.getItem(GRAPH_GALLERY_PREFERENCES_KEY)),origin.presetId);
+    writes.push([GRAPH_GALLERY_PREFERENCES_KEY,JSON.stringify(preferences)]);
+  }
   writeTransaction(storage,writes);
   return incoming;
 };

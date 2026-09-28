@@ -1,6 +1,6 @@
 # Graph2D gallery, presets and showcase roadmap
 
-**Status:** GGL01–04 implemented (shared catalog, previews and desktop/web Gallery); GGL05–18 pending. Mobile gallery remains planned.
+**Status:** GGL01–05 implemented (shared catalog, previews and desktop/web discovery); GGL06–18 pending. Mobile gallery remains planned.
 
 **Decision — 2026-09-28:** build a focused editable gallery now, after G2D35 and before G2D36. Deliver shared contracts/content and desktop/web first (GGL01–06), then mobile launch from the same catalog (GGL07–09). Continue the professional features afterward. Keep MOB-G13 physical acceptance open throughout.
 
@@ -127,7 +127,7 @@ Every GGL ID is a reviewable commit. Focused types/tests and stated UI evidence 
 | **GGL02** | `feat(graph2d-presets): add curated seven-kind starter scenes` | Implemented 20 canonical seven-kind scenes, at least eight multi-object comparisons and six Featured entries. Reference-math, gaps/endpoints/strict fills, 512/1024 sample bounds, low-profile projection and portable editable-copy checks pass (25 catalog/contract tests); strict typecheck passes. Generated visual review follows GGL03. |
 | **GGL03** | `feat(graph2d-gallery): generate reproducible offline preview assets` | Implemented 20 generated SVG/PNG pairs from shared sampling/transforms with source/recipe/asset hashes, safe text, gaps/open/strict markers and a 235087-byte compressed bundle. Contact sheet reviewed; domain adjustments and interval-coverage checks prevent truncated starters. Preview/catalog tests and strict types pass; deterministic regeneration checked. |
 | **GGL04** | `feat(graph2d-gallery): add desktop web browse preview and safe project launch` | Implemented visible desktop/web toolbar and empty-state Gallery, static Featured/all/category/search/detail views, fresh project launch and preserved-workspace resume. Transaction rollback retains live state on failures and saves imported companions/results/ancestry in normal checkpoints. 30 focused tests, full renderer/focused types, production build and real Electron edit/switch/resume/save/focus scenario pass; gallery screenshot reviewed. |
-| **GGL05** | `feat(graph2d-gallery): add local favorites recent items and discovery states` | Bounded host preferences keyed by stable catalog IDs; missing/update behavior, empty search and resume links; no saved-scene duplication or analytics. |
+| **GGL05** | `feat(graph2d-gallery): add local favorites recent items and discovery states` | Implemented host-local bounded Favorites/Recent collections, star state, empty/search states, unavailable-entry handling and explicit corrupt-settings reset. Recent IDs join the launch transaction; no Graph payload or parallel user save store is added. 33 focused tests, focused types and two Electron browse/edit/resume/favorites/reload scenarios pass. |
 | **GGL06** | `test(graph2d-gallery): freeze desktop web catalog launch and rendering baseline` | Real Electron/browser browse → preview → open → edit → undo → save → handoff/reopen; current-work preservation, data sidecars, two locale contexts, numerical/visual baselines and cancelled-preview cleanup. |
 
 ### Release B — Mobile from the same catalog
