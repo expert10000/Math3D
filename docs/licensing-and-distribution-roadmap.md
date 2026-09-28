@@ -19,6 +19,16 @@ retained as a future business option, but it is not the active release policy.
 This roadmap is an engineering compliance plan, not a substitute for legal
 advice.
 
+## Executable companion roadmaps
+
+| Path | Document | Authority |
+| --- | --- | --- |
+| Public GPL | `docs/public-gpl-release-roadmap.md` | Active release execution, remaining audit gates, and public-release freeze. |
+| Commercial/private | `docs/commercial-private-licensing-roadmap.md` | Inactive future program for rights, vendor licenses, edition separation, and private release. |
+
+This document owns the decision between paths. The companion documents own
+their detailed execution sequences.
+
 ## Why the license changed
 
 Math3D was previously declared Apache-2.0 while its packaged scientific worker

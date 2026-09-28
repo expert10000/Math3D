@@ -27,6 +27,8 @@ for (const file of [
   "SOURCE_OFFER.md",
   "compliance/public-source-manifest.json",
   "docs/licensing-and-distribution-roadmap.md",
+  "docs/public-gpl-release-roadmap.md",
+  "docs/commercial-private-licensing-roadmap.md",
 ]) requireFile(file);
 
 requireText("LICENSE", "GNU GENERAL PUBLIC LICENSE");
