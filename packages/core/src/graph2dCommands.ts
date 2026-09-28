@@ -8,6 +8,7 @@ export const GRAPH2D_COMMAND_TYPES = { setViewport: "graph2d.viewport.set", repl
 export const GRAPH2D_SCENE_OPERATIONS = ["create", "edit", "create-parametric", "edit-parametric",
   "create-polar", "edit-polar", "create-implicit", "edit-implicit",
   "create-inequality", "edit-inequality", "create-point-series", "edit-point-series",
+  "create-piecewise", "edit-piecewise",
   "grid-mode", "duplicate", "reorder", "visibility", "style", "delete", "restore"] as const;
 export type Graph2DSceneOperation = (typeof GRAPH2D_SCENE_OPERATIONS)[number];
 export type Graph2DCommandState = Readonly<{ document: Graph2DDocument }>;
