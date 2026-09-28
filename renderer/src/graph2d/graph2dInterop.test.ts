@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createGraph2DDocument, locateGraph2DPromotionSource, locateGraph2DPromotionTarget,
   parseGraph2DExpression, promoteGraph2DToCurve, type Graph2DGraphObject } from "@math3d/core";
+import { previewGraph2DRevolution, revolveGraph2DProfile } from "@math3d/core";
 
 const parsed = (source: string, variables: string[]) => {
   const result = parseGraph2DExpression(source, variables);
@@ -33,5 +34,27 @@ describe("Graph2D Curve promotion", () => {
     expect(promotion.document.source).toMatchObject({ representation: "parametric", dimension: 2,
       definition: { expressions: { x: "cos(t)", y: "sin(t)" } } });
     expect(() => promoteGraph2DToCurve(source, "missing")).toThrow(/explicit or parametric/);
+  });
+});
+
+describe("Graph2D profile revolution", () => {
+  it("creates a standard constructed Surface with preview, domain, orientation, and provenance", () => {
+    const source = graph({ id: "function_1", kind: "explicit-cartesian", label: "radius",
+      expression: { source: "x+2", variable: "x", ast: parsed("x+2", ["x"]) }, domain });
+    const preview = previewGraph2DRevolution(source, "function_1", { axis: "x", orientation: "positive" });
+    expect(preview).toMatchObject({ representation: "constructed", domain: { kind: "revolution" },
+      definition: { familyId: "graph2d.revolution", settings: { axis: "x", orientation: "positive" } } });
+    const promotion = revolveGraph2DProfile(source, "function_1", { axis: "y", orientation: "negative",
+      angleMin: 0, angleMax: Math.PI });
+    expect(promotion.document.format).toBe("math3d.surface-document");
+    expect(promotion.relation).toMatchObject({ kind: "promoted-from", operation: "graph2d.revolve-surface" });
+    expect(promotion.document.source.definition.expressions).toEqual({ x: "x", y: "x+2" });
+  });
+
+  it("rejects invalid inputs atomically before constructing a target", () => {
+    const source = graph({ id: "function_1", kind: "explicit-cartesian", label: "radius",
+      expression: { source: "x", variable: "x", ast: parsed("x", ["x"]) }, domain });
+    expect(() => revolveGraph2DProfile(source, "function_1", { axis: "x", orientation: "positive",
+      angleMin: 2, angleMax: 1 })).toThrow(/Invalid revolution/);
   });
 });
