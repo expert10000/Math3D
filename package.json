@@ -102,6 +102,7 @@
     "test:graph2d:desktop:e2e": "playwright test tests/e2e/graph2d-shell.spec.ts --reporter=list",
     "test:graph2d:desktop:acceptance": "npm run test:graph2d:desktop:unit && npm run typecheck:noemit && npm run build:renderer && npm run test:graph2d:desktop:e2e",
     "test:graph2d:mobile:unit": "node renderer/node_modules/vitest/vitest.mjs run --config renderer/vite.config.ts tests/unit/mobile",
+    "test:graph2d:mobile:device-gate": "node scripts/mobile-graph-device-gate.mjs",
     "benchmark:mesh:prepare:deterministic": "python scripts/math3d_mesh_benchmark.py --skip-downloads",
     "benchmark:mesh:prepare:heavy": "python scripts/math3d_mesh_benchmark.py --include-heavy",
     "benchmark:mesh:test": "npm --prefix renderer run test -- src/mesh/meshBenchmarkRegression.test.ts",

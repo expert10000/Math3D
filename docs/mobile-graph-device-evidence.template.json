@@ -1,0 +1,9 @@
+{
+  "format": "math3d.mobile-graph-device-evidence.v1",
+  "sourceCommit": null,
+  "builds": {
+    "android": { "sha256": null, "configuration": "pending", "bundle": "pending", "applicationId": null, "version": null, "build": null, "signingCertificateSha256": null },
+    "ios": { "sha256": null, "configuration": "pending", "bundle": "pending", "applicationId": null, "version": null, "build": null, "signingCertificateSha256": null }
+  },
+  "devices": []
+}

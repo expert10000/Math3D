@@ -50,14 +50,24 @@ describe("MOB-G12 measured native workload policies", () => {
       cancelFrame: (handle) => { frames.delete(handle); }, delay: (callback) => { delays.set(++next, callback); return next as unknown as ReturnType<typeof setTimeout>; },
       cancelDelay: (handle) => { delays.delete(handle as unknown as number); } });
     const calls: string[] = [];
-    jobs.request(() => calls.push("old"), () => calls.push("old-refine"));
+    jobs.request(() => calls.push("old"), () => { calls.push("old-refine"); });
     const stale = [...frames.values(), ...delays.values()];
-    jobs.request(() => calls.push("new"), () => calls.push("new-refine"));
+    jobs.request(() => calls.push("new"), () => { calls.push("new-refine"); });
     stale.forEach((callback) => callback()); expect(calls).toEqual([]);
     const fire = (queue: Map<number, () => void>) => { const [handle, callback] = [...queue.entries()][0]!; queue.delete(handle); callback(); };
     fire(frames); expect(calls).toEqual(["new"]);
     fire(delays); jobs.cancel(); expect(frames.size).toBe(0); expect(delays.size).toBe(0);
     jobs.request(() => calls.push("resume")); fire(frames); expect(calls).toEqual(["new", "resume"]);
+  });
+  it("retries cold deadline-limited refinement twice, never spins or survives cancellation", () => {
+    let next = 0; const frames = new Map<number, () => void>(), delays = new Map<number, () => void>();
+    const jobs = new MobileGraphSamplingJobs({ frame: (callback) => { frames.set(++next, callback); return next; }, cancelFrame: (handle) => { frames.delete(handle); },
+      delay: (callback) => { delays.set(++next, callback); return next as unknown as ReturnType<typeof setTimeout>; }, cancelDelay: (handle) => { delays.delete(handle as unknown as number); } });
+    const fire = (queue: Map<number, () => void>) => { const [handle, callback] = [...queue.entries()][0]!; queue.delete(handle); callback(); };
+    let attempts = 0; jobs.request(() => {}, () => { attempts++; return true; }); fire(frames);
+    for (let i = 0; i < 3; i++) { fire(delays); fire(frames); }
+    expect(attempts).toBe(3); expect(delays.size).toBe(0); expect(frames.size).toBe(0);
+    jobs.request(() => {}, () => true); jobs.cancel(); expect(delays.size).toBe(0); expect(frames.size).toBe(0);
   });
   it("drops oversized sampled geometry with an explicit output-limit diagnostic", () => {
     const series = sampleGraph2DScene(request), budget = MOBILE_GRAPH_DEVICE_PROFILES.low;

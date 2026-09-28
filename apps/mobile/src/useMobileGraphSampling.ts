@@ -68,6 +68,7 @@ export const useMobileGraphSampling = (document: Graph2DDocument, viewport: Grap
           setResult((value) => value?.input === input ? { ...value, frameDelayMs } : value);
           setPerformanceState((state) => measureMobileGraphPerformance(state, { samplingMs, frameDelayMs }, now()));
         });
+        return phase === "refine" && sampled.some((item) => item.artifact.diagnostics.some((diagnostic) => diagnostic.code === "deadline"));
       } catch (caught) {
         if (current()) { setResult(null); setError((caught as Error).message); }
       }

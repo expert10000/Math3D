@@ -165,7 +165,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     <Text accessibilityLiveRegion="polite" style={s.readout} numberOfLines={2} testID="mobile-graph-probe">{probe ?
       `${document.source.objects.find((object) => object.id === probe.objectId)?.label}: x=${probe.x.toPrecision(6)}, y=${probe.y.toPrecision(6)}${probe.parameter !== undefined ? `, parameter=${probe.parameter.toPrecision(6)}` : ""}${probe.rowId ? `, ${probe.rowId}` : ""}` : "Tap a curve to probe. Tap overlaps again to cycle."}</Text>
     {/* Fixed status height prevents ready/incomplete changes from resizing and resampling the plot in a loop. */}
-    <Text style={[s.readout, { height: 36 }]} numberOfLines={2}>{[
+    <Text style={[s.readout, { height: 36 * Math.max(1, window.fontScale) }]} numberOfLines={2}>{[
       !sampling.ready ? sampling.active ? "Graph updating…" : "Graph sampling paused in background." : "",
       geometry.truncated || sampling.truncated || lines.length >= budget.lines || series.some((item) => !item.artifact.converged)
         ? "Approximate/incomplete display. Check Display diagnostics; missing data requires its CSV/TSV sidecar." : "",

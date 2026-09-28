@@ -17,7 +17,7 @@ export class MobileGraphSamplingJobs {
     for (const handle of this.#delays) this.scheduler.cancelDelay(handle);
     this.#frames.clear(); this.#delays.clear();
   }
-  request(preview: () => void, refine?: () => void) {
+  request(preview: () => void, refine?: () => boolean | void) {
     this.cancel(); const generation = this.#generation;
     const frame = (work: () => void) => {
       const handle = this.scheduler.frame(() => {
@@ -27,12 +27,21 @@ export class MobileGraphSamplingJobs {
       this.#frames.add(handle);
     };
     frame(preview);
-    if (refine) {
+    const defer = (work: () => void, ms: number) => {
       const handle = this.scheduler.delay(() => {
         this.#delays.delete(handle);
-        if (generation === this.#generation) frame(refine);
-      }, 160);
+        if (generation === this.#generation) frame(work);
+      }, ms);
       this.#delays.add(handle);
+    };
+    if (refine) {
+      let retries = 0;
+      const settle = () => {
+        // Cold resume/layout can exhaust a tiny quantum before producing geometry.
+        // Retry only deadline-limited refinement, at most twice, never a busy loop.
+        if (refine() === true && retries++ < 2 && generation === this.#generation) defer(settle, 240 * retries);
+      };
+      defer(settle, 160);
     }
   }
 }
