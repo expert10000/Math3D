@@ -10,12 +10,17 @@ export const mobileGraphPointTables = new Graph2DPointTableStore({
   read: (id) => { const target = file(id); return target.exists && target.size <= GRAPH2D_POINT_TABLE_MAX_BYTES ? target.textSync() : null; },
   write: (id, content) => { directory.create({ intermediates: true, idempotent: true }); const target = file(id);
     // Immutable content-addressed files; an interrupted write is detected by the shared checksum reader.
-    target.write(content); },
+    target.create({ intermediates: true, overwrite: true }); target.write(content, { encoding: "utf8" }); },
 });
 export const pickMobileGraphPointText = async (): Promise<string | null> => {
+  try {
   const result = await File.pickFileAsync();
   const target = Array.isArray(result) ? result[0] : result;
   if (!target) return null;
   if (target.size > GRAPH2D_POINT_TABLE_MAX_BYTES) throw new TypeError("Point import exceeds 1 MiB.");
   return target.text();
+  } catch (error) {
+    if (String((error as Error).message).toLowerCase().includes("picker was cancelled")) return null;
+    throw error;
+  }
 };

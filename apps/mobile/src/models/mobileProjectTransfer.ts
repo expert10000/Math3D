@@ -1,7 +1,7 @@
 import { createProjectHandoff, deserializeProjectHandoff, deserializeSceneProject, serializeProjectHandoff, serializeSceneProject } from "@math3d/core";
 import type { MobileStoredSceneProject } from "./mobileScene";
-import { readMobileGraph } from "./mobileGraphProject";
-import { serializeGraph2DDocument } from "@math3d/core";
+import { readMobileGraph, readMobileGraphWorkspace } from "./mobileGraphProject";
+import { serializeGraph2DDocument, serializeMixedWorkspaceDocument } from "@math3d/core";
 
 export const MOBILE_SCENE_EXPORT_EXTENSION = ".math3d.scene.json";
 export const MOBILE_HANDOFF_EXPORT_EXTENSION = ".math3d.handoff.json";
@@ -34,10 +34,14 @@ export const createMobileProjectExportName = (project: MobileStoredSceneProject,
 
 export const createMobileHandoffExportName = (project: MobileStoredSceneProject, now = new Date()): string =>
   createMobileProjectExportName(project, now).replace(MOBILE_SCENE_EXPORT_EXTENSION,
-    project.projectType === "graph2d" ? ".math3d.graph2d.json" : MOBILE_HANDOFF_EXPORT_EXTENSION);
+    project.projectType === "graph2d" ? readMobileGraphWorkspace(project) ? ".math3d.workspace.json" : ".math3d.graph2d.json" : MOBILE_HANDOFF_EXPORT_EXTENSION);
 
 export const serializeMobileProjectHandoff = (project: MobileStoredSceneProject): string => {
-  if (project.projectType === "graph2d") return serializeGraph2DDocument(readMobileGraph(project));
+  if (project.projectType === "graph2d") {
+    const checked = validateMobileProjectForTransfer(project);
+    if (!checked.ok) throw new Error(checked.error);
+    return checked.serializedProject;
+  }
   const checked = validateMobileProjectForTransfer(project);
   if (!checked.ok) throw new Error(checked.error);
   const parsed = deserializeSceneProject(checked.serializedProject);
@@ -53,7 +57,8 @@ export const validateMobileProjectForTransfer = (
   project: MobileStoredSceneProject
 ): { ok: true; serializedProject: string } | { ok: false; error: string } => {
   if (project.projectType === "graph2d") {
-    try { return { ok: true, serializedProject: serializeGraph2DDocument(readMobileGraph(project)) }; }
+    try { const graph = readMobileGraph(project), workspace = readMobileGraphWorkspace(project);
+      return { ok: true, serializedProject: workspace ? serializeMixedWorkspaceDocument(workspace) : serializeGraph2DDocument(graph) }; }
     catch (error) { return { ok: false, error: (error as Error).message }; }
   }
   const parsed = deserializeSceneProject(project.serializedProject);

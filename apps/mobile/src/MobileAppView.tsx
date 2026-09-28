@@ -25,7 +25,8 @@ export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model 
       </View>}
 
       {tab === "workspace" && (model.graphDocument ? <MobileGraphsWorkspace key={`${model.graphDocument.identity.id}/${model.graphDocument.metadata.title}`}
-        document={model.graphDocument} onChange={model.setGraphDocument} onSave={model.saveGraphProject} message={model.projectActionMessage} /> :
+        document={model.graphDocument} onChange={model.setGraphDocument} onSave={model.saveGraphProject} message={model.projectActionMessage}
+        promotions={model.graphPromotions} onPromotion={model.createGraphPromotion} /> :
         <MobileWorkspaceScreen model={model} />)}
 
       {tab !== "workspace" && <ScrollView contentContainerStyle={styles.content}>

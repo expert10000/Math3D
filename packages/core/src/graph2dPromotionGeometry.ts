@@ -7,6 +7,8 @@ export type PromotionGeometry = Readonly<{
   positions: readonly number[];
   indices: readonly number[];
   kind: "curve" | "surface";
+  /** Derived regular sampling topology, not mathematical document source. */
+  grid?: Readonly<{ profileCount: number; sweepCount: number }>;
 }>;
 
 /** Evaluates ordinary Curve/Surface documents; derived geometry never enters their source. */
@@ -82,5 +84,5 @@ export const evaluateGraph2DPromotionGeometry = (document: CurveDocument | Surfa
     }
   }
   if (positions.some((value) => !Number.isFinite(value))) throw new TypeError("Non-finite promoted geometry.");
-  return { positions, indices, kind: curve ? "curve" : "surface" };
+  return { positions, indices, kind: curve ? "curve" : "surface", ...(surface ? { grid: { profileCount, sweepCount } } : {}) };
 };

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { type Graph2DDocument } from "@math3d/core";
-import { createMobileGraph, importMobileGraph, readMobileGraph, storeMobileGraph } from "./models/mobileGraphProject";
+import { type Graph2DDocument, type Graph2DAnyPromotion } from "@math3d/core";
+import { createMobileGraph, importMobileGraph, readMobileGraph, storeMobileGraph, updateStoredMobileGraph } from "./models/mobileGraphProject";
+import { commitMobileGraphPromotion, readMobileGraphPromotions } from "./models/mobileGraphPromotions";
+import { probeMobilePlatformCapabilities } from "./services/mobilePlatformCapabilities";
 import { AppState, PixelRatio, Platform, type GestureResponderEvent } from "react-native";
 import { SCENE_PROJECT_VERSION, createSceneProjectDocument, deserializeSceneProject, serializeSceneProject, type SceneDocument, type SurfaceDefinition, type VtkPreviewJobSnapshot, type VtkPreviewRequest } from "@math3d/core";
 import { mobileExamples, mobileSeedScenes } from "./data/mobileSeedData";
@@ -1501,7 +1503,7 @@ export const useMobileAppController = () => {
   const saveGraphProject = async (): Promise<boolean> => {
     if (!graphDocument) return false;
     const previous = storedProjects.find((project) => project.id === graphDocument.identity.id);
-    const project = { ...previous, ...storeMobileGraph(graphDocument) };
+    const project = updateStoredMobileGraph(previous, graphDocument);
     return persistProjectMutation(upsertStoredProject(storedProjects, project), "Graph saved.", "Could not save Graph");
   };
   const importGraphProject = async (): Promise<boolean> => {
@@ -1513,6 +1515,16 @@ export const useMobileAppController = () => {
       if (saved) openCreatedGraph(project);
       return saved;
     } catch (error) { setProjectActionMessage(`Graph import failed: ${(error as Error).message}`); return false; }
+  };
+
+  const graphPromotions = useMemo(() => readMobileGraphPromotions(storedProjects.find((project) => project.id === graphDocument?.identity.id)), [storedProjects, graphDocument?.identity.id]);
+  const createGraphPromotion = async (promotion: Graph2DAnyPromotion): Promise<boolean> => {
+    if (!graphDocument) return false;
+    try {
+      const previous = storedProjects.find((project) => project.id === graphDocument.identity.id);
+      const project = commitMobileGraphPromotion(previous, graphDocument, promotion, probeMobilePlatformCapabilities());
+      return await persistProjectMutation(upsertStoredProject(storedProjects, project), "Graph and promoted target saved.", "Could not save promotion");
+    } catch (error) { setProjectActionMessage(`Promotion failed: ${(error as Error).message}`); return false; }
   };
 
   const createNewProjectFromFile = async (source: MobileProjectFileSource): Promise<boolean> => {
@@ -2398,7 +2410,7 @@ export const useMobileAppController = () => {
   ]);
 
   return {
-    graphDocument, setGraphDocument, createGraphProject, importGraphProject, saveGraphProject,
+    graphDocument, setGraphDocument, createGraphProject, importGraphProject, saveGraphProject, graphPromotions, createGraphPromotion,
     tab,
     setTab,
     exploreSection,

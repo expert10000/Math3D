@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
 import { fitGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, pickGraph2DProbe,
-  resolveGraph2DViewport, sampleGraph2DScene, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, type Graph2DDocument, type Graph2DViewport } from "@math3d/core";
+  resolveGraph2DViewport, sampleGraph2DScene, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { MobileGraphGesture, mobileGraphProbeRadius, type GraphTouch } from "./models/mobileGraphGestures";
 import { mobileGraphCapabilities } from "./models/mobileGraphProject";
@@ -15,6 +15,7 @@ import { applyMobileGraphAuthoring, type MobileGraphEditor } from "./models/mobi
 import { mobileGraphKindAction, type MobileGraphAdvancedEditor } from "./models/mobileGraphAdvancedAuthoring";
 import { mobileGraphPointTables, pickMobileGraphPointText } from "./services/mobileGraphPointTables";
 import { mobileGraphAdvancedGeometry } from "./viewer/mobileGraphAdvancedProjection";
+import { MobileGraphPromotionPanel } from "./MobileGraphPromotionPanel";
 import { MobileGraphAnalysisPanel } from "./MobileGraphAnalysisPanel";
 import { mobileGraphAnalysisDraft, runMobileGraphAnalysis, isMobileGraphAnalysisCurrent, mobileGraphAnalysisProbe,
   type MobileGraphAnalysis } from "./models/mobileGraphAnalysis";
@@ -27,15 +28,16 @@ const Line = ({ a, b, color, width }: MobileGraphLine) => <View pointerEvents="n
   width: Math.hypot(b.x - a.x, b.y - a.y), height: width, backgroundColor: color,
   transform: [{ rotate: `${Math.atan2(b.y - a.y, b.x - a.x)}rad` }] }} />;
 
-export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onHaptic }: {
+export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onHaptic, promotions, onPromotion }: {
   document: Graph2DDocument; onChange: (document: Graph2DDocument) => void;
   onSave: () => Promise<boolean>; message: string; onHaptic?: () => void;
+  promotions: readonly Graph2DAnyPromotion[]; onPromotion: (promotion: Graph2DAnyPromotion) => Promise<boolean>;
 }) => {
   const [adapter] = useState(() => new Graph2DCommandAdapter(document));
   const gesture = useRef(new MobileGraphGesture());
   const [size, setSize] = useState({ width: 320, height: 320 });
   const [preview, setPreview] = useState<Graph2DViewport | null>(null);
-  const [destination, setDestination] = useState<"Graph" | "Functions" | "Analyze" | "Display">("Graph");
+  const [destination, setDestination] = useState<"Graph" | "Functions" | "Analyze" | "Display" | "Promote">("Graph");
   const [overlays, setOverlays] = useState(MOBILE_GRAPH_DEFAULT_OVERLAYS);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -159,7 +161,9 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     {destination !== "Graph" && <ScrollView keyboardShouldPersistTaps="handled" style={s.sheet} testID={`mobile-graph-${destination.toLowerCase()}-sheet`}>
       {destination === "Display" ? <MobileGraphDisplayPanel document={document} series={series} overlays={overlays} lineCount={lines.length}
         onOverlays={setOverlays} onAxis={(key) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "axis", key }), "style"))}
-        onQuality={(quality) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "quality", quality }), "style"))} /> : destination === "Functions" ? <MobileGraphFunctionsPanel document={document} editor={editor} onEditor={setEditor}
+        onQuality={(quality) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "quality", quality }), "style"))} /> : destination === "Promote" ?
+        <MobileGraphPromotionPanel document={document} promotions={promotions} onCreate={onPromotion}
+          onLocate={(id) => commit(() => adapter.commitSelection(selectionForGraph2DObject(document, series, id)))} /> : destination === "Functions" ? <MobileGraphFunctionsPanel document={document} editor={editor} onEditor={setEditor}
         advanced={advanced} onAdvanced={setAdvanced}
         onApplyAdvanced={() => { if (!advanced) return; if (commit(() => {
           // Validate using a transient store before any persistent sidecar write or scene command.
@@ -192,7 +196,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
           })} />
       </>}
     </ScrollView>}
-    <View style={s.destinations} accessibilityRole="tablist">{(["Graph", "Functions", "Analyze"] as const).map((value) =>
+    <View style={s.destinations} accessibilityRole="tablist">{(["Graph", "Functions", "Analyze", "Promote"] as const).map((value) =>
       <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: destination === value }} style={s.button}
         onPress={() => { cancel(); setDestination(value); }}><Text>{value}</Text></Pressable>)}</View>
   </KeyboardAvoidingView>;
