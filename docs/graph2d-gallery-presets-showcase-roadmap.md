@@ -1,6 +1,6 @@
 # Graph2D gallery, presets and showcase roadmap
 
-**Status:** GGL01 implemented (shared validated preset contract/registry/instantiation); GGL02–18 pending. Gallery UI is not delivered yet.
+**Status:** GGL01–02 implemented (shared contract and 20-scene catalog); GGL03–18 pending. Gallery UI is not delivered yet.
 
 **Decision — 2026-09-28:** build a focused editable gallery now, after G2D35 and before G2D36. Deliver shared contracts/content and desktop/web first (GGL01–06), then mobile launch from the same catalog (GGL07–09). Continue the professional features afterward. Keep MOB-G13 physical acceptance open throughout.
 
@@ -124,7 +124,7 @@ Every GGL ID is a reviewable commit. Focused types/tests and stated UI evidence 
 | ID | Planned commit | Scope and acceptance |
 | --- | --- | --- |
 | **GGL01** | `feat(graph2d-presets): add shared versioned catalog contract and instantiation` | Implemented shared core contract, immutable registry, canonical template/sidecar validation and fresh launch-token identities. Four contract tests and strict shared typecheck pass. |
-| **GGL02** | `feat(graph2d-presets): add curated seven-kind starter scenes` | The 20-scene collection, descriptions, attribution, viewports, named default values and six Featured choices; reference math, gaps/endpoints and low-profile bounded projection reviewed. |
+| **GGL02** | `feat(graph2d-presets): add curated seven-kind starter scenes` | Implemented 20 canonical seven-kind scenes, eight multi-object comparisons and six Featured entries. Reference-math, gaps/endpoints/strict fills, 512/1024 sample bounds, low-profile projection and portable editable-copy checks pass (25 catalog/contract tests); strict typecheck passes. Generated visual review follows GGL03. |
 | **GGL03** | `feat(graph2d-gallery): generate reproducible offline preview assets` | Shared sampling → SVG/native images; manifest hash/recipe invalidation, safe text, asset byte ceiling and reviewed geometry; no live sampler per card. |
 | **GGL04** | `feat(graph2d-gallery): add desktop web browse preview and safe project launch` | Toolbar/empty-state entry, categories/search/details; fresh project activation, durable current-work checkpoint including companions, failure recovery, keyboard/focus and responsive layout. |
 | **GGL05** | `feat(graph2d-gallery): add local favorites recent items and discovery states` | Bounded host preferences keyed by stable catalog IDs; missing/update behavior, empty search and resume links; no saved-scene duplication or analytics. |

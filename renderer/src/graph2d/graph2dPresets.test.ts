@@ -43,7 +43,8 @@ describe("portable Graph preset contract", () => {
     expect(createGraph2DPreset(data).sidecars[0]?.rows).toEqual(rows);
     expect(() => createGraph2DPreset({ ...data, sidecars: [] })).toThrow(/Missing/);
     expect(() => createGraph2DPreset({ ...data, sidecars: [{ id: table.id, rows: [{ ...rows[0]!, y: 2 }] }] })).toThrow();
-    expect(() => createGraph2DPreset({ ...data, sidecars: [{ id: table.id, rows: [{ ...rows[0]!, extra: true }] }] })).toThrow();
+    const extraRows = [{ ...rows[0]!, extra: true }];
+    expect(() => createGraph2DPreset({ ...data, sidecars: [{ id: table.id, rows: extraRows }] })).toThrow();
   });
   it("filters deterministic immutable registry and refuses duplicate IDs/order", () => {
     const preset = createGraph2DPreset(input()), registry = createGraph2DPresetRegistry([preset]);
