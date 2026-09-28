@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AppState, Pressable, ScrollView, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
+import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
 import { fitGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, pickGraph2DProbe,
   resolveGraph2DViewport, sampleGraph2DScene, selectionForGraph2DObject, type Graph2DDocument, type Graph2DViewport } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
@@ -7,6 +7,8 @@ import { MobileGraphGesture, mobileGraphProbeRadius, type GraphTouch } from "./m
 import { mobileGraphCapabilities } from "./models/mobileGraphProject";
 import { editMobileGraphProbes } from "./models/mobileGraphProbes";
 import { MobileGraphProbesPanel } from "./MobileGraphProbesPanel";
+import { MobileGraphFunctionsPanel } from "./MobileGraphFunctionsPanel";
+import { applyMobileGraphAuthoring, type MobileGraphEditor } from "./models/mobileGraphAuthoring";
 import { clipMobileGraphLine, mobileGraphTicks, projectMobileGraphLines, type MobileGraphLine } from "./viewer/mobileGraphProjection";
 
 const touches = (event: GestureResponderEvent): GraphTouch[] => event.nativeEvent.touches.map((touch) =>
@@ -27,6 +29,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const [destination, setDestination] = useState<"Graph" | "Functions" | "Analyze">("Graph");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editor, setEditor] = useState<MobileGraphEditor | null>(null);
   const viewport = preview ?? document.display.viewport;
   const cancel = () => { gesture.current.cancel(); setPreview(null); };
   useEffect(() => {
@@ -48,8 +51,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const marker = probe ? graph2DWorldToScreen(viewport, size, probe) : null;
   const history = adapter.history();
   const commit = (action: () => Graph2DDocument | null) => {
-    cancel(); try { const next = action(); if (next) onChange(next); setError(""); }
-    catch (caught) { setError((caught as Error).message); }
+    cancel(); try { const next = action(); if (next) onChange(next); setError(""); return true; }
+    catch (caught) { setError((caught as Error).message); return false; }
   };
   const tap = (screen: { x: number; y: number }) => commit(() => {
     const picked = pickGraph2DProbe({ document, series, viewport: document.display.viewport, size, screen,
@@ -76,7 +79,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const button = (label: string, action: () => void, disabled = false) => <Pressable key={label} accessibilityRole="button"
     accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={action} style={s.button}>
     <Text style={{ color: disabled ? "#94a3b8" : "#1d4ed8" }}>{label}</Text></Pressable>;
-  return <View style={s.root} testID="mobile-graphs-workspace">
+  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={s.root} testID="mobile-graphs-workspace">
     <Text style={s.title} numberOfLines={1}>{document.metadata.title}</Text>
     <ScrollView horizontal style={{ flexGrow: 0, maxHeight: 48 }} contentContainerStyle={s.toolbar}>{button("Reset", () => commit(() => adapter.commitViewport(GRAPH2D_DEFAULT_VIEWPORT)))}
       {button("Fit", fit)}{button("Undo", () => commit(() => adapter.undo()), history.undoDepth === 0)}
@@ -114,17 +117,15 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
           <View style={{ position: "absolute", left: marker.x - 7, top: marker.y - 7, width: 14, height: 14,
             borderRadius: 7, borderWidth: 2, borderColor: "#0f172a", backgroundColor: "#fff" }} />}
       </View>
-      {!document.source.objects.length && <Text pointerEvents="none" style={s.empty}>Empty graph. Import a desktop Graph project or open the Line graph starter.</Text>}
+      {!document.source.objects.length && <Text pointerEvents="none" style={s.empty}>Empty graph. Open Functions to add y(x), or import a desktop Graph project.</Text>}
     </View>
     <Text accessibilityLiveRegion="polite" style={s.readout} numberOfLines={2} testID="mobile-graph-probe">{probe ?
       `${document.source.objects.find((object) => object.id === probe.objectId)?.label}: x=${probe.x.toPrecision(6)}, y=${probe.y.toPrecision(6)}` : "Tap a curve to probe. Tap overlaps again to cycle."}</Text>
     {error || message ? <Text accessibilityLiveRegion="polite" numberOfLines={2} style={s.readout}>{error || message}</Text> : null}
     {destination !== "Graph" && <ScrollView keyboardShouldPersistTaps="handled" style={s.sheet} testID={`mobile-graph-${destination.toLowerCase()}-sheet`}>
-      {destination === "Functions" ? document.source.objects.map((object) => <View key={object.id}>
-        {button(`${object.label} · ${object.kind}`, () => commit(() => adapter.commitSelection(
-          selectionForGraph2DObject(document, series, object.id))))}
-        {object.kind === "explicit-cartesian" && <Text style={s.readout}>y = {object.expression.source}</Text>}
-      </View>) : <><Text style={s.readout}>{mobileGraphCapabilities(document)}</Text>
+      {destination === "Functions" ? <MobileGraphFunctionsPanel document={document} editor={editor} onEditor={setEditor}
+        onApply={(action) => commit(() => adapter.commitScene(applyMobileGraphAuthoring(document, action), action.type))}
+        onSelect={(id) => commit(() => adapter.commitSelection(selectionForGraph2DObject(document, series, id)))} /> : <><Text style={s.readout}>{mobileGraphCapabilities(document)}</Text>
         <Text style={s.readout}>Probe method: direct expression evaluation (floating point). Sampling is approximate.</Text>
         {series.some((item) => !item.artifact.converged) && <Text style={s.readout}>Sampling budget reached; unresolved regions are not a proof of absence.</Text>}
         {button("Clear probe", () => commit(() => adapter.commitSelection({ objectId: null, probe: null })))}
@@ -141,7 +142,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     <View style={s.destinations} accessibilityRole="tablist">{(["Graph", "Functions", "Analyze"] as const).map((value) =>
       <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: destination === value }} style={s.button}
         onPress={() => { cancel(); setDestination(value); }}><Text>{value}</Text></Pressable>)}</View>
-  </View>;
+  </KeyboardAvoidingView>;
 };
 
 const s = StyleSheet.create({ root: { flex: 1, minHeight: 0, paddingHorizontal: 8 }, title: { fontSize: 18, fontWeight: "600" },

@@ -29,7 +29,7 @@ export const createMobileGraph = (title: string, withExample: boolean, stableKey
 export const mobileGraphCapabilities = (document: Graph2DDocument): string => {
   const viewOnly = document.source.objects.filter((object) => object.kind !== "explicit-cartesian");
   return viewOnly.length ? `Graph · explicit plots and probing · ${viewOnly.length} advanced object(s) preserved, view-only; open on desktop for editing/rendering`
-    : "Graph · pan, pinch, fit and probe · authoring continues on desktop";
+    : "Graph · explicit function authoring, pan, pinch, fit and saved probes";
 };
 
 /** Imports a portable Graph document or one unambiguous Graph checkpoint from a mixed workspace. */
