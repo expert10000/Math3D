@@ -97,7 +97,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
         clauses: object.clauses.map((clause) => ({ expression: clause.source, comparator: clause.comparator })),
         operator: object.operator, domain: object.domain, yDomain: object.yDomain,
         style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
-    } else {
+    } else if (object.kind === "point-series") {
       const rows = pointTableStore.resolve(object.table);
       setMode("point-series"); setPointDraft({ label: object.label, mode: object.mode,
         style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth,
@@ -159,7 +159,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
                   object.kind === "implicit" ? `F(x,y) = ${object.expression.source} = 0` :
                     object.kind === "inequality" ? object.clauses.map((clause) =>
                       `${clause.source} ${clause.comparator} 0`).join(object.operator === "all" ? " AND " : " OR ") :
-                      `${object.table.rowCount} rows · ${object.mode} · missing y: gap`}</code>
+                      object.kind === "point-series" ? `${object.table.rowCount} rows · ${object.mode} · missing y: gap` :
+                        object.pieces.map((piece) => piece.expression.source).join("; ")}</code>
               {!style.visible && <small>Hidden</small>}</div></div>
           <div className="graph2d-function-actions">
             <button type="button" aria-label={"Select " + object.label} aria-pressed={document.selection.objectId === object.id}

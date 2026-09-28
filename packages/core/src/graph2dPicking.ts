@@ -1,6 +1,7 @@
 import { evaluateGraph2DExpression } from "./graph2dExpression";
 import { evaluateGraph2DParametric } from "./graph2dParametric";
 import { evaluateGraph2DPolar } from "./graph2dPolar";
+import { evaluateGraph2DPiecewise } from "./graph2dPiecewise";
 import type { Graph2DDocument, Graph2DSelection } from "./graph2dDocument";
 import type { Graph2DSamplePoint, Graph2DSamplingArtifact } from "./graph2dSampling";
 import { graph2DScreenToWorld, graph2DWorldToScreen, type Graph2DScreenPoint, type Graph2DScreenSize, type Graph2DViewport } from "./graph2dViewport";
@@ -94,12 +95,15 @@ export const pickGraph2DProbe = (input: Readonly<{
     }
     let best = { x: 0, y: 0, distancePx: Number.POSITIVE_INFINITY };
     const evaluate = (x: number) => {
-      if ((x <= object.domain.min && !object.domain.includeMin) || (x >= object.domain.max && !object.domain.includeMax)) return null;
-      const result = evaluateGraph2DExpression(object.expression.ast, { ...variables, x });
-      if (!result.ok) return null;
-      const screen = graph2DWorldToScreen(input.viewport, input.size, { x, y: result.value });
+      const point = object.kind === "piecewise" ? evaluateGraph2DPiecewise(object, variables, x) : (() => {
+        if ((x <= object.domain.min && !object.domain.includeMin) || (x >= object.domain.max && !object.domain.includeMax)) return null;
+        const result = evaluateGraph2DExpression(object.expression.ast, { ...variables, x });
+        return result.ok ? { x, y: result.value } : null;
+      })();
+      if (!point) return null;
+      const screen = graph2DWorldToScreen(input.viewport, input.size, point);
       const distancePx = Math.hypot(screen.x - input.screen.x, screen.y - input.screen.y);
-      return Number.isFinite(distancePx) ? { x, y: result.value, distancePx } : null;
+      return Number.isFinite(distancePx) ? { ...point, distancePx } : null;
     };
     const consider = (x: number) => {
       const point = evaluate(x);
@@ -148,8 +152,9 @@ export const pickGraph2DProbe = (input: Readonly<{
           entry.parameter === undefined && input.previous!.probe?.parameter === undefined ||
           entry.parameter !== undefined && input.previous!.probe?.parameter !== undefined &&
           Math.abs(entry.parameter - input.previous!.probe!.parameter!) <=
-            (input.document.source.objects.find((object) => object.id === entry.objectId)!.domain.max -
-              input.document.source.objects.find((object) => object.id === entry.objectId)!.domain.min) / 128));
+            (() => { const found = input.document.source.objects.find((object) => object.id === entry.objectId)!;
+              const domain = found.kind === "piecewise" ? { min: found.pieces[0]!.domain.min, max: found.pieces.at(-1)!.domain.max } : found.domain;
+              return (domain.max - domain.min) / 128; })()));
       if (previousIndex >= 0) winner = overlapping[(previousIndex + 1) % overlapping.length]!;
     }
   }
@@ -189,7 +194,8 @@ export const selectionForGraph2DObject = (
       !best || Math.abs(candidate.x - target) < Math.abs(best.x - target) ? candidate : best, null);
     return { objectId, probe: point ? { objectId, x: point.x, y: point.y } : null };
   }
-  const included = (candidate: Graph2DSamplePoint) =>
+  const included = (candidate: Graph2DSamplePoint) => object.kind === "piecewise" ?
+    evaluateGraph2DPiecewise(object, Object.fromEntries(document.source.variables.map((entry) => [entry.name, entry.value])), candidate.x) !== null :
     (candidate.x > object.domain.min || object.domain.includeMin) &&
     (candidate.x < object.domain.max || object.domain.includeMax);
   let point: Graph2DSamplePoint | null = null;
@@ -209,6 +215,10 @@ export const selectionForGraph2DObject = (
     }
   }
   const variables = Object.fromEntries(document.source.variables.map((entry) => [entry.name, entry.value]));
+  if (object.kind === "piecewise") {
+    const exact = evaluateGraph2DPiecewise(object, variables, point.x);
+    return { objectId, probe: exact ? { objectId, x: exact.x, y: exact.y } : null };
+  }
   const exact = evaluateGraph2DExpression(object.expression.ast, { ...variables, x: point.x });
   return { objectId, probe: { objectId, x: point.x, y: exact.ok ? exact.value : point.y } };
 };

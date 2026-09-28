@@ -14,6 +14,7 @@ export const GRAPH2D_POLAR_CAPABILITY = "graph2d.polar.v1" as const;
 export const GRAPH2D_IMPLICIT_CAPABILITY = "graph2d.implicit.v1" as const;
 export const GRAPH2D_INEQUALITY_CAPABILITY = "graph2d.inequality.v1" as const;
 export const GRAPH2D_POINT_SERIES_CAPABILITY = "graph2d.point-series.v1" as const;
+export const GRAPH2D_PIECEWISE_CAPABILITY = "graph2d.piecewise.v1" as const;
 export const GRAPH2D_OBJECT_KINDS = ["explicit-cartesian", "parametric", "polar", "implicit", "inequality", "point-series", "piecewise"] as const;
 export type Graph2DObjectKind = (typeof GRAPH2D_OBJECT_KINDS)[number];
 export const GRAPH2D_RESERVED_OBJECT_KINDS = GRAPH2D_OBJECT_KINDS.slice(1);
@@ -82,8 +83,18 @@ export type Graph2DPointSeriesObject = Readonly<{
   missing: "gap";
   domain: Graph2DDomain;
 }>;
+export type Graph2DPiece = Readonly<{
+  expression: Readonly<{ source: string; variable: "x"; ast: Graph2DExpressionAst }>;
+  domain: Graph2DDomain;
+}>;
+export type Graph2DPiecewiseObject = Readonly<{
+  id: string;
+  kind: "piecewise";
+  label: string;
+  pieces: readonly Graph2DPiece[];
+}>;
 export type Graph2DGraphObject = Graph2DExplicitObject | Graph2DParametricObject | Graph2DPolarObject |
-  Graph2DImplicitObject | Graph2DInequalityObject | Graph2DPointSeriesObject;
+  Graph2DImplicitObject | Graph2DInequalityObject | Graph2DPointSeriesObject | Graph2DPiecewiseObject;
 export type Graph2DSource = Readonly<{
   objects: readonly Graph2DGraphObject[];
   variables: readonly Readonly<{ name: string; value: number }>[];
@@ -95,7 +106,8 @@ export const graph2DRequiredCapabilities = (source: Graph2DSource): Graph2DDocum
     ...(source.objects.some((object) => object.kind === "polar") ? [GRAPH2D_POLAR_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "implicit") ? [GRAPH2D_IMPLICIT_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "inequality") ? [GRAPH2D_INEQUALITY_CAPABILITY] : []),
-    ...(source.objects.some((object) => object.kind === "point-series") ? [GRAPH2D_POINT_SERIES_CAPABILITY] : [])];
+    ...(source.objects.some((object) => object.kind === "point-series") ? [GRAPH2D_POINT_SERIES_CAPABILITY] : []),
+    ...(source.objects.some((object) => object.kind === "piecewise") ? [GRAPH2D_PIECEWISE_CAPABILITY] : [])];
 export type Graph2DObjectDisplay = Readonly<{
   objectId: string;
   visible: boolean;
@@ -118,7 +130,8 @@ export type Graph2DDocument = Readonly<{
   identity: DocumentIdentity;
   requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
     typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY |
-    typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY)[];
+    typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY |
+    typeof GRAPH2D_PIECEWISE_CAPABILITY)[];
   source: Graph2DSource;
   display: Graph2DDisplay;
   selection: Graph2DSelection;
@@ -190,6 +203,19 @@ const validPointSeriesObject = (value: unknown): value is Graph2DPointSeriesObje
   exact(value, ["id", "kind", "label", "table", "mode", "missing", "domain"]) && objectId(value.id) &&
   value.kind === "point-series" && bounded(value.label, 160) && validPointTableReference(value.table) &&
   ["points", "line"].includes(String(value.mode)) && value.missing === "gap" && validDomain(value.domain);
+const validPiecewiseObject = (value: unknown, variables: readonly string[]): value is Graph2DPiecewiseObject => {
+  if (!record(value) || !exact(value, ["id", "kind", "label", "pieces"]) || !objectId(value.id) ||
+      value.kind !== "piecewise" || !bounded(value.label, 160) || !Array.isArray(value.pieces) ||
+      value.pieces.length < 1 || value.pieces.length > 16 || !value.pieces.every((piece: unknown) => record(piece) &&
+        exact(piece, ["expression", "domain"]) && validExpression(piece.expression, variables) && validDomain(piece.domain))) return false;
+  for (let index = 1; index < value.pieces.length; index += 1) {
+    const previous = value.pieces[index - 1] as Graph2DPiece;
+    const current = value.pieces[index] as Graph2DPiece;
+    if (current.domain.min < previous.domain.max || current.domain.min === previous.domain.max &&
+        current.domain.includeMin && previous.domain.includeMax) return false;
+  }
+  return true;
+};
 const validSource = (value: unknown): value is Graph2DSource => {
   if (!record(value) || !exact(value, ["objects", "variables", "assumptions"]) || !Array.isArray(value.objects) ||
       value.objects.length > GRAPH2D_MAX_OBJECTS ||
@@ -207,7 +233,7 @@ const validSource = (value: unknown): value is Graph2DSource => {
   return value.objects.every((entry: unknown) => validObject(entry, ["x", ...names]) ||
     validParametricObject(entry, ["t", ...names]) || validPolarObject(entry, ["theta", ...names]) ||
     validImplicitObject(entry, ["x", "y", ...names]) || validInequalityObject(entry, ["x", "y", ...names]) ||
-    validPointSeriesObject(entry)) &&
+    validPointSeriesObject(entry) || validPiecewiseObject(entry, ["x", ...names])) &&
     new Set(value.objects.map((entry: Graph2DGraphObject) => entry.id)).size === value.objects.length;
 };
 const validDisplay = (value: unknown, source: Graph2DSource): value is Graph2DDisplay => {

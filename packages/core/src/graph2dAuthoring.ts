@@ -2,6 +2,7 @@ import { GRAPH2D_MAX_OBJECTS, validPointTableReference,
   type Graph2DDocument, type Graph2DDomain, type Graph2DObjectDisplay,
   type Graph2DPointTableReference } from "./graph2dDocument";
 import { parseGraph2DExpression } from "./graph2dExpression";
+import { inspectGraph2DPiecewiseDomains } from "./graph2dPiecewise";
 
 export type Graph2DScene = Pick<Graph2DDocument, "source" | "display" | "selection">;
 export type Graph2DFunctionDraft = Readonly<{
@@ -45,6 +46,11 @@ export type Graph2DPointSeriesDraft = Readonly<{
   domain: Graph2DDomain;
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
 }>;
+export type Graph2DPiecewiseDraft = Readonly<{
+  label: string;
+  pieces: readonly Readonly<{ expression: string; domain: Graph2DDomain }>[];
+  style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
+}>;
 export type Graph2DAuthoringAction =
   | Readonly<{ type: "create"; draft: Graph2DFunctionDraft }>
   | Readonly<{ type: "edit"; objectId: string; draft: Graph2DFunctionDraft }>
@@ -58,6 +64,8 @@ export type Graph2DAuthoringAction =
   | Readonly<{ type: "edit-inequality"; objectId: string; draft: Graph2DInequalityDraft }>
   | Readonly<{ type: "create-point-series"; draft: Graph2DPointSeriesDraft }>
   | Readonly<{ type: "edit-point-series"; objectId: string; draft: Graph2DPointSeriesDraft }>
+  | Readonly<{ type: "create-piecewise"; draft: Graph2DPiecewiseDraft }>
+  | Readonly<{ type: "edit-piecewise"; objectId: string; draft: Graph2DPiecewiseDraft }>
   | Readonly<{ type: "duplicate" | "delete" | "visibility"; objectId: string }>
   | Readonly<{ type: "reorder"; objectId: string; toIndex: number }>;
 
@@ -151,6 +159,20 @@ export const validateGraph2DPointSeriesDraft = (draft: Graph2DPointSeriesDraft):
   if (!validPointTableReference(draft.table)) errors.push("Point table reference is invalid.");
   if (!["points", "line"].includes(draft.mode)) errors.push("Choose points or connected line mode.");
   return errors;
+};
+export const validateGraph2DPiecewiseDraft = (draft: Graph2DPiecewiseDraft,
+  variables: readonly string[] = ["x"]): readonly string[] => {
+  const errors: string[] = [];
+  if (draft.pieces.length < 1 || draft.pieces.length > 16) errors.push("Use 1–16 ordered pieces.");
+  for (const piece of draft.pieces) errors.push(...validateGraph2DFunctionDraft({ ...draft,
+    expression: piece.expression, domain: piece.domain }, variables));
+  const parsedPieces = draft.pieces.flatMap((piece) => {
+    const parsed = parseGraph2DExpression(piece.expression, variables);
+    return parsed.ok ? [{ expression: { source: piece.expression, variable: "x" as const, ast: parsed.ast }, domain: piece.domain }] : [];
+  });
+  if (parsedPieces.length === draft.pieces.length && inspectGraph2DPiecewiseDomains({ pieces: parsedPieces })
+    .some((issue) => issue.kind === "overlap")) errors.push("Piece domains must be ordered and must not overlap.");
+  return [...new Set(errors)];
 };
 
 export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2DAuthoringAction): Graph2DScene => {
@@ -277,6 +299,28 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       clauses, operator: action.draft.operator, domain: action.draft.domain, yDomain: action.draft.yDomain };
     const display = { objectId: id, ...action.draft.style };
     if (action.type === "create-inequality") { objects.push(object); displays.push(display); }
+    else { objects[index] = object; displays[index] = display; }
+    selection = { objectId: id, probe: null };
+  } else if (action.type === "create-piecewise" || action.type === "edit-piecewise") {
+    if (action.type === "edit-piecewise" && objects[index]?.kind !== "piecewise")
+      throw new TypeError("Selected object is not piecewise.");
+    const names = ["x", ...document.source.variables.map((entry) => entry.name)];
+    const errors = validateGraph2DPiecewiseDraft(action.draft, names);
+    if (errors.length) throw new TypeError(errors.join(" "));
+    if (action.type === "create-piecewise" && objects.length >= GRAPH2D_MAX_OBJECTS) throw new TypeError("Function limit reached.");
+    const pieces = action.draft.pieces.map((piece) => {
+      const parsed = parseGraph2DExpression(piece.expression, names);
+      if (!parsed.ok) throw new TypeError("Piece expression is invalid.");
+      return { expression: { source: piece.expression, variable: "x" as const, ast: parsed.ast }, domain: piece.domain };
+    });
+    let id = action.type === "edit-piecewise" ? action.objectId : "piecewise_1";
+    if (action.type === "create-piecewise") {
+      let serial = 1;
+      while (objects.some((entry) => entry.id === id)) id = "piecewise_" + ++serial;
+    }
+    const object = { id, kind: "piecewise" as const, label: action.draft.label, pieces };
+    const display = { objectId: id, ...action.draft.style };
+    if (action.type === "create-piecewise") { objects.push(object); displays.push(display); }
     else { objects[index] = object; displays[index] = display; }
     selection = { objectId: id, probe: null };
   } else if (action.type === "create-point-series" || action.type === "edit-point-series") {

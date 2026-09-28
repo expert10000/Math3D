@@ -56,8 +56,11 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
         object.kind === "implicit" ? `F(x,y) = ${object.expression.source} = 0` :
           object.kind === "inequality" ? object.clauses.map((clause) =>
             `${clause.source} ${clause.comparator} 0`).join(object.operator === "all" ? " AND " : " OR ") :
-            `${object.table.rowCount} rows · ${object.mode} · missing y: gap`,
-    domain: object.domain, style,
+            object.kind === "point-series" ? `${object.table.rowCount} rows · ${object.mode} · missing y: gap` :
+              object.pieces.map((piece) => `${piece.expression.source} on ${piece.domain.includeMin ? "[" : "("}${piece.domain.min}, ${piece.domain.max}${piece.domain.includeMax ? "]" : ")"}`).join("; "),
+    domain: object.kind === "piecewise" ? { min: object.pieces[0]!.domain.min,
+      max: object.pieces.at(-1)!.domain.max, includeMin: object.pieces[0]!.domain.includeMin,
+      includeMax: object.pieces.at(-1)!.domain.includeMax } : object.domain, style,
     probe: selectedProbe, signedRadius,
     regionState: visibleArtifact && "kind" in visibleArtifact && visibleArtifact.kind === "inequality-region" ?
       (visibleArtifact as unknown as Graph2DRegionArtifact).state : null,
@@ -79,7 +82,8 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
         object.kind === "parametric" ? object.xExpression.ast.version :
           object.kind === "polar" ? object.rExpression.ast.version :
             object.kind === "implicit" ? object.expression.ast.version :
-              object.kind === "inequality" ? object.clauses[0]!.ast.version : null,
+              object.kind === "inequality" ? object.clauses[0]!.ast.version :
+                object.kind === "piecewise" ? object.pieces[0]!.expression.ast.version : null,
       samplerVersion: visibleArtifact?.samplerVersion ?? null },
   };
 };

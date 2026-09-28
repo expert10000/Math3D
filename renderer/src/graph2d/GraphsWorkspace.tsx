@@ -13,6 +13,7 @@ import {
   sampleGraph2DImplicit,
   sampleGraph2DInequality,
   sampleGraph2DPointSeries,
+  sampleGraph2DPiecewise,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
   type Graph2DIntegralMode,
 } from "@math3d/core";
@@ -104,7 +105,8 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
               viewport, width: size.width, height: size.height, policy }) :
               object.kind === "inequality" ? sampleGraph2DInequality({ object, variables, viewport,
                 width: size.width, height: size.height, policy }) :
-                sampleGraph2DPointSeries(object, pointTableStore.resolve(object.table), policy.maxSamples);
+                object.kind === "point-series" ? sampleGraph2DPointSeries(object, pointTableStore.resolve(object.table), policy.maxSamples) :
+                  sampleGraph2DPiecewise({ object, variables, viewport, width: size.width, height: size.height, policy });
       return [{ objectId: object.id, style, artifact }];
     });
   }, [document, size, viewport, previewViewport]);
