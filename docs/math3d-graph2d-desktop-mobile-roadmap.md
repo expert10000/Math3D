@@ -1,10 +1,10 @@
 # MATH3D Graph2D — Desktop and Mobile Roadmap
 
-**Status:** desktop/web baseline through G2D32, mobile MOB-G01–12 and automated G2D33–35 implemented; MOB-G13 physical release validation remains pending, with partial Android USB evidence. G2D36–40 are next.
+**Status:** desktop/web baseline through G2D32, mobile MOB-G01–12 and automated G2D33–35 implemented; MOB-G13 physical release validation remains pending, with partial Android USB evidence. Next: planned GGL01–06 desktop/web gallery, then GGL07–09 mobile gallery; professional G2D36–40 follows.
 
 **Priority:** P1 after the active mobile project-transfer sequence
 
-**Scope:** shared Graph2D domain, desktop/web workspace, touch-first mobile client, and deterministic desktop/mobile round trip
+**Scope:** shared Graph2D domain, desktop/web workspace, touch-first mobile client, deterministic desktop/mobile round trip, and a shared curated gallery of editable mathematical scenes
 
 **Canonical authority:** this file owns Graph2D sequencing, architecture boundaries, acceptance criteria, and release gates. It complements the application-kernel roadmap and does not reopen completed kernel work.
 
@@ -18,7 +18,13 @@
 - G2D33 implements checkpointed desktop/mobile handoff with source/result/companion retention and revision conflict checks. G2D34 adds a shared seven-kind numerical/migration corpus and real browser Worker/UI parity checks. G2D35 publishes the [architecture, schema, algorithms and parity guide](graph2d-architecture-schema-algorithms-parity.md).
 - Initial desktop/mobile checks are recorded in [the historical acceptance report](graph2d-acceptance-2026-09-28.md); current software evidence is in [G2D33 round trip](graph2d-g33-round-trip-acceptance.md) and [G2D34 parity corpus](graph2d-g34-parity-corpus.md). A connected SM-A566B Android 16 phone supplied [partial internal-build evidence](mobile-graphs-g13-readiness-2026-09-28.md). Full physical gesture, accessibility, rotation, memory/calibration, production signing and iOS signoff remain release gates.
 
-This does **not** finish the entire roadmap: MOB-G13 physical acceptance and professional G2D36–40 remain. Automated handoff and corpus checks do not substitute for native release evidence. An existing installer/APK does not gain these changes until rebuilt.
+This does **not** finish the entire roadmap: MOB-G13 physical acceptance, planned GGL gallery work and professional G2D36–40 remain. Automated handoff and corpus checks do not substitute for native release evidence. An existing installer/APK does not gain these changes until rebuilt.
+
+### Gallery sequencing decision — 2026-09-28
+
+Build a focused gallery **now, before G2D36**, using the already implemented seven-kind engine and canonical Graph documents. Deliver shared content and desktop/web discovery first, then mobile launch through the existing project library. Sliders/animation stay owned by G2D38, project exchange stays owned by the existing Graph/handoff contracts, and full physical acceptance stays owned by MOB-G13.
+
+The [gallery, presets and showcase roadmap](graph2d-gallery-presets-showcase-roadmap.md) adapts the supplied 37-step proposal, maps every proposed GRPH-G ID, and specifies launch safety, 20 initial scenes, generated offline previews and focused acceptance. GGL IDs are planned new commits; they do not renumber G2D milestones or imply implementation.
 
 ## 1. Outcome
 
@@ -62,6 +68,10 @@ Desktop-first means that desktop proves the shared domain. It does **not** autho
 - silent recomputation that changes a frozen numerical result without source/revision provenance;
 - a second mobile-only graph engine;
 - treating sampled polylines as canonical mathematical source.
+
+### Next product extension — curated gallery
+
+After G2D35, add a curated gallery that instantiates normal editable Graph projects, with shared mathematical templates, offline previews and host-local favorites/recent entries. Its acceptance is separate from the original v1 physical release gate. See the planned gallery sequence below.
 
 ## 3. Existing architecture this program must reuse
 
@@ -274,17 +284,33 @@ Mobile starts only after G2D30–G2D32 are green. The first mobile slice is expl
 | **G2D34** | `test(graph2d): add cross-platform visual numerical and migration corpus` | Implemented 13 shared seven-kind fixtures, 16 Node numerical/migration/promotion/corruption/cancellation tests, identical timezone reports, real Chromium worker comparisons and rendered geometry/captures under English/UTC and Polish/Auckland. Half-undefined path refinement is bounded with explicit unresolved diagnostics. Mobile projection runs in Node; physical Hermes/iOS parity remains pending MOB-G13. See `graph2d-g34-parity-corpus.md`. |
 | **G2D35** | `docs(graph2d): publish architecture schema algorithms and parity guide` | Implemented maintained guide covering ownership, schemas, AST, sampling guarantees/limits, result confidence, accessibility, performance profiles, interoperability/handoff v2, migration, troubleshooting, and software versus pending physical release evidence. Linked from docs index/navigation and the handoff contract. See [the guide](graph2d-architecture-schema-algorithms-parity.md). |
 
-### Phase I — Post-v1 professional extensions
+### Gallery insertion — after G2D35, before Phase I
 
-These are ordered follow-ons, not blockers for the v1 round-trip gate.
+Detailed contracts, content and later GGL10–18 follow-ons live in the [gallery roadmap](graph2d-gallery-presets-showcase-roadmap.md). Every row below is **planned**, not delivered. Desktop/web acceptance precedes mobile delivery; physical checks remain separately reported.
 
 | ID | Planned commit | Scope and acceptance evidence |
 | --- | --- | --- |
-| **G2D36** | `feat(graph2d-export): add SVG PNG CSV and accessible report export` | Export vector/raster presentation and sampled/analysis tables with source hash, viewport, units, method, tolerance, and semantics-loss labeling. |
-| **G2D37** | `feat(graph2d): add linear logarithmic and equal-scale axis policies` | Add validated scale policies, invalid-domain guidance, tick formatting, fit behavior, persistence, and analysis restrictions without changing source expressions. |
-| **G2D38** | `feat(graph2d): add parameters sliders and deterministic animation` | Add bounded named parameters, units/ranges, command-backed values, transient scrubbing, deterministic frame export, and cancellation; animation state is never hidden source truth. |
+| **GGL01** | `feat(graph2d-presets): add shared versioned catalog contract and instantiation` | Immutable core registry and validated normal Graph templates, manifest/sidecar bounds, capabilities/digests and fresh project identities without invented ancestry. |
+| **GGL02** | `feat(graph2d-presets): add curated seven-kind starter scenes` | 20 reviewed scenes spanning algebra, trigonometry, calculus, parametric, polar, implicit, inequality, piecewise and data; at least six multi-object scenes and six static Featured items. |
+| **GGL03** | `feat(graph2d-gallery): generate reproducible offline preview assets` | Shared sampler, fixed recipes, SVG/native raster assets, digest invalidation, honest gaps/limits, asset ceiling and no live renderer per card. |
+| **GGL04** | `feat(graph2d-gallery): add desktop web browse preview and safe project launch` | Visible Graphs toolbar/empty-state entry, search/categories/details, fresh editable copy, durable preservation of current workspace/companions, rollback and keyboard/focus support. |
+| **GGL05** | `feat(graph2d-gallery): add local favorites recent items and discovery states` | Bounded host preferences keyed by catalog ID, missing/update handling and preserved-project resume; no parallel user-project store or telemetry. |
+| **GGL06** | `test(graph2d-gallery): freeze desktop web catalog launch and rendering baseline` | Actual Electron/browser preview/open/edit/undo/save/handoff, source/visual checks, locale contexts, sidecars, current-work preservation and cancelled-job cleanup. |
+| **GGL07** | `feat(mobile-graphs): add shared offline gallery browse and previews` | Projects/New Project and Graph Workspace entries, static bundled cards, categories/search, accessible small-height/tablet layout and shared default source. |
+| **GGL08** | `feat(mobile-graphs): launch presets through ordinary project persistence` | One-tap ordinary saved project, staged sidecars/rollback, current-edit preservation and existing save/share/export workflows. |
+| **GGL09** | `test(graph2d-gallery): freeze mobile launch and desktop return parity` | Shared model round trip plus physical Android walkthrough; report missing iOS/tablet evidence explicitly. Does not replace MOB-G13. |
+
+### Phase I — Post-v1 professional extensions
+
+The preceding gallery insertion comes before these professional extensions. Their identifiers remain stable; revised execution order is **G2D36 → G2D38 → G2D37 → G2D39 → G2D40**, with GGL10 integrating the shared controls after G2D38. These extensions and the gallery are not substitutes for the physical v1 round-trip gate.
+
+| ID | Planned commit | Scope and acceptance evidence |
+| --- | --- | --- |
+| **G2D36** | `feat(graph2d-export): add SVG PNG CSV and accessible report export` | After the initial gallery: export vector/raster presentation and sampled/analysis tables with source hash, viewport, units, method, tolerance, and semantics-loss labeling. Reuse shared geometry with gallery previews; public exports retain their own publication contract. |
+| **G2D37** | `feat(graph2d): add linear logarithmic and equal-scale axis policies` | After G2D38: add validated scale policies, invalid-domain guidance, tick formatting, fit behavior, persistence, and analysis restrictions without changing source expressions. Capability-check gallery examples using new policies. |
+| **G2D38** | `feat(graph2d): add parameters sliders and deterministic animation` | Execute after G2D36, before G2D37. Add bounded named parameters, units/ranges, command-backed values, transient scrubbing, deterministic frame export, and cancellation; animation state is never hidden source truth. Shared authoring/history/scheduler contracts serve workspace and presets; GGL10 supplies catalog control hints and host integration. |
 | **G2D39** | `feat(graph2d-analysis): add regression fitting and uncertainty bands` | Add reviewed models, residuals, confidence/uncertainty semantics, dataset provenance, and explicit statistical assumptions using shared result contracts. |
-| **G2D40** | `test(graph2d): freeze professional publication and accessibility gate` | Freeze exports, scale policies, parameter workflows, statistical results, keyboard/screen-reader coverage, high contrast, and print/report reproducibility. |
+| **G2D40** | `test(graph2d): freeze professional publication and accessibility gate` | Freeze exports, scale policies, parameter workflows, statistical results, keyboard/screen-reader coverage, high contrast, and print/report reproducibility. Include gallery-launched parameter scenes and preservation of gallery-source semantics in exports. |
 
 ## 7. Dependency graph and parallel work
 
@@ -302,11 +328,22 @@ G2D07 → G2D08 → G2D09 → G2D10 → G2D11 → G2D12
                                  ↓
                          G2D30 → G2D31 → G2D32
                                  ↓
-                      MOB-G01 → … → MOB-G13
-                                 ↓
+                      MOB-G01 → … → MOB-G12
+                                 ├──────────────→ MOB-G13 exact-device gate
+                                 ↓                         │
                          G2D33 → G2D34 → G2D35
+                                 ├── software evidence ───┤
+                                 ↓                         ↓
+                         GGL01 → … → GGL06          v1 release signoff
                                  ↓
-                              G2D36–G2D40
+                         GGL07 → GGL08 → GGL09
+                                 ↓
+                       G2D36 → G2D38 → G2D37 → G2D39 → G2D40
+                                  │
+                                  └─ GGL10 interactive presets
+
+Later GGL11–18 follow their individual dependencies; they do not block
+the initial gallery. New runtime changes require updated exact-device evidence.
 ```
 
 Safe parallelism after contracts land:
@@ -316,6 +353,7 @@ Safe parallelism after contracts land:
 - parametric/polar can proceed together after graph-object unions and sampler interfaces stabilize;
 - implicit/inequality work shares contour/fill infrastructure but must retain separate semantic contracts;
 - mobile layout prototypes may run before G2D30, but production mobile commits cannot fork or pre-freeze shared behavior.
+- catalog mathematics, previews and controls must use the shared Graph domain; desktop/web GGL06 proves gallery launch before mobile GGL07–09, and G2D38 owns parameter/animation behavior for both authoring and presets.
 
 ## 8. Verification matrix
 
@@ -330,8 +368,9 @@ Safe parallelism after contracts land:
 | Mobile | typecheck, model/service/component tests, compact layout, gestures, lifecycle/memory, exact-device smoke |
 | Interop | relation/source hashes, selection mapping, stale/regenerate/fork, Curve/Surface open-and-locate |
 | Round trip | desktop/core/mobile canonical fixtures, migration and divergence matrix, visual/numerical tolerances |
+| Gallery | template/capability/sidecar validation, fresh identities, current-work preservation and rollback, offline previews, all-kind numerical/visual checks, host launch/edit/save/return, keyboard/native discovery and bounded preview retention |
 
-Focused gates are preferred during implementation. G2D30, G2D32, MOB-G13, G2D34, and G2D40 are the broader program gates.
+Focused gates are preferred during implementation. G2D30, G2D32, MOB-G13, G2D34, GGL06, GGL09 and G2D40 are the broader program gates. GGL09's native walkthrough does not waive any missing G13 release evidence.
 
 ## 9. Principal risks and mitigations
 
@@ -347,6 +386,8 @@ Focused gates are preferred during implementation. G2D30, G2D32, MOB-G13, G2D34,
 | Graph projects bloat | bounded documents, artifact handles, managed data imports, no persisted sample arrays |
 | Locale changes canonical data | locale-neutral parsing/serialization; locale affects presentation only |
 | Scope expands into a CAS or drawing tool | v1 non-goals and capability-driven backlog remain normative |
+| Gallery creates a second Graph format or overwrites user work | canonical Graph templates, fresh identities, ordinary project persistence, atomic launch and retained companion/result checks |
+| Gallery browsing overloads mobile or previews misrepresent mathematics | static bundled previews, bounded selected jobs/caches, shared geometry, visible limitations and reviewed low-profile content |
 
 ## 10. Definition of done
 
