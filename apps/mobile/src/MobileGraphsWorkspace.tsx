@@ -24,7 +24,7 @@ import { mobileGraphLayout, mobileGraphPanelDestination, type MobileGraphDestina
 import { MobileGraphAnalysisPanel } from "./MobileGraphAnalysisPanel";
 import { mobileGraphAnalysisDraft, runMobileGraphAnalysis, isMobileGraphAnalysisCurrent, mobileGraphAnalysisProbe,
   type MobileGraphRegressionAnalysis } from "./models/mobileGraphAnalysis";
-import { clipMobileGraphLine, mobileGraphTicks, projectMobileGraphLines, type MobileGraphLine } from "./viewer/mobileGraphProjection";
+import { clipMobileGraphLine, projectMobileGraphGrid, projectMobileGraphLines, type MobileGraphLine } from "./viewer/mobileGraphProjection";
 
 const touches = (event: GestureResponderEvent): GraphTouch[] => event.nativeEvent.touches.map((touch) =>
   ({ id: touch.identifier, x: touch.locationX, y: touch.locationY }));
@@ -74,7 +74,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const lines = useMemo(() => projectMobileGraphLines(geometry.boundaries, viewport, size, document.selection.objectId, budget.lines), [geometry, viewport, size, document.selection.objectId, budget.lines]);
   const continuationLines = useMemo(() => viewport.continuation ? projectMobileGraphLines(series.filter(item => item.continuation).map(item => ({ ...item,
     artifact: item.continuation!, style: { ...item.style, lineStyle: "dotted" } })), viewport, size, null, Math.max(0, budget.lines - lines.length)) : [], [series, viewport, size, budget.lines, lines.length]);
-  const ticks = mobileGraphTicks(viewport, size);
+  const ticks = useMemo(() => projectMobileGraphGrid(document.display.axes, viewport, size), [document.display.axes, viewport, size]);
   const bounds = resolveGraph2DViewport(viewport, size);
   const probe = parameterPreviewActive ? null : document.selection.probe;
   const marker = probe ? graph2DWorldToScreen(viewport, size, probe) : null;
@@ -147,15 +147,16 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
           mobileGraphAreaRects(analysis, viewport, size, budget.fills).map((rect, index) => <View key={`area${index}`} style={{ position: "absolute", ...rect, backgroundColor: rect.color, opacity: 0.5 }} />)}
         {document.display.axes.x && axis({ x: bounds.xMin, y: 0 }, { x: bounds.xMax, y: 0 })}
         {document.display.axes.y && axis({ x: 0, y: bounds.yMin }, { x: 0, y: bounds.yMax })}
+        {ticks.lines.map((line, index) => <Line key={`grid${index}`} {...line} />)}
         {(document.display.axes.grid || document.display.axes.labels) && ticks.x.map((x) => {
           const point = graph2DWorldToScreen(viewport, size, { x, y: 0 });
-          return <React.Fragment key={`x${x}`}>{document.display.axes.grid && <View style={{ position: "absolute", left: point.x, height: "100%", width: 1, backgroundColor: "#e2e8f0" }} />}
+          return <React.Fragment key={`x${x}`}>
             {document.display.axes.labels && <Text style={{ position: "absolute", fontSize: 10, left: Math.max(0, Math.min(size.width - 26, point.x + 2)),
               top: size.height - 14 }}>{Number(x.toPrecision(3))}</Text>}</React.Fragment>;
         })}
         {(document.display.axes.grid || document.display.axes.labels) && ticks.y.map((y) => {
           const point = graph2DWorldToScreen(viewport, size, { x: 0, y });
-          return <React.Fragment key={`y${y}`}>{document.display.axes.grid && <View style={{ position: "absolute", top: point.y, width: "100%", height: 1, backgroundColor: "#e2e8f0" }} />}
+          return <React.Fragment key={`y${y}`}>
             {document.display.axes.labels && <Text style={{ position: "absolute", fontSize: 10, left: 2,
               top: Math.max(0, Math.min(size.height - 14, point.y + 2)) }}>{Number(y.toPrecision(3))}</Text>}</React.Fragment>;
         })}
@@ -201,6 +202,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         ? "Approximate/incomplete display. Check Display diagnostics; missing data requires its CSV/TSV sidecar." : "",
     ].filter(Boolean).join(" ")}</Text>
     {error || sampling.error || message ? <Text accessibilityLiveRegion="polite" numberOfLines={2} style={s.readout}>{error || sampling.error || message}</Text> : null}
+    {ticks.warnings.length > 0 && <Text accessibilityLiveRegion="polite" style={s.readout}>{ticks.warnings.join(" ")}</Text>}
     </View>
     {panelDestination && <ScrollView keyboardShouldPersistTaps="handled" style={[s.sheet, layout.split && s.sidePanel, layout.split && { width: layout.panelWidth }]}
       accessibilityLabel={`${panelDestination} ${layout.split ? "side panel" : "bottom sheet"}`} testID={`mobile-graph-${panelDestination.toLowerCase()}-sheet`}>
@@ -209,6 +211,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         onCommit={action => { const next = adapter.commitScene(applyGraph2DAuthoring(document, action), action.type); cancel(); setParameterPreview(null); onChange(next); }} /> :
         panelDestination === "Export" ? <MobileGraphExportPanel document={document} analysis={analysisCurrent ? analysis : null} draft={analysisDraft} /> : panelDestination === "Display" ? <MobileGraphDisplayPanel document={document} series={series} overlays={overlays} lineCount={lines.length} sampling={sampling}
         onViewport={v => { const next = adapter.commitViewport(v); cancel(); cancelParameter(); onChange(next); }}
+        onGrid={axes => { const next = adapter.commitScene(mobileGraphDisplayScene(document, { type: "grid", axes }), "style"); cancel(); cancelParameter(); onChange(next); }}
         onOverlays={setOverlays} onAxis={(key) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "axis", key }), "style"))}
         onQuality={(quality) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "quality", quality }), "style"))} /> : panelDestination === "Promote" ?
         <MobileGraphPromotionPanel document={document} promotions={promotions} onCreate={onPromotion}

@@ -3,6 +3,23 @@ import { launchSurfaceApp, closeSurfaceApp, resetSurfaceAppState } from "./helpe
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+test("G2D41 Electron grid settings apply as reversible display-only intent", async ({}, info) => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page; await resetSurfaceAppState(page); await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByTestId("workspace-nav-graphs").click(); await page.getByTestId("graph-gallery-open").click();
+    await page.getByRole("button", { name: "Open A tangent at x = 1", exact: true }).click();
+    const opener = page.getByRole("button", { name: "Grid", exact: true }); await opener.focus(); await page.keyboard.press("Enter");
+    const panel = page.getByTestId("graph2d-grid-settings"); await expect(panel.getByRole("checkbox", { name: "Show grid", exact: true })).toBeFocused();
+    await panel.getByLabel("X grid spacing", { exact: true }).fill("1"); await panel.getByLabel("Grid contrast", { exact: true }).selectOption("strong");
+    await panel.getByLabel("Show minor subdivisions", { exact: true }).uncheck(); await panel.getByRole("button", { name: "Apply grid settings", exact: true }).click();
+    await expect(panel.getByRole("alert")).toHaveCount(0); await expect(page.locator(".graph2d-grid-minor")).toHaveCount(0);
+    await page.keyboard.press("Escape"); await expect(opener).toBeFocused(); await page.getByTestId("main-viewer").focus(); await page.keyboard.press("Control+z");
+    await opener.click(); await expect(panel.getByLabel("X grid spacing", { exact: true })).toHaveValue("");
+    await page.screenshot({ path: info.outputPath("grid-electron.png") });
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("G2D40 Electron professional scales, checked regression and frozen local publication", async ({}, info) => {
   const app = await launchSurfaceApp();
   try {

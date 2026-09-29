@@ -24307,6 +24307,10 @@ const App: React.FC = () => {
   const commitGraph2DGridMode = useCallback((mode: "cartesian" | "polar") => {
     setGraph2dDocument(graph2dAdapterRef.current!.commitGridMode(mode));
   }, []);
+  const commitGraph2DAxes = useCallback((axes: Graph2DDocument["display"]["axes"]) => {
+    const adapter = graph2dAdapterRef.current!, document = adapter.document();
+    setGraph2dDocument(adapter.commitScene({ source: document.source, selection: document.selection, display: { ...document.display, axes } }, "style"));
+  }, []);
   const commitGraph2DAuthoring = useCallback((action: Graph2DAuthoringAction) => {
     const adapter = graph2dAdapterRef.current!;
     setGraph2dDocument(adapter.commitScene(applyGraph2DAuthoring(adapter.document(), action), action.type));
@@ -89557,6 +89561,7 @@ case "mobius":
             promotions={graph2dPromotions} onPromotionCreate={addGraph2DPromotion}
             onPromotionLocate={openGraph2DTarget} onPromotionRegenerate={regenerateGraph2DTarget}
             onViewportCommit={commitGraph2DViewport} onGridModeCommit={commitGraph2DGridMode}
+            onAxesCommit={commitGraph2DAxes}
             onAuthoringCommit={commitGraph2DAuthoring}
             onSelectionCommit={commitGraph2DSelection}
             onUndo={undoGraph2DViewport} onRedo={redoGraph2DViewport} />

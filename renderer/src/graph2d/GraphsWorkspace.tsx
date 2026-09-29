@@ -16,6 +16,7 @@ import {
   graph2DParameterSessionKey, previewGraph2DParameterValues, graph2DHasLogScale,
   isGraph2DRegressionCurrent, graph2DRegressionResidualTable, graph2DRegressionCurveTable, graph2DPublicationAnalysisTable,
   type Graph2DRegression, type Graph2DRegressionModel,
+  projectGraph2DGrid, projectGraph2DPolarGrid,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
@@ -29,6 +30,7 @@ import { GraphGalleryDialog } from "./GraphGalleryDialog";
 import { Graph2DExportDialog } from "./Graph2DExportDialog";
 import { Graph2DParametersPanel } from "./Graph2DParametersPanel";
 import { Graph2DScalePanel } from "./Graph2DScalePanel";
+import { Graph2DGridPanel } from "./Graph2DGridPanel";
 import { Graph2DRegressionPanel } from "./Graph2DRegressionPanel";
 import "./graphsWorkspace.css";
 
@@ -39,6 +41,7 @@ type Props = {
   errorMessage?: string;
   onViewportCommit?: (viewport: Graph2DViewport) => void;
   onGridModeCommit?: (mode: "cartesian" | "polar") => void;
+  onAxesCommit?: (axes: Graph2DDocument["display"]["axes"]) => void;
   onAuthoringCommit?: (action: Graph2DAuthoringAction) => void;
   onSelectionCommit?: (selection: Graph2DSelection) => void;
   onUndo?: () => void;
@@ -53,12 +56,14 @@ type Props = {
 
 /** Desktop/web projection of shared Graph2D source and persistent display state. */
 export function GraphsWorkspace({ dockLayout, document, status = "ready", errorMessage, onViewportCommit,
-  onGridModeCommit, onAuthoringCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
+  onGridModeCommit, onAxesCommit, onAuthoringCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onOpenPreset, onResumeCheckpoint }: Props) {
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [parametersOpen, setParametersOpen] = useState(false);
   const [scalesOpen, setScalesOpen] = useState(false);
+  const [gridOpen, setGridOpen] = useState(false);
+  const gridOpener = useRef<HTMLButtonElement | null>(null);
   const [regression, setRegression] = useState<Graph2DRegression | null>(null), [regressionModel, setRegressionModel] = useState<Graph2DRegressionModel>("linear");
   const [parameterEpoch, setParameterEpoch] = useState(0);
   const parametersOpener = useRef<HTMLButtonElement | null>(null);
@@ -129,6 +134,10 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const showLeft = !dockLayout.viewerMaximized && !dockLayout.leftCollapsed;
   const showRight = !dockLayout.viewerMaximized && !dockLayout.rightCollapsed;
   const viewport = previewViewport ?? document.display.viewport;
+  const gridWarnings = useMemo(() => !document.display.axes.grid ? [] : document.display.axes.gridMode === "polar" ?
+    (document.display.axes.gridOptions ? projectGraph2DPolarGrid(viewport, size, document.display.axes.gridOptions).warnings : []) :
+    (projectGraph2DGrid(viewport, size, document.display.axes.gridOptions).warnings ?? []), [document.display.axes, viewport, size]);
+  const manualGrid = document.display.axes.gridOptions?.xStep != null || document.display.axes.gridOptions?.yStep != null;
   const renderedDisplay = useMemo(() => ({ ...document.display, viewport, ...(parameterPreviewActive ? { pinnedProbes: [] } : {}) }), [document.display, viewport, parameterPreviewActive]);
   const samplingRequest = useMemo(() => ({ document: sampledDocument, viewport, width: size.width, height: size.height,
     interaction: previewViewport !== null,
@@ -509,22 +518,24 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         onPointerCancel={() => { dragRef.current = null; setPreview(null); setHoverSelection(null); }}
         onPointerLeave={() => setHoverSelection(null)} onKeyDown={onKeyDown}>
         <div className="graph2d-toolbar" onPointerDown={(event) => event.stopPropagation()}>
-          <button type="button" ref={scalesOpener} onClick={() => { finishWheel(); cancelParameter(); setParametersOpen(false); setScalesOpen(!scalesOpen); }}>Scales</button>
+          <button type="button" ref={gridOpener} aria-expanded={gridOpen} disabled={status !== "ready"} onClick={() => { finishWheel(); cancelParameter(); setParametersOpen(false); setScalesOpen(false); setGridOpen(!gridOpen); }}>Grid</button>
+          <button type="button" ref={scalesOpener} onClick={() => { finishWheel(); cancelParameter(); setGridOpen(false); setParametersOpen(false); setScalesOpen(!scalesOpen); }}>Scales</button>
           <button type="button" aria-pressed={viewport.continuation ?? false} onClick={() => { finishWheel(); cancelParameter(); onViewportCommit?.({ ...document.display.viewport, continuation: !document.display.viewport.continuation }); }}>Show continuation</button>
-          <button type="button" data-testid="graph-gallery-open" onClick={event => { galleryOpener.current = event.currentTarget; finishWheel(); setScalesOpen(false); setParametersOpen(false); setParameterPreview(null); setGalleryError(null); setGalleryOpen(true); }}>Gallery</button>
+          <button type="button" data-testid="graph-gallery-open" onClick={event => { galleryOpener.current = event.currentTarget; finishWheel(); setGridOpen(false); setScalesOpen(false); setParametersOpen(false); setParameterPreview(null); setGalleryError(null); setGalleryOpen(true); }}>Gallery</button>
           <button type="button" data-testid="graph2d-parameters-open" disabled={status !== "ready"} onClick={event => {
             parametersOpener.current = event.currentTarget; finishWheel(); setParametersOpen(value => !value); setParameterPreview(null);
             setScalesOpen(false);
+            setGridOpen(false);
             if (!parametersOpen) galleryFocusFrame.current = requestAnimationFrame(() => { galleryFocusFrame.current = null;
               parametersOpener.current?.closest(".graph2d-workspace")?.querySelector<HTMLButtonElement>('[data-testid="graph2d-parameters-close"]')?.focus(); });
           }}>Parameters</button>
           <button type="button" data-testid="graph2d-export-open" disabled={status !== "ready" || parameterPreviewActive} onClick={event => {
-            exportOpener.current = event.currentTarget; finishWheel(); dragRef.current = null; setExportOpen(true);
+            exportOpener.current = event.currentTarget; finishWheel(); setGridOpen(false); dragRef.current = null; setExportOpen(true);
           }}>Export</button>
           <button type="button" onClick={() => { finishWheel(); onViewportCommit?.({ ...GRAPH2D_DEFAULT_VIEWPORT }); }}>Reset</button>
           <button type="button" onClick={() => { finishWheel(); fitVisible(); }}>Fit</button>
           <button type="button" aria-label="Toggle polar grid" aria-pressed={(document.display.axes.gridMode ?? "cartesian") === "polar"}
-            disabled={graph2DHasLogScale(viewport)} title={graph2DHasLogScale(viewport) ? "Polar grid needs linear axes" : undefined}
+            disabled={graph2DHasLogScale(viewport) || manualGrid} title={graph2DHasLogScale(viewport) ? "Polar grid needs linear axes" : manualGrid ? "Set both grid spacings to Auto before switching to polar" : undefined}
             onClick={() => onGridModeCommit?.((document.display.axes.gridMode ?? "cartesian") === "polar" ? "cartesian" : "polar")}>
             {(document.display.axes.gridMode ?? "cartesian") === "polar" ? "Cartesian grid" : "Polar grid"}</button>
         </div>
@@ -539,7 +550,8 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
           area={!parameterPreviewActive && area && isGraph2DIntegralCurrent(area, document) ? area : null}
           intersections={!parameterPreviewActive && intersections && isGraph2DIntersectionCurrent(intersections, document) ? intersections : null} />}
         {sampling.error && <div role="alert" className="graph2d-viewer-message">{sampling.error}</div>}
-        {(viewport.continuation || graph2DHasLogScale(viewport) || parameterPreviewActive || !sampling.ready && document.source.objects.length > 0) && <div role="status" className="graph2d-update-status" data-testid="graph2d-update-status">
+        {(gridWarnings.length > 0 || viewport.continuation || graph2DHasLogScale(viewport) || parameterPreviewActive || !sampling.ready && document.source.objects.length > 0) && <div role="status" className="graph2d-update-status" data-testid="graph2d-update-status">
+          {gridWarnings.join(" ")}
           {parameterPreviewActive ? "Parameter preview — not saved. Apply or Cancel; committed analyses are hidden on the plot." : ""}
           {!sampling.ready ? sampling.retained ? " Updating graph… previous preview/same-source samples remain visible." : " Sampling graph…" : ""}
           {viewport.continuation ? " Light dotted continuation: outside authored range; visual only, not analysed/exported. Bounded preview may be incomplete." : ""}
@@ -568,6 +580,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         });
       }} />}
       {scalesOpen && <Graph2DScalePanel key={document.identity.id} document={document} onCommit={v => onViewportCommit?.(v)} onClose={() => { setScalesOpen(false); scalesOpener.current?.focus(); }} />}
+      {gridOpen && <Graph2DGridPanel key={document.identity.id} document={document} onCommit={axes => { if (!onAxesCommit) throw new Error("Grid settings are unavailable."); onAxesCommit(axes); }} onClose={() => { setGridOpen(false); gridOpener.current?.focus(); }} />}
       {parametersOpen && <Graph2DParametersPanel key={`${parameterKey}:${parameterEpoch}`} document={document} settled={sampling.settled} samplingError={sampling.error}
         onPreview={values => { if (values) previewGraph2DParameterValues(document, values); setParameterPreview(values ? { key: parameterKey, values } : null); }}
         onCommit={action => { if (!onAuthoringCommit) throw new Error("Parameter authoring is unavailable."); onAuthoringCommit(action); setParameterPreview(null); }}

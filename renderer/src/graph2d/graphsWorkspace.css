@@ -16,6 +16,9 @@
 .graph2d-parameters-panel label { display:flex; flex-direction:column; gap:4px; margin:8px 0; }
 .graph2d-parameters-panel input,.graph2d-parameters-panel select { width:100%; box-sizing:border-box; min-height:36px; }
 .graph2d-parameters-panel button { min-height:36px; margin:4px; }
+.graph2d-grid-panel label:has(input[type="checkbox"]) { flex-direction:row; align-items:center; gap:10px; min-height:44px; }
+.graph2d-grid-panel input,.graph2d-grid-panel select,.graph2d-grid-panel button { min-height:44px; }
+.graph2d-grid-panel input[type="checkbox"] { width:20px; height:20px; min-height:20px; flex-shrink:0; }
 .graph2d-workspace[data-left="true"][data-right="true"] { grid-template-columns: var(--graph2d-left-width) minmax(0, 1fr) var(--graph2d-right-width); }
 .graph2d-workspace[data-left="true"][data-right="false"] { grid-template-columns: var(--graph2d-left-width) minmax(0, 1fr); }
 .graph2d-workspace[data-left="false"][data-right="true"] { grid-template-columns: minmax(0, 1fr) var(--graph2d-right-width); }
@@ -123,8 +126,8 @@
 .graph2d-toolbar button { border: 1px solid var(--border); border-radius: 6px; background: var(--panel-strong); padding: 5px 10px; font-weight: 700; cursor: pointer; }
 .graph2d-plot { position: absolute; inset: 0; width: 100%; height: 100%; }
 .graph2d-plot-background { fill: var(--panel-strong); }
-.graph2d-grid-minor { stroke: var(--border); stroke-width: .55; opacity: .45; }
-.graph2d-grid-major { stroke: var(--border); stroke-width: 1; opacity: .85; }
+.graph2d-grid-minor { stroke: var(--grid-minor-color, var(--border)); stroke-width: .55; opacity: var(--grid-minor-opacity, .45); }
+.graph2d-grid-major { stroke: var(--grid-major-color, var(--border)); stroke-width: 1; opacity: var(--grid-major-opacity, .85); }
 .graph2d-polar-grid ellipse, .graph2d-polar-grid line { fill: none; stroke: var(--border); stroke-width: 1; opacity: .75; }
 .graph2d-polar-grid text { fill: var(--muted); stroke: none; font-size: 10px; }
 .graph2d-axis { stroke: currentColor; stroke-width: 1.5; opacity: .75; }
@@ -141,7 +144,7 @@
 
 @media (forced-colors: active) {
   .graph2d-plot-background { fill: Canvas; }
-  .graph2d-axis, .graph2d-grid-major, .graph2d-grid-minor { stroke: CanvasText; }
+  .graph2d-axis, .graph2d-grid-major, .graph2d-grid-minor, .graph2d-custom-polar g { stroke: CanvasText; opacity: 1; }
   .graph2d-tick-labels, .graph2d-polar-grid text { fill: CanvasText; opacity: 1; }
   .graph2d-plot [data-graph2d-path], .graph2d-plot [data-graph2d-continuation],
   [data-testid="graph2d-regression-overlay"] path { stroke: CanvasText !important; }

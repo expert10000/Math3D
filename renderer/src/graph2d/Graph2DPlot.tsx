@@ -9,7 +9,7 @@ import {
   type Graph2DRegionArtifact,
   type Graph2DPointSeriesArtifact,
   type Graph2DPiecewiseArtifact,
-  graph2DRegressionOverlaySeries, type Graph2DRegression,
+  graph2DRegressionOverlaySeries, graph2DGridAppearance, projectGraph2DPolarGrid, type Graph2DRegression,
 } from "@math3d/core";
 import { projectGraph2DGrid } from "./gridProjection";
 
@@ -30,7 +30,9 @@ type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonl
 export function Graph2DPlot({ display, size, series, regression, selectedProbe, hoverProbe, overlays = [], intervals, area, intersections }: Props) {
   if (graph2DHasLogScale(display.viewport)) { overlays = []; area = null; intervals = null; }
   const clipId = useId();
-  const grid = projectGraph2DGrid(display.viewport, size);
+  const grid = projectGraph2DGrid(display.viewport, size, display.axes.gridOptions);
+  const appearance = graph2DGridAppearance(display.axes.gridOptions);
+  const polar = display.axes.gridOptions && display.axes.gridMode === "polar" ? projectGraph2DPolarGrid(display.viewport, size, display.axes.gridOptions) : null;
   const bounds = resolveGraph2DViewport(display.viewport, size);
   const xSpan = bounds.xMax - bounds.xMin;
   const ySpan = bounds.yMax - bounds.yMin;
@@ -70,13 +72,19 @@ export function Graph2DPlot({ display, size, series, regression, selectedProbe, 
       <defs><clipPath id={clipId}><rect x="0" y="0" width={size.width} height={size.height} /></clipPath></defs>
       <rect x="0" y="0" width={size.width} height={size.height} className="graph2d-plot-background" />
       {display.axes.grid && (display.axes.gridMode ?? "cartesian") === "cartesian" &&
-      <g className="graph2d-grid" aria-hidden="true">
+      <g className="graph2d-grid" aria-hidden="true" style={display.axes.gridOptions ? { "--grid-major-color": appearance.majorColor, "--grid-minor-color": appearance.minorColor,
+        "--grid-major-opacity": appearance.majorOpacity, "--grid-minor-opacity": appearance.minorOpacity } as React.CSSProperties : undefined}>
         {grid.verticalMinor.map((pixel, index) => <line key={`vm-${index}`} className="graph2d-grid-minor" x1={pixel} x2={pixel} y1="0" y2={size.height} />)}
         {grid.horizontalMinor.map((pixel, index) => <line key={`hm-${index}`} className="graph2d-grid-minor" x1="0" x2={size.width} y1={pixel} y2={pixel} />)}
-        {grid.verticalMajor.map((tick) => <line key={`v-${tick.value}`} className="graph2d-grid-major" x1={tick.pixel} x2={tick.pixel} y1="0" y2={size.height} />)}
-        {grid.horizontalMajor.map((tick) => <line key={`h-${tick.value}`} className="graph2d-grid-major" x1="0" x2={size.width} y1={tick.pixel} y2={tick.pixel} />)}
+        {!grid.verticalSuppressed && grid.verticalMajor.map((tick) => <line key={`v-${tick.value}`} className="graph2d-grid-major" x1={tick.pixel} x2={tick.pixel} y1="0" y2={size.height} />)}
+        {!grid.horizontalSuppressed && grid.horizontalMajor.map((tick) => <line key={`h-${tick.value}`} className="graph2d-grid-major" x1="0" x2={size.width} y1={tick.pixel} y2={tick.pixel} />)}
       </g>}
-      {display.axes.grid && display.axes.gridMode === "polar" &&
+      {display.axes.grid && polar && <g data-testid="graph2d-polar-grid" className="graph2d-custom-polar" clipPath={`url(#${clipId})`} aria-hidden="true" fill="none">
+        {([[polar.minorRings, polar.minorRays, appearance.minorColor, appearance.minorOpacity], [polar.majorRings, polar.majorRays, appearance.majorColor, appearance.majorOpacity]] as const).map(([rings, rays, color, opacity], layer) =>
+          <g key={layer} stroke={color} opacity={opacity}>{rings.map((ring, i) => <ellipse key={`r${i}`} cx={ring.cx} cy={ring.cy} rx={ring.rx} ry={ring.ry} />)}
+            {rays.map((ray, i) => <line key={`a${i}`} x1={ray.a.x} y1={ray.a.y} x2={ray.b.x} y2={ray.b.y} />)}</g>)}
+      </g>}
+      {display.axes.grid && display.axes.gridMode === "polar" && !polar &&
       <g data-testid="graph2d-polar-grid" className="graph2d-polar-grid" clipPath={`url(#${clipId})`} aria-hidden="true">
         {Array.from({ length: radialCount }, (_, index) => (index + 1) * radialStep).map((radius) =>
           <g key={`r-${radius}`}>

@@ -2,7 +2,7 @@
 
 Requested 2026-09-29 from the supplied graph-paper/tool-palette screenshot. Execution order: **G2D41 → G2D42 → G2D43 → GGL11**. The [canonical roadmap](math3d-graph2d-desktop-mobile-roadmap.md) owns overall sequencing. G2D40 software acceptance is a baseline, not physical release signoff.
 
-## G2D41 — grid display controls (starting now)
+## G2D41 — grid display controls (first implementation)
 
 Desktop/web gets a clearly named Grid panel; native reuses Display. Controls cover grid, X/Y axes, numeric tick labels, minor subdivisions, automatic density, independent manual X/Y Cartesian spacing and contrast. Manual spacing is in world units for linear axes and integer decades for log10 axes; polar mode uses its existing bounded radial/angular projection and explicitly disables Cartesian-only manual spacing.
 
@@ -24,6 +24,6 @@ Free independent points, arbitrary text, geometry constructions, rectangle selec
 
 ## Delivery tracking
 
-- Roadmap added; implementation starts with G2D41.
+- Roadmap pushed as `482aa0c`; G2D41 shared policy and desktop/native controls are software implemented and locally accepted. [Behavior, evidence and pending physical checks](graph2d-g41-grid-controls.md).
 - G2D42 and G2D43 are planned, not delivered.
 - Full G13/professional signed-device and real screen-reader release gates remain pending.

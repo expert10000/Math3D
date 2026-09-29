@@ -30,6 +30,7 @@ export * from "./graph2dInterop";
 export * from "./graph2dPromotionGeometry";
 export * from "./graph2dViewport";
 export * from "./graph2dGrid";
+export * from "./graph2dGridOptions";
 export * from "./graph2dScalePolicy";
 export * from "./graph2dRegression";
 export * from "./graph2dPersistence";

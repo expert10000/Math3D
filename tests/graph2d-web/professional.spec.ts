@@ -10,6 +10,41 @@ const start = async (page: Page) => {
 const save = async (page: Page) => { await page.getByTestId("kernel-workspace-toggle").click(); await page.getByTestId("kernel-workspace-save").click();
   await expect(page.getByTestId("kernel-workspace-message")).toContainText("Saved"); await page.getByTestId("kernel-workspace-toggle").click(); };
 const checkpoint = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.mixed-workspace.v1")!).entries.find((e: { module: string }) => e.module === "graph2d").checkpoint);
+
+test("G2D41 grid controls retain source, saved spacing and reversible display intent", async ({ page }, info) => {
+  await start(page); const original = await checkpoint(page), opener = page.getByRole("button", { name: "Grid", exact: true });
+  await opener.focus(); await page.keyboard.press("Enter"); const panel = page.getByTestId("graph2d-grid-settings");
+  await expect(panel.getByRole("checkbox", { name: "Show grid", exact: true })).toBeFocused();
+  await panel.getByLabel("X grid spacing", { exact: true }).fill("0"); await panel.getByRole("button", { name: "Apply grid settings", exact: true }).click();
+  await expect(panel.getByRole("alert")).toContainText("positive");
+  await panel.getByLabel("X grid spacing", { exact: true }).fill("0.5"); await panel.getByLabel("Y grid spacing", { exact: true }).fill("1");
+  await panel.getByLabel("Grid contrast", { exact: true }).selectOption("strong"); await panel.getByLabel("Show minor subdivisions", { exact: true }).uncheck();
+  await panel.getByRole("button", { name: "Apply grid settings", exact: true }).click(); await expect(panel.getByRole("alert")).toHaveCount(0);
+  await expect(page.locator(".graph2d-grid-minor")).toHaveCount(0); await expect(page.getByRole("button", { name: "Toggle polar grid", exact: true })).toBeDisabled();
+  await page.keyboard.press("Escape"); await expect(opener).toBeFocused(); await save(page);
+  const configured = await checkpoint(page); expect(configured.source).toEqual(original.source); expect(configured.identity).toEqual(original.identity);
+  expect(configured.requiredCapabilities).toContain("graph2d.grid.v1"); expect(configured.display.axes.gridOptions.xStep).toBe(.5);
+  await page.getByTestId("main-viewer").focus(); await page.keyboard.press("Control+z"); await save(page);
+  expect((await checkpoint(page)).display.axes.gridOptions).toBeUndefined();
+  await page.getByTestId("main-viewer").focus(); await page.keyboard.press("Control+y"); await save(page);
+  await page.reload(); await page.getByTestId("workspace-nav-graphs").click(); await page.getByTestId("kernel-workspace-toggle").click();
+  await page.getByTestId("kernel-workspace-reopen").click(); await page.getByTestId("kernel-workspace-toggle").click();
+  await page.getByRole("button", { name: "Grid", exact: true }).click(); await expect(page.getByLabel("X grid spacing", { exact: true })).toHaveValue("0.5");
+  await page.screenshot({ path: info.outputPath("grid-settings.png") });
+});
+
+test("G2D41 dense-grid notice, visibility and compact keyboard access", async ({ page }, info) => {
+  await start(page); await page.setViewportSize({ width: 700, height: 800 });
+  await page.getByRole("button", { name: "Grid", exact: true }).click(); const panel = page.getByTestId("graph2d-grid-settings");
+  await panel.getByLabel("X grid spacing", { exact: true }).fill("1e-100"); await panel.getByRole("button", { name: "Apply grid settings", exact: true }).click();
+  await expect(page.getByTestId("graph2d-update-status")).toContainText("Manual X spacing");
+  await panel.getByLabel("Show grid", { exact: true }).uncheck(); await panel.getByLabel("Show numbers", { exact: true }).uncheck();
+  await panel.getByRole("button", { name: "Apply grid settings", exact: true }).click(); await page.keyboard.press("Escape");
+  await expect(page.locator(".graph2d-grid")).toHaveCount(0); await expect(page.locator(".graph2d-tick-labels")).toHaveCount(0);
+  await page.emulateMedia({ forcedColors: "active" }); await page.getByRole("button", { name: "Grid", exact: true }).click();
+  await expect(page.getByTestId("graph2d-grid-settings").getByRole("checkbox", { name: "Show grid", exact: true })).toBeFocused();
+  await page.screenshot({ path: info.outputPath("grid-compact-high-contrast.png") });
+});
 test("G2D37 continuation and scale policies preserve authored range, undo and saved log zoom", async ({ page }, info) => {
   await start(page); const source = (await checkpoint(page)).source;
   await page.getByTestId("main-viewer").focus(); for (let i = 0; i < 5; i++) await page.keyboard.press("-");

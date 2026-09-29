@@ -119,6 +119,7 @@ export const createGraph2DPublication = (request: Graph2DPublicationRequest) => 
   if (viewport.xScale === "log10" || viewport.yScale === "log10") warnings.push("Base-10 display axes omit non-positive coordinates. Analysis tables and CSV coordinates remain authored world values, not logarithms.");
   if (series.some((s) => !s.artifact.converged)) warnings.push("Sampling is incomplete for one or more visible objects; consult per-object diagnostics.");
   if (geometry.omitted) warnings.push(`${geometry.omitted} primitives omitted by the publication geometry budget.`);
+  if (geometry.warnings) warnings.push(...geometry.warnings);
   const metadata = { format: "math3d.graph2d-publication.v1", recipeVersion: 1, title: document.metadata.title,
     source: document.identity, viewport: { ...viewport }, effectiveViewport: resolveGraph2DViewport(viewport, { width, height }),
     size: { width, height }, units, unitSemantics: "declared-labels-only", canonicalSource: document.source, axes: document.display.axes,

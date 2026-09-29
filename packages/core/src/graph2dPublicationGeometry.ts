@@ -4,7 +4,8 @@ import type { Graph2DRegionArtifact } from "./graph2dInequality";
 import type { Graph2DPointSeriesArtifact } from "./graph2dPointSeries";
 import type { Graph2DPiecewiseArtifact } from "./graph2dPiecewise";
 import { graph2DWorldToScreen, resolveGraph2DViewport, type Graph2DScreenSize } from "./graph2dViewport";
-import { projectGraph2DGrid } from "./graph2dGrid";
+import { projectGraph2DGrid, projectGraph2DPolarGrid } from "./graph2dGrid";
+import { graph2DGridAppearance } from "./graph2dGridOptions";
 
 export type Graph2DPublicationPrimitive =
   | { kind: "line"; x1: number; y1: number; x2: number; y2: number; color: string; width: number; dash: "solid" | "dashed" | "dotted"; dashOffset: number }
@@ -40,9 +41,20 @@ export const projectGraph2DPublicationGeometry = (document: Graph2DDocument, ser
     const step = [1, 2, 5, 10].find((n) => n * base >= raw)! * base;
     return Array.from({ length: 12 }, (_, i) => (Math.ceil(min / step) + i) * step).filter((n) => n <= max);
   };
-  const grid = projectGraph2DGrid(viewport, size);
+  const options = document.display.axes.gridOptions, appearance = graph2DGridAppearance(options);
+  const grid = projectGraph2DGrid(viewport, size, options);
+  const warnings = document.display.axes.grid && document.display.axes.gridMode !== "polar" ? [...(grid.warnings ?? [])] : [];
   const origin = screen({ x: 0, y: 0 }), xs = grid.verticalMajor.map(t => t.value), ys = grid.horizontalMajor.map(t => t.value);
-  if (document.display.axes.grid && document.display.axes.gridMode === "polar") {
+  if (document.display.axes.grid && document.display.axes.gridMode === "polar" && options) {
+    const polar = projectGraph2DPolarGrid(viewport, size, options); warnings.push(...polar.warnings);
+    for (const [rings, rays, color] of [[polar.minorRings, polar.minorRays, appearance.minorColor], [polar.majorRings, polar.majorRays, appearance.majorColor]] as const) {
+      for (const r of rings) for (let i = 0; i < 128; i++) {
+        const at = (angle: number) => ({ x: r.cx + r.rx * Math.cos(angle), y: r.cy + r.ry * Math.sin(angle) });
+        line(at(i * Math.PI / 64), at((i + 1) * Math.PI / 64), color);
+      }
+      for (const ray of rays) line(ray.a, ray.b, color);
+    }
+  } else if (document.display.axes.grid && document.display.axes.gridMode === "polar") {
     const maxRadius = Math.max(...[bounds.xMin, bounds.xMax].flatMap((x) => [bounds.yMin, bounds.yMax].map((y) => Math.hypot(x, y))));
     const radii = tick(0, maxRadius).filter((r) => r > 0);
     for (const r of radii) for (let i = 0; i < 128; i++) {
@@ -51,8 +63,12 @@ export const projectGraph2DPublicationGeometry = (document: Graph2DDocument, ser
     }
     for (let i = 0; i < 12; i++) line(origin, screen({ x: maxRadius * Math.cos(i * Math.PI / 6), y: maxRadius * Math.sin(i * Math.PI / 6) }), "#e2e8f0");
   } else if (document.display.axes.grid) {
-    for (const x of xs) { const p = screen({ x, y: 0 }); line({ x: p.x, y: 0 }, { x: p.x, y: size.height }, "#e2e8f0"); }
-    for (const y of ys) { const p = screen({ x: 0, y }); line({ x: 0, y: p.y }, { x: size.width, y: p.y }, "#e2e8f0"); }
+    if (options) {
+      for (const x of grid.verticalMinor) line({ x, y: 0 }, { x, y: size.height }, appearance.minorColor, .55);
+      for (const y of grid.horizontalMinor) line({ x: 0, y }, { x: size.width, y }, appearance.minorColor, .55);
+    }
+    if (!grid.verticalSuppressed) for (const x of xs) { const p = screen({ x, y: 0 }); line({ x: p.x, y: 0 }, { x: p.x, y: size.height }, appearance.majorColor); }
+    if (!grid.horizontalSuppressed) for (const y of ys) { const p = screen({ x: 0, y }); line({ x: 0, y: p.y }, { x: size.width, y: p.y }, appearance.majorColor); }
   }
   if (document.display.axes.x && grid.xAxis !== null) line({ x: 0, y: grid.xAxis }, { x: size.width, y: grid.xAxis }, "#64748b", 1.5);
   if (document.display.axes.y && grid.yAxis !== null) line({ x: grid.yAxis, y: 0 }, { x: grid.yAxis, y: size.height }, "#64748b", 1.5);
@@ -95,5 +111,5 @@ export const projectGraph2DPublicationGeometry = (document: Graph2DDocument, ser
     for (const x of xs) { const p = screen({ x, y: 0 }); push({ kind: "text", x: Math.min(size.width - 48, Math.max(3, p.x + 3)), y: size.height - 5, text: String(Number(x.toPrecision(5))) }); }
     for (const y of ys) { const p = screen({ x: 0, y }); push({ kind: "text", x: 4, y: Math.min(size.height - 18, Math.max(12, p.y - 3)), text: String(Number(y.toPrecision(5))) }); }
   }
-  return { primitives, omitted };
+  return { primitives, omitted, ...(warnings.length ? { warnings } : {}) };
 };

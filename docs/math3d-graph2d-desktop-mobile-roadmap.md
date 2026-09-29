@@ -1,6 +1,6 @@
 # MATH3D Graph2D — Desktop and Mobile Roadmap
 
-**Status:** desktop/web baseline through G2D32, mobile MOB-G01–12 and automated G2D33–35 implemented. GGL01–10, G2D36 publication, G2D38 parameters/animation, G2D37 scales/visual continuation and G2D39 regression are implemented. G2D40 software freeze and automated professional acceptance are implemented; this is not physical release signoff. MOB-G13, new native features, real screen-reader checks and exact signed Android/iOS release evidence remain pending. GGL07–09 has partial physical Android/Electron walkthrough evidence, not full iOS/tablet/G13 acceptance. See [professional acceptance and pending gates](graph2d-g40-professional-acceptance.md). Next product milestone: GGL11 personal collections; complete outstanding release validation when devices/builds are available.
+**Status:** desktop/web baseline through G2D32, mobile MOB-G01–12 and automated G2D33–35 implemented. GGL01–10, G2D36 publication, G2D38 parameters/animation, G2D37 scales/visual continuation and G2D39 regression are implemented. G2D40 software freeze and automated professional acceptance are implemented; this is not physical release signoff. MOB-G13, new native features, real screen-reader checks and exact signed Android/iOS release evidence remain pending. GGL07–09 has partial physical Android/Electron walkthrough evidence, not full iOS/tablet/G13 acceptance. See [professional acceptance and pending gates](graph2d-g40-professional-acceptance.md). G2D41 shared grid controls are implemented; physical validation remains pending. Next product milestones: G2D42 Tools palette and G2D43 on-graph elements before GGL11 personal collections; complete outstanding release validation when devices/builds are available.
 
 **Priority:** P1 after the active mobile project-transfer sequence
 
@@ -320,7 +320,7 @@ Insert **G2D41 → G2D42 → G2D43 before GGL11**. The reference screenshot moti
 
 | ID | Planned commit | Scope and acceptance |
 | --- | --- | --- |
-| **G2D41** | `feat(graph2d): add accessible shared grid display controls` | Grid/axes/numbers visibility, major/minor display, automatic sparse/normal/dense spacing, validated manual Cartesian spacing and subtle/normal/strong contrast. Shared bounded projection and portable capability-gated display intent; desktop/web Grid panel and native Display controls, undo/reopen/handoff/export parity, log-positive guidance and unchanged legacy previews. First implementation in progress. |
+| **G2D41** | `feat(graph2d): add accessible shared grid display controls` | Grid/axes/numbers visibility, major/minor display, automatic sparse/normal/dense spacing, validated manual Cartesian spacing and subtle/normal/strong contrast. Shared bounded projection and portable capability-gated display intent; desktop/web Grid panel and native Display controls, undo/reopen/handoff/export parity, log-positive guidance and unchanged legacy previews. Software implementation delivered; see [G41 behavior and acceptance](graph2d-g41-grid-controls.md). Physical release checks remain pending. |
 | **G2D42** | `feat(graph2d-tools): expose existing mathematical tools in a compact palette` | Move/select, point/probe, parameter slider, roots, extrema, intersections, tangent and regression shortcuts route to existing commands/results. Accessible named icons plus text, keyboard focus, compact/touch layouts and explicit source-kind/selection prerequisites; opening a tool never silently creates data or runs animation. Planned next. |
 | **G2D43** | `feat(graph2d-canvas): expose labelled source-linked probes and parameter controls` | Labelled pinned probes and coordinate readouts, show/hide labels, locate/rename/delete through existing bounded probe contracts, then opt-in compact parameter slider cards using the existing preview/apply/cancel player. No persisted transient previews; stale/unsupported states, undo/round-trip/keyboard/native parity and collision-safe placement. Planned after G41–42. |
 
@@ -355,6 +355,8 @@ G2D07 → G2D08 → G2D09 → G2D10 → G2D11 → G2D12
                        G2D36 → G2D38 → G2D37 → G2D39 → G2D40
                                   │
                                   └─ GGL10 interactive presets
+
+G2D40 → G2D41 → G2D42 → G2D43 → GGL11
 
 Later GGL11–18 follow their individual dependencies; they do not block
 the initial gallery. New runtime changes require updated exact-device evidence.

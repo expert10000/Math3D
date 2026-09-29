@@ -30,8 +30,10 @@
     "../unit/mobileGraphGallery.test.ts",
     "../unit/mobileGraphPresetLaunch.test.ts",
     "../unit/mobileGraphScales.test.ts",
+    "../unit/mobileGraphGrid.test.ts",
     "../unit/mobileGraphRegression.test.ts",
     "../../renderer/src/graph2d/graph2dScales.test.ts",
+    "../../renderer/src/graph2d/graph2dGridOptions.test.ts",
     "../../renderer/src/graph2d/graph2dRegression.test.ts",
     "../../renderer/src/graph2d/graph2dProfessional.test.ts"
   ]

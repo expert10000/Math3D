@@ -1,4 +1,4 @@
-import { graph2DWorldToScreen, projectGraph2DGrid, type Graph2DViewport,
+import { graph2DWorldToScreen, projectGraph2DGrid, projectGraph2DPolarGrid, graph2DGridAppearance, type Graph2DDocument, type Graph2DViewport,
   type Graph2DScreenSize, type Graph2DScreenPoint, type Graph2DSampledSeries } from "@math3d/core";
 
 export type MobileGraphLine = { a: Graph2DScreenPoint; b: Graph2DScreenPoint; color: string; width: number };
@@ -59,4 +59,36 @@ export const projectMobileGraphLines = (series: readonly Graph2DSampledSeries[],
 export const mobileGraphTicks = (viewport: Graph2DViewport, size: Graph2DScreenSize) => {
   const grid = projectGraph2DGrid(viewport, size);
   return { x: grid.verticalMajor.map(t => t.value), y: grid.horizontalMajor.map(t => t.value) };
+};
+
+/** Display-only grid geometry, separately capped so it cannot consume the function-curve budget. */
+export const projectMobileGraphGrid = (axes: Graph2DDocument["display"]["axes"], viewport: Graph2DViewport, size: Graph2DScreenSize) => {
+  const grid = projectGraph2DGrid(viewport, size, axes.gridOptions), appearance = graph2DGridAppearance(axes.gridOptions);
+  const lines: MobileGraphLine[] = [], warnings: string[] = [];
+  let omitted = 0;
+  const add = (a: Graph2DScreenPoint, b: Graph2DScreenPoint, color: string, width = 1) => {
+    const clipped = clipMobileGraphLine(a, b, size);
+    if (clipped) { if (lines.length < 512) lines.push({ ...clipped, color, width }); else omitted++; }
+  };
+  if (axes.grid && axes.gridMode === "polar") {
+    const polar = projectGraph2DPolarGrid(viewport, size, axes.gridOptions); warnings.push(...polar.warnings, "Native polar rings are bounded polyline approximations.");
+    for (const [rings, rays, color] of [[polar.majorRings, polar.majorRays, appearance.majorColor], [polar.minorRings, polar.minorRays, appearance.minorColor]] as const) {
+      // Prioritise rays, then major rings; minor detail never removes the plotted curves.
+      for (const ray of rays) add(ray.a, ray.b, color);
+      for (const r of rings) for (let i = 0; i < 128; i++) {
+        const at = (theta: number) => ({ x: r.cx + r.rx * Math.cos(theta), y: r.cy + r.ry * Math.sin(theta) });
+        add(at(i * Math.PI / 64), at((i + 1) * Math.PI / 64), color);
+      }
+    }
+  } else if (axes.grid) {
+    warnings.push(...(grid.warnings ?? []));
+    if (!grid.verticalSuppressed) for (const t of grid.verticalMajor) add({ x: t.pixel, y: 0 }, { x: t.pixel, y: size.height }, appearance.majorColor);
+    if (!grid.horizontalSuppressed) for (const t of grid.horizontalMajor) add({ x: 0, y: t.pixel }, { x: size.width, y: t.pixel }, appearance.majorColor);
+    if (axes.gridOptions) {
+      for (const x of grid.verticalMinor) add({ x, y: 0 }, { x, y: size.height }, appearance.minorColor, .55);
+      for (const y of grid.horizontalMinor) add({ x: 0, y }, { x: size.width, y }, appearance.minorColor, .55);
+    }
+  }
+  if (omitted) warnings.push(`${omitted} grid segments omitted by the 512-native-line display budget.`);
+  return { lines, warnings, x: grid.verticalMajor.map(t => t.value), y: grid.horizontalMajor.map(t => t.value) };
 };

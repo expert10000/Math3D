@@ -55,4 +55,4 @@ Pending before full professional release:
 
 No newly compiled installer/APK was installed by this work. Existing running copies require rebuilding/restarting to use the new features. No dependencies or licenses were changed; the public GPL metadata check passes.
 
-Next product milestone: **GGL11 personal collections**, while outstanding physical release validation proceeds when devices and artifacts are available. See the [canonical roadmap](math3d-graph2d-desktop-mobile-roadmap.md).
+Next product sequence (updated 2026-09-29): **G2D41 grid controls → G2D42 Tools palette → G2D43 on-graph elements → GGL11 personal collections**, while outstanding physical release validation proceeds when devices and artifacts are available. See the [canonical roadmap](math3d-graph2d-desktop-mobile-roadmap.md).

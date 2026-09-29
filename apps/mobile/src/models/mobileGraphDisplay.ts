@@ -11,8 +11,8 @@ export const mobileGraphSamplingPolicy = (document: Graph2DDocument, interacting
   tolerancePx: Math.max(document.display.sampling.tolerancePx, interacting ? 3 : 1),
 });
 export const mobileGraphDisplayScene = (document: Graph2DDocument, action: { type: "axis"; key: "x" | "y" | "grid" | "labels" } |
-  { type: "quality"; quality: MobileGraphQuality }) => ({ source: document.source, selection: document.selection,
+  { type: "quality"; quality: MobileGraphQuality } | { type: "grid"; axes: Graph2DDocument["display"]["axes"] }) => ({ source: document.source, selection: document.selection,
     display: action.type === "axis" ? { ...document.display, axes: { ...document.display.axes, [action.key]: !document.display.axes[action.key] } } :
-      { ...document.display, sampling: { ...MOBILE_GRAPH_QUALITY[action.quality] } } });
+      action.type === "grid" ? { ...document.display, axes: action.axes } : { ...document.display, sampling: { ...MOBILE_GRAPH_QUALITY[action.quality] } } });
 export const mobileGraphSamplingDiagnostics = (series: readonly Graph2DSampledSeries[]) => series.map((item) => ({ objectId: item.objectId,
   converged: item.artifact.converged, samples: item.artifact.samplesEvaluated, messages: item.artifact.diagnostics.map((item) => `${item.code}: ${item.count}`) }));
