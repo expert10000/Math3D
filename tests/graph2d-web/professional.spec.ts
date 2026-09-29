@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 const start = async (page: Page) => {
   await page.route("**/api/worker/**", r => r.fulfill({ status: 503, body: '{"error":"Optional backend unavailable"}', contentType: "application/json" }));
   await page.goto("/"); await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); }); await page.reload();
@@ -34,4 +36,31 @@ test("G2D37 continuation and scale policies preserve authored range, undo and sa
   await page.reload(); await page.getByTestId("workspace-nav-graphs").click(); await page.getByTestId("kernel-workspace-toggle").click();
   await page.getByTestId("kernel-workspace-reopen").click(); await page.getByTestId("kernel-workspace-toggle").click();
   await page.getByRole("button", { name: "Scales", exact: true }).click(); await expect(panel.getByLabel("X scale", { exact: true })).toHaveValue("log10");
+});
+test("G2D39 checked data fitting, residuals, stale models and offline uncertainty publication", async ({ page, context }, info) => {
+  await start(page); const functions = page.getByLabel("Graph functions");
+  await functions.getByRole("button", { name: "Add data series", exact: true }).click();
+  await functions.getByLabel("Data series name").fill("Measurements");
+  await functions.getByLabel("Data series import").fill("x,y\n0,1\n1,3\n2,4\n3,7\n4,8\n5,12\n6,NA");
+  await functions.getByRole("button", { name: "Save data series", exact: true }).click();
+  await functions.getByRole("button", { name: "Select Measurements", exact: true }).click(); await save(page);
+  const before = await page.evaluate(() => localStorage.getItem("math3d.mixed-workspace.v1")), panel = page.getByRole("region", { name: "Regression fitting", exact: true });
+  await expect(page.getByTestId("graph2d-regression-overlay")).toHaveCount(0);
+  await panel.getByRole("button", { name: "Fit dataset", exact: true }).click(); await expect(panel.getByRole("status")).toHaveText("Current regression");
+  await expect(panel).toContainText("n=6 · excluded=1 · df=4"); await expect(page.getByTestId("graph2d-regression-overlay")).toHaveCount(1);
+  await panel.getByText("Residuals (6)", { exact: true }).click(); await expect(panel.getByRole("rowheader", { name: "row_1", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("math3d.mixed-workspace.v1"))).toBe(before);
+  await page.getByRole("button", { name: "Fit", exact: true }).click(); await page.screenshot({ path: info.outputPath("regression.png") });
+  await panel.getByLabel("Regression model", { exact: true }).selectOption("quadratic"); await expect(panel.getByRole("status")).toContainText("Stale regression");
+  await expect(page.getByTestId("graph2d-regression-overlay")).toHaveCount(0); await panel.getByRole("button", { name: "Fit dataset", exact: true }).click();
+  await expect(panel.getByRole("status")).toHaveText("Current regression"); await expect(panel).toContainText("df=3");
+  await page.getByTestId("graph2d-export-open").click(); const dialog = page.getByTestId("graph2d-export");
+  const pending = page.waitForEvent("download"); await dialog.getByRole("button", { name: "Export HTML report", exact: true }).click();
+  const path = info.outputPath("regression-report.html"), download = await pending; await download.saveAs(path);
+  const html = await readFile(path, "utf8"); expect(html).toContain("95% prediction"); expect(html).toContain("row_1"); expect(html).toContain("graph2d.regression");
+  const report = await context.newPage(), network: string[] = []; report.on("request", request => { if (request.url().startsWith("http")) network.push(request.url()); });
+  await report.goto(pathToFileURL(path).href); await expect(report.getByRole("columnheader", { name: "Residual", exact: true })).toBeVisible();
+  await report.screenshot({ path: info.outputPath("regression-report.png") }); expect(network).toEqual([]); await report.close();
+  await page.keyboard.press("Escape"); await panel.getByRole("button", { name: "Clear regression", exact: true }).click();
+  await expect(page.getByTestId("graph2d-regression-overlay")).toHaveCount(0);
 });

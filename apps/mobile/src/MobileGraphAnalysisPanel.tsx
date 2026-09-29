@@ -1,15 +1,19 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import type { Graph2DDocument, Graph2DProbe } from "@math3d/core";
-import { isMobileGraphAnalysisCurrent, type MobileGraphAnalysis, type MobileGraphAnalysisDraft, type MobileGraphAnalysisKind } from "./models/mobileGraphAnalysis";
+import { isMobileGraphAnalysisCurrent, type MobileGraphRegressionAnalysis, type MobileGraphAnalysisDraft, type MobileGraphAnalysisKind } from "./models/mobileGraphAnalysis";
 
 const kinds: readonly [MobileGraphAnalysisKind, string][] = [["derivatives", "Derivatives"], ["tangent", "Tangent"],
-  ["features", "Zeros, extrema, inflections"], ["integral", "Integral"], ["intersections", "Intersections"], ["arc-length", "Arc length"]];
+  ["features", "Zeros, extrema, inflections"], ["integral", "Integral"], ["intersections", "Intersections"], ["arc-length", "Arc length"],
+  ["regression-linear", "Linear regression"], ["regression-quadratic", "Quadratic regression"]];
 export const MobileGraphAnalysisPanel = ({ document, draft, result, onDraft, onRun, onLocate }: {
-  document: Graph2DDocument; draft: MobileGraphAnalysisDraft; result: MobileGraphAnalysis | null;
+  document: Graph2DDocument; draft: MobileGraphAnalysisDraft; result: MobileGraphRegressionAnalysis | null;
   onDraft: (draft: MobileGraphAnalysisDraft) => void; onRun: () => void; onLocate: (probe: Graph2DProbe) => void }) => {
   const current = result ? isMobileGraphAnalysisCurrent(result, document, draft) : false;
-  const explicit = document.source.objects.filter((object) => object.kind === "explicit-cartesian");
+  const [offset, setOffset] = useState(0);
+  useEffect(() => setOffset(0), [result?.regression?.resultId]);
+  const regression = draft.kind.startsWith("regression-");
+  const explicit = document.source.objects.filter((object) => object.kind === (regression ? "point-series" : "explicit-cartesian"));
   const pointOperation = draft.kind === "derivatives" || draft.kind === "tangent";
   const button = (label: string, onPress: () => void, disabled = false) => <Pressable key={label} accessibilityRole="button"
     accessibilityLabel={label} disabled={disabled} accessibilityState={{ disabled }} onPress={onPress} style={s.button}><Text style={{ color: disabled ? "#94a3b8" : "#1d4ed8" }}>{label}</Text></Pressable>;
@@ -24,7 +28,7 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, onDraft, onR
       onPress={() => onDraft({ ...draft, objectId: object.id })}><Text>{object.label}</Text></Pressable>)}</View>
     {draft.kind === "intersections" && <><Text>Second function (one pair only)</Text><View style={s.row}>{explicit.filter((object) => object.id !== draft.objectId).map((object) =>
       button(`Intersect with ${object.label}${draft.secondId === object.id ? " (selected)" : ""}`, () => onDraft({ ...draft, secondId: object.id })))}</View></>}
-    {pointOperation ? <>{field("Analysis x", "x")}{button("Use current probe x", () => onDraft({ ...draft,
+    {regression ? <Text>Fits original checked rows within the authored domain, not the viewport. No missing-value imputation.</Text> : pointOperation ? <>{field("Analysis x", "x")}{button("Use current probe x", () => onDraft({ ...draft,
       objectId: document.selection.probe!.objectId, x: String(document.selection.probe!.x) }), !document.selection.probe)}</> :
       <>{field("Analysis from x", "min")}{field("Analysis to x", "max")}</>}
     {(["derivatives", "integral", "arc-length"] as string[]).includes(draft.kind) ? field("Analysis tolerance", "tolerance") :
@@ -36,6 +40,9 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, onDraft, onR
       {current ? "Current result" : "Stale result — inputs or source changed; run again"}</Text>
       {result.rows.map((row, index) => <View key={index} style={s.card}><Text>{row.label}</Text><Text>{row.detail}</Text>
         {row.probe && button(`Locate ${row.label}`, () => onLocate(row.probe!), !current)}</View>)}
+      {result.regression && <View><Text>Residual rows {offset + 1}–{Math.min(offset + 40, result.regression.n)}</Text>
+        {result.regression.residuals.slice(offset, offset + 40).map(row => <Text key={row.rowId}>{row.rowId}: x={row.x.toPrecision(5)}, y={row.observed.toPrecision(5)}, fit={row.fitted.toPrecision(5)}, residual={row.residual.toPrecision(5)}</Text>)}
+        {button("Previous residuals", () => setOffset(Math.max(0, offset - 40)), !offset)}{button("Next residuals", () => setOffset(offset + 40), offset + 40 >= result.regression.n)}</View>}
       {result.publications.map((publication) => <View key={publication.resultId} style={s.card}>
         <Text>{publication.status} · {publication.provenance.operation.algorithm} v{publication.provenance.operation.algorithmVersion}</Text>
         <Text>Source revision {publication.provenance.source.revision} · tolerance {JSON.stringify(publication.provenance.numericContext?.tolerance ?? "operation residual rules")}</Text>

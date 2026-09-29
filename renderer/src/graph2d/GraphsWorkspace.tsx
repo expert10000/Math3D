@@ -14,6 +14,8 @@ import {
   type Graph2DPreset,
   graph2DPublicationAnalysisTables,
   graph2DParameterSessionKey, previewGraph2DParameterValues, graph2DHasLogScale,
+  isGraph2DRegressionCurrent, graph2DRegressionResidualTable, graph2DRegressionCurveTable, graph2DPublicationAnalysisTable,
+  type Graph2DRegression, type Graph2DRegressionModel,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
@@ -27,6 +29,7 @@ import { GraphGalleryDialog } from "./GraphGalleryDialog";
 import { Graph2DExportDialog } from "./Graph2DExportDialog";
 import { Graph2DParametersPanel } from "./Graph2DParametersPanel";
 import { Graph2DScalePanel } from "./Graph2DScalePanel";
+import { Graph2DRegressionPanel } from "./Graph2DRegressionPanel";
 import "./graphsWorkspace.css";
 
 type Props = {
@@ -56,6 +59,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const [exportOpen, setExportOpen] = useState(false);
   const [parametersOpen, setParametersOpen] = useState(false);
   const [scalesOpen, setScalesOpen] = useState(false);
+  const [regression, setRegression] = useState<Graph2DRegression | null>(null), [regressionModel, setRegressionModel] = useState<Graph2DRegressionModel>("linear");
   const [parameterEpoch, setParameterEpoch] = useState(0);
   const parametersOpener = useRef<HTMLButtonElement | null>(null);
   const parameterKey = graph2DParameterSessionKey(document);
@@ -230,6 +234,8 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   };
   const selectedSeries = series.find((item) => item.objectId === document.selection.objectId);
   const selectedObject = document.source.objects.find((item) => item.id === document.selection.objectId);
+  const currentRegression = regression && regression.model === regressionModel && regression.objectId === selectedObject?.id &&
+    isGraph2DRegressionCurrent(regression, document) ? regression : null;
   const inspected = queryGraph2DInspector(document, parameterPreviewActive || !sampling.ready ? undefined : selectedSeries);
   const criticalPoints = useMemo(() => {
     if (!selectedObject || selectedObject.kind !== "explicit-cartesian") return null;
@@ -271,9 +277,16 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const differential = useMemo(() => analyzeGraph2DLocalDifferential(document), [document]);
   const derivatives = differential?.derivatives ?? null;
   const differentialOverlays = differential && isGraph2DLocalDifferentialCurrent(differential, document) ? differential.overlays : [];
-  const exportAnalyses = useMemo(() => graph2DPublicationAnalysisTables(!exportOpen ? [] : [criticalPoints, intervals, area, arcLength, intersections,
-    differential, ...(derivatives ?? [])].filter(result => !!result) as { publication: import("@math3d/core").AnalysisResultEnvelope }[]),
-  [exportOpen, criticalPoints, intervals, area, arcLength, intersections, differential, derivatives]);
+  const exportAnalyses = useMemo(() => {
+    const tables = graph2DPublicationAnalysisTables(!exportOpen ? [] : [criticalPoints, intervals, area, arcLength, intersections,
+      differential, ...(derivatives ?? [])].filter(result => !!result) as { publication: import("@math3d/core").AnalysisResultEnvelope }[]);
+    if (exportOpen && currentRegression) {
+      tables.analyses.push(graph2DPublicationAnalysisTable({ publication: currentRegression.publication, summary: currentRegression.publication.summary } as { publication: import("@math3d/core").AnalysisResultEnvelope }),
+        graph2DRegressionResidualTable(currentRegression), graph2DRegressionCurveTable(currentRegression));
+      if (currentRegression.n > 2048) tables.analysisNotes.push(`Regression residual table includes first 2048 of ${currentRegression.n} rows; full data and model are unchanged.`);
+    }
+    return tables;
+  }, [exportOpen, criticalPoints, intervals, area, arcLength, intersections, differential, derivatives, currentRegression]);
   const locateSelected = () => {
     if (!document.selection.probe) return;
     const screen = graph2DWorldToScreen(viewport, size, document.selection.probe);
@@ -282,6 +295,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const functionList = <Graph2DAuthoringPanel document={document} onCommit={onAuthoringCommit}
     onSelect={(objectId) => onSelectionCommit?.(parameterPreviewActive || !sampling.ready ? { objectId, probe: null } : selectionForGraph2DObject(document, series, objectId, document.selection.probe?.x))} />;
   const inspector = inspected ? <div className="graph2d-inspector">
+    {selectedObject?.kind === "point-series" && <Graph2DRegressionPanel document={document} model={regressionModel} onModel={setRegressionModel} result={regression} onResult={setRegression} />}
     {parameterPreviewActive && <p role="status">Inspector and analyses refer to the committed source, not the parameter preview.</p>}
     {onPromotionCreate && onPromotionLocate && onPromotionRegenerate && <Graph2DPromotionPanel document={document}
       promotions={promotions} onCreate={onPromotionCreate} onLocate={onPromotionLocate} onRegenerate={onPromotionRegenerate} />}
@@ -518,6 +532,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
           {showRight && <details><summary>Inspector</summary>{inspector}</details>}
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={series}
+          regression={!parameterPreviewActive && document.display.objects.find(s => s.objectId === currentRegression?.objectId)?.visible ? currentRegression : null}
           selectedProbe={parameterPreviewActive ? null : document.selection.probe} hoverProbe={parameterPreviewActive ? null : hoverSelection?.probe} overlays={parameterPreviewActive ? [] : differentialOverlays}
           intervals={!parameterPreviewActive && intervals && isGraph2DIntervalAnalysisCurrent(intervals, document) ? intervals : null}
           area={!parameterPreviewActive && area && isGraph2DIntegralCurrent(area, document) ? area : null}

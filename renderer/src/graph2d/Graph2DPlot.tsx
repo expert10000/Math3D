@@ -9,6 +9,7 @@ import {
   type Graph2DRegionArtifact,
   type Graph2DPointSeriesArtifact,
   type Graph2DPiecewiseArtifact,
+  graph2DRegressionOverlaySeries, type Graph2DRegression,
 } from "@math3d/core";
 import { projectGraph2DGrid } from "./gridProjection";
 
@@ -21,12 +22,12 @@ export type Graph2DPlotSeries = Readonly<{
   style: Graph2DDisplay["objects"][number];
   continuation?: Graph2DSamplingArtifact;
 }>;
-type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonly Graph2DPlotSeries[];
+type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonly Graph2DPlotSeries[]; regression?: Graph2DRegression | null;
   selectedProbe?: Graph2DProbe | null; hoverProbe?: Graph2DProbe | null;
   overlays?: readonly Graph2DLineOverlay[]; intervals?: Graph2DIntervalAnalysis | null;
   area?: Graph2DIntegralAnalysis | null; intersections?: Graph2DIntersectionAnalysis | null };
 
-export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, overlays = [], intervals, area, intersections }: Props) {
+export function Graph2DPlot({ display, size, series, regression, selectedProbe, hoverProbe, overlays = [], intervals, area, intersections }: Props) {
   if (graph2DHasLogScale(display.viewport)) { overlays = []; area = null; intervals = null; }
   const clipId = useId();
   const grid = projectGraph2DGrid(display.viewport, size);
@@ -103,6 +104,14 @@ export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, 
         {grid.horizontalMajor.filter((tick) => tick.value !== 0).map((tick) => <text key={`yl-${tick.value}`} x={Math.min(size.width - 32, Math.max(5, (grid.yAxis ?? 0) + 5))} y={tick.pixel - 3}>{tick.label}</text>)}
       </g>}
       <g clipPath={`url(#${clipId})`}>
+        {regression && <g data-testid="graph2d-regression-overlay" aria-hidden="true">
+          {regression.curve.slice(1).map((p, i) => {
+            const a = regression.curve[i], corners = [{ x: a.x, y: a.meanLow }, { x: p.x, y: p.meanLow }, { x: p.x, y: p.meanHigh }, { x: a.x, y: a.meanHigh }].map(point => graph2DWorldToScreen(display.viewport, size, point));
+            return corners.every(point => Number.isFinite(point.x) && Number.isFinite(point.y)) ? <polygon key={i} points={corners.map(point => `${point.x},${point.y}`).join(" ")} fill="#7c3aed" fillOpacity={.12} /> : null;
+          })}
+          {graph2DRegressionOverlaySeries(regression).map(item => <path key={item.objectId} d={pathFor(item.artifact)} fill="none" stroke={item.style.color}
+            strokeWidth={item.style.lineWidth} strokeDasharray={item.style.lineStyle === "solid" ? undefined : item.style.lineStyle === "dashed" ? "8 5" : "2 4"} />)}
+        </g>}
         {display.viewport.continuation && series.filter(item => item.style.visible && item.continuation).map(item =>
           <path key={`continuation-${item.objectId}`} data-graph2d-continuation={item.objectId} d={pathFor(item.continuation!)}
             fill="none" stroke={item.style.color} strokeOpacity={0.35} strokeWidth={item.style.lineWidth} strokeDasharray="3 6" aria-hidden="true" />)}

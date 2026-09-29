@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from "react-native";
 import { fitGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, graph2DHasLogScale, pickGraph2DProbe,
   resolveGraph2DViewport, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, graph2DParameterSessionKey,
-  previewGraph2DParameterValues, applyGraph2DAuthoring, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion } from "@math3d/core";
+  previewGraph2DParameterValues, graph2DRegressionOverlaySeries, applyGraph2DAuthoring, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { MobileGraphGesture, mobileGraphProbeRadius, type GraphTouch } from "./models/mobileGraphGestures";
 import { mobileGraphCapabilities } from "./models/mobileGraphProject";
@@ -23,7 +23,7 @@ import { MobileGraphPromotionPanel } from "./MobileGraphPromotionPanel";
 import { mobileGraphLayout, mobileGraphPanelDestination, type MobileGraphDestination } from "./models/mobileGraphLayout";
 import { MobileGraphAnalysisPanel } from "./MobileGraphAnalysisPanel";
 import { mobileGraphAnalysisDraft, runMobileGraphAnalysis, isMobileGraphAnalysisCurrent, mobileGraphAnalysisProbe,
-  type MobileGraphAnalysis } from "./models/mobileGraphAnalysis";
+  type MobileGraphRegressionAnalysis } from "./models/mobileGraphAnalysis";
 import { clipMobileGraphLine, mobileGraphTicks, projectMobileGraphLines, type MobileGraphLine } from "./viewer/mobileGraphProjection";
 
 const touches = (event: GestureResponderEvent): GraphTouch[] => event.nativeEvent.touches.map((touch) =>
@@ -61,7 +61,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const [editor, setEditor] = useState<MobileGraphEditor | null>(null);
   const [advanced, setAdvanced] = useState<MobileGraphAdvancedEditor | null>(null);
   const [analysisDraft, setAnalysisDraft] = useState(() => mobileGraphAnalysisDraft(document));
-  const [analysis, setAnalysis] = useState<MobileGraphAnalysis | null>(null);
+  const [analysis, setAnalysis] = useState<MobileGraphRegressionAnalysis | null>(null);
   const viewport = preview ?? document.display.viewport;
   const cancel = () => { gesture.current.cancel(); setPreview(null); };
   useEffect(() => {
@@ -79,6 +79,9 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const probe = parameterPreviewActive ? null : document.selection.probe;
   const marker = probe ? graph2DWorldToScreen(viewport, size, probe) : null;
   const analysisCurrent = !parameterPreviewActive && !!analysis && isMobileGraphAnalysisCurrent(analysis, document, analysisDraft);
+  const regressionLines = useMemo(() => analysisCurrent && analysis?.regression && document.display.objects.find(s => s.objectId === analysis.regression!.objectId)?.visible ?
+    projectMobileGraphLines(graph2DRegressionOverlaySeries(analysis.regression), viewport, size, null, Math.max(0, budget.lines - lines.length - continuationLines.length)) : [],
+    [analysis, analysisCurrent, document.display.objects, viewport, size, budget.lines, lines.length, continuationLines.length]);
   const history = adapter.history();
   const commit = (action: () => Graph2DDocument | null) => {
     cancel(); try { const next = action(); if (next) onChange(next); setError(""); return true; }
@@ -158,6 +161,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         })}
         <View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: .35 }]}>{continuationLines.map((line, index) => <Line key={`continuation${index}`} {...line} />)}</View>
         {lines.map((line, index) => <Line key={index} {...line} />)}
+        {regressionLines.map((line, index) => <Line key={`regression${index}`} {...line} />)}
         {geometry.points.map((point, index) => <View key={`data${index}`} style={{ position: "absolute", left: point.x - 3, top: point.y - 3,
           width: 6, height: 6, borderRadius: 3, borderWidth: point.open ? 1 : 0, borderColor: point.color, backgroundColor: point.open ? "white" : point.color }} />)}
         {!graph2DHasLogScale(viewport) && overlays.tangent && analysis && analysisCurrent && analysis.overlays.filter((overlay) =>
@@ -221,12 +225,13 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         }).catch((caught: Error) => setError(caught.message)); }}
         onApply={(action) => commit(() => adapter.commitScene(applyMobileGraphAuthoring(document, action), action.type))}
         onSelect={(id) => commit(() => adapter.commitSelection(selectionForGraph2DObject(document, series, id)))} /> : <><Text style={s.readout}>{mobileGraphCapabilities(document)}</Text>
-        <Text style={s.readout}>Probes: evaluated explicit/parametric/polar, interpolated contours, nearest data row. Sampling is approximate. Analysis and saved pins currently require explicit y(x).</Text>
+        <Text style={s.readout}>Probes: evaluated explicit/parametric/polar, interpolated contours, nearest data row. Calculus/pins require explicit y(x); regression uses original point data. Sampling is approximate.</Text>
         {series.some((item) => !item.artifact.converged) && <Text style={s.readout}>Sampling budget reached; unresolved regions are not a proof of absence.</Text>}
         {button("Clear probe", () => commit(() => adapter.commitSelection({ objectId: null, probe: null })))}
         {probe && button("Cycle overlap", () => tap(graph2DWorldToScreen(document.display.viewport, size, probe)))}
         <MobileGraphAnalysisPanel document={document} draft={analysisDraft} result={analysis} onDraft={setAnalysisDraft}
-          onRun={() => { cancel(); try { setAnalysis(runMobileGraphAnalysis(document, analysisDraft)); setError(""); }
+          onRun={() => { cancel(); try { const object = document.source.objects.find(o => o.id === analysisDraft.objectId);
+            setAnalysis(runMobileGraphAnalysis(document, analysisDraft, object?.kind === "point-series" ? mobileGraphPointTables.resolve(object.table) : null)); setError(""); }
             catch (caught) { setError((caught as Error).message); } }}
           onLocate={(point) => commit(() => {
             if (!analysis || !isMobileGraphAnalysisCurrent(analysis, document, analysisDraft)) throw new TypeError("Result is stale; run analysis again.");
