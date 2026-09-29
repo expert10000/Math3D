@@ -106,20 +106,35 @@ const screenshot = (name) => {
 };
 
 const assertNavigationLayout = (profile) => {
-  const nav = ["Home", "Explore", "Workspace", "Projects", "Settings"].map(label => expectNode(label, true));
-  for (const node of nav) {
-    const [x1, y1, x2, y2] = node.bounds;
-    if (x1 < 0 || y1 < 0 || x2 > profile.width || y2 > profile.height || x2 <= x1 || y2 <= y1) {
-      throw new Error(`${profile.id}: ${node.label} is outside ${profile.width}x${profile.height}.`);
+  let lastError;
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    try {
+      const snapshot = readNodes();
+      const nav = ["Home", "Explore", "Workspace", "Projects", "Settings"].map(label => {
+        const matches = snapshot.filter(node => (node.text === label || node.description === label) && node.bounds);
+        const node = matches.sort((a, b) => b.bounds[1] - a.bounds[1])[0];
+        if (!node) throw new Error(`${profile.id}: missing bottom tab ${label}.`);
+        return node;
+      });
+      for (const node of nav) {
+        const [x1, y1, x2, y2] = node.bounds;
+        if (x1 < 0 || y1 < 0 || x2 > profile.width || y2 > profile.height || x2 <= x1 || y2 <= y1) {
+          throw new Error(`${profile.id}: ${node.label} is outside ${profile.width}x${profile.height}.`);
+        }
+      }
+      const ordered = [...nav].sort((a, b) => a.bounds[0] - b.bounds[0]);
+      for (let index = 1; index < ordered.length; index += 1) {
+        if (ordered[index - 1].bounds[2] > ordered[index].bounds[0]) {
+          throw new Error(`${profile.id}: bottom navigation labels overlap.`);
+        }
+      }
+      return nav.map((node) => ({ label: node.label, bounds: node.bounds }));
+    } catch (error) {
+      lastError = error;
+      pause(850);
     }
   }
-  const ordered = [...nav].sort((a, b) => a.bounds[0] - b.bounds[0]);
-  for (let index = 1; index < ordered.length; index += 1) {
-    if (ordered[index - 1].bounds[2] > ordered[index].bounds[0]) {
-      throw new Error(`${profile.id}: bottom navigation labels overlap.`);
-    }
-  }
-  return nav.map((node) => ({ label: node.label, bounds: node.bounds }));
+  throw lastError;
 };
 
 const report = { ok: false, serial, layouts: [], lifecycle: [] };
@@ -133,6 +148,7 @@ try {
     adb("shell", "cmd", "uimode", "night", profile.appearance === "dark" ? "yes" : "no");
     adb("shell", "settings", "put", "system", "accelerometer_rotation", "0");
     adb("shell", "settings", "put", "system", "user_rotation", profile.orientation === "landscape" ? "1" : "0");
+    adb("shell", "wm", "user-rotation", "lock", profile.orientation === "landscape" ? "1" : "0");
     launch();
     const navigation = assertNavigationLayout(profile);
     screenshot(profile.id);
@@ -143,6 +159,7 @@ try {
   adb("shell", "wm", "size", `${interactionProfile.width}x${interactionProfile.height}`);
   adb("shell", "settings", "put", "system", "font_scale", String(interactionProfile.fontScale));
   adb("shell", "settings", "put", "system", "user_rotation", "0");
+  adb("shell", "wm", "user-rotation", "lock", "0");
   launch();
   tap("Swipe up for tools");
   expectNode("Swipe down to close");
@@ -196,6 +213,7 @@ try {
   try { adb("shell", "wm", "density", "reset"); } catch { /* Best effort restoration. */ }
   try { adb("shell", "settings", "put", "system", "font_scale", "1.0"); } catch { /* Best effort restoration. */ }
   try { adb("shell", "settings", "put", "system", "accelerometer_rotation", "1"); } catch { /* Best effort restoration. */ }
+  try { adb("shell", "wm", "user-rotation", "free"); } catch { /* Best effort restoration. */ }
   try { adb("shell", "cmd", "uimode", "night", "no"); } catch { /* Best effort restoration. */ }
   writeFileSync(resolve(resultDir, "matrix-result.json"), `${JSON.stringify(report, null, 2)}\n`);
 }
