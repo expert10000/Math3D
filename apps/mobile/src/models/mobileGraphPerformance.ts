@@ -45,11 +45,13 @@ export const boundMobileGraphArtifacts = (series: readonly Graph2DSampledSeries[
   let bytes = 0, segments = 0, truncated = false;
   const bounded = series.map((item) => {
     const size = new TextEncoder().encode(JSON.stringify(item)).length;
-    if (bytes + size <= budget.artifactBytes - 16384 && segments + item.artifact.segments.length <= budget.segments) {
-      bytes += size; segments += item.artifact.segments.length; return item;
+    const count = item.artifact.segments.length + (item.continuation?.segments.length ?? 0);
+    if (bytes + size <= budget.artifactBytes - 16384 && segments + count <= budget.segments) {
+      bytes += size; segments += count; return item;
     }
     truncated = true;
-    const omitted = { ...item, artifact: { samplerVersion: 1 as const, segments: [], samplesEvaluated: item.artifact.samplesEvaluated,
+    const { continuation: _continuation, ...original } = item;
+    const omitted = { ...original, artifact: { samplerVersion: 1 as const, segments: [], samplesEvaluated: item.artifact.samplesEvaluated,
       converged: false, diagnostics: [...item.artifact.diagnostics, { code: "output-limit" as const, count: 1 }] } };
     const omittedBytes = new TextEncoder().encode(JSON.stringify(omitted)).length;
     if (bytes + omittedBytes > budget.artifactBytes) return null;

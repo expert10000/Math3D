@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from "react-native";
-import { fitGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, pickGraph2DProbe,
+import { fitGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, graph2DHasLogScale, pickGraph2DProbe,
   resolveGraph2DViewport, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, graph2DParameterSessionKey,
   previewGraph2DParameterValues, applyGraph2DAuthoring, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
@@ -72,6 +72,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const { series, budget } = sampling;
   const geometry = useMemo(() => mobileGraphAdvancedGeometry(series, viewport, size, budget), [series, viewport, size, budget.fills, budget.markers]);
   const lines = useMemo(() => projectMobileGraphLines(geometry.boundaries, viewport, size, document.selection.objectId, budget.lines), [geometry, viewport, size, document.selection.objectId, budget.lines]);
+  const continuationLines = useMemo(() => viewport.continuation ? projectMobileGraphLines(series.filter(item => item.continuation).map(item => ({ ...item,
+    artifact: item.continuation!, style: { ...item.style, lineStyle: "dotted" } })), viewport, size, null, Math.max(0, budget.lines - lines.length)) : [], [series, viewport, size, budget.lines, lines.length]);
   const ticks = mobileGraphTicks(viewport, size);
   const bounds = resolveGraph2DViewport(viewport, size);
   const probe = parameterPreviewActive ? null : document.selection.probe;
@@ -96,11 +98,12 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   };
   const fit = () => {
     if (!sampling.ready || parameterPreviewActive) { setError("Wait for sampling and apply or cancel parameter preview before Fit."); return; }
-    const points = series.flatMap((item) => item.artifact.segments.flatMap((segment) => segment.points));
+    const points = series.flatMap((item) => item.artifact.segments.flatMap((segment) => segment.points)).filter(point =>
+      (viewport.xScale !== "log10" || point.x > 0) && (viewport.yScale !== "log10" || point.y > 0));
     if (!points.length) { setError("No finite visible points to fit."); return; }
     commit(() => adapter.commitViewport(fitGraph2DViewport({ xMin: Math.min(...points.map((point) => point.x)),
       xMax: Math.max(...points.map((point) => point.x)), yMin: Math.min(...points.map((point) => point.y)),
-      yMax: Math.max(...points.map((point) => point.y)) }, size)));
+      yMax: Math.max(...points.map((point) => point.y)) }, size, viewport.aspect, .08, viewport)));
   };
   const axis = (a: { x: number; y: number }, b: { x: number; y: number }) => {
     const line = clipMobileGraphLine(graph2DWorldToScreen(viewport, size, a), graph2DWorldToScreen(viewport, size, b), size);
@@ -137,7 +140,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
       onResponderRelease={finish} onResponderTerminate={cancel} onResponderTerminationRequest={() => true}>
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {geometry.fills.map((rect, index) => <View key={`region${index}`} style={{ position: "absolute", ...rect, backgroundColor: rect.color, opacity: 0.18 }} />)}
-        {overlays.area && analysisCurrent && analysis && document.display.objects.find((style) => style.objectId === analysisDraft.objectId)?.visible &&
+        {!graph2DHasLogScale(viewport) && overlays.area && analysisCurrent && analysis && document.display.objects.find((style) => style.objectId === analysisDraft.objectId)?.visible &&
           mobileGraphAreaRects(analysis, viewport, size, budget.fills).map((rect, index) => <View key={`area${index}`} style={{ position: "absolute", ...rect, backgroundColor: rect.color, opacity: 0.5 }} />)}
         {document.display.axes.x && axis({ x: bounds.xMin, y: 0 }, { x: bounds.xMax, y: 0 })}
         {document.display.axes.y && axis({ x: 0, y: bounds.yMin }, { x: 0, y: bounds.yMax })}
@@ -153,10 +156,11 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
             {document.display.axes.labels && <Text style={{ position: "absolute", fontSize: 10, left: 2,
               top: Math.max(0, Math.min(size.height - 14, point.y + 2)) }}>{Number(y.toPrecision(3))}</Text>}</React.Fragment>;
         })}
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: .35 }]}>{continuationLines.map((line, index) => <Line key={`continuation${index}`} {...line} />)}</View>
         {lines.map((line, index) => <Line key={index} {...line} />)}
         {geometry.points.map((point, index) => <View key={`data${index}`} style={{ position: "absolute", left: point.x - 3, top: point.y - 3,
           width: 6, height: 6, borderRadius: 3, borderWidth: point.open ? 1 : 0, borderColor: point.color, backgroundColor: point.open ? "white" : point.color }} />)}
-        {overlays.tangent && analysis && analysisCurrent && analysis.overlays.filter((overlay) =>
+        {!graph2DHasLogScale(viewport) && overlays.tangent && analysis && analysisCurrent && analysis.overlays.filter((overlay) =>
           document.display.objects.find((style) => style.objectId === overlay.objectId)?.visible).map((overlay) => {
           const points = clipGraph2DLineOverlay(overlay, viewport, size);
           return points && <Line key={overlay.artifactId} a={graph2DWorldToScreen(viewport, size, points[0])}
@@ -186,6 +190,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     {/* Fixed status height prevents ready/incomplete changes from resizing and resampling the plot in a loop. */}
     <Text style={[s.readout, { height: 36 * Math.max(1, window.fontScale) }]} numberOfLines={2}>{[
       parameterPreviewActive ? "Parameter preview — not saved. Apply or Cancel; committed analysis overlays hidden." : "",
+      viewport.continuation ? "Light dotted continuation is visual only; not analysed/exported." : "",
+      graph2DHasLogScale(viewport) ? "Log axes omit non-positive values. Analysis uses world units; area/tangent overlays hidden." : "",
       !sampling.ready ? sampling.active ? sampling.retained ? "Graph updating; previous samples visible." : "Graph updating…" : "Graph sampling paused in background." : "",
       geometry.truncated || sampling.truncated || lines.length >= budget.lines || series.some((item) => !item.artifact.converged)
         ? "Approximate/incomplete display. Check Display diagnostics; missing data requires its CSV/TSV sidecar." : "",
@@ -198,6 +204,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         onPreview={values => { if (values) previewGraph2DParameterValues(document, values); setParameterPreview(values ? { key: parameterKey, values } : null); }}
         onCommit={action => { const next = adapter.commitScene(applyGraph2DAuthoring(document, action), action.type); cancel(); setParameterPreview(null); onChange(next); }} /> :
         panelDestination === "Export" ? <MobileGraphExportPanel document={document} analysis={analysisCurrent ? analysis : null} draft={analysisDraft} /> : panelDestination === "Display" ? <MobileGraphDisplayPanel document={document} series={series} overlays={overlays} lineCount={lines.length} sampling={sampling}
+        onViewport={v => { const next = adapter.commitViewport(v); cancel(); cancelParameter(); onChange(next); }}
         onOverlays={setOverlays} onAxis={(key) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "axis", key }), "style"))}
         onQuality={(quality) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "quality", quality }), "style"))} /> : panelDestination === "Promote" ?
         <MobileGraphPromotionPanel document={document} promotions={promotions} onCreate={onPromotion}

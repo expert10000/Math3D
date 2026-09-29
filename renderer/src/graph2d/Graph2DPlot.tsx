@@ -1,6 +1,6 @@
 import { useId } from "react";
 import {
-  resolveGraph2DViewport, type Graph2DDisplay, type Graph2DSamplingArtifact,
+  resolveGraph2DViewport, graph2DHasLogScale, type Graph2DDisplay, type Graph2DSamplingArtifact,
   graph2DWorldToScreen, clipGraph2DLineOverlay, type Graph2DLineOverlay,
   type Graph2DProbe, type Graph2DScreenSize,
   type Graph2DIntervalAnalysis,
@@ -19,6 +19,7 @@ export type Graph2DPlotSeries = Readonly<{
   objectId: string;
   artifact: Graph2DSamplingArtifact;
   style: Graph2DDisplay["objects"][number];
+  continuation?: Graph2DSamplingArtifact;
 }>;
 type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonly Graph2DPlotSeries[];
   selectedProbe?: Graph2DProbe | null; hoverProbe?: Graph2DProbe | null;
@@ -26,6 +27,7 @@ type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonl
   area?: Graph2DIntegralAnalysis | null; intersections?: Graph2DIntersectionAnalysis | null };
 
 export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, overlays = [], intervals, area, intersections }: Props) {
+  if (graph2DHasLogScale(display.viewport)) { overlays = []; area = null; intervals = null; }
   const clipId = useId();
   const grid = projectGraph2DGrid(display.viewport, size);
   const bounds = resolveGraph2DViewport(display.viewport, size);
@@ -50,8 +52,7 @@ export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, 
     let path = "";
     let drawing = false;
     for (const point of segment.points) {
-      const x = (point.x - bounds.xMin) / xSpan * size.width;
-      const y = (bounds.yMax - point.y) / ySpan * size.height;
+      const { x, y } = graph2DWorldToScreen(display.viewport, size, point);
       if (!Number.isFinite(x) || !Number.isFinite(y)) { drawing = false; continue; }
       path += `${drawing ? "L" : "M"}${x.toFixed(2)},${y.toFixed(2)}`;
       drawing = true;
@@ -102,13 +103,15 @@ export function Graph2DPlot({ display, size, series, selectedProbe, hoverProbe, 
         {grid.horizontalMajor.filter((tick) => tick.value !== 0).map((tick) => <text key={`yl-${tick.value}`} x={Math.min(size.width - 32, Math.max(5, (grid.yAxis ?? 0) + 5))} y={tick.pixel - 3}>{tick.label}</text>)}
       </g>}
       <g clipPath={`url(#${clipId})`}>
+        {display.viewport.continuation && series.filter(item => item.style.visible && item.continuation).map(item =>
+          <path key={`continuation-${item.objectId}`} data-graph2d-continuation={item.objectId} d={pathFor(item.continuation!)}
+            fill="none" stroke={item.style.color} strokeOpacity={0.35} strokeWidth={item.style.lineWidth} strokeDasharray="3 6" aria-hidden="true" />)}
         {series.filter((item) => item.style.visible && isRegion(item.artifact)).map((item) => {
           const region = item.artifact as Graph2DRegionArtifact;
           const d = region.fills.map((fill) => {
-            const x = (fill.xMin - bounds.xMin) / xSpan * size.width;
-            const y = (bounds.yMax - fill.yMax) / ySpan * size.height;
-            const width = (fill.xMax - fill.xMin) / xSpan * size.width;
-            const height = (fill.yMax - fill.yMin) / ySpan * size.height;
+            const { x, y } = graph2DWorldToScreen(display.viewport, size, { x: fill.xMin, y: fill.yMax });
+            const b = graph2DWorldToScreen(display.viewport, size, { x: fill.xMax, y: fill.yMin });
+            const width = b.x - x, height = b.y - y;
             return `M${x.toFixed(2)},${y.toFixed(2)}h${width.toFixed(2)}v${height.toFixed(2)}h${(-width).toFixed(2)}Z`;
           }).join("");
           return <path key={`fill-${item.objectId}`} data-graph2d-region={item.objectId} data-region-state={region.state}

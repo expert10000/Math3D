@@ -1,4 +1,4 @@
-import { graph2DWorldToScreen, resolveGraph2DViewport, type Graph2DViewport,
+import { graph2DWorldToScreen, projectGraph2DGrid, type Graph2DViewport,
   type Graph2DScreenSize, type Graph2DScreenPoint, type Graph2DSampledSeries } from "@math3d/core";
 
 export type MobileGraphLine = { a: Graph2DScreenPoint; b: Graph2DScreenPoint; color: string; width: number };
@@ -57,15 +57,6 @@ export const projectMobileGraphLines = (series: readonly Graph2DSampledSeries[],
 };
 
 export const mobileGraphTicks = (viewport: Graph2DViewport, size: Graph2DScreenSize) => {
-  const effective = resolveGraph2DViewport(viewport, size);
-  const ticks = (min: number, max: number) => {
-    const raw = (max - min) / 5, base = 10 ** Math.floor(Math.log10(raw));
-    const step = [1, 2, 5, 10].find((value) => value * base >= raw)! * base;
-    const output: number[] = [];
-    for (let index = 0, start = Math.ceil(min / step) * step; index < 12; index += 1) {
-      const value = start + index * step; if (value > max) break; output.push(value);
-    }
-    return output;
-  };
-  return { x: ticks(effective.xMin, effective.xMax), y: ticks(effective.yMin, effective.yMax) };
+  const grid = projectGraph2DGrid(viewport, size);
+  return { x: grid.verticalMajor.map(t => t.value), y: grid.horizontalMajor.map(t => t.value) };
 };

@@ -1,5 +1,6 @@
 import { evaluateGraph2DExpression, type Graph2DExpressionAst } from "./graph2dExpression";
 import type { Graph2DDomain, Graph2DDisplay } from "./graph2dDocument";
+import { graph2DAxisCoordinate, graph2DAxisValue } from "./graph2dViewport";
 
 export const GRAPH2D_SAMPLER_VERSION = 1 as const;
 export const GRAPH2D_MAX_SEGMENTS = 10000;
@@ -36,7 +37,8 @@ type ObservedPoint = Graph2DSamplePoint | null;
 type Leaf = Readonly<{ left: ObservedPoint; right: ObservedPoint; split: boolean }>;
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const pixelsY = (point: Graph2DSamplePoint, request: Graph2DSamplingRequest): number =>
-  (request.viewport.yMax - point.y) / (request.viewport.yMax - request.viewport.yMin) * request.height;
+  (graph2DAxisCoordinate(request.viewport.yMax, request.viewport.yScale) - graph2DAxisCoordinate(point.y, request.viewport.yScale)) /
+  (graph2DAxisCoordinate(request.viewport.yMax, request.viewport.yScale) - graph2DAxisCoordinate(request.viewport.yMin, request.viewport.yScale)) * request.height;
 
 /** Pure sample artifact: callers key it by exact source generation, viewport, and policy. */
 export const sampleGraph2DExplicit = (request: Graph2DSamplingRequest): Graph2DSamplingArtifact => {
@@ -65,7 +67,7 @@ export const sampleGraph2DExplicit = (request: Graph2DSamplingRequest): Graph2DS
     if (request.deadlineMs !== undefined && Date.now() > request.deadlineMs) { note("deadline"); budgetEnded = true; return null; }
     samplesEvaluated += 1;
     const result = evaluateGraph2DExpression(request.ast, { ...request.variables, x }, { deadlineMs: request.deadlineMs });
-    const point = result.ok ? { x, y: result.value } : null;
+    const point = result.ok && (request.viewport.yScale !== "log10" || result.value > 0) ? { x, y: result.value } : null;
     if (!point) note("invalid-sample");
     cache.set(x, point);
     return point;
@@ -74,10 +76,13 @@ export const sampleGraph2DExplicit = (request: Graph2DSamplingRequest): Graph2DS
   const leaves: Leaf[] = [];
   const subdivide = (left: ObservedPoint, right: ObservedPoint, a: number, b: number, depth: number): void => {
     if (budgetEnded) { leaves.push({ left, right, split: !left || !right }); return; }
-    const middleX = (a + b) / 2;
+    const between = (left: number, right: number, f: number) => graph2DAxisValue(graph2DAxisCoordinate(left, request.viewport.xScale) +
+      (graph2DAxisCoordinate(right, request.viewport.xScale) - graph2DAxisCoordinate(left, request.viewport.xScale)) * f, request.viewport.xScale);
+    const middleX = between(a, b, .5);
     if (middleX === a || middleX === b) { leaves.push({ left, right, split: !left || !right }); return; }
     const middle = evaluate(middleX);
-    const pixelWidth = (b - a) / (request.viewport.xMax - request.viewport.xMin) * request.width;
+    const pixelWidth = (graph2DAxisCoordinate(b, request.viewport.xScale) - graph2DAxisCoordinate(a, request.viewport.xScale)) /
+      (graph2DAxisCoordinate(request.viewport.xMax, request.viewport.xScale) - graph2DAxisCoordinate(request.viewport.xMin, request.viewport.xScale)) * request.width;
     // Do not exhaust the scene budget subdividing an entirely undefined screen cell.
     // A bounded scan can miss narrow valid islands: retain a gap and report uncertainty.
     if (!left && !right && !middle && pixelWidth <= Math.max(1, request.policy.tolerancePx * 4)) {
@@ -90,8 +95,8 @@ export const sampleGraph2DExplicit = (request: Graph2DSamplingRequest): Graph2DS
       const linearY = (pixelsY(left, request) + pixelsY(right, request)) / 2;
       deviation = Math.abs(pixelsY(middle, request) - linearY);
       if (deviation <= request.policy.tolerancePx && pixelWidth > 4 && !budgetEnded) {
-        const firstQuarter = evaluate((a + middleX) / 2);
-        const thirdQuarter = evaluate((middleX + b) / 2);
+        const firstQuarter = evaluate(between(a, b, .25));
+        const thirdQuarter = evaluate(between(a, b, .75));
         if (!firstQuarter || !thirdQuarter) deviation = Number.POSITIVE_INFINITY;
         else deviation = Math.max(deviation,
           Math.abs(pixelsY(firstQuarter, request) - (3 * pixelsY(left, request) + pixelsY(right, request)) / 4),
@@ -112,9 +117,11 @@ export const sampleGraph2DExplicit = (request: Graph2DSamplingRequest): Graph2DS
   };
 
   const seeds = Math.min(64, Math.max(8, Math.floor(request.width / 12)), Math.floor(request.policy.maxSamples / 4));
+  const seed = (fraction: number) => graph2DAxisValue(graph2DAxisCoordinate(min, request.viewport.xScale) +
+    (graph2DAxisCoordinate(max, request.viewport.xScale) - graph2DAxisCoordinate(min, request.viewport.xScale)) * fraction, request.viewport.xScale);
   for (let index = 0; index < seeds; index += 1) {
-    const a = min + (max - min) * (index / seeds);
-    const b = index === seeds - 1 ? max : min + (max - min) * ((index + 1) / seeds);
+    const a = index === 0 ? min : seed(index / seeds);
+    const b = index === seeds - 1 ? max : seed((index + 1) / seeds);
     subdivide(evaluate(a), evaluate(b), a, b, 0);
   }
 

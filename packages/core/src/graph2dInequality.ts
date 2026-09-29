@@ -2,6 +2,7 @@ import type { Graph2DDisplay, Graph2DInequalityClause, Graph2DInequalityObject,
   Graph2DImplicitObject } from "./graph2dDocument";
 import { evaluateGraph2DExpression } from "./graph2dExpression";
 import { sampleGraph2DImplicit } from "./graph2dImplicit";
+import { graph2DAxisCoordinate, graph2DAxisValue } from "./graph2dViewport";
 import { GRAPH2D_SAMPLER_VERSION, type Graph2DSampleSegment,
   type Graph2DSamplingArtifact, type Graph2DSamplingDiagnostic } from "./graph2dSampling";
 
@@ -58,12 +59,15 @@ export const sampleGraph2DInequality = (request: Graph2DRegionRequest): Graph2DR
   if (xMin >= xMax || yMin >= yMax) { note("empty-domain"); return result([], [], 0, "resolved"); }
   if (object.clauses.length * 96 > policy.maxSamples) { note("sample-limit"); return result([], [], 0, "complexity-limit"); }
   const fillBudget = Math.floor(policy.maxSamples * 0.35);
-  const xPixels = request.width * (xMax - xMin) / (viewport.xMax - viewport.xMin);
-  const yPixels = request.height * (yMax - yMin) / (viewport.yMax - viewport.yMin);
+  const sx = (v: number) => graph2DAxisCoordinate(v, viewport.xScale), sy = (v: number) => graph2DAxisCoordinate(v, viewport.yScale);
+  const xPixels = request.width * (sx(xMax) - sx(xMin)) / (sx(viewport.xMax) - sx(viewport.xMin));
+  const yPixels = request.height * (sy(yMax) - sy(yMin)) / (sy(viewport.yMax) - sy(viewport.yMin));
   const target = Math.max(5, policy.tolerancePx * 10);
   let nx = Math.max(4, Math.ceil(xPixels / target)), ny = Math.max(4, Math.ceil(yPixels / target));
   const scale = Math.min(1, Math.sqrt(fillBudget / (nx * ny * object.clauses.length)));
   nx = Math.max(4, Math.floor(nx * scale)); ny = Math.max(4, Math.floor(ny * scale));
+  const x = (i: number) => graph2DAxisValue(sx(xMin) + (sx(xMax) - sx(xMin)) * i / nx, viewport.xScale);
+  const y = (j: number) => graph2DAxisValue(sy(yMin) + (sy(yMax) - sy(yMin)) * j / ny, viewport.yScale);
   const variables = request.variables ?? {};
   const fills: Graph2DRegionFill[] = [];
   let samplesEvaluated = 0, unresolved = false, limited = false;
@@ -71,8 +75,7 @@ export const sampleGraph2DInequality = (request: Graph2DRegionRequest): Graph2DR
     let runStart = -1;
     const flush = (end: number) => {
       if (runStart < 0) return;
-      fills.push({ xMin: xMin + (xMax - xMin) * runStart / nx, xMax: xMin + (xMax - xMin) * end / nx,
-        yMin: yMin + (yMax - yMin) * j / ny, yMax: yMin + (yMax - yMin) * (j + 1) / ny });
+      fills.push({ xMin: x(runStart), xMax: x(end), yMin: y(j), yMax: y(j + 1) });
       runStart = -1;
     };
     for (let i = 0; i < nx; i += 1) {
@@ -80,8 +83,8 @@ export const sampleGraph2DInequality = (request: Graph2DRegionRequest): Graph2DR
           request.deadlineMs !== undefined && Date.now() > request.deadlineMs) {
         note("sample-limit"); limited = true; flush(i); break;
       }
-      const cx = xMin + (xMax - xMin) * (i + 0.5) / nx;
-      const cy = yMin + (yMax - yMin) * (j + 0.5) / ny;
+      const cx = x(i + .5);
+      const cy = y(j + .5);
       samplesEvaluated += object.clauses.length;
       const inside = evaluateGraph2DRegion(object, variables, cx, cy);
       if (inside === null) { unresolved = true; note("unresolved-cell"); }

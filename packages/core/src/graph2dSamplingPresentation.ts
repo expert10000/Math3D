@@ -4,7 +4,7 @@ import type { Graph2DSceneSamplingRequest, Graph2DSampledSeries } from "./graph2
 /** Presentation-only continuity. A viewport change does not change mathematical ownership. */
 export const graph2DSamplingPresentationContext = (request: Graph2DSceneSamplingRequest, previewBase?: DocumentIdentity) =>
   structuralHash({ owner: previewBase ?? request.document.identity, styles: request.document.display.objects,
-    sampling: request.document.display.sampling, pointTables: request.pointTables ?? {} });
+    sampling: request.document.display.sampling, scales: { x: request.viewport.xScale ?? "linear", y: request.viewport.yScale ?? "linear", continuation: request.viewport.continuation ?? false }, pointTables: request.pointTables ?? {} });
 
 export const graph2DSeriesHasGeometry = (item: Graph2DSampledSeries) => item.artifact.segments.some(segment => segment.points.length > 0) ||
   ("fills" in item.artifact && Array.isArray(item.artifact.fills) && item.artifact.fills.length > 0) ||

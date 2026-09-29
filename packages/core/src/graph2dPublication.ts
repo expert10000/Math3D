@@ -105,7 +105,7 @@ export const createGraph2DPublication = (request: Graph2DPublicationRequest) => 
     return { publication, columns, rows };
   });
   const exportDocument = { ...document, display: { ...document.display, viewport: { ...viewport }, sampling } };
-  const series = sampleGraph2DScene({ document: exportDocument, viewport, width, height, interaction: false, pointTables, timeBudgetMs: 1500, deterministic: request.deterministic === true });
+  const series = sampleGraph2DScene({ document: exportDocument, viewport: { ...viewport, continuation: false }, width, height, interaction: false, pointTables, timeBudgetMs: 1500, deterministic: request.deterministic === true });
   const geometry = projectGraph2DPublicationGeometry(exportDocument, series, { width, height });
   const warnings = ["Static publication, not an editable Graph checkpoint. Use the existing Graph/handoff export to retain portable editing.",
     "Sampled floating-point geometry is approximate; convergence is not proof of continuity or absence of narrow features.",
@@ -115,6 +115,8 @@ export const createGraph2DPublication = (request: Graph2DPublicationRequest) => 
     "Unit labels are user declarations, not dimensional validation or conversion; unspecified units remain unspecified.",
     "PNG uses a deterministic pixel raster and compact numeric tick font; use SVG/HTML for full text and scalable presentation."];
   warnings.push(...analysisNotes.map(note => `Analysis projection: ${note}`));
+  if (viewport.continuation) warnings.push("Visual-only continuation is excluded; exported geometry remains inside the authored domains.");
+  if (viewport.xScale === "log10" || viewport.yScale === "log10") warnings.push("Base-10 display axes omit non-positive coordinates. Analysis tables and CSV coordinates remain authored world values, not logarithms.");
   if (series.some((s) => !s.artifact.converged)) warnings.push("Sampling is incomplete for one or more visible objects; consult per-object diagnostics.");
   if (geometry.omitted) warnings.push(`${geometry.omitted} primitives omitted by the publication geometry budget.`);
   const metadata = { format: "math3d.graph2d-publication.v1", recipeVersion: 1, title: document.metadata.title,

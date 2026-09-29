@@ -1,17 +1,21 @@
 import React, { useState } from "react";
 import { Pressable, Switch, Text, View } from "react-native";
-import type { Graph2DDocument, Graph2DSampledSeries } from "@math3d/core";
+import type { Graph2DDocument, Graph2DSampledSeries, Graph2DViewport } from "@math3d/core";
+import { MobileGraphScalePanel } from "./MobileGraphScalePanel";
 import { MOBILE_GRAPH_QUALITY, mobileGraphSamplingDiagnostics, type MobileGraphQuality, type MobileGraphOverlays } from "./models/mobileGraphDisplay";
 import type { MobileGraphSamplingStatus } from "./useMobileGraphSampling";
-export const MobileGraphDisplayPanel = ({ document, series, overlays, onAxis, onQuality, onOverlays, lineCount, sampling }: {
+export const MobileGraphDisplayPanel = ({ document, series, overlays, onAxis, onQuality, onOverlays, onViewport, lineCount, sampling }: {
   document: Graph2DDocument; series: readonly Graph2DSampledSeries[]; overlays: MobileGraphOverlays;
   onAxis: (key: "x" | "y" | "grid" | "labels") => void; onQuality: (quality: MobileGraphQuality) => void;
+  onViewport: (viewport: Graph2DViewport) => void;
   onOverlays: (overlays: MobileGraphOverlays) => void; lineCount: number; sampling: MobileGraphSamplingStatus }) => {
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const toggle = (label: string, value: boolean, onValueChange: () => void) => <View key={label} style={{ flexDirection: "row", alignItems: "center", minHeight: 44 }}>
     <Text style={{ flex: 1 }}>{label}</Text><Switch accessibilityLabel={label} value={value} onValueChange={onValueChange} /></View>;
   return <View testID="mobile-graph-display-controls"><Text>Display and quality</Text>
     {(["x", "y", "grid", "labels"] as const).map((key) => toggle(`${key} display`, document.display.axes[key], () => onAxis(key)))}
+    {toggle("Show continuation", document.display.viewport.continuation ?? false, () => onViewport({ ...document.display.viewport, continuation: !document.display.viewport.continuation }))}
+    <MobileGraphScalePanel key={document.identity.id} document={document} onCommit={onViewport} />
     <Text>Sampling quality (shared saved policy, capped on mobile)</Text>
     <View style={{ flexDirection: "row" }}>{(Object.keys(MOBILE_GRAPH_QUALITY) as MobileGraphQuality[]).map((quality) => <Pressable key={quality}
       accessibilityRole="radio" accessibilityLabel={`${quality} sampling`} accessibilityState={{ checked: document.display.sampling.maxSamples === MOBILE_GRAPH_QUALITY[quality].maxSamples }}

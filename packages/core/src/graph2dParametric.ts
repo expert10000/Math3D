@@ -1,5 +1,6 @@
 import type { Graph2DDomain, Graph2DDisplay, Graph2DParametricObject } from "./graph2dDocument";
 import { evaluateGraph2DExpression } from "./graph2dExpression";
+import { graph2DWorldToScreen } from "./graph2dViewport";
 import { GRAPH2D_MAX_OUTPUT_BYTES, GRAPH2D_MAX_SEGMENTS, GRAPH2D_SAMPLER_VERSION,
   type Graph2DSamplePoint, type Graph2DSampleSegment, type Graph2DSamplingArtifact,
   type Graph2DSamplingDiagnostic } from "./graph2dSampling";
@@ -43,14 +44,12 @@ export const sampleGraph2DPath = (request: Graph2DPathSamplingRequest): Graph2DS
     samplesEvaluated += 1;
     const result = request.evaluate(parameter);
     if (!result || !Number.isFinite(result.x) || !Number.isFinite(result.y)) note("invalid-sample");
-    const safe = result && Number.isFinite(result.x) && Number.isFinite(result.y) ? result : null;
+    const safe = result && Number.isFinite(result.x) && Number.isFinite(result.y) &&
+      (request.viewport.xScale !== "log10" || result.x > 0) && (request.viewport.yScale !== "log10" || result.y > 0) ? result : null;
     cache.set(parameter, safe);
     return safe;
   };
-  const screen = (value: Graph2DSamplePoint) => ({
-    x: (value.x - request.viewport.xMin) / (request.viewport.xMax - request.viewport.xMin) * request.width,
-    y: (request.viewport.yMax - value.y) / (request.viewport.yMax - request.viewport.yMin) * request.height,
-  });
+  const screen = (value: Graph2DSamplePoint) => graph2DWorldToScreen(request.viewport, request, value);
   const leaves: { left: Graph2DSamplePoint | null; right: Graph2DSamplePoint | null; split: boolean }[] = [];
   const subdivide = (a: number, b: number, left: Graph2DSamplePoint | null,
     right: Graph2DSamplePoint | null, depth: number): void => {

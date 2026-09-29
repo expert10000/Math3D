@@ -17,7 +17,9 @@ export type Graph2DSceneSamplingRequest = Readonly<{
   /** Publication-only repeatability: bounded evaluation work, no clock-dependent truncation. */
   deterministic?: boolean;
 }>;
-export type Graph2DSampledSeries = Readonly<{ objectId: string; style: Graph2DObjectDisplay; artifact: Graph2DSamplingArtifact }>;
+export type Graph2DSampledSeries = Readonly<{ objectId: string; style: Graph2DObjectDisplay; artifact: Graph2DSamplingArtifact;
+  /** Visual-only outside the authored x domain. Never probed, fitted, analysed or published. */
+  continuation?: Graph2DSamplingArtifact }>;
 
 export const sampleGraph2DScene = (request: Graph2DSceneSamplingRequest): readonly Graph2DSampledSeries[] => {
   const { document, width, height } = request;
@@ -34,7 +36,7 @@ export const sampleGraph2DScene = (request: Graph2DSceneSamplingRequest): readon
     throw new TypeError("Deterministic publication sampling requires at most 4096 samples and depth 16.");
   const deadlineMs = request.deterministic ? Number.POSITIVE_INFINITY : Date.now() + (request.timeBudgetMs ?? (request.interaction ? 250 : 1500));
   let remaining = totalBudget;
-  return document.source.objects.flatMap((object, index) => {
+  const series: Graph2DSampledSeries[] = document.source.objects.flatMap((object, index) => {
     const style = document.display.objects[index];
     if (!style?.visible) return [];
     if (Date.now() > deadlineMs) return [{ objectId: object.id, style, artifact: { samplerVersion: 1 as const,
@@ -52,4 +54,20 @@ export const sampleGraph2DScene = (request: Graph2DSceneSamplingRequest): readon
     remaining -= artifact.samplesEvaluated;
     return [{ objectId: object.id, style, artifact }];
   });
+  if (!request.deterministic && viewport.continuation) return series.map(item => {
+    const object = document.source.objects.find(o => o.id === item.objectId);
+    if (object?.kind !== "explicit-cartesian") return item;
+    const domains = [{ min: viewport.xMin, max: Math.min(viewport.xMax, object.domain.min) },
+      { min: Math.max(viewport.xMin, object.domain.max), max: viewport.xMax }].filter(d => d.min < d.max);
+    const parts: Graph2DSamplingArtifact[] = [];
+    for (const domain of domains) {
+      if (remaining < 32 || Date.now() > deadlineMs) break;
+      const artifact = sampleGraph2DExplicit({ ast: object.expression.ast, variables, viewport, width, height, deadlineMs,
+        domain: { ...domain, includeMin: true, includeMax: true }, policy: { ...policy, maxSamples: Math.min(512, remaining) } });
+      remaining -= artifact.samplesEvaluated; parts.push(artifact);
+    }
+    return parts.length ? { ...item, continuation: { samplerVersion: 1, segments: parts.flatMap(p => p.segments),
+      samplesEvaluated: parts.reduce((n, p) => n + p.samplesEvaluated, 0), converged: parts.every(p => p.converged), diagnostics: parts.flatMap(p => p.diagnostics) } } : item;
+  });
+  return series;
 };

@@ -29,6 +29,8 @@ export * from "./graph2dPiecewise";
 export * from "./graph2dInterop";
 export * from "./graph2dPromotionGeometry";
 export * from "./graph2dViewport";
+export * from "./graph2dGrid";
+export * from "./graph2dScalePolicy";
 export * from "./graph2dPersistence";
 export * from "./graph2dCommands";
 export * from "./graph2dAuthoring";

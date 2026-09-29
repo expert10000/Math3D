@@ -7,7 +7,7 @@ import {
   GRAPH2D_INEQUALITY_CAPABILITY,
   GRAPH2D_POINT_SERIES_CAPABILITY,
   GRAPH2D_PIECEWISE_CAPABILITY,
-  GRAPH2D_PROBES_CAPABILITY,
+  GRAPH2D_PROBES_CAPABILITY, GRAPH2D_SCALES_CAPABILITY,
   GRAPH2D_MAX_DOCUMENT_BYTES, normalizeGraph2DDocument, type Graph2DDocument,
 } from "./graph2dDocument";
 import { parseGraph2DExpression } from "./graph2dExpression";
@@ -39,7 +39,7 @@ export const inspectGraph2DCompatibility = (value: unknown): Graph2DCompatibilit
   const required = Array.isArray(value.requiredCapabilities) ? value.requiredCapabilities : [];
   const supported = [GRAPH2D_EXPLICIT_CAPABILITY, GRAPH2D_PARAMETRIC_CAPABILITY,
     GRAPH2D_POLAR_CAPABILITY, GRAPH2D_IMPLICIT_CAPABILITY, GRAPH2D_INEQUALITY_CAPABILITY,
-    GRAPH2D_POINT_SERIES_CAPABILITY, GRAPH2D_PIECEWISE_CAPABILITY, GRAPH2D_PROBES_CAPABILITY, GRAPH2D_PARAMETERS_CAPABILITY];
+    GRAPH2D_POINT_SERIES_CAPABILITY, GRAPH2D_PIECEWISE_CAPABILITY, GRAPH2D_PROBES_CAPABILITY, GRAPH2D_PARAMETERS_CAPABILITY, GRAPH2D_SCALES_CAPABILITY];
   const unsupportedCapabilities = required.filter((capability): capability is string => typeof capability === "string" && !supported.includes(capability as typeof supported[number]));
   if (unsupportedCapabilities.length)
     return { status: "unsupported", schemaVersion: version, title, unsupportedCapabilities, reason: "Graph2D capabilities are unavailable." };

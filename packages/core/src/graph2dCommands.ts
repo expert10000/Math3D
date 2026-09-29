@@ -23,7 +23,8 @@ export const graph2dCommandDefinitions: readonly CommandDefinition<Graph2DComman
       : { ok: false, errors: ["Graph2D viewport command requires a valid viewport."] },
   project: (state, payload) => {
     const viewport = (payload as { viewport: Graph2DViewport }).viewport;
-    const candidate = { ...state.document, display: { ...state.document.display, viewport } };
+    const display = { ...state.document.display, viewport };
+    const candidate = { ...state.document, display, requiredCapabilities: graph2DRequiredCapabilities(state.document.source, display) };
     const normalized = normalizeGraph2DDocument(candidate);
     if (!normalized.ok) throw new TypeError(normalized.errors.join(" "));
     return { document: normalized.value };

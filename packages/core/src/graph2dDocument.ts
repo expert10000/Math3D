@@ -6,6 +6,8 @@ import {
 import type { ValidationResult } from "./validation";
 import { parseGraph2DExpression, type Graph2DExpressionAst } from "./graph2dExpression";
 import { GRAPH2D_PARAMETERS_CAPABILITY, isGraph2DParameter, type Graph2DParameter } from "./graph2dParameterTypes";
+import { isGraph2DViewport } from "./graph2dViewport";
+export const GRAPH2D_SCALES_CAPABILITY = "graph2d.scales.v1" as const;
 
 export const GRAPH2D_DOCUMENT_FORMAT = "math3d.graph2d-document" as const;
 export const GRAPH2D_DOCUMENT_SCHEMA_VERSION = 1 as const;
@@ -105,7 +107,7 @@ export type Graph2DSource = Readonly<{
   variables: readonly Graph2DParameter[];
   assumptions: readonly string[];
 }>;
-export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pick<Graph2DDisplay, "pinnedProbes">): Graph2DDocument["requiredCapabilities"] =>
+export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pick<Graph2DDisplay, "pinnedProbes"> & Partial<Pick<Graph2DDisplay, "viewport">>): Graph2DDocument["requiredCapabilities"] =>
   [GRAPH2D_EXPLICIT_CAPABILITY,
     ...(source.objects.some((object) => object.kind === "parametric") ? [GRAPH2D_PARAMETRIC_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "polar") ? [GRAPH2D_POLAR_CAPABILITY] : []),
@@ -114,7 +116,8 @@ export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pic
     ...(source.objects.some((object) => object.kind === "point-series") ? [GRAPH2D_POINT_SERIES_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "piecewise") ? [GRAPH2D_PIECEWISE_CAPABILITY] : []),
     ...(display?.pinnedProbes !== undefined ? [GRAPH2D_PROBES_CAPABILITY] : []),
-    ...(source.variables.some(variable => variable.control !== undefined) ? [GRAPH2D_PARAMETERS_CAPABILITY] : [])];
+    ...(source.variables.some(variable => variable.control !== undefined) ? [GRAPH2D_PARAMETERS_CAPABILITY] : []),
+    ...(display?.viewport && ["xScale", "yScale", "continuation"].some(key => key in display.viewport!) ? [GRAPH2D_SCALES_CAPABILITY] : [])];
 export type Graph2DObjectDisplay = Readonly<{
   objectId: string;
   visible: boolean;
@@ -124,7 +127,8 @@ export type Graph2DObjectDisplay = Readonly<{
 }>;
 export type Graph2DDisplay = Readonly<{
   pinnedProbes?: readonly Graph2DPinnedProbe[];
-  viewport: Readonly<{ xMin: number; xMax: number; yMin: number; yMax: number; aspect: "free" | "equal" }>;
+  viewport: Readonly<{ xMin: number; xMax: number; yMin: number; yMax: number; aspect: "free" | "equal";
+    xScale?: "linear" | "log10"; yScale?: "linear" | "log10"; continuation?: boolean }>;
   axes: Readonly<{ x: boolean; y: boolean; grid: boolean; labels: boolean;
     gridMode?: "cartesian" | "polar" }>;
   objects: readonly Graph2DObjectDisplay[];
@@ -139,7 +143,7 @@ export type Graph2DDocument = Readonly<{
   requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
     typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY |
     typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY |
-    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY)[];
+    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY)[];
   source: Graph2DSource;
   display: Graph2DDisplay;
   selection: Graph2DSelection;
@@ -244,17 +248,13 @@ const validSource = (value: unknown): value is Graph2DSource => {
 };
 const validDisplay = (value: unknown, source: Graph2DSource): value is Graph2DDisplay => {
   if (!record(value) || !exact(value, ["viewport", "axes", "objects", "sampling", ...(value.pinnedProbes !== undefined ? ["pinnedProbes"] : [])]) ||
-      !record(value.viewport) || !exact(value.viewport, ["xMin", "xMax", "yMin", "yMax", "aspect"]) ||
-      !finite(value.viewport.xMin) || !finite(value.viewport.xMax) || value.viewport.xMin >= value.viewport.xMax ||
-      !finite(value.viewport.yMin) || !finite(value.viewport.yMax) || value.viewport.yMin >= value.viewport.yMax ||
-      value.viewport.xMax - value.viewport.xMin < 1e-9 || value.viewport.xMax - value.viewport.xMin > 1e12 ||
-      value.viewport.yMax - value.viewport.yMin < 1e-9 || value.viewport.yMax - value.viewport.yMin > 1e12 ||
-      !["free", "equal"].includes(String(value.viewport.aspect)) ||
+      !isGraph2DViewport(value.viewport) ||
       !record(value.axes) || ![4, 5].includes(Object.keys(value.axes).length) ||
       !["x", "y", "grid", "labels"].every((key) => Object.prototype.hasOwnProperty.call(value.axes, key)) ||
       Object.keys(value.axes).some((key) => !["x", "y", "grid", "labels", "gridMode"].includes(key)) ||
       [value.axes.x, value.axes.y, value.axes.grid, value.axes.labels].some((item) => typeof item !== "boolean") ||
       (value.axes.gridMode !== undefined && !["cartesian", "polar"].includes(String(value.axes.gridMode))) ||
+      (value.axes.gridMode === "polar" && (value.viewport.xScale === "log10" || value.viewport.yScale === "log10")) ||
       !Array.isArray(value.objects) || value.objects.length !== source.objects.length ||
       !value.objects.every((item: unknown, index: number) => record(item) && exact(item, ["objectId", "visible", "color", "lineWidth", "lineStyle"]) &&
         item.objectId === source.objects[index]?.id && typeof item.visible === "boolean" &&

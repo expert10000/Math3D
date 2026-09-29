@@ -4,6 +4,7 @@ import type { Graph2DRegionArtifact } from "./graph2dInequality";
 import type { Graph2DPointSeriesArtifact } from "./graph2dPointSeries";
 import type { Graph2DPiecewiseArtifact } from "./graph2dPiecewise";
 import { graph2DWorldToScreen, resolveGraph2DViewport, type Graph2DScreenSize } from "./graph2dViewport";
+import { projectGraph2DGrid } from "./graph2dGrid";
 
 export type Graph2DPublicationPrimitive =
   | { kind: "line"; x1: number; y1: number; x2: number; y2: number; color: string; width: number; dash: "solid" | "dashed" | "dotted"; dashOffset: number }
@@ -39,7 +40,8 @@ export const projectGraph2DPublicationGeometry = (document: Graph2DDocument, ser
     const step = [1, 2, 5, 10].find((n) => n * base >= raw)! * base;
     return Array.from({ length: 12 }, (_, i) => (Math.ceil(min / step) + i) * step).filter((n) => n <= max);
   };
-  const origin = screen({ x: 0, y: 0 }), xs = tick(bounds.xMin, bounds.xMax), ys = tick(bounds.yMin, bounds.yMax);
+  const grid = projectGraph2DGrid(viewport, size);
+  const origin = screen({ x: 0, y: 0 }), xs = grid.verticalMajor.map(t => t.value), ys = grid.horizontalMajor.map(t => t.value);
   if (document.display.axes.grid && document.display.axes.gridMode === "polar") {
     const maxRadius = Math.max(...[bounds.xMin, bounds.xMax].flatMap((x) => [bounds.yMin, bounds.yMax].map((y) => Math.hypot(x, y))));
     const radii = tick(0, maxRadius).filter((r) => r > 0);
@@ -52,8 +54,8 @@ export const projectGraph2DPublicationGeometry = (document: Graph2DDocument, ser
     for (const x of xs) { const p = screen({ x, y: 0 }); line({ x: p.x, y: 0 }, { x: p.x, y: size.height }, "#e2e8f0"); }
     for (const y of ys) { const p = screen({ x: 0, y }); line({ x: 0, y: p.y }, { x: size.width, y: p.y }, "#e2e8f0"); }
   }
-  if (document.display.axes.x) line({ x: 0, y: origin.y }, { x: size.width, y: origin.y }, "#64748b", 1.5);
-  if (document.display.axes.y) line({ x: origin.x, y: 0 }, { x: origin.x, y: size.height }, "#64748b", 1.5);
+  if (document.display.axes.x && grid.xAxis !== null) line({ x: 0, y: grid.xAxis }, { x: size.width, y: grid.xAxis }, "#64748b", 1.5);
+  if (document.display.axes.y && grid.yAxis !== null) line({ x: grid.yAxis, y: 0 }, { x: grid.yAxis, y: size.height }, "#64748b", 1.5);
   for (const item of series) {
     const artifact = item.artifact;
     if ("kind" in artifact && artifact.kind === "inequality-region") {

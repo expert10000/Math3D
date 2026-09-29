@@ -1,0 +1,37 @@
+import { expect, test, type Page } from "@playwright/test";
+const start = async (page: Page) => {
+  await page.route("**/api/worker/**", r => r.fulfill({ status: 503, body: '{"error":"Optional backend unavailable"}', contentType: "application/json" }));
+  await page.goto("/"); await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); }); await page.reload();
+  await page.getByTestId("workspace-nav-graphs").click(); await page.getByTestId("graph-gallery-open").click();
+  await page.getByRole("button", { name: "Open A tangent at x = 1", exact: true }).click();
+};
+const save = async (page: Page) => { await page.getByTestId("kernel-workspace-toggle").click(); await page.getByTestId("kernel-workspace-save").click();
+  await expect(page.getByTestId("kernel-workspace-message")).toContainText("Saved"); await page.getByTestId("kernel-workspace-toggle").click(); };
+const checkpoint = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.mixed-workspace.v1")!).entries.find((e: { module: string }) => e.module === "graph2d").checkpoint);
+test("G2D37 continuation and scale policies preserve authored range, undo and saved log zoom", async ({ page }, info) => {
+  await start(page); const source = (await checkpoint(page)).source;
+  await page.getByTestId("main-viewer").focus(); for (let i = 0; i < 5; i++) await page.keyboard.press("-");
+  await page.getByRole("button", { name: "Show continuation", exact: true }).click();
+  await expect(page.locator("[data-graph2d-continuation]").first()).toHaveAttribute("stroke-opacity", "0.35");
+  await expect.poll(() => page.locator("[data-graph2d-continuation]").first().getAttribute("d")).not.toBe("");
+  await save(page); expect((await checkpoint(page)).source).toEqual(source);
+  await page.screenshot({ path: info.outputPath("continuation.png") });
+  await page.getByRole("button", { name: "Scales", exact: true }).click(); const panel = page.getByTestId("graph2d-scales");
+  await panel.getByLabel("X scale", { exact: true }).selectOption("log10"); await panel.getByLabel("Y scale", { exact: true }).selectOption("log10");
+  await panel.getByLabel("Axis aspect", { exact: true }).selectOption("free");
+  await panel.getByRole("button", { name: "Apply scales and bounds", exact: true }).click(); await expect(panel.getByRole("alert")).toContainText("positive");
+  for (const [key, value] of Object.entries({ xMin: ".1", xMax: "10", yMin: ".01", yMax: "100" })) await panel.getByLabel(`Axis ${key}`, { exact: true }).fill(value);
+  await panel.getByRole("button", { name: "Apply scales and bounds", exact: true }).click(); await expect(panel.getByRole("alert")).toHaveCount(0);
+  await panel.getByRole("button", { name: "Close scales", exact: true }).click(); await save(page);
+  const d = await checkpoint(page); expect(d.requiredCapabilities).toContain("graph2d.scales.v1"); expect(d.source).toEqual(source);
+  await expect.poll(() => page.getByTestId("graph2d-plot").locator("[data-graph2d-path]").first().getAttribute("d")).not.toBe("");
+  expect(await page.getByTestId("graph2d-plot").innerHTML()).not.toMatch(/NaN|Infinity/);
+  await page.screenshot({ path: info.outputPath("log-scales.png") });
+  await page.getByTestId("main-viewer").focus(); await page.keyboard.press("Control+z"); await save(page);
+  expect((await checkpoint(page)).display.viewport.xScale).toBeUndefined();
+  await page.getByTestId("main-viewer").focus(); await page.keyboard.press("Control+y"); await save(page);
+  expect((await checkpoint(page)).display.viewport.xScale).toBe("log10");
+  await page.reload(); await page.getByTestId("workspace-nav-graphs").click(); await page.getByTestId("kernel-workspace-toggle").click();
+  await page.getByTestId("kernel-workspace-reopen").click(); await page.getByTestId("kernel-workspace-toggle").click();
+  await page.getByRole("button", { name: "Scales", exact: true }).click(); await expect(panel.getByLabel("X scale", { exact: true })).toHaveValue("log10");
+});

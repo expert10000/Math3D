@@ -1,5 +1,6 @@
 import type { Graph2DDisplay, Graph2DImplicitObject } from "./graph2dDocument";
 import { evaluateGraph2DExpression } from "./graph2dExpression";
+import { graph2DAxisCoordinate, graph2DAxisValue } from "./graph2dViewport";
 import { GRAPH2D_MAX_SEGMENTS, GRAPH2D_SAMPLER_VERSION, type Graph2DSamplePoint,
   type Graph2DSampleSegment, type Graph2DSamplingArtifact, type Graph2DSamplingDiagnostic } from "./graph2dSampling";
 
@@ -31,8 +32,9 @@ export const sampleGraph2DImplicit = (request: Graph2DContourRequest): Graph2DCo
     kind: "implicit-contour", samplerVersion: GRAPH2D_SAMPLER_VERSION, segments: [], samplesEvaluated: 0,
     converged: true, diagnostics, cellsVisited: 0, unresolvedCells: 0 });
   if (xMin >= xMax || yMin >= yMax) return empty([{ code: "empty-domain", count: 1 }]);
-  const visibleWidth = request.width * (xMax - xMin) / (viewport.xMax - viewport.xMin);
-  const visibleHeight = request.height * (yMax - yMin) / (viewport.yMax - viewport.yMin);
+  const sx = (v: number) => graph2DAxisCoordinate(v, viewport.xScale), sy = (v: number) => graph2DAxisCoordinate(v, viewport.yScale);
+  const visibleWidth = request.width * (sx(xMax) - sx(xMin)) / (sx(viewport.xMax) - sx(viewport.xMin));
+  const visibleHeight = request.height * (sy(yMax) - sy(yMin)) / (sy(viewport.yMax) - sy(viewport.yMin));
   const target = Math.max(3, Math.min(12, policy.tolerancePx * 8));
   let nx = Math.max(4, Math.ceil(visibleWidth / target));
   let ny = Math.max(4, Math.ceil(visibleHeight / target));
@@ -44,8 +46,8 @@ export const sampleGraph2DImplicit = (request: Graph2DContourRequest): Graph2DCo
   let samplesEvaluated = 0;
   let ended = false;
   const at = (i: number, j: number) => j * (nx + 1) + i;
-  const x = (i: number) => xMin + (xMax - xMin) * i / nx;
-  const y = (j: number) => yMin + (yMax - yMin) * j / ny;
+  const x = (i: number) => graph2DAxisValue(sx(xMin) + (sx(xMax) - sx(xMin)) * i / nx, viewport.xScale);
+  const y = (j: number) => graph2DAxisValue(sy(yMin) + (sy(yMax) - sy(yMin)) * j / ny, viewport.yScale);
   const evaluate = (px: number, py: number): number | null => {
     if (samplesEvaluated >= policy.maxSamples) { note("sample-limit"); ended = true; return null; }
     if (request.deadlineMs !== undefined && Date.now() > request.deadlineMs) { note("deadline"); ended = true; return null; }
