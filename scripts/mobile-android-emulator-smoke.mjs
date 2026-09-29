@@ -54,6 +54,7 @@ const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 
 const nodes = () => {
   adb("shell", "uiautomator", "dump", "/sdcard/math3d-smoke.xml");
   const xml = adb("exec-out", "cat", "/sdcard/math3d-smoke.xml");
+  writeFileSync(resolve(resultDir, "ui.xml"), xml);
   return [...xml.matchAll(/<node\b[^>]*>/g)].map(([tag]) => {
     const value = (name) => tag.match(new RegExp(`${name}="([^"]*)"`))?.[1] || "";
     const bounds = value("bounds").match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
@@ -79,12 +80,16 @@ const tapVisibleInspectorControl = (text) => {
     const node = findText(text);
     const nav = expectText("Explore");
     const navTop = nav.bounds[1] - 20;
-    if (node && node.bounds[3] < navTop && node.bounds[1] > expectText("Swipe down to close").bounds[3]) {
-      tap(text);
+    const contentTop = expectText("Object").bounds[3] + 8;
+    // Accessibility bounds may include the clipped portion of a scroll row.
+    const visibleTop = node ? Math.max(node.bounds[1], contentTop) : 0;
+    const visibleBottom = node ? Math.min(node.bounds[3], navTop - 8) : 0;
+    if (node && visibleBottom - visibleTop >= 12) {
+      adb("shell", "input", "tap", String(Math.round((node.bounds[0] + node.bounds[2]) / 2)),
+        String(Math.round((visibleTop + visibleBottom) / 2)));
       return;
     }
-    const workspace = expectText("Workspace");
-    const x = Math.round((workspace.bounds[0] + workspace.bounds[2]) / 2);
+    const x = Math.round((nav.bounds[0] + nav.bounds[2]) / 2);
     const fromY = navTop - 45;
     adb("shell", "input", "swipe", String(x), String(fromY), String(x), String(fromY - 120), "350");
   }

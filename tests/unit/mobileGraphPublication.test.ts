@@ -13,7 +13,7 @@ describe("native publication projection", () => {
       expect(native.snapshotId).toBe(desktop.snapshotId);
       for (const format of ["svg", "png", "csv", "html"] as const) expect(renderGraph2DPublicationArtifact(native, format).bytes).toEqual(renderGraph2DPublicationArtifact(desktop, format).bytes);
     }
-  });
+  }, 20_000); // Eight PNG encodes plus SVG/CSV/report parity on shared CI runners.
   it("exports original analysis values and excludes results after draft/source changes", () => {
     const { document } = instantiateGraph2DPreset(getGraph2DPresetCatalog().get("line-comparison")!, "native-analysis");
     const draft = { ...mobileGraphAnalysisDraft(document), kind: "integral" as const, objectId: document.source.objects[0].id, min: "-1", max: "2" };

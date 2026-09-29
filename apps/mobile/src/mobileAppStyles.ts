@@ -228,6 +228,8 @@ export const styles = StyleSheet.create({
     padding: 20,
   },
   inspectorSheet: {
+    flexShrink: 1,
+    minHeight: 0,
     marginTop: 5,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
@@ -275,6 +277,8 @@ export const styles = StyleSheet.create({
     color: "#163b66",
   },
   inspectorContent: {
+    flexShrink: 1,
+    minHeight: 0,
     maxHeight: 235,
     borderTopWidth: 1,
     borderTopColor: "#e3e8ef",
