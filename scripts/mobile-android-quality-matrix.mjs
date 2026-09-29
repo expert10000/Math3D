@@ -79,7 +79,7 @@ const screenshot = (name) => {
 };
 
 const assertNavigationLayout = (profile) => {
-  const nav = ["Home", "Explore", "Workspace", "Files", "Settings"].map(expectNode);
+  const nav = ["Home", "Explore", "Workspace", "Projects", "Settings"].map(expectNode);
   for (const node of nav) {
     const [x1, y1, x2, y2] = node.bounds;
     if (x1 < 0 || y1 < 0 || x2 > profile.width || y2 > profile.height || x2 <= x1 || y2 <= y1) {

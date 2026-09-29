@@ -57,10 +57,10 @@ const nodes = () => {
   return [...xml.matchAll(/<node\b[^>]*>/g)].map(([tag]) => {
     const value = (name) => tag.match(new RegExp(`${name}="([^"]*)"`))?.[1] || "";
     const bounds = value("bounds").match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
-    return { text: value("text"), bounds: bounds ? bounds.slice(1).map(Number) : null };
+    return { text: value("text"), description: value("content-desc"), bounds: bounds ? bounds.slice(1).map(Number) : null };
   });
 };
-const findText = (text) => nodes().find((node) => node.text === text && node.bounds);
+const findText = (text) => nodes().find((node) => (node.text === text || node.description === text) && node.bounds);
 const expectText = (text) => {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const node = findText(text);
@@ -113,6 +113,11 @@ try {
   check("inspector swipe and opacity", () => {
     swipeHandle("Swipe up for tools", -350);
     expectText("Swipe down to close");
+    tap("Scene");
+    const object = nodes().find((node) => /^Select .+/.test(node.description) && node.bounds);
+    if (!object) throw new Error("Expected a selectable object in the Scene list.");
+    tap(object.description);
+    tap("Object");
     tapVisibleInspectorControl("50%");
     let opacityUpdated = false;
     for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -131,7 +136,7 @@ try {
     tap("Explore"); expectText("Gallery demos");
     tap("Functions"); expectText("Function library");
     tap("Learn"); expectText("Formula notes");
-    tap("Files"); expectText("Saved scenes");
+    tap("Projects"); expectText("New Project");
     tap("Settings"); expectText("Worker base URL");
     tap("Workspace"); expectText("Catenoid");
   });
