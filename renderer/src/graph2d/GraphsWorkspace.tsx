@@ -12,6 +12,7 @@ import {
   type Graph2DIntegralMode,
   type Graph2DAnyPromotion,
   type Graph2DPreset,
+  graph2DPublicationAnalysisTables,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent, WheelEvent } from "react";
@@ -22,6 +23,7 @@ import { pointTableStore } from "./pointTableStore";
 import { Graph2DPromotionPanel } from "./Graph2DPromotionPanel";
 import { useGraph2DSampling } from "./useGraph2DSampling";
 import { GraphGalleryDialog } from "./GraphGalleryDialog";
+import { Graph2DExportDialog } from "./Graph2DExportDialog";
 import "./graphsWorkspace.css";
 
 type Props = {
@@ -48,6 +50,8 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   onGridModeCommit, onAuthoringCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onOpenPreset, onResumeCheckpoint }: Props) {
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportOpener = useRef<HTMLButtonElement | null>(null);
   const [galleryError, setGalleryError] = useState<string | null>(null);
   const galleryOpener = useRef<HTMLButtonElement | null>(null);
   const galleryFocusFrame = useRef<number | null>(null);
@@ -238,6 +242,9 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const differential = useMemo(() => analyzeGraph2DLocalDifferential(document), [document]);
   const derivatives = differential?.derivatives ?? null;
   const differentialOverlays = differential && isGraph2DLocalDifferentialCurrent(differential, document) ? differential.overlays : [];
+  const exportAnalyses = useMemo(() => graph2DPublicationAnalysisTables(!exportOpen ? [] : [criticalPoints, intervals, area, arcLength, intersections,
+    differential, ...(derivatives ?? [])].filter(result => !!result) as { publication: import("@math3d/core").AnalysisResultEnvelope }[]),
+  [exportOpen, criticalPoints, intervals, area, arcLength, intersections, differential, derivatives]);
   const locateSelected = () => {
     if (!document.selection.probe) return;
     const screen = graph2DWorldToScreen(viewport, size, document.selection.probe);
@@ -458,6 +465,9 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         onPointerLeave={() => setHoverSelection(null)} onWheel={onWheel} onKeyDown={onKeyDown}>
         <div className="graph2d-toolbar" onPointerDown={(event) => event.stopPropagation()}>
           <button type="button" data-testid="graph-gallery-open" onClick={event => { galleryOpener.current = event.currentTarget; finishWheel(); setGalleryError(null); setGalleryOpen(true); }}>Gallery</button>
+          <button type="button" data-testid="graph2d-export-open" disabled={status !== "ready"} onClick={event => {
+            exportOpener.current = event.currentTarget; finishWheel(); dragRef.current = null; setExportOpen(true);
+          }}>Export</button>
           <button type="button" onClick={() => { finishWheel(); onViewportCommit?.({ ...GRAPH2D_DEFAULT_VIEWPORT }); }}>Reset</button>
           <button type="button" onClick={() => { finishWheel(); fitVisible(); }}>Fit</button>
           <button type="button" aria-label="Toggle polar grid" aria-pressed={(document.display.axes.gridMode ?? "cartesian") === "polar"}
@@ -491,6 +501,11 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
           catch (error) { setGalleryError((error as Error).message); } }}
         onResume={id => { try { if (!onResumeCheckpoint) throw new Error("Project storage is unavailable."); onResumeCheckpoint(id); setGalleryOpen(false); }
           catch (error) { setGalleryError((error as Error).message); } }} />}
+      {exportOpen && <Graph2DExportDialog document={document} analyses={exportAnalyses.analyses} analysisNotes={exportAnalyses.analysisNotes} onClose={() => {
+        setExportOpen(false); galleryFocusFrame.current = requestAnimationFrame(() => {
+          galleryFocusFrame.current = null; exportOpener.current?.focus();
+        });
+      }} />}
     </section>
   );
 }

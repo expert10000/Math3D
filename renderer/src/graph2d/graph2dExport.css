@@ -1,0 +1,11 @@
+.graph2d-export-dialog { width: min(840px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); box-sizing: border-box; overflow: auto; color: #172033; background: #fff; border: 1px solid #64748b; border-radius: 12px; padding: 24px; font-family: "Segoe UI", system-ui, Arial, sans-serif; }
+.graph2d-export-dialog::backdrop { background: #0008; }
+.graph2d-export-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.graph2d-export-dialog button, .graph2d-export-dialog input, .graph2d-export-dialog select { min-height: 44px; padding: 8px; font: inherit; color: #172033; background: #fff; border: 1px solid #94a3b8; border-radius: 6px; box-sizing: border-box; }
+.graph2d-export-dialog input, .graph2d-export-dialog select { min-width: 0; width: 100%; }
+.graph2d-export-dialog button:disabled { color: #64748b; background: #f1f5f9; }
+.graph2d-export-dialog button:focus-visible, .graph2d-export-dialog input:focus-visible, .graph2d-export-dialog select:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+.graph2d-export-settings, .graph2d-export-actions { display: flex; flex-wrap: wrap; gap: 16px; }
+.graph2d-export-settings label { display: flex; flex-direction: column; flex: 1; min-width: 150px; gap: 6px; }
+.graph2d-export-dialog pre, .graph2d-export-dialog code { overflow-wrap: anywhere; white-space: pre-wrap; }
+.graph2d-export-dialog li { margin-bottom: 8px; }

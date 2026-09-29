@@ -1,6 +1,6 @@
 # MATH3D Graph2D — Desktop and Mobile Roadmap
 
-**Status:** desktop/web baseline through G2D32, mobile MOB-G01–12 and automated G2D33–35 implemented; MOB-G13 physical release validation remains pending, with partial Android USB evidence. GGL01–06 desktop/web gallery is implemented and accepted. GGL07–09 native browsing/launch, all-catalog model parity and the physical Android/Electron walkthrough are accepted; iOS/tablet and full G13 evidence remain pending. Next: G2D36 publication export.
+**Status:** desktop/web baseline through G2D32, mobile MOB-G01–12 and automated G2D33–35 implemented; MOB-G13 physical release validation remains pending, with partial Android USB evidence. GGL01–06 desktop/web gallery is implemented and accepted. GGL07–09 native browsing/launch, all-catalog model parity and the physical Android/Electron walkthrough are accepted; iOS/tablet and full G13 evidence remain pending. G2D36 publication export is implemented and automated desktop/web/shared-native checks pass; physical native export acceptance is pending. Next: G2D38 parameters, sliders and deterministic animation.
 
 **Priority:** P1 after the active mobile project-transfer sequence
 
@@ -18,7 +18,7 @@
 - G2D33 implements checkpointed desktop/mobile handoff with source/result/companion retention and revision conflict checks. G2D34 adds a shared seven-kind numerical/migration corpus and real browser Worker/UI parity checks. G2D35 publishes the [architecture, schema, algorithms and parity guide](graph2d-architecture-schema-algorithms-parity.md).
 - Initial desktop/mobile checks are recorded in [the historical acceptance report](graph2d-acceptance-2026-09-28.md); current software evidence is in [G2D33 round trip](graph2d-g33-round-trip-acceptance.md) and [G2D34 parity corpus](graph2d-g34-parity-corpus.md). A connected SM-A566B Android 16 phone supplied [partial internal-build evidence](mobile-graphs-g13-readiness-2026-09-28.md). Full physical gesture, accessibility, rotation, memory/calibration, production signing and iOS signoff remain release gates.
 
-This does **not** finish the entire roadmap: MOB-G13 physical acceptance, mobile/later GGL gallery work and professional G2D36–40 remain. Automated handoff and corpus checks do not substitute for native release evidence. An existing installer/APK does not gain these changes until rebuilt.
+This does **not** finish the entire roadmap: MOB-G13 physical acceptance, later GGL gallery work, native publication acceptance and professional G2D37–40 remain. Automated handoff, publication and corpus checks do not substitute for native release evidence. An existing installer/APK does not gain these changes until rebuilt.
 
 ### Gallery sequencing decision — 2026-09-28
 
@@ -306,7 +306,7 @@ The preceding gallery insertion comes before these professional extensions. Thei
 
 | ID | Planned commit | Scope and acceptance evidence |
 | --- | --- | --- |
-| **G2D36** | `feat(graph2d-export): add SVG PNG CSV and accessible report export` | After the initial gallery: export vector/raster presentation and sampled/analysis tables with source hash, viewport, units, method, tolerance, and semantics-loss labeling. Reuse shared geometry with gallery previews; public exports retain their own publication contract. |
+| **G2D36** | `feat(graph2d-export): add SVG PNG CSV and accessible report export` | Implemented shared bounded/frozen publication snapshot, SVG/PNG/CSV/offline accessible HTML, desktop/web worker controls and native verified save/share services. Shared scene sampling/transforms retain seven-kind semantics, styles, gaps/endpoints and declared unit/method/tolerance/provenance metadata; exports remain separate from editable projects. 162 desktop/core and 285 mobile tests, 23 Electron and 8 two-context browser cases pass; Android bundle compiles. Physical native export/iOS/print signoff remains pending. See [publication evidence](graph2d-g36-publication-export.md). |
 | **G2D37** | `feat(graph2d): add linear logarithmic and equal-scale axis policies` | After G2D38: add validated scale policies, invalid-domain guidance, tick formatting, fit behavior, persistence, and analysis restrictions without changing source expressions. Capability-check gallery examples using new policies. |
 | **G2D38** | `feat(graph2d): add parameters sliders and deterministic animation` | Execute after G2D36, before G2D37. Add bounded named parameters, units/ranges, command-backed values, transient scrubbing, deterministic frame export, and cancellation; animation state is never hidden source truth. Shared authoring/history/scheduler contracts serve workspace and presets; GGL10 supplies catalog control hints and host integration. |
 | **G2D39** | `feat(graph2d-analysis): add regression fitting and uncertainty bands` | Add reviewed models, residuals, confidence/uncertainty semantics, dataset provenance, and explicit statistical assumptions using shared result contracts. |

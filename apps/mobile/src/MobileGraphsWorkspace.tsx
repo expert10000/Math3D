@@ -8,6 +8,7 @@ import { mobileGraphCapabilities } from "./models/mobileGraphProject";
 import { mobileGraphDisplayScene, MOBILE_GRAPH_DEFAULT_OVERLAYS } from "./models/mobileGraphDisplay";
 import { useMobileGraphSampling } from "./useMobileGraphSampling";
 import { MobileGraphDisplayPanel } from "./MobileGraphDisplayPanel";
+import { MobileGraphExportPanel } from "./MobileGraphExportPanel";
 import { mobileGraphAreaRects } from "./viewer/mobileGraphOverlays";
 import { editMobileGraphProbes } from "./models/mobileGraphProbes";
 import { MobileGraphProbesPanel } from "./MobileGraphProbesPanel";
@@ -109,6 +110,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
       })}
       {button("Display", () => { cancel(); setDestination(destination === "Display" ? "Graph" : "Display"); })}</View>
     <ScrollView horizontal style={{ flexGrow: 0, maxHeight: 48 }} contentContainerStyle={s.toolbar}>{button("Reset", () => commit(() => adapter.commitViewport(GRAPH2D_DEFAULT_VIEWPORT)))}
+      {button("Export", () => { cancel(); if (editor || advanced) { setError("Save or cancel the function edit before exporting."); return; } setDestination(destination === "Export" ? "Graph" : "Export"); })}
       {button("Fit", fit)}{button("Undo", () => commit(() => adapter.undo()), history.undoDepth === 0)}
       {button("Redo", () => commit(() => adapter.redo()), history.redoDepth === 0)}
       {button(saving ? "Saving…" : "Save", () => { setSaving(true); void onSave().finally(() => setSaving(false)); }, saving)}</ScrollView>
@@ -180,7 +182,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     </View>
     {panelDestination && <ScrollView keyboardShouldPersistTaps="handled" style={[s.sheet, layout.split && s.sidePanel, layout.split && { width: layout.panelWidth }]}
       accessibilityLabel={`${panelDestination} ${layout.split ? "side panel" : "bottom sheet"}`} testID={`mobile-graph-${panelDestination.toLowerCase()}-sheet`}>
-      {panelDestination === "Display" ? <MobileGraphDisplayPanel document={document} series={series} overlays={overlays} lineCount={lines.length} sampling={sampling}
+      {panelDestination === "Export" ? <MobileGraphExportPanel document={document} analysis={analysisCurrent ? analysis : null} draft={analysisDraft} /> : panelDestination === "Display" ? <MobileGraphDisplayPanel document={document} series={series} overlays={overlays} lineCount={lines.length} sampling={sampling}
         onOverlays={setOverlays} onAxis={(key) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "axis", key }), "style"))}
         onQuality={(quality) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "quality", quality }), "style"))} /> : panelDestination === "Promote" ?
         <MobileGraphPromotionPanel document={document} promotions={promotions} onCreate={onPromotion}
