@@ -25,5 +25,9 @@ export function saveMobileGraphProjectFavorites(value: Graph2DProjectFavorites) 
   } catch (error) {
     if (!target.exists && saved.exists) saved.copy(target);
     throw error;
-  } finally { if (staged.exists) staged.delete(); }
+  } finally {
+    // File.move changes the File object's URI; clean the original temporary path only.
+    const leftover = new File(dir(), "graph-project-favorites.tmp");
+    if (leftover.exists) leftover.delete();
+  }
 }
