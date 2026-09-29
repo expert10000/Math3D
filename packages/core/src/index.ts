@@ -91,3 +91,4 @@ export * from "./workerOperationRegistry";
 export * from "./m3dBinaryResources";
 export * from "./graph2dTools";
 export * from "./graph2dProbes";
+export * from "./graph2dPersonalProjects";

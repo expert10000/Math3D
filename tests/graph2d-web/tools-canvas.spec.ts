@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { checkPersonalGraphFlow } from "./personalGraphFlow";
 async function start(page: Page) {
   await page.route("**/api/worker/**", r => r.fulfill({ status: 503, body: '{"error":"unavailable"}', contentType: "application/json" }));
   await page.goto("/"); await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); }); await page.reload();
@@ -6,6 +7,9 @@ async function start(page: Page) {
   await page.getByRole("button", { name: "Open A tangent at x = 1", exact: true }).click();
 }
 
+test("GGL11 personal copies preserve saved probes, independent source and persistent favorites", async ({ page }) => {
+  await start(page); await checkPersonalGraphFlow(page);
+});
 test("G2D42 tools enforce prerequisites, route existing analysis and restore keyboard focus", async ({ page }) => {
   await start(page); const opener = page.getByRole("button", { name: "Tools", exact: true });
   await page.getByLabel("Graph inspector", { exact: true }).getByRole("button", { name: "Clear selection", exact: true }).click();

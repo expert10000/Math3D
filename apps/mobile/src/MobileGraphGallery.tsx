@@ -5,6 +5,8 @@ import { GRAPH2D_PRESET_CATEGORIES, getGraph2DInteractivePreset, graph2DPresetPr
 import manifest from "../../../packages/core/fixtures/graph2d/gallery-previews.json";
 import { mobileGraphGalleryAssets } from "./data/mobileGraphGalleryAssets";
 import { mobileGraphGalleryItems, mobileGraphGalleryLayout } from "./models/mobileGraphGallery";
+import type { Graph2DDocument } from "@math3d/core";
+import type { MobileStoredSceneProject } from "./models/mobileScene";
 
 function GallerySafeArea({ children }: { children: React.ReactNode }) {
   const insets = useSafeAreaInsets();
@@ -13,14 +15,19 @@ function GallerySafeArea({ children }: { children: React.ReactNode }) {
   }]}>{children}</View>;
 }
 
-export function MobileGraphGallery({ onClose, onOpen, busy = false, message = "" }: {
+export function MobileGraphGallery({ onClose, onOpen, busy = false, message = "", personalProjects = [], currentGraph, projectFavorites = [], favoritesError = "", onFavorite, onResetFavorites, onPersonalOpen }: {
   onClose: () => void; onOpen?: (preset: Graph2DPreset) => Promise<boolean>; busy?: boolean; message?: string;
+  personalProjects?: readonly MobileStoredSceneProject[]; currentGraph?: Graph2DDocument | null; projectFavorites?: readonly string[]; favoritesError?: string;
+  onFavorite?: (id:string)=>boolean; onResetFavorites?: ()=>void; onPersonalOpen?: (id:string,title?:string)=>Promise<boolean>;
 }) {
   const window = useWindowDimensions(), [contentWidth, setContentWidth] = useState(window.width);
   const layout = mobileGraphGalleryLayout(contentWidth, window.height, window.fontScale);
   const [query, setQuery] = useState(""), [category, setCategory] = useState<Graph2DPresetCategory | "All">("All");
   const [featured, setFeatured] = useState(true), [selected, setSelected] = useState<Graph2DPreset | null>(null);
   const [shown, setShown] = useState(false);
+  const [myGraphs,setMyGraphs]=useState(false),[favoritesOnly,setFavoritesOnly]=useState(false),[copyTitle,setCopyTitle]=useState(`${currentGraph?.metadata.title.slice(0,140) ?? "Graph"} copy`);
+  const projects=[...(currentGraph?[{id:currentGraph.identity.id,title:currentGraph.metadata.title}]:[]),...personalProjects.filter(p=>p.id!==currentGraph?.identity.id)];
+  const filteredProjects=projects.filter(p=>p.title.toLocaleLowerCase().includes(query.toLocaleLowerCase())&&(!favoritesOnly||projectFavorites.includes(p.id)));
   const heading = useRef<Text>(null);
   const items = useMemo(() => mobileGraphGalleryItems(query, category, featured), [query, category, featured]);
   const button = (label: string, action: () => void, active = false, disabled = busy, text = label) => <Pressable key={label}
@@ -50,13 +57,24 @@ export function MobileGraphGallery({ onClose, onOpen, busy = false, message = ""
           value={query} onChangeText={text => { setQuery(text); setFeatured(false); setSelected(null); }} maxLength={160}
           placeholder="Try roses, tangent or gaps" editable={!busy} style={s.search} returnKeyType="search" />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters}>
-          {button("Featured", () => { setFeatured(true); setQuery(""); setCategory("All"); setSelected(null); }, featured)}
-          {button("All scenes", () => { setFeatured(false); setQuery(""); setCategory("All"); setSelected(null); }, !featured)}
+          {button("Featured", () => { setMyGraphs(false); setFeatured(true); setQuery(""); setCategory("All"); setSelected(null); }, !myGraphs&&featured)}
+          {button("All scenes", () => { setMyGraphs(false); setFeatured(false); setQuery(""); setCategory("All"); setSelected(null); }, !myGraphs&&!featured)}
+          {onPersonalOpen&&button("My Graphs",()=>{setMyGraphs(true);setQuery("");setSelected(null);},myGraphs)}
         </ScrollView>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters}>
           {(["All", ...GRAPH2D_PRESET_CATEGORIES] as const).map(value => button(value, () => { setCategory(value); setFeatured(false); setSelected(null); }, category === value))}
         </ScrollView>
-        {selected ? <View style={s.detail} testID="mobile-graph-gallery-detail">
+        {myGraphs?<View testID="mobile-graph-my-graphs"><Text>Existing saved Graph projects. Copies preserve data and companion lineage.</Text>
+          {favoritesError?<View><Text accessibilityLiveRegion="polite">{favoritesError}</Text>{button("Reset project favorites",()=>onResetFavorites?.())}</View>:null}
+          {currentGraph&&<><Text>Reusable copy title</Text><TextInput accessibilityLabel="Reusable copy title" maxLength={160} editable={!busy} style={s.search} value={copyTitle} onChangeText={setCopyTitle}/>
+            {button("Save current as reusable copy",()=>{void onPersonalOpen?.(currentGraph.identity.id,copyTitle);})}</>}
+          {button("Project favorites only",()=>setFavoritesOnly(!favoritesOnly),favoritesOnly)}
+          {filteredProjects.map(p=><View key={p.id} style={s.body}><Text accessibilityRole="header" style={s.title}>{p.title}</Text>
+            {button(`Open project ${p.title}`,()=>{void onPersonalOpen?.(p.id);})}
+            {button(`Copy project ${p.title}`,()=>{void onPersonalOpen?.(p.id,`${p.title.slice(0,140)} copy`);})}
+            {button(`Favorite project ${p.title}`,()=>{onFavorite?.(p.id);},projectFavorites.includes(p.id),busy||!!favoritesError)}</View>)}
+          {!filteredProjects.length&&<Text>No matching saved Graph projects.</Text>}
+        </View>:selected ? <View style={s.detail} testID="mobile-graph-gallery-detail">
           {button("Back to gallery", () => setSelected(null))}{preview(selected, contentWidth - 40)}<Text accessibilityRole="header" style={s.title}>{selected.title}</Text>
           <Text style={s.description}>{selected.description}</Text>{selected.learningGoals.map(goal => <Text key={goal} style={s.description}>• {goal}</Text>)}
           <Text style={s.meta}>Approximate sampled preview · {selected.attribution.author} · {selected.attribution.license}</Text>

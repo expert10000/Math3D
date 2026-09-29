@@ -2,6 +2,7 @@ import { canonicalJsonStringify, createMixedWorkspaceDocument, createGraph2DWork
   instantiateGraph2DPreset, mergeGraph2DHandoffCheckpoint, parseMixedWorkspaceDocument, parseWorkspaceProjectHandoff,
   serializeMixedWorkspaceDocument, serializeWorkspaceProjectHandoff, type Graph2DPreset, type MixedWorkspaceDocument } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
+import { forkGraph2DWorkspaceProject, Graph2DPointTableStore } from "@math3d/core";
 import { GRAPH_GALLERY_PREFERENCES_KEY,parseGraphGalleryPreferences,recordGraphGalleryRecent } from "./graph2dGalleryPreferences";
 
 export const GRAPH_GALLERY_CHECKPOINT_INDEX = "math3d.mixed-workspace.v1.gallery-checkpoints";
@@ -120,12 +121,12 @@ export const launchGraphGalleryPreset = (capture: () => MixedWorkspaceDocument, 
 export const resumeGraphGalleryCheckpoint = (capture: () => MixedWorkspaceDocument, id: string, storage: Storage) => {
   if(!listGraphGalleryCheckpoints(storage).some(entry=>entry.id===id)) {
     const origin=storedOrigin(storage),raw=storage.getItem(WORKSPACE_KEY);
-    if(origin?.documentId!==id||!raw)throw new Error("Graph checkpoint is unavailable.");
+    if(!raw)throw new Error("Graph checkpoint is unavailable.");
     const workspace=parseMixedWorkspaceDocument(raw);
-    if(graph(workspace).identity.id!==id)throw new Error("Graph checkpoint identity mismatch.");
+    if(graph(workspace).identity.id!==id)throw new Error("Graph checkpoint is unavailable for this identity.");
     const handoff=storage.getItem(HANDOFF_KEY),manifest=handoff?parseWorkspaceProjectHandoff(handoff):null;
     return activate(capture,workspace,manifest?.projectId===id?manifest.baseRevision:null,storage,[],
-      {presetId:origin.presetId,version:origin.version,digest:origin.digest});
+      origin?.documentId === id ? {presetId:origin.presetId,version:origin.version,digest:origin.digest} : undefined);
   }
   const raw=storage.getItem(prefix+id);if(!raw)throw new Error("Graph checkpoint is unavailable.");
   const value=JSON.parse(raw);
@@ -135,4 +136,28 @@ export const resumeGraphGalleryCheckpoint = (capture: () => MixedWorkspaceDocume
   const workspace=parseMixedWorkspaceDocument(JSON.stringify(value.workspace));
   if(graph(workspace).identity.id!==id)throw new Error("Graph checkpoint identity mismatch.");
   return activate(capture,workspace,value.baseRevision,storage,[],value.version===2 ? readOrigin(value.origin) ?? undefined : undefined);
+};
+
+/** My Graphs indexes existing checkpoints, without another project payload store. */
+export const listPersonalGraphProjects = (storage: Storage, activeId: string, activeTitle: string) => {
+  const items = [{ id: activeId, title: activeTitle, active: true }, ...listGraphGalleryCheckpoints(storage).filter(p => p.id !== activeId).map(p => ({ ...p, active: false }))];
+  const saved = storage.getItem(WORKSPACE_KEY);
+  if (saved) { const d = graph(parseMixedWorkspaceDocument(saved));
+    if (!items.some(p => p.id === d.identity.id)) items.push({ id: d.identity.id, title: d.metadata.title, active: false }); }
+  return items;
+};
+export const copyPersonalGraphProject = (capture: () => MixedWorkspaceDocument, id: string, token: string, title: string, storage: Storage) => {
+  const live = currentCheckpoint(capture, storage).workspace;
+  let source = live;
+  if (graph(live).identity.id !== id) {
+    const raw = storage.getItem(prefix + id);
+    if (raw) { const checkpoint = JSON.parse(raw);
+      if (checkpoint.format !== "math3d.graph2d-gallery-checkpoint" || ![1, 2].includes(checkpoint.version)) throw new Error("Invalid saved Graph project.");
+      source = parseMixedWorkspaceDocument(JSON.stringify(checkpoint.workspace));
+    } else { const saved = storage.getItem(WORKSPACE_KEY); if (!saved) throw new Error("Saved Graph project unavailable."); source = parseMixedWorkspaceDocument(saved); }
+    if (graph(source).identity.id !== id) throw new Error("Saved Graph identity mismatch.");
+  }
+  const tables = new Graph2DPointTableStore({ read: tableId => storage.getItem(`math3d.graph2d.table.${tableId}`), write: () => { throw new Error("Read-only table validation."); } });
+  for (const o of graph(source).source.objects) if (o.kind === "point-series" && !tables.resolve(o.table)) throw new Error("Original data sidecar is missing or corrupt. Import it before making a reusable copy.");
+  return activate(capture, forkGraph2DWorkspaceProject(source, token, title), null, storage);
 };

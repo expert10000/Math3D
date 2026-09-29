@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type Graph2DDocument, type Graph2DAnyPromotion, type Graph2DPreset } from "@math3d/core";
 import { commitMobileGraphPresetLaunch, planMobileGraphPresetLaunch } from "./models/mobileGraphPresetLaunch";
-import { stageMobileGraphPresetSidecars } from "./services/mobileGraphPointTables";
+import { stageMobileGraphPresetSidecars, mobileGraphPointTables } from "./services/mobileGraphPointTables";
 import { createMobileGraph, importMobileGraph, readMobileGraph, storeMobileGraph, updateStoredMobileGraph } from "./models/mobileGraphProject";
 import { commitMobileGraphPromotion, readMobileGraphPromotions } from "./models/mobileGraphPromotions";
 import { probeMobilePlatformCapabilities } from "./services/mobilePlatformCapabilities";
@@ -19,6 +19,9 @@ import { useMobileNavigationState, type MobileTab } from "./models/useMobileNavi
 import { useMobileWorkspaceState, type CameraCommandType } from "./models/useMobileWorkspaceState";
 import { useMobileProjectState } from "./models/useMobileProjectState";
 import { duplicateMobileProject, renameMobileProject } from "./models/mobileProjectOperations";
+import { planMobilePersonalGraph } from "./models/mobileGraphPersonalProjects";
+import { loadMobileGraphProjectFavorites, saveMobileGraphProjectFavorites } from "./services/mobileGraphProjectFavorites";
+import { emptyGraph2DProjectFavorites, toggleGraph2DProjectFavorite } from "@math3d/core";
 import { importMobileSceneProject } from "./models/mobileProjectTransfer";
 import { commitMobileProjectHandoff, inspectMobileProjectHandoff, type MobileHandoffPreview } from "./models/mobileProjectHandoff";
 import { buildMobileProjectLibraryCards, countMobileProjectLibrarySections } from "./models/mobileProjectLibrary";
@@ -276,6 +279,13 @@ export const useMobileAppController = () => {
   const inspectorSwipeStartY = useRef<number | null>(null);
   const [graphDocument, setGraphDocument] = useState<Graph2DDocument | null>(null);
   const [graphGalleryOpen, setGraphGalleryOpen] = useState(false);
+  const [graphProjectFavorites,setGraphProjectFavorites]=useState(emptyGraph2DProjectFavorites);
+  const [graphProjectFavoritesError,setGraphProjectFavoritesError]=useState("");
+  useEffect(()=>{try{setGraphProjectFavorites(loadMobileGraphProjectFavorites());}catch(e){setGraphProjectFavoritesError((e as Error).message);}},[]);
+  const favoriteGraphProject=(id:string)=>{try{if(graphProjectFavoritesError)throw new Error(graphProjectFavoritesError);
+    const next=toggleGraph2DProjectFavorite(graphProjectFavorites,id);saveMobileGraphProjectFavorites(next);setGraphProjectFavorites(next);return true;
+    }catch(e){setGraphProjectFavoritesError((e as Error).message);return false;}};
+  const resetGraphProjectFavorites=()=>{try{const next=emptyGraph2DProjectFavorites();saveMobileGraphProjectFavorites(next);setGraphProjectFavorites(next);setGraphProjectFavoritesError("");}catch(e){setGraphProjectFavoritesError((e as Error).message);}};
   const [graphGalleryBusy, setGraphGalleryBusy] = useState(false), [graphGalleryMessage, setGraphGalleryMessage] = useState("");
   const graphGalleryLaunchInFlight = useRef(false);
   const graphProjectSequence = useRef(0);
@@ -1521,6 +1531,17 @@ export const useMobileAppController = () => {
     if (saved) openCreatedGraph(project);
     return saved;
   };
+  const openPersonalGraphProject = async (id: string, title?: string): Promise<boolean> => {
+    if (graphGalleryLaunchInFlight.current || storageStatus === "loading") return false;
+    graphGalleryLaunchInFlight.current=true;setGraphGalleryBusy(true);setGraphGalleryMessage("");
+    try {
+      const plan=planMobilePersonalGraph(storedProjects,{graph:graphDocument,scene:viewerDocument},id,title===undefined?null:
+        {token:`mobile-copy/${Date.now()}/${++graphProjectSequence.current}`,title},table=>!!mobileGraphPointTables.resolve(table));
+      await saveStoredSceneProjects(plan.projects);setStoredProjects(plan.projects);openCreatedGraph(plan.project);
+      setProjectActionMessage(title===undefined?"Opened saved Graph; previous work was saved.":"Created reusable Graph copy; previous work was saved.");setGraphGalleryOpen(false);return true;
+    }catch(e){setGraphGalleryMessage(`Could not open/copy Graph: ${(e as Error).message}. Current work remains open.`);return false;}
+    finally{graphGalleryLaunchInFlight.current=false;setGraphGalleryBusy(false);}
+  };
   const saveGraphProject = async (): Promise<boolean> => {
     if (!graphDocument) return false;
     const previous = storedProjects.find((project) => project.id === graphDocument.identity.id);
@@ -2433,6 +2454,7 @@ export const useMobileAppController = () => {
 
   return {
     graphGalleryOpen, setGraphGalleryOpen, graphGalleryBusy, graphGalleryMessage, openGraphGalleryPreset,
+    graphProjectFavorites,graphProjectFavoritesError,favoriteGraphProject,resetGraphProjectFavorites,openPersonalGraphProject,
     graphDocument, setGraphDocument, createGraphProject, importGraphProject, saveGraphProject, graphPromotions, createGraphPromotion,
     tab,
     setTab,

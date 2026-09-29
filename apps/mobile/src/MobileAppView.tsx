@@ -38,6 +38,9 @@ export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model 
       </ScrollView>}
 
       {model.graphGalleryOpen && <MobileGraphGallery onClose={() => model.setGraphGalleryOpen(false)} onOpen={model.openGraphGalleryPreset}
+        personalProjects={model.storedProjects.filter(p=>p.projectType==="graph2d")} currentGraph={model.graphDocument}
+        projectFavorites={model.graphProjectFavorites.ids} favoritesError={model.graphProjectFavoritesError} onFavorite={model.favoriteGraphProject}
+        onResetFavorites={model.resetGraphProjectFavorites} onPersonalOpen={model.openPersonalGraphProject}
         busy={model.graphGalleryBusy} message={model.graphGalleryMessage} />}
       <View style={styles.bottomNav} accessibilityRole="tablist">
         {tabs.map(({ key, label }) => (

@@ -1,8 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { getGraph2DPresetCatalog, getGraph2DInteractivePreset, GRAPH2D_PRESET_CATEGORIES, graph2DPresetPreviewKey,
   type Graph2DPreset, type Graph2DPresetCategory } from "@math3d/core";
+import { parseGraph2DProjectFavorites, emptyGraph2DProjectFavorites, toggleGraph2DProjectFavorite } from "@math3d/core";
 import manifest from "../../../packages/core/fixtures/graph2d/gallery-previews.json";
-import { listGraphGalleryCheckpoints, listGraphGalleryPresetCopies } from "./graph2dGallerySession";
+import { listGraphGalleryCheckpoints, listGraphGalleryPresetCopies, listPersonalGraphProjects } from "./graph2dGallerySession";
 import { GRAPH_GALLERY_PREFERENCES_KEY,emptyGraphGalleryPreferences,parseGraphGalleryPreferences,toggleGraphGalleryFavorite } from "./graph2dGalleryPreferences";
 import "./graphGallery.css";
 
@@ -12,8 +13,8 @@ const previewURL = (preset: Graph2DPreset) => {
   if(!entry||entry.key!==graph2DPresetPreviewKey(preset)||entry.presetDigest!==preset.digest)return undefined;
   return assets[`../../../packages/core/assets/graph2d-gallery/${entry.svg}`];
 };
-type Props={onClose:()=>void;onOpen:(preset:Graph2DPreset)=>void;onResume:(id:string)=>void;error:string|null;activeId:string;activeTitle:string};
-export function GraphGalleryDialog({onClose,onOpen,onResume,error,activeId,activeTitle}:Props) {
+type Props={onClose:()=>void;onOpen:(preset:Graph2DPreset)=>void;onResume:(id:string)=>void;onCopy:(id:string,title:string)=>void;error:string|null;activeId:string;activeTitle:string};
+export function GraphGalleryDialog({onClose,onOpen,onResume,onCopy,error,activeId,activeTitle}:Props) {
   const ref=useRef<HTMLDialogElement>(null),titleId=useId(),catalog=useMemo(getGraph2DPresetCatalog,[]);
   const searchRef=useRef<HTMLInputElement>(null);
   const [query,setQuery]=useState(""),[category,setCategory]=useState<Graph2DPresetCategory|"All">("All"),[collection,setCollection]=useState("Featured");
@@ -23,6 +24,11 @@ export function GraphGalleryDialog({onClose,onOpen,onResume,error,activeId,activ
   const favorite=(id:string)=>{try{const value=toggleGraphGalleryFavorite(preferences.value,id);localStorage.setItem(GRAPH_GALLERY_PREFERENCES_KEY,JSON.stringify(value));setPreferences({value,error:null});}
     catch(error){setPreferences(prev=>({...prev,error:(error as Error).message}));}};
   const [selected,setSelected]=useState<Graph2DPreset|null>(null);
+  const [copyTitle,setCopyTitle]=useState(`${activeTitle.slice(0, 140)} copy`), [favoritesOnly,setFavoritesOnly]=useState(false);
+  const favoriteKey="math3d.graph2d.project-favorites.v1";
+  const [projectFavorites,setProjectFavorites]=useState(()=>{try{return {value:parseGraph2DProjectFavorites(localStorage.getItem(favoriteKey)),error:null as string|null};}catch(e){return {value:emptyGraph2DProjectFavorites(),error:(e as Error).message};}});
+  const projects=useMemo(()=>{try{return {items:listPersonalGraphProjects(localStorage,activeId,activeTitle),error:null};}catch(e){return {items:[],error:(e as Error).message};}},[activeId,activeTitle]);
+  const projectFavorite=(id:string)=>{if(projectFavorites.error)return;try{const value=toggleGraph2DProjectFavorite(projectFavorites.value,id);localStorage.setItem(favoriteKey,JSON.stringify(value));setProjectFavorites({value,error:null});}catch(e){setProjectFavorites(p=>({...p,error:(e as Error).message}));}};
   const checkpoints=useMemo(()=>{try{return listGraphGalleryCheckpoints(localStorage).filter(item=>item.id!==activeId);}catch{return [];}},[activeId]);
   const copies=useMemo(()=>{try{return listGraphGalleryPresetCopies(localStorage,activeId,activeTitle);}catch{return [];}},[activeId,activeTitle]);
   const existing=(preset:Graph2DPreset)=>copies.find(copy=>copy.presetId===preset.id&&copy.version===preset.version);
@@ -48,11 +54,25 @@ export function GraphGalleryDialog({onClose,onOpen,onResume,error,activeId,activ
     {error&&<p role="alert" className="graph-gallery-error">{error} Current work remains open.</p>}
     {preferences.error&&<div className="graph-gallery-error" role="alert">{preferences.error} <button type="button" onClick={()=>{try{const value=emptyGraphGalleryPreferences();localStorage.setItem(GRAPH_GALLERY_PREFERENCES_KEY,JSON.stringify(value));setPreferences({value,error:null});}catch(error){setPreferences(p=>({...p,error:(error as Error).message}));}}}>Reset local favorites/recent</button></div>}
     <div className="graph-gallery-controls"><label>Search graphs<input ref={searchRef} type="search" value={query} onChange={e=>{setQuery(e.target.value);if(featured)setCollection("All scenes");}} placeholder="Try roses, tangent or gaps"/></label>
-      <div className="graph-gallery-tabs" aria-label="Gallery collection">{["Featured","All scenes","Favorites","Recent"].map(tab=><button key={tab} type="button" aria-pressed={collection===tab}
+      <div className="graph-gallery-tabs" aria-label="Gallery collection">{["Featured","All scenes","Favorites","Recent","My Graphs"].map(tab=><button key={tab} type="button" aria-pressed={collection===tab}
         onClick={()=>{setCollection(tab);setCategory("All");setQuery("");setSelected(null);}}>{tab}</button>)}</div></div>
     <div className="graph-gallery-categories" aria-label="Graph categories">{["All",...GRAPH2D_PRESET_CATEGORIES].map(c=><button type="button" key={c} aria-pressed={category===c}
       onClick={()=>{setCategory(c as Graph2DPresetCategory|"All");if(featured)setCollection("All scenes");setSelected(null);}}>{c}</button>)}</div>
-    {selected?<section className="graph-gallery-detail" aria-label={`${selected.title} details`}>
+    {collection==="My Graphs"?<section aria-label="My Graphs" data-testid="graph-gallery-my-graphs">
+      <p>Open your saved graphs or make an independent copy. Copied analysis observations remain labeled and are not recalculated.</p>
+      <label>Reusable copy title<input maxLength={160} value={copyTitle} onChange={e=>setCopyTitle(e.target.value)} /></label>
+      <button type="button" onClick={()=>onCopy(activeId,copyTitle)}>Save current as reusable copy</button>
+      <button type="button" aria-pressed={favoritesOnly} onClick={()=>setFavoritesOnly(!favoritesOnly)}>Project favorites only</button>
+      {(projects.error||projectFavorites.error)&&<p role="alert">{projects.error||projectFavorites.error}</p>}
+      {projectFavorites.error&&<button onClick={()=>{try{localStorage.removeItem(favoriteKey);setProjectFavorites({value:emptyGraph2DProjectFavorites(),error:null});}catch(e){setProjectFavorites(p=>({...p,error:(e as Error).message}));}}}>Reset project favorites</button>}
+      {projects.items.filter(p=>p.title.toLocaleLowerCase().includes(query.toLocaleLowerCase())&&(!favoritesOnly||projectFavorites.value.ids.includes(p.id))).map(p=><article key={p.id} className="graph-gallery-card-body">
+        <h3>{p.title}</h3><p>{p.active?"Current workspace":"Saved workspace"}</p>
+        <button onClick={()=>p.active?onClose():onResume(p.id)}>Open project {p.title}</button>
+        <button onClick={()=>onCopy(p.id,`${p.title.slice(0,140)} copy`)}>Copy project {p.title}</button>
+        <button aria-pressed={projectFavorites.value.ids.includes(p.id)} onClick={()=>projectFavorite(p.id)}>Favorite project {p.title}</button>
+      </article>)}
+      {!projects.items.some(p=>p.title.toLocaleLowerCase().includes(query.toLocaleLowerCase())&&(!favoritesOnly||projectFavorites.value.ids.includes(p.id)))&&<p>No matching saved Graph projects.</p>}
+    </section>:selected?<section className="graph-gallery-detail" aria-label={`${selected.title} details`}>
       <button type="button" onClick={()=>setSelected(null)}>Back to gallery</button>{image(selected)}<h3>{selected.title}</h3><p>{selected.description}</p>
       <ul>{selected.learningGoals.map(goal=><li key={goal}>{goal}</li>)}</ul>
       <p>{selected.template.source.objects.map(o=>o.label).join(" · ")}</p><small>Approximate sampled preview · {selected.attribution.author} · {selected.attribution.license}</small>

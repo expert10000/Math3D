@@ -19,7 +19,7 @@ import {
   type WorkspaceDockLayout,
 } from "./workspaceDocks";
 import { GraphsWorkspace } from "./graph2d/GraphsWorkspace";
-import { freshGraphGalleryLaunchToken, launchGraphGalleryPreset, resumeGraphGalleryCheckpoint } from "./graph2d/graph2dGallerySession";
+import { freshGraphGalleryLaunchToken, launchGraphGalleryPreset, resumeGraphGalleryCheckpoint, copyPersonalGraphProject } from "./graph2d/graph2dGallerySession";
 import { pointTableStore } from "./graph2d/pointTableStore";
 import { Graph2DCommandAdapter } from "./graph2d/Graph2DCommandAdapter";
 import { PromotedDocumentWorkspace } from "./graph2d/PromotedDocumentWorkspace";
@@ -89550,6 +89550,8 @@ case "mobius":
           </div>
         ) : mode === "graphs" ? (
           <GraphsWorkspace key={graph2dDocument.identity.id} dockLayout={activeDockLayout} document={graph2dDocument}
+            onCopyProject={(id,title) => { const workspace = copyPersonalGraphProject(captureMixedKernelWorkspace,id,freshGraphGalleryLaunchToken(),title,localStorage);
+              pointTableStore.clearCache(); reopenGraphWorkspace(workspace); }}
             onOpenPreset={preset => {
               const workspace = launchGraphGalleryPreset(captureMixedKernelWorkspace, preset, freshGraphGalleryLaunchToken(), localStorage);
               pointTableStore.clearCache(); reopenGraphWorkspace(workspace);

@@ -58,12 +58,13 @@ type Props = {
   onPromotionRegenerate?: (id: string, mode: "replace" | "fork") => void;
   onOpenPreset?: (preset: Graph2DPreset) => void;
   onResumeCheckpoint?: (id: string) => void;
+  onCopyProject?: (id: string, title: string) => void;
 };
 
 /** Desktop/web projection of shared Graph2D source and persistent display state. */
 export function GraphsWorkspace({ dockLayout, document, status = "ready", errorMessage, onViewportCommit,
   onGridModeCommit, onAxesCommit, onProbesCommit, onAuthoringCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
-  onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onOpenPreset, onResumeCheckpoint }: Props) {
+  onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onOpenPreset, onResumeCheckpoint, onCopyProject }: Props) {
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [toolHint, setToolHint] = useState("");
@@ -635,6 +636,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         <h2>Inspector</h2>{inspector}
       </aside>}
       {galleryOpen && <GraphGalleryDialog activeId={document.identity.id} activeTitle={document.metadata.title} error={galleryError} onClose={closeGallery}
+        onCopy={(id,title) => { try { if (!onCopyProject) throw new Error("Project storage unavailable."); onCopyProject(id,title); setGalleryOpen(false); } catch(e) { setGalleryError((e as Error).message); } }}
         onOpen={preset => { try { if (!onOpenPreset) throw new Error("Project storage is unavailable."); onOpenPreset(preset); setGalleryOpen(false); }
           catch (error) { setGalleryError((error as Error).message); } }}
         onResume={id => { try { if (!onResumeCheckpoint) throw new Error("Project storage is unavailable."); onResumeCheckpoint(id); setGalleryOpen(false); }

@@ -2,6 +2,20 @@ import { expect, test } from "@playwright/test";
 import { launchSurfaceApp, closeSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { checkPersonalGraphFlow } from "../graph2d-web/personalGraphFlow";
+
+test("G2D42 G2D43 GGL11 Electron tools and independent personal copies", async ({}) => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page; await resetSurfaceAppState(page); await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByTestId("workspace-nav-graphs").click(); await page.getByTestId("graph-gallery-open").click();
+    await page.getByRole("button", { name: "Open A tangent at x = 1", exact: true }).click();
+    const tools = page.getByRole("button", { name: "Tools", exact: true }); await tools.focus(); await page.keyboard.press("Enter");
+    await expect(page.getByTestId("graph2d-tools").getByRole("button", { name: "Move/select", exact: true })).toBeFocused();
+    await page.keyboard.press("Escape"); await expect(tools).toBeFocused();
+    await checkPersonalGraphFlow(page);
+  } finally { await closeSurfaceApp(app); }
+});
 
 test("G2D41 Electron grid settings apply as reversible display-only intent", async ({}, info) => {
   const app = await launchSurfaceApp();
