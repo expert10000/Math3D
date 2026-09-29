@@ -37,6 +37,7 @@ mkdirSync(resultDir, { recursive: true });
 const readNodes = () => {
   adb("shell", "uiautomator", "dump", "/sdcard/math3d-matrix.xml");
   const xml = adb("exec-out", "cat", "/sdcard/math3d-matrix.xml");
+  writeFileSync(resolve(resultDir, "ui.xml"), xml);
   return [...xml.matchAll(/<node\b[^>]*>/g)].map(([tag]) => {
     const value = (name) => tag.match(new RegExp(`${name}="([^"]*)"`))?.[1] || "";
     const bounds = value("bounds").match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
@@ -51,7 +52,7 @@ const readNodes = () => {
 
 const expectNode = (label) => {
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const node = readNodes().find((candidate) => candidate.label === label && candidate.bounds);
+    const node = readNodes().find((candidate) => (candidate.text === label || candidate.description === label) && candidate.bounds);
     if (node) return node;
     pause(600);
   }
@@ -63,6 +64,26 @@ const tap = (label) => {
   const [x1, y1, x2, y2] = node.bounds;
   adb("shell", "input", "tap", String(Math.round((x1 + x2) / 2)), String(Math.round((y1 + y2) / 2)));
   pause(350);
+};
+
+const tapVisibleInspectorControl = (label) => {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const nodes = readNodes();
+    const node = nodes.find(n => (n.text === label || n.description === label) && n.bounds);
+    const nav = nodes.find(n => n.text === "Explore" && n.bounds);
+    const tab = nodes.find(n => n.text === "Object" && n.bounds);
+    if (!nav || !tab) throw new Error("Expected inspector tabs and bottom navigation.");
+    const contentTop = tab.bounds[3] + 8, contentBottom = nav.bounds[1] - 28;
+    const top = node ? Math.max(contentTop, node.bounds[1]) : 0;
+    const bottom = node ? Math.min(contentBottom, node.bounds[3]) : 0;
+    if (node && bottom - top >= 12) {
+      adb("shell", "input", "tap", String(Math.round((node.bounds[0] + node.bounds[2]) / 2)), String(Math.round((top + bottom) / 2)));
+      pause(350); return;
+    }
+    const x = String(Math.round((nav.bounds[0] + nav.bounds[2]) / 2));
+    adb("shell", "input", "swipe", x, String(contentBottom - 25), x, String(Math.max(contentTop + 12, contentBottom - 145)), "350");
+  }
+  throw new Error(`Inspector control could not be scrolled into view: ${label}`);
 };
 
 const launch = () => {
@@ -120,7 +141,7 @@ try {
   expectNode("Swipe down to close");
   for (const tab of ["Scene", "Object", "Create", "View", "Compute", "Analyze"]) expectNode(tab);
   tap("Create");
-  tap("Object ID");
+  tapVisibleInspectorControl("Object ID");
   const inputState = adb("shell", "dumpsys", "input_method");
   if (!/mInputShown=true|inputShown=true|showRequested=true/.test(inputState)) throw new Error("Editor keyboard did not open.");
   screenshot("expanded-inspector-keyboard");
