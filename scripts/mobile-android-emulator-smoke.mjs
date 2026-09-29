@@ -75,11 +75,11 @@ const tap = (text) => {
   adb("shell", "input", "tap", String(Math.round((x1 + x2) / 2)), String(Math.round((y1 + y2) / 2)));
 };
 const tapVisibleInspectorControl = (text) => {
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    const node = expectText(text);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const node = findText(text);
     const nav = expectText("Explore");
     const navTop = nav.bounds[1] - 20;
-    if (node.bounds[3] < navTop) {
+    if (node && node.bounds[3] < navTop && node.bounds[1] > expectText("Swipe down to close").bounds[3]) {
       tap(text);
       return;
     }
@@ -116,7 +116,8 @@ try {
     tap("Scene");
     const object = nodes().find((node) => /^Select .+/.test(node.description) && node.bounds);
     if (!object) throw new Error("Expected a selectable object in the Scene list.");
-    tap(object.description);
+    tapVisibleInspectorControl(object.description);
+    expectText(object.description.replace(/^Select /, "Deselect "));
     tap("Object");
     tapVisibleInspectorControl("50%");
     let opacityUpdated = false;
