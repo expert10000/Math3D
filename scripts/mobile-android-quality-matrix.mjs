@@ -141,14 +141,14 @@ const report = { ok: false, serial, layouts: [], lifecycle: [] };
 let networkDisabled = false;
 try {
   for (const profile of matrix.layouts) {
-    // wm size is in the unrotated frame; landscape rotation swaps logical dimensions.
-    adb("shell", "wm", "size", profile.orientation === "landscape" ? `${profile.height}x${profile.width}` : `${profile.width}x${profile.height}`);
+    // Size the logical display directly; hosted emulators may ignore rotation locks.
+    adb("shell", "wm", "size", `${profile.width}x${profile.height}`);
     adb("shell", "wm", "density", "160");
     adb("shell", "settings", "put", "system", "font_scale", String(profile.fontScale));
     adb("shell", "cmd", "uimode", "night", profile.appearance === "dark" ? "yes" : "no");
     adb("shell", "settings", "put", "system", "accelerometer_rotation", "0");
-    adb("shell", "settings", "put", "system", "user_rotation", profile.orientation === "landscape" ? "1" : "0");
-    adb("shell", "wm", "user-rotation", "lock", profile.orientation === "landscape" ? "1" : "0");
+    adb("shell", "settings", "put", "system", "user_rotation", "0");
+    adb("shell", "wm", "user-rotation", "lock", "0");
     launch();
     const navigation = assertNavigationLayout(profile);
     screenshot(profile.id);

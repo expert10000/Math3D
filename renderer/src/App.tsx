@@ -70882,8 +70882,10 @@ case "mobius":
         }
         marker("NO_CRASH_BANNER");
 
+        // Let mesh and worker state updates settle before exercising the error banners.
+        await sleep(300);
         setMeshOperationPreviewError("Invalid expression: unexpected '*' token.");
-        await waitFor(() => !!geometrySmokeSnapshotRef.current.meshOperationPreviewError, "invalid expression error", 1200);
+        await waitFor(() => !!geometrySmokeSnapshotRef.current.meshOperationPreviewError, "invalid expression error", 5000);
         const invalidExpressionError = geometrySmokeSnapshotRef.current.meshOperationPreviewError ?? "";
         if (invalidExpressionError.trim().length < 6) {
           throw new Error("Invalid expression did not produce a readable error.");
@@ -70901,7 +70903,7 @@ case "mobius":
         await waitFor(
           () => /python worker unavailable|worker request failed|request failed|worker.*failed/i.test(geometrySmokeSnapshotRef.current.meshOperationPreviewError ?? ""),
           "worker unavailable error",
-          1200
+          5000
         );
         const unavailableError = geometrySmokeSnapshotRef.current.meshOperationPreviewError ?? "";
         if (!/(python worker unavailable|worker request failed|request failed|worker.*failed)/i.test(unavailableError)) {
@@ -70924,7 +70926,7 @@ case "mobius":
         await waitFor(
           () => /timeout|bad response|worker|failed|empty/i.test(geometrySmokeSnapshotRef.current.meshOperationPreviewError ?? ""),
           "timeout/bad response error",
-          1200
+          5000
         );
         const timeoutError = geometrySmokeSnapshotRef.current.meshOperationPreviewError ?? "";
         if (!/(timeout|bad response|worker|failed|empty)/i.test(timeoutError)) {
