@@ -35,8 +35,8 @@ flowchart LR
 | --- | --- |
 | `format`, `schemaVersion` | Portable envelope/version |
 | `identity` | Stable document ID, revision, source structural SHA-256 and identity schema version |
-| `requiredCapabilities` | Exact computed capability set for object kinds and optional saved probes |
-| `source` | Ordered objects, named numeric variables and assumptions; mathematical authority |
+| `requiredCapabilities` | Exact computed capability set for object kinds, optional saved probes and parameter controls |
+| `source` | Ordered objects, named numeric variables (optional validated range/step/unit controls) and assumptions; mathematical authority |
 | `display` | Viewport, axes/grid policy, per-object styles, saved sampling intent and optional pins |
 | `selection` | Selected object and finite source-linked probe, including parameter/row identity where applicable |
 | `metadata` | Title |
@@ -193,4 +193,4 @@ G13 remains **not frozen**. [The 2026-09-28 readiness audit](mobile-graphs-g13-r
 
 The committed pending template intentionally fails. Unit-test synthetic attestations must never become release evidence. Preserve exact APK/IPA, build/signing/source metadata, captures, workload reports and review decisions together.
 
-The [shared preset catalog and desktop/web gallery](graph2d-gallery-presets-showcase-roadmap.md) are delivered through GGL06; see [desktop/web acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md). Mobile gallery GGL07–09 is also delivered, with [model and physical Android/Electron acceptance](graph2d-gallery-ggl07-ggl09-acceptance.md). Next is G2D36 publication export, followed by the remaining professional extensions. Presets instantiate normal Graph documents; gallery metadata/previews do not become another mathematical model. G2D38 retains ownership of shared parameter and animation behavior. Gallery acceptance does not freeze the pending G13 release gate.
+The [shared preset catalog and desktop/web gallery](graph2d-gallery-presets-showcase-roadmap.md) are delivered through GGL06; see [desktop/web acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md). Mobile gallery GGL07–09 is also delivered, with [model and physical Android/Electron acceptance](graph2d-gallery-ggl07-ggl09-acceptance.md). [G2D36 publication export](graph2d-g36-publication-export.md) and [G2D38 shared parameters/animation and pan/zoom continuity](graph2d-g38-parameters-animation.md) are implemented. Controlled parameters add `graph2d.parameters.v1`; animation previews never become saved source without an explicit command. Successful frame exports use bounded evaluation work rather than clock-dependent truncation; interactive sampling retains labelled same-source geometry while resampling and forbids stale probes. Next is GGL10 curated interactive preset integration, followed by G2D37 scale policies. Presets instantiate normal Graph documents; gallery metadata/previews do not become another mathematical model. New native-feature acceptance and the G13 release gate remain pending.

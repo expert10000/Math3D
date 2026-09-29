@@ -14,6 +14,8 @@ export type Graph2DSceneSamplingRequest = Readonly<{
   pointTables?: Readonly<Record<string, readonly Graph2DPointRow[] | null>>;
   /** Host-provided bounded synchronous quantum. Defaults retain the desktop policy. */
   timeBudgetMs?: number;
+  /** Publication-only repeatability: bounded evaluation work, no clock-dependent truncation. */
+  deterministic?: boolean;
 }>;
 export type Graph2DSampledSeries = Readonly<{ objectId: string; style: Graph2DObjectDisplay; artifact: Graph2DSamplingArtifact }>;
 
@@ -28,7 +30,9 @@ export const sampleGraph2DScene = (request: Graph2DSceneSamplingRequest): readon
     tolerancePx: request.interaction ? Math.max(2, document.display.sampling.tolerancePx) : document.display.sampling.tolerancePx };
   if (request.timeBudgetMs !== undefined && (!Number.isFinite(request.timeBudgetMs) || request.timeBudgetMs < 1 || request.timeBudgetMs > 1500))
     throw new TypeError("Graph2D scene time budget must be 1–1500 milliseconds.");
-  const deadlineMs = Date.now() + (request.timeBudgetMs ?? (request.interaction ? 250 : 1500));
+  if (request.deterministic && (document.display.sampling.maxSamples > 4096 || document.display.sampling.maxDepth > 16))
+    throw new TypeError("Deterministic publication sampling requires at most 4096 samples and depth 16.");
+  const deadlineMs = request.deterministic ? Number.POSITIVE_INFINITY : Date.now() + (request.timeBudgetMs ?? (request.interaction ? 250 : 1500));
   let remaining = totalBudget;
   return document.source.objects.flatMap((object, index) => {
     const style = document.display.objects[index];

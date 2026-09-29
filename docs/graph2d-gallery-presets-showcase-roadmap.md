@@ -1,6 +1,6 @@
 # Graph2D gallery, presets and showcase roadmap
 
-**Status:** GGL01–09 implemented: desktop/web gallery and native browse/launch, all-catalog model checks and a physical Android/Electron walkthrough accepted. GGL10–18 remain planned; full MOB-G13 release evidence remains pending. Next: G2D36 publication export. See [desktop/web acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md) and [mobile acceptance](graph2d-gallery-ggl07-ggl09-acceptance.md).
+**Status:** GGL01–09 implemented: desktop/web gallery and native browse/launch, all-catalog model checks and a physical Android/Electron walkthrough accepted. G2D36 publication export and [G2D38 shared parameters/animation](graph2d-g38-parameters-animation.md) are implemented. GGL10–18 remain planned; next is GGL10 curated interactive controls using the shared G2D38 implementation. Frozen catalog templates/previews are unchanged. Full MOB-G13 and new native feature acceptance remain pending. See [desktop/web acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md) and [mobile acceptance](graph2d-gallery-ggl07-ggl09-acceptance.md).
 
 **Decision — 2026-09-28:** build a focused editable gallery now, after G2D35 and before G2D36. Deliver shared contracts/content and desktop/web first (GGL01–06), then mobile launch from the same catalog (GGL07–09). Continue the professional features afterward. Keep MOB-G13 physical acceptance open throughout.
 

@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from "react-native";
 import { fitGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, pickGraph2DProbe,
-  resolveGraph2DViewport, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion } from "@math3d/core";
+  resolveGraph2DViewport, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, graph2DParameterSessionKey,
+  previewGraph2DParameterValues, applyGraph2DAuthoring, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { MobileGraphGesture, mobileGraphProbeRadius, type GraphTouch } from "./models/mobileGraphGestures";
 import { mobileGraphCapabilities } from "./models/mobileGraphProject";
@@ -9,6 +10,7 @@ import { mobileGraphDisplayScene, MOBILE_GRAPH_DEFAULT_OVERLAYS } from "./models
 import { useMobileGraphSampling } from "./useMobileGraphSampling";
 import { MobileGraphDisplayPanel } from "./MobileGraphDisplayPanel";
 import { MobileGraphExportPanel } from "./MobileGraphExportPanel";
+import { MobileGraphParametersPanel } from "./MobileGraphParametersPanel";
 import { mobileGraphAreaRects } from "./viewer/mobileGraphOverlays";
 import { editMobileGraphProbes } from "./models/mobileGraphProbes";
 import { MobileGraphProbesPanel } from "./MobileGraphProbesPanel";
@@ -41,6 +43,13 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const gesture = useRef(new MobileGraphGesture());
   const [size, setSize] = useState({ width: 320, height: 320 });
   const [preview, setPreview] = useState<Graph2DViewport | null>(null);
+  const parameterKey = graph2DParameterSessionKey(document);
+  const [parameterPreview, setParameterPreview] = useState<{ key: string; values: Record<string, number> } | null>(null);
+  const parameterPreviewActive = parameterPreview?.key === parameterKey;
+  const sampledDocument = useMemo(() => parameterPreview?.key === parameterKey ? previewGraph2DParameterValues(document, parameterPreview.values) : document,
+    [document, parameterKey, parameterPreview]);
+  const [parameterEpoch, setParameterEpoch] = useState(0);
+  const cancelParameter = () => { setParameterPreview(null); setParameterEpoch(value => value + 1); };
   const [destination, setDestination] = useState<MobileGraphDestination>("Graph");
   const window = useWindowDimensions();
   const [frame, setFrame] = useState({ width: window.width, height: window.height });
@@ -56,25 +65,25 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const viewport = preview ?? document.display.viewport;
   const cancel = () => { gesture.current.cancel(); setPreview(null); };
   useEffect(() => {
-    const listener = AppState.addEventListener("change", (state) => { if (state !== "active") cancel(); });
+    const listener = AppState.addEventListener("change", (state) => { if (state !== "active") { cancel(); setParameterPreview(null); } });
     return () => { listener.remove(); gesture.current.cancel(); };
   }, []);
-  const sampling = useMobileGraphSampling(document, viewport, size, !!preview, () => setAnalysis(null));
+  const sampling = useMobileGraphSampling(sampledDocument, viewport, size, !!preview, () => { setAnalysis(null); setParameterPreview(null); }, parameterPreviewActive ? document.identity : undefined);
   const { series, budget } = sampling;
   const geometry = useMemo(() => mobileGraphAdvancedGeometry(series, viewport, size, budget), [series, viewport, size, budget.fills, budget.markers]);
   const lines = useMemo(() => projectMobileGraphLines(geometry.boundaries, viewport, size, document.selection.objectId, budget.lines), [geometry, viewport, size, document.selection.objectId, budget.lines]);
   const ticks = mobileGraphTicks(viewport, size);
   const bounds = resolveGraph2DViewport(viewport, size);
-  const probe = document.selection.probe;
+  const probe = parameterPreviewActive ? null : document.selection.probe;
   const marker = probe ? graph2DWorldToScreen(viewport, size, probe) : null;
-  const analysisCurrent = !!analysis && isMobileGraphAnalysisCurrent(analysis, document, analysisDraft);
+  const analysisCurrent = !parameterPreviewActive && !!analysis && isMobileGraphAnalysisCurrent(analysis, document, analysisDraft);
   const history = adapter.history();
   const commit = (action: () => Graph2DDocument | null) => {
     cancel(); try { const next = action(); if (next) onChange(next); setError(""); return true; }
     catch (caught) { setError((caught as Error).message); return false; }
   };
   const tap = (screen: { x: number; y: number }) => commit(() => {
-    if (!sampling.ready) throw new TypeError("Graph updating; try the probe again after sampling settles.");
+    if (!sampling.ready || parameterPreviewActive) throw new TypeError("Graph updating/previewing; apply or cancel and wait before probing.");
     const picked = pickGraph2DProbe({ document, series, viewport: document.display.viewport, size, screen,
       previous: document.selection, radiusPx: mobileGraphProbeRadius(size.width) });
     if (picked.selection.probe) onHaptic?.();
@@ -86,6 +95,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     else if (result.tap) tap(result.tap);
   };
   const fit = () => {
+    if (!sampling.ready || parameterPreviewActive) { setError("Wait for sampling and apply or cancel parameter preview before Fit."); return; }
     const points = series.flatMap((item) => item.artifact.segments.flatMap((segment) => segment.points));
     if (!points.length) { setError("No finite visible points to fit."); return; }
     commit(() => adapter.commitViewport(fitGraph2DViewport({ xMin: Math.min(...points.map((point) => point.x)),
@@ -104,13 +114,14 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
       setFrame((current) => current.width === width && current.height === height ? current : { width, height }); }}>
     <View style={{ flexDirection: "row", alignItems: "center" }}><Text style={[s.title, { flex: 1 }]} numberOfLines={1}>{document.metadata.title}</Text>
       {onGallery && button("Gallery", () => {
-        cancel();
+        cancel(); cancelParameter();
         if (editor || advanced) { setError("Save or cancel the current function edit before opening Gallery."); return; }
         onGallery();
       })}
-      {button("Display", () => { cancel(); setDestination(destination === "Display" ? "Graph" : "Display"); })}</View>
+      {button("Display", () => { cancel(); cancelParameter(); setDestination(destination === "Display" ? "Graph" : "Display"); })}</View>
     <ScrollView horizontal style={{ flexGrow: 0, maxHeight: 48 }} contentContainerStyle={s.toolbar}>{button("Reset", () => commit(() => adapter.commitViewport(GRAPH2D_DEFAULT_VIEWPORT)))}
-      {button("Export", () => { cancel(); if (editor || advanced) { setError("Save or cancel the function edit before exporting."); return; } setDestination(destination === "Export" ? "Graph" : "Export"); })}
+      {button("Parameters", () => { cancel(); cancelParameter(); setDestination(destination === "Parameters" ? "Graph" : "Parameters"); })}
+      {button("Export", () => { cancel(); cancelParameter(); if (editor || advanced) { setError("Save or cancel the function edit before exporting."); return; } setDestination(destination === "Export" ? "Graph" : "Export"); })}
       {button("Fit", fit)}{button("Undo", () => commit(() => adapter.undo()), history.undoDepth === 0)}
       {button("Redo", () => commit(() => adapter.redo()), history.redoDepth === 0)}
       {button(saving ? "Saving…" : "Save", () => { setSaving(true); void onSave().finally(() => setSaving(false)); }, saving)}</ScrollView>
@@ -119,7 +130,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     <View style={s.plot} testID="mobile-graph-plot" accessibilityLabel="Graph plot. Drag to pan, pinch to zoom, tap to probe."
       onLayout={(event) => { cancel(); const { width, height } = event.nativeEvent.layout; if (width > 0 && height > 0) setSize({ width, height }); }}
       onStartShouldSetResponder={() => true} onMoveShouldSetResponder={() => true}
-      onResponderGrant={(event) => gesture.current.begin(document.display.viewport, size, touches(event))}
+      onResponderGrant={(event) => { cancelParameter(); gesture.current.begin(document.display.viewport, size, touches(event)); }}
       onResponderStart={(event) => setPreview(gesture.current.update(touches(event)))}
       onResponderMove={(event) => { try { setPreview(gesture.current.update(touches(event))); } catch { cancel(); } }}
       onResponderEnd={(event) => { if (event.nativeEvent.touches.length) setPreview(gesture.current.update(touches(event))); }}
@@ -157,7 +168,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
           return point.x >= 0 && point.x <= size.width && point.y >= 0 && point.y <= size.height ? <View key={`feature${index}`} style={{ position: "absolute",
             left: point.x - 4, top: point.y - 4, width: 8, height: 8, borderRadius: 4, backgroundColor: "#9333ea" }} /> : null;
         })}
-        {(document.display.pinnedProbes ?? []).filter((probe) => probe.sourceHash === document.identity.structuralHash &&
+        {(parameterPreviewActive ? [] : document.display.pinnedProbes ?? []).filter((probe) => probe.sourceHash === document.identity.structuralHash &&
           document.display.objects.find((style) => style.objectId === probe.objectId)?.visible).map((probe) => {
           const point = graph2DWorldToScreen(viewport, size, probe);
           if (point.x < 0 || point.x > size.width || point.y < 0 || point.y > size.height) return null;
@@ -174,7 +185,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
       `${document.source.objects.find((object) => object.id === probe.objectId)?.label}: x=${probe.x.toPrecision(6)}, y=${probe.y.toPrecision(6)}${probe.parameter !== undefined ? `, parameter=${probe.parameter.toPrecision(6)}` : ""}${probe.rowId ? `, ${probe.rowId}` : ""}` : "Tap a curve to probe. Tap overlaps again to cycle."}</Text>
     {/* Fixed status height prevents ready/incomplete changes from resizing and resampling the plot in a loop. */}
     <Text style={[s.readout, { height: 36 * Math.max(1, window.fontScale) }]} numberOfLines={2}>{[
-      !sampling.ready ? sampling.active ? "Graph updating…" : "Graph sampling paused in background." : "",
+      parameterPreviewActive ? "Parameter preview — not saved. Apply or Cancel; committed analysis overlays hidden." : "",
+      !sampling.ready ? sampling.active ? sampling.retained ? "Graph updating; previous samples visible." : "Graph updating…" : "Graph sampling paused in background." : "",
       geometry.truncated || sampling.truncated || lines.length >= budget.lines || series.some((item) => !item.artifact.converged)
         ? "Approximate/incomplete display. Check Display diagnostics; missing data requires its CSV/TSV sidecar." : "",
     ].filter(Boolean).join(" ")}</Text>
@@ -182,7 +194,10 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     </View>
     {panelDestination && <ScrollView keyboardShouldPersistTaps="handled" style={[s.sheet, layout.split && s.sidePanel, layout.split && { width: layout.panelWidth }]}
       accessibilityLabel={`${panelDestination} ${layout.split ? "side panel" : "bottom sheet"}`} testID={`mobile-graph-${panelDestination.toLowerCase()}-sheet`}>
-      {panelDestination === "Export" ? <MobileGraphExportPanel document={document} analysis={analysisCurrent ? analysis : null} draft={analysisDraft} /> : panelDestination === "Display" ? <MobileGraphDisplayPanel document={document} series={series} overlays={overlays} lineCount={lines.length} sampling={sampling}
+      {panelDestination === "Parameters" ? <MobileGraphParametersPanel key={`${parameterKey}:${parameterEpoch}`} document={document} settled={sampling.settled && sampling.phase === "refine"} samplingError={sampling.error}
+        onPreview={values => { if (values) previewGraph2DParameterValues(document, values); setParameterPreview(values ? { key: parameterKey, values } : null); }}
+        onCommit={action => { const next = adapter.commitScene(applyGraph2DAuthoring(document, action), action.type); cancel(); setParameterPreview(null); onChange(next); }} /> :
+        panelDestination === "Export" ? <MobileGraphExportPanel document={document} analysis={analysisCurrent ? analysis : null} draft={analysisDraft} /> : panelDestination === "Display" ? <MobileGraphDisplayPanel document={document} series={series} overlays={overlays} lineCount={lines.length} sampling={sampling}
         onOverlays={setOverlays} onAxis={(key) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "axis", key }), "style"))}
         onQuality={(quality) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "quality", quality }), "style"))} /> : panelDestination === "Promote" ?
         <MobileGraphPromotionPanel document={document} promotions={promotions} onCreate={onPromotion}
@@ -222,7 +237,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     </View>
     <View style={s.destinations} accessibilityRole="tablist">{(["Graph", "Functions", "Analyze", "Promote"] as const).map((value) =>
       <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: destination === value }} style={s.button}
-        onPress={() => { cancel(); setDestination(value); }}><Text>{value}</Text></Pressable>)}</View>
+        onPress={() => { cancel(); cancelParameter(); setDestination(value); }}><Text>{value}</Text></Pressable>)}</View>
   </KeyboardAvoidingView>;
 };
 

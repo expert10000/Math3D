@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createGraph2DPublication, instantiateGraph2DPreset, getGraph2DPresetCatalog, renderGraph2DPublicationArtifact } from "@math3d/core";
+import { createGraph2DPublication, instantiateGraph2DPreset, getGraph2DPresetCatalog, renderGraph2DPublicationArtifact,
+  applyGraph2DAuthoring, createGraph2DDocument, defaultGraph2DParameterDraft, createGraph2DAnimationPlan, Graph2DAnimationExportBuilder } from "@math3d/core";
 const state = vi.hoisted(() => ({ files: new Map<string, Uint8Array>(), cancelled: false, available: true, corrupt: false, share: vi.fn(async (_uri: string, _options: unknown) => {}) }));
 vi.mock("expo-file-system", () => {
   class MockFile {
@@ -27,6 +28,17 @@ import { saveMobileGraphPublication, shareMobileGraphPublication } from "../../a
 const publication = createGraph2DPublication({ document: instantiateGraph2DPreset(getGraph2DPresetCatalog().get("line-comparison")!, "service-publication").document, size: { width: 128, height: 128 } });
 beforeEach(() => { state.files.clear(); state.share.mockClear(); state.available = true; state.cancelled = false; state.corrupt = false; });
 describe("native publication file boundary", () => {
+  for (const format of ["html", "csv"] as const) it(`G2D38 ${format}: saves and shares verified frame sequence bytes with a safe native filename`, async () => {
+    const original = instantiateGraph2DPreset(getGraph2DPresetCatalog().get("line-comparison")!, "frame-service").document;
+    const document = createGraph2DDocument({ ...applyGraph2DAuthoring(original, { type: "parameter-configure", name: "a", draft: defaultGraph2DParameterDraft(original.source.variables[0]) }), stableKey: "frame-service" });
+    const plan = createGraph2DAnimationPlan(document, { parameter: "a", from: 0, to: 1, frames: 2, fps: 10 });
+    const builder = new Graph2DAnimationExportBuilder({ plan, publication: { document, size: { width: 128, height: 128 } } });
+    while (!builder.complete) builder.appendNext(); const artifact = builder.finish().find(o => o.format === format)!;
+    expect(artifact.fileName).toMatch(/^[a-zA-Z0-9_-]+\.(html|csv)$/);
+    const saved = await saveMobileGraphPublication(artifact, () => true); expect(saved.status).toBe("saved");
+    if (saved.status === "saved") expect(state.files.get(`documents/${saved.fileName}`)).toEqual(artifact.bytes);
+    await shareMobileGraphPublication(artifact, () => true); expect(state.share).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ mimeType: artifact.mimeType, UTI: artifact.uti }));
+  });
   for (const format of ["svg", "png", "csv", "html"] as const) it(`${format}: saves identical verified bytes and preserves existing files`, async () => {
     const artifact = renderGraph2DPublicationArtifact(publication, format), prior = new Uint8Array([1, 2]);
     state.files.set(`documents/${artifact.fileName}`, prior);

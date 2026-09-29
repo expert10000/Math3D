@@ -5,6 +5,7 @@ import {
 } from "./documentIdentity";
 import type { ValidationResult } from "./validation";
 import { parseGraph2DExpression, type Graph2DExpressionAst } from "./graph2dExpression";
+import { GRAPH2D_PARAMETERS_CAPABILITY, isGraph2DParameter, type Graph2DParameter } from "./graph2dParameterTypes";
 
 export const GRAPH2D_DOCUMENT_FORMAT = "math3d.graph2d-document" as const;
 export const GRAPH2D_DOCUMENT_SCHEMA_VERSION = 1 as const;
@@ -101,7 +102,7 @@ export type Graph2DGraphObject = Graph2DExplicitObject | Graph2DParametricObject
   Graph2DImplicitObject | Graph2DInequalityObject | Graph2DPointSeriesObject | Graph2DPiecewiseObject;
 export type Graph2DSource = Readonly<{
   objects: readonly Graph2DGraphObject[];
-  variables: readonly Readonly<{ name: string; value: number }>[];
+  variables: readonly Graph2DParameter[];
   assumptions: readonly string[];
 }>;
 export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pick<Graph2DDisplay, "pinnedProbes">): Graph2DDocument["requiredCapabilities"] =>
@@ -112,7 +113,8 @@ export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pic
     ...(source.objects.some((object) => object.kind === "inequality") ? [GRAPH2D_INEQUALITY_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "point-series") ? [GRAPH2D_POINT_SERIES_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "piecewise") ? [GRAPH2D_PIECEWISE_CAPABILITY] : []),
-    ...(display?.pinnedProbes !== undefined ? [GRAPH2D_PROBES_CAPABILITY] : [])];
+    ...(display?.pinnedProbes !== undefined ? [GRAPH2D_PROBES_CAPABILITY] : []),
+    ...(source.variables.some(variable => variable.control !== undefined) ? [GRAPH2D_PARAMETERS_CAPABILITY] : [])];
 export type Graph2DObjectDisplay = Readonly<{
   objectId: string;
   visible: boolean;
@@ -137,7 +139,7 @@ export type Graph2DDocument = Readonly<{
   requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
     typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY |
     typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY |
-    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY)[];
+    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY)[];
   source: Graph2DSource;
   display: Graph2DDisplay;
   selection: Graph2DSelection;
@@ -158,7 +160,6 @@ const finite = (value: unknown): value is number => typeof value === "number" &&
 const bounded = (value: unknown, max: number): value is string =>
   typeof value === "string" && value.length > 0 && value.length <= max && value.trim() === value;
 const objectId = (value: unknown): value is string => typeof value === "string" && /^[a-z][a-z0-9_-]{0,63}$/.test(value);
-const variableName = (value: unknown): value is string => typeof value === "string" && /^[a-z][a-z0-9_]{0,31}$/.test(value);
 const integerWithin = (value: unknown, min: number, max: number): value is number =>
   Number.isSafeInteger(value) && Number(value) >= min && Number(value) <= max;
 const clone = <T>(value: T): T => JSON.parse(canonicalJsonStringify(value)) as T;
@@ -226,8 +227,7 @@ const validSource = (value: unknown): value is Graph2DSource => {
   if (!record(value) || !exact(value, ["objects", "variables", "assumptions"]) || !Array.isArray(value.objects) ||
       value.objects.length > GRAPH2D_MAX_OBJECTS ||
       !Array.isArray(value.variables) || value.variables.length > 16 ||
-      !value.variables.every((entry: unknown) => record(entry) && exact(entry, ["name", "value"]) && variableName(entry.name) &&
-        entry.name !== "x" && finite(entry.value)) ||
+      !value.variables.every(isGraph2DParameter) ||
       new Set(value.variables.map((entry: { name: string }) => entry.name)).size !== value.variables.length ||
       !Array.isArray(value.assumptions) || value.assumptions.length > 32 ||
       !value.assumptions.every((entry: unknown) => bounded(entry, 160))) return false;

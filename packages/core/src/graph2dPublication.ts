@@ -40,7 +40,7 @@ export const graph2DPublicationAnalysisTables = (results: readonly { publication
 };
 export type Graph2DPublicationRequest = Readonly<{ document: Graph2DDocument; size: Graph2DScreenSize; viewport?: Graph2DViewport;
   units?: Readonly<{ x: string; y: string }>; pointTables?: Readonly<Record<string, readonly Graph2DPointRow[] | null>>;
-  analyses?: readonly Graph2DPublicationTable[]; analysisNotes?: readonly string[] }>;
+  analyses?: readonly Graph2DPublicationTable[]; analysisNotes?: readonly string[]; deterministic?: boolean }>;
 export const GRAPH2D_PUBLICATION_LIMITS = Object.freeze({ maxSamples: 4096, maxPixels: 1200000, maxDimension: 1600,
   maxBytes: 8 * 1024 * 1024, maxTables: 16, maxTableRows: 4096 });
 const utf8 = (text: string) => new TextEncoder().encode(text);
@@ -105,7 +105,7 @@ export const createGraph2DPublication = (request: Graph2DPublicationRequest) => 
     return { publication, columns, rows };
   });
   const exportDocument = { ...document, display: { ...document.display, viewport: { ...viewport }, sampling } };
-  const series = sampleGraph2DScene({ document: exportDocument, viewport, width, height, interaction: false, pointTables, timeBudgetMs: 1500 });
+  const series = sampleGraph2DScene({ document: exportDocument, viewport, width, height, interaction: false, pointTables, timeBudgetMs: 1500, deterministic: request.deterministic === true });
   const geometry = projectGraph2DPublicationGeometry(exportDocument, series, { width, height });
   const warnings = ["Static publication, not an editable Graph checkpoint. Use the existing Graph/handoff export to retain portable editing.",
     "Sampled floating-point geometry is approximate; convergence is not proof of continuity or absence of narrow features.",
@@ -121,6 +121,7 @@ export const createGraph2DPublication = (request: Graph2DPublicationRequest) => 
     source: document.identity, viewport: { ...viewport }, effectiveViewport: resolveGraph2DViewport(viewport, { width, height }),
     size: { width, height }, units, unitSemantics: "declared-labels-only", canonicalSource: document.source, axes: document.display.axes,
     savedSampling, sampling, method: "shared-graph2d-scene-sampler-v1",
+    ...(request.deterministic === true ? { workPolicy: "bounded-evaluations-no-clock-truncation" } : {}),
     objects: series.map((s) => ({ objectId: s.objectId, kind: document.source.objects.find((o) => o.id === s.objectId)!.kind,
       label: document.source.objects.find((o) => o.id === s.objectId)!.label, style: s.style, samplesEvaluated: s.artifact.samplesEvaluated, converged: s.artifact.converged,
       diagnostics: s.artifact.diagnostics })), warnings, analyses: analyses.map((a) => a.publication) };
@@ -131,14 +132,15 @@ export const createGraph2DPublication = (request: Graph2DPublicationRequest) => 
 export type Graph2DPublication = ReturnType<typeof createGraph2DPublication>;
 const bounded = (text: string) => { if (utf8(text).length > GRAPH2D_PUBLICATION_LIMITS.maxBytes) throw new TypeError("Publication output exceeds 8 MiB."); return text; };
 const n = (value: number) => Number(value.toFixed(3));
-export const renderGraph2DPublicationSVG = (publication: Graph2DPublication): string => {
+export const renderGraph2DPublicationSVG = (publication: Graph2DPublication, idPrefix = "graph-publication"): string => {
+  if (!/^[a-z][a-z0-9-]{0,63}$/.test(idPrefix)) throw new TypeError("Invalid publication SVG identifier prefix.");
   const { width, height } = publication.metadata.size, escape = escapeGraph2DPublicationText;
   const description = `Approximate graph. Source ${publication.metadata.source.structuralHash}. Units x: ${publication.metadata.units.x}; y: ${publication.metadata.units.y}. ${publication.metadata.warnings.join(" ")}`;
   const shapes = publication.geometry.primitives.map((p) => p.kind === "line" ? `<line x1="${n(p.x1)}" y1="${n(p.y1)}" x2="${n(p.x2)}" y2="${n(p.y2)}" stroke="${p.color}" stroke-width="${p.width}"${p.dash === "solid" ? "" : ` stroke-dasharray="${p.dash === "dashed" ? "8 5" : "2 4"}" stroke-dashoffset="${n(-p.dashOffset)}"`}/>` :
     p.kind === "rect" ? `<rect x="${n(p.x)}" y="${n(p.y)}" width="${n(p.width)}" height="${n(p.height)}" fill="${p.color}" fill-opacity="${p.opacity}"/>` :
       p.kind === "circle" ? `<circle cx="${n(p.x)}" cy="${n(p.y)}" r="${p.radius}" fill="${p.open ? "#ffffff" : p.color}" stroke="${p.color}" stroke-width="1.5"/>` :
         `<text x="${n(p.x)}" y="${n(p.y)}" font-size="12" font-family="sans-serif" fill="#334155">${escape(p.text)}</text>`).join("");
-  return bounded(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="graph-publication-title graph-publication-desc"><title id="graph-publication-title">${escape(publication.metadata.title)}</title><desc id="graph-publication-desc">${escape(description)}</desc><metadata>${escape(JSON.stringify({ snapshotId: publication.snapshotId, ...publication.metadata }))}</metadata><defs><clipPath id="graph-publication-clip"><rect width="${width}" height="${height}"/></clipPath></defs><rect width="${width}" height="${height}" fill="#ffffff"/><g clip-path="url(#graph-publication-clip)">${shapes}</g></svg>`);
+  return bounded(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="${idPrefix}-title ${idPrefix}-desc"><title id="${idPrefix}-title">${escape(publication.metadata.title)}</title><desc id="${idPrefix}-desc">${escape(description)}</desc><metadata>${escape(JSON.stringify({ snapshotId: publication.snapshotId, ...publication.metadata }))}</metadata><defs><clipPath id="${idPrefix}-clip"><rect width="${width}" height="${height}"/></clipPath></defs><rect width="${width}" height="${height}" fill="#ffffff"/><g clip-path="url(#${idPrefix}-clip)">${shapes}</g></svg>`);
 };
 /** Quotes every field; only untrusted strings receive spreadsheet formula protection, never numeric negatives. */
 export const graph2DPublicationCSVCell = (cell: Graph2DPublicationCell) => {

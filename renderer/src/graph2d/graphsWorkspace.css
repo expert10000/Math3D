@@ -1,4 +1,5 @@
 .graph2d-workspace {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 8px;
@@ -6,6 +7,15 @@
   min-height: 0;
   min-width: 0;
 }
+.graph2d-update-status { position: absolute; bottom: 12px; left: 12px; max-width: calc(100% - 24px); padding: 6px 9px; border-radius: 6px; background: var(--panel-strong); font-size: 12px; pointer-events: none; }
+.graph2d-parameters-panel { position:absolute; z-index:7; right:12px; top:60px; width:min(380px,calc(100% - 24px)); max-height:calc(100% - 76px); box-sizing:border-box; overflow:auto; padding:16px; background:var(--panel-strong); border:1px solid var(--border); border-radius:12px; box-shadow:0 6px 24px #0003; }
+.graph2d-parameters-panel header { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; position:sticky; top:-16px; padding:8px 0; background:var(--panel-strong); z-index:1; }
+.graph2d-parameter-preview-actions { position:sticky; bottom:-16px; padding:8px 0; background:var(--panel-strong); border-top:1px solid var(--border); }
+.graph2d-parameters-panel h2 { margin:0; }
+.graph2d-parameters-panel section { border-top:1px solid var(--border); margin:12px 0; padding-top:12px; }
+.graph2d-parameters-panel label { display:flex; flex-direction:column; gap:4px; margin:8px 0; }
+.graph2d-parameters-panel input,.graph2d-parameters-panel select { width:100%; box-sizing:border-box; min-height:36px; }
+.graph2d-parameters-panel button { min-height:36px; margin:4px; }
 .graph2d-workspace[data-left="true"][data-right="true"] { grid-template-columns: var(--graph2d-left-width) minmax(0, 1fr) var(--graph2d-right-width); }
 .graph2d-workspace[data-left="true"][data-right="false"] { grid-template-columns: var(--graph2d-left-width) minmax(0, 1fr); }
 .graph2d-workspace[data-left="false"][data-right="true"] { grid-template-columns: minmax(0, 1fr) var(--graph2d-right-width); }
@@ -142,6 +152,8 @@
 }
 
 @media (max-width: 700px) {
+  /* The host navigation leaves little plot height here; sticky controls must not cover the editable body. */
+  .graph2d-parameters-panel header, .graph2d-parameter-preview-actions { position: static; }
   .graph2d-workspace[data-left] { grid-template-columns: minmax(0, 1fr); }
   .graph2d-left { display: none; }
   .graph2d-compact-panels { left: 8px; right: 8px; display: flex; align-items: flex-start; gap: 6px; }
