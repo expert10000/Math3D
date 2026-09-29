@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 export const GRAPH_DEVICE_SLOTS = ["android-low", "android-mid", "android-high", "android-tablet", "ios-phone", "ios-tablet"];
 export const GRAPH_DEVICE_CASES = ["create-open-edit", "pan-pinch-cancel-undo", "probe-overlap", "multi-function-analysis",
   "save-reopen", "background-resume", "portrait-landscape", "desktop-fixture-compatibility", "native-import-share",
-  "keyboard-accessibility", "workload-recovery", "crash-log-review"];
+  "keyboard-accessibility", "workload-recovery", "crash-log-review",
+  "publication-offline-print", "scales-continuation-log", "parameters-animation-cancel", "regression-residuals-intervals"];
 const sha = (value, length) => typeof value === "string" && new RegExp(`^[0-9a-f]{${length}}$`).test(value);
 const nonempty = (value) => typeof value === "string" && value.trim().length > 0;
 

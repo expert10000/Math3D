@@ -179,7 +179,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         {(parameterPreviewActive ? [] : document.display.pinnedProbes ?? []).filter((probe) => probe.sourceHash === document.identity.structuralHash &&
           document.display.objects.find((style) => style.objectId === probe.objectId)?.visible).map((probe) => {
           const point = graph2DWorldToScreen(viewport, size, probe);
-          if (point.x < 0 || point.x > size.width || point.y < 0 || point.y > size.height) return null;
+          if (!Number.isFinite(point.x) || !Number.isFinite(point.y) || point.x < 0 || point.x > size.width || point.y < 0 || point.y > size.height) return null;
           return <View key={probe.id} style={{ position: "absolute", left: point.x - 5, top: point.y - 5 }}>
             <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: "#b45309" }} /><Text style={{ fontSize: 11 }}>{probe.label}</Text></View>;
         })}

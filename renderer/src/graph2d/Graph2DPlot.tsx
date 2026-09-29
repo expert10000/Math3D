@@ -43,7 +43,7 @@ export function Graph2DPlot({ display, size, series, regression, selectedProbe, 
   const marker = (probe: Graph2DProbe | null | undefined, kind: "selected" | "hover") => {
     if (!probe) return null;
     const screen = graph2DWorldToScreen(display.viewport, size, probe);
-    if (screen.x < 0 || screen.x > size.width || screen.y < 0 || screen.y > size.height) return null;
+    if (!Number.isFinite(screen.x) || !Number.isFinite(screen.y) || screen.x < 0 || screen.x > size.width || screen.y < 0 || screen.y > size.height) return null;
     return <g className={"graph2d-probe-marker graph2d-probe-" + kind} aria-hidden="true" key={kind}>
       <circle cx={screen.x} cy={screen.y} r={kind === "selected" ? 7 : 5} />
       <circle cx={screen.x} cy={screen.y} r={2} />
@@ -147,6 +147,7 @@ export function Graph2DPlot({ display, size, series, regression, selectedProbe, 
         {series.filter((item) => item.style.visible && isPiecewise(item.artifact))
           .flatMap((item) => (item.artifact as Graph2DPiecewiseArtifact).endpoints.map((endpoint, index) => {
             const screen = graph2DWorldToScreen(display.viewport, size, endpoint);
+            if (!Number.isFinite(screen.x) || !Number.isFinite(screen.y)) return null;
             return <circle key={`${item.objectId}-endpoint-${index}`} className="graph2d-domain-endpoint"
               data-graph2d-endpoint={item.objectId} data-endpoint-open={endpoint.open}
               data-endpoint-side={endpoint.side} cx={screen.x} cy={screen.y}
@@ -190,6 +191,7 @@ export function Graph2DPlot({ display, size, series, regression, selectedProbe, 
         className="graph2d-intersection-overlays" clipPath={`url(#${clipId})`} aria-hidden="true">
         {intersections.candidates.map((candidate) => {
           const point = graph2DWorldToScreen(display.viewport, size, candidate);
+          if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
           return <circle key={candidate.candidateId} data-intersection-id={candidate.candidateId}
             cx={point.x} cy={point.y} r={5} />;
         })}

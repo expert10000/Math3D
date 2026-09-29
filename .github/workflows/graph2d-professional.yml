@@ -1,0 +1,73 @@
+name: Graph2D Professional Software Acceptance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/**"
+      - "renderer/**"
+      - "apps/mobile/**"
+      - "apps/web/**"
+      - "tests/**"
+      - "scripts/graph2d-*.mjs"
+      - "scripts/mobile-graph-*.mjs"
+      - "package*.json"
+      - "playwright*.ts"
+      - ".github/workflows/graph2d-professional.yml"
+  pull_request:
+    paths:
+      - "packages/**"
+      - "renderer/**"
+      - "apps/mobile/**"
+      - "apps/web/**"
+      - "tests/**"
+      - "scripts/graph2d-*.mjs"
+      - "scripts/mobile-graph-*.mjs"
+      - "package*.json"
+      - "playwright*.ts"
+      - ".github/workflows/graph2d-professional.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: graph2d-professional-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  software-acceptance:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.19.0"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            renderer/package-lock.json
+      - name: Install root dependencies
+        run: npm ci
+      - name: Install renderer dependencies
+        run: npm --prefix renderer ci
+      - name: Install browser runtime
+        run: npx playwright install chromium
+      - name: Public release metadata
+        run: npm run verify:license-compliance
+      - name: Graph professional software freeze
+        run: npm run test:graph2d:professional:acceptance
+      - name: Android embedded Hermes bundle compilation (not physical signoff)
+        working-directory: apps/mobile
+        run: node ../../node_modules/expo/bin/cli export --platform android --output-dir ../../output/g40-native-bundle
+      - name: Upload software evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: graph2d-professional-software-evidence
+          path: |
+            test-results/
+            output/graph2d-parity/
+            output/g40-native-bundle/metadata.json
+          retention-days: 14

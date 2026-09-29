@@ -62,6 +62,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const [regression, setRegression] = useState<Graph2DRegression | null>(null), [regressionModel, setRegressionModel] = useState<Graph2DRegressionModel>("linear");
   const [parameterEpoch, setParameterEpoch] = useState(0);
   const parametersOpener = useRef<HTMLButtonElement | null>(null);
+  const scalesOpener = useRef<HTMLButtonElement | null>(null);
   const parameterKey = graph2DParameterSessionKey(document);
   const [parameterPreview, setParameterPreview] = useState<{ key: string; values: Record<string, number> } | null>(null);
   const parameterPreviewActive = parameterPreview?.key === parameterKey;
@@ -508,7 +509,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         onPointerCancel={() => { dragRef.current = null; setPreview(null); setHoverSelection(null); }}
         onPointerLeave={() => setHoverSelection(null)} onKeyDown={onKeyDown}>
         <div className="graph2d-toolbar" onPointerDown={(event) => event.stopPropagation()}>
-          <button type="button" onClick={() => { finishWheel(); cancelParameter(); setParametersOpen(false); setScalesOpen(!scalesOpen); }}>Scales</button>
+          <button type="button" ref={scalesOpener} onClick={() => { finishWheel(); cancelParameter(); setParametersOpen(false); setScalesOpen(!scalesOpen); }}>Scales</button>
           <button type="button" aria-pressed={viewport.continuation ?? false} onClick={() => { finishWheel(); cancelParameter(); onViewportCommit?.({ ...document.display.viewport, continuation: !document.display.viewport.continuation }); }}>Show continuation</button>
           <button type="button" data-testid="graph-gallery-open" onClick={event => { galleryOpener.current = event.currentTarget; finishWheel(); setScalesOpen(false); setParametersOpen(false); setParameterPreview(null); setGalleryError(null); setGalleryOpen(true); }}>Gallery</button>
           <button type="button" data-testid="graph2d-parameters-open" disabled={status !== "ready"} onClick={event => {
@@ -566,7 +567,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
           galleryFocusFrame.current = null; exportOpener.current?.focus();
         });
       }} />}
-      {scalesOpen && <Graph2DScalePanel key={document.identity.id} document={document} onCommit={v => onViewportCommit?.(v)} onClose={() => setScalesOpen(false)} />}
+      {scalesOpen && <Graph2DScalePanel key={document.identity.id} document={document} onCommit={v => onViewportCommit?.(v)} onClose={() => { setScalesOpen(false); scalesOpener.current?.focus(); }} />}
       {parametersOpen && <Graph2DParametersPanel key={`${parameterKey}:${parameterEpoch}`} document={document} settled={sampling.settled} samplingError={sampling.error}
         onPreview={values => { if (values) previewGraph2DParameterValues(document, values); setParameterPreview(values ? { key: parameterKey, values } : null); }}
         onCommit={action => { if (!onAuthoringCommit) throw new Error("Parameter authoring is unavailable."); onAuthoringCommit(action); setParameterPreview(null); }}

@@ -85,17 +85,26 @@ test("wheel zoom keeps its plot focal point fixed and suppresses native scrollin
   await page.getByTestId("main-viewer").evaluate(el => { (el as HTMLElement).style.borderWidth = "12px";
     const spacer = document.createElement("div"); spacer.style.cssText = "position:absolute;top:120%;height:100px;width:1px"; el.appendChild(spacer); });
   const box = (await plot.boundingBox())!, x = box.x + box.width * .3, y = box.y + box.height * .7;
-  const world = (viewport: { xMin: number; xMax: number; yMin: number; yMax: number; aspect: string }, width: number, height: number) => {
+  const world = (viewport: { xMin: number; xMax: number; yMin: number; yMax: number; aspect: string }, width: number, height: number, fx: number, fy: number) => {
     const unit = Math.max((viewport.xMax - viewport.xMin) / width, (viewport.yMax - viewport.yMin) / height);
     const sx = viewport.aspect === "equal" ? unit * width : viewport.xMax - viewport.xMin, sy = viewport.aspect === "equal" ? unit * height : viewport.yMax - viewport.yMin;
-    return { x: (viewport.xMin + viewport.xMax) / 2 - sx * .2, y: (viewport.yMin + viewport.yMax) / 2 - sy * .2 };
+    return { x: (viewport.xMin + viewport.xMax) / 2 + sx * (fx - .5), y: (viewport.yMin + viewport.yMax) / 2 + sy * (.5 - fy) };
   };
-  const original = world((await checkpoint(page)).display.viewport, box.width, box.height);
+  // Chromium dispatches integer mouse pixels; the SVG can scale its integer
+  // viewBox into fractional CSS pixels or a scrollbar-reduced host. Check the
+  // actual dispatched anchor in the actual rendered coordinate system.
+  await page.getByTestId("main-viewer").evaluate(el => el.addEventListener("mousemove", e => {
+    el.setAttribute("data-test-cursor-x", String((e as MouseEvent).clientX)); el.setAttribute("data-test-cursor-y", String((e as MouseEvent).clientY));
+  }, { once: true }));
   const scroll = await page.evaluate(() => ({ x: scrollX, y: scrollY, top: document.querySelector('[data-testid="main-viewer"]')!.scrollTop, scale: visualViewport!.scale }));
   await page.mouse.move(x, y);
+  const cursor = await page.getByTestId("main-viewer").evaluate(el => ({ x: Number(el.getAttribute("data-test-cursor-x")), y: Number(el.getAttribute("data-test-cursor-y")) }));
+  const dimensions = await plot.evaluate(el => ({ width: (el as SVGSVGElement).viewBox.baseVal.width, height: (el as SVGSVGElement).viewBox.baseVal.height }));
+  const original = world((await checkpoint(page)).display.viewport, dimensions.width, dimensions.height, (cursor.x - box.x) / box.width, (cursor.y - box.y) / box.height);
   for (let i = 0; i < 3; i++) { await page.mouse.wheel(0, -75); await expect(plot).toBeVisible(); }
   await expect(page.getByTestId("graph2d-update-status")).not.toBeVisible(); await save(page);
-  const afterBox = (await plot.boundingBox())!, after = world((await checkpoint(page)).display.viewport, afterBox.width, afterBox.height);
+  const afterBox = (await plot.boundingBox())!, afterDimensions = await plot.evaluate(el => ({ width: (el as SVGSVGElement).viewBox.baseVal.width, height: (el as SVGSVGElement).viewBox.baseVal.height }));
+  const after = world((await checkpoint(page)).display.viewport, afterDimensions.width, afterDimensions.height, (cursor.x - afterBox.x) / afterBox.width, (cursor.y - afterBox.y) / afterBox.height);
   expect(after.x).toBeCloseTo(original.x, 7); expect(after.y).toBeCloseTo(original.y, 7);
   expect(await page.evaluate(() => ({ x: scrollX, y: scrollY, top: document.querySelector('[data-testid="main-viewer"]')!.scrollTop, scale: visualViewport!.scale }))).toEqual(scroll);
   expect(await page.getByTestId("main-viewer").evaluate(el => {

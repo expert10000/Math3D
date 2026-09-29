@@ -28,6 +28,11 @@
     "../unit/mobileGraphRoundTrip.test.ts",
     "../../renderer/src/graph2d/graph2dPreset*.test.ts",
     "../unit/mobileGraphGallery.test.ts",
-    "../unit/mobileGraphPresetLaunch.test.ts"
+    "../unit/mobileGraphPresetLaunch.test.ts",
+    "../unit/mobileGraphScales.test.ts",
+    "../unit/mobileGraphRegression.test.ts",
+    "../../renderer/src/graph2d/graph2dScales.test.ts",
+    "../../renderer/src/graph2d/graph2dRegression.test.ts",
+    "../../renderer/src/graph2d/graph2dProfessional.test.ts"
   ]
 }

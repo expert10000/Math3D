@@ -60,7 +60,47 @@ test("G2D39 checked data fitting, residuals, stale models and offline uncertaint
   const html = await readFile(path, "utf8"); expect(html).toContain("95% prediction"); expect(html).toContain("row_1"); expect(html).toContain("graph2d.regression");
   const report = await context.newPage(), network: string[] = []; report.on("request", request => { if (request.url().startsWith("http")) network.push(request.url()); });
   await report.goto(pathToFileURL(path).href); await expect(report.getByRole("columnheader", { name: "Residual", exact: true })).toBeVisible();
+  await report.getByRole("columnheader", { name: "Residual", exact: true }).scrollIntoViewIfNeeded();
+  await report.emulateMedia({ media: "print" }); await expect(report.getByRole("columnheader", { name: "Residual", exact: true })).toBeVisible();
   await report.screenshot({ path: info.outputPath("regression-report.png") }); expect(network).toEqual([]); await report.close();
   await page.keyboard.press("Escape"); await panel.getByRole("button", { name: "Clear regression", exact: true }).click();
   await expect(page.getByTestId("graph2d-regression-overlay")).toHaveCount(0);
+});
+
+test("G2D40 keyboard scales focus, high contrast patterns and compact controls", async ({ page }, info) => {
+  await start(page); const opener = page.getByRole("button", { name: "Scales", exact: true });
+  await opener.focus(); await page.keyboard.press("Enter"); const panel = page.getByTestId("graph2d-scales");
+  await expect(panel.getByLabel("X scale", { exact: true })).toBeFocused();
+  await page.keyboard.press("Tab"); await expect(panel.getByLabel("Y scale", { exact: true })).toBeFocused();
+  await page.keyboard.press("Escape"); await expect(panel).not.toBeVisible(); await expect(opener).toBeFocused();
+  await page.getByTestId("main-viewer").focus(); for (let i = 0; i < 4; i++) await page.keyboard.press("-");
+  await page.getByRole("button", { name: "Show continuation", exact: true }).click();
+  await page.emulateMedia({ forcedColors: "active", reducedMotion: "reduce" });
+  const extension = page.locator("[data-graph2d-continuation]").first(); await expect(extension).toHaveAttribute("stroke-dasharray", "3 6");
+  expect(await extension.evaluate(e => getComputedStyle(e).strokeOpacity)).toBe("0.75");
+  await page.screenshot({ path: info.outputPath("professional-high-contrast.png") });
+  await page.setViewportSize({ width: 600, height: 900 }); await opener.click();
+  await expect(panel.getByLabel("X scale", { exact: true })).toBeFocused();
+  await page.keyboard.press("Escape"); await expect(opener).toBeFocused();
+  const viewer = (await page.getByTestId("main-viewer").boundingBox())!;
+  const workspace = (await page.getByTestId("graphs-workspace").boundingBox())!;
+  expect(viewer.width).toBeGreaterThanOrEqual(workspace.width - 2);
+  for (const button of await page.locator(".graph2d-toolbar button").all()) {
+    const box = (await button.boundingBox())!; expect(box.x).toBeGreaterThanOrEqual(viewer.x); expect(box.x + box.width).toBeLessThanOrEqual(viewer.x + viewer.width + 1);
+  }
+  await page.screenshot({ path: info.outputPath("professional-compact.png") });
+});
+
+test("G2D40 logarithmic display omits non-positive piecewise endpoints and selected probes", async ({ page }) => {
+  await start(page); await page.getByTestId("graph-gallery-open").click();
+  await page.getByLabel("Search graphs").fill("Endpoints");
+  await page.getByRole("button", { name: "Open Endpoints and missing data", exact: true }).click();
+  await page.getByLabel("Graph functions").getByRole("button", { name: "Select Jump", exact: true }).click();
+  await page.getByRole("button", { name: "Scales", exact: true }).click(); const panel = page.getByTestId("graph2d-scales");
+  await panel.getByLabel("X scale", { exact: true }).selectOption("log10"); await panel.getByLabel("Y scale", { exact: true }).selectOption("log10");
+  for (const [key, value] of Object.entries({ xMin: ".1", xMax: "10", yMin: ".1", yMax: "10" })) await panel.getByLabel(`Axis ${key}`, { exact: true }).fill(value);
+  await panel.getByRole("button", { name: "Apply scales and bounds", exact: true }).click();
+  await panel.getByRole("button", { name: "Close scales", exact: true }).click();
+  await expect.poll(() => page.getByTestId("graph2d-plot").innerHTML()).not.toMatch(/NaN|Infinity/);
+  await expect(page.locator("[data-graph2d-endpoint]")).toHaveCount(1);
 });

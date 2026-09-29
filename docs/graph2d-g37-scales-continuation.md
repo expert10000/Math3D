@@ -17,4 +17,4 @@ Optional viewport `xScale`, `yScale` and `continuation` fields require `graph2d.
 
 G2D37 checks: 228 desktop/shared unit tests (21 scale/continuation cases), 303 mobile model tests, root/native typechecks and production web build. Two browser locale/timezone workflows cover continuation, invalid bounds, saved scales, undo/redo and reopen; final combined professional acceptance is recorded in the G2D40 report. Local screenshots are in `test-results/graph2d-web/professional-*`. No APK installation or physical/iOS signoff is implied.
 
-Next: G2D39 reviewed regression and uncertainty, then G2D40 automated professional freeze with physical release gates kept open.
+Follow-on [G2D39 regression](graph2d-g39-regression-uncertainty.md) and [G2D40 automated professional freeze](graph2d-g40-professional-acceptance.md) are now implemented. Physical release/accessibility gates remain open; next product milestone is GGL11 personal collections.

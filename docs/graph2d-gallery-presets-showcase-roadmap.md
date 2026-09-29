@@ -1,6 +1,6 @@
 # Graph2D gallery, presets and showcase roadmap
 
-**Status:** GGL01–10 implemented: desktop/web gallery and native browse/launch, all-catalog model checks and a physical Android/Electron walkthrough accepted for GGL07–09. G2D36 publication export, [G2D38 shared parameters/animation](graph2d-g38-parameters-animation.md) and [GGL10 interactive copies](graph2d-gallery-ggl10-interactive-presets.md) are implemented. GGL11–18 remain planned; next overall is G2D37 scale policies. Frozen v1 catalog templates/previews are unchanged; ten opt-in content-v2 copies add controls. Full MOB-G13 and new native feature acceptance remain pending. See [desktop/web acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md) and [mobile acceptance](graph2d-gallery-ggl07-ggl09-acceptance.md).
+**Status:** GGL01–10 implemented: desktop/web gallery and native browse/launch, all-catalog model checks and a physical Android/Electron walkthrough accepted for GGL07–09. G2D36 publication, G2D38 parameters/animation, G2D37 scales/visual continuation and G2D39 regression are implemented. [G2D40 automated professional acceptance](graph2d-g40-professional-acceptance.md) is implemented; physical/screen-reader/signed-release signoff remains pending. Next product milestone is GGL11 personal collections; GGL11–18 remain planned. Frozen v1 catalog templates/previews are unchanged; ten opt-in content-v2 copies add controls. Full MOB-G13 and new native feature acceptance remain pending. See [desktop/web acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md) and [mobile acceptance](graph2d-gallery-ggl07-ggl09-acceptance.md).
 
 **Decision — 2026-09-28:** build a focused editable gallery now, after G2D35 and before G2D36. Deliver shared contracts/content and desktop/web first (GGL01–06), then mobile launch from the same catalog (GGL07–09). Continue the professional features afterward. Keep MOB-G13 physical acceptance open throughout.
 
@@ -20,7 +20,7 @@ An initial gallery does not depend on SVG/PNG export, logarithmic axes, statisti
 | Delivered | GGL07–09: mobile gallery, ordinary project creation and native acceptance | Reuse desktop-proven content without a second preset engine |
 | Delivered | G2D36: publication export | Supports personal scenes, teaching and reproducible captures |
 | Delivered | G2D38, followed by GGL10: shared parameters/animation and gallery integration | One parameter implementation serves authoring and ten opt-in interactive examples |
-| Next | G2D37, G2D39, G2D40 | Scale policies, reviewed statistics and professional acceptance |
+| Software delivered; release evidence pending | G2D37, G2D39, G2D40 | Shared scales/visual continuation, reviewed regression and automated professional freeze; no waiver of physical/accessibility gates |
 | Later | GGL11–18 | Personal collections, lessons, presentation, public viewing, home discovery and cross-module adapters |
 
 G2D identifiers stay unchanged; execution order explicitly brings G2D38 forward after G2D36 because interactive examples have higher immediate value than additional scales. GGL10 does not block G2D37. Detailed later dependencies are listed below. G13 device work can proceed when devices/artifacts are available; passing gallery software checks never freezes that gate.

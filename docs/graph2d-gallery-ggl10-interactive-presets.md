@@ -61,4 +61,4 @@ Other recommendations use 15 frames, all at nominal 6 FPS, with G2D38 backpressu
 
 Exact rebuilt native touch/slider/playback/background/save/share, iOS, native accessibility/rotation/performance and MOB-G13/G2D40 signoff remain pending. Previous gallery-device evidence is not new-feature acceptance.
 
-Next: **G2D37 — scale policies**. GGL11 personal collections is a later separately scoped gallery milestone.
+Follow-on G2D37 scales, G2D39 regression and [G2D40 automated professional acceptance](graph2d-g40-professional-acceptance.md) are now implemented. Physical/screen-reader release validation remains pending. Next product milestone: **GGL11 personal collections**.

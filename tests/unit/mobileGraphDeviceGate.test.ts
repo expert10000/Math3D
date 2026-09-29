@@ -48,4 +48,11 @@ describe("MOB-G13 physical Graph companion acceptance gate", () => {
     for (const evidence of [null, {}, { devices: "passed" }, { devices: [null] }])
       expect(evaluateGraphDeviceEvidence(evidence, expected, now).ok).toBe(false);
   });
+  it("requires new professional features on every physical device without waiving G13", () => {
+    for (const name of ["publication-offline-print", "scales-continuation-log", "parameters-animation-cancel", "regression-residuals-intervals"]) {
+      const evidence = complete(); evidence.devices[2]!.cases[name].status = "pending";
+      const report = evaluateGraphDeviceEvidence(evidence, expected, now);
+      expect(report.ok).toBe(false); expect(report.failures.join(" ")).toContain(name);
+    }
+  });
 });
