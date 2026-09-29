@@ -58,7 +58,7 @@ const nodes = () => {
   return [...xml.matchAll(/<node\b[^>]*>/g)].map(([tag]) => {
     const value = (name) => tag.match(new RegExp(`${name}="([^"]*)"`))?.[1] || "";
     const bounds = value("bounds").match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
-    return { text: value("text"), description: value("content-desc"), bounds: bounds ? bounds.slice(1).map(Number) : null };
+    return { text: value("text"), description: value("content-desc"), resourceId: value("resource-id"), className: value("class"), bounds: bounds ? bounds.slice(1).map(Number) : null };
   });
 };
 const findText = (text) => nodes().find((node) => (node.text === text || node.description === text) && node.bounds);
@@ -75,10 +75,10 @@ const tap = (text) => {
   const [x1, y1, x2, y2] = node.bounds;
   adb("shell", "input", "tap", String(Math.round((x1 + x2) / 2)), String(Math.round((y1 + y2) / 2)));
 };
-const tapVisibleInspectorControl = (text, contentLabel = "Object") => {
+const tapVisibleInspectorControl = (text, contentLabel = "Object", resourceId = "") => {
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const snapshot = nodes();
-    const node = snapshot.find(n => (n.text === text || n.description === text) && n.bounds);
+    const node = snapshot.find(n => (resourceId ? n.resourceId === resourceId : n.text === text || n.description === text) && n.bounds);
     const nav = snapshot.filter(n => n.text === "Explore" && n.bounds).sort((a, b) => b.bounds[1] - a.bounds[1])[0];
     const anchor = snapshot.find(n => n.text === contentLabel && n.bounds);
     if (!nav || !anchor) throw new Error("Expected content controls and bottom navigation.");
@@ -92,9 +92,10 @@ const tapVisibleInspectorControl = (text, contentLabel = "Object") => {
         String(Math.round((visibleTop + visibleBottom) / 2)));
       return;
     }
-    const x = Math.round((nav.bounds[0] + nav.bounds[2]) / 2);
-    const fromY = navTop - 45;
-    adb("shell", "input", "swipe", String(x), String(fromY), String(x), String(Math.max(contentTop + 12, fromY - 120)), "350");
+    const scroll = snapshot.find(n => n.className === "android.widget.ScrollView" && n.bounds?.[1] >= anchor.bounds[3]);
+    const x = Math.round(scroll ? (scroll.bounds[0] + scroll.bounds[2]) / 2 : (nav.bounds[0] + nav.bounds[2]) / 2);
+    const fromY = scroll ? scroll.bounds[3] - 30 : nav.bounds[1] - 85;
+    adb("shell", "input", "swipe", String(x), String(fromY), String(x), String(Math.max(contentTop + 12, fromY - 220)), "350");
   }
   throw new Error(`${text} inspector control could not be scrolled above bottom navigation.`);
 };
@@ -154,7 +155,7 @@ try {
     tap("Search examples");
     adb("shell", "input", "text", "Helicoid");
     adb("shell", "input", "keyevent", "4");
-    tapVisibleInspectorControl("Helicoid", "Examples");
+    tapVisibleInspectorControl("Helicoid", "Examples", "mobile-example-helicoid");
     expectText("Helicoid");
     adb("shell", "am", "force-stop", packageName);
     adb("shell", "am", "start", "-n", `${packageName}/com.math3d.mobile.MainActivity`);

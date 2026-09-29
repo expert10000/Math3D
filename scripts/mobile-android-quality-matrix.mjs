@@ -45,6 +45,7 @@ const readNodes = () => {
       label: value("text") || value("content-desc"),
       text: value("text"),
       description: value("content-desc"),
+      className: value("class"),
       bounds: bounds ? bounds.slice(1).map(Number) : null,
     };
   });
@@ -82,8 +83,10 @@ const tapVisibleInspectorControl = (label) => {
       adb("shell", "input", "tap", String(Math.round((node.bounds[0] + node.bounds[2]) / 2)), String(Math.round((top + bottom) / 2)));
       pause(350); return;
     }
-    const x = String(Math.round((nav.bounds[0] + nav.bounds[2]) / 2));
-    adb("shell", "input", "swipe", x, String(contentBottom - 25), x, String(Math.max(contentTop + 12, contentBottom - 145)), "350");
+    const scroll = nodes.find(n => n.className === "android.widget.ScrollView" && n.bounds?.[1] >= tab.bounds[3]);
+    const x = String(Math.round(scroll ? (scroll.bounds[0] + scroll.bounds[2]) / 2 : (nav.bounds[0] + nav.bounds[2]) / 2));
+    const fromY = scroll ? scroll.bounds[3] - 30 : nav.bounds[1] - 85;
+    adb("shell", "input", "swipe", x, String(fromY), x, String(Math.max(contentTop + 12, fromY - 220)), "350");
   }
   throw new Error(`Inspector control could not be scrolled into view: ${label}`);
 };
@@ -92,7 +95,8 @@ const launch = () => {
   adb("shell", "am", "force-stop", packageName);
   adb("shell", "am", "start", "-n", activity);
   expectNode("Workspace");
-  expectNode("Swipe up for tools");
+  const handle = readNodes().some(node => node.text === "Swipe up for tools") ? "Swipe up for tools" : "Expand inspector";
+  expectNode(handle);
 };
 
 const screenshot = (name) => {
@@ -122,7 +126,8 @@ const report = { ok: false, serial, layouts: [], lifecycle: [] };
 let networkDisabled = false;
 try {
   for (const profile of matrix.layouts) {
-    adb("shell", "wm", "size", `${profile.width}x${profile.height}`);
+    // wm size is in the unrotated frame; landscape rotation swaps logical dimensions.
+    adb("shell", "wm", "size", profile.orientation === "landscape" ? `${profile.height}x${profile.width}` : `${profile.width}x${profile.height}`);
     adb("shell", "wm", "density", "160");
     adb("shell", "settings", "put", "system", "font_scale", String(profile.fontScale));
     adb("shell", "cmd", "uimode", "night", profile.appearance === "dark" ? "yes" : "no");
