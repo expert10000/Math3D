@@ -16,7 +16,7 @@ import {
   graph2DParameterSessionKey, previewGraph2DParameterValues,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent, PointerEvent, WheelEvent } from "react";
+import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
 import type { WorkspaceDockLayout } from "../workspaceDocks";
 import { Graph2DPlot, type Graph2DPlotSeries } from "./Graph2DPlot";
 import { Graph2DAuthoringPanel } from "./Graph2DAuthoringPanel";
@@ -76,6 +76,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const dragRef = useRef<{ pointerId: number; x: number; y: number; viewport: Graph2DViewport; moved: boolean } | null>(null);
   const wheelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hoverFrameRef = useRef<number | null>(null);
+  const wheelHandlerRef = useRef<(event: globalThis.WheelEvent) => void>(() => {});
   const [hoverSelection, setHoverSelection] = useState<Graph2DSelection | null>(null);
   const [areaDraft, setAreaDraft] = useState({ min: "-1", max: "1", mode: "signed" as Graph2DIntegralMode });
   const [areaRequest, setAreaRequest] = useState<{ objectId: string; min: number; max: number;
@@ -96,6 +97,14 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   useEffect(() => () => { if (wheelTimerRef.current) clearTimeout(wheelTimerRef.current);
     if (galleryFocusFrame.current !== null) cancelAnimationFrame(galleryFocusFrame.current);
     if (hoverFrameRef.current !== null) cancelAnimationFrame(hoverFrameRef.current); }, []);
+  useEffect(() => {
+    const element = viewerRef.current; if (!element) return;
+    const wheel = (event: globalThis.WheelEvent) => wheelHandlerRef.current(event);
+    // React's delegated wheel listener is passive: preventDefault there cannot
+    // stop native scrolling/browser zoom, which moves the apparent focal point.
+    element.addEventListener("wheel", wheel, { passive: false });
+    return () => element.removeEventListener("wheel", wheel);
+  }, []);
   useEffect(() => {
     const element = viewerRef.current;
     if (!element) return;
@@ -123,9 +132,10 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const series = sampling.series;
   const pick = (x: number, y: number, previous?: Graph2DSelection) => sampling.ready && !parameterPreviewActive ? pickGraph2DProbe({ document, series,
     viewport, size, screen: { x, y }, previous }).selection : document.selection;
-  const localPoint = (event: PointerEvent<HTMLDivElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  const localPoint = (event: { clientX: number; clientY: number }) => {
+    const rect = (viewerRef.current!.querySelector("svg") ?? viewerRef.current!).getBoundingClientRect();
+    // Use the actual plot rectangle, not its bordered/scrolled container.
+    return { x: (event.clientX - rect.left) * size.width / rect.width, y: (event.clientY - rect.top) * size.height / rect.height };
   };
   const fitSeries = (items: readonly Graph2DPlotSeries[]) => {
     if (!sampling.ready || parameterPreviewActive) return;
@@ -175,13 +185,14 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
     else if (!drag.moved) { const point = localPoint(event); onSelectionCommit?.(pick(point.x, point.y, document.selection)); }
     setPreview(null);
   };
-  const onWheel = (event: WheelEvent<HTMLDivElement>) => {
+  wheelHandlerRef.current = (event: globalThis.WheelEvent) => {
+    if (galleryOpen || exportOpen || (event.target as Element).closest(".graph2d-toolbar,.graph2d-compact-panels,.graph2d-viewer-message")) return;
     cancelParameter();
     event.preventDefault();
-    const rect = event.currentTarget.getBoundingClientRect();
-    const anchor = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    const anchor = localPoint(event);
+    const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? size.height : 1);
     const next = zoomGraph2DViewport(previewRef.current ?? document.display.viewport, size, anchor,
-      Math.exp(-event.deltaY * 0.0015));
+      Math.exp(-Math.max(-1000, Math.min(1000, delta)) * 0.0015));
     setPreview(next);
     if (wheelTimerRef.current) clearTimeout(wheelTimerRef.current);
     wheelTimerRef.current = setTimeout(finishWheel, 180);
@@ -478,9 +489,9 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
       <div data-testid="main-viewer" className="graph2d-viewer" aria-label="Graph scene" ref={viewerRef}
         tabIndex={0} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
         onPointerCancel={() => { dragRef.current = null; setPreview(null); setHoverSelection(null); }}
-        onPointerLeave={() => setHoverSelection(null)} onWheel={onWheel} onKeyDown={onKeyDown}>
+        onPointerLeave={() => setHoverSelection(null)} onKeyDown={onKeyDown}>
         <div className="graph2d-toolbar" onPointerDown={(event) => event.stopPropagation()}>
-          <button type="button" data-testid="graph-gallery-open" onClick={event => { galleryOpener.current = event.currentTarget; finishWheel(); setGalleryError(null); setGalleryOpen(true); }}>Gallery</button>
+          <button type="button" data-testid="graph-gallery-open" onClick={event => { galleryOpener.current = event.currentTarget; finishWheel(); setParametersOpen(false); setParameterPreview(null); setGalleryError(null); setGalleryOpen(true); }}>Gallery</button>
           <button type="button" data-testid="graph2d-parameters-open" disabled={status !== "ready"} onClick={event => {
             parametersOpener.current = event.currentTarget; finishWheel(); setParametersOpen(value => !value); setParameterPreview(null);
             if (!parametersOpen) galleryFocusFrame.current = requestAnimationFrame(() => { galleryFocusFrame.current = null;
@@ -521,7 +532,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
       {showRight && <aside className="graph2d-panel graph2d-right" aria-label="Graph inspector">
         <h2>Inspector</h2>{inspector}
       </aside>}
-      {galleryOpen && <GraphGalleryDialog activeId={document.identity.id} error={galleryError} onClose={closeGallery}
+      {galleryOpen && <GraphGalleryDialog activeId={document.identity.id} activeTitle={document.metadata.title} error={galleryError} onClose={closeGallery}
         onOpen={preset => { try { if (!onOpenPreset) throw new Error("Project storage is unavailable."); onOpenPreset(preset); setGalleryOpen(false); }
           catch (error) { setGalleryError((error as Error).message); } }}
         onResume={id => { try { if (!onResumeCheckpoint) throw new Error("Project storage is unavailable."); onResumeCheckpoint(id); setGalleryOpen(false); }

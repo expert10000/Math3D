@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import { AccessibilityInfo, findNodeHandle, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
-import { GRAPH2D_PRESET_CATEGORIES, graph2DPresetPreviewKey, type Graph2DPreset, type Graph2DPresetCategory } from "@math3d/core";
+import { GRAPH2D_PRESET_CATEGORIES, getGraph2DInteractivePreset, graph2DPresetPreviewKey, type Graph2DPreset, type Graph2DPresetCategory } from "@math3d/core";
 import manifest from "../../../packages/core/fixtures/graph2d/gallery-previews.json";
 import { mobileGraphGalleryAssets } from "./data/mobileGraphGalleryAssets";
 import { mobileGraphGalleryItems, mobileGraphGalleryLayout } from "./models/mobileGraphGallery";
@@ -32,6 +32,7 @@ export function MobileGraphGallery({ onClose, onOpen, busy = false, message = ""
       ? <Image source={mobileGraphGalleryAssets[preset.id]} style={[s.image, { width, height: width * 9 / 16 }]} resizeMode="contain" accessibilityLabel={`${preset.title} graph preview`} />
       : <Text>Preview unavailable. The editable scene remains available.</Text>;
   };
+  const interactive = selected ? getGraph2DInteractivePreset(selected) : undefined;
   return <Modal visible animationType="slide" presentationStyle="fullScreen" statusBarTranslucent navigationBarTranslucent onRequestClose={() => {
     if (busy) return;
     if (Keyboard.isVisible()) { Keyboard.dismiss(); return; }
@@ -60,11 +61,15 @@ export function MobileGraphGallery({ onClose, onOpen, busy = false, message = ""
           <Text style={s.description}>{selected.description}</Text>{selected.learningGoals.map(goal => <Text key={goal} style={s.description}>• {goal}</Text>)}
           <Text style={s.meta}>Approximate sampled preview · {selected.attribution.author} · {selected.attribution.license}</Text>
           {onOpen && button(busy ? "Opening graph…" : `Open ${selected.title}`, () => { void onOpen(selected); })}
+          {interactive && <View style={s.detail} accessibilityLabel="Interactive copy controls"><Text style={s.label}>Interactive copy · sliders and opt-in animation</Text>
+            <Text style={s.description}>{interactive.description}</Text><Text style={s.meta}>Preview shows default values. Requires {interactive.requiredCapabilities.join(" · ")}. Open, then choose Parameters. No autoplay.</Text>
+            {onOpen && button(`Open interactive ${selected.title}`, () => { void onOpen(interactive); })}</View>}
         </View> : <>
           <Text accessibilityLiveRegion="polite" style={s.meta}>{items.length} scenes · {featured ? "hand-picked starting points" : "editable examples"}</Text>
           <View style={s.grid}>{items.map(preset => <View key={preset.id} style={[s.card, { width: layout.cardWidth }]} testID={`mobile-graph-gallery-card-${preset.id}`}>
             {preview(preset)}<View style={s.body}><Text style={s.meta}>{preset.category} · {preset.difficulty}</Text>
               <Text accessibilityRole="header" style={s.title}>{preset.title}</Text><Text style={s.description}>{preset.description}</Text>
+              {getGraph2DInteractivePreset(preset) && <Text style={s.meta}>Interactive copy available in Preview</Text>}
               <View style={s.actions}>{onOpen && button(`Open ${preset.title}`, () => { void onOpen(preset); })}
                 {button(`Preview ${preset.title}`, () => setSelected(preset))}</View></View>
           </View>)}</View>{!items.length && <Text style={s.description}>No scenes match these filters. Try another search or category.</Text>}

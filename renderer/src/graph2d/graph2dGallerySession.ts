@@ -9,6 +9,48 @@ const WORKSPACE_KEY = "math3d.mixed-workspace.v1", HANDOFF_KEY = "math3d.graph2d
 const prefix = "math3d.mixed-workspace.v1.gallery-checkpoint.";
 type Storage = Pick<globalThis.Storage, "getItem" | "setItem" | "removeItem">;
 export type GraphGalleryCheckpoint = Readonly<{ id: string; title: string }>;
+type Origin = Readonly<{ presetId: string; version: number; digest: string }>;
+const originKey = "math3d.graph2d.gallery-origin";
+const readOrigin = (value: unknown): Origin | null => {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  if (Object.keys(v).sort().join("|") !== "digest|presetId|version" ||
+    typeof v.presetId !== "string" || !/^[a-z][a-z0-9-]{0,79}$/.test(v.presetId) ||
+    !Number.isSafeInteger(v.version) || Number(v.version) < 1 || typeof v.digest !== "string" || !/^sha256:[0-9a-f]{64}$/.test(v.digest)) return null;
+  return v as Origin;
+};
+const storedOrigin = (storage: Storage): (Origin & { documentId: string }) | null => {
+  try {
+    const value = JSON.parse(storage.getItem(originKey) ?? "null");
+    if (!value || Object.keys(value).sort().join("|") !== "digest|documentId|presetId|version" ||
+      typeof value.documentId !== "string" || !value.documentId.startsWith("math3d:graph2d:") || value.documentId.length >= 200) return null;
+    const { documentId, ...raw } = value, origin = readOrigin(raw); return origin ? { ...origin, documentId } : null;
+  } catch { return null; }
+};
+export type GraphGalleryPresetCopy = GraphGalleryCheckpoint & { presetId: string; version: number; active: boolean };
+/** Host-local discovery only; no source inference or portable provenance extension. */
+export const listGraphGalleryPresetCopies = (storage: Storage, activeId: string, activeTitle: string): GraphGalleryPresetCopy[] => {
+  const copies: GraphGalleryPresetCopy[] = [], active = storedOrigin(storage);
+  if (active?.documentId === activeId) copies.push({ id: activeId, title: activeTitle, presetId: active.presetId, version: active.version, active: true });
+  else if (active) {
+    // After an app restart the in-memory graph begins empty; the last durable
+    // gallery workspace is still an edited copy, not a request for fresh defaults.
+    try {
+      const raw = storage.getItem(WORKSPACE_KEY), saved = raw ? graph(parseMixedWorkspaceDocument(raw)) : null;
+      if (saved?.identity.id === active.documentId) copies.push({ id: active.documentId, title: saved.metadata.title,
+        presetId: active.presetId, version: active.version, active: false });
+    } catch { /* Explicit reopen validation reports corrupt saved bytes. */ }
+  }
+  for (const checkpoint of listGraphGalleryCheckpoints(storage)) {
+    if (checkpoint.id === activeId || copies.some(copy => copy.id === checkpoint.id)) continue;
+    try {
+      const value = JSON.parse(storage.getItem(prefix + checkpoint.id) ?? "null"), origin = readOrigin(value?.origin);
+      if (value?.format === "math3d.graph2d-gallery-checkpoint" && value.version === 2 && origin)
+        copies.push({ ...checkpoint, presetId: origin.presetId, version: origin.version, active: false });
+    } catch { /* A corrupt copy remains an explicit Resume error, never a fresh overwrite. */ }
+  }
+  return copies;
+};
 export const freshGraphGalleryLaunchToken = () => crypto.randomUUID?.() ??
   Array.from(crypto.getRandomValues(new Uint32Array(4)),value=>value.toString(16).padStart(8,"0")).join("-");
 const graph = (workspace: MixedWorkspaceDocument) => {
@@ -51,7 +93,9 @@ const activate = (capture: () => MixedWorkspaceDocument, incoming: MixedWorkspac
   verifyMixedWorkspaceReplay(incoming);
   const index=listGraphGalleryCheckpoints(storage).filter(entry=>entry.id!==before.identity.id && entry.id!==next.identity.id);
   if(index.length>=32)throw new Error("32 Graph checkpoints are preserved. Export saved work before adding another; current work remains open.");
-  const checkpoint={format:"math3d.graph2d-gallery-checkpoint",version:1,workspace:current.workspace,baseRevision:current.baseRevision};
+  const oldOrigin=storedOrigin(storage);
+  const preservedOrigin=oldOrigin?.documentId===before.identity.id ? {presetId:oldOrigin.presetId,version:oldOrigin.version,digest:oldOrigin.digest} : null;
+  const checkpoint={format:"math3d.graph2d-gallery-checkpoint",version:2,workspace:current.workspace,baseRevision:current.baseRevision,origin:preservedOrigin};
   const manifest=createWorkspaceProjectHandoff(incoming,{
     producer:{platform:typeof window!=="undefined" && "appRuntime" in window ? "desktop":"browser",name:"Math3D",version:"1.5.0"},baseRevision});
   const writes: [string,string][]=[
@@ -59,9 +103,9 @@ const activate = (capture: () => MixedWorkspaceDocument, incoming: MixedWorkspac
     [GRAPH_GALLERY_CHECKPOINT_INDEX,JSON.stringify([{id:before.identity.id,title:before.metadata.title},...index])],
     ...sidecars.map(s=>[`math3d.graph2d.table.${s.id}`,canonicalJsonStringify(s.rows)] as [string,string]),
     [WORKSPACE_KEY,serializeMixedWorkspaceDocument(incoming)], [HANDOFF_KEY,serializeWorkspaceProjectHandoff(manifest)],
+    [originKey,JSON.stringify(origin ? {documentId:next.identity.id,...origin} : null)],
   ];
   if(origin) {
-    writes.push(["math3d.graph2d.gallery-origin",JSON.stringify({documentId:next.identity.id,...origin})]);
     const preferences=recordGraphGalleryRecent(parseGraphGalleryPreferences(storage.getItem(GRAPH_GALLERY_PREFERENCES_KEY)),origin.presetId);
     writes.push([GRAPH_GALLERY_PREFERENCES_KEY,JSON.stringify(preferences)]);
   }
@@ -74,12 +118,21 @@ export const launchGraphGalleryPreset = (capture: () => MixedWorkspaceDocument, 
   return activate(capture,workspace,null,storage,launch.sidecars,launch.origin);
 };
 export const resumeGraphGalleryCheckpoint = (capture: () => MixedWorkspaceDocument, id: string, storage: Storage) => {
-  if(!listGraphGalleryCheckpoints(storage).some(entry=>entry.id===id))throw new Error("Graph checkpoint is unavailable.");
+  if(!listGraphGalleryCheckpoints(storage).some(entry=>entry.id===id)) {
+    const origin=storedOrigin(storage),raw=storage.getItem(WORKSPACE_KEY);
+    if(origin?.documentId!==id||!raw)throw new Error("Graph checkpoint is unavailable.");
+    const workspace=parseMixedWorkspaceDocument(raw);
+    if(graph(workspace).identity.id!==id)throw new Error("Graph checkpoint identity mismatch.");
+    const handoff=storage.getItem(HANDOFF_KEY),manifest=handoff?parseWorkspaceProjectHandoff(handoff):null;
+    return activate(capture,workspace,manifest?.projectId===id?manifest.baseRevision:null,storage,[],
+      {presetId:origin.presetId,version:origin.version,digest:origin.digest});
+  }
   const raw=storage.getItem(prefix+id);if(!raw)throw new Error("Graph checkpoint is unavailable.");
   const value=JSON.parse(raw);
-  if(!value || Object.keys(value).sort().join("|")!=="baseRevision|format|version|workspace" ||
-    value.format!=="math3d.graph2d-gallery-checkpoint"||value.version!==1)throw new Error("Invalid Graph checkpoint.");
+  if(!value || Object.keys(value).sort().join("|")!==(value.version===2?"baseRevision|format|origin|version|workspace":"baseRevision|format|version|workspace") ||
+    value.format!=="math3d.graph2d-gallery-checkpoint"||![1,2].includes(value.version) ||
+    value.version===2 && value.origin!==null && !readOrigin(value.origin))throw new Error("Invalid Graph checkpoint.");
   const workspace=parseMixedWorkspaceDocument(JSON.stringify(value.workspace));
   if(graph(workspace).identity.id!==id)throw new Error("Graph checkpoint identity mismatch.");
-  return activate(capture,workspace,value.baseRevision,storage);
+  return activate(capture,workspace,value.baseRevision,storage,[],value.version===2 ? readOrigin(value.origin) ?? undefined : undefined);
 };

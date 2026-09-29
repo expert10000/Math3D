@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createGraph2DAnimationPlan, graph2DAnimationFrame, Graph2DAnimationPlayer, graph2DParameterDraftFromFields, graph2DParameterFields,
-  graph2DParameterNumber, graph2DPublicationTableAllowance, quantizeGraph2DParameterValue, type Graph2DDocument, type Graph2DParameterAction,
+  graph2DParameterNumber, getGraph2DInteractivePresetGuidance, graph2DPublicationTableAllowance, quantizeGraph2DParameterValue, type Graph2DDocument, type Graph2DParameterAction,
   type Graph2DAnimationPlan, type Graph2DParameterFields, type Graph2DPublicationArtifact } from "@math3d/core";
 import { pointTableStore } from "./pointTableStore";
 
@@ -11,14 +11,18 @@ export function Graph2DParametersPanel({ document, onPreview, onCommit, settled,
   const [edit, setEdit] = useState<{ name?: string; fields: Graph2DParameterFields } | null>(null);
   const [preview, setPreview] = useState<{ name: string; text: string; value?: number } | null>(null);
   const configured = document.source.variables.filter(p => p.control);
-  const [animation, setAnimation] = useState({ parameter: configured[0]?.name ?? "", from: String(configured[0]?.control?.min ?? -5), to: String(configured[0]?.control?.max ?? 5), frames: "21", fps: "10" });
+  const guidance = getGraph2DInteractivePresetGuidance(document);
+  const recommendedAnimation = () => ({ parameter: guidance?.animation.parameter ?? configured[0]?.name ?? "",
+    from: String(guidance?.animation.from ?? configured[0]?.control?.min ?? -5), to: String(guidance?.animation.to ?? configured[0]?.control?.max ?? 5),
+    frames: String(guidance?.animation.frames ?? 21), fps: String(guidance?.animation.fps ?? 10) });
+  const [animation, setAnimation] = useState(recommendedAnimation);
   const [index, setIndex] = useState<number | null>(null), [running, setRunning] = useState(false), [message, setMessage] = useState("");
   const [outputs, setOutputs] = useState<readonly Graph2DPublicationArtifact[]>([]), [exporting, setExporting] = useState(false);
   const player = useRef(new Graph2DAnimationPlayer(setTimeout, handle => clearTimeout(handle as ReturnType<typeof setTimeout>)));
   const worker = useRef<Worker | null>(null), deadline = useRef<ReturnType<typeof setTimeout> | null>(null), generation = useRef(0);
   const stop = () => { player.current.stop(); setRunning(false); };
   const cancelExport = () => { generation.current++; worker.current?.terminate(); worker.current = null; if (deadline.current) clearTimeout(deadline.current); deadline.current = null; setExporting(false); };
-  useLayoutEffect(() => { const visibility = () => { if (globalThis.document.hidden) { stop(); cancelExport(); } };
+  useLayoutEffect(() => { const visibility = () => { if (globalThis.document.hidden) { stop(); cancelExport(); setPreview(null); setIndex(null); onPreview(null); } };
     globalThis.document.addEventListener("visibilitychange", visibility);
     return () => { player.current.stop(); generation.current++; worker.current?.terminate(); if (deadline.current) clearTimeout(deadline.current); globalThis.document.removeEventListener("visibilitychange", visibility); };
   }, []);
@@ -58,9 +62,13 @@ export function Graph2DParametersPanel({ document, onPreview, onCommit, settled,
     onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }}>
     <header><h2>Parameters</h2><button data-testid="graph2d-parameters-close" onClick={onClose}>Close parameters</button></header>
     <p>Sliders and animation are previews. Apply commits one value; Cancel restores the saved source. Units are labels, not conversions.</p>
+    {guidance && <section aria-label="Interactive recipe guidance"><strong>Matches {guidance.title}</strong><p>{guidance.description}</p>
+      <small>Suggestions are matched to the current recipe, not stored origin. Editing its expressions, domains or controls removes these hints.</small></section>}
     {!configured.length && <p>Configure an existing named variable or add a parameter, then use its name in a function (for example a*x).</p>}
     {document.source.variables.map(p => <section key={p.name} aria-label={`Parameter ${p.name}`}>
       <strong>{p.name} = {p.value} {p.control?.unit}</strong>
+      {guidance?.parameters.filter(hint => hint.name === p.name).map(hint => <div key={hint.name}><p>{hint.hint} Default {hint.defaultValue}.</p>
+        <button disabled={running || exporting} onClick={() => scrub(p.name, String(hint.defaultValue))}>Preview default {p.name}</button></div>)}
       {p.control && <><label>{p.name} slider<input type="range" min={p.control.min} max={p.control.max} step="any" disabled={running || exporting}
         value={preview?.name === p.name && preview.value !== undefined ? preview.value : p.value}
         aria-valuetext={`${preview?.name === p.name && preview.value !== undefined ? preview.value : p.value} ${p.control.unit}`}
@@ -83,6 +91,7 @@ export function Graph2DParametersPanel({ document, onPreview, onCommit, settled,
       <button>Save parameter</button><button type="button" onClick={() => setEdit(null)}>Cancel configuration</button>
     </form>}
     <section aria-label="Deterministic animation"><h3>Deterministic animation</h3>
+      {guidance && <button disabled={exporting} onClick={() => { stop(); setPreview(null); setIndex(null); onPreview(null); setAnimation(recommendedAnimation()); }}>Reset recommended animation</button>}
       <label>Animated parameter<select value={animation.parameter} disabled={exporting} onChange={e => { const p = configured.find(p => p.name === e.target.value)!;
         setAnimation({ ...animation, parameter: p.name, from: String(p.control!.min), to: String(p.control!.max) }); }}>
         {!configured.length && <option value="">Configure a parameter first</option>}{configured.map(p => <option key={p.name}>{p.name}</option>)}</select></label>

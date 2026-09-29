@@ -1,6 +1,6 @@
 # MATH3D Graph2D — Desktop and Mobile Roadmap
 
-**Status:** desktop/web baseline through G2D32, mobile MOB-G01–12 and automated G2D33–35 implemented; MOB-G13 physical release validation remains pending, with partial Android USB evidence. GGL01–06 desktop/web gallery is implemented and accepted. GGL07–09 native browsing/launch, all-catalog model parity and the physical Android/Electron walkthrough are accepted; iOS/tablet and full G13 evidence remain pending. G2D36 publication export and G2D38 parameters/sliders/deterministic animation are implemented with automated desktop/web/shared-native checks; physical native acceptance remains pending. Next: GGL10 interactive preset integration, then G2D37 scale policies.
+**Status:** desktop/web baseline through G2D32, mobile MOB-G01–12 and automated G2D33–35 implemented; MOB-G13 physical release validation remains pending, with partial Android USB evidence. GGL01–06 desktop/web gallery is implemented and accepted. GGL07–09 native browsing/launch, all-catalog model parity and the physical Android/Electron walkthrough are accepted; iOS/tablet and full G13 evidence remain pending. G2D36 publication export, G2D38 parameters/sliders/deterministic animation and GGL10 interactive preset integration are implemented with automated desktop/web/shared-native checks; physical new-native-feature acceptance remains pending. Next: G2D37 scale policies.
 
 **Priority:** P1 after the active mobile project-transfer sequence
 
@@ -286,7 +286,7 @@ Mobile starts only after G2D30–G2D32 are green. The first mobile slice is expl
 
 ### Gallery insertion — after G2D35, before Phase I
 
-Detailed contracts, content and later GGL10–18 follow-ons live in the [gallery roadmap](graph2d-gallery-presets-showcase-roadmap.md). Delivered rows are marked explicitly; other rows remain planned. Desktop/web acceptance precedes mobile delivery; physical checks remain separately reported.
+Detailed contracts, content and later GGL11–18 follow-ons live in the [gallery roadmap](graph2d-gallery-presets-showcase-roadmap.md). Delivered rows are marked explicitly; other rows remain planned. Desktop/web acceptance precedes mobile delivery; physical checks remain separately reported.
 
 | ID | Planned commit | Scope and acceptance evidence |
 | --- | --- | --- |
@@ -302,7 +302,9 @@ Detailed contracts, content and later GGL10–18 follow-ons live in the [gallery
 
 ### Phase I — Post-v1 professional extensions
 
-The preceding gallery insertion comes before these professional extensions. Their identifiers remain stable; revised execution order is **G2D36 → G2D38 → G2D37 → G2D39 → G2D40**, with GGL10 integrating the shared controls after G2D38. These extensions and the gallery are not substitutes for the physical v1 round-trip gate.
+GGL10 is implemented: ten opt-in interactive v2 copies, shared controls/recommended animation/default resets and capability preview, plus desktop edited-copy resume and actual-plot cursor-anchored wheel handling. Frozen v1 source/previews are unchanged. 207 desktop/shared and 301 mobile tests, 26 Electron and 22 browser cases; native bundle builds. See [GGL10 evidence](graph2d-gallery-ggl10-interactive-presets.md).
+
+The preceding gallery insertion comes before these professional extensions. Their identifiers remain stable; revised execution order is **G2D36 → G2D38 → GGL10 → G2D37 → G2D39 → G2D40**. These extensions and the gallery are not substitutes for the physical v1 round-trip gate.
 
 | ID | Planned commit | Scope and acceptance evidence |
 | --- | --- | --- |

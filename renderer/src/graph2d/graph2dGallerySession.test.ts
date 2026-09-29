@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createGraph2DWorkspaceProject, createMixedWorkspaceDocument, createWorkspaceProjectHandoff, getGraph2DPresetCatalog,
   instantiateGraph2DPreset, serializeWorkspaceProjectHandoff, parseWorkspaceProjectHandoff, promoteGraph2DToCurve,
   analyzeGraph2DDerivative, type Graph2DDocument } from "@math3d/core";
-import { launchGraphGalleryPreset, resumeGraphGalleryCheckpoint, listGraphGalleryCheckpoints } from "./graph2dGallerySession";
+import { launchGraphGalleryPreset, resumeGraphGalleryCheckpoint, listGraphGalleryCheckpoints, listGraphGalleryPresetCopies } from "./graph2dGallerySession";
 
 const storage = () => {
   const values = new Map<string,string>(); let failKey: string|null=null;
@@ -17,6 +17,31 @@ const scene = () => {
   return {workspace,doc};
 };
 describe("gallery checkpoint launch transaction",()=>{
+  it("discovers active/preserved preset copies without mutation and restores their launch association",()=>{
+    const s=storage(),old=scene(),preset=getGraph2DPresetCatalog().get("line-comparison")!;
+    const first=launchGraphGalleryPreset(()=>old.workspace,preset,"remember-one",s),id=first.entries[0]!.expected.id;
+    const before=[...s.values];
+    expect(listGraphGalleryPresetCopies(s,id,"Edited slope")).toEqual([{id,title:"Edited slope",presetId:preset.id,version:1,active:true}]);
+    expect([...s.values]).toEqual(before);
+    const second=launchGraphGalleryPreset(()=>first,getGraph2DPresetCatalog().get("lissajous")!,"remember-two",s);
+    expect(listGraphGalleryPresetCopies(s,second.entries[0]!.expected.id,"Lissajous loops").find(c=>c.id===id)).toMatchObject({presetId:preset.id,version:1,active:false});
+    const restored=resumeGraphGalleryCheckpoint(()=>second,id,s);
+    expect(restored.entries).toEqual(first.entries);
+    expect(listGraphGalleryPresetCopies(s,id,"Edited slope")[0]).toMatchObject({id,presetId:preset.id,active:true});
+    // Original v1 checkpoints remain readable; unknown origin is not guessed.
+    const oldId=old.doc.identity.id,key=`math3d.mixed-workspace.v1.gallery-checkpoint.${oldId}`;
+    const value=JSON.parse(s.getItem(key)!);delete value.origin;value.version=1;s.setItem(key,JSON.stringify(value));
+    const legacy=resumeGraphGalleryCheckpoint(()=>restored,oldId,s);expect(legacy.entries).toEqual(old.workspace.entries);
+    expect(listGraphGalleryPresetCopies(s,oldId,"Legacy").some(c=>c.active)).toBe(false);
+  });
+  it("resumes the last durable gallery copy after restart instead of treating it as another fresh launch",()=>{
+    const s=storage(),old=scene(),preset=getGraph2DPresetCatalog().get("line-comparison")!;
+    const first=launchGraphGalleryPreset(()=>old.workspace,preset,"restart",s),id=first.entries[0]!.expected.id;
+    expect(listGraphGalleryPresetCopies(s,"math3d:graph2d:new-session","Empty")[0]).toMatchObject({id,presetId:preset.id,active:false});
+    const restored=resumeGraphGalleryCheckpoint(()=>old.workspace,id,s);
+    expect(restored.entries).toEqual(first.entries);
+    expect(listGraphGalleryPresetCopies(s,id,preset.title)[0]).toMatchObject({id,active:true});
+  });
   it("preserves imported companions/results/ancestry and clears ancestry for a fresh preset",()=>{
     const s=storage(),old=scene(),manifest=createWorkspaceProjectHandoff(old.workspace,{producer:{platform:"desktop",name:"Math3D",version:"1"}});
     s.setItem("math3d.graph2d-handoff.v2",serializeWorkspaceProjectHandoff({...manifest,baseRevision:manifest.projectRevision}));

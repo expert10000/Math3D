@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppState, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { createGraph2DAnimationPlan, graph2DAnimationFrame, Graph2DAnimationPlayer, Graph2DAnimationExportBuilder,
-  graph2DParameterDraftFromFields, graph2DParameterFields, graph2DParameterNumber, graph2DPublicationTableAllowance, quantizeGraph2DParameterValue,
+  graph2DParameterDraftFromFields, graph2DParameterFields, graph2DParameterNumber, getGraph2DInteractivePresetGuidance, graph2DPublicationTableAllowance, quantizeGraph2DParameterValue,
   type Graph2DDocument, type Graph2DParameterAction, type Graph2DParameterFields, type Graph2DParameterControl } from "@math3d/core";
 import { mobileGraphPointTables } from "./services/mobileGraphPointTables";
 import { saveMobileGraphPublication, shareMobileGraphPublication } from "./services/mobileGraphPublicationService";
@@ -25,9 +25,13 @@ export function MobileGraphParametersPanel({ document, onPreview, onCommit, sett
   settled: boolean; samplingError?: string;
 }) {
   const configured = document.source.variables.filter(p => p.control);
+  const guidance = getGraph2DInteractivePresetGuidance(document);
+  const recommendedAnimation = () => ({ parameter: guidance?.animation.parameter ?? configured[0]?.name ?? "",
+    from: String(guidance?.animation.from ?? configured[0]?.control?.min ?? -5), to: String(guidance?.animation.to ?? configured[0]?.control?.max ?? 5),
+    frames: String(guidance?.animation.frames ?? 21), fps: String(guidance?.animation.fps ?? 10) });
   const [edit, setEdit] = useState<{ name?: string; fields: Graph2DParameterFields } | null>(null);
   const [preview, setPreview] = useState<{ name: string; text: string; value?: number } | null>(null);
-  const [animation, setAnimation] = useState({ parameter: configured[0]?.name ?? "", from: String(configured[0]?.control?.min ?? -5), to: String(configured[0]?.control?.max ?? 5), frames: "21", fps: "10" });
+  const [animation, setAnimation] = useState(recommendedAnimation);
   const [index, setIndex] = useState<number | null>(null), [running, setRunning] = useState(false), [message, setMessage] = useState(""), [busy, setBusy] = useState(false);
   const player = useRef(new Graph2DAnimationPlayer(setTimeout, h => clearTimeout(h as ReturnType<typeof setTimeout>)));
   const generation = useRef(0), mounted = useRef(true), timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -87,8 +91,12 @@ export function MobileGraphParametersPanel({ document, onPreview, onCommit, sett
     accessibilityState={{ disabled }} disabled={disabled} style={s.button} onPress={action}><Text style={{ color: disabled ? "#94a3b8" : "#1d4ed8" }}>{label}</Text></Pressable>;
   return <View style={s.panel} testID="mobile-graph-parameters"><Text accessibilityRole="header" style={s.title}>Parameters</Text>
     <Text>Sliders and animation preview only. Apply commits one value; Cancel restores source. Units are labels, not conversions.</Text>
+    {guidance && <View accessibilityLabel="Interactive recipe guidance"><Text>Matches {guidance.title}</Text><Text>{guidance.description}</Text>
+      <Text>Suggestions match current source, not stored origin. Editing expressions, domains or controls removes hints.</Text></View>}
     {!configured.length && <Text>Configure an existing variable or add a parameter; use its name in a function, for example a*x.</Text>}
     {document.source.variables.map(p => <View key={p.name}><Text>{p.name} = {p.value} {p.control?.unit}</Text>
+      {guidance?.parameters.filter(hint => hint.name === p.name).map(hint => <View key={hint.name}><Text>{hint.hint} Default {hint.defaultValue}.</Text>
+        {button(`Preview default ${p.name}`, () => scrub(p.name, String(hint.defaultValue)), running || busy)}</View>)}
       {p.control && <><ParameterSlider name={p.name} control={p.control} value={preview?.name === p.name && preview.value !== undefined ? preview.value : p.value}
         disabled={running || busy} onChange={value => scrub(p.name, String(value))} />
         <Text>{p.name} preview value · range {p.control.min}…{p.control.max}, step {p.control.step}</Text>
@@ -103,6 +111,7 @@ export function MobileGraphParametersPanel({ document, onPreview, onCommit, sett
       {button("Save parameter", () => safely(() => { const draft = graph2DParameterDraftFromFields(edit.fields); onCommit(edit.name ? { type: "parameter-configure", name: edit.name, draft } : { type: "parameter-create", draft }); }))}
       {button("Cancel configuration", () => setEdit(null))}</View>}
     <Text accessibilityRole="header" style={s.title}>Deterministic animation</Text>
+    {guidance && button("Reset recommended animation", () => { stop(); setPreview(null); setIndex(null); onPreview(null); setAnimation(recommendedAnimation()); }, busy)}
     <Text>Animated parameter: {animation.parameter || "Configure a parameter first"}</Text>
     <View style={s.row}>{configured.map(p => button(`Animate ${p.name}`, () => setAnimation({ ...animation, parameter: p.name, from: String(p.control!.min), to: String(p.control!.max) }), busy))}</View>
     {(["from", "to", "frames", "fps"] as const).map(key => <View key={key}><Text>Animation {key}</Text><TextInput accessibilityLabel={`Animation ${key}`} style={s.input}

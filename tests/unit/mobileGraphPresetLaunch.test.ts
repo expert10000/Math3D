@@ -18,6 +18,7 @@ vi.mock("expo-file-system", () => {
   return { Directory, File, Paths: { document: "documents" } };
 });
 import { applyGraph2DAuthoring, createGraph2DWorkspaceProject, createMixedWorkspaceDocument, createWorkspaceProjectHandoff, getGraph2DPresetCatalog,
+  getGraph2DInteractivePreset, getGraph2DInteractivePresetGuidance, previewGraph2DParameterValues, createGraph2DAnimationPlan, graph2DAnimationFrame,
   instantiateGraph2DPreset, parseWorkspaceProjectHandoff, promoteGraph2DToCurve, serializeWorkspaceProjectHandoff, assertWorkspaceHandoffCanReplace } from "@math3d/core";
 import { planMobileGraphPresetLaunch, commitMobileGraphPresetLaunch } from "../../apps/mobile/src/models/mobileGraphPresetLaunch";
 import { createMobileGraph, importMobileGraph, readMobileGraph, readMobileGraphWorkspace, storeMobileGraph, updateStoredMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
@@ -31,6 +32,26 @@ const commit = (plan: ReturnType<typeof planMobileGraphPresetLaunch>) => commitM
 const tablePath = `documents/math3d-graph-tables/${data.sidecars[0]!.id.slice(14)}.json`;
 describe("ordinary mobile preset creation and atomic current-work preservation", () => {
   beforeEach(() => { files.clear(); faults.write = ""; faults.move = ""; mobileGraphPointTables.clearCache(); });
+  it.each(catalog.entries.flatMap(p=>{const variant=getGraph2DInteractivePreset(p);return variant?[variant]:[];}))(
+    "GGL10 $id launches and returns controls, edited values and suggested playback through ordinary storage", async preset => {
+      const result=await commit(planMobileGraphPresetLaunch(preset,`interactive-${preset.id}`,[],{},1));
+      const loaded=await loadStoredSceneProjects(),document=readMobileGraph(loaded.projects[0]!);
+      expect(document.source).toEqual(preset.template.source);expect(document.metadata.title).toBe(preset.title);
+      const guidance=getGraph2DInteractivePresetGuidance(document)!,commands=new Graph2DCommandAdapter(document);
+      const snapshot=[...files],plan=createGraph2DAnimationPlan(document,guidance.animation);
+      for(let i=0;i<plan.frames;i++)graph2DAnimationFrame(document,plan,i);
+      for(const p of document.source.variables)previewGraph2DParameterValues(document,{[p.name]:p.control!.min});
+      expect([...files]).toEqual(snapshot);expect(commands.history().undoDepth).toBe(0);
+      const action={type:"parameter-value" as const,name:plan.parameter,value:plan.to};
+      const edited=commands.commitScene(applyGraph2DAuthoring(document,action),action.type);
+      expect(commands.history().undoDepth).toBe(1);expect(commands.undo()!.source).toEqual(document.source);
+      expect(commands.redo()!.source).toEqual(edited.source);
+      const stored=updateStoredMobileGraph(result.project,edited,2);await saveStoredSceneProjects([stored]);
+      const restarted=readMobileGraph((await loadStoredSceneProjects()).projects[0]!);
+      const returned=parseWorkspaceProjectHandoff(serializeMobileProjectHandoff(stored)).project.entries[0]!.checkpoint;
+      expect(restarted).toEqual(edited);expect(returned).toEqual(edited);expect(getGraph2DInteractivePresetGuidance(restarted)).toEqual(guidance);
+      expect(restarted.source.variables).toEqual(edited.source.variables);
+    });
   it.each(catalog.entries)("creates $id with exact shared source/display, checked sidecars and normal restart/export", async preset => {
     const plan = planMobileGraphPresetLaunch(preset, `native-${preset.id}`, [], {}, 10), result = await commit(plan);
     const loaded = await loadStoredSceneProjects(); expect(loaded.projects).toEqual(result.projects);

@@ -50,4 +50,4 @@ Source/document/style/sampling/sidecar generations do not bridge. Parameter prev
 
 The open API-35 emulator is still reported **offline** by ADB; no connected physical phone was available. This turn did not install a new APK or perform a native touch/save/share acceptance run. Native memory/gesture/accessibility/rotation/performance and iOS signoff remain explicit release work. No new third-party dependency or licence change was needed.
 
-Next: **GGL10** curated interactive preset/control hints using this shared implementation, followed by **G2D37** scale policies. Do not alter the frozen catalog silently or treat this software evidence as G13/G2D40 signoff.
+Follow-on **GGL10** is now [implemented](graph2d-gallery-ggl10-interactive-presets.md): ten explicit content-v2 interactive copies, default/reset guidance, shared recommended playback, edited-copy desktop resume and cursor-anchored wheel handling. Frozen v1 source/assets are unchanged. Next: **G2D37** scale policies. Do not treat software evidence as G13/G2D40 signoff.
