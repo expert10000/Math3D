@@ -75,12 +75,15 @@ const tap = (text) => {
   const [x1, y1, x2, y2] = node.bounds;
   adb("shell", "input", "tap", String(Math.round((x1 + x2) / 2)), String(Math.round((y1 + y2) / 2)));
 };
-const tapVisibleInspectorControl = (text) => {
+const tapVisibleInspectorControl = (text, contentLabel = "Object") => {
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const node = findText(text);
-    const nav = expectText("Explore");
+    const snapshot = nodes();
+    const node = snapshot.find(n => (n.text === text || n.description === text) && n.bounds);
+    const nav = snapshot.filter(n => n.text === "Explore" && n.bounds).sort((a, b) => b.bounds[1] - a.bounds[1])[0];
+    const anchor = snapshot.find(n => n.text === contentLabel && n.bounds);
+    if (!nav || !anchor) throw new Error("Expected content controls and bottom navigation.");
     const navTop = nav.bounds[1] - 20;
-    const contentTop = expectText("Object").bounds[3] + 8;
+    const contentTop = anchor.bounds[3] + 8;
     // Accessibility bounds may include the clipped portion of a scroll row.
     const visibleTop = node ? Math.max(node.bounds[1], contentTop) : 0;
     const visibleBottom = node ? Math.min(node.bounds[3], navTop - 8) : 0;
@@ -91,7 +94,7 @@ const tapVisibleInspectorControl = (text) => {
     }
     const x = Math.round((nav.bounds[0] + nav.bounds[2]) / 2);
     const fromY = navTop - 45;
-    adb("shell", "input", "swipe", String(x), String(fromY), String(x), String(fromY - 120), "350");
+    adb("shell", "input", "swipe", String(x), String(fromY), String(x), String(Math.max(contentTop + 12, fromY - 120)), "350");
   }
   throw new Error(`${text} inspector control could not be scrolled above bottom navigation.`);
 };
@@ -139,17 +142,19 @@ try {
   });
   check("five destination navigation and Explore sections", () => {
     tap("Home"); expectText("Your Math3D workspace");
-    tap("Explore"); expectText("Gallery demos");
-    tap("Functions"); expectText("Function library");
-    tap("Learn"); expectText("Formula notes");
+    tap("Explore"); expectText("Examples");
+    tap("Learn"); expectText("Learn with examples");
     tap("Projects"); expectText("New Project");
     tap("Settings"); expectText("Worker base URL");
     tap("Workspace"); expectText("Catenoid");
   });
-  check("Explore example survives process restart without saving to Files", () => {
+  check("Explore example survives process restart without saving to Projects", () => {
     tap("Explore");
-    tap("Functions");
-    tap("Helicoid");
+    tap("Examples");
+    tap("Search examples");
+    adb("shell", "input", "text", "Helicoid");
+    adb("shell", "input", "keyevent", "4");
+    tapVisibleInspectorControl("Helicoid", "Examples");
     expectText("Helicoid");
     adb("shell", "am", "force-stop", packageName);
     adb("shell", "am", "start", "-n", `${packageName}/com.math3d.mobile.MainActivity`);

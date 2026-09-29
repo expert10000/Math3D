@@ -53,6 +53,7 @@ export const MobileExploreScreen: React.FC<{ model: MobileAppController }> = ({ 
           <Text style={styles.note}>One catalog supplies graphs, parametric surfaces, implicit jobs, and learning links.</Text>
           <TextInput
             testID="mobile-example-search"
+            accessibilityLabel="Search examples"
             value={exampleSearchQuery}
             onChangeText={setExampleSearchQuery}
             placeholder="Search examples"
