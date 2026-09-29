@@ -11,6 +11,60 @@ const save = async (page: Page) => { await page.getByTestId("kernel-workspace-to
   await expect(page.getByTestId("kernel-workspace-message")).toContainText("Saved"); await page.getByTestId("kernel-workspace-toggle").click(); };
 const checkpoint = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.mixed-workspace.v1")!).entries.find((e: { module: string }) => e.module === "graph2d").checkpoint);
 
+test("G2D41 Dense previews immediately, Close keeps settings and the selected inspector", async ({ page }) => {
+  await start(page); await page.getByLabel("Graph functions", { exact: true }).getByRole("button", { name: "Select Parabola", exact: true }).click();
+  const inspector = page.getByLabel("Graph inspector", { exact: true }); await expect(inspector.locator(".graph2d-inspector-details").first()).toContainText("Parabola");
+  await expect(inspector.getByTestId("graph2d-sampling-status")).toContainText("converged");
+  await save(page); const original = await checkpoint(page);
+  await page.evaluate(() => {
+    document.documentElement.dataset.gridSamplingStarts = "0";
+    const OriginalWorker = window.Worker;
+    window.Worker = class extends OriginalWorker { constructor(url: string | URL, options?: WorkerOptions) { super(url, options);
+      if (String(url).includes("graph2dSamplingWorker")) document.documentElement.dataset.gridSamplingStarts = String(Number(document.documentElement.dataset.gridSamplingStarts) + 1);
+    } };
+  });
+  const before = await page.locator(".graph2d-grid-major").count();
+  await page.getByRole("button", { name: "Grid", exact: true }).click(); const panel = page.getByTestId("graph2d-grid-settings");
+  await panel.getByLabel("Grid density", { exact: true }).selectOption("dense");
+  await expect.poll(() => page.locator(".graph2d-grid-major").count()).toBeGreaterThan(before);
+  await save(page); expect((await checkpoint(page)).display.axes.gridOptions).toBeUndefined();
+  await panel.getByRole("button", { name: "Close grid settings", exact: true }).click();
+  await expect(inspector.locator(".graph2d-inspector-details").first()).toContainText("Parabola");
+  await save(page); const saved = await checkpoint(page); expect(saved.display.axes.gridOptions.density).toBe("dense");
+  expect(saved.selection).toEqual(original.selection); expect(saved.source).toEqual(original.source);
+  expect(await page.evaluate(() => document.documentElement.dataset.gridSamplingStarts)).toBe("0");
+  await page.getByRole("button", { name: "Grid", exact: true }).click(); await panel.getByLabel("Grid density", { exact: true }).selectOption("sparse");
+  // Escape must dismiss Grid even after focus returned to the plot/toolbar; a repeated Escape on its button must not clear selection.
+  await page.getByRole("button", { name: "Grid", exact: true }).focus(); await page.keyboard.press("Escape"); await expect(panel).toHaveCount(0);
+  await page.keyboard.press("Escape"); await expect(inspector.locator(".graph2d-inspector-details").first()).toContainText("Parabola");
+  await page.getByRole("button", { name: "Grid", exact: true }).click(); await expect(panel.getByLabel("Grid density", { exact: true })).toHaveValue("dense");
+});
+
+test("G2D41 inspector keeps observations and scroll position while zoom sampling is pending", async ({ page }) => {
+  await start(page); await page.getByLabel("Graph functions", { exact: true }).getByRole("button", { name: "Select Parabola", exact: true }).click();
+  const inspector = page.getByLabel("Graph inspector", { exact: true }); await expect(inspector.getByTestId("graph2d-sampling-status")).toContainText("converged");
+  const observedField = inspector.locator('.graph2d-inspector-details').first().locator('dt:text-is("Observed") + dd');
+  const observed = await observedField.innerText();
+  await inspector.evaluate(el => { el.scrollTop = 120; });
+  const scroll = await inspector.evaluate(el => el.scrollTop), bounds = await inspector.boundingBox();
+  await page.evaluate(() => {
+    const OriginalWorker = window.Worker;
+    window.Worker = class extends OriginalWorker {
+      postMessage(message: unknown, transferOrOptions?: Transferable[] | StructuredSerializeOptions) {
+        setTimeout(() => {
+          if (Array.isArray(transferOrOptions)) super.postMessage(message, transferOrOptions);
+          else super.postMessage(message, transferOrOptions);
+        }, 3000);
+      }
+    };
+  });
+  const plot = await page.getByTestId("graph2d-plot").boundingBox(); await page.mouse.move(plot!.x + plot!.width * .55, plot!.y + plot!.height * .45); await page.mouse.wheel(0, -180);
+  await expect(inspector.getByTestId("graph2d-sampling-status")).toContainText("Updating");
+  await expect(observedField).toHaveText(observed);
+  await expect.poll(() => inspector.evaluate(el => el.scrollTop)).toBe(scroll);
+  expect(await inspector.boundingBox()).toEqual(bounds);
+});
+
 test("G2D41 grid controls retain source, saved spacing and reversible display intent", async ({ page }, info) => {
   await start(page); const original = await checkpoint(page), opener = page.getByRole("button", { name: "Grid", exact: true });
   await opener.focus(); await page.keyboard.press("Enter"); const panel = page.getByTestId("graph2d-grid-settings");

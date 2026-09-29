@@ -22,6 +22,8 @@ test("GGL10 Electron interactive presets preserve edited copies, undo a single s
     const committed = await saved(); expect(committed.source.variables[0].value).toBe(2.5);
     for (let i = 0; i < 3; i++) await open();
     await page.getByTestId("graph2d-parameters-open").click(); await expect(value).toHaveValue("2.5");
+    // Opening schedules focus restoration; wait for it before moving focus to the viewer for Undo.
+    await expect(page.getByTestId("graph2d-parameters-close")).toBeFocused();
     await page.getByTestId("main-viewer").focus(); await page.keyboard.press("Control+z"); await expect(value).toHaveValue("2");
     await page.keyboard.press("Control+y"); await expect(value).toHaveValue("2.5");
     await panel.getByRole("button", { name: "Play animation", exact: true }).click(); await expect(panel).toContainText("Frame 15 / 15");

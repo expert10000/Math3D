@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Graph2DSamplingJobController, sampleGraph2DScene, structuralHash, graph2DSamplingPresentationContext, presentGraph2DSampling,
+import { Graph2DSamplingJobController, sampleGraph2DScene, graph2DSamplingPresentationContext, presentGraph2DSampling,
   type DocumentIdentity,
   type Graph2DSceneSamplingRequest, type Graph2DSampledSeries } from "@math3d/core";
 import { startGraph2DSamplingTask, type Graph2DSamplingWorker } from "./graph2dSamplingTask";
+import { graph2DSceneSamplingKey } from "./graph2dSamplingKey";
 
 /** Every replacement/unmount terminates the worker and releases its generation record. */
 export function useGraph2DSampling(request: Graph2DSceneSamplingRequest, previewBase?: DocumentIdentity) {
   const controller = useRef(new Graph2DSamplingJobController());
-  const key = useMemo(() => structuralHash({ source: request.document.source, display: request.document.display,
-    identity: request.document.identity, viewport: request.viewport, width: request.width, height: request.height,
-    interaction: request.interaction, pointTables: request.pointTables ?? {} }), [request]);
+  const key = useMemo(() => graph2DSceneSamplingKey(request), [request]);
   const context = graph2DSamplingPresentationContext(request, previewBase);
   const latest = useRef(key); latest.current = key;
   const previous = useRef<{ context: string; series: readonly Graph2DSampledSeries[] } | null>(null);

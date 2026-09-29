@@ -9,12 +9,19 @@ test("G2D41 Electron grid settings apply as reversible display-only intent", asy
     const page = app.page; await resetSurfaceAppState(page); await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByTestId("workspace-nav-graphs").click(); await page.getByTestId("graph-gallery-open").click();
     await page.getByRole("button", { name: "Open A tangent at x = 1", exact: true }).click();
+    await page.getByLabel("Graph functions", { exact: true }).getByRole("button", { name: "Select Parabola", exact: true }).click();
+    const inspector = page.getByLabel("Graph inspector", { exact: true });
+    await expect(inspector.getByTestId("graph2d-sampling-status")).toContainText("converged");
+    const gridCount = await page.locator(".graph2d-grid-major").count();
     const opener = page.getByRole("button", { name: "Grid", exact: true }); await opener.focus(); await page.keyboard.press("Enter");
     const panel = page.getByTestId("graph2d-grid-settings"); await expect(panel.getByRole("checkbox", { name: "Show grid", exact: true })).toBeFocused();
+    await panel.getByLabel("Grid density", { exact: true }).selectOption("dense");
+    await expect.poll(() => page.locator(".graph2d-grid-major").count()).toBeGreaterThan(gridCount);
     await panel.getByLabel("X grid spacing", { exact: true }).fill("1"); await panel.getByLabel("Grid contrast", { exact: true }).selectOption("strong");
     await panel.getByLabel("Show minor subdivisions", { exact: true }).uncheck(); await panel.getByRole("button", { name: "Apply grid settings", exact: true }).click();
     await expect(panel.getByRole("alert")).toHaveCount(0); await expect(page.locator(".graph2d-grid-minor")).toHaveCount(0);
     await page.keyboard.press("Escape"); await expect(opener).toBeFocused(); await page.getByTestId("main-viewer").focus(); await page.keyboard.press("Control+z");
+    await expect(inspector.locator(".graph2d-inspector-details").first()).toContainText("Parabola");
     await opener.click(); await expect(panel.getByLabel("X grid spacing", { exact: true })).toHaveValue("");
     await page.screenshot({ path: info.outputPath("grid-electron.png") });
   } finally { await closeSurfaceApp(app); }

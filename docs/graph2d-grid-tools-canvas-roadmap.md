@@ -6,6 +6,8 @@ Requested 2026-09-29 from the supplied graph-paper/tool-palette screenshot. Exec
 
 Desktop/web gets a clearly named Grid panel; native reuses Display. Controls cover grid, X/Y axes, numeric tick labels, minor subdivisions, automatic density, independent manual X/Y Cartesian spacing and contrast. Manual spacing is in world units for linear axes and integer decades for log10 axes; polar mode uses its existing bounded radial/angular projection and explicitly disables Cartesian-only manual spacing.
 
+Desktop valid changes preview immediately; Apply/Close saves, Cancel/Escape discards unapplied changes, and closing preserves the inspected selection. Display-only grid changes do not restart curve sampling. During zoom the Inspector retains explicitly labelled previous observations with stable scroll/layout while workers update.
+
 New optional display settings require a shared validated capability. Absent settings preserve old document bytes, source identity, previews and frozen exports. Visibility/spacing/contrast commands are reversible display edits, never expression/domain/data edits. Tick generation is bounded even for extreme ranges/tiny steps; insufficient pixel spacing is omitted and explained, not silently presented as a complete grid. Every renderer/export uses the shared spacing intent. Theme-aware live colors and system high-contrast colors remain legible.
 
 Acceptance: strict malformed/positive/log validation, bounded ticks, independent known steps, legacy digest equality, save/reopen/undo/handoff, desktop/native model parity, real browser/Electron keyboard/layout checks and export intent. Physical native/print/screen-reader acceptance stays pending.
