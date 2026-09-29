@@ -4,9 +4,10 @@ import { createGraph2DAnimationPlan, graph2DAnimationFrame, Graph2DAnimationPlay
   type Graph2DAnimationPlan, type Graph2DParameterFields, type Graph2DPublicationArtifact } from "@math3d/core";
 import { pointTableStore } from "./pointTableStore";
 
-export function Graph2DParametersPanel({ document, onPreview, onCommit, settled, samplingError, onClose }: {
+export function Graph2DParametersPanel({ document, onPreview, onCommit, settled, samplingError, onClose, compact = false, onExpand }: {
   document: Graph2DDocument; onPreview: (values: Record<string, number> | null) => void;
   onCommit: (action: Graph2DParameterAction) => void; settled: boolean; samplingError?: string; onClose: () => void;
+  compact?: boolean; onExpand?: () => void;
 }) {
   const [edit, setEdit] = useState<{ name?: string; fields: Graph2DParameterFields } | null>(null);
   const [preview, setPreview] = useState<{ name: string; text: string; value?: number } | null>(null);
@@ -58,6 +59,21 @@ export function Graph2DParametersPanel({ document, onPreview, onCommit, settled,
   });
   const download = (artifact: Graph2DPublicationArtifact) => { const url = URL.createObjectURL(new Blob([artifact.bytes.slice().buffer as ArrayBuffer], { type: artifact.mimeType }));
     const a = globalThis.document.createElement("a"); a.href = url; a.download = artifact.fileName; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
+  if (compact) return <aside className="graph2d-parameter-cards" aria-label="On-graph parameter cards" data-testid="graph2d-parameter-cards"
+    onKeyDown={e => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); } }}>
+    <header><strong>Parameter preview</strong><button onClick={onClose}>Hide parameter cards</button></header>
+    {!configured.length && <p>Configure a parameter to add a slider.</p>}
+    {configured.map(p => <label key={p.name}>{p.name} = {preview?.name === p.name ? preview.text : p.value} {p.control!.unit}
+      <input aria-label={`${p.name} card slider`} type="range" min={p.control!.min} max={p.control!.max} step={p.control!.step}
+        disabled={running || exporting} value={preview?.name === p.name && preview.value !== undefined ? preview.value : p.value}
+        onChange={e => scrub(p.name, e.target.value, true)} /></label>)}
+    <div><button disabled={!configured.length || running || exporting} onClick={play}>Play animation</button><button disabled={!running} onClick={stop}>Stop animation</button>
+      <button disabled={running || exporting || preview?.value === undefined} onClick={() => safely(() => { if (preview?.value !== undefined) onCommit({ type: "parameter-value", name: preview.name, value: preview.value }); })}>Apply preview value</button>
+      <button onClick={() => { stop(); setPreview(null); setIndex(null); onPreview(null); }}>Cancel preview</button>
+      <button onClick={() => { stop(); setPreview(null); setIndex(null); onPreview(null); setAnimation(recommendedAnimation()); }}>Reset preview</button>
+      <button onClick={onExpand}>Configure parameters</button></div>
+    <p role="status">{message || (index === null ? "Preview is not saved. Apply commits one value." : `Frame ${index + 1} / ${animation.frames}`)}</p>
+  </aside>;
   return <aside className="graph2d-parameters-panel" aria-label="Graph parameters" data-testid="graph2d-parameters"
     onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }}>
     <header><h2>Parameters</h2><button data-testid="graph2d-parameters-close" onClick={onClose}>Close parameters</button></header>

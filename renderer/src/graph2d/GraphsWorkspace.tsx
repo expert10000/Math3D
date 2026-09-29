@@ -19,6 +19,7 @@ import {
   projectGraph2DGrid, projectGraph2DPolarGrid,
   structuralHash,
   graph2DToolUnavailable, type Graph2DTool,
+  editGraph2DProbes, graph2DPinnedProbeState, projectGraph2DProbeMarkers,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
@@ -35,6 +36,7 @@ import { Graph2DScalePanel } from "./Graph2DScalePanel";
 import { Graph2DGridPanel } from "./Graph2DGridPanel";
 import { Graph2DRegressionPanel } from "./Graph2DRegressionPanel";
 import { Graph2DToolsPanel } from "./Graph2DToolsPanel";
+import { Graph2DProbesPanel } from "./Graph2DProbesPanel";
 import "./graphsWorkspace.css";
 
 type Props = {
@@ -45,6 +47,7 @@ type Props = {
   onViewportCommit?: (viewport: Graph2DViewport) => void;
   onGridModeCommit?: (mode: "cartesian" | "polar") => void;
   onAxesCommit?: (axes: Graph2DDocument["display"]["axes"]) => void;
+  onProbesCommit?: (probes: NonNullable<Graph2DDocument["display"]["pinnedProbes"]>) => void;
   onAuthoringCommit?: (action: Graph2DAuthoringAction) => void;
   onSelectionCommit?: (selection: Graph2DSelection) => void;
   onUndo?: () => void;
@@ -59,7 +62,7 @@ type Props = {
 
 /** Desktop/web projection of shared Graph2D source and persistent display state. */
 export function GraphsWorkspace({ dockLayout, document, status = "ready", errorMessage, onViewportCommit,
-  onGridModeCommit, onAxesCommit, onAuthoringCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
+  onGridModeCommit, onAxesCommit, onProbesCommit, onAuthoringCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onOpenPreset, onResumeCheckpoint }: Props) {
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -68,6 +71,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const closeTools = () => { setToolsOpen(false); toolsOpener.current?.focus(); };
   const [exportOpen, setExportOpen] = useState(false);
   const [parametersOpen, setParametersOpen] = useState(false);
+  const [parameterCards, setParameterCards] = useState(false);
   const [scalesOpen, setScalesOpen] = useState(false);
   const [gridOpen, setGridOpen] = useState(false);
   const [gridPreview, setGridPreview] = useState<Graph2DDocument["display"]["axes"] | null>(null);
@@ -349,6 +353,16 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   };
   const functionList = <Graph2DAuthoringPanel document={document} onCommit={onAuthoringCommit}
     onSelect={(objectId) => onSelectionCommit?.(parameterPreviewActive || !sampling.ready ? { objectId, probe: null } : selectionForGraph2DObject(document, series, objectId, document.selection.probe?.x))} />;
+  const savedProbes = <Graph2DProbesPanel document={document} onAction={action => {
+    if (!onProbesCommit) throw new Error("Probe storage unavailable.");
+    onProbesCommit(editGraph2DProbes(document, action));
+  }} onLocate={id => {
+    const p = document.display.pinnedProbes?.find(p => p.id === id);
+    if (!p || ["stale", "invalid"].includes(graph2DPinnedProbeState(document, p))) return;
+    onSelectionCommit?.({ objectId: p.objectId, probe: { objectId: p.objectId, x: p.x, y: p.y } });
+    const screen = graph2DWorldToScreen(viewport, size, p);
+    onViewportCommit?.(panGraph2DViewport(viewport, size, { x: size.width / 2 - screen.x, y: size.height / 2 - screen.y }));
+  }} />;
   const inspector = inspected ? <div className="graph2d-inspector">
     {selectedObject?.kind === "point-series" && <Graph2DRegressionPanel document={document} model={regressionModel} onModel={setRegressionModel} result={regression} onResult={setRegression} />}
     {parameterPreviewActive && <p role="status">Inspector and analyses refer to the committed source, not the parameter preview.</p>}
@@ -550,7 +564,8 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
       <button type="button" disabled={!sampling.ready || parameterPreviewActive || !selectedSeries?.artifact.segments.length} onClick={() => selectedSeries && fitSeries([selectedSeries])}>Fit function</button>
       <button type="button" onClick={() => onSelectionCommit?.({ objectId: null, probe: null })}>Clear selection</button>
     </div>
-  </div> : <p className="graph2d-muted">Select a function to inspect it.</p>;
+    {savedProbes}
+  </div> : <div className="graph2d-inspector"><p className="graph2d-muted">Select a function to inspect it.</p>{savedProbes}</div>;
   return (
     <section data-testid="graphs-workspace" aria-label="Graphs workspace" className="graph2d-workspace"
       data-left={showLeft} data-right={showRight}
@@ -576,6 +591,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
             if (!parametersOpen) galleryFocusFrame.current = requestAnimationFrame(() => { galleryFocusFrame.current = null;
               parametersOpener.current?.closest(".graph2d-workspace")?.querySelector<HTMLButtonElement>('[data-testid="graph2d-parameters-close"]')?.focus(); });
           }}>Parameters</button>
+          <button type="button" aria-pressed={parameterCards} onClick={() => { finishWheel(); cancelParameter(); setParametersOpen(false); setParameterCards(!parameterCards); }}>Parameter cards</button>
           <button type="button" data-testid="graph2d-export-open" disabled={status !== "ready" || parameterPreviewActive} onClick={event => {
             exportOpener.current = event.currentTarget; finishWheel(); closeGrid(true, false); dragRef.current = null; setExportOpen(true);
           }}>Export</button>
@@ -592,6 +608,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
           {showRight && <details><summary>Inspector</summary>{inspector}</details>}
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={series}
+          probeMarkers={parameterPreviewActive ? [] : projectGraph2DProbeMarkers({ ...document, display: renderedDisplay }, size)}
           regression={!parameterPreviewActive && document.display.objects.find(s => s.objectId === currentRegression?.objectId)?.visible ? currentRegression : null}
           selectedProbe={parameterPreviewActive ? null : document.selection.probe} hoverProbe={parameterPreviewActive ? null : hoverSelection?.probe} overlays={parameterPreviewActive ? [] : differentialOverlays}
           intervals={!parameterPreviewActive && intervals && isGraph2DIntervalAnalysisCurrent(intervals, document) ? intervals : null}
@@ -629,10 +646,11 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
       }} />}
       {scalesOpen && <Graph2DScalePanel key={document.identity.id} document={document} onCommit={v => onViewportCommit?.(v)} onClose={() => { setScalesOpen(false); scalesOpener.current?.focus(); }} />}
       {gridOpen && <Graph2DGridPanel key={document.identity.id} document={document} onPreview={setGridPreview} onCommit={commitGrid} onClose={() => closeGrid()} />}
-      {parametersOpen && <Graph2DParametersPanel key={`${parameterKey}:${parameterEpoch}`} document={document} settled={sampling.settled} samplingError={sampling.error}
+      {(parametersOpen || parameterCards) && <Graph2DParametersPanel key={`${parameterKey}:${parameterEpoch}`} document={document} settled={sampling.settled} samplingError={sampling.error}
+        compact={!parametersOpen} onExpand={() => setParametersOpen(true)}
         onPreview={values => { if (values) previewGraph2DParameterValues(document, values); setParameterPreview(values ? { key: parameterKey, values } : null); }}
         onCommit={action => { if (!onAuthoringCommit) throw new Error("Parameter authoring is unavailable."); onAuthoringCommit(action); setParameterPreview(null); }}
-        onClose={() => { setParametersOpen(false); setParameterPreview(null); parametersOpener.current?.focus(); }} />}
+        onClose={() => { setParametersOpen(false); setParameterCards(false); cancelParameter(); parametersOpener.current?.focus(); }} />}
       {toolsOpen && <Graph2DToolsPanel document={document} rowsAvailable={toolRowsAvailable} onTool={routeTool} onClose={closeTools} />}
     </section>
   );

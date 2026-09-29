@@ -1,4 +1,4 @@
-export type MobileGraphDestination = "Graph" | "Functions" | "Analyze" | "Display" | "Promote" | "Export" | "Parameters" | "Tools";
+export type MobileGraphDestination = "Graph" | "Functions" | "Analyze" | "Display" | "Promote" | "Export" | "Parameters" | "Tools" | "Cards";
 /** Logical pixels, measured after safe areas/navigation. Large text requires more room, not smaller controls. */
 export const mobileGraphLayout = ({ width, height, fontScale = 1 }: { width: number; height: number; fontScale?: number }) => {
   const scale = Number.isFinite(fontScale) ? Math.max(1, fontScale) : 1;

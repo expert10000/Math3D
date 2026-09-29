@@ -20,9 +20,10 @@ function ParameterSlider({ name, control, value, disabled, onChange }: { name: s
     <View pointerEvents="none" style={{ position: "absolute", left: Math.max(0, Math.min(width - 20, (value - control.min) / (control.max - control.min) * (width - 20))), width: 20, height: 20, borderRadius: 10, backgroundColor: disabled ? "#94a3b8" : "#1d4ed8" }} />
   </View>;
 }
-export function MobileGraphParametersPanel({ document, onPreview, onCommit, settled, samplingError }: {
+export function MobileGraphParametersPanel({ document, onPreview, onCommit, settled, samplingError, compact = false, onExpand, onClose }: {
   document: Graph2DDocument; onPreview: (values: Record<string, number> | null) => void; onCommit: (action: Graph2DParameterAction) => void;
   settled: boolean; samplingError?: string;
+  compact?: boolean; onExpand?: () => void; onClose?: () => void;
 }) {
   const configured = document.source.variables.filter(p => p.control);
   const guidance = getGraph2DInteractivePresetGuidance(document);
@@ -89,6 +90,17 @@ export function MobileGraphParametersPanel({ document, onPreview, onCommit, sett
   };
   const button = (label: string, action: () => void, disabled = false) => <Pressable key={label} accessibilityRole="button" accessibilityLabel={label}
     accessibilityState={{ disabled }} disabled={disabled} style={s.button} onPress={action}><Text style={{ color: disabled ? "#94a3b8" : "#1d4ed8" }}>{label}</Text></Pressable>;
+  if (compact) return <View style={s.panel} testID="mobile-graph-parameter-cards"><Text accessibilityRole="header">Parameter preview</Text>
+    {configured.map(p => <View key={p.name}><Text>{p.name} = {preview?.name === p.name ? preview.text : p.value} {p.control!.unit}</Text>
+      <ParameterSlider name={p.name} control={p.control!} value={preview?.name === p.name && preview.value !== undefined ? preview.value : p.value} disabled={running || busy} onChange={v => scrub(p.name, String(v))} /></View>)}
+    {!configured.length && <Text>Configure a parameter to add a slider.</Text>}
+    <View style={s.row}>{button("Play animation", play, !configured.length || running || busy)}{button("Stop animation", stop, !running)}
+      {button("Apply preview value", () => safely(() => { if (preview?.value !== undefined) onCommit({ type: "parameter-value", name: preview.name, value: preview.value }); }), running || busy || preview?.value === undefined)}
+      {button("Cancel preview", () => { stop(); setPreview(null); setIndex(null); onPreview(null); })}
+      {button("Reset preview", () => { stop(); setPreview(null); setIndex(null); onPreview(null); setAnimation(recommendedAnimation()); })}
+      {button("Configure parameters", () => onExpand?.())}{button("Hide parameter cards", () => onClose?.())}</View>
+    <Text accessibilityLiveRegion="polite">{message || (index === null ? "Preview is not saved. Apply commits one value." : `Frame ${index + 1} / ${animation.frames}`)}</Text>
+  </View>;
   return <View style={s.panel} testID="mobile-graph-parameters"><Text accessibilityRole="header" style={s.title}>Parameters</Text>
     <Text>Sliders and animation preview only. Apply commits one value; Cancel restores source. Units are labels, not conversions.</Text>
     {guidance && <View accessibilityLabel="Interactive recipe guidance"><Text>Matches {guidance.title}</Text><Text>{guidance.description}</Text>

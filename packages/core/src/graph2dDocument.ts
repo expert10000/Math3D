@@ -14,9 +14,10 @@ export const GRAPH2D_DOCUMENT_FORMAT = "math3d.graph2d-document" as const;
 export const GRAPH2D_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export const GRAPH2D_EXPLICIT_CAPABILITY = "graph2d.explicit.v1" as const;
 export const GRAPH2D_PROBES_CAPABILITY = "graph2d.probes.v1" as const;
+export const GRAPH2D_PROBE_VISIBILITY_CAPABILITY = "graph2d.probe-visibility.v1" as const;
 export const GRAPH2D_MAX_PINNED_PROBES = 8;
 export type Graph2DPinnedProbe = Readonly<{ id: string; label: string; objectId: string;
-  x: number; y: number; sourceHash: string }>;
+  x: number; y: number; sourceHash: string; visible?: boolean }>;
 export const GRAPH2D_PARAMETRIC_CAPABILITY = "graph2d.parametric.v1" as const;
 export const GRAPH2D_POLAR_CAPABILITY = "graph2d.polar.v1" as const;
 export const GRAPH2D_IMPLICIT_CAPABILITY = "graph2d.implicit.v1" as const;
@@ -117,6 +118,7 @@ export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pic
     ...(source.objects.some((object) => object.kind === "point-series") ? [GRAPH2D_POINT_SERIES_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "piecewise") ? [GRAPH2D_PIECEWISE_CAPABILITY] : []),
     ...(display?.pinnedProbes !== undefined ? [GRAPH2D_PROBES_CAPABILITY] : []),
+    ...(display?.pinnedProbes?.some(p => p.visible !== undefined) ? [GRAPH2D_PROBE_VISIBILITY_CAPABILITY] : []),
     ...(source.variables.some(variable => variable.control !== undefined) ? [GRAPH2D_PARAMETERS_CAPABILITY] : []),
     ...(display?.viewport && ["xScale", "yScale", "continuation"].some(key => key in display.viewport!) ? [GRAPH2D_SCALES_CAPABILITY] : []),
     ...(display?.axes?.gridOptions !== undefined ? [GRAPH2D_GRID_CAPABILITY] : [])];
@@ -145,7 +147,7 @@ export type Graph2DDocument = Readonly<{
   requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
     typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY |
     typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY |
-    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
+    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
   source: Graph2DSource;
   display: Graph2DDisplay;
   selection: Graph2DSelection;
@@ -268,7 +270,8 @@ const validDisplay = (value: unknown, source: Graph2DSource): value is Graph2DDi
       !integerWithin(value.sampling.maxSamples, 32, 200000) || !integerWithin(value.sampling.maxDepth, 1, 24) ||
       !finite(value.sampling.tolerancePx) || value.sampling.tolerancePx < 0.1 || value.sampling.tolerancePx > 16) return false;
   if (value.pinnedProbes !== undefined && (!Array.isArray(value.pinnedProbes) || value.pinnedProbes.length > GRAPH2D_MAX_PINNED_PROBES ||
-    !value.pinnedProbes.every((probe: unknown) => record(probe) && exact(probe, ["id", "label", "objectId", "x", "y", "sourceHash"]) &&
+    !value.pinnedProbes.every((probe: unknown) => record(probe) && exact(probe, ["id", "label", "objectId", "x", "y", "sourceHash", ...(probe.visible !== undefined ? ["visible"] : [])]) &&
+      (probe.visible === undefined || typeof probe.visible === "boolean") &&
       objectId(probe.id) && bounded(probe.label, 80) && finite(probe.x) && finite(probe.y) &&
       typeof probe.sourceHash === "string" && /^sha256:[0-9a-f]{64}$/.test(probe.sourceHash) &&
       source.objects.some((object) => object.id === probe.objectId && object.kind === "explicit-cartesian")) ||

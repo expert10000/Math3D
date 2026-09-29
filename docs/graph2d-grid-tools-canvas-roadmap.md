@@ -27,5 +27,5 @@ Free independent points, arbitrary text, geometry constructions, rectangle selec
 ## Delivery tracking
 
 - Roadmap pushed as `482aa0c`; G2D41 shared policy and desktop/native controls are software implemented and locally accepted. [Behavior, evidence and pending physical checks](graph2d-g41-grid-controls.md).
-- G2D42 is implemented; see [tools behavior and evidence](graph2d-g42-tools.md). G2D43 remains planned.
+- G2D42 and G2D43 are implemented; see [tools behavior and evidence](graph2d-g42-tools.md) and [saved probes and parameter cards](graph2d-g43-canvas-controls.md).
 - Full G13/professional signed-device and real screen-reader release gates remain pending.

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from "react-native";
-import { fitGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, graph2DHasLogScale, pickGraph2DProbe,
+import { fitGraph2DViewport, panGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, graph2DHasLogScale, pickGraph2DProbe,
   resolveGraph2DViewport, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, graph2DParameterSessionKey,
   previewGraph2DParameterValues, graph2DRegressionOverlaySeries, applyGraph2DAuthoring, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
@@ -12,7 +12,7 @@ import { MobileGraphDisplayPanel } from "./MobileGraphDisplayPanel";
 import { MobileGraphExportPanel } from "./MobileGraphExportPanel";
 import { MobileGraphParametersPanel } from "./MobileGraphParametersPanel";
 import { MobileGraphToolsPanel } from "./MobileGraphToolsPanel";
-import { graph2DToolUnavailable, type Graph2DTool } from "@math3d/core";
+import { graph2DToolUnavailable, projectGraph2DProbeMarkers, graph2DPinnedProbeState, type Graph2DTool } from "@math3d/core";
 import { mobileGraphAreaRects } from "./viewer/mobileGraphOverlays";
 import { editMobileGraphProbes } from "./models/mobileGraphProbes";
 import { MobileGraphProbesPanel } from "./MobileGraphProbesPanel";
@@ -141,6 +141,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     <ScrollView horizontal style={{ flexGrow: 0, maxHeight: 48 }} contentContainerStyle={s.toolbar}>{button("Reset", () => commit(() => adapter.commitViewport(GRAPH2D_DEFAULT_VIEWPORT)))}
       {button("Parameters", () => { cancel(); cancelParameter(); setDestination(destination === "Parameters" ? "Graph" : "Parameters"); })}
       {button("Tools", () => { cancel(); cancelParameter(); setDestination(destination === "Tools" ? "Graph" : "Tools"); })}
+      {button("Parameter cards", () => { cancel(); cancelParameter(); setDestination(destination === "Cards" ? "Graph" : "Cards"); })}
       {button("Export", () => { cancel(); cancelParameter(); if (editor || advanced) { setError("Save or cancel the function edit before exporting."); return; } setDestination(destination === "Export" ? "Graph" : "Export"); })}
       {button("Fit", fit)}{button("Undo", () => commit(() => adapter.undo()), history.undoDepth === 0)}
       {button("Redo", () => commit(() => adapter.redo()), history.redoDepth === 0)}
@@ -191,13 +192,10 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
           return point.x >= 0 && point.x <= size.width && point.y >= 0 && point.y <= size.height ? <View key={`feature${index}`} style={{ position: "absolute",
             left: point.x - 4, top: point.y - 4, width: 8, height: 8, borderRadius: 4, backgroundColor: "#9333ea" }} /> : null;
         })}
-        {(parameterPreviewActive ? [] : document.display.pinnedProbes ?? []).filter((probe) => probe.sourceHash === document.identity.structuralHash &&
-          document.display.objects.find((style) => style.objectId === probe.objectId)?.visible).map((probe) => {
-          const point = graph2DWorldToScreen(viewport, size, probe);
-          if (!Number.isFinite(point.x) || !Number.isFinite(point.y) || point.x < 0 || point.x > size.width || point.y < 0 || point.y > size.height) return null;
-          return <View key={probe.id} style={{ position: "absolute", left: point.x - 5, top: point.y - 5 }}>
-            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: "#b45309" }} /><Text style={{ fontSize: 11 }}>{probe.label}</Text></View>;
-        })}
+        {(parameterPreviewActive ? [] : projectGraph2DProbeMarkers({ ...document, display: { ...document.display, viewport } }, size)).map(({ probe, point, text, label }) =>
+          <React.Fragment key={probe.id}><View style={{ position: "absolute", left: point.x - 5, top: point.y - 5, width: 10, height: 10, borderRadius: 5, backgroundColor: "#b45309" }} />
+            {label && <Text numberOfLines={1} style={{ position: "absolute", left: label.x, top: label.y, width: label.width, height: 20, fontSize: 11, backgroundColor: "white" }}>{text}</Text>}
+          </React.Fragment>)}
         {marker && marker.x >= 0 && marker.x <= size.width && marker.y >= 0 && marker.y <= size.height &&
           <View style={{ position: "absolute", left: marker.x - 7, top: marker.y - 7, width: 14, height: 14,
             borderRadius: 7, borderWidth: 2, borderColor: "#0f172a", backgroundColor: "#fff" }} />}
@@ -220,7 +218,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     </View>
     {panelDestination && <ScrollView keyboardShouldPersistTaps="handled" style={[s.sheet, layout.split && s.sidePanel, layout.split && { width: layout.panelWidth }]}
       accessibilityLabel={`${panelDestination} ${layout.split ? "side panel" : "bottom sheet"}`} testID={`mobile-graph-${panelDestination.toLowerCase()}-sheet`}>
-      {panelDestination === "Tools" ? <MobileGraphToolsPanel document={document} rowsAvailable={document.source.objects.every(o => o.id !== document.selection.objectId || o.kind !== "point-series" || !!mobileGraphPointTables.resolve(o.table))} onTool={routeTool} onClose={() => setDestination("Graph")} /> : panelDestination === "Parameters" ? <MobileGraphParametersPanel key={`${parameterKey}:${parameterEpoch}`} document={document} settled={sampling.settled && sampling.phase === "refine"} samplingError={sampling.error}
+      {panelDestination === "Tools" ? <MobileGraphToolsPanel document={document} rowsAvailable={document.source.objects.every(o => o.id !== document.selection.objectId || o.kind !== "point-series" || !!mobileGraphPointTables.resolve(o.table))} onTool={routeTool} onClose={() => setDestination("Graph")} /> : panelDestination === "Parameters" || panelDestination === "Cards" ? <MobileGraphParametersPanel key={`${parameterKey}:${parameterEpoch}`} document={document} settled={sampling.settled && sampling.phase === "refine"} samplingError={sampling.error}
+        compact={panelDestination === "Cards"} onExpand={() => setDestination("Parameters")} onClose={() => { cancelParameter(); setDestination("Graph"); }}
         onPreview={values => { if (values) previewGraph2DParameterValues(document, values); setParameterPreview(values ? { key: parameterKey, values } : null); }}
         onCommit={action => { const next = adapter.commitScene(applyGraph2DAuthoring(document, action), action.type); cancel(); setParameterPreview(null); onChange(next); }} /> :
         panelDestination === "Export" ? <MobileGraphExportPanel document={document} analysis={analysisCurrent ? analysis : null} draft={analysisDraft} /> : panelDestination === "Display" ? <MobileGraphDisplayPanel document={document} series={series} overlays={overlays} lineCount={lines.length} sampling={sampling}
@@ -258,8 +257,12 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
           selection: document.selection, display: { ...document.display, pinnedProbes: editMobileGraphProbes(document, action) } }, "pinned-probes"))}
           onLocate={(id) => commit(() => {
             const pinned = document.display.pinnedProbes?.find((entry) => entry.id === id);
-            if (!pinned || pinned.sourceHash !== document.identity.structuralHash) throw new TypeError("Saved probe is stale.");
-            return adapter.commitSelection({ objectId: pinned.objectId, probe: { objectId: pinned.objectId, x: pinned.x, y: pinned.y } });
+            if (!pinned || ["stale", "invalid"].includes(graph2DPinnedProbeState(document, pinned))) throw new TypeError("Saved probe is stale or invalid.");
+            const screen = graph2DWorldToScreen(document.display.viewport, size, pinned);
+            return adapter.commitScene({ source: document.source,
+              display: { ...document.display, viewport: panGraph2DViewport(document.display.viewport, size,
+                { x: size.width / 2 - screen.x, y: size.height / 2 - screen.y }) },
+              selection: { objectId: pinned.objectId, probe: { objectId: pinned.objectId, x: pinned.x, y: pinned.y } } }, "restore");
           })} />
       </>}
     </ScrollView>}

@@ -89562,6 +89562,8 @@ case "mobius":
             onPromotionLocate={openGraph2DTarget} onPromotionRegenerate={regenerateGraph2DTarget}
             onViewportCommit={commitGraph2DViewport} onGridModeCommit={commitGraph2DGridMode}
             onAxesCommit={commitGraph2DAxes}
+            onProbesCommit={pinnedProbes => { const adapter = graph2dAdapterRef.current!, document = adapter.document();
+              setGraph2dDocument(adapter.commitScene({ source: document.source, selection: document.selection, display: { ...document.display, pinnedProbes } }, "pinned-probes")); }}
             onAuthoringCommit={commitGraph2DAuthoring}
             onSelectionCommit={commitGraph2DSelection}
             onUndo={undoGraph2DViewport} onRedo={redoGraph2DViewport} />

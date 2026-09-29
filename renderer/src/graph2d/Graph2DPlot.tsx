@@ -10,6 +10,7 @@ import {
   type Graph2DPointSeriesArtifact,
   type Graph2DPiecewiseArtifact,
   graph2DRegressionOverlaySeries, graph2DGridAppearance, projectGraph2DPolarGrid, type Graph2DRegression,
+  type projectGraph2DProbeMarkers,
 } from "@math3d/core";
 import { projectGraph2DGrid } from "./gridProjection";
 
@@ -23,11 +24,12 @@ export type Graph2DPlotSeries = Readonly<{
   continuation?: Graph2DSamplingArtifact;
 }>;
 type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonly Graph2DPlotSeries[]; regression?: Graph2DRegression | null;
+  probeMarkers?: ReturnType<typeof projectGraph2DProbeMarkers>;
   selectedProbe?: Graph2DProbe | null; hoverProbe?: Graph2DProbe | null;
   overlays?: readonly Graph2DLineOverlay[]; intervals?: Graph2DIntervalAnalysis | null;
   area?: Graph2DIntegralAnalysis | null; intersections?: Graph2DIntersectionAnalysis | null };
 
-export function Graph2DPlot({ display, size, series, regression, selectedProbe, hoverProbe, overlays = [], intervals, area, intersections }: Props) {
+export function Graph2DPlot({ display, size, series, regression, selectedProbe, hoverProbe, overlays = [], intervals, area, intersections, probeMarkers = [] }: Props) {
   if (graph2DHasLogScale(display.viewport)) { overlays = []; area = null; intervals = null; }
   const clipId = useId();
   const grid = projectGraph2DGrid(display.viewport, size, display.axes.gridOptions);
@@ -205,6 +207,13 @@ export function Graph2DPlot({ display, size, series, regression, selectedProbe, 
         })}
       </g>}
       {marker(hoverProbe, "hover")}
+      <g className="graph2d-saved-probes" data-testid="graph2d-saved-markers" pointerEvents="none">
+        {probeMarkers.map(({ probe, point, text, label }) => <g key={probe.id} data-probe-id={probe.id}>
+          <title>{text}</title><circle cx={point.x} cy={point.y} r={5} />
+          {label && <><rect x={label.x} y={label.y} width={label.width} height={20} rx={3} />
+            <svg x={label.x + 4} y={label.y} width={Math.max(0, label.width - 8)} height={20}><text x={0} y={14}>{text}</text></svg></>}
+        </g>)}
+      </g>
       {marker(selectedProbe, "selected")}
     </svg>
   );

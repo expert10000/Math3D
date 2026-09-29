@@ -187,3 +187,15 @@
 .graph2d-tools-grid small { display: block; margin-top: 4px; }
 .graph2d-tool-hint { max-width: 300px; background: var(--panel-strong); padding: 8px; }
 @media (forced-colors: active) { .graph2d-tools-panel { background: Canvas; color: CanvasText; border-color: CanvasText; } }
+.graph2d-saved-probes circle { fill: #b45309; stroke: var(--panel-strong); stroke-width: 2px; }
+.graph2d-saved-probes rect { fill: var(--panel-strong); stroke: var(--border); }
+.graph2d-saved-probes text { fill: currentColor; font-size: 11px; }
+.graph2d-probes-panel input { width: 100%; }
+.graph2d-probes-panel button { min-height: 44px; margin: 3px; }
+.graph2d-probe-card { border-top: 1px solid var(--border); padding: 8px 0; }
+@media (forced-colors: active) { .graph2d-saved-probes circle { fill: Highlight; stroke: Canvas; } .graph2d-saved-probes rect { fill: Canvas; stroke: CanvasText; } .graph2d-saved-probes text { fill: CanvasText; } }
+.graph2d-parameter-cards { position: absolute; right: 20px; top: 100px; z-index: 5; width: min(300px, calc(100% - 40px)); max-height: calc(100% - 190px); padding: 12px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-strong); }
+.graph2d-parameter-cards header { display: flex; justify-content: space-between; gap: 8px; }
+.graph2d-parameter-cards label { display: block; padding: 8px 0; }
+.graph2d-parameter-cards input { width: 100%; min-height: 44px; }
+.graph2d-parameter-cards button { min-height: 44px; margin: 2px; }
