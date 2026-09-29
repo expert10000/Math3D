@@ -50,9 +50,11 @@ const readNodes = () => {
   });
 };
 
-const expectNode = (label) => {
+const expectNode = (label, navigation = false) => {
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const node = readNodes().find((candidate) => (candidate.text === label || candidate.description === label) && candidate.bounds);
+    const matches = readNodes().filter((candidate) => (candidate.text === label || candidate.description === label) && candidate.bounds);
+    // Workspace is also the current screen's heading. Layout checks must measure the bottom tab.
+    const node = navigation ? matches.sort((a, b) => b.bounds[1] - a.bounds[1])[0] : matches[0];
     if (node) return node;
     pause(600);
   }
@@ -100,7 +102,7 @@ const screenshot = (name) => {
 };
 
 const assertNavigationLayout = (profile) => {
-  const nav = ["Home", "Explore", "Workspace", "Projects", "Settings"].map(expectNode);
+  const nav = ["Home", "Explore", "Workspace", "Projects", "Settings"].map(label => expectNode(label, true));
   for (const node of nav) {
     const [x1, y1, x2, y2] = node.bounds;
     if (x1 < 0 || y1 < 0 || x2 > profile.width || y2 > profile.height || x2 <= x1 || y2 <= y1) {
