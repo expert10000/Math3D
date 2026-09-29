@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { getGraph2DPresetCatalog, getGraph2DInteractivePreset, GRAPH2D_PRESET_CATEGORIES, graph2DPresetPreviewKey,
   type Graph2DPreset, type Graph2DPresetCategory } from "@math3d/core";
+import { Graph2DPointTableStore, renderGraph2DDocumentPreview, type Graph2DPersonalPresetPreview } from "@math3d/core";
 import { parseGraph2DProjectFavorites, emptyGraph2DProjectFavorites, toggleGraph2DProjectFavorite } from "@math3d/core";
 import manifest from "../../../packages/core/fixtures/graph2d/gallery-previews.json";
 import { listGraphGalleryCheckpoints, listGraphGalleryPresetCopies, listPersonalGraphProjects } from "./graph2dGallerySession";
@@ -13,8 +14,11 @@ const previewURL = (preset: Graph2DPreset) => {
   if(!entry||entry.key!==graph2DPresetPreviewKey(preset)||entry.presetDigest!==preset.digest)return undefined;
   return assets[`../../../packages/core/assets/graph2d-gallery/${entry.svg}`];
 };
-type Props={onClose:()=>void;onOpen:(preset:Graph2DPreset)=>void;onResume:(id:string)=>void;onCopy:(id:string,title:string)=>void;error:string|null;activeId:string;activeTitle:string};
-export function GraphGalleryDialog({onClose,onOpen,onResume,onCopy,error,activeId,activeTitle}:Props) {
+type Props={onClose:()=>void;onOpen:(preset:Graph2DPreset)=>void;onResume:(id:string)=>void;onCopy:(id:string,title:string)=>void;
+  onExportProject?:(id:string)=>{bytes:string;title:string;externalTableCount:number;missingTableCount:number;resultCount:number};
+  onCopyDefinition?:(id:string)=>string;onPreviewImport?:(raw:string)=>Graph2DPersonalPresetPreview;
+  onImportProject?:(preview:Graph2DPersonalPresetPreview)=>void;error:string|null;activeId:string;activeTitle:string};
+export function GraphGalleryDialog({onClose,onOpen,onResume,onCopy,onExportProject,onCopyDefinition,onPreviewImport,onImportProject,error,activeId,activeTitle}:Props) {
   const ref=useRef<HTMLDialogElement>(null),titleId=useId(),catalog=useMemo(getGraph2DPresetCatalog,[]);
   const searchRef=useRef<HTMLInputElement>(null);
   const [query,setQuery]=useState(""),[category,setCategory]=useState<Graph2DPresetCategory|"All">("All"),[collection,setCollection]=useState("Featured");
@@ -24,6 +28,30 @@ export function GraphGalleryDialog({onClose,onOpen,onResume,onCopy,error,activeI
   const favorite=(id:string)=>{try{const value=toggleGraphGalleryFavorite(preferences.value,id);localStorage.setItem(GRAPH_GALLERY_PREFERENCES_KEY,JSON.stringify(value));setPreferences({value,error:null});}
     catch(error){setPreferences(prev=>({...prev,error:(error as Error).message}));}};
   const [selected,setSelected]=useState<Graph2DPreset|null>(null);
+  const [importPreview,setImportPreview]=useState<Graph2DPersonalPresetPreview|null>(null),[importImage,setImportImage]=useState("");
+  const [transferMessage,setTransferMessage]=useState("");
+  const exportProject=(id:string)=>{try{
+    if(!onExportProject)throw new Error("Project export is unavailable.");
+    const result=onExportProject(id),url=URL.createObjectURL(new Blob([result.bytes],{type:"application/json"}));
+    const link=document.createElement("a");link.href=url;link.download=`${result.title.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g,"-").slice(0,64)||"Graph"}.math3d.handoff.json`;link.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    setTransferMessage(`Exported ${result.title}. ${result.externalTableCount} point-table sidecar(s) and ${result.resultCount} result descriptor(s) are external to the file.${result.missingTableCount?` ${result.missingTableCount} local sidecar(s) are already missing.`:""}`);
+  }catch(e){setTransferMessage(`Export failed: ${(e as Error).message}`);}};
+  const copyDefinition=async(id:string)=>{try{if(!onCopyDefinition)throw new Error("Graph definition is unavailable.");
+    await navigator.clipboard.writeText(onCopyDefinition(id));setTransferMessage("Copied the Graph document definition. Companions, result descriptors and point-table rows are not included.");
+  }catch(e){setTransferMessage(`Copy failed: ${(e as Error).message}`);}};
+  const previewFile=async(file:File)=>{setImportPreview(null);setImportImage("");setTransferMessage("");try{
+    if(file.size>32*1024*1024)throw new Error("Graph preset file exceeds the 32 MB import limit.");
+    if(!onPreviewImport)throw new Error("Personal preset import is unavailable.");
+    const prepared=onPreviewImport(await file.text());
+    const tables=new Graph2DPointTableStore({read:id=>localStorage.getItem(`math3d.graph2d.table.${id}`),write:()=>{throw new Error("Read-only preview.");}});
+    const pointTables=Object.fromEntries(prepared.document.source.objects.flatMap(object=>object.kind==="point-series"?[[object.table.id,tables.resolve(object.table)]]:[]));
+    try{const image=renderGraph2DDocumentPreview(prepared.document,prepared.document.metadata.title,pointTables);
+      setImportImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(image.svg)}`);
+      if(image.diagnostics.some(item=>item.code==="deadline"))setTransferMessage("Preview is incomplete under the bounded sampling budget.");
+    }catch(e){setTransferMessage(`Plot preview unavailable: ${(e as Error).message}. The source summary remains readable.`);}
+    setImportPreview(prepared);
+  }catch(e){setTransferMessage(`Import preview failed: ${(e as Error).message}`);}};
   const [copyTitle,setCopyTitle]=useState(`${activeTitle.slice(0, 140)} copy`), [favoritesOnly,setFavoritesOnly]=useState(false);
   const favoriteKey="math3d.graph2d.project-favorites.v1";
   const [projectFavorites,setProjectFavorites]=useState(()=>{try{return {value:parseGraph2DProjectFavorites(localStorage.getItem(favoriteKey)),error:null as string|null};}catch(e){return {value:emptyGraph2DProjectFavorites(),error:(e as Error).message};}});
@@ -60,6 +88,19 @@ export function GraphGalleryDialog({onClose,onOpen,onResume,onCopy,error,activeI
       onClick={()=>{setCategory(c as Graph2DPresetCategory|"All");if(featured)setCollection("All scenes");setSelected(null);}}>{c}</button>)}</div>
     {collection==="My Graphs"?<section aria-label="My Graphs" data-testid="graph-gallery-my-graphs">
       <p>Open your saved graphs or make an independent copy. Copied analysis observations remain labeled and are not recalculated.</p>
+      <label>Preview a personal Graph file before import <input type="file" accept="application/json,.json" data-testid="graph-personal-import-file"
+        onChange={event=>{const file=event.target.files?.[0];event.target.value="";if(file)void previewFile(file);}} /></label>
+      {transferMessage&&<p role="status" data-testid="graph-personal-transfer-message">{transferMessage}</p>}
+      {importPreview&&<section aria-label="Personal Graph import preview" data-testid="graph-personal-import-preview">
+        <h3>{importPreview.document.metadata.title}</h3>
+        {importImage&&<img src={importImage} alt={`${importPreview.document.metadata.title} graph import preview`} width={320} height={180}/>}
+        <p>{importPreview.format} · {importPreview.document.source.objects.length} Graph object(s) · {importPreview.companionCount} companion(s) · {importPreview.resultCount} saved result descriptor(s).</p>
+        <p>{importPreview.document.source.objects.map(object=>`${object.label} (${object.kind})`).join(" · ")||"Empty Graph"}</p>
+        <p>{importPreview.externalTableCount} external point-table sidecar(s) · {importPreview.externalArtifactCount} external artifact descriptor(s). The file does not embed their bytes. Saved results are copied observations, not recalculated.</p>
+        {importPreview.missingTables.length>0&&<p role="alert">{importPreview.missingTables.length} required point-table sidecar(s) missing or corrupt. Import them before accepting this Graph.</p>}
+        <button type="button" disabled={importPreview.missingTables.length>0||!onImportProject} onClick={()=>onImportProject?.(importPreview)}>Import as independent Graph</button>
+        <button type="button" onClick={()=>{setImportPreview(null);setImportImage("");setTransferMessage("Import cancelled. Current work remains open.");}}>Cancel import</button>
+      </section>}
       <label>Reusable copy title<input maxLength={160} value={copyTitle} onChange={e=>setCopyTitle(e.target.value)} /></label>
       <button type="button" onClick={()=>onCopy(activeId,copyTitle)}>Save current as reusable copy</button>
       <button type="button" aria-pressed={favoritesOnly} onClick={()=>setFavoritesOnly(!favoritesOnly)}>Project favorites only</button>
@@ -69,6 +110,8 @@ export function GraphGalleryDialog({onClose,onOpen,onResume,onCopy,error,activeI
         <h3>{p.title}</h3><p>{p.active?"Current workspace":"Saved workspace"}</p>
         <button onClick={()=>p.active?onClose():onResume(p.id)}>Open project {p.title}</button>
         <button onClick={()=>onCopy(p.id,`${p.title.slice(0,140)} copy`)}>Copy project {p.title}</button>
+        <button onClick={()=>exportProject(p.id)}>Export preset {p.title}</button>
+        <button onClick={()=>void copyDefinition(p.id)}>Copy graph definition {p.title}</button>
         <button aria-pressed={projectFavorites.value.ids.includes(p.id)} onClick={()=>projectFavorite(p.id)}>Favorite project {p.title}</button>
       </article>)}
       {!projects.items.some(p=>p.title.toLocaleLowerCase().includes(query.toLocaleLowerCase())&&(!favoritesOnly||projectFavorites.value.ids.includes(p.id)))&&<p>No matching saved Graph projects.</p>}

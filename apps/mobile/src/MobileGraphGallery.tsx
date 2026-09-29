@@ -1,12 +1,21 @@
 import React, { useMemo, useRef, useState } from "react";
 import { AccessibilityInfo, findNodeHandle, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
-import { GRAPH2D_PRESET_CATEGORIES, getGraph2DInteractivePreset, graph2DPresetPreviewKey, type Graph2DPreset, type Graph2DPresetCategory } from "@math3d/core";
+import { GRAPH2D_PRESET_CATEGORIES, getGraph2DInteractivePreset, graph2DPresetPreviewKey, sampleGraph2DScene,
+  type Graph2DPersonalPresetPreview, type Graph2DPreset, type Graph2DPresetCategory } from "@math3d/core";
 import manifest from "../../../packages/core/fixtures/graph2d/gallery-previews.json";
 import { mobileGraphGalleryAssets } from "./data/mobileGraphGalleryAssets";
 import { mobileGraphGalleryItems, mobileGraphGalleryLayout } from "./models/mobileGraphGallery";
 import type { Graph2DDocument } from "@math3d/core";
 import type { MobileStoredSceneProject } from "./models/mobileScene";
+import { mobileGraphPointTables } from "./services/mobileGraphPointTables";
+import { projectMobileGraphLines, type MobileGraphLine } from "./viewer/mobileGraphProjection";
+
+const PreviewLine = ({ line }: { line: MobileGraphLine }) => <View pointerEvents="none" style={{ position: "absolute",
+  left: (line.a.x + line.b.x) / 2 - Math.hypot(line.b.x - line.a.x, line.b.y - line.a.y) / 2,
+  top: (line.a.y + line.b.y) / 2 - line.width / 2,
+  width: Math.hypot(line.b.x - line.a.x, line.b.y - line.a.y), height: line.width, backgroundColor: line.color,
+  transform: [{ rotate: `${Math.atan2(line.b.y - line.a.y, line.b.x - line.a.x)}rad` }] }} />;
 
 function GallerySafeArea({ children }: { children: React.ReactNode }) {
   const insets = useSafeAreaInsets();
@@ -15,10 +24,13 @@ function GallerySafeArea({ children }: { children: React.ReactNode }) {
   }]}>{children}</View>;
 }
 
-export function MobileGraphGallery({ onClose, onOpen, busy = false, message = "", personalProjects = [], currentGraph, projectFavorites = [], favoritesError = "", onFavorite, onResetFavorites, onPersonalOpen }: {
+export function MobileGraphGallery({ onClose, onOpen, busy = false, message = "", personalProjects = [], currentGraph, projectFavorites = [], favoritesError = "", onFavorite, onResetFavorites, onPersonalOpen,
+  importPreview, onPreviewImport, onAcceptImport, onCancelImport, onExportPersonal, onShareDefinition }: {
   onClose: () => void; onOpen?: (preset: Graph2DPreset) => Promise<boolean>; busy?: boolean; message?: string;
   personalProjects?: readonly MobileStoredSceneProject[]; currentGraph?: Graph2DDocument | null; projectFavorites?: readonly string[]; favoritesError?: string;
   onFavorite?: (id:string)=>boolean; onResetFavorites?: ()=>void; onPersonalOpen?: (id:string,title?:string)=>Promise<boolean>;
+  importPreview?: Graph2DPersonalPresetPreview | null; onPreviewImport?: ()=>Promise<boolean>; onAcceptImport?: ()=>Promise<boolean>;
+  onCancelImport?: ()=>void; onExportPersonal?: (id:string)=>Promise<boolean>; onShareDefinition?: (id:string)=>Promise<boolean>;
 }) {
   const window = useWindowDimensions(), [contentWidth, setContentWidth] = useState(window.width);
   const layout = mobileGraphGalleryLayout(contentWidth, window.height, window.fontScale);
@@ -28,6 +40,15 @@ export function MobileGraphGallery({ onClose, onOpen, busy = false, message = ""
   const [myGraphs,setMyGraphs]=useState(false),[favoritesOnly,setFavoritesOnly]=useState(false),[copyTitle,setCopyTitle]=useState(`${currentGraph?.metadata.title.slice(0,140) ?? "Graph"} copy`);
   const projects=[...(currentGraph?[{id:currentGraph.identity.id,title:currentGraph.metadata.title}]:[]),...personalProjects.filter(p=>p.id!==currentGraph?.identity.id)];
   const filteredProjects=projects.filter(p=>p.title.toLocaleLowerCase().includes(query.toLocaleLowerCase())&&(!favoritesOnly||projectFavorites.includes(p.id)));
+  const previewWidth=Math.min(320,Math.max(180,contentWidth-40)),previewSize={width:previewWidth,height:previewWidth*9/16};
+  const personalPlot=useMemo(()=>{if(!importPreview)return {lines:[] as MobileGraphLine[],warning:""};try{
+    const document=importPreview.document,pointTables=Object.fromEntries(document.source.objects.flatMap(object=>
+      object.kind==="point-series"?[[object.table.id,mobileGraphPointTables.resolve(object.table)]]:[]));
+    const sampled=sampleGraph2DScene({document:{...document,display:{...document.display,sampling:{maxSamples:256,maxDepth:6,tolerancePx:3}}},
+      viewport:document.display.viewport,...previewSize,interaction:true,pointTables,timeBudgetMs:150});
+    return {lines:projectMobileGraphLines(sampled,document.display.viewport,previewSize,null,256),
+      warning:sampled.some(item=>item.artifact.diagnostics.some(d=>d.code==="deadline"||d.code==="sample-limit"))?"Bounded preview is incomplete.":""};
+  }catch(e){return {lines:[] as MobileGraphLine[],warning:`Plot preview unavailable: ${(e as Error).message}`};}},[importPreview,previewSize.width]);
   const heading = useRef<Text>(null);
   const items = useMemo(() => mobileGraphGalleryItems(query, category, featured), [query, category, featured]);
   const button = (label: string, action: () => void, active = false, disabled = busy, text = label) => <Pressable key={label}
@@ -65,6 +86,20 @@ export function MobileGraphGallery({ onClose, onOpen, busy = false, message = ""
           {(["All", ...GRAPH2D_PRESET_CATEGORIES] as const).map(value => button(value, () => { setCategory(value); setFeatured(false); setSelected(null); }, category === value))}
         </ScrollView>
         {myGraphs?<View testID="mobile-graph-my-graphs"><Text>Existing saved Graph projects. Copies preserve data and companion lineage.</Text>
+          {button("Choose personal Graph file",()=>{void onPreviewImport?.();},false,busy||!onPreviewImport)}
+          {importPreview&&<View testID="mobile-graph-personal-import-preview" style={s.detail}>
+            <Text accessibilityRole="header" style={s.title}>{importPreview.document.metadata.title}</Text>
+            <View accessibilityLabel={`${importPreview.document.metadata.title} graph import plot preview`} style={{width:previewSize.width,height:previewSize.height,backgroundColor:"#f8fafc",overflow:"hidden"}}>
+              {personalPlot.lines.map((line,index)=><PreviewLine key={index} line={line}/>)}
+            </View>
+            {personalPlot.warning?<Text style={s.message}>{personalPlot.warning}</Text>:null}
+            <Text>{importPreview.format} · {importPreview.document.source.objects.length} Graph objects · {importPreview.companionCount} companions · {importPreview.resultCount} saved result descriptors.</Text>
+            <Text>{importPreview.document.source.objects.map(object=>`${object.label} (${object.kind})`).join(" · ")||"Empty Graph"}</Text>
+            <Text>{importPreview.externalTableCount} external point-table sidecars · {importPreview.externalArtifactCount} external artifact descriptors. The file does not embed their bytes. Saved results are copied observations.</Text>
+            {importPreview.missingTables.length>0?<Text accessibilityLiveRegion="polite" style={s.message}>{importPreview.missingTables.length} required point-table sidecars missing or corrupt. Import them before accepting this Graph.</Text>:null}
+            {button("Import as independent Graph",()=>{void onAcceptImport?.();},false,busy||!onAcceptImport||importPreview.missingTables.length>0)}
+            {button("Cancel personal Graph import",()=>onCancelImport?.())}
+          </View>}
           {favoritesError?<View><Text accessibilityLiveRegion="polite">{favoritesError}</Text>{button("Reset project favorites",()=>onResetFavorites?.())}</View>:null}
           {currentGraph&&<><Text>Reusable copy title</Text><TextInput accessibilityLabel="Reusable copy title" maxLength={160} editable={!busy} style={s.search} value={copyTitle} onChangeText={setCopyTitle}/>
             {button("Save current as reusable copy",()=>{void onPersonalOpen?.(currentGraph.identity.id,copyTitle);})}</>}
@@ -72,6 +107,8 @@ export function MobileGraphGallery({ onClose, onOpen, busy = false, message = ""
           {filteredProjects.map(p=><View key={p.id} style={s.body}><Text accessibilityRole="header" style={s.title}>{p.title}</Text>
             {button(`Open project ${p.title}`,()=>{void onPersonalOpen?.(p.id);})}
             {button(`Copy project ${p.title}`,()=>{void onPersonalOpen?.(p.id,`${p.title.slice(0,140)} copy`);})}
+            {button(`Export preset ${p.title}`,()=>{void onExportPersonal?.(p.id);},false,busy||!onExportPersonal)}
+            {button(`Share graph definition ${p.title}`,()=>{void onShareDefinition?.(p.id);},false,busy||!onShareDefinition)}
             {button(`Favorite project ${p.title}`,()=>{onFavorite?.(p.id);},projectFavorites.includes(p.id),busy||!!favoritesError)}</View>)}
           {!filteredProjects.length&&<Text>No matching saved Graph projects.</Text>}
         </View>:selected ? <View style={s.detail} testID="mobile-graph-gallery-detail">

@@ -41,6 +41,9 @@ export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model 
         personalProjects={model.storedProjects.filter(p=>p.projectType==="graph2d")} currentGraph={model.graphDocument}
         projectFavorites={model.graphProjectFavorites.ids} favoritesError={model.graphProjectFavoritesError} onFavorite={model.favoriteGraphProject}
         onResetFavorites={model.resetGraphProjectFavorites} onPersonalOpen={model.openPersonalGraphProject}
+        importPreview={model.graphGalleryImportPreview} onPreviewImport={model.previewPersonalGraphFile}
+        onAcceptImport={model.acceptPersonalGraphImport} onCancelImport={() => model.setGraphGalleryImportPreview(null)}
+        onExportPersonal={model.exportPersonalGraphProject} onShareDefinition={model.sharePersonalGraphDefinition}
         busy={model.graphGalleryBusy} message={model.graphGalleryMessage} />}
       <View style={styles.bottomNav} accessibilityRole="tablist">
         {tabs.map(({ key, label }) => (

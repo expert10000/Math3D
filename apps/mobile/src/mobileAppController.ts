@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { type Graph2DDocument, type Graph2DAnyPromotion, type Graph2DPreset } from "@math3d/core";
+import { serializeGraph2DDocument, type Graph2DDocument, type Graph2DAnyPromotion, type Graph2DPreset,
+  type Graph2DPersonalPresetPreview } from "@math3d/core";
 import { commitMobileGraphPresetLaunch, planMobileGraphPresetLaunch } from "./models/mobileGraphPresetLaunch";
 import { stageMobileGraphPresetSidecars, mobileGraphPointTables } from "./services/mobileGraphPointTables";
 import { createMobileGraph, importMobileGraph, readMobileGraph, storeMobileGraph, updateStoredMobileGraph } from "./models/mobileGraphProject";
 import { commitMobileGraphPromotion, readMobileGraphPromotions } from "./models/mobileGraphPromotions";
 import { probeMobilePlatformCapabilities } from "./services/mobilePlatformCapabilities";
-import { AppState, PixelRatio, Platform, type GestureResponderEvent } from "react-native";
+import { AppState, PixelRatio, Platform, Share, type GestureResponderEvent } from "react-native";
 import { SCENE_PROJECT_VERSION, createSceneProjectDocument, deserializeSceneProject, serializeSceneProject, type SceneDocument, type SurfaceDefinition, type VtkPreviewJobSnapshot, type VtkPreviewRequest } from "@math3d/core";
 import { mobileExamples, mobileSeedScenes } from "./data/mobileSeedData";
 import { DEFAULT_MOBILE_GRID_PLANES } from "./models/mobileCoordinateGrid";
@@ -19,7 +20,8 @@ import { useMobileNavigationState, type MobileTab } from "./models/useMobileNavi
 import { useMobileWorkspaceState, type CameraCommandType } from "./models/useMobileWorkspaceState";
 import { useMobileProjectState } from "./models/useMobileProjectState";
 import { duplicateMobileProject, renameMobileProject } from "./models/mobileProjectOperations";
-import { planMobilePersonalGraph } from "./models/mobileGraphPersonalProjects";
+import { planMobilePersonalGraph, planMobilePersonalGraphImport, preserveMobilePersonalGraphWork,
+  previewMobilePersonalGraphImport } from "./models/mobileGraphPersonalProjects";
 import { loadMobileGraphProjectFavorites, saveMobileGraphProjectFavorites } from "./services/mobileGraphProjectFavorites";
 import { emptyGraph2DProjectFavorites, toggleGraph2DProjectFavorite } from "@math3d/core";
 import { importMobileSceneProject } from "./models/mobileProjectTransfer";
@@ -287,6 +289,7 @@ export const useMobileAppController = () => {
     }catch(e){setGraphProjectFavoritesError((e as Error).message);return false;}};
   const resetGraphProjectFavorites=()=>{try{const next=emptyGraph2DProjectFavorites();saveMobileGraphProjectFavorites(next);setGraphProjectFavorites(next);setGraphProjectFavoritesError("");}catch(e){setGraphProjectFavoritesError((e as Error).message);}};
   const [graphGalleryBusy, setGraphGalleryBusy] = useState(false), [graphGalleryMessage, setGraphGalleryMessage] = useState("");
+  const [graphGalleryImportPreview, setGraphGalleryImportPreview] = useState<Graph2DPersonalPresetPreview | null>(null);
   const graphGalleryLaunchInFlight = useRef(false);
   const graphProjectSequence = useRef(0);
   useEffect(() => { if (viewerDocument) setGraphDocument(null); }, [viewerDocument]);
@@ -1542,6 +1545,50 @@ export const useMobileAppController = () => {
     }catch(e){setGraphGalleryMessage(`Could not open/copy Graph: ${(e as Error).message}. Current work remains open.`);return false;}
     finally{graphGalleryLaunchInFlight.current=false;setGraphGalleryBusy(false);}
   };
+  const exportPersonalGraphProject = async (id: string): Promise<boolean> => {
+    if (graphGalleryLaunchInFlight.current) return false;
+    graphGalleryLaunchInFlight.current=true;setGraphGalleryBusy(true);
+    try {
+      const project=preserveMobilePersonalGraphWork(storedProjects,{graph:graphDocument,scene:viewerDocument}).find(item=>item.id===id);
+      if(!project||project.projectType!=="graph2d")throw new Error("Saved Graph project unavailable.");
+      const exported=await exportMobileSceneProject(project);
+      setGraphGalleryMessage(exported.status==="cancelled"?"Export cancelled. Current work remains open.":
+        `Exported ${exported.fileName}. Point-table rows and result artifacts remain external sidecars.`);
+      return exported.status==="exported";
+    }catch(e){setGraphGalleryMessage(`Export failed: ${(e as Error).message}`);return false;}
+    finally{graphGalleryLaunchInFlight.current=false;setGraphGalleryBusy(false);}
+  };
+  const sharePersonalGraphDefinition = async (id: string): Promise<boolean> => {
+    try {
+      const project=preserveMobilePersonalGraphWork(storedProjects,{graph:graphDocument,scene:viewerDocument}).find(item=>item.id===id);
+      if(!project||project.projectType!=="graph2d")throw new Error("Saved Graph project unavailable.");
+      await Share.share({message:serializeGraph2DDocument(readMobileGraph(project)),title:`${project.title} Graph definition`});
+      setGraphGalleryMessage("Shared Graph definition text. Point-table rows, companions and result descriptors are not included.");return true;
+    }catch(e){setGraphGalleryMessage(`Definition share failed: ${(e as Error).message}`);return false;}
+  };
+  const previewPersonalGraphFile = async (): Promise<boolean> => {
+    if(graphGalleryLaunchInFlight.current)return false;
+    graphGalleryLaunchInFlight.current=true;setGraphGalleryBusy(true);setGraphGalleryImportPreview(null);setGraphGalleryMessage("");
+    try{
+      const picked=await pickMobileSceneProject();
+      if(picked.status==="cancelled"){setGraphGalleryMessage("Import cancelled. Current work remains open.");return false;}
+      const prepared=previewMobilePersonalGraphImport(picked.serializedProject,table=>!!mobileGraphPointTables.resolve(table));
+      setGraphGalleryImportPreview(prepared);setGraphGalleryMessage(`Review ${picked.sourceName} before importing an independent Graph.`);return true;
+    }catch(e){setGraphGalleryMessage(`Import preview failed: ${(e as Error).message}`);return false;}
+    finally{graphGalleryLaunchInFlight.current=false;setGraphGalleryBusy(false);}
+  };
+  const acceptPersonalGraphImport = async (): Promise<boolean> => {
+    if(!graphGalleryImportPreview||graphGalleryLaunchInFlight.current)return false;
+    graphGalleryLaunchInFlight.current=true;setGraphGalleryBusy(true);
+    try{
+      const plan=planMobilePersonalGraphImport(storedProjects,{graph:graphDocument,scene:viewerDocument},graphGalleryImportPreview,
+        `mobile-personal-import/${Date.now()}/${++graphProjectSequence.current}`,table=>!!mobileGraphPointTables.resolve(table));
+      await saveStoredSceneProjects(plan.projects);setStoredProjects(plan.projects);openCreatedGraph(plan.project);
+      setGraphGalleryImportPreview(null);setGraphGalleryOpen(false);setGraphGalleryMessage("");
+      setProjectActionMessage(`Imported ${plan.project.title} as an independent Graph. Saved results are copied observations.`);return true;
+    }catch(e){setGraphGalleryMessage(`Import failed: ${(e as Error).message}. Current work remains open.`);return false;}
+    finally{graphGalleryLaunchInFlight.current=false;setGraphGalleryBusy(false);}
+  };
   const saveGraphProject = async (): Promise<boolean> => {
     if (!graphDocument) return false;
     const previous = storedProjects.find((project) => project.id === graphDocument.identity.id);
@@ -2455,6 +2502,8 @@ export const useMobileAppController = () => {
   return {
     graphGalleryOpen, setGraphGalleryOpen, graphGalleryBusy, graphGalleryMessage, openGraphGalleryPreset,
     graphProjectFavorites,graphProjectFavoritesError,favoriteGraphProject,resetGraphProjectFavorites,openPersonalGraphProject,
+    graphGalleryImportPreview,setGraphGalleryImportPreview,exportPersonalGraphProject,sharePersonalGraphDefinition,
+    previewPersonalGraphFile,acceptPersonalGraphImport,
     graphDocument, setGraphDocument, createGraphProject, importGraphProject, saveGraphProject, graphPromotions, createGraphPromotion,
     tab,
     setTab,

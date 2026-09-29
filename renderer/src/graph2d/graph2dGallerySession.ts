@@ -1,6 +1,8 @@
 import { canonicalJsonStringify, createMixedWorkspaceDocument, createGraph2DWorkspaceProject, createWorkspaceProjectHandoff, graph2DCompanionCheckpoint,
   instantiateGraph2DPreset, mergeGraph2DHandoffCheckpoint, parseMixedWorkspaceDocument, parseWorkspaceProjectHandoff,
-  serializeMixedWorkspaceDocument, serializeWorkspaceProjectHandoff, type Graph2DPreset, type MixedWorkspaceDocument } from "@math3d/core";
+  serializeMixedWorkspaceDocument, serializeWorkspaceProjectHandoff, serializeGraph2DDocument,
+  inspectGraph2DPersonalPreset, forkGraph2DPersonalPreset, type Graph2DPersonalPresetPreview,
+  type Graph2DPreset, type MixedWorkspaceDocument } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { forkGraph2DWorkspaceProject, Graph2DPointTableStore } from "@math3d/core";
 import { GRAPH_GALLERY_PREFERENCES_KEY,parseGraphGalleryPreferences,recordGraphGalleryRecent } from "./graph2dGalleryPreferences";
@@ -146,7 +148,7 @@ export const listPersonalGraphProjects = (storage: Storage, activeId: string, ac
     if (!items.some(p => p.id === d.identity.id)) items.push({ id: d.identity.id, title: d.metadata.title, active: false }); }
   return items;
 };
-export const copyPersonalGraphProject = (capture: () => MixedWorkspaceDocument, id: string, token: string, title: string, storage: Storage) => {
+const readPersonalGraphWorkspace = (capture: () => MixedWorkspaceDocument, id: string, storage: Storage) => {
   const live = currentCheckpoint(capture, storage).workspace;
   let source = live;
   if (graph(live).identity.id !== id) {
@@ -157,7 +159,40 @@ export const copyPersonalGraphProject = (capture: () => MixedWorkspaceDocument, 
     } else { const saved = storage.getItem(WORKSPACE_KEY); if (!saved) throw new Error("Saved Graph project unavailable."); source = parseMixedWorkspaceDocument(saved); }
     if (graph(source).identity.id !== id) throw new Error("Saved Graph identity mismatch.");
   }
-  const tables = new Graph2DPointTableStore({ read: tableId => storage.getItem(`math3d.graph2d.table.${tableId}`), write: () => { throw new Error("Read-only table validation."); } });
+  return source;
+};
+const tableStore = (storage: Storage) => new Graph2DPointTableStore({ read: tableId => storage.getItem(`math3d.graph2d.table.${tableId}`),
+  write: () => { throw new Error("Read-only table validation."); } });
+export const copyPersonalGraphProject = (capture: () => MixedWorkspaceDocument, id: string, token: string, title: string, storage: Storage) => {
+  const source = readPersonalGraphWorkspace(capture, id, storage);
+  const tables = tableStore(storage);
   for (const o of graph(source).source.objects) if (o.kind === "point-series" && !tables.resolve(o.table)) throw new Error("Original data sidecar is missing or corrupt. Import it before making a reusable copy.");
   return activate(capture, forkGraph2DWorkspaceProject(source, token, title), null, storage);
+};
+
+/** The existing handoff is the portable file; point-table rows remain explicit external sidecars. */
+export const exportPersonalGraphProject = (capture: () => MixedWorkspaceDocument, id: string, storage: Storage) => {
+  const source = readPersonalGraphWorkspace(capture, id, storage), document = graph(source);
+  const manifest = createWorkspaceProjectHandoff(source, { producer: { platform: typeof window !== "undefined" && "appRuntime" in window ? "desktop" : "browser",
+    name: "Math3D", version: "1.5.0" }, baseRevision: null });
+  const bytes = serializeWorkspaceProjectHandoff(manifest);
+  const preview = inspectGraph2DPersonalPreset(bytes, reference => !!tableStore(storage).resolve(reference));
+  return { bytes, title: document.metadata.title, externalTableCount: preview.externalTableCount,
+    missingTableCount: preview.missingTables.length, resultCount: preview.resultCount };
+};
+export const personalGraphDefinition = (capture: () => MixedWorkspaceDocument, id: string, storage: Storage) =>
+  serializeGraph2DDocument(graph(readPersonalGraphWorkspace(capture, id, storage)));
+export const previewPersonalGraphImport = (raw: string, storage: Storage): Graph2DPersonalPresetPreview => {
+  const tables = tableStore(storage);
+  return inspectGraph2DPersonalPreset(raw, reference => !!tables.resolve(reference));
+};
+export const importPersonalGraphProject = (capture: () => MixedWorkspaceDocument, preview: Graph2DPersonalPresetPreview,
+  token: string, storage: Storage) => {
+  const tables = tableStore(storage);
+  for (const object of preview.document.source.objects) if (object.kind === "point-series" && !tables.resolve(object.table))
+    throw new Error("Required point-table sidecar is missing or corrupt. Import it before accepting this preset.");
+  const incoming = forkGraph2DPersonalPreset(preview, token);
+  if (listPersonalGraphProjects(storage, graph(currentCheckpoint(capture, storage).workspace).identity.id, "").some(item => item.id === graph(incoming).identity.id))
+    throw new Error("Imported Graph identity already exists. Try again.");
+  return activate(capture, incoming, null, storage);
 };

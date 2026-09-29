@@ -1,5 +1,7 @@
 import { structuralHash } from "../documentIdentity";
 import type { Graph2DPreset } from "../graph2dPresets";
+import type { Graph2DDocument } from "../graph2dDocument";
+import type { Graph2DPointRow } from "../graph2dPointSeries";
 import { sampleGraph2DScene } from "../graph2dSceneSampling";
 import { graph2DWorldToScreen, resolveGraph2DViewport } from "../graph2dViewport";
 import type { Graph2DRegionArtifact } from "../graph2dInequality";
@@ -11,14 +13,15 @@ export const graph2DPresetPreviewKey = (preset: Graph2DPreset) => structuralHash
 const escape = (text: string) => text.replace(/[<>&"']/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" }[c]!));
 const n = (v: number) => { if (!Number.isFinite(v)) throw new TypeError("Non-finite preview coordinate."); return Number(v.toFixed(3)); };
 
-/** Derived thumbnail geometry only; the same sampler and transforms power the live Graph. */
-export const renderGraph2DPresetPreview = (preset: Graph2DPreset) => {
-  const size = GRAPH2D_PREVIEW_RECIPE, viewport = preset.template.display.viewport;
-  const document = { ...preset.template, display: { ...preset.template.display, sampling: {
+/** Bounded read-only preview for an inspected personal project or built-in preset. */
+export const renderGraph2DDocumentPreview = (source: Graph2DDocument, title: string,
+  pointTables: Readonly<Record<string, readonly Graph2DPointRow[] | null>> = {}) => {
+  const size = GRAPH2D_PREVIEW_RECIPE, viewport = source.display.viewport;
+  const document = { ...source, display: { ...source.display, sampling: {
     maxSamples: size.maxSamples, maxDepth: size.maxDepth, tolerancePx: size.tolerancePx } } };
   const series = sampleGraph2DScene({ document, viewport, width: size.width, height: size.height, interaction: false,
-    pointTables: Object.fromEntries(preset.sidecars.map(s => [s.id, s.rows])), timeBudgetMs: 1500 });
-  if (series.some(s => s.artifact.diagnostics.some(d => d.code === "deadline"))) throw new Error(`Preview deadline: ${preset.id}`);
+    pointTables, timeBudgetMs: 1500 });
+  if (series.some(s => s.artifact.diagnostics.some(d => d.code === "deadline"))) throw new Error("Graph preview deadline exceeded.");
   const screen = (p: { x: number; y: number }) => graph2DWorldToScreen(viewport, size, p);
   const bounds = resolveGraph2DViewport(viewport, size), origin = screen({ x: 0, y: 0 });
   const elements: string[] = [];
@@ -52,9 +55,15 @@ export const renderGraph2DPresetPreview = (preset: Graph2DPreset) => {
     if ("kind" in a && a.kind === "piecewise") for (const p of (a as Graph2DPiecewiseArtifact).endpoints) circle(p,p.open);
     if ("kind" in a && a.kind === "point-series") for (const p of (a as Graph2DPointSeriesArtifact).points) circle(p);
   }
-  if (elements.length > 4096) throw new Error(`Preview output exceeds element budget: ${preset.id}`);
-  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180" role="img"><title>${escape(preset.title)}</title><defs><clipPath id="plot"><rect width="320" height="180"/></clipPath></defs><rect width="320" height="180" fill="#f8fafc"/><g clip-path="url(#plot)">${elements.join("")}</g></svg>`;
-  if (new TextEncoder().encode(svg).length > 128*1024) throw new Error(`Preview exceeds byte limit: ${preset.id}`);
-  return { key: graph2DPresetPreviewKey(preset), svg, samples: series.reduce((v,s) => v+s.artifact.samplesEvaluated,0),
+  if (elements.length > 4096) throw new Error("Graph preview exceeds its element budget.");
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180" role="img"><title>${escape(title)}</title><defs><clipPath id="plot"><rect width="320" height="180"/></clipPath></defs><rect width="320" height="180" fill="#f8fafc"/><g clip-path="url(#plot)">${elements.join("")}</g></svg>`;
+  if (new TextEncoder().encode(svg).length > 128*1024) throw new Error("Graph preview exceeds its byte limit.");
+  return { svg, samples: series.reduce((v,s) => v+s.artifact.samplesEvaluated,0),
     diagnostics: series.flatMap(s => s.artifact.diagnostics.map(d => ({ objectId:s.objectId,...d }))) };
 };
+
+/** Derived thumbnail geometry only; the same sampler and transforms power the live Graph. */
+export const renderGraph2DPresetPreview = (preset: Graph2DPreset) => ({
+  key: graph2DPresetPreviewKey(preset),
+  ...renderGraph2DDocumentPreview(preset.template, preset.title, Object.fromEntries(preset.sidecars.map(s => [s.id, s.rows]))),
+});

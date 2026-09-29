@@ -107,3 +107,34 @@ test("GGL05 favorites and recents persist without duplicating saved graphs",asyn
     expect(settings.favorites).toEqual([]);expect(settings.recent).toEqual(["polar-rose"]);
   } finally {await closeSurfaceApp(app);}
 });
+
+test("GGL12 exports a personal Graph and previews, cancels, then imports an independent copy",async()=>{
+  const app=await launchSurfaceApp();
+  try{
+    const page=app.page;await resetSurfaceAppState(page);await page.setViewportSize({width:1440,height:900});
+    await page.getByTestId("workspace-nav-graphs").click();await page.getByTestId("graph-gallery-open").click();
+    const gallery=page.getByTestId("graph-gallery");await gallery.getByRole("button",{name:"All scenes",exact:true}).click();
+    await gallery.getByRole("button",{name:"Open Two slopes",exact:true}).click();
+    const original=await page.evaluate(()=>JSON.parse(localStorage.getItem("math3d.graph2d-handoff.v2")!).projectId);
+    await page.getByTestId("graph-gallery-open").click();await gallery.getByRole("button",{name:"My Graphs",exact:true}).click();
+    const path=resolve(`output/ggl12-personal-${Date.now()}.handoff.json`);
+    await app.app.evaluate(({session},savePath)=>session.defaultSession.once("will-download",(_event,item)=>item.setSavePath(savePath)),path);
+    await gallery.getByRole("button",{name:"Export preset Two slopes",exact:true}).click();
+    await expect.poll(()=>existsSync(path)).toBe(true);
+    const outbound=parseWorkspaceProjectHandoff(readFileSync(path,"utf8"));expect(outbound.projectId).toBe(original);
+    const input=gallery.getByTestId("graph-personal-import-file");
+    await input.setInputFiles({name:"my-graph.json",mimeType:"application/json",buffer:Buffer.from(readFileSync(path))});
+    await expect(gallery.getByTestId("graph-personal-import-preview")).toBeVisible();
+    await expect(gallery.getByAltText("Two slopes graph import preview")).toBeVisible();
+    await gallery.getByRole("button",{name:"Cancel import",exact:true}).click();
+    expect((await page.evaluate(()=>JSON.parse(localStorage.getItem("math3d.graph2d-handoff.v2")!))).projectId).toBe(original);
+    await input.setInputFiles({name:"my-graph.json",mimeType:"application/json",buffer:Buffer.from(readFileSync(path))});
+    await gallery.getByRole("button",{name:"Import as independent Graph",exact:true}).click();
+    await expect(gallery).not.toBeVisible();
+    const imported=await page.evaluate(()=>JSON.parse(localStorage.getItem("math3d.graph2d-handoff.v2")!));
+    expect(imported.projectId).not.toBe(original);
+    expect(imported.project.entries[0].checkpoint.source).toEqual(outbound.project.entries[0]!.checkpoint.source);
+    const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem("math3d.mixed-workspace.v1.gallery-checkpoints")!));
+    expect(saved.some((entry:{id:string})=>entry.id===original)).toBe(true);
+  }finally{await closeSurfaceApp(app);}
+});
