@@ -28,7 +28,7 @@ This site combines:
 - [Graph2D architecture, schemas, algorithms and parity](graph2d-architecture-schema-algorithms-parity.md): maintained G2D35 guide, mathematical limits, platform behavior and verification commands.
 - [Graph2D mobile gallery acceptance](graph2d-gallery-ggl07-ggl09-acceptance.md): normal project launch, all-catalog model checks and physical Android/Electron exchange; full G13 pending.
 - [Graph2D desktop/web gallery acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md): 20 editable scenes, previews, launch preservation and runtime checks.
-- [Graph2D gallery, presets and showcase roadmap](graph2d-gallery-presets-showcase-roadmap.md): shared catalog and desktop/web/native gallery delivered through GGL09; publication export next, with interactive examples using G2D38.
+- [Graph2D gallery, presets and showcase roadmap](graph2d-gallery-presets-showcase-roadmap.md): shared catalog, desktop/web/native gallery, interactive presets and My Graphs delivered through GGL11; GGL12 portable personal preset exchange next.
 - Graph2D software acceptance: [desktop/mobile round trip](graph2d-g33-round-trip-acceptance.md) and [numerical, visual and migration corpus](graph2d-g34-parity-corpus.md).
 - Graph2D physical release acceptance: [MOB-G11–13 gate](mobile-graphs-g11-g13-acceptance.md) and [partial Android USB readiness evidence](mobile-graphs-g13-readiness-2026-09-28.md); full G13 signoff remains pending.
 

@@ -1,16 +1,16 @@
 # Graph2D gallery, presets and showcase roadmap
 
-**Status:** GGL01–10 implemented: desktop/web gallery and native browse/launch, all-catalog model checks and a physical Android/Electron walkthrough accepted for GGL07–09. G2D36 publication, G2D38 parameters/animation, G2D37 scales/visual continuation and G2D39 regression are implemented. [G2D40 automated professional acceptance](graph2d-g40-professional-acceptance.md) is implemented; physical/screen-reader/signed-release signoff remains pending. G2D41 shared grid controls are implemented. G2D42 Tools, G2D43 saved probes/parameter cards and GGL11 personal collections are software implemented. See [My Graphs evidence](graph2d-gallery-ggl11-personal-projects.md). GGL12–18 remain planned. Frozen v1 catalog templates/previews are unchanged; ten opt-in content-v2 copies add controls. Full MOB-G13 and new native feature acceptance remain pending. See [desktop/web acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md) and [mobile acceptance](graph2d-gallery-ggl07-ggl09-acceptance.md).
+**Status — 2026-09-30:** GGL01–11 and G2D36–43 are software implemented, including the shared desktop/native gallery, interactive copies, Tools, saved probes and My Graphs. The frozen v1 catalog templates/previews remain unchanged; ten opt-in content-v2 copies add controls. GGL12–18 remain planned, with **GGL12 checked portable personal preset exchange next**. [G2D40 automated professional acceptance](graph2d-g40-professional-acceptance.md) and the current CI baseline pass; full MOB-G13, new native feature, real screen-reader and signed Android/iOS release signoff remain pending. See [desktop/web acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md), [mobile acceptance](graph2d-gallery-ggl07-ggl09-acceptance.md) and [My Graphs evidence](graph2d-gallery-ggl11-personal-projects.md).
 
-**Decision — 2026-09-28:** build a focused editable gallery now, after G2D35 and before G2D36. Deliver shared contracts/content and desktop/web first (GGL01–06), then mobile launch from the same catalog (GGL07–09). Continue the professional features afterward. Keep MOB-G13 physical acceptance open throughout.
+**Delivery decision — 2026-09-28:** the focused editable gallery was sequenced after G2D35 and before G2D36: shared contracts/content and desktop/web first (GGL01–06), then mobile launch from the same catalog (GGL07–09), followed by professional and personal features. MOB-G13 physical acceptance remains open throughout.
 
 **Authority:** [the Graph2D roadmap](math3d-graph2d-desktop-mobile-roadmap.md) owns overall sequencing and release gates. This companion owns gallery content, launch behavior and acceptance. It adapts the supplied `MATH3D_GRAPH_GALLERY_PRESETS_SHOWCASE_ROADMAP.md` proposal to the existing [architecture](graph2d-architecture-schema-algorithms-parity.md); the proposal's sample types and package layout are design input.
 
 ## 1. Why now, and how much
 
-The shared engine already supports explicit, parametric, polar, implicit, inequality, piecewise and point-series objects. Desktop/web and mobile can edit them, persist ordinary Graph projects and exchange checkpointed workspaces. Users currently have a mostly empty desktop starting point and a mobile line starter. A discoverable collection makes the delivered mathematics easier to try and provides useful real-scene regression coverage.
+The shared engine supports explicit, parametric, polar, implicit, inequality, piecewise and point-series objects. Desktop/web and mobile can edit them, persist ordinary Graph projects and exchange checkpointed workspaces. The delivered gallery makes that mathematics discoverable and provides real-scene regression coverage.
 
-An initial gallery does not depend on SVG/PNG export, logarithmic axes, statistical fitting, sliders or animation. It needs reliable creation, meaningful viewports, accurate previews and protection of existing work. These are the next product priorities. The original proposal's entire 37-step program would delay that useful slice.
+The initial gallery did not depend on SVG/PNG export, logarithmic axes, statistical fitting, sliders or animation. It first established reliable creation, meaningful viewports, accurate previews and protection of existing work. The remaining proposal now guides follow-on milestones rather than delaying that delivered slice.
 
 ### Revised delivery order
 
@@ -21,8 +21,9 @@ An initial gallery does not depend on SVG/PNG export, logarithmic axes, statisti
 | Delivered | G2D36: publication export | Supports personal scenes, teaching and reproducible captures |
 | Delivered | G2D38, followed by GGL10: shared parameters/animation and gallery integration | One parameter implementation serves authoring and ten opt-in interactive examples |
 | Software delivered; release evidence pending | G2D37, G2D39, G2D40 | Shared scales/visual continuation, reviewed regression and automated professional freeze; no waiver of physical/accessibility gates |
-| G41 software implemented; G42–43 next | G2D41–43 | [Grid controls, tools palette and source-linked canvas elements](graph2d-grid-tools-canvas-roadmap.md), inserted before personal collections |
-| Later | GGL11–18 | Personal collections, lessons, presentation, public viewing, home discovery and cross-module adapters |
+| Software delivered; physical evidence pending | G2D41–43, then GGL11 | [Grid controls, tools palette and source-linked canvas elements](graph2d-grid-tools-canvas-roadmap.md), followed by [My Graphs and reusable copies](graph2d-gallery-ggl11-personal-projects.md) |
+| Next | GGL12 | Checked export, preview and import of personal presets through existing Graph/handoff contracts |
+| Later | GGL13–18 | Lessons, presentation, public viewing, home discovery, cross-module adapters and measured gallery scaling |
 
 G2D identifiers stay unchanged; execution order explicitly brings G2D38 forward after G2D36 because interactive examples have higher immediate value than additional scales. GGL10 does not block G2D37. Detailed later dependencies are listed below. G13 device work can proceed when devices/artifacts are available; passing gallery software checks never freezes that gate.
 
@@ -159,6 +160,17 @@ Every GGL ID is a reviewable commit. Focused types/tests and stated UI evidence 
 | **GGL18** | `perf(graph2d-gallery): virtualize measured large catalogs and bound preview retention` | Measured need beyond initial collection | Profile scrolling/image retention/startup and introduce virtualization/lazy loading with before/after evidence. Initial static-card/job/cache limits remain mandatory before this commit. |
 
 Later releases are scoped follow-ons. Do not hold Release A until personal presets, all lessons, home promotion or a generalized Gallery exist.
+
+### Next reviewable milestone — GGL12 portable personal presets
+
+The proposal's GRPH-G21–22 export/import and portable-scene intent follows GGL11's saved projects. GGL12 is a file-based exchange workflow first; it does not create a second Graph document format or imply a public hosting service.
+
+1. **Export:** from My Graphs, export a saved Graph project through the existing Graph or `math3d.project-handoff` v2 path. Preserve complete source, viewport, display, parameters and supported companions. Offer a readable **Copy graph definition** action for the mathematical source, clearly distinguished from a complete project transfer. Identify any external point-table sidecars and retained results that the file does not contain.
+2. **Optional preset description:** if title, tags, attribution or preview hints need to travel with the file, define a small versioned, bounded metadata envelope with a validator. It must not change canonical Graph evaluation, claim missing data is embedded, or execute imported lessons/scripts.
+3. **Import preview:** validate format/version, size, capabilities, IDs, checksums and referenced sidecars before mutation. Show the graph and its missing-data/result limitations in a read-only preview. Explicit acceptance creates an independent ordinary project using GGL11 identity-fork and atomic save behavior; cancel or failed import leaves the current project untouched.
+4. **Acceptance:** prove desktop ↔ native export/import/edit/reopen, companion and provenance retention, bounded preview cleanup, keyboard/touch access, and rollback for corrupt bytes, unsupported versions, missing sidecars, duplicate identities and storage failure. Keep physical device and screen-reader signoff separate from software tests.
+
+After GGL12, GGL13 guided concepts and GGL14 presentation/capture can be reviewed independently. GGL15 needs an explicit transport/hosting decision before any public-link work. GGL16 builds discovery on existing Home/Explore; GGL17 waits for a concrete second-module adapter; GGL18 requires measured catalog-scale evidence. MOB-G13 and signed-device/accessibility validation remain parallel release gates, not prerequisites that a software-only GGL commit can silently satisfy.
 
 ## 7. Disposition of the supplied proposal
 

@@ -1,6 +1,6 @@
 # MATH3D Graph2D — Desktop and Mobile Roadmap
 
-**Status:** desktop/web baseline through G2D32, mobile MOB-G01–12 and automated G2D33–35 implemented. GGL01–10, G2D36 publication, G2D38 parameters/animation, G2D37 scales/visual continuation and G2D39 regression are implemented. G2D40 software freeze and automated professional acceptance are implemented; this is not physical release signoff. MOB-G13, new native features, real screen-reader checks and exact signed Android/iOS release evidence remain pending. GGL07–09 has partial physical Android/Electron walkthrough evidence, not full iOS/tablet/G13 acceptance. See [professional acceptance and pending gates](graph2d-g40-professional-acceptance.md). G2D41 shared grid controls are implemented; physical validation remains pending. G2D42 Tools, G2D43 saved probes/parameter cards and GGL11 My Graphs/reusable copies are software implemented. See [canvas controls](graph2d-g43-canvas-controls.md) and [personal projects](graph2d-gallery-ggl11-personal-projects.md). Next product milestone: GGL12 checked portable personal preset exchange; complete outstanding release validation when devices/builds are available.
+**Status — 2026-09-30:** desktop/web baseline through G2D32, mobile MOB-G01–12, automated G2D33–35, G2D36–43 and GGL01–11 are software implemented. This includes publication, scales, parameters/animation, regression, grid, Tools, saved probes, the shared gallery and My Graphs/reusable copies. G2D40 automated professional acceptance and the current CI baseline pass; neither is physical release signoff. GGL07–09 has partial Android/Electron walkthrough evidence, not full iOS/tablet/G13 acceptance. MOB-G13, new native features, real screen-reader checks and exact signed Android/iOS release evidence remain pending. See [professional acceptance and pending gates](graph2d-g40-professional-acceptance.md), [canvas controls](graph2d-g43-canvas-controls.md) and [personal projects](graph2d-gallery-ggl11-personal-projects.md). **Next product milestone: [GGL12 checked portable personal preset exchange](graph2d-gallery-presets-showcase-roadmap.md).** Complete the outstanding release validation when devices/builds are available.
 
 **Priority:** P1 after the active mobile project-transfer sequence
 
@@ -18,13 +18,13 @@
 - G2D33 implements checkpointed desktop/mobile handoff with source/result/companion retention and revision conflict checks. G2D34 adds a shared seven-kind numerical/migration corpus and real browser Worker/UI parity checks. G2D35 publishes the [architecture, schema, algorithms and parity guide](graph2d-architecture-schema-algorithms-parity.md).
 - Initial desktop/mobile checks are recorded in [the historical acceptance report](graph2d-acceptance-2026-09-28.md); current software evidence is in [G2D33 round trip](graph2d-g33-round-trip-acceptance.md) and [G2D34 parity corpus](graph2d-g34-parity-corpus.md). A connected SM-A566B Android 16 phone supplied [partial internal-build evidence](mobile-graphs-g13-readiness-2026-09-28.md). Full physical gesture, accessibility, rotation, memory/calibration, production signing and iOS signoff remain release gates.
 
-This does **not** finish the entire roadmap: MOB-G13 physical acceptance, later GGL gallery work and native/professional physical publication/accessibility acceptance remain. Automated handoff, publication and corpus checks do not substitute for native release evidence. An existing installer/APK does not gain these changes until rebuilt.
+This does **not** finish the entire roadmap: MOB-G13 physical acceptance, GGL12–18 and native/professional physical publication/accessibility acceptance remain. Automated handoff, publication and corpus checks do not substitute for native release evidence. An existing installer/APK does not gain these changes until rebuilt.
 
 ### Gallery sequencing decision — 2026-09-28
 
-Build a focused gallery **now, before G2D36**, using the already implemented seven-kind engine and canonical Graph documents. Deliver shared content and desktop/web discovery first, then mobile launch through the existing project library. Sliders/animation stay owned by G2D38, project exchange stays owned by the existing Graph/handoff contracts, and full physical acceptance stays owned by MOB-G13.
+The focused gallery was built **after G2D35 and before G2D36** using the seven-kind engine and canonical Graph documents. Shared content and desktop/web discovery preceded mobile launch through the existing project library. Sliders/animation remain owned by G2D38, project exchange by the existing Graph/handoff contracts, and full physical acceptance by MOB-G13.
 
-The [gallery, presets and showcase roadmap](graph2d-gallery-presets-showcase-roadmap.md) adapts the supplied 37-step proposal, maps every proposed GRPH-G ID, and specifies launch safety, 20 initial scenes, generated offline previews and focused acceptance. GGL IDs do not renumber G2D milestones. GGL01–06 are delivered; later GGL rows remain planned. See [desktop/web acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md).
+The [gallery, presets and showcase roadmap](graph2d-gallery-presets-showcase-roadmap.md) adapts the supplied 37-step proposal, maps every proposed GRPH-G ID, and specifies launch safety, 20 initial scenes, generated offline previews and focused acceptance. GGL IDs do not renumber G2D milestones. GGL01–11 are software delivered; GGL12–18 remain planned. See [desktop/web acceptance](graph2d-gallery-ggl01-ggl06-acceptance.md), [mobile acceptance](graph2d-gallery-ggl07-ggl09-acceptance.md) and [GGL11 evidence](graph2d-gallery-ggl11-personal-projects.md).
 
 ## 1. Outcome
 
@@ -286,7 +286,7 @@ Mobile starts only after G2D30–G2D32 are green. The first mobile slice is expl
 
 ### Gallery insertion — after G2D35, before Phase I
 
-Detailed contracts, content and later GGL11–18 follow-ons live in the [gallery roadmap](graph2d-gallery-presets-showcase-roadmap.md). Delivered rows are marked explicitly; other rows remain planned. Desktop/web acceptance precedes mobile delivery; physical checks remain separately reported.
+Detailed contracts, content, the delivered GGL10–11 follow-ons and planned GGL12–18 work live in the [gallery roadmap](graph2d-gallery-presets-showcase-roadmap.md). Desktop/web acceptance preceded mobile delivery; physical checks remain separately reported.
 
 | ID | Planned commit | Scope and acceptance evidence |
 | --- | --- | --- |
@@ -356,10 +356,10 @@ G2D07 → G2D08 → G2D09 → G2D10 → G2D11 → G2D12
                                   │
                                   └─ GGL10 interactive presets
 
-G2D40 → G2D41 → G2D42 → G2D43 → GGL11
+G2D40 → G2D41 → G2D42 → G2D43 → GGL11 → GGL12
 
-Later GGL11–18 follow their individual dependencies; they do not block
-the initial gallery. New runtime changes require updated exact-device evidence.
+GGL13–18 follow their individual dependencies; they do not block
+the delivered initial gallery. New runtime changes require updated exact-device evidence.
 ```
 
 Safe parallelism after contracts land:
