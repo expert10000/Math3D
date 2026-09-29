@@ -180,3 +180,10 @@
   .graph2d-toolbar { top: auto; bottom: 8px; }
   .graph2d-update-status { top: 54px; bottom: auto; font-size: 11px; }
 }
+.graph2d-tools-panel { position: absolute; z-index: 6; top: 58px; left: 16px; width: min(460px, calc(100% - 32px)); max-height: calc(100% - 100px); overflow: auto; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel-strong); color: var(--text); box-shadow: 0 6px 24px #0003; }
+.graph2d-tools-panel header { display: flex; justify-content: space-between; align-items: center; }
+.graph2d-tools-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.graph2d-tools-grid button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 8px; }
+.graph2d-tools-grid small { display: block; margin-top: 4px; }
+.graph2d-tool-hint { max-width: 300px; background: var(--panel-strong); padding: 8px; }
+@media (forced-colors: active) { .graph2d-tools-panel { background: Canvas; color: CanvasText; border-color: CanvasText; } }

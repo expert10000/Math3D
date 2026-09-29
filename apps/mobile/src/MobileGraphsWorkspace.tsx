@@ -11,6 +11,8 @@ import { useMobileGraphSampling } from "./useMobileGraphSampling";
 import { MobileGraphDisplayPanel } from "./MobileGraphDisplayPanel";
 import { MobileGraphExportPanel } from "./MobileGraphExportPanel";
 import { MobileGraphParametersPanel } from "./MobileGraphParametersPanel";
+import { MobileGraphToolsPanel } from "./MobileGraphToolsPanel";
+import { graph2DToolUnavailable, type Graph2DTool } from "@math3d/core";
 import { mobileGraphAreaRects } from "./viewer/mobileGraphOverlays";
 import { editMobileGraphProbes } from "./models/mobileGraphProbes";
 import { MobileGraphProbesPanel } from "./MobileGraphProbesPanel";
@@ -51,6 +53,17 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const [parameterEpoch, setParameterEpoch] = useState(0);
   const cancelParameter = () => { setParameterPreview(null); setParameterEpoch(value => value + 1); };
   const [destination, setDestination] = useState<MobileGraphDestination>("Graph");
+  const routeTool = (tool: Graph2DTool) => {
+    const selected = document.source.objects.find(o => o.id === document.selection.objectId);
+    const reason = graph2DToolUnavailable(document, tool, selected?.kind !== "point-series" || !!mobileGraphPointTables.resolve(selected.table));
+    if (reason) { setError(reason); return; }
+    cancel(); cancelParameter();
+    if (tool === "move" || tool === "probe") { setDestination("Graph"); setError(tool === "probe" ? "Tap a curve to commit a probe." : "Drag to move; tap a curve to select."); return; }
+    if (tool === "slider") { setDestination("Parameters"); return; }
+    setAnalysisDraft({ ...analysisDraft, kind: tool === "roots" || tool === "extrema" ? "features" : tool === "regression" ? "regression-linear" : tool,
+      objectId: selected!.id, x: String(document.selection.probe?.x ?? 0), secondId: document.source.objects.find(o => o.kind === "explicit-cartesian" && o.id !== selected!.id)?.id ?? "" });
+    setDestination("Analyze"); setError("");
+  };
   const window = useWindowDimensions();
   const [frame, setFrame] = useState({ width: window.width, height: window.height });
   const layout = mobileGraphLayout({ ...frame, fontScale: window.fontScale });
@@ -127,6 +140,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
       {button("Display", () => { cancel(); cancelParameter(); setDestination(destination === "Display" ? "Graph" : "Display"); })}</View>
     <ScrollView horizontal style={{ flexGrow: 0, maxHeight: 48 }} contentContainerStyle={s.toolbar}>{button("Reset", () => commit(() => adapter.commitViewport(GRAPH2D_DEFAULT_VIEWPORT)))}
       {button("Parameters", () => { cancel(); cancelParameter(); setDestination(destination === "Parameters" ? "Graph" : "Parameters"); })}
+      {button("Tools", () => { cancel(); cancelParameter(); setDestination(destination === "Tools" ? "Graph" : "Tools"); })}
       {button("Export", () => { cancel(); cancelParameter(); if (editor || advanced) { setError("Save or cancel the function edit before exporting."); return; } setDestination(destination === "Export" ? "Graph" : "Export"); })}
       {button("Fit", fit)}{button("Undo", () => commit(() => adapter.undo()), history.undoDepth === 0)}
       {button("Redo", () => commit(() => adapter.redo()), history.redoDepth === 0)}
@@ -206,7 +220,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     </View>
     {panelDestination && <ScrollView keyboardShouldPersistTaps="handled" style={[s.sheet, layout.split && s.sidePanel, layout.split && { width: layout.panelWidth }]}
       accessibilityLabel={`${panelDestination} ${layout.split ? "side panel" : "bottom sheet"}`} testID={`mobile-graph-${panelDestination.toLowerCase()}-sheet`}>
-      {panelDestination === "Parameters" ? <MobileGraphParametersPanel key={`${parameterKey}:${parameterEpoch}`} document={document} settled={sampling.settled && sampling.phase === "refine"} samplingError={sampling.error}
+      {panelDestination === "Tools" ? <MobileGraphToolsPanel document={document} rowsAvailable={document.source.objects.every(o => o.id !== document.selection.objectId || o.kind !== "point-series" || !!mobileGraphPointTables.resolve(o.table))} onTool={routeTool} onClose={() => setDestination("Graph")} /> : panelDestination === "Parameters" ? <MobileGraphParametersPanel key={`${parameterKey}:${parameterEpoch}`} document={document} settled={sampling.settled && sampling.phase === "refine"} samplingError={sampling.error}
         onPreview={values => { if (values) previewGraph2DParameterValues(document, values); setParameterPreview(values ? { key: parameterKey, values } : null); }}
         onCommit={action => { const next = adapter.commitScene(applyGraph2DAuthoring(document, action), action.type); cancel(); setParameterPreview(null); onChange(next); }} /> :
         panelDestination === "Export" ? <MobileGraphExportPanel document={document} analysis={analysisCurrent ? analysis : null} draft={analysisDraft} /> : panelDestination === "Display" ? <MobileGraphDisplayPanel document={document} series={series} overlays={overlays} lineCount={lines.length} sampling={sampling}

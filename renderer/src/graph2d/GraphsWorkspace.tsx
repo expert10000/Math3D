@@ -18,6 +18,7 @@ import {
   type Graph2DRegression, type Graph2DRegressionModel,
   projectGraph2DGrid, projectGraph2DPolarGrid,
   structuralHash,
+  graph2DToolUnavailable, type Graph2DTool,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
@@ -33,6 +34,7 @@ import { Graph2DParametersPanel } from "./Graph2DParametersPanel";
 import { Graph2DScalePanel } from "./Graph2DScalePanel";
 import { Graph2DGridPanel } from "./Graph2DGridPanel";
 import { Graph2DRegressionPanel } from "./Graph2DRegressionPanel";
+import { Graph2DToolsPanel } from "./Graph2DToolsPanel";
 import "./graphsWorkspace.css";
 
 type Props = {
@@ -60,6 +62,10 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   onGridModeCommit, onAxesCommit, onAuthoringCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onOpenPreset, onResumeCheckpoint }: Props) {
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [toolHint, setToolHint] = useState("");
+  const toolsOpener = useRef<HTMLButtonElement>(null);
+  const closeTools = () => { setToolsOpen(false); toolsOpener.current?.focus(); };
   const [exportOpen, setExportOpen] = useState(false);
   const [parametersOpen, setParametersOpen] = useState(false);
   const [scalesOpen, setScalesOpen] = useState(false);
@@ -228,6 +234,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
     wheelTimerRef.current = setTimeout(finishWheel, 180);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape" && toolsOpen) { event.preventDefault(); event.stopPropagation(); closeTools(); return; }
     if (event.key === "Escape" && gridOpen) { event.preventDefault(); event.stopPropagation(); closeGrid(); return; }
     if ((event.target as HTMLElement).closest("input,select,textarea,[contenteditable='true']")) return;
     const key = event.key.toLowerCase();
@@ -260,6 +267,27 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   };
   const selectedSeries = series.find((item) => item.objectId === document.selection.objectId);
   const selectedObject = document.source.objects.find((item) => item.id === document.selection.objectId);
+  const toolRowsAvailable = selectedObject?.kind !== "point-series" || !!pointTableStore.resolve(selectedObject.table);
+  const routeTool = (tool: Graph2DTool) => {
+    const reason = graph2DToolUnavailable(document, tool, toolRowsAvailable);
+    if (reason) { setToolHint(reason); return; }
+    finishWheel(); closeGrid(true, false); cancelParameter(); setToolsOpen(false);
+    if (tool === "slider") { setParametersOpen(true); return; }
+    setToolHint(tool === "probe" ? "Click a curve to commit a probe. Saved probes are source-linked observations." :
+      tool === "move" ? "Drag to move; click a curve to select." : "Approximate bounded observations; review confidence and interval before using a result.");
+    const target = tool === "roots" || tool === "extrema" ? '[data-testid="graph2d-critical-points"]' :
+      tool === "intersections" ? '[data-testid="graph2d-intersections"]' : tool === "regression" ? '[data-testid="graph2d-regression"]' :
+      tool === "tangent" ? '[data-testid="graph2d-local-differential"]' : null;
+    if (!target) { viewerRef.current?.focus(); return; }
+    galleryFocusFrame.current = requestAnimationFrame(() => {
+      galleryFocusFrame.current = null;
+      const root = viewerRef.current?.closest(".graph2d-workspace");
+      const compact = root?.querySelector<HTMLDetailsElement>(".graph2d-compact-panels details:last-child");
+      if (compact && compact.getBoundingClientRect().width > 0) compact.open = true;
+      const section = Array.from(root?.querySelectorAll<HTMLElement>(target) ?? []).find(el => el.getBoundingClientRect().width > 0);
+      if (section) { section.tabIndex = -1; section.focus(); section.scrollIntoView({ block: "nearest" }); }
+    });
+  };
   const currentRegression = regression && regression.model === regressionModel && regression.objectId === selectedObject?.id &&
     isGraph2DRegressionCurrent(regression, document) ? regression : null;
   // Same-source retained samples are an explicitly labelled previous observation, not current analysis evidence.
@@ -536,6 +564,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         onPointerCancel={() => { dragRef.current = null; setPreview(null); setHoverSelection(null); }}
         onPointerLeave={() => setHoverSelection(null)} onKeyDown={onKeyDown}>
         <div className="graph2d-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+          <button type="button" ref={toolsOpener} aria-expanded={toolsOpen} onClick={() => { finishWheel(); closeGrid(true, false); cancelParameter(); setToolsOpen(!toolsOpen); }}>Tools</button>
           <button type="button" ref={gridOpener} aria-expanded={gridOpen} disabled={status !== "ready"} onClick={() => { finishWheel(); cancelParameter(); setParametersOpen(false); setScalesOpen(false); if (gridOpen) closeGrid(true); else setGridOpen(true); }}>Grid</button>
           <button type="button" ref={scalesOpener} onClick={() => { finishWheel(); cancelParameter(); closeGrid(true, false); setParametersOpen(false); setScalesOpen(!scalesOpen); }}>Scales</button>
           <button type="button" aria-pressed={viewport.continuation ?? false} onClick={() => { finishWheel(); cancelParameter(); onViewportCommit?.({ ...document.display.viewport, continuation: !document.display.viewport.continuation }); }}>Show continuation</button>
@@ -557,6 +586,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
             onClick={() => onGridModeCommit?.((document.display.axes.gridMode ?? "cartesian") === "polar" ? "cartesian" : "polar")}>
             {(document.display.axes.gridMode ?? "cartesian") === "polar" ? "Cartesian grid" : "Polar grid"}</button>
         </div>
+        {toolHint && <p className="graph2d-tool-hint" role="status">{toolHint}</p>}
         <div className="graph2d-compact-panels">
           {showLeft && <details><summary>Functions ({document.source.objects.length})</summary>{functionList}</details>}
           {showRight && <details><summary>Inspector</summary>{inspector}</details>}
@@ -603,6 +633,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         onPreview={values => { if (values) previewGraph2DParameterValues(document, values); setParameterPreview(values ? { key: parameterKey, values } : null); }}
         onCommit={action => { if (!onAuthoringCommit) throw new Error("Parameter authoring is unavailable."); onAuthoringCommit(action); setParameterPreview(null); }}
         onClose={() => { setParametersOpen(false); setParameterPreview(null); parametersOpener.current?.focus(); }} />}
+      {toolsOpen && <Graph2DToolsPanel document={document} rowsAvailable={toolRowsAvailable} onTool={routeTool} onClose={closeTools} />}
     </section>
   );
 }
