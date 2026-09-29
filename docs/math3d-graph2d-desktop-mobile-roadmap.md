@@ -314,6 +314,18 @@ The preceding gallery insertion comes before these professional extensions. Thei
 | **G2D39** | `feat(graph2d-analysis): add regression fitting and uncertainty bands` | Implemented checksum-verified linear/quadratic unweighted QR fits, residuals, pointwise 95% mean-response and prediction limits, exact source/data provenance, explicit assumptions and stale suppression. Shared desktop/native results and bounded offline report tables; no source mutation or extrapolation. See [regression contracts](graph2d-g39-regression-uncertainty.md). Physical native acceptance pending. |
 | **G2D40** | `test(graph2d): freeze professional publication and accessibility gate` | Implemented combined software acceptance: frozen SVG/PNG/CSV/HTML digest fixtures, source/data/assumption retention, scale/parameter/statistics workflows, Electron/browser keyboard focus, forced colors, compact layout and offline print reports. Physical/screen-reader/signed-build acceptance remains pending and fail-closed: G13 now also requires all four professional feature cases on every device. See [acceptance evidence and release checklist](graph2d-g40-professional-acceptance.md). |
 
+### 6.8 Graph-paper controls and discoverable tools — 2026-09-29
+
+Insert **G2D41 → G2D42 → G2D43 before GGL11**. The reference screenshot motivates accessible grid controls and a compact tool palette, not a second geometry/CAS engine or an executable external format. Existing mathematical kernels, commands, sampling, source ranges and release gates remain authoritative. Details: [grid, tools and canvas roadmap](graph2d-grid-tools-canvas-roadmap.md).
+
+| ID | Planned commit | Scope and acceptance |
+| --- | --- | --- |
+| **G2D41** | `feat(graph2d): add accessible shared grid display controls` | Grid/axes/numbers visibility, major/minor display, automatic sparse/normal/dense spacing, validated manual Cartesian spacing and subtle/normal/strong contrast. Shared bounded projection and portable capability-gated display intent; desktop/web Grid panel and native Display controls, undo/reopen/handoff/export parity, log-positive guidance and unchanged legacy previews. First implementation in progress. |
+| **G2D42** | `feat(graph2d-tools): expose existing mathematical tools in a compact palette` | Move/select, point/probe, parameter slider, roots, extrema, intersections, tangent and regression shortcuts route to existing commands/results. Accessible named icons plus text, keyboard focus, compact/touch layouts and explicit source-kind/selection prerequisites; opening a tool never silently creates data or runs animation. Planned next. |
+| **G2D43** | `feat(graph2d-canvas): expose labelled source-linked probes and parameter controls` | Labelled pinned probes and coordinate readouts, show/hide labels, locate/rename/delete through existing bounded probe contracts, then opt-in compact parameter slider cards using the existing preview/apply/cancel player. No persisted transient previews; stale/unsupported states, undo/round-trip/keyboard/native parity and collision-safe placement. Planned after G41–42. |
+
+Free independent points, arbitrary text, geometric constructions, multi-object transforms and snap-to-grid are separately scoped future work; they require reviewed document/constraint semantics. Existing point-series data must not be rewritten to imitate free points. Real screen-reader and signed physical-device validation remain pending.
+
 ## 7. Dependency graph and parallel work
 
 ```text

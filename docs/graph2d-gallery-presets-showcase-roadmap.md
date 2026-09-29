@@ -21,6 +21,7 @@ An initial gallery does not depend on SVG/PNG export, logarithmic axes, statisti
 | Delivered | G2D36: publication export | Supports personal scenes, teaching and reproducible captures |
 | Delivered | G2D38, followed by GGL10: shared parameters/animation and gallery integration | One parameter implementation serves authoring and ten opt-in interactive examples |
 | Software delivered; release evidence pending | G2D37, G2D39, G2D40 | Shared scales/visual continuation, reviewed regression and automated professional freeze; no waiver of physical/accessibility gates |
+| Next | G2D41–43 | [Grid controls, tools palette and source-linked canvas elements](graph2d-grid-tools-canvas-roadmap.md), inserted before personal collections |
 | Later | GGL11–18 | Personal collections, lessons, presentation, public viewing, home discovery and cross-module adapters |
 
 G2D identifiers stay unchanged; execution order explicitly brings G2D38 forward after G2D36 because interactive examples have higher immediate value than additional scales. GGL10 does not block G2D37. Detailed later dependencies are listed below. G13 device work can proceed when devices/artifacts are available; passing gallery software checks never freezes that gate.
