@@ -122,8 +122,8 @@ try {
     const object = nodes().find((node) => /^Select .+/.test(node.description) && node.bounds);
     if (!object) throw new Error("Expected a selectable object in the Scene list.");
     tapVisibleInspectorControl(object.description);
-    expectText(object.description.replace(/^Select /, "Deselect "));
-    tap("Object");
+    // Selecting a Scene row opens Object automatically, so its old row label is no longer mounted.
+    expectText("Opacity");
     tapVisibleInspectorControl("50%");
     let opacityUpdated = false;
     for (let attempt = 0; attempt < 8; attempt += 1) {

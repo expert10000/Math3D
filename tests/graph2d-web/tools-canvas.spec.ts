@@ -40,6 +40,8 @@ test("G2D43 pins retain labels and visibility through undo/save and parameter ca
   await gallery.getByRole("button", { name: "Open interactive Two slopes", exact: true }).click();
   const before = await page.evaluate(() => localStorage.getItem("math3d.mixed-workspace.v1"));
   await page.getByRole("button", { name: "Parameter cards", exact: true }).click(); const cards = page.getByTestId("graph2d-parameter-cards");
+  const plotBox = await page.getByTestId("main-viewer").boundingBox(), cardBox = await cards.boundingBox();
+  expect(cardBox!.x).toBeGreaterThanOrEqual(plotBox!.x); expect(cardBox!.x + cardBox!.width).toBeLessThanOrEqual(plotBox!.x + plotBox!.width);
   await cards.getByLabel("a card slider", { exact: true }).focus(); await page.keyboard.press("ArrowLeft"); await expect(cards).toContainText("a = 1.9");
   expect(await page.evaluate(() => localStorage.getItem("math3d.mixed-workspace.v1"))).toBe(before);
   await cards.getByRole("button", { name: "Cancel preview", exact: true }).click(); await expect(cards).toContainText("a = 2");
