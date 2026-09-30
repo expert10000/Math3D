@@ -68,7 +68,32 @@ this path; all 327 mobile unit tests and the mobile typecheck passed locally.
 A rebuilt APK and fresh physical checks are required. The owner reported
 Catenoid reopen/zoom/pan working, but the debug and internal apps have identical
 launcher labels, so that observation is not assigned to an exact candidate.
-The existing `150007` signoff is still unchanged.
+The existing `150007` signoff is preserved in
+[its historical record](mobile-device-signoff-150007.json).
+
+### Rebuilt restart-fix candidate
+
+[Shared-key CI run 36743132389](https://github.com/expert10000/Math3D/actions/runs/36743132389)
+passed on clean source `15f945fcd07cc64b2fd3de511904e6c428521d39`.
+The APK SHA-256 is
+`cdfd15ee9a9229c3bf4b97fe7142c34c9b7fd5184c18473b68272848ad7e3f8c`.
+Downloaded bytes match build metadata; local signature verification confirms
+the established internal certificate. The embedded Hermes bundle is 3,649,172
+bytes, with all four Android ABIs. The Android 16 smoke explicitly passes
+the mixed saved-Graph → unsaved-Catenoid process restart regression.
+
+This exact APK updated the Samsung without clearing data (the app data inode
+remained unchanged). The saved Graph still reopens after process restart,
+and switching from it to Catenoid now restores Catenoid after force-stop;
+the rendered Surface was visually inspected. All 17 projects remain listed.
+Graph Gallery/My Graphs, Functions with the saved `y=5*x` definition,
+presentation/exit, Home Previous/Next, Explore and Settings were reached.
+Inspector opacity changed to 50% and back to 100%. Scoped
+AndroidRuntime/ReactNativeJS logs since installation are empty.
+Evidence uses `fixed-*` captures in `output/mobile-160-samsung/`, and the CI
+artifact is in `output/mobile-160-candidate-36743132389/`.
+Owner-observed cable-free reopen and gestures are pending on this rebuilt APK;
+the earlier candidate's human observation does not transfer.
 
 ## Remaining gates
 
