@@ -143,6 +143,25 @@ tagged internal build/emulator gate, desktop packaging checks and verified
 production AAB. No runtime mobile change is needed for the test pack, so
 the approved internal APK's source remains applicable.
 
+### Test-pack and software check-up completed
+
+Commit `91bdbec5e7d1c36636113696abdadb82789e300e` adds the pack and scoped
+release notes. [Professional acceptance run 36751442767](https://github.com/expert10000/Math3D/actions/runs/36751442767)
+passed the complete unit/type/parity/preview/build suite, **33 Electron** and
+**50 browser** cases, pack validation and Android Hermes compilation.
+The same commit also passed Android gate `36751442728`, Windows installer
+smoke `36751442894`, Linux package smoke `36751442777`, build/worker smoke
+`36751442674` and docs `36751442781`.
+
+Pack validation covers nine Graphs/all seven kinds, two CSV sidecars,
+independent linear-fit/SSE references, canonical parse/serialization and
+unsupported-version rejection. All 16 committed pack files passed integrity
+after extraction from a Git archive; a deliberately modified CSV was rejected.
+LF checkout attributes keep the hashes identical on Windows/Linux. Blank
+physical result records remain pending. Local reports are under
+`output/release-test-pack/`; completed CI, rather than the interrupted local
+end-to-end session, is the full automated-acceptance evidence.
+
 ## Deferred validation for subsequent releases
 
 1. Complete the full [MOB-G13 physical matrix](mobile-graphs-g11-g13-acceptance.md)
