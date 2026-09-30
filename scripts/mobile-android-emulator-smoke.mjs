@@ -75,6 +75,23 @@ const tap = (text) => {
   const [x1, y1, x2, y2] = node.bounds;
   adb("shell", "input", "tap", String(Math.round((x1 + x2) / 2)), String(Math.round((y1 + y2) / 2)));
 };
+const tapInScroll = (text) => {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const snapshot = nodes();
+    const scroll = snapshot.find(node => node.className === "android.widget.ScrollView" && node.bounds);
+    if (!scroll) throw new Error(`Expected scrollable content before ${text}.`);
+    const node = snapshot.find(item => (item.text === text || item.description === text) && item.bounds);
+    const [left, top, right, bottom] = scroll.bounds;
+    if (node && node.bounds[1] >= top + 8 && node.bounds[3] <= bottom - 8 && node.bounds[3] > node.bounds[1]) {
+      adb("shell", "input", "tap", String(Math.round((node.bounds[0] + node.bounds[2]) / 2)),
+        String(Math.round((node.bounds[1] + node.bounds[3]) / 2)));
+      return;
+    }
+    const x = Math.round((left + right) / 2);
+    adb("shell", "input", "swipe", String(x), String(bottom - 45), String(x), String(top + 80), "350");
+  }
+  throw new Error(`Expected visible scroll control: ${text}`);
+};
 const tapVisibleInspectorControl = (text, contentLabel = "Object", resourceId = "") => {
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const snapshot = nodes();
@@ -152,7 +169,7 @@ try {
   check("Explore example survives process restart without saving to Projects", () => {
     tap("Explore");
     tap("Examples");
-    tap("Search examples");
+    tapInScroll("Search examples");
     adb("shell", "input", "text", "Helicoid");
     adb("shell", "input", "keyevent", "4");
     tapVisibleInspectorControl("Helicoid", "Examples", "mobile-example-helicoid");
