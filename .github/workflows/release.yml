@@ -145,7 +145,24 @@ jobs:
       - name: Verify public license compliance metadata
         run: npm run verify:license-compliance
 
+      - name: Resolve native binary cache
+        id: native-cache-key
+        shell: pwsh
+        run: |
+          $cacheRoot = Join-Path $PWD ".cache/vcpkg-binaries"
+          New-Item -ItemType Directory -Path $cacheRoot -Force | Out-Null
+          "VCPKG_DEFAULT_BINARY_CACHE=$cacheRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "key=windows-2022-$env:ImageVersion-vcpkg-52fd90f2b7798d9fe6fef18fc1787db44574d704" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Restore native dependency binaries
+        id: native-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .cache/vcpkg-binaries
+          key: ${{ steps.native-cache-key.outputs.key }}
+
       - name: Install Python dependencies for frozen worker
+        id: native-deps
         shell: pwsh
         run: |
           ./scripts/setup-cgal-python-worker.ps1 -Python (Get-Command python).Source -VcpkgCommit 52fd90f2b7798d9fe6fef18fc1787db44574d704 -FrozenRequirements
@@ -155,6 +172,13 @@ jobs:
           "MATH3D_PYTHON=$workerPython" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           (Join-Path $PWD ".venv-worker/Scripts") | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           (Join-Path $PWD ".deps/vcpkg/installed/x64-windows/bin") | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Save native dependency cache before packaging
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .cache/vcpkg-binaries
+          key: ${{ steps.native-cache-key.outputs.key }}
 
       - name: Build docs bundle
         shell: pwsh
@@ -176,6 +200,19 @@ jobs:
 
       - name: Verify packaged worker protocol
         run: node scripts/smoke-python-worker.mjs --exe release/win-unpacked/resources/python-worker/worker.exe
+
+      - name: Preserve verified Windows build before source downloads
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-verified-build-${{ github.run_id }}
+          compression-level: 1
+          retention-days: 1
+          if-no-files-found: error
+          path: |
+            release/*.exe
+            release/win-unpacked/**
+            site/**
+            apps/web/dist/**
 
       - name: Prepare corresponding source assets
         shell: pwsh
@@ -398,6 +435,18 @@ jobs:
           MATH3D_REQUIRE_PYGALMESH: "1"
           MATH3D_REQUIRE_CGAL: "1"
         run: npm run dist:linux:ci
+
+      - name: Preserve built Linux packages before source downloads
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-built-packages-${{ github.run_id }}
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/*.rpm
 
       - name: Prepare corresponding source assets
         run: npm run release:source -- --target linux --out release-source --version "${{ steps.meta.outputs.version }}"
