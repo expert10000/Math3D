@@ -21,6 +21,7 @@ import {
   structuralHash,
   graph2DToolUnavailable, type Graph2DTool,
   editGraph2DProbes, graph2DPinnedProbeState, projectGraph2DProbeMarkers,
+  getGraph2DGuidedDocumentGuidance,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
@@ -162,6 +163,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   }, []);
   const showLeft = !dockLayout.viewerMaximized && !dockLayout.leftCollapsed;
   const showRight = !dockLayout.viewerMaximized && !dockLayout.rightCollapsed;
+  const guided = getGraph2DGuidedDocumentGuidance(document);
   const viewport = previewViewport ?? document.display.viewport;
   const displayAxes = gridPreview ?? document.display.axes;
   const gridWarnings = useMemo(() => !displayAxes.grid ? [] : displayAxes.gridMode === "polar" ?
@@ -639,7 +641,13 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
           </div> : null}
       </div>
       {showRight && <aside className="graph2d-panel graph2d-right" aria-label="Graph inspector">
-        <h2>Inspector</h2>{inspector}
+        <h2>Inspector</h2>
+        {guided && <details className="graph2d-guided-panel" data-testid="graph2d-guided-panel">
+          <summary>Guide: {guided.concept.title} · {guided.state}</summary>
+          {guided.state === "stale" && <p role="status">Source or marker changed. These steps describe the original example; request fresh analysis before drawing conclusions.</p>}
+          <ol>{guided.concept.steps.map(step => <li key={step.heading}><strong>{step.heading}</strong><p>{step.explanation}</p><p>Try this: {step.tryThis}</p></li>)}</ol>
+          <small>Markers are saved probes. Numerical results are computed only when requested, with their stated limits.</small>
+        </details>}{inspector}
       </aside>}
       {galleryOpen && <GraphGalleryDialog activeId={document.identity.id} activeTitle={document.metadata.title} error={galleryError} onClose={closeGallery}
         onExportProject={onExportPersonalProject} onCopyDefinition={onCopyGraphDefinition} onPreviewImport={onPreviewPersonalImport}

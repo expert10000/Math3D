@@ -78,6 +78,7 @@ export * from "./graph2dAnimation";
 export * from "./graph2dParameterEditor";
 export * from "./graph2dPresets/catalog";
 export * from "./graph2dPresets/interactive";
+export * from "./graph2dPresets/guided";
 export * from "./graph2dPresets/preview";
 export * from "./scientificJobs";
 export * from "./topologyDocument";

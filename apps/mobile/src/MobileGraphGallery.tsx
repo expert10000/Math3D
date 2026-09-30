@@ -1,7 +1,8 @@
 import React, { useMemo, useRef, useState } from "react";
 import { AccessibilityInfo, findNodeHandle, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
-import { GRAPH2D_PRESET_CATEGORIES, getGraph2DInteractivePreset, graph2DPresetPreviewKey, sampleGraph2DScene,
+import { GRAPH2D_PRESET_CATEGORIES, getGraph2DInteractivePreset, getGraph2DGuidedConcepts, getGraph2DGuidedPreset,
+  graph2DPresetPreviewKey, sampleGraph2DScene, type Graph2DGuidedConcept,
   type Graph2DPersonalPresetPreview, type Graph2DPreset, type Graph2DPresetCategory } from "@math3d/core";
 import manifest from "../../../packages/core/fixtures/graph2d/gallery-previews.json";
 import { mobileGraphGalleryAssets } from "./data/mobileGraphGalleryAssets";
@@ -36,6 +37,7 @@ export function MobileGraphGallery({ onClose, onOpen, busy = false, message = ""
   const layout = mobileGraphGalleryLayout(contentWidth, window.height, window.fontScale);
   const [query, setQuery] = useState(""), [category, setCategory] = useState<Graph2DPresetCategory | "All">("All");
   const [featured, setFeatured] = useState(true), [selected, setSelected] = useState<Graph2DPreset | null>(null);
+  const [learn,setLearn]=useState(false),[selectedGuide,setSelectedGuide]=useState<Graph2DGuidedConcept|null>(null);
   const [shown, setShown] = useState(false);
   const [myGraphs,setMyGraphs]=useState(false),[favoritesOnly,setFavoritesOnly]=useState(false),[copyTitle,setCopyTitle]=useState(`${currentGraph?.metadata.title.slice(0,140) ?? "Graph"} copy`);
   const projects=[...(currentGraph?[{id:currentGraph.identity.id,title:currentGraph.metadata.title}]:[]),...personalProjects.filter(p=>p.id!==currentGraph?.identity.id)];
@@ -75,16 +77,17 @@ export function MobileGraphGallery({ onClose, onOpen, busy = false, message = ""
         {!layout.compact && <Text style={s.intro}>Explore the mathematics. Open an editable copy. {onOpen ? "Current work is saved before switching. " : ""}Previews are available offline.</Text>}
         {message ? <Text accessibilityLiveRegion="polite" style={s.message}>{message}</Text> : null}
         <Text style={s.label}>Search graphs</Text><TextInput accessibilityLabel="Search graphs" testID="mobile-graph-gallery-search"
-          value={query} onChangeText={text => { setQuery(text); setFeatured(false); setSelected(null); }} maxLength={160}
+          value={query} onChangeText={text => { setQuery(text); setFeatured(false); setLearn(false); setSelectedGuide(null); setSelected(null); }} maxLength={160}
           placeholder="Try roses, tangent or gaps" editable={!busy} style={s.search} returnKeyType="search" />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters}>
-          {button("Featured", () => { setMyGraphs(false); setFeatured(true); setQuery(""); setCategory("All"); setSelected(null); }, !myGraphs&&featured)}
-          {button("All scenes", () => { setMyGraphs(false); setFeatured(false); setQuery(""); setCategory("All"); setSelected(null); }, !myGraphs&&!featured)}
-          {onPersonalOpen&&button("My Graphs",()=>{setMyGraphs(true);setQuery("");setSelected(null);},myGraphs)}
+          {button("Featured", () => { setMyGraphs(false); setLearn(false); setFeatured(true); setQuery(""); setCategory("All"); setSelected(null); }, !myGraphs&&!learn&&featured)}
+          {button("All scenes", () => { setMyGraphs(false); setLearn(false); setFeatured(false); setQuery(""); setCategory("All"); setSelected(null); }, !myGraphs&&!learn&&!featured)}
+          {button("Learn",()=>{setMyGraphs(false);setLearn(true);setQuery("");setSelected(null);setSelectedGuide(null);},learn)}
+          {onPersonalOpen&&button("My Graphs",()=>{setMyGraphs(true);setLearn(false);setQuery("");setSelected(null);},myGraphs)}
         </ScrollView>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters}>
+        {!learn&&!myGraphs&&<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters}>
           {(["All", ...GRAPH2D_PRESET_CATEGORIES] as const).map(value => button(value, () => { setCategory(value); setFeatured(false); setSelected(null); }, category === value))}
-        </ScrollView>
+        </ScrollView>}
         {myGraphs?<View testID="mobile-graph-my-graphs"><Text>Existing saved Graph projects. Copies preserve data and companion lineage.</Text>
           {button("Choose personal Graph file",()=>{void onPreviewImport?.();},false,busy||!onPreviewImport)}
           {importPreview&&<View testID="mobile-graph-personal-import-preview" style={s.detail}>
@@ -111,7 +114,22 @@ export function MobileGraphGallery({ onClose, onOpen, busy = false, message = ""
             {button(`Share graph definition ${p.title}`,()=>{void onShareDefinition?.(p.id);},false,busy||!onShareDefinition)}
             {button(`Favorite project ${p.title}`,()=>{onFavorite?.(p.id);},projectFavorites.includes(p.id),busy||!!favoritesError)}</View>)}
           {!filteredProjects.length&&<Text>No matching saved Graph projects.</Text>}
-        </View>:selected ? <View style={s.detail} testID="mobile-graph-gallery-detail">
+        </View>:learn ? (selectedGuide?<View style={s.detail} testID="mobile-graph-gallery-guide-detail">
+          {button("Back to guided concepts",()=>setSelectedGuide(null))}
+          <Text accessibilityRole="header" style={s.title}>{selectedGuide.title}</Text><Text style={s.description}>{selectedGuide.summary}</Text>
+          <Text style={s.meta}>{selectedGuide.level} · {selectedGuide.steps.length} steps. Source-linked markers become stale after source edits; no analysis or animation runs automatically.</Text>
+          {selectedGuide.steps.map((step,index)=><View key={step.heading} style={s.body}>
+            <Text accessibilityRole="header" style={s.label}>{index+1}. {step.heading}</Text>
+            <Text style={s.description}>{step.explanation}</Text><Text style={s.description}>Try this: {step.tryThis}</Text>
+          </View>)}
+          {onOpen&&button(`Open guided ${selectedGuide.title}`,()=>{void onOpen(getGraph2DGuidedPreset(selectedGuide.id));})}
+        </View>:<View style={s.detail} testID="mobile-graph-gallery-guides">
+          <Text accessibilityRole="header" style={s.title}>Guided concepts</Text>
+          <Text style={s.description}>Study a concept, then open an independent editable graph with bounded source-linked markers.</Text>
+          {getGraph2DGuidedConcepts().map(concept=><View key={concept.id} style={s.body}>
+            <Text accessibilityRole="header" style={s.label}>{concept.title} · {concept.level}</Text><Text style={s.description}>{concept.summary}</Text>
+            {button(`Study ${concept.title}`,()=>setSelectedGuide(concept))}</View>)}
+        </View>) : selected ? <View style={s.detail} testID="mobile-graph-gallery-detail">
           {button("Back to gallery", () => setSelected(null))}{preview(selected, contentWidth - 40)}<Text accessibilityRole="header" style={s.title}>{selected.title}</Text>
           <Text style={s.description}>{selected.description}</Text>{selected.learningGoals.map(goal => <Text key={goal} style={s.description}>• {goal}</Text>)}
           <Text style={s.meta}>Approximate sampled preview · {selected.attribution.author} · {selected.attribution.license}</Text>

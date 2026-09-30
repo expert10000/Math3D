@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { getGraph2DPresetCatalog, getGraph2DInteractivePreset, GRAPH2D_PRESET_CATEGORIES, graph2DPresetPreviewKey,
+import { getGraph2DPresetCatalog, getGraph2DInteractivePreset, getGraph2DGuidedConcepts, getGraph2DGuidedPreset,
+  GRAPH2D_PRESET_CATEGORIES, graph2DPresetPreviewKey, type Graph2DGuidedConcept,
   type Graph2DPreset, type Graph2DPresetCategory } from "@math3d/core";
 import { Graph2DPointTableStore, renderGraph2DDocumentPreview, type Graph2DPersonalPresetPreview } from "@math3d/core";
 import { parseGraph2DProjectFavorites, emptyGraph2DProjectFavorites, toggleGraph2DProjectFavorite } from "@math3d/core";
@@ -27,7 +28,7 @@ export function GraphGalleryDialog({onClose,onOpen,onResume,onCopy,onExportProje
   const featured=collection==="Featured";
   const favorite=(id:string)=>{try{const value=toggleGraphGalleryFavorite(preferences.value,id);localStorage.setItem(GRAPH_GALLERY_PREFERENCES_KEY,JSON.stringify(value));setPreferences({value,error:null});}
     catch(error){setPreferences(prev=>({...prev,error:(error as Error).message}));}};
-  const [selected,setSelected]=useState<Graph2DPreset|null>(null);
+  const [selected,setSelected]=useState<Graph2DPreset|null>(null),[selectedGuide,setSelectedGuide]=useState<Graph2DGuidedConcept|null>(null);
   const [importPreview,setImportPreview]=useState<Graph2DPersonalPresetPreview|null>(null),[importImage,setImportImage]=useState("");
   const [transferMessage,setTransferMessage]=useState("");
   const exportProject=(id:string)=>{try{
@@ -81,11 +82,11 @@ export function GraphGalleryDialog({onClose,onOpen,onResume,onCopy,onExportProje
       <p>Open returns to an existing edited copy when available. Choose a fresh copy to start over. Your current workspace is preserved.</p></div><button type="button" aria-label="Close Graph Gallery" onClick={onClose}>Close</button></header>
     {error&&<p role="alert" className="graph-gallery-error">{error} Current work remains open.</p>}
     {preferences.error&&<div className="graph-gallery-error" role="alert">{preferences.error} <button type="button" onClick={()=>{try{const value=emptyGraphGalleryPreferences();localStorage.setItem(GRAPH_GALLERY_PREFERENCES_KEY,JSON.stringify(value));setPreferences({value,error:null});}catch(error){setPreferences(p=>({...p,error:(error as Error).message}));}}}>Reset local favorites/recent</button></div>}
-    <div className="graph-gallery-controls"><label>Search graphs<input ref={searchRef} type="search" value={query} onChange={e=>{setQuery(e.target.value);if(featured)setCollection("All scenes");}} placeholder="Try roses, tangent or gaps"/></label>
-      <div className="graph-gallery-tabs" aria-label="Gallery collection">{["Featured","All scenes","Favorites","Recent","My Graphs"].map(tab=><button key={tab} type="button" aria-pressed={collection===tab}
-        onClick={()=>{setCollection(tab);setCategory("All");setQuery("");setSelected(null);}}>{tab}</button>)}</div></div>
-    <div className="graph-gallery-categories" aria-label="Graph categories">{["All",...GRAPH2D_PRESET_CATEGORIES].map(c=><button type="button" key={c} aria-pressed={category===c}
-      onClick={()=>{setCategory(c as Graph2DPresetCategory|"All");if(featured)setCollection("All scenes");setSelected(null);}}>{c}</button>)}</div>
+    <div className="graph-gallery-controls"><label>Search graphs<input ref={searchRef} type="search" value={query} onChange={e=>{setQuery(e.target.value);if(featured||collection==="Learn")setCollection("All scenes");}} placeholder="Try roses, tangent or gaps"/></label>
+      <div className="graph-gallery-tabs" aria-label="Gallery collection">{["Featured","All scenes","Favorites","Recent","Learn","My Graphs"].map(tab=><button key={tab} type="button" aria-pressed={collection===tab}
+        onClick={()=>{setCollection(tab);setCategory("All");setQuery("");setSelected(null);setSelectedGuide(null);}}>{tab}</button>)}</div></div>
+    {collection!=="Learn"&&collection!=="My Graphs"&&<div className="graph-gallery-categories" aria-label="Graph categories">{["All",...GRAPH2D_PRESET_CATEGORIES].map(c=><button type="button" key={c} aria-pressed={category===c}
+      onClick={()=>{setCategory(c as Graph2DPresetCategory|"All");if(featured)setCollection("All scenes");setSelected(null);}}>{c}</button>)}</div>}
     {collection==="My Graphs"?<section aria-label="My Graphs" data-testid="graph-gallery-my-graphs">
       <p>Open your saved graphs or make an independent copy. Copied analysis observations remain labeled and are not recalculated.</p>
       <label>Preview a personal Graph file before import <input type="file" accept="application/json,.json" data-testid="graph-personal-import-file"
@@ -115,7 +116,24 @@ export function GraphGalleryDialog({onClose,onOpen,onResume,onCopy,onExportProje
         <button aria-pressed={projectFavorites.value.ids.includes(p.id)} onClick={()=>projectFavorite(p.id)}>Favorite project {p.title}</button>
       </article>)}
       {!projects.items.some(p=>p.title.toLocaleLowerCase().includes(query.toLocaleLowerCase())&&(!favoritesOnly||projectFavorites.value.ids.includes(p.id)))&&<p>No matching saved Graph projects.</p>}
-    </section>:selected?<section className="graph-gallery-detail" aria-label={`${selected.title} details`}>
+    </section>:collection==="Learn"?(selectedGuide?<section className="graph-gallery-detail" aria-label={`${selectedGuide.title} guided concept`} data-testid="graph-gallery-guide-detail">
+      <button type="button" onClick={()=>setSelectedGuide(null)}>Back to guided concepts</button>
+      <h3>{selectedGuide.title}</h3><p>{selectedGuide.summary}</p>
+      <p>Level: {selectedGuide.level}. Markers are source-linked saved probes; editing their source marks them stale. Lessons are educational guidance, not stored analysis results.</p>
+      <ol>{selectedGuide.steps.map(step=><li key={step.heading}><strong>{step.heading}</strong><p>{step.explanation}</p><p><em>Try this:</em> {step.tryThis}</p></li>)}</ol>
+      <p>Opening makes an independent editable Graph project. It never runs analysis or animation automatically.</p>
+      {(()=>{const guided=getGraph2DGuidedPreset(selectedGuide.id);return <>
+        {existing(guided)&&<p>Open resumes your edited guided copy; choose fresh to start over.</p>}
+        <button type="button" className="graph-gallery-open" onClick={()=>open(guided)}>Open guided {selectedGuide.title}</button>
+        {existing(guided)&&<button type="button" onClick={()=>onOpen(guided)}>Open fresh guided {selectedGuide.title}</button>}
+      </>;})()}
+    </section>:<section aria-label="Guided concepts" data-testid="graph-gallery-guides">
+      <h3>Guided concepts</h3><p>Follow a beginner, intermediate or advanced path. Each opens an editable copy with bounded, source-linked markers.</p>
+      <div className="graph-gallery-grid">{getGraph2DGuidedConcepts().map(concept=><article className="graph-gallery-card graph-gallery-card-body" key={concept.id}>
+        <div className="graph-gallery-card-meta">{concept.level} · {concept.steps.length} steps</div><h3>{concept.title}</h3><p>{concept.summary}</p>
+        <button type="button" onClick={()=>setSelectedGuide(concept)}>Study {concept.title}</button>
+      </article>)}</div>
+    </section>):selected?<section className="graph-gallery-detail" aria-label={`${selected.title} details`}>
       <button type="button" onClick={()=>setSelected(null)}>Back to gallery</button>{image(selected)}<h3>{selected.title}</h3><p>{selected.description}</p>
       <ul>{selected.learningGoals.map(goal=><li key={goal}>{goal}</li>)}</ul>
       <p>{selected.template.source.objects.map(o=>o.label).join(" · ")}</p><small>Approximate sampled preview · {selected.attribution.author} · {selected.attribution.license}</small>

@@ -18,6 +18,7 @@ vi.mock("expo-file-system", () => {
   return { Directory, File, Paths: { document: "documents" } };
 });
 import { applyGraph2DAuthoring, createGraph2DWorkspaceProject, createMixedWorkspaceDocument, createWorkspaceProjectHandoff, getGraph2DPresetCatalog,
+  getGraph2DGuidedConcepts, getGraph2DGuidedPreset, graph2DPinnedProbeState,
   getGraph2DInteractivePreset, getGraph2DInteractivePresetGuidance, previewGraph2DParameterValues, createGraph2DAnimationPlan, graph2DAnimationFrame,
   instantiateGraph2DPreset, parseWorkspaceProjectHandoff, promoteGraph2DToCurve, serializeWorkspaceProjectHandoff, assertWorkspaceHandoffCanReplace } from "@math3d/core";
 import { planMobileGraphPresetLaunch, commitMobileGraphPresetLaunch } from "../../apps/mobile/src/models/mobileGraphPresetLaunch";
@@ -32,6 +33,15 @@ const commit = (plan: ReturnType<typeof planMobileGraphPresetLaunch>) => commitM
 const tablePath = `documents/math3d-graph-tables/${data.sidecars[0]!.id.slice(14)}.json`;
 describe("ordinary mobile preset creation and atomic current-work preservation", () => {
   beforeEach(() => { files.clear(); faults.write = ""; faults.move = ""; mobileGraphPointTables.clearCache(); });
+  it.each(getGraph2DGuidedConcepts())("GGL13 opens $id through ordinary native storage with current saved markers", async concept => {
+    const preset = getGraph2DGuidedPreset(concept.id);
+    const result = await commit(planMobileGraphPresetLaunch(preset, `native-guide-${concept.id}`, [], {}, 1));
+    const loaded = readMobileGraph((await loadStoredSceneProjects()).projects[0]!);
+    expect(loaded.source).toEqual(preset.template.source);
+    expect(loaded.display.pinnedProbes).toHaveLength(concept.markers.length);
+    expect(loaded.display.pinnedProbes!.every(probe => graph2DPinnedProbeState(loaded, probe) === "current")).toBe(true);
+    expect(parseWorkspaceProjectHandoff(serializeMobileProjectHandoff(result.project)).project.entries[0]!.checkpoint).toEqual(loaded);
+  });
   it.each(catalog.entries.flatMap(p=>{const variant=getGraph2DInteractivePreset(p);return variant?[variant]:[];}))(
     "GGL10 $id launches and returns controls, edited values and suggested playback through ordinary storage", async preset => {
       const result=await commit(planMobileGraphPresetLaunch(preset,`interactive-${preset.id}`,[],{},1));

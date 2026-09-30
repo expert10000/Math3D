@@ -32,6 +32,10 @@
 }
 
 .graph2d-panel { padding: 16px; overflow: auto; }
+.graph2d-guided-panel { margin-bottom: 14px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
+.graph2d-guided-panel summary { cursor: pointer; font-weight: 650; }
+.graph2d-guided-panel li { margin-top: 9px; }
+.graph2d-guided-panel p { margin: 5px 0; line-height: 1.45; }
 .graph2d-right { scrollbar-gutter:stable; overflow-anchor:none; }
 .graph2d-inspector-details dd { font-variant-numeric:tabular-nums; }
 .graph2d-sampling-observation-status,.graph2d-sampling-observation-count { line-height:1.4; min-height:2.8em; }

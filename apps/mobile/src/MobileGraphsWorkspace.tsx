@@ -13,6 +13,7 @@ import { MobileGraphExportPanel } from "./MobileGraphExportPanel";
 import { MobileGraphParametersPanel } from "./MobileGraphParametersPanel";
 import { MobileGraphToolsPanel } from "./MobileGraphToolsPanel";
 import { graph2DToolUnavailable, projectGraph2DProbeMarkers, graph2DPinnedProbeState, type Graph2DTool } from "@math3d/core";
+import { getGraph2DGuidedDocumentGuidance } from "@math3d/core";
 import { mobileGraphAreaRects } from "./viewer/mobileGraphOverlays";
 import { editMobileGraphProbes } from "./models/mobileGraphProbes";
 import { MobileGraphProbesPanel } from "./MobileGraphProbesPanel";
@@ -76,6 +77,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const [analysisDraft, setAnalysisDraft] = useState(() => mobileGraphAnalysisDraft(document));
   const [analysis, setAnalysis] = useState<MobileGraphRegressionAnalysis | null>(null);
   const viewport = preview ?? document.display.viewport;
+  const guided = getGraph2DGuidedDocumentGuidance(document);
   const cancel = () => { gesture.current.cancel(); setPreview(null); };
   useEffect(() => {
     const listener = AppState.addEventListener("change", (state) => { if (state !== "active") { cancel(); setParameterPreview(null); } });
@@ -242,6 +244,14 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         onApply={(action) => commit(() => adapter.commitScene(applyMobileGraphAuthoring(document, action), action.type))}
         onSelect={(id) => commit(() => adapter.commitSelection(selectionForGraph2DObject(document, series, id)))} /> : <><Text style={s.readout}>{mobileGraphCapabilities(document)}</Text>
         <Text style={s.readout}>Probes: evaluated explicit/parametric/polar, interpolated contours, nearest data row. Calculus/pins require explicit y(x); regression uses original point data. Sampling is approximate.</Text>
+        {guided && <View accessibilityLabel={`Guide ${guided.concept.title}`} testID="mobile-graph-guided-panel">
+          <Text accessibilityRole="header" style={s.title}>Guide: {guided.concept.title} · {guided.state}</Text>
+          {guided.state === "stale" && <Text accessibilityLiveRegion="polite">Source or marker changed. These steps describe the original example; request fresh analysis.</Text>}
+          {guided.concept.steps.map((step,index)=><View key={step.heading} style={{ paddingVertical: 8 }}>
+            <Text style={s.title}>{index+1}. {step.heading}</Text><Text>{step.explanation}</Text><Text>Try this: {step.tryThis}</Text>
+          </View>)}
+          <Text>Saved markers are source-linked. Numerical results are computed only when requested and keep their stated limits.</Text>
+        </View>}
         {series.some((item) => !item.artifact.converged) && <Text style={s.readout}>Sampling budget reached; unresolved regions are not a proof of absence.</Text>}
         {button("Clear probe", () => commit(() => adapter.commitSelection({ objectId: null, probe: null })))}
         {probe && button("Cycle overlap", () => tap(graph2DWorldToScreen(document.display.viewport, size, probe)))}
