@@ -108,6 +108,25 @@ Samsung baseline [device signoff](mobile-device-signoff.json) is now approved.
 This confirms standalone workspace restoration; it does not claim the wider
 Graph gesture/undo, accessibility or performance matrix was performed.
 
+## Production AAB verification
+
+[Verification-only run 36747275965](https://github.com/expert10000/Math3D/actions/runs/36747275965)
+passed on clean source `9b7dae5914e47063c2fdbe3b0c9c7e42bcb706fb`.
+Only documentation/signoff changed since the approved internal build; the
+runtime source is unchanged. The run passed the exact-APK device-signoff
+gate and built `com.math3d.mobile`, version `1.6.0`, build `150008`.
+
+- AAB SHA-256: `50688ab4078a236c0e088f8067b2e6c72860851c4af2e7ef8a1d34e9470910d7`.
+- Certificate SHA-256: `66a86e95eaf60f8d2224dd06ad5ef4eec6c856ca2b5e32dc954384bc6ad41be3`, matching the existing production upload key.
+- Downloaded bytes match both `SHA256SUMS` and clean build metadata. Local
+  `jarsigner` verification and `keytool` certificate comparison also passed.
+- AAB, CI reports and local verification are in
+  `output/mobile-160-production-36747275965/`.
+
+The workflow was dispatched with no `release_tag`; its publish job was skipped.
+This artifact is a verified candidate, not a public release or a replacement
+for the wider physical-device/Graph-specific acceptance matrix.
+
 ## Remaining gates
 
 1. Complete the full [MOB-G13 physical matrix](mobile-graphs-g11-g13-acceptance.md)
@@ -116,13 +135,8 @@ Graph gesture/undo, accessibility or performance matrix was performed.
    evidence. Focused Samsung TalkBack and capture/share checks are documented
    in [GGL14–17 evidence](graph2d-gallery-ggl14-ggl17-showcase.md); they do not
    close that matrix.
-2. With the Samsung baseline exact-build signoff recorded, run the
-   [production AAB workflow](../.github/workflows/mobile-android-production-aab.yml)
-   **without** `release_tag` first. It retrieves the existing production key
-   from GitHub Actions secrets, compares the AAB certificate with the public
-   record and uploads a verification-only artifact. The local workstation
-   has no production keystore configured.
-3. Review release scope and artifacts, then create/publish a `v1.6.0` release
+2. After those physical acceptance gates pass, review release scope and
+   artifacts, then create/publish a `v1.6.0` release
    and invoke that workflow with the matching existing tag. A verification-only
    AAB or internal APK is not a public release. Do not waive the signoff gate
    or attach an unverified AAB.
