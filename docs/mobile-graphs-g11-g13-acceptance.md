@@ -48,6 +48,13 @@ Each device record has `slot`, `kind: "physical"`, `platform`, `model`, `os`, `t
 
 ## Acceptance status
 
+**1.6.0 scope decision — September 30, 2026:** the owner approved a release
+with the reusable [test pack](test-packs/1.6.0/README.md), automated software
+checks and the exact-APK Samsung baseline. The broader physical matrix is
+deferred to subsequent releases. This is a narrower release scope, not a
+passed MOB-G13 freeze; this gate/template and their rejection rules remain
+unchanged. See [release evidence](mobile-1.6.0-release-candidate.md).
+
 Physical Android and iOS release acceptance is pending; emulator or unit evidence is not a substitute. Advanced Curve/Surface worker analyses remain desktop-only; MOB-G11/G12 are layout/performance items, not worker-analysis delivery items.
 
 The [2026-09-28 readiness audit](mobile-graphs-g13-readiness-2026-09-28.md) reruns the automated suite/typecheck and records the current device/artifact blockers without promoting them to physical signoff.

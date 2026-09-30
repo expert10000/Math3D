@@ -1,0 +1,82 @@
+{
+  "format": "math3d.release-test-pack",
+  "version": "1.6.0",
+  "fixtureGraphs": [
+    "line-comparison",
+    "reciprocal-pole",
+    "circle-ellipse",
+    "polar-rose",
+    "implicit-conics",
+    "strict-disk",
+    "piecewise-data-gaps",
+    "wave-beats-interactive",
+    "regression-reference"
+  ],
+  "scope": "Repeatable fixtures and checklist; automated validation does not attest physical-device acceptance.",
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+    },
+    {
+      "path": "README.md",
+      "sha256": "f3e7fd65925a586bfdd0755c4b2be0ee6eb4de93f78765d8b89af78aaf5bf973"
+    },
+    {
+      "path": "fixtures/circle-ellipse.graph.json",
+      "sha256": "2b32feb43d9b9e5918dd64fc5c4a72ddbac83da4c861c666e82960e8e2d469db"
+    },
+    {
+      "path": "fixtures/gaps.csv",
+      "sha256": "94819efc747062c538c38a4f21f10a89b7624a54a82463d57ba28f6d7ceb61af"
+    },
+    {
+      "path": "fixtures/implicit-conics.graph.json",
+      "sha256": "814d5a4c114eff64e6eb5bc0b6c549a61a9ffd5bdf1ffe4fc4a9b75ea134001f"
+    },
+    {
+      "path": "fixtures/line-comparison.graph.json",
+      "sha256": "07e49d43256b74886bdf3e8fd74169bf24423162be10d0100b76e38c7d0c4d56"
+    },
+    {
+      "path": "fixtures/piecewise-data-gaps.graph.json",
+      "sha256": "118a953905f03aaadce82f52ea29edae9db8280eb6dd7cc409d5f400c0f6fb1c"
+    },
+    {
+      "path": "fixtures/polar-rose.graph.json",
+      "sha256": "6d72e09b3d8cc61798098df72788b79293400ae577bd6236ab0713e21c9ffdcb"
+    },
+    {
+      "path": "fixtures/reciprocal-pole.graph.json",
+      "sha256": "4c39c4538d9142dda2a75a46b25fd4f8dccd90a2d3008dce0b98fa130352685a"
+    },
+    {
+      "path": "fixtures/regression-reference.graph.json",
+      "sha256": "4d3ddba7ad36a50ec381f4ecab968924e4e329a5f44924cd4488f654d7ec4c7e"
+    },
+    {
+      "path": "fixtures/regression.csv",
+      "sha256": "814c5c29078c59ee01e31927a1c6311f1c496df1ad08afc7e2bcb25d76fbcf45"
+    },
+    {
+      "path": "fixtures/reject-future-version.graph.json",
+      "sha256": "fef964abe57623e68354c775c52a7cd7d5bd5c4a0724b527c6e7b16ebc6b88c3"
+    },
+    {
+      "path": "fixtures/strict-disk.graph.json",
+      "sha256": "9a98b451c364fc39725c07dc4ac00f90445cac7671fa7d1f5a05425f3d0ec152"
+    },
+    {
+      "path": "fixtures/wave-beats-interactive.graph.json",
+      "sha256": "3411a12fbd00b6271c4d1243ba357a1aba3c9773cbe2d031171349ae9e8a2bb9"
+    },
+    {
+      "path": "results.template.json",
+      "sha256": "f1e5bcb5437834af13c232c4b658a34c07993b922b2a222f5f03d7d467813efe"
+    },
+    {
+      "path": "verify.mjs",
+      "sha256": "159ba06d5dac54c8fa09e1f29d4b9cb3c1f1fccc5e9c4cf6f3b9fc37239d377b"
+    }
+  ]
+}

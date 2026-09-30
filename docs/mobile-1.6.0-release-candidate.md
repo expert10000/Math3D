@@ -127,7 +127,23 @@ The workflow was dispatched with no `release_tag`; its publish job was skipped.
 This artifact is a verified candidate, not a public release or a replacement
 for the wider physical-device/Graph-specific acceptance matrix.
 
-## Remaining gates
+## Owner-approved 1.6.0 release scope
+
+On September 30 the owner chose to add the reusable test pack, check the
+current software/Samsung baseline and release 1.6.0; broader device coverage
+is deferred to later releases. The [pack](test-packs/1.6.0/README.md) contains
+fixed importable examples, expected results, blank per-device records and
+integrity checks. The release notes explicitly state the limited physical
+coverage. MOB-G13/G2D40's strict full-device gate remains unchanged and pending;
+this scoped release is not an attestation that it passed.
+
+Before publication, require pack validation, the automated professional
+acceptance suite, existing exact-APK Samsung/signing-backup gates, the
+tagged internal build/emulator gate, desktop packaging checks and verified
+production AAB. No runtime mobile change is needed for the test pack, so
+the approved internal APK's source remains applicable.
+
+## Deferred validation for subsequent releases
 
 1. Complete the full [MOB-G13 physical matrix](mobile-graphs-g11-g13-acceptance.md)
    and professional feature cases in [G2D40](graph2d-g40-professional-acceptance.md),
@@ -135,8 +151,6 @@ for the wider physical-device/Graph-specific acceptance matrix.
    evidence. Focused Samsung TalkBack and capture/share checks are documented
    in [GGL14–17 evidence](graph2d-gallery-ggl14-ggl17-showcase.md); they do not
    close that matrix.
-2. After those physical acceptance gates pass, review release scope and
-   artifacts, then create/publish a `v1.6.0` release
-   and invoke that workflow with the matching existing tag. A verification-only
-   AAB or internal APK is not a public release. Do not waive the signoff gate
-   or attach an unverified AAB.
+2. Expand independent user/device feedback and calibrate workload tiers from
+   recorded measurements. Keep exact artifacts and reviewed runtime source
+   linked to each future signoff. GGL18 remains conditional on measured need.
