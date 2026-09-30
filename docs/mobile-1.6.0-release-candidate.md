@@ -95,6 +95,15 @@ artifact is in `output/mobile-160-candidate-36743132389/`.
 Owner-observed cable-free reopen and gestures are pending on this rebuilt APK;
 the earlier candidate's human observation does not transfer.
 
+The owner subsequently reported reopening a three-petal Graph from one of
+two identically named launcher icons. Reconnection identified the most recent
+Math3D task as `com.math3d.mobile`, the older `1.5.1` debuggable build.
+Explicitly relaunching `com.math3d.mobile.internal` again restored Catenoid.
+The debug package was temporarily disabled with `pm disable-user --user 0`
+to make the remaining launcher icon unambiguous; its data was preserved.
+It can be restored with `adb shell pm enable com.math3d.mobile`.
+Fresh cable-free owner confirmation on the internal candidate remains pending.
+
 ## Remaining gates
 
 1. Build a clean `1.6.0` internal APK with the shared internal key; verify its
