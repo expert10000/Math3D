@@ -80,7 +80,11 @@ const sourceZip = path.join(outDir, `Math3D-${version}-source.zip`);
 if (fs.existsSync(sourceZip)) fs.unlinkSync(sourceZip);
 run("git", ["archive", "--format=zip", `--prefix=Math3D-${version}-source/`, `--output=${sourceZip}`, "HEAD"]);
 
-const releasePatch = run("git", ["diff", "--", "package.json", "package-lock.json"]);
+const releasePatch = run("git", ["diff", "HEAD", "--",
+  "package.json", "package-lock.json", ".github/workflows/release.yml",
+  "scripts/materialize-release-recipe.cjs", "scripts/setup-cgal-python-worker.ps1",
+  "scripts/prepare-public-source-bundle.mjs", "compliance/public-source-manifest.json",
+]);
 let releasePatchName = null;
 if (releasePatch) {
   releasePatchName = `Math3D-${version}-release-build.patch`;
@@ -119,7 +123,8 @@ fs.copyFileSync(path.join(root, "LICENSES/Apache-2.0.txt"), path.join(outDir, "A
 const materialized = {
   schemaVersion: 1,
   distributionLicense: sourceManifest.distributionLicense,
-  math3d: { version, commit, sourceArchive: path.basename(sourceZip), releaseBuildPatch: releasePatchName },
+  math3d: { version, commit, buildRecipeCommit: process.env.GITHUB_WORKFLOW_SHA || commit,
+    sourceArchive: path.basename(sourceZip), releaseBuildPatch: releasePatchName },
   target,
   pythonPackages,
   sources: selected,

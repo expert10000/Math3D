@@ -3,6 +3,8 @@ param(
   [string]$VcpkgRoot = "",
   [string]$Triplet = "x64-windows",
   [string]$PygalmeshVersion = "0.10.7",
+  [string]$VcpkgCommit = "",
+  [switch]$FrozenRequirements,
   [switch]$SkipVcpkgInstall,
   [switch]$SkipPythonDeps,
   [switch]$ForceReinstall,
@@ -200,9 +202,15 @@ function Invoke-WithVcVars {
 New-Item -ItemType Directory -Force -Path $depsRoot | Out-Null
 Set-Location $repo
 
-if (!(Test-Path $vcpkgExe)) {
+if (!(Test-Path (Join-Path $VcpkgRoot ".git"))) {
   Write-Step "vcpkg not found; cloning into $VcpkgRoot"
   Invoke-Checked -FilePath "git" -Arguments @("clone", "https://github.com/microsoft/vcpkg.git", $VcpkgRoot)
+}
+if ($VcpkgCommit) {
+  if ($VcpkgCommit -notmatch '^[a-f0-9]{40}$') { throw "VcpkgCommit must be a full commit SHA." }
+  Invoke-Checked -FilePath "git" -Arguments @("-C", $VcpkgRoot, "checkout", "--detach", $VcpkgCommit)
+}
+if (!(Test-Path $vcpkgExe)) {
   Invoke-Checked -FilePath (Join-Path $VcpkgRoot "bootstrap-vcpkg.bat")
 }
 
@@ -248,10 +256,18 @@ $script:BasePython = $venvPython
 Invoke-Checked -FilePath $venvPython -Arguments @("-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel")
 Invoke-Checked -FilePath $venvPython -Arguments @("-m", "pip", "install", "pybind11")
 if (!$SkipPythonDeps) {
-  Invoke-Checked -FilePath $venvPython -Arguments @("-m", "pip", "install", "numpy", "scipy", "sympy", "vtk", "CGAL")
+  if ($FrozenRequirements) {
+    $pinnedPackages = @(Get-Content (Join-Path $repo "python/worker/requirements.freeze.txt") | Where-Object { $_ -and $_ -notmatch '^pygalmesh==' })
+    Invoke-Checked -FilePath $venvPython -Arguments (@("-m", "pip", "install") + $pinnedPackages)
+  } else {
+    Invoke-Checked -FilePath $venvPython -Arguments @("-m", "pip", "install", "numpy", "scipy", "sympy", "vtk", "CGAL")
+  }
 }
 
 if (!$SkipPythonDeps) {
+  $resolvedBuildRoot = [System.IO.Path]::GetFullPath($buildRoot)
+  $expectedBuildRoot = [System.IO.Path]::GetFullPath((Join-Path $repo ".deps/pygalmesh-build"))
+  if ($resolvedBuildRoot -ne $expectedBuildRoot) { throw "Unsafe pygalmesh build directory: $resolvedBuildRoot" }
   Remove-Item -LiteralPath $buildRoot -Recurse -Force -ErrorAction SilentlyContinue
   New-Item -ItemType Directory -Force -Path $buildRoot | Out-Null
   Invoke-Checked -FilePath $venvPython -Arguments @(
@@ -265,6 +281,9 @@ if (!$SkipPythonDeps) {
   $sdist = Get-ChildItem -LiteralPath $buildRoot -Filter "pygalmesh-$PygalmeshVersion*.tar.gz" | Select-Object -First 1
   if (!$sdist) {
     throw "Downloaded pygalmesh source archive not found in $buildRoot"
+  }
+  if ($PygalmeshVersion -eq "0.10.7" -and (Get-FileHash -LiteralPath $sdist.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -ne "2db842cfd43aed9beb2c3a2dae6276206d16587131b6f068f6c5ba049b6af2f9") {
+    throw "pygalmesh source checksum mismatch."
   }
   Invoke-Checked -FilePath $venvPython -Arguments @(
     "-c",

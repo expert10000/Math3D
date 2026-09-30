@@ -28,7 +28,7 @@ jobs:
 
   windows-release:
     needs: mobile-release-gate
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 150
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
@@ -43,6 +43,9 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ env.RELEASE_TAG }}
+
+      - name: Apply exact workflow build recipe to fixed app tag
+        run: node -e "eval(require('node:child_process').execFileSync('git', ['show', process.env.GITHUB_WORKFLOW_SHA + ':scripts/materialize-release-recipe.cjs'], {encoding:'utf8'}))"
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -145,9 +148,13 @@ jobs:
       - name: Install Python dependencies for frozen worker
         shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install mkdocs
-          python -m pip install pyinstaller -r python/worker/requirements.freeze.txt
+          ./scripts/setup-cgal-python-worker.ps1 -Python (Get-Command python).Source -VcpkgCommit 52fd90f2b7798d9fe6fef18fc1787db44574d704 -FrozenRequirements
+          $workerPython = Join-Path $PWD ".venv-worker/Scripts/python.exe"
+          & $workerPython -m pip install pyinstaller mkdocs -r python/worker/requirements.freeze.txt
+          if ($LASTEXITCODE -ne 0) { throw "Pinned worker dependencies failed." }
+          "MATH3D_PYTHON=$workerPython" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $PWD ".venv-worker/Scripts") | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          (Join-Path $PWD ".deps/vcpkg/installed/x64-windows/bin") | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Build docs bundle
         shell: pwsh
@@ -166,6 +173,9 @@ jobs:
           MATH3D_REQUIRE_PYGALMESH: "1"
           MATH3D_REQUIRE_CGAL: "1"
         run: npm run dist:ci
+
+      - name: Verify packaged worker protocol
+        run: node scripts/smoke-python-worker.mjs --exe release/win-unpacked/resources/python-worker/worker.exe
 
       - name: Prepare corresponding source assets
         shell: pwsh
@@ -280,6 +290,9 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ env.RELEASE_TAG }}
+
+      - name: Apply exact workflow build recipe to fixed app tag
+        run: node -e "eval(require('node:child_process').execFileSync('git', ['show', process.env.GITHUB_WORKFLOW_SHA + ':scripts/materialize-release-recipe.cjs'], {encoding:'utf8'}))"
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
