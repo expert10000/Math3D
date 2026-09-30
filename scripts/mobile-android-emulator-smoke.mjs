@@ -178,6 +178,24 @@ try {
     adb("shell", "am", "start", "-n", `${packageName}/com.math3d.mobile.MainActivity`);
     expectText("Helicoid");
   });
+  check("Surface example remains current after leaving a saved Graph and restarting", () => {
+    tap("Projects");
+    tap("Graph Gallery");
+    tapInScroll("Open Beating waves");
+    expectText("Beating waves");
+    tap("Explore");
+    tap("Examples");
+    tapInScroll("Search examples");
+    adb("shell", "input", "keyevent", "KEYCODE_MOVE_END");
+    adb("shell", "input", "keyevent", ...Array(40).fill("KEYCODE_DEL"));
+    adb("shell", "input", "text", "Catenoid");
+    adb("shell", "input", "keyevent", "4");
+    tapVisibleInspectorControl("Catenoid", "Examples", "mobile-example-catenoid");
+    expectText("Catenoid");
+    adb("shell", "am", "force-stop", packageName);
+    adb("shell", "am", "start", "-n", `${packageName}/com.math3d.mobile.MainActivity`);
+    expectText("Catenoid");
+  });
   check("app remains alive with no fatal JS or Android errors", () => {
     const pid = adb("shell", "pidof", packageName);
     if (!/^\d+$/.test(pid)) throw new Error("Math3D process is not running.");

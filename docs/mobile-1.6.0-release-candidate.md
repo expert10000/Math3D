@@ -36,6 +36,40 @@ The first CI attempt exposed a stale Explore search assumption in the emulator
 smoke script. Commit `4bd677c` made that test scroll to the control; the
 rerun passed. No app feature was changed to hide the failure.
 
+## Exact 1.6.0 candidate evidence
+
+The exact `1.6.0`/`150008` internal candidate is now available from
+[shared-key CI run 36720069303](https://github.com/expert10000/Math3D/actions/runs/36720069303).
+Its APK SHA-256 is
+`e4716cf04b54609d8239199ccc31ac9e702be96fafb4445dc6063f2d41fe9ffd`,
+and its source is `354d06db90d71fa21000afd1a80263623f847c6c` with a clean
+tracked build. The downloaded bytes match the CI checksum. Local `apksigner`
+verification confirms the established internal certificate listed above;
+the APK contains its embedded Hermes bundle. CI Android 16 smoke passed.
+
+The exact APK updated the Samsung SM-A566B to `1.6.0-internal`/`150008`
+without clearing app data. A forced relaunch restored “Two slopes import 2”;
+all 17 saved projects remained listed and that Graph reopened from Projects.
+Gallery/My Graphs, presentation/exit, Graph Functions, Home featured
+Previous/Next, Explore search, Settings and the offline Catenoid viewport
+were reached. Scoped AndroidRuntime/ReactNativeJS error logs were empty.
+Screenshots/XML and signature evidence are in
+`output/mobile-160-samsung/`; the downloaded APK and CI reports are in
+`output/mobile-160-candidate-36720069303/`. The physical inspector also
+changed Catenoid opacity to 50% and restored it to 100%.
+
+This APK is **not approved**: switching from the saved Graph to the unsaved
+Catenoid example and force-stopping the app restored the earlier Graph.
+Startup treated the first saved project as current before considering the
+last-viewed Surface snapshot. The fix preserves explicitly selected saved
+Graphs while prioritizing a valid Surface snapshot over the library fallback.
+Two unit regressions and a mixed Graph/Surface emulator restart check cover
+this path; all 327 mobile unit tests and the mobile typecheck passed locally.
+A rebuilt APK and fresh physical checks are required. The owner reported
+Catenoid reopen/zoom/pan working, but the debug and internal apps have identical
+launcher labels, so that observation is not assigned to an exact candidate.
+The existing `150007` signoff is still unchanged.
+
 ## Remaining gates
 
 1. Build a clean `1.6.0` internal APK with the shared internal key; verify its
