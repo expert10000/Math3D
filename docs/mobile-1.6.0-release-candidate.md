@@ -65,7 +65,7 @@ last-viewed Surface snapshot. The fix preserves explicitly selected saved
 Graphs while prioritizing a valid Surface snapshot over the library fallback.
 Two unit regressions and a mixed Graph/Surface emulator restart check cover
 this path; all 327 mobile unit tests and the mobile typecheck passed locally.
-A rebuilt APK and fresh physical checks are required. The owner reported
+That failure required the rebuilt APK and fresh physical checks below. The owner reported
 Catenoid reopen/zoom/pan working, but the debug and internal apps have identical
 launcher labels, so that observation is not assigned to an exact candidate.
 The existing `150007` signoff is preserved in
@@ -92,8 +92,8 @@ Inspector opacity changed to 50% and back to 100%. Scoped
 AndroidRuntime/ReactNativeJS logs since installation are empty.
 Evidence uses `fixed-*` captures in `output/mobile-160-samsung/`, and the CI
 artifact is in `output/mobile-160-candidate-36743132389/`.
-Owner-observed cable-free reopen and gestures are pending on this rebuilt APK;
-the earlier candidate's human observation does not transfer.
+The initial human zoom/pan report was ambiguous because the two launcher
+labels were identical; it was not transferred to this APK.
 
 The owner subsequently reported reopening a three-petal Graph from one of
 two identically named launcher icons. Reconnection identified the most recent
@@ -102,29 +102,27 @@ Explicitly relaunching `com.math3d.mobile.internal` again restored Catenoid.
 The debug package was temporarily disabled with `pm disable-user --user 0`
 to make the remaining launcher icon unambiguous; its data was preserved.
 It can be restored with `adb shell pm enable com.math3d.mobile`.
-Fresh cable-free owner confirmation on the internal candidate remains pending.
+With only the internal app enabled, the owner confirmed the requested
+cable-free close/reopen check: “ok, catenoid after reload.” The exact APK's
+Samsung baseline [device signoff](mobile-device-signoff.json) is now approved.
+This confirms standalone workspace restoration; it does not claim the wider
+Graph gesture/undo, accessibility or performance matrix was performed.
 
 ## Remaining gates
 
-1. Build a clean `1.6.0` internal APK with the shared internal key; verify its
-   artifact hash/certificate and Android emulator smoke. Install that **exact
-   APK** over the Samsung internal app and record the physical checks, crash
-   logs, and owner-observed standalone relaunch before updating
-   [mobile-device-signoff.json](mobile-device-signoff.json). The older `150007`
-   approval must not be copied to the new candidate.
-2. Complete the full [MOB-G13 physical matrix](mobile-graphs-g11-g13-acceptance.md)
+1. Complete the full [MOB-G13 physical matrix](mobile-graphs-g11-g13-acceptance.md)
    and professional feature cases in [G2D40](graph2d-g40-professional-acceptance.md),
    including the missing device classes and screen-reader/rotation/performance
    evidence. Focused Samsung TalkBack and capture/share checks are documented
    in [GGL14–17 evidence](graph2d-gallery-ggl14-ggl17-showcase.md); they do not
    close that matrix.
-3. Only after exact-build signoff, run the
+2. With the Samsung baseline exact-build signoff recorded, run the
    [production AAB workflow](../.github/workflows/mobile-android-production-aab.yml)
    **without** `release_tag` first. It retrieves the existing production key
    from GitHub Actions secrets, compares the AAB certificate with the public
    record and uploads a verification-only artifact. The local workstation
    has no production keystore configured.
-4. Review release scope and artifacts, then create/publish a `v1.6.0` release
+3. Review release scope and artifacts, then create/publish a `v1.6.0` release
    and invoke that workflow with the matching existing tag. A verification-only
    AAB or internal APK is not a public release. Do not waive the signoff gate
    or attach an unverified AAB.
