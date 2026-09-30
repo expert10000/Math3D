@@ -28,12 +28,13 @@ const readPNG = (bytes: Uint8Array) => {
 describe("G2D36 portable publication recipe", () => {
   it("GGL14 captures committed source/view/theme and labels external data", () => {
     const { document } = scene("line-comparison"), published = publication("line-comparison");
-    const recipe = createGraph2DCaptureRecipe(document, published, "dark", "Math3D example");
+    const recipe = createGraph2DCaptureRecipe(document, published, "dark", "Math3D example", { width: 1440, height: 900 });
     expect(recipe.format).toBe("math3d.graph2d-capture-recipe");
     expect(recipe.view.viewport).toEqual(document.display.viewport);
     expect(recipe.view.size).toEqual(published.metadata.size);
     expect(recipe.view.uiTheme).toBe("dark");
     expect(recipe.view.publicationTheme).toBe("light");
+    expect(recipe.view.hostWindow).toEqual({ width: 1440, height: 900 });
     expect(recipe.snapshotId).toBe(published.snapshotId);
     expect(recipe.attribution).toBe("Math3D example");
     expect(() => createGraph2DCaptureRecipe(scene("parabola-and-tangent").document, published, "light", "x")).toThrow();

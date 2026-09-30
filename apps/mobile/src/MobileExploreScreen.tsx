@@ -3,6 +3,9 @@ import { Pressable, Text, TextInput, View } from "react-native";
 import { mobileExamples } from "./data/mobileSeedData";
 import { surfaceSummary, type MobileAppController } from "./mobileAppController";
 import { styles } from "./mobileAppStyles";
+import { MobileGraphShowcase } from "./MobileGraphShowcase";
+import { getGraph2DPresetCatalog } from "@math3d/core";
+import { relatedGraphScenesForSurface, searchMobileCrossModuleCatalog } from "./models/mobileCrossModuleCatalog";
 
 export const MobileExploreScreen: React.FC<{ model: MobileAppController }> = ({ model }) => {
   const {
@@ -26,6 +29,7 @@ export const MobileExploreScreen: React.FC<{ model: MobileAppController }> = ({ 
     openLearningExample,
   } = model;
   const learningExamples = mobileExamples.filter((example) => example.learnTopic);
+  const matchingGraphs = exampleSearchQuery.trim() ? searchMobileCrossModuleCatalog(exampleSearchQuery, "graph2d").slice(0, 8) : [];
   const [revealedLearnTopics, setRevealedLearnTopics] = useState<string[]>([]);
 
   return (
@@ -49,6 +53,7 @@ export const MobileExploreScreen: React.FC<{ model: MobileAppController }> = ({ 
 
       {tab === "explore" && exploreSection === "examples" && (
         <View style={styles.panel}>
+          <MobileGraphShowcase model={model} />
           <Text style={styles.panelTitle}>Examples</Text>
           <Text style={styles.note}>One catalog supplies graphs, parametric surfaces, implicit jobs, and learning links.</Text>
           <TextInput
@@ -60,6 +65,14 @@ export const MobileExploreScreen: React.FC<{ model: MobileAppController }> = ({ 
             autoCorrect={false}
             style={styles.textInput}
           />
+          {matchingGraphs.length > 0 && <View style={styles.panel} accessibilityLabel="Matching Graph scenes">
+            <Text style={styles.itemTitle}>Graph matches</Text>
+            {matchingGraphs.map(card => <Pressable key={card.key} accessibilityRole="button"
+              accessibilityLabel={`Open Graph ${card.title}`} style={styles.secondaryBtn}
+              onPress={() => { const preset=getGraph2DPresetCatalog().get(card.sourceId); if (preset) void model.openGraphGalleryPreset(preset); }}>
+              <Text style={styles.secondaryBtnText}>{card.title} · {card.category}</Text>
+            </Pressable>)}
+          </View>}
           <Text style={styles.itemMeta}>Category</Text>
           <View style={styles.viewerToolbarRow}>
             {(["all", ...exampleCategories] as const).map((category) => (
@@ -94,8 +107,7 @@ export const MobileExploreScreen: React.FC<{ model: MobileAppController }> = ({ 
             const surface = example.scene.surfaces?.[0];
             const available = isExampleAvailable(example);
             return (
-              <Pressable
-                key={example.id}
+              <React.Fragment key={example.id}><Pressable
                 testID={`mobile-example-${example.id}`}
                 onPress={() => {
                   setSelectedExampleId(example.id);
@@ -111,6 +123,14 @@ export const MobileExploreScreen: React.FC<{ model: MobileAppController }> = ({ 
                 </Text>
                 {surface ? <Text style={styles.itemMeta}>{surfaceSummary(surface)}</Text> : null}
               </Pressable>
+              {relatedGraphScenesForSurface(example.id).map(link => <View key={link.card.key} style={styles.item}>
+                <Text style={styles.itemMeta}>Related Graph: {link.card.title}. {link.reason} Opens a separate editable Graph, not a Surface conversion.</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Open related Graph ${link.card.title}`}
+                  onPress={() => { const preset=getGraph2DPresetCatalog().get(link.card.sourceId); if (preset) void model.openGraphGalleryPreset(preset); }} style={styles.secondaryBtn}>
+                  <Text style={styles.secondaryBtnText}>Open related Graph</Text>
+                </Pressable>
+              </View>)}
+              </React.Fragment>
             );
           })}
 

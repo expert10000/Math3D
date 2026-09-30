@@ -2,11 +2,12 @@ import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { type MobileAppController } from "./mobileAppController";
 import { styles } from "./mobileAppStyles";
+import { MobileGraphShowcase } from "./MobileGraphShowcase";
 
 export const MobileHomeScreen: React.FC<{ model: MobileAppController }> = ({ model }) => {
   const { setTab, viewerDocument, sceneSummaries } = model;
   return (
-
+    <>
     <View style={styles.panel}>
       <Text style={styles.panelTitle}>Your Math3D workspace</Text>
       <Text style={styles.note}>Open the current scene, browse examples, or return to a saved project.</Text>
@@ -22,5 +23,7 @@ export const MobileHomeScreen: React.FC<{ model: MobileAppController }> = ({ mod
         </Pressable>
       </View>
     </View>
+    <MobileGraphShowcase model={model} />
+    </>
   );
 };

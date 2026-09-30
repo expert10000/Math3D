@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { getGraph2DPresetCatalog } from "@math3d/core";
 import { mobileGraphGalleryItems, mobileGraphGalleryLayout } from "../../apps/mobile/src/models/mobileGraphGallery";
+import { mobileCrossModuleCatalog, searchMobileCrossModuleCatalog, relatedSurfaceScenesForGraph,
+  relatedGraphScenesForSurface } from "../../apps/mobile/src/models/mobileCrossModuleCatalog";
 
 describe("shared native Graph gallery discovery", () => {
   it("uses the exact desktop catalog/default source and deterministic Featured/category/search filters", () => {
@@ -18,5 +20,22 @@ describe("shared native Graph gallery discovery", () => {
       expect(layout.cardWidth * layout.columns + 12 * (layout.columns - 1) + 40).toBeCloseTo(width!);
       expect(layout.cardWidth).toBeGreaterThanOrEqual(280);
     }
+  });
+});
+
+describe("GGL17 cross-module catalog adapters", () => {
+  it("uses existing Graph and Surface identities without converting their documents", () => {
+    const cards=mobileCrossModuleCatalog();
+    expect(cards.filter(card=>card.module==="graph2d")).toHaveLength(20);
+    expect(cards.some(card=>card.key==="surface:paraboloid")).toBe(true);
+    expect(new Set(cards.map(card=>card.key)).size).toBe(cards.length);
+    expect(searchMobileCrossModuleCatalog("quadratic","graph2d").some(card=>card.sourceId==="translated-quadratic")).toBe(true);
+  });
+  it("makes curated links bidirectional and capability-checked", () => {
+    const link=relatedSurfaceScenesForGraph("polar-rose",()=>true)[0]!;
+    expect(link.card.key).toBe("surface:wave-torus"); expect(link.available).toBe(true);
+    expect(relatedSurfaceScenesForGraph("polar-rose",()=>false)[0]!.available).toBe(false);
+    expect(relatedGraphScenesForSurface("wave-torus")[0]!.card.key).toBe("graph2d:polar-rose");
+    expect(relatedSurfaceScenesForGraph("nonexistent",()=>true)).toEqual([]);
   });
 });

@@ -83,11 +83,28 @@ export function GraphGalleryDialog({onClose,onOpen,onResume,onCopy,onExportProje
     {error&&<p role="alert" className="graph-gallery-error">{error} Current work remains open.</p>}
     {preferences.error&&<div className="graph-gallery-error" role="alert">{preferences.error} <button type="button" onClick={()=>{try{const value=emptyGraphGalleryPreferences();localStorage.setItem(GRAPH_GALLERY_PREFERENCES_KEY,JSON.stringify(value));setPreferences({value,error:null});}catch(error){setPreferences(p=>({...p,error:(error as Error).message}));}}}>Reset local favorites/recent</button></div>}
     <div className="graph-gallery-controls"><label>Search graphs<input ref={searchRef} type="search" value={query} onChange={e=>{setQuery(e.target.value);if(featured||collection==="Learn")setCollection("All scenes");}} placeholder="Try roses, tangent or gaps"/></label>
-      <div className="graph-gallery-tabs" aria-label="Gallery collection">{["Featured","All scenes","Favorites","Recent","Learn","My Graphs"].map(tab=><button key={tab} type="button" aria-pressed={collection===tab}
+      <div className="graph-gallery-tabs" aria-label="Gallery collection">{["Featured","All scenes","Favorites","Recent","Learn","My Graphs","View local file"].map(tab=><button key={tab} type="button" aria-pressed={collection===tab}
         onClick={()=>{setCollection(tab);setCategory("All");setQuery("");setSelected(null);setSelectedGuide(null);}}>{tab}</button>)}</div></div>
-    {collection!=="Learn"&&collection!=="My Graphs"&&<div className="graph-gallery-categories" aria-label="Graph categories">{["All",...GRAPH2D_PRESET_CATEGORIES].map(c=><button type="button" key={c} aria-pressed={category===c}
+    {collection!=="Learn"&&collection!=="My Graphs"&&collection!=="View local file"&&<div className="graph-gallery-categories" aria-label="Graph categories">{["All",...GRAPH2D_PRESET_CATEGORIES].map(c=><button type="button" key={c} aria-pressed={category===c}
       onClick={()=>{setCategory(c as Graph2DPresetCategory|"All");if(featured)setCollection("All scenes");setSelected(null);}}>{c}</button>)}</div>}
-    {collection==="My Graphs"?<section aria-label="My Graphs" data-testid="graph-gallery-my-graphs">
+    {collection==="View local file"?<section aria-label="Read-only local Graph viewer" data-testid="graph-gallery-local-viewer" className="graph-gallery-local-viewer">
+      <h3>View a local Graph file</h3>
+      <p>Read a Math3D Graph document, workspace or handoff without changing the current project. This view is local and offline; it does not upload or publish a link. Static HTML reports are available through Graph publication export.</p>
+      <label>Choose Graph JSON <input type="file" accept="application/json,.json" data-testid="graph-local-view-file"
+        onChange={event=>{const file=event.target.files?.[0];event.target.value="";if(file)void previewFile(file);}} /></label>
+      {transferMessage&&<p role="status" data-testid="graph-local-view-message">{transferMessage}</p>}
+      {importPreview&&<article data-testid="graph-local-view-result" className="graph-gallery-detail">
+        <h3>{importPreview.document.metadata.title}</h3>
+        {importImage?<img src={importImage} alt={`${importPreview.document.metadata.title} read-only graph preview`} width={640} height={360}/>:<p role="status">Plot preview unavailable; source details remain readable.</p>}
+        <p>{importPreview.format} · {importPreview.document.source.objects.length} Graph object(s) · {importPreview.companionCount} companion(s) · {importPreview.resultCount} saved result descriptor(s).</p>
+        <p>Validated Graph capabilities: {importPreview.document.requiredCapabilities.join(" · ") || "basic Graph"}. External sidecars are checked separately.</p>
+        <ul>{importPreview.document.source.objects.map(object=><li key={object.id}>{object.label} ({object.kind})</li>)}</ul>
+        <p>{importPreview.externalTableCount} external point-table sidecar(s) · {importPreview.externalArtifactCount} external artifact descriptor(s). The file does not embed their bytes. Saved results are observations, not recalculated here.</p>
+        {importPreview.missingTables.length>0&&<p role="alert">{importPreview.missingTables.length} required point-table sidecar(s) missing or corrupt. Viewing is still read-only; editing a copy is disabled until they are restored.</p>}
+        <button type="button" disabled={importPreview.missingTables.length>0||!onImportProject} onClick={()=>onImportProject?.(importPreview)}>Open an independent editable copy</button>
+        <button type="button" onClick={()=>{setImportPreview(null);setImportImage("");setTransferMessage("");}}>Close file view</button>
+      </article>}
+    </section>:collection==="My Graphs"?<section aria-label="My Graphs" data-testid="graph-gallery-my-graphs">
       <p>Open your saved graphs or make an independent copy. Copied analysis observations remain labeled and are not recalculated.</p>
       <label>Preview a personal Graph file before import <input type="file" accept="application/json,.json" data-testid="graph-personal-import-file"
         onChange={event=>{const file=event.target.files?.[0];event.target.value="";if(file)void previewFile(file);}} /></label>

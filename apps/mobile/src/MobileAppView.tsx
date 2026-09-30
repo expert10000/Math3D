@@ -10,6 +10,7 @@ import { MobileExploreScreen } from "./MobileExploreScreen";
 import { MobileSettingsScreen } from "./MobileSettingsScreen";
 import { MobileGraphsWorkspace } from "./MobileGraphsWorkspace";
 import { MobileGraphGallery } from "./MobileGraphGallery";
+import { mobileExamples } from "./data/mobileSeedData";
 
 export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model }) => {
   const { tab, setTab } = model;
@@ -38,6 +39,11 @@ export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model 
       </ScrollView>}
 
       {model.graphGalleryOpen && <MobileGraphGallery onClose={() => model.setGraphGalleryOpen(false)} onOpen={model.openGraphGalleryPreset}
+        relatedSurfaceAvailable={id => { const item=mobileExamples.find(example=>example.id===id); return !!item && model.isExampleAvailable(item); }}
+        onRelatedSurface={async id => { const item=mobileExamples.find(example=>example.id===id);
+          if (!item || !model.isExampleAvailable(item)) return false;
+          if (model.graphDocument && !await model.saveGraphProject()) return false;
+          model.setGraphGalleryOpen(false); model.openViewerWithExample(item); return true; }}
         personalProjects={model.storedProjects.filter(p=>p.projectType==="graph2d")} currentGraph={model.graphDocument}
         projectFavorites={model.graphProjectFavorites.ids} favoritesError={model.graphProjectFavoritesError} onFavorite={model.favoriteGraphProject}
         onResetFavorites={model.resetGraphProjectFavorites} onPersonalOpen={model.openPersonalGraphProject}

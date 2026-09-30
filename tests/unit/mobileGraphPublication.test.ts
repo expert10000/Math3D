@@ -1,9 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { createGraph2DPublication, getGraph2DPresetCatalog, instantiateGraph2DPreset, Graph2DPointTableStore, renderGraph2DPublicationArtifact } from "@math3d/core";
+import { createGraph2DPublication, getGraph2DPresetCatalog, instantiateGraph2DPreset, Graph2DPointTableStore, renderGraph2DPublicationArtifact,
+  renderGraph2DCaptureRecipeArtifact } from "@math3d/core";
 import { mobileGraphPublicationRequest } from "../../apps/mobile/src/models/mobileGraphPublication";
 import { mobileGraphAnalysisDraft, runMobileGraphAnalysis } from "../../apps/mobile/src/models/mobileGraphAnalysis";
 
 describe("native publication projection", () => {
+  it("creates a bounded local JSON capture companion with honest theme/window metadata", () => {
+    const { document }=instantiateGraph2DPreset(getGraph2DPresetCatalog().get("line-comparison")!,"mobile-capture");
+    const publication=createGraph2DPublication({document,size:{width:320,height:240}});
+    const artifact=renderGraph2DCaptureRecipeArtifact(document,publication,"light","Math3D",{width:393,height:852});
+    expect(artifact.fileName).toMatch(/\.json$/); expect(artifact.mimeType).toBe("application/json");
+    const recipe=JSON.parse(new TextDecoder().decode(artifact.bytes));
+    expect(recipe.snapshotId).toBe(publication.snapshotId);
+    expect(recipe.view.hostWindow).toEqual({width:393,height:852});
+    expect(recipe.document.identity).toEqual(document.identity);
+  });
   it("reuses the exact desktop recipe and byte encoders without mobile display decimation", () => {
     for (const id of ["line-comparison", "strict-disk", "piecewise-data-gaps", "polar-rose"]) {
       const { document, sidecars } = instantiateGraph2DPreset(getGraph2DPresetCatalog().get(id)!, "mobile-publication");

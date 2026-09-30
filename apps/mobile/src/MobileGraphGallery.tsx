@@ -11,6 +11,7 @@ import type { Graph2DDocument } from "@math3d/core";
 import type { MobileStoredSceneProject } from "./models/mobileScene";
 import { mobileGraphPointTables } from "./services/mobileGraphPointTables";
 import { projectMobileGraphLines, type MobileGraphLine } from "./viewer/mobileGraphProjection";
+import { relatedSurfaceScenesForGraph } from "./models/mobileCrossModuleCatalog";
 
 const PreviewLine = ({ line }: { line: MobileGraphLine }) => <View pointerEvents="none" style={{ position: "absolute",
   left: (line.a.x + line.b.x) / 2 - Math.hypot(line.b.x - line.a.x, line.b.y - line.a.y) / 2,
@@ -26,12 +27,14 @@ function GallerySafeArea({ children }: { children: React.ReactNode }) {
 }
 
 export function MobileGraphGallery({ onClose, onOpen, busy = false, message = "", personalProjects = [], currentGraph, projectFavorites = [], favoritesError = "", onFavorite, onResetFavorites, onPersonalOpen,
+  onRelatedSurface, relatedSurfaceAvailable,
   importPreview, onPreviewImport, onAcceptImport, onCancelImport, onExportPersonal, onShareDefinition }: {
   onClose: () => void; onOpen?: (preset: Graph2DPreset) => Promise<boolean>; busy?: boolean; message?: string;
   personalProjects?: readonly MobileStoredSceneProject[]; currentGraph?: Graph2DDocument | null; projectFavorites?: readonly string[]; favoritesError?: string;
   onFavorite?: (id:string)=>boolean; onResetFavorites?: ()=>void; onPersonalOpen?: (id:string,title?:string)=>Promise<boolean>;
   importPreview?: Graph2DPersonalPresetPreview | null; onPreviewImport?: ()=>Promise<boolean>; onAcceptImport?: ()=>Promise<boolean>;
   onCancelImport?: ()=>void; onExportPersonal?: (id:string)=>Promise<boolean>; onShareDefinition?: (id:string)=>Promise<boolean>;
+  onRelatedSurface?: (id:string)=>Promise<boolean>; relatedSurfaceAvailable?: (id:string)=>boolean;
 }) {
   const window = useWindowDimensions(), [contentWidth, setContentWidth] = useState(window.width);
   const layout = mobileGraphGalleryLayout(contentWidth, window.height, window.fontScale);
@@ -89,19 +92,21 @@ export function MobileGraphGallery({ onClose, onOpen, busy = false, message = ""
           {(["All", ...GRAPH2D_PRESET_CATEGORIES] as const).map(value => button(value, () => { setCategory(value); setFeatured(false); setSelected(null); }, category === value))}
         </ScrollView>}
         {myGraphs?<View testID="mobile-graph-my-graphs"><Text>Existing saved Graph projects. Copies preserve data and companion lineage.</Text>
-          {button("Choose personal Graph file",()=>{void onPreviewImport?.();},false,busy||!onPreviewImport)}
-          {importPreview&&<View testID="mobile-graph-personal-import-preview" style={s.detail}>
+          <Text style={s.label}>Read-only local Graph viewer</Text><Text style={s.description}>Choose a local Graph document or handoff to inspect it offline. Nothing is uploaded or changed until you open an editable copy.</Text>
+          {button("View local Graph file",()=>{void onPreviewImport?.();},false,busy||!onPreviewImport)}
+          {importPreview&&<View testID="mobile-graph-personal-import-preview" accessibilityLabel="Read-only local Graph viewer" style={s.detail}>
             <Text accessibilityRole="header" style={s.title}>{importPreview.document.metadata.title}</Text>
             <View accessibilityLabel={`${importPreview.document.metadata.title} graph import plot preview`} style={{width:previewSize.width,height:previewSize.height,backgroundColor:"#f8fafc",overflow:"hidden"}}>
               {personalPlot.lines.map((line,index)=><PreviewLine key={index} line={line}/>)}
             </View>
             {personalPlot.warning?<Text style={s.message}>{personalPlot.warning}</Text>:null}
             <Text>{importPreview.format} · {importPreview.document.source.objects.length} Graph objects · {importPreview.companionCount} companions · {importPreview.resultCount} saved result descriptors.</Text>
+            <Text>Validated Graph capabilities: {importPreview.document.requiredCapabilities.join(" · ") || "basic Graph"}. External sidecars are checked separately.</Text>
             <Text>{importPreview.document.source.objects.map(object=>`${object.label} (${object.kind})`).join(" · ")||"Empty Graph"}</Text>
             <Text>{importPreview.externalTableCount} external point-table sidecars · {importPreview.externalArtifactCount} external artifact descriptors. The file does not embed their bytes. Saved results are copied observations.</Text>
             {importPreview.missingTables.length>0?<Text accessibilityLiveRegion="polite" style={s.message}>{importPreview.missingTables.length} required point-table sidecars missing or corrupt. Import them before accepting this Graph.</Text>:null}
-            {button("Import as independent Graph",()=>{void onAcceptImport?.();},false,busy||!onAcceptImport||importPreview.missingTables.length>0)}
-            {button("Cancel personal Graph import",()=>onCancelImport?.())}
+            {button("Open independent editable Graph copy",()=>{void onAcceptImport?.();},false,busy||!onAcceptImport||importPreview.missingTables.length>0)}
+            {button("Close local Graph view",()=>onCancelImport?.())}
           </View>}
           {favoritesError?<View><Text accessibilityLiveRegion="polite">{favoritesError}</Text>{button("Reset project favorites",()=>onResetFavorites?.())}</View>:null}
           {currentGraph&&<><Text>Reusable copy title</Text><TextInput accessibilityLabel="Reusable copy title" maxLength={160} editable={!busy} style={s.search} value={copyTitle} onChangeText={setCopyTitle}/>
@@ -133,6 +138,11 @@ export function MobileGraphGallery({ onClose, onOpen, busy = false, message = ""
           {button("Back to gallery", () => setSelected(null))}{preview(selected, contentWidth - 40)}<Text accessibilityRole="header" style={s.title}>{selected.title}</Text>
           <Text style={s.description}>{selected.description}</Text>{selected.learningGoals.map(goal => <Text key={goal} style={s.description}>• {goal}</Text>)}
           <Text style={s.meta}>Approximate sampled preview · {selected.attribution.author} · {selected.attribution.license}</Text>
+          {relatedSurfaceScenesForGraph(selected.id, relatedSurfaceAvailable ?? (()=>false)).map(link=><View key={link.card.key} style={s.body}>
+            <Text style={s.label}>Related Surface scene: {link.card.title}</Text><Text style={s.description}>{link.reason}</Text>
+            <Text style={s.meta}>{link.available ? "Available in this installation" : `Requires ${link.card.requiredCapabilities.join(", ") || "a working Surface viewer"}`}. Opens a separate Surface scene, not a Graph conversion.</Text>
+            {button(`Open related Surface ${link.card.title}`,()=>{void onRelatedSurface?.(link.card.sourceId);},false,busy||!link.available||!onRelatedSurface)}
+          </View>)}
           {onOpen && button(busy ? "Opening graph…" : `Open ${selected.title}`, () => { void onOpen(selected); })}
           {interactive && <View style={s.detail} accessibilityLabel="Interactive copy controls"><Text style={s.label}>Interactive copy · sliders and opt-in animation</Text>
             <Text style={s.description}>{interactive.description}</Text><Text style={s.meta}>Preview shows default values. Requires {interactive.requiredCapabilities.join(" · ")}. Open, then choose Parameters. No autoplay.</Text>

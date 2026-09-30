@@ -54,7 +54,8 @@ export function Graph2DExportDialog({ document, analyses, analysisNotes, onClose
   const downloadRecipe = () => {
     if (!result) return;
     const theme = globalThis.document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
-    const recipe = createGraph2DCaptureRecipe(document, result, theme, attribution);
+    const recipe = createGraph2DCaptureRecipe(document, result, theme, attribution,
+      { width: globalThis.innerWidth, height: globalThis.innerHeight });
     const url = URL.createObjectURL(new Blob([JSON.stringify(recipe, null, 2)], { type: "application/json" }));
     const anchor = globalThis.document.createElement("a"); anchor.href = url;
     anchor.download = `${document.metadata.title.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 64) || "Graph"}.capture.json`;

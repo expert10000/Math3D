@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { AppState, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { createGraph2DPublication, GRAPH2D_PUBLICATION_FORMATS, renderGraph2DPublicationArtifact, structuralHash,
+import { AppState, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { createGraph2DPublication, GRAPH2D_PUBLICATION_FORMATS, renderGraph2DPublicationArtifact, renderGraph2DCaptureRecipeArtifact, structuralHash,
   type Graph2DDocument, type Graph2DPublication, type Graph2DPublicationFormat } from "@math3d/core";
 import { type MobileGraphAnalysis, type MobileGraphAnalysisDraft } from "./models/mobileGraphAnalysis";
 import { mobileGraphPublicationRequest } from "./models/mobileGraphPublication";
@@ -11,6 +11,7 @@ export function MobileGraphExportPanel({ document, analysis, draft }: {
   document: Graph2DDocument; analysis: MobileGraphAnalysis | null; draft: MobileGraphAnalysisDraft;
 }) {
   const [units, setUnits] = useState({ x: "", y: "" }), [width, setWidth] = useState(640), [format, setFormat] = useState<Graph2DPublicationFormat>("svg");
+  const [attribution, setAttribution] = useState("Math3D Graph publication"), screen = useWindowDimensions();
   const [busy, setBusy] = useState(false), [message, setMessage] = useState(""), [prepared, setPrepared] = useState<Graph2DPublication | null>(null);
   const key = structuralHash({ document, analysis, draft, width, units }), latest = useRef(key); latest.current = key;
   const generation = useRef(0), mounted = useRef(true), phase = useRef("idle"), timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -23,7 +24,7 @@ export function MobileGraphExportPanel({ document, analysis, draft }: {
     const listener = AppState.addEventListener("change", state => { if (state !== "active" && phase.current === "preparing") cancel(); });
     return () => { mounted.current = false; cancel(); listener.remove(); };
   }, []);
-  const run = (share: boolean) => {
+  const run = (share: boolean, capture = false) => {
     if (busy || phase.current !== "idle" || AppState.currentState !== "active") return;
     const token = ++generation.current, isCurrent = () => mounted.current && generation.current === token && latest.current === key;
     phase.current = "preparing"; setBusy(true); setMessage("Preparing bounded export…");
@@ -35,7 +36,8 @@ export function MobileGraphExportPanel({ document, analysis, draft }: {
           if (!isCurrent()) return;
           const publication = cache.current?.key === key ? cache.current.publication : createGraph2DPublication(
             mobileGraphPublicationRequest(document, mobileGraphPointTables, analysis, draft, { width, height: width * .75 }, units));
-          const artifact = renderGraph2DPublicationArtifact(publication, format);
+          const artifact = capture ? renderGraph2DCaptureRecipeArtifact(document, publication, "light", attribution,
+            { width: Math.round(screen.width), height: Math.round(screen.height) }) : renderGraph2DPublicationArtifact(publication, format);
           if (!isCurrent()) return;
           cache.current = { key, publication }; setPrepared(publication); phase.current = "native";
           if (share) { await shareMobileGraphPublication(artifact, isCurrent); if (isCurrent()) setMessage(`Share sheet closed · ${artifact.fileName}`); }
@@ -53,7 +55,10 @@ export function MobileGraphExportPanel({ document, analysis, draft }: {
     {(["x", "y"] as const).map(axis => <View key={axis}><Text>{axis.toUpperCase()} unit label</Text><TextInput style={s.input} accessibilityLabel={`${axis.toUpperCase()} unit label`}
       placeholder="Unspecified" maxLength={64} value={units[axis]} editable={!busy} onChangeText={text => setUnits(previous => ({ ...previous, [axis]: text }))} /></View>)}
     <Text>Labels only; no inference or unit conversion.</Text><View style={s.row}>{GRAPH2D_PUBLICATION_FORMATS.map(value => button(value === "html" ? "HTML report" : value.toUpperCase(), () => setFormat(value), busy, format === value))}</View>
+    <Text>Capture attribution</Text><TextInput style={s.input} accessibilityLabel="Capture attribution" maxLength={256}
+      value={attribution} editable={!busy} onChangeText={setAttribution} />
     <View style={s.row}>{button("Save publication", () => run(false), busy)}{button("Share publication", () => run(true), busy)}{busy && button("Cancel export", cancel)}</View>
+    <View style={s.row}>{button("Save capture recipe JSON", () => run(false, true), busy)}{button("Share capture recipe JSON", () => run(true, true), busy)}</View>
     <Text accessibilityLiveRegion="polite">{message}</Text>
     {prepared && cache.current?.key === key && <><Text>Snapshot: {prepared.snapshotId}</Text>{prepared.metadata.warnings.map(warning => <Text key={warning}>• {warning}</Text>)}</>}
     <Text>CSV contains sampled points and analysis fields, not the raw dataset. PNG uses a compact numeric tick font; use SVG/report for scalable presentation.</Text>
