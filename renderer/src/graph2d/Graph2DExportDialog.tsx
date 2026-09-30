@@ -1,11 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { graph2DPublicationTableAllowance, GRAPH2D_PUBLICATION_FORMATS, structuralHash,
+import { createGraph2DCaptureRecipe, graph2DPublicationTableAllowance, GRAPH2D_PUBLICATION_FORMATS, structuralHash,
   type Graph2DDocument, type Graph2DPublication, type Graph2DPublicationArtifact, type Graph2DPublicationTable,
   type Graph2DPublicationFormat } from "@math3d/core";
 import { pointTableStore } from "./pointTableStore";
 import "./graph2dExport.css";
 
-type ExportResult = { metadata: Graph2DPublication["metadata"]; snapshotId: string;
+type ExportResult = { metadata: Graph2DPublication["metadata"]; snapshotId: Graph2DPublication["snapshotId"];
   outputs: { format: Graph2DPublicationFormat; artifact?: Graph2DPublicationArtifact; error?: string }[] };
 
 export function Graph2DExportDialog({ document, analyses, analysisNotes, onClose }: {
@@ -13,6 +13,7 @@ export function Graph2DExportDialog({ document, analyses, analysisNotes, onClose
 }) {
   const ref = useRef<HTMLDialogElement>(null), closeRef = useRef<HTMLButtonElement>(null), titleId = useId();
   const [resolution, setResolution] = useState("1024x768"), [units, setUnits] = useState({ x: "", y: "" });
+  const [attribution, setAttribution] = useState("Math3D Graph publication");
   const [retry, setRetry] = useState(0), [state, setState] = useState<{ key: string; result?: ExportResult; error?: string }>({ key: "" });
   const inputKey = structuralHash({ document, analyses, analysisNotes, resolution, units, retry }), latestKey = useRef(inputKey);
   latestKey.current = inputKey;
@@ -50,6 +51,16 @@ export function Graph2DExportDialog({ document, analyses, analysisNotes, onClose
     // Allow the browser/Electron download to consume the URL; retain no application reference.
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
+  const downloadRecipe = () => {
+    if (!result) return;
+    const theme = globalThis.document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+    const recipe = createGraph2DCaptureRecipe(document, result, theme, attribution);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(recipe, null, 2)], { type: "application/json" }));
+    const anchor = globalThis.document.createElement("a"); anchor.href = url;
+    anchor.download = `${document.metadata.title.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 64) || "Graph"}.capture.json`;
+    globalThis.document.body.append(anchor); anchor.click(); anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
   return <dialog ref={ref} className="graph2d-export-dialog" aria-labelledby={titleId} data-testid="graph2d-export"
     onCancel={event => { event.preventDefault(); onClose(); }}>
     <header><h2 id={titleId}>Graph publication export</h2><button ref={closeRef} onClick={onClose} aria-label="Close graph export">Close</button></header>
@@ -59,6 +70,7 @@ export function Graph2DExportDialog({ document, analyses, analysisNotes, onClose
     </select></label>{(["x", "y"] as const).map(axis => <label key={axis}>{axis.toUpperCase()} unit label<input maxLength={64} value={units[axis]}
       placeholder="Unspecified" onChange={event => setUnits(previous => ({ ...previous, [axis]: event.target.value }))} /></label>)}</div>
     <p>Unit labels do not infer units or convert data. The requested image aspect may expand an equal-aspect viewport.</p>
+    <label>Capture attribution <input maxLength={256} value={attribution} onChange={event => setAttribution(event.target.value)} /></label>
     {current?.error ? <p role="alert">{current.error} <button onClick={() => setRetry(value => value + 1)}>Retry export</button></p> :
       <p role="status">{result ? `Ready · ${result.metadata.objects.length} visible objects · ${result.metadata.analyses.length} current analysis tables` : "Preparing bounded export…"}</p>}
     <div className="graph2d-export-actions">{GRAPH2D_PUBLICATION_FORMATS.map(format => {
@@ -66,6 +78,8 @@ export function Graph2DExportDialog({ document, analyses, analysisNotes, onClose
       return <div key={format}><button disabled={!output?.artifact} onClick={() => output?.artifact && download(output.artifact)}>
         {format === "html" ? "Export HTML report" : `Export ${format.toUpperCase()}`}</button>{output?.error && <p role="alert">{output.error}</p>}</div>;
     })}</div>
+    <button type="button" disabled={!result} onClick={downloadRecipe}>Export capture recipe JSON</button>
+    <p>The recipe records the committed source, viewport, effective publication size, theme, attribution and limits. External table rows and results are not embedded.</p>
     {result && <><p>Snapshot: <code>{result.snapshotId}</code> · tolerance: {result.metadata.sampling.tolerancePx} px</p>
       <ul>{result.metadata.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul>
       <details><summary>Source and diagnostics</summary><pre>{JSON.stringify(result.metadata, null, 2)}</pre></details></>}

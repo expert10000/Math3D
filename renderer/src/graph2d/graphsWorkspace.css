@@ -22,6 +22,11 @@
 .graph2d-workspace[data-left="true"][data-right="true"] { grid-template-columns: var(--graph2d-left-width) minmax(0, 1fr) var(--graph2d-right-width); }
 .graph2d-workspace[data-left="true"][data-right="false"] { grid-template-columns: var(--graph2d-left-width) minmax(0, 1fr); }
 .graph2d-workspace[data-left="false"][data-right="true"] { grid-template-columns: minmax(0, 1fr) var(--graph2d-right-width); }
+.graph2d-workspace[data-presentation="true"] { grid-template-columns: minmax(0, 1fr); }
+.graph2d-workspace[data-presentation="true"] .graph2d-toolbar,
+.graph2d-workspace[data-presentation="true"] .graph2d-compact-panels { display: none; }
+.graph2d-presentation-controls { position: absolute; z-index: 3; top: 8px; right: 8px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 16px); padding: 5px; border-radius: 8px; background: var(--panel-strong); border: 1px solid var(--border); }
+.graph2d-presentation-controls button { min-height: 36px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-strong); cursor: pointer; }
 
 .graph2d-panel, .graph2d-viewer {
   min-width: 0;

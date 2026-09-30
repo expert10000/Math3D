@@ -54,6 +54,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const [parameterEpoch, setParameterEpoch] = useState(0);
   const cancelParameter = () => { setParameterPreview(null); setParameterEpoch(value => value + 1); };
   const [destination, setDestination] = useState<MobileGraphDestination>("Graph");
+  const [presentation, setPresentation] = useState(false);
   const routeTool = (tool: Graph2DTool) => {
     const selected = document.source.objects.find(o => o.id === document.selection.objectId);
     const reason = graph2DToolUnavailable(document, tool, selected?.kind !== "point-series" || !!mobileGraphPointTables.resolve(selected.table));
@@ -68,7 +69,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const window = useWindowDimensions();
   const [frame, setFrame] = useState({ width: window.width, height: window.height });
   const layout = mobileGraphLayout({ ...frame, fontScale: window.fontScale });
-  const panelDestination = mobileGraphPanelDestination(destination, layout.split);
+  const panelDestination = presentation ? null : mobileGraphPanelDestination(destination, layout.split);
   const [overlays, setOverlays] = useState(MOBILE_GRAPH_DEFAULT_OVERLAYS);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -133,21 +134,25 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={s.root} testID="mobile-graphs-workspace"
     onLayout={(event) => { const { width, height } = event.nativeEvent.layout; if (width > 0 && height > 0)
       setFrame((current) => current.width === width && current.height === height ? current : { width, height }); }}>
-    <View style={{ flexDirection: "row", alignItems: "center" }}><Text style={[s.title, { flex: 1 }]} numberOfLines={1}>{document.metadata.title}</Text>
+    {presentation ? <View style={{ flexDirection: "row", alignItems: "center" }}>
+      <Text style={[s.title, { flex: 1 }]} numberOfLines={1}>Presentation · {document.metadata.title}</Text>
+      {button("Exit presentation", () => setPresentation(false))}
+    </View> : <View style={{ flexDirection: "row", alignItems: "center" }}><Text style={[s.title, { flex: 1 }]} numberOfLines={1}>{document.metadata.title}</Text>
       {onGallery && button("Gallery", () => {
         cancel(); cancelParameter();
         if (editor || advanced) { setError("Save or cancel the current function edit before opening Gallery."); return; }
         onGallery();
       })}
-      {button("Display", () => { cancel(); cancelParameter(); setDestination(destination === "Display" ? "Graph" : "Display"); })}</View>
-    <ScrollView horizontal style={{ flexGrow: 0, maxHeight: 48 }} contentContainerStyle={s.toolbar}>{button("Reset", () => commit(() => adapter.commitViewport(GRAPH2D_DEFAULT_VIEWPORT)))}
+      {button("Display", () => { cancel(); cancelParameter(); setDestination(destination === "Display" ? "Graph" : "Display"); })}</View>}
+    {!presentation && <ScrollView horizontal style={{ flexGrow: 0, maxHeight: 48 }} contentContainerStyle={s.toolbar}>{button("Reset", () => commit(() => adapter.commitViewport(GRAPH2D_DEFAULT_VIEWPORT)))}
+      {button("Present", () => { cancel(); cancelParameter(); if (editor || advanced) { setError("Save or cancel the function edit before presenting."); return; } setDestination("Graph"); setPresentation(true); })}
       {button("Parameters", () => { cancel(); cancelParameter(); setDestination(destination === "Parameters" ? "Graph" : "Parameters"); })}
       {button("Tools", () => { cancel(); cancelParameter(); setDestination(destination === "Tools" ? "Graph" : "Tools"); })}
       {button("Parameter cards", () => { cancel(); cancelParameter(); setDestination(destination === "Cards" ? "Graph" : "Cards"); })}
       {button("Export", () => { cancel(); cancelParameter(); if (editor || advanced) { setError("Save or cancel the function edit before exporting."); return; } setDestination(destination === "Export" ? "Graph" : "Export"); })}
       {button("Fit", fit)}{button("Undo", () => commit(() => adapter.undo()), history.undoDepth === 0)}
       {button("Redo", () => commit(() => adapter.redo()), history.redoDepth === 0)}
-      {button(saving ? "Saving…" : "Save", () => { setSaving(true); void onSave().finally(() => setSaving(false)); }, saving)}</ScrollView>
+      {button(saving ? "Saving…" : "Save", () => { setSaving(true); void onSave().finally(() => setSaving(false)); }, saving)}</ScrollView>}
     <View style={[s.workspace, layout.split && s.split]} testID={layout.split ? "mobile-graph-split-pane" : "mobile-graph-phone-layout"}>
     <View style={[s.graphPane, layout.split && { minWidth: layout.graphMinWidth }]}>
     <View style={s.plot} testID="mobile-graph-plot" accessibilityLabel="Graph plot. Drag to pan, pinch to zoom, tap to probe."
@@ -204,19 +209,19 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
       </View>
       {!document.source.objects.length && <Text pointerEvents="none" style={s.empty}>Empty graph. Open Functions to add a graph object, or import a desktop Graph project.</Text>}
     </View>
-    <Text accessibilityLiveRegion="polite" style={s.readout} numberOfLines={2} testID="mobile-graph-probe">{probe ?
-      `${document.source.objects.find((object) => object.id === probe.objectId)?.label}: x=${probe.x.toPrecision(6)}, y=${probe.y.toPrecision(6)}${probe.parameter !== undefined ? `, parameter=${probe.parameter.toPrecision(6)}` : ""}${probe.rowId ? `, ${probe.rowId}` : ""}` : "Tap a curve to probe. Tap overlaps again to cycle."}</Text>
+    {!presentation && <Text accessibilityLiveRegion="polite" style={s.readout} numberOfLines={2} testID="mobile-graph-probe">{probe ?
+      `${document.source.objects.find((object) => object.id === probe.objectId)?.label}: x=${probe.x.toPrecision(6)}, y=${probe.y.toPrecision(6)}${probe.parameter !== undefined ? `, parameter=${probe.parameter.toPrecision(6)}` : ""}${probe.rowId ? `, ${probe.rowId}` : ""}` : "Tap a curve to probe. Tap overlaps again to cycle."}</Text>}
     {/* Fixed status height prevents ready/incomplete changes from resizing and resampling the plot in a loop. */}
-    <Text style={[s.readout, { height: 36 * Math.max(1, window.fontScale) }]} numberOfLines={2}>{[
+    {!presentation && <Text style={[s.readout, { height: 36 * Math.max(1, window.fontScale) }]} numberOfLines={2}>{[
       parameterPreviewActive ? "Parameter preview — not saved. Apply or Cancel; committed analysis overlays hidden." : "",
       viewport.continuation ? "Light dotted continuation is visual only; not analysed/exported." : "",
       graph2DHasLogScale(viewport) ? "Log axes omit non-positive values. Analysis uses world units; area/tangent overlays hidden." : "",
       !sampling.ready ? sampling.active ? sampling.retained ? "Graph updating; previous samples visible." : "Graph updating…" : "Graph sampling paused in background." : "",
       geometry.truncated || sampling.truncated || lines.length >= budget.lines || series.some((item) => !item.artifact.converged)
         ? "Approximate/incomplete display. Check Display diagnostics; missing data requires its CSV/TSV sidecar." : "",
-    ].filter(Boolean).join(" ")}</Text>
-    {error || sampling.error || message ? <Text accessibilityLiveRegion="polite" numberOfLines={2} style={s.readout}>{error || sampling.error || message}</Text> : null}
-    {ticks.warnings.length > 0 && <Text accessibilityLiveRegion="polite" style={s.readout}>{ticks.warnings.join(" ")}</Text>}
+    ].filter(Boolean).join(" ")}</Text>}
+    {!presentation && (error || sampling.error || message ? <Text accessibilityLiveRegion="polite" numberOfLines={2} style={s.readout}>{error || sampling.error || message}</Text> : null)}
+    {!presentation && ticks.warnings.length > 0 && <Text accessibilityLiveRegion="polite" style={s.readout}>{ticks.warnings.join(" ")}</Text>}
     </View>
     {panelDestination && <ScrollView keyboardShouldPersistTaps="handled" style={[s.sheet, layout.split && s.sidePanel, layout.split && { width: layout.panelWidth }]}
       accessibilityLabel={`${panelDestination} ${layout.split ? "side panel" : "bottom sheet"}`} testID={`mobile-graph-${panelDestination.toLowerCase()}-sheet`}>
@@ -277,9 +282,9 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
       </>}
     </ScrollView>}
     </View>
-    <View style={s.destinations} accessibilityRole="tablist">{(["Graph", "Functions", "Analyze", "Promote"] as const).map((value) =>
+    {!presentation && <View style={s.destinations} accessibilityRole="tablist">{(["Graph", "Functions", "Analyze", "Promote"] as const).map((value) =>
       <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: destination === value }} style={s.button}
-        onPress={() => { cancel(); cancelParameter(); setDestination(value); }}><Text>{value}</Text></Pressable>)}</View>
+        onPress={() => { cancel(); cancelParameter(); setDestination(value); }}><Text>{value}</Text></Pressable>)}</View>}
   </KeyboardAvoidingView>;
 };
 

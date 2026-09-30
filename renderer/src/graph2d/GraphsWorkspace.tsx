@@ -73,6 +73,9 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onOpenPreset, onResumeCheckpoint, onCopyProject,
   onExportPersonalProject, onCopyGraphDefinition, onPreviewPersonalImport, onImportPersonalProject }: Props) {
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [presentation, setPresentation] = useState(false);
+  const presentationOpener = useRef<HTMLButtonElement>(null);
+  const exitPresentation = () => { setPresentation(false); requestAnimationFrame(() => presentationOpener.current?.focus()); };
   const [toolsOpen, setToolsOpen] = useState(false);
   const [toolHint, setToolHint] = useState("");
   const toolsOpener = useRef<HTMLButtonElement>(null);
@@ -161,8 +164,8 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
     if (!observer) window.addEventListener("resize", update);
     return () => { observer?.disconnect(); if (!observer) window.removeEventListener("resize", update); };
   }, []);
-  const showLeft = !dockLayout.viewerMaximized && !dockLayout.leftCollapsed;
-  const showRight = !dockLayout.viewerMaximized && !dockLayout.rightCollapsed;
+  const showLeft = !presentation && !dockLayout.viewerMaximized && !dockLayout.leftCollapsed;
+  const showRight = !presentation && !dockLayout.viewerMaximized && !dockLayout.rightCollapsed;
   const guided = getGraph2DGuidedDocumentGuidance(document);
   const viewport = previewViewport ?? document.display.viewport;
   const displayAxes = gridPreview ?? document.display.axes;
@@ -247,6 +250,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
     wheelTimerRef.current = setTimeout(finishWheel, 180);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape" && presentation) { event.preventDefault(); event.stopPropagation(); exitPresentation(); return; }
     if (event.key === "Escape" && toolsOpen) { event.preventDefault(); event.stopPropagation(); closeTools(); return; }
     if (event.key === "Escape" && gridOpen) { event.preventDefault(); event.stopPropagation(); closeGrid(); return; }
     if ((event.target as HTMLElement).closest("input,select,textarea,[contenteditable='true']")) return;
@@ -577,7 +581,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   </div> : <div className="graph2d-inspector"><p className="graph2d-muted">Select a function to inspect it.</p>{savedProbes}</div>;
   return (
     <section data-testid="graphs-workspace" aria-label="Graphs workspace" className="graph2d-workspace"
-      data-left={showLeft} data-right={showRight}
+      data-left={showLeft} data-right={showRight} data-presentation={presentation}
       style={{ "--graph2d-left-width": showLeft ? `${dockLayout.left}px` : "0px",
         "--graph2d-right-width": showRight ? `${dockLayout.right}px` : "0px" } as CSSProperties}>
       {showLeft && <aside className="graph2d-panel graph2d-left" aria-label="Graph functions">
@@ -587,7 +591,18 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
         tabIndex={0} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
         onPointerCancel={() => { dragRef.current = null; setPreview(null); setHoverSelection(null); }}
         onPointerLeave={() => setHoverSelection(null)} onKeyDown={onKeyDown}>
+        {presentation && <div className="graph2d-presentation-controls" onPointerDown={event => event.stopPropagation()}>
+          <span>Presentation · {document.metadata.title}</span>
+          <button type="button" onClick={() => { finishWheel(); fitVisible(); }}>Fit</button>
+          <button type="button" onClick={event => { exportOpener.current = event.currentTarget; finishWheel(); setExportOpen(true); }}>Export</button>
+          <button type="button" data-testid="graph2d-presentation-exit" onClick={exitPresentation}>Exit presentation</button>
+        </div>}
         <div className="graph2d-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+          <button type="button" ref={presentationOpener} data-testid="graph2d-presentation-open" onClick={() => {
+            finishWheel(); closeGrid(true, false); cancelParameter(); setParametersOpen(false); setScalesOpen(false); setToolsOpen(false);
+            setParameterCards(false); setPresentation(true);
+            requestAnimationFrame(() => viewerRef.current?.querySelector<HTMLButtonElement>('[data-testid="graph2d-presentation-exit"]')?.focus());
+          }}>Present</button>
           <button type="button" ref={toolsOpener} aria-expanded={toolsOpen} onClick={() => { finishWheel(); closeGrid(true, false); cancelParameter(); setToolsOpen(!toolsOpen); }}>Tools</button>
           <button type="button" ref={gridOpener} aria-expanded={gridOpen} disabled={status !== "ready"} onClick={() => { finishWheel(); cancelParameter(); setParametersOpen(false); setScalesOpen(false); if (gridOpen) closeGrid(true); else setGridOpen(true); }}>Grid</button>
           <button type="button" ref={scalesOpener} onClick={() => { finishWheel(); cancelParameter(); closeGrid(true, false); setParametersOpen(false); setScalesOpen(!scalesOpen); }}>Scales</button>

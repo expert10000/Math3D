@@ -3,7 +3,7 @@ import { inflateSync } from "node:zlib";
 import { createGraph2DPublication, renderGraph2DPublicationSVG, renderGraph2DPublicationPNG, renderGraph2DPublicationCSV,
   renderGraph2DPublicationReport, graph2DPublicationCSVCell, graph2DPublicationAnalysisTable, graph2DPublicationAnalysisTables, GRAPH2D_PUBLICATION_FORMATS,
   renderGraph2DPublicationArtifact, getGraph2DPresetCatalog, instantiateGraph2DPreset, sampleGraph2DScene,
-  analyzeGraph2DIntegral, applyGraph2DAuthoring, createGraph2DDocument, clipGraph2DPublicationLine } from "@math3d/core";
+  analyzeGraph2DIntegral, applyGraph2DAuthoring, createGraph2DDocument, clipGraph2DPublicationLine, createGraph2DCaptureRecipe } from "@math3d/core";
 
 const scene = (id = "line-comparison") => instantiateGraph2DPreset(getGraph2DPresetCatalog().get(id)!, "publication-test");
 const publication = (id = "line-comparison") => { const { document, sidecars } = scene(id);
@@ -26,6 +26,18 @@ const readPNG = (bytes: Uint8Array) => {
 };
 
 describe("G2D36 portable publication recipe", () => {
+  it("GGL14 captures committed source/view/theme and labels external data", () => {
+    const { document } = scene("line-comparison"), published = publication("line-comparison");
+    const recipe = createGraph2DCaptureRecipe(document, published, "dark", "Math3D example");
+    expect(recipe.format).toBe("math3d.graph2d-capture-recipe");
+    expect(recipe.view.viewport).toEqual(document.display.viewport);
+    expect(recipe.view.size).toEqual(published.metadata.size);
+    expect(recipe.view.uiTheme).toBe("dark");
+    expect(recipe.view.publicationTheme).toBe("light");
+    expect(recipe.snapshotId).toBe(published.snapshotId);
+    expect(recipe.attribution).toBe("Math3D example");
+    expect(() => createGraph2DCaptureRecipe(scene("parabola-and-tangent").document, published, "light", "x")).toThrow();
+  });
   for (const preset of getGraph2DPresetCatalog().entries) it(`${preset.id}: matches shared live geometry and carries canonical source`, () => {
     const p = publication(preset.id), { document, sidecars } = scene(preset.id);
     const expected = sampleGraph2DScene({ document: p.document, viewport: document.display.viewport, width: 320, height: 240,
