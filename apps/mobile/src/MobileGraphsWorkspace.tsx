@@ -36,11 +36,11 @@ const Line = ({ a, b, color, width }: MobileGraphLine) => <View pointerEvents="n
   width: Math.hypot(b.x - a.x, b.y - a.y), height: width, backgroundColor: color,
   transform: [{ rotate: `${Math.atan2(b.y - a.y, b.x - a.x)}rad` }] }} />;
 
-export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onHaptic, promotions, onPromotion, onGallery }: {
+export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onHaptic, promotions, onPromotion, onGallery, onPresentationChange }: {
   document: Graph2DDocument; onChange: (document: Graph2DDocument) => void;
   onSave: () => Promise<boolean>; message: string; onHaptic?: () => void;
   promotions: readonly Graph2DAnyPromotion[]; onPromotion: (promotion: Graph2DAnyPromotion) => Promise<boolean>;
-  onGallery?: () => void;
+  onGallery?: () => void; onPresentationChange?: (active: boolean) => void;
 }) => {
   const [adapter] = useState(() => new Graph2DCommandAdapter(document));
   const gesture = useRef(new MobileGraphGesture());
@@ -55,6 +55,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const cancelParameter = () => { setParameterPreview(null); setParameterEpoch(value => value + 1); };
   const [destination, setDestination] = useState<MobileGraphDestination>("Graph");
   const [presentation, setPresentation] = useState(false);
+  const setPresentationMode = (active: boolean) => { setPresentation(active); onPresentationChange?.(active); };
+  useEffect(() => () => onPresentationChange?.(false), [onPresentationChange]);
   const routeTool = (tool: Graph2DTool) => {
     const selected = document.source.objects.find(o => o.id === document.selection.objectId);
     const reason = graph2DToolUnavailable(document, tool, selected?.kind !== "point-series" || !!mobileGraphPointTables.resolve(selected.table));
@@ -136,7 +138,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
       setFrame((current) => current.width === width && current.height === height ? current : { width, height }); }}>
     {presentation ? <View style={{ flexDirection: "row", alignItems: "center" }}>
       <Text style={[s.title, { flex: 1 }]} numberOfLines={1}>Presentation · {document.metadata.title}</Text>
-      {button("Exit presentation", () => setPresentation(false))}
+      {button("Exit presentation", () => setPresentationMode(false))}
     </View> : <View style={{ flexDirection: "row", alignItems: "center" }}><Text style={[s.title, { flex: 1 }]} numberOfLines={1}>{document.metadata.title}</Text>
       {onGallery && button("Gallery", () => {
         cancel(); cancelParameter();
@@ -145,7 +147,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
       })}
       {button("Display", () => { cancel(); cancelParameter(); setDestination(destination === "Display" ? "Graph" : "Display"); })}</View>}
     {!presentation && <ScrollView horizontal style={{ flexGrow: 0, maxHeight: 48 }} contentContainerStyle={s.toolbar}>{button("Reset", () => commit(() => adapter.commitViewport(GRAPH2D_DEFAULT_VIEWPORT)))}
-      {button("Present", () => { cancel(); cancelParameter(); if (editor || advanced) { setError("Save or cancel the function edit before presenting."); return; } setDestination("Graph"); setPresentation(true); })}
+      {button("Present", () => { cancel(); cancelParameter(); if (editor || advanced) { setError("Save or cancel the function edit before presenting."); return; } setDestination("Graph"); setPresentationMode(true); })}
       {button("Parameters", () => { cancel(); cancelParameter(); setDestination(destination === "Parameters" ? "Graph" : "Parameters"); })}
       {button("Tools", () => { cancel(); cancelParameter(); setDestination(destination === "Tools" ? "Graph" : "Tools"); })}
       {button("Parameter cards", () => { cancel(); cancelParameter(); setDestination(destination === "Cards" ? "Graph" : "Cards"); })}

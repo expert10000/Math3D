@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Pressable, ScrollView, StatusBar, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { tabs, type MobileAppController } from "./mobileAppController";
@@ -14,6 +14,7 @@ import { mobileExamples } from "./data/mobileSeedData";
 
 export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model }) => {
   const { tab, setTab } = model;
+  const [graphPresentation, setGraphPresentation] = useState(false);
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor="#f4f6f8" translucent={false} />
@@ -28,7 +29,8 @@ export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model 
 
       {tab === "workspace" && (model.graphDocument ? <MobileGraphsWorkspace key={`${model.graphDocument.identity.id}/${model.graphDocument.metadata.title}`}
         document={model.graphDocument} onChange={model.setGraphDocument} onSave={model.saveGraphProject} message={model.projectActionMessage}
-        promotions={model.graphPromotions} onPromotion={model.createGraphPromotion} onGallery={() => model.setGraphGalleryOpen(true)} /> :
+        promotions={model.graphPromotions} onPromotion={model.createGraphPromotion} onGallery={() => model.setGraphGalleryOpen(true)}
+        onPresentationChange={setGraphPresentation} /> :
         <MobileWorkspaceScreen model={model} />)}
 
       {tab !== "workspace" && <ScrollView contentContainerStyle={styles.content}>
@@ -51,7 +53,7 @@ export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model 
         onAcceptImport={model.acceptPersonalGraphImport} onCancelImport={() => model.setGraphGalleryImportPreview(null)}
         onExportPersonal={model.exportPersonalGraphProject} onShareDefinition={model.sharePersonalGraphDefinition}
         busy={model.graphGalleryBusy} message={model.graphGalleryMessage} />}
-      <View style={styles.bottomNav} accessibilityRole="tablist">
+      {!(tab === "workspace" && model.graphDocument && graphPresentation) && <View style={styles.bottomNav} accessibilityRole="tablist">
         {tabs.map(({ key, label }) => (
           <Pressable
             key={key}
@@ -64,7 +66,7 @@ export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model 
             <Text style={[styles.bottomNavText, tab === key ? styles.bottomNavTextActive : null]}>{label}</Text>
           </Pressable>
         ))}
-      </View>
+      </View>}
     </SafeAreaView>
   );
 };
