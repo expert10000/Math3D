@@ -1,17 +1,20 @@
 {
   "status": "approved",
   "applicationId": "com.math3d.mobile.internal",
-  "version": "1.5.1",
-  "build": 150007,
-  "sourceCommit": "0022cf59ffe3622822d95cb9506bcb332f9d3388",
-  "apkSha256": "326a0e679a5ed37ff30377ecafa7abc3c0112ddb663e7de14435eb8d1a04631d",
+  "version": "1.6.0",
+  "build": 150008,
+  "sourceCommit": "15f945fcd07cc64b2fd3de511904e6c428521d39",
+  "apkSha256": "cdfd15ee9a9229c3bf4b97fe7142c34c9b7fd5184c18473b68272848ad7e3f8c",
   "signingCertSha256": "39ab9388fa174bf9c1973577dab4ee33eedbacb9b231c9b79068e5143480fc82",
   "device": {
     "model": "SM-A566B",
     "androidVersion": "16"
   },
   "tester": "Math3D owner (Samsung) and Codex",
-  "testedAt": "2026-09-19T14:34:23Z",
+  "testedAt": "2026-09-30T16:50:10Z",
+  "evidence": "docs/mobile-1.6.0-release-candidate.md",
+  "scope": "Samsung baseline smoke only; wider MOB-G13 and professional/accessibility release acceptance remain pending.",
+  "ownerObservation": "After isolating the internal app from the older debug build, the owner confirmed: ok, catenoid after reload.",
   "checks": {
     "installOrUpdate": true,
     "standaloneRelaunch": true,

@@ -1,0 +1,33 @@
+{
+  "format": "math3d.release-test-pack-results.v1",
+  "release": "1.6.0",
+  "sourceCommit": null,
+  "artifactSha256": null,
+  "applicationId": null,
+  "build": null,
+  "platform": null,
+  "device": null,
+  "os": null,
+  "tester": null,
+  "testedAt": null,
+  "cases": [
+    { "id": "TP01", "status": "pending", "evidence": null, "observations": null },
+    { "id": "TP02", "status": "pending", "evidence": null, "observations": null },
+    { "id": "TP03", "status": "pending", "evidence": null, "observations": null },
+    { "id": "TP04", "status": "pending", "evidence": null, "observations": null },
+    { "id": "TP05", "status": "pending", "evidence": null, "observations": null },
+    { "id": "TP06", "status": "pending", "evidence": null, "observations": null },
+    { "id": "TP07", "status": "pending", "evidence": null, "observations": null },
+    { "id": "TP08", "status": "pending", "evidence": null, "observations": null },
+    { "id": "TP09", "status": "pending", "evidence": null, "observations": null },
+    { "id": "TP10", "status": "pending", "evidence": null, "observations": null },
+    { "id": "TP11", "status": "pending", "evidence": null, "observations": null },
+    { "id": "TP12", "status": "pending", "evidence": null, "observations": null },
+    { "id": "TP13", "status": "pending", "evidence": null, "observations": null },
+    { "id": "TP14", "status": "pending", "evidence": null, "observations": null },
+    { "id": "TP15", "status": "pending", "evidence": null, "observations": null }
+  ],
+  "metrics": { "runs": null, "samplingP95Ms": null, "nextFrameDeliveryP95Ms": null,
+    "serializedArtifactPeakBytes": null, "serializedPointCachePeakBytes": null,
+    "report": null, "calibrationDecision": null }
+}

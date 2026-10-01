@@ -11,6 +11,7 @@ import { SCENE_PROJECT_VERSION, createSceneProjectDocument, deserializeSceneProj
 import { mobileExamples, mobileSeedScenes } from "./data/mobileSeedData";
 import { DEFAULT_MOBILE_GRID_PLANES } from "./models/mobileCoordinateGrid";
 import type { Math3DExample, MobileSceneSummary, MobileStoredSceneProject } from "./models/mobileScene";
+import { selectMobileStartupProject } from "./models/mobileStartupProject";
 import { buildSceneSummary, clearStoredSceneProjects, createStoredProjectFromScene, describeMobileSceneStorageError, loadStoredSceneProjects, readSceneFromStoredProject, saveStoredSceneProjects } from "./services/mobileSceneStorage";
 import { createMobileMeshBackend } from "./services/mobileMeshBackend";
 import { readCachedMesh, readLatestCachedMesh, writeCachedMesh, type MobileCachedMesh } from "./services/mobileMeshCacheStorage";
@@ -487,11 +488,10 @@ export const useMobileAppController = () => {
         });
       }
 
-      const initialSceneId = loadedSettings.lastSceneId || projects[0]?.id || null;
-      const firstProject = initialSceneId ? projects.find((project) => project.id === initialSceneId) ?? projects[0] ?? null : null;
       const lastViewerProject = loadedSettings.lastViewerProject
         ? deserializeSceneProject(loadedSettings.lastViewerProject)
         : null;
+      const firstProject = selectMobileStartupProject(projects, loadedSettings.lastSceneId, lastViewerProject?.ok === true);
       if (lastViewerProject && !lastViewerProject.ok) {
         issues.push(`Last viewed scene is invalid: ${lastViewerProject.errors.join("; ")}`);
         setStorageIssues(issues);

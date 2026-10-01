@@ -46,7 +46,7 @@ separate hashes and do not share physical-device approval.
   The [public signing record](mobile-release-signing.json) records verification
   without exposing the recovery code.
 - [x] Install the exact `150007` APK on the Samsung and complete the current
-  [device signoff](mobile-device-signoff.json), including USB-free relaunch,
+  [device signoff](mobile-device-signoff-150007.json), including USB-free relaunch,
   Catenoid restore, Files, inspector, worker health over Wi-Fi, a 30-second
   two-finger pan/zoom check, first visible 3D frame timing, and logs.
 - [x] Run the shared-key Android CI gate for `1.5.1` and compare its certificate

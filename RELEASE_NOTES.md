@@ -1,45 +1,58 @@
-# Math3D 1.5.1
+# Math3D 1.6.0
 
-This release establishes the Android companion viewer and its first durable
-production signing and distribution path. The mobile application is version
-`1.5.1`, build `150007`.
+This release expands the shared Graph workspace, its offline gallery and the
+Android companion. Android is version `1.6.0`, build `150008`.
 
-## Android companion
+## Graph workspace and discovery
 
-- The five destinations are Home, Explore, Workspace, Files, and Settings.
-  Explore contains bundled Gallery examples, function presets, and Learn notes.
-- Workspace renders explicit and parametric 3D surfaces locally. Touch controls
-  orbit, pan, zoom, and fit the view. Its inspector has Scene, Object, Display,
-  and Analyze sections.
-- Files stores and reopens local scenes. The last scene and camera state restore
-  after app relaunch, including when the phone is unplugged.
-- Settings can test a network-reachable Math3D worker for implicit preview
-  computation. The internal tester APK permits a trusted LAN HTTP worker;
-  production Android requires HTTPS.
+- Desktop, web and Android support editable explicit, parametric, polar,
+  implicit, inequality, piecewise and data graphs, with source-aware probes.
+  Numerical calculus remains scoped to supported explicit functions;
+  regression uses the original checked point-table rows.
+- Graph tools include grid/scales, saved probes, parameters with opt-in
+  animation, linear/quadratic regression with residuals and uncertainty,
+  and reproducible SVG/PNG/CSV/HTML publication.
+- Graph Gallery supplies 20 offline examples, optional interactive copies,
+  guided concepts and personal collections. My Graphs supports reusable
+  independent copies, checked file exchange and local read-only previews.
+- Android Home/Explore add manual featured navigation and Graph↔Surface
+  discovery. Presentation mode has an explicit exit; capture recipes retain
+  source/view provenance and external-data caveats.
+- Switching from a saved Graph to an unsaved Surface example now restores
+  the Surface after app restart. Existing saved projects remain available.
 
-## Build and verification
+## Reusable test pack
 
-- `apps/mobile/android` is the canonical Android project. Mobile identity is
-  generated from `apps/mobile/version.json`.
-- Internal APKs and the production AAB use separate signing keys held outside
-  Git. The production key has a verified encrypted backup held by the owner.
-- Android CI checks mobile types, application identity, internal APK build,
-  signature and hashes, and an emulator functional smoke test. A separate CI
-  workflow builds and verifies the production-signed AAB.
-- The Samsung SM-A566B running Android 16 passed exact-build `150007` checks:
-  Catenoid rendering and restore, Files and Explore navigation, inspector,
-  two-finger pan and zoom, app resume, fatal-log review, and USB-free worker
-  health over Wi-Fi. See `docs/mobile-1.5.1-release-readiness.md` for the APK
-  hash, AAB hash, and detailed evidence.
+`Math3D-1.6.0-test-pack.zip` contains nine importable Graph fixtures covering
+all seven Graph kinds, two CSV tables, a deliberately invalid import,
+15 walkthrough cases with expected results, a blank per-device results
+record and a standalone file-integrity checker. The regression reference
+fits `y=2*x+1` with SSE `0.32`. CSV sidecars remain separate from Graph JSON.
 
-## Current limits
+The pack is reusable for future devices. Its automated checker verifies
+canonical imports/round trips, data resolution, reference regression,
+unsupported-file rejection and checksums. Blank records intentionally stay
+pending; file integrity and unit tests do not claim a manual device pass.
 
-- The phone is a companion viewer. It does not have the desktop authoring or
-  analysis workspaces. Implicit surfaces require a reachable worker or cached
-  preview for the computed mesh.
-- iOS rendering remains incomplete: the simulator opens the shell but the 3D
-  viewport is blank. This release does not include an iOS build.
+## Validation and release scope
 
-The tag-triggered workflow builds the Windows and Linux desktop installers and
-archives. The Android production AAB is published as a separate verified
-release asset after the release is created.
+The owner scoped 1.6.0 to the checked test pack, automated software acceptance,
+the existing signed Android/emulator gates and exact-APK Samsung baseline
+signoff. The Samsung SM-A566B on Android 16 passed update/data preservation,
+Graph and Catenoid restart, navigation, inspector and scoped crash-log checks;
+the owner confirmed cable-free Catenoid reopening. Production AAB signature,
+checksum and the existing upload-key certificate were verified separately.
+
+The broader low/mid/high Android/tablet, iPhone/iPad, full spoken accessibility
+and measured workload calibration matrix is deferred to subsequent releases.
+MOB-G13 and the full G2D40 physical freeze remain pending; this release does
+not certify them. No iOS build is distributed with 1.6.0. Worker-dependent
+Surface analyses remain subject to host capabilities; production Android
+worker connections require HTTPS.
+
+Windows/Linux installers, web/docs archives and corresponding source assets
+are built by the tag release workflow. The Android production AAB was built
+by its existing signing/verification workflow and attached after matching its
+verified checksum. Release source, test steps and
+detailed evidence are in `docs/mobile-1.6.0-release-candidate.md` and
+`docs/test-packs/1.6.0/README.md`.

@@ -58,6 +58,8 @@ jobs:
         run: npm run verify:license-compliance
       - name: Graph professional software freeze
         run: npm run test:graph2d:professional:acceptance
+      - name: Reusable release test pack
+        run: node scripts/graph2d-release-test-pack.mjs
       - name: Android embedded Hermes bundle compilation (not physical signoff)
         working-directory: apps/mobile
         run: node ../../node_modules/expo/bin/cli export --platform android --output-dir ../../output/g40-native-bundle

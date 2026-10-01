@@ -28,7 +28,7 @@ jobs:
 
   windows-release:
     needs: mobile-release-gate
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 150
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
@@ -43,6 +43,9 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ env.RELEASE_TAG }}
+
+      - name: Apply exact workflow build recipe to fixed app tag
+        run: node -e "eval(require('node:child_process').execFileSync('git', ['show', process.env.GITHUB_WORKFLOW_SHA + ':scripts/materialize-release-recipe.cjs'], {encoding:'utf8'}))"
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -133,18 +136,49 @@ jobs:
           Invoke-NpmWithRetry -Label "root npm ci" -Command { npm ci } -CleanupPath "node_modules"
           Invoke-NpmWithRetry -Label "renderer npm ci" -Command { npm --prefix renderer ci } -CleanupPath "renderer/node_modules"
 
+      - name: Verify reusable Graph test pack
+        run: node scripts/graph2d-release-test-pack.mjs
+
       - name: Set package version from tag
         run: npm version --no-git-tag-version --allow-same-version ${{ steps.meta.outputs.version }}
 
       - name: Verify public license compliance metadata
         run: npm run verify:license-compliance
 
-      - name: Install Python dependencies for frozen worker
+      - name: Resolve native binary cache
+        id: native-cache-key
         shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install mkdocs
-          python -m pip install pyinstaller -r python/worker/requirements.freeze.txt
+          $cacheRoot = Join-Path $PWD ".cache/vcpkg-binaries"
+          New-Item -ItemType Directory -Path $cacheRoot -Force | Out-Null
+          "VCPKG_DEFAULT_BINARY_CACHE=$cacheRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "key=windows-2022-$env:ImageVersion-vcpkg-52fd90f2b7798d9fe6fef18fc1787db44574d704" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Restore native dependency binaries
+        id: native-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .cache/vcpkg-binaries
+          key: ${{ steps.native-cache-key.outputs.key }}
+
+      - name: Install Python dependencies for frozen worker
+        id: native-deps
+        shell: pwsh
+        run: |
+          ./scripts/setup-cgal-python-worker.ps1 -Python (Get-Command python).Source -VcpkgCommit 52fd90f2b7798d9fe6fef18fc1787db44574d704 -FrozenRequirements
+          $workerPython = Join-Path $PWD ".venv-worker/Scripts/python.exe"
+          & $workerPython -m pip install pyinstaller mkdocs -r python/worker/requirements.freeze.txt
+          if ($LASTEXITCODE -ne 0) { throw "Pinned worker dependencies failed." }
+          "MATH3D_PYTHON=$workerPython" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $PWD ".venv-worker/Scripts") | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          (Join-Path $PWD ".deps/vcpkg/installed/x64-windows/bin") | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Save native dependency cache before packaging
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .cache/vcpkg-binaries
+          key: ${{ steps.native-cache-key.outputs.key }}
 
       - name: Build docs bundle
         shell: pwsh
@@ -163,6 +197,22 @@ jobs:
           MATH3D_REQUIRE_PYGALMESH: "1"
           MATH3D_REQUIRE_CGAL: "1"
         run: npm run dist:ci
+
+      - name: Verify packaged worker protocol
+        run: node scripts/smoke-python-worker.mjs --exe release/win-unpacked/resources/python-worker/worker.exe
+
+      - name: Preserve verified Windows build before source downloads
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-verified-build-${{ github.run_id }}
+          compression-level: 1
+          retention-days: 1
+          if-no-files-found: error
+          path: |
+            release/*.exe
+            release/win-unpacked/**
+            site/**
+            apps/web/dist/**
 
       - name: Prepare corresponding source assets
         shell: pwsh
@@ -214,6 +264,12 @@ jobs:
 
           Get-ChildItem -Path "release-source" -File | ForEach-Object {
             Copy-Item $_.FullName (Join-Path $assetsDir $_.Name) -Force
+          }
+
+          $testPack = Join-Path $PWD "docs/test-packs/$version"
+          if (Test-Path $testPack) {
+            Compress-Archive -Path (Join-Path $testPack "*") `
+              -DestinationPath (Join-Path $assetsDir "Math3D-$version-test-pack.zip") -Force
           }
 
           $optionalFiles = @(
@@ -271,6 +327,9 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ env.RELEASE_TAG }}
+
+      - name: Apply exact workflow build recipe to fixed app tag
+        run: node -e "eval(require('node:child_process').execFileSync('git', ['show', process.env.GITHUB_WORKFLOW_SHA + ':scripts/materialize-release-recipe.cjs'], {encoding:'utf8'}))"
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -376,6 +435,18 @@ jobs:
           MATH3D_REQUIRE_PYGALMESH: "1"
           MATH3D_REQUIRE_CGAL: "1"
         run: npm run dist:linux:ci
+
+      - name: Preserve built Linux packages before source downloads
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-built-packages-${{ github.run_id }}
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/*.rpm
 
       - name: Prepare corresponding source assets
         run: npm run release:source -- --target linux --out release-source --version "${{ steps.meta.outputs.version }}"

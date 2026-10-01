@@ -2,3 +2,4 @@
 *.ts text eol=lf
 *.tsx text eol=lf
 *.md text eol=lf
+docs/test-packs/** text eol=lf

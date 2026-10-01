@@ -6,6 +6,8 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -43,36 +45,36 @@ const sha256File = (filename) => new Promise((resolve, reject) => {
 async function download(source) {
   const destination = path.join(outDir, source.filename);
   if (fs.existsSync(destination) && await sha256File(destination) === source.sha256) return destination;
-  const temporary = `${destination}.part`;
-  if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
-  const response = await fetch(source.url, { redirect: "follow" });
-  if (!response.ok || !response.body) throw new Error(`Cannot download ${source.url}: HTTP ${response.status}`);
-  const output = fs.createWriteStream(temporary, { flags: "wx" });
-  await new Promise((resolve, reject) => {
-    const reader = response.body.getReader();
-    const pump = async () => {
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (!output.write(Buffer.from(value))) await new Promise((resume) => output.once("drain", resume));
-        }
-        output.end(resolve);
-      } catch (error) {
-        output.destroy();
-        reject(error);
-      }
-    };
-    output.on("error", reject);
-    void pump();
-  });
-  const actual = await sha256File(temporary);
-  if (actual !== source.sha256) {
-    fs.unlinkSync(temporary);
-    throw new Error(`${source.filename} SHA-256 mismatch: expected ${source.sha256}, received ${actual}`);
+  for (const directory of [".deps/vcpkg/downloads", ".deps/pygalmesh-build"]) {
+    const cached = path.join(root, directory, source.filename);
+    if (fs.existsSync(cached) && await sha256File(cached) === source.sha256) {
+      fs.copyFileSync(cached, destination);
+      console.log(`Using verified build source: ${source.filename}`);
+      return destination;
+    }
   }
-  fs.renameSync(temporary, destination);
-  return destination;
+  const temporary = `${destination}.part`;
+  const failures = [];
+  for (const url of [source.url, ...(source.mirrors || [])]) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+        const response = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(120000) });
+        if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
+        await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(temporary, { flags: "wx" }));
+        const actual = await sha256File(temporary);
+        if (actual !== source.sha256) throw new Error(`SHA-256 mismatch: expected ${source.sha256}, received ${actual}`);
+        fs.renameSync(temporary, destination);
+        return destination;
+      } catch (error) {
+        if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+        const failure = `${url} (attempt ${attempt}): ${error.message}`;
+        failures.push(failure);
+        console.warn(`Source download retry: ${failure}`);
+      }
+    }
+  }
+  throw new Error(`Cannot obtain verified ${source.filename}:\n${failures.join("\n")}`);
 }
 
 const commit = run("git", ["rev-parse", "HEAD"]);
@@ -80,7 +82,11 @@ const sourceZip = path.join(outDir, `Math3D-${version}-source.zip`);
 if (fs.existsSync(sourceZip)) fs.unlinkSync(sourceZip);
 run("git", ["archive", "--format=zip", `--prefix=Math3D-${version}-source/`, `--output=${sourceZip}`, "HEAD"]);
 
-const releasePatch = run("git", ["diff", "--", "package.json", "package-lock.json"]);
+const releasePatch = run("git", ["diff", "HEAD", "--",
+  "package.json", "package-lock.json", ".github/workflows/release.yml",
+  "scripts/materialize-release-recipe.cjs", "scripts/setup-cgal-python-worker.ps1",
+  "scripts/prepare-public-source-bundle.mjs", "compliance/public-source-manifest.json",
+]);
 let releasePatchName = null;
 if (releasePatch) {
   releasePatchName = `Math3D-${version}-release-build.patch`;
@@ -119,7 +125,8 @@ fs.copyFileSync(path.join(root, "LICENSES/Apache-2.0.txt"), path.join(outDir, "A
 const materialized = {
   schemaVersion: 1,
   distributionLicense: sourceManifest.distributionLicense,
-  math3d: { version, commit, sourceArchive: path.basename(sourceZip), releaseBuildPatch: releasePatchName },
+  math3d: { version, commit, buildRecipeCommit: process.env.GITHUB_WORKFLOW_SHA || commit,
+    sourceArchive: path.basename(sourceZip), releaseBuildPatch: releasePatchName },
   target,
   pythonPackages,
   sources: selected,

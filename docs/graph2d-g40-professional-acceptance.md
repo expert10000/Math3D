@@ -39,6 +39,12 @@ Visual QA inspected continuation/log plots, fit/limits, offline residual tables 
 
 ## Fail-closed physical release checklist
 
+**1.6.0 scope decision — September 30, 2026:** the owner chose to release the
+checked test pack and current automated/Samsung baseline, deferring broader
+devices and full professional physical acceptance to later releases. The
+strict G2D40/MOB-G13 freeze below remains pending and unchanged; 1.6.0 does
+not claim it passed. See [scoped release evidence](mobile-1.6.0-release-candidate.md).
+
 The existing `mobile-graph-device-gate.mjs` now additionally requires `publication-offline-print`, `scales-continuation-log`, `parameters-animation-cancel` and `regression-residuals-intervals` on **every** physical Android/iOS phone/tablet slot. Existing G13 gesture, lifecycle, interchange, measured retention/calibration and accessibility cases still apply. All evidence must match committed runtime source and actual embedded signed release artifacts, not an emulator, Metro, a debug build or this document.
 
 Run the existing release check with a completed evidence file and exact artifacts:

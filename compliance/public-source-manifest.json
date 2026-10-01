@@ -10,7 +10,10 @@
       "name": "pygalmesh",
       "version": "0.10.7",
       "license": "GPL-3.0-or-later",
-      "targets": ["windows", "linux"],
+      "targets": [
+        "windows",
+        "linux"
+      ],
       "filename": "pygalmesh-0.10.7.tar.gz",
       "url": "https://files.pythonhosted.org/packages/a5/94/4a817068bfc4ca8e0d91856e2d22186381800139ae8685b73e3cf94c4689/pygalmesh-0.10.7.tar.gz",
       "sha256": "2db842cfd43aed9beb2c3a2dae6276206d16587131b6f068f6c5ba049b6af2f9"
@@ -19,7 +22,10 @@
       "name": "CGAL Python bindings",
       "version": "6.0.1.post202410241521",
       "license": "GPL-3.0-or-later OR LicenseRef-Commercial",
-      "targets": ["windows", "linux"],
+      "targets": [
+        "windows",
+        "linux"
+      ],
       "filename": "cgal-swig-bindings-6.0.1.post202410241521.tar.gz",
       "url": "https://github.com/CGAL/cgal-swig-bindings/archive/refs/tags/v6.0.1.post202410241521.tar.gz",
       "sha256": "e9847d302d72a6e8735c7cf083f3ed02d3a4dc5389bbee628fbded768ff522d8"
@@ -28,7 +34,9 @@
       "name": "CGAL",
       "version": "6.0.1",
       "license": "GPL-3.0-or-later AND LGPL-3.0-or-later (package-specific)",
-      "targets": ["windows"],
+      "targets": [
+        "windows"
+      ],
       "filename": "CGAL-6.0.1.tar.xz",
       "url": "https://github.com/CGAL/cgal/releases/download/v6.0.1/CGAL-6.0.1.tar.xz",
       "sha256": "0acdfbf317c556630dd526f3253780f29b6ec9713ee92903e81b5c93c0f59b7f"
@@ -37,7 +45,9 @@
       "name": "CGAL",
       "version": "5.4",
       "license": "GPL-3.0-or-later AND LGPL-3.0-or-later (package-specific)",
-      "targets": ["linux"],
+      "targets": [
+        "linux"
+      ],
       "filename": "CGAL-5.4.tar.xz",
       "url": "https://github.com/CGAL/cgal/releases/download/v5.4/CGAL-5.4.tar.xz",
       "sha256": "b3d735ec42fd65ac1413c70e7a197bf3d971e4499347ccfaad92cc82d62dc256"
@@ -46,7 +56,9 @@
       "name": "CGAL",
       "version": "6.2.1",
       "license": "GPL-3.0-or-later AND LGPL-3.0-or-later (package-specific)",
-      "targets": ["native-cgal"],
+      "targets": [
+        "native-cgal"
+      ],
       "filename": "CGAL-cgal-v6.2.1.tar.gz",
       "url": "https://github.com/CGAL/cgal/archive/refs/tags/v6.2.1.tar.gz",
       "sha256": "4a0713351882989dda8b6bbfa942d5013b994f297fbebe1096ce664a92aff1a0"
@@ -55,19 +67,66 @@
       "name": "GMP",
       "version": "6.3.0",
       "license": "LGPL-3.0-or-later OR GPL-2.0-or-later",
-      "targets": ["windows", "linux", "native-cgal"],
+      "targets": [
+        "windows",
+        "linux",
+        "native-cgal"
+      ],
       "filename": "gmp-6.3.0.tar.xz",
       "url": "https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz",
-      "sha256": "a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898"
+      "sha256": "a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898",
+      "mirrors": [
+        "https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz"
+      ]
     },
     {
       "name": "MPFR",
       "version": "4.2.2",
       "license": "LGPL-3.0-or-later",
-      "targets": ["windows", "linux", "native-cgal"],
+      "targets": [
+        "windows",
+        "linux",
+        "native-cgal"
+      ],
       "filename": "mpfr-4.2.2.tar.xz",
       "url": "https://www.mpfr.org/mpfr-current/mpfr-4.2.2.tar.xz",
-      "sha256": "b67ba0383ef7e8a8563734e2e889ef5ec3c3b898a01d00fa0a6869ad81c6ce01"
+      "sha256": "b67ba0383ef7e8a8563734e2e889ef5ec3c3b898a01d00fa0a6869ad81c6ce01",
+      "mirrors": [
+        "https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.2.tar.xz"
+      ]
+    },
+    {
+      "name": "CGAL",
+      "version": "6.2",
+      "license": "GPL-3.0-or-later AND LGPL-3.0-or-later (package-specific)",
+      "targets": [
+        "windows"
+      ],
+      "filename": "CGAL-cgal-v6.2.tar.gz",
+      "url": "https://github.com/CGAL/cgal/archive/refs/tags/v6.2.tar.gz",
+      "sha256": "c91fe2e5e13df865a3fc06b0f9b83845c4e88fa243e09ee826a2d3cd774e9dca"
+    },
+    {
+      "name": "Eigen",
+      "version": "5.0.1",
+      "license": "MPL-2.0 AND BSD-3-Clause AND Apache-2.0",
+      "targets": [
+        "windows"
+      ],
+      "filename": "libeigen-eigen-5.0.1.tar.gz",
+      "url": "https://gitlab.com/libeigen/eigen/-/archive/5.0.1/eigen-5.0.1.tar.gz",
+      "sha256": "e9c326dc8c05cd1e044c71f30f1b2e34a6161a3b6ecf445d56b53ff1669e3dec"
+    },
+    {
+      "name": "vcpkg build recipes",
+      "version": "52fd90f2b7798d9fe6fef18fc1787db44574d704",
+      "license": "MIT",
+      "targets": [
+        "windows"
+      ],
+      "filename": "vcpkg-52fd90f2.tar.gz",
+      "url": "https://github.com/microsoft/vcpkg/archive/52fd90f2b7798d9fe6fef18fc1787db44574d704.tar.gz",
+      "sha256": "28668b7c08faf93327a84ff23f90dcf87aaef45e23af28772807d3c7d7c478d5"
     }
   ]
 }
