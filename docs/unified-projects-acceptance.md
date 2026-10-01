@@ -94,15 +94,29 @@ that merge; no native device or installed optional engine is inferred from it.
 | Browser interchange | Both en-US/UTC and pl-PL/Auckland journeys passed |
 | Dependency boundaries | Passed: 973 modules / 2176 dependencies |
 | Released Graph test pack | Nine Graphs, seven kinds, two CSV sidecars, reference fit, invalid-import and integrity checks passed |
+| Topology formal-gate components | All 156 unit tests / 28 files, eight Sage-contract tests / two files and both semantic-safety Electron journeys passed; main/renderer types and builds are included above |
+| Responsive smoke | Surface/Geometry/Curves drawers, sheets and touch containment passed at phone portrait/landscape, tablet and desktop sizes |
 
 Desktop and phone-width Projects library screenshots were visually inspected.
 Two Topology 100-edit replay tests initially exceeded the default five-second
 limit under concurrent audit load; the isolated suite passed. Explicit 30-second
 limits preserve every assertion and the repeated complete audit passed.
 
-The dedicated [Projects CI run](https://github.com/expert10000/Math3D/actions/runs/36888958804)
-uses `a5c4c5c`, the same integrated application source plus the workflow/test-limit
-changes. Local logs and the disposable JSON report are in
+The initial [Projects CI run](https://github.com/expert10000/Math3D/actions/runs/36888958804)
+passed the audit and 15 of 16 Electron cases. The transfer case compared all
+browser storage while background workbook autosave was initializing unrelated
+keys. Fix `8510fcc` compares the complete named-project storage namespace,
+including active payload, library, thumbnail sidecars and before-open backups,
+and asserts that the saved library/payload exists before the conflict attempt.
+It retains exact unchanged-byte rejection checks. The affected Electron journey
+and both browser interchange journeys passed again locally.
+
+The [clean-checkout retry](https://github.com/expert10000/Math3D/actions/runs/36890458229)
+passed on `8510fcc`: all 414 audit tests, complete project acceptance including
+16 Electron/two browser journeys, dependency boundaries, released test-pack checks
+and Android embedded-bundle compilation. This uses the same integrated application
+source and corrected conflict test; subsequent evidence edits are documentation only.
+Local logs and the disposable JSON report are in
 `output/projects-integration/` and `post160-test-results.json`. CI also compiles an
 embedded Android bundle; that step is software coverage, not a new APK signoff.
 Remaining PRJ13–PRJ18 deliveries are explicit in the

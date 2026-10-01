@@ -38,7 +38,7 @@ PRJ06/PRJ08 retain the obligations below and in
 | PRJ09 | Projects as the first main-navigation entry; explicit workspace/preview modes | `70ca027` — implemented |
 | PRJ10 | Independent Curve/Surface native editing, history, save and reopen | `2a93c1b` — implemented for supported representations |
 | PRJ11 | Procedural Geometry and bounded construction native editing, save and reopen | `11b2cb3` — implemented for supported representations |
-| PRJ12 | Reconcile released baseline and add a repeatable Projects CI gate | `b180ed7`, `a5c4c5c` — baseline integrated; acceptance results below |
+| PRJ12 | Reconcile released baseline and add a repeatable Projects CI gate | `b180ed7`, `a5c4c5c`, `8510fcc` — integration software gate passed locally and in clean-checkout CI |
 
 In the UI, use **Projects → Open saved project** to restore a compatible saved
 container, then select its document in the explorer or its module in main navigation.
@@ -281,3 +281,11 @@ acceptance, released Graph test pack and Android embedded-bundle compilation on
 this branch, relevant main pushes and pull requests. Software artifacts are retained
 for inspection; this workflow does not attest physical-device or installed-engine
 acceptance. See the [current acceptance record](unified-projects-acceptance.md).
+
+[Clean-checkout CI 36890458229](https://github.com/expert10000/Math3D/actions/runs/36890458229)
+passed every step on `8510fcc`, including all 16 Electron/two browser journeys and
+the embedded Android bundle. The initial CI run exposed a whole-storage comparison
+racing unrelated workbook autosave; the corrected test still verifies every
+named-project payload, library entry, sidecar and backup remains byte-identical
+after a rejected same-ID import. PRJ12 software integration is complete;
+PRJ13–PRJ18 remain the explicit next implementation/acceptance sequence.
