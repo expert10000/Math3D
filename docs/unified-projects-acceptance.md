@@ -152,5 +152,11 @@ the rebuilt renderer, including a real Electron process restart, branch/contour
 reopen, invalid-source rejection and phone-width containment. Desktop and
 390-pixel editor screenshots were visually inspected. The final E2E types passed.
 
-Clean-checkout CI runs on this continuation branch; its exact result is recorded
-separately from these completed local gates.
+The released Graph test pack also passed, and a local Android/Hermes export produced
+the embedded bundle in `output/projects-prj13-native-bundle/`. This is compilation
+evidence, not an installed APK or a new physical-device signoff.
+
+[Clean-checkout CI 36897077724](https://github.com/expert10000/Math3D/actions/runs/36897077724)
+checks runtime/test source `e8c4737` on this continuation branch. It was still
+running when the completed local evidence was recorded; its current result must
+be inspected separately. Subsequent evidence edits do not change that runtime.
