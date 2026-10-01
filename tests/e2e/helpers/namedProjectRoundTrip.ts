@@ -16,12 +16,19 @@ export async function runNamedProjectRoundTrip(page: Page, exportJson: (checkpoi
   expect(edited.workspace.results).toEqual(original.workspace.results); expect(edited.workspace.relations).toEqual(original.workspace.relations);
   expect(edited.workspace.entries.slice(1)).toEqual(original.workspace.entries.slice(1));
   const upload = { name: "mobile-edited.project.json", mimeType: "application/json", buffer: Buffer.from(returned) };
-  const before = await page.evaluate(() => ({ ...localStorage }));
+  // Background workbook autosave can initialize during file preview. Assert the
+  // complete named-project store (active payload, library, sidecars and backups),
+  // whose unchanged bytes are the conflict-rejection contract.
+  const projectStorage = () => page.evaluate(() => Object.fromEntries(
+    Object.entries(localStorage).filter(([key]) => key.startsWith("math3d.project"))));
+  const before = await projectStorage();
+  expect(before["math3d.project-library.v1"]).toBeDefined();
+  expect(Object.keys(before).some((key) => key.startsWith("math3d.project.v1.payload."))).toBe(true);
   await panel.getByTestId("project-import-file").setInputFiles(upload);
   await expect(panel.getByTestId("project-import-open")).toBeDisabled(); // Historical companions are retained, not silently regenerated.
   await panel.getByTestId("project-import-save").click();
   await expect(panel.getByTestId("project-message")).toContainText("different saved version");
-  expect(await page.evaluate(() => ({ ...localStorage }))).toEqual(before);
+  expect(await projectStorage()).toEqual(before);
 
   // Independent destination-host storage; the source library above was protected.
   await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); });
