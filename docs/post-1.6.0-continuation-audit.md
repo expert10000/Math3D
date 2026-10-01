@@ -150,3 +150,6 @@ The initial audit commit changed no application version, signing configuration,
 release workflow, or production behavior. The subsequently authorized
 [Topology fix and upgrade regressions](post-1.6.0-upgrade-regressions.md) continue
 items 3–4 on this branch and record their separate validation.
+
+The next authorized product phase is [Unified Projects](unified-projects-roadmap.md),
+starting with PRJ01's named workspace container and PRJ02's unified explorer.

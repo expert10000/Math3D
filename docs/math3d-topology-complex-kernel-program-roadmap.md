@@ -2695,3 +2695,13 @@ The general kernel rollout is complete only when:
    provenance, artifact registry, or dependency-invalidation framework.
 10. The kernel remains lifecycle infrastructure; mathematical algorithms stay in
     their domain modules.
+
+## Next product phase: Unified Projects (PRJ01–PRJ08)
+
+Make the existing kernel-backed workspace a named project with a unified document
+explorer. The [Unified Projects delivery roadmap](unified-projects-roadmap.md)
+defines eight commits: first-class container, explorer, library metadata,
+cross-document operations, dependency/status inspection, compatibility-aware
+import/export, scientific templates, and desktop/web/mobile round-trip gates.
+Project sources and lineage remain owned by the existing shared contracts.
+The first commits are PRJ01 and PRJ02; complete host restore has a separate gate.
