@@ -1,3 +1,8 @@
+import { MeshProjectEditor } from "./projects/MeshProjectEditor";
+import { meshDocumentEditable } from "./projects/nativeMeshRestore";
+import { createMeshDocument } from "@math3d/core";
+import { VerifiedProjectResources, type ProjectResourceRequirement } from "./projects/projectResources";
+import type { MeshReplayBundle } from "./mesh/meshReplay";
 import { geometryEditorSeed as restoredGeometryEditorSeed, geometryDocumentEditable, geometrySourceFromEditor, geometryDisplayFromEditor, retainConstructionSource } from "./projects/nativeGeometryRestore";
 import { curveEditorSeed, curveSourceFromEditor, surfaceEditorSeed, surfaceSourceFromEditor, nativeDocumentEditable } from "./projects/nativeProjectRestore";
 import { topologyEditorSeed, complexEditorSeed, complexSourceFromEditor, scientificDocumentEditable } from "./projects/nativeScientificRestore";
@@ -12534,7 +12539,7 @@ const App: React.FC = () => {
   const [restoredComplexAdapter, setRestoredComplexAdapter] = useState<ComplexAnalysisCommandAdapter | null>(null);
   const [restoredVolumeAdapter, setRestoredVolumeAdapter] = useState<VolumeDocumentAdapter | null>(null);
   const [restoredVolumeRevision, setRestoredVolumeRevision] = useState(0);
-  const restoredProjectRef = useRef<{ workspace: MixedWorkspaceDocument; curves: Map<string, CurveDocumentAdapter>; surfaces: Map<string, SurfaceDocumentAdapter>; geometries: Map<string, GeometryDocumentAdapter>; topologies: Map<string, TopologyDiagramCommandAdapter>; complexes: Map<string, ComplexAnalysisCommandAdapter>; volumes: Map<string, VolumeDocumentAdapter> } | null>(null);
+  const restoredProjectRef = useRef<{ workspace: MixedWorkspaceDocument; curves: Map<string, CurveDocumentAdapter>; surfaces: Map<string, SurfaceDocumentAdapter>; geometries: Map<string, GeometryDocumentAdapter>; topologies: Map<string, TopologyDiagramCommandAdapter>; complexes: Map<string, ComplexAnalysisCommandAdapter>; volumes: Map<string, VolumeDocumentAdapter>; meshes: Map<string, MeshDocumentAdapter> } | null>(null);
   const [curvePresetId, setCurvePresetId] = useState<string>("circle2d");
   const [curveCustomXExpr, setCurveCustomXExpr] = useState("cos(t)");
   const [curveCustomYExpr, setCurveCustomYExpr] = useState("sin(2*t)");
@@ -24286,6 +24291,7 @@ const App: React.FC = () => {
   } | null>(null);
   const meshDatasetPublishTraceCounterRef = useRef(0);
   const meshDocumentAdapterRef = useRef<MeshDocumentAdapter | null>(null);
+  const nativeMeshSelectionKeysRef = useRef("");
   const [meshKernelDocument, setMeshKernelDocument] = useState<MeshDocument | null>(null);
   const [graph2dDocument, setGraph2dDocument] = useState<Graph2DDocument>(() => createEmptyGraph2DDocument("desktop-web-default"));
   const [graph2dPromotions, setGraph2dPromotions] = useState<Graph2DAnyPromotion[]>([]);
@@ -24387,11 +24393,13 @@ const App: React.FC = () => {
     const triangles = surfaceMeshTriangleCount(mesh);
     const vertices = Math.floor(mesh.positions.length / 3);
     const editKind = meshKernelEditKind(traceOperation);
-    if (editKind !== "preview") {
+    if (editKind !== "preview" && traceOperation !== "project-restore") {
       if (editKind && meshDocumentAdapterRef.current) {
         meshDocumentAdapterRef.current.replaceMesh(mesh, editKind, { traceOperation, ...kernelParameters });
       } else {
-        meshDocumentAdapterRef.current = MeshDocumentAdapter.fromMesh(mesh);
+        let next = MeshDocumentAdapter.fromMesh(mesh);
+        if (restoredProjectRef.current?.meshes.has(next.document().identity.id)) next = new MeshDocumentAdapter(createMeshDocument({ source: { ...next.document().source, objectId: `mesh-object:${crypto.randomUUID()}` }, stableKey: { newMesh: crypto.randomUUID() }, label: mesh.label, importedFrom: next.document().metadata.importedFrom }), next.resources);
+        meshDocumentAdapterRef.current = next;
       }
       setMeshKernelDocument(meshDocumentAdapterRef.current.document());
     }
@@ -36752,6 +36760,11 @@ const App: React.FC = () => {
     const adapter = meshDocumentAdapterRef.current;
     if (!adapter) return;
     if (largeSurfaceMeshResolutionCacheRef.current?.previewMesh === meshDataset?.mesh) return;
+    if (restoredProjectRef.current?.meshes.has(adapter.document().identity.id)) {
+      const keys = meshMultiSelectionSet.keys.join("|");
+      if (nativeMeshSelectionKeysRef.current === keys) return;
+      nativeMeshSelectionKeysRef.current = keys;
+    }
     const entityIds = meshMultiSelectionSet.keys.map((key) => createStableDocumentId("mesh-selection", key));
     if (entityIds.join("|") !== adapter.selection().join("|")) adapter.commitSelection(entityIds);
   }, [meshDataset?.mesh, meshMultiSelectionSet.keys]);
@@ -77855,6 +77868,8 @@ case "mobius":
         activeGeometry.commitDisplay(geometryDisplayFromEditor(activeGeometry.document(), geometryKernelSceneSnapshot));
       }
       const entries = restored.workspace.entries.map((entry) => {
+        const mesh = restored.meshes.get(entry.expected.id);
+        if (mesh) { const document = mesh.document(), replay = mesh.replayBundle(); return { ...entry, checkpoint: replay.checkpoint.document, expected: document.identity, replay: { format: MIXED_REPLAY_FORMATS.mesh, payload: replay as unknown as CanonicalJsonValue } }; }
         const volume = restored.volumes.get(entry.expected.id);
         if (volume) { const document = volume.document(), replay = volume.replayBundle(); return { ...entry, checkpoint: replay.checkpoint, expected: document.identity, replay: { format: MIXED_REPLAY_FORMATS.volume, payload: replay as unknown as CanonicalJsonValue } }; }
         const scientific = restored.topologies.get(entry.expected.id) ?? restored.complexes.get(entry.expected.id);
@@ -77885,9 +77900,10 @@ case "mobius":
       }
       for (const entry of live.entries.filter((entry) => owned.has(entry.expected.id))) {
         // Restored adapters already supplied exact document replay above.
-        if (restored.curves.has(entry.expected.id) || restored.surfaces.has(entry.expected.id) || restored.geometries.has(entry.expected.id) || restored.topologies.has(entry.expected.id) || restored.complexes.has(entry.expected.id) || restored.volumes.has(entry.expected.id)) continue;
+        if (restored.curves.has(entry.expected.id) || restored.surfaces.has(entry.expected.id) || restored.geometries.has(entry.expected.id) || restored.topologies.has(entry.expected.id) || restored.complexes.has(entry.expected.id) || restored.volumes.has(entry.expected.id) || restored.meshes.has(entry.expected.id)) continue;
         const index = entries.findIndex((saved) => saved.expected.id === entry.expected.id);
         if (index >= 0) entries[index] = entry; else entries.push(entry);
+        if (entry.module === "mesh" && meshDocumentAdapterRef.current?.document().identity.id === entry.expected.id) restored.meshes.set(entry.expected.id, meshDocumentAdapterRef.current);
         if (entry.module === "volume" && activeVolumeKernelAdapter.document().identity.id === entry.expected.id && volumeDocumentEditable(activeVolumeKernelAdapter.document())) restored.volumes.set(entry.expected.id, activeVolumeKernelAdapter);
       }
       const ids = new Set(entries.map((entry) => entry.expected.id));
@@ -77921,7 +77937,8 @@ case "mobius":
     geometryAdapter.commitDisplay(restoredGeometry ? geometryDisplayFromEditor(geometryAdapter.document(), geometryKernelSceneSnapshot) : geometryKernelSceneSnapshot.display);
     const geometryReplay = geometryAdapter.exportReplay();
     add("geometry", geometryAdapter.document(), geometryReplay.checkpoint.document, MIXED_REPLAY_FORMATS.geometry, geometryReplay as unknown as CanonicalJsonValue);
-    add("mesh", meshKernelDocument);
+    const meshAdapter = meshDocumentAdapterRef.current;
+    if (meshAdapter) { const replay = meshAdapter.replayBundle(); add("mesh", meshAdapter.document(), replay.checkpoint.document, MIXED_REPLAY_FORMATS.mesh, replay as unknown as CanonicalJsonValue); }
     const surfaceAdapter = (restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom" ? restoredSurfaceAdapter : surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId));
     if (surfaceAdapter) { const replay = surfaceAdapter.replayBundle(); add("surface", surfaceAdapter.document(), replay.checkpoint, MIXED_REPLAY_FORMATS.surface, replay as unknown as CanonicalJsonValue); }
     const curveReplay = activeCurveKernelAdapter.replayBundle();
@@ -79072,6 +79089,15 @@ case "mobius":
     const restored = restoredProjectRef.current;
     const curve = restored?.curves.get(id), surface = restored?.surfaces.get(id), geometry = restored?.geometries.get(id);
     const topology = restored?.topologies.get(id), complex = restored?.complexes.get(id);
+    const mesh = restored?.meshes.get(id);
+    if (mesh) {
+      meshDocumentAdapterRef.current = mesh; setMeshKernelDocument(mesh.document());
+      clearSurfaceMeshTopologySessionState();
+      nativeMeshSelectionKeysRef.current = ""; setMeshMultiSelectionSet(createUnifiedSelectionSet([]));
+      setMeshDataset(mesh.mesh(), "project-restore");
+      setActiveGraph2DTargetId(null); setMode("surfaces"); setDatasetKind("mesh"); setSurfaceViewerKind("mesh");
+      setSurfacesPanelState("work"); setSurfacesLeftTab("object"); return true;
+    }
     const volume = restored?.volumes.get(id);
     if (volume) {
       const seed = volumeEditorSeed(volume.document());
@@ -79134,13 +79160,31 @@ case "mobius":
     }
     return false;
   };
-  const reopenProjectWorkspace = (workspace: MixedWorkspaceDocument) => {
+  const reopenProjectWorkspace = (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => {
     const resolved = verifyMixedWorkspaceReplay(workspace);
     const curves = new Map<string, CurveDocumentAdapter>(), surfaces = new Map<string, SurfaceDocumentAdapter>(), geometries = new Map<string, GeometryDocumentAdapter>();
     const topologies = new Map<string, TopologyDiagramCommandAdapter>(), complexes = new Map<string, ComplexAnalysisCommandAdapter>(), volumes = new Map<string, VolumeDocumentAdapter>();
+    const meshes = new Map<string, MeshDocumentAdapter>();
     const promoted = new Set(workspace.relations.filter((relation) => relation.operation.startsWith("graph2d.") && relation.target.type === "document").map((relation) => relation.target.type === "document" ? relation.target.generation.documentId : ""));
     for (const entry of workspace.entries) {
       const document = resolved.get(entry.expected.id)!;
+      if (document.format === "math3d.mesh-document" && meshDocumentEditable(document)) {
+        const references = new Map<string, import("@math3d/core").MeshResourceReference>([[document.source.resource.id, document.source.resource]]);
+        const replay = entry.replay?.payload as unknown as MeshReplayBundle | undefined;
+        if (replay) {
+          references.set(replay.checkpoint.document.source.resource.id, replay.checkpoint.document.source.resource);
+          for (const transaction of replay.transactions) for (const command of [...transaction.commands, ...transaction.inverseCommands]) if (command.command.type === "mesh.resource.commit") {
+            const reference = (command.command.payload as unknown as { source: { resource: import("@math3d/core").MeshResourceReference } }).source.resource;
+            references.set(reference.id, reference);
+          }
+        }
+        const buffers = [...references.values()].map((reference) => {
+          const bytes = resources?.bytes({ kind: "mesh-buffers", id: reference.id }) ?? restoredProjectRef.current?.meshes.get(document.identity.id)?.resources.bytes(reference) ?? meshDocumentAdapterRef.current?.resources.bytes(reference);
+          if (!bytes) throw new TypeError(`Missing Mesh source resource '${reference.id}'.`);
+          return { reference, bytes };
+        });
+        meshes.set(document.identity.id, replay ? MeshDocumentAdapter.restoreReplay({ ...replay, resources: buffers }) : MeshDocumentAdapter.restore({ document, resourceBytes: buffers[0]!.bytes }));
+      }
       if (document.format === "math3d.volume-document" && volumeDocumentEditable(document)) volumes.set(document.identity.id, entry.replay ? VolumeDocumentAdapter.fromReplayBundle(entry.replay.payload as Parameters<typeof VolumeDocumentAdapter.fromReplayBundle>[0]) : new VolumeDocumentAdapter(document));
       if (document.format === "math3d.topology-document" && scientificDocumentEditable(document)) { topologyEditorSeed(document); topologies.set(document.identity.id, entry.replay ? TopologyDiagramCommandAdapter.restore(entry.replay.payload as Parameters<typeof TopologyDiagramCommandAdapter.restore>[0]) : TopologyDiagramCommandAdapter.fromDocument(document)); }
       if (document.format === "math3d.complex-analysis-document" && scientificDocumentEditable(document)) complexes.set(document.identity.id, entry.replay ? ComplexAnalysisCommandAdapter.restore(entry.replay.payload as Parameters<typeof ComplexAnalysisCommandAdapter.restore>[0]) : new ComplexAnalysisCommandAdapter(document));
@@ -79151,7 +79195,7 @@ case "mobius":
     }
     const checkpoint = createMixedWorkspaceDocument({ ...workspace, entries: workspace.entries.map((entry) => ({ ...entry, checkpoint: resolved.get(entry.expected.id)!, replay: null })) });
     reopenGraphWorkspace(checkpoint); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null);
-    restoredProjectRef.current = { workspace, curves, surfaces, geometries, topologies, complexes, volumes };
+    restoredProjectRef.current = { workspace, curves, surfaces, geometries, topologies, complexes, volumes, meshes };
   };
 
   return (
@@ -79159,7 +79203,7 @@ case "mobius":
       <KernelWorkspacePanel
         projectsOpen={projectsOpen}
         onProjectsOpenChange={setProjectsOpen}
-        canNavigateDocument={(id, module) => restoredProjectRef.current?.curves.has(id) || restoredProjectRef.current?.surfaces.has(id) || restoredProjectRef.current?.geometries.has(id) || restoredProjectRef.current?.topologies.has(id) || restoredProjectRef.current?.complexes.has(id) || restoredProjectRef.current?.volumes.has(id) || graph2dPromotions.some((item) => item.document.identity.id === id) || ({
+        canNavigateDocument={(id, module) => restoredProjectRef.current?.curves.has(id) || restoredProjectRef.current?.surfaces.has(id) || restoredProjectRef.current?.geometries.has(id) || restoredProjectRef.current?.topologies.has(id) || restoredProjectRef.current?.complexes.has(id) || restoredProjectRef.current?.volumes.has(id) || restoredProjectRef.current?.meshes.has(id) || graph2dPromotions.some((item) => item.document.identity.id === id) || ({
           geometry: geometryKernelAdapterRef.current?.document().identity.id,
           mesh: meshKernelDocument?.identity.id,
           surface: (restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom" ? restoredSurfaceAdapter : surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId))?.document().identity.id,
@@ -79188,6 +79232,18 @@ case "mobius":
         }}
         onReopen={reopenGraphWorkspace}
         onRestoreProject={reopenProjectWorkspace}
+        resourceReader={(item: ProjectResourceRequirement) => {
+          if (item.kind === "mesh-buffers") {
+            const reference = item.reference as import("@math3d/core").MeshResourceReference;
+            for (const adapter of [meshDocumentAdapterRef.current, ...restoredProjectRef.current?.meshes.values() ?? []]) { const bytes = adapter?.resources.bytes(reference); if (bytes) return bytes; }
+            for (const record of surfaceMeshKernelHandoff.records()) if (record.meshDocument?.source.resource.id === item.id) return surfaceMeshKernelHandoff.resolvePromoted(record.meshId);
+          }
+          if (item.kind === "volume-payload") {
+            const data = volumeStorageStoreRef.current.get(item.id);
+            if (data) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength).slice();
+          }
+          return null;
+        }}
         graphDocumentId={graph2dDocument.identity.id}
         capture={captureMixedKernelWorkspace}
         activeModule={activeKernelModule}
@@ -81432,6 +81488,7 @@ case "mobius":
         <span>Projects → Save project keeps these edits.</span>
       </div>}
       {restoredTopologyAdapter && mode === "topology" && <div data-testid="project-topology-editor" style={{ padding: "6px 14px" }}>Saved Topology · {restoredTopologyAdapter.current().name} · {restoredTopologyAdapter.document().identity.id} · Projects → Save project keeps these edits.</div>}
+      {activeKernelModule === "mesh" && meshDocumentAdapterRef.current && restoredProjectRef.current?.meshes.has(meshDocumentAdapterRef.current.document().identity.id) && <MeshProjectEditor key={meshDocumentAdapterRef.current.document().identity.id} adapter={meshDocumentAdapterRef.current} onRestore={() => navigateRestoredDocument(meshDocumentAdapterRef.current!.document().identity.id, "mesh")} />}
       {nativeVolumeActive && activeKernelModule === "volume" && <VolumeProjectEditor key={restoredVolumeAdapter!.document().identity.id} adapter={restoredVolumeAdapter!} onRestore={() => navigateRestoredDocument(restoredVolumeAdapter!.document().identity.id, "volume")} />}
       {restoredComplexAdapter && activeKernelModule === "complex" && <ScientificProjectEditor adapter={restoredComplexAdapter} spec={complexMapSpec} onChange={updateComplexMapSpec} onRestore={() => navigateRestoredDocument(restoredComplexAdapter.document().identity.id, "complex")} />}
       {restoredProjectRef.current && (mode === "curves" && activeCurveKernelAdapter === restoredCurveAdapter || mode === "surfaces" && surfaceViewerKind === "param" && paramSurfaceId === "custom" && restoredSurfaceAdapter) && <div data-testid="project-editor-history" style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "6px 14px" }}>

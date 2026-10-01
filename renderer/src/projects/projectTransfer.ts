@@ -1,3 +1,6 @@
+import { captureProjectResources, projectResourceInventory, verifyProjectResourceBytes, parseProjectPackage, MAX_PROJECT_PACKAGE_BYTES, type VerifiedProjectResources } from "./projectResources";
+import { meshReplayEditable } from "./nativeMeshRestore";
+import type { MeshReplayBundle } from "../mesh/meshReplay";
 import { geometryDocumentEditable, projectConstructionsEditable } from "./nativeGeometryRestore";
 import { nativeDocumentEditable } from "./nativeProjectRestore";
 import { scientificDocumentEditable } from "./nativeScientificRestore";
@@ -10,6 +13,7 @@ import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 
 export const MAX_PROJECT_IMPORT_BYTES = MAX_MATH3D_PROJECT_BYTES + 64 * 1024;
 export type ProjectCompatibilityOptions = {
+  resources?: VerifiedProjectResources;
   artifactAvailable?: (id: string, hash: string | null) => boolean;
   tableAvailable?: (reference: Graph2DPointTableReference) => boolean;
 };
@@ -45,6 +49,12 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
       add({ id, kind: "mesh-buffers", checksum: mesh?.format === "math3d.mesh-document" ? mesh.source.resource.checksum : null, byteLength: null, requiredForSource: true });
     }
   }
+  for (const item of projectResourceInventory(canonical)) {
+    const bytes = options.resources?.bytes(item);
+    if (bytes) verifyProjectResourceBytes(item, bytes);
+    const available = !!bytes || (item.kind === "graph-point-table" && (options.tableAvailable?.(item.reference as Graph2DPointTableReference) ?? false));
+    add({ id: item.id, kind: item.kind, checksum: item.checksum, byteLength: bytes?.length ?? (item.kind === "volume-payload" ? (item.reference as { byteLength: number }).byteLength : null), requiredForSource: item.required }, available);
+  }
   if (graphEntries.length > 1) reasons.push("Editable opening supports at most one Graph document.");
   if (!canonical.workspace.entries.length) reasons.push("The project has no documents to open.");
   const documents = canonical.workspace.entries.map((entry) => {
@@ -59,6 +69,7 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
     }
     const document = resolved.get(entry.expected.id)!;
     if ((document.format === "math3d.curve-document" || document.format === "math3d.surface-document") && nativeDocumentEditable(document)) editable = true;
+    if (document.format === "math3d.mesh-document" && meshReplayEditable(document, entry.replay?.payload as unknown as MeshReplayBundle | undefined)) editable = true;
     if (document.format === "math3d.geometry-document" && geometryDocumentEditable(document)) editable = true;
     if (document.format === "math3d.volume-document" && volumeDocumentEditable(document)) editable = true;
     if ((document.format === "math3d.topology-document" || document.format === "math3d.complex-analysis-document") && scientificDocumentEditable(document)) editable = true;
@@ -76,16 +87,24 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
 export type ProjectCompatibility = ReturnType<typeof inspectProjectCompatibility>;
 
 export const previewProjectImport = (raw: string, options: ProjectCompatibilityOptions = {}) => {
-  if (new TextEncoder().encode(raw).length > MAX_PROJECT_IMPORT_BYTES) throw new TypeError("Project import exceeds its size limit.");
+  if (new TextEncoder().encode(raw).length > MAX_PROJECT_PACKAGE_BYTES) throw new TypeError("Project import exceeds its size limit.");
   const value = JSON.parse(raw);
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new TypeError("Unsupported project file.");
+  if (value.format === "math3d.project-package") {
+    const { project, resources } = parseProjectPackage(raw);
+    return { ...inspectProjectCompatibility(project, { ...options, resources }), resources, inputKind: "Project with verified source resources" };
+  }
+  if (new TextEncoder().encode(raw).length > MAX_PROJECT_IMPORT_BYTES) throw new TypeError("Project import exceeds its size limit.");
   let project: Math3DProject, inputKind: string;
   if (value.format === "math3d.project") { project = parseMath3DProject(raw); inputKind = "Named project"; }
   else if (value.format === "math3d.mixed-workspace") { project = adoptMixedWorkspaceProject(parseMixedWorkspaceDocument(raw), "Imported workspace"); inputKind = "Legacy mixed workspace (explicit adoption)"; }
   else if (value.format === "math3d.project-handoff" && value.version === 2) {
     const handoff = parseWorkspaceProjectHandoff(raw); project = adoptMixedWorkspaceProject(handoff.project, "Imported Graph workspace"); inputKind = "Graph workspace handoff (explicit adoption)";
   } else throw new TypeError("Unsupported project format or future version.");
-  return { ...inspectProjectCompatibility(project, options), inputKind };
+  // Host caches may belong to another project. Rebuild only this project's
+  // descriptors/owners; unrelated source bytes never enter its staged archive.
+  const resources = options.resources ? captureProjectResources(project, (item) => options.resources!.bytes(item), true) : undefined;
+  return { ...inspectProjectCompatibility(project, { ...options, resources }), resources, inputKind };
 };
 export const exportProjectFile = (project: Math3DProject): string => {
   const bytes = serializeMath3DProject(project); verifyMixedWorkspaceReplay(project.workspace); return bytes;

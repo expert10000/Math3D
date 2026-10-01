@@ -18,7 +18,25 @@ or native-device sign-off.
 - `node scripts/post160-roadmap-audit.mjs --run`: existing roadmap evidence and the
   project contract suites; device and installed-engine evidence remain separate.
 
-## Recorded evidence (2026-10-01)
+## Current software evidence (2026-10-02)
+
+PRJ15 implementation `e8adffe` is delivered through
+[PR #17](https://github.com/expert10000/Math3D/pull/17). PRJ16 is next; the supported
+representations and remaining device/engine gates are listed below.
+
+| Gate | Latest local result |
+| --- | --- |
+| Project contracts | 67 tests / 13 files passed |
+| Existing shared/mobile regressions | 123 tests / 24 files passed |
+| Continuation audit | 436 tests / 69 files; all 53 mapped evidence rows passed |
+| Electron | All 19 cases covered by the broad run and corrected PRJ06/07/15 rerun; details in the PRJ15 record |
+| Chromium | Six journeys passed across both locale/time-zone configurations |
+| TypeScript | Main, renderer, mobile, E2E and portable fixture passed |
+| Production builds | Main/renderer and web passed |
+| Dependency boundaries | Passed (985 modules / 2227 dependencies) |
+| Released Graph test pack | Passed |
+
+## PRJ12 baseline evidence (2026-10-01)
 
 | Gate | Result |
 | --- | --- |
@@ -44,9 +62,10 @@ The mobile test fixture is compiled with explicit checkout core/kernel aliases s
 shared dependency junctions cannot silently test another checkout. Its mobile model
 is also typechecked; it does not simulate native file pickers or a physical device.
 Existing native-storage tests use their filesystem test adapter for restart, quota
-and write-failure contracts. Project JSON transfers resource references, not external
-bytes or thumbnails; point-table availability and optional missing analysis artifacts
-are covered by contract tests.
+and write-failure contracts. At this baseline, project JSON transferred resource
+references; PRJ15's separate resource package now transfers verified source bytes.
+Thumbnails and optional analysis caches remain separate. Point-table availability
+and optional missing analysis artifacts are covered by contract tests.
 
 ## Remaining acceptance obligations
 
@@ -54,14 +73,13 @@ are covered by contract tests.
   (2D/3D without external dependencies), nonperiodic parametric Surfaces, procedural
   Geometry objects/live-derived constructions and the existing Graph promotions.
   The PRJ13 fundamental-diagram Topology/Function Explorer subsets and PRJ14
-  self-contained scalar Volume recipes also have native adapters. Mesh and other
-  representations remain verified previews until equivalent adapters exist.
+  self-contained scalar Volume recipes also have native adapters. PRJ15 adds qualified
+  resource-backed Mesh opening and history; other representations remain previews.
 - Mobile named editing requires one Graph, checkpointed Curve/Surface companions,
   no saved scripts or archived documents, and available source point tables. An edited
   Graph's historical companions may force desktop opening to remain preview-only;
   regeneration is explicit, not performed by import.
-- Native device/file-picker/share behavior, installed optional engines, external byte
-  transfer and signed builds require their own exact-build evidence. No such sign-off
+- Native device/file-picker/share behavior, installed optional engines and signed builds require their own exact-build evidence. No such sign-off
   was performed by these automated desktop/browser/model gates.
 - Release-baseline integration is complete: merge `b180ed7` includes the published
   1.6.0 tag and final maintainer main `a6a4f19`. This branch does not change release
@@ -121,7 +139,7 @@ source and corrected conflict test; subsequent evidence edits are documentation 
 Local logs and the disposable JSON report are in
 `output/projects-integration/` and `post160-test-results.json`. CI also compiles an
 embedded Android bundle; that step is software coverage, not a new APK signoff.
-Remaining PRJ15–PRJ18 deliveries and the supported PRJ13/PRJ14 subsets are explicit in the
+Remaining PRJ16–PRJ18 deliveries and the supported native subsets are explicit in the
 [roadmap](unified-projects-roadmap.md#remaining-delivery-and-integration-gates).
 
 ## PRJ13 native scientific restoration — October 1
@@ -205,3 +223,70 @@ visually inspected and the 390-pixel containment assertions passed.
 The released Graph test pack passed. Source and replay checks attest desktop
 software behavior; they do not attest transferred external bytes, installed
 scientific engines, a signed artifact or physical Samsung acceptance.
+
+
+PRJ14 merged through [PR #16](https://github.com/expert10000/Math3D/pull/16)
+at `486ff17`. Both its [pull-request workflow](https://github.com/expert10000/Math3D/actions/runs/36930225161)
+and [merged-main workflow](https://github.com/expert10000/Math3D/actions/runs/36930839068)
+passed, including the Android embedded bundle. This supersedes the earlier pending
+CI status and preserves the published release baseline.
+
+## PRJ15 verified resources and native Mesh — October 2
+
+Resource contracts transfer original/current Mesh buffers, normals, UVs, source
+provenance and committed selections to an independent resource store. They cover
+missing historical inputs, tampered bytes/lengths/encoding/shape/owners, duplicate
+or unowned descriptors, detached buffer snapshots, invalid inverse commands,
+pruned redo branches, continued command IDs and 100-edit checkpoint selections.
+Graph table contracts retain exact gaps, row counts and content hashes. Imported
+Volume contracts verify dimensions/components/scalar bytes while leaving unsupported
+native sampling preview-only. Existing Mesh analysis contracts establish that
+source edits stale earlier artifacts instead of making them current again.
+
+The Electron journey transfers two Mesh documents, checks unchanged generations,
+applies translation/scale, undoes/redoes, preserves normals/UVs and saved origin
+transforms, and retains historical analysis provenance as stale. It exports through
+the actual UI, opens an independent fresh profile, closes/relaunches Electron with
+that profile, reopens saved resources/history and continues editing. Corrupt bytes
+are rejected before either store changes. An injected library quota failure after
+partial JSON writes proves exact project-namespace and resource-archive rollback.
+Reference-only JSON on the fresh host cannot open its missing Mesh buffers.
+
+Chromium exercises Mesh resource/history reload and Graph point-table transfer in
+both configured locale/time-zone pairs. The Graph test proves its imported table
+bytes reside in the resource archive rather than relying on source-host Graph
+localStorage. After reload/open, exported table descriptors and bytes are exact.
+The saved Mesh bar is checked at 390 pixels.
+
+Local evidence is in `output/projects-integration/prj15-*.log`. The final Projects
+contracts passed 67 tests / 13 files, and existing shared/mobile regressions passed
+123 tests / 24 files. The mapped continuation audit passed 436 tests / 69 files,
+covering all 53 milestone evidence rows. Nine resource contracts passed separately.
+
+The broad Electron run passed 17 of 19 journeys. It exposed an older starter test
+that read storage before asynchronous import completed, and plain JSON import that
+staged unrelated active-project resource descriptors. The test now awaits completion;
+the product rebuilds incoming resource ownership, with a regression contract. The
+final rebuilt renderer passed all three affected journeys (PRJ06, PRJ07 and PRJ15),
+completing coverage of all 19 cases across the broad run and focused rerun. All six
+browser journeys passed on final source in both locale/time-zone configurations.
+The Mesh editor screenshot was visually inspected; 390-pixel containment passed.
+
+Main/renderer/E2E/mobile/portable-fixture TypeScript, main/renderer/web production
+builds, dependency boundaries (985 modules / 2227 dependencies) and the released
+Graph test pack passed. These checks do not qualify installed optional engines,
+native mobile Mesh editing, physical Samsung behavior or signed release artifacts.
+Those remain PRJ17 work.
+
+The first [PRJ15 pull-request run](https://github.com/expert10000/Math3D/actions/runs/36936484262)
+passed the audit, contracts, types and builds, then passed 18 of 19 Electron cases.
+PRJ08 exported before its asynchronous starter import completed and consequently
+sent the live workspace to the mobile model. Its shared desktop/browser helper now
+awaits the successful library import before exporting. The focused Electron
+round-trip, E2E TypeScript and all six browser journeys passed locally after this
+fix. The clean-checkout gate is being repeated before integration.
+
+Cloudflare Pages `math3d` and `math3d-app` reported failed builds on `e8adffe` and
+also on base main `486ff17`; `math3ds` passed. The check summaries expose dashboard
+links but no failure diagnostics. These deployment checks remain separate from the
+passing local web build and do not establish a cause for the existing failures.

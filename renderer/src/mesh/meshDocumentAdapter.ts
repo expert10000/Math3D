@@ -1,5 +1,5 @@
 import {
-  MESH_COMMAND_TYPES,
+  MESH_COMMAND_TYPES, projectCommandTransaction, structuralHash, immutableCanonicalJsonClone,
   createMeshDocument,
   createMeshCommandState,
   createCommandEnvelope,
@@ -17,6 +17,7 @@ import {
 } from "@math3d/core";
 import { createInMemoryDocumentKernel, type InMemoryDocumentKernel } from "@math3d/kernel";
 import type { SurfaceMeshData, SurfaceMeshSource } from "./surfaceMesh";
+import { restoreMeshReplayKernel, type MeshReplayBundle } from "./meshReplay";
 import { MeshResourceStore } from "./meshResourceStore";
 
 export type MeshDocumentPackage = Readonly<{
@@ -136,33 +137,42 @@ export class MeshDocumentAdapter {
     return { document, resourceBytes };
   }
 
+  replayBundle(): MeshReplayBundle {
+    this.#synchronizeReplay();
+    return immutableCanonicalJsonClone({ checkpoint: this.#checkpoint, transactions: this.#transactions, cursor: this.#cursor }) as MeshReplayBundle;
+  }
+
   exportReplay(): MeshReplayPackage {
-    const resources = [...this.#knownResources.values()].map((reference) => {
+    const bundle = this.replayBundle();
+    const references = new Map<string, MeshDocumentSource["resource"]>();
+    references.set(bundle.checkpoint.document.source.resource.id, bundle.checkpoint.document.source.resource);
+    for (const transaction of bundle.transactions) for (const command of [...transaction.commands, ...transaction.inverseCommands]) {
+      if (command.command.type === MESH_COMMAND_TYPES.commitResource) {
+        const reference = (command.command.payload as unknown as { source: MeshDocumentSource }).source.resource;
+        references.set(reference.id, reference);
+      }
+    }
+    const resources = [...references.values()].map((reference) => {
       const bytes = this.resources.bytes(reference);
       if (!bytes) throw new TypeError(`Mesh replay resource '${reference.id}' is unavailable.`);
       return { reference, bytes };
     });
-    return { checkpoint: this.#checkpoint, transactions: [...this.#transactions], cursor: this.#cursor, resources };
+    return { ...bundle, resources };
   }
 
   static restoreReplay(bundle: MeshReplayPackage): MeshDocumentAdapter {
-    if (!Number.isSafeInteger(bundle.cursor) || bundle.cursor < 0 || bundle.cursor > bundle.transactions.length) throw new TypeError("Mesh replay cursor is invalid.");
     const resources = new MeshResourceStore();
     for (const resource of bundle.resources) resources.import(resource.reference, resource.bytes);
+    const kernel = restoreMeshReplayKernel(bundle);
     const adapter = new MeshDocumentAdapter(bundle.checkpoint.document, resources);
-    adapter.#checkpoint = bundle.checkpoint;
-    for (const transaction of bundle.transactions) {
-      const result = adapter.#kernel.transact({ transactionId: transaction.transactionId, commands: transaction.commands, mode: "replay", history: { kind: "reversible", inverseCommands: transaction.inverseCommands } });
-      if (!result.ok || result.event.stateHash !== transaction.stateHash) throw new TypeError(`Mesh replay transaction '${transaction.transactionId}' failed.`);
-      adapter.#transactions.push(transaction);
-      adapter.#cursor += 1;
-    }
-    while (adapter.#cursor > bundle.cursor) {
-      if (!adapter.#kernel.undo().ok) throw new TypeError("Mesh replay cursor could not be restored.");
-      adapter.#cursor -= 1;
-    }
+    adapter.#kernel = kernel;
+    adapter.#checkpoint = createMeshCommandState(bundle.checkpoint.document, bundle.checkpoint.committedSelection);
+    adapter.#transactions = JSON.parse(JSON.stringify(bundle.transactions));
+    adapter.#cursor = bundle.cursor;
     adapter.#knownResources = new Map(bundle.resources.map(({ reference }) => [reference.id, reference]));
-    adapter.#sequence = bundle.transactions.length;
+    adapter.#sequence = Math.max(0, ...bundle.transactions.flatMap((transaction) => transaction.commands.map((command) => Number(command.commandId.match(/mesh\/edit\/(\d+)\//)?.[1] ?? 0))));
+    // Every historical source used by undo/redo must exist, not just the current mesh.
+    adapter.exportReplay();
     return adapter;
   }
 
@@ -191,5 +201,32 @@ export class MeshDocumentAdapter {
     this.#transactions.splice(this.#cursor);
     this.#transactions.push({ transactionId, commands: envelopes, inverseCommands, stateHash: result.event.stateHash });
     this.#cursor += 1;
+    while (this.#transactions.length > 100) {
+      const projected = projectCommandTransaction(this.#checkpoint, this.#transactions[0]!.commands, meshCommandDefinitions, "replay");
+      if (!projected.ok) throw new TypeError("Could not advance Mesh replay checkpoint.");
+      this.#checkpoint = projected.state; this.#transactions.shift(); this.#cursor -= 1;
+    }
+  }
+
+  #synchronizeReplay(): void {
+    const project = (initial: MeshCommandState, recordHashes: boolean) => {
+      let state = initial;
+      for (let index = 0; index < this.#transactions.length; index++) {
+        const entry = this.#transactions[index]!;
+        const result = projectCommandTransaction(state, entry.commands, meshCommandDefinitions, "replay");
+        if (!result.ok) throw new TypeError("Could not project Mesh history.");
+        state = result.state;
+        if (recordHashes) this.#transactions[index] = { ...entry, stateHash: structuralHash(state) };
+      }
+      for (let index = this.#transactions.length - 1; index >= this.#cursor; index--) {
+        const result = projectCommandTransaction(state, this.#transactions[index]!.inverseCommands, meshCommandDefinitions, "replay");
+        if (!result.ok) throw new TypeError("Could not project Mesh cursor.");
+        state = result.state;
+      }
+      return state;
+    };
+    const offset = this.document().identity.revision - project(this.#checkpoint, false).document.identity.revision;
+    if (offset) this.#checkpoint = createMeshCommandState(createMeshDocument({ ...this.#checkpoint.document, identity: { ...this.#checkpoint.document.identity, revision: this.#checkpoint.document.identity.revision + offset }, label: this.#checkpoint.document.metadata.label, importedFrom: this.#checkpoint.document.metadata.importedFrom, visible: this.#checkpoint.document.display.visible }), this.#checkpoint.committedSelection);
+    project(this.#checkpoint, true);
   }
 }

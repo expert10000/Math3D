@@ -8,6 +8,7 @@ export async function runNamedProjectRoundTrip(page: Page, exportJson: (checkpoi
   await page.getByTestId("projects-toggle").click();
   const panel = page.getByTestId("project-explorer-panel");
   await panel.getByTestId("project-template-preview").click(); await panel.getByTestId("project-import-save").click();
+  await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
   const outbound = await exportJson(true), original = core.parseMath3DProject(outbound);
   expect(original.workspace.entries.every((entry: any) => entry.replay === null)).toBe(true);
   expect(transferNamedProjectThroughMobile(outbound, false)).toBe(outbound);

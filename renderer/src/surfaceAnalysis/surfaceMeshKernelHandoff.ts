@@ -1,3 +1,4 @@
+import { encodeMeshBuffers } from "../mesh/meshResourceStore";
 import {
   canonicalJsonStringify, createCurrentDocumentRelation, createMeshDocument, evaluateDocumentRelationStatus,
   sha256Checksum, structuralHash, type AnalysisArtifactHandle, type DocumentRelation,
@@ -34,13 +35,7 @@ const packGeometry = (geometry: SurfaceMeshGeometry): Uint8Array => {
   for (let index = 0; index < indices.length; index += 1) {
     if (indices[index]! >= positions.length / 3 || Number(geometry.indices![index]) !== indices[index]) throw new TypeError("Surface tessellation contains an invalid vertex index.");
   }
-  const bytes = new Uint8Array(8 + positions.byteLength + indices.byteLength);
-  const view = new DataView(bytes.buffer);
-  view.setUint32(0, positions.length, true);
-  view.setUint32(4, indices.length, true);
-  bytes.set(new Uint8Array(positions.buffer), 8);
-  bytes.set(new Uint8Array(indices.buffer), 8 + positions.byteLength);
-  return bytes;
+  return encodeMeshBuffers({ positions, indices: indices.length ? indices : null, label: "Surface tessellation", source: { kind: "bakedFromParam" } });
 };
 
 const packCorrespondence = (payload: SurfaceDerivedMeshPayload): Uint8Array => {

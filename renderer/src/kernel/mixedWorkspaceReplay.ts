@@ -10,8 +10,10 @@ import { ComplexAnalysisCommandAdapter } from "../math/complexCommandAdapter";
 import { GeometryDocumentAdapter, type GeometryReplayBundle } from "../geometry/geometryDocumentAdapter";
 import type { TopologyReplayBundle, ComplexReplayBundle } from "@math3d/core";
 
+import { meshReplayState, type MeshReplayBundle } from "../mesh/meshReplay";
+
 export const MIXED_REPLAY_FORMATS = {
-  geometry: "math3d.geometry-replay.v1",
+  geometry: "math3d.geometry-replay.v1", mesh: "math3d.mesh-replay.v1",
   curve: "math3d.curve-replay.v1", surface: "math3d.surface-replay.v1", volume: "math3d.volume-replay.v1",
   topology: "math3d.topology-replay.v1", complex: "math3d.complex-replay.v1",
 } as const;
@@ -21,6 +23,7 @@ const requireFormat = (entry: MixedWorkspaceEntry, expected: string): void => {
 };
 
 export const mixedWorkspaceReplayAdapters: MixedWorkspaceReplayAdapters = {
+  mesh: (entry) => { requireFormat(entry, MIXED_REPLAY_FORMATS.mesh); return meshReplayState(entry.replay!.payload as unknown as MeshReplayBundle).document; },
   geometry: (entry) => { requireFormat(entry, MIXED_REPLAY_FORMATS.geometry); return GeometryDocumentAdapter.restore(entry.replay!.payload as GeometryReplayBundle).document(); },
   curve: (entry) => { requireFormat(entry, MIXED_REPLAY_FORMATS.curve); return CurveDocumentAdapter.fromReplayBundle(entry.replay!.payload as CurveReplayBundle).document(); },
   surface: (entry) => { requireFormat(entry, MIXED_REPLAY_FORMATS.surface); return SurfaceDocumentAdapter.fromReplayBundle(entry.replay!.payload as SurfaceReplayBundle).document(); },
