@@ -34,3 +34,8 @@ rejecting failed, skipped, or absent test evidence. Its JSON report is disposabl
 Install the normal project dependencies in a fresh checkout first. Re-run after
 rebasing onto the actual 1.6.0 release; update the audit findings separately from
 mathematical expected values. Change an oracle only with a mathematical explanation.
+
+The continuation also includes frozen `graph-gallery-upgrade-storage.json` and
+Topology/Graph upgrade suites. See [the upgrade report](../../../docs/post-1.6.0-upgrade-regressions.md)
+for the baseline storage provenance, bounded history policy, and physical-device
+limitations. These suites are included by the same repeatable audit command.

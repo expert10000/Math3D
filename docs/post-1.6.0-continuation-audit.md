@@ -146,5 +146,7 @@ The release branch must supply the exact tag; do not guess that a v1.6.0 tag exi
    existing result authority. Keep fixture-only preparation distinct from any
    later production change.
 
-No application version, signing configuration, release workflow, or production
-runtime behavior changes are included in this branch.
+The initial audit commit changed no application version, signing configuration,
+release workflow, or production behavior. The subsequently authorized
+[Topology fix and upgrade regressions](post-1.6.0-upgrade-regressions.md) continue
+items 3–4 on this branch and record their separate validation.
