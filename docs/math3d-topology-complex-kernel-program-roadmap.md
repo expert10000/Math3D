@@ -2714,3 +2714,9 @@ constructions supports edit/save/reopen. The latest gates pass 414 audit tests,
 and commit hashes are recorded in the delivery roadmap.
 Complete native cross-module restoration and device/engine sign-off retain
 separate acceptance gates in the [project acceptance matrix](unified-projects-acceptance.md).
+
+The final 1.6.0 maintainer baseline is integrated here by `b180ed7`, with the
+mapped 414-test audit and complete Projects software acceptance repeated.
+PRJ12 supplies the dedicated CI gate. The delivery roadmap now sequences
+PRJ13–PRJ18 for remaining native adapters, verified resource bytes and exact
+device/engine/signing acceptance; these obligations remain pending.

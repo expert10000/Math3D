@@ -1,9 +1,11 @@
 # Post-1.6.0 verified continuation backlog
 
-Audit date: October 1, 2026. Baseline: commit `354d06d` (the local 1.6.0
-candidate preparation), branch `codex/post-1.6.0-audit`. This is preparation
-for work after release; it does not assert that 1.6.0 has shipped. The release
-computer remains the authority for the actual release tag, commit, and artifacts.
+Audit date: October 1, 2026. The original audit used candidate `354d06d`.
+This branch now includes [published 1.6.0](mobile-1.6.0-release-candidate.md):
+tag source `8e30e85190599467e3839e1b1e4b5b9bc708916f` and final maintainer
+`main` commit `a6a4f197df343630c26f58ecfd4a685b5f3230ab`, integrated by
+merge `b180ed7fa47797104b4361dbf67aaa157373de15` in this checkout.
+The release's exact-build signoff does not transfer to the changed Projects runtime.
 
 ## Findings and evidence limits
 
@@ -103,7 +105,7 @@ until equivalence and removal criteria are met.
 
 | Priority | Work package / owner | Concrete deliverable | Acceptance before closure |
 | --- | --- | --- | --- |
-| P0 | Reconcile release baseline / release maintainer | Record the actual 1.6.0 tag, source commit, scope and artifact hashes; rebase this branch and rerun the mapped gate | Every evidence path still exists; all fixture oracles pass; release changes are reviewed for overlaps |
+| Completed | Reconcile release baseline / release maintainer | Recorded published tag/source/scope/artifact evidence; merged final release-maintainer main into this branch | All 53 mapped evidence rows exist; 414 tests / 66 files pass after integration; Surface restart and named-mobile-import changes merged without conflict |
 | P1 | Installed scientific backend parity / compute maintainer | Run Topology integer-homology and Complex exact/Sage fixtures against installed Sage; retain engine version and source provenance | Actual requests execute; results match independent oracles; stale, timeout and cancelled outputs cannot publish; unavailable engines are recorded as unverified |
 | P1 | Legacy route parity / feature maintainers | Inventory one retained save/open route at a time; add legacy -> reopen -> command -> undo/redo -> replay fixtures preserving IDs and mathematical fields | Old formats remain readable; structural source and result status match; only then propose removal of a redundant route |
 | P1 | Mobile persistence parity / mobile maintainer | Follow the existing physical matrix on the exact signed build, including upgrade with stored projects, standalone reopen, interruption, rotation and accessibility | Exact build/device evidence closes the supported-device requirements; desktop tests cannot substitute for device signoff |
@@ -129,13 +131,14 @@ Sampled contour answers stay numerical even when the analytic oracle is exact.
 
 ## Resume after release
 
-Keep this worktree separate from the OneDrive release checkout. Normal project
-dependencies are required in a fresh checkout; this workstation uses local
-node_modules junctions only as development conveniences, not committed artifacts.
-The release branch must supply the exact tag; do not guess that a v1.6.0 tag exists.
+The continuation is now checked out in `C:\Math3D`, with the published release
+baseline merged. Normal project dependencies are required in a fresh checkout;
+local dependency junctions used during original preparation are development
+conveniences, not committed artifacts.
 
-1. Confirm the release tag and source commit with the release computer.
-2. Fetch the authoritative remote; rebase this branch onto that confirmed commit.
+1. Use the confirmed release tag/source and scope linked above.
+2. Keep this branch synchronized with reviewed maintainer changes; the initial
+   integration is complete and preserves the original delivery history.
 3. Run `node scripts/post160-roadmap-audit.mjs --run` and
    `npm run check:kernel:boundaries`.
 4. Before runtime changes, run `npm run test:topology:v1:formal`,
@@ -165,4 +168,6 @@ and procedural Geometry/bounded construction restoration (`11b2cb3`). Current
 evidence is 414 audit tests, 16 Electron journeys and two Chromium interchange
 journeys, with TypeScript, production builds and dependency boundaries passing.
 Other source representations/modules and physical-device/installed-engine/signed
-build acceptance remain open; integration still requires the confirmed release commit.
+build acceptance remain open. Release-baseline integration is complete; the
+[Projects roadmap](unified-projects-roadmap.md) now sequences PRJ13–PRJ18 to
+close those obligations, with a dedicated repeatable software CI gate.

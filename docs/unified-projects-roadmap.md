@@ -15,9 +15,14 @@ remain saved previews until their native editor adapters pass round-trip accepta
 
 ## Current delivery status (2026-10-01)
 
-Implemented and pushed on `codex/post-1.6.0-audit` through `11b2cb3`. These are
-completed delivery slices; PRJ06/PRJ08 retain the broader acceptance obligations
-listed below and in [the acceptance matrix](unified-projects-acceptance.md).
+PRJ01–PRJ11 are implemented on `codex/post-1.6.0-audit`. On October 1 this
+checkout integrated published 1.6.0 source tag `8e30e85190599467e3839e1b1e4b5b9bc708916f`
+and final release-maintainer `main` commit `a6a4f197df343630c26f58ecfd4a685b5f3230ab`
+with merge `b180ed7fa47797104b4361dbf67aaa157373de15`. This preserves the
+original delivery commits and includes the release's Surface restart fix.
+The release remains immutable; Projects is a subsequent development phase.
+PRJ06/PRJ08 retain the obligations below and in
+[the acceptance matrix](unified-projects-acceptance.md).
 
 | Item | Delivered behavior | Commit / status |
 | --- | --- | --- |
@@ -33,6 +38,7 @@ listed below and in [the acceptance matrix](unified-projects-acceptance.md).
 | PRJ09 | Projects as the first main-navigation entry; explicit workspace/preview modes | `70ca027` — implemented |
 | PRJ10 | Independent Curve/Surface native editing, history, save and reopen | `2a93c1b` — implemented for supported representations |
 | PRJ11 | Procedural Geometry and bounded construction native editing, save and reopen | `11b2cb3` — implemented for supported representations |
+| PRJ12 | Reconcile released baseline and add a repeatable Projects CI gate | `b180ed7`, `a5c4c5c` — baseline integrated; acceptance results below |
 
 In the UI, use **Projects → Open saved project** to restore a compatible saved
 container, then select its document in the explorer or its module in main navigation.
@@ -75,8 +81,10 @@ current document containers visible without adding a second mutation/history rou
 Full host restoration is a PRJ06/PRJ08 obligation. PRJ03 adds host-local library
 metadata and previews; dependency editing and template execution remain later work.
 
-Work stays on `codex/post-1.6.0-audit`. Rebase on the confirmed release commit
-before integration; keep existing release scope and signed-build evidence separate.
+Work stays on `codex/post-1.6.0-audit`. The confirmed release and final `main`
+changes are now merged here. Keep existing 1.6.0 signed-build evidence separate
+from this changed mobile runtime; future signing/device evidence must identify
+the exact integration build.
 
 ## Implementation record
 
@@ -242,13 +250,34 @@ It has not run a native-mobile device or full cross-module restore acceptance ga
 
 ## Remaining delivery and integration gates
 
-- Add native restore/edit/history/save adapters for Mesh, Volume, Topology and
-  Complex, plus the unsupported Curve/Surface/Geometry representations. Each source
-  type needs unchanged-on-open and edit/save/replay/reopen evidence before activation.
-- Extend cross-module acceptance to those adapters and external resource bytes;
-  project JSON currently carries references, with sidecars transferred separately.
-- Run native mobile file-picker/share/device, installed optional-engine and signed
-  build checks against the exact integration build. Automated mobile-model tests do
-  not complete these gates.
-- Confirm the authoritative 1.6.0 release commit, rebase this continuation branch and
-  rerun the applicable audit, boundary and acceptance gates before integration.
+The first software slice is PRJ01–PRJ12; full PRJ06/PRJ08 closure requires the
+following measured deliveries. These are pending work, not silently supported
+imports. Each adapter must validate the entire saved representation before
+activation and leave source generation unchanged on open.
+
+| Order | Milestone | Deliverable | Required evidence |
+| --- | --- | --- | --- |
+| 1 | PRJ13: Topology and Complex native restoration | Reuse the existing command/replay adapters in their native screens; retain source, branch/contour choices, results and provenance | Open unchanged, edit, undo/redo, save, cold reopen and same-identity replay in real UI; stale analysis stays qualified |
+| 2 | PRJ14: Volume restoration | Restore supported analytic/custom-field recipes and spatial metadata through the existing Volume adapter; externally backed datasets require PRJ15 | Unchanged source/spatial identity on open; edit/history/save/reopen plus explicit missing/unsupported payload rejection |
+| 3 | PRJ15: Verified resource transfer and Mesh restoration | Transfer required Mesh/Volume/point-table bytes separately with bounds and verified references; restore Mesh through its resource store | Byte/checksum/shape validation before mutation, corrupt/missing sidecars, rollback, independent host transfer, native edit/history and restart |
+| 4 | PRJ16: Additional source representations | Add one explicit Curve/Surface/Geometry host adapter at a time; keep incompatible representations as previews | A representation inventory with source-preserving restore/edit/history/save/replay evidence for each enabled row |
+| 5 | PRJ17: Device and installed-engine acceptance | Native mobile file picker/share/upgrade/restart and required installed scientific backends, against exact build/engine versions | Device/build/signature hashes, independent numerical/exact oracles and failed/cancelled/stale publication checks; existing model coverage remains separate |
+| 6 | PRJ18: Full cross-module freeze | Combine the enabled adapters and verified external resources into independent desktop/web/mobile round trips | Published supported-host matrix, all relevant software gates and exact native-build signoff; reconcile remaining PRJ06/PRJ08 obligations explicitly |
+
+The full roadmap stays open until those gates pass. GGL18 and new mathematical
+features are separate decisions; they do not replace Projects restoration work.
+
+## Release-baseline integration evidence
+
+The merge includes all ten release-maintainer commits that were missing from the
+original Projects branch, without changing release versions or signing identities.
+The mapped continuation audit passed **414 tests / 66 files** after integration.
+The two 100-edit Topology stress cases use explicit 30-second limits: they passed
+alone, while their former five-second limits expired during the parallel audit.
+No assertion or replay bound was removed.
+
+`.github/workflows/unified-projects.yml` runs the audit, combined Projects
+acceptance, released Graph test pack and Android embedded-bundle compilation on
+this branch, relevant main pushes and pull requests. Software artifacts are retained
+for inspection; this workflow does not attest physical-device or installed-engine
+acceptance. See the [current acceptance record](unified-projects-acceptance.md).

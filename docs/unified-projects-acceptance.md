@@ -61,8 +61,10 @@ are covered by contract tests.
 - Native device/file-picker/share behavior, installed optional engines, external byte
   transfer and signed builds require their own exact-build evidence. No such sign-off
   was performed by these automated desktop/browser/model gates.
-- Rebase/integration must use the confirmed 1.6.0 release commit; this branch does not
-  change release versions or signing configuration.
+- Release-baseline integration is complete: merge `b180ed7` includes the published
+  1.6.0 tag and final maintainer main `a6a4f19`. This branch does not change release
+  versions or signing configuration. Its mobile runtime has changed, so the earlier
+  1.6.0 physical signoff remains historical release evidence.
 
 ## Editor continuation checks
 
@@ -73,3 +75,35 @@ journey opens procedural Geometry and an object-centroid construction, verifies
 opening did not change its source generation, edits a native parameter and checks
 save/reopen with preserved construction records. Projects is available in the main
 navigation; source editor controls show that Save project persists their changes.
+
+## Integration check-up in C:\Math3D — October 1
+
+The final release-maintainer baseline is merged into the original Projects branch.
+`npm run test:projects:acceptance` completed successfully in this checkout after
+that merge; no native device or installed optional engine is inferred from it.
+
+| Gate | Result on the integrated source |
+| --- | --- |
+| Mapped continuation audit | 414 tests / 66 files passed; all 53 evidence rows resolved |
+| Project contracts | 45 tests / 10 files passed |
+| Contract command's mobile/shared regression selection | 123 tests / 24 files passed |
+| Additional `test:graph2d:mobile:unit` command | 981 tests / 177 files passed (includes shared regression fixtures) |
+| TypeScript | Main, renderer, E2E, mobile and portable mobile fixture passed |
+| Production builds | Main/renderer and web passed; existing large-chunk warning remains |
+| Electron | All 16 journeys passed: 10 Projects, four Graph Gallery and two kernel |
+| Browser interchange | Both en-US/UTC and pl-PL/Auckland journeys passed |
+| Dependency boundaries | Passed: 973 modules / 2176 dependencies |
+| Released Graph test pack | Nine Graphs, seven kinds, two CSV sidecars, reference fit, invalid-import and integrity checks passed |
+
+Desktop and phone-width Projects library screenshots were visually inspected.
+Two Topology 100-edit replay tests initially exceeded the default five-second
+limit under concurrent audit load; the isolated suite passed. Explicit 30-second
+limits preserve every assertion and the repeated complete audit passed.
+
+The dedicated [Projects CI run](https://github.com/expert10000/Math3D/actions/runs/36888958804)
+uses `a5c4c5c`, the same integrated application source plus the workflow/test-limit
+changes. Local logs and the disposable JSON report are in
+`output/projects-integration/` and `post160-test-results.json`. CI also compiles an
+embedded Android bundle; that step is software coverage, not a new APK signoff.
+Remaining PRJ13–PRJ18 deliveries are explicit in the
+[roadmap](unified-projects-roadmap.md#remaining-delivery-and-integration-gates).

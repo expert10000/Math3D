@@ -1,7 +1,8 @@
 # Post-1.6.0 Topology fix and upgrade regressions
 
 Continuation of the [audit](post-1.6.0-continuation-audit.md), on
-`codex/post-1.6.0-audit`. Rebase onto the confirmed release commit before integration.
+`codex/post-1.6.0-audit`. The confirmed release tag and final maintainer changes
+are now integrated in merge `b180ed7`; see [the integration record](unified-projects-roadmap.md#release-baseline-integration-evidence).
 No release version, signing key, or release workflow is changed.
 
 ## Topology delivery slice
