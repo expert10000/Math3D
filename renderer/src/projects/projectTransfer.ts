@@ -1,5 +1,6 @@
 import { geometryDocumentEditable, projectConstructionsEditable } from "./nativeGeometryRestore";
 import { nativeDocumentEditable } from "./nativeProjectRestore";
+import { scientificDocumentEditable } from "./nativeScientificRestore";
 import { adoptMixedWorkspaceProject, createMixedWorkspaceDocument, matchesScientificSourceGeneration, viewerSourceFromDocument, MAX_MATH3D_PROJECT_BYTES, parseMath3DProject,
   parseMixedWorkspaceDocument, parseWorkspaceProjectHandoff, serializeMath3DProject, replaceMath3DProjectWorkspace, type Graph2DPointTableReference,
   mergeGraph2DHandoffCheckpoint,
@@ -14,7 +15,7 @@ export type ProjectCompatibilityOptions = {
 type Resource = { id: string; kind: string; checksum: string | null; byteLength: number | null; requiredForSource: boolean; available: boolean };
 const promotions = new Set(["graph2d.promote-curve", "graph2d.revolve-surface", "graph2d.extrude-surface"]);
 
-/** Every module is replay-verified. Editable host restore is advertised only for the existing complete Graph adapter. */
+/** Every module is replay-verified; native editing is qualified by its supported source adapter. */
 export const inspectProjectCompatibility = (project: Math3DProject, options: ProjectCompatibilityOptions = {}) => {
   const canonical = parseMath3DProject(serializeMath3DProject(project)), resolved = verifyMixedWorkspaceReplay(canonical.workspace);
   const graphEntries = canonical.workspace.entries.filter((entry) => entry.module === "graph2d"), graph = graphEntries.length === 1 ? resolved.get(graphEntries[0]!.expected.id) : null;
@@ -58,6 +59,7 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
     const document = resolved.get(entry.expected.id)!;
     if ((document.format === "math3d.curve-document" || document.format === "math3d.surface-document") && nativeDocumentEditable(document)) editable = true;
     if (document.format === "math3d.geometry-document" && geometryDocumentEditable(document)) editable = true;
+    if ((document.format === "math3d.topology-document" || document.format === "math3d.complex-analysis-document") && scientificDocumentEditable(document)) editable = true;
     if (canonical.metadata.documents?.[entry.expected.id]?.archived) editable = false;
     if (!editable) reasons.push(`${entry.module}: this document has verified preview support; its editor state cannot be fully restored by this host adapter.`);
     return { id: entry.expected.id, module: entry.module, revision: entry.expected.revision, replayVerified: true, editable };

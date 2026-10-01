@@ -143,6 +143,10 @@ export class TopologyDiagramCommandAdapter {
     return adapter;
   }
 
+  static fromDocument(document: TopologyDocument): TopologyDiagramCommandAdapter {
+    return this.restore(createTopologyReplayBundle(createTopologyCommandState(document), [], 0));
+  }
+
   /**
    * Imports the released v2 snapshot history into the command kernel once. No
    * legacy snapshot is used as an undo/redo fallback after this boundary.

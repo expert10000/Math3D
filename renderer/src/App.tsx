@@ -1,5 +1,9 @@
 import { geometryEditorSeed as restoredGeometryEditorSeed, geometryDocumentEditable, geometrySourceFromEditor, geometryDisplayFromEditor, retainConstructionSource } from "./projects/nativeGeometryRestore";
 import { curveEditorSeed, curveSourceFromEditor, surfaceEditorSeed, surfaceSourceFromEditor, nativeDocumentEditable } from "./projects/nativeProjectRestore";
+import { topologyEditorSeed, complexEditorSeed, complexSourceFromEditor, scientificDocumentEditable } from "./projects/nativeScientificRestore";
+import { TopologyDiagramCommandAdapter } from "./topology/topologyCommandAdapter";
+import { ComplexAnalysisCommandAdapter } from "./math/complexCommandAdapter";
+import { ScientificProjectEditor } from "./projects/ScientificProjectEditor";
 import { verifyMixedWorkspaceReplay } from "./kernel/mixedWorkspaceReplay";
 // src/App.tsx
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -12523,7 +12527,9 @@ const App: React.FC = () => {
   const [curvePresetCategoryFilter, setCurvePresetCategoryFilter] = useState<CurvePresetCategory | "all">("all");
   const [restoredCurveAdapter, setRestoredCurveAdapter] = useState<CurveDocumentAdapter | null>(null);
   const [restoredSurfaceAdapter, setRestoredSurfaceAdapter] = useState<SurfaceDocumentAdapter | null>(null);
-  const restoredProjectRef = useRef<{ workspace: MixedWorkspaceDocument; curves: Map<string, CurveDocumentAdapter>; surfaces: Map<string, SurfaceDocumentAdapter>; geometries: Map<string, GeometryDocumentAdapter> } | null>(null);
+  const [restoredTopologyAdapter, setRestoredTopologyAdapter] = useState<TopologyDiagramCommandAdapter | null>(null);
+  const [restoredComplexAdapter, setRestoredComplexAdapter] = useState<ComplexAnalysisCommandAdapter | null>(null);
+  const restoredProjectRef = useRef<{ workspace: MixedWorkspaceDocument; curves: Map<string, CurveDocumentAdapter>; surfaces: Map<string, SurfaceDocumentAdapter>; geometries: Map<string, GeometryDocumentAdapter>; topologies: Map<string, TopologyDiagramCommandAdapter>; complexes: Map<string, ComplexAnalysisCommandAdapter> } | null>(null);
   const [curvePresetId, setCurvePresetId] = useState<string>("circle2d");
   const [curveCustomXExpr, setCurveCustomXExpr] = useState("cos(t)");
   const [curveCustomYExpr, setCurveCustomYExpr] = useState("sin(2*t)");
@@ -34810,7 +34816,7 @@ const App: React.FC = () => {
   }, [mode, mobiusSubTab, mobiusAnimationPlaying, mobiusAnimationSpeed]);
 
   useEffect(() => {
-    if (mode !== "mobius" || functionExplorerScene !== "other_complex") return;
+    if (mode !== "mobius" || functionExplorerScene !== "other_complex" || restoredComplexAdapter) return;
     setComplexMapSpec((prev) => {
       const nextInputMode: ComplexMapInputMode = "fz";
       const nextExpr = (prev.fExpr ?? "").trim() || "z";
@@ -34830,7 +34836,7 @@ const App: React.FC = () => {
         mapMode: "standard",
       };
     });
-  }, [mode, functionExplorerScene]);
+  }, [mode, functionExplorerScene, restoredComplexAdapter]);
 
   const handleMobiusSaveAsWorkbookDemo = useCallback(() => {
     if (IS_REPLAY_MODE) return;
@@ -38472,7 +38478,7 @@ const App: React.FC = () => {
   const [complexMapSphereStacked, setComplexMapSphereStacked] = useState(false);
   const [complexMapProbe, setComplexMapProbe] = useState<ComplexMapProbe | null>(null);
   const [complexMapProbePins, setComplexMapProbePins] = useState<ComplexMapProbePin[]>([]);
-  const [complexPreviewSession] = useState(() => new ComplexFunctionPreviewSession(COMPLEX_MAP_DEFAULT_SPEC));
+  const [complexPreviewSession, setComplexPreviewSession] = useState(() => new ComplexFunctionPreviewSession(COMPLEX_MAP_DEFAULT_SPEC));
   const [complexPreviewArtifactStatus, setComplexPreviewArtifactStatus] = useState<{
     revision: number;
     artifactCount: number;
@@ -77795,7 +77801,7 @@ case "mobius":
     if (after !== before) setGeometryKernelRevision(after);
   }, [geometryKernelSceneSnapshot]);
   const activeKernelModule: KernelWorkspaceModule | null = activeGraph2DTarget ?
-    (activeGraph2DTarget.document.format === "math3d.curve-document" ? "curve" : "surface") : mode === "graphs" ? "graph2d" : mode === "geometry" ? "geometry" : mode === "topology" ? "topology" :
+    (activeGraph2DTarget.document.format === "math3d.curve-document" ? "curve" : "surface") : mode === "graphs" ? "graph2d" : mode === "geometry" ? "geometry" : mode === "topology" ? "topology" : mode === "mobius" && functionExplorerScene === "other_complex" ? "complex" :
     mode === "curves" ? "curve" : mode === "surfaces" && datasetKind === "volume" ? "volume" :
       mode === "surfaces" && surfaceViewerKind === "complex" ? "complex" :
         mode === "surfaces" && surfaceViewerKind === "mesh" ? "mesh" : mode === "surfaces" ? "surface" : null;
@@ -77820,6 +77826,7 @@ case "mobius":
   const captureMixedKernelWorkspace = (includeRestored = true): MixedWorkspaceDocument => {
     const restored = restoredProjectRef.current;
     if (restored && includeRestored) {
+      if (restoredComplexAdapter === complexPreviewSession.commands) complexPreviewSession.synchronize(complexMapSpec);
       if (activeCurveKernelAdapter === restoredCurveAdapter) activeCurveKernelAdapter.commitSource(curveSourceFromEditor(activeCurveKernelAdapter.document().source, activeCurveFormulas, activeCurveDomain));
       if (restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom") restoredSurfaceAdapter.commitSource(surfaceSourceFromEditor(restoredSurfaceAdapter.document().source, { x: paramXExpr, y: paramYExpr, z: paramZExpr }, activeParamDomain));
       const activeGeometry = geometryKernelAdapterRef.current!;
@@ -77828,6 +77835,8 @@ case "mobius":
         activeGeometry.commitDisplay(geometryDisplayFromEditor(activeGeometry.document(), geometryKernelSceneSnapshot));
       }
       const entries = restored.workspace.entries.map((entry) => {
+        const scientific = restored.topologies.get(entry.expected.id) ?? restored.complexes.get(entry.expected.id);
+        if (scientific) { const document = scientific.document(), replay = scientific.exportReplay(); return { ...entry, checkpoint: replay.checkpoint.document, expected: document.identity, replay: { format: entry.module === "topology" ? MIXED_REPLAY_FORMATS.topology : MIXED_REPLAY_FORMATS.complex, payload: replay as unknown as CanonicalJsonValue } }; }
         const geometry = restored.geometries.get(entry.expected.id);
         if (geometry) { const document = geometry.document(), replay = geometry.exportReplay(); return { ...entry, checkpoint: replay.checkpoint.document, expected: document.identity, replay: { format: MIXED_REPLAY_FORMATS.geometry, payload: replay as unknown as CanonicalJsonValue } }; }
         const curve = restored.curves.get(entry.expected.id), surface = restored.surfaces.get(entry.expected.id);
@@ -77854,7 +77863,7 @@ case "mobius":
       }
       for (const entry of live.entries.filter((entry) => owned.has(entry.expected.id))) {
         // Restored adapters already supplied exact document replay above.
-        if (restored.curves.has(entry.expected.id) || restored.surfaces.has(entry.expected.id) || restored.geometries.has(entry.expected.id)) continue;
+        if (restored.curves.has(entry.expected.id) || restored.surfaces.has(entry.expected.id) || restored.geometries.has(entry.expected.id) || restored.topologies.has(entry.expected.id) || restored.complexes.has(entry.expected.id)) continue;
         const index = entries.findIndex((saved) => saved.expected.id === entry.expected.id);
         if (index >= 0) entries[index] = entry; else entries.push(entry);
       }
@@ -79012,7 +79021,7 @@ case "mobius":
   });
 
   const reopenGraphWorkspace = (workspace: MixedWorkspaceDocument) => {
-          restoredProjectRef.current = null; setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null);
+          restoredProjectRef.current = null; setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null); setRestoredTopologyAdapter(null); setRestoredComplexAdapter(null);
           const graph = workspace.entries.find((entry) => entry.checkpoint.format === "math3d.graph2d-document")?.checkpoint;
           if (!graph || graph.format !== "math3d.graph2d-document") return;
           graph2dAdapterRef.current = new Graph2DCommandAdapter(graph); setGraph2dDocument(graph);
@@ -79033,6 +79042,26 @@ case "mobius":
   const navigateRestoredDocument = (id: string, module: KernelWorkspaceModule): boolean => {
     const restored = restoredProjectRef.current;
     const curve = restored?.curves.get(id), surface = restored?.surfaces.get(id), geometry = restored?.geometries.get(id);
+    const topology = restored?.topologies.get(id), complex = restored?.complexes.get(id);
+    if (topology) {
+      setRestoredTopologyAdapter(topology); setTopologyKernelDocument(topology.document()); setTopologyKernelReplay(topology.exportReplay());
+      setActiveGraph2DTargetId(null); setMode("topology"); return true;
+    }
+    if (complex) {
+      const document = complex.document(), seed = complexEditorSeed(document);
+      setRestoredComplexAdapter(complex); setComplexPreviewSession(new ComplexFunctionPreviewSession(seed, complex, complexSourceFromEditor));
+      setComplexMapPresetId(COMPLEX_MAP_CUSTOM_ID); setComplexMapSpec({ ...COMPLEX_MAP_DEFAULT_SPEC, ...seed });
+      setOtherComplexIncludeInfinityBranchPoint(document.branchPolicy.includeInfinity);
+      setOtherComplexBranchCutMode(({ principal: "principal", "negative-real-axis": "negative_real_axis", "positive-real-axis": "positive_real_axis", radial: "radial_from_point" } as const)[document.branchPolicy.cut.kind as "principal" | "negative-real-axis" | "positive-real-axis" | "radial"]);
+      setOtherComplexBranchCutRadialAngleDeg(seed.branchCutAngle * 180 / Math.PI);
+      const contour = document.contours[0];
+      if (contour) {
+        if (contour.kind === "circle" && contour.center && contour.radius !== null) { setOtherComplexPathMode("circle"); setOtherComplexPathCenter(contour.center); setOtherComplexPathRadius(contour.radius); }
+        else { setOtherComplexPathMode("polyline"); setOtherComplexPolylinePath(contour.points.map((point) => [point.re, point.im])); setOtherComplexPolylineClosed(contour.closed); }
+      }
+      setOtherComplexPathAnimationPlaying(false); setActiveGraph2DTargetId(null);
+      setFunctionExplorerScene("other_complex"); setMode("mobius"); return true;
+    }
     if (geometry) {
       const document = geometry.document(), seed = restoredGeometryEditorSeed(document);
       geometryKernelAdapterRef.current = geometry;
@@ -79065,9 +79094,12 @@ case "mobius":
   const reopenProjectWorkspace = (workspace: MixedWorkspaceDocument) => {
     const resolved = verifyMixedWorkspaceReplay(workspace);
     const curves = new Map<string, CurveDocumentAdapter>(), surfaces = new Map<string, SurfaceDocumentAdapter>(), geometries = new Map<string, GeometryDocumentAdapter>();
+    const topologies = new Map<string, TopologyDiagramCommandAdapter>(), complexes = new Map<string, ComplexAnalysisCommandAdapter>();
     const promoted = new Set(workspace.relations.filter((relation) => relation.operation.startsWith("graph2d.") && relation.target.type === "document").map((relation) => relation.target.type === "document" ? relation.target.generation.documentId : ""));
     for (const entry of workspace.entries) {
       const document = resolved.get(entry.expected.id)!;
+      if (document.format === "math3d.topology-document" && scientificDocumentEditable(document)) { topologyEditorSeed(document); topologies.set(document.identity.id, entry.replay ? TopologyDiagramCommandAdapter.restore(entry.replay.payload as Parameters<typeof TopologyDiagramCommandAdapter.restore>[0]) : TopologyDiagramCommandAdapter.fromDocument(document)); }
+      if (document.format === "math3d.complex-analysis-document" && scientificDocumentEditable(document)) complexes.set(document.identity.id, entry.replay ? ComplexAnalysisCommandAdapter.restore(entry.replay.payload as Parameters<typeof ComplexAnalysisCommandAdapter.restore>[0]) : new ComplexAnalysisCommandAdapter(document));
       if (document.format === "math3d.geometry-document" && geometryDocumentEditable(document)) geometries.set(document.identity.id, entry.replay ? GeometryDocumentAdapter.restore(entry.replay.payload as Parameters<typeof GeometryDocumentAdapter.restore>[0]) : new GeometryDocumentAdapter(document));
       if (promoted.has(document.identity.id)) continue;
       if (document.format === "math3d.curve-document" && nativeDocumentEditable(document)) curves.set(document.identity.id, entry.replay ? CurveDocumentAdapter.fromReplayBundle(entry.replay.payload as Parameters<typeof CurveDocumentAdapter.fromReplayBundle>[0]) : new CurveDocumentAdapter(document));
@@ -79075,7 +79107,7 @@ case "mobius":
     }
     const checkpoint = createMixedWorkspaceDocument({ ...workspace, entries: workspace.entries.map((entry) => ({ ...entry, checkpoint: resolved.get(entry.expected.id)!, replay: null })) });
     reopenGraphWorkspace(checkpoint); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null);
-    restoredProjectRef.current = { workspace, curves, surfaces, geometries };
+    restoredProjectRef.current = { workspace, curves, surfaces, geometries, topologies, complexes };
   };
 
   return (
@@ -79083,7 +79115,7 @@ case "mobius":
       <KernelWorkspacePanel
         projectsOpen={projectsOpen}
         onProjectsOpenChange={setProjectsOpen}
-        canNavigateDocument={(id, module) => restoredProjectRef.current?.curves.has(id) || restoredProjectRef.current?.surfaces.has(id) || restoredProjectRef.current?.geometries.has(id) || graph2dPromotions.some((item) => item.document.identity.id === id) || ({
+        canNavigateDocument={(id, module) => restoredProjectRef.current?.curves.has(id) || restoredProjectRef.current?.surfaces.has(id) || restoredProjectRef.current?.geometries.has(id) || restoredProjectRef.current?.topologies.has(id) || restoredProjectRef.current?.complexes.has(id) || graph2dPromotions.some((item) => item.document.identity.id === id) || ({
           geometry: geometryKernelAdapterRef.current?.document().identity.id,
           mesh: meshKernelDocument?.identity.id,
           surface: (restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom" ? restoredSurfaceAdapter : surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId))?.document().identity.id,
@@ -81355,6 +81387,8 @@ case "mobius":
         {geometrySelectedObject && Object.entries(geometrySelectedObject.params).filter(([, value]) => typeof value === "number").map(([key, value]) => <label key={key}>{key} <input data-testid={`project-geometry-param-${key}`} type="number" value={Number(value)} style={{ width: 75 }} onChange={(event) => { if (event.target.value && Number.isFinite(Number(event.target.value))) handleUpdateGeometryParam(geometrySelectedObject.id, key, Number(event.target.value)); }} /></label>)}
         <span>Projects → Save project keeps these edits.</span>
       </div>}
+      {restoredTopologyAdapter && mode === "topology" && <div data-testid="project-topology-editor" style={{ padding: "6px 14px" }}>Saved Topology · {restoredTopologyAdapter.current().name} · {restoredTopologyAdapter.document().identity.id} · Projects → Save project keeps these edits.</div>}
+      {restoredComplexAdapter && activeKernelModule === "complex" && <ScientificProjectEditor adapter={restoredComplexAdapter} spec={complexMapSpec} onChange={updateComplexMapSpec} onRestore={() => navigateRestoredDocument(restoredComplexAdapter.document().identity.id, "complex")} />}
       {restoredProjectRef.current && (mode === "curves" && activeCurveKernelAdapter === restoredCurveAdapter || mode === "surfaces" && surfaceViewerKind === "param" && paramSurfaceId === "custom" && restoredSurfaceAdapter) && <div data-testid="project-editor-history" style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "6px 14px" }}>
         <span>Saved document · {mode === "curves" ? restoredCurveAdapter?.document().metadata.title : restoredSurfaceAdapter?.document().metadata.title}</span>
         <button type="button" data-testid="project-editor-undo" onClick={() => { const adapter = mode === "curves" ? restoredCurveAdapter! : restoredSurfaceAdapter!; adapter.undo(); navigateRestoredDocument(adapter.document().identity.id, mode === "curves" ? "curve" : "surface"); }}>Undo document</button>
@@ -90587,6 +90621,8 @@ case "mobius":
               style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", ...viewerTouchContainmentStyle }}
             >
               <TopologyScreen
+                key={restoredTopologyAdapter?.document().identity.id ?? "native-topology"}
+                commandAdapter={restoredTopologyAdapter ?? undefined}
                 dockLayout={activeDockLayout}
                 onDockLayoutChange={updateActiveDockLayout}
                 onKernelDocumentChange={setTopologyKernelDocument}

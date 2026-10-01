@@ -62,7 +62,7 @@ class DisjointSet {
 const uniqueSorted = (values: string[]): string[] => [...new Set(values)].sort((a, b) => a.localeCompare(b));
 
 const cloneBoundary = (boundary: FundamentalDiagramBoundaryHalfEdge[]): FundamentalDiagramBoundaryHalfEdge[] =>
-  boundary.map((entry) => ({ edgeId: entry.edgeId, direction: entry.direction }));
+  boundary.map((entry) => ({ ...entry }));
 
 export const cloneFundamentalDiagram = (diagram: FundamentalDiagram): FundamentalDiagram => ({
   ...diagram,

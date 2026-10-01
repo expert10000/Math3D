@@ -10,12 +10,16 @@ This plan adapts the supplied project-explorer proposal to the audited code. The
 kernel already owns identities, replay and relations; Graph2D participates in mixed
 workspaces and mobile has a library. Desktop opening now restores the supported
 Graph/promotion workflows, independent literal Curve and nonperiodic parametric Surface sources,
-and procedural Geometry with bounded live-derived constructions. Other source types
+procedural Geometry with bounded live-derived constructions, fundamental-diagram
+Topology and supported Complex Function Explorer sources. Other source types
 remain saved previews until their native editor adapters pass round-trip acceptance.
 
 ## Current delivery status (2026-10-01)
 
-PRJ01–PRJ11 are implemented on `codex/post-1.6.0-audit`. On October 1 this
+PRJ01–PRJ12 are integrated into `main` at `766776a27c6601e50d513a2217e3a4bf513c8e0d`.
+The main Projects workflow passed in
+[CI 36892375601](https://github.com/expert10000/Math3D/actions/runs/36892375601).
+PRJ13 continues on `codex/projects-native-restoration`. On October 1 this
 checkout integrated published 1.6.0 source tag `8e30e85190599467e3839e1b1e4b5b9bc708916f`
 and final release-maintainer `main` commit `a6a4f197df343630c26f58ecfd4a685b5f3230ab`
 with merge `b180ed7fa47797104b4361dbf67aaa157373de15`. This preserves the
@@ -39,6 +43,7 @@ PRJ06/PRJ08 retain the obligations below and in
 | PRJ10 | Independent Curve/Surface native editing, history, save and reopen | `2a93c1b` — implemented for supported representations |
 | PRJ11 | Procedural Geometry and bounded construction native editing, save and reopen | `11b2cb3` — implemented for supported representations |
 | PRJ12 | Reconcile released baseline and add a repeatable Projects CI gate | `b180ed7`, `a5c4c5c`, `8510fcc` — integration software gate passed locally and in clean-checkout CI |
+| PRJ13 | Native Topology/Complex restoration with retained identity, source, branch/contours and replay history | Implemented for bounded fundamental diagrams and the supported Function Explorer subset; software acceptance below |
 
 In the UI, use **Projects → Open saved project** to restore a compatible saved
 container, then select its document in the explorer or its module in main navigation.
@@ -250,14 +255,15 @@ It has not run a native-mobile device or full cross-module restore acceptance ga
 
 ## Remaining delivery and integration gates
 
-The first software slice is PRJ01–PRJ12; full PRJ06/PRJ08 closure requires the
+The integrated software slice is PRJ01–PRJ12, extended by the supported PRJ13
+restoration adapters. Full PRJ06/PRJ08 closure requires the
 following measured deliveries. These are pending work, not silently supported
 imports. Each adapter must validate the entire saved representation before
 activation and leave source generation unchanged on open.
 
 | Order | Milestone | Deliverable | Required evidence |
 | --- | --- | --- | --- |
-| 1 | PRJ13: Topology and Complex native restoration | Reuse the existing command/replay adapters in their native screens; retain source, branch/contour choices, results and provenance | Open unchanged, edit, undo/redo, save, cold reopen and same-identity replay in real UI; stale analysis stays qualified |
+| 1 | PRJ13: Topology and Complex native restoration | Delivered for fundamental diagrams and supported Function Explorer sources; existing command adapters retain source, branch/contour choices, results and provenance | Seven source/replay contracts and a real UI journey with two documents of each module, unchanged opening, edit, undo/redo, save, process restart/reopen, branch/contour edits and invalid-contour rollback |
 | 2 | PRJ14: Volume restoration | Restore supported analytic/custom-field recipes and spatial metadata through the existing Volume adapter; externally backed datasets require PRJ15 | Unchanged source/spatial identity on open; edit/history/save/reopen plus explicit missing/unsupported payload rejection |
 | 3 | PRJ15: Verified resource transfer and Mesh restoration | Transfer required Mesh/Volume/point-table bytes separately with bounds and verified references; restore Mesh through its resource store | Byte/checksum/shape validation before mutation, corrupt/missing sidecars, rollback, independent host transfer, native edit/history and restart |
 | 4 | PRJ16: Additional source representations | Add one explicit Curve/Surface/Geometry host adapter at a time; keep incompatible representations as previews | A representation inventory with source-preserving restore/edit/history/save/replay evidence for each enabled row |
@@ -288,4 +294,34 @@ the embedded Android bundle. The initial CI run exposed a whole-storage comparis
 racing unrelated workbook autosave; the corrected test still verifies every
 named-project payload, library entry, sidecar and backup remains byte-identical
 after a rejected same-ID import. PRJ12 software integration is complete;
-PRJ13–PRJ18 remain the explicit next implementation/acceptance sequence.
+PRJ14–PRJ18 remain the explicit next implementation/acceptance sequence.
+
+## PRJ13 supported native restoration
+
+Topology restores the saved fundamental-diagram adapter before the native screen
+mounts. A checkpoint-only project retains its saved identity and provenance; a
+replay project also restores undo/redo. Switching documents or leaving the module
+keeps each adapter. Opening does not regenerate the saved source or replace its
+identity with a preset. Explicit preset changes edit the restored document.
+
+Complex opens in Function Explorer with the saved adapter. Initial preview does
+not change the AST variable list, contours, branch profile, sampling settings or
+source generation. Expression/domain/grid edits alter represented fields while
+retaining other source fields. The saved-document controls expose branch policy
+and all contours; the existing path viewer displays the first saved contour.
+Analysis actions use the explicitly selected native path. Historical analysis
+and provenance remain in the project and are qualified against current source;
+source edits do not make prior results current again.
+
+The enabled Complex subset uses a preview-compilable AST, no parameters,
+domain exclusions, covering or Mobius recipe, a uniform grid of at most 256 samples
+per axis, and principal/negative-axis/positive-axis/radial cuts. Other Complex
+recipes and non-diagram Topology sources stay preview-only. Their dedicated
+adapters belong in the PRJ16 representation inventory. External bytes and native
+device/installed-engine acceptance remain PRJ15/PRJ17 gates.
+
+Complex replay now retains live revisions after undo/redo and a pruned redo
+branch, continues command IDs after reopen, and bounds replay to the native
+100-edit history window. Irreversible selection/analysis intents checkpoint
+their actual state and cleared history. Entire source candidates are validated
+before any ordered field edit is committed.

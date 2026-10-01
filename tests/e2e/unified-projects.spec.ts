@@ -5,6 +5,85 @@ import { readFileSync } from "node:fs";
 import { runNamedProjectRoundTrip } from "./helpers/namedProjectRoundTrip";
 const projectCore = require(resolve("packages/core/src/index.ts"));
 
+test("PRJ13 restores distinct Topology and Complex documents unchanged, edits history and cold reopens", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    let page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    const preset = require(resolve("renderer/src/topology/presets.ts")).TOPOLOGY_PRESETS[0].buildDiagram();
+    const makeTopology = (name: string) => {
+      const slug = name.toLowerCase().replaceAll(" ", "-");
+      const source = { sourceId: `topology:${slug}/source`, kind: "fundamental-diagram", model: { ...preset, id: `diagram:${slug}`, name, researchNote: "preserved" } };
+      return projectCore.createTopologyDocument({ source, identity: projectCore.createDocumentIdentity(projectCore.createStableDocumentId("topology", name), source), canonicalComplex: null, results: [], displayRealizations: [], provenance: { origin: "native", sourceFormat: "fixture", sourceVersion: 1, diagnostics: [] } });
+    };
+    const makeComplex = (text: string) => projectCore.createComplexAnalysisDocument({
+      function: { sourceText: text, astVersion: 1, normalizedAst: projectCore.parseComplexExpressionAst(text, ["z"]).ast, allowedVariables: ["z"] }, parameters: [], assumptions: [],
+      domain: { re: { min: -2, max: 2 }, im: { min: -2, max: 2 }, exclusions: [] }, sampling: { strategy: "uniform-grid", columns: 32, rows: 24, maximumSamples: 4096, tolerance: 1e-6 },
+      contours: [{ contourId: "retained-circle", kind: "circle", points: [], center: { re: 0, im: 0 }, radius: 1, innerRadius: null, closed: true, winding: 1 }],
+      branchPolicy: { profile: "sqrt", cut: { kind: "negative-real-axis", angleRadians: Math.PI, points: [] }, includeInfinity: true, sheetCount: 2, activeSheet: 1 }, covering: null, mobius: null,
+    }, { stableKey: text });
+    const docs = [makeTopology("First topology"), makeTopology("Second topology"), makeComplex("sqrt(z)"), makeComplex("exp(z)")];
+    const project = projectCore.createMath3DProject(projectCore.createMixedWorkspaceDocument({ entries: docs.map((document) => ({ module: document.format === "math3d.topology-document" ? "topology" : "complex", checkpoint: document, expected: document.identity, replay: null })), activeDocumentIds: docs.map((document) => document.identity.id), constructions: [], results: [], relations: [], artifacts: [], committedSelection: null }), { title: "Native scientific project", stableKey: "prj13-ui" });
+    const save = async () => { await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved"); return page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)); };
+    const show = async () => { if (!await panel.isVisible()) await page.getByTestId("projects-toggle").click(); };
+    const open = async (index: number) => { await show(); await panel.getByTestId(`project-open-${docs[index].identity.id}`).click(); };
+    await show(); await panel.getByTestId("project-import-file").setInputFiles({ name: "scientific.math3d.project.json", mimeType: "application/json", buffer: Buffer.from(projectCore.serializeMath3DProject(project)) });
+    await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await expect(page.getByTestId("project-topology-editor")).toContainText("First topology");
+    let saved = await save(); expect(saved.workspace.entries.map((entry: any) => entry.expected)).toEqual(docs.map((document) => document.identity));
+    await open(1); await expect(page.getByTestId("project-topology-editor")).toContainText("Second topology");
+    await page.getByText("Raw JSON editor", { exact: true }).click();
+    const draft = JSON.parse(await page.getByTestId("topology-source-json").inputValue()); draft.name = "Edited second topology";
+    await page.getByTestId("topology-source-json").fill(JSON.stringify(draft)); await page.getByRole("button", { name: "Apply JSON", exact: true }).click();
+    await page.getByTestId("topology-source-undo").click(); expect(JSON.parse(await page.getByTestId("topology-source-json").inputValue()).name).toBe("Second topology");
+    await page.getByTestId("topology-source-redo").click(); expect(JSON.parse(await page.getByTestId("topology-source-json").inputValue()).name).toBe("Edited second topology");
+    await show(); saved = await save(); expect(saved.workspace.entries[0].expected).toEqual(docs[0].identity); expect(saved.workspace.entries[1].expected.id).toBe(docs[1].identity.id);
+    await open(2); await expect(page.getByTestId("project-complex-function")).toHaveValue("sqrt(z)");
+    await show(); saved = await save(); expect(saved.workspace.entries[2].expected).toEqual(docs[2].identity);
+    await page.getByRole("button", { name: "Close project explorer" }).click();
+    await page.getByTestId("project-complex-function").fill("z*z");
+    await expect(page.getByTestId("project-scientific-undo")).toBeEnabled(); await page.getByTestId("project-scientific-undo").click(); await expect(page.getByTestId("project-complex-function")).toHaveValue("sqrt(z)");
+    await page.getByTestId("project-scientific-redo").click(); await expect(page.getByTestId("project-complex-function")).toHaveValue("z*z");
+    await show(); saved = await save();
+    expect(saved.identity.id).toBe(project.identity.id); expect(saved.workspace.entries[2].expected.id).toBe(docs[2].identity.id);
+    await open(3); await expect(page.getByTestId("project-complex-function")).toHaveValue("exp(z)");
+    await open(2); await expect(page.getByTestId("project-complex-function")).toHaveValue("z*z");
+    await ctx.app.close(); ctx = await launchSurfaceApp({}, ctx.profileDir);
+    page = ctx.page; panel = page.getByTestId("project-explorer-panel");
+    await show(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click();
+    await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await open(1); await page.getByText("Raw JSON editor", { exact: true }).click();
+    expect(JSON.parse(await page.getByTestId("topology-source-json").inputValue()).name).toBe("Edited second topology");
+    await page.getByTestId("topology-source-undo").click(); expect(JSON.parse(await page.getByTestId("topology-source-json").inputValue()).name).toBe("Second topology");
+    await open(2); await expect(page.getByTestId("project-complex-function")).toHaveValue("z*z");
+    await page.getByTestId("project-scientific-undo").click(); await expect(page.getByTestId("project-complex-function")).toHaveValue("sqrt(z)");
+    await show(); saved = await save();
+    expect(saved.workspace.entries.map((entry: any) => entry.expected.id)).toEqual(docs.map((document) => document.identity.id));
+    expect(saved.workspace.entries[2].replay.payload.checkpoint.document.contours).toEqual(docs[2].contours);
+    expect(saved.workspace.entries[2].replay.payload.checkpoint.document.branchPolicy).toEqual(docs[2].branchPolicy);
+    expect(saved.workspace.entries[3].expected).toEqual(docs[3].identity);
+    await page.getByRole("button", { name: "Close project explorer" }).click();
+    await page.getByText("Branch and contours (1)", { exact: true }).click();
+    const changedBranch = { ...docs[2].branchPolicy, activeSheet: 0, cut: { kind: "positive-real-axis", angleRadians: 0, points: [] } };
+    await page.getByTestId("project-complex-branch").fill(JSON.stringify(changedBranch)); await page.getByTestId("project-complex-branch-apply").click();
+    await page.getByTestId("project-scientific-undo").click(); expect(JSON.parse(await page.getByTestId("project-complex-branch").inputValue())).toEqual(docs[2].branchPolicy);
+    await page.getByTestId("project-scientific-redo").click(); expect(JSON.parse(await page.getByTestId("project-complex-branch").inputValue())).toEqual(changedBranch);
+    await page.getByTestId("project-complex-contours").fill("[{\"broken\":true}]"); await page.getByTestId("project-complex-contours-apply").click(); await expect(page.getByRole("alert")).toBeVisible();
+    const changedContours = [{ ...docs[2].contours[0], radius: 2 }];
+    await page.getByTestId("project-complex-contours").fill(JSON.stringify(changedContours)); await page.getByTestId("project-complex-contours-apply").click();
+    await show(); saved = await save();
+    const replayed = projectCore.replayComplexCommandLog(saved.workspace.entries[2].replay.payload);
+    expect(replayed.ok).toBe(true); expect(replayed.value.document.branchPolicy).toEqual(changedBranch); expect(replayed.value.document.contours).toEqual(changedContours);
+    await page.reload(); await show(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click(); await panel.getByTestId("project-import-open").click();
+    await open(2); await page.getByText("Branch and contours (1)", { exact: true }).click();
+    expect(JSON.parse(await page.getByTestId("project-complex-branch").inputValue())).toEqual(changedBranch);
+    expect(JSON.parse(await page.getByTestId("project-complex-contours").inputValue())).toEqual(changedContours);
+    await page.getByTestId("project-scientific-undo").click(); expect(JSON.parse(await page.getByTestId("project-complex-contours").inputValue())).toEqual(docs[2].contours);
+    await page.getByTestId("project-scientific-redo").click();
+    await page.getByTestId("project-scientific-editor").screenshot({ path: test.info().outputPath("prj13-complex-editor.png") });
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("PRJ08 named project checkpoints survive Electron/mobile transfer, restart and managed history", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
   try {

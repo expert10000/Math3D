@@ -2,7 +2,7 @@ name: Unified Projects Software Acceptance
 
 on:
   push:
-    branches: [main, codex/post-1.6.0-audit]
+    branches: [main, codex/post-1.6.0-audit, codex/projects-native-restoration]
     paths:
       - "packages/**"
       - "renderer/**"

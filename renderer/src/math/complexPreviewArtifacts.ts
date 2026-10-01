@@ -203,15 +203,18 @@ const structuralSourceFromSpec = (spec: ComplexPreviewMapSpec): ComplexAnalysisS
 export class ComplexFunctionPreviewSession {
   readonly commands: ComplexAnalysisCommandAdapter;
   readonly artifacts: ComplexPreviewArtifactManager;
+  private readonly sourceFromEditor?: (document: ComplexAnalysisDocument, spec: ComplexPreviewMapSpec) => ComplexAnalysisStructuralSource;
 
-  constructor(spec: ComplexPreviewMapSpec) {
-    this.commands = new ComplexAnalysisCommandAdapter(createComplexAnalysisDocument(structuralSourceFromSpec(spec), { stableKey: "function-explorer-session" }));
+  constructor(spec: ComplexPreviewMapSpec, commands?: ComplexAnalysisCommandAdapter,
+    sourceFromEditor?: (document: ComplexAnalysisDocument, spec: ComplexPreviewMapSpec) => ComplexAnalysisStructuralSource) {
+    this.sourceFromEditor = sourceFromEditor;
+    this.commands = commands ?? new ComplexAnalysisCommandAdapter(createComplexAnalysisDocument(structuralSourceFromSpec(spec), { stableKey: "function-explorer-session" }));
     this.artifacts = new ComplexPreviewArtifactManager(() => this.commands.document());
   }
 
   synchronize(spec: ComplexPreviewMapSpec): { document: ComplexAnalysisDocument; error?: string } {
     try {
-      const source = structuralSourceFromSpec(spec);
+      const source = this.sourceFromEditor ? this.sourceFromEditor(this.commands.document(), spec) : structuralSourceFromSpec(spec);
       return { document: this.commands.commitCandidate(source) };
     } catch (error) {
       return { document: this.commands.document(), error: String((error as Error).message ?? error) };
