@@ -1,0 +1,76 @@
+name: Unified Projects Software Acceptance
+
+on:
+  push:
+    branches: [main, codex/post-1.6.0-audit]
+    paths:
+      - "packages/**"
+      - "renderer/**"
+      - "apps/mobile/**"
+      - "apps/web/**"
+      - "tests/**"
+      - "scripts/*projects*.mjs"
+      - "scripts/post160-roadmap-audit.mjs"
+      - "package*.json"
+      - "playwright*.ts"
+      - ".github/workflows/unified-projects.yml"
+  pull_request:
+    paths:
+      - "packages/**"
+      - "renderer/**"
+      - "apps/mobile/**"
+      - "apps/web/**"
+      - "tests/**"
+      - "scripts/*projects*.mjs"
+      - "scripts/post160-roadmap-audit.mjs"
+      - "package*.json"
+      - "playwright*.ts"
+      - ".github/workflows/unified-projects.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unified-projects-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  software-acceptance:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.19.0"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            renderer/package-lock.json
+      - name: Install dependencies
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix renderer ci
+      - name: Install Chromium
+        run: npx playwright install chromium
+      - name: Continuation mathematical and upgrade regressions
+        run: node scripts/post160-roadmap-audit.mjs --run
+      - name: Desktop, browser and mobile-model project acceptance
+        run: npm run test:projects:acceptance
+      - name: Released Graph test-pack regression
+        run: node scripts/graph2d-release-test-pack.mjs
+      - name: Compile embedded Android bundle
+        working-directory: apps/mobile
+        run: node ../../node_modules/expo/bin/cli export --platform android --output-dir ../../output/projects-native-bundle
+      - name: Upload software evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unified-projects-software-evidence
+          path: |
+            post160-test-results.json
+            test-results/
+            output/projects-native-bundle/metadata.json
+          retention-days: 14

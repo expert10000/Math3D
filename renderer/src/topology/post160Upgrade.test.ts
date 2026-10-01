@@ -30,7 +30,7 @@ describe("post-1.6.0 Topology upgrade and bounded replay", () => {
     restored.commit({ ...diagram, name: "new branch" });
     expect(restored.canRedo).toBe(false);
     expect(migrateTopologyDocument(JSON.parse(JSON.stringify(save(restored))))?.diagram.name).toBe("new branch");
-  });
+  }, 30_000); // Full 100-transaction replay also runs alongside the mapped audit suites.
 
   it("migrates v2 undo/redo near the limit without moving the current source", () => {
     const diagram = initial();
@@ -48,7 +48,7 @@ describe("post-1.6.0 Topology upgrade and bounded replay", () => {
     expect(restored.redo()).toEqual(states[90]);
     expect(restored.redo()).toEqual(states[91]);
     expect(restored.current().edges.map((edge) => edge.id)).toEqual(diagram.edges.map((edge) => edge.id));
-  });
+  }, 30_000);
 
   it("does not save an analysis from the source before an edit", () => {
     const adapter = new TopologyDiagramCommandAdapter(initial());
