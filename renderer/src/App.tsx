@@ -77252,13 +77252,15 @@ case "mobius":
     SURFACE_MESH_PRESETS.find((preset) => preset.id === "mesh_knot")?.id ??
     SURFACE_MESH_PRESETS[1]?.id ??
     meshNewPresetId;
+  const [projectsOpen, setProjectsOpen] = useState(false);
   const sectionNavEntries: Array<{
-    id: "surfaces" | "mesh" | "volume" | "curves" | "graphs" | "topology" | "geometry" | "complex_analysis";
+    id: "projects" | "surfaces" | "mesh" | "volume" | "curves" | "graphs" | "topology" | "geometry" | "complex_analysis";
     label: string;
     active: boolean;
     disabled?: boolean;
     onSelect: () => void;
   }> = [
+    { id: "projects", label: "Projects", active: projectsOpen, onSelect: () => setProjectsOpen((value) => !value) },
     {
       id: "surfaces",
       label: "Surfaces",
@@ -78960,6 +78962,8 @@ case "mobius":
   return (
     <div data-testid="app-shell" style={rootStyle}>
       <KernelWorkspacePanel
+        projectsOpen={projectsOpen}
+        onProjectsOpenChange={setProjectsOpen}
         canNavigateDocument={(id, module) => graph2dPromotions.some((item) => item.document.identity.id === id) || ({
           geometry: geometryKernelAdapterRef.current?.document().identity.id,
           mesh: meshKernelDocument?.identity.id,
@@ -79121,7 +79125,9 @@ case "mobius":
                         <button
                           key={`mode-${entry.id}`}
                           type="button"
-                          data-testid={`workspace-nav-${entry.id}`}
+                          data-testid={entry.id === "projects" ? "projects-toggle" : `workspace-nav-${entry.id}`}
+                          aria-expanded={entry.id === "projects" ? projectsOpen : undefined}
+                          aria-controls={entry.id === "projects" ? "project-explorer-panel" : undefined}
                           onClick={entry.onSelect}
                           disabled={disabled}
                           aria-pressed={active}

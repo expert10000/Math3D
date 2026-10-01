@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, parseMath3DProject,
   parseMixedWorkspaceDocument, updateMath3DProjectMetadata, replaceMath3DProjectWorkspace,
   deleteProjectDocument, duplicateProjectDocument, serializeMath3DProject, setProjectDocumentMetadata,
@@ -23,14 +23,16 @@ const ProjectThumbnail: React.FC<{ src: string | null }> = ({ src }) => {
     <span data-testid="project-thumbnail-fallback" style={{ width: 64, minHeight: 48, display: "grid", placeItems: "center", background: "#e2e8f0", borderRadius: 4, fontSize: 11, textAlign: "center" }}>No thumbnail</span>;
 };
 type Props = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   capture: () => MixedWorkspaceDocument;
   canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
   artifactAvailable?: (id: string, hash?: string | null) => boolean;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDocument, onNavigateDocument, artifactAvailable, onRestoreWorkspace }) => {
-  const [open, setOpen] = useState(false);
+export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, capture, canNavigateDocument, onNavigateDocument, artifactAvailable, onRestoreWorkspace }) => {
+
   const [project, setProject] = useState<Math3DProject | null>(null);
   const [title, setTitle] = useState("Untitled project");
   const [description, setDescription] = useState("");
@@ -81,7 +83,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
     try { display(liveProject(), false); setMessage("Current workspace documents."); }
     catch (error) { setMessage(`Project unavailable: ${(error as Error).message}`); }
   };
-  const toggle = () => { if (!open) refresh(); setOpen(!open); };
+  useEffect(() => { if (open) refresh(); }, [open]);
   const save = () => {
     try {
       let next = updateMath3DProjectMetadata(managed?.project() ?? liveProject(), { ...(managed?.project() ?? project)?.metadata,
@@ -211,17 +213,17 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
     } catch (error) { setMessage(`Project export failed: ${(error as Error).message}`); }
   };
   const navigate = (id: string, module: KernelWorkspaceModule) => {
-    if (!preview && canNavigateDocument?.(id, module)) { onNavigateDocument?.(id, module); setOpen(false); }
+    if (!preview && canNavigateDocument?.(id, module)) { onNavigateDocument?.(id, module); onOpenChange(false); }
   };
-  return <div style={{ position: "fixed", right: 14, bottom: 54, zIndex: 2501, fontSize: 13 }}>
-    <button type="button" data-testid="projects-toggle" aria-expanded={open} aria-controls="project-explorer-panel" onClick={toggle}
-      style={{ border: "1px solid #64748b", borderRadius: 8, background: "#f8fafc", color: "#0f172a", padding: "7px 10px", fontWeight: 700 }}>Projects</button>
+  return <div style={{ position: "fixed", right: 14, top: 90, zIndex: 2501, fontSize: 13 }}>
     {open && <aside id="project-explorer-panel" data-testid="project-explorer-panel" aria-label="Project explorer"
-      style={{ position: "absolute", right: 0, bottom: 42, width: 380, boxSizing: "border-box", maxWidth: "calc(100vw - 28px)", maxHeight: "min(70vh, 650px)", overflow: "auto", padding: 14,
+      style={{ position: "absolute", right: 0, top: 0, width: 420, boxSizing: "border-box", maxWidth: "calc(100vw - 28px)", maxHeight: "min(70vh, 650px)", overflow: "auto", padding: 14,
         background: "#fff", color: "#0f172a", border: "1px solid #94a3b8", borderRadius: 10, boxShadow: "0 10px 30px #0f172a30" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <strong>Project</strong><button type="button" aria-label="Close project explorer" onClick={() => setOpen(false)}>Close</button>
+        <strong>Projects</strong><button type="button" aria-label="Close project explorer" onClick={() => onOpenChange(false)}>Close</button>
       </div>
+      <p data-testid="project-view-mode" role="status" style={{ padding: 8, background: "#eff6ff", borderRadius: 6 }}>{managed ? "Managing saved project" : preview ? "Saved project preview" : "Current workspace"} · {project?.metadata.title ?? "Untitled project"}</p>
+      {preview && !managed && <p>Previewing a saved project. Current workspace returns to your active editors; Manage saved project edits this saved copy.</p>}
       <label style={{ display: "grid", gap: 4, margin: "10px 0" }}>Project name
         <input data-testid="project-title" value={title} maxLength={160} disabled={(preview && !managed) || !project} onChange={(event) => setTitle(event.target.value)} />
       </label>

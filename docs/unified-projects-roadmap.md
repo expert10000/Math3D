@@ -181,3 +181,13 @@ regression journeys (fourteen total), plus two Chromium project interchange jour
 Electron downloads use the native session download hook
 in the transfer test; the test also verifies the resulting file before import.
 It has not run a native-mobile device or full cross-module restore acceptance gate.
+
+## Editor restoration continuation
+
+- PRJ09: Projects is the first entry in the main module navigation. The explorer
+  identifies Current workspace, Saved project preview and Managing saved project
+  explicitly; opening the library does not replace the active editors.
+- PRJ10 (planned): restore independently authored Curve/Surface documents with
+  preserved identities, source editing and project save/restart coverage.
+- PRJ11 (planned): restore Geometry documents and constructions with the existing
+  Geometry editor and verify edit/save/restart behavior.
