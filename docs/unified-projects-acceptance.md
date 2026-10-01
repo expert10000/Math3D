@@ -1,7 +1,8 @@
 # Unified Projects automated acceptance
 
-This is evidence for the supported named-project slice on
-`codex/post-1.6.0-audit`, not signed-release or native-device sign-off.
+This is evidence for the supported named-project slice integrated into `main`
+and its continuation on `codex/projects-native-restoration`, not signed-release
+or native-device sign-off.
 
 ## Repeatable gates
 
@@ -119,5 +120,43 @@ source and corrected conflict test; subsequent evidence edits are documentation 
 Local logs and the disposable JSON report are in
 `output/projects-integration/` and `post160-test-results.json`. CI also compiles an
 embedded Android bundle; that step is software coverage, not a new APK signoff.
-Remaining PRJ13–PRJ18 deliveries are explicit in the
+Remaining PRJ14–PRJ18 deliveries and the supported PRJ13 subset are explicit in the
 [roadmap](unified-projects-roadmap.md#remaining-delivery-and-integration-gates).
+
+## PRJ13 native scientific restoration — October 1
+
+Main merge `766776a` passed [CI 36892375601](https://github.com/expert10000/Math3D/actions/runs/36892375601).
+The next branch connects supported Topology documents to the diagram editor and
+supported Complex documents to Function Explorer. Its seven additional contracts
+cover unchanged opening, retained opaque source fields/provenance, continued edit
+IDs, undo/redo replay revisions, bounded history, intent checkpointing, stale result
+qualification and incompatible/invalid-source rejection without partial edits.
+
+The PRJ13 Electron journey restores two distinct Topology and two distinct Complex
+documents, saves untouched generations, switches documents, edits with undo/redo,
+saves, restarts Electron with its existing isolated disk profile and explicitly
+reopens the project and history. It also
+edits branch policy and contours, rejects invalid contour data, and verifies saved
+source through the core replay verifier and another renderer reload/reopen. These
+checks do not attest OS upgrade or native mobile restart.
+
+Local evidence is under `output/projects-integration/prj13-*.log`. The continuation
+audit passed 421 tests / 67 files, the project contract selection passed 52 tests /
+11 files, its shared/mobile regression selection passed 123 tests / 24 files, and
+the complete Complex unit selection passed 122 tests / 16 files. The combined
+Projects acceptance command passed: all types/builds, 17 Electron journeys,
+two browser interchange journeys and dependency boundaries (976 modules /
+2193 dependencies). A final source/replay selection passed 30 tests / four files.
+After the final compact-control layout change, the PRJ13 journey passed again on
+the rebuilt renderer, including a real Electron process restart, branch/contour
+reopen, invalid-source rejection and phone-width containment. Desktop and
+390-pixel editor screenshots were visually inspected. The final E2E types passed.
+
+The released Graph test pack also passed, and a local Android/Hermes export produced
+the embedded bundle in `output/projects-prj13-native-bundle/`. This is compilation
+evidence, not an installed APK or a new physical-device signoff.
+
+[Clean-checkout CI 36897077724](https://github.com/expert10000/Math3D/actions/runs/36897077724)
+checks runtime/test source `e8c4737` on this continuation branch. It was still
+running when the completed local evidence was recorded; its current result must
+be inspected separately. Subsequent evidence edits do not change that runtime.

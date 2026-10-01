@@ -2,6 +2,7 @@ import {
   COMPLEX_COMMAND_TYPES,
   createCommandEnvelope,
   createComplexCommandState,
+  createComplexAnalysisDocument,
   type CanonicalJsonValue,
   type CommandOrigin,
   type ComplexAnalysisDocument,
@@ -16,6 +17,8 @@ import {
   replayComplexCommandLog,
   complexCommandDefinitions,
   parseComplexExpressionAst,
+  projectCommandTransaction,
+  structuralHash,
 } from "@math3d/core";
 import { createInMemoryDocumentKernel, type InMemoryDocumentKernel } from "@math3d/kernel";
 import { compileComplexExpressionAstPreview, type ComplexPreviewCompileResult } from "./complexExpr";
@@ -43,7 +46,10 @@ export class ComplexAnalysisCommandAdapter {
   document(): ComplexAnalysisDocument { return this.#kernel.query((state) => state.document) as ComplexAnalysisDocument; }
   state(): ComplexCommandState { return this.#kernel.query((state) => state) as ComplexCommandState; }
   history() { return this.#kernel.historyStatus(); }
-  exportReplay(): ComplexReplayBundle { return createComplexReplayBundle(this.#replayCheckpoint, this.#replayTransactions, this.#replayCursor); }
+  exportReplay(): ComplexReplayBundle {
+    this.#synchronizeReplayRevision();
+    return createComplexReplayBundle(this.#replayCheckpoint, this.#replayTransactions, this.#replayCursor);
+  }
 
   static restore(replay: ComplexReplayBundle): ComplexAnalysisCommandAdapter {
     const replayed = replayComplexCommandLog(replay);
@@ -59,7 +65,11 @@ export class ComplexAnalysisCommandAdapter {
       adapter.#replayTransactions.push(transaction);
       adapter.#replayCursor += 1;
     }
-    while (adapter.#replayCursor > replay.cursor) { adapter.#kernel.undo(); adapter.#replayCursor -= 1; }
+    while (adapter.#replayCursor > replay.cursor) {
+      if (!adapter.#kernel.undo().ok) throw new TypeError("Could not restore the Complex replay cursor.");
+      adapter.#replayCursor -= 1;
+    }
+    adapter.#sequence = Math.max(0, ...replay.transactions.map((transaction) => Number(transaction.transactionId.match(/\/(\d+)$/)?.[1] ?? 0)));
     return adapter;
   }
 
@@ -79,6 +89,7 @@ export class ComplexAnalysisCommandAdapter {
   commit(type: typeof fieldCommands[number][1], value: CanonicalJsonValue, origin: CommandOrigin = { kind: "interactive", sourceId: "complex-lab" }): ComplexAnalysisDocument {
     const current = this.document();
     const field = fieldCommands.find((entry) => entry[1] === type)![0];
+    if (JSON.stringify(current[field]) === JSON.stringify(value)) return current;
     const transactionId = this.#nextId("edit");
     const forward = this.#command(`${transactionId}/forward`, type, { value }, origin);
     const inverse = this.#command(`${transactionId}/inverse`, type, { value: clone(current[field]) as CanonicalJsonValue }, { kind: "system", sourceId: "complex-undo" });
@@ -87,11 +98,21 @@ export class ComplexAnalysisCommandAdapter {
     this.#replayTransactions.splice(this.#replayCursor);
     this.#replayTransactions.push({ transactionId, commands: [forward], inverseCommands: [inverse], stateHash: result.event.stateHash });
     this.#replayCursor += 1;
+    while (this.#replayTransactions.length > 100) {
+      const oldest = this.#replayTransactions[0]!;
+      const projected = projectCommandTransaction(this.#replayCheckpoint, oldest.commands, complexCommandDefinitions, "replay");
+      if (!projected.ok) throw new TypeError("Could not advance the Complex replay checkpoint.");
+      this.#replayCheckpoint = projected.state; this.#replayTransactions.shift(); this.#replayCursor -= 1;
+    }
     return this.document();
   }
 
   /** Compatibility bridge: commits semantic differences in the documented migration order. */
   commitCandidate(candidate: ComplexAnalysisStructuralSource, origin: CommandOrigin = { kind: "interactive", sourceId: "complex-react-parity-adapter" }): ComplexAnalysisDocument {
+    const current = this.document();
+    // Validate every source field before committing any of the ordered edits.
+    createComplexAnalysisDocument(candidate, { id: current.identity.id, revision: current.identity.revision,
+      results: current.results, provenance: current.provenance });
     for (const [field, type] of fieldCommands) {
       if (JSON.stringify(this.document()[field]) !== JSON.stringify(candidate[field])) this.commit(type, clone(candidate[field]) as CanonicalJsonValue, origin);
     }
@@ -128,6 +149,34 @@ export class ComplexAnalysisCommandAdapter {
     const transactionId = this.#nextId("intent");
     const result = this.#kernel.transact({ transactionId, commands: [this.#command(`${transactionId}/forward`, type, payload, origin)], history: { kind: "irreversible" } });
     if (!result.ok) throw new TypeError(result.errors.map((error) => error.message).join(" "));
+    // Intent transactions clear kernel history. Persist their current state as
+    // the checkpoint too, rather than replaying source edits against old intents.
+    this.#replayCheckpoint = this.state(); this.#replayTransactions = []; this.#replayCursor = 0;
+  }
+
+  #synchronizeReplayRevision(): void {
+    const project = (checkpoint: ComplexCommandState, recordHashes: boolean) => {
+      let state = checkpoint;
+      for (let index = 0; index < this.#replayTransactions.length; index += 1) {
+        const transaction = this.#replayTransactions[index]!;
+        const projected = projectCommandTransaction(state, transaction.commands, complexCommandDefinitions, "replay");
+        if (!projected.ok) throw new TypeError("Could not project the Complex replay history.");
+        state = projected.state;
+        if (recordHashes) this.#replayTransactions[index] = { ...transaction, stateHash: structuralHash(state) };
+      }
+      for (let index = this.#replayTransactions.length - 1; index >= this.#replayCursor; index -= 1) {
+        const projected = projectCommandTransaction(state, this.#replayTransactions[index]!.inverseCommands, complexCommandDefinitions, "replay");
+        if (!projected.ok) throw new TypeError("Could not project the Complex replay cursor.");
+        state = projected.state;
+      }
+      return state;
+    };
+    const replayed = project(this.#replayCheckpoint, false);
+    const offset = this.document().identity.revision - replayed.document.identity.revision;
+    if (!offset) return;
+    this.#replayCheckpoint = { ...this.#replayCheckpoint, document: { ...this.#replayCheckpoint.document,
+      identity: { ...this.#replayCheckpoint.document.identity, revision: this.#replayCheckpoint.document.identity.revision + offset } } };
+    project(this.#replayCheckpoint, true);
   }
 
   #nextId(kind: string) { this.#sequence += 1; return `complex/${kind}/${this.#sequence}`; }

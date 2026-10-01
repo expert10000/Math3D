@@ -100,6 +100,7 @@ type TopologyIntegerHomologyUiState =
   | PublishedTopologyIntegerHomology;
 
 export type TopologyScreenProps = {
+  commandAdapter?: TopologyDiagramCommandAdapter;
   onKernelDocumentChange?: (document: TopologyDocument) => void;
   onKernelReplayChange?: (replay: TopologyReplayBundle) => void;
   meshAdapterSource?: TopologyMeshAdapterInput | null;
@@ -1287,6 +1288,7 @@ const DunceMapReference3D: React.FC = () => {
 };
 
 export const TopologyScreen: React.FC<TopologyScreenProps> = ({
+  commandAdapter,
   onKernelDocumentChange,
   onKernelReplayChange,
   meshAdapterSource = null,
@@ -1299,18 +1301,19 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
   onDockLayoutChange,
 }) => {
   const [diagram, setDiagram] = useState<FundamentalDiagram>(() => {
+    if (commandAdapter) return commandAdapter.current();
     const next = initialDiagram();
     regenerateBoundaryWordsInPlace(next);
     return next;
   });
-  const [buildMode, setBuildMode] = useState<TopologyBuildMode>("preset");
+  const [buildMode, setBuildMode] = useState<TopologyBuildMode>(commandAdapter ? "editor" : "preset");
   const [toolMode, setToolMode] = useState<DiagramToolMode>("select");
   const [topicTab, setTopicTab] = useState<TopologyTopicTab>("euler");
   const [presetId, setPresetId] = useState(DEFAULT_TOPOLOGY_PRESET_ID);
-  const [buildResult, setBuildResult] = useState<QuotientBuildResult>(() => buildQuotientPipeline(initialDiagram()));
-  const [builtSignature, setBuiltSignature] = useState(() => JSON.stringify(initialDiagram()));
-  const [savedSignature, setSavedSignature] = useState(() => JSON.stringify(initialDiagram()));
-  const [commandHistoryState, setCommandHistoryState] = useState({ undoCount: 0, redoCount: 0 });
+  const [buildResult, setBuildResult] = useState<QuotientBuildResult>(() => buildQuotientPipeline(diagram));
+  const [builtSignature, setBuiltSignature] = useState(() => JSON.stringify(diagram));
+  const [savedSignature, setSavedSignature] = useState(() => JSON.stringify(diagram));
+  const [commandHistoryState, setCommandHistoryState] = useState(() => commandAdapter?.historyState() ?? { undoCount: 0, redoCount: 0 });
   const [activeView, setActiveView] = useState<TopologyView>("diagram");
   const [selectedCanonicalCell, setSelectedCanonicalCell] = useState<CanonicalCellSelection | null>(null);
   const [hoverEdgeId, setHoverEdgeId] = useState<string | null>(null);
@@ -1365,12 +1368,12 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
   const [storyRenderMode, setStoryRenderMode] = useState<"explain2d" | "real3d">("explain2d");
   const [timelinePosition, setTimelinePosition] = useState(0);
   const [timelinePlaying, setTimelinePlaying] = useState(false);
-  const [jsonDraft, setJsonDraft] = useState(() => JSON.stringify(initialDiagram(), null, 2));
+  const [jsonDraft, setJsonDraft] = useState(() => JSON.stringify(diagram, null, 2));
   const [jsonError, setJsonError] = useState<string | null>(null);
-  const [guidedWordDraft, setGuidedWordDraft] = useState(() => initialDiagram().faceBoundaryWords.f0 ?? "a b a^-1 b^-1");
-  const [selectedFaceId, setSelectedFaceId] = useState(() => initialDiagram().faces[0]?.id ?? "");
-  const [faceNameDraft, setFaceNameDraft] = useState(() => initialDiagram().faces[0]?.name ?? "Face 1");
-  const [faceWordDraft, setFaceWordDraft] = useState(() => initialDiagram().faceBoundaryWords.f0 ?? "");
+  const [guidedWordDraft, setGuidedWordDraft] = useState(() => diagram.faceBoundaryWords[diagram.faces[0]?.id ?? ""] ?? "");
+  const [selectedFaceId, setSelectedFaceId] = useState(() => diagram.faces[0]?.id ?? "");
+  const [faceNameDraft, setFaceNameDraft] = useState(() => diagram.faces[0]?.name ?? "Face 1");
+  const [faceWordDraft, setFaceWordDraft] = useState(() => diagram.faceBoundaryWords[diagram.faces[0]?.id ?? ""] ?? "");
   const [authoringError, setAuthoringError] = useState<string | null>(null);
   const [animationPlan, setAnimationPlan] = useState<TopologyAnimationPlan | null>(null);
   const [storyStageThreeVisible, setStoryStageThreeVisible] = useState(false);
@@ -1392,7 +1395,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
   const draggingVertexIdRef = useRef<string | null>(null);
   const draggingStartDiagramRef = useRef<FundamentalDiagram | null>(null);
   const draggingChangedRef = useRef(false);
-  const topologyCommandAdapterRef = useRef<TopologyDiagramCommandAdapter | null>(null);
+  const topologyCommandAdapterRef = useRef<TopologyDiagramCommandAdapter | null>(commandAdapter ?? null);
   const integerHomologyServiceRef = useRef<InProcessScientificJobService | null>(null);
   const integerHomologyActiveJobIdRef = useRef<string | null>(null);
   const integerHomologyJobSequenceRef = useRef(0);
@@ -1569,7 +1572,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
     } else if (options?.source === "import") {
       routed = topologyCommandAdapterRef.current!.import(next);
     } else if (options?.source === "session") {
-      routed = topologyCommandAdapterRef.current!.reset(next);
+      routed = commandAdapter ? topologyCommandAdapterRef.current!.commit(next) : topologyCommandAdapterRef.current!.reset(next);
     }
     const nextSignature = JSON.stringify(routed);
     if (nextSignature !== diagramSignature) setPersistedTopologySession(null);
@@ -2340,10 +2343,10 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
           <button type="button" onClick={handleRemoveSelectedEdge} disabled={!selectedEdgeId}>
             Remove Edge
           </button>
-          <button type="button" onClick={handleUndo} disabled={commandHistoryState.undoCount === 0}>
+          <button type="button" data-testid="topology-source-undo" onClick={handleUndo} disabled={commandHistoryState.undoCount === 0}>
             Undo
           </button>
-          <button type="button" onClick={handleRedo} disabled={commandHistoryState.redoCount === 0}>
+          <button type="button" data-testid="topology-source-redo" onClick={handleRedo} disabled={commandHistoryState.redoCount === 0}>
             Redo
           </button>
         </div>
@@ -6791,6 +6794,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
                 <summary style={{ cursor: "pointer", fontSize: 11 }}>Raw JSON editor</summary>
                 <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
                   <textarea
+                    data-testid="topology-source-json"
                     value={jsonDraft}
                     onChange={(event) => setJsonDraft(event.target.value)}
                     rows={12}

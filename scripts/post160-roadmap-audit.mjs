@@ -27,7 +27,7 @@ if (process.argv.includes("--run")) {
   testFiles.push("src/core/math3dProject.test.ts", "src/core/projectExplorer.test.ts", "src/projects/projectLibrary.test.ts");
   testFiles.push("src/projects/projectOperations.test.ts");
   testFiles.push("src/projects/projectDependencies.test.ts");
-  testFiles.push("src/projects/projectTransfer.test.ts", "src/projects/nativeProjectRestore.test.ts", "src/projects/nativeGeometryRestore.test.ts");
+  testFiles.push("src/projects/projectTransfer.test.ts", "src/projects/nativeProjectRestore.test.ts", "src/projects/nativeGeometryRestore.test.ts", "src/projects/nativeScientificRestore.test.ts");
   testFiles.push("src/projects/projectTemplates.test.ts", "src/projects/projectMobileTransfer.test.ts");
   const report = path.join(root, "post160-test-results.json");
   const result = spawnSync(process.execPath, [path.join(root, "renderer/node_modules/vitest/vitest.mjs"), "run", ...testFiles,

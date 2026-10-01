@@ -15,9 +15,12 @@ export type LaunchedSurfaceApp = {
 };
 
 export async function launchSurfaceApp(
-  extraEnv: Record<string, string | undefined> = {}
+  extraEnv: Record<string, string | undefined> = {},
+  reuseProfileDir?: string
 ): Promise<LaunchedSurfaceApp> {
-  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-surface-"));
+  if (reuseProfileDir && (path.resolve(path.dirname(reuseProfileDir)) !== path.resolve(os.tmpdir()) || !path.basename(reuseProfileDir).startsWith("math3d-e2e-surface-")))
+    throw new Error("Only a surface test's temporary profile can be reused.");
+  const profileDir = reuseProfileDir ?? mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-surface-"));
   const launchEnv: Record<string, string | undefined> = {
     ...process.env,
     ...extraEnv,
