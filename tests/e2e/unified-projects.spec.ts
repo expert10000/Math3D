@@ -4,6 +4,40 @@ import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
 const projectCore = require(resolve("packages/core/src/index.ts"));
 
+test("PRJ07 previews independent scientific starters and opens their real documents and lineage", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    const before = await page.evaluate(() => ({ ...localStorage }));
+    await panel.getByTestId("project-template-preview").click();
+    await expect(panel.getByTestId("project-import-preview")).toContainText("Minimal Surface Study");
+    await expect(panel.getByTestId("project-import-open")).toBeEnabled();
+    expect(await page.evaluate(() => ({ ...localStorage }))).toEqual(before);
+    await panel.getByTestId("project-import-cancel").click();
+    expect(await page.evaluate(() => ({ ...localStorage }))).toEqual(before);
+    await panel.getByTestId("project-template-preview").click(); await panel.getByTestId("project-import-save").click();
+    const first = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project-library.v1")!).entries[0].id);
+    await panel.getByTestId("project-template-preview").click(); await panel.getByTestId("project-import-open").click();
+    const current = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(current.identity.id).not.toBe(first); expect(current.workspace.entries.map((entry: any) => entry.module)).toEqual(["graph2d", "curve", "surface"]);
+    await expect(page.getByTestId("workspace-nav-graphs")).toHaveAttribute("aria-pressed", "true");
+    await expect(panel.getByTestId("project-group-surface")).toContainText("catenoid");
+    await expect(panel.getByTestId("project-group-analysis")).toContainText("numerical");
+    await panel.getByTestId("project-inspect-relations").click();
+    await expect(panel.getByTestId("project-dependencies")).toContainText("graph2d.revolve-surface");
+    await panel.getByTestId("project-template-select").selectOption("derivative-study");
+    await panel.getByTestId("project-template-preview").click();
+    await expect(panel.getByTestId("project-import-preview")).toContainText("Derivative Study");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await panel.getByTestId("project-templates").screenshot({ path: test.info().outputPath("project-starter-phone.png") });
+    const bounds = await panel.boundingBox(); expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+    await panel.getByTestId("project-import-cancel").click();
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id)).toBe(current.identity.id);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("PRJ01/PRJ02 names and previews a project across restart and navigates live documents", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
   try {

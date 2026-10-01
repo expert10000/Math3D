@@ -129,7 +129,22 @@ before integration; keep existing release scope and signed-build evidence separa
   replay compatibility, resource requirements, cancel/rejection, library import,
   guarded Graph opening, backup, retained records and same-ID conflict protection.
   Desktop and phone import screenshots were visually checked.
-- PRJ07–PRJ08: planned, subject to the preceding gates.
+- PRJ07: built-in scientific starters implemented. Minimal Surface Study creates
+  a bounded catenary Graph, a normal Curve snapshot, a catenoid revolution Surface,
+  numerical derivative evidence and recorded source/result lineage. Derivative
+  Study provides a parabola, its Curve and a numerical derivative. Each preview
+  uses a fresh instance token for independent project/document/result identities;
+  templates contain ordinary validated sources, with no executable template input.
+  Preview/cancel leaves storage and live work intact; library import and Graph
+  opening reuse PRJ06 compatibility and backup guards. Meshing, curvature and
+  geodesics remain explicit follow-up steps; no unavailable engine or proof of
+  minimality is implied. Three scientific template tests, the seventh Electron
+  project journey, renderer typecheck and the production build pass. The phone
+  starter screenshot was visually checked.
+- PRJ08: planned, subject to the preceding gates. The next two continuation commits
+  will preserve named-project envelopes through supported mobile Graph transfer
+  and freeze that behavior across desktop/web/mobile host models. Full native
+  cross-module restoration and installed-engine/device evidence remain separate.
 
 The repeatable `node scripts/post160-roadmap-audit.mjs --run` gate includes both
 project suites and passes 401 tests across 62 files. Renderer/E2E TypeScript,

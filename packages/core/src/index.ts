@@ -60,6 +60,7 @@ export * from "./mixedWorkspace";
 export * from "./math3dProject";
 export * from "./projectOperations";
 export * from "./projectExplorer";
+export * from "./projectTemplates";
 export * from "./platformCapabilities";
 export * from "./workerPlatformCapabilities";
 export * from "./meshCommands";

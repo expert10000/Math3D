@@ -2,11 +2,13 @@ import React, { useMemo, useRef, useState } from "react";
 import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, parseMath3DProject,
   parseMixedWorkspaceDocument, updateMath3DProjectMetadata, replaceMath3DProjectWorkspace,
   deleteProjectDocument, duplicateProjectDocument, serializeMath3DProject, setProjectDocumentMetadata,
+  instantiateMath3DProjectTemplate, type Math3DProjectTemplateId,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { importLibraryProject, loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY,
   PROJECT_STORAGE_KEY, readProjectThumbnail, saveLibraryProject, updateLibraryActivity, type ProjectLibrary } from "../projects/projectLibrary";
 import { ProjectCommandAdapter } from "../projects/projectCommandAdapter";
+import { ProjectTemplatesPanel } from "./ProjectTemplatesPanel";
 import { ProjectDocumentActions, type ProjectDocumentAction } from "./ProjectDocumentActions";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
@@ -189,6 +191,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
       setMessage(openWorkspace ? "Opened supported Graph workspace. Previous workspace saved locally; historical analysis and external refs are retained." : "Imported into the library as a verified saved preview. The current workspace is unchanged.");
     } catch (error) { setMessage(`Project import failed: ${(error as Error).message}`); }
   };
+  const previewTemplate = (id: Math3DProjectTemplateId) => {
+    importSequence.current++;
+    try {
+      const next = instantiateMath3DProjectTemplate(id, crypto.randomUUID());
+      setIncoming({ ...inspectProjectCompatibility(next, transferOptions()), inputKind: "Independent starter project" });
+      setMessage("Starter preview ready. Current work is unchanged until you choose to open it.");
+    } catch (error) { setIncoming(null); setMessage(`Starter unavailable: ${(error as Error).message}`); }
+  };
   const exportFile = () => {
     if (!project) return;
     try {
@@ -240,6 +250,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
       </label>
       <p data-testid="project-message" role="status">{message}</p>
       {incoming && <ProjectCompatibilityPanel preview={incoming} canOpen={!!onRestoreWorkspace} onCancel={() => { importSequence.current++; setIncoming(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => importPreview(false)} onOpen={() => importPreview(true)} />}
+      <ProjectTemplatesPanel onPreview={previewTemplate} />
       {project && <small data-testid="project-content-revision">{preview ? "Saved preview" : "Current workspace"} · project revision {project.identity.revision}</small>}
       <section data-testid="project-library" style={{ marginTop: 14 }}>
         <strong>Saved projects · favorites first, then recent</strong>
