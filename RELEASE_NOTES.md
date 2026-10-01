@@ -51,7 +51,8 @@ Surface analyses remain subject to host capabilities; production Android
 worker connections require HTTPS.
 
 Windows/Linux installers, web/docs archives and corresponding source assets
-are built by the tag release workflow. The Android production AAB is attached
-by its existing signing/verification workflow. Release source, test steps and
+are built by the tag release workflow. The Android production AAB was built
+by its existing signing/verification workflow and attached after matching its
+verified checksum. Release source, test steps and
 detailed evidence are in `docs/mobile-1.6.0-release-candidate.md` and
 `docs/test-packs/1.6.0/README.md`.

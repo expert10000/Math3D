@@ -1,12 +1,13 @@
-# Mobile 1.6.0 release candidate
+# Math3D 1.6.0 release evidence
 
-Updated September 30, 2026. This is a candidate record, **not** a public
-release or an approval of MOB-G13. The published `v1.5.1`/build `150007`
+Updated October 1, 2026. [Public release v1.6.0](https://github.com/expert10000/Math3D/releases/tag/v1.6.0)
+is published within the owner-approved scope below; MOB-G13 remains pending.
+Earlier candidate attempts are retained as history. The published `v1.5.1`/build `150007`
 record remains in [its own release evidence](mobile-1.5.1-release-readiness.md).
 
 ## Signing and update identity
 
-- The next Android version is `1.6.0`, build `150008`, application ID
+- The released Android version is `1.6.0`, build `150008`, application ID
   `com.math3d.mobile`. The higher build number is required for an update to
   the published `150007` build.
 - Reuse the existing production upload-key certificate recorded in
@@ -137,7 +138,7 @@ integrity checks. The release notes explicitly state the limited physical
 coverage. MOB-G13/G2D40's strict full-device gate remains unchanged and pending;
 this scoped release is not an attestation that it passed.
 
-Before publication, require pack validation, the automated professional
+Publication required pack validation, the automated professional
 acceptance suite, existing exact-APK Samsung/signing-backup gates, the
 tagged internal build/emulator gate, desktop packaging checks and verified
 production AAB. No runtime mobile change is needed for the test pack, so
@@ -161,6 +162,84 @@ LF checkout attributes keep the hashes identical on Windows/Linux. Blank
 physical result records remain pending. Local reports are under
 `output/release-test-pack/`; completed CI, rather than the interrupted local
 end-to-end session, is the full automated-acceptance evidence.
+
+## Tagged build and desktop packaging repair
+
+Tag `v1.6.0` fixes app source at
+`8e30e85190599467e3839e1b1e4b5b9bc708916f`. The tagged internal Android
+build, signing checks and Android 16 emulator gate passed in
+[run 36776893717](https://github.com/expert10000/Math3D/actions/runs/36776893717).
+Windows packaging in that run failed while compiling pygalmesh because
+the Eigen/CGAL development dependencies were absent; Linux packaging did
+not run. This failure does not invalidate the completed app acceptance.
+
+[Tagged production AAB run 36777024290](https://github.com/expert10000/Math3D/actions/runs/36777024290)
+passed on the same clean tag source, with the existing production certificate.
+Its `Math3D-mobile-1.6.0-release.aab` SHA-256 is
+`5edfb36a85b87b788233e5504e68ca88154dbcddf5b0d800bdf82b90defdf928`.
+Downloaded bytes match metadata and checksums; local jarsigner/keytool
+verification passed. Evidence is in `output/mobile-160-tagged-aab-36777024290/`.
+This is the tagged bundle selected for publication, superseding the earlier
+verification-only AAB above.
+
+Build recipe `a4115173ac5dbaa37447d388a2c9b6e18b3bfb8d` uses the existing
+Windows CGAL bootstrap, pins vcpkg and frozen Python requirements, and retains
+the required CGAL/pygalmesh release checks. A dispatched workflow applies
+only an explicit list of build/compliance files to the app tag. Corresponding
+source includes their complete patch, the exact build-recipe commit and
+verified CGAL 6.2/Eigen/vcpkg source archives. A local tag checkout confirmed
+the patch is reversible and app runtime files are unchanged.
+[Packaging retry 36779845625](https://github.com/expert10000/Math3D/actions/runs/36779845625)
+passed the repeated Android gate, pinned native setup (sphere generation,
+three native CGAL booleans and geodesic verification), Windows installer build
+and packaged worker protocol. Publication then stopped because `gmplib.org`
+timed out while downloading corresponding source; Linux packaging was skipped.
+Build logs are in `output/release-test-pack/windows-build-before-source-timeout.log`.
+
+Recipe `fd0cef362250a63214df709200dc171a3aafe425` reuses build-source archives
+only after SHA-256 verification, retries downloads and supplies official GNU
+GMP/MPFR mirrors. A simulated unreachable primary URL successfully fell back
+to GNU with the expected checksum. Windows and Linux source-bundle checks and
+the reversible tag recipe patch passed locally. The workflow also saves its
+native dependency cache and built packages before source downloads, preserving
+work if an external source host fails again.
+[Packaging retry 36786623422](https://github.com/expert10000/Math3D/actions/runs/36786623422)
+passed the Android gate, Windows installer/worker checks and Linux startup,
+geometry and package builds. Windows/Linux packages, web/docs, test pack and
+corresponding source assets are published. The verified tagged production AAB
+above was attached unchanged, together with its build/signature reports and
+`SHA256SUMS`; this is GitHub distribution, not a Play Store rollout.
+
+### Published-download check-up — October 1
+
+- The downloaded test-pack ZIP passed its standalone checker for all 16 files.
+  Its 15 manual case records remain blank/pending.
+- All **40 entries** across the published Windows, Linux and Android checksum
+  lists match GitHub's uploaded-asset SHA-256 digests. Linux replaced three
+  shared Windows source/license assets with platform-generated equivalents;
+  the Windows checksum list was reconciled after both jobs completed. The
+  affected source ZIP and license files were also downloaded and hashed locally.
+- Both source manifests identify app commit `8e30e85190599467e3839e1b1e4b5b9bc708916f`
+  and build recipe `fd0cef362250a63214df709200dc171a3aafe425`.
+  The published recipe patch passes `git apply --check` against the extracted
+  published source archive. The app tag was not moved.
+- The downloaded Windows portable ZIP matches SHA-256
+  `f1560a0bf3206515a4cb3a54e2a011bba7a5c121fe34e736f65baf8b8bc27bd3`.
+  Extracted outside the checkout, with system-only PATH and no external Python
+  or Math3D paths, its frozen worker loaded all six bundled dependencies,
+  generated a sphere (209 vertices/414 triangles), and used `native-cgal` for
+  union/difference/intersection with independently checked volumes
+  `1.35`/`0.35`/`0.65` (tolerance `1e-5`). Its bundled geodesic helper returned
+  `sqrt(2)` on the flat-square reference (tolerance `1e-9`). Packaged desktop
+  `package.json` reports `1.6.0`.
+- Downloaded AAB metadata confirms clean tag source, package
+  `com.math3d.mobile`, version `1.6.0`/build `150008` and the existing production
+  certificate. No new mobile runtime change or Samsung retest was required.
+
+Local downloaded assets, checksum comparison and portable-worker report are
+under `output/release-test-pack/`. The prior automated acceptance and exact-APK
+Samsung baseline above remain the scoped acceptance evidence. The full physical
+matrix below is deferred, not marked passed.
 
 ## Deferred validation for subsequent releases
 
