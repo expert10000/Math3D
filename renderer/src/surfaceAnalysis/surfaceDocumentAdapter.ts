@@ -1,5 +1,5 @@
 import {
-  SURFACE_COMMAND_TYPES, canonicalJsonStringify, createCommandEnvelope, createSurfaceCommandState,
+  SURFACE_COMMAND_TYPES, canonicalJsonStringify, createDocumentIdentity, createCommandEnvelope, createSurfaceCommandState,
   createSurfaceDocument, parseSurfaceDocument, serializeSurfaceDocument, surfaceCommandDefinitions,
   type CanonicalJsonValue, type CommandEnvelope, type SurfaceDocument, type SurfaceDocumentSource,
 } from "@math3d/core";
@@ -79,7 +79,14 @@ export class SurfaceDocumentAdapter {
     this.#cursor += 1;
     return this.document();
   }
-  replayBundle(): SurfaceReplayBundle { return { checkpoint: this.#checkpoint, transactions: [...this.#transactions], cursor: this.#cursor }; }
+  replayBundle(): SurfaceReplayBundle {
+    // Undo/redo advances scientific generations. Rebase the history's starting
+    // generation so replay reproduces the current identity as well as its source.
+    const sourceEdits = this.#transactions.slice(0, this.#cursor).filter((entry) => entry.forward.command.type === SURFACE_COMMAND_TYPES.replaceSource).length;
+    const revision = this.document().identity.revision - sourceEdits;
+    const checkpoint = { ...this.#checkpoint, identity: createDocumentIdentity(this.#checkpoint.identity.id, this.#checkpoint.source, revision) };
+    return { checkpoint, transactions: [...this.#transactions], cursor: this.#cursor };
+  }
   static fromReplayBundle(bundle: SurfaceReplayBundle): SurfaceDocumentAdapter {
     const adapter = new SurfaceDocumentAdapter(bundle.checkpoint);
     for (const transaction of bundle.transactions) adapter.#execute(transaction.forward, transaction.inverse);

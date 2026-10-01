@@ -1,5 +1,9 @@
 # Math3D Docs
 
+- [Post-1.6.0 continuation audit and verified backlog](post-1.6.0-continuation-audit.md).
+- [Unified Projects delivery roadmap](unified-projects-roadmap.md).
+- [Unified Projects automated acceptance](unified-projects-acceptance.md).
+
 This site combines:
 
 - Project guides and operational docs (MkDocs content).

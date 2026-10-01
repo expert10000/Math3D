@@ -1,0 +1,430 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "354d06d",
+  "entries": [
+    {
+      "id": "F01",
+      "title": "Platform baseline",
+      "implementation": "packages/core/src/topologyDocument.ts",
+      "test": "renderer/src/topology/platformBaseline.test.ts",
+      "doc": "docs/kernel-document-identity.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "F02",
+      "title": "Identity/revision/hash",
+      "implementation": "packages/core/src/documentIdentity.ts",
+      "test": "renderer/src/core/documentIdentity.test.ts",
+      "doc": "docs/kernel-document-identity.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "F03",
+      "title": "Atomic commands",
+      "implementation": "packages/core/src/commands.ts",
+      "test": "renderer/src/core/commandTransactions.test.ts",
+      "doc": "docs/kernel-command-transactions.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "F04",
+      "title": "Document kernel",
+      "implementation": "packages/kernel/src/inMemoryDocumentKernel.ts",
+      "test": "renderer/src/kernel/inMemoryDocumentKernel.test.ts",
+      "doc": "docs/kernel-runtime-service.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "F05",
+      "title": "Scientific jobs",
+      "implementation": "packages/core/src/scientificJobs.ts",
+      "test": "renderer/src/kernel/scientificJobService.test.ts",
+      "doc": "docs/kernel-scientific-jobs.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "F06",
+      "title": "Result/provenance envelopes",
+      "implementation": "packages/core/src/analysisResults.ts",
+      "test": "renderer/src/core/analysisResults.test.ts",
+      "doc": "docs/kernel-analysis-results.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "F07",
+      "title": "Artifact registry",
+      "implementation": "packages/kernel/src/artifactRegistry.ts",
+      "test": "renderer/src/kernel/artifactRegistry.test.ts",
+      "doc": "docs/kernel-artifact-registry.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "F08",
+      "title": "Backend admission/broker",
+      "implementation": "packages/kernel/src/scientificExecutionBroker.ts",
+      "test": "renderer/src/kernel/scientificExecutionBroker.test.ts",
+      "doc": "docs/kernel-scientific-execution-broker.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "T01",
+      "title": "Canonical corpus",
+      "implementation": "renderer/src/topology/core/analysisPipeline.ts",
+      "test": "renderer/src/topology/canonicalRegressionCorpus.test.ts",
+      "doc": "docs/testing/topology-v1-canonical-regression-corpus.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "T02",
+      "title": "Topology document",
+      "implementation": "packages/core/src/topologyDocument.ts",
+      "test": "renderer/src/core/topologyDocument.test.ts",
+      "doc": "docs/topology-module-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "T03",
+      "title": "Canonical finite complex",
+      "implementation": "renderer/src/topology/canonicalFinite2DAdapter.ts",
+      "test": "renderer/src/topology/canonicalFinite2DAdapter.test.ts",
+      "doc": "docs/topology-module-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "T04",
+      "title": "Structural validation",
+      "implementation": "packages/core/src/canonicalFinite2DValidation.ts",
+      "test": "renderer/src/core/canonicalFinite2DValidation.test.ts",
+      "doc": "docs/topology-canonical-structure-validation.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "T05",
+      "title": "Command migration",
+      "implementation": "renderer/src/topology/topologyCommandAdapter.ts",
+      "test": "renderer/src/topology/topologyCommands.test.ts",
+      "doc": "docs/topology-kernel-command-migration.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "T06",
+      "title": "Exact boundary matrices",
+      "implementation": "packages/core/src/canonicalFinite2DBoundaryMatrices.ts",
+      "test": "renderer/src/core/canonicalFinite2DBoundaryMatrices.test.ts",
+      "doc": "docs/topology-exact-sparse-boundary-matrices.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "T07",
+      "title": "Local F2 homology",
+      "implementation": "renderer/src/topology/localZ2Feedback.ts",
+      "test": "renderer/src/topology/core/homology.test.ts",
+      "doc": "docs/topology-local-z2-homology.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "T08",
+      "title": "Sage homology jobs",
+      "implementation": "renderer/src/topology/sageIntegerHomologyJob.ts",
+      "test": "renderer/src/core/sageIntegerHomology.test.ts",
+      "doc": "docs/topology-sage-integer-homology.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "T09",
+      "title": "Algebra publication",
+      "implementation": "renderer/src/topology/algebraPublication.ts",
+      "test": "renderer/src/topology/algebraPublication.test.ts",
+      "doc": "docs/topology-algebra-publication.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "T10",
+      "title": "Surface eligibility",
+      "implementation": "renderer/src/topology/core/surfaceClassification.ts",
+      "test": "renderer/src/topology/core/surfaceClassification.test.ts",
+      "doc": "docs/topology-surface-classification.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "T11",
+      "title": "Replay/persistence",
+      "implementation": "packages/core/src/topologyPersistence.ts",
+      "test": "renderer/src/topology/topologyPersistence.test.ts",
+      "doc": "docs/topology-replayable-persistence.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "T12",
+      "title": "Mesh snapshot lineage",
+      "implementation": "renderer/src/topology/meshSnapshotHandoff.ts",
+      "test": "renderer/src/topology/meshSnapshotHandoff.test.ts",
+      "doc": "docs/topology-mesh-snapshot-handoff.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "T13",
+      "title": "Formal acceptance",
+      "implementation": "renderer/src/topology/core/analysisPipeline.ts",
+      "test": "renderer/src/topology/core/releaseGates.test.ts",
+      "doc": "docs/topology-v1-release-gates.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "C01",
+      "title": "Scientific corpus",
+      "implementation": "renderer/src/math/complexExpr.ts",
+      "test": "renderer/src/math/complexScientificCorpus.test.ts",
+      "doc": "docs/complex-analysis-scientific-fixture-corpus.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "C02",
+      "title": "Complex document",
+      "implementation": "packages/core/src/complexAnalysisDocument.ts",
+      "test": "renderer/src/math/complexAnalysisDocument.test.ts",
+      "doc": "docs/complex-analysis-document.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "C03",
+      "title": "Validated AST",
+      "implementation": "packages/core/src/complexExpressionAst.ts",
+      "test": "renderer/src/math/complexExpressionAst.test.ts",
+      "doc": "docs/complex-expression-ast.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "C04",
+      "title": "Command adapter",
+      "implementation": "renderer/src/math/complexCommandAdapter.ts",
+      "test": "renderer/src/math/complexCommandAdapter.test.ts",
+      "doc": "docs/complex-analysis-commands.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "C05",
+      "title": "Revision-safe previews",
+      "implementation": "renderer/src/math/complexPreviewArtifacts.ts",
+      "test": "renderer/src/math/complexPreviewArtifacts.test.ts",
+      "doc": "docs/complex-preview-artifacts.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "C06",
+      "title": "Numerical publication",
+      "implementation": "renderer/src/math/complexNumericalAnalysis.ts",
+      "test": "renderer/src/math/complexNumericalAnalysis.test.ts",
+      "doc": "docs/complex-numerical-results.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "C07",
+      "title": "Constrained Sage",
+      "implementation": "renderer/src/math/complexSageJob.ts",
+      "test": "renderer/src/math/complexSageJob.test.ts",
+      "doc": "docs/complex-sage-adapter.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "C08",
+      "title": "Exact residue/contour MVP",
+      "implementation": "renderer/src/math/complexExactAnalysis.ts",
+      "test": "renderer/src/math/complexExactAnalysis.test.ts",
+      "doc": "docs/complex-exact-residue-contour-mvp.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "C09",
+      "title": "Replay/export",
+      "implementation": "packages/core/src/complexPersistence.ts",
+      "test": "renderer/src/math/complexPersistence.test.ts",
+      "doc": "docs/complex-session-persistence.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "C10",
+      "title": "Branch continuation",
+      "implementation": "renderer/src/math/complexBranchContinuation.ts",
+      "test": "renderer/src/math/complexBranchContinuation.test.ts",
+      "doc": "docs/complex-adaptive-continuation.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "C11",
+      "title": "Riemann mesh lineage",
+      "implementation": "renderer/src/math/complexRiemannSurfaceHandoff.ts",
+      "test": "renderer/src/math/complexRiemannSurfaceHandoff.test.ts",
+      "doc": "docs/complex-riemann-surface-lineage.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "C12",
+      "title": "Integrated acceptance",
+      "implementation": "renderer/src/math/complexCommandAdapter.ts",
+      "test": "renderer/src/math/complexV1Acceptance.test.ts",
+      "doc": "docs/complex-analysis-v1-release-gate.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK01",
+      "title": "Relations",
+      "implementation": "packages/core/src/documentRelations.ts",
+      "test": "renderer/src/core/documentRelations.test.ts",
+      "doc": "docs/math3d-topology-complex-kernel-program-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK02",
+      "title": "Dependency invalidation",
+      "implementation": "packages/kernel/src/dependencyGraph.ts",
+      "test": "renderer/src/kernel/dependencyGraph.test.ts",
+      "doc": "docs/math3d-topology-complex-kernel-program-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK03",
+      "title": "Domain conformance",
+      "implementation": "packages/kernel/src/domainAdapterConformance.ts",
+      "test": "renderer/src/kernel/domainAdapterConformance.test.ts",
+      "doc": "docs/math3d-topology-complex-kernel-program-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK04",
+      "title": "Geometry document",
+      "implementation": "renderer/src/geometry/geometryDocumentAdapter.ts",
+      "test": "renderer/src/geometry/geometryDocumentAdapter.test.ts",
+      "doc": "docs/math3d-topology-complex-kernel-program-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK05",
+      "title": "GUI/Scene Script commands",
+      "implementation": "renderer/src/geometry/geometryCommandBridge.ts",
+      "test": "renderer/src/geometry/geometryCommandBridge.test.ts",
+      "doc": "docs/math3d-topology-complex-kernel-program-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK06",
+      "title": "Derived geometry",
+      "implementation": "renderer/src/geometry/geometryDerivedResources.ts",
+      "test": "renderer/src/geometry/geometryDerivedResources.test.ts",
+      "doc": "docs/math3d-topology-complex-kernel-program-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK07",
+      "title": "Mesh document",
+      "implementation": "packages/core/src/meshDocument.ts",
+      "test": "renderer/src/mesh/meshDocumentAdapter.test.ts",
+      "doc": "docs/math3d-topology-complex-kernel-program-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK08",
+      "title": "Mesh transactions",
+      "implementation": "renderer/src/mesh/meshDocumentAdapter.ts",
+      "test": "renderer/src/mesh/meshKernelCommands.test.ts",
+      "doc": "docs/math3d-topology-complex-kernel-program-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK09",
+      "title": "Mesh Analyze",
+      "implementation": "renderer/src/mesh/meshDocumentAdapter.ts",
+      "test": "renderer/src/mesh/meshDocumentAdapter.test.ts",
+      "doc": "docs/math3d-topology-complex-kernel-program-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK10",
+      "title": "Surface document",
+      "implementation": "renderer/src/surfaceAnalysis/surfaceDocumentAdapter.ts",
+      "test": "renderer/src/surfaceAnalysis/surfaceKernelIntegration.test.ts",
+      "doc": "docs/math3d-topology-complex-kernel-program-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK11",
+      "title": "Surface-Mesh lineage",
+      "implementation": "renderer/src/surfaceAnalysis/surfaceMeshHandoff.ts",
+      "test": "renderer/src/surfaceAnalysis/surfaceMeshHandoff.test.ts",
+      "doc": "docs/math3d-topology-complex-kernel-program-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK12",
+      "title": "Curve document",
+      "implementation": "renderer/src/curveAnalysis/curveDocumentAdapter.ts",
+      "test": "renderer/src/curveAnalysis/curveKernelIntegration.test.ts",
+      "doc": "docs/math3d-topology-complex-kernel-program-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK13",
+      "title": "Curve handoffs",
+      "implementation": "renderer/src/curveAnalysis/curveDocumentAdapter.ts",
+      "test": "renderer/src/curveAnalysis/curveInteroperability.test.ts",
+      "doc": "docs/math3d-topology-complex-kernel-program-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK14",
+      "title": "Volume document",
+      "implementation": "renderer/src/volume/volumeDocumentAdapter.ts",
+      "test": "renderer/src/volume/volumeDocumentAdapter.test.ts",
+      "doc": "docs/math3d-topology-complex-kernel-program-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK15",
+      "title": "Volume extraction",
+      "implementation": "renderer/src/volume/volumeExtractionKernel.ts",
+      "test": "renderer/src/volume/volumeExtractionKernel.test.ts",
+      "doc": "docs/math3d-topology-complex-kernel-program-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK16",
+      "title": "Viewer provenance",
+      "implementation": "packages/core/src/viewerProvenance.ts",
+      "test": "renderer/src/core/viewerProvenance.test.ts",
+      "doc": "docs/math3d-topology-complex-kernel-program-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK17",
+      "title": "Mixed replay",
+      "implementation": "renderer/src/kernel/mixedWorkspaceReplay.ts",
+      "test": "renderer/src/kernel/mixedWorkspaceReplay.test.ts",
+      "doc": "docs/math3d-topology-complex-kernel-program-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK18",
+      "title": "Local invalidation parity",
+      "implementation": "packages/kernel/src/dependencyGraph.ts",
+      "test": "renderer/src/kernel/dependencyLocalInvalidation.test.ts",
+      "doc": "docs/math3d-topology-complex-kernel-program-roadmap.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK19",
+      "title": "Platform conformance",
+      "implementation": "packages/kernel/src/platformBackendAdapter.ts",
+      "test": "renderer/src/kernel/platformBackendAdapter.test.ts",
+      "doc": "docs/kernel-gk19-platform-conformance.md",
+      "status": "implemented; release acceptance to revalidate"
+    },
+    {
+      "id": "GK20",
+      "title": "Contract freeze",
+      "implementation": "packages/kernel/src/contracts.ts",
+      "test": "renderer/src/kernel/mixedWorkspaceReplay.test.ts",
+      "doc": "docs/application-kernel-architecture-and-extension.md",
+      "status": "implemented; release acceptance to revalidate"
+    }
+  ]
+}

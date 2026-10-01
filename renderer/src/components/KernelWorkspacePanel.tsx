@@ -9,22 +9,27 @@ import {
 } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { probeRendererPlatformCapabilities } from "../kernel/rendererPlatformCapabilities";
+import { ProjectWorkspacePanel } from "./ProjectWorkspacePanel";
 
 const STORAGE_KEY = "math3d.mixed-workspace.v1";
 const HANDOFF_KEY = "math3d.graph2d-handoff.v2";
 
 export type KernelWorkspacePanelProps = {
+  projectsOpen: boolean;
+  onProjectsOpenChange: (open: boolean) => void;
   capture: () => MixedWorkspaceDocument;
   activeModule: KernelWorkspaceModule | null;
   activeEvidence: ViewerProvenanceEvidence | null;
-  artifactAvailable?: (artifactId: string) => boolean;
+  artifactAvailable?: (artifactId: string, hash?: string | null) => boolean;
   onNavigateModule?: (module: KernelWorkspaceModule) => void;
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
+  canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
   onReopen?: (workspace: MixedWorkspaceDocument) => void;
+  onRestoreProject?: (workspace: MixedWorkspaceDocument) => void;
   graphDocumentId?: string;
 };
 
-export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ capture, activeModule, activeEvidence, artifactAvailable, onNavigateModule, onNavigateDocument, onReopen, graphDocumentId }) => {
+export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ projectsOpen, onProjectsOpenChange, capture, activeModule, activeEvidence, artifactAvailable, onNavigateModule, onNavigateDocument, canNavigateDocument, onReopen, onRestoreProject, graphDocumentId }) => {
   const [open, setOpen] = useState(false);
   const [reopened, setReopened] = useState<MixedWorkspaceDocument | null>(null);
   const [message, setMessage] = useState("No mixed workspace opened.");
@@ -102,12 +107,13 @@ export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ capt
       setMessage(`Reopened and replay-verified ${workspace.entries.length} canonical document(s). Domain artifacts remain external.`);
     } catch (error) { setMessage(`Reopen failed: ${error instanceof Error ? error.message : String(error)}`); }
   };
-  const availability = reopened ? inspectMixedWorkspaceAvailability(reopened, (artifact) => artifactAvailable?.(artifact.handle.artifactId) ?? false) : null;
+  const availability = reopened ? inspectMixedWorkspaceAvailability(reopened, (artifact) => artifactAvailable?.(artifact.handle.artifactId, artifact.contentHash) ?? false) : null;
   const sourceById = new Map(reopened?.entries.map((entry) => [entry.expected.id, viewerSourceFromDocument({ identity: entry.expected })]) ?? []);
   const moduleById = new Map(reopened?.entries.map((entry) => [entry.expected.id, entry.module]) ?? []);
   const index = reopened?.relations.length ? createDocumentRelationIndex(reopened.relations) : null;
   return (
     <div data-testid="kernel-workspace-shell" style={{ position: "fixed", right: 14, bottom: 14, zIndex: 2500, fontSize: 11 }}>
+      <ProjectWorkspacePanel open={projectsOpen} onOpenChange={onProjectsOpenChange} capture={capture} onNavigateDocument={onNavigateDocument} canNavigateDocument={canNavigateDocument} artifactAvailable={artifactAvailable} onRestoreWorkspace={onRestoreProject ?? onReopen} />
       <button type="button" data-testid="kernel-workspace-toggle" onClick={() => setOpen((value) => !value)}
         style={{ border: "1px solid #64748b", borderRadius: 8, background: "#f8fafc", color: "#0f172a", padding: "7px 10px", fontWeight: 700 }}>
         Kernel workspace

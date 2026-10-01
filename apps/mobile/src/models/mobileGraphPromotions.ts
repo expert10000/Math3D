@@ -1,7 +1,7 @@
 import { createMixedWorkspaceDocument, createGraph2DWorkspaceProject, evaluateGraph2DPromotionGeometry, graph2DPromotionStatus,
   requirePlatformFacilities, type Graph2DDocument, type Graph2DAnyPromotion, type PlatformCapabilitySnapshot } from "@math3d/core";
 import type { MobileStoredSceneProject } from "./mobileScene";
-import { readMobileGraphWorkspace, replaceMobileGraphCheckpoint, storeMobileGraph } from "./mobileGraphProject";
+import { readMobileGraphWorkspace, readMobileNamedGraphProject, replaceMobileGraphCheckpoint, storeMobileGraph } from "./mobileGraphProject";
 
 export const readMobileGraphPromotions = (project: MobileStoredSceneProject | undefined): Graph2DAnyPromotion[] => {
   const workspace = project ? readMobileGraphWorkspace(project) : null;
@@ -38,5 +38,5 @@ export const commitMobileGraphPromotion = (previous: MobileStoredSceneProject | 
     checkpoint: promotion.document, expected: promotion.document.identity, replay: null }],
     activeDocumentIds: [...new Set([...workspace.activeDocumentIds, promotion.document.identity.id])],
     relations: [...workspace.relations, promotion.relation] });
-  return { ...previous, ...storeMobileGraph(source, now, created) };
+  return { ...previous, ...storeMobileGraph(source, now, created, previous ? readMobileNamedGraphProject(previous.serializedProject) : null) };
 };

@@ -1023,3 +1023,13 @@ The combined roadmap is approved. Execute it as follows:
 4. Keep the GK20 dependency and replay gates in CI. Remove a retained legacy
    path only after its documented parity gate passes; physical-mobile and
    installed-Sage checks remain release-environment follow-ups.
+5. Continue the product delivery in the [Unified Projects roadmap](unified-projects-roadmap.md).
+   PRJ01–PRJ11 delivery slices and named mobile Graph transfer are implemented on
+   `codex/post-1.6.0-audit` through `11b2cb3`. Projects is in main navigation;
+   supported independent Curve/Surface and procedural Geometry documents reopen in
+   native editors. Full cross-module restoration and device/engine/signing acceptance
+   remain open as recorded in [the acceptance matrix](unified-projects-acceptance.md).
+   The final 1.6.0 maintainer baseline is now integrated here (`b180ed7`);
+   repeated Projects software acceptance and the 414-test audit pass. PRJ12 adds
+   a dedicated CI gate; PRJ13–PRJ18 explicitly sequence the remaining restoration,
+   verified resource transfer and native-device/engine acceptance work.

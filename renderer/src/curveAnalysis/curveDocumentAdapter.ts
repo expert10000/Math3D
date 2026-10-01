@@ -1,5 +1,5 @@
 import {
-  CURVE_COMMAND_TYPES, canonicalJsonStringify, createCommandEnvelope, createCurveCommandState,
+  CURVE_COMMAND_TYPES, canonicalJsonStringify, createDocumentIdentity, createCommandEnvelope, createCurveCommandState,
   createCurveDocument, curveCommandDefinitions, parseCurveDocument, serializeCurveDocument,
   type CanonicalJsonValue, type CommandEnvelope, type CurveDocument, type CurveDocumentSource,
   type ScientificSourceGeneration,
@@ -136,7 +136,14 @@ export class CurveDocumentAdapter {
     this.#cursor += 1;
     return this.document();
   }
-  replayBundle(): CurveReplayBundle { return { checkpoint: this.#checkpoint, transactions: [...this.#transactions], cursor: this.#cursor }; }
+  replayBundle(): CurveReplayBundle {
+    // Undo/redo advances scientific generations. Rebase the history's starting
+    // generation so replay reproduces the current identity as well as its source.
+    const sourceEdits = this.#transactions.slice(0, this.#cursor).filter((entry) => entry.forward.command.type === CURVE_COMMAND_TYPES.replaceSource).length;
+    const revision = this.document().identity.revision - sourceEdits;
+    const checkpoint = { ...this.#checkpoint, identity: createDocumentIdentity(this.#checkpoint.identity.id, this.#checkpoint.source, revision) };
+    return { checkpoint, transactions: [...this.#transactions], cursor: this.#cursor };
+  }
   static fromReplayBundle(bundle: CurveReplayBundle): CurveDocumentAdapter {
     const adapter = new CurveDocumentAdapter(bundle.checkpoint);
     for (const transaction of bundle.transactions) adapter.#execute(transaction.forward, transaction.inverse);

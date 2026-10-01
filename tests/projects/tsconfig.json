@@ -1,0 +1,5 @@
+{
+  "extends": "../../renderer/tsconfig.app.json",
+  "compilerOptions": { "types": ["node"], "tsBuildInfoFile": "../../renderer/node_modules/.tmp/projects-contracts.tsbuildinfo" },
+  "include": ["../fixtures/unified-projects/**/*.ts"]
+}
