@@ -2,7 +2,23 @@ import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
+import { runNamedProjectRoundTrip } from "./helpers/namedProjectRoundTrip";
 const projectCore = require(resolve("packages/core/src/index.ts"));
+
+test("PRJ08 named project checkpoints survive Electron/mobile transfer, restart and managed history", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page); const app = ctx;
+    let sequence = 0;
+    await runNamedProjectRoundTrip(app.page, async (checkpoint) => {
+      const filename = test.info().outputPath(`project-${++sequence}.math3d.project.json`);
+      await app.app.evaluate(({ session }, savePath) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(savePath)), filename);
+      await app.page.getByTestId(checkpoint ? "project-export-checkpoint" : "project-export").click();
+      await expect.poll(() => { try { projectCore.parseMath3DProject(readFileSync(filename, "utf8")); return true; } catch { return false; } }).toBe(true);
+      return readFileSync(filename, "utf8");
+    });
+  } finally { await closeSurfaceApp(ctx); }
+});
 
 test("PRJ07 previews independent scientific starters and opens their real documents and lineage", async () => {
   let ctx: LaunchedSurfaceApp | null = null;

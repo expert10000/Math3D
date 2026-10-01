@@ -152,7 +152,9 @@ release workflow, or production behavior. The subsequently authorized
 items 3–4 on this branch and record their separate validation.
 
 The next authorized product phase is [Unified Projects](unified-projects-roadmap.md),
-with PRJ01–PRJ06 delivery slices covering the named workspace container, unified
+with PRJ01–PRJ07 delivery slices covering the named workspace container, unified
 explorer, local library, saved-document operations, lineage inspection and
-compatibility-aware import/export. Their implementation gates and restore limitations
-are recorded in that roadmap.
+compatibility-aware import/export and scientific starters. Named mobile Graph
+transfer and PRJ08 automated desktop/browser/mobile-model evidence follow those
+slices. Their implementation gates and restore/device limitations are recorded
+in that roadmap and the [project acceptance matrix](unified-projects-acceptance.md).

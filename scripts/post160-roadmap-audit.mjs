@@ -28,6 +28,7 @@ if (process.argv.includes("--run")) {
   testFiles.push("src/projects/projectOperations.test.ts");
   testFiles.push("src/projects/projectDependencies.test.ts");
   testFiles.push("src/projects/projectTransfer.test.ts");
+  testFiles.push("src/projects/projectTemplates.test.ts", "src/projects/projectMobileTransfer.test.ts");
   const report = path.join(root, "post160-test-results.json");
   const result = spawnSync(process.execPath, [path.join(root, "renderer/node_modules/vitest/vitest.mjs"), "run", ...testFiles,
     "--reporter=json", `--outputFile=${report}`], { cwd: path.join(root, "renderer"), stdio: "inherit" });

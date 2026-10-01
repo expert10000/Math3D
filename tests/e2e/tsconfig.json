@@ -19,6 +19,7 @@
     "./**/*.ts",
     "../graph2d-web/**/*.ts",
     "../../playwright.graph2d.config.ts",
+    "../../playwright.projects.config.ts",
     "../../scripts/**/*.mjs"
   ]
 }

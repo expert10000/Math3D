@@ -2704,5 +2704,7 @@ defines eight commits: first-class container, explorer, library metadata,
 cross-document operations, dependency/status inspection, compatibility-aware
 import/export, scientific templates, and desktop/web/mobile round-trip gates.
 Project sources and lineage remain owned by the existing shared contracts.
-PRJ01–PRJ06 delivery slices are implemented on the continuation branch; complete
-native cross-module restoration retains a separate PRJ06/PRJ08 acceptance gate.
+PRJ01–PRJ07 delivery slices, named mobile Graph transfer and PRJ08 automated
+desktop/browser/mobile-model round-trip evidence are implemented on the continuation
+branch. Complete native cross-module restoration and device/engine sign-off retain
+separate acceptance gates in the [project acceptance matrix](unified-projects-acceptance.md).

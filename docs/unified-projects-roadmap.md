@@ -141,10 +141,16 @@ before integration; keep existing release scope and signed-build evidence separa
   minimality is implied. Three scientific template tests, the seventh Electron
   project journey, renderer typecheck and the production build pass. The phone
   starter screenshot was visually checked.
-- PRJ08: planned, subject to the preceding gates. The next two continuation commits
-  will preserve named-project envelopes through supported mobile Graph transfer
-  and freeze that behavior across desktop/web/mobile host models. Full native
-  cross-module restoration and installed-engine/device evidence remain separate.
+- PRJ08: automated acceptance slice implemented. The same real Projects UI journey
+  runs in Electron and two Chromium locale/time-zone configurations, passes exported
+  checkpoint JSON through the actual mobile Graph edit/undo/redo/save/export model,
+  and checks independent destination import/restart plus saved-project history.
+  Original project/document identities, metadata, companions, analysis and lineage
+  survive transfer; version conflicts protect the source library and historical
+  numerical analysis remains qualified as stale. Repeatable contract/desktop/browser/
+  combined commands are recorded in [the acceptance matrix](unified-projects-acceptance.md).
+  Full native cross-module restoration, external byte/device and installed-engine
+  sign-off remain separate acceptance obligations, not completed PRJ08 claims.
 
 ### Named-project mobile transfer continuation
 
@@ -163,14 +169,15 @@ local projects. Named duplication is deferred to desktop rather than dropping
 metadata or incorrectly reusing companion identities. Historical engine records do
 not establish execution availability. Desktop offers explicit checkpoint JSON export,
 which resolves verified replay without transferring an undo stack or sidecar bytes.
-Four transfer/storage-model tests and 26 existing mobile Graph/transfer regression
-tests pass. Mobile TypeScript passes using the checkout's core/kernel/API source
+Four transfer/storage-model tests and 41 existing mobile Graph/storage/transfer
+regression tests pass. Mobile TypeScript passes using the checkout's core/kernel/API source
 paths; native device/file-picker acceptance remains unrun.
 
 The repeatable `node scripts/post160-roadmap-audit.mjs --run` gate includes both
-project suites and passes 401 tests across 62 files. Renderer/E2E TypeScript,
-main/renderer production builds and dependency boundaries pass. This phase has
-six passing Project Electron journeys plus six Graph Gallery/kernel regression
-journeys (twelve total). Electron downloads use the native session download hook
+project suites and passes 408 tests across 64 files. Renderer/E2E/mobile/fixture
+TypeScript, main/renderer/web production builds and dependency boundaries pass.
+This phase has eight passing Project Electron journeys plus six Graph Gallery/kernel
+regression journeys (fourteen total), plus two Chromium project interchange journeys.
+Electron downloads use the native session download hook
 in the transfer test; the test also verifies the resulting file before import.
 It has not run a native-mobile device or full cross-module restore acceptance gate.
