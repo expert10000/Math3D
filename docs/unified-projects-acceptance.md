@@ -53,8 +53,9 @@ are covered by contract tests.
 - Native opening supports independent literal parametric/explicit Curve expressions
   (2D/3D without external dependencies), nonperiodic parametric Surfaces, procedural
   Geometry objects/live-derived constructions and the existing Graph promotions.
-  Mesh, Volume, Topology, Complex and other Curve/Surface/Geometry representations
-  remain verified previews until equivalent native editor adapters exist.
+  The PRJ13 fundamental-diagram Topology/Function Explorer subsets and PRJ14
+  self-contained scalar Volume recipes also have native adapters. Mesh and other
+  representations remain verified previews until equivalent adapters exist.
 - Mobile named editing requires one Graph, checkpointed Curve/Surface companions,
   no saved scripts or archived documents, and available source point tables. An edited
   Graph's historical companions may force desktop opening to remain preview-only;
@@ -120,13 +121,13 @@ source and corrected conflict test; subsequent evidence edits are documentation 
 Local logs and the disposable JSON report are in
 `output/projects-integration/` and `post160-test-results.json`. CI also compiles an
 embedded Android bundle; that step is software coverage, not a new APK signoff.
-Remaining PRJ14–PRJ18 deliveries and the supported PRJ13 subset are explicit in the
+Remaining PRJ15–PRJ18 deliveries and the supported PRJ13/PRJ14 subsets are explicit in the
 [roadmap](unified-projects-roadmap.md#remaining-delivery-and-integration-gates).
 
 ## PRJ13 native scientific restoration — October 1
 
 Main merge `766776a` passed [CI 36892375601](https://github.com/expert10000/Math3D/actions/runs/36892375601).
-The next branch connects supported Topology documents to the diagram editor and
+The merged PRJ13 branch connects supported Topology documents to the diagram editor and
 supported Complex documents to Function Explorer. Its seven additional contracts
 cover unchanged opening, retained opaque source fields/provenance, continued edit
 IDs, undo/redo replay revisions, bounded history, intent checkpointing, stale result
@@ -157,6 +158,50 @@ the embedded bundle in `output/projects-prj13-native-bundle/`. This is compilati
 evidence, not an installed APK or a new physical-device signoff.
 
 [Clean-checkout CI 36897077724](https://github.com/expert10000/Math3D/actions/runs/36897077724)
-checks runtime/test source `e8c4737` on this continuation branch. It was still
-running when the completed local evidence was recorded; its current result must
-be inspected separately. Subsequent evidence edits do not change that runtime.
+passed on runtime/test source `e8c4737`. PRJ13 then merged through
+[PR #15](https://github.com/expert10000/Math3D/pull/15) at `9d9b013`; its
+[main CI 36898400691](https://github.com/expert10000/Math3D/actions/runs/36898400691)
+also passed. The separate PR run on `8ca7870` exposed an existing preview test
+comparing all browser storage while unrelated UI/workbook autosave was running.
+PRJ14 scopes preview/cancel/rejection checks to the complete named-project storage
+namespace, including payloads, library, thumbnails and backups, while retaining
+the source-generation and navigation assertions.
+
+## PRJ14 native Volume restoration — October 1
+
+Six contracts exercise exact formula/parameter sample oracles, point/cell spatial
+metadata and units, source/cache retention, atomic edits, unsupported-resource
+qualification, history/revision/command-ID behavior, immutable replay exports,
+100-edit checkpoint folding and bounded migration of older unbounded logs.
+
+The Electron journey opens two distinct Volume documents, compares displayed
+sample ranges with independent numeric expectations, saves unchanged generations,
+edits parameters/expression/grid, undoes/redoes, saves, closes Electron, reopens
+its existing isolated profile and restores source/history. It continues editing,
+retains stale historical numerical results with their original engine provenance,
+rejects invalid grids and missing dense/unsupported resources without replacing
+project bytes, and creates another Volume without reusing an imported legacy ID.
+Both saved and new documents remain navigable. The source editor is also checked
+for containment at 390 pixels.
+
+Local evidence is in `output/projects-integration/prj14-*.log`. The contract
+selection passed 58 tests / 12 files and the existing mobile/shared regression
+selection passed 123 tests / 24 files. The mapped continuation audit passed
+427 tests / 68 files, covering all 53 milestone evidence rows. The broader initial
+Projects/Volume unit selection passed 117 tests / 27 files; the final focused
+Volume source/adapter selection passed nine tests / two files.
+
+Main/renderer/E2E/mobile/portable-fixture TypeScript and desktop/web production
+builds passed. The first full desktop run exposed test-fixture issues and the
+unrelated-workbook storage comparison; those were corrected and the desktop
+suite was repeated. All 18 Electron journeys passed (12 Projects, four Gallery
+and two kernel), both browser locale/time-zone journeys passed, and dependency
+boundaries passed with 979 modules / 2206 dependencies. Final qualification
+hardening rejects incomplete expressions and inherited object identifiers before
+activation; its contracts and targeted Volume journey passed again on the
+rebuilt renderer. The final renderer and E2E types passed after correcting the
+tuple type of the frozen replay export. The desktop editor screenshot was
+visually inspected and the 390-pixel containment assertions passed.
+The released Graph test pack passed. Source and replay checks attest desktop
+software behavior; they do not attest transferred external bytes, installed
+scientific engines, a signed artifact or physical Samsung acceptance.

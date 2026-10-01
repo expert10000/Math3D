@@ -3,6 +3,8 @@ import { curveEditorSeed, curveSourceFromEditor, surfaceEditorSeed, surfaceSourc
 import { topologyEditorSeed, complexEditorSeed, complexSourceFromEditor, scientificDocumentEditable } from "./projects/nativeScientificRestore";
 import { TopologyDiagramCommandAdapter } from "./topology/topologyCommandAdapter";
 import { ComplexAnalysisCommandAdapter } from "./math/complexCommandAdapter";
+import { VolumeProjectEditor } from "./projects/VolumeProjectEditor";
+import { buildNativeVolumeDataset, nativeVolumeObject, volumeEditorSeed, volumeDocumentEditable } from "./projects/nativeVolumeRestore";
 import { ScientificProjectEditor } from "./projects/ScientificProjectEditor";
 import { verifyMixedWorkspaceReplay } from "./kernel/mixedWorkspaceReplay";
 // src/App.tsx
@@ -727,6 +729,7 @@ import {
   createEmptyGraph2DDocument,
   applyGraph2DAuthoring,
   createMixedWorkspaceDocument,
+  createVolumeDocument,
   createViewerProvenanceEvidence,
   canonicalJsonByteLength,
   geometryDocumentFromSceneDocument,
@@ -12529,7 +12532,9 @@ const App: React.FC = () => {
   const [restoredSurfaceAdapter, setRestoredSurfaceAdapter] = useState<SurfaceDocumentAdapter | null>(null);
   const [restoredTopologyAdapter, setRestoredTopologyAdapter] = useState<TopologyDiagramCommandAdapter | null>(null);
   const [restoredComplexAdapter, setRestoredComplexAdapter] = useState<ComplexAnalysisCommandAdapter | null>(null);
-  const restoredProjectRef = useRef<{ workspace: MixedWorkspaceDocument; curves: Map<string, CurveDocumentAdapter>; surfaces: Map<string, SurfaceDocumentAdapter>; geometries: Map<string, GeometryDocumentAdapter>; topologies: Map<string, TopologyDiagramCommandAdapter>; complexes: Map<string, ComplexAnalysisCommandAdapter> } | null>(null);
+  const [restoredVolumeAdapter, setRestoredVolumeAdapter] = useState<VolumeDocumentAdapter | null>(null);
+  const [restoredVolumeRevision, setRestoredVolumeRevision] = useState(0);
+  const restoredProjectRef = useRef<{ workspace: MixedWorkspaceDocument; curves: Map<string, CurveDocumentAdapter>; surfaces: Map<string, SurfaceDocumentAdapter>; geometries: Map<string, GeometryDocumentAdapter>; topologies: Map<string, TopologyDiagramCommandAdapter>; complexes: Map<string, ComplexAnalysisCommandAdapter>; volumes: Map<string, VolumeDocumentAdapter> } | null>(null);
   const [curvePresetId, setCurvePresetId] = useState<string>("circle2d");
   const [curveCustomXExpr, setCurveCustomXExpr] = useState("cos(t)");
   const [curveCustomYExpr, setCurveCustomYExpr] = useState("sin(2*t)");
@@ -35125,6 +35130,8 @@ const App: React.FC = () => {
   const volumeOriginalSamplingRef = useRef<VolumeSampling>(samplingFromBounds(volumePresetBounds, volumeDims));
   const volumeOriginalDatasetRef = useRef<VolumeDataset | null>(null);
   const handleChangeVolumePresetId = useCallback((id: VolumePresetId) => {
+    if (restoredVolumeAdapter && id === "custom") setVolumeCustomExpr("x^2 + y^2 + z^2 - 1");
+    setRestoredVolumeAdapter(null);
     const nextPreset = getVolumePreset(id);
     const nextParams = getVolumePresetDefaultParams(id);
     const nextBounds = getVolumePresetBounds(nextPreset, resolveVolumePresetParams(nextPreset, nextParams));
@@ -35144,7 +35151,7 @@ const App: React.FC = () => {
     volumeOriginalSamplingRef.current = nextSampling;
     volumeOriginalDatasetRef.current = null;
     setVolumeSamplingStatus("Preset definition and its sampling recipe applied.");
-  }, [volumeBoundaryMode, volumeCentering, volumeDims, volumeInterpolation]);
+  }, [volumeBoundaryMode, volumeCentering, volumeDims, volumeInterpolation, restoredVolumeAdapter]);
   const volumeCustomFnRef = useRef<((x: number, y: number, z: number) => number) | null>(null);
   const volumeCustomCompiled = useMemo(() => {
     if (volumePresetId !== "custom") return { fn: undefined, error: null };
@@ -35216,7 +35223,10 @@ const App: React.FC = () => {
     }),
     [volumeAppliedCentering, volumeAppliedSamplingBounds, volumeAppliedSamplingClamped.dims, volumePresetId, volumeParamsResolved, volumeCustomCompiled.fn]
   );
-  const volumeDataset: VolumeDataset = volumeSdfPreview ?? volumeDatasetOverride ?? volumeDatasetPreset;
+  const restoredVolumeDataset = useMemo(() => restoredVolumeAdapter ? buildNativeVolumeDataset(restoredVolumeAdapter.document()) : null,
+    [restoredVolumeAdapter, restoredVolumeRevision]);
+  const volumeDataset: VolumeDataset = volumeSdfPreview ?? volumeDatasetOverride ?? restoredVolumeDataset ?? volumeDatasetPreset;
+  const nativeVolumeActive = !!restoredVolumeAdapter && !volumeSdfPreview && !volumeDatasetOverride;
   const volumeNonFiniteReport = useMemo(
     () => reportVolumeNonFinite(volumeDataset.grid.scalars, volumeDataset.grid.dims),
     [volumeDataset]
@@ -35224,6 +35234,7 @@ const App: React.FC = () => {
   const volumeRevisionTrackerRef = useRef<VolumeRevisionTracker>(new Map());
   const volumeStorageStoreRef = useRef(createVolumeTypedArrayStore());
   const canonicalVolumeObject = useMemo(() => {
+    if (nativeVolumeActive) return nativeVolumeObject(restoredVolumeAdapter!.document(), volumeDataset, volumeRevisionTrackerRef.current);
     const common = {
       dataset: volumeDataset,
       grid: volumeDataset.grid,
@@ -35289,6 +35300,7 @@ const App: React.FC = () => {
       parameters: volumeParamsResolved,
     });
   }, [
+    nativeVolumeActive, restoredVolumeAdapter, restoredVolumeRevision,
     volumeAppliedCentering,
     volumeDataset,
     volumeDatasetOverride,
@@ -35303,19 +35315,23 @@ const App: React.FC = () => {
   const [, setVolumeKernelDisplayRevision] = useState(0);
   const [volumeKernelRestoreToken, setVolumeKernelRestoreToken] = useState(0);
   const activeVolumeKernelAdapter = useMemo(() => {
+    if (nativeVolumeActive) return restoredVolumeAdapter!;
     const volumeId = canonicalVolumeObject.identity.volumeId;
     let adapter = volumeKernelAdaptersRef.current.get(volumeId);
-    if (!adapter) {
-      adapter = new VolumeDocumentAdapter(volumeDocumentFromLegacyObject(canonicalVolumeObject));
+    if (!adapter || restoredProjectRef.current?.volumes.has(adapter.document().identity.id)) {
+      let checkpoint = volumeDocumentFromLegacyObject(canonicalVolumeObject);
+      if (restoredProjectRef.current?.volumes.has(checkpoint.identity.id)) checkpoint = createVolumeDocument({ source: checkpoint.source, metadata: checkpoint.metadata, display: checkpoint.display, stableKey: { newVolume: crypto.randomUUID() } });
+      adapter = new VolumeDocumentAdapter(checkpoint);
       volumeKernelAdaptersRef.current.set(volumeId, adapter);
     }
     return adapter;
-  }, [canonicalVolumeObject.identity.volumeId, volumeKernelRestoreToken]);
+  }, [canonicalVolumeObject.identity.volumeId, volumeKernelRestoreToken, nativeVolumeActive, restoredVolumeAdapter]);
   useEffect(() => {
+    if (nativeVolumeActive) return;
     const before = activeVolumeKernelAdapter.document().identity.revision;
     const after = activeVolumeKernelAdapter.syncLegacyObject(canonicalVolumeObject).identity.revision;
     if (after !== before) setVolumeKernelDisplayRevision(after);
-  }, [activeVolumeKernelAdapter, canonicalVolumeObject.identity.key]);
+  }, [activeVolumeKernelAdapter, canonicalVolumeObject.identity.key, nativeVolumeActive]);
   useEffect(() => {
     volumeStorageStoreRef.current.bind("active-volume", canonicalVolumeObject.storage, volumeDataset.grid.scalars);
   }, [canonicalVolumeObject.storage, volumeDataset.grid.scalars]);
@@ -36080,6 +36096,7 @@ const App: React.FC = () => {
       const imported = importScientificVolume(response.files, {
         onProgress: (progress, phase) => setVolumeScientificIoStatus(`${phase} · ${Math.round(progress * 100)}%`),
       });
+      setRestoredVolumeAdapter(null);
       setVolumeDatasetOverride({
         kind: "volume",
         grid: importedVolumeGrid(imported),
@@ -36445,6 +36462,7 @@ const App: React.FC = () => {
       setVolumeExtractionRecords(document.extractions);
       if (document.kernelDocument && (document.sourceRecipe.kind === "analytic-preset" || document.sourceRecipe.kind === "custom-field")) {
         const recipe = document.sourceRecipe;
+        setRestoredVolumeAdapter(null);
         hydrateVolumeRevisionTracker(volumeRevisionTrackerRef.current, document.volume);
         volumeKernelAdaptersRef.current.set(document.volume.identity.volumeId, new VolumeDocumentAdapter(document.kernelDocument));
         setVolumeKernelRestoreToken((value) => value + 1);
@@ -64037,6 +64055,7 @@ case "mobius":
         sourceId: sourceObjectId,
         sdf: sdfMetadata,
       };
+      setRestoredVolumeAdapter(null);
       setVolumeDatasetOverride(distanceDataset);
       setVolumeSdfPreview(null);
       setVolumeSdfStatus(`${volumeDistanceSigned ? "Signed" : "Unsigned"} distance applied · ${signDiagnostics.message}`);
@@ -64168,6 +64187,7 @@ case "mobius":
       note: volumeSdfPreview.note?.replace("Non-destructive", "Applied") ?? "Applied SDF operation.",
       sourceId: volumeSdfPreview.sourceId?.replace(/^preview:/, "applied:"),
     };
+    setRestoredVolumeAdapter(null);
     setVolumeDatasetOverride(applied);
     volumeOriginalDatasetRef.current = applied;
     setVolumeSdfPreview(null);
@@ -77835,6 +77855,8 @@ case "mobius":
         activeGeometry.commitDisplay(geometryDisplayFromEditor(activeGeometry.document(), geometryKernelSceneSnapshot));
       }
       const entries = restored.workspace.entries.map((entry) => {
+        const volume = restored.volumes.get(entry.expected.id);
+        if (volume) { const document = volume.document(), replay = volume.replayBundle(); return { ...entry, checkpoint: replay.checkpoint, expected: document.identity, replay: { format: MIXED_REPLAY_FORMATS.volume, payload: replay as unknown as CanonicalJsonValue } }; }
         const scientific = restored.topologies.get(entry.expected.id) ?? restored.complexes.get(entry.expected.id);
         if (scientific) { const document = scientific.document(), replay = scientific.exportReplay(); return { ...entry, checkpoint: replay.checkpoint.document, expected: document.identity, replay: { format: entry.module === "topology" ? MIXED_REPLAY_FORMATS.topology : MIXED_REPLAY_FORMATS.complex, payload: replay as unknown as CanonicalJsonValue } }; }
         const geometry = restored.geometries.get(entry.expected.id);
@@ -77863,9 +77885,10 @@ case "mobius":
       }
       for (const entry of live.entries.filter((entry) => owned.has(entry.expected.id))) {
         // Restored adapters already supplied exact document replay above.
-        if (restored.curves.has(entry.expected.id) || restored.surfaces.has(entry.expected.id) || restored.geometries.has(entry.expected.id) || restored.topologies.has(entry.expected.id) || restored.complexes.has(entry.expected.id)) continue;
+        if (restored.curves.has(entry.expected.id) || restored.surfaces.has(entry.expected.id) || restored.geometries.has(entry.expected.id) || restored.topologies.has(entry.expected.id) || restored.complexes.has(entry.expected.id) || restored.volumes.has(entry.expected.id)) continue;
         const index = entries.findIndex((saved) => saved.expected.id === entry.expected.id);
         if (index >= 0) entries[index] = entry; else entries.push(entry);
+        if (entry.module === "volume" && activeVolumeKernelAdapter.document().identity.id === entry.expected.id && volumeDocumentEditable(activeVolumeKernelAdapter.document())) restored.volumes.set(entry.expected.id, activeVolumeKernelAdapter);
       }
       const ids = new Set(entries.map((entry) => entry.expected.id));
       const results = [...new Map([...restored.workspace.results, ...live.results.filter((result) => ids.has(result.provenance.source.documentId))].map((result) => [result.resultId, result])).values()];
@@ -77988,6 +78011,11 @@ case "mobius":
   const handleSurfacesQuickEdit =
     datasetKind === "volume"
       ? () => {
+          if (nativeVolumeActive) {
+            prepareSurfaceCustomEditing();
+            document.querySelector<HTMLInputElement>('[data-testid="project-volume-expression"]')?.focus();
+            return;
+          }
           setVolumeDatasetOverride(null);
           setVolumeDistanceError(null);
           handleChangeVolumePresetId("custom");
@@ -78246,6 +78274,7 @@ case "mobius":
                   onChangeVolumeSamplingCenter={handleVolumeSamplingCenterChange}
                   onChangeVolumeSamplingExtent={handleVolumeSamplingExtentChange}
                   onResetVolumeSampling={handleResetVolumeSampling}
+                  volumeProjectManaged={nativeVolumeActive}
                   onRebuildVolumeSampling={handleRebuildVolumeSampling}
                   onToggleVolumeCropBox={setVolumeShowCropBox}
                   onToggleVolumeCropGizmo={handleToggleVolumeCropGizmo}
@@ -79021,7 +79050,7 @@ case "mobius":
   });
 
   const reopenGraphWorkspace = (workspace: MixedWorkspaceDocument) => {
-          restoredProjectRef.current = null; setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null); setRestoredTopologyAdapter(null); setRestoredComplexAdapter(null);
+          restoredProjectRef.current = null; setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null); setRestoredTopologyAdapter(null); setRestoredComplexAdapter(null); setRestoredVolumeAdapter(null);
           const graph = workspace.entries.find((entry) => entry.checkpoint.format === "math3d.graph2d-document")?.checkpoint;
           if (!graph || graph.format !== "math3d.graph2d-document") return;
           graph2dAdapterRef.current = new Graph2DCommandAdapter(graph); setGraph2dDocument(graph);
@@ -79043,6 +79072,20 @@ case "mobius":
     const restored = restoredProjectRef.current;
     const curve = restored?.curves.get(id), surface = restored?.surfaces.get(id), geometry = restored?.geometries.get(id);
     const topology = restored?.topologies.get(id), complex = restored?.complexes.get(id);
+    const volume = restored?.volumes.get(id);
+    if (volume) {
+      const seed = volumeEditorSeed(volume.document());
+      setRestoredVolumeAdapter(volume); setRestoredVolumeRevision((value) => value + 1);
+      setVolumeDatasetOverride(null); setVolumeSdfPreview(null); setVolumeSdfDiagnostics(null); setVolumeDistanceError(null);
+      setVolumePresetId("custom"); setVolumeCustomExpr(seed.expression); setVolumeParams(seed.parameters);
+      setVolumeDims([...seed.spatial.dimensions] as [number, number, number]);
+      setVolumeSampling(seed.sampling); setVolumeAppliedSampling(seed.sampling);
+      setVolumeCentering(seed.spatial.centering); setVolumeAppliedCentering(seed.spatial.centering);
+      setVolumeTargetSpacing([...seed.spatial.spacing] as [number, number, number]);
+      setVolumeSamplingStatus("Saved recipe and grid restored. Edit with Apply source above the viewport.");
+      setActiveGraph2DTargetId(null); setMode("surfaces"); setDatasetKind("volume");
+      setSurfacesPanelState("work"); setSurfacesLeftTab("object"); return true;
+    }
     if (topology) {
       setRestoredTopologyAdapter(topology); setTopologyKernelDocument(topology.document()); setTopologyKernelReplay(topology.exportReplay());
       setActiveGraph2DTargetId(null); setMode("topology"); return true;
@@ -79094,10 +79137,11 @@ case "mobius":
   const reopenProjectWorkspace = (workspace: MixedWorkspaceDocument) => {
     const resolved = verifyMixedWorkspaceReplay(workspace);
     const curves = new Map<string, CurveDocumentAdapter>(), surfaces = new Map<string, SurfaceDocumentAdapter>(), geometries = new Map<string, GeometryDocumentAdapter>();
-    const topologies = new Map<string, TopologyDiagramCommandAdapter>(), complexes = new Map<string, ComplexAnalysisCommandAdapter>();
+    const topologies = new Map<string, TopologyDiagramCommandAdapter>(), complexes = new Map<string, ComplexAnalysisCommandAdapter>(), volumes = new Map<string, VolumeDocumentAdapter>();
     const promoted = new Set(workspace.relations.filter((relation) => relation.operation.startsWith("graph2d.") && relation.target.type === "document").map((relation) => relation.target.type === "document" ? relation.target.generation.documentId : ""));
     for (const entry of workspace.entries) {
       const document = resolved.get(entry.expected.id)!;
+      if (document.format === "math3d.volume-document" && volumeDocumentEditable(document)) volumes.set(document.identity.id, entry.replay ? VolumeDocumentAdapter.fromReplayBundle(entry.replay.payload as Parameters<typeof VolumeDocumentAdapter.fromReplayBundle>[0]) : new VolumeDocumentAdapter(document));
       if (document.format === "math3d.topology-document" && scientificDocumentEditable(document)) { topologyEditorSeed(document); topologies.set(document.identity.id, entry.replay ? TopologyDiagramCommandAdapter.restore(entry.replay.payload as Parameters<typeof TopologyDiagramCommandAdapter.restore>[0]) : TopologyDiagramCommandAdapter.fromDocument(document)); }
       if (document.format === "math3d.complex-analysis-document" && scientificDocumentEditable(document)) complexes.set(document.identity.id, entry.replay ? ComplexAnalysisCommandAdapter.restore(entry.replay.payload as Parameters<typeof ComplexAnalysisCommandAdapter.restore>[0]) : new ComplexAnalysisCommandAdapter(document));
       if (document.format === "math3d.geometry-document" && geometryDocumentEditable(document)) geometries.set(document.identity.id, entry.replay ? GeometryDocumentAdapter.restore(entry.replay.payload as Parameters<typeof GeometryDocumentAdapter.restore>[0]) : new GeometryDocumentAdapter(document));
@@ -79107,7 +79151,7 @@ case "mobius":
     }
     const checkpoint = createMixedWorkspaceDocument({ ...workspace, entries: workspace.entries.map((entry) => ({ ...entry, checkpoint: resolved.get(entry.expected.id)!, replay: null })) });
     reopenGraphWorkspace(checkpoint); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null);
-    restoredProjectRef.current = { workspace, curves, surfaces, geometries, topologies, complexes };
+    restoredProjectRef.current = { workspace, curves, surfaces, geometries, topologies, complexes, volumes };
   };
 
   return (
@@ -79115,7 +79159,7 @@ case "mobius":
       <KernelWorkspacePanel
         projectsOpen={projectsOpen}
         onProjectsOpenChange={setProjectsOpen}
-        canNavigateDocument={(id, module) => restoredProjectRef.current?.curves.has(id) || restoredProjectRef.current?.surfaces.has(id) || restoredProjectRef.current?.geometries.has(id) || restoredProjectRef.current?.topologies.has(id) || restoredProjectRef.current?.complexes.has(id) || graph2dPromotions.some((item) => item.document.identity.id === id) || ({
+        canNavigateDocument={(id, module) => restoredProjectRef.current?.curves.has(id) || restoredProjectRef.current?.surfaces.has(id) || restoredProjectRef.current?.geometries.has(id) || restoredProjectRef.current?.topologies.has(id) || restoredProjectRef.current?.complexes.has(id) || restoredProjectRef.current?.volumes.has(id) || graph2dPromotions.some((item) => item.document.identity.id === id) || ({
           geometry: geometryKernelAdapterRef.current?.document().identity.id,
           mesh: meshKernelDocument?.identity.id,
           surface: (restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom" ? restoredSurfaceAdapter : surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId))?.document().identity.id,
@@ -81388,6 +81432,7 @@ case "mobius":
         <span>Projects → Save project keeps these edits.</span>
       </div>}
       {restoredTopologyAdapter && mode === "topology" && <div data-testid="project-topology-editor" style={{ padding: "6px 14px" }}>Saved Topology · {restoredTopologyAdapter.current().name} · {restoredTopologyAdapter.document().identity.id} · Projects → Save project keeps these edits.</div>}
+      {nativeVolumeActive && activeKernelModule === "volume" && <VolumeProjectEditor key={restoredVolumeAdapter!.document().identity.id} adapter={restoredVolumeAdapter!} onRestore={() => navigateRestoredDocument(restoredVolumeAdapter!.document().identity.id, "volume")} />}
       {restoredComplexAdapter && activeKernelModule === "complex" && <ScientificProjectEditor adapter={restoredComplexAdapter} spec={complexMapSpec} onChange={updateComplexMapSpec} onRestore={() => navigateRestoredDocument(restoredComplexAdapter.document().identity.id, "complex")} />}
       {restoredProjectRef.current && (mode === "curves" && activeCurveKernelAdapter === restoredCurveAdapter || mode === "surfaces" && surfaceViewerKind === "param" && paramSurfaceId === "custom" && restoredSurfaceAdapter) && <div data-testid="project-editor-history" style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "6px 14px" }}>
         <span>Saved document · {mode === "curves" ? restoredCurveAdapter?.document().metadata.title : restoredSurfaceAdapter?.document().metadata.title}</span>
@@ -118099,6 +118144,7 @@ type SurfacesLeftPanelProps = {
   onChangeVolumeSamplingCenter: (axisIndex: 0 | 1 | 2, value: number) => void;
   onChangeVolumeSamplingExtent: (axisIndex: 0 | 1 | 2, value: number) => void;
   onResetVolumeSampling: () => void;
+  volumeProjectManaged: boolean;
   onRebuildVolumeSampling: () => void;
   onToggleVolumeCropBox: (v: boolean) => void;
   onToggleVolumeCropGizmo: (v: boolean) => void;
@@ -118915,6 +118961,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeVolumeSamplingCenter,
   onChangeVolumeSamplingExtent,
   onResetVolumeSampling,
+  volumeProjectManaged,
   onRebuildVolumeSampling,
   onToggleVolumeCropBox,
   onToggleVolumeCropGizmo,
@@ -120502,6 +120549,8 @@ onChangeImplicitExpr,
               )}
             </div>
           )}
+          {volumeProjectManaged && <p>Edit this saved document with Apply source above the viewport. Choose New or a gallery preset to create another document.</p>}
+          <fieldset hidden={volumeProjectManaged} disabled={volumeProjectManaged} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }} aria-label="Volume dimension presets">
             {([32, 64, 128, 256] as const).map((size) => (
               <button
@@ -120859,6 +120908,7 @@ onChangeImplicitExpr,
             </div>
           )}
 
+          </fieldset>
           <div style={{ fontWeight: 700, margin: "10px 0 6px" }}>Crosshair</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
             {(["X", "Y", "Z"] as const).map((label, axisIndex) => (
