@@ -53,6 +53,8 @@ before integration; keep existing release scope and signed-build evidence separa
 
 ## Implementation record
 
-- PRJ01: in progress.
+- PRJ01: core envelope implemented. Five focused contract tests pass, covering
+  named/legacy round-trip, retained results/lineage/artifact references, independent
+  title/content revisions, strict validation and caller-state isolation.
 - PRJ02: in progress.
 - PRJ03–PRJ08: planned, subject to the preceding gates.
