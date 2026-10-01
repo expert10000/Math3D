@@ -45,15 +45,15 @@ links, not an inferred live coupling or an automatic recomputation promise.
 PRJ01 adds a core envelope without changing mixed-workspace v1 or existing Graph
 handoff formats. PRJ02 starts with a live explorer and saved preview; it makes the
 current document containers visible without adding a second mutation/history route.
-Full host restoration is a PRJ06/PRJ08 obligation. Rich library actions, inferred
-dependency editing and template execution do not enter the first commits.
+Full host restoration is a PRJ06/PRJ08 obligation. PRJ03 adds host-local library
+metadata and previews; dependency editing and template execution remain later work.
 
 Work stays on `codex/post-1.6.0-audit`. Rebase on the confirmed release commit
 before integration; keep existing release scope and signed-build evidence separate.
 
 ## Implementation record
 
-- PRJ01: core envelope implemented. Five focused contract tests pass, covering
+- PRJ01: core envelope implemented. Seven focused contract tests pass, covering
   named/legacy round-trip, retained results/lineage/artifact references, independent
   title/content revisions, strict validation and caller-state isolation.
 - PRJ02: first explorer slice implemented. The Projects panel lists live documents
@@ -64,9 +64,26 @@ before integration; keep existing release scope and signed-build evidence separa
   cold restart, corrupt-store protection and phone-width containment. Desktop and
   phone screenshots were visually checked. Existing Graph Gallery and kernel
   journeys remain green (eight Electron journeys total).
-- PRJ03–PRJ08: planned, subject to the preceding gates.
+- PRJ03: local library implemented, with independent project payloads, bounded
+  descriptions (2000 characters), up to 16 unique tags (40 characters each),
+  favorites, saved/viewed activity, and search by title/tag. The index supports
+  64 entries and fails before replacing data if unsupported or corrupt. Project
+  metadata leaves workspace hashes, document identities and source generations
+  unchanged; existing title-only project envelopes remain readable without
+  silently adding metadata. PNG/JPEG thumbnails up to 128 KiB are separate local
+  sidecars; missing, unreadable or undecodable thumbnails show a clear fallback.
+  Seven library tests cover restart semantics, independent payloads, ordering,
+  bounds, corruption, missing/foreign refs and storage-quota rollback. The third
+  Electron project journey covers metadata, thumbnails, favorites and activity
+  across restart, safe preview/current-workspace switching, search, missing
+  thumbnails, corrupt-index preservation and phone containment. Desktop and
+  phone library screenshots were visually checked. No payload is pruned from an
+  index; storage rollback is best effort because localStorage has no multi-key
+  transaction. Interrupted saves can leave a recoverable unindexed payload.
+- PRJ04–PRJ08: planned, subject to the preceding gates.
 
 The repeatable `node scripts/post160-roadmap-audit.mjs --run` gate includes both
-project suites and passes 376 tests across 58 files. Renderer/E2E TypeScript,
+project suites and passes 385 tests across 59 files. Renderer/E2E TypeScript,
 main/renderer production builds and dependency boundaries pass. This phase has
-not run a native-mobile device or full cross-module restore acceptance gate.
+nine passing Electron journeys across Projects, Graph Gallery and kernel flows.
+It has not run a native-mobile device or full cross-module restore acceptance gate.

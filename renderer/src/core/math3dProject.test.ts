@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { adoptMixedWorkspaceProject, createEmptyGraph2DDocument, createGraph2DWorkspaceProject,
   createMath3DProject, normalizeMath3DProject, parseMath3DProject, renameMath3DProject,
   replaceMath3DProjectWorkspace, serializeMath3DProject, structuralHash,
-  createMixedWorkspaceDocument, promoteGraph2DToCurve } from "@math3d/core";
+  createMixedWorkspaceDocument, promoteGraph2DToCurve, updateMath3DProjectMetadata } from "@math3d/core";
 import fixture from "../../../tests/fixtures/post-1.6.0/graph-gallery-upgrade-storage.json";
 
 const workspace = () => createGraph2DWorkspaceProject(createEmptyGraph2DDocument("project-contract"));
@@ -60,5 +60,23 @@ describe("PRJ01 named project container", () => {
     (source.activeDocumentIds as string[]).splice(0);
     expect(project.workspace.activeDocumentIds).toHaveLength(1);
     expect(normalizeMath3DProject(project).ok).toBe(true);
+  });
+  it("retains optional metadata through renames without enriching old title-only envelopes", () => {
+    const original = createMath3DProject(workspace(), { stableKey: "metadata" });
+    expect(parseMath3DProject(serializeMath3DProject(original)).metadata).toEqual({ title: "Untitled project" });
+    const tags = ["research"], edited = updateMath3DProjectMetadata(original, { title: "Study", description: "Profile", tags });
+    tags.push("mutated");
+    const renamed = parseMath3DProject(serializeMath3DProject(renameMath3DProject(edited, "New name")));
+    expect(renamed.metadata).toEqual({ title: "New name", description: "Profile", tags: ["research"] });
+    expect(renamed.identity).toEqual(original.identity);
+    expect(renamed.workspace).toEqual(original.workspace);
+  });
+  it("rejects oversized, duplicate, empty and unsupported metadata fields", () => {
+    const original = createMath3DProject(workspace(), { stableKey: "bounds" });
+    for (const metadata of [{ title: "Study", description: "x".repeat(2001) }, { title: "Study", tags: ["x", "x"] },
+      { title: "Study", tags: [" "] }, { title: "Study", tags: ["x".repeat(41)] },
+      { title: "Study", tags: Array.from({ length: 17 }, (_, i) => String(i)) }, { title: "Study", thumbnail: "inline" }]) {
+      expect(normalizeMath3DProject({ ...original, metadata }).ok).toBe(false);
+    }
   });
 });
