@@ -20,21 +20,28 @@ or native-device sign-off.
 
 ## Current software evidence (2026-10-02)
 
-PRJ15 implementation `e8adffe` is delivered through
-[PR #17](https://github.com/expert10000/Math3D/pull/17). PRJ16 is next; the supported
+PRJ15 is merged into `main` at `f7f401f` through
+[PR #17](https://github.com/expert10000/Math3D/pull/17), with implementation `e8adffe`
+and final acceptance fix `805542c`. PRJ16 is next; the supported
 representations and remaining device/engine gates are listed below.
 
-| Gate | Latest local result |
+| Gate | Latest verified result |
 | --- | --- |
 | Project contracts | 67 tests / 13 files passed |
 | Existing shared/mobile regressions | 123 tests / 24 files passed |
 | Continuation audit | 436 tests / 69 files; all 53 mapped evidence rows passed |
-| Electron | All 19 cases covered by the broad run and corrected PRJ06/07/15 rerun; details in the PRJ15 record |
+| Electron | All 19 journeys passed together in final clean-checkout CI |
 | Chromium | Six journeys passed across both locale/time-zone configurations |
 | TypeScript | Main, renderer, mobile, E2E and portable fixture passed |
 | Production builds | Main/renderer and web passed |
 | Dependency boundaries | Passed (985 modules / 2227 dependencies) |
 | Released Graph test pack | Passed |
+
+Both [pull-request Projects CI](https://github.com/expert10000/Math3D/actions/runs/36937980364)
+and [branch Projects CI](https://github.com/expert10000/Math3D/actions/runs/36937974514)
+passed on the final source, including embedded Android bundle compilation. The
+[Android APK/emulator gate](https://github.com/expert10000/Math3D/actions/runs/36937980342)
+also passed; physical-device acceptance remains separate.
 
 ## PRJ12 baseline evidence (2026-10-01)
 
@@ -284,7 +291,12 @@ PRJ08 exported before its asynchronous starter import completed and consequently
 sent the live workspace to the mobile model. Its shared desktop/browser helper now
 awaits the successful library import before exporting. The focused Electron
 round-trip, E2E TypeScript and all six browser journeys passed locally after this
-fix. The clean-checkout gate is being repeated before integration.
+fix. The final [pull-request run](https://github.com/expert10000/Math3D/actions/runs/36937980364)
+and [branch run](https://github.com/expert10000/Math3D/actions/runs/36937974514)
+passed every Projects workflow step on `805542c`, including all 19 Electron journeys
+in one run, all six browser journeys, the released Graph test pack and the embedded
+Android bundle. PR #17 merged at `f7f401f`. This supersedes the initial CI failure
+and establishes complete clean-checkout coverage for the supported software slice.
 
 Cloudflare Pages `math3d` and `math3d-app` reported failed builds on `e8adffe` and
 also on base main `486ff17`; `math3ds` passed. The check summaries expose dashboard

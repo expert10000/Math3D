@@ -25,8 +25,12 @@ PRJ13 is merged into `main` at `9d9b013d0e058c366d9d306c2a1af4e7ad52f341` throug
 [main Projects CI](https://github.com/expert10000/Math3D/actions/runs/36898400691)
 passed. PRJ14 is merged through [PR #16](https://github.com/expert10000/Math3D/pull/16)
 at `486ff179aaab5d831d0f1e32dd4c1b57819117ac`; its [main Projects CI](https://github.com/expert10000/Math3D/actions/runs/36930839068) passed.
-PRJ15 is delivered through [PR #17](https://github.com/expert10000/Math3D/pull/17),
-with implementation `e8adffe`; PRJ16 is the next delivery. Development can continue
+PRJ15 is merged into `main` through [PR #17](https://github.com/expert10000/Math3D/pull/17)
+at `f7f401f`, with implementation `e8adffe` and final acceptance fix `805542c`.
+Its [pull-request Projects CI](https://github.com/expert10000/Math3D/actions/runs/36937980364)
+and [branch Projects CI](https://github.com/expert10000/Math3D/actions/runs/36937974514)
+passed, including all 19 Electron/six browser journeys and the embedded Android bundle.
+PRJ16 is the next delivery. Development can continue
 on `codex/projects-native-restoration`. On October 1 this
 checkout integrated published 1.6.0 source tag `8e30e85190599467e3839e1b1e4b5b9bc708916f`
 and final release-maintainer `main` commit `a6a4f197df343630c26f58ecfd4a685b5f3230ab`
@@ -53,7 +57,7 @@ PRJ06/PRJ08 retain the obligations below and in
 | PRJ12 | Reconcile released baseline and add a repeatable Projects CI gate | `b180ed7`, `a5c4c5c`, `8510fcc` — integration software gate passed locally and in clean-checkout CI |
 | PRJ13 | Native Topology/Complex restoration with retained identity, source, branch/contours and replay history | Implemented for bounded fundamental diagrams and the supported Function Explorer subset; software acceptance below |
 | PRJ14 | Native scalar Volume restoration, source/grid edits, history and restart | Merged at `486ff17`; main software CI passed for qualified self-contained analytic/custom recipes |
-| PRJ15 | Verified Mesh/Volume/Graph source-resource packages and native Mesh restoration | `e8adffe`, PR #17 — delivered for bounded, verified source buffers; native Mesh history and independent-host/restart evidence below |
+| PRJ15 | Verified Mesh/Volume/Graph source-resource packages and native Mesh restoration | Merged at `f7f401f` through PR #17; complete Projects software CI passed for bounded, verified source buffers and native Mesh history |
 
 In the UI, use **Projects → Open saved project** to restore a compatible saved
 container, then select its document in the explorer or its module in main navigation.
@@ -265,7 +269,7 @@ It has not run a native-mobile device or full cross-module restore acceptance ga
 
 ## Remaining delivery and integration gates
 
-The delivered software slice is PRJ01–PRJ15, including resources and Mesh restoration.
+The integrated main software slice is PRJ01–PRJ15, including resources and Mesh restoration.
 Full PRJ06/PRJ08 closure requires
 the remaining measured deliveries below; delivered rows retain their explicit
 representation limits. Each adapter must validate the entire saved representation before
