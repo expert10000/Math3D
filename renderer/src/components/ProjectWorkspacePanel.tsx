@@ -12,7 +12,7 @@ import { ProjectTemplatesPanel } from "./ProjectTemplatesPanel";
 import { ProjectDocumentActions, type ProjectDocumentAction } from "./ProjectDocumentActions";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
-import { exportProjectFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint } from "../projects/projectTransfer";
+import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint } from "../projects/projectTransfer";
 import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
 import { pointTableStore } from "../graph2d/pointTableStore";
 
@@ -199,15 +199,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
       setMessage("Starter preview ready. Current work is unchanged until you choose to open it.");
     } catch (error) { setIncoming(null); setMessage(`Starter unavailable: ${(error as Error).message}`); }
   };
-  const exportFile = () => {
+  const exportFile = (checkpointOnly = false) => {
     if (!project) return;
     try {
       let next = managed?.project() ?? (preview ? project : liveProject());
       if (!preview || managed) next = updateMath3DProjectMetadata(next, { ...next.metadata, title: title.trim(), description, tags: [...new Set(tags.split(",").map((tag) => tag.trim()).filter(Boolean))] });
-      const bytes = exportProjectFile(next);
+      const bytes = checkpointOnly ? exportProjectCheckpointFile(next) : exportProjectFile(next);
       const url = URL.createObjectURL(new Blob([bytes], { type: "application/json" })), link = document.createElement("a");
-      link.href = url; link.download = `${next.metadata.title.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 80) || "Project"}.math3d.project.json`; link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000); setMessage("Exported verified project JSON with original identities and replay. Sidecar bytes and thumbnails transfer separately.");
+      link.href = url; link.download = `${next.metadata.title.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 80) || "Project"}${checkpointOnly ? ".checkpoint" : ""}.math3d.project.json`; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000); setMessage(checkpointOnly ? "Exported verified document checkpoints. Scientific identities and records are retained; undo history is not transferred. Mobile editing supports one Graph with Curve/Surface companions; sidecars transfer separately." : "Exported verified project JSON with original identities and replay. Sidecar bytes and thumbnails transfer separately.");
     } catch (error) { setMessage(`Project export failed: ${(error as Error).message}`); }
   };
   const navigate = (id: string, module: KernelWorkspaceModule) => {
@@ -241,7 +241,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
         <button type="button" data-testid="project-new" onClick={newProject}>New project</button>
         <button type="button" data-testid="project-manage" disabled={!project || !!managed || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={manageSaved}>Manage saved project</button>
         <button type="button" data-testid="project-inspect-relations" disabled={!project} onClick={() => { setInspectedId(null); setInspectionOpen(true); }}>Relations and availability</button>
-        <button type="button" data-testid="project-export" disabled={!project} onClick={exportFile}>Export project</button>
+        <button type="button" data-testid="project-export" disabled={!project} onClick={() => exportFile()}>Export project</button>
+        <button type="button" data-testid="project-export-checkpoint" disabled={!project} title="Resolve replay into validated snapshots for hosts that require checkpoints. Mobile editing supports one Graph with Curve/Surface companions." onClick={() => exportFile(true)}>Export checkpoint JSON</button>
         {managed && <><button type="button" data-testid="project-undo" disabled={!managed.history().undoDepth} onClick={() => history("undo")}>Undo</button>
           <button type="button" data-testid="project-redo" disabled={!managed.history().redoDepth} onClick={() => history("redo")}>Redo</button></>}
       </div>

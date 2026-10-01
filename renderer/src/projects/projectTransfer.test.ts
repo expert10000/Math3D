@@ -3,7 +3,7 @@ import { analyzeGraph2DDerivative, createGraph2DWorkspaceProject, createMath3DPr
   instantiateGraph2DPreset, parseMath3DProject, promoteGraph2DToCurve, serializeMath3DProject, serializeMixedWorkspaceDocument, structuralHash } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { VolumeDocumentAdapter } from "../volume/volumeDocumentAdapter";
-import { exportProjectFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport } from "./projectTransfer";
+import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport } from "./projectTransfer";
 import { importLibraryProject, PROJECT_STORAGE_KEY, saveLibraryProject } from "./projectLibrary";
 
 const fixture = () => {
@@ -36,6 +36,11 @@ describe("PRJ06 project transfer and compatibility", () => {
     expect(preview.canOpenWorkspace).toBe(false); expect(preview.documents[0]).toMatchObject({ module: "volume", replayVerified: true, editable: false });
     expect(preview.checkpoint.entries[0]!.checkpoint).toEqual(adapter.document());
     expect(preview.project.workspace.entries[0]!.replay).toEqual(project.workspace.entries[0]!.replay);
+    const portable = parseMath3DProject(exportProjectCheckpointFile(project));
+    expect(portable.identity.id).toBe(project.identity.id);
+    expect(portable.workspace.entries[0]!.expected).toEqual(adapter.document().identity);
+    expect(portable.workspace.entries[0]!.checkpoint).toEqual(adapter.document()); expect(portable.workspace.entries[0]!.replay).toBeNull();
+    expect(project.workspace.entries[0]!.replay).toEqual(preview.project.workspace.entries[0]!.replay);
   });
   it("separates optional analysis artifacts from required source sidecars", () => {
     const { project, result } = fixture(), handle = { artifactId: "optional-results", kind: "table" as const, role: "samples" };

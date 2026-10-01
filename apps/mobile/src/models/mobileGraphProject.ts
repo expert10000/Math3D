@@ -2,17 +2,32 @@ import { createEmptyGraph2DDocument, createGraph2DDocument, parseGraph2DDocument
   parseGraph2DExpression, inspectGraph2DCompatibility, migrateGraph2DDocument, parseMixedWorkspaceDocument,
   createMixedWorkspaceDocument, serializeMixedWorkspaceDocument,
   matchesScientificSourceGeneration, viewerSourceFromDocument,
-  GRAPH2D_MAX_DOCUMENT_BYTES, type Graph2DDocument, type MixedWorkspaceDocument } from "@math3d/core";
+  parseMath3DProject, serializeMath3DProject, replaceMath3DProjectWorkspace, replayMixedWorkspaceDocument,
+  GRAPH2D_MAX_DOCUMENT_BYTES, type Math3DProject, type Graph2DPointTableReference, type Graph2DDocument, type MixedWorkspaceDocument } from "@math3d/core";
 import { parseWorkspaceProjectHandoff } from "@math3d/core";
 import type { MobileStoredSceneProject } from "./mobileScene";
 
-export const storeMobileGraph = (document: Graph2DDocument, now = Date.now(), workspace?: MixedWorkspaceDocument | null): MobileStoredSceneProject => ({
-  projectType: "graph2d", id: document.identity.id, title: document.metadata.title,
-  updatedAt: now, lastOpenedAt: now, serializedProject: workspace ? serializeMixedWorkspaceDocument(replaceMobileGraphCheckpoint(workspace, document)) : serializeGraph2DDocument(document),
+export const storeMobileGraph = (document: Graph2DDocument, now = Date.now(), workspace?: MixedWorkspaceDocument | null, named?: Math3DProject | null): MobileStoredSceneProject => ({
+  projectType: "graph2d", id: document.identity.id, title: named?.metadata.title ?? document.metadata.title,
+  updatedAt: now, lastOpenedAt: now, serializedProject: named ? serializeMath3DProject(replaceMath3DProjectWorkspace(named, replaceMobileGraphCheckpoint(workspace ?? named.workspace, document))) :
+    workspace ? serializeMixedWorkspaceDocument(replaceMobileGraphCheckpoint(workspace, document)) : serializeGraph2DDocument(document),
 });
 
-export const readMobileGraphWorkspace = (project: MobileStoredSceneProject): MixedWorkspaceDocument | null =>
-  (JSON.parse(project.serializedProject) as { format?: string }).format === "math3d.mixed-workspace" ? parseMixedWorkspaceDocument(project.serializedProject) : null;
+export const readMobileNamedGraphProject = (raw: string): Math3DProject | null => {
+  if ((JSON.parse(raw) as { format?: string })?.format !== "math3d.project") return null;
+  const named = parseMath3DProject(raw), workspace = named.workspace;
+  if (workspace.entries.some((entry) => entry.replay !== null)) throw new TypeError("Export checkpoint JSON on desktop before importing this named project on mobile.");
+  if (workspace.entries.filter((entry) => entry.module === "graph2d").length !== 1 ||
+    workspace.entries.some((entry) => !["graph2d", "curve", "surface"].includes(entry.module)) || workspace.constructions.length ||
+    workspace.entries.some((entry) => named.metadata.documents?.[entry.expected.id]?.archived))
+    throw new TypeError("Mobile named-project editing supports one Graph with Curve/Surface companions and no archived documents or saved scripts. Keep other combinations in desktop preview.");
+  replayMixedWorkspaceDocument(workspace); // Checkpoint identities and every companion source are verified, without executing a renderer adapter.
+  return named;
+};
+export const readMobileGraphWorkspace = (project: MobileStoredSceneProject): MixedWorkspaceDocument | null => {
+  const named = readMobileNamedGraphProject(project.serializedProject);
+  return named?.workspace ?? ((JSON.parse(project.serializedProject) as { format?: string }).format === "math3d.mixed-workspace" ? parseMixedWorkspaceDocument(project.serializedProject) : null);
+};
 
 export const replaceMobileGraphCheckpoint = (workspace: MixedWorkspaceDocument, document: Graph2DDocument): MixedWorkspaceDocument => {
   const graphs = workspace.entries.filter((entry) => entry.module === "graph2d");
@@ -27,7 +42,7 @@ export const replaceMobileGraphCheckpoint = (workspace: MixedWorkspaceDocument, 
 export const mobileGraphWorkspaceNeedsIdentityFork = (workspace: MixedWorkspaceDocument | null): boolean => !!workspace &&
   (workspace.entries.length > 1 || workspace.results.length > 0 || workspace.artifacts.length > 0 || workspace.relations.length > 0 || workspace.constructions.length > 0);
 export const updateStoredMobileGraph = (project: MobileStoredSceneProject | undefined, document: Graph2DDocument, now = Date.now()) =>
-  ({ ...project, ...storeMobileGraph(document, now, project ? readMobileGraphWorkspace(project) : null) });
+  ({ ...project, ...storeMobileGraph(document, now, project ? readMobileGraphWorkspace(project) : null, project ? readMobileNamedGraphProject(project.serializedProject) : null) });
 
 export const readMobileGraph = (project: MobileStoredSceneProject): Graph2DDocument => {
   if (project.projectType !== "graph2d") throw new TypeError("Not a Graph project.");
@@ -36,7 +51,7 @@ export const readMobileGraph = (project: MobileStoredSceneProject): Graph2DDocum
   if (workspace && (graphs!.length !== 1 || workspace.entries.some((entry) => entry.replay !== null)))
     throw new TypeError("Mobile requires one Graph and checkpointed companion documents.");
   const document = parseGraph2DDocument(workspace ? JSON.stringify(graphs![0]!.checkpoint) : project.serializedProject);
-  if (document.identity.id !== project.id || document.metadata.title !== project.title)
+  if (document.identity.id !== project.id || (readMobileNamedGraphProject(project.serializedProject)?.metadata.title ?? document.metadata.title) !== project.title)
     throw new TypeError("Graph project identity is inconsistent.");
   return document;
 };
@@ -57,11 +72,13 @@ export const mobileGraphCapabilities = (document: Graph2DDocument): string => {
 
 /** Imports a portable Graph document or one unambiguous Graph checkpoint from a mixed workspace. */
 export const importMobileGraph = (raw: string, projects: readonly MobileStoredSceneProject[], sourceName: string,
-  now = Date.now(), sourceKind: "imported" | "desktop" | "shared" = "imported"): MobileStoredSceneProject => {
+  now = Date.now(), sourceKind: "imported" | "desktop" | "shared" = "imported", tableAvailable: (reference: Graph2DPointTableReference) => boolean = () => false): MobileStoredSceneProject => {
   if (new TextEncoder().encode(raw).length > 32 * 1024 * 1024) throw new TypeError("Graph import exceeds its size limit.");
   let value: unknown = JSON.parse(raw);
   let workspace: MixedWorkspaceDocument | null = null;
   let handoffRevision: string | undefined;
+  const named = readMobileNamedGraphProject(raw);
+  if (named) { workspace = named.workspace; value = workspace; }
   if ((value as { format?: string })?.format === "math3d.project-handoff") {
     const handoff = parseWorkspaceProjectHandoff(raw);
     workspace = handoff.project; value = workspace;
@@ -82,6 +99,12 @@ export const importMobileGraph = (raw: string, projects: readonly MobileStoredSc
   const normalized = migrateGraph2DDocument(value);
   if (!normalized.ok) throw new TypeError(normalized.errors.join(" "));
   const source = normalized.value;
+  if (named) {
+    if (projects.some((project) => project.id === source.identity.id || readMobileNamedGraphProject(project.serializedProject)?.identity.id === named.identity.id))
+      throw new TypeError("This named project or Graph identity already exists. Existing work was kept; resolve the version conflict on desktop before importing.");
+    for (const object of source.source.objects) if (object.kind === "point-series" && !tableAvailable(object.table))
+      throw new TypeError("Required point-table sidecar is missing or corrupt. Transfer it before importing this named project.");
+  }
   let document = source, suffix = 1;
   if (mobileGraphWorkspaceNeedsIdentityFork(workspace) && projects.some((project) => project.id === document.identity.id))
     throw new TypeError("This mixed Graph workspace already exists. Open it locally, or fork its identities on desktop before importing another copy; companions will not be discarded.");
@@ -90,7 +113,7 @@ export const importMobileGraph = (raw: string, projects: readonly MobileStoredSc
     document = createGraph2DDocument({ source: source.source, display: source.display, selection: source.selection,
       title: `${source.metadata.title.slice(0, 140)} import ${suffix}`, stableKey: { importOf: source.identity.id, copy: suffix++ } });
   if (workspace && document.identity.id !== source.identity.id) workspace = null; // Graph-only collision copy, no companions to lose.
-  return { ...storeMobileGraph(document, now, workspace), source: { kind: sourceKind, name: sourceName.trim().slice(0, 240) || "Graph file",
-    sourceProjectId: source.identity.id, importedAt: now,
+  return { ...storeMobileGraph(document, now, workspace, named), source: { kind: sourceKind, name: sourceName.trim().slice(0, 240) || "Graph file",
+    sourceProjectId: named?.identity.id ?? source.identity.id, importedAt: now,
     ...(handoffRevision && document.identity.id === source.identity.id ? { handoffRevision } : {}) } };
 };

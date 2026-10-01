@@ -3,7 +3,7 @@ import { serializeGraph2DDocument, type Graph2DDocument, type Graph2DAnyPromotio
   type Graph2DPersonalPresetPreview } from "@math3d/core";
 import { commitMobileGraphPresetLaunch, planMobileGraphPresetLaunch } from "./models/mobileGraphPresetLaunch";
 import { stageMobileGraphPresetSidecars, mobileGraphPointTables } from "./services/mobileGraphPointTables";
-import { createMobileGraph, importMobileGraph, readMobileGraph, storeMobileGraph, updateStoredMobileGraph } from "./models/mobileGraphProject";
+import { createMobileGraph, readMobileGraph, storeMobileGraph, updateStoredMobileGraph } from "./models/mobileGraphProject";
 import { commitMobileGraphPromotion, readMobileGraphPromotions } from "./models/mobileGraphPromotions";
 import { probeMobilePlatformCapabilities } from "./services/mobilePlatformCapabilities";
 import { AppState, PixelRatio, Platform, Share, type GestureResponderEvent } from "react-native";
@@ -20,7 +20,7 @@ import { useMobileNavigationState, type MobileTab } from "./models/useMobileNavi
 import { useMobileWorkspaceState, type CameraCommandType } from "./models/useMobileWorkspaceState";
 import { useMobileProjectState } from "./models/useMobileProjectState";
 import { duplicateMobileProject, renameMobileProject } from "./models/mobileProjectOperations";
-import { planMobilePersonalGraph, planMobilePersonalGraphImport, preserveMobilePersonalGraphWork,
+import { planMobilePersonalGraph, planMobilePersonalGraphImport, planMobileGraphFileImport, preserveMobilePersonalGraphWork,
   previewMobilePersonalGraphImport } from "./models/mobileGraphPersonalProjects";
 import { loadMobileGraphProjectFavorites, saveMobileGraphProjectFavorites } from "./services/mobileGraphProjectFavorites";
 import { emptyGraph2DProjectFavorites, toggleGraph2DProjectFavorite } from "@math3d/core";
@@ -1599,9 +1599,10 @@ export const useMobileAppController = () => {
     try {
       const picked = await pickMobileSceneProject();
       if (picked.status === "cancelled") { setProjectActionMessage("Graph import cancelled."); return false; }
-      const project = importMobileGraph(picked.serializedProject, storedProjects, picked.sourceName);
-      const saved = await persistProjectMutation(upsertStoredProject(storedProjects, project), `Imported ${project.title}.`, "Could not import Graph");
-      if (saved) openCreatedGraph(project);
+      const plan = planMobileGraphFileImport(storedProjects, { graph: graphDocument, scene: viewerDocument }, picked.serializedProject, picked.sourceName,
+        "imported", (reference) => mobileGraphPointTables.resolve(reference) !== null);
+      const saved = await persistProjectMutation(plan.projects, `Imported ${plan.project.title}. Previous work was saved.`, "Could not import Graph");
+      if (saved) openCreatedGraph(plan.project);
       return saved;
     } catch (error) { setProjectActionMessage(`Graph import failed: ${(error as Error).message}`); return false; }
   };
@@ -1628,11 +1629,11 @@ export const useMobileAppController = () => {
       }
       const envelope = JSON.parse(picked.serializedProject) as { format?: string; version?: number };
       const format = envelope?.format;
-      if (format === "math3d.graph2d-document" || format === "math3d.mixed-workspace" || (format === "math3d.project-handoff" && envelope.version === 2)) {
-        const project = importMobileGraph(picked.serializedProject, storedProjects, picked.sourceName, Date.now(),
-          source === "import" ? "imported" : source);
-        const saved = await persistProjectMutation(upsertStoredProject(storedProjects, project), `Imported ${project.title}.`, "Could not import Graph");
-        if (saved) openCreatedGraph(project);
+      if (format === "math3d.project" || format === "math3d.graph2d-document" || format === "math3d.mixed-workspace" || (format === "math3d.project-handoff" && envelope.version === 2)) {
+        const plan = planMobileGraphFileImport(storedProjects, { graph: graphDocument, scene: viewerDocument }, picked.serializedProject, picked.sourceName,
+          source === "import" ? "imported" : source, (reference) => mobileGraphPointTables.resolve(reference) !== null);
+        const saved = await persistProjectMutation(plan.projects, `Imported ${plan.project.title}. Previous work was saved.`, "Could not import Graph");
+        if (saved) openCreatedGraph(plan.project);
         return saved;
       }
       if (source === "desktop") {

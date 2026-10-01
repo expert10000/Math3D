@@ -1,5 +1,5 @@
 import { adoptMixedWorkspaceProject, createMixedWorkspaceDocument, matchesScientificSourceGeneration, viewerSourceFromDocument, MAX_MATH3D_PROJECT_BYTES, parseMath3DProject,
-  parseMixedWorkspaceDocument, parseWorkspaceProjectHandoff, serializeMath3DProject, type Graph2DPointTableReference,
+  parseMixedWorkspaceDocument, parseWorkspaceProjectHandoff, serializeMath3DProject, replaceMath3DProjectWorkspace, type Graph2DPointTableReference,
   mergeGraph2DHandoffCheckpoint,
   type Math3DProject, type MixedWorkspaceDocument } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
@@ -84,6 +84,9 @@ export const projectCheckpoint = (workspace: MixedWorkspaceDocument): MixedWorks
   const resolved = verifyMixedWorkspaceReplay(workspace);
   return createMixedWorkspaceDocument({ ...workspace, entries: workspace.entries.map((entry) => ({ ...entry, checkpoint: resolved.get(entry.expected.id)!, replay: null })) });
 };
+/** Explicit portable snapshots retain scientific generations; only command replay is resolved. */
+export const exportProjectCheckpointFile = (project: Math3DProject): string =>
+  exportProjectFile(replaceMath3DProjectWorkspace(project, projectCheckpoint(project.workspace)));
 /** Retain imported analysis/companions while live source commands advance their own identities and replay. */
 export const mergeProjectLiveWorkspace = (retained: MixedWorkspaceDocument, live: MixedWorkspaceDocument): MixedWorkspaceDocument => {
   const previousGraphs = retained.entries.filter((entry) => entry.module === "graph2d"), liveGraphs = live.entries.filter((entry) => entry.module === "graph2d");

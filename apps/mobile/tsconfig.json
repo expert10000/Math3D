@@ -3,7 +3,12 @@
   "compilerOptions": {
     "strict": true,
     "jsx": "react-jsx",
-    "resolvePackageJsonExports": false
+    "resolvePackageJsonExports": false,
+    "paths": {
+      "@math3d/core": ["../../packages/core/src/index.ts"],
+      "@math3d/kernel": ["../../packages/kernel/src/index.ts"],
+      "@math3d/api-client": ["../../packages/api-client/src/index.ts"]
+    }
   },
   "include": [
     "App.tsx",

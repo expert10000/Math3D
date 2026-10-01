@@ -1,6 +1,6 @@
-import { createProjectHandoff, deserializeProjectHandoff, deserializeSceneProject, serializeProjectHandoff, serializeSceneProject } from "@math3d/core";
+import { createProjectHandoff, deserializeProjectHandoff, deserializeSceneProject, serializeProjectHandoff, serializeSceneProject, serializeMath3DProject } from "@math3d/core";
 import type { MobileStoredSceneProject } from "./mobileScene";
-import { readMobileGraph, readMobileGraphWorkspace } from "./mobileGraphProject";
+import { readMobileGraph, readMobileGraphWorkspace, readMobileNamedGraphProject } from "./mobileGraphProject";
 import { serializeGraph2DDocument, serializeMixedWorkspaceDocument } from "@math3d/core";
 import { createGraph2DWorkspaceProject, createWorkspaceProjectHandoff, serializeWorkspaceProjectHandoff } from "@math3d/core";
 
@@ -34,12 +34,15 @@ export const createMobileProjectExportName = (project: MobileStoredSceneProject,
 };
 
 export const createMobileHandoffExportName = (project: MobileStoredSceneProject, now = new Date()): string =>
-  createMobileProjectExportName(project, now).replace(MOBILE_SCENE_EXPORT_EXTENSION, MOBILE_HANDOFF_EXPORT_EXTENSION);
+  createMobileProjectExportName(project, now).replace(MOBILE_SCENE_EXPORT_EXTENSION,
+    project.projectType === "graph2d" && readMobileNamedGraphProject(project.serializedProject) ? ".math3d.project.json" : MOBILE_HANDOFF_EXPORT_EXTENSION);
 
 export const serializeMobileProjectHandoff = (project: MobileStoredSceneProject): string => {
   if (project.projectType === "graph2d") {
     const checked = validateMobileProjectForTransfer(project);
     if (!checked.ok) throw new Error(checked.error);
+    const named = readMobileNamedGraphProject(project.serializedProject);
+    if (named) return serializeMath3DProject(named);
     const workspace = readMobileGraphWorkspace(project) ?? createGraph2DWorkspaceProject(readMobileGraph(project));
     return serializeWorkspaceProjectHandoff(createWorkspaceProjectHandoff(workspace, {
       producer: { platform: "mobile", name: "Math3D Mobile", version: "1.5.1" },
@@ -61,8 +64,8 @@ export const validateMobileProjectForTransfer = (
   project: MobileStoredSceneProject
 ): { ok: true; serializedProject: string } | { ok: false; error: string } => {
   if (project.projectType === "graph2d") {
-    try { const graph = readMobileGraph(project), workspace = readMobileGraphWorkspace(project);
-      return { ok: true, serializedProject: workspace ? serializeMixedWorkspaceDocument(workspace) : serializeGraph2DDocument(graph) }; }
+    try { const graph = readMobileGraph(project), workspace = readMobileGraphWorkspace(project), named = readMobileNamedGraphProject(project.serializedProject);
+      return { ok: true, serializedProject: named ? serializeMath3DProject(named) : workspace ? serializeMixedWorkspaceDocument(workspace) : serializeGraph2DDocument(graph) }; }
     catch (error) { return { ok: false, error: (error as Error).message }; }
   }
   const parsed = deserializeSceneProject(project.serializedProject);

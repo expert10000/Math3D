@@ -146,6 +146,27 @@ before integration; keep existing release scope and signed-build evidence separa
   and freeze that behavior across desktop/web/mobile host models. Full native
   cross-module restoration and installed-engine/device evidence remain separate.
 
+### Named-project mobile transfer continuation
+
+The mobile Graph library now retains the named envelope, project identity, title,
+description/tags/document overrides, checkpointed Curve/Surface companions and
+historical results/relations. Graph editing advances the container content revision;
+renaming the project leaves scientific source generations intact. Export/share uses
+the original named format and `.math3d.project.json` extension. Raw Graph and legacy
+handoff behavior remains available. Import planning retains unsaved current work
+before one storage write and editor activation; failures keep the current editor.
+
+Named mobile imports require one Graph, checkpoint-only Graph/Curve/Surface entries,
+no archived documents or saved scripts, and available checksum-verified point-table
+inputs. Unsupported combinations and identity collisions reject without overwriting
+local projects. Named duplication is deferred to desktop rather than dropping
+metadata or incorrectly reusing companion identities. Historical engine records do
+not establish execution availability. Desktop offers explicit checkpoint JSON export,
+which resolves verified replay without transferring an undo stack or sidecar bytes.
+Four transfer/storage-model tests and 26 existing mobile Graph/transfer regression
+tests pass. Mobile TypeScript passes using the checkout's core/kernel/API source
+paths; native device/file-picker acceptance remains unrun.
+
 The repeatable `node scripts/post160-roadmap-audit.mjs --run` gate includes both
 project suites and passes 401 tests across 62 files. Renderer/E2E TypeScript,
 main/renderer production builds and dependency boundaries pass. This phase has

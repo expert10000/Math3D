@@ -4,9 +4,10 @@ import {
   serializeSceneProject,
   type SceneDocument,
   createGraph2DDocument,
+  renameMath3DProject, serializeMath3DProject,
 } from "@math3d/core";
 import type { MobileStoredSceneProject } from "./mobileScene";
-import { readMobileGraph, storeMobileGraph, updateStoredMobileGraph, readMobileGraphWorkspace, mobileGraphWorkspaceNeedsIdentityFork } from "./mobileGraphProject";
+import { readMobileGraph, storeMobileGraph, updateStoredMobileGraph, readMobileGraphWorkspace, readMobileNamedGraphProject, mobileGraphWorkspaceNeedsIdentityFork } from "./mobileGraphProject";
 
 export type MobileProjectMutationResult =
   | { ok: true; project: MobileStoredSceneProject }
@@ -29,6 +30,9 @@ export const renameMobileProject = (
   if (project.projectType === "graph2d") {
     try {
       const graph = readMobileGraph(project);
+      const named = readMobileNamedGraphProject(project.serializedProject);
+      if (named) return { ok: true, project: { ...project, title: normalizedTitle, updatedAt: now,
+        serializedProject: serializeMath3DProject(renameMath3DProject(named, normalizedTitle)) } };
       return { ok: true, project: { ...updateStoredMobileGraph(project, { ...graph,
         metadata: { ...graph.metadata, title: normalizedTitle } }, now), lastOpenedAt: project.lastOpenedAt } };
     } catch (error) { return { ok: false, error: (error as Error).message }; }
@@ -74,7 +78,7 @@ export const duplicateMobileProject = (
   if (source.projectType === "graph2d") {
     try {
       const graph = readMobileGraph(source);
-      if (mobileGraphWorkspaceNeedsIdentityFork(readMobileGraphWorkspace(source)))
+      if (readMobileNamedGraphProject(source.serializedProject) || mobileGraphWorkspaceNeedsIdentityFork(readMobileGraphWorkspace(source)))
         return { ok: false, error: "Duplicate this mixed workspace on desktop to fork all document identities safely. Companion documents will not be discarded." };
       const copy = createGraph2DDocument({ source: graph.source, display: graph.display, selection: graph.selection,
         title: nextCopyTitle(source.title, projects), stableKey: { copyOf: source.id, name: nextCopyId(source.id, projects) } });
