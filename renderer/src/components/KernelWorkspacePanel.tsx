@@ -25,10 +25,11 @@ export type KernelWorkspacePanelProps = {
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
   canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
   onReopen?: (workspace: MixedWorkspaceDocument) => void;
+  onRestoreProject?: (workspace: MixedWorkspaceDocument) => void;
   graphDocumentId?: string;
 };
 
-export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ projectsOpen, onProjectsOpenChange, capture, activeModule, activeEvidence, artifactAvailable, onNavigateModule, onNavigateDocument, canNavigateDocument, onReopen, graphDocumentId }) => {
+export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ projectsOpen, onProjectsOpenChange, capture, activeModule, activeEvidence, artifactAvailable, onNavigateModule, onNavigateDocument, canNavigateDocument, onReopen, onRestoreProject, graphDocumentId }) => {
   const [open, setOpen] = useState(false);
   const [reopened, setReopened] = useState<MixedWorkspaceDocument | null>(null);
   const [message, setMessage] = useState("No mixed workspace opened.");
@@ -112,7 +113,7 @@ export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ proj
   const index = reopened?.relations.length ? createDocumentRelationIndex(reopened.relations) : null;
   return (
     <div data-testid="kernel-workspace-shell" style={{ position: "fixed", right: 14, bottom: 14, zIndex: 2500, fontSize: 11 }}>
-      <ProjectWorkspacePanel open={projectsOpen} onOpenChange={onProjectsOpenChange} capture={capture} onNavigateDocument={onNavigateDocument} canNavigateDocument={canNavigateDocument} artifactAvailable={artifactAvailable} onRestoreWorkspace={onReopen} />
+      <ProjectWorkspacePanel open={projectsOpen} onOpenChange={onProjectsOpenChange} capture={capture} onNavigateDocument={onNavigateDocument} canNavigateDocument={canNavigateDocument} artifactAvailable={artifactAvailable} onRestoreWorkspace={onRestoreProject ?? onReopen} />
       <button type="button" data-testid="kernel-workspace-toggle" onClick={() => setOpen((value) => !value)}
         style={{ border: "1px solid #64748b", borderRadius: 8, background: "#f8fafc", color: "#0f172a", padding: "7px 10px", fontWeight: 700 }}>
         Kernel workspace

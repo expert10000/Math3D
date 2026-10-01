@@ -21,14 +21,14 @@ This is evidence for the supported named-project slice on
 
 | Gate | Result |
 | --- | --- |
-| Project contracts | 39 tests / 8 files passed |
+| Project contracts | 45 tests / 10 files passed |
 | Existing mobile model/storage/transfer regressions | 41 tests / 8 files passed |
-| Expanded continuation audit | 408 tests / 64 files passed |
-| Electron | 8 Projects + 4 Graph Gallery + 2 kernel journeys passed |
+| Expanded continuation audit | 414 tests / 66 files passed |
+| Electron | 10 Projects + 4 Graph Gallery + 2 kernel journeys passed |
 | Chromium project interchange | 2 locale/time-zone journeys passed |
 | TypeScript | Renderer, mobile, E2E and portable mobile fixture passed |
 | Production builds | Main/renderer and web passed; existing large-chunk warning remains |
-| Dependency boundaries | Passed (968 modules / 1836 dependencies) |
+| Dependency boundaries | Passed (972 modules / 1848 dependencies) |
 
 The same Projects UI journey exports a saved scientific starter as checkpoint JSON,
 passes it through the actual mobile Graph import/edit/undo/redo/save/export model,
@@ -49,9 +49,11 @@ are covered by contract tests.
 
 ## Remaining acceptance obligations
 
-- Full editor restoration for Geometry, Mesh, Volume, Topology, Complex and arbitrary
-  Curve/Surface combinations is unimplemented. Saved previews and verified serialization
-  are available; they are not complete editor restoration.
+- Native opening supports independent literal parametric/explicit Curve expressions
+  (2D/3D without external dependencies), nonperiodic parametric Surfaces, procedural
+  Geometry objects/live-derived constructions and the existing Graph promotions.
+  Mesh, Volume, Topology, Complex and other Curve/Surface/Geometry representations
+  remain verified previews until equivalent native editor adapters exist.
 - Mobile named editing requires one Graph, checkpointed Curve/Surface companions,
   no saved scripts or archived documents, and available source point tables. An edited
   Graph's historical companions may force desktop opening to remain preview-only;
@@ -61,3 +63,13 @@ are covered by contract tests.
   was performed by these automated desktop/browser/model gates.
 - Rebase/integration must use the confirmed 1.6.0 release commit; this branch does not
   change release versions or signing configuration.
+
+## Editor continuation checks
+
+The PRJ10 Electron journey opens independent Curve/Surface sources without a Graph,
+checks unchanged generations before editing, edits both sources, uses undo/redo,
+saves, reloads and explicitly reopens the named project and Curve history. The PRJ11
+journey opens procedural Geometry and an object-centroid construction, verifies
+opening did not change its source generation, edits a native parameter and checks
+save/reopen with preserved construction records. Projects is available in the main
+navigation; source editor controls show that Save project persists their changes.

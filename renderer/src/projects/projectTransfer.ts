@@ -1,3 +1,4 @@
+import { geometryDocumentEditable, projectConstructionsEditable } from "./nativeGeometryRestore";
 import { nativeDocumentEditable } from "./nativeProjectRestore";
 import { adoptMixedWorkspaceProject, createMixedWorkspaceDocument, matchesScientificSourceGeneration, viewerSourceFromDocument, MAX_MATH3D_PROJECT_BYTES, parseMath3DProject,
   parseMixedWorkspaceDocument, parseWorkspaceProjectHandoff, serializeMath3DProject, replaceMath3DProjectWorkspace, type Graph2DPointTableReference,
@@ -56,11 +57,12 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
     }
     const document = resolved.get(entry.expected.id)!;
     if ((document.format === "math3d.curve-document" || document.format === "math3d.surface-document") && nativeDocumentEditable(document)) editable = true;
+    if (document.format === "math3d.geometry-document" && geometryDocumentEditable(document)) editable = true;
     if (canonical.metadata.documents?.[entry.expected.id]?.archived) editable = false;
     if (!editable) reasons.push(`${entry.module}: this document has verified preview support; its editor state cannot be fully restored by this host adapter.`);
     return { id: entry.expected.id, module: entry.module, revision: entry.expected.revision, replayVerified: true, editable };
   });
-  if (canonical.workspace.constructions.length) reasons.push("Saved construction/script state has preview support; the active editor adapters do not restore it.");
+  if (!projectConstructionsEditable(canonical.workspace)) reasons.push("Saved construction/script state has preview support; the active editor adapters do not restore it.");
   const sidecars = [...resources.values()];
   if (sidecars.some((resource) => resource.requiredForSource && !resource.available)) reasons.push("Required source sidecars are missing or unverified on this computer.");
   const engines = [...new Map(canonical.workspace.results.map((result) => [`${result.provenance.engine.name}@${result.provenance.engine.version}`, result.provenance.engine])).values()];

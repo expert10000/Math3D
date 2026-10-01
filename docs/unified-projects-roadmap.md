@@ -197,5 +197,13 @@ It has not run a native-mobile device or full cross-module restore acceptance ga
   starting generation so repeated undo/redo cannot restore an older identity.
   Other source representations remain preview-only until an equivalent host adapter
   exists; promoted Graph Curve/Surface workflows retain their existing opener.
-- PRJ11 (planned): restore Geometry documents and constructions with the existing
-  Geometry editor and verify edit/save/restart behavior.
+- PRJ11: procedural Geometry objects and their bounded live-derived constructions
+  reopen in the existing Geometry editor. Object IDs, parameters, transforms,
+  presentation, construction inputs and opaque source fields survive save/replay.
+  Scratch/workbook seed records and stored scene script are retained and restored;
+  importing never executes stored script. Mount-time topology cache enrichment does
+  not become a mathematical source edit. A native parameter edit advances the same
+  saved document, and explicit reopen retains the edited source and construction
+  records. Three contracts and an Electron edit/save/reopen journey cover this path.
+  Point/scene primitives, separate canonical construction graphs, embedded surfaces,
+  cameras and overlays still require different host adapters and remain preview-only.

@@ -242,7 +242,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
         <input data-testid="project-thumbnail" type="file" accept="image/png,image/jpeg" disabled={(preview && !managed) || !project} onChange={(event) => { void chooseThumbnail(event.target.files?.[0]); event.target.value = ""; }} style={{ maxWidth: "100%" }} />
       </label>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        <button type="button" data-testid="project-open-saved" disabled={!preview || !!managed || !project} onClick={previewSavedOpen}>Open saved project</button>
+        <button type="button" data-testid="project-restore-saved" disabled={!preview || !!managed || !project} onClick={previewSavedOpen}>Open saved project</button>
         <button type="button" data-testid="project-current" onClick={refresh}>Current workspace</button>
         <button type="button" data-testid="project-save" disabled={(preview && !managed) || !project || !title.trim()} onClick={save}>{managed ? "Save changes" : "Save project"}</button>
         <button type="button" data-testid="project-view-saved" onClick={viewSaved}>View saved project</button>
