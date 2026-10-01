@@ -14,7 +14,10 @@ import { inspectProjectDependencies } from "../projects/projectDependencies";
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint } from "../projects/projectTransfer";
 import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
-import { pointTableStore } from "../graph2d/pointTableStore";
+import { captureProjectResources, exportProjectPackage, MAX_PROJECT_PACKAGE_BYTES, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
+import { commitProjectResources, loadProjectResources } from "../projects/projectResourceArchive";
+import { canonicalJsonStringify } from "@math3d/core";
+import { pointTableStore, installPortablePointTables } from "../graph2d/pointTableStore";
 
 export { PROJECT_STORAGE_KEY } from "../projects/projectLibrary";
 const ProjectThumbnail: React.FC<{ src: string | null }> = ({ src }) => {
@@ -29,10 +32,14 @@ type Props = {
   canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
   artifactAvailable?: (id: string, hash?: string | null) => boolean;
-  onRestoreWorkspace?: (workspace: MixedWorkspaceDocument) => void;
+  resourceReader?: ProjectResourceReader;
+  onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, capture, canNavigateDocument, onNavigateDocument, artifactAvailable, onRestoreWorkspace }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, capture, canNavigateDocument, onNavigateDocument, artifactAvailable, onRestoreWorkspace, resourceReader }) => {
 
+  const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
+  const resourceSessionId = useRef<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [project, setProject] = useState<Math3DProject | null>(null);
   const [title, setTitle] = useState("Untitled project");
   const [description, setDescription] = useState("");
@@ -84,18 +91,28 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
     catch (error) { setMessage(`Project unavailable: ${(error as Error).message}`); }
   };
   useEffect(() => { if (open) refresh(); }, [open]);
-  const save = () => {
+  const collectResources = (next: Math3DProject, extra = resourceSession.current, allowMissing = false) => captureProjectResources(next, (item) => {
+    const live = resourceReader?.(item); if (live) return live;
+    if (item.kind === "graph-point-table") { const rows = pointTableStore.resolve(item.reference as import("@math3d/core").Graph2DPointTableReference); if (rows) return new TextEncoder().encode(canonicalJsonStringify(rows)); }
+    return extra?.bytes(item) ?? null;
+  }, allowMissing);
+  const save = async () => {
+    if (busy) return; setBusy(true);
     try {
       let next = updateMath3DProjectMetadata(managed?.project() ?? liveProject(), { ...(managed?.project() ?? project)?.metadata,
         title: title.trim(), description, tags: [...new Set(tags.split(",").map((tag) => tag.trim()).filter(Boolean))] });
       if (managed && serializeMath3DProject(next) !== serializeMath3DProject(managed.project())) next = managed.commit(next);
       const tree = buildProjectExplorer(next, verifyMixedWorkspaceReplay(next.workspace));
-      setLibrary(saveLibraryProject(localStorage, next, Date.now(), thumbnail?.id === next.identity.id ? thumbnail.data : undefined,
-        managed ? { activate: false, expectedBytes: managedBytes } : {}));
+      const previousResources = managed ? await loadProjectResources(loadLibraryProject(localStorage, next.identity.id)) : resourceSessionId.current === next.identity.id ? resourceSession.current : project ? await loadProjectResources(project) : undefined;
+      const resources = collectResources(next, previousResources, !!managed);
+      setLibrary(await commitProjectResources(next, resources, () => saveLibraryProject(localStorage, next, Date.now(), thumbnail?.id === next.identity.id ? thumbnail.data : undefined,
+        managed ? { activate: false, expectedBytes: managedBytes } : {})));
+      resourceSession.current = resources; resourceSessionId.current = next.identity.id;
       if (managed) setManagedBytes(serializeMath3DProject(next));
       setProject(next); setTags((next.metadata.tags ?? []).join(", ")); setTitle(next.metadata.title); setThumbnail(null); setExplorer(tree); setPreview(!!managed); setLibraryMessage("");
       setMessage(`Saved “${next.metadata.title}” with ${next.workspace.entries.length} documents.`);
     } catch (error) { setMessage(`Project save failed: ${(error as Error).message}`); }
+    finally { setBusy(false); }
   };
   const manageSaved = () => {
     if (!project) return;
@@ -161,60 +178,75 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
     try { setLibrary(updateLibraryActivity(localStorage, id, { favorite: value })); setLibraryMessage(""); }
     catch (error) { setLibraryMessage(`Favorite unavailable: ${(error as Error).message}`); }
   };
-  const transferOptions = () => ({ artifactAvailable, tableAvailable: (reference: Parameters<typeof pointTableStore.resolve>[0]) => pointTableStore.resolve(reference) !== null });
+  const transferOptions = (resources = resourceSession.current) => ({ artifactAvailable, resources, tableAvailable: (reference: Parameters<typeof pointTableStore.resolve>[0]) => pointTableStore.resolve(reference) !== null });
   const importFile = async (file: File | undefined) => {
     if (!file) return;
     const sequence = ++importSequence.current;
     setIncoming(null);
     try {
-      if (file.size > MAX_PROJECT_IMPORT_BYTES) throw new Error("Project import exceeds its size limit.");
+      if (file.size > MAX_PROJECT_PACKAGE_BYTES) throw new Error("Project import exceeds its size limit.");
       const prepared = previewProjectImport(await file.text(), transferOptions());
       if (sequence !== importSequence.current) return;
       setIncoming(prepared); setMessage("Project validated. Review compatibility before importing or opening.");
     } catch (error) { if (sequence === importSequence.current) setMessage(`Project import rejected: ${(error as Error).message}`); }
   };
-  const importPreview = (openWorkspace: boolean) => {
-    if (!incoming) return;
+  const importPreview = async (openWorkspace: boolean) => {
+    if (!incoming || busy) return;
+    setBusy(true);
+    const previousResources = resourceSession.current;
+    let previous: MixedWorkspaceDocument | null = null, rollbackTables: (() => void) | undefined;
     try {
-      // Recheck sidecars/host support immediately before the explicit action.
-      const prepared = inspectProjectCompatibility(incoming.project, transferOptions());
+      const prepared = inspectProjectCompatibility(incoming.project, transferOptions(incoming.resources));
       if (openWorkspace && (!onRestoreWorkspace || !prepared.canOpenWorkspace)) throw new Error("This project is preview-only on this host.");
-      const previous = openWorkspace ? projectCheckpoint(capture()) : null;
-      const backup = previous ? serializeMath3DProject(adoptMixedWorkspaceProject(previous, "Before project open")) : undefined;
-      setLibrary(importLibraryProject(localStorage, prepared.project, Date.now(), { activate: openWorkspace, backup,
+      previous = openWorkspace ? capture() : null;
+      const backupProject = previous ? adoptMixedWorkspaceProject(previous, "Before project open") : null;
+      const backup = backupProject ? serializeMath3DProject(backupProject) : undefined;
+      const backupResources = backupProject ? collectResources(backupProject, previousResources, true) : null;
+      // Preview-only JSON may deliberately lack resources. Preserve that explicit state.
+      const resources = incoming.resources ?? await loadProjectResources(prepared.project);
+      const rollback = () => { rollbackTables?.(); if (previous && onRestoreWorkspace) onRestoreWorkspace(previous, previousResources); };
+      setLibrary(await commitProjectResources(prepared.project, resources, () => importLibraryProject(localStorage, prepared.project, Date.now(), { activate: openWorkspace, backup,
         ...(openWorkspace && previous && onRestoreWorkspace ? { afterWrite: () => {
-          try { onRestoreWorkspace(prepared.project.workspace); }
-          catch (error) { onRestoreWorkspace(previous); throw error; }
-        } } : {}) }));
+          rollbackTables = installPortablePointTables(resources.sidecars().filter((item) => item.kind === "graph-point-table").map((item) => ({ id: item.id, content: new TextDecoder().decode(resources.bytes(item)!) })));
+          onRestoreWorkspace(prepared.project.workspace, resources);
+        } } : {}) }), rollback, backupProject && backupResources ? { project: backupProject, resources: backupResources } : undefined));
+      resourceSession.current = resources; resourceSessionId.current = prepared.project.identity.id;
       display(prepared.project, !openWorkspace);
       if (openWorkspace) {
         const first = prepared.documents.find((document) => document.module === "graph2d") ?? prepared.documents[0]!; onNavigateDocument?.(first.id, first.module);
       }
       setMessage(openWorkspace ? "Opened supported project workspace. Previous workspace saved locally; historical analysis and external refs are retained." : "Imported into the library as a verified saved preview. The current workspace is unchanged.");
     } catch (error) { setMessage(`Project import failed: ${(error as Error).message}`); }
+    finally { setBusy(false); }
   };
-  const previewSavedOpen = () => {
-    if (!project) return;
-    try { setIncoming({ ...inspectProjectCompatibility(loadLibraryProject(localStorage, project.identity.id), transferOptions()), inputKind: "Saved project" }); setMessage("Review editor compatibility before opening this saved project."); }
-    catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
+  const previewSavedOpen = async () => {
+    if (!project || busy) return;
+    const sequence = ++importSequence.current;
+    try {
+      const next = loadLibraryProject(localStorage, project.identity.id), resources = await loadProjectResources(next);
+      if (sequence !== importSequence.current) return;
+      setIncoming({ ...inspectProjectCompatibility(next, transferOptions(resources)), resources, inputKind: "Saved project" });
+      setMessage("Review editor compatibility before opening this saved project.");
+    } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
   };
   const previewTemplate = (id: Math3DProjectTemplateId) => {
     importSequence.current++;
     try {
       const next = instantiateMath3DProjectTemplate(id, crypto.randomUUID());
-      setIncoming({ ...inspectProjectCompatibility(next, transferOptions()), inputKind: "Independent starter project" });
+      setIncoming({ ...inspectProjectCompatibility(next, transferOptions()), resources: undefined, inputKind: "Independent starter project" });
       setMessage("Starter preview ready. Current work is unchanged until you choose to open it.");
     } catch (error) { setIncoming(null); setMessage(`Starter unavailable: ${(error as Error).message}`); }
   };
-  const exportFile = (checkpointOnly = false) => {
+  const exportFile = async (checkpointOnly = false, withResources = false) => {
     if (!project) return;
     try {
       let next = managed?.project() ?? (preview ? project : liveProject());
       if (!preview || managed) next = updateMath3DProjectMetadata(next, { ...next.metadata, title: title.trim(), description, tags: [...new Set(tags.split(",").map((tag) => tag.trim()).filter(Boolean))] });
-      const bytes = checkpointOnly ? exportProjectCheckpointFile(next) : exportProjectFile(next);
+      const storedResources = withResources && (preview || managed || resourceSessionId.current !== next.identity.id) ? await loadProjectResources(localStorage.getItem(`math3d.project.v1.payload.${next.identity.id}`) ? loadLibraryProject(localStorage, next.identity.id) : project) : resourceSession.current;
+      const bytes = withResources ? exportProjectPackage(next, collectResources(next, storedResources)) : checkpointOnly ? exportProjectCheckpointFile(next) : exportProjectFile(next);
       const url = URL.createObjectURL(new Blob([bytes], { type: "application/json" })), link = document.createElement("a");
-      link.href = url; link.download = `${next.metadata.title.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 80) || "Project"}${checkpointOnly ? ".checkpoint" : ""}.math3d.project.json`; link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000); setMessage(checkpointOnly ? "Exported verified document checkpoints. Scientific identities and records are retained; undo history is not transferred. Mobile editing supports one Graph with Curve/Surface companions; sidecars transfer separately." : "Exported verified project JSON with original identities and replay. Sidecar bytes and thumbnails transfer separately.");
+      link.href = url; link.download = `${next.metadata.title.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 80) || "Project"}${withResources ? ".resources" : checkpointOnly ? ".checkpoint" : ""}.math3d.project.json`; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000); setMessage(withResources ? "Exported project with verified source resources and undo/redo buffers. Optional analysis caches and thumbnails remain local." : checkpointOnly ? "Exported verified document checkpoints. Scientific identities and records are retained; undo history is not transferred. Mobile editing supports one Graph with Curve/Surface companions; sidecars transfer separately." : "Exported verified project JSON with original identities and replay. Sidecar bytes and thumbnails transfer separately.");
     } catch (error) { setMessage(`Project export failed: ${(error as Error).message}`); }
   };
   const navigate = (id: string, module: KernelWorkspaceModule) => {
@@ -244,21 +276,22 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         <button type="button" data-testid="project-restore-saved" disabled={!preview || !!managed || !project} onClick={previewSavedOpen}>Open saved project</button>
         <button type="button" data-testid="project-current" onClick={refresh}>Current workspace</button>
-        <button type="button" data-testid="project-save" disabled={(preview && !managed) || !project || !title.trim()} onClick={save}>{managed ? "Save changes" : "Save project"}</button>
+        <button type="button" data-testid="project-save" disabled={busy || (preview && !managed) || !project || !title.trim()} onClick={save}>{managed ? "Save changes" : "Save project"}</button>
         <button type="button" data-testid="project-view-saved" onClick={viewSaved}>View saved project</button>
         <button type="button" data-testid="project-new" onClick={newProject}>New project</button>
         <button type="button" data-testid="project-manage" disabled={!project || !!managed || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={manageSaved}>Manage saved project</button>
         <button type="button" data-testid="project-inspect-relations" disabled={!project} onClick={() => { setInspectedId(null); setInspectionOpen(true); }}>Relations and availability</button>
         <button type="button" data-testid="project-export" disabled={!project} onClick={() => exportFile()}>Export project</button>
+        <button type="button" data-testid="project-export-resources" disabled={!project || busy} onClick={() => { void exportFile(false, true); }}>Export with resources</button>
         <button type="button" data-testid="project-export-checkpoint" disabled={!project} title="Resolve replay into validated snapshots for hosts that require checkpoints. Mobile editing supports one Graph with Curve/Surface companions." onClick={() => exportFile(true)}>Export checkpoint JSON</button>
         {managed && <><button type="button" data-testid="project-undo" disabled={!managed.history().undoDepth} onClick={() => history("undo")}>Undo</button>
           <button type="button" data-testid="project-redo" disabled={!managed.history().redoDepth} onClick={() => history("redo")}>Redo</button></>}
       </div>
       <label style={{ display: "grid", gap: 4, marginTop: 10 }}>Preview project import
-        <input type="file" data-testid="project-import-file" accept="application/json,.json" onChange={(event) => { void importFile(event.target.files?.[0]); event.target.value = ""; }} style={{ maxWidth: "100%" }} />
+        <input type="file" data-testid="project-import-file" disabled={busy} accept="application/json,.json" onChange={(event) => { void importFile(event.target.files?.[0]); event.target.value = ""; }} style={{ maxWidth: "100%" }} />
       </label>
       <p data-testid="project-message" role="status">{message}</p>
-      {incoming && <ProjectCompatibilityPanel preview={incoming} canOpen={!!onRestoreWorkspace} onCancel={() => { importSequence.current++; setIncoming(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => importPreview(false)} onOpen={() => importPreview(true)} />}
+      {incoming && <ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !busy} onCancel={() => { importSequence.current++; setIncoming(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} />}
       <ProjectTemplatesPanel onPreview={previewTemplate} />
       {project && <small data-testid="project-content-revision">{preview ? "Saved preview" : "Current workspace"} · project revision {project.identity.revision}</small>}
       <section data-testid="project-library" style={{ marginTop: 14 }}>

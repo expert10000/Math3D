@@ -123,6 +123,12 @@ export default defineConfig({
         manualChunks(id) {
           const mod = id.replace(/\\/g, "/");
 
+          // Shared document definitions must initialize before feature singletons.
+          // Resource transfer makes Graph and Mesh depend on the same core types;
+          // allowing Rollup to absorb them into a UI feature creates an init cycle.
+          if (mod.includes("/packages/core/src/")) return "shared-core";
+          if (mod.includes("/packages/kernel/src/")) return "shared-kernel";
+
           // Keep the CommonJS base-64 helper out of feature-services. React's
           // CJS bridge also uses that helper; assigning it to a feature chunk
           // creates a cycle that runs feature UI before React is initialized.

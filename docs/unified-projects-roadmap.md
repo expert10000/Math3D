@@ -12,10 +12,10 @@ workspaces and mobile has a library. Desktop opening now restores the supported
 Graph/promotion workflows, independent literal Curve and nonperiodic parametric Surface sources,
 procedural Geometry with bounded live-derived constructions, fundamental-diagram
 Topology, supported Complex Function Explorer sources and self-contained scalar
-Volume recipes. Other source types remain saved previews until their native
+Volume recipes, plus qualified resource-backed Mesh sources. Other source types remain saved previews until their native
 editor adapters pass round-trip acceptance.
 
-## Current delivery status (2026-10-01)
+## Current delivery status (2026-10-02)
 
 PRJ01–PRJ12 are integrated into `main` at `766776a27c6601e50d513a2217e3a4bf513c8e0d`.
 The main Projects workflow passed in
@@ -23,7 +23,9 @@ The main Projects workflow passed in
 PRJ13 is merged into `main` at `9d9b013d0e058c366d9d306c2a1af4e7ad52f341` through
 [PR #15](https://github.com/expert10000/Math3D/pull/15). Its
 [main Projects CI](https://github.com/expert10000/Math3D/actions/runs/36898400691)
-passed. PRJ14 continues on `codex/projects-native-restoration`. On October 1 this
+passed. PRJ14 is merged through [PR #16](https://github.com/expert10000/Math3D/pull/16)
+at `486ff179aaab5d831d0f1e32dd4c1b57819117ac`; its [main Projects CI](https://github.com/expert10000/Math3D/actions/runs/36930839068) passed.
+PRJ15 continues on `codex/projects-native-restoration`. On October 1 this
 checkout integrated published 1.6.0 source tag `8e30e85190599467e3839e1b1e4b5b9bc708916f`
 and final release-maintainer `main` commit `a6a4f197df343630c26f58ecfd4a685b5f3230ab`
 with merge `b180ed7fa47797104b4361dbf67aaa157373de15`. This preserves the
@@ -48,7 +50,8 @@ PRJ06/PRJ08 retain the obligations below and in
 | PRJ11 | Procedural Geometry and bounded construction native editing, save and reopen | `11b2cb3` — implemented for supported representations |
 | PRJ12 | Reconcile released baseline and add a repeatable Projects CI gate | `b180ed7`, `a5c4c5c`, `8510fcc` — integration software gate passed locally and in clean-checkout CI |
 | PRJ13 | Native Topology/Complex restoration with retained identity, source, branch/contours and replay history | Implemented for bounded fundamental diagrams and the supported Function Explorer subset; software acceptance below |
-| PRJ14 | Native scalar Volume restoration, source/grid edits, history and restart | Implemented for qualified self-contained analytic/custom recipes; software acceptance and explicit resource limits below |
+| PRJ14 | Native scalar Volume restoration, source/grid edits, history and restart | Merged at `486ff17`; main software CI passed for qualified self-contained analytic/custom recipes |
+| PRJ15 | Verified Mesh/Volume/Graph source-resource packages and native Mesh restoration | Implemented for bounded, verified source buffers; native Mesh history and independent-host/restart evidence below |
 
 In the UI, use **Projects → Open saved project** to restore a compatible saved
 container, then select its document in the explorer or its module in main navigation.
@@ -260,17 +263,17 @@ It has not run a native-mobile device or full cross-module restore acceptance ga
 
 ## Remaining delivery and integration gates
 
-The integrated main software slice is PRJ01–PRJ13, extended on the continuation
-branch by the supported PRJ14 Volume adapter. Full PRJ06/PRJ08 closure requires the
-following measured deliveries. These are pending work, not silently supported
-imports. Each adapter must validate the entire saved representation before
+The integrated main software slice is PRJ01–PRJ14, extended on the continuation
+branch by PRJ15 resources and Mesh restoration. Full PRJ06/PRJ08 closure requires
+the remaining measured deliveries below; delivered rows retain their explicit
+representation limits. Each adapter must validate the entire saved representation before
 activation and leave source generation unchanged on open.
 
 | Order | Milestone | Deliverable | Required evidence |
 | --- | --- | --- | --- |
 | 1 | PRJ13: Topology and Complex native restoration | Delivered for fundamental diagrams and supported Function Explorer sources; existing command adapters retain source, branch/contour choices, results and provenance | Seven source/replay contracts and a real UI journey with two documents of each module, unchanged opening, edit, undo/redo, save, process restart/reopen, branch/contour edits and invalid-contour rollback |
-| 2 | PRJ14: Volume restoration | Delivered for qualified analytic/custom scalar recipes, retaining spatial metadata and per-document history; externally backed datasets require PRJ15 | Six source/replay contracts and two distinct Volume documents in Electron: actual sample values, unchanged open/save, source/grid edit, undo/redo, process restart, continued editing, stale provenance and resource rejection |
-| 3 | PRJ15: Verified resource transfer and Mesh restoration | Transfer required Mesh/Volume/point-table bytes separately with bounds and verified references; restore Mesh through its resource store | Byte/checksum/shape validation before mutation, corrupt/missing sidecars, rollback, independent host transfer, native edit/history and restart |
+| 2 | PRJ14: Volume restoration | Delivered for qualified analytic/custom scalar recipes, retaining spatial metadata and per-document history; source bytes transfer through PRJ15; additional samplers require PRJ16 | Six source/replay contracts and two distinct Volume documents in Electron: actual sample values, unchanged open/save, source/grid edit, undo/redo, process restart, continued editing, stale provenance and resource rejection |
+| 3 | PRJ15: Verified resource transfer and Mesh restoration | Delivered: source-resource packages and transactional archive; native Mesh coordinate edits/history/selection; imported Volume bytes remain independently qualified | Byte/checksum/shape/ownership validation, historical-resource availability, corrupt/missing sidecars, storage rollback, independent-host transfer and real process restart |
 | 4 | PRJ16: Additional source representations | Add one explicit Curve/Surface/Geometry host adapter at a time; keep incompatible representations as previews | A representation inventory with source-preserving restore/edit/history/save/replay evidence for each enabled row |
 | 5 | PRJ17: Device and installed-engine acceptance | Native mobile file picker/share/upgrade/restart and required installed scientific backends, against exact build/engine versions | Device/build/signature hashes, independent numerical/exact oracles and failed/cancelled/stale publication checks; existing model coverage remains separate |
 | 6 | PRJ18: Full cross-module freeze | Combine the enabled adapters and verified external resources into independent desktop/web/mobile round trips | Published supported-host matrix, all relevant software gates and exact native-build signoff; reconcile remaining PRJ06/PRJ08 obligations explicitly |
@@ -357,7 +360,7 @@ Their bytes are optional because the qualified recipe regenerates the samples.
 Actual source edits discard the obsolete cache reference atomically. Imported
 payload bytes are never replaced by a fallback preset: unsupported sources or
 missing required resources reject activation before project replacement.
-Resource checksums/transfer and their native adapters remain PRJ15/PRJ16 work.
+PRJ15 delivers resource checksums/transfer; their additional native samplers remain PRJ16 work.
 
 Replay preserves the live source revision after undo/redo and pruned redo
 branches, retains redo after rejected edits, continues command IDs after reopen,
@@ -370,17 +373,70 @@ See the [PRJ14 software evidence](unified-projects-acceptance.md#prj14-native-vo
 Native mobile restoration, physical-device and installed-engine signoff remain
 separate gates; the published 1.6.0 release is unchanged.
 
-## Next delivery: PRJ15 verified resources and Mesh restoration
+## PRJ15 verified resources and native Mesh restoration
 
-1. Inventory authoritative Mesh buffers, imported Volume payloads and Graph point
-   tables separately from optional procedural/analysis caches.
-2. Define bounded sidecar transfer with content hash, byte length, encoding,
-   dimensions/component counts and resource ownership. Verify bytes and shape
-   before activating or replacing a project.
-3. Restore Mesh through its native resource store and command adapter, preserving
-   saved identity, transforms, source references, selections and history.
-4. Keep missing/corrupt resources explicit. Stage the complete import and roll
-   back partial writes so existing source/library bytes remain intact.
-5. Verify independent-host transfer, native edits/history/save, process restart
-   and stale publication behavior. Qualify each additional Volume representation
-   through its own sampler/resource adapter before enabling it.
+
+**Projects → Export with resources** produces a versioned `math3d.project-package`
+JSON container. Its project envelope and replay retain their original identities;
+binary source bytes live in a separate base64 sidecar section. Plain project and
+checkpoint exports continue to carry references only. The package is limited to
+112 MiB, with at most 1,024 resources and 64 MiB of decoded source bytes per project.
+Each descriptor records its resource ID, SHA-256 checksum, byte length, encoding,
+shape/component counts and sorted owning document IDs. Shared inputs are deduplicated
+within the project. Resources needed by every retained Mesh undo/redo transaction
+are authoritative inputs, even when they are not the current visible mesh.
+
+The inventory distinguishes Mesh positions/indices/normals/UVs, canonical Graph
+point tables, imported Volume typed payloads, optional procedural Volume caches,
+and optional historical analysis artifacts. Mesh and Graph bytes must match their
+saved reference hashes and counts. Mesh checks require finite xyz/normals/UVs,
+matching components, triangle indices and valid index ranges. Volume bytes must
+match positive integer dimensions, components, scalar type and declared length;
+the transfer descriptor supplies their byte checksum because the existing Volume
+reference has no checksum field. This does not change the saved Volume source hash
+or establish a native sampler. Unsupported Volume representations remain previews.
+
+Preview validates the whole supplied resource set without writing. Missing source
+or historical buffers remain explicit and disable opening. Resource-backed Mesh
+sources with recognized origins restore through `MeshResourceStore` and
+`MeshDocumentAdapter`; opening consumes saved coordinates rather than regenerating
+an originating preset. Identity, stable object ID, opaque source/transform provenance,
+normals, UVs and committed entity selections survive unchanged opening and saving.
+The saved Mesh bar exposes translation/positive uniform scale, undo/redo and saved
+selection controls. Transforms commit coordinate changes and record parameters in
+history; origin/transform provenance remains intact. New Mesh imports avoid reusing
+an already restored document/object identity. Switching documents retains adapters.
+
+The host persists checked sidecars in IndexedDB, separately from the small
+localStorage project/library JSON. The complete resource transaction stays open
+while library writes and host restoration run. A failed library write or activation
+aborts resource writes; a failed resource commit restores the project namespace and
+host. The before-open backup also owns checked resource bytes in one bounded archive
+slot. This provides handled-failure rollback across both stores; an abrupt process
+termination between distinct storage systems is not a cross-store atomicity promise.
+Optional unavailable inputs in a saved preview are preserved as missing rather than
+invented. Resource exports require all authoritative inputs.
+
+Mesh replay verifies inverse source/selection restoration, preserves revisions after
+undo/redo or a pruned redo branch, continues command IDs after reopen, and folds the
+native 100-edit window into a checkpoint. Exports are detached immutable JSON. Surface
+promotion snapshots now use the same 24-byte-header Mesh codec that their references
+advertise. The separate core M3D transport codec is not treated as interchangeable.
+Production builds put core/kernel definitions in shared chunks so feature-store
+initialization cannot run before their document classes are initialized.
+
+See the [PRJ15 software evidence](unified-projects-acceptance.md#prj15-verified-resources-and-native-mesh--october-2).
+Published 1.6.0 release artifacts and signing configuration are unchanged.
+
+## Next delivery: PRJ16 additional source representations
+
+1. Write a representation inventory across Curve, Surface, Geometry, Volume,
+   Topology and Complex: distinguish current native support, preview support,
+   required external inputs and the missing editor/sampler contract.
+2. Add one supported representation at a time, with source-preserving restore,
+   editing, undo/redo, save/export, independent-host and restart oracles.
+3. Prioritize resource-backed scalar Volume sampling and dependent/sampled
+   Curve/Surface sources. Byte transfer alone does not qualify native editing.
+4. Preserve explicit previews for rows without proven adapters. Keep PRJ17 exact
+   native-device/installed-engine/signed-build acceptance and PRJ18 release
+   readiness as separate subsequent gates.

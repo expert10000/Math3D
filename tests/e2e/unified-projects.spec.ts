@@ -1,10 +1,82 @@
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 import { resolve } from "node:path";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { runNamedProjectRoundTrip } from "./helpers/namedProjectRoundTrip";
+import { meshResourceFixture, inspectMeshPackage } from "./helpers/meshProjectResources";
 const projectCore = require(resolve("packages/core/src/index.ts"));
 
+
+
+test("PRJ15 transfers verified Mesh buffers, preserves history through a cold restart, and rolls back resource imports", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    const fixture = meshResourceFixture();
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    let page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    const show = async () => { if (!await panel.isVisible()) await page.getByTestId("projects-toggle").click(); };
+    const closePanel = async () => { if (await panel.isVisible()) await page.getByRole("button", { name: "Close project explorer" }).click(); };
+    const save = async () => { await show(); await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved"); return page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)); };
+    const exportResources = async (suffix: string) => {
+      await show(); const path = resolve(ctx!.profileDir, `prj15-${suffix}.json`);
+      await ctx!.app.evaluate(({ session }, savePath) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(savePath)), path);
+      await panel.getByTestId("project-export-resources").click(); await expect(panel.getByTestId("project-message")).toContainText("Exported project with verified");
+      await expect.poll(() => existsSync(path)).toBe(true); return readFileSync(path, "utf8");
+    };
+    const storage = () => page.evaluate(() => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.startsWith("math3d.project"))));
+    const disk = () => page.evaluate(() => new Promise<string>((resolve, reject) => {
+      const request = indexedDB.open("math3d.project-resources.v1", 1);
+      request.onsuccess = () => { const db = request.result, read = db.transaction("projects").objectStore("projects").getAll(); read.onsuccess = () => { resolve(JSON.stringify(read.result)); db.close(); }; read.onerror = () => { reject(read.error); db.close(); }; };
+      request.onerror = () => reject(request.error);
+    }));
+    const importFile = async (raw: string) => { await show(); await panel.getByTestId("project-import-file").setInputFiles({ name: "mesh.resources.json", mimeType: "application/json", buffer: Buffer.from(raw) }); };
+    await importFile(fixture.raw); await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await expect(page.getByTestId("project-mesh-editor")).toContainText("First saved triangle");
+    let saved = await save(); expect(saved.workspace.entries.map((entry: any) => entry.expected)).toEqual(fixture.docs.map((document) => document.identity));
+    let inspected = inspectMeshPackage(await exportResources("unchanged"));
+    expect(inspected[0]!.positions).toEqual([2,0,0,3,0,0,2,1,0]); expect(inspected[0]!.selection).toEqual(["mesh-face:0"]);
+    expect(inspected[0]!.document.source.origin).toEqual(fixture.docs[0]!.source.origin);
+    await closePanel(); await page.getByTestId("project-mesh-translate-0").fill("5"); await page.getByTestId("project-mesh-apply").click();
+    await page.getByTestId("project-mesh-undo").click(); await page.getByTestId("project-mesh-redo").click();
+    await show(); await panel.getByTestId(`project-open-${fixture.docs[1]!.identity.id}`).click();
+    await expect(page.getByTestId("project-mesh-editor")).toContainText("Second saved triangle");
+    await page.getByTestId("project-mesh-scale").fill("2"); await page.getByTestId("project-mesh-apply").click();
+    saved = await save(); const generations = saved.workspace.entries.map((entry: any) => entry.expected);
+    expect(saved.workspace.results.find((result: any) => result.resultId === fixture.result.resultId)).toEqual(fixture.result);
+    await panel.getByTestId("project-inspect-relations").click(); await expect(panel.getByTestId("project-result-status-prj15-historical")).toContainText("stale");
+    const exported = await exportResources("edited"); inspected = inspectMeshPackage(exported);
+    expect(inspected[0]!.positions).toEqual([7,0,0,8,0,0,7,1,0]); expect(inspected[1]!.positions).toEqual([20,0,0,22,0,0,20,2,0]);
+    expect(inspected[0]!.normals).toEqual([0,0,1,0,0,1,0,0,1]); expect(inspected[0]!.uvs).toEqual([0,0,1,0,0,1]);
+    // Corrupt bytes never reach either store.
+    const before = await storage(), diskBefore = await disk(); const corrupt = JSON.parse(exported); corrupt.resources[0].data = "AAAA" + corrupt.resources[0].data.slice(4);
+    await importFile(JSON.stringify(corrupt)); await expect(panel.getByTestId("project-message")).toContainText("rejected");
+    expect(await storage()).toEqual(before); expect(await disk()).toBe(diskBefore);
+    // A partial library write aborts the IDB sidecars and restores exact JSON bytes.
+    const candidate = JSON.parse(fixture.raw); candidate.project = projectCore.createMath3DProject(candidate.project.workspace, { title: "Rollback candidate", stableKey: "prj15-rollback" });
+    await importFile(JSON.stringify(candidate)); await expect(panel.getByTestId("project-import-open")).toBeEnabled();
+    await page.evaluate(() => { const original = Storage.prototype.setItem; Storage.prototype.setItem = function(key, value) { if (key === "math3d.project-library.v1") { Storage.prototype.setItem = original; throw new DOMException("Injected quota failure", "QuotaExceededError"); } return original.call(this, key, value); }; });
+    await panel.getByTestId("project-import-open").click(); await expect(panel.getByTestId("project-message")).toContainText("Injected quota failure");
+    expect(await storage()).toEqual(before); expect(await disk()).toBe(diskBefore);
+    // Fresh destination profile has no source-machine cache or archive.
+    await closeSurfaceApp(ctx); ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page); page = ctx.page; panel = page.getByTestId("project-explorer-panel");
+    await importFile(JSON.stringify(JSON.parse(exported).project)); await expect(panel.getByTestId("project-import-open")).toBeDisabled();
+    await expect(panel.getByTestId("project-import-preview")).toContainText("missing or unverified");
+    await importFile(exported); await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    saved = await save(); expect(saved.workspace.entries.map((entry: any) => entry.expected)).toEqual(generations);
+    const profile = ctx.profileDir; await ctx.app.close(); ctx = await launchSurfaceApp({}, profile); page = ctx.page; panel = page.getByTestId("project-explorer-panel");
+    await show(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click(); await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    saved = await save(); expect(saved.workspace.entries.map((entry: any) => entry.expected)).toEqual(generations);
+    inspected = inspectMeshPackage(await exportResources("restart")); expect(inspected[0]!.positions).toEqual([7,0,0,8,0,0,7,1,0]); expect(inspected[0]!.selection).toEqual(["mesh-face:0"]);
+    await closePanel(); await page.getByTestId("project-mesh-undo").click();
+    inspected = inspectMeshPackage(await exportResources("undo-restarted")); expect(inspected[0]!.positions).toEqual([2,0,0,3,0,0,2,1,0]);
+    await closePanel(); await page.getByTestId("project-mesh-redo").click();
+    await page.getByTestId("project-mesh-translate-0").fill("1"); await page.getByTestId("project-mesh-apply").click();
+    inspected = inspectMeshPackage(await exportResources("continued")); expect(inspected[0]!.positions).toEqual([8,0,0,9,0,0,8,1,0]);
+    await closePanel(); await page.getByTestId("project-mesh-scale").fill("0"); await page.getByTestId("project-mesh-apply").click(); await expect(page.getByTestId("project-mesh-error")).toContainText("positive scale");
+    await page.setViewportSize({ width: 390, height: 844 }); const bounds = await page.getByTestId("project-mesh-editor").boundingBox(); expect(bounds!.width).toBeLessThanOrEqual(391); expect(bounds!.height).toBeLessThan(422);
+    await page.getByTestId("project-mesh-editor").screenshot({ path: test.info().outputPath("mesh-resource-editor-phone.png") });
+  } finally { await closeSurfaceApp(ctx); }
+});
 
 test("PRJ14 restores Volume samples, source/history and historical provenance across a cold restart", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
@@ -188,8 +260,10 @@ test("PRJ07 previews independent scientific starters and opens their real docume
     await panel.getByTestId("project-import-cancel").click();
     expect(await page.evaluate(() => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.startsWith("math3d.project"))))).toEqual(before);
     await panel.getByTestId("project-template-preview").click(); await panel.getByTestId("project-import-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
     const first = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project-library.v1")!).entries[0].id);
     await panel.getByTestId("project-template-preview").click(); await panel.getByTestId("project-import-open").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
     const current = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(current.identity.id).not.toBe(first); expect(current.workspace.entries.map((entry: any) => entry.module)).toEqual(["graph2d", "curve", "surface"]);
     await expect(page.getByTestId("workspace-nav-graphs")).toHaveAttribute("aria-pressed", "true");

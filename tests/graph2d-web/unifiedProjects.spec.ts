@@ -1,6 +1,49 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { runNamedProjectRoundTrip } from "../e2e/helpers/namedProjectRoundTrip";
+import { inspectMeshPackage, meshResourceFixture, pointResourceFixture } from "../e2e/helpers/meshProjectResources";
+
+test("PRJ15 browser verifies resource packages and preserves Mesh selection/history on reload", async ({ page }) => {
+  const fixture = meshResourceFixture();
+  await page.goto("/");
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); });
+  await page.reload(); await page.getByTestId("projects-toggle").click();
+  const panel = page.getByTestId("project-explorer-panel");
+  await panel.getByTestId("project-import-file").setInputFiles({ name: "mesh.resources.json", mimeType: "application/json", buffer: Buffer.from(fixture.raw) });
+  await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+  await expect(page.getByTestId("project-mesh-editor")).toContainText("First saved triangle");
+  await page.getByRole("button", { name: "Close project explorer" }).click();
+  await page.getByTestId("project-mesh-translate-0").fill("3"); await page.getByTestId("project-mesh-apply").click();
+  await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)), generations = saved.workspace.entries.map((entry: any) => entry.expected);
+  await page.reload(); await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click();
+  await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+  await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
+  expect((await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!))).workspace.entries.map((entry: any) => entry.expected)).toEqual(generations);
+  const download = page.waitForEvent("download"); await panel.getByTestId("project-export-resources").click();
+  const exported = readFileSync((await (await download).path())!, "utf8"), mesh = inspectMeshPackage(exported)[0]!;
+  expect(mesh.positions).toEqual([5,0,0,6,0,0,5,1,0]); expect(mesh.selection).toEqual(["mesh-face:0"]);
+  expect(mesh.document.source.origin).toEqual(fixture.docs[0].source.origin);
+  await page.getByRole("button", { name: "Close project explorer" }).click(); await page.getByTestId("project-mesh-undo").click();
+  await page.setViewportSize({ width: 390, height: 844 }); const bounds = await page.getByTestId("project-mesh-editor").boundingBox(); expect(bounds!.width).toBeLessThanOrEqual(391);
+  await page.getByTestId("project-mesh-editor").screenshot({ path: test.info().outputPath("mesh-resource-editor-phone.png") });
+});
+
+test("PRJ15 imports Graph point-table bytes into an independent host and reopens their exact content after reload", async ({ page }) => {
+  const fixture = pointResourceFixture();
+  await page.goto("/"); await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); }); await page.reload();
+  await page.getByTestId("projects-toggle").click(); const panel = page.getByTestId("project-explorer-panel");
+  await panel.getByTestId("project-import-file").setInputFiles({ name: "point-table.resources.json", mimeType: "application/json", buffer: Buffer.from(fixture.raw) });
+  await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+  await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
+  expect(await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("math3d.graph2d.table.")))).toEqual([]);
+  await page.reload(); await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click();
+  await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+  const download = page.waitForEvent("download"); await panel.getByTestId("project-export-resources").click();
+  const returned = JSON.parse(readFileSync((await (await download).path())!, "utf8")), original = JSON.parse(fixture.raw);
+  expect(returned.project.workspace.entries[0].expected).toEqual(original.project.workspace.entries[0].expected);
+  expect(returned.resources).toEqual(original.resources);
+});
 
 test("PRJ08 named project checkpoints survive browser/mobile transfer, restart and managed history", async ({ page }) => {
   await page.goto("/");
