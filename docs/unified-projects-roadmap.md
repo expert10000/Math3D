@@ -56,5 +56,17 @@ before integration; keep existing release scope and signed-build evidence separa
 - PRJ01: core envelope implemented. Five focused contract tests pass, covering
   named/legacy round-trip, retained results/lineage/artifact references, independent
   title/content revisions, strict validation and caller-state isolation.
-- PRJ02: in progress.
+- PRJ02: first explorer slice implemented. The Projects panel lists live documents
+  and historical Analysis records, saves the named container, previews saved or
+  legacy workspace content, and navigates only exact currently supported document
+  IDs. Saved previews disable navigation and editing; full restore remains PRJ06.
+  Two grouping/replay-query tests and two Electron project journeys pass, including
+  cold restart, corrupt-store protection and phone-width containment. Desktop and
+  phone screenshots were visually checked. Existing Graph Gallery and kernel
+  journeys remain green (eight Electron journeys total).
 - PRJ03–PRJ08: planned, subject to the preceding gates.
+
+The repeatable `node scripts/post160-roadmap-audit.mjs --run` gate includes both
+project suites and passes 376 tests across 58 files. Renderer/E2E TypeScript,
+main/renderer production builds and dependency boundaries pass. This phase has
+not run a native-mobile device or full cross-module restore acceptance gate.

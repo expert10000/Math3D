@@ -58,6 +58,7 @@ export * from "./volumeCommands";
 export * from "./viewerProvenance";
 export * from "./mixedWorkspace";
 export * from "./math3dProject";
+export * from "./projectExplorer";
 export * from "./platformCapabilities";
 export * from "./workerPlatformCapabilities";
 export * from "./meshCommands";

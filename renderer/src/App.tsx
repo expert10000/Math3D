@@ -78960,6 +78960,16 @@ case "mobius":
   return (
     <div data-testid="app-shell" style={rootStyle}>
       <KernelWorkspacePanel
+        canNavigateDocument={(id, module) => graph2dPromotions.some((item) => item.document.identity.id === id) || ({
+          geometry: geometryKernelAdapterRef.current?.document().identity.id,
+          mesh: meshKernelDocument?.identity.id,
+          surface: surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId)?.document().identity.id,
+          curve: activeCurveKernelAdapter.document().identity.id,
+          volume: activeVolumeKernelAdapter.document().identity.id,
+          topology: topologyKernelDocument?.identity.id,
+          complex: complexPreviewSession.commands.document().identity.id,
+          graph2d: graph2dDocument.identity.id,
+        }[module] === id)}
         onNavigateDocument={(id, module) => {
           const target = graph2dPromotions.find((item) => item.document.identity.id === id);
           if (target) { openGraph2DTarget(id); return; }
