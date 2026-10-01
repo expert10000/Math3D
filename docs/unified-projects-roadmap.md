@@ -80,7 +80,22 @@ before integration; keep existing release scope and signed-build evidence separa
   phone library screenshots were visually checked. No payload is pruned from an
   index; storage rollback is best effort because localStorage has no multi-key
   transaction. Interrupted saves can leave a recoverable unindexed payload.
-- PRJ04–PRJ08: planned, subject to the preceding gates.
+- PRJ04: saved-project document operations implemented. Manage saved project
+  enables bounded per-document names and archive flags across all module groups,
+  source duplication with a fresh identity and explicit snapshot/parent lineage,
+  and dependency-reviewed deletion. Duplicate checkpoints use verified current
+  replay state, drop derived output references and retain the original result
+  records. Delete blocks dependent documents/results/artifacts, opaque extension
+  references and saved constructions; isolated deletion removes owned result
+  records/selection and preserves external artifact manifests/bytes. Operations
+  use the existing shared kernel with ten session-local undo/redo transactions;
+  saved snapshots reopen exactly, while undo stacks do not survive restart.
+  Managed saves leave the live workspace and active project snapshot intact;
+  concurrent saved edits and later live overwrites are rejected. Five operation
+  tests and an additional library conflict test cover these contracts. The fourth
+  project Electron journey exercises duplication across captured modules, rename,
+  archive/restore, blocked/isolated delete, undo/redo, save and restart.
+- PRJ05–PRJ08: planned, subject to the preceding gates.
 
 The repeatable `node scripts/post160-roadmap-audit.mjs --run` gate includes both
 project suites and passes 385 tests across 59 files. Renderer/E2E TypeScript,

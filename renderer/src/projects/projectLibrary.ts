@@ -68,14 +68,22 @@ const write = (store: Store, changes: readonly (readonly [string, string])[]) =>
     throw error;
   }
 };
-export const saveLibraryProject = (store: Store, project: Math3DProject, now: number, thumbnail?: string): ProjectLibrary => {
+export const saveLibraryProject = (store: Store, project: Math3DProject, now: number, thumbnail?: string,
+  options: { activate?: boolean; expectedBytes?: string } = {}): ProjectLibrary => {
   const bytes = serializeMath3DProject(project), library = parseProjectLibrary(store.getItem(PROJECT_LIBRARY_KEY));
+  const payloadKey = projectPayloadKey(project.identity.id), existing = store.getItem(payloadKey);
+  if (options.expectedBytes !== undefined && existing !== options.expectedBytes) throw new Error("Saved project changed. Reopen it before saving your changes.");
+  const active = store.getItem(PROJECT_STORAGE_KEY);
+  if (options.activate !== false && existing && active && parseMath3DProject(active).identity.id === project.identity.id && active !== existing) {
+    throw new Error("Saved project was edited separately. Manage its saved copy or create a new project from the current workspace.");
+  }
   const old = library.entries.find((entry) => entry.id === project.identity.id);
   const entry: ProjectLibraryEntry = { id: project.identity.id, title: project.metadata.title, tags: project.metadata.tags ?? [],
     favorite: old?.favorite ?? false, savedAt: now, viewedAt: old?.viewedAt ?? 0,
     ...(thumbnail ? { thumbnailKey: projectThumbnailKey(project.identity.id) } : old?.thumbnailKey ? { thumbnailKey: old.thumbnailKey } : {}) };
   const next = parseProjectLibrary(canonicalJsonStringify({ ...library, entries: [...library.entries.filter((item) => item.id !== entry.id), entry] }));
-  const changes: [string, string][] = [[projectPayloadKey(entry.id), bytes], [PROJECT_STORAGE_KEY, bytes]];
+  const changes: [string, string][] = [[payloadKey, bytes]];
+  if (options.activate !== false) changes.push([PROJECT_STORAGE_KEY, bytes]);
   if (thumbnail) changes.push([projectThumbnailKey(entry.id), validateProjectThumbnail(thumbnail)]);
   changes.push([PROJECT_LIBRARY_KEY, canonicalJsonStringify(next)]);
   write(store, changes);

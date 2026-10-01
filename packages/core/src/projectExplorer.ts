@@ -5,17 +5,17 @@ export const PROJECT_EXPLORER_MODULES: readonly KernelWorkspaceModule[] = ["grap
 export const PROJECT_MODULE_LABELS: Record<KernelWorkspaceModule, string> = {
   graph2d: "Graph", geometry: "Geometry", curve: "Curve", surface: "Surface", mesh: "Mesh", volume: "Volume", topology: "Topology", complex: "Complex Analysis",
 };
-export type ProjectExplorerDocument = Readonly<{ id: string; module: KernelWorkspaceModule; title: string; revision: number; active: boolean }>;
+export type ProjectExplorerDocument = Readonly<{ id: string; module: KernelWorkspaceModule; title: string; revision: number; active: boolean; archived: boolean }>;
 const titleFor = (document: KernelWorkspaceDocument): string => {
   switch (document.format) {
     case "math3d.geometry-document": return document.metadata.title;
     case "math3d.mesh-document": return document.metadata.label;
     case "math3d.graph2d-document": return document.metadata.title;
-    case "math3d.curve-document": return document.source.definition.familyId;
-    case "math3d.surface-document": return document.source.definition.familyId;
+    case "math3d.curve-document": return document.metadata.title;
+    case "math3d.surface-document": return document.metadata.title;
     case "math3d.topology-document": return typeof document.source.model.name === "string" ? document.source.model.name : "Topology document";
     case "math3d.complex-analysis-document": return `f(z) = ${document.function.sourceText}`;
-    case "math3d.volume-document": return "Volume";
+    case "math3d.volume-document": return document.metadata.title;
   }
 };
 
@@ -29,8 +29,9 @@ export const buildProjectExplorer = (project: Math3DProject, resolved?: Readonly
     if (!document || document.identity.id !== entry.expected.id || document.identity.revision !== entry.expected.revision || document.identity.structuralHash !== entry.expected.structuralHash) {
       throw new TypeError(`Explorer requires verified replay for ${entry.expected.id}.`);
     }
-    return { id: entry.expected.id, module: entry.module, title: titleFor(document).trim().slice(0, 160) || PROJECT_MODULE_LABELS[entry.module],
-      revision: entry.expected.revision, active: workspace.activeDocumentIds.includes(entry.expected.id) };
+    const metadata = validated.value.metadata.documents?.[entry.expected.id];
+    return { id: entry.expected.id, module: entry.module, title: metadata?.title ?? (titleFor(document).trim().slice(0, 160) || PROJECT_MODULE_LABELS[entry.module]),
+      revision: entry.expected.revision, active: workspace.activeDocumentIds.includes(entry.expected.id), archived: metadata?.archived ?? false };
   });
   return {
     groups: PROJECT_EXPLORER_MODULES.map((module) => ({ module, title: PROJECT_MODULE_LABELS[module], documents: documents.filter((document) => document.module === module) })),

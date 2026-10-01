@@ -1,10 +1,13 @@
 import React, { useState } from "react";
 import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, parseMath3DProject,
   parseMixedWorkspaceDocument, updateMath3DProjectMetadata, replaceMath3DProjectWorkspace,
+  deleteProjectDocument, duplicateProjectDocument, serializeMath3DProject, setProjectDocumentMetadata,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY,
   PROJECT_STORAGE_KEY, readProjectThumbnail, saveLibraryProject, updateLibraryActivity, type ProjectLibrary } from "../projects/projectLibrary";
+import { ProjectCommandAdapter } from "../projects/projectCommandAdapter";
+import { ProjectDocumentActions, type ProjectDocumentAction } from "./ProjectDocumentActions";
 
 export { PROJECT_STORAGE_KEY } from "../projects/projectLibrary";
 const ProjectThumbnail: React.FC<{ src: string | null }> = ({ src }) => {
@@ -28,14 +31,17 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
   const [libraryMessage, setLibraryMessage] = useState("");
   const [query, setQuery] = useState("");
   const [preview, setPreview] = useState(false);
+  const [managed, setManaged] = useState<ProjectCommandAdapter | null>(null);
+  const [managedBytes, setManagedBytes] = useState<string | undefined>();
   const [message, setMessage] = useState("");
   const [explorer, setExplorer] = useState<ReturnType<typeof buildProjectExplorer> | null>(null);
 
-  const display = (next: Math3DProject, savedPreview: boolean) => {
+  const display = (next: Math3DProject, savedPreview: boolean, keepManagement = false) => {
     const resolved = verifyMixedWorkspaceReplay(next.workspace);
     const tree = buildProjectExplorer(next, resolved);
     setProject(next); setTitle(next.metadata.title); setDescription(next.metadata.description ?? ""); setTags((next.metadata.tags ?? []).join(", "));
-    setThumbnail(null); setExplorer(tree); setPreview(savedPreview);
+    if (!keepManagement) setThumbnail(null); setExplorer(tree); setPreview(savedPreview);
+    if (!keepManagement) { setManaged(null); setManagedBytes(undefined); }
   };
   const refreshLibrary = () => {
     try { setLibrary(parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY))); setLibraryMessage(""); }
@@ -62,12 +68,40 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
   const toggle = () => { if (!open) refresh(); setOpen(!open); };
   const save = () => {
     try {
-      const next = updateMath3DProjectMetadata(liveProject(), { title: title.trim(), description, tags: [...new Set(tags.split(",").map((tag) => tag.trim()).filter(Boolean))] });
+      let next = updateMath3DProjectMetadata(managed?.project() ?? liveProject(), { ...(managed?.project() ?? project)?.metadata,
+        title: title.trim(), description, tags: [...new Set(tags.split(",").map((tag) => tag.trim()).filter(Boolean))] });
+      if (managed && serializeMath3DProject(next) !== serializeMath3DProject(managed.project())) next = managed.commit(next);
       const tree = buildProjectExplorer(next, verifyMixedWorkspaceReplay(next.workspace));
-      setLibrary(saveLibraryProject(localStorage, next, Date.now(), thumbnail?.id === next.identity.id ? thumbnail.data : undefined));
-      setProject(next); setTags((next.metadata.tags ?? []).join(", ")); setTitle(next.metadata.title); setThumbnail(null); setExplorer(tree); setPreview(false); setLibraryMessage("");
+      setLibrary(saveLibraryProject(localStorage, next, Date.now(), thumbnail?.id === next.identity.id ? thumbnail.data : undefined,
+        managed ? { activate: false, expectedBytes: managedBytes } : {}));
+      if (managed) setManagedBytes(serializeMath3DProject(next));
+      setProject(next); setTags((next.metadata.tags ?? []).join(", ")); setTitle(next.metadata.title); setThumbnail(null); setExplorer(tree); setPreview(!!managed); setLibraryMessage("");
       setMessage(`Saved “${next.metadata.title}” with ${next.workspace.entries.length} documents.`);
     } catch (error) { setMessage(`Project save failed: ${(error as Error).message}`); }
+  };
+  const manageSaved = () => {
+    if (!project) return;
+    try {
+      const next = loadLibraryProject(localStorage, project.identity.id);
+      display(next, true); setManaged(new ProjectCommandAdapter(next)); setManagedBytes(serializeMath3DProject(next));
+      setMessage("Managing saved project. Changes stay in this saved snapshot; Save changes persists them. Undo/redo is available during this session.");
+    } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
+  };
+  const documentAction = (action: ProjectDocumentAction, id: string, documentTitle?: string) => {
+    if (!managed) return;
+    try {
+      const current = updateMath3DProjectMetadata(managed.project(), { ...managed.project().metadata, title: title.trim(), description,
+        tags: [...new Set(tags.split(",").map((tag) => tag.trim()).filter(Boolean))] });
+      const next = action === "duplicate" ? duplicateProjectDocument(current, id, crypto.randomUUID(), verifyMixedWorkspaceReplay(current.workspace)) :
+        action === "delete" ? deleteProjectDocument(current, id) : setProjectDocumentMetadata(current, id, action === "rename" ? { title: documentTitle } : { archived: action === "archive" });
+      display(managed.commit(next), true, true);
+      setMessage(action === "duplicate" ? "Duplicated source with a new identity and snapshot lineage. Analysis was not copied. Save changes to keep it." : "Saved-project change ready. Save changes to keep it.");
+    } catch (error) { setMessage(`Project change failed: ${(error as Error).message}`); }
+  };
+  const history = (direction: "undo" | "redo") => {
+    if (!managed) return;
+    try { display(managed[direction](), true, true); setMessage(`Project ${direction} applied. Save changes to keep it.`); }
+    catch (error) { setMessage(`Project ${direction} failed: ${(error as Error).message}`); }
   };
   const viewSaved = () => {
     try {
@@ -122,22 +156,25 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
         <strong>Project</strong><button type="button" aria-label="Close project explorer" onClick={() => setOpen(false)}>Close</button>
       </div>
       <label style={{ display: "grid", gap: 4, margin: "10px 0" }}>Project name
-        <input data-testid="project-title" value={title} maxLength={160} disabled={preview || !project} onChange={(event) => setTitle(event.target.value)} />
+        <input data-testid="project-title" value={title} maxLength={160} disabled={(preview && !managed) || !project} onChange={(event) => setTitle(event.target.value)} />
       </label>
       <label style={{ display: "grid", gap: 4, margin: "10px 0" }}>Description
-        <textarea data-testid="project-description" value={description} maxLength={2000} rows={2} disabled={preview || !project} onChange={(event) => setDescription(event.target.value)} style={{ resize: "vertical", minWidth: 0 }} />
+        <textarea data-testid="project-description" value={description} maxLength={2000} rows={2} disabled={(preview && !managed) || !project} onChange={(event) => setDescription(event.target.value)} style={{ resize: "vertical", minWidth: 0 }} />
       </label>
       <label style={{ display: "grid", gap: 4, margin: "10px 0" }}>Tags (comma separated, up to 16)
-        <input data-testid="project-tags" value={tags} disabled={preview || !project} onChange={(event) => setTags(event.target.value)} />
+        <input data-testid="project-tags" value={tags} disabled={(preview && !managed) || !project} onChange={(event) => setTags(event.target.value)} />
       </label>
       <label style={{ display: "grid", gap: 4, margin: "10px 0" }}>Thumbnail (PNG/JPEG, up to 128 KiB)
-        <input data-testid="project-thumbnail" type="file" accept="image/png,image/jpeg" disabled={preview || !project} onChange={(event) => { void chooseThumbnail(event.target.files?.[0]); event.target.value = ""; }} style={{ maxWidth: "100%" }} />
+        <input data-testid="project-thumbnail" type="file" accept="image/png,image/jpeg" disabled={(preview && !managed) || !project} onChange={(event) => { void chooseThumbnail(event.target.files?.[0]); event.target.value = ""; }} style={{ maxWidth: "100%" }} />
       </label>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         <button type="button" data-testid="project-current" onClick={refresh}>Current workspace</button>
-        <button type="button" data-testid="project-save" disabled={preview || !project || !title.trim()} onClick={save}>Save project</button>
+        <button type="button" data-testid="project-save" disabled={(preview && !managed) || !project || !title.trim()} onClick={save}>{managed ? "Save changes" : "Save project"}</button>
         <button type="button" data-testid="project-view-saved" onClick={viewSaved}>View saved project</button>
         <button type="button" data-testid="project-new" onClick={newProject}>New project</button>
+        <button type="button" data-testid="project-manage" disabled={!project || !!managed || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={manageSaved}>Manage saved project</button>
+        {managed && <><button type="button" data-testid="project-undo" disabled={!managed.history().undoDepth} onClick={() => history("undo")}>Undo</button>
+          <button type="button" data-testid="project-redo" disabled={!managed.history().redoDepth} onClick={() => history("redo")}>Redo</button></>}
       </div>
       <p data-testid="project-message" role="status">{message}</p>
       {project && <small data-testid="project-content-revision">{preview ? "Saved preview" : "Current workspace"} · project revision {project.identity.revision}</small>}
@@ -163,9 +200,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
         <strong>{group.title} ({group.documents.length})</strong>
         {group.documents.length ? <ul style={{ margin: "5px 0", paddingLeft: 20 }}>
           {group.documents.map((document) => <li key={document.id} style={{ marginBottom: 5 }}>
-            <button type="button" data-testid={`project-open-${document.id}`} disabled={preview || !onNavigateDocument || !canNavigateDocument?.(document.id, document.module)}
+            <button type="button" data-testid={`project-open-${document.id}`} disabled={preview || document.archived || !onNavigateDocument || !canNavigateDocument?.(document.id, document.module)}
               title={document.id} onClick={() => navigate(document.id, document.module)} style={{ maxWidth: "100%", overflowWrap: "anywhere", textAlign: "left" }}>{document.title}</button>
-            <small> · revision {document.revision}</small>
+            <small> · revision {document.revision}{document.archived ? " · archived" : ""}</small>
+            {managed && project && <ProjectDocumentActions key={`${document.id}:${document.title}:${document.archived}`} project={project} document={document} onAction={documentAction} />}
           </li>)}
         </ul> : <small style={{ display: "block", marginTop: 4 }}>No documents</small>}
       </section>)}

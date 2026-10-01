@@ -14,7 +14,8 @@ export type Math3DProject = Readonly<{
   format: typeof MATH3D_PROJECT_FORMAT;
   schemaVersion: typeof MATH3D_PROJECT_SCHEMA_VERSION;
   identity: DocumentIdentity;
-  metadata: Readonly<{ title: string; description?: string; tags?: readonly string[] }>;
+  metadata: Readonly<{ title: string; description?: string; tags?: readonly string[];
+    documents?: Readonly<Record<string, Readonly<{ title?: string; archived?: boolean }>>> }>;
   workspace: MixedWorkspaceDocument;
 }>;
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
@@ -29,13 +30,22 @@ export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DP
       return { ok: false, errors: ["Invalid or unsupported Math3D project envelope."] };
     }
     if (!isDocumentIdentity(value.identity) || !value.identity.id.startsWith("math3d:project:")) return { ok: false, errors: ["Invalid project identity."] };
-    if (!record(value.metadata) || Object.keys(value.metadata).some((key) => !["title", "description", "tags"].includes(key)) || !validTitle(value.metadata.title)) return { ok: false, errors: ["Project title must contain 1–160 characters and metadata must use supported fields."] };
+    if (!record(value.metadata) || Object.keys(value.metadata).some((key) => !["title", "description", "tags", "documents"].includes(key)) || !validTitle(value.metadata.title)) return { ok: false, errors: ["Project title must contain 1–160 characters and metadata must use supported fields."] };
     if ("description" in value.metadata && (typeof value.metadata.description !== "string" || value.metadata.description.length > 2000)) return { ok: false, errors: ["Project description must contain at most 2000 characters."] };
     if ("tags" in value.metadata && (!Array.isArray(value.metadata.tags) || value.metadata.tags.length > 16 ||
       !value.metadata.tags.every((tag) => typeof tag === "string" && tag.trim() === tag && tag.length > 0 && tag.length <= 40) ||
       new Set(value.metadata.tags).size !== value.metadata.tags.length)) return { ok: false, errors: ["Project tags must be unique, with at most 16 tags of 1–40 characters."] };
     const workspace = normalizeMixedWorkspaceDocument(value.workspace);
     if (!workspace.ok) return { ok: false, errors: workspace.errors.map((error) => `Project workspace: ${error}`) };
+    if (canonicalJsonByteLength(value.metadata) > 32 * 1024) return { ok: false, errors: ["Project metadata exceeds 32 KiB."] };
+    if ("documents" in value.metadata) {
+      const documents = value.metadata.documents, ids = new Set<string>(workspace.value.entries.map((entry) => entry.expected.id));
+      if (!record(documents) || Object.keys(documents).length > 512 || Object.entries(documents).some(([id, entry]) =>
+        !ids.has(id) || !record(entry) || Object.keys(entry).some((key) => !["title", "archived"].includes(key)) ||
+        ("title" in entry && !validTitle(entry.title)) || ("archived" in entry && typeof entry.archived !== "boolean"))) {
+        return { ok: false, errors: ["Invalid project document titles or archive flags."] };
+      }
+    }
     if (structuralHash(workspace.value) !== value.identity.structuralHash) return { ok: false, errors: ["Project content hash does not match its workspace."] };
     return { ok: true, value: JSON.parse(canonicalJsonStringify({ ...value, workspace: workspace.value })) as Math3DProject };
   } catch (error) { return { ok: false, errors: [String((error as Error).message ?? error)] }; }

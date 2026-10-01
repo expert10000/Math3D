@@ -87,4 +87,15 @@ describe("PRJ03 local project library", () => {
     expect(() => updateLibraryActivity(storage, original.identity.id, { viewedAt: Infinity })).toThrow();
     expect([...storage.values]).toEqual(before);
   });
+  it("saves managed snapshots without activating them and detects concurrent edits", () => {
+    const storage = store(), original = project(); saveLibraryProject(storage, original, 100);
+    const bytes = serializeMath3DProject(original), edited = updateMath3DProjectMetadata(original, { title: "Managed snapshot" });
+    saveLibraryProject(storage, edited, 200, undefined, { activate: false, expectedBytes: bytes });
+    expect(storage.getItem(PROJECT_STORAGE_KEY)).toBe(bytes);
+    expect(loadLibraryProject(storage, original.identity.id)).toEqual(edited);
+    const before = [...storage.values];
+    expect(() => saveLibraryProject(storage, original, 300, undefined, { activate: false, expectedBytes: bytes })).toThrow("changed");
+    expect(() => saveLibraryProject(storage, original, 300)).toThrow("edited separately");
+    expect([...storage.values]).toEqual(before);
+  });
 });

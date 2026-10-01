@@ -124,3 +124,52 @@ test("PRJ03 persists library metadata, favorites, activity and thumbnail sidecar
     expect(await page.evaluate(() => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.startsWith("math3d.project.v1"))))).toEqual(payloads);
   } finally { await closeSurfaceApp(ctx); }
 });
+
+test("PRJ04 manages saved documents with guarded deletion and undo across reopen", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Saved “");
+    const activeBytes = await page.evaluate(() => localStorage.getItem("math3d.project.v1")!);
+    const original = JSON.parse(activeBytes), graph = original.workspace.entries.find((entry: any) => entry.module === "graph2d");
+    await panel.getByTestId("project-manage").click();
+    for (const entry of original.workspace.entries.filter((entry: any) => entry.module !== "graph2d")) {
+      await panel.getByTestId(`project-actions-${entry.expected.id}`).getByRole("button", { name: "Duplicate source", exact: true }).click();
+      await expect(panel.getByTestId("project-message")).toContainText("new identity");
+      await panel.getByTestId("project-undo").click();
+    }
+    const originalActions = panel.getByTestId(`project-actions-${graph.expected.id}`);
+    await originalActions.getByRole("button", { name: "Duplicate source", exact: true }).click();
+    await expect(panel.getByTestId("project-message")).toContainText("new identity");
+    await expect(panel.getByTestId("project-group-graph2d")).toContainText("Graph (2)");
+    await originalActions.getByRole("button", { name: "Review delete", exact: true }).click();
+    await expect(panel.getByTestId(`project-delete-review-${graph.expected.id}`)).toContainText("Delete blocked");
+    await expect(panel.getByTestId(`project-delete-review-${graph.expected.id}`).getByRole("button", { name: "Delete document", exact: true })).toBeDisabled();
+    const copyActions = panel.getByTestId("project-group-graph2d").locator("[data-testid^='project-actions-']").last();
+    await copyActions.getByRole("textbox").fill("Independent graph snapshot");
+    await copyActions.getByRole("button", { name: "Rename", exact: true }).click();
+    await copyActions.getByRole("button", { name: "Archive", exact: true }).click();
+    await expect(panel.getByTestId("project-group-graph2d")).toContainText("archived");
+    await copyActions.getByRole("button", { name: "Restore", exact: true }).click();
+    await copyActions.getByRole("button", { name: "Review delete", exact: true }).click();
+    await copyActions.getByRole("button", { name: "Delete document", exact: true }).click();
+    await expect(panel.getByTestId("project-group-graph2d")).toContainText("Graph (1)");
+    await panel.getByTestId("project-undo").click();
+    await expect(panel.getByTestId("project-group-graph2d")).toContainText("Graph (2)");
+    await panel.getByTestId("project-redo").click();
+    await expect(panel.getByTestId("project-group-graph2d")).toContainText("Graph (1)");
+    await panel.getByTestId("project-undo").click(); await panel.getByTestId("project-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Saved “");
+    const saved = await page.evaluate((id) => JSON.parse(localStorage.getItem(`math3d.project.v1.payload.${id}`)!), original.identity.id);
+    expect(saved.workspace.entries.length).toBe(original.workspace.entries.length + 1);
+    expect(saved.workspace.entries.slice(0, -1)).toEqual(original.workspace.entries);
+    expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(activeBytes);
+    await page.reload(); await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId(`project-preview-${original.identity.id}`).click();
+    await expect(panel.getByTestId("project-group-graph2d")).toContainText("Independent graph snapshot");
+    await expect(panel.getByTestId("project-group-graph2d")).toContainText("Graph (2)");
+  } finally { await closeSurfaceApp(ctx); }
+});
