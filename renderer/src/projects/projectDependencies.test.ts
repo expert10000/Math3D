@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { analyzeGraph2DDerivative, createDocumentRelation, createEmptyGraph2DDocument, createGraph2DWorkspaceProject, createMath3DProject,
   createMixedWorkspaceDocument, duplicateProjectDocument, getGraph2DPresetCatalog, instantiateGraph2DPreset, promoteGraph2DToCurve,
-  structuralHash, viewerSourceFromDocument } from "@math3d/core";
+  parseGraph2DExpression, regenerateGraph2DPromotion, structuralHash, viewerSourceFromDocument } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { inspectProjectDependencies } from "./projectDependencies";
@@ -15,6 +15,25 @@ const fixture = () => {
   return { graph, curve, result, project: createMath3DProject(workspace, { stableKey: "dependencies" }) };
 };
 describe("PRJ05 project dependency inspection", () => {
+  it("keeps retained historical lineage stale without staling a regenerated current target", () => {
+    const { graph, curve, project } = fixture(), object = graph.source.objects[0]!;
+    if (object.kind !== "explicit-cartesian") throw new Error("Expected the parabola expression");
+    const parsed = parseGraph2DExpression("x^2 + 1");
+    if (!parsed.ok) throw new Error("Expected a valid expression");
+    const edited = new Graph2DCommandAdapter(graph).commitScene({ source: { ...graph.source,
+      objects: graph.source.objects.map((item) => item.id === object.id ? { ...object,
+        expression: { ...object.expression, source: "x^2 + 1", ast: parsed.ast } } : item) },
+      display: graph.display, selection: graph.selection }, "restore");
+    const regenerated = regenerateGraph2DPromotion(curve, edited, "replace");
+    const current = createMath3DProject(createMixedWorkspaceDocument({ ...project.workspace, entries: [
+      { module: "graph2d", checkpoint: edited, expected: edited.identity, replay: null },
+      { module: "curve", checkpoint: regenerated.document, expected: regenerated.document.identity, replay: null }],
+      relations: [curve.relation, regenerated.relation] }), { stableKey: "regenerated" });
+    const inspection = inspectProjectDependencies(current);
+    expect(inspection.relations.find((relation) => relation.relationId === curve.relation.relationId)!.freshness).toBe("stale");
+    expect(inspection.relations.find((relation) => relation.relationId === regenerated.relation.relationId)!.freshness).toBe("current");
+    expect(inspection.documents.find((document) => document.id === curve.document.identity.id)!.freshness).toBe("current");
+  });
   it("marks edited-source descendants stale while qualifying independent snapshots and leaving unrelated documents current", () => {
     const { graph, curve, project } = fixture(), copied = duplicateProjectDocument(project, curve.document.identity.id, "snapshot", verifyMixedWorkspaceReplay(project.workspace));
     const unrelated = createEmptyGraph2DDocument("unrelated"), adapter = new Graph2DCommandAdapter(graph);

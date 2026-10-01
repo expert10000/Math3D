@@ -152,6 +152,7 @@ release workflow, or production behavior. The subsequently authorized
 items 3–4 on this branch and record their separate validation.
 
 The next authorized product phase is [Unified Projects](unified-projects-roadmap.md),
-starting with PRJ01's named workspace container, PRJ02's unified explorer and
-PRJ03's local project library. Their implementation gates and restore limitations
+with PRJ01–PRJ06 delivery slices covering the named workspace container, unified
+explorer, local library, saved-document operations, lineage inspection and
+compatibility-aware import/export. Their implementation gates and restore limitations
 are recorded in that roadmap.

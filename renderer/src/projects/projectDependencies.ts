@@ -30,9 +30,10 @@ export const inspectProjectDependencies = (project: Math3DProject, artifactAvail
     snapshot: relation.kind === "snapshot-of" }));
   const documents = workspace.entries.map((entry) => {
     const incoming = relations.filter((relation) => relation.target.type === "document" && relation.target.generation.documentId === entry.expected.id);
+    const currentIncoming = incoming.filter((relation) => relation.target.type === "document" && matchesScientificSourceGeneration(relation.target.generation, viewerSourceFromDocument({ identity: entry.expected })));
     const outgoing = relations.filter((relation) => relation.sources.some((source) => source.documentId === entry.expected.id));
     return { id: entry.expected.id, module: entry.module, revision: entry.expected.revision, structuralHash: entry.expected.structuralHash,
-      freshness: merge(...incoming.map((relation) => relation.freshness)), incomingRelationIds: incoming.map((relation) => relation.relationId),
+      freshness: merge(...(currentIncoming.length ? currentIncoming : incoming).map((relation) => relation.freshness)), incomingRelationIds: incoming.map((relation) => relation.relationId),
       outgoingRelationIds: outgoing.map((relation) => relation.relationId), snapshot: incoming.some((relation) => relation.snapshot) };
   });
   const results = workspace.results.map((result) => {

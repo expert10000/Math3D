@@ -2704,4 +2704,5 @@ defines eight commits: first-class container, explorer, library metadata,
 cross-document operations, dependency/status inspection, compatibility-aware
 import/export, scientific templates, and desktop/web/mobile round-trip gates.
 Project sources and lineage remain owned by the existing shared contracts.
-The first commits are PRJ01–PRJ03; complete host restore has a separate gate.
+PRJ01–PRJ06 delivery slices are implemented on the continuation branch; complete
+native cross-module restoration retains a separate PRJ06/PRJ08 acceptance gate.

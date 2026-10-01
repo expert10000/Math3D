@@ -104,15 +104,37 @@ before integration; keep existing release scope and signed-build evidence separa
   requires a matching manifest checksum and affirmative host-store lookup; absent
   checksums, missing targets and lookup failures cannot appear current. Source
   freshness and artifact availability remain separate from mathematical authority.
-  Three dependency tests cover stale chains/unrelated documents, unresolved links,
-  and missing/unverified artifacts. The fifth project Electron journey verifies
+  Four dependency tests cover stale chains/unrelated documents, unresolved links,
+  missing/unverified artifacts and regenerated targets that retain historical
+  stale relations. The fifth project Electron journey verifies
   stale lineage, locate-back, recorded analysis authority and missing sidecars.
   Desktop and phone inspection screenshots were visually checked.
-- PRJ06–PRJ08: planned, subject to the preceding gates.
+- PRJ06: import/export and compatibility preview implemented. Named project JSON
+  exports exact identities, replay, results and lineage; imports verify every
+  module's replay before any write. Legacy mixed workspaces and Graph handoff v2
+  require explicit adoption. Future/tampered/oversized files fail without replacing
+  current work. Previews list required Graph capabilities, recorded engine versions
+  (execution availability remains unverified), and external resources with source
+  requirements/checksums/host availability. Project JSON carries resource references;
+  sidecar bytes and library thumbnails must transfer separately.
+  Import into library preserves the active workspace. Same-ID conflicts reject
+  replacement. Explicit Open Graph workspace is enabled only for one Graph and
+  its fully supported Curve/Surface promotions, without missing source resources
+  or unsupported construction state. Opening saves the previous workspace locally;
+  storage writes roll back if the host callback fails. Subsequent live saves retain
+  imported historical analysis/companions/relations while preserving current replay.
+  All other editor combinations remain verified saved previews: complete native
+  cross-module restoration is still a PRJ06/PRJ08 acceptance obligation.
+  Six transfer tests and the sixth project Electron journey cover export fidelity,
+  replay compatibility, resource requirements, cancel/rejection, library import,
+  guarded Graph opening, backup, retained records and same-ID conflict protection.
+  Desktop and phone import screenshots were visually checked.
+- PRJ07–PRJ08: planned, subject to the preceding gates.
 
 The repeatable `node scripts/post160-roadmap-audit.mjs --run` gate includes both
-project suites and passes 394 tests across 61 files. Renderer/E2E TypeScript,
+project suites and passes 401 tests across 62 files. Renderer/E2E TypeScript,
 main/renderer production builds and dependency boundaries pass. This phase has
-five passing Project Electron journeys; the preceding Graph Gallery and kernel
-journeys are separate regression checks.
+six passing Project Electron journeys plus six Graph Gallery/kernel regression
+journeys (twelve total). Electron downloads use the native session download hook
+in the transfer test; the test also verifies the resulting file before import.
 It has not run a native-mobile device or full cross-module restore acceptance gate.

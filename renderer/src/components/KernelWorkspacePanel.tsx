@@ -110,7 +110,7 @@ export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ capt
   const index = reopened?.relations.length ? createDocumentRelationIndex(reopened.relations) : null;
   return (
     <div data-testid="kernel-workspace-shell" style={{ position: "fixed", right: 14, bottom: 14, zIndex: 2500, fontSize: 11 }}>
-      <ProjectWorkspacePanel capture={capture} onNavigateDocument={onNavigateDocument} canNavigateDocument={canNavigateDocument} artifactAvailable={artifactAvailable} />
+      <ProjectWorkspacePanel capture={capture} onNavigateDocument={onNavigateDocument} canNavigateDocument={canNavigateDocument} artifactAvailable={artifactAvailable} onRestoreWorkspace={onReopen} />
       <button type="button" data-testid="kernel-workspace-toggle" onClick={() => setOpen((value) => !value)}
         style={{ border: "1px solid #64748b", borderRadius: 8, background: "#f8fafc", color: "#0f172a", padding: "7px 10px", fontWeight: 700 }}>
         Kernel workspace

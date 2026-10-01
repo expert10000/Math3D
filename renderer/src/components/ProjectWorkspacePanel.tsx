@@ -1,15 +1,18 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, parseMath3DProject,
   parseMixedWorkspaceDocument, updateMath3DProjectMetadata, replaceMath3DProjectWorkspace,
   deleteProjectDocument, duplicateProjectDocument, serializeMath3DProject, setProjectDocumentMetadata,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
-import { loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY,
+import { importLibraryProject, loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY,
   PROJECT_STORAGE_KEY, readProjectThumbnail, saveLibraryProject, updateLibraryActivity, type ProjectLibrary } from "../projects/projectLibrary";
 import { ProjectCommandAdapter } from "../projects/projectCommandAdapter";
 import { ProjectDocumentActions, type ProjectDocumentAction } from "./ProjectDocumentActions";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
+import { exportProjectFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint } from "../projects/projectTransfer";
+import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
+import { pointTableStore } from "../graph2d/pointTableStore";
 
 export { PROJECT_STORAGE_KEY } from "../projects/projectLibrary";
 const ProjectThumbnail: React.FC<{ src: string | null }> = ({ src }) => {
@@ -22,8 +25,9 @@ type Props = {
   canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
   artifactAvailable?: (id: string, hash?: string | null) => boolean;
+  onRestoreWorkspace?: (workspace: MixedWorkspaceDocument) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDocument, onNavigateDocument, artifactAvailable }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDocument, onNavigateDocument, artifactAvailable, onRestoreWorkspace }) => {
   const [open, setOpen] = useState(false);
   const [project, setProject] = useState<Math3DProject | null>(null);
   const [title, setTitle] = useState("Untitled project");
@@ -39,6 +43,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
   const [message, setMessage] = useState("");
   const [explorer, setExplorer] = useState<ReturnType<typeof buildProjectExplorer> | null>(null);
   const [inspectionOpen, setInspectionOpen] = useState(false), [inspectedId, setInspectedId] = useState<string | null>(null);
+  const [incoming, setIncoming] = useState<ReturnType<typeof previewProjectImport> | null>(null);
+  const importSequence = useRef(0);
   const dependencies = useMemo(() => project && inspectionOpen ? inspectProjectDependencies(project, artifactAvailable) : null, [project, artifactAvailable, inspectionOpen]);
   const documentTitles = new Map(explorer?.groups.flatMap((group) => group.documents.map((document) => [document.id, document.title] as const)) ?? []);
 
@@ -49,6 +55,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
     if (!keepManagement) setThumbnail(null); setExplorer(tree); setPreview(savedPreview);
     if (!keepManagement) { setManaged(null); setManagedBytes(undefined); }
     if (!keepManagement) { setInspectionOpen(false); setInspectedId(null); }
+    if (!keepManagement) { setIncoming(null); importSequence.current++; }
   };
   const refreshLibrary = () => {
     try { setLibrary(parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY))); setLibraryMessage(""); }
@@ -64,7 +71,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
     }
     const workspace = capture();
     verifyMixedWorkspaceReplay(workspace);
-    return base ? replaceMath3DProjectWorkspace(base, workspace) :
+    return base ? replaceMath3DProjectWorkspace(base, mergeProjectLiveWorkspace(base.workspace, workspace)) :
       createMath3DProject(workspace, { stableKey: crypto.randomUUID(), title: title.trim() || "Untitled project" });
   };
   const refresh = () => {
@@ -150,6 +157,49 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
     try { setLibrary(updateLibraryActivity(localStorage, id, { favorite: value })); setLibraryMessage(""); }
     catch (error) { setLibraryMessage(`Favorite unavailable: ${(error as Error).message}`); }
   };
+  const transferOptions = () => ({ artifactAvailable, tableAvailable: (reference: Parameters<typeof pointTableStore.resolve>[0]) => pointTableStore.resolve(reference) !== null });
+  const importFile = async (file: File | undefined) => {
+    if (!file) return;
+    const sequence = ++importSequence.current;
+    setIncoming(null);
+    try {
+      if (file.size > MAX_PROJECT_IMPORT_BYTES) throw new Error("Project import exceeds its size limit.");
+      const prepared = previewProjectImport(await file.text(), transferOptions());
+      if (sequence !== importSequence.current) return;
+      setIncoming(prepared); setMessage("Project validated. Review compatibility before importing or opening.");
+    } catch (error) { if (sequence === importSequence.current) setMessage(`Project import rejected: ${(error as Error).message}`); }
+  };
+  const importPreview = (openWorkspace: boolean) => {
+    if (!incoming) return;
+    try {
+      // Recheck sidecars/host support immediately before the explicit action.
+      const prepared = inspectProjectCompatibility(incoming.project, transferOptions());
+      if (openWorkspace && (!onRestoreWorkspace || !prepared.canOpenWorkspace)) throw new Error("This project is preview-only on this host.");
+      const previous = openWorkspace ? projectCheckpoint(capture()) : null;
+      const backup = previous ? serializeMath3DProject(adoptMixedWorkspaceProject(previous, "Before project open")) : undefined;
+      setLibrary(importLibraryProject(localStorage, prepared.project, Date.now(), { activate: openWorkspace, backup,
+        ...(openWorkspace && previous && onRestoreWorkspace ? { afterWrite: () => {
+          try { onRestoreWorkspace(prepared.checkpoint); }
+          catch (error) { onRestoreWorkspace(previous); throw error; }
+        } } : {}) }));
+      display(prepared.project, !openWorkspace);
+      if (openWorkspace) {
+        const graph = prepared.documents.find((document) => document.module === "graph2d")!; onNavigateDocument?.(graph.id, "graph2d");
+      }
+      setMessage(openWorkspace ? "Opened supported Graph workspace. Previous workspace saved locally; historical analysis and external refs are retained." : "Imported into the library as a verified saved preview. The current workspace is unchanged.");
+    } catch (error) { setMessage(`Project import failed: ${(error as Error).message}`); }
+  };
+  const exportFile = () => {
+    if (!project) return;
+    try {
+      let next = managed?.project() ?? (preview ? project : liveProject());
+      if (!preview || managed) next = updateMath3DProjectMetadata(next, { ...next.metadata, title: title.trim(), description, tags: [...new Set(tags.split(",").map((tag) => tag.trim()).filter(Boolean))] });
+      const bytes = exportProjectFile(next);
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/json" })), link = document.createElement("a");
+      link.href = url; link.download = `${next.metadata.title.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 80) || "Project"}.math3d.project.json`; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000); setMessage("Exported verified project JSON with original identities and replay. Sidecar bytes and thumbnails transfer separately.");
+    } catch (error) { setMessage(`Project export failed: ${(error as Error).message}`); }
+  };
   const navigate = (id: string, module: KernelWorkspaceModule) => {
     if (!preview && canNavigateDocument?.(id, module)) { onNavigateDocument?.(id, module); setOpen(false); }
   };
@@ -181,10 +231,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
         <button type="button" data-testid="project-new" onClick={newProject}>New project</button>
         <button type="button" data-testid="project-manage" disabled={!project || !!managed || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={manageSaved}>Manage saved project</button>
         <button type="button" data-testid="project-inspect-relations" disabled={!project} onClick={() => { setInspectedId(null); setInspectionOpen(true); }}>Relations and availability</button>
+        <button type="button" data-testid="project-export" disabled={!project} onClick={exportFile}>Export project</button>
         {managed && <><button type="button" data-testid="project-undo" disabled={!managed.history().undoDepth} onClick={() => history("undo")}>Undo</button>
           <button type="button" data-testid="project-redo" disabled={!managed.history().redoDepth} onClick={() => history("redo")}>Redo</button></>}
       </div>
+      <label style={{ display: "grid", gap: 4, marginTop: 10 }}>Preview project import
+        <input type="file" data-testid="project-import-file" accept="application/json,.json" onChange={(event) => { void importFile(event.target.files?.[0]); event.target.value = ""; }} style={{ maxWidth: "100%" }} />
+      </label>
       <p data-testid="project-message" role="status">{message}</p>
+      {incoming && <ProjectCompatibilityPanel preview={incoming} canOpen={!!onRestoreWorkspace} onCancel={() => { importSequence.current++; setIncoming(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => importPreview(false)} onOpen={() => importPreview(true)} />}
       {project && <small data-testid="project-content-revision">{preview ? "Saved preview" : "Current workspace"} · project revision {project.identity.revision}</small>}
       <section data-testid="project-library" style={{ marginTop: 14 }}>
         <strong>Saved projects · favorites first, then recent</strong>

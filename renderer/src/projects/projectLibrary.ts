@@ -56,10 +56,10 @@ export const readProjectThumbnail = (store: Store, entry: ProjectLibraryEntry): 
 // localStorage has no multi-key transaction. Validate first, roll back writes on
 // failure, and never prune payloads from an index. Interrupted saves may leave an
 // unindexed payload, which is safer than deleting project data.
-const write = (store: Store, changes: readonly (readonly [string, string])[]) => {
+const write = (store: Store, changes: readonly (readonly [string, string])[], afterWrite?: () => void) => {
   const previous = changes.map(([key]) => [key, store.getItem(key)] as const);
   let completed = 0;
-  try { for (const [key, value] of changes) { store.setItem(key, value); completed++; } }
+  try { for (const [key, value] of changes) { store.setItem(key, value); completed++; } afterWrite?.(); }
   catch (error) {
     for (let index = completed - 1; index >= 0; index--) {
       const [key, value] = previous[index]!;
@@ -69,12 +69,12 @@ const write = (store: Store, changes: readonly (readonly [string, string])[]) =>
   }
 };
 export const saveLibraryProject = (store: Store, project: Math3DProject, now: number, thumbnail?: string,
-  options: { activate?: boolean; expectedBytes?: string } = {}): ProjectLibrary => {
+  options: { activate?: boolean; expectedBytes?: string; afterWrite?: () => void; backup?: string } = {}): ProjectLibrary => {
   const bytes = serializeMath3DProject(project), library = parseProjectLibrary(store.getItem(PROJECT_LIBRARY_KEY));
   const payloadKey = projectPayloadKey(project.identity.id), existing = store.getItem(payloadKey);
   if (options.expectedBytes !== undefined && existing !== options.expectedBytes) throw new Error("Saved project changed. Reopen it before saving your changes.");
   const active = store.getItem(PROJECT_STORAGE_KEY);
-  if (options.activate !== false && existing && active && parseMath3DProject(active).identity.id === project.identity.id && active !== existing) {
+  if (options.activate !== false && options.expectedBytes === undefined && existing && active && parseMath3DProject(active).identity.id === project.identity.id && active !== existing) {
     throw new Error("Saved project was edited separately. Manage its saved copy or create a new project from the current workspace.");
   }
   const old = library.entries.find((entry) => entry.id === project.identity.id);
@@ -82,12 +82,20 @@ export const saveLibraryProject = (store: Store, project: Math3DProject, now: nu
     favorite: old?.favorite ?? false, savedAt: now, viewedAt: old?.viewedAt ?? 0,
     ...(thumbnail ? { thumbnailKey: projectThumbnailKey(project.identity.id) } : old?.thumbnailKey ? { thumbnailKey: old.thumbnailKey } : {}) };
   const next = parseProjectLibrary(canonicalJsonStringify({ ...library, entries: [...library.entries.filter((item) => item.id !== entry.id), entry] }));
-  const changes: [string, string][] = [[payloadKey, bytes]];
+  const changes: [string, string][] = [];
+  if (options.backup !== undefined) changes.push([`${PROJECT_STORAGE_KEY}.before-open`, serializeMath3DProject(parseMath3DProject(options.backup))]);
+  changes.push([payloadKey, bytes]);
   if (options.activate !== false) changes.push([PROJECT_STORAGE_KEY, bytes]);
   if (thumbnail) changes.push([projectThumbnailKey(entry.id), validateProjectThumbnail(thumbnail)]);
   changes.push([PROJECT_LIBRARY_KEY, canonicalJsonStringify(next)]);
-  write(store, changes);
+  write(store, changes, options.afterWrite);
   return next;
+};
+export const importLibraryProject = (store: Store, project: Math3DProject, now: number,
+  options: { activate?: boolean; afterWrite?: () => void; backup?: string } = {}): ProjectLibrary => {
+  const bytes = serializeMath3DProject(project), existing = store.getItem(projectPayloadKey(project.identity.id));
+  if (existing !== null && serializeMath3DProject(parseMath3DProject(existing)) !== bytes) throw new Error("A different saved version has this project ID. Existing work was kept; resolve that conflict before importing.");
+  return saveLibraryProject(store, project, now, undefined, { ...options, activate: options.activate ?? false, ...(existing !== null ? { expectedBytes: existing } : {}) });
 };
 export const loadLibraryProject = (store: Store, id: string): Math3DProject => {
   const raw = store.getItem(projectPayloadKey(id));

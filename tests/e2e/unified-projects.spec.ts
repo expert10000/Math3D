@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 import { resolve } from "node:path";
+import { readFileSync } from "node:fs";
 const projectCore = require(resolve("packages/core/src/index.ts"));
 
 test("PRJ01/PRJ02 names and previews a project across restart and navigates live documents", async () => {
@@ -207,5 +208,63 @@ test("PRJ05 inspects stale lineage, provenance and missing artifacts without ope
     await inspector.screenshot({ path: test.info().outputPath("project-dependencies-desktop.png") });
     await page.setViewportSize({ width: 390, height: 844 });
     await inspector.screenshot({ path: test.info().outputPath("project-dependencies-phone.png") });
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("PRJ06 exports, previews, cancels and opens supported imports while retaining historical records", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel"), core = projectCore;
+    await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-title").fill("Local study");
+    await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved “Local study”");
+    const originalBytes = await page.evaluate(() => localStorage.getItem("math3d.project.v1")!);
+    const exportedPath = test.info().outputPath("project.math3d.project.json");
+    await ctx.app.evaluate(({ session }, savePath) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(savePath)), exportedPath);
+    await panel.getByTestId("project-export").click();
+    await expect.poll(() => { try { core.parseMath3DProject(readFileSync(exportedPath, "utf8")); return true; } catch { return false; } }).toBe(true);
+    const exported = core.parseMath3DProject(readFileSync(exportedPath, "utf8"));
+    expect(exported.identity).toEqual(JSON.parse(originalBytes).identity); expect(exported.workspace).toEqual(JSON.parse(originalBytes).workspace);
+    const before = await page.evaluate(() => ({ ...localStorage }));
+    await panel.getByTestId("project-import-file").setInputFiles(exportedPath);
+    await expect(panel.getByTestId("project-import-preview")).toContainText("replay verified");
+    await expect(panel.getByTestId("project-import-open")).toBeDisabled();
+    expect(await page.evaluate(() => ({ ...localStorage }))).toEqual(before);
+    await panel.getByTestId("project-import-cancel").click(); await expect(panel.getByTestId("project-import-preview")).toHaveCount(0);
+    const future = { ...exported, schemaVersion: 99 };
+    await panel.getByTestId("project-import-file").setInputFiles({ name: "future.project.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(future)) });
+    await expect(panel.getByTestId("project-message")).toContainText("Project import rejected");
+    expect(await page.evaluate(() => ({ ...localStorage }))).toEqual(before);
+    const graph = core.instantiateGraph2DPreset(core.getGraph2DPresetCatalog().get("parabola-tangent"), "supported-import-e2e").document;
+    const curve = core.promoteGraph2DToCurve(graph, graph.source.objects[0].id), result = core.analyzeGraph2DDerivative({ document: graph, objectId: graph.source.objects[0].id, x: 1, order: 1 }).publication;
+    const workspace = core.createMixedWorkspaceDocument({ ...core.createGraph2DWorkspaceProject(graph), entries: [...core.createGraph2DWorkspaceProject(graph).entries,
+      { module: "curve", checkpoint: curve.document, expected: curve.document.identity, replay: null }], results: [result], relations: [curve.relation] });
+    const incoming = core.createMath3DProject(workspace, { stableKey: "supported-import-e2e", title: "Imported Graph study" }), bytes = core.serializeMath3DProject(incoming);
+    const upload = { name: "supported.project.json", mimeType: "application/json", buffer: Buffer.from(bytes) };
+    await panel.getByTestId("project-import-file").setInputFiles(upload);
+    await expect(panel.getByTestId("project-import-preview")).toContainText("Recorded result engines");
+    await expect(panel.getByTestId("project-import-open")).toBeEnabled();
+    await panel.screenshot({ path: test.info().outputPath("project-import-desktop.png") });
+    await page.setViewportSize({ width: 390, height: 844 }); await panel.screenshot({ path: test.info().outputPath("project-import-phone.png") });
+    const bounds = await panel.boundingBox(); expect(bounds!.x).toBeGreaterThanOrEqual(0); expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await panel.getByTestId("project-import-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
+    expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(originalBytes);
+    await panel.getByTestId("project-import-file").setInputFiles(upload); await panel.getByTestId("project-import-open").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Opened supported Graph workspace");
+    await expect(page.getByTestId("workspace-nav-graphs")).toHaveAttribute("aria-pressed", "true");
+    const backup = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1.before-open")!));
+    expect(backup.workspace.entries.map((entry: any) => entry.expected.id)).toEqual(JSON.parse(originalBytes).workspace.entries.map((entry: any) => entry.expected.id));
+    await panel.getByTestId("project-current").click();
+    await expect(panel.getByTestId(`project-open-${graph.identity.id}`)).toBeEnabled();
+    await expect(panel.getByTestId("project-group-curve")).toContainText(curve.document.metadata.title);
+    await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved “Imported Graph study”");
+    const after = await page.evaluate(() => localStorage.getItem("math3d.project.v1")!);
+    expect(JSON.parse(after).workspace.results).toContainEqual(result); expect(JSON.parse(after).workspace.relations).toContainEqual(curve.relation);
+    const conflict = { ...incoming, metadata: { title: "Conflicting version" } };
+    await panel.getByTestId("project-import-file").setInputFiles({ name: "conflict.json", mimeType: "application/json", buffer: Buffer.from(core.serializeMath3DProject(conflict)) });
+    await panel.getByTestId("project-import-save").click(); await expect(panel.getByTestId("project-message")).toContainText("different saved version");
+    expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(after);
+    await expect(page.getByTestId("workspace-nav-graphs")).toHaveAttribute("aria-pressed", "true");
   } finally { await closeSurfaceApp(ctx); }
 });
