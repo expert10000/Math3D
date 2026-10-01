@@ -144,4 +144,13 @@ Local evidence is under `output/projects-integration/prj13-*.log`. The continuat
 audit passed 421 tests / 67 files, the project contract selection passed 52 tests /
 11 files, its shared/mobile regression selection passed 123 tests / 24 files, and
 the complete Complex unit selection passed 122 tests / 16 files. The combined
-software gate and clean-checkout CI result are recorded after completion below.
+Projects acceptance command passed: all types/builds, 17 Electron journeys,
+two browser interchange journeys and dependency boundaries (976 modules /
+2193 dependencies). A final source/replay selection passed 30 tests / four files.
+After the final compact-control layout change, the PRJ13 journey passed again on
+the rebuilt renderer, including a real Electron process restart, branch/contour
+reopen, invalid-source rejection and phone-width containment. Desktop and
+390-pixel editor screenshots were visually inspected. The final E2E types passed.
+
+Clean-checkout CI runs on this continuation branch; its exact result is recorded
+separately from these completed local gates.

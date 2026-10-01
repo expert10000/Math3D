@@ -81,6 +81,12 @@ test("PRJ13 restores distinct Topology and Complex documents unchanged, edits hi
     await page.getByTestId("project-scientific-undo").click(); expect(JSON.parse(await page.getByTestId("project-complex-contours").inputValue())).toEqual(docs[2].contours);
     await page.getByTestId("project-scientific-redo").click();
     await page.getByTestId("project-scientific-editor").screenshot({ path: test.info().outputPath("prj13-complex-editor.png") });
+    await page.setViewportSize({ width: 390, height: 844 });
+    const editorBounds = await page.getByTestId("project-scientific-editor").boundingBox();
+    // Allow the fractional CSS pixel rounding used by the app's UI scaling.
+    expect(editorBounds!.x + editorBounds!.width).toBeLessThanOrEqual(391);
+    expect(editorBounds!.height).toBeLessThan(844 / 2);
+    await page.getByTestId("project-scientific-editor").screenshot({ path: test.info().outputPath("prj13-complex-editor-phone.png") });
   } finally { await closeSurfaceApp(ctx); }
 });
 

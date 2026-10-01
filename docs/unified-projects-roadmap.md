@@ -325,3 +325,24 @@ branch, continues command IDs after reopen, and bounds replay to the native
 100-edit history window. Irreversible selection/analysis intents checkpoint
 their actual state and cleared history. Entire source candidates are validated
 before any ordered field edit is committed.
+
+## Next delivery: PRJ14 Volume adapter checklist
+
+1. Inventory the existing `analytic-preset` and `custom-field` recipes against
+   the native sampler before advertising editing. Dense/vector grids, distance,
+   SDF and segmentation recipes require their own resource/adapter gates.
+2. Restore a per-document `VolumeDocumentAdapter` and editor seed, retaining the
+   saved document ID rather than deriving a new ID from the active legacy preset.
+   Initial sampling and preview generation must not call the generic legacy
+   synchronization path with replacement source defaults.
+3. Preserve dimensions, origin, spacing, direction, centering, coordinate system
+   and units. Enable only spatial transforms that the native sampling/viewer path
+   actually restores; qualify other transforms as previews until implemented.
+4. Distinguish reproducible procedural samples from required imported payloads.
+   A referenced dense payload cannot become editable merely because a fallback
+   preset can be sampled. Missing/unverified bytes must reject activation before
+   replacing the current workspace; resource transfer remains PRJ15.
+5. Check the Volume adapter's replay revision and bounded-history behavior before
+   using it for native save/reopen. Verify two distinct saved Volume documents,
+   unchanged source/spatial generation on open, native edits, undo/redo, continued
+   editing after process restart, and retained historical analysis/provenance.
