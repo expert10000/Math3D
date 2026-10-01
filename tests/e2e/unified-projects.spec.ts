@@ -318,3 +318,45 @@ test("PRJ06 exports, previews, cancels and opens supported imports while retaini
     await expect(page.getByTestId("workspace-nav-graphs")).toHaveAttribute("aria-pressed", "true");
   } finally { await closeSurfaceApp(ctx); }
 });
+
+
+test("PRJ10 opens independent Curve and Surface in native editors, preserves identities and reopens saved edits", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    const curve = projectCore.createCurveDocument({ stableKey: "native-curve", source: { representation: "parametric", dimension: 3, domain: { parameter: "s", min: -2, max: 2, closed: false, periodic: false }, units: { position: "m", parameter: "s", angle: "rad" }, orientation: {}, derivatives: null, definition: { familyId: "custom", expressions: { x: "s", y: "s*s", z: "sin(s)" } }, dependencies: [] }, metadata: { title: "Native Curve" } });
+    const surface = projectCore.createSurfaceDocument({ stableKey: "native-surface", source: { representation: "parametric", domain: { kind: "parameter", u: { min: -2, max: 2, label: "u", periodic: false }, v: { min: -1, max: 1, label: "v", periodic: false } }, units: { length: "m" }, orientation: { sign: 1 }, definition: { familyId: "custom", expressions: { x: "u", y: "v", z: "u*v" } }, parameters: { preserved: 7 }, branchPolicy: null }, metadata: { title: "Native Surface" } });
+    const project = projectCore.createMath3DProject(projectCore.createMixedWorkspaceDocument({ results: [], artifacts: [], relations: [], constructions: [], committedSelection: null, activeDocumentIds: [curve.identity.id, surface.identity.id], entries: [{ module: "curve", checkpoint: curve, expected: curve.identity, replay: null }, { module: "surface", checkpoint: surface, expected: surface.identity, replay: null }] }), { stableKey: "native-project", title: "Native editors" });
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-import-file").setInputFiles({ name: "native.math3d.project.json", mimeType: "application/json", buffer: Buffer.from(projectCore.serializeMath3DProject(project)) });
+    await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await expect(page.getByTestId("curve-kernel-document")).toContainText(curve.identity.id);
+    await panel.getByTestId("project-save").click();
+    let saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(saved.workspace.entries.map((entry: any) => entry.expected)).toEqual([curve.identity, surface.identity]);
+    await page.getByRole("button", { name: "Close project explorer" }).click();
+    await page.getByLabel("y(t)", { exact: true }).fill("t*t*t");
+    await page.getByTestId("project-editor-undo").click(); await expect(page.getByLabel("y(t)", { exact: true })).toHaveValue("t*t");
+    await page.getByTestId("project-editor-redo").click(); await expect(page.getByLabel("y(t)", { exact: true })).toHaveValue("t*t*t");
+    await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-save").click();
+    saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(saved.identity.id).toBe(project.identity.id); expect(saved.workspace.entries[0].expected.id).toBe(curve.identity.id);
+    await panel.getByTestId(`project-open-${surface.identity.id}`).click();
+    await expect(page.getByTestId("project-editor-history")).toContainText("Native Surface");
+    await page.getByTestId("project-surface-z").fill("u*u+v*v");
+    await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Saved");
+    saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(saved.workspace.entries[1].expected.id).toBe(surface.identity.id);
+    expect(saved.workspace.entries[1].expected.structuralHash).not.toBe(surface.identity.structuralHash);
+    await page.getByRole("button", { name: "Close project explorer" }).click();
+    await page.getByTestId("workspace-nav-curves").click(); await expect(page.getByLabel("y(t)", { exact: true })).toHaveValue("t*t*t");
+    await page.reload(); await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-view-saved").click();
+    await panel.getByTestId("project-open-saved").click(); await panel.getByTestId("project-import-open").click();
+    await expect(page.getByTestId("curve-kernel-document")).toContainText(curve.identity.id);
+    await page.getByRole("button", { name: "Close project explorer" }).click();
+    await expect(page.getByLabel("y(t)", { exact: true })).toHaveValue("t*t*t");
+    await page.getByTestId("project-editor-undo").click(); await expect(page.getByLabel("y(t)", { exact: true })).toHaveValue("t*t");
+  } finally { await closeSurfaceApp(ctx); }
+});

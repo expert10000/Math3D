@@ -19,6 +19,6 @@ export const ProjectCompatibilityPanel: React.FC<{ preview: ProjectCompatibility
     <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
       <button type="button" data-testid="project-import-cancel" onClick={onCancel}>Cancel</button>
       <button type="button" data-testid="project-import-save" onClick={onImport}>Import into library</button>
-      <button type="button" data-testid="project-import-open" disabled={!canOpen || !preview.canOpenWorkspace} onClick={onOpen}>Open Graph workspace</button>
+      <button type="button" data-testid="project-import-open" disabled={!canOpen || !preview.canOpenWorkspace} onClick={onOpen}>Open project</button>
     </div>
   </section>;

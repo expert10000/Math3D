@@ -1,3 +1,4 @@
+import { nativeDocumentEditable } from "./nativeProjectRestore";
 import { adoptMixedWorkspaceProject, createMixedWorkspaceDocument, matchesScientificSourceGeneration, viewerSourceFromDocument, MAX_MATH3D_PROJECT_BYTES, parseMath3DProject,
   parseMixedWorkspaceDocument, parseWorkspaceProjectHandoff, serializeMath3DProject, replaceMath3DProjectWorkspace, type Graph2DPointTableReference,
   mergeGraph2DHandoffCheckpoint,
@@ -41,7 +42,8 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
       add({ id, kind: "mesh-buffers", checksum: mesh?.format === "math3d.mesh-document" ? mesh.source.resource.checksum : null, byteLength: null, requiredForSource: true });
     }
   }
-  if (!graph || graph.format !== "math3d.graph2d-document") reasons.push("Editable opening requires exactly one Graph document.");
+  if (graphEntries.length > 1) reasons.push("Editable opening supports at most one Graph document.");
+  if (!canonical.workspace.entries.length) reasons.push("The project has no documents to open.");
   const documents = canonical.workspace.entries.map((entry) => {
     let editable = entry.module === "graph2d" && graphEntries.length === 1;
     if ((entry.module === "curve" || entry.module === "surface") && graph?.format === "math3d.graph2d-document") {
@@ -52,11 +54,13 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
         typeof (parents[0]!.parameters as Record<string, unknown>).sourceObjectId === "string" &&
         graph.source.objects.some((object) => object.id === (parents[0]!.parameters as Record<string, unknown>).sourceObjectId);
     }
+    const document = resolved.get(entry.expected.id)!;
+    if ((document.format === "math3d.curve-document" || document.format === "math3d.surface-document") && nativeDocumentEditable(document)) editable = true;
     if (canonical.metadata.documents?.[entry.expected.id]?.archived) editable = false;
     if (!editable) reasons.push(`${entry.module}: this document has verified preview support; its editor state cannot be fully restored by this host adapter.`);
     return { id: entry.expected.id, module: entry.module, revision: entry.expected.revision, replayVerified: true, editable };
   });
-  if (canonical.workspace.constructions.length) reasons.push("Saved construction/script state has preview support; the Graph adapter does not restore it.");
+  if (canonical.workspace.constructions.length) reasons.push("Saved construction/script state has preview support; the active editor adapters do not restore it.");
   const sidecars = [...resources.values()];
   if (sidecars.some((resource) => resource.requiredForSource && !resource.available)) reasons.push("Required source sidecars are missing or unverified on this computer.");
   const engines = [...new Map(canonical.workspace.results.map((result) => [`${result.provenance.engine.name}@${result.provenance.engine.version}`, result.provenance.engine])).values()];

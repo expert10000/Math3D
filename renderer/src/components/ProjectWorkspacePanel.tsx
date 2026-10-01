@@ -183,15 +183,20 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
       const backup = previous ? serializeMath3DProject(adoptMixedWorkspaceProject(previous, "Before project open")) : undefined;
       setLibrary(importLibraryProject(localStorage, prepared.project, Date.now(), { activate: openWorkspace, backup,
         ...(openWorkspace && previous && onRestoreWorkspace ? { afterWrite: () => {
-          try { onRestoreWorkspace(prepared.checkpoint); }
+          try { onRestoreWorkspace(prepared.project.workspace); }
           catch (error) { onRestoreWorkspace(previous); throw error; }
         } } : {}) }));
       display(prepared.project, !openWorkspace);
       if (openWorkspace) {
-        const graph = prepared.documents.find((document) => document.module === "graph2d")!; onNavigateDocument?.(graph.id, "graph2d");
+        const first = prepared.documents.find((document) => document.module === "graph2d") ?? prepared.documents[0]!; onNavigateDocument?.(first.id, first.module);
       }
-      setMessage(openWorkspace ? "Opened supported Graph workspace. Previous workspace saved locally; historical analysis and external refs are retained." : "Imported into the library as a verified saved preview. The current workspace is unchanged.");
+      setMessage(openWorkspace ? "Opened supported project workspace. Previous workspace saved locally; historical analysis and external refs are retained." : "Imported into the library as a verified saved preview. The current workspace is unchanged.");
     } catch (error) { setMessage(`Project import failed: ${(error as Error).message}`); }
+  };
+  const previewSavedOpen = () => {
+    if (!project) return;
+    try { setIncoming({ ...inspectProjectCompatibility(loadLibraryProject(localStorage, project.identity.id), transferOptions()), inputKind: "Saved project" }); setMessage("Review editor compatibility before opening this saved project."); }
+    catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
   };
   const previewTemplate = (id: Math3DProjectTemplateId) => {
     importSequence.current++;
@@ -237,6 +242,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
         <input data-testid="project-thumbnail" type="file" accept="image/png,image/jpeg" disabled={(preview && !managed) || !project} onChange={(event) => { void chooseThumbnail(event.target.files?.[0]); event.target.value = ""; }} style={{ maxWidth: "100%" }} />
       </label>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <button type="button" data-testid="project-open-saved" disabled={!preview || !!managed || !project} onClick={previewSavedOpen}>Open saved project</button>
         <button type="button" data-testid="project-current" onClick={refresh}>Current workspace</button>
         <button type="button" data-testid="project-save" disabled={(preview && !managed) || !project || !title.trim()} onClick={save}>{managed ? "Save changes" : "Save project"}</button>
         <button type="button" data-testid="project-view-saved" onClick={viewSaved}>View saved project</button>

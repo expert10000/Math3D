@@ -187,7 +187,15 @@ It has not run a native-mobile device or full cross-module restore acceptance ga
 - PRJ09: Projects is the first entry in the main module navigation. The explorer
   identifies Current workspace, Saved project preview and Managing saved project
   explicitly; opening the library does not replace the active editors.
-- PRJ10 (planned): restore independently authored Curve/Surface documents with
-  preserved identities, source editing and project save/restart coverage.
+- PRJ10: independent parametric/explicit Curve sources (2D/3D, literal expressions,
+  no external dependencies) and nonperiodic parametric Surface sources reopen in
+  the existing native editors, without requiring a Graph. Multiple saved documents
+  retain their original identities and untouched mathematical fields. The library's
+  Open saved project action reuses compatibility preview and the before-open backup.
+  Native source edits, session undo/redo, project save, replay and explicit reopen
+  preserve source hashes and scientific generations. Cursor visits rebase the replay
+  starting generation so repeated undo/redo cannot restore an older identity.
+  Other source representations remain preview-only until an equivalent host adapter
+  exists; promoted Graph Curve/Surface workflows retain their existing opener.
 - PRJ11 (planned): restore Geometry documents and constructions with the existing
   Geometry editor and verify edit/save/restart behavior.
