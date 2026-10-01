@@ -25,7 +25,9 @@ PRJ13 is merged into `main` at `9d9b013d0e058c366d9d306c2a1af4e7ad52f341` throug
 [main Projects CI](https://github.com/expert10000/Math3D/actions/runs/36898400691)
 passed. PRJ14 is merged through [PR #16](https://github.com/expert10000/Math3D/pull/16)
 at `486ff179aaab5d831d0f1e32dd4c1b57819117ac`; its [main Projects CI](https://github.com/expert10000/Math3D/actions/runs/36930839068) passed.
-PRJ15 continues on `codex/projects-native-restoration`. On October 1 this
+PRJ15 is delivered through [PR #17](https://github.com/expert10000/Math3D/pull/17),
+with implementation `e8adffe`; PRJ16 is the next delivery. Development can continue
+on `codex/projects-native-restoration`. On October 1 this
 checkout integrated published 1.6.0 source tag `8e30e85190599467e3839e1b1e4b5b9bc708916f`
 and final release-maintainer `main` commit `a6a4f197df343630c26f58ecfd4a685b5f3230ab`
 with merge `b180ed7fa47797104b4361dbf67aaa157373de15`. This preserves the
@@ -51,7 +53,7 @@ PRJ06/PRJ08 retain the obligations below and in
 | PRJ12 | Reconcile released baseline and add a repeatable Projects CI gate | `b180ed7`, `a5c4c5c`, `8510fcc` — integration software gate passed locally and in clean-checkout CI |
 | PRJ13 | Native Topology/Complex restoration with retained identity, source, branch/contours and replay history | Implemented for bounded fundamental diagrams and the supported Function Explorer subset; software acceptance below |
 | PRJ14 | Native scalar Volume restoration, source/grid edits, history and restart | Merged at `486ff17`; main software CI passed for qualified self-contained analytic/custom recipes |
-| PRJ15 | Verified Mesh/Volume/Graph source-resource packages and native Mesh restoration | Implemented for bounded, verified source buffers; native Mesh history and independent-host/restart evidence below |
+| PRJ15 | Verified Mesh/Volume/Graph source-resource packages and native Mesh restoration | `e8adffe`, PR #17 — delivered for bounded, verified source buffers; native Mesh history and independent-host/restart evidence below |
 
 In the UI, use **Projects → Open saved project** to restore a compatible saved
 container, then select its document in the explorer or its module in main navigation.
@@ -263,8 +265,8 @@ It has not run a native-mobile device or full cross-module restore acceptance ga
 
 ## Remaining delivery and integration gates
 
-The integrated main software slice is PRJ01–PRJ14, extended on the continuation
-branch by PRJ15 resources and Mesh restoration. Full PRJ06/PRJ08 closure requires
+The delivered software slice is PRJ01–PRJ15, including resources and Mesh restoration.
+Full PRJ06/PRJ08 closure requires
 the remaining measured deliveries below; delivered rows retain their explicit
 representation limits. Each adapter must validate the entire saved representation before
 activation and leave source generation unchanged on open.
@@ -301,8 +303,9 @@ passed every step on `8510fcc`, including all 16 Electron/two browser journeys a
 the embedded Android bundle. The initial CI run exposed a whole-storage comparison
 racing unrelated workbook autosave; the corrected test still verifies every
 named-project payload, library entry, sidecar and backup remains byte-identical
-after a rejected same-ID import. PRJ12 software integration is complete;
-PRJ15–PRJ18 remain the explicit next implementation/acceptance sequence.
+after a rejected same-ID import. PRJ12 software integration is complete.
+The subsequent PRJ13–PRJ15 sections record delivered work; PRJ16–PRJ18 remain
+the next implementation/acceptance sequence.
 
 ## PRJ13 supported native restoration
 
@@ -325,8 +328,8 @@ The enabled Complex subset uses a preview-compilable AST, no parameters,
 domain exclusions, covering or Mobius recipe, a uniform grid of at most 256 samples
 per axis, and principal/negative-axis/positive-axis/radial cuts. Other Complex
 recipes and non-diagram Topology sources stay preview-only. Their dedicated
-adapters belong in the PRJ16 representation inventory. External bytes and native
-device/installed-engine acceptance remain PRJ15/PRJ17 gates.
+adapters belong in the PRJ16 representation inventory. PRJ15 supplies verified
+external source bytes; native device/installed-engine acceptance remains a PRJ17 gate.
 
 Complex replay now retains live revisions after undo/redo and a pruned redo
 branch, continues command IDs after reopen, and bounds replay to the native
