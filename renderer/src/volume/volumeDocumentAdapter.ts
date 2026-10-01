@@ -1,6 +1,7 @@
 import {
   VOLUME_COMMAND_TYPES, canonicalJsonStringify, createCommandEnvelope, createVolumeCommandState,
   createVolumeDocument, parseVolumeDocument, serializeVolumeDocument, volumeCommandDefinitions,
+  projectCommandTransaction, immutableCanonicalJsonClone,
   type CanonicalJsonValue, type CommandEnvelope, type ScientificSourceGeneration,
   type VolumeDocument, type VolumeDocumentSource,
 } from "@math3d/core";
@@ -76,11 +77,19 @@ export class VolumeDocumentAdapter {
     this.#cursor += 1;
     return this.document();
   }
-  replayBundle(): VolumeReplayBundle { return { checkpoint: this.#checkpoint, transactions: [...this.#transactions], cursor: this.#cursor }; }
+  replayBundle(): VolumeReplayBundle {
+    this.#synchronizeReplayRevision();
+    // The generic deep-readonly helper widens tuples; cloning retains their shape.
+    return immutableCanonicalJsonClone({ checkpoint: this.#checkpoint, transactions: this.#transactions, cursor: this.#cursor }) as VolumeReplayBundle;
+  }
   static fromReplayBundle(bundle: VolumeReplayBundle): VolumeDocumentAdapter {
+    // Older exports retained the entire command log despite the kernel's 100-edit
+    // native window. Fold their prefix into a checkpoint while retaining that window.
+    if (!Array.isArray(bundle.transactions) || bundle.transactions.length > 10_000 || !Number.isSafeInteger(bundle.cursor) || bundle.cursor < 0 || bundle.cursor > bundle.transactions.length || bundle.transactions.length - bundle.cursor > 100)
+      throw new TypeError("Invalid or oversized Volume replay history.");
     const adapter = new VolumeDocumentAdapter(bundle.checkpoint);
     for (const transaction of bundle.transactions) adapter.#execute(transaction.forward, transaction.inverse);
-    while (adapter.#cursor > bundle.cursor) adapter.undo();
+    for (let remaining = bundle.transactions.length - bundle.cursor; remaining > 0; remaining--) adapter.undo();
     return adapter;
   }
   #commit(type: string, next: CanonicalJsonValue, previous: CanonicalJsonValue): VolumeDocument {
@@ -88,15 +97,37 @@ export class VolumeDocumentAdapter {
     this.#sequence += 1;
     const forward = createCommandEnvelope({ commandId: `volume/edit/${this.#sequence}/forward`, origin: { kind: "interactive", sourceId: "volume-workspace" }, command: { type, payload: next } });
     const inverse = createCommandEnvelope({ commandId: `volume/edit/${this.#sequence}/inverse`, origin: { kind: "system", sourceId: "volume-undo" }, command: { type, payload: previous } });
-    this.#transactions.splice(this.#cursor);
     this.#execute(forward, inverse);
     return this.document();
   }
   #execute(forward: CommandEnvelope, inverse: CommandEnvelope): void {
-    const result = this.#kernel.transact({ transactionId: `volume/transaction/${this.#transactions.length + 1}`, commands: [forward], history: { kind: "reversible", inverseCommands: [inverse] } });
+    forward = createCommandEnvelope(forward); inverse = createCommandEnvelope(inverse);
+    const result = this.#kernel.transact({ transactionId: forward.commandId.replace(/\/forward$/, ""), commands: [forward], history: { kind: "reversible", inverseCommands: [inverse] } });
     if (!result.ok) throw new TypeError(result.errors.map((entry) => entry.message).join(" "));
+    this.#transactions.splice(this.#cursor);
     this.#transactions.push({ forward, inverse });
     this.#cursor += 1;
-    this.#sequence = Math.max(this.#sequence, this.#transactions.length);
+    this.#sequence = Math.max(this.#sequence, Number(forward.commandId.match(/volume\/edit\/(\d+)\//)?.[1] ?? 0));
+    while (this.#transactions.length > 100) {
+      const projected = projectCommandTransaction(this.#checkpoint, [this.#transactions[0]!.forward], volumeCommandDefinitions, "replay");
+      if (!projected.ok) throw new TypeError("Could not advance the Volume replay checkpoint.");
+      this.#checkpoint = projected.state; this.#transactions.shift(); this.#cursor -= 1;
+    }
+  }
+
+  #synchronizeReplayRevision(): void {
+    let state = this.#checkpoint;
+    for (const entry of this.#transactions) {
+      const projected = projectCommandTransaction(state, [entry.forward], volumeCommandDefinitions, "replay");
+      if (!projected.ok) throw new TypeError("Could not project Volume replay history.");
+      state = projected.state;
+    }
+    for (let index = this.#transactions.length - 1; index >= this.#cursor; index--) {
+      const projected = projectCommandTransaction(state, [this.#transactions[index]!.inverse], volumeCommandDefinitions, "replay");
+      if (!projected.ok) throw new TypeError("Could not project Volume replay cursor.");
+      state = projected.state;
+    }
+    const offset = this.document().identity.revision - state.identity.revision;
+    if (offset) this.#checkpoint = createVolumeDocument({ ...this.#checkpoint, identity: { ...this.#checkpoint.identity, revision: this.#checkpoint.identity.revision + offset } });
   }
 }

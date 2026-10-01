@@ -1,6 +1,7 @@
 import { geometryDocumentEditable, projectConstructionsEditable } from "./nativeGeometryRestore";
 import { nativeDocumentEditable } from "./nativeProjectRestore";
 import { scientificDocumentEditable } from "./nativeScientificRestore";
+import { volumeDocumentEditable } from "./nativeVolumeRestore";
 import { adoptMixedWorkspaceProject, createMixedWorkspaceDocument, matchesScientificSourceGeneration, viewerSourceFromDocument, MAX_MATH3D_PROJECT_BYTES, parseMath3DProject,
   parseMixedWorkspaceDocument, parseWorkspaceProjectHandoff, serializeMath3DProject, replaceMath3DProjectWorkspace, type Graph2DPointTableReference,
   mergeGraph2DHandoffCheckpoint,
@@ -38,7 +39,7 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
         add({ id: object.table.id, kind: "graph-point-table", checksum: object.table.checksum, byteLength: null, requiredForSource: true }, available);
       }
     } else if (document.format === "math3d.mesh-document") add({ id: document.source.resource.id, kind: "mesh-buffers", checksum: document.source.resource.checksum, byteLength: null, requiredForSource: true });
-    else if (document.format === "math3d.volume-document" && document.source.payload) add({ id: document.source.payload.handle, kind: "volume-payload", checksum: null, byteLength: document.source.payload.byteLength, requiredForSource: true });
+    else if (document.format === "math3d.volume-document" && document.source.payload) add({ id: document.source.payload.handle, kind: "volume-payload", checksum: null, byteLength: document.source.payload.byteLength, requiredForSource: !volumeDocumentEditable(document) });
     else if (document.format === "math3d.surface-document" && document.source.definition.meshId && !resolved.has(document.source.definition.meshId)) {
       const id = document.source.definition.meshId, mesh = [...resolved.values()].find((item) => item.format === "math3d.mesh-document" && item.source.resource.id === id);
       add({ id, kind: "mesh-buffers", checksum: mesh?.format === "math3d.mesh-document" ? mesh.source.resource.checksum : null, byteLength: null, requiredForSource: true });
@@ -59,6 +60,7 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
     const document = resolved.get(entry.expected.id)!;
     if ((document.format === "math3d.curve-document" || document.format === "math3d.surface-document") && nativeDocumentEditable(document)) editable = true;
     if (document.format === "math3d.geometry-document" && geometryDocumentEditable(document)) editable = true;
+    if (document.format === "math3d.volume-document" && volumeDocumentEditable(document)) editable = true;
     if ((document.format === "math3d.topology-document" || document.format === "math3d.complex-analysis-document") && scientificDocumentEditable(document)) editable = true;
     if (canonical.metadata.documents?.[entry.expected.id]?.archived) editable = false;
     if (!editable) reasons.push(`${entry.module}: this document has verified preview support; its editor state cannot be fully restored by this host adapter.`);

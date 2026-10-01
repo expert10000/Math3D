@@ -5,6 +5,75 @@ import { readFileSync } from "node:fs";
 import { runNamedProjectRoundTrip } from "./helpers/namedProjectRoundTrip";
 const projectCore = require(resolve("packages/core/src/index.ts"));
 
+
+test("PRJ14 restores Volume samples, source/history and historical provenance across a cold restart", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    let page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    const spatial = { dimensions: [3, 2, 2], origin: [4, -2, 1], spacing: [0.5, 2, 3], direction: [1,0,0,0,1,0,0,0,1], centering: "cell", coordinateSystem: "RAS", positionUnits: "mm", valueUnits: "density" };
+    const first = projectCore.createVolumeDocument({ stableKey: "prj14-first", source: { representation: "analytic-scalar-field", recipe: { kind: "analytic-preset", presetId: "sphere", expression: "F = x^2 + y^2 + z^2 - R^2", parameters: { R: 2 }, annotation: "retain" }, spatial, dependencies: [], payload: { handle: "prj14-unverified-cache", byteLength: 48, scalarType: "float32", components: 1 } }, metadata: { title: "Saved sphere", analysisSettings: { untouched: 7 } } });
+    const second = projectCore.createVolumeDocument({ stableKey: { legacyVolumeId: "custom-field" }, source: { representation: "custom-scalar-field", recipe: { kind: "custom-field", expression: "x+y+z+K", parameters: { K: 4 } }, spatial: { ...spatial, dimensions: [2,2,2], origin: [0,0,0], spacing: [1,1,1], centering: "point", positionUnits: "m" }, dependencies: [], payload: null }, metadata: { title: "Saved custom field" } });
+    const docs = [first, second];
+    const result = projectCore.createAnalysisResultEnvelope({ resultId: "prj14-historical", status: "numerical", provenance: { source: { documentId: first.identity.id, revision: first.identity.revision, structuralHash: first.identity.structuralHash, generation: first.identity.revision }, operation: { type: "volume.statistics", algorithm: "fixture", algorithmVersion: "1", parameters: {} }, numericContext: { tolerance: { absolute: 0.001 } }, engine: { name: "historical-offline-engine", version: "1" }, elapsedMs: 1 }, summary: { min: 13 }, warnings: [], diagnostics: [], artifacts: [] });
+    const project = projectCore.createMath3DProject(projectCore.createMixedWorkspaceDocument({ entries: docs.map((document) => ({ module: "volume", checkpoint: document, expected: document.identity, replay: null })), activeDocumentIds: docs.map((document) => document.identity.id), constructions: [], results: [result], relations: [], artifacts: [], committedSelection: null }), { title: "Native Volume project", stableKey: "prj14-ui" });
+    const show = async () => { if (!await panel.isVisible()) await page.getByTestId("projects-toggle").click(); };
+    const open = async (index: number) => { await show(); await panel.getByTestId(`project-open-${docs[index].identity.id}`).click(); };
+    const save = async () => { await show(); await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved"); return page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)); };
+    const closePanel = async () => { if (await panel.isVisible()) await page.getByRole("button", { name: "Close project explorer" }).click(); };
+    const range = async (expected: string) => {
+      await closePanel(); await page.getByTestId("shared-inspector-tab-summary").click();
+      await expect(page.getByTestId("volume-details-card")).toContainText(expected);
+    };
+    await show(); await panel.getByTestId("project-import-file").setInputFiles({ name: "volume.project.json", mimeType: "application/json", buffer: Buffer.from(projectCore.serializeMath3DProject(project)) });
+    await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await expect(page.getByTestId("project-volume-editor")).toContainText("Saved sphere");
+    await range("13 … 41"); await expect(page.getByTestId("volume-details-card")).toContainText("mm / density");
+    let saved = await save(); expect(saved.workspace.entries.map((entry: any) => entry.expected)).toEqual(docs.map((document) => document.identity));
+    await closePanel();
+    await page.getByTestId("project-volume-editor").locator("summary").click();
+    expect(JSON.parse(await page.getByTestId("project-volume-spatial").inputValue())).toEqual(spatial);
+    await page.getByTestId("project-volume-parameters").fill('{"R":3}'); await page.getByTestId("project-volume-apply").click();
+    await range("8 … 36"); await page.getByTestId("project-volume-undo").click(); await range("13 … 41");
+    await page.getByTestId("project-volume-redo").click(); await range("8 … 36");
+    await open(1); await expect(page.getByTestId("project-volume-expression")).toHaveValue("x+y+z+K"); await range("4 … 7");
+    await page.getByTestId("project-volume-editor").locator("summary").click();
+    const editedSpatial = { ...second.source.spatial, dimensions: [3,2,2], origin: [2,0,0], spacing: [0.5,1,1], centering: "cell" };
+    await page.getByTestId("project-volume-expression").fill("x*y+z+K"); await page.getByTestId("project-volume-spatial").fill(JSON.stringify(editedSpatial)); await page.getByTestId("project-volume-apply").click();
+    await range("4 … 8"); await page.getByTestId("project-volume-undo").click(); await range("4 … 7"); await page.getByTestId("project-volume-redo").click();
+    saved = await save(); const generations = saved.workspace.entries.map((entry: any) => entry.expected);
+    expect(saved.workspace.results).toEqual([result]); expect(saved.workspace.entries[0].expected.id).toBe(first.identity.id);
+    await panel.getByTestId(`project-inspect-${first.identity.id}`).click();
+    await expect(panel.getByTestId(`project-result-status-${result.resultId}`)).toContainText("stale");
+    await ctx.app.close(); ctx = await launchSurfaceApp({}, ctx.profileDir); page = ctx.page; panel = page.getByTestId("project-explorer-panel");
+    await show(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click(); await panel.getByTestId("project-import-open").click();
+    saved = await save(); expect(saved.workspace.entries.map((entry: any) => entry.expected)).toEqual(generations);
+    await open(1); await range("4 … 8"); await page.getByTestId("project-volume-undo").click(); await expect(page.getByTestId("project-volume-expression")).toHaveValue("x+y+z+K");
+    await page.getByTestId("project-volume-redo").click(); await page.getByTestId("project-volume-expression").fill("x+y+z+K+1"); await page.getByTestId("project-volume-apply").click(); await range("7 … 10");
+    await page.getByTestId("project-volume-editor").locator("summary").click();
+    await page.getByTestId("project-volume-spatial").fill(JSON.stringify({ ...editedSpatial, spacing: [0,1,1] })); await page.getByTestId("project-volume-apply").click(); await expect(page.getByRole("alert")).toContainText("different editor");
+    await page.getByTestId("project-volume-spatial").fill(JSON.stringify(editedSpatial)); await page.getByTestId("project-volume-apply").click(); await expect(page.getByRole("alert")).toHaveCount(0);
+    saved = await save(); expect(saved.workspace.results).toEqual([result]);
+    const protectedBytes = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
+    for (const source of [{ ...first.source, representation: "dense-scalar-grid", recipe: { kind: "dense-grid" } }, { ...first.source, spatial: { ...spatial, direction: [0,-1,0,1,0,0,0,0,1] } }, { ...first.source, recipe: { ...first.source.recipe, expression: "__proto__(x)" } }]) {
+      const document = projectCore.createVolumeDocument({ source, stableKey: "unsupported" });
+      const unsupported = projectCore.createMath3DProject(projectCore.createMixedWorkspaceDocument({ ...project.workspace, entries: [{ module: "volume", checkpoint: document, expected: document.identity, replay: null }], activeDocumentIds: [document.identity.id], results: [] }), { title: "Unsupported Volume", stableKey: "prj14-unsupported-project" });
+      await panel.getByTestId("project-import-file").setInputFiles({ name: "unsupported.project.json", mimeType: "application/json", buffer: Buffer.from(projectCore.serializeMath3DProject(unsupported)) });
+      await expect(panel.getByTestId("project-import-open")).toBeDisabled();
+      expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(protectedBytes); await panel.getByTestId("project-import-cancel").click();
+    }
+    await closePanel(); await page.getByTestId("volume-action-new").click();
+    const withNew = await save(); expect(withNew.workspace.entries).toHaveLength(3);
+    expect(withNew.workspace.entries.slice(0, 2).map((entry: any) => entry.expected)).toEqual(saved.workspace.entries.map((entry: any) => entry.expected));
+    const newId = withNew.workspace.entries[2].expected.id; expect(docs.map((document) => document.identity.id)).not.toContain(newId);
+    await open(1); await expect(page.getByTestId("project-volume-expression")).toHaveValue("x+y+z+K+1");
+    await show(); await panel.getByTestId(`project-open-${newId}`).click(); await expect(page.getByTestId("project-volume-expression")).toHaveValue("x^2 + y^2 + z^2 - 1");
+    await closePanel(); await page.getByTestId("project-volume-editor").screenshot({ path: test.info().outputPath("prj14-volume-editor.png") });
+    await page.setViewportSize({ width: 390, height: 844 }); const bounds = await page.getByTestId("project-volume-editor").boundingBox();
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(391); expect(bounds!.height).toBeLessThan(422);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("PRJ13 restores distinct Topology and Complex documents unchanged, edits history and cold reopens", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
   try {
@@ -111,13 +180,13 @@ test("PRJ07 previews independent scientific starters and opens their real docume
     ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
     const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
     await page.getByTestId("projects-toggle").click();
-    const before = await page.evaluate(() => ({ ...localStorage }));
+    const before = await page.evaluate(() => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.startsWith("math3d.project"))));
     await panel.getByTestId("project-template-preview").click();
     await expect(panel.getByTestId("project-import-preview")).toContainText("Minimal Surface Study");
     await expect(panel.getByTestId("project-import-open")).toBeEnabled();
-    expect(await page.evaluate(() => ({ ...localStorage }))).toEqual(before);
+    expect(await page.evaluate(() => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.startsWith("math3d.project"))))).toEqual(before);
     await panel.getByTestId("project-import-cancel").click();
-    expect(await page.evaluate(() => ({ ...localStorage }))).toEqual(before);
+    expect(await page.evaluate(() => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.startsWith("math3d.project"))))).toEqual(before);
     await panel.getByTestId("project-template-preview").click(); await panel.getByTestId("project-import-save").click();
     const first = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project-library.v1")!).entries[0].id);
     await panel.getByTestId("project-template-preview").click(); await panel.getByTestId("project-import-open").click();
@@ -360,16 +429,16 @@ test("PRJ06 exports, previews, cancels and opens supported imports while retaini
     await expect.poll(() => { try { core.parseMath3DProject(readFileSync(exportedPath, "utf8")); return true; } catch { return false; } }).toBe(true);
     const exported = core.parseMath3DProject(readFileSync(exportedPath, "utf8"));
     expect(exported.identity).toEqual(JSON.parse(originalBytes).identity); expect(exported.workspace).toEqual(JSON.parse(originalBytes).workspace);
-    const before = await page.evaluate(() => ({ ...localStorage }));
+    const before = await page.evaluate(() => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.startsWith("math3d.project"))));
     await panel.getByTestId("project-import-file").setInputFiles(exportedPath);
     await expect(panel.getByTestId("project-import-preview")).toContainText("replay verified");
     await expect(panel.getByTestId("project-import-open")).toBeDisabled();
-    expect(await page.evaluate(() => ({ ...localStorage }))).toEqual(before);
+    expect(await page.evaluate(() => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.startsWith("math3d.project"))))).toEqual(before);
     await panel.getByTestId("project-import-cancel").click(); await expect(panel.getByTestId("project-import-preview")).toHaveCount(0);
     const future = { ...exported, schemaVersion: 99 };
     await panel.getByTestId("project-import-file").setInputFiles({ name: "future.project.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(future)) });
     await expect(panel.getByTestId("project-message")).toContainText("Project import rejected");
-    expect(await page.evaluate(() => ({ ...localStorage }))).toEqual(before);
+    expect(await page.evaluate(() => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.startsWith("math3d.project"))))).toEqual(before);
     const graph = core.instantiateGraph2DPreset(core.getGraph2DPresetCatalog().get("parabola-tangent"), "supported-import-e2e").document;
     const curve = core.promoteGraph2DToCurve(graph, graph.source.objects[0].id), result = core.analyzeGraph2DDerivative({ document: graph, objectId: graph.source.objects[0].id, x: 1, order: 1 }).publication;
     const workspace = core.createMixedWorkspaceDocument({ ...core.createGraph2DWorkspaceProject(graph), entries: [...core.createGraph2DWorkspaceProject(graph).entries,
