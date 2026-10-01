@@ -8,9 +8,36 @@ is replaced until its round-trip parity gate passes.
 
 This plan adapts the supplied project-explorer proposal to the audited code. The
 kernel already owns identities, replay and relations; Graph2D participates in mixed
-workspaces and mobile has a library. The current desktop reopen callback restores
-Graph and its Curve/Surface promotions. It does not restore every module, so a
-saved-project preview must not be presented as a completed full workspace restore.
+workspaces and mobile has a library. Desktop opening now restores the supported
+Graph/promotion workflows, independent literal Curve and nonperiodic parametric Surface sources,
+and procedural Geometry with bounded live-derived constructions. Other source types
+remain saved previews until their native editor adapters pass round-trip acceptance.
+
+## Current delivery status (2026-10-01)
+
+Implemented and pushed on `codex/post-1.6.0-audit` through `11b2cb3`. These are
+completed delivery slices; PRJ06/PRJ08 retain the broader acceptance obligations
+listed below and in [the acceptance matrix](unified-projects-acceptance.md).
+
+| Item | Delivered behavior | Commit / status |
+| --- | --- | --- |
+| PRJ01 | Named project envelope and strict identity/replay validation | `28807ad` — implemented |
+| PRJ02 | Unified live document explorer and saved previews | `721cf99` — implemented |
+| PRJ03 | Local library, metadata, thumbnails, favorites and activity | `0f7d4e4` — implemented |
+| PRJ04 | Saved-document duplicate, rename, archive, guarded delete and undo/redo | `e30d1f4` — implemented |
+| PRJ05 | Lineage, freshness, provenance and artifact availability inspection | `2cc6f26` — implemented |
+| PRJ06 | Verified import/export, compatibility preview and supported native opening | `b691f8c`, extended by PRJ10/PRJ11 — implemented slice; full restoration remains open |
+| PRJ07 | Independent scientific starter projects | `856eda2` — implemented |
+| Mobile transfer | Preserve named projects through the mobile Graph model | `bb29c40` — implemented; physical-device acceptance remains open |
+| PRJ08 | Desktop/browser/mobile-model round-trip gates | `b18b7a9`, extended by PRJ10/PRJ11 — automated slice passed; device/engine/signing gates remain open |
+| PRJ09 | Projects as the first main-navigation entry; explicit workspace/preview modes | `70ca027` — implemented |
+| PRJ10 | Independent Curve/Surface native editing, history, save and reopen | `2a93c1b` — implemented for supported representations |
+| PRJ11 | Procedural Geometry and bounded construction native editing, save and reopen | `11b2cb3` — implemented for supported representations |
+
+In the UI, use **Projects → Open saved project** to restore a compatible saved
+container, then select its document in the explorer or its module in main navigation.
+**View saved project** shows a stored preview; **Manage saved project** enables the
+saved-document operations. Compatibility preview explains unsupported opening.
 
 ## Example workflow
 
@@ -52,6 +79,10 @@ Work stays on `codex/post-1.6.0-audit`. Rebase on the confirmed release commit
 before integration; keep existing release scope and signed-build evidence separate.
 
 ## Implementation record
+
+PRJ01–PRJ08 below record their original delivery scopes and evidence. The editor
+restoration continuation extends the original PRJ06 Graph-only opener; the current
+status above and the latest acceptance matrix describe the combined branch.
 
 - PRJ01: core envelope implemented. Seven focused contract tests pass, covering
   named/legacy round-trip, retained results/lineage/artifact references, independent
@@ -174,31 +205,32 @@ regression tests pass. Mobile TypeScript passes using the checkout's core/kernel
 paths; native device/file-picker acceptance remains unrun.
 
 The repeatable `node scripts/post160-roadmap-audit.mjs --run` gate includes both
-project suites and passes 408 tests across 64 files. Renderer/E2E/mobile/fixture
+project suites and passes 414 tests across 66 files. Renderer/E2E/mobile/fixture
 TypeScript, main/renderer/web production builds and dependency boundaries pass.
-This phase has eight passing Project Electron journeys plus six Graph Gallery/kernel
-regression journeys (fourteen total), plus two Chromium project interchange journeys.
+This phase has ten passing Project Electron journeys plus six Graph Gallery/kernel
+regression journeys (sixteen total), plus two Chromium project interchange journeys.
 Electron downloads use the native session download hook
 in the transfer test; the test also verifies the resulting file before import.
 It has not run a native-mobile device or full cross-module restore acceptance gate.
 
 ## Editor restoration continuation
 
-- PRJ09: Projects is the first entry in the main module navigation. The explorer
-  identifies Current workspace, Saved project preview and Managing saved project
+- PRJ09 (`70ca027`, implemented): Projects is the first entry in the main module
+  navigation. The explorer identifies Current workspace, Saved project preview and Managing saved project
   explicitly; opening the library does not replace the active editors.
-- PRJ10: independent parametric/explicit Curve sources (2D/3D, literal expressions,
-  no external dependencies) and nonperiodic parametric Surface sources reopen in
+- PRJ10 (`2a93c1b`, implemented): independent parametric/explicit Curve sources
+  (2D/3D, literal expressions, no external dependencies) and nonperiodic parametric Surface sources reopen in
   the existing native editors, without requiring a Graph. Multiple saved documents
   retain their original identities and untouched mathematical fields. The library's
   Open saved project action reuses compatibility preview and the before-open backup.
-  Native source edits, session undo/redo, project save, replay and explicit reopen
-  preserve source hashes and scientific generations. Cursor visits rebase the replay
+  Opening leaves source hashes and generations unchanged. Native edits advance the
+  source generation; session undo/redo, project save, replay and explicit reopen
+  retain the edited source and its identity. Cursor visits rebase the replay
   starting generation so repeated undo/redo cannot restore an older identity.
   Other source representations remain preview-only until an equivalent host adapter
   exists; promoted Graph Curve/Surface workflows retain their existing opener.
-- PRJ11: procedural Geometry objects and their bounded live-derived constructions
-  reopen in the existing Geometry editor. Object IDs, parameters, transforms,
+- PRJ11 (`11b2cb3`, implemented): procedural Geometry objects and their bounded
+  live-derived constructions reopen in the existing Geometry editor. Object IDs, parameters, transforms,
   presentation, construction inputs and opaque source fields survive save/replay.
   Scratch/workbook seed records and stored scene script are retained and restored;
   importing never executes stored script. Mount-time topology cache enrichment does
@@ -207,3 +239,16 @@ It has not run a native-mobile device or full cross-module restore acceptance ga
   records. Three contracts and an Electron edit/save/reopen journey cover this path.
   Point/scene primitives, separate canonical construction graphs, embedded surfaces,
   cameras and overlays still require different host adapters and remain preview-only.
+
+## Remaining delivery and integration gates
+
+- Add native restore/edit/history/save adapters for Mesh, Volume, Topology and
+  Complex, plus the unsupported Curve/Surface/Geometry representations. Each source
+  type needs unchanged-on-open and edit/save/replay/reopen evidence before activation.
+- Extend cross-module acceptance to those adapters and external resource bytes;
+  project JSON currently carries references, with sidecars transferred separately.
+- Run native mobile file-picker/share/device, installed optional-engine and signed
+  build checks against the exact integration build. Automated mobile-model tests do
+  not complete these gates.
+- Confirm the authoritative 1.6.0 release commit, rebase this continuation branch and
+  rerun the applicable audit, boundary and acceptance gates before integration.

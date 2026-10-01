@@ -2696,15 +2696,21 @@ The general kernel rollout is complete only when:
 10. The kernel remains lifecycle infrastructure; mathematical algorithms stay in
     their domain modules.
 
-## Next product phase: Unified Projects (PRJ01–PRJ08)
+## Next product phase: Unified Projects (PRJ01–PRJ11)
 
 Make the existing kernel-backed workspace a named project with a unified document
 explorer. The [Unified Projects delivery roadmap](unified-projects-roadmap.md)
-defines eight commits: first-class container, explorer, library metadata,
+defines the initial eight commits: first-class container, explorer, library metadata,
 cross-document operations, dependency/status inspection, compatibility-aware
 import/export, scientific templates, and desktop/web/mobile round-trip gates.
 Project sources and lineage remain owned by the existing shared contracts.
 PRJ01–PRJ07 delivery slices, named mobile Graph transfer and PRJ08 automated
 desktop/browser/mobile-model round-trip evidence are implemented on the continuation
-branch. Complete native cross-module restoration and device/engine sign-off retain
+branch. PRJ09–PRJ11 are also implemented and pushed: Projects is the first main
+navigation entry, independent literal Curve/nonperiodic parametric Surface sources
+reopen in native editors, and procedural Geometry with bounded live-derived
+constructions supports edit/save/reopen. The latest gates pass 414 audit tests,
+16 Electron journeys and two Chromium interchange journeys; source type limits
+and commit hashes are recorded in the delivery roadmap.
+Complete native cross-module restoration and device/engine sign-off retain
 separate acceptance gates in the [project acceptance matrix](unified-projects-acceptance.md).

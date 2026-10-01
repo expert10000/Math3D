@@ -158,3 +158,11 @@ compatibility-aware import/export and scientific starters. Named mobile Graph
 transfer and PRJ08 automated desktop/browser/mobile-model evidence follow those
 slices. Their implementation gates and restore/device limitations are recorded
 in that roadmap and the [project acceptance matrix](unified-projects-acceptance.md).
+
+PRJ09–PRJ11 are implemented and pushed through `11b2cb3`: Projects in main
+navigation (`70ca027`), independent Curve/Surface native restoration (`2a93c1b`),
+and procedural Geometry/bounded construction restoration (`11b2cb3`). Current
+evidence is 414 audit tests, 16 Electron journeys and two Chromium interchange
+journeys, with TypeScript, production builds and dependency boundaries passing.
+Other source representations/modules and physical-device/installed-engine/signed
+build acceptance remain open; integration still requires the confirmed release commit.
