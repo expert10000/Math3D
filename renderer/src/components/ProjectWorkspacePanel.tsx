@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, parseMath3DProject,
   parseMixedWorkspaceDocument, updateMath3DProjectMetadata, replaceMath3DProjectWorkspace,
   deleteProjectDocument, duplicateProjectDocument, serializeMath3DProject, setProjectDocumentMetadata,
@@ -8,6 +8,8 @@ import { loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, orderProjectLibrary, p
   PROJECT_STORAGE_KEY, readProjectThumbnail, saveLibraryProject, updateLibraryActivity, type ProjectLibrary } from "../projects/projectLibrary";
 import { ProjectCommandAdapter } from "../projects/projectCommandAdapter";
 import { ProjectDocumentActions, type ProjectDocumentAction } from "./ProjectDocumentActions";
+import { inspectProjectDependencies } from "../projects/projectDependencies";
+import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 
 export { PROJECT_STORAGE_KEY } from "../projects/projectLibrary";
 const ProjectThumbnail: React.FC<{ src: string | null }> = ({ src }) => {
@@ -19,8 +21,9 @@ type Props = {
   capture: () => MixedWorkspaceDocument;
   canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
+  artifactAvailable?: (id: string, hash?: string | null) => boolean;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDocument, onNavigateDocument }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDocument, onNavigateDocument, artifactAvailable }) => {
   const [open, setOpen] = useState(false);
   const [project, setProject] = useState<Math3DProject | null>(null);
   const [title, setTitle] = useState("Untitled project");
@@ -35,6 +38,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
   const [managedBytes, setManagedBytes] = useState<string | undefined>();
   const [message, setMessage] = useState("");
   const [explorer, setExplorer] = useState<ReturnType<typeof buildProjectExplorer> | null>(null);
+  const [inspectionOpen, setInspectionOpen] = useState(false), [inspectedId, setInspectedId] = useState<string | null>(null);
+  const dependencies = useMemo(() => project && inspectionOpen ? inspectProjectDependencies(project, artifactAvailable) : null, [project, artifactAvailable, inspectionOpen]);
+  const documentTitles = new Map(explorer?.groups.flatMap((group) => group.documents.map((document) => [document.id, document.title] as const)) ?? []);
 
   const display = (next: Math3DProject, savedPreview: boolean, keepManagement = false) => {
     const resolved = verifyMixedWorkspaceReplay(next.workspace);
@@ -42,6 +48,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
     setProject(next); setTitle(next.metadata.title); setDescription(next.metadata.description ?? ""); setTags((next.metadata.tags ?? []).join(", "));
     if (!keepManagement) setThumbnail(null); setExplorer(tree); setPreview(savedPreview);
     if (!keepManagement) { setManaged(null); setManagedBytes(undefined); }
+    if (!keepManagement) { setInspectionOpen(false); setInspectedId(null); }
   };
   const refreshLibrary = () => {
     try { setLibrary(parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY))); setLibraryMessage(""); }
@@ -173,6 +180,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
         <button type="button" data-testid="project-view-saved" onClick={viewSaved}>View saved project</button>
         <button type="button" data-testid="project-new" onClick={newProject}>New project</button>
         <button type="button" data-testid="project-manage" disabled={!project || !!managed || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={manageSaved}>Manage saved project</button>
+        <button type="button" data-testid="project-inspect-relations" disabled={!project} onClick={() => { setInspectedId(null); setInspectionOpen(true); }}>Relations and availability</button>
         {managed && <><button type="button" data-testid="project-undo" disabled={!managed.history().undoDepth} onClick={() => history("undo")}>Undo</button>
           <button type="button" data-testid="project-redo" disabled={!managed.history().redoDepth} onClick={() => history("redo")}>Redo</button></>}
       </div>
@@ -196,13 +204,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ capture, canNavigateDoc
           </article>;
         })}
       </section>
+      {dependencies && <ProjectDependenciesPanel inspection={dependencies} selectedId={inspectedId} titles={documentTitles} onClose={() => setInspectionOpen(false)} onLocate={(id) => setInspectedId(id)} />}
       {explorer?.groups.map((group) => <section key={group.module} data-testid={`project-group-${group.module}`} style={{ marginTop: 12 }}>
         <strong>{group.title} ({group.documents.length})</strong>
         {group.documents.length ? <ul style={{ margin: "5px 0", paddingLeft: 20 }}>
-          {group.documents.map((document) => <li key={document.id} style={{ marginBottom: 5 }}>
+          {group.documents.map((document) => <li key={document.id} style={{ marginBottom: 5, background: inspectedId === document.id && inspectionOpen ? "#eff6ff" : undefined }}>
             <button type="button" data-testid={`project-open-${document.id}`} disabled={preview || document.archived || !onNavigateDocument || !canNavigateDocument?.(document.id, document.module)}
               title={document.id} onClick={() => navigate(document.id, document.module)} style={{ maxWidth: "100%", overflowWrap: "anywhere", textAlign: "left" }}>{document.title}</button>
             <small> · revision {document.revision}{document.archived ? " · archived" : ""}</small>
+            <button type="button" data-testid={`project-inspect-${document.id}`} onClick={() => { setInspectedId(document.id); setInspectionOpen(true); }}>Inspect dependencies</button>
             {managed && project && <ProjectDocumentActions key={`${document.id}:${document.title}:${document.archived}`} project={project} document={document} onAction={documentAction} />}
           </li>)}
         </ul> : <small style={{ display: "block", marginTop: 4 }}>No documents</small>}

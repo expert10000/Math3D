@@ -78991,9 +78991,9 @@ case "mobius":
         capture={captureMixedKernelWorkspace}
         activeModule={activeKernelModule}
         activeEvidence={activeKernelEvidence}
-        artifactAvailable={(artifactId) => volumeExtractionRecords.some((record) => record.artifactId === artifactId &&
+        artifactAvailable={(artifactId, checksum) => volumeExtractionRecords.some((record) => record.artifactId === artifactId && (!checksum || record.contentHash === checksum) &&
           (volumeExtractionBridgeRef.current?.artifacts().resolve(record.result.artifacts[0], record.source).ok ?? false)) ||
-          meshAnalysisKernelBridge.artifactRegistry().listMetadata().some((entry) => entry.handle.artifactId === artifactId && entry.availability === "available")}
+          meshAnalysisKernelBridge.artifactRegistry().listMetadata().some((entry) => entry.handle.artifactId === artifactId && (!checksum || entry.checksum === checksum) && entry.availability === "available")}
         onNavigateModule={(module) => {
           setActiveGraph2DTargetId(null);
           if (module === "geometry") setMode("geometry");

@@ -95,10 +95,24 @@ before integration; keep existing release scope and signed-build evidence separa
   tests and an additional library conflict test cover these contracts. The fourth
   project Electron journey exercises duplication across captured modules, rename,
   archive/restore, blocked/isolated delete, undo/redo, save and restart.
-- PRJ05–PRJ08: planned, subject to the preceding gates.
+- PRJ05: dependency/provenance inspection implemented with the existing kernel
+  dependency graph. Project-wide and selected-document views expose recorded
+  parents/targets, source revision/generation/hash, stale descendants, independent
+  snapshot qualification and historical analysis authority/engine versions.
+  Locate-back selects the exact saved source inside the inspector; it never
+  navigates an unrelated live editor from a saved preview. Artifact availability
+  requires a matching manifest checksum and affirmative host-store lookup; absent
+  checksums, missing targets and lookup failures cannot appear current. Source
+  freshness and artifact availability remain separate from mathematical authority.
+  Three dependency tests cover stale chains/unrelated documents, unresolved links,
+  and missing/unverified artifacts. The fifth project Electron journey verifies
+  stale lineage, locate-back, recorded analysis authority and missing sidecars.
+  Desktop and phone inspection screenshots were visually checked.
+- PRJ06–PRJ08: planned, subject to the preceding gates.
 
 The repeatable `node scripts/post160-roadmap-audit.mjs --run` gate includes both
-project suites and passes 385 tests across 59 files. Renderer/E2E TypeScript,
+project suites and passes 394 tests across 61 files. Renderer/E2E TypeScript,
 main/renderer production builds and dependency boundaries pass. This phase has
-nine passing Electron journeys across Projects, Graph Gallery and kernel flows.
+five passing Project Electron journeys; the preceding Graph Gallery and kernel
+journeys are separate regression checks.
 It has not run a native-mobile device or full cross-module restore acceptance gate.

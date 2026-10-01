@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+import { resolve } from "node:path";
+const projectCore = require(resolve("packages/core/src/index.ts"));
 
 test("PRJ01/PRJ02 names and previews a project across restart and navigates live documents", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
@@ -171,5 +173,39 @@ test("PRJ04 manages saved documents with guarded deletion and undo across reopen
     await panel.getByTestId(`project-preview-${original.identity.id}`).click();
     await expect(panel.getByTestId("project-group-graph2d")).toContainText("Independent graph snapshot");
     await expect(panel.getByTestId("project-group-graph2d")).toContainText("Graph (2)");
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("PRJ05 inspects stale lineage, provenance and missing artifacts without opening unrelated live state", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const core = projectCore, graph = core.instantiateGraph2DPreset(core.getGraph2DPresetCatalog().get("parabola-tangent"), "inspection-e2e").document;
+    const curve = core.promoteGraph2DToCurve(graph, graph.source.objects[0].id);
+    const result = core.analyzeGraph2DDerivative({ document: graph, objectId: graph.source.objects[0].id, x: 1, order: 1 }).publication;
+    const handle = { artifactId: "e2e-unavailable-artifact", kind: "table", role: "samples" };
+    const edited = core.createEmptyGraph2DDocument("replacement", "Edited graph");
+    const source = edited.source, identity = core.advanceDocumentIdentity(graph.identity, source);
+    const changedGraph = core.createGraph2DDocument({ stableKey: "replacement", source, identity, title: "Edited graph" });
+    const workspace = core.createMixedWorkspaceDocument({ ...core.createGraph2DWorkspaceProject(changedGraph),
+      entries: [...core.createGraph2DWorkspaceProject(changedGraph).entries, { module: "curve", checkpoint: curve.document, expected: curve.document.identity, replay: null }],
+      results: [{ ...result, artifacts: [handle] }], artifacts: [{ handle, contentHash: core.structuralHash("missing"), byteLength: 100 }], relations: [curve.relation] });
+    const project = core.createMath3DProject(workspace, { stableKey: "inspection-e2e", title: "Stale lineage study" });
+    const bytes = core.serializeMath3DProject(project), page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.evaluate((raw) => localStorage.setItem("math3d.project.v1", raw), bytes);
+    await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-view-saved").click();
+    await panel.getByTestId(`project-inspect-${curve.document.identity.id}`).click();
+    const inspector = panel.getByTestId("project-dependencies");
+    await expect(inspector.getByTestId("project-document-freshness")).toContainText("lineage stale");
+    await inspector.getByRole("button", { name: "Edited graph", exact: true }).click();
+    await expect(inspector).toContainText("Dependencies: Edited graph");
+    await expect(inspector.getByTestId(`project-result-status-${result.resultId}`)).toContainText(`authority ${result.status}`);
+    await expect(inspector.getByTestId(`project-result-status-${result.resultId}`)).toContainText("unavailable");
+    await expect(inspector.getByTestId(`project-artifact-${handle.artifactId}`)).toContainText("missing or unverified");
+    await expect(panel.getByTestId(`project-open-${graph.identity.id}`)).toBeDisabled();
+    expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(bytes);
+    await inspector.screenshot({ path: test.info().outputPath("project-dependencies-desktop.png") });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await inspector.screenshot({ path: test.info().outputPath("project-dependencies-phone.png") });
   } finally { await closeSurfaceApp(ctx); }
 });

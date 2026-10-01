@@ -18,7 +18,7 @@ export type KernelWorkspacePanelProps = {
   capture: () => MixedWorkspaceDocument;
   activeModule: KernelWorkspaceModule | null;
   activeEvidence: ViewerProvenanceEvidence | null;
-  artifactAvailable?: (artifactId: string) => boolean;
+  artifactAvailable?: (artifactId: string, hash?: string | null) => boolean;
   onNavigateModule?: (module: KernelWorkspaceModule) => void;
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
   canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
@@ -104,13 +104,13 @@ export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ capt
       setMessage(`Reopened and replay-verified ${workspace.entries.length} canonical document(s). Domain artifacts remain external.`);
     } catch (error) { setMessage(`Reopen failed: ${error instanceof Error ? error.message : String(error)}`); }
   };
-  const availability = reopened ? inspectMixedWorkspaceAvailability(reopened, (artifact) => artifactAvailable?.(artifact.handle.artifactId) ?? false) : null;
+  const availability = reopened ? inspectMixedWorkspaceAvailability(reopened, (artifact) => artifactAvailable?.(artifact.handle.artifactId, artifact.contentHash) ?? false) : null;
   const sourceById = new Map(reopened?.entries.map((entry) => [entry.expected.id, viewerSourceFromDocument({ identity: entry.expected })]) ?? []);
   const moduleById = new Map(reopened?.entries.map((entry) => [entry.expected.id, entry.module]) ?? []);
   const index = reopened?.relations.length ? createDocumentRelationIndex(reopened.relations) : null;
   return (
     <div data-testid="kernel-workspace-shell" style={{ position: "fixed", right: 14, bottom: 14, zIndex: 2500, fontSize: 11 }}>
-      <ProjectWorkspacePanel capture={capture} onNavigateDocument={onNavigateDocument} canNavigateDocument={canNavigateDocument} />
+      <ProjectWorkspacePanel capture={capture} onNavigateDocument={onNavigateDocument} canNavigateDocument={canNavigateDocument} artifactAvailable={artifactAvailable} />
       <button type="button" data-testid="kernel-workspace-toggle" onClick={() => setOpen((value) => !value)}
         style={{ border: "1px solid #64748b", borderRadius: 8, background: "#f8fafc", color: "#0f172a", padding: "7px 10px", fontWeight: 700 }}>
         Kernel workspace
