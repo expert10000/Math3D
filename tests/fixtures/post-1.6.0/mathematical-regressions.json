@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "354d06d",
+  "topology": [
+    { "id": "two-components", "vertices": ["v", "w"], "loops": [], "degree": null, "integerGroups": ["Z^2", "0", "0"], "mod2Dimensions": [2, 0, 0], "oracle": "Two isolated points have two connected components and no positive-dimensional homology.", "status": "exact" },
+    { "id": "bouquet-two-circles", "vertices": ["v"], "loops": ["a", "b"], "degree": null, "integerGroups": ["Z", "Z^2", "0"], "mod2Dimensions": [1, 2, 0], "oracle": "The cellular chain complex has two loop generators and zero boundary maps.", "status": "exact" },
+    { "id": "moore-odd-17", "vertices": ["v"], "loops": ["a"], "degree": 17, "integerGroups": ["Z", "Z/17Z", "0"], "mod2Dimensions": [1, 0, 0], "oracle": "d2=[17], d1=[0]; odd degree is invertible over F2.", "status": "exact" },
+    { "id": "moore-even-18", "vertices": ["v"], "loops": ["a"], "degree": 18, "integerGroups": ["Z", "Z/18Z", "0"], "mod2Dimensions": [1, 1, 1], "oracle": "d2=[18], d1=[0]; even degree vanishes over F2, giving H1 and H2 dimension one.", "status": "exact" }
+  ],
+  "complex": [
+    { "id": "reciprocal-clockwise", "expression": "1/z", "center": [0, 0], "radius": 1, "winding": -1, "samples": 512, "expectedIntegral": [0, -6.283185307179586], "tolerance": 0.0001, "status": "numerical", "oracle": "Residue theorem with negative contour orientation: -2*pi*i." },
+    { "id": "reciprocal-double-winding", "expression": "1/z", "center": [0, 0], "radius": 1, "winding": 2, "samples": 1024, "expectedIntegral": [0, 12.566370614359172], "tolerance": 0.0002, "status": "numerical", "oracle": "Residue theorem with winding number two: 4*pi*i." },
+    { "id": "pole-outside-offset-contour", "expression": "1/z", "center": [2, 0], "radius": 0.5, "winding": 1, "samples": 512, "expectedIntegral": [0, 0], "tolerance": 0.0001, "status": "numerical", "oracle": "The function is holomorphic on and inside the circle centered at 2 of radius 1/2." },
+    { "id": "opposite-residues-cancel", "expression": "1/(z^2+1)", "center": [0, 0], "radius": 2, "winding": 1, "samples": 512, "expectedIntegral": [0, 0], "tolerance": 0.0001, "status": "numerical", "oracle": "Both simple poles lie inside; residues 1/(2*i) and -1/(2*i) sum to zero." },
+    { "id": "double-pole-zero-residue", "expression": "1/z^2", "center": [0, 0], "radius": 1, "winding": 1, "samples": 512, "expectedIntegral": [0, 0], "tolerance": 0.0001, "status": "numerical", "oracle": "The Laurent coefficient of z^-1 is zero despite the enclosed pole." }
+  ]
+}

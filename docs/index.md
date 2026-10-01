@@ -1,5 +1,7 @@
 # Math3D Docs
 
+- [Post-1.6.0 continuation audit and verified backlog](post-1.6.0-continuation-audit.md).
+
 This site combines:
 
 - Project guides and operational docs (MkDocs content).
