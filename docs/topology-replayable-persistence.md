@@ -38,6 +38,14 @@ The restored command adapter reconstructs the kernel undo and redo stacks from t
 same log. The renderer recomputes its derived display model from the replayed source;
 serialized caches are never promoted to authority.
 
+The retained replay window contains at most 100 operations. When an older edit
+leaves that window, its command advances the source checkpoint. Undo/Redo and
+branch replacement preserve the live monotonic revision by lifting the checkpoint
+revision and reprojecting retained state hashes at export. Reopening restores the
+transaction sequence so continued editing does not reuse saved command IDs.
+Legacy snapshot migration keeps nearest redo states and uses remaining slots for
+the newest undo states; the current source remains unchanged.
+
 The loader rejects:
 
 - unknown or unsupported schema fields/versions;

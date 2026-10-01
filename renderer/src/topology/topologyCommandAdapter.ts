@@ -7,6 +7,8 @@ import {
   createTopologyDocument,
   createTopologyReplayBundle,
   replayTopologyCommandLog,
+  projectCommandTransaction,
+  structuralHash,
   topologyCommandDefinitions,
   type CanonicalJsonValue,
   type CommandOrigin,
@@ -19,6 +21,8 @@ import {
 import { createInMemoryDocumentKernel, type InMemoryDocumentKernel } from "@math3d/kernel";
 import { cloneFundamentalDiagram } from "./quotientBuilder";
 import type { FundamentalDiagram } from "./types";
+
+const HISTORY_LIMIT = 100;
 
 const toModel = (diagram: FundamentalDiagram): Readonly<Record<string, CanonicalJsonValue>> =>
   JSON.parse(JSON.stringify(diagram)) as Record<string, CanonicalJsonValue>;
@@ -96,6 +100,7 @@ export class TopologyDiagramCommandAdapter {
   }
 
   exportReplay(): TopologyReplayBundle {
+    this.#synchronizeReplayRevision();
     return createTopologyReplayBundle(this.#replayCheckpoint, this.#replayTransactions, this.#replayCursor);
   }
 
@@ -129,8 +134,10 @@ export class TopologyDiagramCommandAdapter {
       if (!undone.ok) throw new TypeError("Could not restore the persisted replay cursor.");
       adapter.#replayCursor -= 1;
     }
-    adapter.#sequence = Math.max(0, ...replay.transactions.flatMap((transaction) =>
-      transaction.commands.map((command) => Number(command.commandId.match(/(\d+)$/)?.[1] ?? 0))
+    // Command IDs end in /forward or /inverse; the transaction carries the
+    // numeric sequence needed to avoid reusing IDs when editing after reopen.
+    adapter.#sequence = Math.max(0, ...replay.transactions.map((transaction) =>
+      Number(transaction.transactionId.match(/\/(\d+)$/)?.[1] ?? 0)
     ));
     adapter.#completedTransactions = 0;
     return adapter;
@@ -145,13 +152,18 @@ export class TopologyDiagramCommandAdapter {
     undoHistory: readonly FundamentalDiagram[],
     redoHistory: readonly FundamentalDiagram[]
   ): TopologyDiagramCommandAdapter {
-    const adapter = new TopologyDiagramCommandAdapter(undoHistory[0] ?? current);
-    for (let index = 1; index < undoHistory.length; index += 1) {
-      adapter.commit(undoHistory[index]!, { kind: "import", sourceId: "topology-v2-history-migration" });
+    // Retain the nearest redo states and use the remaining bounded window for
+    // undo. Advancing the checkpoint must never move the reopened current source.
+    const redo = redoHistory.slice(-HISTORY_LIMIT);
+    const undoBudget = HISTORY_LIMIT - redo.length;
+    const undo = undoBudget > 0 ? undoHistory.slice(-undoBudget) : [];
+    const adapter = new TopologyDiagramCommandAdapter(undo[0] ?? current);
+    for (let index = 1; index < undo.length; index += 1) {
+      adapter.commit(undo[index]!, { kind: "import", sourceId: "topology-v2-history-migration" });
     }
     adapter.commit(current, { kind: "import", sourceId: "topology-v2-history-migration" });
     const currentCursor = adapter.historyState().undoCount;
-    for (const diagram of [...redoHistory].reverse()) {
+    for (const diagram of [...redo].reverse()) {
       adapter.commit(diagram, { kind: "import", sourceId: "topology-v2-history-migration" });
     }
     while (adapter.historyState().undoCount > currentCursor) adapter.undo();
@@ -186,6 +198,7 @@ export class TopologyDiagramCommandAdapter {
       stateHash: result.event.stateHash,
     });
     this.#replayCursor += 1;
+    this.#trimReplayHistory();
     return this.current();
   }
 
@@ -231,7 +244,7 @@ export class TopologyDiagramCommandAdapter {
     const kernel = createInMemoryDocumentKernel({
       initialState: state,
       commandDefinitions: topologyCommandDefinitions,
-      historyLimit: 100,
+      historyLimit: HISTORY_LIMIT,
     });
     kernel.subscribe(() => { this.#completedTransactions += 1; });
     return kernel;
@@ -240,6 +253,51 @@ export class TopologyDiagramCommandAdapter {
   #nextId(kind: string): string {
     this.#sequence += 1;
     return `topology/${kind}/${this.#sequence}`;
+  }
+
+  #trimReplayHistory(): void {
+    while (this.#replayTransactions.length > HISTORY_LIMIT) {
+      const oldest = this.#replayTransactions[0]!;
+      const projected = projectCommandTransaction(this.#replayCheckpoint, oldest.commands, topologyCommandDefinitions, "replay");
+      if (!projected.ok) throw new Error("Could not advance the Topology replay checkpoint.");
+      this.#replayCheckpoint = projected.state;
+      this.#replayTransactions.shift();
+      this.#replayCursor -= 1;
+    }
+  }
+
+  #synchronizeReplayRevision(): void {
+    // Undo/redo also advance source revisions. A pruned redo branch no longer
+    // records those operations, so lift the checkpoint revision rather than
+    // reverting the live identity or publishing results for an older revision.
+    const project = (checkpoint: TopologyCommandState, recordHashes: boolean) => {
+      let state = checkpoint;
+      for (let index = 0; index < this.#replayTransactions.length; index += 1) {
+        const transaction = this.#replayTransactions[index]!;
+        const result = projectCommandTransaction(state, transaction.commands, topologyCommandDefinitions, "replay");
+        if (!result.ok) throw new Error("Could not project the Topology replay history.");
+        state = result.state;
+        if (recordHashes) this.#replayTransactions[index] = { ...transaction, stateHash: structuralHash(state) };
+      }
+      for (let index = this.#replayTransactions.length - 1; index >= this.#replayCursor; index -= 1) {
+        const result = projectCommandTransaction(state, this.#replayTransactions[index]!.inverseCommands, topologyCommandDefinitions, "replay");
+        if (!result.ok) throw new Error("Could not project the Topology replay cursor.");
+        state = result.state;
+      }
+      return state;
+    };
+    const replayed = project(this.#replayCheckpoint, false);
+    const live = this.document();
+    const revisionOffset = live.identity.revision - replayed.document.identity.revision;
+    if (revisionOffset === 0) return;
+    this.#replayCheckpoint = {
+      ...this.#replayCheckpoint,
+      document: { ...this.#replayCheckpoint.document, identity: {
+        ...this.#replayCheckpoint.document.identity,
+        revision: this.#replayCheckpoint.document.identity.revision + revisionOffset,
+      } },
+    };
+    project(this.#replayCheckpoint, true);
   }
 
   #replaceCommand(commandId: string, diagram: FundamentalDiagram, origin: CommandOrigin) {
