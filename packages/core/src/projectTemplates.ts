@@ -7,6 +7,7 @@ import { createMixedWorkspaceDocument } from "./mixedWorkspace";
 import { createDocumentRelation } from "./documentRelations";
 import { viewerSourceFromDocument } from "./viewerProvenance";
 import { createMath3DProject, updateMath3DProjectMetadata } from "./math3dProject";
+import { createRepresentationTemplateWorkspace } from "./projectRepresentationTemplates";
 
 /** Built-in recipes create ordinary documents; there is no executable template input. */
 export const MATH3D_PROJECT_TEMPLATES = Object.freeze([
@@ -21,6 +22,21 @@ export const MATH3D_PROJECT_TEMPLATES = Object.freeze([
     steps: Object.freeze(["Inspect y = x^2 on [-3, 3] and compare its Curve snapshot.",
       "Inspect the derivative at x = 1 with its source generation and numerical authority.",
       "Edit the Graph and compare the historical result's source freshness."]) }),
+  Object.freeze({ id: "spline-surface-lab", version: 1, title: "Spline and Surface Lab",
+    description: "Compare a weighted NURBS curve, a rational patch and an implicit sphere.",
+    steps: Object.freeze(["Select a document, then expand Edit source definition.",
+      "Change curve weights, patch controls or the sphere formula; inspect measured bounds.",
+      "Undo and redo, save the project, then export or reopen its source history."]) }),
+  Object.freeze({ id: "curve-construction-study", version: 1, title: "Curve Construction Study",
+    description: "Explore a measured profile, its revolution and extrusion, and a Curve on a parameter chart.",
+    steps: Object.freeze(["Compare the saved profile with its two constructed Surfaces.",
+      "Change the revolution angle or extrusion depth through Edit source definition.",
+      "Inspect Relations. Parent edits leave dependent definitions stale until explicitly updated."]) }),
+  Object.freeze({ id: "scene-topology-study", version: 1, title: "Scene and Topology Study",
+    description: "Inspect a midpoint and circle alongside a CW interval and simplicial triangle.",
+    steps: Object.freeze(["Select Scene constructions and inspect the saved points and constructions.",
+      "Compare the interval and triangle incidence counts; their layout is schematic.",
+      "Edit a source, undo/redo, and save. No homology result or external engine is assumed."]) }),
 ] as const);
 export type Math3DProjectTemplateId = typeof MATH3D_PROJECT_TEMPLATES[number]["id"];
 
@@ -29,6 +45,17 @@ export const instantiateMath3DProjectTemplate = (id: string, instanceKey: string
   if (!template) throw new TypeError("Unknown project template.");
   if (typeof instanceKey !== "string" || instanceKey.trim() !== instanceKey || !instanceKey.length || instanceKey.length > 160)
     throw new TypeError("A fresh template instance token of 1–160 characters is required.");
+  if (template.id !== "catenary-study" && template.id !== "derivative-study") {
+    const project = createMath3DProject(createRepresentationTemplateWorkspace(template.id, instanceKey), {
+      stableKey: ["project-template", id, template.version, instanceKey], title: template.title,
+    });
+    return updateMath3DProjectMetadata(project, { ...project.metadata, description: template.description,
+      tags: ["starter", id, `template-v${template.version}`], documents: Object.fromEntries(project.workspace.entries.map((entry) => {
+        const document = entry.checkpoint;
+        const title = "metadata" in document && "title" in document.metadata ? document.metadata.title : document.format === "math3d.topology-document" ? String(document.source.model.name) : document.format;
+        return [entry.expected.id, { title }];
+      })) });
+  }
   const catenary = template.id === "catenary-study", expression = catenary ? "(exp(x) + exp(-x))/2" : "x^2";
   const parsed = parseGraph2DExpression(expression);
   if (!parsed.ok) throw new Error("Invalid built-in project expression.");

@@ -1,8 +1,33 @@
 import { additionalRepresentationFixture, exerciseAdditionalEditors, checkReopenedAdditionalHistory } from "../e2e/helpers/additionalProjectRepresentations";
+import { exerciseRepresentationStarters } from "../e2e/helpers/projectRepresentationStarters";
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { runNamedProjectRoundTrip } from "../e2e/helpers/namedProjectRoundTrip";
 import { inspectMeshPackage, meshResourceFixture, pointResourceFixture, scalarVolumeResourceFixture, inspectScalarVolumePackage } from "../e2e/helpers/meshProjectResources";
+
+test("PRJ16 built-in source starters preview, edit and transfer with restored history", async ({ page, browser }) => {
+  test.setTimeout(240_000);
+  await page.goto("/"); await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); }); await page.reload();
+  const { originalDocument, saved } = await exerciseRepresentationStarters(page);
+  const download = page.waitForEvent("download"); await page.getByTestId("project-export").click();
+  const exported = readFileSync((await (await download).path())!, "utf8"); expect(JSON.parse(exported).workspace).toEqual(saved.workspace);
+  const context = await browser.newContext({ baseURL: new URL(page.url()).origin,
+    locale: await page.evaluate(() => navigator.language), timezoneId: await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone) });
+  try {
+    const other = await context.newPage(); await other.goto("/");
+    await other.evaluate(() => localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1")); await other.reload();
+    await other.getByTestId("projects-toggle").click(); const panel = other.getByTestId("project-explorer-panel");
+    await panel.getByTestId("project-import-file").setInputFiles({ name: "starter.json", mimeType: "application/json", buffer: Buffer.from(exported) });
+    await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved"); await other.reload();
+    await other.getByTestId("projects-toggle").click(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click();
+    await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await checkReopenedAdditionalHistory(other, originalDocument);
+    await other.setViewportSize({ width: 390, height: 844 });
+    expect(await other.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await other.getByTestId("project-source-editor").screenshot({ path: test.info().outputPath("source-starter-phone.png") });
+  } finally { await context.close(); }
+});
 
 test("PRJ16 browser additional source editors retain measured sources and history on reload", async ({page})=>{
   test.setTimeout(240_000);

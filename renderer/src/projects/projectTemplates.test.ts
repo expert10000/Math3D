@@ -3,6 +3,7 @@ import { instantiateMath3DProjectTemplate, MATH3D_PROJECT_TEMPLATES, evaluateGra
   serializeMath3DProject, type Graph2DDocument, type SurfaceDocument } from "@math3d/core";
 import { inspectProjectCompatibility, previewProjectImport } from "./projectTransfer";
 import { inspectProjectDependencies } from "./projectDependencies";
+import { additionalRepresentationView, type AdditionalDocument } from "./additionalProjectRepresentations";
 
 describe("PRJ07 scientific starter projects", () => {
   it("creates independent containers, documents, results and lineage without sharing mutable source", () => {
@@ -39,5 +40,28 @@ describe("PRJ07 scientific starter projects", () => {
     }
     for (const token of ["", " ", " trailing ", "a".repeat(161)]) expect(() => instantiateMath3DProjectTemplate("catenary-study", token)).toThrow();
     expect(() => instantiateMath3DProjectTemplate("unknown", "fresh")).toThrow("Unknown");
+  });
+  it.each(["spline-surface-lab", "curve-construction-study", "scene-topology-study"])("qualifies %s with independent identities and complete source inputs", (id) => {
+    const project = instantiateMath3DProjectTemplate(id, "first"), second = instantiateMath3DProjectTemplate(id, "second");
+    expect(inspectProjectCompatibility(project).canOpenWorkspace).toBe(true);
+    expect(inspectProjectDependencies(project).relations.every((relation) => relation.freshness === "current")).toBe(true);
+    const ids = new Set(project.workspace.entries.map((entry) => entry.expected.id));
+    expect(second.workspace.entries.every((entry) => !ids.has(entry.expected.id))).toBe(true);
+    expect(project.workspace.results).toEqual([]); expect(project.workspace.artifacts).toEqual([]);
+    const context = { documents: new Map(project.workspace.entries.map((entry) => [entry.expected.id, entry.checkpoint])) };
+    for (const entry of project.workspace.entries) expect(additionalRepresentationView(entry.checkpoint as AdditionalDocument, context).sampleCount).toBeGreaterThan(0);
+  });
+  it("checks starter spline, sphere, construction and incidence measurements against independent expectations", () => {
+    const view = (id: string, title: string) => {
+      const project = instantiateMath3DProjectTemplate(id, "oracle"), entry = project.workspace.entries.find((entry) => project.metadata.documents[entry.expected.id]?.title === title)!;
+      return additionalRepresentationView(entry.checkpoint as AdditionalDocument, { documents: new Map(project.workspace.entries.map((entry) => [entry.expected.id, entry.checkpoint])) });
+    };
+    expect(view("spline-surface-lab", "Weighted spline curve").bounds).toEqual({ min: [0,0,0], max: [2,4/3,0] });
+    expect(view("spline-surface-lab", "Rational surface patch").bounds).toEqual({ min: [0,0,0], max: [1,1,1] });
+    const sphere = view("spline-surface-lab", "Implicit unit sphere");
+    for (const value of sphere.bounds!.max) expect(value).toBeCloseTo(1, 2);
+    expect(view("curve-construction-study", "Curve on chart").bounds).toEqual({ min: [0,0,0], max: [1,1,2] });
+    expect(view("curve-construction-study", "Profile revolution").bounds!.max[2]).toBeCloseTo(1, 8);
+    expect(view("scene-topology-study", "Simplicial triangle").qualification).toContain("3 vertices");
   });
 });

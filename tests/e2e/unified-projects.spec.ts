@@ -1,4 +1,5 @@
 import { additionalRepresentationFixture, exerciseAdditionalEditors, checkReopenedAdditionalHistory } from "./helpers/additionalProjectRepresentations";
+import { exerciseRepresentationStarters } from "./helpers/projectRepresentationStarters";
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 import { resolve } from "node:path";
@@ -6,6 +7,23 @@ import { readFileSync, existsSync } from "node:fs";
 import { runNamedProjectRoundTrip } from "./helpers/namedProjectRoundTrip";
 import { meshResourceFixture, inspectMeshPackage, scalarVolumeResourceFixture, inspectScalarVolumePackage } from "./helpers/meshProjectResources";
 const projectCore = require(resolve("packages/core/src/index.ts"));
+
+test("PRJ16 built-in source starters retain editing history across Electron restart", async () => {
+  test.setTimeout(240_000); let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const { originalDocument, saved } = await exerciseRepresentationStarters(ctx.page);
+    const exportPath = resolve(ctx.profileDir, "source-starter.json");
+    await ctx.app.evaluate(({ session }, savePath) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(savePath)), exportPath);
+    await ctx.page.getByTestId("project-export").click(); await expect.poll(() => existsSync(exportPath)).toBe(true);
+    expect(JSON.parse(readFileSync(exportPath, "utf8")).workspace).toEqual(saved.workspace);
+    const profile = ctx.profileDir; await ctx.app.close(); ctx = await launchSurfaceApp({}, profile);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel"); await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click();
+    await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await checkReopenedAdditionalHistory(page, originalDocument);
+  } finally { await closeSurfaceApp(ctx); }
+});
 
 test("PRJ16 additional source editors survive independent transfer and Electron restart", async () => {
   test.setTimeout(240_000);let ctx:LaunchedSurfaceApp|null=null;

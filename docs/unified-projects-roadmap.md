@@ -476,6 +476,14 @@ journeys edit seven additional sources, save/export them to a fresh Electron pro
 close/relaunch the process and exercise restored history. Chromium repeats editing,
 reload/save and restored history in both locale/time-zone configurations.
 
+**Projects → Starter workflow** also exposes three independent, engine-free
+presets: **Spline and Surface Lab**, **Curve Construction Study**, and
+**Scene and Topology Study**. Their ordinary documents include complete spline
+controls, an implicit sphere, a sampled profile with exact-generation revolution/
+extrusion links, a Curve on a parameter chart, scene constructions, and CW/simplicial
+sources. Preview/cancel preserves the current project; opening creates fresh
+identities. The source editor supports editing, undo/redo and saved replay.
+
 The [acceptance record](unified-projects-acceptance.md) records the complete local
 software run. Oriented/vector/SDF/mask/label Volume, additional Complex branch/covering
 semantics, incomplete dependent recipes and combined Geometry display forms remain
