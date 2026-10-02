@@ -65,12 +65,12 @@ const report = { ok: false, serial, model: run("shell", "getprop", "ro.product.m
   sourceCommit: build.gitCommit, apkSha256: build.sha256, checks: [], startedAt: new Date().toISOString() };
 try {
   launchSettings(); tap("mobile-storage-recovery-prepare");
-  report.checks.push(expect("PASS: 9/9 recovery checks; library unchanged."));
+  report.checks.push(expect("PASS: 10/10 recovery checks; library unchanged."));
   run("shell", "am", "force-stop", build.applicationId);
   const stopped = spawnSync("adb", ["-s", serial, "shell", "pidof", build.applicationId], { encoding: "utf8", timeout: 30000 });
   if (stopped.error || stopped.status !== 1 || stopped.stdout.trim()) throw new Error("App process did not confirm force-stop.");
   launchSettings(); tap("mobile-storage-recovery-finish");
-  report.checks.push(expect("PASS: 10/10 recovery checks; library unchanged."));
+  report.checks.push(expect("PASS: 11/11 recovery checks; library unchanged."));
   run("shell", "screencap", "-p", "/sdcard/math3d-recovery-screen.png");
   run("pull", "/sdcard/math3d-recovery-screen.png", resolve(output, "recovery.png"));
   report.ok = true;

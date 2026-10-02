@@ -254,6 +254,9 @@ export const resolveMobileSceneStorage = (
     };
   }
 
+  if (primaryRaw !== null || backupRaw !== null) {
+    return { projects: [], issues: ["Project storage files are blank and no valid backup is available."], source: "invalid", rewritePrimary: false };
+  }
   return { projects: [], issues: [], source: "empty", rewritePrimary: false };
 };
 

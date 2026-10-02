@@ -19,10 +19,10 @@ The runner checks the installed APK hash, opens Settings, prepares the isolated
 matrix, force-stops the process, relaunches and verifies persisted repair. It
 never installs, uninstalls, clears app data or requires root/debug access.
 
-The nine preparation cases cover first-save backup initialization; truncated,
+The ten preparation cases cover first-save backup initialization; truncated,
 missing and blank primary repair; a healthy primary with a damaged backup;
-both copies damaged; a newer unsupported primary; legacy migration; and a
-recovery/save queue. The tenth case repairs a damaged primary after an actual
+both copies damaged; blank files without a valid backup; a newer unsupported
+primary; legacy migration; and a recovery/save queue. The eleventh case repairs a damaged primary after an actual
 process restart, with uncommitted staging files present. After recovery, another
 reader must select the repaired primary and recover exactly the original data.
 

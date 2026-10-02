@@ -4,7 +4,7 @@ import type { MobileStoredSceneProject } from "../../apps/mobile/src/models/mobi
 import { createMobileGraph, storeMobileGraph, readMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
 
 const fileContents = vi.hoisted(() => new Map<string, string>());
-const fileFaults = vi.hoisted(() => ({ writePath: "", moveDestination: "", readPath: "", deletePath: "" }));
+const fileFaults = vi.hoisted(() => ({ writePath: "", moveDestination: "", readPath: "", deletePath: "", copyDestination: "" }));
 
 vi.mock("expo-file-system", () => {
   class Directory {
@@ -34,7 +34,10 @@ vi.mock("expo-file-system", () => {
       if (fileFaults.deletePath === this.uri) throw new Error("simulated cleanup failure");
       fileContents.delete(this.uri);
     }
-    copy(destination: File) { fileContents.set(destination.uri, fileContents.get(this.uri) ?? ""); }
+    copy(destination: File) {
+      if (fileFaults.copyDestination === destination.uri) throw new Error("ENOSPC: no space left on device");
+      fileContents.set(destination.uri, fileContents.get(this.uri) ?? "");
+    }
     move(destination: File) {
       if (fileFaults.moveDestination === destination.uri) {
         fileFaults.moveDestination = "";
@@ -94,6 +97,7 @@ describe("mobile scene storage recovery", () => {
     fileFaults.moveDestination = "";
     fileFaults.readPath = "";
     fileFaults.deletePath = "";
+    fileFaults.copyDestination = "";
   });
 
   it("migrates the legacy project-array payload", () => {
@@ -161,6 +165,17 @@ describe("mobile scene storage recovery", () => {
     expect(decodeMobileSceneStorage(fileContents.get("documents/math3d-mobile/scene-projects.json") ?? "").ok).toBe(true);
   });
 
+  it.each([[" \n", null], [null, " \n"], [" \n", " \n"]])("preserves blank existing files (%j, %j)", async (primaryRaw, backupRaw) => {
+    const path = "documents/math3d-mobile/scene-projects.json";
+    const backupPath = "documents/math3d-mobile/scene-projects.backup.json";
+    if (primaryRaw !== null) fileContents.set(path, primaryRaw);
+    if (backupRaw !== null) fileContents.set(backupPath, backupRaw);
+    expect(await loadStoredSceneProjects()).toMatchObject({ source: "invalid", projects: [] });
+    await expect(saveStoredSceneProjects([project])).rejects.toMatchObject({ code: "recovery-required" });
+    expect(fileContents.get(path)).toBe(primaryRaw ?? undefined);
+    expect(fileContents.get(backupPath)).toBe(backupRaw ?? undefined);
+  });
+
   it("restores the previous file when the final temporary-file rename fails", async () => {
     await saveStoredSceneProjects([project]);
     expect(decodeMobileSceneStorage(fileContents.get("documents/math3d-mobile/scene-projects.backup.json") ?? "").ok).toBe(true);
@@ -189,10 +204,11 @@ describe("mobile scene storage recovery", () => {
     expect(fileContents.has("documents/math3d-mobile/scene-projects.backup.json")).toBe(false);
   });
   it("keeps a successful first primary save when only backup initialization fails", async () => {
-    fileFaults.writePath = "documents/math3d-mobile/scene-projects.backup.tmp";
+    fileFaults.copyDestination = "documents/math3d-mobile/scene-projects.backup.tmp";
     await saveStoredSceneProjects([project]);
     expect((await loadStoredSceneProjects()).projects).toEqual([project]);
     expect(fileContents.has("documents/math3d-mobile/scene-projects.tmp")).toBe(false);
+    expect(fileContents.has("documents/math3d-mobile/scene-projects.backup.json")).toBe(false);
   });
 
   it("reports storage-full and validation failures with actionable messages", () => {
@@ -277,11 +293,11 @@ describe("mobile scene storage recovery", () => {
     const before = new Map(fileContents);
     const prepared = await prepareMobileStorageRecoveryCheck();
     expect(prepared.phase).toBe("restart-pending");
-    expect(prepared.checks).toHaveLength(9);
+    expect(prepared.checks).toHaveLength(10);
     expect(prepared.checks.every(check => check.passed)).toBe(true);
     const finished = await finishMobileStorageRecoveryCheck();
     expect(finished.phase).toBe("complete");
-    expect(finished.checks).toHaveLength(10);
+    expect(finished.checks).toHaveLength(11);
     expect(finished.checks.filter(check => !check.passed)).toEqual([]);
     expect(finished.libraryUnchanged).toBe(true);
     for (const [path, raw] of before) expect(fileContents.get(path)).toBe(raw);

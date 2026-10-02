@@ -82,6 +82,18 @@ export const prepareMobileStorageRecoveryCheck = () => exclusive(async () => {
     assert((await storage.load()).source === "invalid", "Damage reported as empty library."); await rejectsDamagedSave(storage);
     assert(await primary().text() === "{broken-primary" && await backup().text() === "{broken-backup", "Damaged files overwritten.");
   });
+  await check(report, "blank-files-are-not-first-run", async () => {
+    for (const contents of [[" \n", null], [null, " \n"], [" \n", " \n"]] as const) {
+      reset();
+      if (contents[0] !== null) write(primary(), contents[0]);
+      if (contents[1] !== null) write(backup(), contents[1]);
+      const storage = store(); assert((await storage.load()).source === "invalid", "Blank files reported as first run.");
+      await rejectsDamagedSave(storage);
+      assert(primary().exists === (contents[0] !== null) && backup().exists === (contents[1] !== null), "Blank files replaced.");
+      if (primary().exists) assert(await primary().text() === contents[0], "Blank primary overwritten.");
+      if (backup().exists) assert(await backup().text() === contents[1], "Blank backup overwritten.");
+    }
+  });
   await check(report, "newer-schema-preserved", async () => {
     reset(); const storage = store(); await storage.save(projects);
     const newer = JSON.stringify({ schemaVersion: 99, projects }); write(primary(), newer);
