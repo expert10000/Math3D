@@ -1,7 +1,17 @@
+import { additionalRepresentationFixture, exerciseAdditionalEditors, checkReopenedAdditionalHistory } from "../e2e/helpers/additionalProjectRepresentations";
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { runNamedProjectRoundTrip } from "../e2e/helpers/namedProjectRoundTrip";
 import { inspectMeshPackage, meshResourceFixture, pointResourceFixture, scalarVolumeResourceFixture, inspectScalarVolumePackage } from "../e2e/helpers/meshProjectResources";
+
+test("PRJ16 browser additional source editors retain measured sources and history on reload", async ({page})=>{
+  test.setTimeout(240_000);
+  const fixture=additionalRepresentationFixture();await page.goto("/");await page.evaluate(()=>{localStorage.clear();localStorage.setItem("math3d.computeEngines.firstLaunchSeen","1");});await page.reload();
+  const {selected,saved}=await exerciseAdditionalEditors(page,fixture);await page.reload();await page.getByTestId("projects-toggle").click();const panel=page.getByTestId("project-explorer-panel");
+  await panel.getByTestId("project-view-saved").click();await panel.getByTestId("project-restore-saved").click();await expect(panel.getByTestId("project-import-open")).toBeEnabled();await panel.getByTestId("project-import-open").click();
+  await panel.getByTestId("project-save").click();await expect(panel.getByTestId("project-message")).toContainText("Saved");expect((await page.evaluate(()=>JSON.parse(localStorage.getItem("math3d.project.v1")!))).workspace.entries.map((e:any)=>e.expected)).toEqual(saved.workspace.entries.map((e:any)=>e.expected));
+  for(const document of selected)await checkReopenedAdditionalHistory(page,document);
+});
 
 test("PRJ16 browser samples verified dense Volume bytes and retains grid history on reload", async ({ page }) => {
   const fixture = scalarVolumeResourceFixture();
