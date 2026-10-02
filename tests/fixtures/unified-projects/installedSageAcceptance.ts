@@ -53,7 +53,7 @@ export async function runInstalledSageAcceptance(baseUrl: string) {
     const payload = createComplexSagePayload({ document, operation: entry.operation,
       ...(["limit", "residue", "series"].includes(entry.operation) ? { point: { re: 0, im: 0 } } : {}), ...(entry.operation === "series" ? { order: 4 } : {}) });
     const service = createInProcessScientificJobService({ adapters: [createComplexSageJobAdapter(execute)], resolveSource: () => source });
-    const outcome = await service.submit(createComplexSageJobRequest({ jobId: `installed-${entry.operation}`, source, payload, limits: limits() }));
+    const outcome = await service.submit(createComplexSageJobRequest({ jobId: `installed-${entry.name ?? entry.operation}`, source, payload, limits: limits() }));
     assert.ok(outcome.ok, JSON.stringify(outcome));
     entry.verify(outcome.output);
     const published = publishComplexSageResult({ jobResult: outcome, currentSource: source, expectedPayload: payload });
@@ -61,7 +61,7 @@ export async function runInstalledSageAcceptance(baseUrl: string) {
     documents.push({ module: "complex", checkpoint: document, expected: document.identity, replay: null });
     results.push(published);
     checks.push({ name: `complex/${entry.name ?? entry.operation}`, engineVersion: published.provenance.engine.version, result: outcome.output });
-    console.log(`PASS installed Sage complex/${entry.operation}`);
+    console.log(`PASS installed Sage complex/${entry.name ?? entry.operation}`);
   }
   for (const entry of corpus.entries.filter((entry) => entry.expected.homology.status === "exact")) {
     let document: any, canonical: any;
@@ -115,6 +115,14 @@ export async function runInstalledSageAcceptance(baseUrl: string) {
   }
   const invalid = await execute({ operation: "sage.complex.analyze", params: { ...payload, script: "unsupported" } });
   assert.equal(invalid.success, false); checks.push({ name: "invalid-payload-rejected" });
+  for (const [name, params] of [
+    ["ignored-assumptions", { ...payload, assumptions: ["z is real"] }],
+    ["boolean-order", { ...createComplexSagePayload({ document, operation: "series", point: { re: 0, im: 0 }, order: 4 }), order: true }],
+    ["fractional-series", createComplexSagePayload({ document: acceptanceComplexDocument("sqrt(z)"), operation: "series", point: { re: 0, im: 0 }, order: 4 })],
+  ] as const) {
+    const rejected = await execute({ operation: "sage.complex.analyze", params: params as Record<string, unknown> });
+    assert.equal(rejected.success, false, name); checks.push({ name: `invalid/${name}-rejected` });
+  }
   const project = createMath3DProject(createMixedWorkspaceDocument({ entries: documents,
     activeDocumentIds: documents.map((entry) => entry.expected.id), results, relations: [], artifacts, constructions: [], committedSelection: null }),
     { title: "Installed Sage acceptance results", stableKey: "prj17-installed-sage-results" });

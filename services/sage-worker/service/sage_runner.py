@@ -436,7 +436,10 @@ def _complex_analysis(operation, params):
         if type(order) is not int or order < 1 or order > 32:
             raise SageRequestError("Series order must be an integer from 1 to 32.")
         value = expr.series(z == point, order)
-        series_terms = [{"power": int(power), "coefficient": str(coefficient)} for coefficient, power in value.coefficients()]
+        coefficients = value.coefficients()
+        if any(power not in ZZ for _coefficient, power in coefficients):
+            raise SageRequestError("Fractional series exponents are outside the qualified integer-power output.")
+        series_terms = [{"power": int(power), "coefficient": str(coefficient)} for coefficient, power in coefficients]
         if any(term["power"] < -32 or term["power"] > 32 for term in series_terms):
             raise SageRequestError("Series powers exceed the reviewed output bounds.")
     else:
