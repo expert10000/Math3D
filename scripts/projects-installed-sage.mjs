@@ -1,0 +1,18 @@
+import { createRequire } from "node:module";
+import { resolve } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
+const require = createRequire(import.meta.url), root = fileURLToPath(new URL("..", import.meta.url));
+const filename = resolve(root, "tests/fixtures/unified-projects/installedSageAcceptance.ts");
+const { outputFiles } = require(resolve(root, "renderer/node_modules/esbuild")).buildSync({ entryPoints: [filename], bundle: true, platform: "node", format: "cjs", write: false,
+  alias: { "@math3d/core": resolve(root, "packages/core/src/index.ts"), "@math3d/kernel": resolve(root, "packages/kernel/src/index.ts") } });
+const Module = require("node:module").Module, fixture = new Module(filename); fixture.paths = require("node:module")._nodeModulePaths(root); fixture._compile(outputFiles[0].text, filename);
+const report = await fixture.exports.runInstalledSageAcceptance(process.env.MATH3D_SAGE_SERVICE_URL || "http://127.0.0.1:8767");
+report.sourceCommit = spawnSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).stdout.trim();
+report.testedAt = new Date().toISOString(); report.testBundleSha256 = createHash("sha256").update(outputFiles[0].text).digest("hex");
+report.containerImage = process.env.MATH3D_SAGE_IMAGE_ID || null;
+mkdirSync(resolve(root, "output/projects-integration"), { recursive: true });
+writeFileSync(resolve(root, "output/projects-integration/installed-sage-evidence.json"), `${JSON.stringify(report, null, 2)}\n`);
+console.log(`${report.checks.length} installed Sage checks passed; engine ${report.engineVersions.join(", ")}.`);

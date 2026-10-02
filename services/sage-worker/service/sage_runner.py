@@ -1,4 +1,5 @@
 import json
+import math
 import re
 import sys
 import time
@@ -293,109 +294,6 @@ def _topology_integer_homology(operation, params):
         ("format", "schemaVersion", "canonicalHash", "matrixArtifactId", "chainDimensions", "boundary1", "boundary2"),
         "params",
     )
-
-
-def _complex_ast(node, z, depth=0):
-    if depth > 64 or not isinstance(node, dict):
-        raise SageRequestError("Complex AST is invalid or too deep.")
-    node_type = node.get("type")
-    if node_type == "number" and set(node) == {"type", "value"}:
-        value = node.get("value")
-        if not isinstance(value, (int, float)):
-            raise SageRequestError("Complex AST number must be finite.")
-        return SR(str(value))
-    if node_type == "constant" and set(node) == {"type", "name"}:
-        constants = {"i": I, "pi": pi, "e": e}
-        if node.get("name") not in constants:
-            raise SageRequestError("Unsupported Complex AST constant.")
-        return constants[node["name"]]
-    if node_type == "variable" and set(node) == {"type", "name"}:
-        if node.get("name") != "z":
-            raise SageRequestError("Ordinary Complex Sage analysis allows only variable z.")
-        return z
-    if node_type == "unary" and set(node) == {"type", "operator", "argument"}:
-        if node.get("operator") != "-":
-            raise SageRequestError("Unsupported Complex AST unary operator.")
-        return -_complex_ast(node["argument"], z, depth + 1)
-    if node_type == "binary" and set(node) == {"type", "operator", "left", "right"}:
-        left = _complex_ast(node["left"], z, depth + 1)
-        right = _complex_ast(node["right"], z, depth + 1)
-        operation = node.get("operator")
-        if operation == "+": return left + right
-        if operation == "-": return left - right
-        if operation == "*": return left * right
-        if operation == "/": return left / right
-        if operation == "^": return left ** right
-        raise SageRequestError("Unsupported Complex AST binary operator.")
-    if node_type == "call" and set(node) == {"type", "name", "argument"}:
-        functions = {"sin": sin, "cos": cos, "tan": tan, "exp": exp, "log": log, "sqrt": sqrt}
-        if node.get("name") not in functions:
-            raise SageRequestError("Unsupported holomorphic Complex AST function.")
-        return functions[node["name"]](_complex_ast(node["argument"], z, depth + 1))
-    raise SageRequestError("Unsupported or malformed Complex AST node.")
-
-
-def _complex_point(point):
-    if not isinstance(point, dict) or set(point) != {"re", "im"}:
-        raise SageRequestError("A structured complex point is required.")
-    re_value = point.get("re")
-    im_value = point.get("im")
-    if not isinstance(re_value, (int, float)) or not isinstance(im_value, (int, float)):
-        raise SageRequestError("Complex point coordinates must be finite numbers.")
-    return SR(str(re_value)) + I * SR(str(im_value))
-
-
-def _complex_analysis(operation, params):
-    required = {"format", "schemaVersion", "operation", "ast", "variable", "point", "order", "assumptions"}
-    if not isinstance(params, dict) or set(params) != required:
-        raise SageRequestError("Complex analysis requires the exact structured payload schema.")
-    if params.get("format") != "math3d.complex-sage-analysis-input" or params.get("schemaVersion") != 1:
-        raise SageRequestError("Unsupported Complex Sage payload version.")
-    requested = params.get("operation")
-    if requested not in {"derivative", "limit", "poles", "residue", "series"}:
-        raise SageRequestError("Unsupported Complex Sage operation.")
-    if params.get("variable") != "z":
-        raise SageRequestError("Complex Sage variable must be z.")
-    z = var("z")
-    expr = _complex_ast(params.get("ast"), z).simplify_full()
-    point = _complex_point(params.get("point")) if params.get("point") is not None else None
-    points = []
-    series_terms = []
-    if requested == "derivative":
-        value = expr.derivative(z).simplify_full()
-    elif requested == "limit":
-        value = expr.limit(z=point)
-    elif requested == "residue":
-        value = expr.residue(z == point)
-    elif requested == "series":
-        order = params.get("order")
-        if not isinstance(order, int) or order < 1 or order > 32:
-            raise SageRequestError("Series order must be an integer from 1 to 32.")
-        value = expr.series(z == point, order)
-    else:
-        denominator = expr.denominator().factor()
-        roots = solve(denominator == 0, z, solution_dict=True) if denominator != 1 else []
-        for root in roots:
-            root_value = root.get(z)
-            if root_value is not None:
-                points.append({"value": str(root_value), "order": 1, "classification": "pole"})
-        value = denominator
-    elapsed_ms = 0
-    result = {
-        "format": "math3d.complex-sage-analysis-result",
-        "schemaVersion": 1,
-        "operation": requested,
-        "exact": True,
-        "value": str(value),
-        "latex": str(latex(value)),
-        "points": points,
-        "series": series_terms,
-        "engine": {"name": "SageMath", "version": str(SAGE_VERSION)},
-        "algorithm": "sage-structured-complex-analysis",
-        "elapsedMs": elapsed_ms,
-        "diagnostics": [{"code": "complex/sage-exact", "message": "Exact result computed from a validated normalized AST."}],
-    }
-    return _success(operation, result, str(latex(value)))
     if params["format"] != "math3d.topology-integer-homology-input" or params["schemaVersion"] != 1:
         raise SageRequestError("Unsupported topology integer-homology schema.")
     if not isinstance(params["canonicalHash"], str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", params["canonicalHash"]):
@@ -451,6 +349,128 @@ def _complex_analysis(operation, params):
         }],
     }
     return _success(operation, result)
+
+
+def _complex_ast(node, z, depth=0):
+    if depth > 64 or not isinstance(node, dict):
+        raise SageRequestError("Complex AST is invalid or too deep.")
+    node_type = node.get("type")
+    if node_type == "number" and set(node) == {"type", "value"}:
+        value = node.get("value")
+        if type(value) not in (int, float) or not math.isfinite(value):
+            raise SageRequestError("Complex AST number must be finite.")
+        return SR(str(value))
+    if node_type == "constant" and set(node) == {"type", "name"}:
+        constants = {"i": I, "pi": pi, "e": e}
+        if node.get("name") not in constants:
+            raise SageRequestError("Unsupported Complex AST constant.")
+        return constants[node["name"]]
+    if node_type == "variable" and set(node) == {"type", "name"}:
+        if node.get("name") != "z":
+            raise SageRequestError("Ordinary Complex Sage analysis allows only variable z.")
+        return z
+    if node_type == "unary" and set(node) == {"type", "operator", "argument"}:
+        if node.get("operator") != "-":
+            raise SageRequestError("Unsupported Complex AST unary operator.")
+        return -_complex_ast(node["argument"], z, depth + 1)
+    if node_type == "binary" and set(node) == {"type", "operator", "left", "right"}:
+        left = _complex_ast(node["left"], z, depth + 1)
+        right = _complex_ast(node["right"], z, depth + 1)
+        operation = node.get("operator")
+        if operation == "+": return left + right
+        if operation == "-": return left - right
+        if operation == "*": return left * right
+        if operation == "/": return left / right
+        if operation == "^": return left ** right
+        raise SageRequestError("Unsupported Complex AST binary operator.")
+    if node_type == "call" and set(node) == {"type", "name", "argument"}:
+        functions = {"sin": sin, "cos": cos, "tan": tan, "exp": exp, "log": log, "sqrt": sqrt}
+        if node.get("name") not in functions:
+            raise SageRequestError("Unsupported holomorphic Complex AST function.")
+        return functions[node["name"]](_complex_ast(node["argument"], z, depth + 1))
+    raise SageRequestError("Unsupported or malformed Complex AST node.")
+
+
+def _complex_point(point):
+    if not isinstance(point, dict) or set(point) != {"re", "im"}:
+        raise SageRequestError("A structured complex point is required.")
+    re_value = point.get("re")
+    im_value = point.get("im")
+    if type(re_value) not in (int, float) or type(im_value) not in (int, float) or not math.isfinite(re_value) or not math.isfinite(im_value):
+        raise SageRequestError("Complex point coordinates must be finite numbers.")
+    return SR(str(re_value)) + I * SR(str(im_value))
+
+
+def _complex_analysis(operation, params):
+    required = {"format", "schemaVersion", "operation", "ast", "variable", "point", "order", "assumptions"}
+    if not isinstance(params, dict) or set(params) != required:
+        raise SageRequestError("Complex analysis requires the exact structured payload schema.")
+    if params.get("format") != "math3d.complex-sage-analysis-input" or params.get("schemaVersion") != 1:
+        raise SageRequestError("Unsupported Complex Sage payload version.")
+    requested = params.get("operation")
+    if requested not in {"derivative", "limit", "poles", "residue", "series"}:
+        raise SageRequestError("Unsupported Complex Sage operation.")
+    if params.get("variable") != "z":
+        raise SageRequestError("Complex Sage variable must be z.")
+    if params.get("assumptions") != []:
+        raise SageRequestError("This exact adapter does not qualify additional assumptions.")
+    z = var("z")
+    expr = _complex_ast(params.get("ast"), z).simplify_full()
+    point = _complex_point(params.get("point")) if params.get("point") is not None else None
+    if requested in {"limit", "residue", "series"} and point is None:
+        raise SageRequestError("A finite expansion/evaluation point is required.")
+    points = []
+    series_terms = []
+    if requested == "derivative":
+        value = expr.derivative(z).simplify_full()
+    elif requested == "limit":
+        value = expr.limit(z=point)
+    elif requested == "residue":
+        value = expr.residue(z == point)
+    elif requested == "series":
+        order = params.get("order")
+        if not isinstance(order, int) or order < 1 or order > 32:
+            raise SageRequestError("Series order must be an integer from 1 to 32.")
+        value = expr.series(z == point, order)
+        series_terms = [{"power": int(power), "coefficient": str(coefficient)} for coefficient, power in value.coefficients()]
+        if any(term["power"] < -32 or term["power"] > 32 for term in series_terms):
+            raise SageRequestError("Series powers exceed the reviewed output bounds.")
+    else:
+        denominator = expr.denominator().factor()
+        try:
+            degree = int(denominator.polynomial(z).degree()) if denominator != 1 else 0
+        except (TypeError, ValueError):
+            raise SageRequestError("Pole enumeration requires a polynomial denominator.")
+        if degree < 0 or degree > 64:
+            raise SageRequestError("Pole enumeration exceeds the reviewed degree limit.")
+        roots = solve(denominator == 0, z, solution_dict=True) if denominator != 1 else []
+        for root in roots:
+            root_value = root.get(z)
+            if root_value is not None:
+                multiplicity = 1
+                while multiplicity <= degree and denominator.derivative(z, multiplicity).subs(z == root_value).simplify_full() == 0:
+                    multiplicity += 1
+                points.append({"value": str(root_value), "order": multiplicity, "classification": "pole"})
+        if sum(item["order"] for item in points) != degree:
+            raise SageRequestError("Sage did not resolve the complete polynomial pole set.")
+        value = denominator
+    elapsed_ms = 0
+    result = {
+        "format": "math3d.complex-sage-analysis-result",
+        "schemaVersion": 1,
+        "operation": requested,
+        "exact": True,
+        "value": str(value),
+        "latex": str(latex(value)),
+        "points": points,
+        "series": series_terms,
+        "engine": {"name": "SageMath", "version": str(SAGE_VERSION)},
+        "algorithm": "sage-structured-complex-analysis",
+        "elapsedMs": elapsed_ms,
+        "diagnostics": [{"code": "complex/sage-exact", "message": "Exact result computed from a validated normalized AST."}],
+    }
+    return _success(operation, result, str(latex(value)))
+
 
 
 OPERATIONS = {
