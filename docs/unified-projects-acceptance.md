@@ -22,7 +22,7 @@ or native-device sign-off.
 
 PRJ15 is merged into `main` at `f7f401f` through
 [PR #17](https://github.com/expert10000/Math3D/pull/17), with implementation `e8adffe`
-and final acceptance fix `805542c`. The first PRJ16 continuation slice is recorded
+and final acceptance fix `805542c`. The PRJ16 continuation deliveries are recorded
 separately below; the supported representations and remaining device/engine gates
 retain their explicit bounds.
 
@@ -150,7 +150,7 @@ source and corrected conflict test; subsequent evidence edits are documentation 
 Local logs and the disposable JSON report are in
 `output/projects-integration/` and `post160-test-results.json`. CI also compiles an
 embedded Android bundle; that step is software coverage, not a new APK signoff.
-Remaining PRJ16–PRJ18 deliveries and the supported native subsets are explicit in the
+Remaining PRJ17–PRJ18 deliveries and the supported native subsets are explicit in the
 [roadmap](unified-projects-roadmap.md#remaining-delivery-and-integration-gates).
 
 ## PRJ13 native scientific restoration — October 1
@@ -311,8 +311,8 @@ passing local web build and do not establish a cause for the existing failures.
 
 Continues main `243bae5` on `codex/projects-prj16`. The
 [representation inventory](project-representation-inventory.md) records current
-native versus preview support and each missing contract. PRJ16 is still open for
-the other source representations; this software slice qualifies only the bounded
+native versus preview support and each missing contract. At this first slice,
+PRJ16 remained open for other representations; this evidence qualifies the bounded
 single-component `dense-scalar-grid` / `dense-grid` recipe.
 
 | Local gate | Verified result |
@@ -348,3 +348,52 @@ mixed-workspace backup, and remains running with Projects open. These are local
 software results; this slice has not run clean-checkout CI, a physical device,
 installed optional engines or signed-build acceptance. Those remain the PRJ17/PRJ18
 gates and do not inherit the published 1.6.0 release's signoff.
+
+## PRJ16 qualified source matrix completion — October 2
+
+The continuation completes the desktop/web qualification matrix in
+[the representation inventory](project-representation-inventory.md). Unsupported
+formats retain verified previews. Completing PRJ16 does not establish universal
+editing of every schema value, native mobile editing, signed-build acceptance,
+or installed optional-engine compatibility.
+
+| Local gate | Verified result |
+| --- | --- |
+| Project contracts | 104 tests / 15 files passed, including 33 additional-source matrix tests and the four dense Volume tests |
+| Existing mobile Graph/storage/transfer regressions | 41 tests / 8 files passed |
+| Continuation audit | 473 tests / 71 files; all 53 mapped evidence rows passed |
+| Electron | All 21 distinct journeys passed: 20 in the complete run; repaired PRJ06 and final PRJ16 source-editor journey passed targeted reruns |
+| Chromium | All 10 distinct journeys passed in the complete run; both final source-editor locale/time-zone configurations passed targeted reruns |
+| TypeScript | Main, renderer, E2E, mobile and portable fixture passed |
+| Production builds | Renderer and web passed; existing large-chunk warning remains |
+| Dependency boundaries | Passed (990 modules / 1919 dependencies) |
+
+The additional matrix contains 27 saved document fixtures. Every fixture preserves
+its complete source on opening, then exercises source editing, undo/redo, independent
+canonical export/import, reopened undo/redo, pruned redo and rejected edits. Independent
+oracles check exact polyline vertices, polar radius/units, rational/nonrational spline
+bounds, Curve-on-Surface coordinates, explicit and implicit Surface bounds, construction
+depth, ruled interpolation, Weierstrass integration, spline patches, construction
+midpoints and finite Topology incidence counts. A checked Mesh-backed Surface contract
+verifies the original referenced coordinates and source/history retention.
+
+Preflight rejects missing/stale chart or construction generations, incomplete control
+data/knots/weights, absent Mesh buffers, invalid source shapes and unsupported historical
+sources. Parent edits keep dependent definitions saved and explicitly stale rather than
+silently recomputing them. Curve/Surface/Geometry use a 100-edit window with exact current
+generation replay. Tests also fold older Curve logs, preserve redo after kernel rejection,
+continue IDs after reopen and preserve the live generation after undone exports.
+
+The real UI journey edits seven additional sources in Projects, checks source JSON and
+measured views, saves and exports through the actual Electron download, imports that
+file into an independent profile, closes/relaunches Electron and restores the disk
+archive/history. Chromium repeats editing, reload/open/history and unchanged generations
+in both locale/time-zone configurations. The source editor also passes 390-pixel containment. Desktop/phone screenshots were
+visually inspected; the editor uses the corresponding module navigation and conceals
+the unrelated underlying footer/drawers while keeping Projects accessible.
+
+The existing development Electron app remains running on the tested renderer after a
+saved seven-document/two-relation workspace backup. Its current project is retained.
+Clean-checkout CI has not yet been claimed for this continuation. PRJ17 device/build/
+signature and installed-engine signoff, and PRJ18 the combined cross-module freeze,
+remain the next explicit gates.
