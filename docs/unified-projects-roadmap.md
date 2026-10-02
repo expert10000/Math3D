@@ -15,7 +15,7 @@ Topology, supported Complex Function Explorer sources and self-contained scalar
 Volume recipes, plus qualified resource-backed Mesh sources. PRJ16 adds verified dense scalar Volume samples, additional Curve/Surface source editors, scene constructions and finite Topology sources. Other source types
 remain saved previews until their native editor adapters pass round-trip acceptance.
 
-## Current delivery status (2026-10-02)
+## Current delivery status (2026-10-03)
 
 PRJ01–PRJ12 are integrated into `main` at `766776a27c6601e50d513a2217e3a4bf513c8e0d`.
 The main Projects workflow passed in
@@ -315,7 +315,8 @@ named-project payload, library entry, sidecar and backup remains byte-identical
 after a rejected same-ID import. PRJ12 software integration is complete.
 The subsequent sections record PRJ13–PRJ18 implementation and qualified software
 acceptance. The supported Samsung Android workflow has current exact-build
-observations; native iOS and damaged private-store recovery remain unverified.
+observations. Damaged-store protection is fixed and the signed Android emulator
+passed 11 recovery cases; Samsung recovery and native iOS acceptance remain unverified.
 Full PRJ17 native signoff and PRJ18 combined native readiness remain open for
 those specifically recorded conditions.
 
@@ -533,3 +534,23 @@ explicitly stale. [Device evidence and returned files](evidence/projects-samsung
 record the APK/source/certificate hashes. Native iOS and physical damaged
 private-store recovery remain unverified, so full PRJ17/PRJ18 native release
 readiness is still open. Published 1.6.0 release signoff remains unchanged.
+
+### Damaged mobile store recovery — October 3
+
+Implemented in `220f67c` and `9772384`: independent primary/backup reads keep a
+valid copy available after a read error; recovery and saves share one queue;
+unrecoverable, unsupported and blank existing stores reject writes instead of
+overwriting data or reseeding the library. Cleanup failures preserve the original
+write error, and failed repair leaves recovered projects available from backup.
+
+The complete mobile suite passed **339 tests in 59 files**, plus mobile typecheck
+and identity checks. [Signed Android CI 37075667848](https://github.com/expert10000/Math3D/actions/runs/37075667848)
+passed Workspace/lifecycle/layout checks and **11 real-file recovery cases**,
+including force-stop/relaunch and persistent primary repair. The native diagnostic
+uses the production storage service in an isolated private directory and checks
+the normal library's before/after fingerprints. It never damages user projects.
+[Evidence](evidence/projects-storage-recovery-2026-10-03/acceptance.json) and the
+[repeatable procedure](mobile-storage-recovery-checks.md) identify the exact
+source, APK and certificate. The Samsung rerun is pending; the signed candidate
+is ready. This closes the implementation/emulator gap, while physical Android
+recovery and iOS acceptance remain separate PRJ17/PRJ18 gates.

@@ -553,3 +553,33 @@ its software evidence; exported-file recovery is the physical observation here.
 Published 1.6.0 release approval and the broader six-device MOB-G13 matrix are
 unchanged. Full PRJ17/PRJ18 native release readiness remains unverified for the
 specific native conditions listed in the host matrix.
+
+## Damaged private-store recovery implementation — October 3
+
+Source `9772384a9a90c08da73be150434a81fa51d0bae4` fixes read-error fallback,
+recovery/save serialization, blank-file first-run misclassification, unsupported
+schema downgrade and accidental writes over unrecoverable copies. Fault-injected
+tests also verify storage-full handling, failed repair, rename rollback and
+cleanup error preservation. All 339 mobile tests and mobile typecheck passed.
+
+[Android CI 37075667848](https://github.com/expert10000/Math3D/actions/runs/37075667848)
+passed with a clean shared-key internal APK, SHA-256
+`b41a0022e009038bd196047e8bd80faafde2ffceeafe797cf823631aef8c8d8d`,
+certificate SHA-256 `39ab9388fa174bf9c1973577dab4ee33eedbacb9b231c9b79068e5143480fc82`.
+All 11 recovery checks passed using real Expo private files and the production
+reader/writer on Android 16/API 36. The runner verified the installed APK hash,
+force-stopped the app, confirmed its process was absent, relaunched and checked
+backup restoration followed by another reader selecting the repaired primary.
+
+Damage is confined to a fixed diagnostic directory. The sample contains a named
+Graph/Curve/Surface study with relations/results and a Scene project; whole
+serialized records are compared after repair. The normal library's primary,
+backup and staging-file fingerprints must stay unchanged. This diagnostic runner
+never installs, uninstalls or clears app data; the preceding emulator smoke uses
+its separate disposable emulator profile.
+
+[Structured emulator evidence](evidence/projects-storage-recovery-2026-10-03/acceptance.json)
+and [instructions](mobile-storage-recovery-checks.md) are committed. Physical
+Samsung execution is still pending; no handset damaged-store result is inferred
+from the emulator. iOS acceptance, external share delivery and published 1.6.0
+release approval remain separate.

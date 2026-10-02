@@ -1,0 +1,81 @@
+{
+  "format": "math3d.projects-storage-recovery-acceptance.v1",
+  "testedOn": "2026-10-03",
+  "timezone": "Europe/Warsaw",
+  "status": "implementation and signed Android emulator passed; Samsung pending",
+  "scope": "Production mobile storage reader/writer with public Graph/Curve/Surface and Scene fixtures in an isolated private directory",
+  "sourceCommit": "9772384a9a90c08da73be150434a81fa51d0bae4",
+  "trackedSourceDirty": false,
+  "build": {
+    "applicationId": "com.math3d.mobile.internal",
+    "version": "1.6.0",
+    "build": 150008,
+    "channel": "internal",
+    "projectRecoveryChecks": true,
+    "gitCommit": "9772384a9a90c08da73be150434a81fa51d0bae4",
+    "trackedSourceDirty": false,
+    "trackedSourceChanges": [],
+    "artifact": "Math3D-mobile-1.6.0-internal.apk",
+    "sha256": "b41a0022e009038bd196047e8bd80faafde2ffceeafe797cf823631aef8c8d8d",
+    "signingCertSha256": "39ab9388fa174bf9c1973577dab4ee33eedbacb9b231c9b79068e5143480fc82",
+    "ciRun": "https://github.com/expert10000/Math3D/actions/runs/37075667848",
+    "ciConclusion": "success"
+  },
+  "softwareValidation": {
+    "mobileTestsPassed": 339,
+    "mobileTestFiles": 59,
+    "mobileTypecheck": "passed",
+    "mobileIdentityCheck": "passed"
+  },
+  "emulator": {
+    "androidApi": 36,
+    "model": "sdk_gphone64_x86_64",
+    "installedApkHashVerified": true,
+    "recoveryCasesPassed": 11,
+    "realPrivateFiles": true,
+    "actualForceStopAndRelaunch": true,
+    "processAbsenceVerified": true,
+    "normalLibraryFingerprintUnchanged": true
+  },
+  "cases": [
+    "first-save-backup",
+    "truncated-primary-repair",
+    "missing-primary-repair",
+    "blank-primary-repair",
+    "damaged-backup-healthy-primary",
+    "both-damaged-preserved",
+    "blank-files-are-not-first-run",
+    "newer-schema-preserved",
+    "legacy-array-migration",
+    "recovery-save-queue",
+    "cold-launch-repair-ignores-uncommitted-staging"
+  ],
+  "physicalSamsung": {
+    "status": "pending",
+    "signedUpgradeCandidateReady": true
+  },
+  "limits": [
+    "No physical damaged-store result is inferred from the emulator.",
+    "Normal user-library files are never deliberately corrupted.",
+    "I/O permission, disk-full, rename and cleanup faults are unit-injected; no device disk is filled.",
+    "Both-invalid or unsupported stores are preserved and require a valid storage backup before saving.",
+    "No iOS qualification or change to published 1.6.0 release signoff."
+  ],
+  "files": [
+    {
+      "path": "build-info.json",
+      "byteLength": 401,
+      "sha256": "e3e8b105e38d80a0dadaa9f23c0bcfe4d91a7844349ccae3f66eb69abe44e772"
+    },
+    {
+      "path": "emulator-result.json",
+      "byteLength": 538,
+      "sha256": "6575e0730dbd2d83725d770572ce67877d9df3ff6d03868e1eff137509e6e778"
+    },
+    {
+      "path": "emulator-recovery.png",
+      "byteLength": 42678,
+      "sha256": "b657ce0ecb3a2d9abe33953b6a6377f657801f3124a70d7a4961db43b68655db"
+    }
+  ]
+}
