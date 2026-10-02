@@ -1,3 +1,4 @@
+import { additionalReplayEditable } from "./additionalProjectSession";
 import { captureProjectResources, projectResourceInventory, verifyProjectResourceBytes, parseProjectPackage, MAX_PROJECT_PACKAGE_BYTES, type VerifiedProjectResources } from "./projectResources";
 import { meshReplayEditable } from "./nativeMeshRestore";
 import type { MeshReplayBundle } from "../mesh/meshReplay";
@@ -77,6 +78,7 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
       catch { editable = false; }
     }
     if ((document.format === "math3d.topology-document" || document.format === "math3d.complex-analysis-document") && scientificDocumentEditable(document)) editable = true;
+    if (!editable && additionalReplayEditable(entry, document, { documents: resolved, resources: options.resources })) editable = true;
     if (canonical.metadata.documents?.[entry.expected.id]?.archived) editable = false;
     if (!editable) reasons.push(`${entry.module}: this document has verified preview support; its editor state cannot be fully restored by this host adapter.`);
     return { id: entry.expected.id, module: entry.module, revision: entry.expected.revision, replayVerified: true, editable };

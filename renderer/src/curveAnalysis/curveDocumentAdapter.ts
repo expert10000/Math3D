@@ -1,5 +1,5 @@
 import {
-  CURVE_COMMAND_TYPES, canonicalJsonStringify, createDocumentIdentity, createCommandEnvelope, createCurveCommandState,
+  CURVE_COMMAND_TYPES, projectCommandTransaction, canonicalJsonStringify, createDocumentIdentity, createCommandEnvelope, createCurveCommandState,
   createCurveDocument, curveCommandDefinitions, parseCurveDocument, serializeCurveDocument,
   type CanonicalJsonValue, type CommandEnvelope, type CurveDocument, type CurveDocumentSource,
   type ScientificSourceGeneration,
@@ -139,15 +139,28 @@ export class CurveDocumentAdapter {
   replayBundle(): CurveReplayBundle {
     // Undo/redo advances scientific generations. Rebase the history's starting
     // generation so replay reproduces the current identity as well as its source.
-    const sourceEdits = this.#transactions.slice(0, this.#cursor).filter((entry) => entry.forward.command.type === CURVE_COMMAND_TYPES.replaceSource).length;
+    const edits = (entries: { forward: CommandEnvelope; inverse: CommandEnvelope }[]) => entries.filter((entry) => entry.forward.command.type === CURVE_COMMAND_TYPES.replaceSource).length;
+    const sourceEdits = edits(this.#transactions) + edits(this.#transactions.slice(this.#cursor));
     const revision = this.document().identity.revision - sourceEdits;
     const checkpoint = { ...this.#checkpoint, identity: createDocumentIdentity(this.#checkpoint.identity.id, this.#checkpoint.source, revision) };
-    return { checkpoint, transactions: [...this.#transactions], cursor: this.#cursor };
+    return canonical({ checkpoint, transactions: this.#transactions, cursor: this.#cursor });
   }
   static fromReplayBundle(bundle: CurveReplayBundle): CurveDocumentAdapter {
-    const adapter = new CurveDocumentAdapter(bundle.checkpoint);
-    for (const transaction of bundle.transactions) adapter.#execute(transaction.forward, transaction.inverse);
-    while (adapter.#cursor > bundle.cursor) adapter.undo();
+    if (!Number.isSafeInteger(bundle.cursor) || bundle.cursor < 0 || bundle.cursor > bundle.transactions.length || bundle.transactions.length > 10000) throw new TypeError("Invalid or oversized Curve replay history.");
+    const end = Math.min(bundle.transactions.length, bundle.cursor + 100), start = Math.max(0, end - 100);
+    let checkpoint = bundle.checkpoint;
+    for (const transaction of bundle.transactions.slice(0, start)) {
+      const projected = projectCommandTransaction(checkpoint, [transaction.forward], curveCommandDefinitions, "replay");
+      if (!projected.ok) throw new TypeError("Cannot fold saved Curve history.");
+      checkpoint = projected.state;
+    }
+    // Discarding distant redo states must retain their forward/undo revision contribution.
+    const offset = 2 * bundle.transactions.slice(end).filter((t) => t.forward.command.type === CURVE_COMMAND_TYPES.replaceSource).length;
+    if (offset) checkpoint = { ...checkpoint, identity: createDocumentIdentity(checkpoint.identity.id, checkpoint.source, checkpoint.identity.revision + offset) };
+    const adapter = new CurveDocumentAdapter(checkpoint);
+    for (const transaction of bundle.transactions.slice(start, end)) adapter.#execute(transaction.forward, transaction.inverse);
+    while (adapter.#cursor > bundle.cursor - start) adapter.undo();
+    adapter.#sequence = Math.max(adapter.#sequence, ...bundle.transactions.map((t) => Number(t.forward.commandId.match(/\/(\d+)\/forward$/)?.[1] ?? 0)));
     return adapter;
   }
 
@@ -156,15 +169,20 @@ export class CurveDocumentAdapter {
     this.#sequence += 1;
     const forward = createCommandEnvelope({ commandId: `curve/edit/${this.#sequence}/forward`, origin: { kind: "interactive", sourceId: "curve-workspace" }, command: { type, payload: next } });
     const inverse = createCommandEnvelope({ commandId: `curve/edit/${this.#sequence}/inverse`, origin: { kind: "system", sourceId: "curve-undo" }, command: { type, payload: previous } });
-    this.#transactions.splice(this.#cursor);
     this.#execute(forward, inverse);
     return this.document();
   }
   #execute(forward: CommandEnvelope, inverse: CommandEnvelope): void {
     const result = this.#kernel.transact({ transactionId: `curve/transaction/${this.#transactions.length + 1}`, commands: [forward], history: { kind: "reversible", inverseCommands: [inverse] } });
     if (!result.ok) throw new TypeError(result.errors.map((entry) => entry.message).join(" "));
+    this.#transactions.splice(this.#cursor);
     this.#transactions.push({ forward, inverse });
     this.#cursor += 1;
-    this.#sequence = Math.max(this.#sequence, this.#transactions.length);
+    this.#sequence = Math.max(this.#sequence, Number(forward.commandId.match(/\/(\d+)\/forward$/)?.[1] ?? 0));
+    while (this.#transactions.length > 100) {
+      const projected = projectCommandTransaction(this.#checkpoint, [this.#transactions[0]!.forward], curveCommandDefinitions, "replay");
+      if (!projected.ok) throw new TypeError("Cannot advance Curve history checkpoint.");
+      this.#checkpoint = projected.state; this.#transactions.shift(); this.#cursor -= 1;
+    }
   }
 }

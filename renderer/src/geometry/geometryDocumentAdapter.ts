@@ -4,6 +4,7 @@ import {
   createCommandEnvelope,
   createGeometryCommandState,
   geometryCommandDefinitions,
+  projectCommandTransaction, structuralHash,
   type CanonicalJsonValue,
   type CommandEnvelope,
   type CommandOrigin,
@@ -84,6 +85,7 @@ export class GeometryDocumentAdapter {
     this.#transactions.splice(this.#cursor);
     this.#transactions.push({ transactionId, commands: envelopes, inverseCommands, stateHash: result.event.stateHash });
     this.#cursor += 1;
+    this.#trimHistory();
     return this.state();
   }
 
@@ -100,6 +102,27 @@ export class GeometryDocumentAdapter {
   }
 
   exportReplay(): GeometryReplayBundle {
+    const project = (checkpoint: GeometryCommandState, hashes: boolean) => {
+      let state = checkpoint;
+      for (let i = 0; i < this.#transactions.length; i++) {
+        const transaction = this.#transactions[i]!;
+        const result = projectCommandTransaction(state, transaction.commands, geometryCommandDefinitions, "replay");
+        if (!result.ok) throw new TypeError("Cannot project Geometry history.");
+        state = result.state;
+        if (hashes) this.#transactions[i] = { ...transaction, stateHash: structuralHash(state) };
+      }
+      for (let i = this.#transactions.length - 1; i >= this.#cursor; i--) {
+        const result = projectCommandTransaction(state, this.#transactions[i]!.inverseCommands, geometryCommandDefinitions, "replay");
+        if (!result.ok) throw new TypeError("Cannot project Geometry undo cursor.");
+        state = result.state;
+      }
+      return state;
+    };
+    const offset = this.document().identity.revision - project(this.#checkpoint, false).document.identity.revision;
+    if (offset) {
+      this.#checkpoint = { ...this.#checkpoint, document: { ...this.#checkpoint.document, identity: { ...this.#checkpoint.document.identity, revision: this.#checkpoint.document.identity.revision + offset } } };
+      project(this.#checkpoint, true);
+    }
     return clone({ checkpoint: this.#checkpoint, transactions: this.#transactions, cursor: this.#cursor });
   }
 
@@ -126,7 +149,7 @@ export class GeometryDocumentAdapter {
       if (!undone.ok) throw new TypeError("Could not restore Geometry replay cursor.");
       adapter.#cursor -= 1;
     }
-    adapter.#sequence = bundle.transactions.length;
+    adapter.#sequence = Math.max(0, ...bundle.transactions.map((transaction) => Number(transaction.transactionId.match(/\/(\d+)$/)?.[1] ?? 0)));
     return adapter;
   }
 
@@ -150,6 +173,15 @@ export class GeometryDocumentAdapter {
     this.#transactions.splice(this.#cursor);
     this.#transactions.push({ transactionId, commands: [command], inverseCommands: [inverse], stateHash: result.event.stateHash });
     this.#cursor += 1;
+    this.#trimHistory();
     return this.document();
+  }
+
+  #trimHistory(): void {
+    while (this.#transactions.length > 100) {
+      const projected = projectCommandTransaction(this.#checkpoint, this.#transactions[0]!.commands, geometryCommandDefinitions, "replay");
+      if (!projected.ok) throw new TypeError("Cannot advance Geometry history checkpoint.");
+      this.#checkpoint = projected.state; this.#transactions.shift(); this.#cursor -= 1;
+    }
   }
 }

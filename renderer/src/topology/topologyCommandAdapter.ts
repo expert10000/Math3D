@@ -1,5 +1,6 @@
 import {
   TOPOLOGY_COMMAND_TYPES,
+  canonicalJsonStringify,
   createCommandEnvelope,
   createDocumentIdentity,
   createStableDocumentId,
@@ -66,8 +67,8 @@ export class TopologyDiagramCommandAdapter {
   #sequence = 0;
   #completedTransactions = 0;
 
-  constructor(diagram: FundamentalDiagram) {
-    const initialState = initialStateFor(diagram);
+  constructor(diagram: FundamentalDiagram | TopologyDocument) {
+    const initialState = "format" in diagram ? createTopologyCommandState(diagram) : initialStateFor(diagram);
     this.#replayCheckpoint = initialState;
     this.#kernel = this.#createKernel(initialState);
   }
@@ -107,11 +108,7 @@ export class TopologyDiagramCommandAdapter {
   static restore(replay: TopologyReplayBundle): TopologyDiagramCommandAdapter {
     const replayed = replayTopologyCommandLog(replay);
     if (!replayed.ok) throw new TypeError(replayed.errors.join(" "));
-    if (replayed.value.document.source.kind !== "fundamental-diagram") {
-      throw new TypeError("Topology diagram replay requires a fundamental-diagram source checkpoint.");
-    }
-    const checkpointDiagram = cloneFundamentalDiagram(replay.checkpoint.document.source.model as unknown as FundamentalDiagram);
-    const adapter = new TopologyDiagramCommandAdapter(checkpointDiagram);
+    const adapter = new TopologyDiagramCommandAdapter(replay.checkpoint.document);
     adapter.#kernel = adapter.#createKernel(replay.checkpoint);
     adapter.#replayCheckpoint = replay.checkpoint;
     adapter.#replayTransactions = [];
@@ -179,6 +176,21 @@ export class TopologyDiagramCommandAdapter {
     return cloneFundamentalDiagram(next);
   }
 
+  /** Canonical CW/simplicial sources use the same command log as diagrams. */
+  commitSource(next: TopologyDocumentSource): TopologyDocument {
+    const previous = this.document().source;
+    if (canonicalJsonStringify(next) === canonicalJsonStringify(previous)) return this.document();
+    const transactionId = this.#nextId("edit");
+    const command = (suffix: string, source: TopologyDocumentSource) => createCommandEnvelope({ commandId: `${transactionId}/${suffix}`, origin: { kind: "interactive", sourceId: "topology-source-editor" }, command: { type: TOPOLOGY_COMMAND_TYPES.replaceSource, payload: source as unknown as CanonicalJsonValue } });
+    const forward = command("forward", next), inverse = command("inverse", previous);
+    const result = this.#kernel.transact({ transactionId, commands: [forward], history: { kind: "reversible", inverseCommands: [inverse] } });
+    if (!result.ok) throw new TypeError(result.errors.map((error) => error.message).join(" "));
+    this.#replayTransactions.splice(this.#replayCursor);
+    this.#replayTransactions.push({ transactionId, commands: [forward], inverseCommands: [inverse], stateHash: result.event.stateHash });
+    this.#replayCursor += 1; this.#trimReplayHistory();
+    return this.document();
+  }
+
   commit(next: FundamentalDiagram, origin: CommandOrigin = { kind: "interactive", sourceId: "topology-diagram-editor" }): FundamentalDiagram {
     const previous = this.current();
     if (JSON.stringify(previous) === JSON.stringify(next)) return previous;
@@ -226,6 +238,18 @@ export class TopologyDiagramCommandAdapter {
     const result = this.#kernel.undo();
     if (result.ok) this.#replayCursor = Math.max(0, this.#replayCursor - 1);
     return result.ok ? this.current() : null;
+  }
+
+  undoSource(): TopologyDocument | null {
+    const result = this.#kernel.undo();
+    if (result.ok) this.#replayCursor = Math.max(0, this.#replayCursor - 1);
+    return result.ok ? this.document() : null;
+  }
+
+  redoSource(): TopologyDocument | null {
+    const result = this.#kernel.redo();
+    if (result.ok) this.#replayCursor = Math.min(this.#replayTransactions.length, this.#replayCursor + 1);
+    return result.ok ? this.document() : null;
   }
 
   redo(): FundamentalDiagram | null {

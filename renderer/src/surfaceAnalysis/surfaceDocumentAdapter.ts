@@ -1,5 +1,5 @@
 import {
-  SURFACE_COMMAND_TYPES, canonicalJsonStringify, createDocumentIdentity, createCommandEnvelope, createSurfaceCommandState,
+  SURFACE_COMMAND_TYPES, projectCommandTransaction, canonicalJsonStringify, createDocumentIdentity, createCommandEnvelope, createSurfaceCommandState,
   createSurfaceDocument, parseSurfaceDocument, serializeSurfaceDocument, surfaceCommandDefinitions,
   type CanonicalJsonValue, type CommandEnvelope, type SurfaceDocument, type SurfaceDocumentSource,
 } from "@math3d/core";
@@ -82,15 +82,28 @@ export class SurfaceDocumentAdapter {
   replayBundle(): SurfaceReplayBundle {
     // Undo/redo advances scientific generations. Rebase the history's starting
     // generation so replay reproduces the current identity as well as its source.
-    const sourceEdits = this.#transactions.slice(0, this.#cursor).filter((entry) => entry.forward.command.type === SURFACE_COMMAND_TYPES.replaceSource).length;
+    const edits = (entries: { forward: CommandEnvelope; inverse: CommandEnvelope }[]) => entries.filter((entry) => entry.forward.command.type === SURFACE_COMMAND_TYPES.replaceSource).length;
+    const sourceEdits = edits(this.#transactions) + edits(this.#transactions.slice(this.#cursor));
     const revision = this.document().identity.revision - sourceEdits;
     const checkpoint = { ...this.#checkpoint, identity: createDocumentIdentity(this.#checkpoint.identity.id, this.#checkpoint.source, revision) };
-    return { checkpoint, transactions: [...this.#transactions], cursor: this.#cursor };
+    return legacyJson({ checkpoint, transactions: this.#transactions, cursor: this.#cursor });
   }
   static fromReplayBundle(bundle: SurfaceReplayBundle): SurfaceDocumentAdapter {
-    const adapter = new SurfaceDocumentAdapter(bundle.checkpoint);
-    for (const transaction of bundle.transactions) adapter.#execute(transaction.forward, transaction.inverse);
-    while (adapter.#cursor > bundle.cursor) adapter.undo();
+    if (!Number.isSafeInteger(bundle.cursor) || bundle.cursor < 0 || bundle.cursor > bundle.transactions.length || bundle.transactions.length > 10000) throw new TypeError("Invalid or oversized Surface replay history.");
+    const end = Math.min(bundle.transactions.length, bundle.cursor + 100), start = Math.max(0, end - 100);
+    let checkpoint = bundle.checkpoint;
+    for (const transaction of bundle.transactions.slice(0, start)) {
+      const projected = projectCommandTransaction(checkpoint, [transaction.forward], surfaceCommandDefinitions, "replay");
+      if (!projected.ok) throw new TypeError("Cannot fold saved Surface history.");
+      checkpoint = projected.state;
+    }
+    // Discarding distant redo states must retain their forward/undo revision contribution.
+    const offset = 2 * bundle.transactions.slice(end).filter((t) => t.forward.command.type === SURFACE_COMMAND_TYPES.replaceSource).length;
+    if (offset) checkpoint = { ...checkpoint, identity: createDocumentIdentity(checkpoint.identity.id, checkpoint.source, checkpoint.identity.revision + offset) };
+    const adapter = new SurfaceDocumentAdapter(checkpoint);
+    for (const transaction of bundle.transactions.slice(start, end)) adapter.#execute(transaction.forward, transaction.inverse);
+    while (adapter.#cursor > bundle.cursor - start) adapter.undo();
+    adapter.#sequence = Math.max(adapter.#sequence, ...bundle.transactions.map((t) => Number(t.forward.commandId.match(/\/(\d+)\/forward$/)?.[1] ?? 0)));
     return adapter;
   }
 
@@ -100,7 +113,6 @@ export class SurfaceDocumentAdapter {
     const origin = { kind: "interactive" as const, sourceId: "surface-workspace" };
     const forward = createCommandEnvelope({ commandId: `surface/edit/${this.#sequence}/forward`, origin, command: { type, payload: next } });
     const inverse = createCommandEnvelope({ commandId: `surface/edit/${this.#sequence}/inverse`, origin: { kind: "system", sourceId: "surface-undo" }, command: { type, payload: previous } });
-    this.#transactions.splice(this.#cursor);
     this.#execute(forward, inverse);
     return this.document();
   }
@@ -108,8 +120,14 @@ export class SurfaceDocumentAdapter {
     const transactionId = `surface/transaction/${this.#transactions.length + 1}`;
     const result = this.#kernel.transact({ transactionId, commands: [forward], history: { kind: "reversible", inverseCommands: [inverse] } });
     if (!result.ok) throw new TypeError(result.errors.map((entry) => entry.message).join(" "));
+    this.#transactions.splice(this.#cursor);
     this.#transactions.push({ forward, inverse });
     this.#cursor += 1;
-    this.#sequence = Math.max(this.#sequence, this.#transactions.length);
+    this.#sequence = Math.max(this.#sequence, Number(forward.commandId.match(/\/(\d+)\/forward$/)?.[1] ?? 0));
+    while (this.#transactions.length > 100) {
+      const projected = projectCommandTransaction(this.#checkpoint, [this.#transactions[0]!.forward], surfaceCommandDefinitions, "replay");
+      if (!projected.ok) throw new TypeError("Cannot advance Surface history checkpoint.");
+      this.#checkpoint = projected.state; this.#transactions.shift(); this.#cursor -= 1;
+    }
   }
 }
