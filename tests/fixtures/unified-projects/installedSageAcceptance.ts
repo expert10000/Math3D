@@ -111,18 +111,25 @@ export async function runInstalledSageAcceptance(baseUrl: string) {
     if (mode === "stale-source") current = { ...source, revision: source.revision + 1, generation: source.generation + 1 };
     const outcome = await pending; assert.equal(outcome.ok, false); if (!outcome.ok) assert.equal(outcome.code, mode);
     await didFinish;
+    assert.throws(() => publishComplexSageResult({ jobResult: outcome as never, currentSource: current, expectedPayload: payload }));
     checks.push({ name: `publication/${mode}`, result: outcome });
   }
   const invalid = await execute({ operation: "sage.complex.analyze", params: { ...payload, script: "unsupported" } });
   assert.equal(invalid.success, false); checks.push({ name: "invalid-payload-rejected" });
   for (const [name, params] of [
-    ["ignored-assumptions", { ...payload, assumptions: ["z is real"] }],
+    ["ignored-assumptions", { ...payload, assumptions: [{ target: "z", predicate: "real" }] }],
     ["boolean-order", { ...createComplexSagePayload({ document, operation: "series", point: { re: 0, im: 0 }, order: 4 }), order: true }],
     ["fractional-series", createComplexSagePayload({ document: acceptanceComplexDocument("sqrt(z)"), operation: "series", point: { re: 0, im: 0 }, order: 4 })],
   ] as const) {
     const rejected = await execute({ operation: "sage.complex.analyze", params: params as Record<string, unknown> });
     assert.equal(rejected.success, false, name); checks.push({ name: `invalid/${name}-rejected` });
   }
+  const failedPayload = { ...payload, assumptions: [{ target: "z", predicate: "real" }] };
+  const failedService = createInProcessScientificJobService({ adapters: [createComplexSageJobAdapter(execute)], resolveSource: () => source });
+  const failed = await failedService.submit(createComplexSageJobRequest({ jobId: "installed-failed", source, payload: failedPayload, limits: limits() }));
+  assert.equal(failed.ok, false); if (!failed.ok) assert.equal(failed.code, "adapter-failed");
+  assert.throws(() => publishComplexSageResult({ jobResult: failed as never, currentSource: source, expectedPayload: failedPayload }));
+  checks.push({ name: "publication/failed", result: failed });
   const project = createMath3DProject(createMixedWorkspaceDocument({ entries: documents,
     activeDocumentIds: documents.map((entry) => entry.expected.id), results, relations: [], artifacts, constructions: [], committedSelection: null }),
     { title: "Installed Sage acceptance results", stableKey: "prj17-installed-sage-results" });
