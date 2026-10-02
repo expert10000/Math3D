@@ -1,7 +1,7 @@
 # Unified Projects automated acceptance
 
 This is evidence for the supported named-project slice integrated into `main`
-and its continuation on `codex/projects-native-restoration`, not signed-release
+and its continuation on `codex/projects-native-restoration` / `codex/projects-prj16`, not signed-release
 or native-device sign-off.
 
 ## Repeatable gates
@@ -18,12 +18,13 @@ or native-device sign-off.
 - `node scripts/post160-roadmap-audit.mjs --run`: existing roadmap evidence and the
   project contract suites; device and installed-engine evidence remain separate.
 
-## Current software evidence (2026-10-02)
+## Integrated PRJ15 software evidence (2026-10-02)
 
 PRJ15 is merged into `main` at `f7f401f` through
 [PR #17](https://github.com/expert10000/Math3D/pull/17), with implementation `e8adffe`
-and final acceptance fix `805542c`. PRJ16 is next; the supported
-representations and remaining device/engine gates are listed below.
+and final acceptance fix `805542c`. The first PRJ16 continuation slice is recorded
+separately below; the supported representations and remaining device/engine gates
+retain their explicit bounds.
 
 | Gate | Latest verified result |
 | --- | --- |
@@ -81,7 +82,10 @@ and optional missing analysis artifacts are covered by contract tests.
   Geometry objects/live-derived constructions and the existing Graph promotions.
   The PRJ13 fundamental-diagram Topology/Function Explorer subsets and PRJ14
   self-contained scalar Volume recipes also have native adapters. PRJ15 adds qualified
-  resource-backed Mesh opening and history; other representations remain previews.
+  resource-backed Mesh opening and history. The first PRJ16 slice adds verified
+  dense scalar Volume sampling and spatial history for the bounded `dense-grid`
+  recipe. Other representations remain previews, as listed in
+  [the representation inventory](project-representation-inventory.md).
 - Mobile named editing requires one Graph, checkpointed Curve/Surface companions,
   no saved scripts or archived documents, and available source point tables. An edited
   Graph's historical companions may force desktop opening to remain preview-only;
@@ -302,3 +306,45 @@ Cloudflare Pages `math3d` and `math3d-app` reported failed builds on `e8adffe` a
 also on base main `486ff17`; `math3ds` passed. The check summaries expose dashboard
 links but no failure diagnostics. These deployment checks remain separate from the
 passing local web build and do not establish a cause for the existing failures.
+
+## PRJ16 first slice: verified dense scalar Volume — October 2
+
+Continues main `243bae5` on `codex/projects-prj16`. The
+[representation inventory](project-representation-inventory.md) records current
+native versus preview support and each missing contract. PRJ16 is still open for
+the other source representations; this software slice qualifies only the bounded
+single-component `dense-scalar-grid` / `dense-grid` recipe.
+
+| Local gate | Verified result |
+| --- | --- |
+| Project contracts | 71 tests / 14 files passed, including four new dense Volume contracts |
+| Existing mobile Graph/storage/transfer regressions | 41 tests / 8 files passed |
+| Continuation audit | 440 tests / 70 files; all 53 mapped evidence rows passed |
+| Electron | All 20 Projects/Gallery/kernel journeys passed in one run |
+| Chromium | All eight journeys passed across both locale/time-zone configurations |
+| TypeScript | Main, renderer, E2E, mobile and portable fixture passed |
+| Production builds | Main/renderer and web passed; existing large-chunk warning remains |
+| Dependency boundaries | Passed (986 modules / 1895 dependencies in this checkout) |
+
+Contracts independently exercise all eight little-endian scalar types, unaligned
+input buffers, float64 source precision, NaN missing data, unchanged source identity,
+required sidecars, spatial edits/replay and byte-exact independent export. They reject
+unsupported representations, resized grids, invalid viewer-range values and missing
+historical sources before enabling activation or undo.
+
+The Electron journey opens two measured volumes with distinct samples, checks the
+actual 1–8 and 11–18 ranges and unchanged opening/save generations, edits spatial
+placement/units and uses undo/redo. Historical provenance remains saved and stale.
+Export preserves original scalar descriptors and bytes. A fresh destination profile
+imports those resources, then closes and relaunches Electron, opens the disk archive,
+retains history and continues editing. Corrupt packages leave saved project bytes
+unchanged; reference-only opening remains disabled without authoritative sidecars.
+The browser journey covers checked sampling, grid editing, reload/open/history and
+byte-exact resource export in both locale/time-zone configurations. The dense Volume
+editor's 390-pixel screenshot was visually inspected.
+
+The development app was refreshed from the tested renderer after saving a local
+mixed-workspace backup, and remains running with Projects open. These are local
+software results; this slice has not run clean-checkout CI, a physical device,
+installed optional engines or signed-build acceptance. Those remain the PRJ17/PRJ18
+gates and do not inherit the published 1.6.0 release's signoff.

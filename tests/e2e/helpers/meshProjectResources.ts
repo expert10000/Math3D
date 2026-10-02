@@ -9,3 +9,5 @@ compiled._compile(outputFiles[0].text, filename);
 export const meshResourceFixture: () => { project: any; docs: any[]; result: any; raw: string } = compiled.exports.meshResourceFixture;
 export const inspectMeshPackage: (raw: string) => { document: any; selection: string[]; positions: number[]; normals: number[]; uvs: number[]; resourceCount: number }[] = compiled.exports.inspectMeshPackage;
 export const pointResourceFixture: () => { project: any; raw: string } = compiled.exports.pointResourceFixture;
+export const scalarVolumeResourceFixture: () => { project: any; docs: any[]; result: any; raw: string } = compiled.exports.scalarVolumeResourceFixture;
+export const inspectScalarVolumePackage: (raw: string) => { document: any; values: number[]; bytes: number[] }[] = compiled.exports.inspectScalarVolumePackage;

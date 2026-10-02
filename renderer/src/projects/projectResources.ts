@@ -5,7 +5,7 @@ import {
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { decodeMeshBuffers, MeshResourceStore } from "../mesh/meshResourceStore";
 import type { MeshReplayBundle } from "../mesh/meshReplay";
-import { volumeDocumentEditable } from "./nativeVolumeRestore";
+import { volumePayloadRequired } from "./nativeVolumeRestore";
 
 export const MAX_PROJECT_RESOURCE_BYTES = 64 * 1024 * 1024;
 export const MAX_PROJECT_PACKAGE_BYTES = 112 * 1024 * 1024;
@@ -51,7 +51,7 @@ export const projectResourceInventory = (project: Math3DProject): ProjectResourc
         for (const object of document.source.objects) if (object.kind === "point-series") add(entry.expected.id, { id: object.table.id, kind: "graph-point-table", checksum: object.table.checksum, encoding: object.table.encoding, shape: [object.table.rowCount, 2], reference: object.table, required: true });
       } else if (document.format === "math3d.volume-document" && document.source.payload) {
         const reference = document.source.payload;
-        add(entry.expected.id, { id: reference.handle, kind: "volume-payload", checksum: null, encoding: `math3d.volume-${reference.scalarType}.le.v1`, shape: [...document.source.spatial.dimensions, reference.components], reference, required: !volumeDocumentEditable(document) });
+        add(entry.expected.id, { id: reference.handle, kind: "volume-payload", checksum: null, encoding: `math3d.volume-${reference.scalarType}.le.v1`, shape: [...document.source.spatial.dimensions, reference.components], reference, required: volumePayloadRequired(document) });
       }
     }
   }

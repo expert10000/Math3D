@@ -1,7 +1,32 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { runNamedProjectRoundTrip } from "../e2e/helpers/namedProjectRoundTrip";
-import { inspectMeshPackage, meshResourceFixture, pointResourceFixture } from "../e2e/helpers/meshProjectResources";
+import { inspectMeshPackage, meshResourceFixture, pointResourceFixture, scalarVolumeResourceFixture, inspectScalarVolumePackage } from "../e2e/helpers/meshProjectResources";
+
+test("PRJ16 browser samples verified dense Volume bytes and retains grid history on reload", async ({ page }) => {
+  const fixture = scalarVolumeResourceFixture();
+  await page.goto("/"); await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); }); await page.reload();
+  await page.getByTestId("projects-toggle").click(); const panel = page.getByTestId("project-explorer-panel");
+  await panel.getByTestId("project-import-file").setInputFiles({ name: "scalar.resources.json", mimeType: "application/json", buffer: Buffer.from(fixture.raw) });
+  await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+  await expect(page.getByTestId("project-volume-payload")).toContainText("float32"); await page.getByRole("button", { name: "Close project explorer" }).click();
+  await page.getByTestId("shared-inspector-tab-summary").click(); await expect(page.getByTestId("volume-details-card")).toContainText("1 … 8");
+  await page.getByTestId("project-volume-editor").locator("summary").click();
+  const changed = { ...fixture.docs[0].source.spatial, origin: [20,30,40] };
+  await page.getByTestId("project-volume-spatial").fill(JSON.stringify(changed)); await page.getByTestId("project-volume-apply").click();
+  await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
+  const generations = (await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!))).workspace.entries.map((entry: any) => entry.expected);
+  await page.reload(); await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click();
+  await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+  await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
+  expect((await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!))).workspace.entries.map((entry: any) => entry.expected)).toEqual(generations);
+  const download = page.waitForEvent("download"); await panel.getByTestId("project-export-resources").click();
+  const exported = readFileSync((await (await download).path())!, "utf8"), samples = inspectScalarVolumePackage(exported);
+  expect(samples[0]!.document.source.spatial).toEqual(changed); expect(samples[0]!.values).toEqual([1,2,3,4,5,6,7,8]);
+  expect(JSON.parse(exported).resources).toEqual(JSON.parse(fixture.raw).resources);
+  await page.getByRole("button", { name: "Close project explorer" }).click(); await page.getByTestId("project-volume-undo").click();
+  await page.getByTestId("project-volume-editor").locator("summary").click(); expect(JSON.parse(await page.getByTestId("project-volume-spatial").inputValue())).toEqual(fixture.docs[0].source.spatial);
+});
 
 test("PRJ15 browser verifies resource packages and preserves Mesh selection/history on reload", async ({ page }) => {
   const fixture = meshResourceFixture();
