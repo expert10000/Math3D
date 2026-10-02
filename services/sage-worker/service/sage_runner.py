@@ -438,7 +438,7 @@ def _complex_analysis(operation, params):
     else:
         denominator = expr.denominator().factor()
         try:
-            degree = int(denominator.polynomial(z).degree()) if denominator != 1 else 0
+            degree = int(denominator.polynomial(ring=PolynomialRing(SR, str(z))).degree()) if denominator != 1 else 0
         except (TypeError, ValueError):
             raise SageRequestError("Pole enumeration requires a polynomial denominator.")
         if degree < 0 or degree > 64:
