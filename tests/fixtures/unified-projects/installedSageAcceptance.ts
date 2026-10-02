@@ -122,7 +122,7 @@ export async function runInstalledSageAcceptance(baseUrl: string) {
     ["fractional-series", createComplexSagePayload({ document: acceptanceComplexDocument("sqrt(z)"), operation: "series", point: { re: 0, im: 0 }, order: 4 })],
   ] as const) {
     const rejected = await execute({ operation: "sage.complex.analyze", params: params as Record<string, unknown> });
-    assert.equal(rejected.success, false, name); checks.push({ name: `invalid/${name}-rejected` });
+    assert.equal(rejected.success, false, `${name}: ${JSON.stringify(rejected)}`); checks.push({ name: `invalid/${name}-rejected` });
   }
   const failedPayload = { ...payload, assumptions: [{ target: "z", predicate: "real" }] };
   const failedService = createInProcessScientificJobService({ adapters: [createComplexSageJobAdapter(execute)], resolveSource: () => source });
