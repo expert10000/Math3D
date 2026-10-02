@@ -9,6 +9,7 @@ module.exports = {
     orientation: "default",
     userInterfaceStyle: "light",
     assetBundlePatterns: ["**/*"],
+    extra: { projectRecoveryChecks: process.env.MATH3D_PROJECT_RECOVERY_CHECKS === "1" },
     plugins: [[
       "expo-camera",
       {

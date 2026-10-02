@@ -4,7 +4,7 @@ import type { MobileStoredSceneProject } from "../../apps/mobile/src/models/mobi
 import { createMobileGraph, storeMobileGraph, readMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
 
 const fileContents = vi.hoisted(() => new Map<string, string>());
-const fileFaults = vi.hoisted(() => ({ writePath: "", moveDestination: "" }));
+const fileFaults = vi.hoisted(() => ({ writePath: "", moveDestination: "", readPath: "", deletePath: "" }));
 
 vi.mock("expo-file-system", () => {
   class Directory {
@@ -22,12 +22,18 @@ vi.mock("expo-file-system", () => {
     }
     get exists() { return fileContents.has(this.uri); }
     create() { fileContents.set(this.uri, ""); }
-    async text() { return fileContents.get(this.uri) ?? ""; }
+    async text() {
+      if (fileFaults.readPath === this.uri) throw new Error("simulated read failure");
+      return fileContents.get(this.uri) ?? "";
+    }
     write(value: string) {
       if (fileFaults.writePath === this.uri) throw new Error("ENOSPC: no space left on device");
       fileContents.set(this.uri, value);
     }
-    delete() { fileContents.delete(this.uri); }
+    delete() {
+      if (fileFaults.deletePath === this.uri) throw new Error("simulated cleanup failure");
+      fileContents.delete(this.uri);
+    }
     copy(destination: File) { fileContents.set(destination.uri, fileContents.get(this.uri) ?? ""); }
     move(destination: File) {
       if (fileFaults.moveDestination === destination.uri) {
@@ -52,6 +58,7 @@ import {
   resolveMobileSceneStorage,
   saveStoredSceneProjects,
 } from "../../apps/mobile/src/services/mobileSceneStorage";
+import { prepareMobileStorageRecoveryCheck, finishMobileStorageRecoveryCheck } from "../../apps/mobile/src/services/mobileSceneStorageRecoveryCheck";
 
 const scene: SceneDocument = {
   id: "stored-saddle",
@@ -85,6 +92,8 @@ describe("mobile scene storage recovery", () => {
     fileContents.clear();
     fileFaults.writePath = "";
     fileFaults.moveDestination = "";
+    fileFaults.readPath = "";
+    fileFaults.deletePath = "";
   });
 
   it("migrates the legacy project-array payload", () => {
@@ -189,5 +198,93 @@ describe("mobile scene storage recovery", () => {
   it("reports storage-full and validation failures with actionable messages", () => {
     expect(describeMobileSceneStorageError(new Error("ENOSPC: no space left on device"))).toContain("storage is full");
     expect(describeMobileSceneStorageError(new MobileSceneStorageError("validation", "bad project"))).toContain("failed validation");
+  });
+
+  it("loads a healthy primary even when the backup cannot be read", async () => {
+    await saveStoredSceneProjects([project]);
+    fileFaults.readPath = "documents/math3d-mobile/scene-projects.backup.json";
+    expect(await loadStoredSceneProjects()).toMatchObject({ source: "primary", projects: [project], issues: [] });
+    await saveStoredSceneProjects([{ ...project, lastOpenedAt: 8 }]);
+  });
+
+  it("loads the readable backup without replacing an unreadable primary", async () => {
+    await saveStoredSceneProjects([project]);
+    const path = "documents/math3d-mobile/scene-projects.json";
+    fileFaults.readPath = path;
+    const original = fileContents.get(path);
+    expect(await loadStoredSceneProjects()).toMatchObject({ source: "backup", projects: [project],
+      issues: expect.arrayContaining([expect.stringContaining("Could not read project primary")]) });
+    expect(fileContents.get(path)).toBe(original);
+    await expect(saveStoredSceneProjects([])).rejects.toMatchObject({ code: "write-failed" });
+    expect(fileContents.get(path)).toBe(original);
+  });
+
+  it("reports a read failure as invalid storage instead of a first run", async () => {
+    fileContents.set("documents/math3d-mobile/scene-projects.json", payload());
+    fileFaults.readPath = "documents/math3d-mobile/scene-projects.json";
+    expect(await loadStoredSceneProjects()).toMatchObject({ source: "invalid", projects: [],
+      issues: [expect.stringContaining("Could not read project primary")] });
+  });
+
+  it("preserves both damaged copies and rejects subsequent writes", async () => {
+    const path = "documents/math3d-mobile/scene-projects.json";
+    const backup = "documents/math3d-mobile/scene-projects.backup.json";
+    fileContents.set(path, "{broken-primary"); fileContents.set(backup, "{broken-backup");
+    expect(await loadStoredSceneProjects()).toMatchObject({ source: "invalid" });
+    await expect(saveStoredSceneProjects([project])).rejects.toMatchObject({ code: "recovery-required" });
+    expect(fileContents.get(path)).toBe("{broken-primary"); expect(fileContents.get(backup)).toBe("{broken-backup");
+  });
+
+  it("returns recovered projects when storage is full and repairs them on a later launch", async () => {
+    await saveStoredSceneProjects([project]);
+    fileContents.set("documents/math3d-mobile/scene-projects.json", "{broken");
+    fileFaults.writePath = "documents/math3d-mobile/scene-projects.tmp";
+    expect(await loadStoredSceneProjects()).toMatchObject({ source: "backup", projects: [project],
+      issues: expect.arrayContaining([expect.stringContaining("could not repair the primary file")]) });
+    expect(fileContents.get("documents/math3d-mobile/scene-projects.backup.json")).toBeDefined();
+    fileFaults.writePath = "";
+    expect((await loadStoredSceneProjects()).source).toBe("backup");
+    expect(await loadStoredSceneProjects()).toMatchObject({ source: "primary", projects: [project], issues: [] });
+  });
+
+  it("never downgrades a newer primary using an older valid backup", async () => {
+    const path = "documents/math3d-mobile/scene-projects.json";
+    const future = JSON.stringify({ schemaVersion: 99, projects: [project] });
+    fileContents.set(path, future); fileContents.set("documents/math3d-mobile/scene-projects.backup.json", payload());
+    expect(await loadStoredSceneProjects()).toMatchObject({ source: "invalid" });
+    await expect(saveStoredSceneProjects([])).rejects.toMatchObject({ code: "recovery-required" });
+    expect(fileContents.get(path)).toBe(future);
+  });
+
+  it("serializes recovery with a queued save so the newer accepted library wins", async () => {
+    await saveStoredSceneProjects([project]);
+    fileContents.set("documents/math3d-mobile/scene-projects.json", "{truncated");
+    const recovery = loadStoredSceneProjects();
+    const save = saveStoredSceneProjects([{ ...project, lastOpenedAt: 90 }]);
+    expect((await recovery).source).toBe("backup"); await save;
+    expect((await loadStoredSceneProjects()).projects).toEqual([{ ...project, lastOpenedAt: 90 }]);
+  });
+
+  it("keeps the storage-full error even when staging cleanup also fails", async () => {
+    await saveStoredSceneProjects([project]);
+    fileFaults.writePath = fileFaults.deletePath = "documents/math3d-mobile/scene-projects.tmp";
+    await expect(saveStoredSceneProjects([])).rejects.toMatchObject({ code: "storage-full" });
+    expect((await loadStoredSceneProjects()).projects).toEqual([project]);
+  });
+
+  it("runs the isolated recovery matrix without modifying the user's library", async () => {
+    await saveStoredSceneProjects([project]);
+    const before = new Map(fileContents);
+    const prepared = await prepareMobileStorageRecoveryCheck();
+    expect(prepared.phase).toBe("restart-pending");
+    expect(prepared.checks).toHaveLength(9);
+    expect(prepared.checks.every(check => check.passed)).toBe(true);
+    const finished = await finishMobileStorageRecoveryCheck();
+    expect(finished.phase).toBe("complete");
+    expect(finished.checks).toHaveLength(10);
+    expect(finished.checks.filter(check => !check.passed)).toEqual([]);
+    expect(finished.libraryUnchanged).toBe(true);
+    for (const [path, raw] of before) expect(fileContents.get(path)).toBe(raw);
+    await expect(finishMobileStorageRecoveryCheck()).rejects.toThrow("Prepare a new recovery check first");
   });
 });

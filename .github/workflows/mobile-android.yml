@@ -136,6 +136,8 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Build installable internal APK
+        env:
+          MATH3D_PROJECT_RECOVERY_CHECKS: "1"
         run: npm run mobile:android:internal
 
       - name: Verify tracked source stayed clean
@@ -168,6 +170,7 @@ jobs:
           script: |
             node scripts/mobile-android-emulator-smoke.mjs
             node scripts/mobile-android-quality-matrix.mjs
+            ANDROID_SERIAL="$(adb devices | awk '/^emulator-.*device$/{print $1; exit}')" node scripts/mobile-android-storage-recovery.mjs
 
       - name: Upload APK, hashes, and smoke evidence
         if: always()
@@ -182,4 +185,5 @@ jobs:
             artifacts/mobile/SHA256SUMS
             output/mobile-android-smoke/**
             output/mobile-android-matrix/**
+            output/mobile-storage-recovery/**
             output/mobile-device-signoff-gate.json

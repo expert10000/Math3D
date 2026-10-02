@@ -5,6 +5,7 @@ import Constants from "expo-constants";
 import { mobileExamples } from "./data/mobileSeedData";
 import { clearMeshCache } from "./services/mobileMeshCacheStorage";
 import { MobileWorkerPairingScanner } from "./components/MobileWorkerPairingScanner";
+import { MobileStorageRecoveryCheck } from "./components/MobileStorageRecoveryCheck";
 import { FORCE_ANDROID_SAFE_MODE, EXPECTED_WORKER_PROTOCOL, MESH_RESOLUTION_CAP_MIN, MESH_RESOLUTION_CAP_MAX, PREVIEW_PAYLOAD_WARNING_BYTES, type MobileAppController } from "./mobileAppController";
 import { styles } from "./mobileAppStyles";
 
@@ -57,6 +58,7 @@ export const MobileSettingsScreen: React.FC<{ model: MobileAppController }> = ({
     <View style={styles.panel}>
       <Text style={styles.panelTitle}>Settings</Text>
       <Text style={styles.note}>Connect a compatible worker to enable remote compute. The app remains usable offline.</Text>
+      {Constants.expoConfig?.extra?.projectRecoveryChecks === true && <MobileStorageRecoveryCheck />}
 
       <View style={styles.settingRow}>
         <Text style={styles.itemMeta}>Desktop worker pairing</Text>

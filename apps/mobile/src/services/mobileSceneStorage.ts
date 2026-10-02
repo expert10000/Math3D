@@ -35,9 +35,10 @@ type DecodedPayload = {
 } | {
   ok: false;
   issues: string[];
+  unsupportedSchema?: boolean;
 };
 
-export type MobileSceneStorageErrorCode = "storage-full" | "validation" | "write-failed";
+export type MobileSceneStorageErrorCode = "storage-full" | "validation" | "write-failed" | "recovery-required";
 
 export class MobileSceneStorageError extends Error {
   readonly code: MobileSceneStorageErrorCode;
@@ -49,17 +50,7 @@ export class MobileSceneStorageError extends Error {
   }
 }
 
-const storageDirectory = new Directory(Paths.document, STORAGE_DIR_NAME);
-const storageFile = () => new File(storageDirectory, STORAGE_FILE_NAME);
-const storageTempFile = () => new File(storageDirectory, STORAGE_TEMP_FILE_NAME);
-const storageBackupFile = () => new File(storageDirectory, STORAGE_BACKUP_FILE_NAME);
-const storageBackupTempFile = () => new File(storageDirectory, STORAGE_BACKUP_TEMP_FILE_NAME);
-
 const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-
-const ensureStorageDirectory = () => {
-  storageDirectory.create({ idempotent: true, intermediates: true });
-};
 
 const normalizeStoredProject = (
   candidate: unknown,
@@ -162,6 +153,7 @@ export const decodeMobileSceneStorage = (raw: string): DecodedPayload => {
     } else {
       return {
         ok: false,
+        unsupportedSchema: true,
         issues: [
           `Unsupported project storage schema ${String(payload.schemaVersion)}. Expected ${MOBILE_SCENE_STORAGE_SCHEMA_VERSION}.`,
         ],
@@ -211,6 +203,11 @@ export const resolveMobileSceneStorage = (
         source: "primary",
         rewritePrimary: primary.migrated,
       };
+    }
+
+    // An older app must never replace a newer storage format with its previous backup.
+    if (primary.unsupportedSchema) {
+      return { projects: [], issues: primary.issues, source: "invalid", rewritePrimary: false };
     }
 
     if (backupRaw && backupRaw.trim()) {
@@ -267,6 +264,9 @@ const isStorageFullError = (error: unknown): boolean => {
 };
 
 export const describeMobileSceneStorageError = (error: unknown): string => {
+  if (error instanceof MobileSceneStorageError && error.code === "recovery-required") {
+    return "Existing project storage needs recovery. The damaged files were kept; restore a valid storage backup before saving.";
+  }
   if ((error instanceof MobileSceneStorageError && error.code === "storage-full") || isStorageFullError(error)) {
     return "Device storage is full. Free space and try again; existing projects were kept.";
   }
@@ -291,108 +291,146 @@ const removeIfPresent = (file: File) => {
   if (file.exists) file.delete();
 };
 
-const writeProjectsAtomically = async (projects: MobileStoredSceneProject[]): Promise<void> => {
-  ensureStorageDirectory();
-  const primary = storageFile();
-  const staged = storageTempFile();
-  const backup = storageBackupFile();
-  const stagedBackup = storageBackupTempFile();
-  const raw = encodeProjects(projects);
-  let backupCommitted = false;
-  let initializeBackup = false;
+/** Separate queues and directories let diagnostics exercise the real writer without touching the library. */
+export const createMobileSceneStorage = (storageDirectory: Directory) => {
+  const storageFile = () => new File(storageDirectory, STORAGE_FILE_NAME);
+  const storageTempFile = () => new File(storageDirectory, STORAGE_TEMP_FILE_NAME);
+  const storageBackupFile = () => new File(storageDirectory, STORAGE_BACKUP_FILE_NAME);
+  const storageBackupTempFile = () => new File(storageDirectory, STORAGE_BACKUP_TEMP_FILE_NAME);
+  const ensureStorageDirectory = () => storageDirectory.create({ idempotent: true, intermediates: true });
 
-  try {
-    removeIfPresent(staged);
-    staged.create({ intermediates: true, overwrite: true });
-    staged.write(raw, { encoding: "utf8" });
-    const stagedValidation = decodeMobileSceneStorage(await staged.text());
-    if (!stagedValidation.ok) {
-      throw new MobileSceneStorageError("validation", `Temporary project file failed validation: ${stagedValidation.issues.join(" ")}`);
-    }
-
-    const replaceBackupFrom = async (source: File) => {
-      removeIfPresent(stagedBackup);
-      source.copy(stagedBackup);
-      const backupValidation = decodeMobileSceneStorage(await stagedBackup.text());
-      if (!backupValidation.ok) {
-        throw new MobileSceneStorageError("validation", "Temporary project backup failed validation.");
-      }
-      removeIfPresent(backup);
-      stagedBackup.move(backup);
-      backupCommitted = true;
-    };
-
-    const primaryRaw = await readFile(primary);
-    const primaryValidation = primaryRaw?.trim() ? decodeMobileSceneStorage(primaryRaw) : null;
-    if (primaryValidation?.ok) {
-      await replaceBackupFrom(primary);
-    } else {
-      const backupRaw = await readFile(backup);
-      const backupValidation = backupRaw?.trim() ? decodeMobileSceneStorage(backupRaw) : null;
-      if (!backupValidation?.ok) initializeBackup = true;
-    }
-
-    removeIfPresent(primary);
-    staged.move(primary);
-    if (initializeBackup) {
-      // A failed first primary rename must not resurrect an unaccepted new project from backup.
-      // Once the primary commits, a backup failure cannot invalidate that successful save.
-      try { await replaceBackupFrom(primary); }
-      catch { try { removeIfPresent(stagedBackup); } catch { /* The committed primary remains valid. */ } }
-    }
-  } catch (error) {
-    removeIfPresent(staged);
-    if (!backupCommitted) removeIfPresent(stagedBackup);
-    if (!primary.exists && backup.exists) {
-      try {
-        backup.copy(primary);
-      } catch {
-        // The valid backup remains available for recovery on the next launch.
-      }
-    }
-    if (error instanceof MobileSceneStorageError) throw error;
-    const code: MobileSceneStorageErrorCode = isStorageFullError(error) ? "storage-full" : "write-failed";
-    throw new MobileSceneStorageError(code, String((error as Error)?.message ?? error), { cause: error });
-  }
-};
-
-let saveQueue: Promise<void> = Promise.resolve();
-
-export const loadStoredSceneProjects = async (): Promise<MobileSceneStorageLoad> => {
-  try {
+  const writeProjectsAtomically = async (projects: MobileStoredSceneProject[]): Promise<void> => {
     ensureStorageDirectory();
-    const resolved = resolveMobileSceneStorage(
-      await readFile(storageFile()),
-      await readFile(storageBackupFile())
-    );
+    const primary = storageFile();
+    const staged = storageTempFile();
+    const backup = storageBackupFile();
+    const stagedBackup = storageBackupTempFile();
+    const raw = encodeProjects(projects);
+    let backupCommitted = false;
+    let initializeBackup = false;
 
-    if (resolved.rewritePrimary) {
-      try {
-        await writeProjectsAtomically(resolved.projects);
-      } catch (error) {
-        resolved.issues.push(`Recovery loaded projects but could not repair the primary file: ${describeMobileSceneStorageError(error)}`);
+    try {
+      const primaryRaw = await readFile(primary);
+      const primaryValidation = primaryRaw?.trim() ? decodeMobileSceneStorage(primaryRaw) : null;
+      const backupRaw = primaryValidation?.ok ? null : await readFile(backup);
+      const existing = resolveMobileSceneStorage(primaryRaw, backupRaw);
+      if (existing.source === "invalid") {
+        throw new MobileSceneStorageError("recovery-required", "Damaged or unsupported storage was kept. Restore a valid storage backup before saving.");
       }
+      removeIfPresent(staged);
+      staged.create({ intermediates: true, overwrite: true });
+      staged.write(raw, { encoding: "utf8" });
+      const stagedValidation = decodeMobileSceneStorage(await staged.text());
+      if (!stagedValidation.ok) {
+        throw new MobileSceneStorageError("validation", `Temporary project file failed validation: ${stagedValidation.issues.join(" ")}`);
+      }
+
+      const replaceBackupFrom = async (source: File) => {
+        removeIfPresent(stagedBackup);
+        source.copy(stagedBackup);
+        const backupValidation = decodeMobileSceneStorage(await stagedBackup.text());
+        if (!backupValidation.ok) {
+          throw new MobileSceneStorageError("validation", "Temporary project backup failed validation.");
+        }
+        removeIfPresent(backup);
+        stagedBackup.move(backup);
+        backupCommitted = true;
+      };
+
+      if (primaryValidation?.ok) {
+        await replaceBackupFrom(primary);
+      } else {
+        const backupValidation = backupRaw?.trim() ? decodeMobileSceneStorage(backupRaw) : null;
+        if (!backupValidation?.ok) initializeBackup = true;
+      }
+
+      removeIfPresent(primary);
+      staged.move(primary);
+      if (initializeBackup) {
+        // A failed first primary rename must not resurrect an unaccepted new project from backup.
+        // Once the primary commits, a backup failure cannot invalidate that successful save.
+        try { await replaceBackupFrom(primary); }
+        catch { try { removeIfPresent(stagedBackup); } catch { /* The committed primary remains valid. */ } }
+      }
+    } catch (error) {
+      try { removeIfPresent(staged); } catch { /* Preserve the original failure and valid copies. */ }
+      if (!backupCommitted) {
+        try { removeIfPresent(stagedBackup); } catch { /* A later save can clean this staging file. */ }
+      }
+      if (!primary.exists && backup.exists) {
+        try {
+          if (decodeMobileSceneStorage(await backup.text()).ok) backup.copy(primary);
+        } catch {
+          // The valid backup remains available for recovery on the next launch.
+        }
+      }
+      if (error instanceof MobileSceneStorageError) throw error;
+      const code: MobileSceneStorageErrorCode = isStorageFullError(error) ? "storage-full" : "write-failed";
+      throw new MobileSceneStorageError(code, String((error as Error)?.message ?? error), { cause: error });
     }
+  };
 
-    return { projects: resolved.projects, issues: resolved.issues, source: resolved.source };
-  } catch (error) {
-    return {
-      projects: [],
-      issues: [`Failed to load project storage: ${String((error as Error).message ?? error)}`],
-      source: "invalid",
-    };
-  }
+  let saveQueue: Promise<void> = Promise.resolve();
+
+  const load = async (): Promise<MobileSceneStorageLoad> => {
+    try {
+      ensureStorageDirectory();
+      // A healthy primary does not depend on the backup being readable. If the primary
+      // cannot be read, still try the backup, but do not overwrite the unreadable file.
+      let primaryRaw: string | null = null;
+      let primaryReadError: unknown;
+      try { primaryRaw = await readFile(storageFile()); } catch (error) { primaryReadError = error; }
+      const primary = primaryRaw?.trim() ? decodeMobileSceneStorage(primaryRaw) : null;
+      let backupRaw: string | null = null;
+      let backupReadError: unknown;
+      if (!primary?.ok && !primary?.unsupportedSchema) {
+        try { backupRaw = await readFile(storageBackupFile()); } catch (error) { backupReadError = error; }
+      }
+      const resolved = resolveMobileSceneStorage(primaryRaw, backupRaw);
+      for (const [name, error] of [["primary", primaryReadError], ["backup", backupReadError]] as const) {
+        if (error !== undefined) resolved.issues.push(`Could not read project ${name}: ${String((error as Error)?.message ?? error)}`);
+      }
+      if (primaryReadError !== undefined || backupReadError !== undefined) {
+        resolved.rewritePrimary = false;
+        if (resolved.source === "empty") resolved.source = "invalid";
+      }
+
+      if (resolved.rewritePrimary) {
+        try {
+          await writeProjectsAtomically(resolved.projects);
+        } catch (error) {
+          resolved.issues.push(`Recovery loaded projects but could not repair the primary file: ${describeMobileSceneStorageError(error)}`);
+        }
+      }
+
+      return { projects: resolved.projects, issues: resolved.issues, source: resolved.source };
+    } catch (error) {
+      return {
+        projects: [],
+        issues: [`Failed to load project storage: ${String((error as Error).message ?? error)}`],
+        source: "invalid",
+      };
+    }
+  };
+
+  const save = (projects: MobileStoredSceneProject[]): Promise<void> => {
+    const pending = saveQueue.then(() => writeProjectsAtomically(projects));
+    saveQueue = pending.catch(() => undefined);
+    return pending;
+  };
+
+  const queuedLoad = (): Promise<MobileSceneStorageLoad> => {
+    const pending = saveQueue.then(load);
+    saveQueue = pending.then(() => undefined, () => undefined);
+    return pending;
+  };
+  return { load: queuedLoad, save, clear: () => save([]) };
 };
 
-export const saveStoredSceneProjects = (projects: MobileStoredSceneProject[]): Promise<void> => {
-  const pending = saveQueue.then(() => writeProjectsAtomically(projects));
-  saveQueue = pending.catch(() => undefined);
-  return pending;
-};
-
-export const clearStoredSceneProjects = async (): Promise<void> => {
-  await saveStoredSceneProjects([]);
-};
+const defaultStorage = createMobileSceneStorage(new Directory(Paths.document, STORAGE_DIR_NAME));
+export const loadStoredSceneProjects = defaultStorage.load;
+export const saveStoredSceneProjects = defaultStorage.save;
+export const clearStoredSceneProjects = defaultStorage.clear;
 
 export const createStoredProjectFromScene = (
   scene: SceneDocument,

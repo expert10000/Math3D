@@ -78,6 +78,7 @@ const info = {
   version: identity.version,
   build: identity.build,
   channel,
+  projectRecoveryChecks: process.env.MATH3D_PROJECT_RECOVERY_CHECKS === "1",
   gitCommit: git.status === 0 ? git.stdout.trim() : null,
   trackedSourceDirty: trackedSourceChanges === null ? null : trackedSourceChanges.length > 0,
   trackedSourceChanges,
