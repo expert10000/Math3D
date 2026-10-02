@@ -1,0 +1,27 @@
+{
+  "documents": [
+    {
+      "module": "graph2d",
+      "revision": 4,
+      "freshness": "current"
+    },
+    {
+      "module": "curve",
+      "revision": 1,
+      "freshness": "stale"
+    },
+    {
+      "module": "surface",
+      "revision": 1,
+      "freshness": "stale"
+    }
+  ],
+  "relationFreshness": [
+    "stale",
+    "stale",
+    "stale"
+  ],
+  "historicalResultFreshness": [
+    "stale"
+  ]
+}

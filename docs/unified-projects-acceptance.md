@@ -498,3 +498,58 @@ It is preparation evidence only: ADB reported no connected handset during this
 software work. No new physical-device case or signed production-release acceptance
 is claimed. The [host matrix](projects-host-qualification.md) retains these native
 conditions explicitly; full PRJ17/PRJ18 native readiness is not marked complete.
+
+## PRJ17 Samsung physical acceptance — October 3
+
+Samsung A56 (`SM-A566B`), Android 16/API 36, arm64-v8a, 1080×2340 passed the
+supported checkpointed Graph/Curve/Surface workflow. The shared-key
+[Android build and emulator run](https://github.com/expert10000/Math3D/actions/runs/37069623996)
+passed on clean source `e1298a74480d1daaa9fa3680327af1954b2b2193`.
+The installed APK was pulled back from the handset and matched SHA-256
+`34629b628969f3b55b4bf5e75da0372236781a559f56f4b41e2254e01559421d`.
+The certificate SHA-256 is
+`39ab9388fa174bf9c1973577dab4ee33eedbacb9b231c9b79068e5143480fc82`,
+matching the previous installed internal app. Application ID is
+`com.math3d.mobile.internal`, version `1.6.0-internal`, build `150008`.
+
+- All 20 existing projects were exported before the same-signer `adb install -r`
+  update, then exported again. Identities, revisions, names, metadata and source
+  contents matched exactly. No app uninstall or data clearing occurred.
+- Native file-picker import and directory-picker export of the named catenary
+  preset returned the exact original project, including all three documents,
+  relations and the historical derivative. The actual file also opened, saved,
+  exported and reloaded through a fresh Chromium context.
+- Actual pan and two-pointer pinch changed the visible axis ranges. Applying
+  `x*x+1`, undoing to the catenary expression and redoing to `x*x+1` passed.
+  The saved Graph reached revision 4; both companions retained their exact
+  revision-1 checkpoints, relations and recorded result. Rename to
+  `PRJ17-Minimal-Study` preserved the scientific workspace. Force-stop/relaunch
+  returned the exact edited and renamed export.
+- The edited file imported, exported and reloaded identically in a fresh browser
+  **saved preview**. Its unchanged Surface is preview-only; full-workspace opening
+  correctly remains disabled. Dependency inspection marks all three relations
+  and the saved derivative stale, preserving their original provenance.
+- Android's share chooser displayed the named JSON. Import-picker, export-picker
+  and share cancellation retained an applied but unsaved `x*x+2`. Malformed JSON
+  and the unsupported eight-module resource package were rejected with the same
+  unsaved source and 21-project library intact.
+- Only the new acceptance project was deleted. Importing its actual exported
+  backup through the native picker restored the complete named project exactly;
+  another cold restart retained `x*x+1`. The original 20 user projects remained
+  present. The final library has 20 original projects and one restored test project.
+
+[Structured evidence and file hashes](evidence/projects-samsung-2026-10-03/acceptance.json),
+[retained-library comparison](evidence/projects-samsung-2026-10-03/retained-library-comparison.json),
+[actual initial export](evidence/projects-samsung-2026-10-03/native-initial.math3d.project.json),
+[actual recovered export](evidence/projects-samsung-2026-10-03/native-recovered.math3d.project.json)
+and handset/browser screenshots are committed. Existing user exports, private
+UI dumps and the APK stay outside the repository. The handset app and desktop
+development app are left running.
+
+This is Samsung internal-build workflow evidence. Physical iOS, deliberate
+corruption/recovery of the signed app's private primary/backup store and delivery
+to an external share recipient were not tested. Automatic store recovery retains
+its software evidence; exported-file recovery is the physical observation here.
+Published 1.6.0 release approval and the broader six-device MOB-G13 matrix are
+unchanged. Full PRJ17/PRJ18 native release readiness remains unverified for the
+specific native conditions listed in the host matrix.

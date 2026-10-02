@@ -314,8 +314,10 @@ racing unrelated workbook autosave; the corrected test still verifies every
 named-project payload, library entry, sidecar and backup remains byte-identical
 after a rejected same-ID import. PRJ12 software integration is complete.
 The subsequent sections record PRJ13–PRJ18 implementation and qualified software
-acceptance. PRJ17 native signoff and PRJ18 combined native readiness remain open
-until current exact-build device observations exist.
+acceptance. The supported Samsung Android workflow has current exact-build
+observations; native iOS and damaged private-store recovery remain unverified.
+Full PRJ17 native signoff and PRJ18 combined native readiness remain open for
+those specifically recorded conditions.
 
 ## PRJ13 supported native restoration
 
@@ -518,6 +520,16 @@ the complete desktop replay container remains rejected by native mobile prefligh
 
 The [host qualification and native test pack](projects-host-qualification.md)
 publishes the supported-host matrix and reconciles PRJ06/PRJ08 obligations.
-**PRJ17 physical picker/share/upgrade/restart evidence and PRJ18 combined native
-release readiness are still pending.** A signed internal Android candidate is
-prepared; model/emulator runs and historical 1.6.0 signoff do not close that gate.
+**PRJ17's supported Samsung Android workflow passed physical acceptance on
+October 3.** Clean source `e1298a7` was installed as a same-certificate internal
+update, retaining all 20 user projects with exact before/after export comparisons.
+Native picker import/export, Graph editing/undo/redo, pan/pinch, rename, cold
+restart, share chooser/cancel and malformed/unsupported/cancelled imports passed.
+Unsaved source survived rejection and cancellation. Only the acceptance project
+was deleted and recovered through its exported JSON, then cold-restarted again.
+The initial export opens in a fresh browser; the edited project round-trips
+exactly through its qualified saved preview, with historical companions/results
+explicitly stale. [Device evidence and returned files](evidence/projects-samsung-2026-10-03/acceptance.json)
+record the APK/source/certificate hashes. Native iOS and physical damaged
+private-store recovery remain unverified, so full PRJ17/PRJ18 native release
+readiness is still open. Published 1.6.0 release signoff remains unchanged.

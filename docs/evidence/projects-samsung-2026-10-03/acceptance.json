@@ -1,0 +1,115 @@
+{
+  "format": "math3d.projects-physical-acceptance.v1",
+  "testedOn": "2026-10-03",
+  "timezone": "Europe/Warsaw",
+  "status": "qualified Android workflow pass",
+  "scope": "One checkpointed named Graph with unchanged Curve/Surface companions; Samsung A56 only",
+  "sourceCommit": "e1298a74480d1daaa9fa3680327af1954b2b2193",
+  "trackedSourceDirty": false,
+  "device": {
+    "screen": "1080x2340",
+    "api": 36,
+    "android": "16",
+    "abi": "arm64-v8a",
+    "model": "SM-A566B"
+  },
+  "build": {
+    "version": "1.6.0-internal",
+    "applicationId": "com.math3d.mobile.internal",
+    "installedApkPulledAndMatched": true,
+    "previousApkSha256": "cdfd15ee9a9229c3bf4b97fe7142c34c9b7fd5184c18473b68272848ad7e3f8c",
+    "apkSha256": "34629b628969f3b55b4bf5e75da0372236781a559f56f4b41e2254e01559421d",
+    "ciRun": "https://github.com/expert10000/Math3D/actions/runs/37069623996",
+    "signingCertSha256": "39ab9388fa174bf9c1973577dab4ee33eedbacb9b231c9b79068e5143480fc82",
+    "build": 150008,
+    "ciConclusion": "success"
+  },
+  "cases": {
+    "rename": "passed: PRJ17-Minimal-Study; workspace and scientific generations unchanged",
+    "coldRestart": "passed: saved edited/renamed project exported identically after force-stop/relaunch",
+    "freshBrowserTransfer": "passed: initial export opens normally; edited export imports as exact saved preview, exports identically and survives reload",
+    "nativeShare": "passed: named JSON opens system chooser; cancellation returns to app",
+    "existingProjectBackupAndSameSignerUpgrade": "passed: 20 exports before and after, exact source/name/metadata/revision comparison",
+    "scientificEditUndoRedoSave": "passed: original expression -> x*x+1 -> undo original -> redo x*x+1; Graph revision 4",
+    "nativeNamedPickerImportAndExport": "passed: actual returned JSON equals the original preset",
+    "panAndTwoPointerPinch": "passed: real injected touch gestures changed observed axis ranges",
+    "malformedAndUnsupportedImports": "passed: rejected without losing unsaved source or changing library count 21",
+    "exportedFileRecovery": "passed: only the test project was deleted; native picker restored the exact exported backup; another cold restart retained x*x+1",
+    "cancelledImportAndExportAndShare": "passed: unsaved x*x+2 remained in Functions"
+  },
+  "finalLibraryCount": 21,
+  "existingUserProjects": 20,
+  "testProjectsAdded": 1,
+  "appDataCleared": false,
+  "appUninstalled": false,
+  "currentProcessCrashBuffer": "captured empty before final cleanup",
+  "limits": [
+    "No physical iOS acceptance",
+    "No deliberate corruption of the signed app private primary/backup store; automatic recovery remains software evidence",
+    "Share chooser and cancellation were observed; no external-recipient delivery",
+    "Edited Graph keeps historical companions: all three relations and the saved derivative are stale; full browser workspace opening is disabled, saved-preview transfer succeeds",
+    "Not production release signoff or the six-device MOB-G13 matrix"
+  ],
+  "files": [
+    {
+      "byteLength": 299,
+      "sha256": "697f5045f83b1db49a36b8945a4829e08b668275604eae343f3e3f99f3727b01",
+      "name": "browser-initial-result.json"
+    },
+    {
+      "byteLength": 299,
+      "sha256": "35bda8c1130a8315568e51716b12d43c5efa50beb47d69e31a0a22e2dee4639c",
+      "name": "browser-transfer-result.json"
+    },
+    {
+      "byteLength": 368,
+      "sha256": "4bfab36712605c824f2de49f9aeb2b6cf3db913f452a526568e33f845baa3e28",
+      "name": "build-info.json"
+    },
+    {
+      "byteLength": 177655,
+      "sha256": "cefa823ccefb21b104d08e87142149784e2413eb667ada7294e06eaf13f9799e",
+      "name": "fresh-browser-import.png"
+    },
+    {
+      "byteLength": 405,
+      "sha256": "7c862fbd9c0fa3453bb95824186329e879acb1734a556da7992dec9fbbfe6efd",
+      "name": "native-dependency-check.json"
+    },
+    {
+      "byteLength": 8385,
+      "sha256": "a7a028477fc95fdc700b3346a0f95528012e5eb8682a6ce7327e773f701af32c",
+      "name": "native-initial.math3d.project.json"
+    },
+    {
+      "byteLength": 8207,
+      "sha256": "8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc",
+      "name": "native-recovered.math3d.project.json"
+    },
+    {
+      "byteLength": 8207,
+      "sha256": "8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc",
+      "name": "native-restarted.math3d.project.json"
+    },
+    {
+      "byteLength": 240678,
+      "sha256": "4d6d602ea7447f0163df966ceb7420dd55b4fb846b38e491e620ff5fca0a9021",
+      "name": "native-share.png"
+    },
+    {
+      "byteLength": 127067,
+      "sha256": "2888f0536a7f25a193a228ee72d2618ae32008caf775ab8ef8d8d0b3c3aebee7",
+      "name": "recovered-source.png"
+    },
+    {
+      "byteLength": 125443,
+      "sha256": "d379e5b35d28cd6e180a5eca59d6ae2de8346335c01812431646668b10a2f97a",
+      "name": "recovery-restarted-source.png"
+    },
+    {
+      "byteLength": 289,
+      "sha256": "6fde67f24875fabb94119884c5a4147fa33772bab3c9e9042f9a72ba38e97d7f",
+      "name": "retained-library-comparison.json"
+    }
+  ]
+}

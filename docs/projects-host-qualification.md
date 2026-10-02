@@ -11,7 +11,7 @@ Representation limits remain those in [the source inventory](project-representat
 | Electron | All eight enabled module adapters; original resources, metadata, generations, relations, historical results, edits and reopened history | Combined real UI journey passed locally, including an independent profile and process restart; repeatable in Projects CI |
 | Chromium | The same qualified source/resource subset; a fresh storage profile and reload | Combined real UI journey passed in en-US/UTC and pl-PL/Auckland; required installed services remain separate capabilities |
 | Native Android / iOS model | One checkpointed Graph with checkpointed Curve/Surface companions | Actual mobile import/edit/undo/redo/library/export model is tested; desktop replay containers reject import with the checkpoint-export instruction |
-| Signed Android handset | Native picker, share, restart, upgrade and recovery for that supported mobile slice | **Pending physical device evidence.** A signed internal APK is prepared; no handset acceptance is inferred from model/emulator tests |
+| Signed Android handset | Native picker, share chooser/cancel, restart, retained-data upgrade and exported-file recovery for that supported mobile slice | **Samsung A56 / Android 16 passed on October 3**, against clean source `e1298a7` and the verified shared-key APK. All 20 existing projects were backed up and compared after upgrade; [actual exports and device evidence](evidence/projects-samsung-2026-10-03/acceptance.json) are recorded. Private-store corruption recovery and external share delivery were not exercised |
 | Native iOS handset | The same declared mobile slice | **Unverified here.** No connected iOS device or exact signed IPA is attested |
 | Installed Sage | Structured Complex jobs and exact integer homology, through real F05 execution and F06 publication | SageMath 10.10 installed-service oracles passed; the workflow also requires project/result/artifact-manifest round-trip and records container/build hashes |
 | Installed VTK / CGAL | Existing independent numerical/reference probes | PRJ16's recorded probes remain reference evidence; they do not establish new signed-build or complete project-integration signoff |
@@ -80,7 +80,18 @@ The current device checks must record all of these outcomes against that build:
    the backup/recovery result, actual exported files and screenshots/logs.
 
 No case is marked passed merely because an APK was built or an emulator/model
-test passed. **PRJ17 native signoff and PRJ18 combined native release readiness
-remain open until these exact-build observations exist.** PRJ06/PRJ08 desktop/web
-restoration, external source resources and independent host software freeze are
-covered by PRJ13–PRJ18; their native acceptance remainder is this explicit gate.
+test passed. **The supported Samsung Android workflow now has exact-build physical
+evidence.** Native iOS acceptance and physical recovery from a damaged private
+primary/backup store remain unverified; full PRJ17/PRJ18 native readiness is not
+attested. The Samsung recovery observation restores a deleted test project from
+its actual exported JSON without touching the 20 existing user projects.
+PRJ06/PRJ08 desktop/web restoration, external source resources and independent
+host software freeze are covered by PRJ13–PRJ18.
+
+The initial native catenary export opens normally in a fresh Chromium profile.
+After editing its Graph, the unchanged Surface companion is historical and
+preview-only on desktop/web: full-workspace opening remains disabled. Import into
+the saved library, export and reload retain the complete edited project exactly.
+The two companion documents stay at revision 1, while the Graph advances to
+revision 4; all three relations and the recorded derivative evaluate as stale.
+This is the declared saved-preview qualification, not regenerated geometry.

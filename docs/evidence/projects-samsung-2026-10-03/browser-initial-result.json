@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "host": "fresh Chromium context",
+  "sourceFile": "native-initial.math3d.project.json",
+  "identityRetained": true,
+  "sourceGenerationsRetained": true,
+  "companionsRetained": true,
+  "relationsRetained": true,
+  "historicalResultsRetained": true,
+  "exportedAndReloaded": true
+}
