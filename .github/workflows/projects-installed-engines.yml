@@ -1,0 +1,46 @@
+name: Projects Installed Engine Acceptance
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ["services/sage-worker/**", "scripts/projects-installed-sage.mjs", "tests/fixtures/unified-projects/installedSageAcceptance.ts", "tests/fixtures/unified-projects/complexSource.ts", ".github/workflows/projects-installed-engines.yml"]
+  push:
+    branches: [main]
+    paths: ["services/sage-worker/**", "scripts/projects-installed-sage.mjs", "tests/fixtures/unified-projects/installedSageAcceptance.ts", "tests/fixtures/unified-projects/complexSource.ts", ".github/workflows/projects-installed-engines.yml"]
+permissions:
+  contents: read
+jobs:
+  sage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci && npm --prefix renderer ci
+      - name: Build installed Sage service
+        run: |
+          docker build --pull -t math3d-sage-acceptance services/sage-worker
+          docker run -d --name projects-sage -p 127.0.0.1:8767:8767 math3d-sage-acceptance
+          echo "MATH3D_SAGE_IMAGE_ID=$(docker image inspect math3d-sage-acceptance --format '{{.Id}}')" >> "$GITHUB_ENV"
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8767/health; then exit 0; fi
+            sleep 2
+          done
+          docker logs projects-sage
+          exit 1
+      - name: Installed engine and publication oracles
+        run: node scripts/projects-installed-sage.mjs
+      - name: Preserve service diagnostics
+        if: always()
+        run: |
+          mkdir -p output/projects-integration
+          docker logs projects-sage > output/projects-integration/sage-service.log 2>&1 || true
+          docker image inspect math3d-sage-acceptance > output/projects-integration/sage-image.json || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: projects-installed-engine-evidence
+          path: output/projects-integration/
+          retention-days: 30

@@ -1,0 +1,86 @@
+# Projects host qualification — PRJ17 / PRJ18
+
+The qualified desktop/web freeze uses **17 documents, eight modules and three
+dependency relations**. It combines Spline and Surface Lab, Curve Construction
+Study and Scene and Topology Study with the Graph data-gap gallery preset,
+verified Mesh buffers, dense scalar Volume samples and a principal Complex source.
+Representation limits remain those in [the source inventory](project-representation-inventory.md).
+
+| Host | Qualified workflow | Evidence / remaining condition |
+| --- | --- | --- |
+| Electron | All eight enabled module adapters; original resources, metadata, generations, relations, historical results, edits and reopened history | Combined real UI journey passed locally, including an independent profile and process restart; repeatable in Projects CI |
+| Chromium | The same qualified source/resource subset; a fresh storage profile and reload | Combined real UI journey passed in en-US/UTC and pl-PL/Auckland; required installed services remain separate capabilities |
+| Native Android / iOS model | One checkpointed Graph with checkpointed Curve/Surface companions | Actual mobile import/edit/undo/redo/library/export model is tested; desktop replay containers reject import with the checkpoint-export instruction |
+| Signed Android handset | Native picker, share, restart, upgrade and recovery for that supported mobile slice | **Pending physical device evidence.** A signed internal APK is prepared; no handset acceptance is inferred from model/emulator tests |
+| Native iOS handset | The same declared mobile slice | **Unverified here.** No connected iOS device or exact signed IPA is attested |
+| Installed Sage | Structured Complex jobs and exact integer homology, through real F05 execution and F06 publication | SageMath 10.10 installed-service oracles passed; the workflow also requires project/result/artifact-manifest round-trip and records container/build hashes |
+| Installed VTK / CGAL | Existing independent numerical/reference probes | PRJ16's recorded probes remain reference evidence; they do not establish new signed-build or complete project-integration signoff |
+
+Unsupported source forms continue to open as qualified saved previews. Native
+mobile editing of a mixed eight-module desktop container is not enabled by this
+freeze. The matrix distinguishes this declared limit from a failing supported
+workflow; it does not redefine PRJ17 physical acceptance as a model test.
+
+## Repeatable pack and software gates
+
+Run `npm run test:projects:fixtures` to generate:
+
+- `output/projects-integration/preset-test-pack/all-modules.resources.json` —
+  desktop/browser source resources and dependency recipe inputs.
+- `catenary-study.math3d.project.json` — the supported named mobile project with
+  catenary Graph, Curve, catenoid Surface and historical numerical lineage.
+- `invalid.math3d.project.json` — intentional malformed input for preservation checks.
+- `manifest.json` — original project IDs, source/fixture fingerprints and file hashes.
+
+The pack is generated from ordinary built-in recipes; it contains no executable
+template instructions. Open it through **Projects → Preview project import** on
+desktop/web and the native **Files** import action on mobile. Existing starters
+remain under **Projects → Starter workflow**.
+
+`npm run test:projects:acceptance` includes the combined Electron and two-locale
+browser journeys, existing source/transfer/storage regressions, typechecks,
+production builds and dependency boundaries. The combined test edits seven source
+adapters, checks real exported Mesh coordinates/normals/UVs and scalar samples,
+retains historical result provenance with stale qualification, and verifies
+restored undo/redo after transfer and restart. The Graph/mobile model also checks
+its supported checkpoint companions and rejects the desktop replay container.
+
+`npm run test:projects:installed-sage` requires the real Sage HTTP service.
+[Installed Engine CI](../.github/workflows/projects-installed-engines.yml) builds
+that service and checks the five ordinary Complex operations, exact decimal
+coefficients, nine canonical homology cases (including Z/2 and Z/3 torsion), invalid
+input, cancellation, deadline and stale-source publication. Successful results
+are saved into a validated named project with the real boundary-matrix manifest.
+Artifacts retain the project JSON, matrix payloads, SHA-256 fingerprints, actual
+Sage version, tested checkout commit and built container identity. Optional matrix
+caches are supplied separately; their availability is not fabricated on import.
+
+## Native signoff still required
+
+Use an unlocked USB handset and record its model, OS/API, ABI, screen dimensions,
+installed application ID/version/build, tested source commit, actual APK SHA-256
+and `apksigner verify --print-certs` certificate SHA-256. Internal acceptance
+builds do not replace the immutable published 1.6.0 release evidence.
+
+The current device checks must record all of these outcomes against that build:
+
+1. Back up existing user projects; upgrade with the same signing identity while
+   retaining their names and source contents. Do not uninstall or clear app data.
+2. Import the named catenary preset with the native file picker. Check the named
+   identity/metadata, Graph source, Curve/Surface companions and historical lineage.
+3. Edit the Graph, undo and redo, pan/pinch, save, force-stop and reopen. Confirm the
+   saved source generation and project name survive, with companions unchanged.
+4. Export/share through the native system actions. Pull the actual returned JSON
+   to a fresh desktop/browser profile; compare original identity, metadata,
+   companion generations, relations and historical provenance. A Graph edit must
+   advance its generation; a project rename must not advance scientific sources.
+5. Cancel the picker/share action and reject the malformed/unsupported package.
+   Confirm the previous workspace, unsaved edit and library remain intact.
+6. Check the existing upgrade/recovery path against retained projects and record
+   the backup/recovery result, actual exported files and screenshots/logs.
+
+No case is marked passed merely because an APK was built or an emulator/model
+test passed. **PRJ17 native signoff and PRJ18 combined native release readiness
+remain open until these exact-build observations exist.** PRJ06/PRJ08 desktop/web
+restoration, external source resources and independent host software freeze are
+covered by PRJ13–PRJ18; their native acceptance remainder is this explicit gate.

@@ -4,6 +4,36 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { runNamedProjectRoundTrip } from "../e2e/helpers/namedProjectRoundTrip";
 import { inspectMeshPackage, meshResourceFixture, pointResourceFixture, scalarVolumeResourceFixture, inspectScalarVolumePackage } from "../e2e/helpers/meshProjectResources";
+import { projectFreezeFixture, inspectFreezePackage, editFreezeProject, freezeControls, checkFreezeHistory, checkFreezeResources } from "../e2e/helpers/projectFreeze";
+
+test("PRJ18 browser freezes all eight modules and resources across fresh profiles and reload", async ({ page, browser }) => {
+  test.setTimeout(600_000);
+  const fixture = projectFreezeFixture();
+  await page.goto("/"); await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); }); await page.reload();
+  const saved = await editFreezeProject(page, fixture), download = page.waitForEvent("download");
+  await page.getByTestId("project-export-resources").click();
+  const raw = readFileSync((await (await download).path())!, "utf8"), snapshot = inspectFreezePackage(raw);
+  checkFreezeResources(raw);
+  expect(snapshot.project.workspace.entries.map((entry: any) => entry.expected)).toEqual(saved.workspace.entries.map((entry: any) => entry.expected));
+  for (const sidecar of inspectFreezePackage(fixture.raw).resources.filter((item) => item.kind !== "mesh-buffers")) expect(snapshot.resources).toContainEqual(sidecar);
+  const destinationOptions = { baseURL: new URL(page.url()).origin,
+    locale: await page.evaluate(() => navigator.language), timezoneId: await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone) };
+  // Close the source renderer before opening an independent destination, as on desktop.
+  await page.close();
+  const context = await browser.newContext(destinationOptions);
+  try {
+    const other = await context.newPage(); await other.goto("/");
+    await other.evaluate(() => localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1")); await other.reload();
+    let controls = freezeControls(other); await controls.importOpen(raw);
+    expect((await controls.save()).workspace.entries.map((entry: any) => entry.expected)).toEqual(saved.workspace.entries.map((entry: any) => entry.expected));
+    await other.reload(); controls = freezeControls(other); await controls.reopen(saved.identity.id);
+    expect((await controls.save()).workspace.entries.map((entry: any) => entry.expected)).toEqual(saved.workspace.entries.map((entry: any) => entry.expected));
+    await checkFreezeHistory(other, fixture);
+    await other.setViewportSize({ width: 390, height: 844 }); await controls.show();
+    const bounds = await controls.panel.boundingBox(); expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(391);
+    await controls.panel.screenshot({ path: test.info().outputPath("combined-project-phone.png") });
+  } finally { await context.close(); }
+});
 
 test("PRJ16 built-in source starters preview, edit and transfer with restored history", async ({ page, browser }) => {
   test.setTimeout(240_000);

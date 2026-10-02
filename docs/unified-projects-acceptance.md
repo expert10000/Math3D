@@ -462,3 +462,39 @@ Cloudflare `math3d` and `math3d-app` still reported failed builds on `bd5d8b1`, 
 they do on base main `243bae5`; `math3ds` passed. Dashboard-only summaries provide
 no build failure diagnostics. These existing deployment failures remain separate
 from the passing application software gates.
+
+## PRJ17 / PRJ18 acceptance continuation — October 2
+
+[PR #19](https://github.com/expert10000/Math3D/pull/19) adds installed-service
+acceptance and a combined preset freeze. The local Electron journey passed with
+17 documents, eight modules, three dependencies, external bytes, seven adapter
+edits, independent-profile transfer, cold process restart and restored history.
+Chromium passed both en-US/UTC and pl-PL/Auckland combined journeys. The browser
+harness closes the source renderer before opening its independent destination;
+keeping both expensive scientific renderers active caused the initial local
+timeout and is not the acceptance setup. The exported Mesh buffers and dense
+Volume samples were independently decoded and checked against the fixture values.
+
+The current contract run passed 108 Projects tests in 15 files and 123 existing
+native/storage/Graph/transfer regressions in 24 files. Portable fixture and E2E
+TypeScript passed; the production web build passed with the existing chunk warning.
+The combined Electron test is included in the normal Projects acceptance command,
+and the preset pack can be regenerated with `npm run test:projects:fixtures`.
+
+[Installed Sage CI](https://github.com/expert10000/Math3D/actions/runs/37026284787)
+passed on tested merge checkout `c89f26a` / source head `26a6d11`, with SageMath
+10.10: five Complex operations, nine exact integer-homology cases, cancellation,
+deadline/stale-source publication suppression and malformed-payload rejection.
+Container identity was
+`sha256:32453870b1c33f7aa69b31876e8dc12f77c33478a560c697f784b1a1ed9f0e6b`;
+test-bundle SHA-256 was
+`0b4acaf4e1b3d08ca8527ae15e7f83c6e52db6c07eb76acb1e0e4de1368ff975`.
+The extended gate additionally checks an exact decimal derivative and persisted
+project/result/boundary-matrix references. Its current result must be read from
+PR #19 checks and downloaded evidence; the earlier run does not attest extensions.
+
+A signed internal Android candidate was built and certificate verification passed.
+It is preparation evidence only: ADB reported no connected handset during this
+software work. No new physical-device case or signed production-release acceptance
+is claimed. The [host matrix](projects-host-qualification.md) retains these native
+conditions explicitly; full PRJ17/PRJ18 native readiness is not marked complete.
