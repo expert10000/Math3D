@@ -397,3 +397,68 @@ saved seven-document/two-relation workspace backup. Its current project is retai
 Clean-checkout CI has not yet been claimed for this continuation. PRJ17 device/build/
 signature and installed-engine signoff, and PRJ18 the combined cross-module freeze,
 remain the next explicit gates.
+
+## PRJ16 source starters and integration — October 2
+
+Implementation `bd5d8b1` adds **Projects → Starter workflow → Spline and Surface
+Lab / Curve Construction Study / Scene and Topology Study**. The three templates
+create 11 ordinary documents with independent identities, complete saved definitions
+and explicit construction/chart lineage. Their preview/cancel path does not replace
+or write the current project. Opening and selecting a supported document exposes
+**Edit source definition**, measured samples/incidence, apply and document undo/redo.
+
+The updated local contracts passed 108 tests in 15 files, plus 41 existing mobile
+model regressions in eight files and portable fixture TypeScript. The continuation
+audit passed 477 tests in 71 files with all 53 mapped evidence rows executed.
+All 22 Projects Electron journeys passed in one complete run. All 12 distinct
+Chromium journeys passed across the complete run and final starter reruns in both
+locale/time-zone configurations: the first run passed 11, then the repaired starter
+helper passed both configurations. The helper now accommodates document navigation
+closing Projects automatically. Three separate Playwright missing-worker/timeout/
+malformed-error journeys passed. Main/renderer/E2E/mobile TypeScript, production
+main/renderer/web builds and dependency boundaries (991 modules / 1929 dependencies)
+passed; the existing large-chunk build warning remains. The 390-pixel source editor
+screenshot was visually inspected.
+
+Local installed-engine probes also passed using the existing Python environment
+(Python 3.11.7, VTK 9.7.0, CGAL Python bindings 6.0.1.post202410241521, NumPy 2.4.6,
+SciPy 1.17.1, SymPy 1.14.0):
+
+- `scripts/vtk-mesh-analysis-verification.py`: unit-sphere Gaussian median
+  1.0009318 and absolute mean median 1.0006357 over 5954 samples; equilateral
+  triangle aspect 1 and minimum angle 60 degrees.
+- `scripts/cgal-boolean-real-mesh-smoke.py`: rejected the open Bunny before Boolean
+  execution; Armadillo intersection and Benchy difference passed the native CGAL
+  mesh smoke checks (73315/146626 and 112910/225840 output vertices/faces).
+- `scripts/cgal-geodesic-verification.py`: plane, cylinder, sphere, graph-versus-surface,
+  disconnected endpoints and large-mesh checks passed. Automatic helper discovery
+  initially failed in this checkout. The existing helper was then supplied explicitly
+  through `MATH3D_CGAL_GEODESIC_EXE`; its SHA-256 is
+  `df51bdc744586acf313ca36f9ef798c0fda690526a407858f28fa1221a80e7cb`.
+
+These are local reference probes, not complete installed-engine project-integration
+or signed-build evidence. Physical mobile picker/share/upgrade/restart, Sage and the
+remaining PRJ17/PRJ18 acceptance gates are still open. The development app remains
+running with the new starter selector visible and its seven-document/two-relation
+project backup retained.
+
+Clean-checkout [Projects CI](https://github.com/expert10000/Math3D/actions/runs/36995307251)
+passed on `bd5d8b1`: all 477 audit tests, 108 project contracts, 41 mobile-model
+regressions, **22 Electron journeys in one run**, **12 browser journeys in one run**,
+typechecks/builds, dependency boundaries (991 modules / 2268 dependencies), the
+released Graph test pack and embedded Android bundle. [PR #18](https://github.com/expert10000/Math3D/pull/18)
+merged into main at `b76ec6d`.
+
+The same implementation also passed
+[general build/worker CI](https://github.com/expert10000/Math3D/actions/runs/36995307228)
+(1612 renderer tests in 287 files, 46 fast Playwright journeys and 11 smoke journeys),
+[Graph professional acceptance](https://github.com/expert10000/Math3D/actions/runs/36995307265)
+(33 desktop and 62 browser journeys),
+[Gallery Quality](https://github.com/expert10000/Math3D/actions/runs/36995307347), and
+[Android APK/emulator acceptance](https://github.com/expert10000/Math3D/actions/runs/36995307314).
+Emulator results do not establish physical-device or signed-release signoff.
+
+Cloudflare `math3d` and `math3d-app` still reported failed builds on `bd5d8b1`, as
+they do on base main `243bae5`; `math3ds` passed. Dashboard-only summaries provide
+no build failure diagnostics. These existing deployment failures remain separate
+from the passing application software gates.

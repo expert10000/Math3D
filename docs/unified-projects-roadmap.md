@@ -30,8 +30,11 @@ at `f7f401f`, with implementation `e8adffe` and final acceptance fix `805542c`.
 Its [pull-request Projects CI](https://github.com/expert10000/Math3D/actions/runs/36937980364)
 and [branch Projects CI](https://github.com/expert10000/Math3D/actions/runs/36937974514)
 passed, including all 19 Electron/six browser journeys and the embedded Android bundle.
-PRJ16 is delivered on `codex/projects-prj16`, starting from main `243bae5`, for
-its published desktop/web qualification matrix. The inventory explicitly retains
+PRJ16 merged at `b76ec6d` through [PR #18](https://github.com/expert10000/Math3D/pull/18),
+starting from main `243bae5`, for its published desktop/web qualification matrix.
+Its clean-checkout Projects CI passed all 22 Electron and 12 browser journeys,
+477 audit tests, the released Graph test pack and embedded Android bundle.
+The inventory explicitly retains
 preview-only formats whose source or native evaluation contract is incomplete. On October 1 this
 checkout integrated published 1.6.0 source tag `8e30e85190599467e3839e1b1e4b5b9bc708916f`
 and final release-maintainer `main` commit `a6a4f197df343630c26f58ecfd4a685b5f3230ab`
@@ -59,7 +62,7 @@ PRJ06/PRJ08 retain the obligations below and in
 | PRJ13 | Native Topology/Complex restoration with retained identity, source, branch/contours and replay history | Implemented for bounded fundamental diagrams and the supported Function Explorer subset; software acceptance below |
 | PRJ14 | Native scalar Volume restoration, source/grid edits, history and restart | Merged at `486ff17`; main software CI passed for qualified self-contained analytic/custom recipes |
 | PRJ15 | Verified Mesh/Volume/Graph source-resource packages and native Mesh restoration | Merged at `f7f401f` through PR #17; complete Projects software CI passed for bounded, verified source buffers and native Mesh history |
-| PRJ16 | Representation inventory and additional native source adapters | Delivered on `codex/projects-prj16` for the published qualification matrix: verified dense Volume; additional Curve/Surface source editors; scene constructions; CW/simplicial Topology; explicit unsupported previews |
+| PRJ16 | Representation inventory and additional native source adapters | Merged at `b76ec6d` through PR #18; verified dense Volume; additional Curve/Surface source editors; scene constructions; CW/simplicial Topology; three starter workflows; clean-checkout software acceptance passed |
 
 In the UI, use **Projects → Open saved project** to restore a compatible saved
 container, then select its document in the explorer or its module in main navigation.
