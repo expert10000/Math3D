@@ -313,7 +313,9 @@ the embedded Android bundle. The initial CI run exposed a whole-storage comparis
 racing unrelated workbook autosave; the corrected test still verifies every
 named-project payload, library entry, sidecar and backup remains byte-identical
 after a rejected same-ID import. PRJ12 software integration is complete.
-The subsequent PRJ13–PRJ15 sections record delivered work; PRJ17–PRJ18 remain the next implementation/acceptance sequence.
+The subsequent sections record PRJ13–PRJ18 implementation and qualified software
+acceptance. PRJ17 native signoff and PRJ18 combined native readiness remain open
+until current exact-build device observations exist.
 
 ## PRJ13 supported native restoration
 
@@ -491,4 +493,31 @@ The [acceptance record](unified-projects-acceptance.md) records the complete loc
 software run. Oriented/vector/SDF/mask/label Volume, additional Complex branch/covering
 semantics, incomplete dependent recipes and combined Geometry display forms remain
 preview-only in the inventory. PRJ17 exact device/installed-engine/signed-build
-acceptance and PRJ18 combined release readiness remain separate next milestones.
+acceptance and PRJ18 combined release readiness remain separate gates, detailed below.
+
+### PRJ17 / PRJ18 qualified acceptance continuation
+
+PRJ17 now has a real installed-Sage acceptance job, using the ordinary structured
+Complex and canonical Topology adapters through F05 execution/F06 publication.
+Installed testing exposed and repaired the unreachable integer-homology handler,
+the additive homology API mismatch and incomplete Complex pole/series output.
+The adapter rejects ignored assumptions and invalid finite inputs; numeric AST
+constants and evaluation points retain exact decimal rational values. Actual Sage
+version, tested checkout, container and exported project/matrix fingerprints are
+captured by the gate. Existing VTK/CGAL reference probes remain separately qualified.
+
+PRJ18 combines all eight enabled desktop/web adapters into one 17-document study
+with three source-generation dependencies and verified Graph/Mesh/Volume resources.
+It reuses all three PRJ16 source starters and the Graph data-gap preset. The real
+Electron freeze passed independent-profile import, process restart and restored
+history; Chromium passed its independent-profile/reload journey in both configured
+locale/time-zone combinations. Resource coordinates, scalar samples, histories,
+metadata, generations and historical analysis qualification are checked explicitly.
+The supported mobile Graph/Curve/Surface slice is exercised through its real model;
+the complete desktop replay container remains rejected by native mobile preflight.
+
+The [host qualification and native test pack](projects-host-qualification.md)
+publishes the supported-host matrix and reconciles PRJ06/PRJ08 obligations.
+**PRJ17 physical picker/share/upgrade/restart evidence and PRJ18 combined native
+release readiness are still pending.** A signed internal Android candidate is
+prepared; model/emulator runs and historical 1.6.0 signoff do not close that gate.

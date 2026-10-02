@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { existsSync, readFileSync } from "node:fs";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
-import { projectFreezeFixture, inspectFreezePackage, editFreezeProject, freezeControls, checkFreezeHistory } from "./helpers/projectFreeze";
+import { projectFreezeFixture, inspectFreezePackage, editFreezeProject, freezeControls, checkFreezeHistory, checkFreezeResources } from "./helpers/projectFreeze";
 import { transferNamedProjectThroughMobile } from "./helpers/namedProjectMobileTransfer";
 
 test("PRJ18 freezes all eight modules, resources and histories across independent hosts and cold restart", async () => {
@@ -12,6 +12,7 @@ test("PRJ18 freezes all eight modules, resources and histories across independen
     await ctx.app.evaluate(({ session }, path) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(path)), filename);
     await ctx.page.getByTestId("project-export-resources").click(); await expect.poll(() => existsSync(filename)).toBe(true);
     const raw = readFileSync(filename, "utf8"), snapshot = inspectFreezePackage(raw);
+    checkFreezeResources(raw);
     expect(snapshot.project.workspace.entries.map((entry: any) => entry.expected)).toEqual(saved.workspace.entries.map((entry: any) => entry.expected));
     expect([...new Set(saved.workspace.entries.map((entry: any) => entry.module))].sort()).toEqual(["complex","curve","geometry","graph2d","mesh","surface","topology","volume"]);
     const originalBytes = inspectFreezePackage(fixture.raw).resources;

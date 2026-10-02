@@ -15,6 +15,10 @@ report.testedAt = new Date().toISOString(); report.testBundleSha256 = createHash
 report.containerImage = process.env.MATH3D_SAGE_IMAGE_ID || null;
 mkdirSync(resolve(root, "output/projects-integration"), { recursive: true });
 writeFileSync(resolve(root, "output/projects-integration/installed-sage.math3d.project.json"), `${report.projectJson}\n`);
+const boundaries = JSON.stringify(report.boundaryMatrices, null, 2);
+writeFileSync(resolve(root, "output/projects-integration/installed-sage.boundary-matrices.json"), `${boundaries}\n`);
+report.boundaryMatricesSha256 = createHash("sha256").update(boundaries).digest("hex");
+delete report.boundaryMatrices;
 report.projectSha256 = createHash("sha256").update(report.projectJson).digest("hex");
 delete report.projectJson;
 writeFileSync(resolve(root, "output/projects-integration/installed-sage-evidence.json"), `${JSON.stringify(report, null, 2)}\n`);

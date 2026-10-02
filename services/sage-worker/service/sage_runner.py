@@ -3,6 +3,7 @@ import math
 import re
 import sys
 import time
+from fractions import Fraction
 from pathlib import Path
 
 from sage.all import ChainComplex, GF, I, QQ, SR, ZZ, PolynomialRing, cos, e, exp, gcd, inverse_mod, latex, log, matrix, pi, sin, solve, sqrt, tan, var
@@ -360,7 +361,8 @@ def _complex_ast(node, z, depth=0):
         value = node.get("value")
         if type(value) not in (int, float) or not math.isfinite(value):
             raise SageRequestError("Complex AST number must be finite.")
-        return SR(str(value))
+        fraction = Fraction(str(value))
+        return QQ(fraction.numerator) / QQ(fraction.denominator)
     if node_type == "constant" and set(node) == {"type", "name"}:
         constants = {"i": I, "pi": pi, "e": e}
         if node.get("name") not in constants:
@@ -399,7 +401,8 @@ def _complex_point(point):
     im_value = point.get("im")
     if type(re_value) not in (int, float) or type(im_value) not in (int, float) or not math.isfinite(re_value) or not math.isfinite(im_value):
         raise SageRequestError("Complex point coordinates must be finite numbers.")
-    return SR(str(re_value)) + I * SR(str(im_value))
+    real, imaginary = Fraction(str(re_value)), Fraction(str(im_value))
+    return QQ(real.numerator) / QQ(real.denominator) + I * QQ(imaginary.numerator) / QQ(imaginary.denominator)
 
 
 def _complex_analysis(operation, params):
@@ -430,7 +433,7 @@ def _complex_analysis(operation, params):
         value = expr.residue(z == point)
     elif requested == "series":
         order = params.get("order")
-        if not isinstance(order, int) or order < 1 or order > 32:
+        if type(order) is not int or order < 1 or order > 32:
             raise SageRequestError("Series order must be an integer from 1 to 32.")
         value = expr.series(z == point, order)
         series_terms = [{"power": int(power), "coefficient": str(coefficient)} for coefficient, power in value.coefficients()]

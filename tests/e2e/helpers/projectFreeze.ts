@@ -5,7 +5,17 @@ const { outputFiles } = require(resolve("renderer/node_modules/esbuild")).buildS
   alias: { "@math3d/core": resolve("packages/core/src/index.ts"), "@math3d/kernel": resolve("packages/kernel/src/index.ts") } });
 const Module = require("node:module").Module, compiled = new Module(filename); compiled._compile(outputFiles[0].text, filename);
 export const projectFreezeFixture: () => { project: any; raw: string; docs: any[]; mobile: any; targets: Record<string, string> } = compiled.exports.projectFreezeFixture;
-export const inspectFreezePackage: (raw: string) => { project: any; docs: any[]; resources: any[] } = compiled.exports.inspectFreezePackage;
+export const inspectFreezePackage: (raw: string) => { project: any; docs: any[]; resources: any[]; meshes: any[]; volumes: any[] } = compiled.exports.inspectFreezePackage;
+
+export const checkFreezeResources = (raw: string) => {
+  const snapshot = inspectFreezePackage(raw);
+  expect(snapshot.meshes[0].positions).toEqual([3,0,0,4,0,0,3,1,0]);
+  expect(snapshot.meshes[0].normals).toEqual([0,0,1,0,0,1,0,0,1]);
+  expect(snapshot.meshes[0].uvs).toEqual([0,0,1,0,0,1]);
+  expect(snapshot.meshes[1].positions).toEqual([10,0,0,11,0,0,10,1,0]);
+  expect(snapshot.volumes.map((volume) => volume.values)).toEqual([[1,2,3,4,5,6,7,8],[11,12,13,14,15,16,17,18]]);
+  expect(snapshot.volumes[0].origin).toEqual([20,30,40]);
+};
 
 export const freezeControls = (page: Page) => {
   const panel = page.getByTestId("project-explorer-panel");

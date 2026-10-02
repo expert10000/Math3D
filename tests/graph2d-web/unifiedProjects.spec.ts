@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { runNamedProjectRoundTrip } from "../e2e/helpers/namedProjectRoundTrip";
 import { inspectMeshPackage, meshResourceFixture, pointResourceFixture, scalarVolumeResourceFixture, inspectScalarVolumePackage } from "../e2e/helpers/meshProjectResources";
-import { projectFreezeFixture, inspectFreezePackage, editFreezeProject, freezeControls, checkFreezeHistory } from "../e2e/helpers/projectFreeze";
+import { projectFreezeFixture, inspectFreezePackage, editFreezeProject, freezeControls, checkFreezeHistory, checkFreezeResources } from "../e2e/helpers/projectFreeze";
 
 test("PRJ18 browser freezes all eight modules and resources across fresh profiles and reload", async ({ page, browser }) => {
   test.setTimeout(600_000);
@@ -13,6 +13,7 @@ test("PRJ18 browser freezes all eight modules and resources across fresh profile
   const saved = await editFreezeProject(page, fixture), download = page.waitForEvent("download");
   await page.getByTestId("project-export-resources").click();
   const raw = readFileSync((await (await download).path())!, "utf8"), snapshot = inspectFreezePackage(raw);
+  checkFreezeResources(raw);
   expect(snapshot.project.workspace.entries.map((entry: any) => entry.expected)).toEqual(saved.workspace.entries.map((entry: any) => entry.expected));
   for (const sidecar of inspectFreezePackage(fixture.raw).resources.filter((item) => item.kind !== "mesh-buffers")) expect(snapshot.resources).toContainEqual(sidecar);
   const destinationOptions = { baseURL: new URL(page.url()).origin,

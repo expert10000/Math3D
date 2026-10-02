@@ -3,6 +3,7 @@ import { meshResourceFixture, scalarVolumeResourceFixture, pointResourceFixture 
 import { acceptanceComplexDocument } from "./complexSource";
 import { parseProjectPackage, exportProjectPackage, VerifiedProjectResources } from "../../../renderer/src/projects/projectResources";
 import { verifyMixedWorkspaceReplay } from "../../../renderer/src/kernel/mixedWorkspaceReplay";
+import { buildNativeVolumeDataset } from "../../../renderer/src/projects/nativeVolumeRestore";
 
 /** Real built-in recipes plus checked Mesh, scalar Volume and Graph table resources. */
 export const projectFreezeFixture = () => {
@@ -39,5 +40,13 @@ export const projectFreezeFixture = () => {
 export const inspectFreezePackage = (raw: string) => {
   const { project, resources } = parseProjectPackage(raw);
   const docs = [...verifyMixedWorkspaceReplay(project.workspace).values()];
-  return { project, docs, resources: resources.sidecars() };
+  const meshStore = resources.meshStore(project);
+  const meshes = docs.filter((document) => document.format === "math3d.mesh-document").map((document: any) => {
+    const buffers = meshStore.resolve(document.source.resource)!;
+    return { documentId: document.identity.id, positions: [...buffers.positions], normals: [...buffers.normals ?? []], uvs: [...buffers.uvs ?? []] };
+  });
+  const volumes = docs.filter((document) => document.format === "math3d.volume-document").map((document: any) => ({
+    documentId: document.identity.id, values: [...buildNativeVolumeDataset(document, resources).grid.scalars], origin: document.source.spatial.origin,
+  }));
+  return { project, docs, resources: resources.sidecars(), meshes, volumes };
 };

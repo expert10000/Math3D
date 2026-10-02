@@ -10,6 +10,7 @@ import {
   type ComplexSageOperation, type ScientificSourceGeneration,
   createMath3DProject, createMixedWorkspaceDocument, serializeMath3DProject, parseMath3DProject,
   type AnalysisResultEnvelope,
+  structuralHash, canonicalJsonByteLength,
 } from "@math3d/core";
 import { createInProcessScientificJobService } from "@math3d/kernel";
 import { createComplexSageJobAdapter } from "../../../renderer/src/math/complexSageJob";
@@ -27,6 +28,8 @@ export async function runInstalledSageAcceptance(baseUrl: string) {
   const checks: { name: string; engineVersion?: string; result?: unknown }[] = [];
   const documents: Array<Parameters<typeof createMixedWorkspaceDocument>[0]["entries"][number]> = [];
   const results: AnalysisResultEnvelope[] = [];
+  const artifacts: Array<Parameters<typeof createMixedWorkspaceDocument>[0]["artifacts"][number]> = [];
+  const boundaryMatrices: { artifactId: string; payload: unknown }[] = [];
   const execute = async (request: SageRunRequest): Promise<SageRunResponse> => {
     const response = await fetch(`${baseUrl}/run`, { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request), signal: AbortSignal.timeout(45_000) });
@@ -36,8 +39,9 @@ export async function runInstalledSageAcceptance(baseUrl: string) {
   const health = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(10_000) }).then((response) => response.json()) as any;
   assert.equal(health.available, true);
   for (const operation of ["sage.complex.analyze", "sage.topology.integer_homology"]) assert.ok(health.operations.includes(operation));
-  const cases: { operation: ComplexSageOperation; expression: string; verify: (output: any) => void }[] = [
+  const cases: { name?: string; operation: ComplexSageOperation; expression: string; verify: (output: any) => void }[] = [
     { operation: "derivative", expression: "z*z", verify: (output) => assert.equal(output.value.replace(/\s/g, ""), "2*z") },
+    { name: "decimal-derivative", operation: "derivative", expression: "0.1*z", verify: (output) => assert.equal(output.value, "1/10") },
     { operation: "limit", expression: "sin(z)/z", verify: (output) => assert.equal(output.value, "1") },
     { operation: "residue", expression: "1/z", verify: (output) => assert.equal(output.value, "1") },
     { operation: "poles", expression: "1/(z*z)", verify: (output) => assert.deepEqual(output.points, [{ value: "0", order: 2, classification: "pole" }]) },
@@ -56,7 +60,7 @@ export async function runInstalledSageAcceptance(baseUrl: string) {
     assert.equal(published.status, "exact"); assert.equal(published.provenance.engine.name, "SageMath");
     documents.push({ module: "complex", checkpoint: document, expected: document.identity, replay: null });
     results.push(published);
-    checks.push({ name: `complex/${entry.operation}`, engineVersion: published.provenance.engine.version, result: outcome.output });
+    checks.push({ name: `complex/${entry.name ?? entry.operation}`, engineVersion: published.provenance.engine.version, result: outcome.output });
     console.log(`PASS installed Sage complex/${entry.operation}`);
   }
   for (const entry of corpus.entries.filter((entry) => entry.expected.homology.status === "exact")) {
@@ -83,6 +87,8 @@ export async function runInstalledSageAcceptance(baseUrl: string) {
     assert.deepEqual((outcome.output as any).groups.map((group: any) => group.notation), entry.expected.homology.integerGroups, entry.id);
     documents.push({ module: "topology", checkpoint: document, expected: document.identity, replay: null });
     results.push(published);
+    artifacts.push({ handle: boundary.handle, contentHash: structuralHash(boundary.payload), byteLength: canonicalJsonByteLength(boundary.payload) });
+    boundaryMatrices.push({ artifactId: boundary.handle.artifactId, payload: boundary.payload });
     checks.push({ name: `topology/${entry.id}`, engineVersion: published.provenance.engine.version, result: outcome.output });
     console.log(`PASS installed Sage topology/${entry.id}`);
   }
@@ -110,12 +116,13 @@ export async function runInstalledSageAcceptance(baseUrl: string) {
   const invalid = await execute({ operation: "sage.complex.analyze", params: { ...payload, script: "unsupported" } });
   assert.equal(invalid.success, false); checks.push({ name: "invalid-payload-rejected" });
   const project = createMath3DProject(createMixedWorkspaceDocument({ entries: documents,
-    activeDocumentIds: documents.map((entry) => entry.expected.id), results, relations: [], artifacts: [], constructions: [], committedSelection: null }),
+    activeDocumentIds: documents.map((entry) => entry.expected.id), results, relations: [], artifacts, constructions: [], committedSelection: null }),
     { title: "Installed Sage acceptance results", stableKey: "prj17-installed-sage-results" });
   const projectJson = serializeMath3DProject(project), reopened = parseMath3DProject(projectJson);
   assert.deepEqual(reopened.workspace.results, results);
+  assert.deepEqual(reopened.workspace.artifacts, artifacts);
   assert.equal(reopened.workspace.results.length, cases.length + corpus.entries.filter((entry) => entry.expected.homology.status === "exact").length);
   checks.push({ name: "published-results-project-round-trip", result: { projectId: reopened.identity.id, resultCount: results.length } });
-  return { format: "math3d.projects-installed-sage-evidence.v1", checks, projectJson,
+  return { format: "math3d.projects-installed-sage-evidence.v1", checks, projectJson, boundaryMatrices,
     engineVersions: [...new Set(checks.flatMap((check) => check.engineVersion ? [check.engineVersion] : []))] };
 }
