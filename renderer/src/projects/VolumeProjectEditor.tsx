@@ -25,7 +25,7 @@ export const VolumeProjectEditor = ({ adapter, onRestore }: { adapter: VolumeDoc
   return <div data-testid="project-volume-editor" style={{ padding: "6px 14px", display: "grid", gap: 6, font: "12px/1.4 system-ui", background: "#f8fafc", borderBottom: "1px solid #cbd5e1" }}>
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
       <span style={{ overflowWrap: "anywhere" }}>{document.metadata.title} · revision {document.identity.revision}</span>
-      <label>F(x,y,z) <input data-testid="project-volume-expression" value={expression} onChange={(event) => setExpression(event.target.value)} /></label>
+      {seed.kind === "recipe" ? <label>F(x,y,z) <input data-testid="project-volume-expression" value={expression} onChange={(event) => setExpression(event.target.value)} /></label> : <span data-testid="project-volume-payload">Saved scalar payload · {document.source.payload!.scalarType} · {document.source.payload!.byteLength} bytes</span>}
       <button type="button" style={style} data-testid="project-volume-apply" onClick={apply}>Apply source</button>
       <button type="button" style={style} data-testid="project-volume-undo" disabled={!adapter.history().undoDepth} onClick={() => { adapter.undo(); onRestore(); }}>Undo document</button>
       <button type="button" style={style} data-testid="project-volume-redo" disabled={!adapter.history().redoDepth} onClick={() => { adapter.redo(); onRestore(); }}>Redo document</button>
@@ -33,9 +33,9 @@ export const VolumeProjectEditor = ({ adapter, onRestore }: { adapter: VolumeDoc
     <details>
       <summary>Parameters and grid · {seed.spatial.dimensions.join(" × ")} · {seed.spatial.centering}</summary>
       <div style={{ width: "min(520px, 85vw)", maxHeight: 180, overflow: "auto", display: "grid", gap: 6 }}>
-        <label>Recipe parameters <textarea data-testid="project-volume-parameters" rows={3} value={parameters} onChange={(event) => setParameters(event.target.value)} style={textStyle} /></label>
+        {seed.kind === "recipe" && <label>Recipe parameters <textarea data-testid="project-volume-parameters" rows={3} value={parameters} onChange={(event) => setParameters(event.target.value)} style={textStyle} /></label>}
         <label>Grid and units <textarea data-testid="project-volume-spatial" rows={6} value={spatial} onChange={(event) => setSpatial(event.target.value)} style={textStyle} /></label>
-        <span>Apply source commits the complete recipe and grid. Projects → Save project keeps edits and history. Sampling uses the saved origin, spacing and centering.</span>
+        <span>{seed.kind === "payload" ? "Apply source edits grid placement, centering and units; dimensions and scalar bytes remain fixed. Export with resources transfers the original samples." : "Apply source commits the complete recipe and grid. Sampling uses the saved origin, spacing and centering."} Projects → Save project keeps edits and history.</span>
       </div>
     </details>
     {error && <span role="alert">{error}</span>}

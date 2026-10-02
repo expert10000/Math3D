@@ -546,6 +546,27 @@ const asSplinePatchId = (surfaceId: ParamSurfaceId): SplinePatchId | null => {
 
 export const isSplinePatchSurfaceId = (surfaceId: ParamSurfaceId): boolean => SPLINE_PATCH_IDS.has(surfaceId);
 
+/** Saved project sources must never take the preset editor's fallback path. */
+export const validateSavedSplineSurfaceSettings = (family: string, settings: SplineSurfaceSettings): void => {
+  if (!["bezierSurface", "bSplineSurface", "nurbsSurface"].includes(family) || !settings || typeof settings !== "object") throw new TypeError("Unsupported saved spline patch.");
+  const nurbs = family === "nurbsSurface";
+  const grid = parseControlGridText(family === "bezierSurface" ? settings.bezierControlGridText : nurbs ? settings.nurbsControlGridText : settings.bSplineControlGridText);
+  if (!grid || grid.length > 32 || grid[0].length > 32) throw new TypeError("A complete finite saved control grid of at most 32 by 32 points is required.");
+  if (family === "bezierSurface") return;
+  const degrees = nurbs ? [settings.nurbsDegreeU, settings.nurbsDegreeV] : [settings.bSplineDegreeU, settings.bSplineDegreeV];
+  const texts = nurbs ? [settings.nurbsKnotUText, settings.nurbsKnotVText] : [settings.bSplineKnotUText, settings.bSplineKnotVText];
+  [grid.length, grid[0].length].forEach((count, axis) => {
+    const degree = degrees[axis];
+    if (!Number.isSafeInteger(degree) || degree! < 1 || degree! >= count) throw new TypeError("Saved spline degree is invalid.");
+    const knots = parseKnotListText(texts[axis]);
+    if (!knots || knots.length !== count + degree! + 1 || knots.some((k, i) => !Number.isFinite(k) || i > 0 && k < knots[i - 1]) || knots[degree!] >= knots[count]) throw new TypeError("Saved spline knots are invalid.");
+  });
+  if (nurbs) {
+    const weights = parseWeightGridText(settings.nurbsWeightsText);
+    if (!weights || !normalizeWeights(weights, grid.length, grid[0].length)) throw new TypeError("Saved positive NURBS weights are required.");
+  }
+};
+
 export const buildSplineSurfacePointEvaluator = (
   surfaceId: ParamSurfaceId,
   settings?: SplineSurfaceSettings

@@ -1,10 +1,108 @@
+import { additionalRepresentationFixture, exerciseAdditionalEditors, checkReopenedAdditionalHistory } from "./helpers/additionalProjectRepresentations";
+import { exerciseRepresentationStarters } from "./helpers/projectRepresentationStarters";
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 import { resolve } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import { runNamedProjectRoundTrip } from "./helpers/namedProjectRoundTrip";
-import { meshResourceFixture, inspectMeshPackage } from "./helpers/meshProjectResources";
+import { meshResourceFixture, inspectMeshPackage, scalarVolumeResourceFixture, inspectScalarVolumePackage } from "./helpers/meshProjectResources";
 const projectCore = require(resolve("packages/core/src/index.ts"));
+
+test("PRJ16 built-in source starters retain editing history across Electron restart", async () => {
+  test.setTimeout(240_000); let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const { originalDocument, saved } = await exerciseRepresentationStarters(ctx.page);
+    const exportPath = resolve(ctx.profileDir, "source-starter.json");
+    await ctx.app.evaluate(({ session }, savePath) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(savePath)), exportPath);
+    await ctx.page.getByTestId("project-export").click(); await expect.poll(() => existsSync(exportPath)).toBe(true);
+    expect(JSON.parse(readFileSync(exportPath, "utf8")).workspace).toEqual(saved.workspace);
+    const profile = ctx.profileDir; await ctx.app.close(); ctx = await launchSurfaceApp({}, profile);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel"); await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click();
+    await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await checkReopenedAdditionalHistory(page, originalDocument);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("PRJ16 additional source editors survive independent transfer and Electron restart", async () => {
+  test.setTimeout(240_000);let ctx:LaunchedSurfaceApp|null=null;
+  try {
+    const fixture=additionalRepresentationFixture();ctx=await launchSurfaceApp();await resetSurfaceAppState(ctx.page);
+    const {selected,saved}=await exerciseAdditionalEditors(ctx.page,fixture);
+    const exportPath=resolve(ctx.profileDir,"prj16-representations.json");
+    await ctx.app.evaluate(({session},savePath)=>session.defaultSession.once("will-download",(_event,item)=>item.setSavePath(savePath)),exportPath);
+    await ctx.page.getByTestId("project-export").click();await expect.poll(()=>existsSync(exportPath)).toBe(true);
+    const exported=readFileSync(exportPath,"utf8");expect(JSON.parse(exported).workspace).toEqual(saved.workspace);
+    await closeSurfaceApp(ctx);ctx=await launchSurfaceApp();await resetSurfaceAppState(ctx.page);
+    let page=ctx.page,panel=page.getByTestId("project-explorer-panel");await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-import-file").setInputFiles({name:"independent.json",mimeType:"application/json",buffer:Buffer.from(exported)});await expect(panel.getByTestId("project-import-open")).toBeEnabled();await panel.getByTestId("project-import-open").click();
+    await panel.getByTestId("project-save").click();await expect(panel.getByTestId("project-message")).toContainText("Saved");
+    expect((await page.evaluate(()=>JSON.parse(localStorage.getItem("math3d.project.v1")!))).workspace.entries.map((e:any)=>e.expected)).toEqual(saved.workspace.entries.map((e:any)=>e.expected));
+    const profile=ctx.profileDir;await ctx.app.close();ctx=await launchSurfaceApp({},profile);page=ctx.page;panel=page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();await panel.getByTestId("project-view-saved").click();await panel.getByTestId("project-restore-saved").click();await expect(panel.getByTestId("project-import-open")).toBeEnabled();await panel.getByTestId("project-import-open").click();
+    for(const document of selected)await checkReopenedAdditionalHistory(page,document);
+    await page.setViewportSize({width:390,height:844});await expect(page.getByTestId("project-source-editor")).toBeVisible();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true);
+  } finally {await closeSurfaceApp(ctx);}
+});
+
+test("PRJ16 restores verified scalar Volume bytes, grid edits and history across independent transfer and process restart", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    const fixture = scalarVolumeResourceFixture();
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    let page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    const show = async () => { if (!await panel.isVisible()) await page.getByTestId("projects-toggle").click(); };
+    const closePanel = async () => { if (await panel.isVisible()) await page.getByRole("button", { name: "Close project explorer" }).click(); };
+    const save = async () => { await show(); await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved"); return page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)); };
+    const importFile = async (raw: string) => { await show(); await panel.getByTestId("project-import-file").setInputFiles({ name: "scalar.resources.json", mimeType: "application/json", buffer: Buffer.from(raw) }); };
+    const range = async (expected: string) => { await closePanel(); await page.getByTestId("shared-inspector-tab-summary").click(); await expect(page.getByTestId("volume-details-card")).toContainText(expected); };
+    const exportResources = async (name: string) => {
+      await show(); const path = resolve(ctx!.profileDir, `prj16-${name}.json`);
+      await ctx!.app.evaluate(({ session }, savePath) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(savePath)), path);
+      await panel.getByTestId("project-export-resources").click(); await expect(panel.getByTestId("project-message")).toContainText("Exported project with verified");
+      await expect.poll(() => existsSync(path)).toBe(true); return readFileSync(path, "utf8");
+    };
+    await importFile(JSON.stringify(fixture.project)); await expect(panel.getByTestId("project-import-open")).toBeDisabled();
+    await importFile(fixture.raw); await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await expect(page.getByTestId("project-volume-payload")).toContainText("float32"); await range("1 … 8");
+    let saved = await save(); expect(saved.workspace.entries.map((entry: any) => entry.expected)).toEqual(fixture.docs.map((document) => document.identity));
+    const original = inspectScalarVolumePackage(await exportResources("unchanged"));
+    expect(original.map((entry) => entry.document.source)).toEqual(fixture.docs.map((document) => document.source));
+    await closePanel(); await page.getByTestId("project-volume-editor").locator("summary").click();
+    const changed = { ...fixture.docs[0].source.spatial, origin: [20,30,40], valueUnits: "temperature" };
+    await page.getByTestId("project-volume-spatial").fill(JSON.stringify(changed)); await page.getByTestId("project-volume-apply").click();
+    await page.getByTestId("project-volume-undo").click(); await page.getByTestId("project-volume-redo").click(); await range("1 … 8");
+    saved = await save(); const generations = saved.workspace.entries.map((entry: any) => entry.expected);
+    expect(saved.workspace.results).toEqual([fixture.result]);
+    await panel.getByTestId(`project-inspect-${fixture.docs[0].identity.id}`).click(); await expect(panel.getByTestId("project-result-status-prj16-historical")).toContainText("stale");
+    await panel.getByTestId(`project-open-${fixture.docs[1].identity.id}`).click(); await range("11 … 18");
+    const exported = await exportResources("edited"), inspected = inspectScalarVolumePackage(exported);
+    expect(inspected[0]!.document.source.spatial).toEqual(changed); expect(inspected.map((entry) => entry.bytes)).toEqual(original.map((entry) => entry.bytes));
+    const protectedJson = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
+    const corrupt = JSON.parse(exported); corrupt.resources[0].data = "AAAA" + corrupt.resources[0].data.slice(4);
+    await importFile(JSON.stringify(corrupt)); await expect(panel.getByTestId("project-message")).toContainText("rejected");
+    expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(protectedJson);
+    await closeSurfaceApp(ctx); ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page); page = ctx.page; panel = page.getByTestId("project-explorer-panel");
+    await importFile(exported); await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    saved = await save(); expect(saved.workspace.entries.map((entry: any) => entry.expected)).toEqual(generations);
+    const profile = ctx.profileDir; await ctx.app.close(); ctx = await launchSurfaceApp({}, profile); page = ctx.page; panel = page.getByTestId("project-explorer-panel");
+    await show(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click(); await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    saved = await save(); expect(saved.workspace.entries.map((entry: any) => entry.expected)).toEqual(generations);
+    await closePanel(); await page.getByTestId("project-volume-editor").locator("summary").click();
+    expect(JSON.parse(await page.getByTestId("project-volume-spatial").inputValue())).toEqual(changed);
+    await page.getByTestId("project-volume-undo").click(); expect(JSON.parse(await page.getByTestId("project-volume-spatial").inputValue())).toEqual(fixture.docs[0].source.spatial);
+    await page.getByTestId("project-volume-redo").click();
+    await page.getByTestId("project-volume-spatial").fill(JSON.stringify({ ...changed, dimensions: [3,2,2] })); await page.getByTestId("project-volume-apply").click(); await expect(page.getByRole("alert")).toContainText("fixed");
+    await page.getByTestId("project-volume-spatial").fill(JSON.stringify({ ...changed, origin: [21,30,40] })); await page.getByTestId("project-volume-apply").click();
+    const continued = inspectScalarVolumePackage(await exportResources("continued")); expect(continued[0]!.document.source.spatial.origin).toEqual([21,30,40]);
+    expect(continued.map((entry) => entry.bytes)).toEqual(original.map((entry) => entry.bytes));
+    await closePanel(); await page.setViewportSize({ width: 390, height: 844 });
+    const bounds = await page.getByTestId("project-volume-editor").boundingBox(); expect(bounds!.width).toBeLessThanOrEqual(391); expect(bounds!.height).toBeLessThan(422);
+    await page.getByTestId("project-volume-editor").screenshot({ path: test.info().outputPath("prj16-dense-volume-phone.png") });
+  } finally { await closeSurfaceApp(ctx); }
+});
 
 
 
@@ -506,9 +604,17 @@ test("PRJ06 exports, previews, cancels and opens supported imports while retaini
     const before = await page.evaluate(() => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.startsWith("math3d.project"))));
     await panel.getByTestId("project-import-file").setInputFiles(exportedPath);
     await expect(panel.getByTestId("project-import-preview")).toContainText("replay verified");
-    await expect(panel.getByTestId("project-import-open")).toBeDisabled();
+    // PRJ16 qualifies the default implicit Surface; preview still performs no writes.
+    await expect(panel.getByTestId("project-import-open")).toBeEnabled();
     expect(await page.evaluate(() => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.startsWith("math3d.project"))))).toEqual(before);
     await panel.getByTestId("project-import-cancel").click(); await expect(panel.getByTestId("project-import-preview")).toHaveCount(0);
+    const originalVolume=exported.workspace.entries.find((entry:any)=>entry.module==="volume").checkpoint;
+    const oriented=core.createVolumeDocument({stableKey:"prj16-unqualified-direction",source:{...originalVolume.source,spatial:{...originalVolume.source.spatial,direction:[0,-1,0,1,0,0,0,0,1]}}});
+    const unqualified=core.createMath3DProject(core.createMixedWorkspaceDocument({...exported.workspace,entries:[...exported.workspace.entries,{module:"volume",checkpoint:oriented,expected:oriented.identity,replay:null}]}),{stableKey:"prj16-unqualified-import"});
+    await panel.getByTestId("project-import-file").setInputFiles({name:"oriented-preview.json",mimeType:"application/json",buffer:Buffer.from(core.serializeMath3DProject(unqualified))});
+    await expect(panel.getByTestId("project-import-open")).toBeDisabled();
+    expect(await page.evaluate(() => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.startsWith("math3d.project"))))).toEqual(before);
+    await panel.getByTestId("project-import-cancel").click();
     const future = { ...exported, schemaVersion: 99 };
     await panel.getByTestId("project-import-file").setInputFiles({ name: "future.project.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(future)) });
     await expect(panel.getByTestId("project-message")).toContainText("Project import rejected");

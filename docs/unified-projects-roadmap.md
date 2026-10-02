@@ -12,8 +12,8 @@ workspaces and mobile has a library. Desktop opening now restores the supported
 Graph/promotion workflows, independent literal Curve and nonperiodic parametric Surface sources,
 procedural Geometry with bounded live-derived constructions, fundamental-diagram
 Topology, supported Complex Function Explorer sources and self-contained scalar
-Volume recipes, plus qualified resource-backed Mesh sources. Other source types remain saved previews until their native
-editor adapters pass round-trip acceptance.
+Volume recipes, plus qualified resource-backed Mesh sources. PRJ16 adds verified dense scalar Volume samples, additional Curve/Surface source editors, scene constructions and finite Topology sources. Other source types
+remain saved previews until their native editor adapters pass round-trip acceptance.
 
 ## Current delivery status (2026-10-02)
 
@@ -30,8 +30,9 @@ at `f7f401f`, with implementation `e8adffe` and final acceptance fix `805542c`.
 Its [pull-request Projects CI](https://github.com/expert10000/Math3D/actions/runs/36937980364)
 and [branch Projects CI](https://github.com/expert10000/Math3D/actions/runs/36937974514)
 passed, including all 19 Electron/six browser journeys and the embedded Android bundle.
-PRJ16 is the next delivery. Development can continue
-on `codex/projects-native-restoration`. On October 1 this
+PRJ16 is delivered on `codex/projects-prj16`, starting from main `243bae5`, for
+its published desktop/web qualification matrix. The inventory explicitly retains
+preview-only formats whose source or native evaluation contract is incomplete. On October 1 this
 checkout integrated published 1.6.0 source tag `8e30e85190599467e3839e1b1e4b5b9bc708916f`
 and final release-maintainer `main` commit `a6a4f197df343630c26f58ecfd4a685b5f3230ab`
 with merge `b180ed7fa47797104b4361dbf67aaa157373de15`. This preserves the
@@ -58,6 +59,7 @@ PRJ06/PRJ08 retain the obligations below and in
 | PRJ13 | Native Topology/Complex restoration with retained identity, source, branch/contours and replay history | Implemented for bounded fundamental diagrams and the supported Function Explorer subset; software acceptance below |
 | PRJ14 | Native scalar Volume restoration, source/grid edits, history and restart | Merged at `486ff17`; main software CI passed for qualified self-contained analytic/custom recipes |
 | PRJ15 | Verified Mesh/Volume/Graph source-resource packages and native Mesh restoration | Merged at `f7f401f` through PR #17; complete Projects software CI passed for bounded, verified source buffers and native Mesh history |
+| PRJ16 | Representation inventory and additional native source adapters | Delivered on `codex/projects-prj16` for the published qualification matrix: verified dense Volume; additional Curve/Surface source editors; scene constructions; CW/simplicial Topology; explicit unsupported previews |
 
 In the UI, use **Projects → Open saved project** to restore a compatible saved
 container, then select its document in the explorer or its module in main navigation.
@@ -280,7 +282,7 @@ activation and leave source generation unchanged on open.
 | 1 | PRJ13: Topology and Complex native restoration | Delivered for fundamental diagrams and supported Function Explorer sources; existing command adapters retain source, branch/contour choices, results and provenance | Seven source/replay contracts and a real UI journey with two documents of each module, unchanged opening, edit, undo/redo, save, process restart/reopen, branch/contour edits and invalid-contour rollback |
 | 2 | PRJ14: Volume restoration | Delivered for qualified analytic/custom scalar recipes, retaining spatial metadata and per-document history; source bytes transfer through PRJ15; additional samplers require PRJ16 | Six source/replay contracts and two distinct Volume documents in Electron: actual sample values, unchanged open/save, source/grid edit, undo/redo, process restart, continued editing, stale provenance and resource rejection |
 | 3 | PRJ15: Verified resource transfer and Mesh restoration | Delivered: source-resource packages and transactional archive; native Mesh coordinate edits/history/selection; imported Volume bytes remain independently qualified | Byte/checksum/shape/ownership validation, historical-resource availability, corrupt/missing sidecars, storage rollback, independent-host transfer and real process restart |
-| 4 | PRJ16: Additional source representations | Add one explicit Curve/Surface/Geometry host adapter at a time; keep incompatible representations as previews | A representation inventory with source-preserving restore/edit/history/save/replay evidence for each enabled row |
+| 4 | PRJ16: Additional source representations | Delivered for the qualified source matrix: dense Volume, sampled/dependent/spline Curve, additional Surface forms, scene constructions and finite Topology | Source-preserving restore/edit/history/save/export evidence for each enabled row; independent transfer, Electron restart and browser reload passed; unsupported formats remain explicit previews |
 | 5 | PRJ17: Device and installed-engine acceptance | Native mobile file picker/share/upgrade/restart and required installed scientific backends, against exact build/engine versions | Device/build/signature hashes, independent numerical/exact oracles and failed/cancelled/stale publication checks; existing model coverage remains separate |
 | 6 | PRJ18: Full cross-module freeze | Combine the enabled adapters and verified external resources into independent desktop/web/mobile round trips | Published supported-host matrix, all relevant software gates and exact native-build signoff; reconcile remaining PRJ06/PRJ08 obligations explicitly |
 
@@ -308,8 +310,7 @@ the embedded Android bundle. The initial CI run exposed a whole-storage comparis
 racing unrelated workbook autosave; the corrected test still verifies every
 named-project payload, library entry, sidecar and backup remains byte-identical
 after a rejected same-ID import. PRJ12 software integration is complete.
-The subsequent PRJ13–PRJ15 sections record delivered work; PRJ16–PRJ18 remain
-the next implementation/acceptance sequence.
+The subsequent PRJ13–PRJ15 sections record delivered work; PRJ17–PRJ18 remain the next implementation/acceptance sequence.
 
 ## PRJ13 supported native restoration
 
@@ -367,7 +368,7 @@ Their bytes are optional because the qualified recipe regenerates the samples.
 Actual source edits discard the obsolete cache reference atomically. Imported
 payload bytes are never replaced by a fallback preset: unsupported sources or
 missing required resources reject activation before project replacement.
-PRJ15 delivers resource checksums/transfer; their additional native samplers remain PRJ16 work.
+PRJ15 delivers resource checksums/transfer; PRJ16 qualifies dense scalar samples. Other samplers remain explicitly outside the enabled matrix.
 
 Replay preserves the live source revision after undo/redo and pruned redo
 branches, retains redo after rejected edits, continues command IDs after reopen,
@@ -435,15 +436,56 @@ initialization cannot run before their document classes are initialized.
 See the [PRJ15 software evidence](unified-projects-acceptance.md#prj15-verified-resources-and-native-mesh--october-2).
 Published 1.6.0 release artifacts and signing configuration are unchanged.
 
-## Next delivery: PRJ16 additional source representations
+## PRJ16 additional source representations — delivered qualified scope
 
-1. Write a representation inventory across Curve, Surface, Geometry, Volume,
-   Topology and Complex: distinguish current native support, preview support,
-   required external inputs and the missing editor/sampler contract.
-2. Add one supported representation at a time, with source-preserving restore,
-   editing, undo/redo, save/export, independent-host and restart oracles.
-3. Prioritize resource-backed scalar Volume sampling and dependent/sampled
-   Curve/Surface sources. Byte transfer alone does not qualify native editing.
-4. Preserve explicit previews for rows without proven adapters. Keep PRJ17 exact
-   native-device/installed-engine/signed-build acceptance and PRJ18 release
-   readiness as separate subsequent gates.
+The [representation inventory](project-representation-inventory.md) is the authoritative
+support matrix. PRJ16 completes its desktop/web implementation and software evidence;
+qualification remains bounded rather than asserting support for every schema value.
+
+- Verified dense scalar Volume samples retain all eight little-endian encodings,
+  original source bytes, spatial metadata and replay, as recorded in the first slice.
+- **Projects → document → Edit source definition** adds an editor over existing
+  module commands. It displays measured numerical samples or canonical incidence,
+  applies validated source JSON, and provides document undo/redo. It preserves the
+  original identity, opaque source fields, metadata, display and saved results.
+- Curve qualification includes planar implicit/polar definitions, nonperiodic
+  Bézier/B-spline/NURBS with complete control data, exact stored polylines/derived
+  snapshots, and Curve-on-Surface with an exact saved Surface generation.
+- Surface qualification includes explicit/implicit and periodic parameter patches,
+  complete spline patches, literal Weierstrass definitions, six existing Curve
+  constructions (extrusion, revolution, ruled, loft, sweep and tube), and checked
+  Mesh-backed sources. Constructions reuse the existing tessellator and require exact
+  parent generations; resource-backed Surfaces require a stable resource reference
+  or an explicit Mesh generation.
+- Geometry qualification adds bounded saved scene primitives and canonical
+  constructions/relationships, including circles. CW/simplicial Topology sources
+  use the existing Topology command log and canonical finite-2D adapter. The layout
+  is schematic; incidence counts are authoritative within that declared model.
+- Every retained additional source is qualified before activation. Incomplete
+  expressions/control data, missing or stale parents, missing buffers, unsupported
+  branch/domain contracts and coordinates outside the viewer range stay explicit.
+  Editing a parent does not silently regenerate a dependent document.
+- Curve/Surface/Geometry history now keeps a 100-edit window, preserves generations
+  after undo/redo and a pruned redo branch, exports detached data and continues command
+  IDs after reopening. Bounded older Curve/Surface logs are folded into that window;
+  rejected edits preserve redo.
+
+The source matrix has 27 document fixtures and independent coordinate/incidence
+oracles, plus Mesh-backed buffer and history/resource rejection checks. Real UI
+journeys edit seven additional sources, save/export them to a fresh Electron profile,
+close/relaunch the process and exercise restored history. Chromium repeats editing,
+reload/save and restored history in both locale/time-zone configurations.
+
+**Projects → Starter workflow** also exposes three independent, engine-free
+presets: **Spline and Surface Lab**, **Curve Construction Study**, and
+**Scene and Topology Study**. Their ordinary documents include complete spline
+controls, an implicit sphere, a sampled profile with exact-generation revolution/
+extrusion links, a Curve on a parameter chart, scene constructions, and CW/simplicial
+sources. Preview/cancel preserves the current project; opening creates fresh
+identities. The source editor supports editing, undo/redo and saved replay.
+
+The [acceptance record](unified-projects-acceptance.md) records the complete local
+software run. Oriented/vector/SDF/mask/label Volume, additional Complex branch/covering
+semantics, incomplete dependent recipes and combined Geometry display forms remain
+preview-only in the inventory. PRJ17 exact device/installed-engine/signed-build
+acceptance and PRJ18 combined release readiness remain separate next milestones.
