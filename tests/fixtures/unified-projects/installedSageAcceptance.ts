@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
+import { acceptanceComplexDocument } from "./complexSource";
 import corpus from "../topology-v1/canonical-regression-corpus.json";
 import {
   canonicalizeFinite2DTopologyDocument, constructExactSparseBoundaryMatrices,
   createTopologyDocument, createStableDocumentId, createDocumentIdentity,
-  createComplexAnalysisDocument, parseComplexExpressionAst, viewerSourceFromDocument,
+  viewerSourceFromDocument,
   createComplexSagePayload, createComplexSageJobRequest, publishComplexSageResult,
   createSageIntegerHomologyPayload, createSageIntegerHomologyJobRequest, publishSageIntegerHomologyResult,
   type ComplexSageOperation, type ScientificSourceGeneration,
@@ -19,16 +20,6 @@ import type { SageRunRequest, SageRunResponse } from "../../../renderer/src/inte
 
 const limits = (milliseconds = 45_000) => ({ deadlineAt: Date.now() + milliseconds, maxInputBytes: 1_000_000,
   maxOutputBytes: 1_000_000, maxMemoryBytes: 4_000_000, maxWorkUnits: 1_000_000 });
-export const acceptanceComplexDocument = (sourceText = "z*z") => {
-  const ast = parseComplexExpressionAst(sourceText, ["z"]).ast;
-  assert.ok(ast);
-  return createComplexAnalysisDocument({ function: { sourceText, astVersion: 1, normalizedAst: ast, allowedVariables: ["z"] },
-    parameters: [], assumptions: [], domain: { re: { min: -2, max: 2 }, im: { min: -2, max: 2 }, exclusions: [] },
-    sampling: { strategy: "uniform-grid", columns: 16, rows: 16, maximumSamples: 256, tolerance: 1e-10 }, contours: [],
-    branchPolicy: { profile: "principal", cut: { kind: "principal", angleRadians: Math.PI, points: [] }, includeInfinity: false, sheetCount: 1, activeSheet: 0 }, covering: null, mobius: null,
-  }, { stableKey: `acceptance-complex/${sourceText}` });
-};
-
 /** Installed engine output crosses the real F05 adapter and F06 publication boundary. */
 export async function runInstalledSageAcceptance(baseUrl: string) {
   const checks: { name: string; engineVersion?: string; result?: unknown }[] = [];

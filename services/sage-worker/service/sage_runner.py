@@ -270,7 +270,8 @@ def _smith_diagonal(mat):
 
 
 def _homology_group_record(degree, group):
-    orders = [abs(ZZ(order)) for order in group.gens_orders()]
+    # HomologyGroup is additive: its Smith invariant factors include 0 for Z.
+    orders = [abs(ZZ(order)) for order in group.invariants()]
     free_rank = sum(1 for order in orders if order == 0)
     torsion = sorted((order for order in orders if order > 1), key=lambda value: int(value))
     pieces = []

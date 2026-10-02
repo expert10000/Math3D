@@ -2,10 +2,10 @@ name: Projects Installed Engine Acceptance
 on:
   workflow_dispatch:
   pull_request:
-    paths: ["services/sage-worker/**", "scripts/projects-installed-sage.mjs", "tests/fixtures/unified-projects/installedSageAcceptance.ts", ".github/workflows/projects-installed-engines.yml"]
+    paths: ["services/sage-worker/**", "scripts/projects-installed-sage.mjs", "tests/fixtures/unified-projects/installedSageAcceptance.ts", "tests/fixtures/unified-projects/complexSource.ts", ".github/workflows/projects-installed-engines.yml"]
   push:
     branches: [main]
-    paths: ["services/sage-worker/**", "scripts/projects-installed-sage.mjs", "tests/fixtures/unified-projects/installedSageAcceptance.ts", ".github/workflows/projects-installed-engines.yml"]
+    paths: ["services/sage-worker/**", "scripts/projects-installed-sage.mjs", "tests/fixtures/unified-projects/installedSageAcceptance.ts", "tests/fixtures/unified-projects/complexSource.ts", ".github/workflows/projects-installed-engines.yml"]
 permissions:
   contents: read
 jobs:
