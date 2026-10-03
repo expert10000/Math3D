@@ -3,21 +3,23 @@ import { createGraph2DWorkspaceProject, forkGraph2DWorkspaceProject, createScene
   type Graph2DDocument, type SceneDocument, type Graph2DPointTableReference } from "@math3d/core";
 import type { MobileStoredSceneProject } from "./mobileScene";
 import { importMobileGraph, readMobileGraph, readMobileGraphWorkspace, readMobileNamedGraphProject, storeMobileGraph, updateStoredMobileGraph } from "./mobileGraphProject";
-export function preserveMobilePersonalGraphWork(projects: readonly MobileStoredSceneProject[], current: { graph?: Graph2DDocument | null; scene?: SceneDocument | null }, now = Date.now()) {
+export type MobileCurrentGraphWork = { graph?: Graph2DDocument | null; scene?: SceneDocument | null; project?: MobileStoredSceneProject | null };
+export function preserveMobilePersonalGraphWork(projects: readonly MobileStoredSceneProject[], current: MobileCurrentGraphWork, now = Date.now()) {
   let preserved: MobileStoredSceneProject | null = null;
-  if (current.graph) preserved = updateStoredMobileGraph(projects.find(p => p.id === current.graph!.identity.id), current.graph, now);
+  if (current.graph && current.project) preserved = current.project;
+  else if (current.graph) preserved = updateStoredMobileGraph(projects.find(p => p.id === current.graph!.identity.id), current.graph, now);
   else if (current.scene) preserved = { ...projects.find(p => p.id === current.scene!.id), projectType: "scene", id: current.scene.id, title: current.scene.title,
     updatedAt: now, lastOpenedAt: now, serializedProject: serializeSceneProject(createSceneProjectDocument(current.scene)) };
   return preserved ? [preserved, ...projects.filter(p => p.id !== preserved!.id)] : [...projects];
 }
 /** Plan first; persist both the current work and incoming project before changing editors. */
-export function planMobileGraphFileImport(projects: readonly MobileStoredSceneProject[], current: { graph?: Graph2DDocument | null; scene?: SceneDocument | null },
+export function planMobileGraphFileImport(projects: readonly MobileStoredSceneProject[], current: MobileCurrentGraphWork,
   raw: string, sourceName: string, sourceKind: "imported" | "desktop" | "shared", dataAvailable: (table: Graph2DPointTableReference) => boolean, now = Date.now()) {
   const preserved = preserveMobilePersonalGraphWork(projects, current, now);
   const project = importMobileGraph(raw, preserved, sourceName, now, sourceKind, dataAvailable);
   return { project, projects: [project, ...preserved] };
 }
-export function planMobilePersonalGraph(projects: readonly MobileStoredSceneProject[], current: { graph?: Graph2DDocument | null; scene?: SceneDocument | null },
+export function planMobilePersonalGraph(projects: readonly MobileStoredSceneProject[], current: MobileCurrentGraphWork,
   id: string, copy: { token: string; title: string } | null, dataAvailable: (table: Graph2DPointTableReference) => boolean, now = Date.now()) {
   const preserved = preserveMobilePersonalGraphWork(projects, current, now), source = preserved.find(p => p.id === id);
   if (!source || source.projectType !== "graph2d") throw new TypeError("Saved Graph project unavailable.");
@@ -34,7 +36,7 @@ export function planMobilePersonalGraph(projects: readonly MobileStoredSceneProj
 export const previewMobilePersonalGraphImport = (raw: string, dataAvailable: (table: Graph2DPointTableReference) => boolean) =>
   inspectGraph2DPersonalPreset(raw, dataAvailable);
 
-export function planMobilePersonalGraphImport(projects: readonly MobileStoredSceneProject[], current: { graph?: Graph2DDocument | null; scene?: SceneDocument | null },
+export function planMobilePersonalGraphImport(projects: readonly MobileStoredSceneProject[], current: MobileCurrentGraphWork,
   preview: Graph2DPersonalPresetPreview, token: string, dataAvailable: (table: Graph2DPointTableReference) => boolean, now = Date.now()) {
   for (const object of preview.document.source.objects) if (object.kind === "point-series" && !dataAvailable(object.table))
     throw new TypeError("Required point-table sidecar is missing or corrupt. Import it before accepting this preset.");

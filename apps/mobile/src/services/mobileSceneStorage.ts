@@ -135,6 +135,7 @@ const normalizeStoredProject = (
     serializedProject: value.serializedProject,
     ...(value.projectType ? { projectType: value.projectType } : {}),
     ...(value.projectResources !== undefined ? { projectResources: value.projectResources } : {}),
+    ...(value.activeGraphDocumentId !== undefined ? { activeGraphDocumentId: value.activeGraphDocumentId } : {}),
     ...(source ? { source } : {}),
   };
 };

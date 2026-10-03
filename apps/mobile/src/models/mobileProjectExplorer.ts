@@ -1,21 +1,21 @@
 import { buildProjectExplorer, evaluateDocumentRelationStatus, isAnalysisResultCurrent, matchesScientificSourceGeneration,
   parseMath3DProject, replayMixedWorkspaceDocument, viewerSourceFromDocument, projectResourceInventory, VerifiedProjectResources, type ProjectResourceSidecar } from "@math3d/core";
-import { readMobileNamedGraphProject } from "./mobileGraphProject";
+import { resolveMobileProjectWorkspace } from "./mobileProjectReplay";
+import { mobileProjectResourceContext } from "./mobileProjectResources";
 import { createInMemoryDependencyGraph } from "@math3d/kernel";
 
 /** Inspect checkpointed named projects without activating an editor or mutating storage. */
 export const buildMobileProjectExplorer = (raw: string, sidecars: readonly ProjectResourceSidecar[] = []) => {
   const project = parseMath3DProject(raw);
-  if (project.workspace.entries.some(entry => entry.replay !== null)) throw new TypeError("Export checkpoint JSON on desktop to inspect these documents on mobile.");
-  const resolved = replayMixedWorkspaceDocument(project.workspace);
-  const resources = new VerifiedProjectResources(project, sidecars);
+  if (project.workspace.entries.some(entry => entry.module !== "graph2d" && entry.replay !== null)) throw new TypeError("Export checkpoint JSON for non-Graph documents on desktop to inspect these documents on mobile.");
+  const resolved = resolveMobileProjectWorkspace(project.workspace);
+  const resources = new VerifiedProjectResources(project, sidecars, mobileProjectResourceContext);
+  const inventory = projectResourceInventory(project, mobileProjectResourceContext);
   const tree = buildProjectExplorer(project, resolved);
   const sources = new Map([...resolved].map(([id, document]) => [id, viewerSourceFromDocument(document)]));
   const dependencies = createInMemoryDependencyGraph({ relations: project.workspace.relations, resolveSource: id => sources.get(id) ?? null });
   const rank = { current: 0, stale: 1, unavailable: 2, broken: 3 } as const;
   const merge = (left: keyof typeof rank, right: keyof typeof rank) => rank[left] >= rank[right] ? left : right;
-  let graphEditingQualified = false;
-  try { graphEditingQualified = readMobileNamedGraphProject(raw) !== null; } catch { /* retained preview remains inspectable */ }
   const relations = project.workspace.relations.map(relation => {
     const sourceStatus = merge(evaluateDocumentRelationStatus(relation, id => sources.get(id) ?? null), dependencies.relationStatus(relation.relationId) ?? "unavailable");
     const target = relation.target.type === "document" ? sources.get(relation.target.generation.documentId) : null;
@@ -25,9 +25,11 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
   });
   return {
     title: project.metadata.title,
-    resources: projectResourceInventory(project).map(item => ({ id: item.id, kind: item.kind, required: item.required, available: resources.bytes(item) !== null })),
+    resources: inventory.map(item => ({ id: item.id, kind: item.kind, required: item.required, available: resources.bytes(item) !== null })),
     groups: tree.groups.map(group => ({ ...group, documents: group.documents.map(document => ({ ...document,
-      editing: document.module === "graph2d" && graphEditingQualified && !document.archived ? "Graph workspace" : "Saved preview",
+      editing: document.module === "graph2d" && !document.archived && !inventory.some(item => item.kind === "graph-point-table" && item.owners.includes(document.id) && !resources.bytes(item)) ? "Graph workspace" : "Saved preview",
+      unavailableReason: document.module !== "graph2d" ? "This module remains a saved preview on mobile." : document.archived ? "Archived documents cannot be edited." :
+        inventory.some(item => item.kind === "graph-point-table" && item.owners.includes(document.id) && !resources.bytes(item)) ? "Import missing Graph source tables before editing." : null,
       stale: relations.some(relation => relation.freshness !== "current" && relation.target.type === "document" && relation.target.generation.documentId === document.id),
     })) })),
     relations,

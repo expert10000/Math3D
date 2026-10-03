@@ -669,3 +669,19 @@ Missing bytes remain explicit, and attaching resources requires the same saved
 workspace version. Native acceptance and PRJ23/24 are completed in subsequent
 deliveries; additional non-Graph mobile editors and physical iOS acceptance remain
 separate work.
+
+### PRJ23 software delivery
+
+Mixed-project cards now expose **Edit Graph** beside each unarchived Graph in
+Documents and relations. Separate shared Graph command adapters retain bounded
+undo/redo across document switching, save, restart and desktop return. Only Graph
+history is replayed on mobile; other modules must be checkpointed. Active document
+selection is retained in schema 4. Missing current or historical point tables
+block the affected Graph, and unsupported/archived documents remain inspectable.
+
+Saving captures newly authored tables and all historical table inputs alongside
+retained Mesh/Volume bytes. Other documents, metadata, scripts, relations and
+historical results are preserved. Creating/importing another project preserves
+the enclosing mixed container instead of saving an orphan Graph. The isolated
+native recovery fixture now includes two Graphs, resources and saved Graph replay.
+Signed Samsung round-trip acceptance is recorded with PRJ24 after installation.

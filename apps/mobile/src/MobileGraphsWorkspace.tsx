@@ -36,13 +36,16 @@ const Line = ({ a, b, color, width }: MobileGraphLine) => <View pointerEvents="n
   width: Math.hypot(b.x - a.x, b.y - a.y), height: width, backgroundColor: color,
   transform: [{ rotate: `${Math.atan2(b.y - a.y, b.x - a.x)}rad` }] }} />;
 
-export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onHaptic, promotions, onPromotion, onGallery, onPresentationChange }: {
+export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onHaptic, promotions, onPromotion, onGallery, onPresentationChange, sessionAdapter, pointTables }: {
   document: Graph2DDocument; onChange: (document: Graph2DDocument) => void;
   onSave: () => Promise<boolean>; message: string; onHaptic?: () => void;
   promotions: readonly Graph2DAnyPromotion[]; onPromotion: (promotion: Graph2DAnyPromotion) => Promise<boolean>;
   onGallery?: () => void; onPresentationChange?: (active: boolean) => void;
+  sessionAdapter?: Graph2DCommandAdapter; pointTables?: Graph2DPointTableStore;
 }) => {
-  const [adapter] = useState(() => new Graph2DCommandAdapter(document));
+  const [fallbackAdapter] = useState(() => new Graph2DCommandAdapter(document));
+  const adapter = sessionAdapter ?? fallbackAdapter;
+  const tableStore = pointTables ?? mobileGraphPointTables;
   const gesture = useRef(new MobileGraphGesture());
   const [size, setSize] = useState({ width: 320, height: 320 });
   const [preview, setPreview] = useState<Graph2DViewport | null>(null);
@@ -59,7 +62,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   useEffect(() => () => onPresentationChange?.(false), [onPresentationChange]);
   const routeTool = (tool: Graph2DTool) => {
     const selected = document.source.objects.find(o => o.id === document.selection.objectId);
-    const reason = graph2DToolUnavailable(document, tool, selected?.kind !== "point-series" || !!mobileGraphPointTables.resolve(selected.table));
+    const reason = graph2DToolUnavailable(document, tool, selected?.kind !== "point-series" || !!tableStore.resolve(selected.table));
     if (reason) { setError(reason); return; }
     cancel(); cancelParameter();
     if (tool === "move" || tool === "probe") { setDestination("Graph"); setError(tool === "probe" ? "Tap a curve to commit a probe." : "Drag to move; tap a curve to select."); return; }
@@ -86,7 +89,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     const listener = AppState.addEventListener("change", (state) => { if (state !== "active") { cancel(); setParameterPreview(null); } });
     return () => { listener.remove(); gesture.current.cancel(); };
   }, []);
-  const sampling = useMobileGraphSampling(sampledDocument, viewport, size, !!preview, () => { setAnalysis(null); setParameterPreview(null); }, parameterPreviewActive ? document.identity : undefined);
+  const sampling = useMobileGraphSampling(sampledDocument, viewport, size, !!preview, () => { setAnalysis(null); setParameterPreview(null); }, parameterPreviewActive ? document.identity : undefined, tableStore);
   const { series, budget } = sampling;
   const geometry = useMemo(() => mobileGraphAdvancedGeometry(series, viewport, size, budget), [series, viewport, size, budget.fills, budget.markers]);
   const lines = useMemo(() => projectMobileGraphLines(geometry.boundaries, viewport, size, document.selection.objectId, budget.lines), [geometry, viewport, size, document.selection.objectId, budget.lines]);
@@ -227,11 +230,11 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     </View>
     {panelDestination && <ScrollView keyboardShouldPersistTaps="handled" style={[s.sheet, layout.split && s.sidePanel, layout.split && { width: layout.panelWidth }]}
       accessibilityLabel={`${panelDestination} ${layout.split ? "side panel" : "bottom sheet"}`} testID={`mobile-graph-${panelDestination.toLowerCase()}-sheet`}>
-      {panelDestination === "Tools" ? <MobileGraphToolsPanel document={document} rowsAvailable={document.source.objects.every(o => o.id !== document.selection.objectId || o.kind !== "point-series" || !!mobileGraphPointTables.resolve(o.table))} onTool={routeTool} onClose={() => setDestination("Graph")} /> : panelDestination === "Parameters" || panelDestination === "Cards" ? <MobileGraphParametersPanel key={`${parameterKey}:${parameterEpoch}`} document={document} settled={sampling.settled && sampling.phase === "refine"} samplingError={sampling.error}
+      {panelDestination === "Tools" ? <MobileGraphToolsPanel document={document} rowsAvailable={document.source.objects.every(o => o.id !== document.selection.objectId || o.kind !== "point-series" || !!tableStore.resolve(o.table))} onTool={routeTool} onClose={() => setDestination("Graph")} /> : panelDestination === "Parameters" || panelDestination === "Cards" ? <MobileGraphParametersPanel key={`${parameterKey}:${parameterEpoch}`} document={document} settled={sampling.settled && sampling.phase === "refine"} samplingError={sampling.error}
         compact={panelDestination === "Cards"} onExpand={() => setDestination("Parameters")} onClose={() => { cancelParameter(); setDestination("Graph"); }}
         onPreview={values => { if (values) previewGraph2DParameterValues(document, values); setParameterPreview(values ? { key: parameterKey, values } : null); }}
         onCommit={action => { const next = adapter.commitScene(applyGraph2DAuthoring(document, action), action.type); cancel(); setParameterPreview(null); onChange(next); }} /> :
-        panelDestination === "Export" ? <MobileGraphExportPanel document={document} analysis={analysisCurrent ? analysis : null} draft={analysisDraft} /> : panelDestination === "Display" ? <MobileGraphDisplayPanel document={document} series={series} overlays={overlays} lineCount={lines.length} sampling={sampling}
+        panelDestination === "Export" ? <MobileGraphExportPanel pointTables={tableStore} document={document} analysis={analysisCurrent ? analysis : null} draft={analysisDraft} /> : panelDestination === "Display" ? <MobileGraphDisplayPanel document={document} series={series} overlays={overlays} lineCount={lines.length} sampling={sampling}
         onViewport={v => { const next = adapter.commitViewport(v); cancel(); cancelParameter(); onChange(next); }}
         onGrid={axes => { const next = adapter.commitScene(mobileGraphDisplayScene(document, { type: "grid", axes }), "style"); cancel(); cancelParameter(); onChange(next); }}
         onOverlays={setOverlays} onAxis={(key) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "axis", key }), "style"))}
@@ -242,7 +245,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         onApplyAdvanced={() => { if (!advanced) return; if (commit(() => {
           // Validate using a transient store before any persistent sidecar write or scene command.
           applyMobileGraphAuthoring(document, mobileGraphKindAction(advanced, new Graph2DPointTableStore()));
-          const action = mobileGraphKindAction(advanced, mobileGraphPointTables);
+          const action = mobileGraphKindAction(advanced, tableStore);
           return adapter.commitScene(applyMobileGraphAuthoring(document, action), action.type);
         })) setAdvanced(null); }}
         onPick={() => { const pending = advanced; void pickMobileGraphPointText().then((data) => {
@@ -264,7 +267,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         {probe && button("Cycle overlap", () => tap(graph2DWorldToScreen(document.display.viewport, size, probe)))}
         <MobileGraphAnalysisPanel document={document} draft={analysisDraft} result={analysis} onDraft={setAnalysisDraft}
           onRun={() => { cancel(); try { const object = document.source.objects.find(o => o.id === analysisDraft.objectId);
-            setAnalysis(runMobileGraphAnalysis(document, analysisDraft, object?.kind === "point-series" ? mobileGraphPointTables.resolve(object.table) : null)); setError(""); }
+            setAnalysis(runMobileGraphAnalysis(document, analysisDraft, object?.kind === "point-series" ? tableStore.resolve(object.table) : null)); setError(""); }
             catch (caught) { setError((caught as Error).message); } }}
           onLocate={(point) => commit(() => {
             if (!analysis || !isMobileGraphAnalysisCurrent(analysis, document, analysisDraft)) throw new TypeError("Result is stale; run analysis again.");

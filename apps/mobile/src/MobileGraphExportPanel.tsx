@@ -5,10 +5,12 @@ import { createGraph2DPublication, GRAPH2D_PUBLICATION_FORMATS, renderGraph2DPub
 import { type MobileGraphAnalysis, type MobileGraphAnalysisDraft } from "./models/mobileGraphAnalysis";
 import { mobileGraphPublicationRequest } from "./models/mobileGraphPublication";
 import { mobileGraphPointTables } from "./services/mobileGraphPointTables";
+import type { Graph2DPointTableStore } from "@math3d/core";
 import { saveMobileGraphPublication, shareMobileGraphPublication } from "./services/mobileGraphPublicationService";
 
-export function MobileGraphExportPanel({ document, analysis, draft }: {
+export function MobileGraphExportPanel({ document, analysis, draft, pointTables = mobileGraphPointTables }: {
   document: Graph2DDocument; analysis: MobileGraphAnalysis | null; draft: MobileGraphAnalysisDraft;
+  pointTables?: Graph2DPointTableStore;
 }) {
   const [units, setUnits] = useState({ x: "", y: "" }), [width, setWidth] = useState(640), [format, setFormat] = useState<Graph2DPublicationFormat>("svg");
   const [attribution, setAttribution] = useState("Math3D Graph publication"), screen = useWindowDimensions();
@@ -35,7 +37,7 @@ export function MobileGraphExportPanel({ document, analysis, draft }: {
         try {
           if (!isCurrent()) return;
           const publication = cache.current?.key === key ? cache.current.publication : createGraph2DPublication(
-            mobileGraphPublicationRequest(document, mobileGraphPointTables, analysis, draft, { width, height: width * .75 }, units));
+            mobileGraphPublicationRequest(document, pointTables, analysis, draft, { width, height: width * .75 }, units));
           const artifact = capture ? renderGraph2DCaptureRecipeArtifact(document, publication, "light", attribution,
             { width: Math.round(screen.width), height: Math.round(screen.height) }) : renderGraph2DPublicationArtifact(publication, format);
           if (!isCurrent()) return;

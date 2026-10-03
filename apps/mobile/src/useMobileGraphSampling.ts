@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { sampleGraph2DScene, graph2DSamplingPresentationContext, presentGraph2DSampling, type DocumentIdentity,
-  type Graph2DDocument, type Graph2DSampledSeries, type Graph2DViewport, type Graph2DScreenSize } from "@math3d/core";
+  type Graph2DDocument, type Graph2DSampledSeries, type Graph2DViewport, type Graph2DScreenSize, type Graph2DPointTableStore } from "@math3d/core";
 import { mobileGraphPointTables } from "./services/mobileGraphPointTables";
 import { MobileGraphSamplingJobs } from "./models/mobileGraphSamplingJobs";
 import { INITIAL_MOBILE_GRAPH_PERFORMANCE, MobileGraphSamplingEpoch, boundMobileGraphArtifacts, measureMobileGraphPerformance,
@@ -10,7 +10,7 @@ import { INITIAL_MOBILE_GRAPH_PERFORMANCE, MobileGraphSamplingEpoch, boundMobile
 const now = () => performance.now();
 const EMPTY: readonly Graph2DSampledSeries[] = [];
 export const useMobileGraphSampling = (document: Graph2DDocument, viewport: Graph2DViewport, size: Graph2DScreenSize,
-  interacting: boolean, onRelease: () => void, previewBase?: DocumentIdentity) => {
+  interacting: boolean, onRelease: () => void, previewBase?: DocumentIdentity, tableStore: Graph2DPointTableStore = mobileGraphPointTables) => {
   const [active, setActive] = useState(AppState.currentState == null || AppState.currentState === "active");
   const [performanceState, setPerformanceState] = useState(INITIAL_MOBILE_GRAPH_PERFORMANCE);
   const [generation, setGeneration] = useState(0);
@@ -31,7 +31,7 @@ export const useMobileGraphSampling = (document: Graph2DDocument, viewport: Grap
     if (metricFrame.current !== null) cancelAnimationFrame(metricFrame.current);
     metricFrame.current = null;
   };
-  const release = () => { stop(); previous.current = null; setResult(null); mobileGraphPointTables.clearCache(); releaseCallback.current(); };
+  const release = () => { stop(); previous.current = null; setResult(null); tableStore.clearCache(); releaseCallback.current(); };
   useEffect(() => {
     const change = AppState.addEventListener("change", (state) => {
       if (state !== "active") release();
@@ -40,8 +40,8 @@ export const useMobileGraphSampling = (document: Graph2DDocument, viewport: Grap
     const pressure = AppState.addEventListener("memoryWarning", () => {
       release(); setPerformanceState(pressureMobileGraphPerformance(now())); setGeneration((value) => value + 1);
     });
-    return () => { change.remove(); pressure.remove(); stop(); mobileGraphPointTables.clearCache(); };
-  }, []);
+    return () => { change.remove(); pressure.remove(); stop(); tableStore.clearCache(); };
+  }, [tableStore]);
   useEffect(() => {
     stop(); if (previous.current?.context !== context) previous.current = null; if (!active) return;
     const token = epoch.current.issue();
@@ -54,7 +54,7 @@ export const useMobileGraphSampling = (document: Graph2DDocument, viewport: Grap
         const visible = new Set(document.display.objects.filter((style) => style.visible).map((style) => style.objectId));
         const pointTables = Object.fromEntries(document.source.objects.flatMap((object) =>
           object.kind === "point-series" && visible.has(object.id) && object.table.rowCount <= allowance
-            ? [[object.table.id, mobileGraphPointTables.resolve(object.table)]] : []));
+            ? [[object.table.id, tableStore.resolve(object.table)]] : []));
         // Native JS work is cooperative, not preemptive: samplers check their shared deadline.
         const sampled = sampleGraph2DScene({ document: { ...document, display: { ...document.display, sampling: budget.sampling } },
           viewport, ...size, interaction: phase === "interaction", pointTables,
@@ -78,7 +78,7 @@ export const useMobileGraphSampling = (document: Graph2DDocument, viewport: Grap
     };
     jobs.current.request(() => run(interacting ? "interaction" : "preview"), interacting ? undefined : () => run("refine"));
     return stop;
-  }, [input, interacting, active, performanceState.tier, generation]);
+  }, [input, interacting, active, performanceState.tier, generation, tableStore]);
   const phase = active ? result?.input === input ? result.phase : interacting ? "interaction" : "preview" : "paused";
   const budget = useMemo(() => mobileGraphBudget(document, performanceState.tier, phase), [document.display.sampling, performanceState.tier, phase]);
   const presented = presentGraph2DSampling(context, input, result ? { context: result.context, key: result.input, series: result.series, error: error || undefined } : null, previous.current);

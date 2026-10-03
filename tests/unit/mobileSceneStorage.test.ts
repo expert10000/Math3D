@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSceneProjectDocument, serializeSceneProject, instantiateMath3DProjectTemplate, serializeMath3DProject, type SceneDocument } from "@math3d/core";
 import { importMobileProjectPreview } from "../../apps/mobile/src/models/mobileProjectPreview";
+import { mobileMixedProjectFixture } from "../fixtures/unified-projects/mobileProjects";
+import { MobileProjectGraphSessions } from "../../apps/mobile/src/models/mobileProjectGraphSessions";
 import type { MobileStoredSceneProject } from "../../apps/mobile/src/models/mobileScene";
 import { createMobileGraph, storeMobileGraph, readMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
 
@@ -92,6 +94,22 @@ const payload = (projects: MobileStoredSceneProject[] = [project]) => JSON.strin
 });
 
 describe("mobile scene storage recovery", () => {
+  it("atomically keeps mixed Graph history and all resource bytes through failed staging and backup recovery", async () => {
+    const fixture = mobileMixedProjectFixture(), mixed = importMobileProjectPreview(fixture.raw, [], "package.json");
+    const sessions = new MobileProjectGraphSessions(mixed), id = fixture.graphIds[1]!, adapter = sessions.adapter(id);
+    adapter.commitViewport({ ...adapter.document().display.viewport, xMin: -3, xMax: 3 });
+    const edited = sessions.snapshot(id);
+    await saveStoredSceneProjects([project, edited]);
+    expect((await loadStoredSceneProjects()).projects).toEqual(expect.arrayContaining([project, edited]));
+    const before = fileContents.get("documents/math3d-mobile/scene-projects.json");
+    fileFaults.writePath = "documents/math3d-mobile/scene-projects.tmp";
+    await expect(saveStoredSceneProjects([project, { ...edited, updatedAt: 999 }])).rejects.toMatchObject({ code: "storage-full" });
+    fileFaults.writePath = "";
+    expect(fileContents.get("documents/math3d-mobile/scene-projects.json")).toBe(before);
+    const recovered = resolveMobileSceneStorage("{truncated", fileContents.get("documents/math3d-mobile/scene-projects.backup.json")!);
+    expect(recovered.projects).toEqual(expect.arrayContaining([project, edited]));
+    expect(new MobileProjectGraphSessions(recovered.projects.find(project => project.id === edited.id)!).adapter(id).history().undoDepth).toBe(1);
+  });
   it("migrates schema 2 and atomically retains complete previews beside existing Graph/Scene projects", async () => {
     fileContents.clear();
     expect(decodeMobileSceneStorage(JSON.stringify({ schemaVersion: 2, projects: [project] }))).toMatchObject({ ok: true, migrated: true });

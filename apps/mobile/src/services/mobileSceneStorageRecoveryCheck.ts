@@ -1,5 +1,9 @@
 import { instantiateMath3DProjectTemplate, serializeMath3DProject, structuralHash } from "@math3d/core";
 import { importMobileProjectPreview } from "../models/mobileProjectPreview";
+import { canonicalJsonStringify, captureProjectResources, createMath3DProject, createMixedWorkspaceDocument,
+  exportProjectPackage, getGraph2DPresetCatalog, Graph2DPointTableStore, instantiateGraph2DPreset } from "@math3d/core";
+import { MobileProjectGraphSessions } from "../models/mobileProjectGraphSessions";
+import { createMobileGraph } from "../models/mobileGraphProject";
 import { Directory, File, Paths } from "expo-file-system";
 import { readMobileGraph, storeMobileGraph } from "../models/mobileGraphProject";
 import { createMobileSceneStorage, createStoredProjectFromScene, decodeMobileSceneStorage, MobileSceneStorageError, MOBILE_SCENE_STORAGE_SCHEMA_VERSION } from "./mobileSceneStorage";
@@ -21,7 +25,25 @@ const fixture = () => {
   readMobileGraph(record);
   return [record, createStoredProjectFromScene({ id: "recovery-saddle", title: "Recovery saddle", createdAt: 1, updatedAt: 2,
     surfaces: [{ id: "saddle", kind: "explicit", expression: "x*x-y*y", resolution: 18, domain: { xSpan: 2, ySpan: 2 } }] }, 3),
-    importMobileProjectPreview(serializeMath3DProject(instantiateMath3DProjectTemplate("scene-topology-study", "native-preview-recovery")), [], "recovery-preview.json", "desktop", 2)];
+    mixedResourceFixture()];
+};
+const mixedResourceFixture = () => {
+  const template = instantiateMath3DProjectTemplate("scene-topology-study", "native-preview-recovery");
+  const preset = instantiateGraph2DPreset(getGraph2DPresetCatalog().get("piecewise-data-gaps")!, "native-resource-recovery");
+  const second = createMobileGraph("Second recovery Graph", true, "native-resource-recovery-second");
+  const tables = new Graph2DPointTableStore(); for (const sidecar of preset.sidecars) tables.publish(sidecar.rows);
+  const project = createMath3DProject(createMixedWorkspaceDocument({ ...template.workspace, entries: [...template.workspace.entries,
+    ...[preset.document, second].map(document => ({ module: "graph2d" as const, checkpoint: document, expected: document.identity, replay: null }))],
+    activeDocumentIds: [...template.workspace.activeDocumentIds, preset.document.identity.id, second.identity.id] }), { title: "Recovery mixed resources", stableKey: "native-resource-recovery" });
+  const resources = captureProjectResources(project, item => {
+    if (item.kind !== "graph-point-table") return null;
+    const rows = tables.resolve(item.reference as Parameters<typeof tables.resolve>[0]);
+    return rows ? new TextEncoder().encode(canonicalJsonStringify(rows)) : null;
+  });
+  const stored = importMobileProjectPreview(exportProjectPackage(project, resources), [], "recovery-package.json", "desktop", 2);
+  const sessions = new MobileProjectGraphSessions(stored), adapter = sessions.adapter(preset.document.identity.id);
+  adapter.commitViewport({ ...adapter.document().display.viewport, xMin: -3, xMax: 3 });
+  return sessions.snapshot(preset.document.identity.id, 2);
 };
 const reset = () => {
   directory.create({ idempotent: true, intermediates: true });

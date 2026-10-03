@@ -1,16 +1,20 @@
 import { adoptMixedWorkspaceProject, parseMath3DProject, parseMixedWorkspaceDocument, parseWorkspaceProjectHandoff,
   replayMixedWorkspaceDocument, serializeMath3DProject, parseProjectPackage, type Math3DProject, type ProjectResourceSidecar } from "@math3d/core";
 import type { MobileStoredSceneProject } from "./mobileScene";
-import { readMobileProjectResources } from "./mobileProjectResources";
+import { mobileProjectResourceContext, readMobileProjectResources } from "./mobileProjectResources";
+import { resolveMobileProjectWorkspace } from "./mobileProjectReplay";
 
 /** Validate every checkpoint, retaining unsupported editors, lineage and unavailable resource references. */
 export const readMobilePreviewProject = (stored: MobileStoredSceneProject): Math3DProject => {
   if (stored.projectType !== "project-preview") throw new TypeError("Not a saved project preview.");
   const project = parseMath3DProject(stored.serializedProject);
-  if (project.workspace.entries.some(entry => entry.replay !== null)) throw new TypeError("Export checkpoint JSON on desktop before mobile preview import.");
-  replayMixedWorkspaceDocument(project.workspace);
+  if (project.workspace.entries.some(entry => entry.module !== "graph2d" && entry.replay !== null)) throw new TypeError("Export checkpoint JSON for non-Graph documents on desktop before mobile preview import.");
+  resolveMobileProjectWorkspace(project.workspace);
   if (project.identity.id !== stored.id || project.metadata.title !== stored.title) throw new TypeError("Project preview identity is inconsistent.");
   if (stored.projectResources !== undefined) readMobileProjectResources(stored);
+  if (stored.activeGraphDocumentId !== undefined && !project.workspace.entries.some(entry => entry.module === "graph2d" &&
+    entry.expected.id === stored.activeGraphDocumentId && !project.metadata.documents?.[entry.expected.id]?.archived))
+    throw new TypeError("Selected mobile Graph is unavailable or archived.");
   return project;
 };
 
@@ -23,7 +27,7 @@ export const importMobileProjectPreview = (raw: string, projects: readonly Mobil
   if (format === "math3d.project") project = parseMath3DProject(raw);
   else if (format === "math3d.mixed-workspace") project = adoptMixedWorkspaceProject(parseMixedWorkspaceDocument(raw), sourceName);
   else if (format === "math3d.project-handoff") project = adoptMixedWorkspaceProject(parseWorkspaceProjectHandoff(raw).project, sourceName);
-  else if (format === "math3d.project-package") { const parsed = parseProjectPackage(raw); project = parsed.project; resources = parsed.resources.sidecars(); }
+  else if (format === "math3d.project-package") { const parsed = parseProjectPackage(raw, mobileProjectResourceContext); project = parsed.project; resources = parsed.resources.sidecars(); }
   else throw new TypeError("Unsupported project preview file.");
   if (projects.some(item => item.id === project.identity.id || (() => {
     try { return JSON.parse(item.serializedProject)?.identity?.id === project.identity.id; } catch { return false; }

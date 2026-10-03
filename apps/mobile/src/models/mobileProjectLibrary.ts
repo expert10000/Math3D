@@ -81,7 +81,7 @@ export const buildMobileProjectLibraryCards = (
       origin,
       sourceName,
       compatible,
-      compatibilityMessage: preview ? "Saved project preview · documents and relations · editors unavailable" : graph ? mobileGraphCapabilities(graph) : compatible ? "Compatible" : parsed.ok ? "Identity mismatch" : `Needs attention: ${parsed.errors[0]}`,
+      compatibilityMessage: preview ? "Mixed project · documents and relations · choose an available Graph to edit" : graph ? mobileGraphCapabilities(graph) : compatible ? "Compatible" : parsed.ok ? "Identity mismatch" : `Needs attention: ${parsed.errors[0]}`,
       workerStatus: job?.status ?? null,
       resultStatus: options.readyResultProjectId === project.id ? "Preview ready" : job?.status === "succeeded" ? "Recheck on open" : null,
     });

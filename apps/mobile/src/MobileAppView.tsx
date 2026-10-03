@@ -29,6 +29,7 @@ export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model 
 
       {tab === "workspace" && (model.graphDocument ? <MobileGraphsWorkspace key={`${model.graphDocument.identity.id}/${model.graphDocument.metadata.title}`}
         document={model.graphDocument} onChange={model.setGraphDocument} onSave={model.saveGraphProject} message={model.projectActionMessage}
+        sessionAdapter={model.projectGraphAdapter} pointTables={model.projectGraphTables}
         promotions={model.graphPromotions} onPromotion={model.createGraphPromotion} onGallery={() => model.setGraphGalleryOpen(true)}
         onPresentationChange={setGraphPresentation} /> :
         <MobileWorkspaceScreen model={model} />)}

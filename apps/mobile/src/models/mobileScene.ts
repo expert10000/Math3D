@@ -45,6 +45,7 @@ export type MobileStoredSceneProject = {
   lastOpenedAt: number;
   serializedProject: string;
   projectResources?: import("@math3d/core").ProjectResourceSidecar[];
+  activeGraphDocumentId?: string;
   source?: {
     kind: "imported" | "shared" | "desktop";
     name: string;
