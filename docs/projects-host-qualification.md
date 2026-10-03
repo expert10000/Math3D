@@ -188,7 +188,7 @@ the accepted return byte-for-byte. Exact-installed-build recovery repeated all
 After merging main through `6f0abf9`, desktop type checks/build and both actual
 Electron delivery/return tests passed, as did fresh-browser export/reload.
 
-### PRJ25–PRJ27 software scope and pending handset gate
+### PRJ25–PRJ27 Graph/Curve handset completion — October 4
 
 Schema 5 extends complete mobile projects with independent shared Curve replay
 alongside Graph replay. **Documents and relations → Edit Curve** qualifies
@@ -197,9 +197,17 @@ source. Other Curve representations and the other six modules remain previews.
 An explicit supported Graph→Curve refresh adds a new target and lineage while
 preserving the original documents, results and resources.
 
-The public 20-document/five-resource delivery fixture and Electron/browser
-delivery passed. A model-generated return preflight also restores both histories
-in Electron; it is not physical-device evidence. The exact signed Samsung build,
-actual returned file, cold restart, recovery and unchanged normal-library checks
-remain pending. Follow the [Graph/Curve acceptance runbook](projects-mobile-curves.md)
-and [current roadmap](unified-projects-roadmap.md#prj25prj27-continuation--october-3).
+The public 20-document/five-resource fixture passed desktop delivery and signed
+Samsung import/export before editing. Clean source `12f8e1e` passed [Android CI](https://github.com/expert10000/Math3D/actions/runs/37156743806)
+and was installed with the existing signing identity. Native Graph/Curve editing,
+explicit refresh, invalid-source rejection, duplicate-refresh blocking, switching
+and selected-Curve cold restart passed. The actual returned 21-document package
+restores both histories in Electron and retains exact bytes through fresh-browser
+export/reload. Exact-build recovery passed 10/10 preparation and 11/11 restart
+checks without changing the normal library or accepted export.
+
+All 23 original library identities and the original baseline export remain intact;
+only the acceptance project was added. [Exact-build evidence](evidence/projects-prj27-samsung-2026-10-04/acceptance.json)
+and the [Graph/Curve acceptance runbook](projects-mobile-curves.md) record the
+declared Android/desktop/browser scope. Broader mobile editors and physical iOS
+remain separate gates.

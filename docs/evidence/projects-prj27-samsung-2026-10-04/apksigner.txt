@@ -1,0 +1,17 @@
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): false
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+Signer #1 certificate DN: CN=Math3D Mobile Internal, OU=Engineering, O=Math3D
+Signer #1 certificate SHA-256 digest: 39ab9388fa174bf9c1973577dab4ee33eedbacb9b231c9b79068e5143480fc82
+Signer #1 certificate SHA-1 digest: 945dd7d85bd9ccd5d7e082cb9955b59efc9ab177
+Signer #1 certificate MD5 digest: 9c396c6a6bdeeb6536a7a3ba9ed2426f
+Signer #1 key algorithm: RSA
+Signer #1 key size (bits): 3072
+Signer #1 public key SHA-256 digest: 5f0bfadb05a6d697f42b68ae1f35f17fc3cf44d260e1dc794520ee8d80464d9b
+Signer #1 public key SHA-1 digest: 6b7cb40d9d0244cd24beb62a57c70e03736a33e0
+Signer #1 public key MD5 digest: f647e100d6d280506ee79fa71fa677f6

@@ -737,3 +737,39 @@ record this continuation. APKs, signing material and the private library invento
 remain outside Git. The three requested follow-up items are complete for this
 declared scope. Additional mobile editors, source sidecar transfer, external-engine
 refresh adapters and signed physical iOS acceptance remain future work.
+
+## PRJ25–PRJ27 completion — October 4
+
+The exact shared-key internal APK from clean source `12f8e1e` passed
+[Android CI, attempt 2](https://github.com/expert10000/Math3D/actions/runs/37156743806)
+and was installed as an update on Samsung SM-A566B / Android API 36. Native import
+of the 20-document, all-eight-module package retained all five source resources;
+the first native export matched the desktop input exactly.
+
+Samsung opened the literal 3D helix with its saved expressions/projection, retained
+unsupported Curve previews with their reasons, edited the parabola Graph to
+`x*x+4`, and restored it through undo/redo. Explicit refresh created one new Curve
+with captured current Graph lineage; the original companion remained and repeated
+refresh was disabled with its reason. The new Curve rejected an invalid expression,
+then retained `x*x+5` through undo/redo, Graph/Curve switching, save and cold restart.
+Curve undo/redo also worked after restart.
+
+The actual 40,534-byte native package contains 21 documents, six relations and
+five source resources. Its SHA-256 is
+`e1d33d2dfdc18fadce19e64eb40eee591877b8fd4ec799bfad9eabaee5ab0445`.
+Direct verification preserves every original entry except the edited Graph,
+metadata, scripts, historical results and original resource bytes, adding exactly
+the new Curve and its lineage. Electron restored independent Graph/Curve undo/redo;
+fresh-browser import, export and reload matched the returned bytes exactly.
+
+The exact installed APK passed **10/10 isolated recovery preparation checks and
+11/11 restart checks**, including Graph/Curve replay and selected-Curve retention.
+Normal-library files remained unchanged, and the post-recovery native export
+matched the accepted return. A full library scan retained all 23 original IDs,
+adding only PRJ27; the original 8,207-byte baseline export also remained unchanged.
+
+[Structured evidence, public packages and screenshots](evidence/projects-prj27-samsung-2026-10-04/acceptance.json)
+record the signed build and verification of the actual exported package. This closes
+PRJ25–27 for the declared Android/desktop/browser scope. Other mobile Curve forms,
+the other six mobile editors, broader mobile refresh, physical iOS and immutable
+published-release signoff remain separate work.

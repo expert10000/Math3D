@@ -1,0 +1,97 @@
+{
+  "milestones": [
+    "PRJ25",
+    "PRJ26",
+    "PRJ27"
+  ],
+  "date": "2026-10-04",
+  "build": {
+    "sourceCommit": "12f8e1eb1b61a7d625cb8d39919242d960e3b3da",
+    "apkSha256": "c6abec1869e74ecb003634c882916f875326a937dda4a5cba110ae3f0e831f7b",
+    "certificateSha256": "39ab9388fa174bf9c1973577dab4ee33eedbacb9b231c9b79068e5143480fc82",
+    "ci": "https://github.com/expert10000/Math3D/actions/runs/37156743806",
+    "ciAttempt": 2,
+    "ciResult": "success",
+    "trackedSourceDirty": false,
+    "installedAsUpdate": true,
+    "device": "Samsung SM-A566B",
+    "androidApi": 36,
+    "build": 150008
+  },
+  "project": {
+    "id": "math3d:project:bf97fe908a4dd4aa526d66a428334723",
+    "inputDocuments": 20,
+    "returnedDocuments": 21,
+    "graphs": 2,
+    "modules": [
+      "graph2d",
+      "mesh",
+      "volume",
+      "curve",
+      "surface",
+      "geometry",
+      "topology",
+      "complex"
+    ],
+    "resources": 5,
+    "historicalResults": 3,
+    "returnedRelations": 6,
+    "inputBytes": 33159,
+    "inputSha256": "abe21a8b0da953c1f772ee1b27fa36f9140d82040db9e79197577ff492af9a1e",
+    "nativeBeforeEditMatchesInput": true,
+    "returnedBytes": 40534,
+    "returnedSha256": "e1d33d2dfdc18fadce19e64eb40eee591877b8fd4ec799bfad9eabaee5ab0445"
+  },
+  "nativeChecks": {
+    "literal3dHelixExpressionsAndProjection": true,
+    "unsupportedCurvePreviewReason": true,
+    "graphEditUndoRedo": true,
+    "graphExpression": "x*x+4",
+    "explicitRefreshedCurveCreated": true,
+    "originalCompanionRetained": true,
+    "duplicateRefreshDisabledWithReason": true,
+    "resourcesVerified": "5/5",
+    "invalidCurveExpressionRejectedWithoutSourceOrHistoryMutation": true,
+    "curveEditUndoRedo": true,
+    "curveExpression": "x*x+5",
+    "graphCurveSwitchingRetainsSourcesAndHistory": true,
+    "selectedCurveSurvivesColdRestart": true,
+    "curveUndoRedoAfterColdRestart": true,
+    "nativeFolderPickerExport": true,
+    "isolatedRecoveryPreparation": "10/10",
+    "isolatedRecoveryRestart": "11/11",
+    "realLibraryUnchangedDuringRecovery": true,
+    "postRecoveryExportByteExact": true
+  },
+  "returnChecks": {
+    "actualNativeFileVerified": true,
+    "originalEntriesExceptEditedGraphUnchanged": true,
+    "metadataScriptsHistoricalResultsAndResourcesUnchanged": true,
+    "exactlyOneNewCurveAndExactLineage": true,
+    "independentGraphCurveKernelUndo": true,
+    "electronUIRestoresBothUndoRedoHistories": true,
+    "freshBrowserExportAndReloadByteExact": true
+  },
+  "unrelatedProjects": {
+    "originalIdentities": 23,
+    "identitiesAfterAcceptance": 24,
+    "allOriginalIdentitiesPresent": true,
+    "onlyAcceptanceProjectAdded": true,
+    "baselineExportBytesBeforeAndAfter": 8207,
+    "baselineExportSha256BeforeAndAfter": "8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc"
+  },
+  "softwareChecks": {
+    "projectContracts": 211,
+    "curveProjectRegressionTests": 230,
+    "desktopAndMobileTypechecks": true,
+    "desktopProductionBuild": true,
+    "kernelDependencyBoundaries": true,
+    "electronCurveSurfaceAndRefreshRegressions": true
+  },
+  "limits": [
+    "Mobile Curve editing requires independent nonperiodic explicit/parametric literal sources, including retained history.",
+    "Other Curve forms and the other six modules remain mobile previews.",
+    "Mobile refresh qualifies Graph-to-Curve only; other construction/analysis refresh remains desktop/web.",
+    "Physical iOS acceptance and published-release signoff are separate gates."
+  ]
+}

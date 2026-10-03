@@ -739,9 +739,9 @@ Development continues from main `482acbe` on `codex/projects-prj25-27`.
 
 | Milestone | Scope | Acceptance gate / status |
 | --- | --- | --- |
-| PRJ25 — Mobile Curve editing | Documents and relations opens independent nonperiodic explicit/parametric 2D and 3D Curves. Shared bounded Curve history, expression/domain edits, undo/redo, complete-project save and selected-document restart | Software implementation and preservation/replay contracts delivered; signed Samsung UI acceptance pending. Unsupported/dependent Curve representations remain qualified previews |
-| PRJ26 — Mobile Graph→Curve refresh | Explicitly create a new companion from the current supported Graph source, preserving historical documents, relations, analysis and resources | Software implementation delivered with desktop-parity contracts; missing/archived/unsupported sources and duplicate refreshed copies reject without mutation. Signed Samsung workflow pending |
-| PRJ27 — Samsung Graph/Curve round trip | Graph edit → refreshed Curve → Curve edit/undo/redo → save/restart → native export → independent desktop/browser return | Public 20-document/five-resource fixture and Electron/browser delivery passed; model-only returned-history preflight passed. Actual signed-device return, recovery and unrelated-library preservation checks remain pending |
+| PRJ25 — Mobile Curve editing | Documents and relations opens independent nonperiodic explicit/parametric 2D and 3D Curves. Shared bounded Curve history, expression/domain edits, undo/redo, complete-project save and selected-document restart | Delivered: shared replay/preservation contracts and signed Samsung expression editing, invalid-source rejection, independent history, 3D projection, switching and cold restart passed. Unsupported/dependent Curve representations remain qualified previews |
+| PRJ26 — Mobile Graph→Curve refresh | Explicitly create a new companion from the current supported Graph source, preserving historical documents, relations, analysis and resources | Delivered: desktop-parity contracts and actual Samsung creation passed; the original companion remains, duplicate refresh is disabled with its reason, and all five source resources remain verified |
+| PRJ27 — Samsung Graph/Curve round trip | Graph edit → refreshed Curve → Curve edit/undo/redo → save/restart → native export → independent desktop/browser return | Delivered: actual signed Samsung export verified, Electron restored both histories, fresh-browser export/reload remained byte-exact, recovery passed 10/10 and 11/11, and all 23 original library identities and the baseline export remain unchanged |
 
 PRJ25 moves the desktop Curve command adapter into the shared kernel while keeping
 the established `math3d.curve-replay.v1` format. Mobile schema 5 retains one active
@@ -756,6 +756,34 @@ or already-refreshed sources show the reason the action is unavailable.
 
 Desktop opening now restores a promoted literal Curve with saved replay into its
 own native editor/history. The model-only Electron return preflight checks both
-Graph and Curve undo/redo. This does not substitute for Samsung evidence. The
+Graph and Curve undo/redo. The
 [acceptance runbook](projects-mobile-curves.md) covers the actual native returned
 package, exact signed build and unchanged existing library.
+
+### PRJ25–PRJ27 signed Samsung completion — October 4
+
+**PRJ25, PRJ26 and PRJ27 are delivered for the declared Android/desktop/browser
+scope.** Clean signed source `12f8e1e` passed [Android CI, attempt 2](https://github.com/expert10000/Math3D/actions/runs/37156743806)
+after a transient Electron-download HTTP 503 on the first attempt. Its shared-key
+APK was verified and installed as an update on Samsung SM-A566B / API 36.
+
+The 20-document input exported unchanged before editing. Native Graph `x*x+4`
+undo/redo, an explicit refreshed Curve, Curve `x*x+5` edit/undo/redo, invalid-expression
+rejection, document switching and selected-Curve cold restart passed. The returned
+40,534-byte package contains 21 documents, six relations and all five original
+source resources. Original documents except the edited Graph, metadata, scripts
+and historical results remain unchanged; the new Curve has exact captured lineage.
+Electron restored independent Graph/Curve undo/redo, and a fresh browser retained
+the exact returned package through export and reload.
+
+Exact-installed-build damaged-store checks passed **10/10 preparation and 11/11
+restart checks**, including retained Graph/Curve replay and the selected Curve.
+The normal library remained unchanged during recovery, and the acceptance export
+after recovery matched exactly. All 23 original library identities remain present;
+only PRJ27 was added. The original 8,207-byte baseline also exported unchanged.
+
+[Public packages, verification results, build identity and screenshots](evidence/projects-prj27-samsung-2026-10-04/acceptance.json)
+record the actual device workflow. Subsequent documentation/fixture changes do not
+change the APK's mobile or kernel source. Other Curve representations, the other
+six mobile editors, broader mobile refresh and physical iOS/release signoff remain
+separate work.

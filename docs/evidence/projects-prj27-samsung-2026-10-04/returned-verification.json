@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "sha256": "e1d33d2dfdc18fadce19e64eb40eee591877b8fd4ec799bfad9eabaee5ab0445",
+  "bytes": 40534,
+  "projectId": "math3d:project:bf97fe908a4dd4aa526d66a428334723",
+  "graphId": "math3d:graph2d:3f7bde5a0499641b2a98864b3f34532a",
+  "curveId": "math3d:curve:c88e5b8db72e525e1072d034f951bb93",
+  "documents": 21,
+  "resources": 5,
+  "originalDocumentsMetadataResultsAndResourceBytesUnchanged": true,
+  "exactRefreshLineage": true,
+  "graphExpression": "x*x+4",
+  "curveExpression": "x*x+5",
+  "independentGraphCurveUndo": true
+}

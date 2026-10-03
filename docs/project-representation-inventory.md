@@ -10,7 +10,7 @@ project keeps whole-project opening disabled; compatible documents remain inspec
 | --- | --- | --- | --- |
 | Graph2D | Desktop/web and PRJ23 mobile software open multiple Graphs with separate bounded undo/redo histories inside complete projects | Checked current and historical point tables, including references present only in undo/redo | Mobile requires unarchived Graphs and all owned current/historical tables; modules other than Graph and qualified Curve must be checkpointed. Exact signed Samsung continuation evidence is qualified separately |
 | Curve: literal parametric / explicit, 2D or 3D | Desktop/web source edit/history/save/reopen (PRJ10); PRJ25 mobile expression/domain edits and independent shared history | None | No source dependencies or source IDs; mobile requires nonperiodic domains and finite bounded samples throughout retained history |
-| Curve: Graph promotions | Existing qualified Graph opener; returned literal Curve replay opens with its own desktop editor/history; PRJ26 mobile creates an explicit refreshed copy | Parent Graph and any checked point table | Historical lineage is retained; refresh requires a changed available Graph, a supported original object and a new target identity. Signed PRJ25–27 acceptance is pending |
+| Curve: Graph promotions | Existing qualified Graph opener; returned literal Curve replay opens with its own desktop editor/history; PRJ26 mobile creates an explicit refreshed copy | Parent Graph and any checked point table | Historical lineage is retained; refresh requires a changed available Graph, a supported original object and a new target identity. Signed PRJ25–27 Samsung acceptance passed on October 4 |
 | Curve: planar implicit / polar | Native source edit/history; numerical contours/polar samples | Saved bounds/formula or radius/angle convention | Independent planar definitions; complete finite bounds; radians/degrees retained |
 | Curve: Bézier / B-spline / NURBS | Native source edit/history; numerical spline evaluation | Complete saved control points, degree, knots and positive weights | Nonperiodic active knot interval equals saved domain; degree ≤32; ≤4096 controls; no dependencies |
 | Curve: polyline / curve-on-surface / derived | Native source edit/history for stored samples or qualified chart links | Stored points or exact saved Surface revision | ≤4096 finite points; sampled snapshots retain approximation; chart link needs compilable u/v and a qualified Surface; recipes without samples stay previews |
@@ -32,11 +32,12 @@ project keeps whole-project opening disabled; compatible documents remain inspec
 | Complex: parameters, exclusions, alternative cuts/sampling, covering or Mobius | Verified preview | Structural source definitions | Dedicated editor/evaluation mapping and branch/contour oracles |
 | Mesh: recognized resource-backed sources | Native coordinate transform, selection/history/restart (PRJ15) | Verified current and historical positions/indices/normals/UVs | Bounded native resource codec and supported origin; bytes cannot be regenerated from a preset |
 
-PRJ22/23 mobile software retains broader mixed projects and verified source
-packages, and edits each available Graph independently. Other mobile modules stay
-saved previews; their source bytes and histories are not interpreted by unrelated
-editors. Desktop/web qualification does not establish mobile editing for those
-representations. See the [PRJ24 acceptance gates](projects-mobile-roundtrip.md).
+PRJ25–27 mobile software retains broader mixed projects and verified source
+packages, and edits each available Graph and qualified literal Curve independently.
+Other mobile representations stay saved previews; their source bytes and histories
+are not interpreted by unrelated editors. [Signed Samsung evidence](evidence/projects-prj27-samsung-2026-10-04/acceptance.json)
+qualifies the Graph/Curve workflow, actual desktop/browser return and recovery.
+Desktop/web qualification does not establish mobile editing for other forms.
 
 ## First PRJ16 delivery: dense scalar grids
 

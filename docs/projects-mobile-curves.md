@@ -55,3 +55,13 @@ Graph history, Curve history, an active Curve and source bytes. Compare normal
 library identities and the original export after acceptance. Commit only public
 fixture evidence; keep APKs, signing material and private inventory outside Git.
 Physical iOS acceptance and additional Curve representations remain separate work.
+
+## Recorded Samsung acceptance
+
+The October 4 run passed on Samsung SM-A566B / API 36 with the shared-key internal
+APK from clean source `12f8e1e`. The actual returned package contains 21 documents
+and five source resources; Electron restored both histories and browser
+export/reload retained exact bytes. Native recovery passed 10/10 preparation and
+11/11 restart checks. All 23 existing library identities and the original baseline
+export remain unchanged. [Public evidence and exact build identity](evidence/projects-prj27-samsung-2026-10-04/acceptance.json)
+exclude private inventories, APKs and signing material.

@@ -87,5 +87,7 @@ before replacing its sessions. Current, missing, archived, unsupported and alrea
 refreshed sources show a disabled action and reason. Analysis and other construction
 refresh adapters remain desktop/web operations.
 
-The [PRJ25–PRJ27 acceptance workflow](projects-mobile-curves.md) records the new
-software scope. Signed Samsung acceptance is pending in the [roadmap](unified-projects-roadmap.md#prj25prj27-continuation--october-3).
+The [PRJ25–PRJ27 acceptance workflow](projects-mobile-curves.md) records the declared
+scope. Signed Samsung editing/refresh/restart, actual desktop/browser return and
+damaged-store recovery passed on October 4; [exact-build evidence](evidence/projects-prj27-samsung-2026-10-04/acceptance.json)
+records the results and preservation checks.
