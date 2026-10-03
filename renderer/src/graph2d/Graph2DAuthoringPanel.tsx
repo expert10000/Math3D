@@ -8,8 +8,10 @@ import { GRAPH2D_MAX_OBJECTS, validateGraph2DFunctionDraft, validateGraph2DParam
 import { useState } from "react";
 import { pointTableStore } from "./pointTableStore";
 
+export type Graph2DLeftPalette = "classic" | "geometry";
 type Props = { document: Graph2DDocument; onCommit?: (action: Graph2DAuthoringAction) => void;
-  onSelect?: (objectId: string) => void };
+  onSelect?: (objectId: string) => void; palette: Graph2DLeftPalette;
+  onPaletteChange: (palette: Graph2DLeftPalette) => void };
 const initialDraft = (): Graph2DFunctionDraft => ({ label: "f", expression: "x",
   domain: { min: -10, max: 10, includeMin: true, includeMax: true },
   style: { visible: true, color: "#2563eb", lineWidth: 2, lineStyle: "solid" } });
@@ -39,7 +41,7 @@ const initialPiecewiseDraft = (): Graph2DPiecewiseDraft => ({ label: "piecewise"
     { expression: "x", domain: { min: 0, max: 10, includeMin: true, includeMax: true } },
   ], style: { visible: true, color: "#9333ea", lineWidth: 2, lineStyle: "solid" } });
 
-export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
+export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, onPaletteChange }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Graph2DFunctionDraft>(initialDraft);
   const [parametricDraft, setParametricDraft] = useState<Graph2DParametricDraft>(initialParametricDraft);
@@ -156,7 +158,16 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect }: Props) {
       setPiecewiseDraft(initialPiecewiseDraft());
     }
   };
-  return <div className="graph2d-authoring">
+  return <div className="graph2d-authoring" data-palette={palette}>
+    <div className="graph2d-left-palette" role="group" aria-label="Graph left panel palette">
+      <span>Panel palette</span>
+      {(["classic", "geometry"] as const).map((option) => (
+        <button key={option} type="button" data-testid={`graph2d-left-palette-${option}`}
+          aria-pressed={palette === option} onClick={() => onPaletteChange(option)}>
+          {option === "classic" ? "Classic" : "Geometry"}
+        </button>
+      ))}
+    </div>
     <div className="graph2d-authoring-header"><h2>Functions</h2>
       <button type="button" onClick={beginCreate} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add function</button>
       <button type="button" onClick={beginCreateParametric} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add parametric</button>
