@@ -79219,7 +79219,8 @@ case "mobius":
       if (document.format === "math3d.geometry-document" && geometryDocumentEditable(document)) geometries.set(document.identity.id, entry.replay ? GeometryDocumentAdapter.restore(entry.replay.payload as Parameters<typeof GeometryDocumentAdapter.restore>[0]) : new GeometryDocumentAdapter(document));
       const legacyEditable = document.format === "math3d.curve-document" || document.format === "math3d.surface-document" ? nativeDocumentEditable(document) : document.format === "math3d.geometry-document" ? geometryDocumentEditable(document) : document.format === "math3d.topology-document" ? scientificDocumentEditable(document) : true;
       if (!legacyEditable && additionalReplayEditable(entry, document, context())) { additional.set(document.identity.id, new AdditionalProjectSession(entry, document as import("./projects/additionalProjectRepresentations").AdditionalDocument, context)); continue; }
-      if (promoted.has(document.identity.id)) continue;
+      // Edited promotion companions keep their own saved Curve history on return.
+      if (promoted.has(document.identity.id) && !(document.format === "math3d.curve-document" && entry.replay)) continue;
       if (document.format === "math3d.curve-document" && nativeDocumentEditable(document)) curves.set(document.identity.id, entry.replay ? CurveDocumentAdapter.fromReplayBundle(entry.replay.payload as Parameters<typeof CurveDocumentAdapter.fromReplayBundle>[0]) : new CurveDocumentAdapter(document));
       if (document.format === "math3d.surface-document" && nativeDocumentEditable(document)) surfaces.set(document.identity.id, entry.replay ? SurfaceDocumentAdapter.fromReplayBundle(entry.replay.payload as Parameters<typeof SurfaceDocumentAdapter.fromReplayBundle>[0]) : new SurfaceDocumentAdapter(document));
     }

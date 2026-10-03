@@ -25,12 +25,13 @@ test("PRJ27 delivers complete Curve packages and restores actual Samsung Graph/C
       const result = JSON.parse(readFileSync(resolve(output, "returned-verification.json"), "utf8"));
       await controls.reopen(packaged.project.identity.id); await controls.open(result.graphId);
       const path = ctx.page.getByTestId("main-viewer").locator(`[data-graph2d-path="${packaged.project.workspace.entries.find((entry: any) => entry.expected.id === result.graphId).checkpoint.source.objects[0].id}"]`);
+      await expect(path).toHaveAttribute("d", /[ML]/);
       const before = await path.getAttribute("d"); await ctx.page.getByTestId("main-viewer").focus(); await ctx.page.keyboard.press("Control+z");
       await expect.poll(() => path.getAttribute("d")).not.toBe(before); await ctx.page.keyboard.press("Control+Shift+z"); await expect.poll(() => path.getAttribute("d")).toBe(before);
       await controls.open(result.curveId);
-      await expect(ctx.page.locator('input[value="x*x+5"]')).toBeVisible();
-      await ctx.page.getByTestId("project-editor-undo").click(); await expect(ctx.page.locator('input[value="x*x+4"]')).toBeVisible();
-      await ctx.page.getByTestId("project-editor-redo").click(); await expect(ctx.page.locator('input[value="x*x+5"]')).toBeVisible();
+      await expect(ctx.page.getByLabel("y(t)", { exact: true })).toHaveValue("t*t+5");
+      await ctx.page.getByTestId("project-editor-undo").click(); await expect(ctx.page.getByLabel("y(t)", { exact: true })).toHaveValue("t*t+4");
+      await ctx.page.getByTestId("project-editor-redo").click(); await expect(ctx.page.getByLabel("y(t)", { exact: true })).toHaveValue("t*t+5");
       await ctx.page.screenshot({ path: resolve(output, "desktop-return-curve.png") });
     } else {
       await controls.reopen(packaged.project.identity.id); await controls.open(manifest.helixId);
