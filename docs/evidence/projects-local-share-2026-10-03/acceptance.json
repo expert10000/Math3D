@@ -1,0 +1,140 @@
+{
+  "format": "math3d.projects-local-share-acceptance.v1",
+  "testedOn": "2026-10-03",
+  "timezone": "Europe/Warsaw",
+  "status": "actual native delivery to a separate local recipient passed",
+  "scope": "User-selected local external-app handoff on Samsung A56; no network transport or second physical device",
+  "sender": {
+    "sourceCommit": "9772384a9a90c08da73be150434a81fa51d0bae4",
+    "applicationId": "com.math3d.mobile.internal",
+    "androidUid": 10268,
+    "apkSha256": "b41a0022e009038bd196047e8bd80faafde2ffceeafe797cf823631aef8c8d8d",
+    "signingCertSha256": "39ab9388fa174bf9c1973577dab4ee33eedbacb9b231c9b79068e5143480fc82",
+    "version": "1.6.0",
+    "build": 150008,
+    "channel": "internal",
+    "installedApkHashVerified": true
+  },
+  "device": {
+    "model": "SM-A566B",
+    "androidApi": 36
+  },
+  "recipient": {
+    "format": "math3d.local-share-receiver-build.v1",
+    "applicationId": "com.math3d.acceptance.sharereceiver",
+    "debugTestFixture": true,
+    "apkSha256": "d6ab0e1a9dd82efff5b66b4b4e75f21d2f89a9785a745269fec874847bbffb5e",
+    "sourceHashEncoding": "UTF-8 LF",
+    "javaSourceSha256": "8baad47ed030c95cd0999fc4f3595a9cc3bc7ac7a291d0493ff4e48d4a0b8530",
+    "manifestSha256": "6dde2e61100c6b608cd9454903167ed5364151cca50a7c491192bc4e43564463",
+    "androidUid": 10287,
+    "installedApkHashVerified": true,
+    "separateAndroidUid": true,
+    "noNetworkOrStoragePermissions": true
+  },
+  "delivery": {
+    "actualMath3dShareButton": true,
+    "actualNativeChooserSelection": true,
+    "syntheticAdbSendIntent": false,
+    "observedShareFilename": "PRJ17-Minimal-Study-20261003T102147Z.math3d.project.json",
+    "nativeReadGrantWorked": true,
+    "contentResolverStreamRead": true,
+    "separateRecipientPrivateCopy": true,
+    "payloadSha256": "8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc",
+    "byteLength": 8207,
+    "exactOriginalBytesRetained": true,
+    "identityMetadataGenerationsRelationsHistoricalResultsRetained": true
+  },
+  "browser": {
+    "ok": true,
+    "host": "fresh Chromium context",
+    "testedAtUtc": "2026-10-03T10:32:32.406Z",
+    "qualification": "edited Graph with unchanged historical Surface: saved preview; active full-workspace opening disabled",
+    "payloadSha256": "8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc",
+    "byteLength": 8207,
+    "exactNamedProjectRetained": true,
+    "exportedAndReloaded": true,
+    "byteIdenticalExportBeforeAndAfterReload": true,
+    "checkedOutCommit": "1fd5e2c7744d1b9d1472c5db5c8851a2a515a656",
+    "rendererCoreSourcesIdenticalToBuildCommit": "e1298a74480d1daaa9fa3680327af1954b2b2193"
+  },
+  "retention": {
+    "projectsBeforeAndAfterShare": 21,
+    "nativeExportAfterShareByteIdentical": true,
+    "math3dDataCleared": false,
+    "math3dUninstalled": false,
+    "recipientFixtureRemovedAfterCollection": true,
+    "math3dProcessRunningAfterCleanup": true,
+    "pidAfterCleanup": 8907
+  },
+  "limitations": [
+    "Historical Surface companion remains a saved preview; full-workspace opening disabled",
+    "Email, messenger, nearby transfer and another physical device not exercised",
+    "Physical signed iOS acceptance remains unverified",
+    "Published 1.6.0 release approval remains unchanged"
+  ],
+  "scripts": [
+    {
+      "file": "scripts/mobile-android-share-receiver.ps1",
+      "sha256": "8654a8628826d33f4ad1d3a581c04d38f5876d9d26f8def7317f6cbfe3337530",
+      "encoding": "UTF-8 LF"
+    },
+    {
+      "file": "scripts/mobile-android-share-receipt.mjs",
+      "sha256": "7140b3f09280129cb46f27f9fd6da86e5f120d2e8d43bb8a8e1c312dadc4c127",
+      "encoding": "UTF-8 LF"
+    },
+    {
+      "file": "scripts/mobile-android-share-roundtrip.mjs",
+      "sha256": "9fbb974c083cb592ae35c3f0f54c231e533ac38af9452247e7d0ffeabc2e627c",
+      "encoding": "UTF-8 LF"
+    }
+  ],
+  "files": [
+    {
+      "file": "browser-transfer-result.json",
+      "byteLength": 450,
+      "sha256": "82e54fa8d6b2ff4c1a4949bcd26892e4067b0c344065d682a4b4a819f30d45e3"
+    },
+    {
+      "file": "delivery-result.json",
+      "byteLength": 1429,
+      "sha256": "8faa8ff5176e26f37eb681190a60131d7f07a282a037631abebb6c491e3c24b5"
+    },
+    {
+      "file": "fresh-browser-import.png",
+      "byteLength": 177909,
+      "sha256": "68fca15954709901bca1a128f3de57442854bafbf2b112cebacd6f5d4c41a419"
+    },
+    {
+      "file": "fresh-browser-reloaded.math3d.project.json",
+      "byteLength": 8207,
+      "sha256": "8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc"
+    },
+    {
+      "file": "fresh-browser-return.math3d.project.json",
+      "byteLength": 8207,
+      "sha256": "8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc"
+    },
+    {
+      "file": "native-after-share.math3d.project.json",
+      "byteLength": 8207,
+      "sha256": "8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc"
+    },
+    {
+      "file": "receipt.json",
+      "byteLength": 760,
+      "sha256": "d692c654d702c2f04ff3b5313214410531c12b39cc4d1cc42ca869a98a027b71"
+    },
+    {
+      "file": "received.math3d.project.json",
+      "byteLength": 8207,
+      "sha256": "8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc"
+    },
+    {
+      "file": "recipient.png",
+      "byteLength": 103465,
+      "sha256": "b0da010470671d0eed98f4edaee9f24a3ef44e59fe2fef0d81f7e167e4386d17"
+    }
+  ]
+}

@@ -596,6 +596,39 @@ the app is left running.
 
 Android damaged-store acceptance is complete for the production reader/writer
 with isolated fixtures on this handset. I/O fault injection remains a software
-qualification. iOS acceptance, external share delivery and published 1.6.0 release
-approval remain separate. [Repeatable instructions](mobile-storage-recovery-checks.md)
+qualification. iOS acceptance and published 1.6.0 release approval remain separate;
+local external-app share delivery is recorded below. [Repeatable instructions](mobile-storage-recovery-checks.md)
 describe the same safe procedure for later builds.
+
+## Actual local external share recipient — October 3
+
+The same signed `9772384` Samsung APK delivered **PRJ17-Minimal-Study** to
+`com.math3d.acceptance.sharereceiver` through the actual saved-project Share button
+and native chooser. No synthetic ADB send intent was used. The recipient's UID
+10287 is separate from Math3D's UID 10268. Installed sender and recipient APK
+hashes were checked before collecting the receipt. The recipient used the real
+read grant to open the sender's content URI through `ContentResolver` and saved
+the stream in its own private files. Debug `run-as` read only this test recipient.
+
+The [raw receipt](evidence/projects-local-share-2026-10-03/receipt.json) records
+`ACTION_SEND`, `application/json`, the sender's provider authority, the fresh
+observed filename, successful stream read, project identity and byte fingerprint.
+The [actual received project](evidence/projects-local-share-2026-10-03/received.math3d.project.json)
+contains 8,207 bytes and matches the original native export exactly, SHA-256
+`8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc`.
+
+A fresh Chromium profile imported that received file into its saved library,
+exported it, reloaded and exported again. Both exports matched the received bytes
+exactly, preserving the whole named project, companion generations, relations
+and historical results. Full opening stayed disabled for the historical Surface;
+the qualified saved-preview behavior was retained. The Samsung library showed
+21 projects on return from the recipient; the subsequent native export matched
+the original bytes exactly. Only the test receiver was uninstalled after evidence
+collection. Math3D data was retained and its process remained running.
+
+[Exact-build delivery, browser and file evidence](evidence/projects-local-share-2026-10-03/acceptance.json)
+and the [repeatable local recipient procedure](../tests/fixtures/android-share-receiver/README.md)
+qualify this separate local Android recipient. The fixture APK and signing key
+remain outside Git. Email, messenger, nearby transfer and another physical device
+are separate untested transports. Physical iOS acceptance and published release
+approval remain separate gates.

@@ -1,0 +1,30 @@
+{
+  "format": "math3d.native-local-share-acceptance.v1",
+  "ok": true,
+  "scope": "Actual Android ACTION_SEND delivery to a separate local recipient app; no network transport",
+  "testedAtUtc": "2026-10-03T10:26:33.675Z",
+  "model": "SM-A566B",
+  "androidApi": 36,
+  "senderPackage": "com.math3d.mobile.internal",
+  "senderUid": 10268,
+  "senderSourceCommit": "9772384a9a90c08da73be150434a81fa51d0bae4",
+  "senderApkSha256": "b41a0022e009038bd196047e8bd80faafde2ffceeafe797cf823631aef8c8d8d",
+  "receiverPackage": "com.math3d.acceptance.sharereceiver",
+  "receiverUid": 10287,
+  "receiverBuild": {
+    "format": "math3d.local-share-receiver-build.v1",
+    "applicationId": "com.math3d.acceptance.sharereceiver",
+    "debugTestFixture": true,
+    "apkSha256": "d6ab0e1a9dd82efff5b66b4b4e75f21d2f89a9785a745269fec874847bbffb5e",
+    "sourceHashEncoding": "UTF-8 LF",
+    "javaSourceSha256": "8baad47ed030c95cd0999fc4f3595a9cc3bc7ac7a291d0493ff4e48d4a0b8530",
+    "manifestSha256": "6dde2e61100c6b608cd9454903167ed5364151cca50a7c491192bc4e43564463"
+  },
+  "observedShareFileName": "PRJ17-Minimal-Study-20261003T102147Z.math3d.project.json",
+  "payloadSha256": "8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc",
+  "byteLength": 8207,
+  "nativeReadGrantWorked": true,
+  "separateRecipientPrivateCopy": true,
+  "exactOriginalBytesRetained": true,
+  "projectIdentityMetadataGenerationsRelationsResultsRetained": true
+}

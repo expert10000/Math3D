@@ -316,7 +316,8 @@ after a rejected same-ID import. PRJ12 software integration is complete.
 The subsequent sections record PRJ13–PRJ18 implementation and qualified software
 acceptance. The supported Samsung Android workflow has current exact-build
 observations. Damaged-store protection is fixed; the signed Android emulator and
-Samsung A56 both passed 11 recovery cases. Native iOS acceptance remains unverified.
+Samsung A56 both passed 11 recovery cases. Actual local external-app share delivery
+also passed with an exact received-file browser round-trip. Native iOS acceptance remains unverified.
 Full PRJ17 native signoff and PRJ18 combined native readiness remain open for
 those specifically recorded conditions.
 
@@ -532,8 +533,8 @@ The initial export opens in a fresh browser; the edited project round-trips
 exactly through its qualified saved preview, with historical companions/results
 explicitly stale. [Device evidence and returned files](evidence/projects-samsung-2026-10-03/acceptance.json)
 record the APK/source/certificate hashes. The subsequent signed `9772384` build
-passed Samsung damaged-store recovery, as recorded below. Native iOS acceptance
-and external share delivery remain unverified, so full PRJ17/PRJ18 native release
+passed Samsung damaged-store recovery and actual local external-app share delivery,
+as recorded below. Native iOS acceptance remains unverified, so full PRJ17/PRJ18 native release
 readiness is still open. Published 1.6.0 release signoff remains unchanged.
 
 ### Damaged mobile store recovery — October 3
@@ -560,4 +561,31 @@ diagnostic, all 21 saved projects remained present, and the existing acceptance
 project exported byte-identically before/after the same-signer upgrade. No user
 project was deliberately damaged, and app data was neither cleared nor uninstalled.
 The app is left running. The Android damaged-store gate is complete for this
-declared fixture/service scope; iOS and external share delivery remain open.
+declared fixture/service scope. The continuation below closes local external-app
+share delivery; physical iOS acceptance remains open.
+
+### Actual local share recipient delivery — October 3
+
+The signed Samsung APK from clean source `9772384` delivered the existing
+**PRJ17-Minimal-Study** through Math3D's saved-project **Share** action and the
+native Android chooser to **Math3D Local Receiver**, a separate local acceptance
+app. Distinct Android UIDs and installed APK hashes were verified. The recipient
+read the granted content URI through `ContentResolver`, saved 8,207 bytes in its
+own private storage and recorded the receipt. The file matched the original
+export byte-for-byte, SHA-256
+`8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc`.
+
+The actual received file was imported into a fresh Chromium context. Complete
+identity, metadata, source generations, relations and historical results survived
+library import, export and reload; both browser exports were byte-identical.
+The edited Graph's unchanged Surface remains a qualified saved preview with full
+opening disabled. The Samsung library still contained 21 projects on return;
+its post-share export was byte-identical. Only the receiver fixture was removed
+after collecting evidence, and Math3D remained running.
+
+[Structured evidence, receipt and returned files](evidence/projects-local-share-2026-10-03/acceptance.json)
+and a [repeatable recipient fixture](../tests/fixtures/android-share-receiver/README.md)
+are recorded. This closes the actual external-recipient handoff gate for the
+user-selected local delivery scope. Email, messenger, nearby transport and another
+physical device were not tested. Physical iOS acceptance remains open; published
+1.6.0 release approval is unchanged.

@@ -1,0 +1,20 @@
+{
+  "format": "math3d.local-share-receipt.v1",
+  "ok": true,
+  "receivedAtEpochMillis": 1791023029349,
+  "receiverPackage": "com.math3d.acceptance.sharereceiver",
+  "receiverUid": 10287,
+  "action": "android.intent.action.SEND",
+  "mimeType": "application\/json",
+  "contentUriAuthority": "com.math3d.mobile.internal.SharingFileProvider",
+  "readPermissionFlag": true,
+  "contentResolverStreamRead": true,
+  "displayName": "PRJ17-Minimal-Study-20261003T102147Z.math3d.project.json",
+  "byteLength": 8207,
+  "sha256": "8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc",
+  "projectId": "math3d:project:895017800e716a07314639561bb05b1f",
+  "projectTitle": "PRJ17-Minimal-Study",
+  "projectRevision": 2,
+  "documentCount": 3,
+  "relationCount": 3
+}

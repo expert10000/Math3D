@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "host": "fresh Chromium context",
+  "testedAtUtc": "2026-10-03T10:32:32.406Z",
+  "qualification": "edited Graph with unchanged historical Surface: saved preview; active full-workspace opening disabled",
+  "payloadSha256": "8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc",
+  "byteLength": 8207,
+  "exactNamedProjectRetained": true,
+  "exportedAndReloaded": true,
+  "byteIdenticalExportBeforeAndAfterReload": true
+}
