@@ -2,7 +2,7 @@
   "format": "math3d.projects-storage-recovery-acceptance.v1",
   "testedOn": "2026-10-03",
   "timezone": "Europe/Warsaw",
-  "status": "implementation and signed Android emulator passed; Samsung pending",
+  "status": "signed Android emulator and Samsung physical recovery passed",
   "scope": "Production mobile storage reader/writer with public Graph/Curve/Surface and Scene fixtures in an isolated private directory",
   "sourceCommit": "9772384a9a90c08da73be150434a81fa51d0bae4",
   "trackedSourceDirty": false,
@@ -51,11 +51,34 @@
     "cold-launch-repair-ignores-uncommitted-staging"
   ],
   "physicalSamsung": {
-    "status": "pending",
-    "signedUpgradeCandidateReady": true
+    "status": "passed",
+    "model": "SM-A566B",
+    "androidApi": 36,
+    "sourceCommit": "9772384a9a90c08da73be150434a81fa51d0bae4",
+    "apkSha256": "b41a0022e009038bd196047e8bd80faafde2ffceeafe797cf823631aef8c8d8d",
+    "installedApkHashVerified": true,
+    "sameSignerUpgrade": true,
+    "previousApkSha256": "34629b628969f3b55b4bf5e75da0372236781a559f56f4b41e2254e01559421d",
+    "recoveryCasesPassed": 11,
+    "realPrivateFiles": true,
+    "actualForceStopAndRelaunch": true,
+    "processAbsenceVerified": true,
+    "differentProcessConfirmed": true,
+    "normalLibraryFingerprintUnchanged": true,
+    "savedProjectsBefore": 21,
+    "savedProjectsAfter": 21,
+    "originalUserProjects": 20,
+    "previousAcceptanceProjects": 1,
+    "acceptanceExportUnchanged": true,
+    "acceptanceExportSha256": "8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc",
+    "appDataCleared": false,
+    "appUninstalled": false,
+    "detailedReportExportedThroughNativePicker": true,
+    "appLeftRunning": true,
+    "nativeScreenshotAndPrivateUiDumpsKeptOutsideRepository": true
   },
   "limits": [
-    "No physical damaged-store result is inferred from the emulator.",
+    "Samsung physical recovery was exercised in a fixed isolated private directory using the production reader/writer; no broader device matrix is inferred.",
     "Normal user-library files are never deliberately corrupted.",
     "I/O permission, disk-full, rename and cleanup faults are unit-injected; no device disk is filled.",
     "Both-invalid or unsupported stores are preserved and require a valid storage backup before saving.",
@@ -68,14 +91,34 @@
       "sha256": "e3e8b105e38d80a0dadaa9f23c0bcfe4d91a7844349ccae3f66eb69abe44e772"
     },
     {
+      "path": "emulator-recovery.png",
+      "byteLength": 42678,
+      "sha256": "b657ce0ecb3a2d9abe33953b6a6377f657801f3124a70d7a4961db43b68655db"
+    },
+    {
       "path": "emulator-result.json",
       "byteLength": 538,
       "sha256": "6575e0730dbd2d83725d770572ce67877d9df3ff6d03868e1eff137509e6e778"
     },
     {
-      "path": "emulator-recovery.png",
-      "byteLength": 42678,
-      "sha256": "b657ce0ecb3a2d9abe33953b6a6377f657801f3124a70d7a4961db43b68655db"
+      "path": "samsung-process-restart.json",
+      "byteLength": 224,
+      "sha256": "dd6aa3913c957b932f1c48ef2eeb4800a2ed09bfca023f32992ad3d0717c3a5f"
+    },
+    {
+      "path": "samsung-recovery-report.json",
+      "byteLength": 1757,
+      "sha256": "865a9dfe32684e431ee5459cf6d34a0fd94980064f76187498f73e400c8f0a72"
+    },
+    {
+      "path": "samsung-result.json",
+      "byteLength": 498,
+      "sha256": "460b0b674c19712c2351305b8fceb91224782c792cc5cc8a1672d3da0203d397"
+    },
+    {
+      "path": "samsung-retained.math3d.project.json",
+      "byteLength": 8207,
+      "sha256": "8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc"
     }
   ]
 }

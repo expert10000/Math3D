@@ -1,0 +1,9 @@
+{
+  "method": "am force-stop then am start",
+  "pidBefore": "8563",
+  "pidAfter": "8907",
+  "processAbsenceVerifiedByRunner": true,
+  "differentProcessConfirmed": true,
+  "appDataCleared": false,
+  "appUninstalled": false
+}

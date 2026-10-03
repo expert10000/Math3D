@@ -315,8 +315,8 @@ named-project payload, library entry, sidecar and backup remains byte-identical
 after a rejected same-ID import. PRJ12 software integration is complete.
 The subsequent sections record PRJ13–PRJ18 implementation and qualified software
 acceptance. The supported Samsung Android workflow has current exact-build
-observations. Damaged-store protection is fixed and the signed Android emulator
-passed 11 recovery cases; Samsung recovery and native iOS acceptance remain unverified.
+observations. Damaged-store protection is fixed; the signed Android emulator and
+Samsung A56 both passed 11 recovery cases. Native iOS acceptance remains unverified.
 Full PRJ17 native signoff and PRJ18 combined native readiness remain open for
 those specifically recorded conditions.
 
@@ -531,8 +531,9 @@ was deleted and recovered through its exported JSON, then cold-restarted again.
 The initial export opens in a fresh browser; the edited project round-trips
 exactly through its qualified saved preview, with historical companions/results
 explicitly stale. [Device evidence and returned files](evidence/projects-samsung-2026-10-03/acceptance.json)
-record the APK/source/certificate hashes. Native iOS and physical damaged
-private-store recovery remain unverified, so full PRJ17/PRJ18 native release
+record the APK/source/certificate hashes. The subsequent signed `9772384` build
+passed Samsung damaged-store recovery, as recorded below. Native iOS acceptance
+and external share delivery remain unverified, so full PRJ17/PRJ18 native release
 readiness is still open. Published 1.6.0 release signoff remains unchanged.
 
 ### Damaged mobile store recovery — October 3
@@ -551,6 +552,12 @@ uses the production storage service in an isolated private directory and checks
 the normal library's before/after fingerprints. It never damages user projects.
 [Evidence](evidence/projects-storage-recovery-2026-10-03/acceptance.json) and the
 [repeatable procedure](mobile-storage-recovery-checks.md) identify the exact
-source, APK and certificate. The Samsung rerun is pending; the signed candidate
-is ready. This closes the implementation/emulator gap, while physical Android
-recovery and iOS acceptance remain separate PRJ17/PRJ18 gates.
+source, APK and certificate. **The same signed APK passed all 11 checks on the
+Samsung A56 / Android 16.** The runner confirmed process termination and a new
+process after relaunch; the detailed report was exported through the native
+picker. All four normal-library file fingerprints matched before/after the
+diagnostic, all 21 saved projects remained present, and the existing acceptance
+project exported byte-identically before/after the same-signer upgrade. No user
+project was deliberately damaged, and app data was neither cleared nor uninstalled.
+The app is left running. The Android damaged-store gate is complete for this
+declared fixture/service scope; iOS and external share delivery remain open.

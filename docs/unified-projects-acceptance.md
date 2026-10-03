@@ -546,15 +546,15 @@ and handset/browser screenshots are committed. Existing user exports, private
 UI dumps and the APK stay outside the repository. The handset app and desktop
 development app are left running.
 
-This is Samsung internal-build workflow evidence. Physical iOS, deliberate
-corruption/recovery of the signed app's private primary/backup store and delivery
-to an external share recipient were not tested. Automatic store recovery retains
-its software evidence; exported-file recovery is the physical observation here.
+This is Samsung internal-build workflow evidence for source `e1298a7`. Physical
+iOS, deliberate private-store corruption/recovery and delivery to an external
+share recipient were not included in that earlier workflow pass. The continuation
+below adds exact-build physical damaged-store recovery evidence for `9772384`.
 Published 1.6.0 release approval and the broader six-device MOB-G13 matrix are
 unchanged. Full PRJ17/PRJ18 native release readiness remains unverified for the
 specific native conditions listed in the host matrix.
 
-## Damaged private-store recovery implementation — October 3
+## Damaged private-store recovery implementation and Samsung acceptance — October 3
 
 Source `9772384a9a90c08da73be150434a81fa51d0bae4` fixes read-error fallback,
 recovery/save serialization, blank-file first-run misclassification, unsupported
@@ -578,8 +578,24 @@ backup and staging-file fingerprints must stay unchanged. This diagnostic runner
 never installs, uninstalls or clears app data; the preceding emulator smoke uses
 its separate disposable emulator profile.
 
-[Structured emulator evidence](evidence/projects-storage-recovery-2026-10-03/acceptance.json)
-and [instructions](mobile-storage-recovery-checks.md) are committed. Physical
-Samsung execution is still pending; no handset damaged-store result is inferred
-from the emulator. iOS acceptance, external share delivery and published 1.6.0
-release approval remain separate.
+The identical signed APK was then installed on **Samsung A56 / Android 16** as a
+same-certificate upgrade. All 21 saved projects remained available. All **11
+physical recovery checks passed**, including repair after confirmed process
+termination and relaunch into a different process (PID 8563 → 8907). The installed
+APK hash matched the candidate. The diagnostic's normal-library primary, backup
+and staging-file fingerprints matched exactly before/after. A fresh acceptance
+project export before/after the upgrade matched byte-for-byte, SHA-256
+`8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc`.
+
+The [detailed report returned by the native picker](evidence/projects-storage-recovery-2026-10-03/samsung-recovery-report.json)
+records each case and the file fingerprints. [Runner and process evidence](evidence/projects-storage-recovery-2026-10-03/acceptance.json)
+and the [actual retained export](evidence/projects-storage-recovery-2026-10-03/samsung-retained.math3d.project.json)
+are committed. The screenshot, private UI dumps, APK and existing user exports
+remain outside the repository. App data was neither cleared nor uninstalled;
+the app is left running.
+
+Android damaged-store acceptance is complete for the production reader/writer
+with isolated fixtures on this handset. I/O fault injection remains a software
+qualification. iOS acceptance, external share delivery and published 1.6.0 release
+approval remain separate. [Repeatable instructions](mobile-storage-recovery-checks.md)
+describe the same safe procedure for later builds.

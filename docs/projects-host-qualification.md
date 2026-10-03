@@ -11,7 +11,7 @@ Representation limits remain those in [the source inventory](project-representat
 | Electron | All eight enabled module adapters; original resources, metadata, generations, relations, historical results, edits and reopened history | Combined real UI journey passed locally, including an independent profile and process restart; repeatable in Projects CI |
 | Chromium | The same qualified source/resource subset; a fresh storage profile and reload | Combined real UI journey passed in en-US/UTC and pl-PL/Auckland; required installed services remain separate capabilities |
 | Native Android / iOS model | One checkpointed Graph with checkpointed Curve/Surface companions | Actual mobile import/edit/undo/redo/library/export model is tested; desktop replay containers reject import with the checkpoint-export instruction |
-| Signed Android handset | Native picker, share chooser/cancel, restart, retained-data upgrade and exported-file recovery for that supported mobile slice | **Samsung A56 / Android 16 passed on October 3**, against clean source `e1298a7` and the verified shared-key APK. All 20 existing projects were backed up and compared after upgrade; [actual exports and device evidence](evidence/projects-samsung-2026-10-03/acceptance.json) are recorded. Damaged-store protection is now fixed and [11 native emulator recovery cases passed](evidence/projects-storage-recovery-2026-10-03/acceptance.json) on signed source `9772384`; the handset rerun and external share delivery remain unverified |
+| Signed Android handset | Native picker, share chooser/cancel, restart, retained-data upgrade, exported-file recovery and damaged-store recovery for that supported mobile slice | **Samsung A56 / Android 16 passed on October 3.** The workflow pass on clean signed source `e1298a7` includes 20 existing-project export comparisons; [device evidence](evidence/projects-samsung-2026-10-03/acceptance.json) is recorded. Signed source `9772384` then passed [all 11 physical recovery checks](evidence/projects-storage-recovery-2026-10-03/acceptance.json), using real isolated private files and the production storage service. A real process restart repaired the primary; normal-library fingerprints matched, 21 projects remained and the acceptance export was unchanged. External share delivery remains unverified |
 | Native iOS handset | The same declared mobile slice | **Unverified here.** No connected iOS device or exact signed IPA is attested |
 | Installed Sage | Structured Complex jobs and exact integer homology, through real F05 execution and F06 publication | SageMath 10.10 installed-service oracles passed; the workflow also requires project/result/artifact-manifest round-trip and records container/build hashes |
 | Installed VTK / CGAL | Existing independent numerical/reference probes | PRJ16's recorded probes remain reference evidence; they do not establish new signed-build or complete project-integration signoff |
@@ -80,11 +80,13 @@ The current device checks must record all of these outcomes against that build:
    the backup/recovery result, actual exported files and screenshots/logs.
 
 No case is marked passed merely because an APK was built or an emulator/model
-test passed. **The supported Samsung Android workflow now has exact-build physical
-evidence.** Native iOS acceptance and physical recovery from a damaged private
-primary/backup store remain unverified; full PRJ17/PRJ18 native readiness is not
-attested. The Samsung recovery observation restores a deleted test project from
-its actual exported JSON without touching the 20 existing user projects.
+test passed. **The supported Samsung Android workflow and damaged-store recovery
+now have exact-build physical evidence.** Recovery uses the production reader/writer
+in an isolated private directory, with normal-library file fingerprints unchanged.
+The earlier exported-file observation restored a deleted test project from its
+actual JSON without touching the 20 existing user projects. Native iOS acceptance
+and external share delivery remain unverified; full PRJ17/PRJ18 native readiness
+is not attested.
 PRJ06/PRJ08 desktop/web restoration, external source resources and independent
 host software freeze are covered by PRJ13–PRJ18.
 
