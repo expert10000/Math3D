@@ -741,7 +741,7 @@ Development continues from main `482acbe` on `codex/projects-prj25-27`.
 | --- | --- | --- |
 | PRJ25 — Mobile Curve editing | Documents and relations opens independent nonperiodic explicit/parametric 2D and 3D Curves. Shared bounded Curve history, expression/domain edits, undo/redo, complete-project save and selected-document restart | Software implementation and preservation/replay contracts delivered; signed Samsung UI acceptance pending. Unsupported/dependent Curve representations remain qualified previews |
 | PRJ26 — Mobile Graph→Curve refresh | Explicitly create a new companion from the current supported Graph source, preserving historical documents, relations, analysis and resources | Software implementation delivered with desktop-parity contracts; missing/archived/unsupported sources and duplicate refreshed copies reject without mutation. Signed Samsung workflow pending |
-| PRJ27 — Samsung Graph/Curve round trip | Graph edit → refreshed Curve → Curve edit/undo/redo → save/restart → native export → independent desktop/browser return | Public fixture and actual signed-device evidence pending; unrelated library identities and baseline export must remain intact |
+| PRJ27 — Samsung Graph/Curve round trip | Graph edit → refreshed Curve → Curve edit/undo/redo → save/restart → native export → independent desktop/browser return | Public 20-document/five-resource fixture and Electron/browser delivery passed; model-only returned-history preflight passed. Actual signed-device return, recovery and unrelated-library preservation checks remain pending |
 
 PRJ25 moves the desktop Curve command adapter into the shared kernel while keeping
 the established `math3d.curve-replay.v1` format. Mobile schema 5 retains one active
@@ -753,3 +753,9 @@ The explorer reflects committed unsaved Graph/Curve changes in the active projec
 refresh persists the complete enclosing container before replacing its sessions.
 No scientific operation runs automatically. Current, missing, archived, dependent
 or already-refreshed sources show the reason the action is unavailable.
+
+Desktop opening now restores a promoted literal Curve with saved replay into its
+own native editor/history. The model-only Electron return preflight checks both
+Graph and Curve undo/redo. This does not substitute for Samsung evidence. The
+[acceptance runbook](projects-mobile-curves.md) covers the actual native returned
+package, exact signed build and unchanged existing library.

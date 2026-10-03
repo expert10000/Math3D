@@ -28,11 +28,14 @@ app with the shared-signer internal APK; never uninstall or clear data. Import t
 desktop checkpoint package through **Projects → New Project → Math3D project**.
 Open the helix and inspect the 3D projection; dependent/spline Curves stay previews.
 
-Open the parabola Graph, change `x^2` to `x*x+4`, and save. Under its stale promotion
+Open the parabola Graph, change `x^2` to `x*x+4`, verify undo/redo, and save. Perform
+the Graph undo/redo check before refresh: it advances the Graph's source generation.
+Under its stale promotion
 relation, create the refreshed Curve. Check that the original companion remains
 and the action rejects a duplicate copy. Open the new Curve, attempt an invalid
 expression, then change its y expression to `x*x+5`. Apply, undo, redo and save.
-Switch Graph/Curve and confirm independent histories, then force-stop/relaunch.
+Switch Graph/Curve and confirm the saved expressions and available independent
+histories without undoing the Graph again after capture, then force-stop/relaunch.
 The selected Curve and history must return. Export through the native folder picker.
 
 ```powershell

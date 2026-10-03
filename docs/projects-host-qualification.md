@@ -187,3 +187,19 @@ the accepted return byte-for-byte. Exact-installed-build recovery repeated all
 10 preparation and 11 restart checks without changing the real library.
 After merging main through `6f0abf9`, desktop type checks/build and both actual
 Electron delivery/return tests passed, as did fresh-browser export/reload.
+
+### PRJ25–PRJ27 software scope and pending handset gate
+
+Schema 5 extends complete mobile projects with independent shared Curve replay
+alongside Graph replay. **Documents and relations → Edit Curve** qualifies
+nonperiodic explicit/parametric literal 2D/3D sources and every retained history
+source. Other Curve representations and the other six modules remain previews.
+An explicit supported Graph→Curve refresh adds a new target and lineage while
+preserving the original documents, results and resources.
+
+The public 20-document/five-resource delivery fixture and Electron/browser
+delivery passed. A model-generated return preflight also restores both histories
+in Electron; it is not physical-device evidence. The exact signed Samsung build,
+actual returned file, cold restart, recovery and unchanged normal-library checks
+remain pending. Follow the [Graph/Curve acceptance runbook](projects-mobile-curves.md)
+and [current roadmap](unified-projects-roadmap.md#prj25prj27-continuation--october-3).

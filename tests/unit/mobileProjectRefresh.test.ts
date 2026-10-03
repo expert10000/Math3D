@@ -35,7 +35,7 @@ describe("PRJ26 explicit mobile Graph-to-Curve refreshed copies", () => {
     expect(new MobileProjectGraphSessions(result).curve(next.expected.id).document().identity).toEqual(next.expected);
     expect(after.workspace.results).toEqual(fixture.project.workspace.results);
   });
-  it("blocks unchanged, archived and missing-resource sources without mutating stored work", () => {
+  it("blocks unchanged, archived and unknown relations without mutating stored work", () => {
     const { stored, changed } = changedProject(), project = readMobilePreviewProject(changed);
     const option = mobileProjectRefreshOptions(changed).find(item => item.canRefresh)!;
     expect(() => refreshMobileProjectCurve(stored, option.relationId)).toThrow("not changed");
@@ -46,5 +46,21 @@ describe("PRJ26 explicit mobile Graph-to-Curve refreshed copies", () => {
     expect(() => refreshMobileProjectCurve(changed, "missing-relation")).toThrow("qualified");
     const before = canonicalJsonStringify(changed);
     expect(() => refreshMobileProjectCurve(changed, "missing")).toThrow(); expect(canonicalJsonStringify(changed)).toBe(before);
+  });
+  it("blocks a missing table owned by the source Graph even when the promoted object is explicit", () => {
+    const { fixture, changed, sessions } = changedProject();
+    const option = mobileProjectRefreshOptions(changed).find(item => item.canRefresh)!;
+    const graph = sessions.adapter(fixture.graphIds[1]!).document();
+    const dataGraph = sessions.adapter(fixture.graphIds[0]!).document();
+    const data = dataGraph.source.objects.find(object => object.kind === "point-series")!;
+    expect(data).toBeDefined();
+    sessions.adapter(graph.identity.id).commitScene(applyGraph2DAuthoring(graph, { type: "create-point-series", draft: {
+      label: data.label, table: data.table, mode: data.mode, domain: data.domain,
+      style: dataGraph.display.objects.find(object => object.objectId === data.id)! } }), "edit");
+    const missing = { ...sessions.snapshot(graph.identity.id), projectResources: [] };
+    const before = canonicalJsonStringify(missing);
+    expect(mobileProjectRefreshOptions(missing).find(item => item.relationId === option.relationId)).toMatchObject({ canRefresh: false, reason: "Import missing Graph source tables before refreshing." });
+    expect(() => refreshMobileProjectCurve(missing, option.relationId)).toThrow("missing Graph source tables");
+    expect(canonicalJsonStringify(missing)).toBe(before);
   });
 });
