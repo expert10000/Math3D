@@ -719,6 +719,16 @@ resource/history retention, with the real library unchanged.
 All 22 pre-existing library identities remain present; only the acceptance
 project was added. The original 8,207-byte project also exported unchanged.
 
+The final resource-action guard was qualified on clean signed source `4fb0c97`
+from [Android CI](https://github.com/expert10000/Math3D/actions/runs/37129330126).
+Samsung confirmed that legacy Graph cards hide resource attachment while mixed
+projects retain it, all five resources survived the update, the saved `x*x+2`
+Graph reopened, and native export remained byte-identical to the accepted return.
+Recovery again passed 10/10 preparation and 11/11 restart checks with the real
+library unchanged. Main's subsequent desktop changes through `6f0abf9` were
+merged; the combined build, type checks, both Electron delivery/return runs and
+fresh-browser export/reload passed. Mobile/core source is identical to this APK.
+
 [Public packages, verification results and screenshots](evidence/projects-prj24-samsung-2026-10-03/acceptance.json)
 record the exact tested build. This continuation does not expand mobile editing
 to non-Graph modules or establish physical iOS/release signoff.

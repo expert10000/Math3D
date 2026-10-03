@@ -177,3 +177,13 @@ and 11/11 restart checks without changing the real library.
 See [the reproducible acceptance workflow](projects-mobile-roundtrip.md) and
 [exact-build evidence](evidence/projects-prj24-samsung-2026-10-03/acceptance.json).
 Non-Graph mobile editors and physical iOS acceptance remain separate gates.
+
+The final clean signed `4fb0c97` APK from
+[Android CI](https://github.com/expert10000/Math3D/actions/runs/37129330126) was
+also installed as an update on this Samsung. Resource attachment appears on
+mixed-project cards and stays hidden on legacy Graph cards. The five retained
+resources, selected Graph and saved expression survived; native export matched
+the accepted return byte-for-byte. Exact-installed-build recovery repeated all
+10 preparation and 11 restart checks without changing the real library.
+After merging main through `6f0abf9`, desktop type checks/build and both actual
+Electron delivery/return tests passed, as did fresh-browser export/reload.

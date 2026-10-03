@@ -12,7 +12,36 @@
     "device": "Samsung SM-A566B",
     "androidApi": 36
   },
-  "finalQualificationBuild": null,
+  "finalQualificationBuild": {
+    "sourceCommit": "4fb0c97c145ec8eb8e1975bce9cbb1f296324605",
+    "apkSha256": "8dfba12e8c337a7140fc10486209391f0b6bd28f7ec1b29e3183666e29adbe1c",
+    "certificateSha256": "39ab9388fa174bf9c1973577dab4ee33eedbacb9b231c9b79068e5143480fc82",
+    "ci": "https://github.com/expert10000/Math3D/actions/runs/37129330126",
+    "ciResult": "success",
+    "trackedSourceDirty": false,
+    "installedAsUpdate": true,
+    "device": "Samsung SM-A566B",
+    "androidApi": 36,
+    "legacyGraphResourceActionHidden": true,
+    "mixedProjectResourceActionAvailable": true,
+    "retainedResources": "5/5",
+    "savedSelectedGraphExpression": "x*x+2",
+    "nativeExportMatchesAcceptedReturn": true,
+    "nativeExportSha256": "2efbea36003f5500bb8b1c30df6c6760c8f1da27baef1ad3d5730b19297be342",
+    "isolatedRecoveryPreparation": "10/10",
+    "isolatedRecoveryRestart": "11/11",
+    "realLibraryUnchangedDuringRecovery": true
+  },
+  "mergedDesktopQualification": {
+    "sourceCommit": "9a11db57678de730a10d65d226596519641cead4",
+    "mergedMainCommit": "6f0abf920783a81bef4544ba3d8f8169e9775267",
+    "typecheck": true,
+    "build": true,
+    "playwrightDesktopDelivery": true,
+    "playwrightActualSamsungReturnHistory": true,
+    "freshBrowserByteExactExportAndReload": true,
+    "mobileAndCoreSourceUnchangedFromFinalApk": true
+  },
   "project": {
     "id": "math3d:project:ac0a5c6416ff7098eb018f81177ea2dc",
     "documents": 19,
