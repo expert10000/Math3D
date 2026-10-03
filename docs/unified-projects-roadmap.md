@@ -685,3 +685,13 @@ historical results are preserved. Creating/importing another project preserves
 the enclosing mixed container instead of saving an orphan Graph. The isolated
 native recovery fixture now includes two Graphs, resources and saved Graph replay.
 Signed Samsung round-trip acceptance is recorded with PRJ24 after installation.
+
+### PRJ24 acceptance tooling
+
+The [mixed-project acceptance runner](projects-mobile-roundtrip.md) generates a
+public 19-document package with two Graphs and five source sidecars. Electron UI
+import/export and fresh-browser byte-exact resource export/reload have passed.
+The return verifier checks unchanged non-Graph documents and resource bytes,
+retained Graph edits and restored independent history. Signed Samsung delivery,
+native rejection/restart checks and the actual returned-file run remain pending
+until the candidate APK is installed.
