@@ -27,6 +27,9 @@ export type PythonWorkerDiagnosticsSnapshot = {
   logPath: string;
   lastCheckAt: number;
   lastError?: PythonWorkerDiagnosticsError;
+  restartFailuresInWindow?: number;
+  restartRetryAfter?: number | null;
+  admission?: { active: number; queued: number; queuedBytes: number };
 };
 
 const fallbackSnapshot = (message: string): PythonWorkerDiagnosticsSnapshot => ({

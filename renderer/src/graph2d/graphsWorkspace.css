@@ -45,9 +45,31 @@
 .graph2d-inspector-details dd { font-variant-numeric:tabular-nums; }
 .graph2d-sampling-observation-status,.graph2d-sampling-observation-count { line-height:1.4; min-height:2.8em; }
 .graph2d-panel h2 { margin: 0 0 12px; font-size: 17px; }
+.graph2d-left-palette { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:12px; padding:6px 8px; border:1px solid var(--workspace-control-border); border-radius:8px; background:var(--workspace-section-bg); }
+.graph2d-left-palette span { margin-right:4px; font-size:11px; font-weight:700; color:var(--workspace-control-text); }
+.graph2d-authoring .graph2d-left-palette button { min-height:28px; padding:3px 10px; border:1px solid var(--workspace-control-border); border-radius:999px; background:var(--workspace-control-bg); color:var(--workspace-control-text); font-weight:700; cursor:pointer; }
+.graph2d-authoring .graph2d-left-palette button[aria-pressed="true"] { border-color:var(--workspace-control-active-border); background:var(--workspace-control-active-bg); }
+.graph2d-left-palette button:focus-visible { outline:2px solid var(--workspace-control-active-border); outline-offset:2px; }
 .graph2d-authoring-header { display: flex; align-items: start; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .graph2d-authoring button { border: 1px solid var(--border); border-radius: 5px; background: var(--panel-strong); padding: 3px 6px; cursor: pointer; }
 .graph2d-authoring button:disabled { cursor: default; opacity: .45; }
+.graph2d-left[data-palette="geometry"] { background:var(--panel); }
+.graph2d-authoring[data-palette="geometry"] .graph2d-authoring-header,
+.graph2d-authoring[data-palette="geometry"] .graph2d-function-list li,
+.graph2d-authoring[data-palette="geometry"] .graph2d-function-editor { border:1px solid var(--workspace-control-border); border-radius:8px; background:var(--workspace-section-bg); padding:10px; }
+.graph2d-authoring[data-palette="geometry"] .graph2d-authoring-header { margin-bottom:12px; }
+.graph2d-authoring[data-palette="geometry"] .graph2d-authoring-header h2,
+.graph2d-authoring[data-palette="geometry"] .graph2d-function-editor h3 { color:var(--workspace-control-text); }
+.graph2d-authoring[data-palette="geometry"] .graph2d-authoring-header button,
+.graph2d-authoring[data-palette="geometry"] .graph2d-function-actions button,
+.graph2d-authoring[data-palette="geometry"] .graph2d-function-list button { border-color:var(--workspace-control-border); border-radius:999px; background:var(--workspace-control-bg); color:var(--workspace-control-text); font-weight:700; }
+.graph2d-authoring[data-palette="geometry"] .graph2d-authoring-header button:hover,
+.graph2d-authoring[data-palette="geometry"] .graph2d-function-actions button:hover,
+.graph2d-authoring[data-palette="geometry"] .graph2d-function-list button:hover { background:var(--workspace-control-hover-bg); }
+.graph2d-authoring[data-palette="geometry"] .graph2d-function-list li:focus-within { border-color:var(--workspace-control-active-border); }
+.graph2d-authoring[data-palette="geometry"] .graph2d-function-editor input:not([type="checkbox"]):not([type="color"]),
+.graph2d-authoring[data-palette="geometry"] .graph2d-function-editor select,
+.graph2d-authoring[data-palette="geometry"] .graph2d-function-editor textarea { border:1px solid var(--workspace-control-border); border-radius:6px; background:var(--panel-strong); color:var(--text); }
 .graph2d-muted { margin: 0; font-size: 13px; opacity: .7; }
 .graph2d-function-list { display: grid; gap: 8px; padding: 0; margin: 0; list-style: none; }
 .graph2d-function-list li { padding: 8px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px; overflow-wrap: anywhere; }

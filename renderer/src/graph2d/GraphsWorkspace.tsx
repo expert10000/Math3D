@@ -27,7 +27,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
 import type { WorkspaceDockLayout } from "../workspaceDocks";
 import { Graph2DPlot, type Graph2DPlotSeries } from "./Graph2DPlot";
-import { Graph2DAuthoringPanel } from "./Graph2DAuthoringPanel";
+import { Graph2DAuthoringPanel, type Graph2DLeftPalette } from "./Graph2DAuthoringPanel";
 import { pointTableStore } from "./pointTableStore";
 import { Graph2DPromotionPanel } from "./Graph2DPromotionPanel";
 import { useGraph2DSampling } from "./useGraph2DSampling";
@@ -40,6 +40,17 @@ import { Graph2DRegressionPanel } from "./Graph2DRegressionPanel";
 import { Graph2DToolsPanel } from "./Graph2DToolsPanel";
 import { Graph2DProbesPanel } from "./Graph2DProbesPanel";
 import "./graphsWorkspace.css";
+
+const GRAPH2D_LEFT_PALETTE_KEY = "math3d.graphs.leftPalette.v1";
+
+function readGraph2DLeftPalette(): Graph2DLeftPalette {
+  if (typeof window === "undefined") return "classic";
+  try {
+    return window.localStorage.getItem(GRAPH2D_LEFT_PALETTE_KEY) === "geometry" ? "geometry" : "classic";
+  } catch {
+    return "classic";
+  }
+}
 
 type Props = {
   dockLayout: WorkspaceDockLayout;
@@ -73,6 +84,11 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onOpenPreset, onResumeCheckpoint, onCopyProject,
   onExportPersonalProject, onCopyGraphDefinition, onPreviewPersonalImport, onImportPersonalProject }: Props) {
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [leftPalette, setLeftPalette] = useState<Graph2DLeftPalette>(readGraph2DLeftPalette);
+  const changeLeftPalette = (palette: Graph2DLeftPalette) => {
+    setLeftPalette(palette);
+    try { window.localStorage.setItem(GRAPH2D_LEFT_PALETTE_KEY, palette); } catch { /* Appearance remains session-local. */ }
+  };
   const [presentation, setPresentation] = useState(false);
   const presentationOpener = useRef<HTMLButtonElement>(null);
   const exitPresentation = () => { setPresentation(false); requestAnimationFrame(() => presentationOpener.current?.focus()); };
@@ -365,6 +381,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
     onViewportCommit?.(panGraph2DViewport(viewport, size, { x: size.width / 2 - screen.x, y: size.height / 2 - screen.y }));
   };
   const functionList = <Graph2DAuthoringPanel document={document} onCommit={onAuthoringCommit}
+    palette={leftPalette} onPaletteChange={changeLeftPalette}
     onSelect={(objectId) => onSelectionCommit?.(parameterPreviewActive || !sampling.ready ? { objectId, probe: null } : selectionForGraph2DObject(document, series, objectId, document.selection.probe?.x))} />;
   const savedProbes = <Graph2DProbesPanel document={document} onAction={action => {
     if (!onProbesCommit) throw new Error("Probe storage unavailable.");
@@ -584,7 +601,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
       data-left={showLeft} data-right={showRight} data-presentation={presentation}
       style={{ "--graph2d-left-width": showLeft ? `${dockLayout.left}px` : "0px",
         "--graph2d-right-width": showRight ? `${dockLayout.right}px` : "0px" } as CSSProperties}>
-      {showLeft && <aside className="graph2d-panel graph2d-left" aria-label="Graph functions">
+      {showLeft && <aside className="graph2d-panel graph2d-left" data-palette={leftPalette} aria-label="Graph functions">
         {functionList}
       </aside>}
       <div data-testid="main-viewer" className="graph2d-viewer" aria-label="Graph scene" ref={viewerRef}

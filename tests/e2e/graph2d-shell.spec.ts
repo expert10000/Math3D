@@ -134,6 +134,36 @@ test("Graphs opens an empty desktop workspace and participates in normal navigat
   }
 });
 
+test("Graphs left panel palette matches Geometry controls and persists without changing plot colors", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    const functions = app.page.getByLabel("Graph functions");
+    const classic = functions.getByTestId("graph2d-left-palette-classic");
+    const geometry = functions.getByTestId("graph2d-left-palette-geometry");
+    await expect(classic).toHaveAttribute("aria-pressed", "true");
+    await functions.getByRole("button", { name: "Add function", exact: true }).click();
+    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    const curve = app.page.locator('[data-graph2d-path="function_1"]');
+    await expect(curve).toHaveAttribute("stroke", /#[0-9a-f]{6}/i);
+    const stroke = await curve.getAttribute("stroke");
+    const header = functions.locator(".graph2d-authoring-header");
+    const classicBackground = await header.evaluate((element) => getComputedStyle(element).backgroundColor);
+    await geometry.click();
+    await expect(functions).toHaveAttribute("data-palette", "geometry");
+    await expect(geometry).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(() => header.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(classicBackground);
+    await expect(curve).toHaveAttribute("stroke", stroke!);
+    await app.page.reload();
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    await expect(app.page.getByLabel("Graph functions")).toHaveAttribute("data-palette", "geometry");
+    await app.page.getByTestId("graph2d-left-palette-classic").first().click();
+    await expect(app.page.getByLabel("Graph functions")).toHaveAttribute("data-palette", "classic");
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("Graphs uses desktop side panels and compact controls on narrow windows", async () => {
   const app = await launchSurfaceApp();
   try {

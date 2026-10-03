@@ -416,6 +416,58 @@ test("Geometry gallery: select vs add flow, quick add, and filtering", async () 
   }
 });
 
+test("Geometry gallery remains reachable at desktop and short window heights", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-gallery-layout-"));
+  const env = { APPDATA: profileDir, LOCALAPPDATA: profileDir };
+
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(env);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await page.setViewportSize({ width: 2048, height: 1031 });
+    await openProceduralGeometry(page);
+
+    const panel = page.getByTestId("geometry-left-panel");
+    const gallery = page.getByTestId("geometry-gallery");
+    await expect(gallery).toBeVisible();
+    const normalLayout = await panel.evaluate((element) => {
+      const cards = element.querySelector<HTMLElement>('[data-testid="geometry-gallery"]');
+      return {
+        panelBottom: element.getBoundingClientRect().bottom,
+        galleryBottom: cards?.getBoundingClientRect().bottom ?? Infinity,
+        overflowY: getComputedStyle(element).overflowY,
+        hasScrollRange: element.scrollHeight > element.clientHeight,
+      };
+    });
+    expect(
+      normalLayout.galleryBottom <= normalLayout.panelBottom + 1 ||
+      (normalLayout.overflowY === "auto" && normalLayout.hasScrollRange)
+    ).toBe(true);
+
+    await page.setViewportSize({ width: 1600, height: 760 });
+    const layout = await panel.evaluate((element) => {
+      const cards = element.querySelector<HTMLElement>('[data-testid="geometry-gallery"]');
+      return {
+        overflowY: getComputedStyle(element).overflowY,
+        galleryHeight: cards?.getBoundingClientRect().height ?? 0,
+      };
+    });
+    expect(layout.overflowY).toBe("auto");
+    expect(layout.galleryHeight).toBeGreaterThan(80);
+
+    const bounds = await panel.boundingBox();
+    if (!bounds) throw new Error("Geometry panel has no visible bounds.");
+    await page.mouse.move(bounds.x + 20, bounds.y + Math.min(90, bounds.height / 2));
+    await page.mouse.wheel(0, 900);
+    await expect.poll(() => panel.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  } finally {
+    if (app) await app.close();
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
 test("Persistence: save workspace and reopen restores scene", async ({}, testInfo) => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-persist-"));
   const env = {
