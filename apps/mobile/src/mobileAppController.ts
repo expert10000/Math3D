@@ -5,6 +5,7 @@ import { commitMobileGraphPresetLaunch, planMobileGraphPresetLaunch } from "./mo
 import { stageMobileGraphPresetSidecars, mobileGraphPointTables } from "./services/mobileGraphPointTables";
 import { createMobileGraph, readMobileGraph, readMobileNamedGraphProject, storeMobileGraph, updateStoredMobileGraph } from "./models/mobileGraphProject";
 import { importMobileProjectPreview } from "./models/mobileProjectPreview";
+import { attachMobileProjectResources } from "./models/mobileProjectResources";
 import { commitMobileGraphPromotion, readMobileGraphPromotions } from "./models/mobileGraphPromotions";
 import { probeMobilePlatformCapabilities } from "./services/mobilePlatformCapabilities";
 import { AppState, PixelRatio, Platform, Share, type GestureResponderEvent } from "react-native";
@@ -1631,7 +1632,7 @@ export const useMobileAppController = () => {
       }
       const envelope = JSON.parse(picked.serializedProject) as { format?: string; version?: number };
       const format = envelope?.format;
-      if (format === "math3d.project" || format === "math3d.mixed-workspace" || format === "math3d.project-handoff" && envelope.version === 2) {
+      if (format === "math3d.project-package" || format === "math3d.project" || format === "math3d.mixed-workspace" || format === "math3d.project-handoff" && envelope.version === 2) {
         let graphEditable = false;
         if (format === "math3d.project") { try { graphEditable = readMobileNamedGraphProject(picked.serializedProject) !== null; } catch { /* validated preview path below */ } }
         if (!graphEditable && format === "math3d.project") {
@@ -1702,6 +1703,17 @@ export const useMobileAppController = () => {
     return true;
   };
 
+  const importProjectResources = async (projectId: string): Promise<boolean> => {
+    try {
+      const picked = await pickMobileSceneProject();
+      if (picked.status === "cancelled") { setProjectActionMessage("Resource import cancelled. Existing work was kept."); return false; }
+      const preserved = preserveMobilePersonalGraphWork(storedProjects, { graph: graphDocument, scene: viewerDocument });
+      const target = preserved.find(project => project.id === projectId);
+      if (!target) throw new TypeError("Saved project unavailable.");
+      const next = attachMobileProjectResources(target, picked.serializedProject);
+      return await persistProjectMutation(upsertStoredProject(preserved, next), "Verified project resources imported. Export includes retained source bytes.", "Could not import project resources");
+    } catch (error) { setProjectActionMessage(`Resource import failed: ${(error as Error).message}`); return false; }
+  };
   const exportStoredScene = async (projectId: string): Promise<boolean> => {
     const project = storedProjects.find((candidate) => candidate.id === projectId);
     if (!project) return false;
@@ -2666,6 +2678,7 @@ export const useMobileAppController = () => {
     createNewProjectFromFile,
     resolvePendingProjectHandoff,
     exportStoredScene,
+    importProjectResources,
     shareStoredScene,
     openViewerWithExample,
     openLearningExample,

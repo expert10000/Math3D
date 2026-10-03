@@ -2,12 +2,13 @@ import React, { useMemo } from "react";
 import { Text, View } from "react-native";
 import { styles } from "../mobileAppStyles";
 import { buildMobileProjectExplorer } from "../models/mobileProjectExplorer";
+import type { ProjectResourceSidecar } from "@math3d/core";
 
-export const MobileProjectExplorer: React.FC<{ raw: string }> = ({ raw }) => {
+export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly ProjectResourceSidecar[] }> = ({ raw, resources }) => {
   const state = useMemo(() => {
-    try { return { explorer: buildMobileProjectExplorer(raw), error: null }; }
+    try { return { explorer: buildMobileProjectExplorer(raw, resources), error: null }; }
     catch (error) { return { explorer: null, error: (error as Error).message }; }
-  }, [raw]);
+  }, [raw, resources]);
   if (!state.explorer) return <Text accessibilityRole="alert" style={styles.note}>{state.error}</Text>;
   const { groups, relations, results } = state.explorer;
   const titles = new Map(groups.flatMap(group => group.documents.map(document => [document.id, document.title] as const)));
@@ -27,6 +28,8 @@ export const MobileProjectExplorer: React.FC<{ raw: string }> = ({ raw }) => {
     </View>)}
     <Text accessibilityRole="header" style={styles.itemTitle}>Analysis ({results.length})</Text>
     {results.map(result => <Text key={result.id} style={styles.itemMeta}>{result.operation} · {result.authority} · {result.freshness} · {titles.get(result.sourceDocumentId) ?? "Missing source"} revision {result.sourceRevision}</Text>)}
-    <Text style={styles.note}>Saved previews retain all recorded sources and references. External Mesh, Volume, point-table and analysis bytes may require separate transfer. Editors are available only for the supported single-Graph project format.</Text>
+    <Text accessibilityRole="header" style={styles.itemTitle}>Source resources ({state.explorer.resources.filter(item => item.available).length}/{state.explorer.resources.length})</Text>
+    {state.explorer.resources.map(item => <Text key={`${item.kind}:${item.id}`} style={styles.itemMeta}>{item.kind} · {item.available ? "Verified and retained" : item.required ? "Missing source bytes" : "Optional cache unavailable"}</Text>)}
+    <Text style={styles.note}>Import a desktop project package to retain Graph tables, Mesh and Volume source bytes. Package export includes verified retained bytes; missing resources stay missing. Analysis artifact bytes may require separate transfer. Editors are available only for the supported single-Graph project format.</Text>
   </View>;
 };

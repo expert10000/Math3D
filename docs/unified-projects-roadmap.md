@@ -649,3 +649,23 @@ handles retained scroll position. Samsung passed **10/10 preparation checks and
 public fixture evidence](unified-projects-acceptance.md#prj20prj21-completion--october-3)
 close the three requested follow-up items. This continuation is independent of
 published 1.6.0 approval and wider device/editor acceptance.
+
+## PRJ22–PRJ24 continuation — October 3
+
+Development starts from main `bbd818c` on `codex/projects-prj22-24`. The previous
+corrected Android workflow completed successfully; its result closes the CI
+runner follow-up without changing the exact Samsung build recorded above.
+
+| Milestone | Scope | Acceptance gate |
+| --- | --- | --- |
+| PRJ22 — Mobile project resources | Import desktop packages, retain checked Graph tables, Mesh and Volume source bytes, attach resources to the matching saved workspace, expose missing-resource status, and export retained bytes | Shared resource validation and schema-4 atomic retention; corruption/version/conflict rejection; real Samsung import/restart/export and desktop return |
+| PRJ23 — Graph editing within mixed projects | Choose an unarchived Graph in Documents and relations; independent bounded history per Graph; save current Graph generations while retaining other modules, metadata, scripts, relations, resources and historical results | Missing data blocks the affected Graph; switching preserves drafts/history; undo/redo, save/restart and returned package validation |
+| PRJ24 — Complete mobile project round trip | Public all-eight-module package with two Graphs and real source resources; desktop → Samsung → desktop/browser, including edits, undo, restart, export and rejected conflicts | Exact module/resource retention and expected scientific source generations; unchanged unrelated Samsung projects; signed-build evidence and reproducible acceptance runner |
+
+PRJ22 software implements the shared desktop package format and resource codecs.
+Mobile schema 4 retains JSON and sidecars together in the existing atomic backup
+writer; schemas 1–3 migrate. Package import/export is bounded to 25 MiB on mobile.
+Missing bytes remain explicit, and attaching resources requires the same saved
+workspace version. Native acceptance and PRJ23/24 are completed in subsequent
+deliveries; additional non-Graph mobile editors and physical iOS acceptance remain
+separate work.

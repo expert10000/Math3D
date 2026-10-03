@@ -1,6 +1,7 @@
 import { createProjectHandoff, deserializeProjectHandoff, deserializeSceneProject, serializeProjectHandoff, serializeSceneProject, serializeMath3DProject } from "@math3d/core";
 import type { MobileStoredSceneProject } from "./mobileScene";
 import { readMobilePreviewProject } from "./mobileProjectPreview";
+import { serializeMobileProjectPackage } from "./mobileProjectResources";
 import { readMobileGraph, readMobileGraphWorkspace, readMobileNamedGraphProject } from "./mobileGraphProject";
 import { serializeGraph2DDocument, serializeMixedWorkspaceDocument } from "@math3d/core";
 import { createGraph2DWorkspaceProject, createWorkspaceProjectHandoff, serializeWorkspaceProjectHandoff } from "@math3d/core";
@@ -36,9 +37,11 @@ export const createMobileProjectExportName = (project: MobileStoredSceneProject,
 
 export const createMobileHandoffExportName = (project: MobileStoredSceneProject, now = new Date()): string =>
   createMobileProjectExportName(project, now).replace(MOBILE_SCENE_EXPORT_EXTENSION,
+    project.projectResources !== undefined ? ".math3d.project-package.json" :
     project.projectType === "project-preview" || project.projectType === "graph2d" && readMobileNamedGraphProject(project.serializedProject) ? ".math3d.project.json" : MOBILE_HANDOFF_EXPORT_EXTENSION);
 
 export const serializeMobileProjectHandoff = (project: MobileStoredSceneProject): string => {
+  if (project.projectResources !== undefined) return serializeMobileProjectPackage(project);
   if (project.projectType === "project-preview") { readMobilePreviewProject(project); return project.serializedProject; }
   if (project.projectType === "graph2d") {
     const checked = validateMobileProjectForTransfer(project);

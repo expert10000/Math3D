@@ -1,13 +1,14 @@
 import { buildProjectExplorer, evaluateDocumentRelationStatus, isAnalysisResultCurrent, matchesScientificSourceGeneration,
-  parseMath3DProject, replayMixedWorkspaceDocument, viewerSourceFromDocument } from "@math3d/core";
+  parseMath3DProject, replayMixedWorkspaceDocument, viewerSourceFromDocument, projectResourceInventory, VerifiedProjectResources, type ProjectResourceSidecar } from "@math3d/core";
 import { readMobileNamedGraphProject } from "./mobileGraphProject";
 import { createInMemoryDependencyGraph } from "@math3d/kernel";
 
 /** Inspect checkpointed named projects without activating an editor or mutating storage. */
-export const buildMobileProjectExplorer = (raw: string) => {
+export const buildMobileProjectExplorer = (raw: string, sidecars: readonly ProjectResourceSidecar[] = []) => {
   const project = parseMath3DProject(raw);
   if (project.workspace.entries.some(entry => entry.replay !== null)) throw new TypeError("Export checkpoint JSON on desktop to inspect these documents on mobile.");
   const resolved = replayMixedWorkspaceDocument(project.workspace);
+  const resources = new VerifiedProjectResources(project, sidecars);
   const tree = buildProjectExplorer(project, resolved);
   const sources = new Map([...resolved].map(([id, document]) => [id, viewerSourceFromDocument(document)]));
   const dependencies = createInMemoryDependencyGraph({ relations: project.workspace.relations, resolveSource: id => sources.get(id) ?? null });
@@ -24,6 +25,7 @@ export const buildMobileProjectExplorer = (raw: string) => {
   });
   return {
     title: project.metadata.title,
+    resources: projectResourceInventory(project).map(item => ({ id: item.id, kind: item.kind, required: item.required, available: resources.bytes(item) !== null })),
     groups: tree.groups.map(group => ({ ...group, documents: group.documents.map(document => ({ ...document,
       editing: document.module === "graph2d" && graphEditingQualified && !document.archived ? "Graph workspace" : "Saved preview",
       stale: relations.some(relation => relation.freshness !== "current" && relation.target.type === "document" && relation.target.generation.documentId === document.id),

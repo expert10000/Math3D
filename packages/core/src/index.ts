@@ -99,3 +99,6 @@ export * from "./graph2dProbes";
 export * from "./graph2dPersonalProjects";
 export * from "./graph2dPersonalPresetExchange";
 export * from "./graph2dCaptureRecipe";
+
+export * from "./meshBufferCodec";
+export * from "./projectResources";

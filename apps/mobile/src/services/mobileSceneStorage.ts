@@ -8,8 +8,9 @@ import { Directory, File, Paths } from "expo-file-system";
 import type { MobileSceneSummary, MobileStoredSceneProject } from "../models/mobileScene";
 import { readMobileGraph } from "../models/mobileGraphProject";
 import { readMobilePreviewProject } from "../models/mobileProjectPreview";
+import { readMobileProjectResources } from "../models/mobileProjectResources";
 
-export const MOBILE_SCENE_STORAGE_SCHEMA_VERSION = 3;
+export const MOBILE_SCENE_STORAGE_SCHEMA_VERSION = 4;
 const STORAGE_DIR_NAME = "math3d-mobile";
 const STORAGE_FILE_NAME = "scene-projects.json";
 const STORAGE_TEMP_FILE_NAME = "scene-projects.tmp";
@@ -111,6 +112,10 @@ const normalizeStoredProject = (
   }
 
   const source = value.source;
+  if (value.projectResources !== undefined) {
+    try { readMobileProjectResources(value as MobileStoredSceneProject); }
+    catch (error) { issues.push(`projects[${index}] has invalid resource bytes: ${(error as Error).message}`); return null; }
+  }
   if (source !== undefined && (
     !source || !["imported", "shared", "desktop"].includes(source.kind) ||
     typeof source.name !== "string" || source.name.length === 0 || source.name.length > 240 ||
@@ -129,6 +134,7 @@ const normalizeStoredProject = (
     lastOpenedAt: value.lastOpenedAt,
     serializedProject: value.serializedProject,
     ...(value.projectType ? { projectType: value.projectType } : {}),
+    ...(value.projectResources !== undefined ? { projectResources: value.projectResources } : {}),
     ...(source ? { source } : {}),
   };
 };
@@ -151,7 +157,7 @@ export const decodeMobileSceneStorage = (raw: string): DecodedPayload => {
     if (payload.schemaVersion === undefined || payload.schemaVersion === 0) {
       projectList = payload.projects;
       migrated = true;
-    } else if (payload.schemaVersion === 1 || payload.schemaVersion === 2 || payload.schemaVersion === MOBILE_SCENE_STORAGE_SCHEMA_VERSION) {
+    } else if (payload.schemaVersion === 1 || payload.schemaVersion === 2 || payload.schemaVersion === 3 || payload.schemaVersion === MOBILE_SCENE_STORAGE_SCHEMA_VERSION) {
       projectList = payload.projects;
       migrated = payload.schemaVersion !== MOBILE_SCENE_STORAGE_SCHEMA_VERSION;
     } else {
