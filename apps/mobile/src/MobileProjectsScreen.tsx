@@ -321,6 +321,7 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
               <Text style={styles.secondaryBtnText}>Import project resources</Text>
             </Pressable>}
             {inspectedProjectId === scene.id && <MobileProjectExplorer raw={stored.serializedProject} resources={stored.projectResources}
+              onOpenCurve={stored.projectType === "project-preview" ? id => void model.openProjectCurve(scene.id, id) : undefined}
               onOpenGraph={stored.projectType === "project-preview" ? id => void model.openProjectGraph(scene.id, id) : undefined} />}
           </>}
           {editing ? (

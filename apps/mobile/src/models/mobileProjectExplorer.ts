@@ -1,5 +1,6 @@
 import { buildProjectExplorer, evaluateDocumentRelationStatus, isAnalysisResultCurrent, matchesScientificSourceGeneration,
   parseMath3DProject, replayMixedWorkspaceDocument, viewerSourceFromDocument, projectResourceInventory, VerifiedProjectResources, type ProjectResourceSidecar } from "@math3d/core";
+import { mobileCurveUnavailableReason } from "./mobileProjectCurve";
 import { resolveMobileProjectWorkspace } from "./mobileProjectReplay";
 import { mobileProjectResourceContext } from "./mobileProjectResources";
 import { createInMemoryDependencyGraph } from "@math3d/kernel";
@@ -7,7 +8,7 @@ import { createInMemoryDependencyGraph } from "@math3d/kernel";
 /** Inspect checkpointed named projects without activating an editor or mutating storage. */
 export const buildMobileProjectExplorer = (raw: string, sidecars: readonly ProjectResourceSidecar[] = []) => {
   const project = parseMath3DProject(raw);
-  if (project.workspace.entries.some(entry => entry.module !== "graph2d" && entry.replay !== null)) throw new TypeError("Export checkpoint JSON for non-Graph documents on desktop to inspect these documents on mobile.");
+  if (project.workspace.entries.some(entry => !["graph2d", "curve"].includes(entry.module) && entry.replay !== null)) throw new TypeError("Export checkpoint JSON for documents other than Graphs and Curves on desktop to inspect these documents on mobile.");
   const resolved = resolveMobileProjectWorkspace(project.workspace);
   const resources = new VerifiedProjectResources(project, sidecars, mobileProjectResourceContext);
   const inventory = projectResourceInventory(project, mobileProjectResourceContext);
@@ -27,8 +28,8 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
     title: project.metadata.title,
     resources: inventory.map(item => ({ id: item.id, kind: item.kind, required: item.required, available: resources.bytes(item) !== null })),
     groups: tree.groups.map(group => ({ ...group, documents: group.documents.map(document => ({ ...document,
-      editing: document.module === "graph2d" && !document.archived && !inventory.some(item => item.kind === "graph-point-table" && item.owners.includes(document.id) && !resources.bytes(item)) ? "Graph workspace" : "Saved preview",
-      unavailableReason: document.module !== "graph2d" ? "This module remains a saved preview on mobile." : document.archived ? "Archived documents cannot be edited." :
+      editing: document.module === "curve" && !document.archived && resolved.get(document.id)?.format === "math3d.curve-document" && !mobileCurveUnavailableReason(resolved.get(document.id)! as import("@math3d/core").CurveDocument) ? "Curve workspace" : document.module === "graph2d" && !document.archived && !inventory.some(item => item.kind === "graph-point-table" && item.owners.includes(document.id) && !resources.bytes(item)) ? "Graph workspace" : "Saved preview",
+      unavailableReason: document.module === "curve" ? document.archived ? "Archived documents cannot be edited." : mobileCurveUnavailableReason(resolved.get(document.id)! as import("@math3d/core").CurveDocument) : document.module !== "graph2d" ? "This module remains a saved preview on mobile." : document.archived ? "Archived documents cannot be edited." :
         inventory.some(item => item.kind === "graph-point-table" && item.owners.includes(document.id) && !resources.bytes(item)) ? "Import missing Graph source tables before editing." : null,
       stale: relations.some(relation => relation.freshness !== "current" && relation.target.type === "document" && relation.target.generation.documentId === document.id),
     })) })),

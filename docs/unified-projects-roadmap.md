@@ -732,3 +732,18 @@ fresh-browser export/reload passed. Mobile/core source is identical to this APK.
 [Public packages, verification results and screenshots](evidence/projects-prj24-samsung-2026-10-03/acceptance.json)
 record the exact tested build. This continuation does not expand mobile editing
 to non-Graph modules or establish physical iOS/release signoff.
+
+## PRJ25–PRJ27 continuation — October 3
+
+Development continues from main `482acbe` on `codex/projects-prj25-27`.
+
+| Milestone | Scope | Acceptance gate / status |
+| --- | --- | --- |
+| PRJ25 — Mobile Curve editing | Documents and relations opens independent nonperiodic explicit/parametric 2D and 3D Curves. Shared bounded Curve history, expression/domain edits, undo/redo, complete-project save and selected-document restart | Software implementation and preservation/replay contracts delivered; signed Samsung UI acceptance pending. Unsupported/dependent Curve representations remain qualified previews |
+| PRJ26 — Mobile Graph→Curve refresh | Explicitly create a new companion from the current supported Graph source, preserving historical documents, relations, analysis and resources | Implementation in progress; missing/archived/unsupported sources and duplicate refreshed copies must reject without mutation |
+| PRJ27 — Samsung Graph/Curve round trip | Graph edit → refreshed Curve → Curve edit/undo/redo → save/restart → native export → independent desktop/browser return | Public fixture and actual signed-device evidence pending; unrelated library identities and baseline export must remain intact |
+
+PRJ25 moves the desktop Curve command adapter into the shared kernel while keeping
+the established `math3d.curve-replay.v1` format. Mobile schema 5 retains one active
+Graph or Curve and migrates schemas 1–4. Curve samples are bounded previews of
+saved literal expressions; invalid drafts leave the source/history unchanged.

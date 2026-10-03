@@ -6,7 +6,7 @@ import { importMobileGraph, readMobileGraph, readMobileGraphWorkspace, readMobil
 export type MobileCurrentGraphWork = { graph?: Graph2DDocument | null; scene?: SceneDocument | null; project?: MobileStoredSceneProject | null };
 export function preserveMobilePersonalGraphWork(projects: readonly MobileStoredSceneProject[], current: MobileCurrentGraphWork, now = Date.now()) {
   let preserved: MobileStoredSceneProject | null = null;
-  if (current.graph && current.project) preserved = current.project;
+  if (current.project) preserved = current.project;
   else if (current.graph) preserved = updateStoredMobileGraph(projects.find(p => p.id === current.graph!.identity.id), current.graph, now);
   else if (current.scene) preserved = { ...projects.find(p => p.id === current.scene!.id), projectType: "scene", id: current.scene.id, title: current.scene.title,
     updatedAt: now, lastOpenedAt: now, serializedProject: serializeSceneProject(createSceneProjectDocument(current.scene)) };

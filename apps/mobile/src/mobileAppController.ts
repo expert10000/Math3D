@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { serializeGraph2DDocument, type Graph2DDocument, type Graph2DAnyPromotion, type Graph2DPreset,
+import { serializeGraph2DDocument, type CurveDocument, type Graph2DDocument, type Graph2DAnyPromotion, type Graph2DPreset,
   type Graph2DPersonalPresetPreview } from "@math3d/core";
 import { commitMobileGraphPresetLaunch, planMobileGraphPresetLaunch } from "./models/mobileGraphPresetLaunch";
 import { stageMobileGraphPresetSidecars, mobileGraphPointTables } from "./services/mobileGraphPointTables";
@@ -284,9 +284,10 @@ export const useMobileAppController = () => {
     sceneThumbnailsById, setSceneThumbnailsById } = useMobileProjectState();
   const inspectorSwipeStartY = useRef<number | null>(null);
   const [graphDocument, setGraphDocument] = useState<Graph2DDocument | null>(null);
+  const [curveDocument, setCurveDocument] = useState<CurveDocument | null>(null);
   const mixedGraphSessions = useRef<MobileProjectGraphSessions | null>(null);
   const currentGraphWork = () => ({ graph: graphDocument, scene: viewerDocument,
-    project: graphDocument && mixedGraphSessions.current?.has(graphDocument.identity.id) ? mixedGraphSessions.current.snapshot(graphDocument.identity.id) : null });
+    project: mixedGraphSessions.current && (curveDocument || graphDocument && mixedGraphSessions.current.has(graphDocument.identity.id)) ? mixedGraphSessions.current.snapshot(curveDocument?.identity.id ?? graphDocument!.identity.id) : null });
   const [graphGalleryOpen, setGraphGalleryOpen] = useState(false);
   const [graphProjectFavorites,setGraphProjectFavorites]=useState(emptyGraph2DProjectFavorites);
   const [graphProjectFavoritesError,setGraphProjectFavoritesError]=useState("");
@@ -299,7 +300,7 @@ export const useMobileAppController = () => {
   const [graphGalleryImportPreview, setGraphGalleryImportPreview] = useState<Graph2DPersonalPresetPreview | null>(null);
   const graphGalleryLaunchInFlight = useRef(false);
   const graphProjectSequence = useRef(0);
-  useEffect(() => { if (viewerDocument) setGraphDocument(null); }, [viewerDocument]);
+  useEffect(() => { if (viewerDocument) { setGraphDocument(null); setCurveDocument(null); } }, [viewerDocument]);
   const [selectedExampleId, setSelectedExampleId] = useState<string | null>(mobileExamples[0]?.id ?? null);
   const [pendingProjectHandoff, setPendingProjectHandoff] = useState<MobileHandoffPreview | null>(null);
   const [exampleSearchQuery, setExampleSearchQuery] = useState("");
@@ -502,7 +503,14 @@ export const useMobileAppController = () => {
         issues.push(`Last viewed scene is invalid: ${lastViewerProject.errors.join("; ")}`);
         setStorageIssues(issues);
       }
-      if (firstProject?.projectType === "project-preview" && firstProject.activeGraphDocumentId) {
+      if (firstProject?.projectType === "project-preview" && firstProject.activeCurveDocumentId) {
+        try {
+          const sessions = new MobileProjectGraphSessions(firstProject, mobileGraphPointTables);
+          mixedGraphSessions.current = sessions; setCurveDocument(sessions.curve(firstProject.activeCurveDocumentId).document());
+          setGraphDocument(null); setViewerDocument(null); setSelectedSceneId(firstProject.id);
+          setStorageStatus(issues.length ? "error" : "ready");
+        } catch (error) { setStorageStatus("error"); setStorageIssues([...issues, (error as Error).message]); }
+      } else if (firstProject?.projectType === "project-preview" && firstProject.activeGraphDocumentId) {
         try {
           const sessions = new MobileProjectGraphSessions(firstProject, mobileGraphPointTables);
           const graph = sessions.requireEditable(firstProject.activeGraphDocumentId).document();
@@ -1280,11 +1288,34 @@ export const useMobileAppController = () => {
       const projects = upsertStoredProject(preserved, next);
       await saveStoredSceneProjects(projects);
       sessions.updateRecord(next); mixedGraphSessions.current = sessions;
-      setStoredProjects(projects); setGraphDocument(adapter.document()); setViewerDocument(null); setSelectedSceneId(projectId); setTab("workspace");
+      setStoredProjects(projects); setGraphDocument(adapter.document()); setCurveDocument(null); setViewerDocument(null); setSelectedSceneId(projectId); setTab("workspace");
       setProjectActionMessage("Graph opened in its complete project. Other documents and historical results are retained.");
       void persistMobileSettings({ lastSceneId: projectId, lastViewerProject: undefined }).catch(() => undefined);
       return true;
     } catch (error) { setProjectActionMessage(`Graph could not open: ${(error as Error).message}`); return false; }
+  };
+  const openProjectCurve = async (projectId: string, documentId: string): Promise<boolean> => {
+    try {
+      const preserved = preserveMobilePersonalGraphWork(storedProjects, currentGraphWork());
+      const target = preserved.find(project => project.id === projectId);
+      if (!target) throw new TypeError("Saved project unavailable.");
+      const sessions = mixedGraphSessions.current?.projectId() === projectId ? mixedGraphSessions.current : new MobileProjectGraphSessions(target, mobileGraphPointTables);
+      const adapter = sessions.curve(documentId), next = sessions.snapshot(documentId);
+      const projects = upsertStoredProject(preserved, next);
+      await saveStoredSceneProjects(projects);
+      sessions.updateRecord(next); mixedGraphSessions.current = sessions;
+      setStoredProjects(projects); setCurveDocument(adapter.document()); setGraphDocument(null); setViewerDocument(null);
+      setSelectedSceneId(projectId); setTab("workspace"); setProjectActionMessage("Curve opened in its complete project.");
+      void persistMobileSettings({ lastSceneId: projectId, lastViewerProject: undefined }).catch(() => undefined);
+      return true;
+    } catch (error) { setProjectActionMessage(`Curve could not open: ${(error as Error).message}`); return false; }
+  };
+  const saveCurveProject = async (): Promise<boolean> => {
+    try {
+      if (!curveDocument || !mixedGraphSessions.current) return false;
+      const project = mixedGraphSessions.current.snapshot(curveDocument.identity.id);
+      return await persistProjectMutation(upsertStoredProject(storedProjects, project), "Curve saved in its complete project.", "Could not save Curve");
+    } catch (error) { setProjectActionMessage(`Curve save failed: ${(error as Error).message}`); return false; }
   };
   const openStoredScene = async (projectId: string) => {
     const target = storedProjects.find((item) => item.id === projectId);
@@ -1295,14 +1326,14 @@ export const useMobileAppController = () => {
         const graph = readMobileGraph(target);
         const next = upsertStoredProject(preserveMobilePersonalGraphWork(storedProjects, currentGraphWork()), { ...target, lastOpenedAt: Date.now() });
         await saveStoredSceneProjects(next); setStoredProjects(next);
-        mixedGraphSessions.current = null;
+        mixedGraphSessions.current = null; setCurveDocument(null);
         setGraphDocument(graph); setViewerDocument(null); setSelectedSceneId(target.id); setTab("workspace");
         void persistMobileSettings({ lastSceneId: target.id, lastViewerProject: undefined }).catch(() => undefined);
       } catch (error) { setProjectActionMessage(`Graph could not open: ${(error as Error).message}`); }
       return;
     }
     if (currentGraphWork().project && !await saveGraphProject()) return;
-    mixedGraphSessions.current = null; setGraphDocument(null);
+    mixedGraphSessions.current = null; setCurveDocument(null); setGraphDocument(null);
 
     const parsed = readSceneFromStoredProject(target);
     if (!parsed.ok) {
@@ -1343,7 +1374,7 @@ export const useMobileAppController = () => {
 
   const openViewerWithExample = async (example: Math3DExample) => {
     if (currentGraphWork().project && !await saveGraphProject()) return;
-    mixedGraphSessions.current = null;
+    mixedGraphSessions.current = null; setCurveDocument(null);
     const scene = createViewerSceneFromExample(example);
     setViewerDocument(scene);
     setSelectedSceneId(null);
@@ -1478,7 +1509,7 @@ export const useMobileAppController = () => {
     setDeletedProject(target);
     if (selectedSceneId === projectId) {
       setSelectedSceneId(null);
-      if (target.projectType === "graph2d" || target.projectType === "project-preview") { setGraphDocument(null); mixedGraphSessions.current = null; }
+      if (target.projectType === "graph2d" || target.projectType === "project-preview") { setGraphDocument(null); mixedGraphSessions.current = null; setCurveDocument(null); }
       void persistMobileSettings({ lastSceneId: undefined }).catch(() => undefined);
     }
     return true;
@@ -1533,7 +1564,7 @@ export const useMobileAppController = () => {
     }
 
     setStoredProjects(result.projects);
-    mixedGraphSessions.current = null; setGraphDocument(null);
+    mixedGraphSessions.current = null; setCurveDocument(null); setGraphDocument(null);
     setSelectedSceneId(result.project.id);
     setViewerDocument(parsed.scene);
     setWorkspaceAddUndo(null);
@@ -1550,7 +1581,7 @@ export const useMobileAppController = () => {
   };
 
   const openCreatedGraph = (project: MobileStoredSceneProject) => {
-    mixedGraphSessions.current = null;
+    mixedGraphSessions.current = null; setCurveDocument(null);
     setGraphDocument(readMobileGraph(project)); setViewerDocument(null); setSelectedSceneId(project.id); setTab("workspace");
     void persistMobileSettings({ lastSceneId: project.id, lastViewerProject: undefined }).catch(() => undefined);
   };
@@ -1633,6 +1664,7 @@ export const useMobileAppController = () => {
     finally{graphGalleryLaunchInFlight.current=false;setGraphGalleryBusy(false);}
   };
   const saveGraphProject = async (): Promise<boolean> => {
+    if (curveDocument) return saveCurveProject();
     if (!graphDocument) return false;
     if (mixedGraphSessions.current?.has(graphDocument.identity.id)) {
       try {
@@ -2588,6 +2620,8 @@ export const useMobileAppController = () => {
     graphProjectFavorites,graphProjectFavoritesError,favoriteGraphProject,resetGraphProjectFavorites,openPersonalGraphProject,
     graphGalleryImportPreview,setGraphGalleryImportPreview,exportPersonalGraphProject,sharePersonalGraphDefinition,
     previewPersonalGraphFile,acceptPersonalGraphImport,
+    curveDocument, setCurveDocument, openProjectCurve, saveCurveProject,
+    projectCurveAdapter: curveDocument ? mixedGraphSessions.current?.curve(curveDocument.identity.id) : undefined,
     graphDocument, setGraphDocument, createGraphProject, importGraphProject, saveGraphProject, graphPromotions, createGraphPromotion,
     openProjectGraph,
     projectGraphAdapter: graphDocument && mixedGraphSessions.current?.has(graphDocument.identity.id) ? mixedGraphSessions.current.adapter(graphDocument.identity.id) : undefined,

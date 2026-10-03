@@ -9,7 +9,7 @@ describe("PRJ21 read-only named-project explorer", () => {
     const bytes = serializeMath3DProject(project), explorer = buildMobileProjectExplorer(bytes);
     const documents = explorer.groups.flatMap(group => group.documents);
     expect(documents.map(document => document.module)).toEqual(["graph2d", "curve", "surface"]);
-    expect(documents.map(document => document.editing)).toEqual(["Graph workspace", "Saved preview", "Saved preview"]);
+    expect(documents.map(document => document.editing)).toEqual(["Graph workspace", "Curve workspace", "Saved preview"]);
     expect(explorer.relations).toHaveLength(project.workspace.relations.length);
     expect(explorer.results).toHaveLength(project.workspace.results.length);
     expect(serializeMath3DProject(project)).toBe(bytes);
@@ -27,7 +27,7 @@ describe("PRJ21 read-only named-project explorer", () => {
     const next = adapter.commitScene({ source: { ...graph.source, objects: [] }, display: { ...graph.display, objects: [] }, selection: { objectId: null, probe: null } }, "delete");
     const edited = createMath3DProject(createMixedWorkspaceDocument({ ...project.workspace, entries: project.workspace.entries.map(entry => entry.module === "graph2d" ? { ...entry, checkpoint: next, expected: next.identity } : entry) }), { stableKey: "edited-explorer" });
     const explorer = buildMobileProjectExplorer(serializeMath3DProject(edited));
-    expect(explorer.groups.filter(group => group.module === "curve" || group.module === "surface").flatMap(group => group.documents).every(document => document.stale && document.editing === "Saved preview")).toBe(true);
+    expect(explorer.groups.filter(group => group.module === "curve" || group.module === "surface").flatMap(group => group.documents).every(document => document.stale && document.editing === (document.module === "curve" ? "Curve workspace" : "Saved preview"))).toBe(true);
     expect(explorer.results.every(result => result.freshness === "stale")).toBe(true);
   });
   it("inspects other checkpointed modules without enabling their mobile editors", () => {

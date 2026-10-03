@@ -9,3 +9,5 @@ export * from "./platformBackendAdapter";
 export * from "./domainAdapterConformance";
 export * from "./m3dResourceStore";
 export { Graph2DCommandAdapter, type Graph2DReplayBundle } from "./graph2dCommandAdapter";
+
+export { CurveCommandAdapter, type CurveReplayBundle } from "./curveCommandAdapter";
