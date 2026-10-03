@@ -1,0 +1,76 @@
+{
+  "groups": [
+    {
+      "module": "graph2d",
+      "title": "Graph",
+      "count": 1
+    },
+    {
+      "module": "geometry",
+      "title": "Geometry",
+      "count": 1
+    },
+    {
+      "module": "curve",
+      "title": "Curve",
+      "count": 3
+    },
+    {
+      "module": "surface",
+      "title": "Surface",
+      "count": 5
+    },
+    {
+      "module": "mesh",
+      "title": "Mesh",
+      "count": 2
+    },
+    {
+      "module": "volume",
+      "title": "Volume",
+      "count": 2
+    },
+    {
+      "module": "topology",
+      "title": "Topology",
+      "count": 2
+    },
+    {
+      "module": "complex",
+      "title": "Complex Analysis",
+      "count": 1
+    }
+  ],
+  "relations": [
+    {
+      "operation": "curve.revolution",
+      "freshness": "current"
+    },
+    {
+      "operation": "curve.extrusion",
+      "freshness": "current"
+    },
+    {
+      "operation": "surface.chart-curve",
+      "freshness": "current"
+    }
+  ],
+  "results": [
+    {
+      "id": "prj15-historical",
+      "operation": "mesh.area",
+      "sourceDocumentId": "math3d:mesh:c18802685b285e0b03af76f5174d60c9",
+      "sourceRevision": 2,
+      "authority": "numerical",
+      "freshness": "current"
+    },
+    {
+      "id": "prj16-historical",
+      "operation": "volume.statistics",
+      "sourceDocumentId": "math3d:volume:7b0518f14790e1e595229370eafea470",
+      "sourceRevision": 1,
+      "authority": "numerical",
+      "freshness": "current"
+    }
+  ]
+}

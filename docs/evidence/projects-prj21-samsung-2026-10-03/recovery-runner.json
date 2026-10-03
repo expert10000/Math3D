@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "model": "SM-A566B",
+  "androidApi": "36",
+  "sourceCommit": "6201e2c920ff9266235f6d97aa71c291b5718df3",
+  "apkSha256": "ee24f6006a9b008065d7ab3ce523a7dfcbb635c83fc80130499ebedebb92a7fb",
+  "checks": [
+    "PASS: 10/10 recovery checks; library unchanged. Close and restart the app, then verify recovery.",
+    "PASS: 11/11 recovery checks; library unchanged. Restart recovery verified."
+  ],
+  "startedAt": "2026-10-03T12:35:00.923Z",
+  "finishedAt": "2026-10-03T12:35:29.446Z"
+}

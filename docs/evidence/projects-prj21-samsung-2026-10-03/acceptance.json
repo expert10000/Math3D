@@ -1,0 +1,79 @@
+{
+  "format": "math3d.projects-prj21-samsung-acceptance.v1",
+  "testedOn": "2026-10-03",
+  "status": "requested PRJ20 adapters and PRJ21 saved-preview scope delivered",
+  "device": { "model": "SM-A566B", "androidVersion": "16", "androidApi": 36 },
+  "build": {
+    "sourceCommit": "6201e2c920ff9266235f6d97aa71c291b5718df3",
+    "applicationId": "com.math3d.mobile.internal",
+    "version": "1.6.0",
+    "build": 150008,
+    "channel": "internal",
+    "trackedSourceDirty": false,
+    "apkSha256": "ee24f6006a9b008065d7ab3ce523a7dfcbb635c83fc80130499ebedebb92a7fb",
+    "signingCertSha256": "39ab9388fa174bf9c1973577dab4ee33eedbacb9b231c9b79068e5143480fc82",
+    "installedApkHashVerified": true,
+    "updateInstallWithoutClearingData": true
+  },
+  "nativePreview": {
+    "projectId": "math3d:project:8cd452785d859252492beff411ce6aca",
+    "title": "PRJ21 Mixed Preview",
+    "actualNativeFilePicker": true,
+    "actualProjectsExplorer": true,
+    "currentGraphRetained": true,
+    "editorActivation": false,
+    "documents": 17,
+    "groups": { "Graph": 1, "Geometry": 1, "Curve": 3, "Surface": 5, "Mesh": 2, "Volume": 2, "Topology": 2, "Complex Analysis": 1 },
+    "relations": 3,
+    "recordedResults": 2,
+    "titlesRevisionsProvenanceAndFreshnessChecked": true,
+    "externalByteLimitsDisplayed": true,
+    "fullProcessRestart": true,
+    "actualNativeExportPicker": true,
+    "byteExactExport": true,
+    "bytes": 23234,
+    "sha256": "c25181e90626ce0eaa97c32c6d615ab1beedb9776a050dd1caf146e06c65fa3b",
+    "freshBrowserReturnImportExportReload": true
+  },
+  "existingLibrary": {
+    "completeVisibleIdScanBefore": 21,
+    "completeVisibleIdScanAfter": 22,
+    "missingOriginalIds": 0,
+    "newAcceptancePreviewIds": 1,
+    "originalCatenaryGraphStillActive": true,
+    "originalNativeExportUnchanged": true,
+    "originalBytes": 8207,
+    "originalSha256": "8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc",
+    "privateInventoryKeptOutsideGit": true
+  },
+  "storageRecovery": {
+    "runnerCommit": "b1f1fdb",
+    "deviceSideApkSha256": true,
+    "scaledScrollAndRetainedPositionHandling": true,
+    "preparationChecksPassed": 10,
+    "restartChecksPassed": 11,
+    "fixtureTypes": ["scene", "graph2d", "project-preview"],
+    "realLibraryUnchanged": true,
+    "checks": "recovery-checks.json",
+    "runner": "recovery-runner.json"
+  },
+  "prj20": {
+    "commit": "6201e2c",
+    "curveConstructionFamilies": ["extrusion", "revolution", "ruled-surface", "loft", "sweep", "tube-surface"],
+    "graphAnalysisFamilies": ["derivative", "integral", "arc-length", "critical-points", "intersections"],
+    "historicalRecordsPreserved": true,
+    "recordedParametersAndToleranceRetained": true,
+    "projectUndoRedo": true,
+    "desktopAndBothBrowserLocalesPassed": true
+  },
+  "ci": {
+    "candidateRun": "https://github.com/expert10000/Math3D/actions/runs/37121718393",
+    "candidateEmulatorSmokePassed": true,
+    "candidateQualityMatrixPassed": true,
+    "candidateRunConclusion": "failure at installed-APK hash preflight in recovery runner",
+    "correctedRunnerRun": "https://github.com/expert10000/Math3D/actions/runs/37123268006",
+    "correctedRunnerRunResultAtRecording": "in progress; not claimed passed"
+  },
+  "remainingScope": ["additional per-document mobile editors", "mobile source sidecar transfer", "external-engine refresh adapters", "signed physical iOS acceptance", "wider device acceptance"],
+  "publishedReleaseApprovalChanged": false
+}

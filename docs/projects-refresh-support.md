@@ -44,7 +44,7 @@ analysis types.
 
 ## Mobile checkpoint previews
 
-**Projects → New Project → Import file / Desktop project / Shared project** accepts
+**Projects → New Project → IMPORT → Math3D project** accepts
 complete checkpointed named projects and mixed-workspace/handoff checkpoints.
 Named-project JSON is retained byte-for-byte. Other checkpoint envelopes receive
 a named container with every document, relation, result, artifact reference and

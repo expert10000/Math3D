@@ -681,3 +681,59 @@ This is development software acceptance. No new signed APK was installed on the
 Samsung during this continuation, and PRJ21 handset layout/interaction acceptance
 remains pending. Earlier Samsung evidence retains its exact recorded source/build
 scope. Physical signed iOS acceptance and published release approval are unchanged.
+
+## PRJ20/PRJ21 completion — October 3
+
+PRJ21 (`66a963d`) retains complete checkpointed named projects, raw mixed-workspaces
+and v2 workspace handoffs in schema-3 mobile storage. Named JSON is preserved
+byte-for-byte, including all eight modules, scripts, archive state, results,
+relations and external references. Imports validate checkpoints and identity,
+reject unsupported replay/collisions without mutation, and preserve current
+personal editor work. Previews open the document explorer; mobile editors remain
+limited to the supported single-Graph format. External source bytes require
+separate transfer. Metro now resolves this checkout's shared dependencies and
+core/kernel source consistently; no package or lockfile changed.
+
+PRJ20 (`6201e2c`) adds explicit refresh for Curve extrusion, revolution, ruled
+surface, loft, sweep and tube, and Graph integral, arc length, critical points and
+intersections alongside derivative. Refresh uses ordered current parents and
+recorded numerical parameters/tolerances, appends new targets/results and leaves
+historical records intact. Native bounded evaluators validate construction output;
+project undo/redo reverses additions. [Supported operations and UI paths](projects-refresh-support.md)
+state the scope and unavailable cases.
+
+Validation includes the Projects contract runner (125 project/core tests and 67
+mobile/storage tests, plus portable-fixture TypeScript), the subsequent six-case
+broader-preview suite, main/mobile typechecks, dependency boundaries, core and
+desktop/web builds, one extended Electron journey and two extended Chromium
+journeys in the configured locales. The journeys exercise explicit construction
+refresh and integral recomputation, save/reload and project undo/redo.
+
+The exact shared-key APK from clean source `6201e2c` was installed without clearing
+Samsung data. On SM-A566B / API 36, the existing project explorer displayed its
+historical companions and stale relations/analysis. The native file picker then
+imported **PRJ21 Mixed Preview**: 17 documents in Graph, Geometry, Curve, Surface,
+Mesh, Volume, Topology and Complex Analysis, three relations and two recorded
+results. Labels, revisions, provenance and external-byte limits were visually
+checked. The current catenary Graph remained active. After a full process restart,
+native export retained all 23,234 bytes, SHA-256
+`c25181e90626ce0eaa97c32c6d615ab1beedb9776a050dd1caf146e06c65fa3b`.
+Import/export/reload of that returned file in a fresh browser context also matched
+exactly. A complete library scan retained all 21 original IDs, adding only the new
+preview; the original catenary export was also unchanged.
+
+The APK's SHA-256 and shared signing certificate were verified. Emulator smoke
+and the quality matrix passed in [the candidate workflow](https://github.com/expert10000/Math3D/actions/runs/37121718393);
+that workflow failed at the recovery runner's installed-APK hash preflight.
+`b1f1fdb` replaces host APK streaming with device-side SHA-256 and resets/searches
+the retained Settings scroll position. The corrected runner passed 10/10 isolated
+fixture checks and 11/11 restart checks on Samsung, including the broader preview
+fixture; the real library remained unchanged. [A new shared-key CI run](https://github.com/expert10000/Math3D/actions/runs/37123268006)
+was dispatched to validate the corrected runner in the emulator as well; its
+result must be checked separately and is not claimed as passed here.
+
+[Structured evidence, native/browser returned files and screenshots](evidence/projects-prj21-samsung-2026-10-03/acceptance.json)
+record this continuation. APKs, signing material and the private library inventory
+remain outside Git. The three requested follow-up items are complete for this
+declared scope. Additional mobile editors, source sidecar transfer, external-engine
+refresh adapters and signed physical iOS acceptance remain future work.

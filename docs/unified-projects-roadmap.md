@@ -599,8 +599,8 @@ do not replace PRJ17/PRJ18's outstanding physical signed iOS acceptance.
 | Milestone | First implementation | Completion gate / remaining work |
 | --- | --- | --- |
 | PRJ19 — Multiple Graph documents | Desktop/web project opening creates a separate Graph command adapter for every document. Explorer switching preserves each session. Validated Graph replay retains bounded undo/redo across save and transfer, including historical point-table resources. Promotion compatibility resolves the actual parent Graph | First desktop/web slice passed real editing/switching, independent-profile import, Electron restart and browser reload in both configured locales. Native mobile editing still requires one checkpointed Graph |
-| PRJ20 — Explicit dependency refresh | Manage saved project → Relations and availability → Create refreshed copy rebuilds supported Graph-derived Curves/revolutions/extrusions. Recompute derivative publishes a new analysis record with current provenance. Original documents, relations and historical analysis remain intact; project undo/redo reverses additions | Graph companions and local first/second derivative are implemented and passed desktop/browser UI checks. Other construction/analysis adapters remain open. Missing sources and duplicate copies/publications reject without mutation; no automatic scientific recomputation |
-| PRJ21 — Unified mobile explorer | Projects → Documents and relations displays checkpointed named-project documents grouped by module, their revisions, archive/preview limits, dependency freshness and analysis provenance | First UI slice inspects the currently supported saved named-project library. Broader mixed-container preview import/storage and per-document mobile editing remain open. Exact signed-build handset layout/interaction acceptance is required before native delivery signoff |
+| PRJ20 — Explicit dependency refresh | Manage saved project → Relations and availability → Create refreshed copy rebuilds supported Graph-derived companions and six Curve-to-Surface construction families. Five Graph analysis families publish new records with current provenance. Original documents, relations and historical analysis remain intact; project undo/redo reverses additions | Requested local adapters delivered and passed desktop/browser UI checks; see [support matrix](projects-refresh-support.md). Missing sources and duplicate copies/publications reject without mutation. Further external-engine adapters remain future work; no automatic scientific recomputation |
+| PRJ21 — Unified mobile explorer | Projects → Documents and relations displays checkpointed named-project documents grouped by module, their revisions, archive/preview limits, dependency freshness and analysis provenance. Broader mixed projects are imported and retained as complete saved previews | Requested preview scope delivered. Exact signed-build Samsung acceptance passed all eight modules, relations/results, restart, byte-exact export and fresh-browser return. All 21 original library IDs were retained. Per-document mobile editors and physical iOS acceptance remain future work |
 
 The continuation has **tested first deliveries**, with the broader PRJ20/PRJ21
 scope still open. Two Electron journeys passed, including real process restart;
@@ -628,5 +628,22 @@ The follow-up implements the requested remaining software slices:
 
 [Supported operations and UI paths](projects-refresh-support.md) define this
 delivery. Further mobile editors, external-engine refresh adapters, source sidecar
-transfer on mobile and physical iOS acceptance remain separate future work. Signed
-Samsung explorer acceptance is recorded separately after the new build is tested.
+transfer on mobile and physical iOS acceptance remain separate future work.
+
+### Signed Samsung completion — October 3
+
+The shared-key internal APK from clean source `6201e2c` was installed as an update
+on Samsung SM-A566B (Android 16 / API 36). **Documents and relations** passed for
+the existing catenary project and a broader named preview with 17 documents across
+all eight modules, three current relations and two recorded analysis results.
+The original edited Graph stayed active. The preview survived process restart;
+its 23,234-byte native export and fresh-browser exports matched the input exactly.
+All 21 original library identities remained present; only the new acceptance
+preview was added. The original catenary project also exported unchanged.
+
+The damaged-store runner now verifies the installed APK SHA-256 on-device and
+handles retained scroll position. Samsung passed **10/10 preparation checks and
+11/11 restart checks**, with the real library unchanged. [Acceptance details and
+public fixture evidence](unified-projects-acceptance.md#prj20prj21-completion--october-3)
+close the three requested follow-up items. This continuation is independent of
+published 1.6.0 approval and wider device/editor acceptance.

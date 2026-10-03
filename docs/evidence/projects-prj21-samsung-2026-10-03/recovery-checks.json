@@ -1,0 +1,66 @@
+{
+  "format": "math3d.mobile-storage-recovery.v1",
+  "phase": "complete",
+  "startedAt": "2026-10-03T12:34:40.533Z",
+  "fixtureHash": "sha256:fb613ec008300e72661cb78769e0cb1b99d43bc9c8b8162b1e381ff12f46b45e",
+  "checks": [
+    {
+      "name": "first-save-backup",
+      "passed": true
+    },
+    {
+      "name": "truncated-primary-repair",
+      "passed": true
+    },
+    {
+      "name": "missing-primary-repair",
+      "passed": true
+    },
+    {
+      "name": "blank-primary-repair",
+      "passed": true
+    },
+    {
+      "name": "damaged-backup-healthy-primary",
+      "passed": true
+    },
+    {
+      "name": "both-damaged-preserved",
+      "passed": true
+    },
+    {
+      "name": "blank-files-are-not-first-run",
+      "passed": true
+    },
+    {
+      "name": "newer-schema-preserved",
+      "passed": true
+    },
+    {
+      "name": "legacy-array-migration",
+      "passed": true
+    },
+    {
+      "name": "recovery-save-queue",
+      "passed": true
+    },
+    {
+      "name": "cold-launch-repair-ignores-uncommitted-staging",
+      "passed": true
+    }
+  ],
+  "libraryBefore": {
+    "scene-projects.json": "sha256:0c571874255631ef8f31544c223a312c9aac0cd3dfdf4abb7aaff0d4a351d048",
+    "scene-projects.backup.json": "sha256:5a006f3289d7a29f0bd002d8fd08a6ebb88a1bbc222ec18ba9a9e214d07c3b25",
+    "scene-projects.tmp": null,
+    "scene-projects.backup.tmp": null
+  },
+  "libraryAfter": {
+    "scene-projects.json": "sha256:0c571874255631ef8f31544c223a312c9aac0cd3dfdf4abb7aaff0d4a351d048",
+    "scene-projects.backup.json": "sha256:5a006f3289d7a29f0bd002d8fd08a6ebb88a1bbc222ec18ba9a9e214d07c3b25",
+    "scene-projects.tmp": null,
+    "scene-projects.backup.tmp": null
+  },
+  "libraryUnchanged": true,
+  "finishedAt": "2026-10-03T12:34:58.571Z"
+}
