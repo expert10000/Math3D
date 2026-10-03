@@ -7,8 +7,20 @@ import { serializeMobileProjectHandoff } from "../../apps/mobile/src/models/mobi
 import { selectMobileStartupProject } from "../../apps/mobile/src/models/mobileStartupProject";
 import { renameMobileProject, duplicateMobileProject } from "../../apps/mobile/src/models/mobileProjectOperations";
 import { createMobileGraph, importMobileGraph, storeMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
+import { projectFreezeFixture } from "../fixtures/unified-projects/projectFreeze";
+import { verifyMixedWorkspaceReplay } from "../../renderer/src/kernel/mixedWorkspaceReplay";
 
 describe("PRJ21 broader saved project previews", () => {
+  it("retains all eight modules and external resource references through a byte-exact checkpoint preview round trip", () => {
+    const original = projectFreezeFixture().project, documents = verifyMixedWorkspaceReplay(original.workspace);
+    const checkpoint = createMath3DProject(createMixedWorkspaceDocument({ ...original.workspace, entries: original.workspace.entries.map(entry => ({ ...entry, checkpoint: documents.get(entry.expected.id)!, replay: null })) }), { stableKey: "preview-all-modules" });
+    const raw = serializeMath3DProject(checkpoint), stored = importMobileProjectPreview(raw, [], "all-modules.json");
+    expect(new Set(readMobilePreviewProject(stored).workspace.entries.map(entry => entry.module)).size).toBe(8);
+    expect(serializeMobileProjectHandoff(stored)).toBe(raw);
+    expect(readMobilePreviewProject(stored).workspace.results).toEqual(checkpoint.workspace.results);
+    expect(readMobilePreviewProject(stored).workspace.artifacts).toEqual(checkpoint.workspace.artifacts);
+    expect(readMobilePreviewProject(stored).workspace.relations).toEqual(checkpoint.workspace.relations);
+  });
   it.each(["scene-topology-study", "curve-construction-study", "spline-surface-lab"] as const)("retains %s through import, inspection, export and restart without enabling editors", id => {
     const original = instantiateMath3DProjectTemplate(id, "preview"), raw = JSON.stringify(original, null, 4);
     const stored = importMobileProjectPreview(raw, [], "desktop.json", "desktop", 10);

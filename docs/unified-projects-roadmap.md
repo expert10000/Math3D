@@ -610,3 +610,23 @@ companions/results and point-table inputs present only in undo/redo. Mobile
 inspection contracts and typecheck passed; the Android Hermes bundle exported
 successfully. This is software evidence, not signed handset acceptance for PRJ21.
 See [the continuation acceptance record](unified-projects-acceptance.md#prj19prj21-first-deliveries--october-3).
+
+### Additional PRJ20/PRJ21 delivery — October 3
+
+The follow-up implements the requested remaining software slices:
+
+- **PRJ21 broader preview retention** (`66a963d`): checkpointed named projects,
+  raw mixed-workspaces and v2 workspace handoffs are retained in schema-3 storage.
+  All eight modules, archived documents, scripts, relations, analysis and external
+  references remain together. Named JSON exports byte-for-byte. Schema-2 migration,
+  atomic backup recovery and startup/editor separation are covered by contracts.
+- **PRJ20 more refresh adapters** (`6201e2c`): six Curve-to-Surface constructions
+  (extrusion, revolution, ruled surface, loft, sweep, tube), plus Graph integral,
+  arc length, critical points and intersections alongside the earlier derivative.
+  Ordered current source generations and recorded numerical parameters are used;
+  historical targets/results remain intact. Desktop and both browser locales passed.
+
+[Supported operations and UI paths](projects-refresh-support.md) define this
+delivery. Further mobile editors, external-engine refresh adapters, source sidecar
+transfer on mobile and physical iOS acceptance remain separate future work. Signed
+Samsung explorer acceptance is recorded separately after the new build is tested.

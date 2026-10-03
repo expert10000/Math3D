@@ -120,3 +120,24 @@ stored payload. Its contracts, typecheck and Android Hermes bundle passed.
 PRJ21's signed handset layout/interaction acceptance and broader mixed-container
 preview import/storage remain open. Earlier Samsung exact-build evidence applies
 to its recorded source commits; it does not attest this new mobile UI.
+
+### Broader previews and explicit refresh adapters
+
+PRJ21 schema-3 libraries retain complete checkpointed named projects, including
+all eight modules, archives, scripts and external references. Named bytes survive
+preview import/export exactly; raw mixed/workspace-handoff checkpoints are wrapped
+without stripping sources. Existing schema-2 libraries migrate through the same
+atomic backup writer. Preview cards activate inspection and never a native editor;
+startup ignores them as editor fallbacks.
+
+PRJ20 qualifies Curve extrusion, revolution, ruled surface, loft, sweep and tube
+refresh, including the existing starter aliases. The new Surface is validated by
+the normal bounded construction evaluator. Graph integral, arc-length, critical
+points and pair intersections can be explicitly recomputed using recorded bounds,
+mode and tolerance, alongside the earlier derivative. Historical records remain
+unchanged. One extended Electron journey and both browser locale journeys passed
+construction copy, managed undo/redo, integral recomputation, save and reload.
+
+See [the operation registry and limits](projects-refresh-support.md). A source
+adapter's software qualification does not extend to missing external engines,
+additional mobile editors or physical iOS delivery.
