@@ -317,9 +317,9 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
             <Pressable testID={`mobile-project-inspect-${scene.id}`} onPress={() => setInspectedProjectId(inspectedProjectId === scene.id ? null : scene.id)} style={styles.secondaryBtn}>
               <Text style={styles.secondaryBtnText}>{inspectedProjectId === scene.id ? "Close documents" : "Documents and relations"}</Text>
             </Pressable>
-            <Pressable testID={`mobile-project-import-resources-${scene.id}`} onPress={() => void runTransfer(`resources-${scene.id}`, () => model.importProjectResources(scene.id))} style={styles.secondaryBtn}>
+            {stored.projectType === "project-preview" && <Pressable testID={`mobile-project-import-resources-${scene.id}`} onPress={() => void runTransfer(`resources-${scene.id}`, () => model.importProjectResources(scene.id))} style={styles.secondaryBtn}>
               <Text style={styles.secondaryBtnText}>Import project resources</Text>
-            </Pressable>
+            </Pressable>}
             {inspectedProjectId === scene.id && <MobileProjectExplorer raw={stored.serializedProject} resources={stored.projectResources}
               onOpenGraph={stored.projectType === "project-preview" ? id => void model.openProjectGraph(scene.id, id) : undefined} />}
           </>}

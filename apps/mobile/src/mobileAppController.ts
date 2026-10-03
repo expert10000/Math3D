@@ -1752,6 +1752,8 @@ export const useMobileAppController = () => {
 
   const importProjectResources = async (projectId: string): Promise<boolean> => {
     try {
+      if (storedProjects.find(project => project.id === projectId)?.projectType !== "project-preview")
+        throw new TypeError("Import resource packages as a mixed project before editing their Graphs.");
       const picked = await pickMobileSceneProject();
       if (picked.status === "cancelled") { setProjectActionMessage("Resource import cancelled. Existing work was kept."); return false; }
       const preserved = preserveMobilePersonalGraphWork(storedProjects, currentGraphWork());
