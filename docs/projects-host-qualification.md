@@ -112,14 +112,14 @@ only by Graph history; missing historical bytes block opening.
 Saved-project management can create refreshed copies of Graph-derived companions
 and explicitly recompute local first/second derivatives. Historical documents,
 relations and results remain intact, and new records carry the current source
-generation. Other construction and analysis operations remain unqualified here.
+generation. The additional local construction/analysis adapters are qualified below;
+other operations remain unavailable.
 
 The mobile library now offers **Documents and relations** for saved checkpointed
 named projects. Inspection never activates an unsupported editor or changes the
 stored payload. Its contracts, typecheck and Android Hermes bundle passed.
-PRJ21's signed handset layout/interaction acceptance and broader mixed-container
-preview import/storage remain open. Earlier Samsung exact-build evidence applies
-to its recorded source commits; it does not attest this new mobile UI.
+The initial checks provided software evidence. The subsequent broader preview
+implementation and exact-build Samsung acceptance are qualified below.
 
 ### Broader previews and explicit refresh adapters
 
@@ -141,3 +141,14 @@ construction copy, managed undo/redo, integral recomputation, save and reload.
 See [the operation registry and limits](projects-refresh-support.md). A source
 adapter's software qualification does not extend to missing external engines,
 additional mobile editors or physical iOS delivery.
+
+The shared-key internal APK from clean source `6201e2c` passed the requested
+PRJ21 scope on Samsung SM-A566B / API 36. Native picker import, Documents and
+relations, all eight module groups, current/historical provenance, process
+restart and byte-exact export were checked. The 17-document preview returned
+unchanged through a fresh browser import/export/reload. All 21 original library
+IDs remained present, and the original catenary export stayed byte-identical.
+The corrected damaged-store runner passed 10/10 preparation and 11/11 restart
+checks while preserving the real library. [Exact-build evidence](evidence/projects-prj21-samsung-2026-10-03/acceptance.json)
+qualifies this Android saved-preview continuation; wider devices and mobile
+editor/sidecar functionality remain separate work.

@@ -602,13 +602,15 @@ do not replace PRJ17/PRJ18's outstanding physical signed iOS acceptance.
 | PRJ20 — Explicit dependency refresh | Manage saved project → Relations and availability → Create refreshed copy rebuilds supported Graph-derived companions and six Curve-to-Surface construction families. Five Graph analysis families publish new records with current provenance. Original documents, relations and historical analysis remain intact; project undo/redo reverses additions | Requested local adapters delivered and passed desktop/browser UI checks; see [support matrix](projects-refresh-support.md). Missing sources and duplicate copies/publications reject without mutation. Further external-engine adapters remain future work; no automatic scientific recomputation |
 | PRJ21 — Unified mobile explorer | Projects → Documents and relations displays checkpointed named-project documents grouped by module, their revisions, archive/preview limits, dependency freshness and analysis provenance. Broader mixed projects are imported and retained as complete saved previews | Requested preview scope delivered. Exact signed-build Samsung acceptance passed all eight modules, relations/results, restart, byte-exact export and fresh-browser return. All 21 original library IDs were retained. Per-document mobile editors and physical iOS acceptance remain future work |
 
-The continuation has **tested first deliveries**, with the broader PRJ20/PRJ21
-scope still open. Two Electron journeys passed, including real process restart;
+The **initial delivery** had software acceptance before broader preview retention
+and signed handset testing. Those requested follow-ups are now completed below.
+Initially, two Electron journeys passed, including real process restart;
 four Chromium journeys passed in en-US/UTC and pl-PL/Auckland, including independent
 storage and reload. Contracts retain exact Graph identities/history, historical
 companions/results and point-table inputs present only in undo/redo. Mobile
 inspection contracts and typecheck passed; the Android Hermes bundle exported
-successfully. This is software evidence, not signed handset acceptance for PRJ21.
+successfully. Those initial checks provided software evidence; the separate signed
+Samsung completion below qualifies the subsequent PRJ21 build.
 See [the continuation acceptance record](unified-projects-acceptance.md#prj19prj21-first-deliveries--october-3).
 
 ### Additional PRJ20/PRJ21 delivery — October 3
