@@ -1,5 +1,6 @@
 import {
   canonicalJsonStringify, Graph2DPointTableStore, MESH_COMMAND_TYPES, parseMath3DProject, serializeMath3DProject, sha256Checksum,
+  GRAPH2D_COMMAND_TYPES, type Graph2DDocument,
   type Math3DProject, type MeshResourceReference, type Graph2DPointTableReference, type VolumeDocument,
 } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
@@ -28,6 +29,13 @@ export const projectResourceInventory = (project: Math3DProject): ProjectResourc
   };
   for (const entry of project.workspace.entries) {
     const documents = [entry.checkpoint, resolved.get(entry.expected.id)!];
+    if (entry.module === "graph2d" && entry.replay) {
+      const replay = entry.replay.payload as unknown as import("@math3d/kernel").Graph2DReplayBundle;
+      for (const transaction of replay.transactions) for (const command of [...transaction.commands, ...transaction.inverseCommands]) if (command.command.type === GRAPH2D_COMMAND_TYPES.replaceScene) {
+        const source = (command.command.payload as unknown as { source: Graph2DDocument["source"] }).source;
+        documents.push({ ...entry.checkpoint, source } as Graph2DDocument);
+      }
+    }
     if (entry.module === "mesh" && entry.replay) {
       const replay = entry.replay.payload as unknown as MeshReplayBundle;
       for (const transaction of replay.transactions) for (const command of [...transaction.commands, ...transaction.inverseCommands]) if (command.command.type === MESH_COMMAND_TYPES.commitResource) {

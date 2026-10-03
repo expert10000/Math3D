@@ -25,7 +25,6 @@ const promotions = new Set(["graph2d.promote-curve", "graph2d.revolve-surface", 
 /** Every module is replay-verified; native editing is qualified by its supported source adapter. */
 export const inspectProjectCompatibility = (project: Math3DProject, options: ProjectCompatibilityOptions = {}) => {
   const canonical = parseMath3DProject(serializeMath3DProject(project)), resolved = verifyMixedWorkspaceReplay(canonical.workspace);
-  const graphEntries = canonical.workspace.entries.filter((entry) => entry.module === "graph2d"), graph = graphEntries.length === 1 ? resolved.get(graphEntries[0]!.expected.id) : null;
   const reasons: string[] = [], resources = new Map<string, Resource>();
   const add = (resource: Omit<Resource, "available">, availableOverride?: boolean) => {
     let available = false;
@@ -57,13 +56,13 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
     const available = !!bytes || (item.kind === "graph-point-table" && (options.tableAvailable?.(item.reference as Graph2DPointTableReference) ?? false));
     add({ id: item.id, kind: item.kind, checksum: item.checksum, byteLength: bytes?.length ?? (item.kind === "volume-payload" ? (item.reference as { byteLength: number }).byteLength : null), requiredForSource: item.required }, available);
   }
-  if (graphEntries.length > 1) reasons.push("Editable opening supports at most one Graph document.");
   if (!canonical.workspace.entries.length) reasons.push("The project has no documents to open.");
   const documents = canonical.workspace.entries.map((entry) => {
-    let editable = entry.module === "graph2d" && graphEntries.length === 1;
-    if ((entry.module === "curve" || entry.module === "surface") && graph?.format === "math3d.graph2d-document") {
+    let editable = entry.module === "graph2d";
+    if (entry.module === "curve" || entry.module === "surface") {
       const parents = canonical.workspace.relations.filter((relation) => promotions.has(relation.operation) && relation.target.type === "document" && relation.target.generation.documentId === entry.expected.id);
-      editable = parents.length === 1 && parents[0]!.sources.length === 1 && parents[0]!.sources[0]!.documentId === graph.identity.id &&
+      const graph = parents.length === 1 ? resolved.get(parents[0]!.sources[0]?.documentId ?? "") : null;
+      editable = graph?.format === "math3d.graph2d-document" && parents.length === 1 && parents[0]!.sources.length === 1 && parents[0]!.sources[0]!.documentId === graph.identity.id &&
         matchesScientificSourceGeneration(parents[0]!.sources[0]!, viewerSourceFromDocument(graph)) && parents[0]!.target.type === "document" &&
         matchesScientificSourceGeneration(parents[0]!.target.generation, viewerSourceFromDocument({ identity: entry.expected })) &&
         typeof (parents[0]!.parameters as Record<string, unknown>).sourceObjectId === "string" &&

@@ -12544,7 +12544,7 @@ const App: React.FC = () => {
   const [restoredVolumeRevision, setRestoredVolumeRevision] = useState(0);
   const [additionalActiveId, setAdditionalActiveId] = useState<string | null>(null);
   const [, setAdditionalVersion] = useState(0);
-  const restoredProjectRef = useRef<{ additional: Map<string, AdditionalProjectSession>; workspace: MixedWorkspaceDocument; curves: Map<string, CurveDocumentAdapter>; surfaces: Map<string, SurfaceDocumentAdapter>; geometries: Map<string, GeometryDocumentAdapter>; topologies: Map<string, TopologyDiagramCommandAdapter>; complexes: Map<string, ComplexAnalysisCommandAdapter>; volumes: Map<string, VolumeDocumentAdapter>; meshes: Map<string, MeshDocumentAdapter>; resources?: VerifiedProjectResources } | null>(null);
+  const restoredProjectRef = useRef<{ graphs: Map<string, Graph2DCommandAdapter>; additional: Map<string, AdditionalProjectSession>; workspace: MixedWorkspaceDocument; curves: Map<string, CurveDocumentAdapter>; surfaces: Map<string, SurfaceDocumentAdapter>; geometries: Map<string, GeometryDocumentAdapter>; topologies: Map<string, TopologyDiagramCommandAdapter>; complexes: Map<string, ComplexAnalysisCommandAdapter>; volumes: Map<string, VolumeDocumentAdapter>; meshes: Map<string, MeshDocumentAdapter>; resources?: VerifiedProjectResources } | null>(null);
   const [curvePresetId, setCurvePresetId] = useState<string>("circle2d");
   const [curveCustomXExpr, setCurveCustomXExpr] = useState("cos(t)");
   const [curveCustomYExpr, setCurveCustomYExpr] = useState("sin(2*t)");
@@ -77873,6 +77873,8 @@ case "mobius":
         activeGeometry.commitDisplay(geometryDisplayFromEditor(activeGeometry.document(), geometryKernelSceneSnapshot));
       }
       const entries = restored.workspace.entries.map((entry) => {
+        const graph = restored.graphs.get(entry.expected.id);
+        if (graph) { const replay = graph.exportReplay(); return { ...entry, checkpoint: replay.checkpoint.document, expected: graph.document().identity, replay: { format: MIXED_REPLAY_FORMATS.graph2d, payload: replay as unknown as CanonicalJsonValue } }; }
         const additional = restored.additional.get(entry.expected.id);
         if (additional) return additional.entry();
         const mesh = restored.meshes.get(entry.expected.id);
@@ -77907,7 +77909,7 @@ case "mobius":
       }
       for (const entry of live.entries.filter((entry) => owned.has(entry.expected.id))) {
         // Restored adapters already supplied exact document replay above.
-        if (restored.additional.has(entry.expected.id) || restored.curves.has(entry.expected.id) || restored.surfaces.has(entry.expected.id) || restored.geometries.has(entry.expected.id) || restored.topologies.has(entry.expected.id) || restored.complexes.has(entry.expected.id) || restored.volumes.has(entry.expected.id) || restored.meshes.has(entry.expected.id)) continue;
+        if (restored.graphs.has(entry.expected.id) || restored.additional.has(entry.expected.id) || restored.curves.has(entry.expected.id) || restored.surfaces.has(entry.expected.id) || restored.geometries.has(entry.expected.id) || restored.topologies.has(entry.expected.id) || restored.complexes.has(entry.expected.id) || restored.volumes.has(entry.expected.id) || restored.meshes.has(entry.expected.id)) continue;
         const index = entries.findIndex((saved) => saved.expected.id === entry.expected.id);
         if (index >= 0) entries[index] = entry; else entries.push(entry);
         if (entry.module === "mesh" && meshDocumentAdapterRef.current?.document().identity.id === entry.expected.id) restored.meshes.set(entry.expected.id, meshDocumentAdapterRef.current);
@@ -79094,6 +79096,11 @@ case "mobius":
 
   const navigateRestoredDocument = (id: string, module: KernelWorkspaceModule): boolean => {
     const restored = restoredProjectRef.current;
+    const graph = restored?.graphs.get(id);
+    if (graph) {
+      graph2dAdapterRef.current = graph; setGraph2dDocument(graph.document());
+      setAdditionalActiveId(null); setActiveGraph2DTargetId(null); setMode("graphs"); return true;
+    }
     const additional = restored?.additional.get(id);
     if (additional) { setAdditionalActiveId(id); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null); setRestoredComplexAdapter(null); setRestoredVolumeAdapter(null); setRestoredTopologyAdapter(null); setMode(module === "curve" ? "curves" : module === "surface" ? "surfaces" : module === "topology" ? "topology" : "geometry"); setAdditionalVersion((v) => v + 1); return true; }
     setAdditionalActiveId(null);
@@ -79172,18 +79179,20 @@ case "mobius":
   };
   const reopenProjectWorkspace = (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => {
     const resolved = verifyMixedWorkspaceReplay(workspace);
+    const graphs = new Map<string, Graph2DCommandAdapter>();
     const curves = new Map<string, CurveDocumentAdapter>(), surfaces = new Map<string, SurfaceDocumentAdapter>(), geometries = new Map<string, GeometryDocumentAdapter>();
     const topologies = new Map<string, TopologyDiagramCommandAdapter>(), complexes = new Map<string, ComplexAnalysisCommandAdapter>(), volumes = new Map<string, VolumeDocumentAdapter>();
     const meshes = new Map<string, MeshDocumentAdapter>();
     const additional = new Map<string, AdditionalProjectSession>();
     const context = () => {
       const documents = new Map(resolved);
-      for (const adapter of [...curves.values(), ...surfaces.values(), ...geometries.values(), ...topologies.values(), ...complexes.values(), ...volumes.values(), ...meshes.values(), ...additional.values()]) { const document = adapter.document(); documents.set(document.identity.id, document); }
+      for (const adapter of [...graphs.values(), ...curves.values(), ...surfaces.values(), ...geometries.values(), ...topologies.values(), ...complexes.values(), ...volumes.values(), ...meshes.values(), ...additional.values()]) { const document = adapter.document(); documents.set(document.identity.id, document); }
       return { documents, resources };
     };
     const promoted = new Set(workspace.relations.filter((relation) => relation.operation.startsWith("graph2d.") && relation.target.type === "document").map((relation) => relation.target.type === "document" ? relation.target.generation.documentId : ""));
     for (const entry of workspace.entries) {
       const document = resolved.get(entry.expected.id)!;
+      if (document.format === "math3d.graph2d-document") graphs.set(document.identity.id, entry.replay ? Graph2DCommandAdapter.restore(entry.replay.payload as unknown as import("@math3d/kernel").Graph2DReplayBundle) : new Graph2DCommandAdapter(document));
       if (document.format === "math3d.mesh-document" && meshDocumentEditable(document)) {
         const references = new Map<string, import("@math3d/core").MeshResourceReference>([[document.source.resource.id, document.source.resource]]);
         const replay = entry.replay?.payload as unknown as MeshReplayBundle | undefined;
@@ -79216,7 +79225,9 @@ case "mobius":
     }
     const checkpoint = createMixedWorkspaceDocument({ ...workspace, entries: workspace.entries.map((entry) => ({ ...entry, checkpoint: resolved.get(entry.expected.id)!, replay: null })) });
     reopenGraphWorkspace(checkpoint); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null);
-    restoredProjectRef.current = { workspace, curves, surfaces, geometries, topologies, complexes, volumes, meshes, resources, additional };
+    restoredProjectRef.current = { workspace, graphs, curves, surfaces, geometries, topologies, complexes, volumes, meshes, resources, additional };
+    const firstGraph = graphs.values().next().value;
+    if (firstGraph) { graph2dAdapterRef.current = firstGraph; setGraph2dDocument(firstGraph.document()); }
     setAdditionalActiveId(null);
   };
 
@@ -79226,7 +79237,7 @@ case "mobius":
       <KernelWorkspacePanel
         projectsOpen={projectsOpen}
         onProjectsOpenChange={setProjectsOpen}
-        canNavigateDocument={(id, module) => restoredProjectRef.current?.additional.has(id) || restoredProjectRef.current?.curves.has(id) || restoredProjectRef.current?.surfaces.has(id) || restoredProjectRef.current?.geometries.has(id) || restoredProjectRef.current?.topologies.has(id) || restoredProjectRef.current?.complexes.has(id) || restoredProjectRef.current?.volumes.has(id) || restoredProjectRef.current?.meshes.has(id) || graph2dPromotions.some((item) => item.document.identity.id === id) || ({
+        canNavigateDocument={(id, module) => restoredProjectRef.current?.graphs.has(id) || restoredProjectRef.current?.additional.has(id) || restoredProjectRef.current?.curves.has(id) || restoredProjectRef.current?.surfaces.has(id) || restoredProjectRef.current?.geometries.has(id) || restoredProjectRef.current?.topologies.has(id) || restoredProjectRef.current?.complexes.has(id) || restoredProjectRef.current?.volumes.has(id) || restoredProjectRef.current?.meshes.has(id) || graph2dPromotions.some((item) => item.document.identity.id === id) || ({
           geometry: geometryKernelAdapterRef.current?.document().identity.id,
           mesh: meshKernelDocument?.identity.id,
           surface: (restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom" ? restoredSurfaceAdapter : surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId))?.document().identity.id,
@@ -79239,7 +79250,7 @@ case "mobius":
         onNavigateDocument={(id, module) => {
           if (navigateRestoredDocument(id, module)) return;
           const target = graph2dPromotions.find((item) => item.document.identity.id === id);
-          if (target) { openGraph2DTarget(id); return; }
+          if (target) { navigateRestoredDocument(target.trace.sourceDocumentId, "graph2d"); openGraph2DTarget(id); return; }
           setActiveGraph2DTargetId(null);
           if (module === "graph2d") setMode("graphs");
           else if (module === "curve") setMode("curves");
