@@ -11,6 +11,7 @@ import { ProjectCommandAdapter } from "../projects/projectCommandAdapter";
 import { ProjectTemplatesPanel } from "./ProjectTemplatesPanel";
 import { ProjectDocumentActions, type ProjectDocumentAction } from "./ProjectDocumentActions";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
+import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnalysisRefreshOptions, recomputeProjectAnalysis } from "../projects/projectDependencyRefresh";
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint } from "../projects/projectTransfer";
 import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
@@ -137,6 +138,21 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
     if (!managed) return;
     try { display(managed[direction](), true, true); setMessage(`Project ${direction} applied. Save changes to keep it.`); }
     catch (error) { setMessage(`Project ${direction} failed: ${(error as Error).message}`); }
+  };
+  const refreshDependency = (relationId: string) => {
+    if (!managed || busy) return;
+    try {
+      display(managed.commit(refreshProjectDependency(managed.project(), relationId)), true, true);
+      setMessage("Refreshed companion created. The original document and analysis are retained. Save changes to keep it.");
+    } catch (error) { setMessage(`Dependency refresh failed: ${(error as Error).message}`); }
+  };
+  const recomputeAnalysis = (resultId: string) => {
+    if (!managed || busy) return;
+    try {
+      const next = recomputeProjectAnalysis(managed.project(), resultId);
+      display(managed.commit(next), true, true);
+      setMessage(`Derivative recomputed with authority ${next.workspace.results.at(-1)!.status}. Historical analysis retained. Save changes to keep it.`);
+    } catch (error) { setMessage(`Analysis recomputation failed: ${(error as Error).message}`); }
   };
   const viewSaved = () => {
     try {
@@ -312,7 +328,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
           </article>;
         })}
       </section>
-      {dependencies && <ProjectDependenciesPanel inspection={dependencies} selectedId={inspectedId} titles={documentTitles} onClose={() => setInspectionOpen(false)} onLocate={(id) => setInspectedId(id)} />}
+      {dependencies && <ProjectDependenciesPanel inspection={dependencies} selectedId={inspectedId} titles={documentTitles} onClose={() => setInspectionOpen(false)} onLocate={(id) => setInspectedId(id)}
+        refreshOptions={managed && project ? projectDependencyRefreshOptions(project) : undefined} onRefresh={managed && !busy ? refreshDependency : undefined}
+        analysisRefreshOptions={managed && project ? projectAnalysisRefreshOptions(project) : undefined} onRecompute={managed && !busy ? recomputeAnalysis : undefined} />}
       {explorer?.groups.map((group) => <section key={group.module} data-testid={`project-group-${group.module}`} style={{ marginTop: 12 }}>
         <strong>{group.title} ({group.documents.length})</strong>
         {group.documents.length ? <ul style={{ margin: "5px 0", paddingLeft: 20 }}>

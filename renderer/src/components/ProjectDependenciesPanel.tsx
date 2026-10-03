@@ -2,8 +2,10 @@ import React from "react";
 import type { ProjectDependencyInspection } from "../projects/projectDependencies";
 
 type Props = { inspection: ProjectDependencyInspection; selectedId: string | null; titles: ReadonlyMap<string, string>;
+  refreshOptions?: readonly { relationId: string; canRefresh: boolean; reason: string }[]; onRefresh?: (relationId: string) => void;
+  analysisRefreshOptions?: readonly { resultId: string; canRecompute: boolean; reason: string }[]; onRecompute?: (resultId: string) => void;
   onLocate: (id: string) => void; onClose: () => void };
-export const ProjectDependenciesPanel: React.FC<Props> = ({ inspection, selectedId, titles, onLocate, onClose }) => {
+export const ProjectDependenciesPanel: React.FC<Props> = ({ inspection, selectedId, titles, onLocate, onClose, refreshOptions, onRefresh, analysisRefreshOptions, onRecompute }) => {
   const document = inspection.documents.find((document) => document.id === selectedId);
   const relations = selectedId ? inspection.relations.filter((relation) => relation.sources.some((source) => source.documentId === selectedId) ||
     (relation.target.type === "document" && relation.target.generation.documentId === selectedId)) : inspection.relations;
@@ -18,6 +20,9 @@ export const ProjectDependenciesPanel: React.FC<Props> = ({ inspection, selected
     {relations.map((relation) => <article key={relation.relationId} data-testid={`project-relation-${relation.relationId}`} style={{ padding: "8px 0", borderBottom: "1px solid #e2e8f0" }}>
       <div>{relation.kind} · {relation.freshness}{relation.snapshot ? " · snapshot" : ""}</div>
       <small>{relation.operation}</small>
+      {onRefresh && refreshOptions?.filter(option => option.relationId === relation.relationId).map(option =>
+        <div key={option.relationId}><button type="button" data-testid={`project-refresh-${relation.relationId}`} disabled={!option.canRefresh}
+          onClick={() => onRefresh(relation.relationId)}>Create refreshed copy</button><small style={{ display: "block" }}>{option.reason}</small></div>)}
       {relation.sources.map((source) => <div key={`${source.documentId}:${source.revision}`}>Source {locate(source.documentId)} · recorded revision {source.revision} · generation {source.generation}</div>)}
       <div>Target {relation.target.type === "document" ? locate(relation.target.generation.documentId) : relation.target.type === "result" ? `Analysis ${relation.target.resultId}` : `Artifact ${relation.target.artifactId}`}</div>
     </article>)}
@@ -25,6 +30,9 @@ export const ProjectDependenciesPanel: React.FC<Props> = ({ inspection, selected
     <strong>Analysis provenance ({results.length})</strong>
     {results.map((result) => <article key={result.id} data-testid={`project-result-status-${result.id}`} style={{ padding: "8px 0" }}>
       <div>{result.operation} · authority {result.authority} · source {result.sourceFreshness} · artifacts {result.missingArtifactIds.length ? "unavailable" : "available"}</div>
+      {onRecompute && analysisRefreshOptions?.filter(option => option.resultId === result.id).map(option =>
+        <div key={option.resultId}><button type="button" data-testid={`project-recompute-${result.id}`} disabled={!option.canRecompute}
+          onClick={() => onRecompute(result.id)}>Recompute derivative</button><small style={{ display: "block" }}>{option.reason}</small></div>)}
       <div>Source {locate(result.source.documentId)} · revision {result.source.revision} · generation {result.source.generation}</div>
       <small>{result.source.structuralHash} · engine {result.engine.name} {result.engine.version}</small>
       {result.warnings.map((warning, index) => <div key={index}>{warning}</div>)}

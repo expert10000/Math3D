@@ -1,10 +1,30 @@
 import { additionalRepresentationFixture, exerciseAdditionalEditors, checkReopenedAdditionalHistory } from "../e2e/helpers/additionalProjectRepresentations";
 import { exerciseRepresentationStarters } from "../e2e/helpers/projectRepresentationStarters";
+import { exerciseMultipleGraphs, checkMultipleGraphHistory, exerciseDependencyRefresh } from "../e2e/helpers/projectContinuation";
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { runNamedProjectRoundTrip } from "../e2e/helpers/namedProjectRoundTrip";
 import { inspectMeshPackage, meshResourceFixture, pointResourceFixture, scalarVolumeResourceFixture, inspectScalarVolumePackage } from "../e2e/helpers/meshProjectResources";
 import { projectFreezeFixture, inspectFreezePackage, editFreezeProject, freezeControls, checkFreezeHistory, checkFreezeResources } from "../e2e/helpers/projectFreeze";
+
+test("PRJ19 browser retains separate Graph histories after reload and independent import", async ({ page, browser }) => {
+  await page.goto("/"); await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); }); await page.reload();
+  const saved = await exerciseMultipleGraphs(page); await page.reload(); await checkMultipleGraphHistory(page, saved);
+  const context = await browser.newContext();
+  try {
+    const destination = await context.newPage(); await destination.goto("/");
+    await destination.evaluate(() => localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1")); await destination.reload();
+    await destination.getByTestId("projects-toggle").click();
+    const panel = destination.getByTestId("project-explorer-panel");
+    await panel.getByTestId("project-import-file").setInputFiles({ name: "independent-graphs.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(saved)) });
+    await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await checkMultipleGraphHistory(destination, saved);
+  } finally { await context.close(); }
+});
+test("PRJ20 browser refresh preserves historical documents and analysis", async ({ page }) => {
+  await page.goto("/"); await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); }); await page.reload();
+  await exerciseDependencyRefresh(page);
+});
 
 test("PRJ18 browser freezes all eight modules and resources across fresh profiles and reload", async ({ page, browser }) => {
   test.setTimeout(600_000);

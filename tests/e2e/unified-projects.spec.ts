@@ -1,5 +1,6 @@
 import { additionalRepresentationFixture, exerciseAdditionalEditors, checkReopenedAdditionalHistory } from "./helpers/additionalProjectRepresentations";
 import { exerciseRepresentationStarters } from "./helpers/projectRepresentationStarters";
+import { exerciseMultipleGraphs, checkMultipleGraphHistory, exerciseDependencyRefresh } from "./helpers/projectContinuation";
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 import { resolve } from "node:path";
@@ -7,6 +8,21 @@ import { readFileSync, existsSync } from "node:fs";
 import { runNamedProjectRoundTrip } from "./helpers/namedProjectRoundTrip";
 import { meshResourceFixture, inspectMeshPackage, scalarVolumeResourceFixture, inspectScalarVolumePackage } from "./helpers/meshProjectResources";
 const projectCore = require(resolve("packages/core/src/index.ts"));
+
+test("PRJ19 multiple Graph sessions retain independent histories across Electron restart", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const saved = await exerciseMultipleGraphs(ctx.page), profile = ctx.profileDir;
+    await ctx.app.close(); ctx = await launchSurfaceApp({}, profile);
+    await checkMultipleGraphHistory(ctx.page, saved);
+  } finally { await closeSurfaceApp(ctx); }
+});
+test("PRJ20 saved-project refresh preserves historical companions and analysis", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try { ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page); await exerciseDependencyRefresh(ctx.page); }
+  finally { await closeSurfaceApp(ctx); }
+});
 
 test("PRJ16 built-in source starters retain editing history across Electron restart", async () => {
   test.setTimeout(240_000); let ctx: LaunchedSurfaceApp | null = null;
