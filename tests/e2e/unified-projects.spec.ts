@@ -1,6 +1,6 @@
 import { additionalRepresentationFixture, exerciseAdditionalEditors, checkReopenedAdditionalHistory } from "./helpers/additionalProjectRepresentations";
 import { exerciseRepresentationStarters } from "./helpers/projectRepresentationStarters";
-import { exerciseMultipleGraphs, checkMultipleGraphHistory, exerciseDependencyRefresh } from "./helpers/projectContinuation";
+import { exerciseMultipleGraphs, checkMultipleGraphHistory, exerciseDependencyRefresh, exerciseExtendedRefresh } from "./helpers/projectContinuation";
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 import { resolve } from "node:path";
@@ -20,7 +20,7 @@ test("PRJ19 multiple Graph sessions retain independent histories across Electron
 });
 test("PRJ20 saved-project refresh preserves historical companions and analysis", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
-  try { ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page); await exerciseDependencyRefresh(ctx.page); }
+  try { ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page); await exerciseDependencyRefresh(ctx.page); await exerciseExtendedRefresh(ctx.page); }
   finally { await closeSurfaceApp(ctx); }
 });
 

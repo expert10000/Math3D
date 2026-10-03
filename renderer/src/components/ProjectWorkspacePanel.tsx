@@ -151,7 +151,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
     try {
       const next = recomputeProjectAnalysis(managed.project(), resultId);
       display(managed.commit(next), true, true);
-      setMessage(`Derivative recomputed with authority ${next.workspace.results.at(-1)!.status}. Historical analysis retained. Save changes to keep it.`);
+      setMessage(`Analysis recomputed with authority ${next.workspace.results.at(-1)!.status}. Historical analysis retained. Save changes to keep it.`);
     } catch (error) { setMessage(`Analysis recomputation failed: ${(error as Error).message}`); }
   };
   const viewSaved = () => {

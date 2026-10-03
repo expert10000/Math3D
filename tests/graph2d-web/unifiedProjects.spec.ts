@@ -1,6 +1,6 @@
 import { additionalRepresentationFixture, exerciseAdditionalEditors, checkReopenedAdditionalHistory } from "../e2e/helpers/additionalProjectRepresentations";
 import { exerciseRepresentationStarters } from "../e2e/helpers/projectRepresentationStarters";
-import { exerciseMultipleGraphs, checkMultipleGraphHistory, exerciseDependencyRefresh } from "../e2e/helpers/projectContinuation";
+import { exerciseMultipleGraphs, checkMultipleGraphHistory, exerciseDependencyRefresh, exerciseExtendedRefresh } from "../e2e/helpers/projectContinuation";
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { runNamedProjectRoundTrip } from "../e2e/helpers/namedProjectRoundTrip";
@@ -24,6 +24,7 @@ test("PRJ19 browser retains separate Graph histories after reload and independen
 test("PRJ20 browser refresh preserves historical documents and analysis", async ({ page }) => {
   await page.goto("/"); await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); }); await page.reload();
   await exerciseDependencyRefresh(page);
+  await exerciseExtendedRefresh(page);
 });
 
 test("PRJ18 browser freezes all eight modules and resources across fresh profiles and reload", async ({ page, browser }) => {

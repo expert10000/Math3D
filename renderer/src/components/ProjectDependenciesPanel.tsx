@@ -3,7 +3,7 @@ import type { ProjectDependencyInspection } from "../projects/projectDependencie
 
 type Props = { inspection: ProjectDependencyInspection; selectedId: string | null; titles: ReadonlyMap<string, string>;
   refreshOptions?: readonly { relationId: string; canRefresh: boolean; reason: string }[]; onRefresh?: (relationId: string) => void;
-  analysisRefreshOptions?: readonly { resultId: string; canRecompute: boolean; reason: string }[]; onRecompute?: (resultId: string) => void;
+  analysisRefreshOptions?: readonly { resultId: string; label?: string; canRecompute: boolean; reason: string }[]; onRecompute?: (resultId: string) => void;
   onLocate: (id: string) => void; onClose: () => void };
 export const ProjectDependenciesPanel: React.FC<Props> = ({ inspection, selectedId, titles, onLocate, onClose, refreshOptions, onRefresh, analysisRefreshOptions, onRecompute }) => {
   const document = inspection.documents.find((document) => document.id === selectedId);
@@ -32,7 +32,7 @@ export const ProjectDependenciesPanel: React.FC<Props> = ({ inspection, selected
       <div>{result.operation} · authority {result.authority} · source {result.sourceFreshness} · artifacts {result.missingArtifactIds.length ? "unavailable" : "available"}</div>
       {onRecompute && analysisRefreshOptions?.filter(option => option.resultId === result.id).map(option =>
         <div key={option.resultId}><button type="button" data-testid={`project-recompute-${result.id}`} disabled={!option.canRecompute}
-          onClick={() => onRecompute(result.id)}>Recompute derivative</button><small style={{ display: "block" }}>{option.reason}</small></div>)}
+          onClick={() => onRecompute(result.id)}>{option.label ?? "Recompute analysis"}</button><small style={{ display: "block" }}>{option.reason}</small></div>)}
       <div>Source {locate(result.source.documentId)} · revision {result.source.revision} · generation {result.source.generation}</div>
       <small>{result.source.structuralHash} · engine {result.engine.name} {result.engine.version}</small>
       {result.warnings.map((warning, index) => <div key={index}>{warning}</div>)}

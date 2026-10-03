@@ -75,3 +75,40 @@ export async function exerciseDependencyRefresh(page: Page) {
   await expect(panel.getByTestId("project-group-surface")).toContainText("Surface (2)");
   return saved;
 }
+
+export async function exerciseExtendedRefresh(page: Page) {
+  const starter = core.instantiateMath3DProjectTemplate("curve-construction-study", "extended-refresh-ui");
+  const curve = starter.workspace.entries[0].checkpoint;
+  const changed = core.replaceCurveDocumentSource(curve, { ...curve.source, definition: { ...curve.source.definition, points: [[2,0,0],[2,0,1]], pointCount: 2 } });
+  const project = core.replaceMath3DProjectWorkspace(starter, core.createMixedWorkspaceDocument({ ...starter.workspace,
+    entries: starter.workspace.entries.map((entry: any) => entry.expected.id === curve.identity.id ? { ...entry, checkpoint: changed, expected: changed.identity } : entry) }));
+  const panel = await show(page);
+  await panel.getByTestId("project-import-file").setInputFiles({ name: "construction.json", mimeType: "application/json", buffer: Buffer.from(core.serializeMath3DProject(project)) });
+  await panel.getByTestId("project-import-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
+  await panel.getByTestId("project-manage").click(); await panel.getByTestId("project-inspect-relations").click();
+  await panel.getByTestId(`project-refresh-${project.workspace.relations[0].relationId}`).click();
+  await expect(panel.getByTestId("project-group-surface")).toContainText("Surface (4)");
+  await panel.getByTestId("project-undo").click(); await expect(panel.getByTestId("project-group-surface")).toContainText("Surface (3)");
+  await panel.getByTestId("project-redo").click(); await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
+  const saved = await page.evaluate(id => JSON.parse(localStorage.getItem("math3d.project.v1.payload." + id)!), project.identity.id);
+  expect(saved.workspace.entries.slice(0,-1)).toEqual(project.workspace.entries);
+  expect(saved.workspace.relations.slice(0,-1)).toEqual(project.workspace.relations);
+  expect(saved.workspace.entries.at(-1).checkpoint.source.parameters.sourceGenerations[0].revision).toBe(changed.identity.revision);
+  const derivative = core.instantiateMath3DProjectTemplate("derivative-study", "extended-analysis-ui"), graph = derivative.workspace.entries[0].checkpoint;
+  const historical = core.analyzeGraph2DIntegral({ document: graph, objectId: graph.source.objects[0].id, interval: { min: -2, max: 2 }, mode: "absolute", tolerance: 1e-5 }).publication;
+  const source = { ...graph.source, variables: [{ name: "a", value: 2 }] };
+  const edited = core.createGraph2DDocument({ source, identity: core.advanceDocumentIdentity(graph.identity, source), title: graph.metadata.title });
+  const analysisProject = core.createMath3DProject(core.createMixedWorkspaceDocument({ ...derivative.workspace, entries: [{ module: "graph2d", checkpoint: edited, expected: edited.identity, replay: null }],
+    results: [historical], relations: [], activeDocumentIds: [edited.identity.id] }), { stableKey: "extended-analysis-ui" });
+  await panel.getByTestId("project-import-file").setInputFiles({ name: "integral.json", mimeType: "application/json", buffer: Buffer.from(core.serializeMath3DProject(analysisProject)) });
+  await panel.getByTestId("project-import-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
+  await panel.getByTestId("project-manage").click(); await panel.getByTestId("project-inspect-relations").click();
+  await panel.getByRole("button", { name: "Recompute integral", exact: true }).click();
+  await expect(panel.getByTestId("project-message")).toContainText("Analysis recomputed");
+  await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
+  await page.reload(); await show(page); await panel.getByTestId(`project-preview-${analysisProject.identity.id}`).click();
+  await expect(panel.getByTestId("project-group-analysis")).toContainText("Analysis (2)");
+  const records = await page.evaluate(id => JSON.parse(localStorage.getItem("math3d.project.v1.payload." + id)!).workspace.results, analysisProject.identity.id);
+  expect(records[0]).toEqual(historical); expect(records[1].provenance.source.revision).toBe(edited.identity.revision);
+  expect(records[1].provenance.numericContext.tolerance.absolute).toBe(1e-5);
+}
