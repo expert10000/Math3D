@@ -94,11 +94,20 @@ const payload = (projects: MobileStoredSceneProject[] = [project]) => JSON.strin
 });
 
 describe("mobile scene storage recovery", () => {
+  it("migrates schema 4 without losing the complete resource project or selected Graph", () => {
+    const fixture = mobileMixedProjectFixture(), stored = importMobileProjectPreview(fixture.raw, [], "package.json");
+    const record = new MobileProjectGraphSessions(stored).snapshot(fixture.graphIds[1]);
+    const loaded = decodeMobileSceneStorage(JSON.stringify({ schemaVersion: 4, projects: [record] }));
+    expect(loaded).toEqual({ ok: true, migrated: true, projects: [record] });
+  });
   it("atomically keeps mixed Graph history and all resource bytes through failed staging and backup recovery", async () => {
     const fixture = mobileMixedProjectFixture(), mixed = importMobileProjectPreview(fixture.raw, [], "package.json");
     const sessions = new MobileProjectGraphSessions(mixed), id = fixture.graphIds[1]!, adapter = sessions.adapter(id);
     adapter.commitViewport({ ...adapter.document().display.viewport, xMin: -3, xMax: 3 });
-    const edited = sessions.snapshot(id);
+    const curveId = fixture.project.workspace.entries.find(entry => entry.module === "curve" && entry.checkpoint.source.representation === "explicit")!.expected.id;
+    const curve = sessions.curve(curveId), source = curve.document().source;
+    curve.commitSource({ ...source, definition: { ...source.definition, expressions: { ...source.definition.expressions, y: "x*x+1" } } });
+    const edited = sessions.snapshot(curveId);
     await saveStoredSceneProjects([project, edited]);
     expect((await loadStoredSceneProjects()).projects).toEqual(expect.arrayContaining([project, edited]));
     const before = fileContents.get("documents/math3d-mobile/scene-projects.json");

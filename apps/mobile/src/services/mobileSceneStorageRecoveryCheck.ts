@@ -31,9 +31,10 @@ const mixedResourceFixture = () => {
   const template = instantiateMath3DProjectTemplate("scene-topology-study", "native-preview-recovery");
   const preset = instantiateGraph2DPreset(getGraph2DPresetCatalog().get("piecewise-data-gaps")!, "native-resource-recovery");
   const second = createMobileGraph("Second recovery Graph", true, "native-resource-recovery-second");
+  const curve = instantiateMath3DProjectTemplate("derivative-study", "native-curve-recovery").workspace.entries.find(entry => entry.module === "curve")!;
   const tables = new Graph2DPointTableStore(); for (const sidecar of preset.sidecars) tables.publish(sidecar.rows);
   const project = createMath3DProject(createMixedWorkspaceDocument({ ...template.workspace, entries: [...template.workspace.entries,
-    ...[preset.document, second].map(document => ({ module: "graph2d" as const, checkpoint: document, expected: document.identity, replay: null }))],
+    ...[preset.document, second].map(document => ({ module: "graph2d" as const, checkpoint: document, expected: document.identity, replay: null })), curve],
     activeDocumentIds: [...template.workspace.activeDocumentIds, preset.document.identity.id, second.identity.id] }), { title: "Recovery mixed resources", stableKey: "native-resource-recovery" });
   const resources = captureProjectResources(project, item => {
     if (item.kind !== "graph-point-table") return null;
@@ -43,7 +44,9 @@ const mixedResourceFixture = () => {
   const stored = importMobileProjectPreview(exportProjectPackage(project, resources), [], "recovery-package.json", "desktop", 2);
   const sessions = new MobileProjectGraphSessions(stored), adapter = sessions.adapter(preset.document.identity.id);
   adapter.commitViewport({ ...adapter.document().display.viewport, xMin: -3, xMax: 3 });
-  return sessions.snapshot(preset.document.identity.id, 2);
+  const curveAdapter = sessions.curve(curve.expected.id), source = curveAdapter.document().source;
+  curveAdapter.commitSource({ ...source, definition: { ...source.definition, expressions: { ...source.definition.expressions, y: "x*x+1" } } });
+  return sessions.snapshot(curve.expected.id, 2);
 };
 const reset = () => {
   directory.create({ idempotent: true, intermediates: true });
