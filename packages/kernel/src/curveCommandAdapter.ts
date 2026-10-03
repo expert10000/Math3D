@@ -15,6 +15,13 @@ export type CurveReplayBundle = Readonly<{
   transactions: readonly { forward: CommandEnvelope; inverse: CommandEnvelope }[];
   cursor: number;
 }>;
+const requireInverse = (document: CurveDocument, forward: CommandEnvelope, inverse: CommandEnvelope): void => {
+  const previous = forward.command.type === CURVE_COMMAND_TYPES.replaceSource ? document.source :
+    forward.command.type === CURVE_COMMAND_TYPES.setAnalysisSettings ? document.metadata.analysisSettings :
+    forward.command.type === CURVE_COMMAND_TYPES.commitSelection ? document.selection.controlIds : null;
+  if (previous === null || inverse.command.type !== forward.command.type || canonicalJsonStringify(inverse.command.payload) !== canonicalJsonStringify(previous))
+    throw new TypeError("Curve replay inverse does not restore the previous source or metadata.");
+};
 
 export class CurveCommandAdapter {
   #checkpoint: CurveDocument;
@@ -80,6 +87,7 @@ export class CurveCommandAdapter {
     const end = Math.min(bundle.transactions.length, bundle.cursor + 100), start = Math.max(0, end - 100);
     let checkpoint = bundle.checkpoint;
     for (const transaction of bundle.transactions.slice(0, start)) {
+      requireInverse(checkpoint, transaction.forward, transaction.inverse);
       const projected = projectCommandTransaction(checkpoint, [transaction.forward], curveCommandDefinitions, "replay");
       if (!projected.ok) throw new TypeError("Cannot fold saved Curve history.");
       checkpoint = projected.state;
@@ -103,6 +111,7 @@ export class CurveCommandAdapter {
     return this.document();
   }
   #execute(forward: CommandEnvelope, inverse: CommandEnvelope): void {
+    requireInverse(this.document(), forward, inverse);
     const result = this.#kernel.transact({ transactionId: `curve/transaction/${this.#transactions.length + 1}`, commands: [forward], history: { kind: "reversible", inverseCommands: [inverse] } });
     if (!result.ok) throw new TypeError(result.errors.map((entry) => entry.message).join(" "));
     this.#transactions.splice(this.#cursor);

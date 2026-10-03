@@ -66,6 +66,10 @@ describe("PRJ25 complete mixed-project Curve sessions", () => {
     commitMobileCurveSource(adapter, { ...source, domain: { ...source.domain, min: source.domain.min + 0.1 } });
     const project = readMobilePreviewProject(sessions.snapshot(editable.id));
     const entries = JSON.parse(JSON.stringify(project.workspace.entries));
+    const incorrectInverse = JSON.parse(JSON.stringify(entries));
+    incorrectInverse.find((entry: any) => entry.expected.id === editable.id).replay.payload.transactions[0].inverse.command.payload.domain.max += 1;
+    const inverseProject = replaceMath3DProjectWorkspace(project, createMixedWorkspaceDocument({ ...project.workspace, entries: incorrectInverse }));
+    expect(() => importMobileProjectPreview(serializeMath3DProject(inverseProject), [], "wrong-inverse.json")).toThrow("inverse");
     entries.find((entry: any) => entry.expected.id === editable.id).replay.payload.transactions[0].forward.command.payload.domain.max = 99;
     const corrupt = replaceMath3DProjectWorkspace(project, createMixedWorkspaceDocument({ ...project.workspace, entries }));
     expect(() => importMobileProjectPreview(serializeMath3DProject(corrupt), [], "corrupt.json")).toThrow();
