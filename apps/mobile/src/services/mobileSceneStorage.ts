@@ -7,8 +7,9 @@ import {
 import { Directory, File, Paths } from "expo-file-system";
 import type { MobileSceneSummary, MobileStoredSceneProject } from "../models/mobileScene";
 import { readMobileGraph } from "../models/mobileGraphProject";
+import { readMobilePreviewProject } from "../models/mobileProjectPreview";
 
-export const MOBILE_SCENE_STORAGE_SCHEMA_VERSION = 2;
+export const MOBILE_SCENE_STORAGE_SCHEMA_VERSION = 3;
 const STORAGE_DIR_NAME = "math3d-mobile";
 const STORAGE_FILE_NAME = "scene-projects.json";
 const STORAGE_TEMP_FILE_NAME = "scene-projects.tmp";
@@ -84,10 +85,13 @@ const normalizeStoredProject = (
     return null;
   }
 
-  if (value.projectType !== undefined && value.projectType !== "scene" && value.projectType !== "graph2d") {
+  if (value.projectType !== undefined && value.projectType !== "scene" && value.projectType !== "graph2d" && value.projectType !== "project-preview") {
     issues.push(`projects[${index}] has an unsupported project type.`); return null;
   }
-  if (value.projectType === "graph2d") {
+  if (value.projectType === "project-preview") {
+    try { readMobilePreviewProject(value as MobileStoredSceneProject); }
+    catch (error) { issues.push(`projects[${index}] has invalid project preview: ${(error as Error).message}`); return null; }
+  } else if (value.projectType === "graph2d") {
     try { readMobileGraph(value as MobileStoredSceneProject); }
     catch (error) { issues.push(`projects[${index}] has invalid Graph payload: ${(error as Error).message}`); return null; }
   } else {
@@ -147,9 +151,9 @@ export const decodeMobileSceneStorage = (raw: string): DecodedPayload => {
     if (payload.schemaVersion === undefined || payload.schemaVersion === 0) {
       projectList = payload.projects;
       migrated = true;
-    } else if (payload.schemaVersion === 1 || payload.schemaVersion === MOBILE_SCENE_STORAGE_SCHEMA_VERSION) {
+    } else if (payload.schemaVersion === 1 || payload.schemaVersion === 2 || payload.schemaVersion === MOBILE_SCENE_STORAGE_SCHEMA_VERSION) {
       projectList = payload.projects;
-      migrated = payload.schemaVersion === 1;
+      migrated = payload.schemaVersion !== MOBILE_SCENE_STORAGE_SCHEMA_VERSION;
     } else {
       return {
         ok: false,

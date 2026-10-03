@@ -38,7 +38,7 @@ export type Math3DExample = {
 };
 
 export type MobileStoredSceneProject = {
-  projectType?: "scene" | "graph2d";
+  projectType?: "scene" | "graph2d" | "project-preview";
   id: string;
   title: string;
   updatedAt: number;

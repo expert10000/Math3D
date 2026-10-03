@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createSceneProjectDocument, serializeSceneProject, type SceneDocument } from "@math3d/core";
+import { createSceneProjectDocument, serializeSceneProject, instantiateMath3DProjectTemplate, serializeMath3DProject, type SceneDocument } from "@math3d/core";
+import { importMobileProjectPreview } from "../../apps/mobile/src/models/mobileProjectPreview";
 import type { MobileStoredSceneProject } from "../../apps/mobile/src/models/mobileScene";
 import { createMobileGraph, storeMobileGraph, readMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
 
@@ -91,6 +92,17 @@ const payload = (projects: MobileStoredSceneProject[] = [project]) => JSON.strin
 });
 
 describe("mobile scene storage recovery", () => {
+  it("migrates schema 2 and atomically retains complete previews beside existing Graph/Scene projects", async () => {
+    fileContents.clear();
+    expect(decodeMobileSceneStorage(JSON.stringify({ schemaVersion: 2, projects: [project] }))).toMatchObject({ ok: true, migrated: true });
+    const preview = importMobileProjectPreview(serializeMath3DProject(instantiateMath3DProjectTemplate("scene-topology-study", "storage-preview")), [project], "mixed.json");
+    await saveStoredSceneProjects([project, preview]);
+    expect((await loadStoredSceneProjects()).projects).toContainEqual(preview);
+    const before = fileContents.get("documents/math3d-mobile/scene-projects.json");
+    await expect(saveStoredSceneProjects([{ ...preview, serializedProject: "{bad" }])).rejects.toMatchObject({ code: "validation" });
+    expect(fileContents.get("documents/math3d-mobile/scene-projects.json")).toBe(before);
+    expect(resolveMobileSceneStorage("{truncated", fileContents.get("documents/math3d-mobile/scene-projects.backup.json")!).projects).toContainEqual(preview);
+  });
   beforeEach(() => {
     fileContents.clear();
     fileFaults.writePath = "";

@@ -3,7 +3,8 @@ import { serializeGraph2DDocument, type Graph2DDocument, type Graph2DAnyPromotio
   type Graph2DPersonalPresetPreview } from "@math3d/core";
 import { commitMobileGraphPresetLaunch, planMobileGraphPresetLaunch } from "./models/mobileGraphPresetLaunch";
 import { stageMobileGraphPresetSidecars, mobileGraphPointTables } from "./services/mobileGraphPointTables";
-import { createMobileGraph, readMobileGraph, storeMobileGraph, updateStoredMobileGraph } from "./models/mobileGraphProject";
+import { createMobileGraph, readMobileGraph, readMobileNamedGraphProject, storeMobileGraph, updateStoredMobileGraph } from "./models/mobileGraphProject";
+import { importMobileProjectPreview } from "./models/mobileProjectPreview";
 import { commitMobileGraphPromotion, readMobileGraphPromotions } from "./models/mobileGraphPromotions";
 import { probeMobilePlatformCapabilities } from "./services/mobilePlatformCapabilities";
 import { AppState, PixelRatio, Platform, Share, type GestureResponderEvent } from "react-native";
@@ -1259,6 +1260,7 @@ export const useMobileAppController = () => {
   const openStoredScene = async (projectId: string) => {
     const target = storedProjects.find((item) => item.id === projectId);
     if (!target) return;
+    if (target.projectType === "project-preview") { setTab("projects"); setProjectActionMessage("Use Documents and relations to inspect this saved project preview."); return; }
     if (target.projectType === "graph2d") {
       try {
         const graph = readMobileGraph(target);
@@ -1629,6 +1631,24 @@ export const useMobileAppController = () => {
       }
       const envelope = JSON.parse(picked.serializedProject) as { format?: string; version?: number };
       const format = envelope?.format;
+      if (format === "math3d.project" || format === "math3d.mixed-workspace" || format === "math3d.project-handoff" && envelope.version === 2) {
+        let graphEditable = false;
+        if (format === "math3d.project") { try { graphEditable = readMobileNamedGraphProject(picked.serializedProject) !== null; } catch { /* validated preview path below */ } }
+        if (!graphEditable && format === "math3d.project") {
+          const preserved = preserveMobilePersonalGraphWork(storedProjects, { graph: graphDocument, scene: viewerDocument });
+          const project = importMobileProjectPreview(picked.serializedProject, preserved, picked.sourceName, source === "import" ? "imported" : source);
+          const saved = await persistProjectMutation([project, ...preserved], `Imported ${project.title} as a saved preview. Use Documents and relations; current editors were kept.`, "Could not import project preview");
+          if (saved) { setSceneSearchQuery(project.title); setLibrarySection("all"); setTab("projects"); }
+          return saved;
+        }
+        if (format !== "math3d.project") {
+          const preserved = preserveMobilePersonalGraphWork(storedProjects, { graph: graphDocument, scene: viewerDocument });
+          const project = importMobileProjectPreview(picked.serializedProject, preserved, picked.sourceName, source === "import" ? "imported" : source);
+          const saved = await persistProjectMutation([project, ...preserved], `Imported ${project.title} as a saved preview. Use Documents and relations; current editors were kept.`, "Could not import project preview");
+          if (saved) { setSceneSearchQuery(project.title); setLibrarySection("all"); setTab("projects"); }
+          return saved;
+        }
+      }
       if (format === "math3d.project" || format === "math3d.graph2d-document" || format === "math3d.mixed-workspace" || (format === "math3d.project-handoff" && envelope.version === 2)) {
         const plan = planMobileGraphFileImport(storedProjects, { graph: graphDocument, scene: viewerDocument }, picked.serializedProject, picked.sourceName,
           source === "import" ? "imported" : source, (reference) => mobileGraphPointTables.resolve(reference) !== null);

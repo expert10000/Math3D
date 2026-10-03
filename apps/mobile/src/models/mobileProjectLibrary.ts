@@ -3,6 +3,7 @@ import type { MobileStoredSceneProject } from "./mobileScene";
 import type { MobileComputeJob } from "./mobileComputeJobs";
 import type { SceneSortMode } from "./useMobileProjectState";
 import { readMobileGraph, mobileGraphCapabilities } from "./mobileGraphProject";
+import { readMobilePreviewProject } from "./mobileProjectPreview";
 
 export const MOBILE_PROJECT_LIBRARY_SECTIONS = ["all", "my", "imported", "shared", "files"] as const;
 export type MobileProjectLibrarySection = (typeof MOBILE_PROJECT_LIBRARY_SECTIONS)[number];
@@ -16,7 +17,7 @@ export type MobileProjectLibraryCard = Readonly<{
   origin: "My Project" | "Imported" | "Shared" | "Desktop";
   sourceName: string | null;
   compatible: boolean;
-  projectType: "scene" | "graph2d";
+  projectType: "scene" | "graph2d" | "project-preview";
   compatibilityMessage: string;
   workerStatus: string | null;
   resultStatus: string | null;
@@ -64,21 +65,23 @@ export const buildMobileProjectLibraryCards = (
     const sourceName = project.source?.name ?? null;
     if (query && ![project.title, project.id, origin, sourceName ?? ""].some((value) => value.toLocaleLowerCase().includes(query))) continue;
     let graph = null;
+    let preview = null;
+    try { if (project.projectType === "project-preview") preview = readMobilePreviewProject(project); } catch { /* incompatible card */ }
     try { if (project.projectType === "graph2d") graph = readMobileGraph(project); } catch { /* incompatible card */ }
     const parsed = deserializeSceneProject(project.serializedProject);
-    const compatible = !!graph || parsed.ok && parsed.value.scene.id === project.id && parsed.value.scene.title === project.title;
+    const compatible = !!preview || !!graph || parsed.ok && parsed.value.scene.id === project.id && parsed.value.scene.title === project.title;
     const job = latestJobByProject.get(project.id);
     cards.push({
       id: project.id,
       title: project.title,
       updatedAt: project.updatedAt,
       lastOpenedAt: project.lastOpenedAt,
-      objectCount: graph ? graph.source.objects.length : parsed.ok ? parsed.value.scene.surfaces?.length ?? 0 : 0,
+      objectCount: preview ? preview.workspace.entries.length : graph ? graph.source.objects.length : parsed.ok ? parsed.value.scene.surfaces?.length ?? 0 : 0,
       projectType: project.projectType ?? "scene",
       origin,
       sourceName,
       compatible,
-      compatibilityMessage: graph ? mobileGraphCapabilities(graph) : compatible ? "Compatible" : parsed.ok ? "Identity mismatch" : `Needs attention: ${parsed.errors[0]}`,
+      compatibilityMessage: preview ? "Saved project preview · documents and relations · editors unavailable" : graph ? mobileGraphCapabilities(graph) : compatible ? "Compatible" : parsed.ok ? "Identity mismatch" : `Needs attention: ${parsed.errors[0]}`,
       workerStatus: job?.status ?? null,
       resultStatus: options.readyResultProjectId === project.id ? "Preview ready" : job?.status === "succeeded" ? "Recheck on open" : null,
     });

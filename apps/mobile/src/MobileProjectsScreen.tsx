@@ -91,7 +91,7 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
   return (
     <View style={styles.panel}>
       <Text style={styles.panelTitle}>Projects</Text>
-      <Text style={styles.note}>Saved Math3D scenes and Graph projects available offline on this device.</Text>
+      <Text style={styles.note}>Saved scenes, Graph workspaces and complete project previews available offline on this device.</Text>
       <View style={styles.projectActions}>
         <Pressable testID="mobile-projects-graph-gallery" accessibilityRole="button" accessibilityLabel="Graph Gallery"
           disabled={transferBusy !== null} onPress={() => model.setGraphGalleryOpen(true)} style={[styles.secondaryBtn, { minHeight: 48, justifyContent: "center" }]}>
@@ -300,7 +300,7 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
         let named = false;
         try { named = !!stored && JSON.parse(stored.serializedProject).format === "math3d.project"; } catch { /* existing compatibility message covers malformed storage */ }
         return <View key={scene.id} style={[styles.item, selectedScene?.id === scene.id ? styles.itemActive : null]}>
-          <Pressable testID={`mobile-project-open-${scene.id}`} disabled={!scene.compatible} accessibilityState={{ disabled: !scene.compatible }} onPress={() => void openStoredScene(scene.id)}>
+          <Pressable testID={`mobile-project-open-${scene.id}`} disabled={!scene.compatible} accessibilityState={{ disabled: !scene.compatible }} onPress={() => scene.projectType === "project-preview" ? setInspectedProjectId(scene.id) : void openStoredScene(scene.id)}>
             <View style={styles.sceneListRow}>
               <MobileProjectThumbnail thumbnail={sceneThumbnailsById[scene.id]} title={scene.title} />
               <View style={styles.sceneListMeta}>

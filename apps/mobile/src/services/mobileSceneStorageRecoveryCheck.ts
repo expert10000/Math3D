@@ -1,7 +1,8 @@
-import { instantiateMath3DProjectTemplate, structuralHash } from "@math3d/core";
+import { instantiateMath3DProjectTemplate, serializeMath3DProject, structuralHash } from "@math3d/core";
+import { importMobileProjectPreview } from "../models/mobileProjectPreview";
 import { Directory, File, Paths } from "expo-file-system";
 import { readMobileGraph, storeMobileGraph } from "../models/mobileGraphProject";
-import { createMobileSceneStorage, createStoredProjectFromScene, decodeMobileSceneStorage, MobileSceneStorageError } from "./mobileSceneStorage";
+import { createMobileSceneStorage, createStoredProjectFromScene, decodeMobileSceneStorage, MobileSceneStorageError, MOBILE_SCENE_STORAGE_SCHEMA_VERSION } from "./mobileSceneStorage";
 
 // Never accept a directory or filename from the UI. All intentional damage is confined here.
 const directory = new Directory(Paths.document, "math3d-mobile-recovery-check");
@@ -19,7 +20,8 @@ const fixture = () => {
   const record = storeMobileGraph(graph as Parameters<typeof storeMobileGraph>[0], 10, named.workspace, named);
   readMobileGraph(record);
   return [record, createStoredProjectFromScene({ id: "recovery-saddle", title: "Recovery saddle", createdAt: 1, updatedAt: 2,
-    surfaces: [{ id: "saddle", kind: "explicit", expression: "x*x-y*y", resolution: 18, domain: { xSpan: 2, ySpan: 2 } }] }, 3)];
+    surfaces: [{ id: "saddle", kind: "explicit", expression: "x*x-y*y", resolution: 18, domain: { xSpan: 2, ySpan: 2 } }] }, 3),
+    importMobileProjectPreview(serializeMath3DProject(instantiateMath3DProjectTemplate("scene-topology-study", "native-preview-recovery")), [], "recovery-preview.json", "desktop", 2)];
 };
 const reset = () => {
   directory.create({ idempotent: true, intermediates: true });
@@ -102,7 +104,7 @@ export const prepareMobileStorageRecoveryCheck = () => exclusive(async () => {
   });
   await check(report, "legacy-array-migration", async () => {
     reset(); write(primary(), JSON.stringify(projects)); const storage = store(); same((await storage.load()).projects, projects);
-    assert(JSON.parse(await primary().text()).schemaVersion === 2, "Legacy migration did not persist.");
+    assert(JSON.parse(await primary().text()).schemaVersion === MOBILE_SCENE_STORAGE_SCHEMA_VERSION, "Legacy migration did not persist.");
   });
   await check(report, "recovery-save-queue", async () => {
     reset(); const storage = store(); await storage.save(projects); write(primary(), "{broken");

@@ -100,7 +100,7 @@ export const importMobileGraph = (raw: string, projects: readonly MobileStoredSc
   if (!normalized.ok) throw new TypeError(normalized.errors.join(" "));
   const source = normalized.value;
   if (named) {
-    if (projects.some((project) => project.id === source.identity.id || readMobileNamedGraphProject(project.serializedProject)?.identity.id === named.identity.id))
+    if (projects.some((project) => project.id === source.identity.id || JSON.parse(project.serializedProject)?.identity?.id === named.identity.id))
       throw new TypeError("This named project or Graph identity already exists. Existing work was kept; resolve the version conflict on desktop before importing.");
     for (const object of source.source.objects) if (object.kind === "point-series" && !tableAvailable(object.table))
       throw new TypeError("Required point-table sidecar is missing or corrupt. Transfer it before importing this named project.");

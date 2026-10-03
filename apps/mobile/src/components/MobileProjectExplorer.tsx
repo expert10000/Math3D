@@ -26,7 +26,7 @@ export const MobileProjectExplorer: React.FC<{ raw: string }> = ({ raw }) => {
       <Text style={styles.note}>{relation.operation} · {relation.freshness}</Text>
     </View>)}
     <Text accessibilityRole="header" style={styles.itemTitle}>Analysis ({results.length})</Text>
-    {results.map(result => <Text key={result.id} style={styles.itemMeta}>{result.operation} · {result.authority} · {result.freshness} · source revision {result.sourceRevision}</Text>)}
-    <Text style={styles.note}>Saved previews retain their sources. Open the project to use its supported Graph workspace; companion editors are not enabled here.</Text>
+    {results.map(result => <Text key={result.id} style={styles.itemMeta}>{result.operation} · {result.authority} · {result.freshness} · {titles.get(result.sourceDocumentId) ?? "Missing source"} revision {result.sourceRevision}</Text>)}
+    <Text style={styles.note}>Saved previews retain all recorded sources and references. External Mesh, Volume, point-table and analysis bytes may require separate transfer. Editors are available only for the supported single-Graph project format.</Text>
   </View>;
 };

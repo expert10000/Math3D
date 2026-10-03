@@ -7,6 +7,7 @@ import {
   renameMath3DProject, serializeMath3DProject,
 } from "@math3d/core";
 import type { MobileStoredSceneProject } from "./mobileScene";
+import { readMobilePreviewProject } from "./mobileProjectPreview";
 import { readMobileGraph, storeMobileGraph, updateStoredMobileGraph, readMobileGraphWorkspace, readMobileNamedGraphProject, mobileGraphWorkspaceNeedsIdentityFork } from "./mobileGraphProject";
 
 export type MobileProjectMutationResult =
@@ -27,6 +28,11 @@ export const renameMobileProject = (
 ): MobileProjectMutationResult => {
   const normalizedTitle = normalizeProjectTitle(title);
   if (!normalizedTitle) return { ok: false, error: "Project name cannot be empty." };
+  if (project.projectType === "project-preview") {
+    try { const named = readMobilePreviewProject(project); return { ok: true, project: { ...project, title: normalizedTitle, updatedAt: now,
+      serializedProject: serializeMath3DProject(renameMath3DProject(named, normalizedTitle)) } }; }
+    catch (error) { return { ok: false, error: (error as Error).message }; }
+  }
   if (project.projectType === "graph2d") {
     try {
       const graph = readMobileGraph(project);
@@ -75,6 +81,7 @@ export const duplicateMobileProject = (
   projects: MobileStoredSceneProject[],
   now = Date.now()
 ): MobileProjectMutationResult => {
+  if (source.projectType === "project-preview") return { ok: false, error: "Duplicate this project on desktop to fork every document identity safely." };
   if (source.projectType === "graph2d") {
     try {
       const graph = readMobileGraph(source);
