@@ -42,23 +42,35 @@ geometry are not replaced with guessed results. Extending this registry is futur
 adapter work, separate from the delivered six Curve constructions and five Graph
 analysis types.
 
-## Mobile checkpoint previews
+## Mobile mixed projects and Graph editing
 
 **Projects → New Project → IMPORT → Math3D project** accepts
-complete checkpointed named projects and mixed-workspace/handoff checkpoints.
+complete checkpointed named projects, mixed-workspace/handoff checkpoints and
+desktop `math3d.project-package` files with verified source bytes.
 Named-project JSON is retained byte-for-byte. Other checkpoint envelopes receive
 a named container with every document, relation, result, artifact reference and
 saved script intact. **Documents and relations** is available on saved cards;
-preview cards open that view without activating editors.
+mixed cards open that view. **Edit Graph** opens an unarchived Graph whose current
+and historical table resources are available; other documents remain previews.
 
-The library uses schema 3; schemas 1/2 migrate through the atomic backup writer.
-Preview export/share returns the full named project. Rename changes only project
+The library uses schema 4; schemas 1–3 migrate through the atomic backup writer.
+Named JSON and checked Graph tables, Mesh buffers and Volume payloads are retained
+in one atomic record. Packages are bounded to 25 MiB. **Import project resources**
+is available on mixed-project cards and attaches bytes only to the same saved
+workspace version. Import resource packages as mixed projects to edit their
+Graphs; legacy single-Graph cards retain their existing save path. Corrupt or conflicting
+resources reject without replacing existing work. Sources shows missing bytes.
+Export/share returns the full named project and retained source resources.
+Rename changes only project
 metadata. Identity conflicts reject; duplicate requires a desktop identity fork.
 Preview imports preserve current unsaved editor work before committing storage.
-They never become startup editor fallbacks. A malformed import or failed save
+Preview imports never become startup editor fallbacks. An explicitly selected
+Graph is retained for restart; each Graph has independent bounded undo/redo.
+Switching and saving retain the complete enclosing project. A malformed import or failed save
 keeps the existing library and editor.
 
-Replay must first be exported as **checkpoint JSON** on desktop. Mesh/Volume,
-point-table and analysis references can remain unavailable until their bytes are
-transferred separately. Broader preview retention does not enable additional
-mobile editors or prove physical iOS acceptance.
+Non-Graph replay must first be exported as **checkpoint JSON** on desktop.
+Verified Graph replay can reopen directly. Missing source bytes block only the
+affected Graph; Mesh/Volume resources are retained without enabling their mobile
+editors. Analysis caches remain separate from source resources. Physical iOS
+acceptance is a separate gate.

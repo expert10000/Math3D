@@ -152,3 +152,28 @@ The corrected damaged-store runner passed 10/10 preparation and 11/11 restart
 checks while preserving the real library. [Exact-build evidence](evidence/projects-prj21-samsung-2026-10-03/acceptance.json)
 qualifies this Android saved-preview continuation; wider devices and mobile
 editor/sidecar functionality remain separate work.
+
+### PRJ22–PRJ24 mixed projects and source resources
+
+The schema-4 continuation retains verified Graph tables, Mesh buffers and Volume
+payloads in the same atomic record as complete named-project JSON. Two Graphs in
+one mixed project have independent shared command histories; switching, save and
+restart retain the enclosing project's other documents and historical records.
+Missing current or historical Graph tables block the affected Graph. Archived
+and non-Graph documents remain previews. Non-Graph replay must be checkpointed
+before mobile import; packages are bounded to 25 MiB.
+
+Clean source `bdbe5a9`, signed with the shared internal certificate, passed
+[Android CI](https://github.com/expert10000/Math3D/actions/runs/37126566735) and the
+Samsung SM-A566B / API 36 continuation. The actual desktop-to-Samsung package
+contains 19 documents across all eight modules and five original source resources.
+Native attachment, missing/corrupt/version-conflict rejection, Graph pan/edit,
+independent undo/redo and cold restart passed. Samsung's returned file was
+verified directly, then imported through Electron and a fresh browser. Electron
+restored both Graph histories; browser exports before/after reload matched the
+native package exactly. Isolated damaged-store checks passed 10/10 preparation
+and 11/11 restart checks without changing the real library.
+
+See [the reproducible acceptance workflow](projects-mobile-roundtrip.md) and
+[exact-build evidence](evidence/projects-prj24-samsung-2026-10-03/acceptance.json).
+Non-Graph mobile editors and physical iOS acceptance remain separate gates.

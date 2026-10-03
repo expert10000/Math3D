@@ -13,6 +13,9 @@ node node_modules/@playwright/test/cli.js test tests/e2e/project-mobile-roundtri
 The Electron test imports the complete package through the project UI and exports
 `desktop-delivery.math3d.project-package.json`. It verifies document generations
 and the actual resource sidecars. Its profile is isolated from personal projects.
+The desktop delivery exports the saved checkpoint preview. Opening a full project
+in desktop editors adds module-specific replay, so non-Graph replay must be
+checkpointed before mobile delivery.
 
 Update the Samsung using an APK signed with the existing application's internal
 certificate. Record its source commit, build metadata, APK hash and certificate;
@@ -46,7 +49,7 @@ node scripts/projects-preview-roundtrip.mjs C:/path/to/native-return.math3d.proj
 The return verifier checks original non-Graph entries, metadata, scripts,
 relations, historical results, resource descriptors and source bytes. It restores
 both Graph replay kernels and checks independent undo. Electron checks the actual
-Graph undo/redo controls; a fresh browser checks byte-exact export before and after
+Graph undo/redo keyboard shortcuts and their rendered effects; a fresh browser checks byte-exact export before and after
 reload, including the resource archive.
 
 Run `scripts/mobile-android-storage-recovery.mjs` against the exact installed APK.

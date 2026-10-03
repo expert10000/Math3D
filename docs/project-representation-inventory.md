@@ -8,7 +8,7 @@ project keeps whole-project opening disabled; compatible documents remain inspec
 
 | Module / representation | Current desktop/web support | External inputs | Missing contract or restriction |
 | --- | --- | --- | --- |
-| Graph2D | Desktop/web native opening/editing of multiple Graphs with separate bounded undo/redo histories (PRJ19 continuation); mobile can retain multi-Graph checkpoint containers as previews | Checked current and historical point tables, including references present only in undo/redo | Electron restart, browser reload and independent browser import passed for the development slice. Native mobile editing still supports one checkpointed Graph |
+| Graph2D | Desktop/web and PRJ23 mobile software open multiple Graphs with separate bounded undo/redo histories inside complete projects | Checked current and historical point tables, including references present only in undo/redo | Mobile requires unarchived Graphs and all owned current/historical tables; non-Graph module replay must be checkpointed. Exact signed Samsung continuation evidence is qualified separately |
 | Curve: literal parametric / explicit, 2D or 3D | Native source edit/history/save/reopen (PRJ10) | None | No source dependencies or source IDs; expressions must compile |
 | Curve: Graph promotions | Existing qualified Graph opener | Parent Graph and any checked point table | Exact current promotion lineage required |
 | Curve: planar implicit / polar | Native source edit/history; numerical contours/polar samples | Saved bounds/formula or radius/angle convention | Independent planar definitions; complete finite bounds; radians/degrees retained |
@@ -32,9 +32,11 @@ project keeps whole-project opening disabled; compatible documents remain inspec
 | Complex: parameters, exclusions, alternative cuts/sampling, covering or Mobius | Verified preview | Structural source definitions | Dedicated editor/evaluation mapping and branch/contour oracles |
 | Mesh: recognized resource-backed sources | Native coordinate transform, selection/history/restart (PRJ15) | Verified current and historical positions/indices/normals/UVs | Bounded native resource codec and supported origin; bytes cannot be regenerated from a preset |
 
-The mobile named-project editor still supports the qualified single-Graph model
-with checkpointed Curve/Surface companions. Desktop/web qualification in this
-inventory does not establish native mobile editing for other representations.
+PRJ22/23 mobile software retains broader mixed projects and verified source
+packages, and edits each available Graph independently. Other mobile modules stay
+saved previews; their source bytes and histories are not interpreted by unrelated
+editors. Desktop/web qualification does not establish mobile editing for those
+representations. See the [PRJ24 acceptance gates](projects-mobile-roundtrip.md).
 
 ## First PRJ16 delivery: dense scalar grids
 

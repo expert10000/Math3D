@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "projectId": "math3d:project:ac0a5c6416ff7098eb018f81177ea2dc",
+  "bytes": 38161,
+  "sha256": "2efbea36003f5500bb8b1c30df6c6760c8f1da27baef1ad3d5730b19297be342",
+  "documents": 19,
+  "modules": [
+    "graph2d",
+    "mesh",
+    "volume",
+    "curve",
+    "surface",
+    "geometry",
+    "topology",
+    "complex"
+  ],
+  "results": 3,
+  "relations": 5,
+  "resources": 5,
+  "freshProfile": true,
+  "reload": true
+}

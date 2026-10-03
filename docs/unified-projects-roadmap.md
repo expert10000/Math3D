@@ -666,8 +666,8 @@ PRJ22 software implements the shared desktop package format and resource codecs.
 Mobile schema 4 retains JSON and sidecars together in the existing atomic backup
 writer; schemas 1–3 migrate. Package import/export is bounded to 25 MiB on mobile.
 Missing bytes remain explicit, and attaching resources requires the same saved
-workspace version. Native acceptance and PRJ23/24 are completed in subsequent
-deliveries; additional non-Graph mobile editors and physical iOS acceptance remain
+workspace version. PRJ22/23 native acceptance and PRJ24 completion are recorded
+below; additional non-Graph mobile editors and physical iOS acceptance remain
 separate work.
 
 ### PRJ23 software delivery
@@ -692,6 +692,33 @@ The [mixed-project acceptance runner](projects-mobile-roundtrip.md) generates a
 public 19-document package with two Graphs and five source sidecars. Electron UI
 import/export and fresh-browser byte-exact resource export/reload have passed.
 The return verifier checks unchanged non-Graph documents and resource bytes,
-retained Graph edits and restored independent history. Signed Samsung delivery,
-native rejection/restart checks and the actual returned-file run remain pending
-until the candidate APK is installed.
+retained Graph edits and restored independent history. Signed Samsung delivery
+and the actual returned-file run are recorded below.
+
+### PRJ22–PRJ24 signed Samsung completion
+
+**PRJ22, PRJ23 and PRJ24 are delivered for the declared Android/desktop/browser
+scope.** The shared-key internal APK from clean source `bdbe5a9` passed
+[Android CI](https://github.com/expert10000/Math3D/actions/runs/37126566735) and was
+installed as an update on Samsung SM-A566B / API 36.
+
+The public 19-document package passed native missing-table qualification,
+corrupt-resource rejection, same-version attachment and verification of all five
+source resources. Before edits, Samsung's export matched the desktop delivery
+byte-for-byte. The data Graph's pan and the explicit Graph's `x*x+2` edit survived
+switching, independent undo/redo, save and cold restart. The 38,161-byte returned
+package retains every non-Graph entry, metadata, script, relation, historical
+result and original source resource. Electron restored both Graph histories;
+a fresh browser retained exact package bytes through export and reload.
+
+Older-workspace resource attachment and duplicate-identity import rejected;
+the edited export remained byte-identical. Samsung also passed **10/10 recovery
+preparation checks and 11/11 restart checks**, including isolated mixed-project
+resource/history retention, with the real library unchanged.
+
+All 22 pre-existing library identities remain present; only the acceptance
+project was added. The original 8,207-byte project also exported unchanged.
+
+[Public packages, verification results and screenshots](evidence/projects-prj24-samsung-2026-10-03/acceptance.json)
+record the exact tested build. This continuation does not expand mobile editing
+to non-Graph modules or establish physical iOS/release signoff.

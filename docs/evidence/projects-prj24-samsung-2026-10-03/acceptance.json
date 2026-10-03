@@ -1,0 +1,69 @@
+{
+  "milestones": ["PRJ22", "PRJ23", "PRJ24"],
+  "date": "2026-10-03",
+  "roundTripBuild": {
+    "sourceCommit": "bdbe5a9120f303c4814c649593d02a1011e46052",
+    "apkSha256": "f228614c955d0d657811730cd7b8b69f50072338d408d0e5e1f3346b785d86e1",
+    "certificateSha256": "39ab9388fa174bf9c1973577dab4ee33eedbacb9b231c9b79068e5143480fc82",
+    "ci": "https://github.com/expert10000/Math3D/actions/runs/37126566735",
+    "ciResult": "success",
+    "trackedSourceDirty": false,
+    "installedAsUpdate": true,
+    "device": "Samsung SM-A566B",
+    "androidApi": 36
+  },
+  "finalQualificationBuild": null,
+  "project": {
+    "id": "math3d:project:ac0a5c6416ff7098eb018f81177ea2dc",
+    "documents": 19,
+    "modules": ["complex", "curve", "geometry", "graph2d", "mesh", "surface", "topology", "volume"],
+    "graphs": 2,
+    "resourceKinds": {"graph-point-table": 1, "mesh-buffers": 2, "volume-payload": 2},
+    "historicalResults": 3,
+    "relations": 5,
+    "inputBytes": 32107,
+    "inputSha256": "951d84e79d8c534be8596eb7d466582e235f93e5b06a140fa4d6606589852e04",
+    "nativeBeforeEditMatchesInput": true,
+    "returnedBytes": 38161,
+    "returnedSha256": "2efbea36003f5500bb8b1c30df6c6760c8f1da27baef1ad3d5730b19297be342"
+  },
+  "nativeChecks": {
+    "missingTableBlocksOnlyAffectedGraph": true,
+    "corruptResourceRejected": true,
+    "matchingWorkspaceResourceAttachment": true,
+    "allFiveResourcesVerified": true,
+    "graphAPanSurvivesSwitching": true,
+    "graphBEditUndoRedo": true,
+    "selectedGraphAndExpressionSurviveColdRestart": true,
+    "undoRedoAfterColdRestart": true,
+    "olderWorkspaceResourcesRejected": true,
+    "duplicateIdentityRejected": true,
+    "postRejectionExportUnchanged": true,
+    "isolatedRecoveryPreparation": "10/10",
+    "isolatedRecoveryRestart": "11/11",
+    "realLibraryUnchangedDuringRecovery": true
+  },
+  "returnChecks": {
+    "actualNativeFileVerified": true,
+    "nonGraphEntriesMetadataScriptsRelationsResultsUnchanged": true,
+    "originalResourceDescriptorsAndBytesUnchanged": true,
+    "bothGraphReplayKernelsRestoreIndependentUndo": true,
+    "electronUIUndoRedoChangesAndRestoresRenderedGraphs": true,
+    "freshBrowserExportAndReloadByteExact": true
+  },
+  "unrelatedProjects": {
+    "originalIdentities": 22,
+    "identitiesAfterAcceptance": 23,
+    "allOriginalIdentitiesPresent": true,
+    "onlyAcceptanceProjectAdded": true,
+    "baselineExportBytesBeforeAndAfter": 8207,
+    "baselineExportSha256BeforeAndAfter": "8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc"
+  },
+  "limits": [
+    "25 MiB mobile package limit",
+    "Resource attachment requires the same saved workspace version",
+    "Mobile edits unarchived Graphs with all owned current/historical tables",
+    "Non-Graph module replay must be checkpointed; these mobile modules remain previews",
+    "Physical iOS and published release approval are separate gates"
+  ]
+}

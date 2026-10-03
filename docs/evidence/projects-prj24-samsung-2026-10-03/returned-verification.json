@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "sha256": "2efbea36003f5500bb8b1c30df6c6760c8f1da27baef1ad3d5730b19297be342",
+  "bytes": 38161,
+  "projectId": "math3d:project:ac0a5c6416ff7098eb018f81177ea2dc",
+  "documents": 19,
+  "resources": 5,
+  "allOtherModulesUnchanged": true,
+  "sourceBytesUnchanged": true,
+  "graphAPanRetained": true,
+  "graphBExpression": "x*x+2",
+  "independentUndoAfterRestart": true
+}

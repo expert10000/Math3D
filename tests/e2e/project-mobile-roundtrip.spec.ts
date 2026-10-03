@@ -16,8 +16,11 @@ test("PRJ24 delivers complete resource packages through desktop and restores ret
   try {
     ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
     const controls = freezeControls(ctx.page);
-    await controls.importOpen(raw);
-    const saved = await controls.save();
+    await controls.show();
+    await controls.panel.getByTestId("project-import-file").setInputFiles({ name: "mobile-package.json", mimeType: "application/json", buffer: Buffer.from(raw) });
+    await controls.panel.getByTestId("project-import-save").click();
+    await expect(controls.panel.getByTestId("project-message")).toContainText("Imported into the library");
+    const saved = await ctx.page.evaluate(id => JSON.parse(localStorage.getItem("math3d.project.v1.payload." + id)!), original.project.identity.id);
     expect(saved.workspace.entries.map((entry: any) => entry.expected)).toEqual(original.project.workspace.entries.map((entry: any) => entry.expected));
     const filename = resolve(output, process.env.MATH3D_PRJ24_RETURN ? "desktop-return.math3d.project-package.json" : "desktop-delivery.math3d.project-package.json");
     await ctx.app.evaluate(({ session }, path) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(path)), filename);
@@ -28,13 +31,20 @@ test("PRJ24 delivers complete resource packages through desktop and restores ret
     expect(exported.project.workspace.entries.map((entry: any) => entry.expected)).toEqual(original.project.workspace.entries.map((entry: any) => entry.expected));
     await controls.panel.screenshot({ path: resolve(output, "desktop-documents.png") });
     if (process.env.MATH3D_PRJ24_RETURN) {
+      await controls.reopen(saved.identity.id);
       const graphs = original.docs.filter((document: any) => document.format === "math3d.graph2d-document");
-      for (const graph of graphs) {
+      for (const [index, graph] of graphs.entries()) {
         await controls.open(graph.identity.id);
-        await expect(ctx.page.getByRole("button", { name: "Undo", exact: true }).first()).toBeEnabled();
-        await ctx.page.getByRole("button", { name: "Undo", exact: true }).first().click();
-        await expect(ctx.page.getByRole("button", { name: "Redo", exact: true }).first()).toBeEnabled();
-        await ctx.page.getByRole("button", { name: "Redo", exact: true }).first().click();
+        const viewer = ctx.page.getByTestId("main-viewer");
+        const observed = index === 0 ? viewer.locator(".graph2d-axis").nth(1) : viewer.locator(`[data-graph2d-path="${graph.source.objects[0].id}"]`);
+        const attribute = index === 0 ? "x1" : "d";
+        if (index !== 0) await expect(observed).toHaveAttribute("d", /[ML]/);
+        const before = await observed.getAttribute(attribute);
+        await viewer.focus(); await ctx.page.keyboard.press("Control+z");
+        await expect.poll(() => observed.getAttribute(attribute)).not.toBe(before);
+        await ctx.page.keyboard.press("Control+Shift+z");
+        await expect.poll(() => observed.getAttribute(attribute)).toBe(before);
+        await viewer.screenshot({ path: resolve(output, `desktop-return-graph-${index + 1}.png`) });
       }
       execFileSync(process.execPath, ["scripts/projects-mobile-roundtrip.mjs", "verify", filename, output]);
     }
