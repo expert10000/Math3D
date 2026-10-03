@@ -37,6 +37,7 @@ requireText("LICENSES/Apache-2.0.txt", "Apache License");
 requireText("package.json", '"license": "GPL-3.0-or-later"');
 requireText("package-lock.json", '"license": "GPL-3.0-or-later"');
 requireText("readme.md", "GPL-3.0-or-later");
+requireText("apps/public-site/src/index.html", "<span>GPL-3.0-or-later</span>");
 requireText("electron-builder.config.cjs", 'from: "LICENSE"');
 requireText("electron-builder.config.cjs", 'from: "THIRD_PARTY_NOTICES.md"');
 requireText("electron-builder.config.cjs", 'from: "SOURCE_OFFER.md"');
