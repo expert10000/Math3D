@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -22,11 +21,20 @@ const run = (...args) => {
 };
 const installedPath = run("shell", "pm", "path", build.applicationId).split(/\r?\n/).find(line => line.endsWith("/base.apk"))?.slice(8);
 if (!installedPath) throw new Error("The internal app is not installed.");
-const installed = spawnSync("adb", ["-s", serial, "exec-out", "cat", installedPath], { maxBuffer: 128 * 1024 * 1024 });
-if (installed.status !== 0 || createHash("sha256").update(installed.stdout).digest("hex") !== build.sha256) {
-  throw new Error("Installed APK does not match the supplied build metadata.");
+// Hash the installed file on-device instead of streaming the full APK through adb stdout.
+const installedHash = run("shell", "sha256sum", installedPath).match(/^([0-9a-f]{64})\s/)?.[1];
+if (installedHash !== build.sha256) {
+  throw new Error(`Installed APK hash ${installedHash ?? "unavailable"} does not match supplied build ${build.sha256}.`);
 }
 const pause = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+const size = [...run("shell", "wm", "size").matchAll(/(\d+)x(\d+)/g)].at(-1)?.slice(1).map(Number);
+if (!size) throw new Error("Cannot determine the device screen size.");
+const scroll = down => {
+  const [width, height] = size;
+  const x = String(Math.round(width * 0.46));
+  const upper = String(Math.round(height * 0.26)), lower = String(Math.round(height * 0.79));
+  run("shell", "input", "swipe", x, down ? lower : upper, x, down ? upper : lower, "350");
+};
 const snapshot = () => {
   run("shell", "uiautomator", "dump", "/sdcard/math3d-recovery-ui.xml");
   const xml = run("exec-out", "cat", "/sdcard/math3d-recovery-ui.xml");
@@ -38,13 +46,16 @@ const snapshot = () => {
   });
 };
 const tap = (id) => {
-  for (let attempt = 0; attempt < 10; attempt++) {
+  for (let attempt = 0; attempt < 16; attempt++) {
     const nodes = snapshot();
     const node = nodes.filter(node => (node.id === id || node.text === id || node.description === id) && node.bounds && node.bounds[3] > node.bounds[1])
       .sort((a, b) => b.bounds[1] - a.bounds[1])[0];
     if (node) {
       const [left, top, right, bottom] = node.bounds;
       run("shell", "input", "tap", String(Math.round((left + right) / 2)), String(Math.round((top + bottom) / 2))); return;
+    }
+    if (id.startsWith("mobile-storage-recovery-")) {
+      scroll(true);
     }
     pause(500);
   }
@@ -60,6 +71,10 @@ const expect = text => {
 };
 const launchSettings = () => {
   run("shell", "am", "start", "-n", `${build.applicationId}/com.math3d.mobile.MainActivity`); tap("Settings");
+  // The shared screen can retain an earlier Projects/Settings scroll position.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    scroll(false);
+  }
 };
 const report = { ok: false, serial, model: run("shell", "getprop", "ro.product.model"), androidApi: run("shell", "getprop", "ro.build.version.sdk"),
   sourceCommit: build.gitCommit, apkSha256: build.sha256, checks: [], startedAt: new Date().toISOString() };
