@@ -2,7 +2,7 @@ import { canonicalJsonStringify, captureProjectResources, createMixedWorkspaceDo
   parseMath3DProject, replaceMath3DProjectWorkspace, serializeMath3DProject, viewerSourceFromDocument,
   type CanonicalJsonValue, type CurveDocument, type Graph2DDocument, type Graph2DPointTableReference, type Graph2DPointTableStore } from "@math3d/core";
 import { Graph2DCommandAdapter, CurveCommandAdapter, type CurveReplayBundle, type Graph2DReplayBundle } from "@math3d/kernel";
-import { sampleMobileCurve } from "./mobileProjectCurve";
+import { mobileCurveUnavailableReason } from "./mobileProjectCurve";
 import type { MobileStoredSceneProject } from "./mobileScene";
 import { mobileProjectGraphTables, mobileProjectResourceContext, readMobileProjectResources } from "./mobileProjectResources";
 import { resolveMobileProjectWorkspace } from "./mobileProjectReplay";
@@ -27,7 +27,8 @@ export class MobileProjectGraphSessions {
   curve(id: string): CurveCommandAdapter {
     const adapter = this.#curves.get(id);
     if (!adapter) throw new TypeError("This Curve is archived or unavailable.");
-    sampleMobileCurve(adapter.document().source); return adapter;
+    const reason = mobileCurveUnavailableReason(adapter.document(), adapter.replayBundle());
+    if (reason) throw new TypeError(reason); return adapter;
   }
   projectId(): string { return this.#stored.id; }
   has(id: string): boolean { return this.#adapters.has(id); }

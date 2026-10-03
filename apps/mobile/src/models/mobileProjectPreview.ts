@@ -20,7 +20,9 @@ export const readMobilePreviewProject = (stored: MobileStoredSceneProject): Math
     throw new TypeError("Only one mobile project document may be active.");
   if (stored.activeCurveDocumentId !== undefined) {
     const curve = documents.get(stored.activeCurveDocumentId);
-    if (curve?.format !== "math3d.curve-document" || project.metadata.documents?.[curve.identity.id]?.archived || mobileCurveUnavailableReason(curve))
+    const replay = project.workspace.entries.find(entry => entry.expected.id === stored.activeCurveDocumentId)?.replay;
+    if (curve?.format !== "math3d.curve-document" || project.metadata.documents?.[curve.identity.id]?.archived ||
+        mobileCurveUnavailableReason(curve, replay?.payload as import("@math3d/kernel").CurveReplayBundle | undefined))
       throw new TypeError("Selected mobile Curve is unavailable, unsupported or archived.");
   }
   return project;

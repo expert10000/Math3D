@@ -5,7 +5,7 @@ import { CurveCommandAdapter } from "@math3d/kernel";
 import { mobileMixedProjectFixture } from "../fixtures/unified-projects/mobileProjects";
 import { MobileProjectGraphSessions } from "../../apps/mobile/src/models/mobileProjectGraphSessions";
 import { importMobileProjectPreview, readMobilePreviewProject } from "../../apps/mobile/src/models/mobileProjectPreview";
-import { commitMobileCurveSource, sampleMobileCurve } from "../../apps/mobile/src/models/mobileProjectCurve";
+import { commitMobileCurveSource, mobileCurveUnavailableReason, sampleMobileCurve } from "../../apps/mobile/src/models/mobileProjectCurve";
 import { buildMobileProjectExplorer } from "../../apps/mobile/src/models/mobileProjectExplorer";
 import { preserveMobilePersonalGraphWork } from "../../apps/mobile/src/models/mobileGraphPersonalProjects";
 import { selectMobileStartupProject } from "../../apps/mobile/src/models/mobileStartupProject";
@@ -70,5 +70,14 @@ describe("PRJ25 complete mixed-project Curve sessions", () => {
     const corrupt = replaceMath3DProjectWorkspace(project, createMixedWorkspaceDocument({ ...project.workspace, entries }));
     expect(() => importMobileProjectPreview(serializeMath3DProject(corrupt), [], "corrupt.json")).toThrow();
     expect(readMobilePreviewProject(stored)).toEqual(fixture.project);
+  });
+  it("blocks a current literal Curve whose retained undo recipe is unsupported on mobile", () => {
+    const fixture = mobileMixedProjectFixture(), entry = fixture.project.workspace.entries.find(entry => entry.module === "curve" && entry.checkpoint.source.representation === "explicit")!;
+    if (entry.checkpoint.format !== "math3d.curve-document") throw new Error("Missing Curve");
+    const source = entry.checkpoint.source;
+    const checkpoint = createCurveDocument({ source: { ...source, representation: "polyline", definition: { familyId: "polyline", points: [[0, 0], [1, 1]], pointCount: 2 } } });
+    const adapter = new CurveCommandAdapter(checkpoint); adapter.commitSource(source);
+    expect(mobileCurveUnavailableReason(adapter.document())).toBeNull();
+    expect(mobileCurveUnavailableReason(adapter.document(), adapter.replayBundle())).toContain("independent");
   });
 });

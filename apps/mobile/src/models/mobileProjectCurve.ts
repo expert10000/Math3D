@@ -1,5 +1,5 @@
-import { createCurveDocument, evaluateGraph2DExpression, parseGraph2DExpression, type CurveDocument, type CurveDocumentSource } from "@math3d/core";
-import type { CurveCommandAdapter } from "@math3d/kernel";
+import { CURVE_COMMAND_TYPES, createCurveDocument, evaluateGraph2DExpression, parseGraph2DExpression, type CurveDocument, type CurveDocumentSource } from "@math3d/core";
+import { CurveCommandAdapter, type CurveReplayBundle } from "@math3d/kernel";
 
 /** Bounded literal 2D/3D recipes; dependencies and other representations stay previews. */
 export const sampleMobileCurve = (source: CurveDocumentSource): readonly (readonly number[])[] => {
@@ -28,8 +28,20 @@ export const sampleMobileCurve = (source: CurveDocumentSource): readonly (readon
   if (points.some(point => point.some(value => !Number.isFinite(value)))) throw new TypeError("Curve sampling must produce finite points across the saved domain.");
   return points;
 };
-export const mobileCurveUnavailableReason = (document: CurveDocument): string | null => {
-  try { sampleMobileCurve(document.source); return null; } catch (error) { return (error as Error).message; }
+export const mobileCurveUnavailableReason = (document: CurveDocument, replay?: CurveReplayBundle): string | null => {
+  try {
+    sampleMobileCurve(document.source);
+    if (replay) {
+      if (replay.transactions.length > 100) replay = CurveCommandAdapter.fromReplayBundle(replay).replayBundle();
+      sampleMobileCurve(replay.checkpoint.source);
+      for (const transaction of replay.transactions) for (const command of [transaction.forward, transaction.inverse])
+        if (command.command.type === CURVE_COMMAND_TYPES.replaceSource) {
+          const source = command.command.payload as CurveDocumentSource;
+          createCurveDocument({ source }); sampleMobileCurve(source);
+        }
+    }
+    return null;
+  } catch (error) { return (error as Error).message; }
 };
 export const commitMobileCurveSource = (adapter: CurveCommandAdapter, source: CurveDocumentSource): CurveDocument => {
   createCurveDocument({ source }); sampleMobileCurve(source);
