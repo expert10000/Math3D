@@ -7,6 +7,7 @@ import { createMobileGraph, readMobileGraph, readMobileNamedGraphProject, storeM
 import { importMobileProjectPreview } from "./models/mobileProjectPreview";
 import { attachMobileProjectResources } from "./models/mobileProjectResources";
 import { MobileProjectGraphSessions } from "./models/mobileProjectGraphSessions";
+import { refreshMobileProjectCurve } from "./models/mobileProjectRefresh";
 import { commitMobileGraphPromotion, readMobileGraphPromotions } from "./models/mobileGraphPromotions";
 import { probeMobilePlatformCapabilities } from "./services/mobilePlatformCapabilities";
 import { AppState, PixelRatio, Platform, Share, type GestureResponderEvent } from "react-native";
@@ -1795,6 +1796,25 @@ export const useMobileAppController = () => {
       return await persistProjectMutation(upsertStoredProject(preserved, next), "Verified project resources imported. Export includes retained source bytes.", "Could not import project resources");
     } catch (error) { setProjectActionMessage(`Resource import failed: ${(error as Error).message}`); return false; }
   };
+  const refreshProjectCurve = async (projectId: string, relationId: string): Promise<boolean> => {
+    try {
+      const preserved = preserveMobilePersonalGraphWork(storedProjects, currentGraphWork());
+      const target = preserved.find(project => project.id === projectId);
+      if (!target || target.projectType !== "project-preview") throw new TypeError("Saved mixed project unavailable.");
+      const next = refreshMobileProjectCurve(target, relationId);
+      const sessions = new MobileProjectGraphSessions(next, mobileGraphPointTables);
+      const projects = upsertStoredProject(preserved, next);
+      await saveStoredSceneProjects(projects);
+      setStoredProjects(projects);
+      if (mixedGraphSessions.current?.projectId() === projectId) {
+        mixedGraphSessions.current = sessions;
+        if (curveDocument) setCurveDocument(sessions.curve(curveDocument.identity.id).document());
+        else if (graphDocument) setGraphDocument(sessions.requireEditable(graphDocument.identity.id).document());
+      }
+      setProjectActionMessage("Refreshed Curve created. Previous documents and historical analysis were retained.");
+      return true;
+    } catch (error) { setProjectActionMessage(`Curve refresh failed: ${(error as Error).message}. Existing work was kept.`); return false; }
+  };
   const exportStoredScene = async (projectId: string): Promise<boolean> => {
     const current = currentGraphWork().project;
     const project = current?.id === projectId ? current : storedProjects.find((candidate) => candidate.id === projectId);
@@ -2621,6 +2641,8 @@ export const useMobileAppController = () => {
     graphGalleryImportPreview,setGraphGalleryImportPreview,exportPersonalGraphProject,sharePersonalGraphDefinition,
     previewPersonalGraphFile,acceptPersonalGraphImport,
     curveDocument, setCurveDocument, openProjectCurve, saveCurveProject,
+    refreshProjectCurve,
+    projectInspectionSnapshot: tab === "projects" ? currentGraphWork().project : null,
     projectCurveAdapter: curveDocument ? mixedGraphSessions.current?.curve(curveDocument.identity.id) : undefined,
     graphDocument, setGraphDocument, createGraphProject, importGraphProject, saveGraphProject, graphPromotions, createGraphPromotion,
     openProjectGraph,

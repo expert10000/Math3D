@@ -296,7 +296,7 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
       )}
       {projectLibraryCards.map((scene) => {
         const editing = editingProjectId === scene.id;
-        const stored = model.storedProjects.find(project => project.id === scene.id);
+        const stored = model.projectInspectionSnapshot?.id === scene.id ? model.projectInspectionSnapshot : model.storedProjects.find(project => project.id === scene.id);
         let named = false;
         try { named = !!stored && JSON.parse(stored.serializedProject).format === "math3d.project"; } catch { /* existing compatibility message covers malformed storage */ }
         return <View key={scene.id} style={[styles.item, selectedScene?.id === scene.id ? styles.itemActive : null]}>
@@ -321,6 +321,7 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
               <Text style={styles.secondaryBtnText}>Import project resources</Text>
             </Pressable>}
             {inspectedProjectId === scene.id && <MobileProjectExplorer raw={stored.serializedProject} resources={stored.projectResources}
+              onRefresh={stored.projectType === "project-preview" ? id => model.refreshProjectCurve(scene.id, id) : undefined}
               onOpenCurve={stored.projectType === "project-preview" ? id => void model.openProjectCurve(scene.id, id) : undefined}
               onOpenGraph={stored.projectType === "project-preview" ? id => void model.openProjectGraph(scene.id, id) : undefined} />}
           </>}

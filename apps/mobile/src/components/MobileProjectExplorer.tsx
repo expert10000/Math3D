@@ -4,7 +4,9 @@ import { styles } from "../mobileAppStyles";
 import { buildMobileProjectExplorer } from "../models/mobileProjectExplorer";
 import type { ProjectResourceSidecar } from "@math3d/core";
 
-export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly ProjectResourceSidecar[]; onOpenGraph?: (id: string) => void; onOpenCurve?: (id: string) => void }> = ({ raw, resources, onOpenGraph, onOpenCurve }) => {
+export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly ProjectResourceSidecar[]; onOpenGraph?: (id: string) => void;
+  onOpenCurve?: (id: string) => void; onRefresh?: (relationId: string) => Promise<boolean> }> = ({ raw, resources, onOpenGraph, onOpenCurve, onRefresh }) => {
+  const [refreshing, setRefreshing] = React.useState(false);
   const state = useMemo(() => {
     try { return { explorer: buildMobileProjectExplorer(raw, resources), error: null }; }
     catch (error) { return { explorer: null, error: (error as Error).message }; }
@@ -39,6 +41,14 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
     {relations.map(relation => <View key={relation.relationId}>
       <Text style={styles.itemMeta}>{relation.sources.map(source => titles.get(source.documentId) ?? "Missing source").join(" + ")} → {relation.target.type === "document" ? titles.get(relation.target.generation.documentId) ?? "Missing document" : relation.target.type === "result" ? "Analysis" : "Artifact"}</Text>
       <Text style={styles.note}>{relation.operation} · {relation.freshness}</Text>
+      {onRefresh && state.explorer.refreshOptions.filter(option => option.relationId === relation.relationId).map(option => <View key={option.relationId}>
+        <Pressable testID={`mobile-project-refresh-${option.relationId}`} accessibilityRole="button"
+          disabled={!option.canRefresh || refreshing} accessibilityState={{ disabled: !option.canRefresh || refreshing }} style={styles.secondaryBtn}
+          onPress={() => { setRefreshing(true); void onRefresh(option.relationId).finally(() => setRefreshing(false)); }}>
+          <Text style={styles.secondaryBtnText}>Create refreshed Curve</Text>
+        </Pressable>
+        <Text style={styles.note}>{option.reason}</Text>
+      </View>)}
     </View>)}
     <Text accessibilityRole="header" style={styles.itemTitle}>Analysis ({results.length})</Text>
     {results.map(result => <Text key={result.id} style={styles.itemMeta}>{result.operation} · {result.authority} · {result.freshness} · {titles.get(result.sourceDocumentId) ?? "Missing source"} revision {result.sourceRevision}</Text>)}

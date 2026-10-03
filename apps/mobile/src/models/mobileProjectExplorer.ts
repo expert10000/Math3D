@@ -1,6 +1,7 @@
 import { buildProjectExplorer, evaluateDocumentRelationStatus, isAnalysisResultCurrent, matchesScientificSourceGeneration,
   parseMath3DProject, replayMixedWorkspaceDocument, viewerSourceFromDocument, projectResourceInventory, VerifiedProjectResources, type ProjectResourceSidecar } from "@math3d/core";
 import { mobileCurveUnavailableReason } from "./mobileProjectCurve";
+import { mobileProjectRefreshOptions } from "./mobileProjectRefresh";
 import { resolveMobileProjectWorkspace } from "./mobileProjectReplay";
 import { mobileProjectResourceContext } from "./mobileProjectResources";
 import { createInMemoryDependencyGraph } from "@math3d/kernel";
@@ -26,6 +27,8 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
   });
   return {
     title: project.metadata.title,
+    refreshOptions: mobileProjectRefreshOptions({ projectType: "project-preview", id: project.identity.id, title: project.metadata.title,
+      serializedProject: raw, projectResources: [...sidecars], updatedAt: 0, lastOpenedAt: 0 }),
     resources: inventory.map(item => ({ id: item.id, kind: item.kind, required: item.required, available: resources.bytes(item) !== null })),
     groups: tree.groups.map(group => ({ ...group, documents: group.documents.map(document => ({ ...document,
       editing: document.module === "curve" && !document.archived && resolved.get(document.id)?.format === "math3d.curve-document" && !mobileCurveUnavailableReason(resolved.get(document.id)! as import("@math3d/core").CurveDocument) ? "Curve workspace" : document.module === "graph2d" && !document.archived && !inventory.some(item => item.kind === "graph-point-table" && item.owners.includes(document.id) && !resources.bytes(item)) ? "Graph workspace" : "Saved preview",
