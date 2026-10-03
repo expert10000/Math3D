@@ -9,7 +9,10 @@ export const mobileCurveProjectFixture = () => {
     units: { position: "unitless", parameter: "unitless", angle: "rad" }, orientation: {}, derivatives: {}, dependencies: [],
     definition: { familyId: "literal-helix", expressions: { x: "cos(t)", y: "sin(t)", z: "t/4" } } } });
   const entries = [...source.project.workspace.entries, { module: "curve" as const, checkpoint: curve, expected: curve.identity, replay: null }];
-  let project = createMath3DProject(createMixedWorkspaceDocument({ ...source.project.workspace, entries,
+  // Public fixture bytes must not depend on the machine's probe execution time.
+  const results = source.project.workspace.results.map(result => result.provenance.engine.name === "math3d-core"
+    ? { ...result, provenance: { ...result.provenance, elapsedMs: 0 } } : result);
+  let project = createMath3DProject(createMixedWorkspaceDocument({ ...source.project.workspace, entries, results,
     activeDocumentIds: [...source.project.workspace.activeDocumentIds, curve.identity.id] }),
     { title: "PRJ27 Graph Curve Study", stableKey: "prj25-27-samsung-acceptance-v1" });
   project = updateMath3DProjectMetadata(project, { ...source.project.metadata, title: "PRJ27 Graph Curve Study", tags: ["acceptance", "prj27"],
