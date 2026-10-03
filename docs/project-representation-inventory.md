@@ -8,7 +8,7 @@ project keeps whole-project opening disabled; compatible documents remain inspec
 
 | Module / representation | Current desktop/web support | External inputs | Missing contract or restriction |
 | --- | --- | --- | --- |
-| Graph2D | Native opening/editing; at most one Graph per project | Checked point tables when present | Multi-Graph editor sessions remain unqualified |
+| Graph2D | Desktop/web native opening/editing of multiple Graphs with separate bounded undo/redo histories (PRJ19 continuation) | Checked current and historical point tables, including references present only in undo/redo | Electron restart, browser reload and independent browser import passed for the development slice. Native mobile editing still supports one checkpointed Graph |
 | Curve: literal parametric / explicit, 2D or 3D | Native source edit/history/save/reopen (PRJ10) | None | No source dependencies or source IDs; expressions must compile |
 | Curve: Graph promotions | Existing qualified Graph opener | Parent Graph and any checked point table | Exact current promotion lineage required |
 | Curve: planar implicit / polar | Native source edit/history; numerical contours/polar samples | Saved bounds/formula or radius/angle convention | Independent planar definitions; complete finite bounds; radians/degrees retained |

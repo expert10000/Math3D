@@ -3,6 +3,7 @@ import { Pressable, Text, TextInput, useWindowDimensions, View } from "react-nat
 import { asDate, type MobileAppController } from "./mobileAppController";
 import { styles } from "./mobileAppStyles";
 import { MobileProjectThumbnail } from "./components/MobileProjectThumbnail";
+import { MobileProjectExplorer } from "./components/MobileProjectExplorer";
 import { mobileExamples } from "./data/mobileSeedData";
 import { mobileProjectCreationLayout, type MobileProjectCreationRequest } from "./models/mobileProjectCreation";
 import { mobileProjectTemplates } from "./models/mobileProjectTemplates";
@@ -38,6 +39,7 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
     shareStoredScene,
   } = model;
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [inspectedProjectId, setInspectedProjectId] = useState<string | null>(null);
   const [titleDraft, setTitleDraft] = useState("");
   const [transferBusy, setTransferBusy] = useState<string | null>(null);
   const [creationOpen, setCreationOpen] = useState(false);
@@ -294,6 +296,9 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
       )}
       {projectLibraryCards.map((scene) => {
         const editing = editingProjectId === scene.id;
+        const stored = model.storedProjects.find(project => project.id === scene.id);
+        let named = false;
+        try { named = !!stored && JSON.parse(stored.serializedProject).format === "math3d.project"; } catch { /* existing compatibility message covers malformed storage */ }
         return <View key={scene.id} style={[styles.item, selectedScene?.id === scene.id ? styles.itemActive : null]}>
           <Pressable testID={`mobile-project-open-${scene.id}`} disabled={!scene.compatible} accessibilityState={{ disabled: !scene.compatible }} onPress={() => void openStoredScene(scene.id)}>
             <View style={styles.sceneListRow}>
@@ -308,6 +313,12 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
               </View>
             </View>
           </Pressable>
+          {named && stored && <>
+            <Pressable testID={`mobile-project-inspect-${scene.id}`} onPress={() => setInspectedProjectId(inspectedProjectId === scene.id ? null : scene.id)} style={styles.secondaryBtn}>
+              <Text style={styles.secondaryBtnText}>{inspectedProjectId === scene.id ? "Close documents" : "Documents and relations"}</Text>
+            </Pressable>
+            {inspectedProjectId === scene.id && <MobileProjectExplorer raw={stored.serializedProject} />}
+          </>}
           {editing ? (
             <View style={styles.projectEditor}>
               <TextInput

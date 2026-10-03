@@ -632,3 +632,52 @@ qualify this separate local Android recipient. The fixture APK and signing key
 remain outside Git. Email, messenger, nearby transfer and another physical device
 are separate untested transports. Physical iOS acceptance and published release
 approval remain separate gates.
+
+## PRJ19–PRJ21 first deliveries — October 3
+
+The continuation branch `codex/projects-prj19-21` starts from main `8a1ee6f`.
+PRJ19 (`494e5a6`) creates separate Graph command adapters during desktop/web
+project restoration. Explorer switching retains each document's source and
+history. Verified bounded Graph replay restores independent undo/redo cursors
+after save, transfer, browser reload and real Electron process restart. Graph
+point tables appearing only in undo/redo are included in the resource inventory;
+missing historical bytes block activation. Existing Graph sidecar import/reload
+also passed in both browser locales.
+
+PRJ20 (`a35b2d8`) adds explicit saved-project actions under **Manage saved project
+→ Relations and availability**. **Create refreshed copy** rebuilds supported
+Graph-derived Curves/revolutions/extrusions with current source lineage and new
+target identities. **Recompute derivative** runs the existing local first/second
+derivative algorithm and publishes a new current record. Original documents,
+relations and historical analysis remain unchanged. Project undo/redo reverses
+the additions. Missing source objects and duplicate copies/publications reject
+without mutation. Other construction and analysis adapters remain open.
+
+PRJ21's first mobile UI slice adds **Documents and relations** to checkpointed
+named-project cards. It groups all recorded documents by module, exposes titles,
+revisions, archives, preview/editing limits, relation freshness and analysis
+authority/provenance. Inspection never activates an editor or modifies saved
+bytes. Non-Graph modules remain saved previews. Broader mixed-project preview
+import/storage and per-document mobile editing remain open.
+
+Validation passed:
+
+- Projects contracts: **114 tests in 17 files**, plus **53 existing mobile/storage
+  regression tests in eight files** and portable-fixture TypeScript.
+- Targeted continuation/resource/mobile-explorer contracts: **19 tests in four
+  files**, including four read-only mobile inspection cases.
+- **Two Electron journeys** and **four new browser journeys**, plus **two existing
+  Graph point-table browser regressions**, in en-US/UTC and pl-PL/Auckland.
+- Main/renderer/E2E and mobile typechecks, production desktop/web builds, and
+  dependency boundaries.
+- Android Hermes export: 902 modules; bundle SHA-256
+  `49604373cf208a72f25397f7d8cfff2a6516064795ddf333484a27a32635e7ef`,
+  6,322,203 bytes. For this Windows checkout's existing dependency junctions,
+  validation temporarily watched their resolved directories and mapped core/kernel
+  to the current worktree sources. The production Metro configuration was restored;
+  no dependency declaration or lockfile changed.
+
+This is development software acceptance. No new signed APK was installed on the
+Samsung during this continuation, and PRJ21 handset layout/interaction acceptance
+remains pending. Earlier Samsung evidence retains its exact recorded source/build
+scope. Physical signed iOS acceptance and published release approval are unchanged.

@@ -99,3 +99,24 @@ the saved library, export and reload retain the complete edited project exactly.
 The two companion documents stay at revision 1, while the Graph advances to
 revision 4; all three relations and the recorded derivative evaluate as stale.
 This is the declared saved-preview qualification, not regenerated geometry.
+
+## PRJ19–PRJ21 development continuation
+
+The `codex/projects-prj19-21` continuation adds separate desktop/web Graph sessions
+and a verified Graph replay format. Two real Electron journeys and four browser
+journeys in the configured locale/time-zone pairs passed. Switching, source edits,
+independent-profile import, process restart/reload and each Graph's own undo/redo
+cursor are checked. Project resource transfer includes point tables referenced
+only by Graph history; missing historical bytes block opening.
+
+Saved-project management can create refreshed copies of Graph-derived companions
+and explicitly recompute local first/second derivatives. Historical documents,
+relations and results remain intact, and new records carry the current source
+generation. Other construction and analysis operations remain unqualified here.
+
+The mobile library now offers **Documents and relations** for saved checkpointed
+named projects. Inspection never activates an unsupported editor or changes the
+stored payload. Its contracts, typecheck and Android Hermes bundle passed.
+PRJ21's signed handset layout/interaction acceptance and broader mixed-container
+preview import/storage remain open. Earlier Samsung exact-build evidence applies
+to its recorded source commits; it does not attest this new mobile UI.

@@ -589,3 +589,24 @@ are recorded. This closes the actual external-recipient handoff gate for the
 user-selected local delivery scope. Email, messenger, nearby transport and another
 physical device were not tested. Physical iOS acceptance remains open; published
 1.6.0 release approval is unchanged.
+
+## PRJ19–PRJ21 continuation — started October 3
+
+Development continues on `codex/projects-prj19-21` from main `8a1ee6f`.
+These milestones extend the supported Projects workflow. Their first deliveries
+do not replace PRJ17/PRJ18's outstanding physical signed iOS acceptance.
+
+| Milestone | First implementation | Completion gate / remaining work |
+| --- | --- | --- |
+| PRJ19 — Multiple Graph documents | Desktop/web project opening creates a separate Graph command adapter for every document. Explorer switching preserves each session. Validated Graph replay retains bounded undo/redo across save and transfer, including historical point-table resources. Promotion compatibility resolves the actual parent Graph | First desktop/web slice passed real editing/switching, independent-profile import, Electron restart and browser reload in both configured locales. Native mobile editing still requires one checkpointed Graph |
+| PRJ20 — Explicit dependency refresh | Manage saved project → Relations and availability → Create refreshed copy rebuilds supported Graph-derived Curves/revolutions/extrusions. Recompute derivative publishes a new analysis record with current provenance. Original documents, relations and historical analysis remain intact; project undo/redo reverses additions | Graph companions and local first/second derivative are implemented and passed desktop/browser UI checks. Other construction/analysis adapters remain open. Missing sources and duplicate copies/publications reject without mutation; no automatic scientific recomputation |
+| PRJ21 — Unified mobile explorer | Projects → Documents and relations displays checkpointed named-project documents grouped by module, their revisions, archive/preview limits, dependency freshness and analysis provenance | First UI slice inspects the currently supported saved named-project library. Broader mixed-container preview import/storage and per-document mobile editing remain open. Exact signed-build handset layout/interaction acceptance is required before native delivery signoff |
+
+The continuation has **tested first deliveries**, with the broader PRJ20/PRJ21
+scope still open. Two Electron journeys passed, including real process restart;
+four Chromium journeys passed in en-US/UTC and pl-PL/Auckland, including independent
+storage and reload. Contracts retain exact Graph identities/history, historical
+companions/results and point-table inputs present only in undo/redo. Mobile
+inspection contracts and typecheck passed; the Android Hermes bundle exported
+successfully. This is software evidence, not signed handset acceptance for PRJ21.
+See [the continuation acceptance record](unified-projects-acceptance.md#prj19prj21-first-deliveries--october-3).
