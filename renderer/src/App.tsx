@@ -91568,7 +91568,6 @@ case "mobius":
                 flex: isGeometryStackedLayout ? undefined : `0 0 ${geometryCreateLeftPanelWidth}px`,
                 maxWidth: isGeometryStackedLayout ? "100%" : undefined,
                 maxHeight: isGeometryStackedLayout ? geometryStackedLeftPanelMaxHeight : undefined,
-                overflowY: compactGeometryCreatePanel ? "hidden" : undefined,
                 order: isGeometryStackedLayout ? 2 : 0,
                 display: showGeometryLeftPanel ? undefined : "none",
                 ...geometryLeftDrawerStyle,
@@ -91960,7 +91959,7 @@ case "mobius":
                       style={{
                         paddingBottom: 0,
                         flex: compactGeometryCreatePanel ? "1 1 auto" : undefined,
-                        minHeight: compactGeometryCreatePanel ? "min(360px, 52vh)" : undefined,
+                        minHeight: compactGeometryCreatePanel ? 120 : undefined,
                         maxHeight: compactGeometryCreatePanel ? "none" : undefined,
                       }}
                     >
