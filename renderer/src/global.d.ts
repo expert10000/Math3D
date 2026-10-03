@@ -478,6 +478,9 @@ declare global {
     logPath: string;
     lastCheckAt: number;
     lastError?: PythonWorkerDiagnosticsError;
+    restartFailuresInWindow?: number;
+    restartRetryAfter?: number | null;
+    admission?: { active: number; queued: number; queuedBytes: number };
   };
 
   type OctaveHealthResponse = {

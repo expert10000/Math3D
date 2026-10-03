@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import PythonWorkerStatusCard from "./PythonWorkerStatusCard";
 
 type BusyState = "none" | "refresh" | `${ComputeEngineId}:${ComputeEngineAction}`;
 
@@ -121,6 +122,8 @@ const ComputeEngineManagerPanel: React.FC<{ embedded?: boolean }> = ({ embedded 
           <span style={{ color: "#1f894f" }}>Installed</span>
         </div>
       </div>
+
+      <PythonWorkerStatusCard />
 
       <div style={cardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
