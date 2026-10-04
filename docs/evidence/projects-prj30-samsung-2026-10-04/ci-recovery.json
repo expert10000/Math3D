@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "model": "sdk_gphone64_x86_64",
+  "androidApi": "36",
+  "sourceCommit": "99363f9c77627a00def9f62a544b5455d6978d6d",
+  "apkSha256": "64099405e4745e80c716ac7422c43beef76c361b5efaf469bdb96bd2d270c51d",
+  "checks": [
+    "PASS: 10/10 recovery checks; library unchanged. Close and restart the app, then verify recovery.",
+    "PASS: 11/11 recovery checks; library unchanged. Restart recovery verified."
+  ],
+  "startedAt": "2026-10-04T10:26:50.265Z",
+  "finishedAt": "2026-10-04T10:27:37.635Z"
+}

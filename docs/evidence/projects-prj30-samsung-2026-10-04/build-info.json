@@ -1,0 +1,12 @@
+{
+  "applicationId": "com.math3d.mobile.internal",
+  "version": "1.6.0",
+  "build": 150008,
+  "channel": "internal",
+  "projectRecoveryChecks": true,
+  "gitCommit": "99363f9c77627a00def9f62a544b5455d6978d6d",
+  "trackedSourceDirty": false,
+  "trackedSourceChanges": [],
+  "artifact": "Math3D-mobile-1.6.0-internal.apk",
+  "sha256": "64099405e4745e80c716ac7422c43beef76c361b5efaf469bdb96bd2d270c51d"
+}

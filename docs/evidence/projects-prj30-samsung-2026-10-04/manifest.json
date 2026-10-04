@@ -1,0 +1,20 @@
+{
+  "projectId": "math3d:project:90bfe09361a4538eb2ee7bdbdb7ec560",
+  "graphIds": [
+    "math3d:graph2d:d79b5d7eca7a0deb53fd4e61b35f23de",
+    "math3d:graph2d:3f7bde5a0499641b2a98864b3f34532a"
+  ],
+  "helixId": "math3d:curve:c523edd3c02d188779570fef081c9f80",
+  "surfaceId": "math3d:surface:643dd487040e2c38765d07d527a856fd",
+  "graphSurfaceRelationIds": [
+    "math3d-relation:23d0ffb1e48e3161f13f7705e85610791809471fa262a11540e31f2893ac2c0a",
+    "math3d-relation:512f21ccfb4361210956057996d934b7890a0832714b0111810e9931312e18e5"
+  ],
+  "curveSurfaceRelationIds": [
+    "math3d-relation:4ef477c7f8e726a3c07291b7c7ebdc30b43a4c924ada24eb9f4b06f90684ca12",
+    "math3d-relation:b438ab634706fb6a1d76865feac514c9fda367a255e8484cd2527d868fac18ac"
+  ],
+  "documents": 25,
+  "resources": 5,
+  "sha256": "4d7eee0162628a39a57fdfec7112a0444c143f2a0f79e6d51a476c60703534f4"
+}

@@ -1,0 +1,4 @@
+Signer #1 certificate DN: CN=Math3D Mobile Internal, OU=Engineering, O=Math3D
+Signer #1 certificate SHA-256 digest: 39ab9388fa174bf9c1973577dab4ee33eedbacb9b231c9b79068e5143480fc82
+Signer #1 certificate SHA-1 digest: 945dd7d85bd9ccd5d7e082cb9955b59efc9ab177
+Signer #1 certificate MD5 digest: 9c396c6a6bdeeb6536a7a3ba9ed2426f

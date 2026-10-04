@@ -87,8 +87,9 @@ a supported stale Graph→Curve companion from the current Graph. It preserves t
 original target, relation, historical results and all source resources. The active
 project includes committed editor changes; refresh saves the enclosing project
 before replacing its sessions. Current, missing, archived, unsupported and already
-refreshed sources show a disabled action and reason. Analysis and other construction
-refresh adapters remain desktop/web operations.
+refreshed sources show a disabled action and reason. Analysis and construction
+adapters beyond the qualified Graph/Curve extrusion/revolution paths remain
+desktop/web operations.
 
 The [PRJ25–PRJ27 acceptance workflow](projects-mobile-curves.md) records the declared
 scope. Signed Samsung editing/refresh/restart, actual desktop/browser return and
@@ -101,4 +102,7 @@ forks preserve historical targets, results and resources. Constructed/procedural
 Surface targets remain mobile previews. Desktop/browser historical construction
 views use captured Curve recipes from verified retained replay when available.
 The [PRJ28–PRJ30 runbook](projects-mobile-surfaces.md) records the expanded workflow;
-signed device qualification is in progress.
+signed Samsung extrusion refresh, duplicate blocking and actual desktop/browser
+return passed on October 4. All four adapters have desktop model parity;
+[exact-build evidence](evidence/projects-prj30-samsung-2026-10-04/acceptance.json)
+distinguishes native checks from model qualification.

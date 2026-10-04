@@ -211,3 +211,32 @@ only the acceptance project was added. [Exact-build evidence](evidence/projects-
 and the [Graph/Curve acceptance runbook](projects-mobile-curves.md) record the
 declared Android/desktop/browser scope. Broader mobile editors and physical iOS
 remain separate gates.
+
+### PRJ28–PRJ30 Graph/Curve/Surface handset completion — October 4
+
+Schema 6 adds independent shared Surface replay, literal parametric x(u,v), y(u,v),
+z(u,v) editing and finite increasing nonperiodic u/v domains. Qualified Graph and
+literal Curve revolution/extrusion relations support explicit fork refresh; their
+targets remain previews on mobile. Historical construction views on desktop/browser
+use captured Curve recipes from verified retained replay, preserving their saved
+generation when the parent is edited.
+
+Clean source `99363f9` passed [Android CI](https://github.com/expert10000/Math3D/actions/runs/37194699115)
+and was installed with the existing internal signing identity on Samsung SM-A566B /
+API 36. The journey retained Graph/Curve/Surface edits from the initial signed
+`125a837` build. Final-build cross-project switching, Surface invalid-source/domain
+rejection, independent Surface undo/redo, save, selected-Surface cold restart and
+duplicate refresh blocking passed. Graph and Curve extrusion were physically
+created; all four refresh adapters have desktop model parity.
+
+The actual 27-document/five-resource native return restores independent histories
+in Electron and remains byte-exact through fresh-browser export/reload in both
+locale/time-zone projects. Reopening selects the saved Surface in the inspector.
+Exact-build recovery passed 10/10 preparation and 11/11 restart checks, including
+Surface redo and selection, with unchanged normal-library fingerprints and export.
+All 24 original identities and the original PRJ27 export remain intact.
+
+[Exact-build evidence](evidence/projects-prj30-samsung-2026-10-04/acceptance.json) and
+the [Surface acceptance runbook](projects-mobile-surfaces.md) record this declared
+scope. Other mobile representations/editors, physical revolution testing, physical
+iOS and published-release signoff remain separate qualifications.

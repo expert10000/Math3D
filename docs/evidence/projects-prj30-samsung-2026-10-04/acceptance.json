@@ -1,0 +1,121 @@
+{
+  "milestones": [
+    "PRJ28",
+    "PRJ29",
+    "PRJ30"
+  ],
+  "date": "2026-10-04",
+  "status": "delivered for declared Android/desktop/browser scope",
+  "build": {
+    "sourceCommit": "99363f9c77627a00def9f62a544b5455d6978d6d",
+    "apkSha256": "64099405e4745e80c716ac7422c43beef76c361b5efaf469bdb96bd2d270c51d",
+    "certificateSha256": "39ab9388fa174bf9c1973577dab4ee33eedbacb9b231c9b79068e5143480fc82",
+    "ci": "https://github.com/expert10000/Math3D/actions/runs/37194699115",
+    "ciAttempt": 1,
+    "ciResult": "success",
+    "trackedSourceDirty": false,
+    "installedAsUpdate": true,
+    "device": "Samsung SM-A566B",
+    "androidApi": 36,
+    "build": 150008
+  },
+  "journeyBuilds": {
+    "initialSourceCommit": "125a837b8e79db5a5cb14cb5a46655e660355b83",
+    "initialApkSha256": "8fc266aba1f8a163fd1eb0a8831fdca1ea91875600d877899976cbd3e0fa3859",
+    "initialChecks": [
+      "byte-exact native input export",
+      "Graph edit/undo/redo/save",
+      "Curve edit/undo/redo/save",
+      "Surface edit/domain/undo/redo/save",
+      "explicit Graph and Curve extrusion refresh"
+    ],
+    "finalSourceCommit": "99363f9c77627a00def9f62a544b5455d6978d6d",
+    "finalChecks": [
+      "retained Graph and Curve edits",
+      "outgoing PRJ27 Curve to incoming PRJ30 Graph crash regression",
+      "Graph/Curve/Surface switching",
+      "Surface expression/domain rejection without revision change",
+      "Surface undo/redo/save",
+      "selected Surface cold restart",
+      "duplicate Graph/Curve refresh disabled",
+      "exact-installed-build recovery",
+      "actual returned export and preservation"
+    ]
+  },
+  "project": {
+    "id": "math3d:project:90bfe09361a4538eb2ee7bdbdb7ec560",
+    "inputDocuments": 25,
+    "returnedDocuments": 27,
+    "returnedRelations": 11,
+    "modules": [
+      "graph2d",
+      "mesh",
+      "volume",
+      "curve",
+      "surface",
+      "geometry",
+      "topology",
+      "complex"
+    ],
+    "resources": 5,
+    "historicalResults": 3,
+    "inputBytes": 42861,
+    "inputSha256": "4d7eee0162628a39a57fdfec7112a0444c143f2a0f79e6d51a476c60703534f4",
+    "nativeBeforeEditMatchesInput": true,
+    "returnedBytes": 54077,
+    "returnedSha256": "2b96b812d05889b134992262b3bdbc599dbe9e60b46d5c07e741dbe9980ffb6a"
+  },
+  "nativeChecks": {
+    "graphExpression": "x*x+4",
+    "curveExpression": "t/2",
+    "surfaceExpression": "u*u-v*v+2",
+    "surfaceUMax": 2,
+    "invalidSurfaceExpressionAndDomainRejectedWithoutSourceOrRevisionMutation": true,
+    "graphCurveSurfaceHistoriesIndependent": true,
+    "crossProjectCrashRegressionPassed": true,
+    "selectedSurfaceColdRestartAndUndoRedo": true,
+    "exactlyTwoExplicitExtrusionSurfacePreviews": true,
+    "originalTargetsRetained": true,
+    "duplicateRefreshDisabledWithReason": true,
+    "nativeFolderPickerExport": true,
+    "isolatedRecoveryPreparation": "10/10",
+    "isolatedRecoveryRestart": "11/11",
+    "selectedSurfaceAndRedoInRecoveryFixture": true,
+    "normalLibraryUnchangedDuringRecovery": true,
+    "postRecoveryExportByteExact": true
+  },
+  "returnChecks": {
+    "actualNativePackageVerified": true,
+    "allOriginalEntriesExceptEditedGraphHelixSaddleUnchanged": true,
+    "metadataScriptsHistoricalResultsArtifactsAndResourcesUnchanged": true,
+    "exactlyTwoNewSurfacesAndExactCapturedLineage": true,
+    "electronRestoresThreeIndependentUndoRedoHistories": true,
+    "reopenedSurfaceInspectorSelectionCorrect": true,
+    "freshBrowserExportReloadByteExact": true,
+    "browserLocaleTimezoneProjectsPassed": 2
+  },
+  "unrelatedProjects": {
+    "originalIdentities": 24,
+    "identitiesAfterAcceptance": 25,
+    "allOriginalIdentitiesPresent": true,
+    "onlyAcceptanceProjectAdded": true,
+    "baselineExportBytesBeforeAndAfter": 40534,
+    "baselineExportSha256BeforeAndAfter": "e1d33d2dfdc18fadce19e64eb40eee591877b8fd4ec799bfad9eabaee5ab0445"
+  },
+  "softwareChecks": {
+    "projectContracts": 222,
+    "desktopHistoricalConstructionChecks": 41,
+    "desktopAndMobileTypechecks": true,
+    "desktopAndBrowserProductionBuilds": true,
+    "kernelBoundaryModules": 1014,
+    "kernelBoundaryDependencies": 2009,
+    "kernelBoundaryViolations": 0,
+    "allFourRefreshAdaptersMatchDesktopForkAndLineage": true
+  },
+  "limits": [
+    "Mobile Surface editing qualifies independent literal parametric sources with finite increasing nonperiodic u/v domains and qualified retained history.",
+    "Constructed/procedural Surface targets and the other five mobile editors remain previews.",
+    "Graph and Curve extrusion were physically exercised; revolution parity is model-tested, not physically claimed.",
+    "Physical iOS acceptance and published-release signoff are separate gates."
+  ]
+}

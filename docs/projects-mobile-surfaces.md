@@ -79,5 +79,35 @@ physical Samsung evidence.
 
 ## Acceptance status
 
-Software contracts and model-only historical construction restoration pass.
-Signed Samsung and actual desktop/browser return checks are in progress.
+PRJ28–PRJ30 are delivered for the declared Android/desktop/browser scope.
+The clean shared-key internal APK from `99363f9` passed
+[Android CI](https://github.com/expert10000/Math3D/actions/runs/37194699115) and was
+verified and installed as an update on Samsung SM-A566B / Android API 36.
+
+The native journey began on signed `125a837`: byte-exact import/export, independent
+Graph/Curve/Surface edits and explicit extrusion refresh passed. A cross-project
+transition exposed an outgoing Curve being used with the incoming session ref.
+`99363f9` guards each editor by session membership. The final APK retained the edits
+and previews, passed the original Curve→new Graph crash regression and Graph/Curve/
+Surface switching, rejected invalid Surface expressions/domains without advancing
+revision, and retained Surface undo/redo/save through cold restart.
+
+The actual 54,077-byte native return contains 27 documents, 11 relations and all five
+resources. Direct verification preserves original entries except the three edited
+documents, and keeps historical results, artifacts, metadata, scripts and source bytes; the
+two refreshed Surfaces have exact captured lineage. Electron restored all three
+independent histories. Fresh browser contexts passed exact import/export/reload and
+Surface undo/redo in both en-US/UTC and pl-PL/Auckland. Reopening now selects the
+saved Surface definition in the inspector instead of a prior scene object.
+
+The exact installed APK passed **10/10 recovery preparation and 11/11 restart
+checks**, including selected Surface and retained Surface redo. The runner fully
+resets the shared scroll position before finding its controls. Normal library
+fingerprints remained unchanged and the post-recovery export matched the accepted
+return. All 24 original identities remain; only PRJ30 was added. The existing
+40,534-byte PRJ27 export remained byte-identical.
+
+[Public packages, verification, build identity and screenshots](evidence/projects-prj30-samsung-2026-10-04/acceptance.json)
+record this continuation. Graph/Curve extrusion was physically exercised; revolution
+parity is covered by the model suite. Physical iOS and published-release signoff
+remain separate gates.

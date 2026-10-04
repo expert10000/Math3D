@@ -793,11 +793,21 @@ separate work.
 
 | Commit | Scope | Status |
 | --- | --- | --- |
-| PRJ28 | Shared bounded Surface replay; mobile independent nonperiodic literal parametric x(u,v), y(u,v), z(u,v) editor, domain controls, undo/redo/save and cold restart in the complete mixed project | Implemented; 40 focused model checks and desktop/mobile typechecks passed; signed device acceptance pending |
-| PRJ29 | Explicit fork refresh for Graph→Surface revolution/extrusion and qualified literal Curve→Surface revolution/extrusion; retained historical targets/results/resources and disabled reasons | Implemented; four adapters match desktop fork/lineage; signed device acceptance pending |
-| PRJ30 | Signed Samsung Graph/Curve/Surface editing, rejection, switching, refresh, cold restart, damaged-store recovery and actual package return to desktop/browser | In progress; Surface replay/selected-editor recovery fixture added; Samsung connected |
+| PRJ28 | Shared bounded Surface replay; mobile independent nonperiodic literal parametric x(u,v), y(u,v), z(u,v) editor, domain controls, undo/redo/save and cold restart in the complete mixed project | Delivered for Android/desktop/browser; signed Samsung Surface editing, rejection, independent history and cold restart passed |
+| PRJ29 | Explicit fork refresh for Graph→Surface revolution/extrusion and qualified literal Curve→Surface revolution/extrusion; retained historical targets/results/resources and disabled reasons | Delivered; all four adapters match desktop fork/lineage; Graph and Curve extrusion passed on Samsung with duplicate blocking |
+| PRJ30 | Signed Samsung Graph/Curve/Surface editing, rejection, switching, refresh, cold restart, damaged-store recovery and actual package return to desktop/browser | Delivered; clean signed `99363f9`, actual 27-document/five-resource return, Electron and both browser locale checks, 10/10 + 11/11 recovery and all 24 original identities preserved |
 
 Constructed and procedural Surface targets remain saved previews on mobile;
 editing is qualified only for independent literal parametric sources and their
 retained undo/redo recipes. Other representations, editors and physical iOS
 release acceptance remain separate work.
+
+The [acceptance runbook](projects-mobile-surfaces.md) and
+[exact-build evidence](evidence/projects-prj30-samsung-2026-10-04/acceptance.json)
+record the actual Samsung continuation. The 54,077-byte return retains 11 relations,
+all eight modules, historical results, metadata, scripts and original resource bytes.
+The post-recovery export and original 40,534-byte PRJ27 baseline are byte-identical
+to their recorded counterparts. Device testing found and fixed cross-project editor
+transition guards; host visual verification also fixed selection of the reopened
+Surface in the inspector. Physical revolution testing is not claimed: the four
+refresh adapters have model parity, with the two extrusion paths exercised natively.

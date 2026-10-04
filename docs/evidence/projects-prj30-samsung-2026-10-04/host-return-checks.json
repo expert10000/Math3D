@@ -1,0 +1,15 @@
+{
+  "nativeSha256": "2b96b812d05889b134992262b3bdbc599dbe9e60b46d5c07e741dbe9980ffb6a",
+  "desktopSourceCommit": "0713d158bd8a7d2055a3edfd907745d1a8eafe29",
+  "electronTestsPassed": 1,
+  "independentGraphCurveSurfaceUndoRedo": true,
+  "reopenedSurfaceSelectedInInspector": true,
+  "desktopExportSha256": "2b96b812d05889b134992262b3bdbc599dbe9e60b46d5c07e741dbe9980ffb6a",
+  "browserProjectsPassed": [
+    "en-US-UTC",
+    "pl-PL-Auckland"
+  ],
+  "browserExportSha256": "2b96b812d05889b134992262b3bdbc599dbe9e60b46d5c07e741dbe9980ffb6a",
+  "browserReloadExportSha256": "2b96b812d05889b134992262b3bdbc599dbe9e60b46d5c07e741dbe9980ffb6a",
+  "surfaceUndoRedoInBothBrowserContexts": true
+}

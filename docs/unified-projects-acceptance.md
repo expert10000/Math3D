@@ -773,3 +773,41 @@ record the signed build and verification of the actual exported package. This cl
 PRJ25–27 for the declared Android/desktop/browser scope. Other mobile Curve forms,
 the other six mobile editors, broader mobile refresh, physical iOS and immutable
 published-release signoff remain separate work.
+
+## PRJ28–PRJ30 completion — October 4
+
+The native journey began on signed `125a837` and completed on clean shared-key
+`99363f9`, whose [Android CI](https://github.com/expert10000/Math3D/actions/runs/37194699115)
+passed. The final APK was verified and installed as an update on Samsung SM-A566B /
+API 36. A cross-project outgoing-editor crash found during acceptance was fixed
+and its original Curve→incoming Graph transition passed on the final build.
+
+The 25-document input exported byte-exact before edits. Graph `x*x+4`, helix `t/2`
+and saddle `u*u-v*v+2` with U maximum `2` retained independent histories. Invalid
+Surface expressions and zero-width domains changed neither source nor revision.
+Explicit Graph and Curve extrusion refresh added two Surface previews, retained
+original targets and disabled duplicate creation. Surface selection, undo/redo,
+source/domain and save survived cold restart.
+
+The actual 54,077-byte native package contains 27 documents, 11 relations and all
+five source resources. Its SHA-256 is
+`2b96b812d05889b134992262b3bdbc599dbe9e60b46d5c07e741dbe9980ffb6a`.
+Verification preserves every original entry except the edited Graph, helix and
+saddle, and retains metadata, scripts, historical results, artifacts and source
+bytes. Both new Surfaces have exact captured lineage. Electron restored all three
+histories; fresh-browser contexts retained exact exports before/after reload in
+en-US/UTC and pl-PL/Auckland, with Surface undo/redo. Visual verification also fixed
+selection of the reopened Surface instead of an old scene object in the inspector.
+
+The exact installed APK passed **10/10 recovery preparation and 11/11 restart
+checks**, retaining Graph/Curve/Surface replay and a selected Surface with redo.
+The corrected runner fully resets the retained shared scroll position before
+searching for controls. Normal-library fingerprints stayed unchanged, and the
+post-recovery native export matched exactly. All 24 original IDs remain; only
+PRJ30 was added. The original 40,534-byte PRJ27 export also remained byte-identical.
+
+[Public packages, verification, build identity and screenshots](evidence/projects-prj30-samsung-2026-10-04/acceptance.json)
+close PRJ28–30 for Android/desktop/browser. All four revolution/extrusion adapters
+have desktop model parity; only the two extrusion paths were physically exercised.
+Other mobile representations/editors, physical iOS and published-release signoff
+remain separate work.
