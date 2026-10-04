@@ -47,6 +47,8 @@ The target user journey is **explore → capture a Note on a selection/result �
 
 `WB00` is the integration point with the separate Projects work. Its Project format change should be based on the accepted Projects contract on `main`, rather than introducing a parallel container or changing the Workbook format in two places.
 
+`NTS02` adds session Note drafts, quick capture from the current committed selection or latest saved result, and a searchable Notes sidebar. Saving a named Project binds drafts to it; later Note saves keep their captured workspace sources with the Project. Exact object and Workbook-block attachment remains in `NTS03`.
+
 ## First milestone acceptance
 
 Use the existing Minimal Surface Study. Create a Note on its Graph or Surface, attach another to a saved numerical result, add one Note to a Workbook, and view Graph → Curve → Surface → Analysis in Document view. Edit the Graph: the Note anchor and affected Workbook path must show the correct freshness without changing unrelated blocks. Save/reopen on desktop and web, then inspect the same IDs and explanations. The test must not call a numerical shortest-edge path a continuous geodesic or present numerical curvature as a proof of minimality.

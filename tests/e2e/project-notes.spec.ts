@@ -1,0 +1,53 @@
+import { expect, test } from "@playwright/test";
+import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+
+test("NTS02 captures a session Note and reopens it with a named Project", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp();
+    await resetSurfaceAppState(ctx.page);
+    const page = ctx.page;
+    await page.getByTestId("notes-toggle").click();
+    const notes = page.getByTestId("project-notes-panel");
+    await expect(notes).toContainText("Session drafts");
+    await notes.getByTestId("notes-new").click();
+    const draft = notes.locator("[data-testid^='note-draft-']").first();
+    await draft.getByRole("textbox", { name: "Draft title" }).fill("Catenoid observation");
+    await draft.getByRole("textbox", { name: "Draft body" }).fill("Compare the profile with the surface.");
+    await expect(notes.getByTestId("notes-save")).toBeDisabled();
+    await notes.getByRole("button", { name: "Projects" }).click();
+    const projects = page.getByTestId("project-explorer-panel");
+    await projects.getByTestId("project-title").fill("Minimal Surface Study");
+    await projects.getByTestId("project-save").click();
+    await expect(projects.getByTestId("project-message")).toContainText("Saved");
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(stored.notes).toHaveLength(1);
+    expect(stored.notes[0]).toMatchObject({ projectId: stored.identity.id, title: "Catenoid observation", body: "Compare the profile with the surface." });
+    await projects.getByRole("button", { name: "Close project explorer" }).click();
+    await page.getByTestId("notes-toggle").click();
+    await expect(notes.getByTestId(`project-note-${stored.notes[0].identity.id}`)).toContainText("Catenoid observation");
+    await notes.getByTestId("notes-search").fill("no match");
+    await expect(notes).toContainText("No Notes match this view.");
+    await notes.getByTestId("notes-search").fill("catenoid");
+    await expect(notes.getByTestId(`project-note-${stored.notes[0].identity.id}`)).toBeVisible();
+    await notes.getByTestId("notes-search").fill("");
+    await notes.getByTestId("notes-new").click();
+    const second = notes.locator("[data-testid^='note-draft-']").first();
+    await second.getByRole("textbox", { name: "Draft title" }).fill("Area check");
+    await second.getByRole("textbox", { name: "Draft body" }).fill("Compare measured area.");
+    await notes.getByTestId("notes-save").click();
+    await expect(notes.getByTestId("notes-message")).toContainText("Saved 1 Note");
+    await expect(notes.locator("[data-testid^='project-note-']")).toHaveCount(2);
+    const original = notes.getByTestId(`project-note-${stored.notes[0].identity.id}`);
+    await original.getByRole("button", { name: "Edit" }).click();
+    await original.getByRole("textbox", { name: "Note body" }).fill("Compare the profile and the surface after refinement.");
+    await original.getByRole("button", { name: "Save changes" }).click();
+    await expect(notes.getByTestId("notes-message")).toContainText("Saved “Catenoid observation”");
+    const profile = ctx.profileDir;
+    await ctx.app.close();
+    ctx = await launchSurfaceApp({}, profile);
+    await ctx.page.getByTestId("notes-toggle").click();
+    await expect(ctx.page.getByTestId(`project-note-${stored.notes[0].identity.id}`)).toContainText("after refinement");
+    await expect(ctx.page.getByTestId("project-notes-panel").locator("[data-testid^='project-note-']")).toHaveCount(2);
+  } finally { await closeSurfaceApp(ctx); }
+});

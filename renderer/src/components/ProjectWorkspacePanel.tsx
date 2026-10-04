@@ -3,7 +3,8 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   parseMixedWorkspaceDocument, updateMath3DProjectMetadata, replaceMath3DProjectWorkspace,
   deleteProjectDocument, duplicateProjectDocument, serializeMath3DProject, setProjectDocumentMetadata,
   instantiateMath3DProjectTemplate, type Math3DProjectTemplateId,
-  upsertMath3DProjectWorkbook,
+  upsertMath3DProjectWorkbook, upsertMath3DProjectNote, updateProjectNote,
+  type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { importLibraryProject, loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY,
@@ -23,6 +24,8 @@ import { pointTableStore, installPortablePointTables } from "../graph2d/pointTab
 import { prepareProjectExampleCollection, importProjectExamples, SAMSUNG_EXAMPLE_COUNT } from "../projects/projectExampleCollection";
 import { prepareProjectWorkbook, readProjectWorkbook } from "../projects/projectWorkbookBinding";
 import type { Workbook } from "@math3d/workbook";
+import { ProjectNotesPanel } from "./ProjectNotesPanel";
+import { bindProjectNoteDrafts, createProjectNoteDraft, type NoteCaptureKind, type ProjectNoteDraft } from "../projects/projectNoteDrafts";
 
 export { PROJECT_STORAGE_KEY } from "../projects/projectLibrary";
 const ProjectThumbnail: React.FC<{ src: string | null }> = ({ src }) => {
@@ -49,6 +52,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   const resourceSessionId = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [project, setProject] = useState<Math3DProject | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notesProject, setNotesProject] = useState<Math3DProject | null>(null);
+  const [notesWorkspace, setNotesWorkspace] = useState<MixedWorkspaceDocument | null>(null);
+  const [noteDrafts, setNoteDrafts] = useState<ProjectNoteDraft[]>([]);
+  const [notesMessage, setNotesMessage] = useState("");
   const [title, setTitle] = useState("Untitled project");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
@@ -102,7 +110,24 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     try { display(liveProject(), false); setMessage("Current workspace documents."); }
     catch (error) { setMessage(`Project unavailable: ${(error as Error).message}`); }
   };
-  useEffect(() => { if (open) refresh(); }, [open]);
+  useEffect(() => { if (open) { setNotesOpen(false); refresh(); } }, [open]);
+  const refreshNotes = () => {
+    try {
+      const workspace = capture(); verifyMixedWorkspaceReplay(workspace);
+      const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
+      const active = raw ? parseMath3DProject(raw) : null;
+      const saved = active && parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)).entries.some((entry) => entry.id === active.identity.id) ? active : null;
+      setNotesWorkspace(workspace); setNotesProject(saved); setNotesMessage(saved ? "Notes for the active named Project." : "Notes remain session drafts until a named Project is saved.");
+    } catch (error) { setNotesMessage(`Notes unavailable: ${(error as Error).message}`); }
+  };
+  const captureNote = (kind: NoteCaptureKind) => {
+    try {
+      const workspace = capture(); verifyMixedWorkspaceReplay(workspace);
+      const draft = createProjectNoteDraft(kind, workspace, crypto.randomUUID(), Date.now());
+      setNoteDrafts((current) => [...current, draft]); setNotesWorkspace(workspace);
+      setNotesMessage("Note captured as a session draft. Add your observation, then save it to the Project.");
+    } catch (error) { setNotesMessage(`Note capture failed: ${(error as Error).message}`); }
+  };
   const collectResources = (next: Math3DProject, extra = resourceSession.current, allowMissing = false, workbook?: { id: string; bytes: Uint8Array }) => captureProjectResources(next, (item) => {
     if (item.kind === "workbook-payload" && item.id === workbook?.id) return workbook.bytes;
     const live = resourceReader?.(item); if (live) return live;
@@ -114,6 +139,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     try {
       let next = updateMath3DProjectMetadata(managed?.project() ?? liveProject(), { ...(managed?.project() ?? project)?.metadata,
         title: title.trim(), description, tags: [...new Set(tags.split(",").map((tag) => tag.trim()).filter(Boolean))] });
+      if (!managed && noteDrafts.length) next = bindProjectNoteDrafts(next, noteDrafts);
       if (managed && serializeMath3DProject(next) !== serializeMath3DProject(managed.project())) next = managed.commit(next);
       const tree = buildProjectExplorer(next, verifyMixedWorkspaceReplay(next.workspace));
       const previousResources = managed ? await loadProjectResources(loadLibraryProject(localStorage, next.identity.id)) : resourceSessionId.current === next.identity.id ? resourceSession.current : project ? await loadProjectResources(project) : undefined;
@@ -124,10 +150,46 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       if (managed) setManagedBytes(serializeMath3DProject(next));
       setProject(next); setTags((next.metadata.tags ?? []).join(", ")); setTitle(next.metadata.title); setThumbnail(null); setExplorer(tree); setPreview(!!managed); setLibraryMessage("");
       if (!managed) onCurrentProjectChange?.(next);
+      if (!managed) { setNotesProject(next); setNoteDrafts([]); }
       setMessage(`Saved “${next.metadata.title}” with ${next.workspace.entries.length} documents.`);
     } catch (error) { setMessage(`Project save failed: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
+  const commitNotes = async (change: (saved: Math3DProject) => Math3DProject, success: string, syncWorkspace = false): Promise<boolean> => {
+    if (busy) return false;
+    setBusy(true);
+    try {
+      const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
+      if (!raw) throw new Error("Save a named Project first.");
+      const saved = parseMath3DProject(raw);
+      if (!parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)).entries.some((entry) => entry.id === saved.identity.id))
+        throw new Error("Save a named Project first.");
+      const workspace = syncWorkspace ? capture() : null;
+      if (workspace) verifyMixedWorkspaceReplay(workspace);
+      const base = workspace ? replaceMath3DProjectWorkspace(saved, mergeProjectLiveWorkspace(saved.workspace, workspace)) : saved;
+      const next = change(base);
+      const previous = await loadProjectResources(saved);
+      const resources = workspace ? collectResources(next, previous) : captureProjectResources(next, (item) => previous.bytes(item), true);
+      setLibrary(await commitProjectResources(next, resources, () => saveLibraryProject(localStorage, next, Date.now(), undefined,
+        { expectedBytes: serializeMath3DProject(saved) })));
+      resourceSession.current = resources; resourceSessionId.current = next.identity.id;
+      display(next, false); setNotesProject(next); if (workspace) setNotesWorkspace(workspace); setNotesMessage(success);
+      return true;
+    } catch (error) { setNotesMessage(`Note save failed: ${(error as Error).message}`); return false; }
+    finally { setBusy(false); }
+  };
+  const saveNoteDrafts = () => {
+    const drafts = [...noteDrafts];
+    if (!drafts.length) return;
+    void commitNotes((saved) => bindProjectNoteDrafts(saved, drafts), `Saved ${drafts.length} Note${drafts.length === 1 ? "" : "s"} to the Project.`, true)
+      .then((saved) => { if (saved) setNoteDrafts((current) => current.filter((item) => !drafts.some((draft) => draft.id === item.id))); });
+  };
+  const saveEditedNote = (note: ProjectNote, noteTitle: string, body: string): Promise<boolean> =>
+    commitNotes((saved) => {
+      const current = saved.notes?.find((item) => item.identity.id === note.identity.id);
+      if (!current || current.identity.revision !== note.identity.revision) throw new Error("Note changed. Reopen the Project before editing it.");
+      return upsertMath3DProjectNote(saved, updateProjectNote(current, { title: noteTitle.trim(), body }, Date.now()));
+    }, `Saved “${noteTitle.trim()}”.`);
   const saveActiveWorkbook = async () => {
     if (busy || preview || managed || !project) return;
     setBusy(true);
@@ -357,6 +419,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     if (!preview && canNavigateDocument?.(id, module)) { onNavigateDocument?.(id, module); onOpenChange(false); }
   };
   return <div style={{ position: "fixed", right: 14, top: 90, zIndex: 2501, fontSize: 13 }}>
+    <button type="button" data-testid="notes-toggle" aria-label="Open Notes" aria-expanded={notesOpen} onClick={() => {
+      if (notesOpen) { setNotesOpen(false); return; }
+      onOpenChange(false); refreshNotes(); setNotesOpen(true);
+    }} style={{ position: "fixed", right: 14, bottom: 60, zIndex: 2502, border: "1px solid #64748b", borderRadius: 8, padding: "7px 10px", background: "#f8fafc", color: "#0f172a", fontWeight: 700 }}>Notes{noteDrafts.length ? ` (${noteDrafts.length})` : ""}</button>
+    {notesOpen && <ProjectNotesPanel project={notesProject} workspace={notesWorkspace} drafts={noteDrafts} busy={busy} message={notesMessage}
+      onClose={() => setNotesOpen(false)} onOpenProjects={() => { setNotesOpen(false); onOpenChange(true); }} onRefresh={refreshNotes}
+      onCapture={captureNote} onUpdateDraft={(id, patch) => setNoteDrafts((current) => current.map((draft) => draft.id === id ? { ...draft, ...patch } : draft))}
+      onDiscardDraft={(id) => setNoteDrafts((current) => current.filter((draft) => draft.id !== id))}
+      onSaveDrafts={saveNoteDrafts} onSaveNote={saveEditedNote} />}
     {open && <aside id="project-explorer-panel" data-testid="project-explorer-panel" aria-label="Project explorer"
       style={{ position: "absolute", right: 0, top: 0, width: 420, boxSizing: "border-box", maxWidth: "calc(100vw - 28px)", maxHeight: "min(70vh, 650px)", overflow: "auto", padding: 14,
         background: "#fff", color: "#0f172a", border: "1px solid #94a3b8", borderRadius: 10, boxShadow: "0 10px 30px #0f172a30" }}>
