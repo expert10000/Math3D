@@ -15,7 +15,7 @@ Math3D already has Workbooks with Define, Compute, Visualize and Explain stages;
 
 | Commit | Scope | Acceptance |
 | --- | --- | --- |
-| NOTE01 `feat(notebook): define reproducible project reference contract` | Add a versioned Workbook reference to a Project document/result, with project ID, target ID and source generation; strict normalization and current/stale/missing resolution. Keep it in the existing Workbook package. | A project edit makes the reference stale, a missing target stays unresolved, a different project cannot satisfy the reference, and no copied source/result payload enters the cell. |
+| NOTE01 `feat(notebook): define reproducible project reference contract` | Add a versioned Workbook reference to a Project document/result, with project ID, target ID, source generation and exact result hash; strict normalization and current/stale/missing resolution. Keep it in the existing Workbook package. | A project edit makes the reference stale, a missing or substituted target stays unresolved, a different project cannot satisfy the reference, and no copied source/result payload enters the cell. |
 | NOTE02 `feat(notebook): add linked document and result cells to Workbook` | Add a reference picker and readable cards in the existing Workbook UI. Select from the active named project or a verified saved project; show the resolved document/result and navigation. | Graph, Curve, Surface, Mesh and Analysis references survive Workbook save/reopen; renamed display titles do not change targets; unsupported previews remain clearly disabled. |
 | NOTE03 `feat(notebook): compose prose equations tables and figures` | Reuse text/formula/view blocks, add structured table and figure cells, and render Markdown and equations without executing document content. | A Catenoid Investigation can contain the requested narrative, formula, table and figure with accessible labels and bounded content. |
 | NOTE04 `feat(notebook): display provenance and source freshness` | Inspect project relations, source generations, result authority and artifact availability for every linked cell. Keep historical evidence visible. | Source edits mark the right cells stale; missing sidecars cannot appear current; report views include revision, method, engine and warnings. |
@@ -24,6 +24,8 @@ Math3D already has Workbooks with Define, Compute, Visualize and Explain stages;
 | NOTE07 `feat(notebook): add scientific investigation starters` | Offer a Catenoid Investigation and other bounded investigations as Workbook templates that refer to normal Project documents/results. | Each instance gets fresh identities; no result or proof is invented; unsupported computation is an explicit next step. |
 
 ## Ownership and order
+
+NOTE01 now provides the versioned reference and source-freshness inspection in `@math3d/workbook`, with a serialization and source-edit contract test. It does not yet add a reference picker or report cell to the UI; those are NOTE02–NOTE04.
 
 NOTE01 is a small contract addition to `packages/workbook`. NOTE02–NOTE04 make that contract useful before adding rerun or export promises. Projects remains the authority for identity, provenance and resources; its separate workspace can continue without a parallel Project schema change here. The existing Workbook editor and exports remain the UI and migration base. A new top-level notebook mode is unnecessary until the linked-cell workflow is proven.
 

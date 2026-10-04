@@ -6,6 +6,7 @@ import type {
   SurfaceId,
   SurfaceType,
 } from "@math3d/core";
+import type { NotebookReference } from "./notebookReferences";
 
 export type WorkbookStageId = "define" | "compute" | "visualize" | "explain";
 export type WorkbookBlockType =
@@ -309,6 +310,7 @@ export type WorkbookBlock = {
   outputs?: WorkbookPort[];
   text?: string;
   formula?: string;
+  notebookReference?: NotebookReference;
   params?: WorkbookParamState;
   visualize?: {
     live: boolean;
