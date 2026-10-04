@@ -3,6 +3,7 @@ import { createExecutionService, createInProcessScientificJobService, createScie
 import { CURVE_PERFORMANCE_BUDGETS, type CurveComputationArtifact, type CurveWorkerProgress, type CurveWorkerRequest } from "./curveComputation";
 import { CurveWorkerCoordinator } from "./curveWorkerCoordinator";
 import { CurveAnalysisKernelBridge } from "./curveAnalysisKernelBridge";
+import { observeBrokerJob, recordScientificJobEvent, registerBrokerDiscovery } from "../features/computeCenter/scientificJobTelemetry";
 
 export const CURVE_SCIENTIFIC_OPERATION = "curve.analyze";
 type Pending = { request: CurveWorkerRequest; onProgress?: (progress: CurveWorkerProgress) => void; artifact?: CurveComputationArtifact; result?: AnalysisResultEnvelope };
@@ -31,6 +32,7 @@ export class CurveScientificJob {
       resolveSource,
       adapters: [{ operationType: CURVE_SCIENTIFIC_OPERATION, execute: (input, context) => this.#execute(input.jobId, input.source, context) }],
     });
+    this.#service.subscribe(recordScientificJobEvent);
     this.#broker = createScientificExecutionBroker({
       resolveSource,
       backends: [{
@@ -41,6 +43,7 @@ export class CurveScientificJob {
       }],
     });
     this.#execution = createExecutionService(this.#broker);
+    registerBrokerDiscovery("curve", () => this.#broker.discoverCapabilities());
   }
 
   capabilities() { return this.#broker.discoverCapabilities(); }
@@ -61,7 +64,7 @@ export class CurveScientificJob {
       operation: { type: CURVE_SCIENTIFIC_OPERATION, payload: { operation: request.operation, curveId: request.curveId, curveRevision: request.curveRevision, workload: request.workload, targetCount: request.targetCount, tolerance: request.tolerance } },
       limits: { deadlineAt: Date.now() + budget.timeoutMs + 1_000, maxInputBytes: 64 * 1024, maxOutputBytes: 64 * 1024, maxMemoryBytes: Math.max(16 * 1024 * 1024, budget.maximumTransferBytes * 2), maxWorkUnits: 100_000_000 },
     });
-    const promise = this.#execution.submit(job).then((broker): CurveScientificOutcome => ({ artifact: pending.artifact ?? null, result: pending.result ?? null, broker })).finally(() => {
+    const promise = observeBrokerJob(jobId, CURVE_SCIENTIFIC_OPERATION, this.#execution.submit(job)).then((broker): CurveScientificOutcome => ({ artifact: pending.artifact ?? null, result: pending.result ?? null, broker })).finally(() => {
       this.#pending.delete(jobId);
       this.#workerHandles.delete(jobId);
     });

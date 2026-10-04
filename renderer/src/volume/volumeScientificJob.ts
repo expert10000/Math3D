@@ -3,6 +3,7 @@ import { createExecutionService, createInMemoryM3DResourceStore, createInProcess
 import { createVolumeMemoryPlan, VOLUME_MEMORY_LIMITS, type VolumeJobArtifact, type VolumeJobProgress, type VolumeJobRequest, type VolumeJobLifecycle } from "./computation";
 import { VolumeWorkerCoordinator, type VolumeWorkerHandle } from "./workerCoordinator";
 import type { VolumeDocumentAdapter } from "./volumeDocumentAdapter";
+import { observeBrokerJob, recordScientificJobEvent, registerBrokerDiscovery } from "../features/computeCenter/scientificJobTelemetry";
 
 export const VOLUME_ISOSURFACE_OPERATION = "volume.contour";
 type Pending = { request: VolumeJobRequest; source: ScientificSourceGeneration; onProgress?: (progress: VolumeJobProgress) => void; onLifecycle?: (lifecycle: VolumeJobLifecycle) => void; artifact?: VolumeJobArtifact };
@@ -32,6 +33,7 @@ export class VolumeIsosurfaceScientificJob {
       resolveSource,
       adapters: [{ operationType: VOLUME_ISOSURFACE_OPERATION, execute: (input, context) => this.#execute(input.jobId, context) }],
     });
+    this.#service.subscribe(recordScientificJobEvent);
     this.#broker = createScientificExecutionBroker({
       resolveSource,
       backends: [{
@@ -42,6 +44,7 @@ export class VolumeIsosurfaceScientificJob {
       }],
     });
     this.#execution = createExecutionService(this.#broker);
+    registerBrokerDiscovery("volume", () => this.#broker.discoverCapabilities());
   }
   capabilities() { return this.#broker.discoverCapabilities(); }
   executionCapabilities() { return this.#execution.discoverCapabilities(); }
@@ -68,7 +71,7 @@ export class VolumeIsosurfaceScientificJob {
       limits: { deadlineAt: Date.now() + VOLUME_MEMORY_LIMITS.defaultTimeoutMs + 1_000, maxInputBytes: 64 * 1024, maxOutputBytes: 64 * 1024,
         maxMemoryBytes: Math.max(16 * 1024 * 1024, plan.peakWorkingSetBytes), maxWorkUnits: 100_000_000 },
     });
-    const promise = this.#execution.submit(job).then((broker): VolumeScientificOutcome => {
+    const promise = observeBrokerJob(jobId, VOLUME_ISOSURFACE_OPERATION, this.#execution.submit(job)).then((broker): VolumeScientificOutcome => {
       if (!broker.ok) {
         this.#resources.releaseOwner(jobId);
         this.#resourceOwners.delete(jobId);

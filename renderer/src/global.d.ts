@@ -654,6 +654,7 @@ declare global {
         rendererPid?: number;
         workingSetBytes?: number;
         workingSetGb?: number;
+        cpuPercent?: number;
         warnThresholdBytes?: number;
         reloadThresholdBytes?: number;
         emergencyThresholdBytes?: number;

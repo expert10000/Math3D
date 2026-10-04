@@ -12,6 +12,7 @@ import type { MeshAnalysisMeshIdentity } from "./analysisResultStore";
 import type { SurfaceMeshData } from "./surfaceMesh";
 import type { MeshAnalysisWorkerMessage, MeshAnalysisWorkerRequest } from "../workers/meshAnalysisWorkerTypes";
 import type { MeshAnalysisKernelBridge } from "./meshAnalysisKernelBridge";
+import { observeBrokerJob, recordScientificJobEvent, registerBrokerDiscovery } from "../features/computeCenter/scientificJobTelemetry";
 
 export const MESH_DIFFERENTIAL_OPERATION = "mesh.analyze.differential";
 const BACKEND = "mesh-analysis-worker";
@@ -61,6 +62,7 @@ export class MeshDifferentialScientificJob {
       resolveSource,
       adapters: [{ operationType: MESH_DIFFERENTIAL_OPERATION, execute: (input, context) => this.#execute(input.jobId, input.source, context) }],
     });
+    this.#service.subscribe(recordScientificJobEvent);
     this.#broker = createScientificExecutionBroker({
       resolveSource,
       backends: [...additionalBackends, {
@@ -71,6 +73,7 @@ export class MeshDifferentialScientificJob {
       }],
     });
     this.#execution = createExecutionService(this.#broker);
+    registerBrokerDiscovery("mesh", () => this.#broker.discoverCapabilities());
   }
 
   async capabilities() { return this.#broker.discoverCapabilities(); }
@@ -100,7 +103,7 @@ export class MeshDifferentialScientificJob {
       limits: options.limits ?? limitsFor(mesh),
     });
     try {
-      const broker = await this.#execution.submit(job);
+      const broker = await observeBrokerJob(jobId, MESH_DIFFERENTIAL_OPERATION, this.#execution.submit(job));
       this.#outcomes.set(jobId, broker);
       if (this.#outcomes.size > 24) this.#outcomes.delete(this.#outcomes.keys().next().value!);
       if (!broker.ok) {

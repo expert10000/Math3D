@@ -511,12 +511,14 @@ const getRendererMemorySnapshot = (win: BrowserWindow) => {
       error: "Renderer process memory is unavailable.",
     };
   }
+  const cpuPercent = Number(app.getAppMetrics().find((entry) => entry.pid === workingSet.pid)?.cpu?.percentCPUUsage);
   return {
     ok: true,
     sampledAt: Date.now(),
     rendererPid: workingSet.pid,
     workingSetBytes: workingSet.bytes,
     workingSetGb: formatGb(workingSet.bytes),
+    cpuPercent: Number.isFinite(cpuPercent) && cpuPercent >= 0 ? cpuPercent : undefined,
     warnThresholdBytes: rendererMemoryWarnBytes,
     reloadThresholdBytes: rendererMemoryReloadBytes,
     emergencyThresholdBytes: rendererMemoryEmergencyBytes,

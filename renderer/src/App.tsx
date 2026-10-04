@@ -268,6 +268,7 @@ import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
 import OctaveLabPanel from "./features/octaveLab/OctaveLabPanel";
 import SageSymbolicPanel from "./features/sageLab/SageSymbolicPanel";
 import ComputeEngineManagerPanel from "./features/computeEngines/ComputeEngineManagerPanel";
+import ComputeCenterPanel from "./features/computeCenter/ComputeCenterPanel";
 import { useResponsiveLayout } from "./hooks/useResponsiveLayout";
 
 import { ParamSurfaceViewer, wrapFlagsFor, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
@@ -42850,6 +42851,7 @@ const App: React.FC = () => {
   const [commandPaletteQuery, setCommandPaletteQuery] = useState("");
   const [commandPaletteIndex, setCommandPaletteIndex] = useState(0);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [computeCenterOpen, setComputeCenterOpen] = useState(false);
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
@@ -71896,6 +71898,12 @@ case "mobius":
         run: () => handleMenuCommand("view:backend-services-panel"),
       },
       {
+        id: "view:compute-center",
+        title: "Open Compute Center",
+        keywords: "compute workers broker jobs resources python vtk cgal sage",
+        run: () => setComputeCenterOpen(true),
+      },
+      {
         id: "settings:compute-engines",
         title: "Compute Engines settings",
         keywords: "settings preferences compute engines docker sage octave install start stop logs diagnostics",
@@ -79726,6 +79734,15 @@ case "mobius":
                     )}
                   </div>
                   <div style={topNavSegmentStyle}>
+                    <button
+                      type="button"
+                      data-testid="top-compute-center-button"
+                      onClick={() => setComputeCenterOpen(true)}
+                      title="Compute Center"
+                      style={topNavButtonStyle(computeCenterOpen)}
+                    >
+                      Compute
+                    </button>
                     <button
                       type="button"
                       onClick={() => setCommandPaletteOpen(true)}
@@ -110506,6 +110523,7 @@ case "mobius":
           </div>
         </div>
       )}
+      {computeCenterOpen && <ComputeCenterPanel onClose={() => setComputeCenterOpen(false)} onManageEngines={() => { setComputeCenterOpen(false); setPreferencesOpen(true); }} />}
       {preferencesOpen && (
         <div
           style={{

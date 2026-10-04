@@ -5,6 +5,7 @@ import { CurveAnalysisKernelBridge } from "./curveAnalysisKernelBridge";
 import { CurveScientificJob, CURVE_SCIENTIFIC_OPERATION } from "./curveScientificJob";
 import { executeCurveWorkerRequest, type CurveWorkerInbound, type CurveWorkerOutbound } from "./curveComputation";
 import { CurveWorkerCoordinator, type CurveWorkerLike } from "./curveWorkerCoordinator";
+import { discoverScientificBackends, getComputeJobs } from "../features/computeCenter/scientificJobTelemetry";
 
 class InlineWorker implements CurveWorkerLike {
   readonly listeners = new Set<(event: MessageEvent<CurveWorkerOutbound>) => void>();
@@ -41,14 +42,22 @@ describe("GK12 Curve scientific job", () => {
     const coordinator = new CurveWorkerCoordinator(() => worker, undefined, () => 1);
     const jobs = new CurveScientificJob(bridge, coordinator);
     expect((await jobs.capabilities()).some((backend) => backend.operations.some((operation) => operation.operationType === CURVE_SCIENTIFIC_OPERATION))).toBe(true);
+    expect((await discoverScientificBackends()).some((backend) => backend.backendId === "curve-worker" && backend.availability === "available")).toBe(true);
     expect((await jobs.executionCapabilities()).find((capability) => capability.operation.id === CURVE_SCIENTIFIC_OPERATION)?.availableBackends.map((backend) => backend.backendId)).toEqual(["curve-worker"]);
     const request = coordinator.createRequest({ definition, operation: "sampling", positions: new Float64Array([0, 0, 0, 1, 1, 0, 2, 0, 0]), targetCount: 1_000, workload: "1k" });
     const progress: string[] = [];
-    const first = await jobs.submit(request, (value) => progress.push(value.phase)).promise;
+    const telemetryProgress: number[] = [];
+    const first = await jobs.submit(request, (value) => {
+      progress.push(value.phase);
+      const fraction = getComputeJobs().find((job) => job.jobId === request.requestId)?.progress;
+      if (fraction !== null && fraction !== undefined) telemetryProgress.push(fraction);
+    }).promise;
     expect(first.broker.ok).toBe(true);
     expect(first.artifact?.state).toBe("ready");
     expect(first.result?.status).toBe("numerical");
     expect(progress).toContain("coarse preview");
+    expect(telemetryProgress.some((fraction) => fraction > 0 && fraction < 1)).toBe(true);
+    expect(getComputeJobs().find((job) => job.jobId === request.requestId)).toMatchObject({ status: "complete", progress: 1, backendId: "curve-worker" });
     expect(bridge.artifacts().resolve(first.result!.artifacts[0], adapter.sourceGeneration()).ok).toBe(true);
     const cached = await jobs.submit({ ...request, requestId: `${request.requestId}:cached` }).promise;
     expect(cached.broker.ok).toBe(true);
@@ -71,6 +80,7 @@ describe("GK12 Curve scientific job", () => {
     const outcome = await handle.promise;
     expect(outcome.broker.ok).toBe(false);
     if (!outcome.broker.ok) expect(outcome.broker.code).toBe("cancelled");
+    expect(getComputeJobs().find((job) => job.jobId === request.requestId)?.status).toBe("cancelled");
     expect(bridge.results()).toEqual([]);
     jobs.dispose();
   });
