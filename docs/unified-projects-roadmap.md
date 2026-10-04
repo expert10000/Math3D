@@ -811,3 +811,10 @@ to their recorded counterparts. Device testing found and fixed cross-project edi
 transition guards; host visual verification also fixed selection of the reopened
 Surface in the inspector. Physical revolution testing is not claimed: the four
 refresh adapters have model parity, with the two extrusion paths exercised natively.
+
+Desktop preview follow-up (October 4): fixed blank saved-source drawings caused
+by unstable optional Curve overlays repeatedly rebuilding WebGL contexts. Curve
+cleanup now releases its context, the saved-source editor pauses the covered
+module workspace, and its camera fits the document bounds. Regression checks
+cover stable Curve canvases and visible saved Curve/Surface/Geometry/Topology
+drawings in Electron and both browser locales, including transfer and restart.

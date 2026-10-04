@@ -81565,7 +81565,7 @@ case "mobius":
             : null),
         }}
       >
-        {activeGraph2DTarget ? <PromotedDocumentWorkspace key={`${activeGraph2DTarget.document.identity.id}/${activeGraph2DTarget.document.identity.revision}`}
+        {additionalActiveId ? null : activeGraph2DTarget ? <PromotedDocumentWorkspace key={`${activeGraph2DTarget.document.identity.id}/${activeGraph2DTarget.document.identity.revision}`}
           promotion={activeGraph2DTarget} source={graph2dDocument}
           onEdit={acceptGraph2DPromotion} onClose={() => setActiveGraph2DTargetId(null)}
           onRegenerate={(action) => regenerateGraph2DTarget(activeGraph2DTarget.document.identity.id, action)}

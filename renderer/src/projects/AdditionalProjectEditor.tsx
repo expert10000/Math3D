@@ -1,12 +1,20 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { GeometryViewer } from "../components/GeometryViewer";
 import type { AdditionalProjectSession } from "./additionalProjectSession";
 
 export const AdditionalProjectEditor = ({ session, onChange, onClose }: { session: AdditionalProjectSession; onChange: () => void; onClose: () => void }) => {
   const [version, setVersion] = useState(0), [draft, setDraft] = useState(() => JSON.stringify(session.document().source, null, 2)), [error, setError] = useState<string | null>(null);
   const document = session.document(), history = session.history();
-  let view: ReturnType<typeof session.view> | null = null, viewError: string | null = null;
-  try { view = session.view(); } catch (failure) { viewError = (failure as Error).message; }
+  const { view, viewError } = useMemo(() => {
+    try { return { view: session.view(), viewError: null }; }
+    catch (failure) { return { view: null, viewError: (failure as Error).message }; }
+  }, [session, document.identity.revision, document.identity.structuralHash]);
+  const cameraFitCommand = useMemo(() => {
+    if (!view?.bounds) return null;
+    const { min, max } = view.bounds;
+    return { token: version + 1, center: { x: (min[0] + max[0]) / 2, y: (min[1] + max[1]) / 2, z: (min[2] + max[2]) / 2 },
+      radius: Math.max(0.01, Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2) };
+  }, [view, version]);
   const action = (fn: () => void) => { try { fn(); setDraft(JSON.stringify(session.document().source, null, 2)); setError(null); setVersion((v) => v + 1); onChange(); } catch (failure) { setError((failure as Error).message); } };
   return <section data-testid="project-source-editor" data-document-id={document.identity.id} style={{ position: "fixed", inset: "96px 0 0", zIndex: 2450, background: "#f8fafc", color: "#0f172a", display: "flex", flexDirection: "column", font: "13px system-ui", overflow: "auto" }}>
     <div style={{ padding: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -24,6 +32,6 @@ export const AdditionalProjectEditor = ({ session, onChange, onClose }: { sessio
     {error && <div role="alert" style={{ padding: 10 }}>{error}</div>}
     {viewError && <div role="alert" style={{ padding: 10 }}>Saved dependency unavailable: {viewError}</div>}
     {view && <><div data-testid="project-source-measurement" style={{ padding: "0 10px 8px", overflowWrap: "anywhere" }}>{view.qualification} · {view.sampleCount} sampled points · bounds {JSON.stringify(view.bounds)}</div>
-      <div style={{ flex: 1, minHeight: 200, position: "relative" }}><GeometryViewer key={version} scene={view.scene} meshOverrides={view.meshes} /></div></>}
+      <div style={{ flex: 1, minHeight: 200, position: "relative" }}><GeometryViewer key={version} scene={view.scene} meshOverrides={view.meshes} cameraFitCommand={cameraFitCommand} /></div></>}
   </section>;
 };

@@ -45,6 +45,8 @@ export type CurveViewerProps = {
 const TANGENT_COLOR = new THREE.Color(0x0ea5e9);
 const NORMAL_COLOR = new THREE.Color(0x22c55e);
 const BINORMAL_COLOR = new THREE.Color(0xf97316);
+// Keep omitted overlays stable when the viewer updates its own camera state.
+const EMPTY_OVERLAY: never[] = [];
 
 const vecFrom = (value: CurveViewerVec3) => new THREE.Vector3(value.x, value.y, value.z);
 
@@ -79,7 +81,7 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
   samples,
   dimension,
   closed = false,
-  frameGlyphs = [],
+  frameGlyphs: frameGlyphsProp = EMPTY_OVERLAY,
   probeGlyph = null,
   showTangent = true,
   showNormal = true,
@@ -90,18 +92,29 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
   showSamples = false,
   showAxes = true,
   showGrid = true,
-  curvatureComb = [],
-  evolutePoints = [],
+  curvatureComb: curvatureCombProp = EMPTY_OVERLAY,
+  evolutePoints: evolutePointsProp = EMPTY_OVERLAY,
   osculatingCircle = null,
-  evidencePlanes = [],
-  controlPoints = [],
-  constructionLevels = [],
-  knotPoints = [],
-  weights = [],
-  analysisMarkers = [],
+  evidencePlanes: evidencePlanesProp = EMPTY_OVERLAY,
+  controlPoints: controlPointsProp = EMPTY_OVERLAY,
+  constructionLevels: constructionLevelsProp = EMPTY_OVERLAY,
+  knotPoints: knotPointsProp = EMPTY_OVERLAY,
+  weights: weightsProp = EMPTY_OVERLAY,
+  analysisMarkers: analysisMarkersProp = EMPTY_OVERLAY,
   tubePreview = null,
   onSelectSample,
 }) => {
+  const frameGlyphs = frameGlyphsProp.length ? frameGlyphsProp : EMPTY_OVERLAY;
+  const curvatureComb = curvatureCombProp.length ? curvatureCombProp : EMPTY_OVERLAY;
+  const evolutePoints = evolutePointsProp.length ? evolutePointsProp : EMPTY_OVERLAY;
+  const evidencePlanes = evidencePlanesProp.length ? evidencePlanesProp : EMPTY_OVERLAY;
+  const controlPoints = controlPointsProp.length ? controlPointsProp : EMPTY_OVERLAY;
+  const constructionLevels = constructionLevelsProp.length ? constructionLevelsProp : EMPTY_OVERLAY;
+  const knotPoints = knotPointsProp.length ? knotPointsProp : EMPTY_OVERLAY;
+  const weights = weightsProp.length ? weightsProp : EMPTY_OVERLAY;
+  const analysisMarkers = analysisMarkersProp.length ? analysisMarkersProp : EMPTY_OVERLAY;
+  const onSelectSampleRef = useRef(onSelectSample);
+  useEffect(() => { onSelectSampleRef.current = onSelectSample; }, [onSelectSample]);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
@@ -411,7 +424,7 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
       onDoubleTap: refitCamera,
     });
     const handleClick = (event: MouseEvent) => {
-      if (!onSelectSample || !curvePoints.length) return;
+      if (!onSelectSampleRef.current || !curvePoints.length) return;
       const bounds = renderer.domElement.getBoundingClientRect();
       const px = event.clientX - bounds.left;
       const py = event.clientY - bounds.top;
@@ -424,7 +437,7 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
         const distance = Math.hypot(x - px, y - py);
         if (distance < bestDistance) { bestDistance = distance; bestIndex = index; }
       });
-      if (bestIndex >= 0 && bestDistance <= 24) onSelectSample(bestIndex);
+      if (bestIndex >= 0 && bestDistance <= 24) onSelectSampleRef.current(bestIndex);
     };
     renderer.domElement.addEventListener("click", handleClick);
 
@@ -457,6 +470,7 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
       controls.dispose();
       disposeSceneObjects(scene);
       renderer.dispose();
+      renderer.forceContextLoss();
       renderer.domElement.remove();
     };
   }, [
@@ -483,8 +497,8 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
     knotPoints,
     weights,
     analysisMarkers,
-    tubePreview,
-    onSelectSample,
+    tubePreview?.radius,
+    tubePreview?.color,
   ]);
 
   return (
