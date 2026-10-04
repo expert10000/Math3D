@@ -19,6 +19,7 @@ import { captureProjectResources, exportProjectPackage, MAX_PROJECT_PACKAGE_BYTE
 import { commitProjectResources, loadProjectResources } from "../projects/projectResourceArchive";
 import { canonicalJsonStringify } from "@math3d/core";
 import { pointTableStore, installPortablePointTables } from "../graph2d/pointTableStore";
+import { prepareProjectExampleCollection, importProjectExamples, SAMSUNG_EXAMPLE_COUNT } from "../projects/projectExampleCollection";
 
 export { PROJECT_STORAGE_KEY } from "../projects/projectLibrary";
 const ProjectThumbnail: React.FC<{ src: string | null }> = ({ src }) => {
@@ -48,6 +49,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
   const [thumbnail, setThumbnail] = useState<{ id: string; data: string } | null>(null);
   const [library, setLibrary] = useState<ProjectLibrary>(parseProjectLibrary(null));
   const [libraryMessage, setLibraryMessage] = useState("");
+  const [exampleMessage, setExampleMessage] = useState("");
   const [query, setQuery] = useState("");
   const [preview, setPreview] = useState(false);
   const [managed, setManaged] = useState<ProjectCommandAdapter | null>(null);
@@ -208,6 +210,20 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
       setIncoming(prepared); setMessage("Project validated. Review compatibility before importing or opening.");
     } catch (error) { if (sequence === importSequence.current) setMessage(`Project import rejected: ${(error as Error).message}`); }
   };
+  const importSamsungExamples = async () => {
+    if (busy) return; setBusy(true); setExampleMessage("Validating Samsung project collection…");
+    try {
+      const { default: raw } = await import("../projects/examples/samsung-projects.json?raw");
+      const examples = prepareProjectExampleCollection(raw);
+      const progress = await importProjectExamples(localStorage, examples, example => commitProjectResources(example.project, example.resources,
+        () => importLibraryProject(localStorage, example.project, Date.now(), { activate: false })),
+        progress => setExampleMessage(`Imported ${progress.imported}; kept ${progress.kept} existing; ${progress.remaining} remaining…`));
+      refreshLibrary(); setQuery("");
+      setExampleMessage(progress.error ? `Import stopped: ${progress.error}. Imported ${progress.imported}; kept ${progress.kept} existing; ${progress.remaining} remaining. Retry to continue.` :
+        `Imported ${progress.imported} Samsung projects; kept ${progress.kept} existing versions.${progress.previewOnly ? ` ${progress.previewOnly} imported project is available as a compatibility preview.` : ""} Choose Open on a saved project below.`);
+    } catch (failure) { setExampleMessage(`Samsung collection import failed: ${(failure as Error).message}`); }
+    finally { setBusy(false); }
+  };
   const importPreview = async (openWorkspace: boolean, candidate = incoming) => {
     if (!candidate || busy) return false;
     setBusy(true);
@@ -301,6 +317,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
       <button type="button" data-testid="project-restore-saved" disabled={busy || !!managed || !project || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={previewSavedOpen}>Open saved project</button>
       {preview && !managed && <p data-testid="project-open-guidance" style={{ marginBottom: 0 }}>Open saved project, then choose Open project in the compatibility preview to enable document buttons.</p>}
       </div>
+      <section aria-label="Example projects" style={{ marginTop: 10 }}>
+        <button type="button" data-testid="project-import-samsung-examples" disabled={busy} onClick={() => { void importSamsungExamples(); }}>Import Samsung projects ({SAMSUNG_EXAMPLE_COUNT})</button>
+        <small style={{ display: "block", marginTop: 4 }}>Included with the app. Existing versions are kept. Your current workspace stays open; unsupported documents remain compatibility previews.</small>
+        {exampleMessage && <p role="status" data-testid="project-example-import-message">{exampleMessage}</p>}
+      </section>
       {preview && !managed && <p>Previewing a saved project. Current workspace returns to your active editors; Manage saved project edits this saved copy.</p>}
       <label style={{ display: "grid", gap: 4, margin: "10px 0" }}>Project name
         <input data-testid="project-title" value={title} maxLength={160} disabled={(preview && !managed) || !project} onChange={(event) => setTitle(event.target.value)} />

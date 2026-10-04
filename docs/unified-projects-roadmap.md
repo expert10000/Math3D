@@ -858,3 +858,22 @@ and transitive stale-result tracking are covered by the project unit tests.
 historical results, independent package import, cold Electron restart and
 390-pixel layout. Desktop qualification is recorded here; this increment does
 not claim a new signed Samsung installation or physical iOS acceptance.
+
+### PRJ34 bundled desktop project collection — October 4
+
+Delivered: **Projects → Import Samsung projects (25)** imports the exported
+Samsung collection on a fresh desktop installation or source build. The offline
+collection is shipped with the renderer and loaded only when requested. Existing
+project identities, edited payloads, favorites and activity are kept; importing
+does not switch the current workspace. Repeated imports skip saved projects.
+Each project and its supplied resources commits transactionally, with a clear
+partial-failure report and safe retry. Capacity and collection validation happen
+before writing. Twenty-four projects qualify for opening; PRJ21 Mixed Preview
+retains its explicit compatibility limitations.
+
+The [collection notes](../renderer/src/projects/examples/README.md) describe its
+contents and import behavior. Unit checks cover all identities and sidecars,
+edited-project preservation, repeat import, corrupt input, capacity rejection
+and storage-failure retry. `tests/e2e/project-example-collection.spec.ts` verifies
+the import in a fresh offline Electron profile, normal Surface/Graph/mixed
+resource opening, preview-only rejection and library survival after restart.
