@@ -1,5 +1,6 @@
 import { advanceDocumentIdentity, canonicalJsonStringify, createDocumentIdentity, createStableDocumentId,
-  isDocumentIdentity, structuralHash, type CanonicalJsonValue, type DocumentIdentity } from "./documentIdentity";
+  isDocumentIdentity, isStableDocumentId, isStructuralHash, structuralHash,
+  type CanonicalJsonValue, type DocumentIdentity, type StableDocumentId, type StructuralHash } from "./documentIdentity";
 import { MAX_MIXED_WORKSPACE_BYTES, MIXED_WORKSPACE_FORMAT, normalizeMixedWorkspaceDocument,
   type MixedWorkspaceDocument } from "./mixedWorkspace";
 import { canonicalJsonByteLength } from "./scientificJobs";
@@ -7,7 +8,11 @@ import type { ValidationResult } from "./validation";
 
 export const MATH3D_PROJECT_FORMAT = "math3d.project" as const;
 export const MATH3D_PROJECT_SCHEMA_VERSION = 1 as const;
-export const MAX_MATH3D_PROJECT_BYTES = MAX_MIXED_WORKSPACE_BYTES + 32 * 1024;
+export const MAX_MATH3D_PROJECT_BYTES = MAX_MIXED_WORKSPACE_BYTES + 64 * 1024;
+export const MAX_PROJECT_WORKBOOK_BYTES = 8 * 1024 * 1024;
+export type ProjectWorkbookReference = Readonly<{
+  id: StableDocumentId; title: string; revision: number; checksum: StructuralHash; byteLength: number;
+}>;
 
 /** Named product container. The existing mixed workspace remains its sole content. */
 export type Math3DProject = Readonly<{
@@ -17,15 +22,23 @@ export type Math3DProject = Readonly<{
   metadata: Readonly<{ title: string; description?: string; tags?: readonly string[];
     documents?: Readonly<Record<string, Readonly<{ title?: string; archived?: boolean }>>> }>;
   workspace: MixedWorkspaceDocument;
+  workbooks?: readonly ProjectWorkbookReference[];
 }>;
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 const exact = (value: Record<string, unknown>, keys: readonly string[]) => Object.keys(value).sort().join("|") === [...keys].sort().join("|");
 const validTitle = (value: unknown): value is string => typeof value === "string" && value.trim() === value && value.length >= 1 && value.length <= 160;
+const projectContent = (workspace: MixedWorkspaceDocument, workbooks?: readonly ProjectWorkbookReference[]) =>
+  workbooks?.length ? { workspace, workbooks } : workspace;
+const validWorkbookReference = (value: unknown): value is ProjectWorkbookReference =>
+  record(value) && exact(value, ["id", "title", "revision", "checksum", "byteLength"]) &&
+  isStableDocumentId(value.id) && value.id.startsWith("math3d:workbook:") && validTitle(value.title) &&
+  Number.isSafeInteger(value.revision) && (value.revision as number) >= 1 && isStructuralHash(value.checksum) &&
+  Number.isSafeInteger(value.byteLength) && (value.byteLength as number) >= 1 && (value.byteLength as number) <= MAX_PROJECT_WORKBOOK_BYTES;
 
 export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DProject> => {
   try {
     if (canonicalJsonByteLength(value) > MAX_MATH3D_PROJECT_BYTES) return { ok: false, errors: ["Project exceeds its size limit."] };
-    if (!record(value) || !exact(value, ["format", "schemaVersion", "identity", "metadata", "workspace"]) ||
+    if (!record(value) || !exact(value, ["format", "schemaVersion", "identity", "metadata", "workspace", ...(value.workbooks === undefined ? [] : ["workbooks"])]) ||
       value.format !== MATH3D_PROJECT_FORMAT || value.schemaVersion !== MATH3D_PROJECT_SCHEMA_VERSION) {
       return { ok: false, errors: ["Invalid or unsupported Math3D project envelope."] };
     }
@@ -37,6 +50,11 @@ export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DP
       new Set(value.metadata.tags).size !== value.metadata.tags.length)) return { ok: false, errors: ["Project tags must be unique, with at most 16 tags of 1–40 characters."] };
     const workspace = normalizeMixedWorkspaceDocument(value.workspace);
     if (!workspace.ok) return { ok: false, errors: workspace.errors.map((error) => `Project workspace: ${error}`) };
+    if (value.workbooks !== undefined && (!Array.isArray(value.workbooks) || value.workbooks.length < 1 || value.workbooks.length > 64 ||
+      !value.workbooks.every(validWorkbookReference) ||
+      new Set(value.workbooks.map((item: ProjectWorkbookReference) => item.id)).size !== value.workbooks.length ||
+      value.workbooks.reduce((sum: number, item: ProjectWorkbookReference) => sum + item.byteLength, 0) > 64 * 1024 * 1024))
+      return { ok: false, errors: ["Invalid Project Workbook references."] };
     if (canonicalJsonByteLength(value.metadata) > 32 * 1024) return { ok: false, errors: ["Project metadata exceeds 32 KiB."] };
     if ("documents" in value.metadata) {
       const documents = value.metadata.documents, ids = new Set<string>(workspace.value.entries.map((entry) => entry.expected.id));
@@ -46,7 +64,8 @@ export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DP
         return { ok: false, errors: ["Invalid project document titles or archive flags."] };
       }
     }
-    if (structuralHash(workspace.value) !== value.identity.structuralHash) return { ok: false, errors: ["Project content hash does not match its workspace."] };
+    if (structuralHash(projectContent(workspace.value, value.workbooks as ProjectWorkbookReference[] | undefined)) !== value.identity.structuralHash)
+      return { ok: false, errors: ["Project content hash does not match its workspace and Workbooks."] };
     return { ok: true, value: JSON.parse(canonicalJsonStringify({ ...value, workspace: workspace.value })) as Math3DProject };
   } catch (error) { return { ok: false, errors: [String((error as Error).message ?? error)] }; }
 };
@@ -64,7 +83,15 @@ export const createMath3DProject = (workspace: MixedWorkspaceDocument, options: 
 /** Project revision describes all persisted workspace content, not a domain source generation. */
 export const replaceMath3DProjectWorkspace = (project: Math3DProject, workspace: MixedWorkspaceDocument): Math3DProject => {
   const current = requireProject(project);
-  return requireProject({ ...current, identity: advanceDocumentIdentity(current.identity, workspace), workspace });
+  return requireProject({ ...current, identity: advanceDocumentIdentity(current.identity, projectContent(workspace, current.workbooks)), workspace });
+};
+export const upsertMath3DProjectWorkbook = (project: Math3DProject, reference: ProjectWorkbookReference): Math3DProject => {
+  const current = requireProject(project);
+  if (!validWorkbookReference(reference)) throw new TypeError("Invalid Project Workbook reference.");
+  const workbooks = [...(current.workbooks ?? []).filter((item) => item.id !== reference.id), reference].sort((a, b) => a.id.localeCompare(b.id));
+  if (canonicalJsonStringify(workbooks) === canonicalJsonStringify(current.workbooks ?? [])) return current;
+  return requireProject({ ...current, workbooks,
+    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, workbooks)) });
 };
 export const updateMath3DProjectMetadata = (project: Math3DProject, metadata: Math3DProject["metadata"]): Math3DProject =>
   requireProject({ ...requireProject(project), metadata });

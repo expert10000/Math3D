@@ -97,6 +97,8 @@ export const previewProjectImport = (raw: string, options: ProjectCompatibilityO
   if (new TextEncoder().encode(raw).length > MAX_PROJECT_PACKAGE_BYTES) throw new TypeError("Project import exceeds its size limit.");
   const value = JSON.parse(raw);
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new TypeError("Unsupported project file.");
+  if (value.format === "math3d-project" || value.format === "math3d-bundle")
+    throw new TypeError("This is a standalone Workbook session. Import it from the Workbook controls, then use Save active Workbook to Project.");
   if (value.format === "math3d.project-package") {
     const { project, resources } = parseProjectPackage(raw);
     return { ...inspectProjectCompatibility(project, { ...options, resources }), resources, inputKind: "Project with verified source resources" };

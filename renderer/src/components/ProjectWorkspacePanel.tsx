@@ -3,6 +3,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   parseMixedWorkspaceDocument, updateMath3DProjectMetadata, replaceMath3DProjectWorkspace,
   deleteProjectDocument, duplicateProjectDocument, serializeMath3DProject, setProjectDocumentMetadata,
   instantiateMath3DProjectTemplate, type Math3DProjectTemplateId,
+  upsertMath3DProjectWorkbook,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { importLibraryProject, loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY,
@@ -20,6 +21,8 @@ import { commitProjectResources, loadProjectResources } from "../projects/projec
 import { canonicalJsonStringify } from "@math3d/core";
 import { pointTableStore, installPortablePointTables } from "../graph2d/pointTableStore";
 import { prepareProjectExampleCollection, importProjectExamples, SAMSUNG_EXAMPLE_COUNT } from "../projects/projectExampleCollection";
+import { prepareProjectWorkbook, readProjectWorkbook } from "../projects/projectWorkbookBinding";
+import type { Workbook } from "@math3d/workbook";
 
 export { PROJECT_STORAGE_KEY } from "../projects/projectLibrary";
 const ProjectThumbnail: React.FC<{ src: string | null }> = ({ src }) => {
@@ -31,6 +34,8 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCurrentProjectChange?: (project: Math3DProject) => void;
+  captureActiveWorkbook?: () => Workbook | null;
+  onOpenWorkbook?: (workbook: Workbook) => void;
   capture: () => MixedWorkspaceDocument;
   canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
@@ -38,7 +43,7 @@ type Props = {
   resourceReader?: ProjectResourceReader;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onCurrentProjectChange, capture, canNavigateDocument, onNavigateDocument, artifactAvailable, onRestoreWorkspace, resourceReader }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onCurrentProjectChange, captureActiveWorkbook, onOpenWorkbook, capture, canNavigateDocument, onNavigateDocument, artifactAvailable, onRestoreWorkspace, resourceReader }) => {
 
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
   const resourceSessionId = useRef<string | null>(null);
@@ -98,7 +103,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     catch (error) { setMessage(`Project unavailable: ${(error as Error).message}`); }
   };
   useEffect(() => { if (open) refresh(); }, [open]);
-  const collectResources = (next: Math3DProject, extra = resourceSession.current, allowMissing = false) => captureProjectResources(next, (item) => {
+  const collectResources = (next: Math3DProject, extra = resourceSession.current, allowMissing = false, workbook?: { id: string; bytes: Uint8Array }) => captureProjectResources(next, (item) => {
+    if (item.kind === "workbook-payload" && item.id === workbook?.id) return workbook.bytes;
     const live = resourceReader?.(item); if (live) return live;
     if (item.kind === "graph-point-table") { const rows = pointTableStore.resolve(item.reference as import("@math3d/core").Graph2DPointTableReference); if (rows) return new TextEncoder().encode(canonicalJsonStringify(rows)); }
     return extra?.bytes(item) ?? null;
@@ -120,6 +126,48 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       if (!managed) onCurrentProjectChange?.(next);
       setMessage(`Saved “${next.metadata.title}” with ${next.workspace.entries.length} documents.`);
     } catch (error) { setMessage(`Project save failed: ${(error as Error).message}`); }
+    finally { setBusy(false); }
+  };
+  const saveActiveWorkbook = async () => {
+    if (busy || preview || managed || !project) return;
+    setBusy(true);
+    try {
+      const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
+      if (!raw) throw new Error("Save a named Project before adding a Workbook.");
+      const saved = parseMath3DProject(raw);
+      if (saved.identity.id !== project.identity.id || !library.entries.some((entry) => entry.id === saved.identity.id))
+        throw new Error("Open and save this Project before adding a Workbook.");
+      const source = captureActiveWorkbook?.();
+      if (!source) throw new Error("Select a Workbook first.");
+      const base = liveProject();
+      const prepared = prepareProjectWorkbook(base, source, crypto.randomUUID());
+      const next = upsertMath3DProjectWorkbook(base, prepared.reference);
+      const previous = await loadProjectResources(saved);
+      const resources = collectResources(next, previous, false, { id: prepared.reference.id, bytes: prepared.bytes });
+      setLibrary(await commitProjectResources(next, resources, () => saveLibraryProject(localStorage, next, Date.now())));
+      resourceSession.current = resources; resourceSessionId.current = next.identity.id;
+      display(next, false);
+      if (prepared.adopted) onOpenWorkbook?.(prepared.workbook);
+      setMessage(prepared.adopted ? `Added “${prepared.workbook.title}” to this Project. The personal Workbook remains available.` :
+        `Saved “${prepared.workbook.title}” in this Project at revision ${prepared.reference.revision}.`);
+    } catch (error) { setMessage(`Workbook save failed: ${(error as Error).message}`); }
+    finally { setBusy(false); }
+  };
+  const openProjectWorkbook = async (id: string) => {
+    if (!project || busy) return;
+    setBusy(true);
+    try {
+      const reference = project.workbooks?.find((item) => item.id === id);
+      if (!reference) throw new Error("Workbook is not in this Project.");
+      const resources = resourceSessionId.current === project.identity.id && resourceSession.current
+        ? resourceSession.current : await loadProjectResources(project);
+      const bytes = resources.bytes({ kind: "workbook-payload", id });
+      if (!bytes) throw new Error("Workbook data is unavailable. Import a Project package with resources.");
+      const workbook = readProjectWorkbook(bytes, reference);
+      onOpenWorkbook?.(workbook);
+      setMessage(`Opened “${workbook.title}” from this Project.`);
+      onOpenChange(false);
+    } catch (error) { setMessage(`Workbook open failed: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
   const manageSaved = () => {
@@ -355,6 +403,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
         <input type="file" data-testid="project-import-file" disabled={busy} accept="application/json,.json" onChange={(event) => { void importFile(event.target.files?.[0]); event.target.value = ""; }} style={{ maxWidth: "100%" }} />
       </label>
       <p data-testid="project-message" role="status">{message}</p>
+      <section data-testid="project-workbooks" style={{ marginTop: 12 }}>
+        <strong>Workbooks ({project?.workbooks?.length ?? 0})</strong>
+        <div style={{ marginTop: 6 }}><button type="button" data-testid="project-save-active-workbook" disabled={busy || preview || !!managed || !project || !captureActiveWorkbook?.()} onClick={() => { void saveActiveWorkbook(); }}>Save active Workbook to Project</button></div>
+        {!project?.workbooks?.length && <small style={{ display: "block", marginTop: 5 }}>Save a named Project, then add the active Workbook here.</small>}
+        {project?.workbooks?.map((item) => <div key={item.id} style={{ marginTop: 5 }}>
+          <button type="button" data-testid={`project-open-workbook-${item.id}`} disabled={busy || !onOpenWorkbook} onClick={() => { void openProjectWorkbook(item.id); }}>Open {item.title}</button>
+          <small> · revision {item.revision}</small>
+        </div>)}
+      </section>
       {incoming && <div ref={compatibilityRef}><ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !busy} onCancel={() => { importSequence.current++; setIncoming(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div>}
       <ProjectTemplatesPanel onPreview={previewTemplate} />
       {project && <small data-testid="project-content-revision">{preview ? "Saved preview" : "Current workspace"} · project revision {project.identity.revision}</small>}

@@ -3,7 +3,7 @@ import type { CommandEnvelope } from "./commands";
 import { Graph2DPointTableStore } from "./graph2dPointSeries";
 import { GRAPH2D_COMMAND_TYPES } from "./graph2dCommands";
 import { MESH_COMMAND_TYPES } from "./meshCommands";
-import { parseMath3DProject, serializeMath3DProject, type Math3DProject } from "./math3dProject";
+import { parseMath3DProject, serializeMath3DProject, type Math3DProject, type ProjectWorkbookReference } from "./math3dProject";
 import { replayMixedWorkspaceDocument, type MixedWorkspaceDocument, type KernelWorkspaceDocument } from "./mixedWorkspace";
 import type { Graph2DDocument, Graph2DPointTableReference } from "./graph2dDocument";
 import type { MeshResourceReference } from "./meshDocument";
@@ -14,10 +14,10 @@ type ResourceHistory = { transactions: readonly { commands: readonly CommandEnve
 export type ProjectResourceContext = { resolveWorkspace?: (workspace: MixedWorkspaceDocument) => ReadonlyMap<string, KernelWorkspaceDocument>; volumePayloadRequired?: (document: VolumeDocument) => boolean };
 export const MAX_PROJECT_RESOURCE_BYTES = 64 * 1024 * 1024;
 export const MAX_PROJECT_PACKAGE_BYTES = 112 * 1024 * 1024;
-export type ProjectResourceKind = "mesh-buffers" | "graph-point-table" | "volume-payload";
+export type ProjectResourceKind = "mesh-buffers" | "graph-point-table" | "volume-payload" | "workbook-payload";
 export type ProjectResourceRequirement = {
   id: string; kind: ProjectResourceKind; checksum: string | null; encoding: string; shape: readonly number[];
-  owners: string[]; required: boolean; reference: MeshResourceReference | Graph2DPointTableReference | NonNullable<VolumeDocument["source"]["payload"]>;
+  owners: string[]; required: boolean; reference: MeshResourceReference | Graph2DPointTableReference | NonNullable<VolumeDocument["source"]["payload"]> | ProjectWorkbookReference;
 };
 export type ProjectResourceSidecar = Omit<ProjectResourceRequirement, "required" | "reference"> & { checksum: string; byteLength: number; data: string };
 const key = (item: { kind: string; id: string }) => `${item.kind}:${item.id}`;
@@ -67,6 +67,10 @@ export const projectResourceInventory = (project: Math3DProject, context: Projec
       }
     }
   }
+  for (const reference of project.workbooks ?? []) add(project.identity.id, {
+    id: reference.id, kind: "workbook-payload", checksum: reference.checksum,
+    encoding: "math3d.workbook.v1.json.utf8", shape: [reference.byteLength], reference, required: false,
+  });
   return [...inventory.values()].sort((a, b) => key(a).localeCompare(key(b)));
 };
 export const encodeProjectResourceBytes = (bytes: Uint8Array): string => {
@@ -96,6 +100,15 @@ export const verifyProjectResourceBytes = (item: ProjectResourceRequirement, byt
     if (!Array.isArray(rows) || !rows.every((row) => row && Object.keys(row).sort().join() === "id,x,y")) throw new TypeError("Point table rows contain unsupported fields.");
     const reference = store.publish(rows);
     if (canonicalJsonStringify(reference) !== canonicalJsonStringify(item.reference) || canonicalJsonStringify(rows) !== content) throw new TypeError("Point table shape or encoding does not match.");
+  } else if (item.kind === "workbook-payload") {
+    const reference = item.reference as ProjectWorkbookReference;
+    if (bytes.length !== reference.byteLength) throw new TypeError("Workbook payload length does not match its Project reference.");
+    const content = new TextDecoder("utf-8", { fatal: true }).decode(bytes), workbook = JSON.parse(content);
+    if (!workbook || typeof workbook !== "object" || Array.isArray(workbook) || workbook.id !== reference.id ||
+      workbook.title !== reference.title || !Array.isArray(workbook.stages) || workbook.stages.length !== 4 ||
+      workbook.stages.some((stage: unknown) => !stage || typeof stage !== "object" || !Array.isArray((stage as { blocks?: unknown }).blocks)) ||
+      canonicalJsonStringify(workbook) !== content)
+      throw new TypeError("Workbook payload is not a canonical Workbook for this Project reference.");
   } else {
     const reference = item.reference as NonNullable<VolumeDocument["source"]["payload"]>;
     if (!item.shape.every((value) => Number.isSafeInteger(value) && value > 0)) throw new TypeError("Volume dimensions and components must be positive integers.");
@@ -140,6 +153,8 @@ export const captureProjectResources = (project: Math3DProject, reader: ProjectR
 };
 export const exportProjectPackage = (project: Math3DProject, resources: VerifiedProjectResources, context: ProjectResourceContext = {}): string => {
   const checked = parseMath3DProject(serializeMath3DProject(project));
+  for (const workbook of checked.workbooks ?? []) if (!resources.bytes({ kind: "workbook-payload", id: workbook.id }))
+    throw new TypeError(`Workbook resource '${workbook.id}' is missing from this Project package.`);
   const sidecars = new VerifiedProjectResources(checked, resources.sidecars(), context).sidecars();
   const raw = JSON.stringify({ format: "math3d.project-package", schemaVersion: 1, project: checked, resources: sidecars });
   if (new TextEncoder().encode(raw).length > MAX_PROJECT_PACKAGE_BYTES) throw new TypeError("Project package exceeds its size limit.");
@@ -150,5 +165,8 @@ export const parseProjectPackage = (raw: string, context: ProjectResourceContext
   const value = JSON.parse(raw);
   if (!value || Object.keys(value).sort().join() !== ["format", "schemaVersion", "project", "resources"].sort().join() || value.format !== "math3d.project-package" || value.schemaVersion !== 1) throw new TypeError("Unsupported project package.");
   const project = parseMath3DProject(JSON.stringify(value.project));
-  return { project, resources: new VerifiedProjectResources(project, value.resources, context) };
+  const resources = new VerifiedProjectResources(project, value.resources, context);
+  for (const workbook of project.workbooks ?? []) if (!resources.bytes({ kind: "workbook-payload", id: workbook.id }))
+    throw new TypeError(`Workbook resource '${workbook.id}' is missing from this Project package.`);
+  return { project, resources };
 };

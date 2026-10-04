@@ -21,7 +21,7 @@ The target user journey is **explore → capture a Note on a selection/result �
 
 ## Integrated commit sequence
 
-`NOTE01` (`e6996c4`) and `NOTE02` (`b3ee6d6`) are complete. NTS01 provides the shared Note contract; orders 1–8 form the first usable Notes + Workbook milestone. Later rows extend the existing `NOTE03`–`NOTE07` plan without renumbering those commits.
+`NOTE01` (`e6996c4`) and `NOTE02` (`b3ee6d6`) are complete. NTS01 provides the shared Note contract. WB00 binds Workbooks to named Projects through a checksummed resource, while personal Workbook sessions retain their separate file format. Orders 1–8 form the first usable Notes + Workbook milestone. Later rows extend the existing `NOTE03`–`NOTE07` plan without renumbering those commits.
 
 | Order | Commit | Scope and acceptance |
 | --- | --- | --- |

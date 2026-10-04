@@ -63,6 +63,7 @@ describe("PRJ06 project transfer and compatibility", () => {
     expect([...storage.values]).toEqual(before); expect(storage.getItem(PROJECT_STORAGE_KEY)).toBe(bytes);
     const legacy = previewProjectImport(serializeMixedWorkspaceDocument(project.workspace));
     expect(legacy.inputKind).toContain("explicit adoption"); expect(legacy.project.workspace).toEqual(project.workspace);
+    expect(() => previewProjectImport(JSON.stringify({ format: "math3d-project", version: 2, payload: { workbooks: [] } }))).toThrow("standalone Workbook session");
   });
   it("retains imported analysis and relations when live sources change without rewriting current module replay", () => {
     const { project, graph } = fixture(), adapter = new Graph2DCommandAdapter(graph);

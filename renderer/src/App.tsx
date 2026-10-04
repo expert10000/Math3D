@@ -79309,6 +79309,16 @@ case "mobius":
         projectsOpen={projectsOpen}
         onProjectsOpenChange={setProjectsOpen}
         onCurrentProjectChange={(project) => { activeNotebookProjectRef.current = project; }}
+        captureActiveWorkbook={() => workbooks.find((workbook) => workbook.id === activeWorkbookId) ?? null}
+        onOpenWorkbook={(workbook) => {
+          setWorkbooks((current) => [workbook, ...current.filter((item) => item.id !== workbook.id)]);
+          setActiveWorkbookId(workbook.id);
+          setActiveStageId("define");
+          setMode("geometry");
+          setGeometryMode("workbook");
+          setGeometryWorkbookUiMode("full");
+          setRightPanelTab("workbook");
+        }}
         canNavigateDocument={(id, module) => restoredProjectRef.current?.graphs.has(id) || restoredProjectRef.current?.additional.has(id) || restoredProjectRef.current?.curves.has(id) || restoredProjectRef.current?.surfaces.has(id) || restoredProjectRef.current?.geometries.has(id) || restoredProjectRef.current?.topologies.has(id) || restoredProjectRef.current?.complexes.has(id) || restoredProjectRef.current?.volumes.has(id) || restoredProjectRef.current?.meshes.has(id) || graph2dPromotions.some((item) => item.document.identity.id === id) || ({
           geometry: geometryKernelAdapterRef.current?.document().identity.id,
           mesh: meshKernelDocument?.identity.id,
