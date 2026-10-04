@@ -36,6 +36,7 @@ test("PRJ30 delivers complete Surface packages and restores actual Samsung Graph
       await expect(ctx.page.getByLabel("z(u,v)", { exact: true })).toHaveValue("u*u-v*v+2");
       await ctx.page.getByTestId("project-editor-undo").click(); await expect(ctx.page.getByLabel("z(u,v)", { exact: true })).toHaveValue("u*u-v*v");
       await ctx.page.getByTestId("project-editor-redo").click(); await expect(ctx.page.getByLabel("z(u,v)", { exact: true })).toHaveValue("u*u-v*v+2");
+      await expect(ctx.page.getByTestId("app-status-bar")).toContainText("type param");
       await ctx.page.screenshot({ path: resolve(output, "desktop-return-surface.png") });
     } else {
       await controls.reopen(packaged.project.identity.id); await controls.open(manifest.surfaceId);

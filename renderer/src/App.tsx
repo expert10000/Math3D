@@ -79172,6 +79172,7 @@ case "mobius":
     if (surface) {
       const seed = surfaceEditorSeed(surface.document());
       setRestoredSurfaceAdapter(surface); setActiveGraph2DTargetId(null);
+      setUnifiedTreeSelectedId("def:param:custom");
       setParamSurfaceId("custom"); setParamXExpr(seed.x); setParamYExpr(seed.y); setParamZExpr(seed.z);
       setParamDomains((domains) => ({ ...domains, custom: { uMin: seed.uMin, uMax: seed.uMax, vMin: seed.vMin, vMax: seed.vMax } }));
       setMode("surfaces"); setDatasetKind("surface"); setSurfaceViewerKind("param"); setSurfacesPanelState("work"); setSurfacesLeftTab("object"); return true;

@@ -27,6 +27,7 @@ test("PRJ30 browser retains complete Surface packages and saved histories throug
     await expect(page.getByLabel("z(u,v)", { exact: true })).toHaveValue("u*u-v*v+2");
     await page.getByTestId("project-editor-undo").click(); await expect(page.getByLabel("z(u,v)", { exact: true })).toHaveValue("u*u-v*v");
     await page.getByTestId("project-editor-redo").click(); await expect(page.getByLabel("z(u,v)", { exact: true })).toHaveValue("u*u-v*v+2");
+    await expect(page.getByTestId("app-status-bar")).toContainText("type param");
   }
   await page.screenshot({ path: resolve(output, "browser-preview.png") });
 });

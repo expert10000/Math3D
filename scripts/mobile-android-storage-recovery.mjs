@@ -71,8 +71,9 @@ const expect = text => {
 };
 const launchSettings = () => {
   run("shell", "am", "start", "-n", `${build.applicationId}/com.math3d.mobile.MainActivity`); tap("Settings");
-  // The shared screen can retain an earlier Projects/Settings scroll position.
-  for (let attempt = 0; attempt < 5; attempt++) {
+  // A large mixed-project explorer can leave the shared scroller below the checks.
+  // Reset fully before searching downward, including after the cold restart.
+  for (let attempt = 0; attempt < 20; attempt++) {
     scroll(false);
   }
 };
