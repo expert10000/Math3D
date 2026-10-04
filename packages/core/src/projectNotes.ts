@@ -17,7 +17,10 @@ export type ProjectNoteAnchor =
   | Readonly<{ kind: "document"; source: ScientificSourceGeneration }>
   | Readonly<{ kind: "object-local"; source: ScientificSourceGeneration; objectId: string; localPosition: NotePoint3; shapeHash: StructuralHash }>
   | Readonly<{ kind: "subentity"; source: ScientificSourceGeneration; objectId: string; entityKind: "face" | "edge" | "vertex"; entityId: string; topologyHash: StructuralHash; barycentric?: NotePoint3 }>
+  | Readonly<{ kind: "entity-selection"; source: ScientificSourceGeneration; objectId: string; entityKind: "face" | "edge" | "vertex"; entityId: string; topologyHash: StructuralHash }>
   | Readonly<{ kind: "result"; source: ScientificSourceGeneration; resultId: string; resultHash: StructuralHash }>
+  | Readonly<{ kind: "graph-selection"; source: ScientificSourceGeneration; objectId: string; objectHash: StructuralHash;
+      probe?: Readonly<{ x: number; y: number; parameter?: number; rowId?: string }> }>
   | Readonly<{ kind: "workbook-block"; workbookId: StableDocumentId; workbookRevision: number; blockId: string; blockHash: StructuralHash }>;
 
 export type ProjectNote = Readonly<{
@@ -44,6 +47,7 @@ export type ProjectNoteAnchorResolver = Readonly<{
   objectShape?: (documentId: StableDocumentId, objectId: string) => StructuralHash | null;
   subentityTopology?: (documentId: StableDocumentId, objectId: string, entityKind: "face" | "edge" | "vertex", entityId: string) => StructuralHash | null;
   result?: (resultId: string) => Readonly<{ source: ScientificSourceGeneration; hash: StructuralHash }> | null;
+  graphObject?: (documentId: StableDocumentId, objectId: string) => StructuralHash | null;
   workbookBlock?: (workbookId: StableDocumentId, blockId: string) => Readonly<{ revision: number; hash: StructuralHash }> | null;
 }>;
 
@@ -72,6 +76,10 @@ export const normalizeProjectNoteAnchor = (value: unknown): ProjectNoteAnchor | 
     } else if (value.kind === "object-local") {
       if (!exact(value, ["kind", "source", "objectId", "localPosition", "shapeHash"]) ||
         !id(value.objectId) || !point(value.localPosition) || !isStructuralHash(value.shapeHash)) return null;
+    } else if (value.kind === "entity-selection") {
+      if (!exact(value, ["kind", "source", "objectId", "entityKind", "entityId", "topologyHash"]) ||
+        !id(value.objectId) || !["face", "edge", "vertex"].includes(String(value.entityKind)) ||
+        !id(value.entityId) || !isStructuralHash(value.topologyHash)) return null;
     } else if (value.kind === "subentity") {
       if (!exact(value, "barycentric" in value
         ? ["kind", "source", "objectId", "entityKind", "entityId", "topologyHash", "barycentric"]
@@ -83,6 +91,16 @@ export const normalizeProjectNoteAnchor = (value: unknown): ProjectNoteAnchor | 
     } else if (value.kind === "result") {
       if (!exact(value, ["kind", "source", "resultId", "resultHash"]) ||
         !id(value.resultId) || !isStructuralHash(value.resultHash)) return null;
+    } else if (value.kind === "graph-selection") {
+      if (!exact(value, "probe" in value ? ["kind", "source", "objectId", "objectHash", "probe"] : ["kind", "source", "objectId", "objectHash"]) ||
+        !id(value.objectId) || !isStructuralHash(value.objectHash)) return null;
+      if ("probe" in value) {
+        if (!record(value.probe) || !exact(value.probe, ["x", "y", ...(value.probe.parameter === undefined ? [] : ["parameter"]), ...(value.probe.rowId === undefined ? [] : ["rowId"])]) ||
+          typeof value.probe.x !== "number" || !Number.isFinite(value.probe.x) ||
+          typeof value.probe.y !== "number" || !Number.isFinite(value.probe.y) ||
+          (value.probe.parameter !== undefined && (typeof value.probe.parameter !== "number" || !Number.isFinite(value.probe.parameter))) ||
+          (value.probe.rowId !== undefined && !id(value.probe.rowId))) return null;
+      }
     } else return null;
   }
   return JSON.parse(canonicalJsonStringify(value)) as ProjectNoteAnchor;
@@ -177,12 +195,18 @@ export const inspectProjectNoteAnchor = (candidate: unknown, resolver: ProjectNo
       ? { status: "current", reason: "Object-local shape matches; transforms preserve this anchor.", currentSource }
       : { status: "stale", reason: "Object shape has changed.", currentSource };
   }
-  if (anchor.kind === "subentity") {
+  if (anchor.kind === "subentity" || anchor.kind === "entity-selection") {
     const topology = resolver.subentityTopology?.(anchor.source.documentId, anchor.objectId, anchor.entityKind, anchor.entityId);
     if (!topology || !isStructuralHash(topology)) return { status: "missing", reason: "Anchored subentity is unavailable.", currentSource };
     return topology === anchor.topologyHash
       ? { status: "current", reason: "Subentity topology matches.", currentSource }
       : { status: "stale", reason: "Subentity topology has changed.", currentSource };
+  }
+  if (anchor.kind === "graph-selection") {
+    const objectHash = resolver.graphObject?.(anchor.source.documentId, anchor.objectId);
+    if (!objectHash || !isStructuralHash(objectHash)) return { status: "missing", reason: "Selected Graph object is unavailable.", currentSource };
+    if (objectHash !== anchor.objectHash) return { status: "stale", reason: "Selected Graph object changed.", currentSource };
+    return { status: "current", reason: "Selected Graph object matches.", currentSource };
   }
   if (anchor.kind === "result") {
     const result = resolver.result?.(anchor.resultId);

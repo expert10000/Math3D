@@ -7,17 +7,19 @@ export type ProjectNoteDraft = Readonly<{
 export type NoteCaptureKind = "global" | "selection" | "result";
 
 /** A draft has no Project identity until it is saved into a named Project. */
-export const createProjectNoteDraft = (kind: NoteCaptureKind, workspace: MixedWorkspaceDocument, id: string, createdAt: number): ProjectNoteDraft => {
+export const createProjectNoteDraft = (kind: NoteCaptureKind, workspace: MixedWorkspaceDocument, id: string, createdAt: number,
+  selectionAnchor?: ProjectNoteAnchor, resultId?: string): ProjectNoteDraft => {
   if (!id || !Number.isSafeInteger(createdAt) || createdAt < 0) throw new TypeError("Invalid Note draft identity or time.");
   if (kind === "selection") {
     const selection = workspace.committedSelection;
-    if (!selection?.entityIds.length) throw new TypeError("Commit a selection before capturing a Note.");
-    return { id, title: "Selection observation", body: `Selected: ${selection.entityIds.join(", ")}. Add your observation.`,
-      anchor: { kind: "document", source: selection.source }, createdAt };
+    if (!selectionAnchor && !selection?.entityIds.length) throw new TypeError("Commit a selection before capturing a Note.");
+    const label = selectionAnchor && "objectId" in selectionAnchor ? selectionAnchor.objectId : selection?.entityIds.join(", ") ?? "current target";
+    return { id, title: "Selection observation", body: `Selected: ${label}. Add your observation.`,
+      anchor: selectionAnchor ?? { kind: "document", source: selection!.source }, createdAt };
   }
   if (kind === "result") {
-    const result = workspace.results.at(-1);
-    if (!result) throw new TypeError("Save an analysis result before capturing a Note.");
+    const result = resultId ? workspace.results.find((item) => item.resultId === resultId) : workspace.results.at(-1);
+    if (!result) throw new TypeError(resultId ? "Selected saved result is unavailable." : "Save an analysis result before capturing a Note.");
     return { id, title: "Result observation", body: "Add your observation about this result.",
       anchor: { kind: "result", source: result.provenance.source, resultId: result.resultId, resultHash: structuralHash(result) }, createdAt };
   }

@@ -11165,6 +11165,9 @@ function loadWorkbooks(): Workbook[] {
 }
 
 const STARTER_WORKBOOK_TEMPLATE_IDS = [
+  "notes_geometry_selection",
+  "notes_mesh_selection",
+  "notes_surface_study",
   "compute_curvature",
   "geodesics_from_point",
   "chart_and_basis",
@@ -79310,10 +79313,33 @@ case "mobius":
         onProjectsOpenChange={setProjectsOpen}
         onCurrentProjectChange={(project) => { activeNotebookProjectRef.current = project; }}
         captureActiveWorkbook={() => workbooks.find((workbook) => workbook.id === activeWorkbookId) ?? null}
-        onOpenWorkbook={(workbook) => {
+        captureNoteSelection={() => {
+          const documentId = activeKernelDocument?.identity.id;
+          if (!documentId) return null;
+          if (activeKernelModule === "graph2d") {
+            const selected = graph2dDocument.selection;
+            const objectId = selected.objectId ?? selected.probe?.objectId;
+            const probe = selected.probe?.objectId === objectId ? selected.probe : null;
+            return objectId ? { module: "graph2d", documentId, objectId,
+              probe: probe ? { x: probe.x, y: probe.y, ...(probe.parameter === undefined ? {} : { parameter: probe.parameter }),
+                ...(probe.rowId === undefined ? {} : { rowId: probe.rowId }) } : null } : null;
+          }
+          const selected = activeKernelModule === "geometry"
+            ? geometryMultiSelectionSet.items.at(-1) ?? geometryActiveUnifiedSelection
+            : activeKernelModule === "mesh" ? meshMultiSelectionSet.items.at(-1) : null;
+          if (!selected || (activeKernelModule !== "geometry" && activeKernelModule !== "mesh")) return null;
+          const kind = selected.selectionType;
+          return { module: activeKernelModule, documentId, objectId: selected.objectId,
+            entityKind: kind, entityId: kind === "face" ? String(selected.faceId ?? selected.entityId) :
+              kind === "edge" ? String(selected.edgeId ?? selected.entityId) :
+                kind === "vertex" ? String(selected.vertexId ?? selected.entityId) : undefined,
+            localPosition: selected.localPosition ?? null };
+        }}
+        onOpenWorkbook={(workbook, stageId, blockId) => {
           setWorkbooks((current) => [workbook, ...current.filter((item) => item.id !== workbook.id)]);
           setActiveWorkbookId(workbook.id);
-          setActiveStageId("define");
+          setActiveStageId(stageId ?? "define");
+          setFullWorkbookSelectedBlockRef(stageId && blockId ? { stageId, blockId } : null);
           setMode("geometry");
           setGeometryMode("workbook");
           setGeometryWorkbookUiMode("full");
@@ -91228,6 +91254,7 @@ case "mobius":
                       <label style={{ fontSize: 11, display: "grid", gap: 4 }}>
                         Title
                         <input
+                          data-testid="full-workbook-selected-block-title"
                           type="text"
                           value={fullWorkbookSelectedBlockMeta.block.title}
                           onChange={(event) =>

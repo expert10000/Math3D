@@ -623,6 +623,72 @@ const buildWorkbookFromTemplate = (spec: WorkbookTemplateSpec, makeId: () => str
 
 export const WORKBOOK_TEMPLATES: WorkbookTemplateSpec[] = [
   {
+    id: "notes_geometry_selection",
+    title: "Geometry selection and Notes",
+    description: "A guided Project Workbook for object and face Notes, exact anchors, and stale target checks.",
+    tags: ["geometry", "notes", "project", "selection"],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    stages: [
+      { id: "define", blocks: [
+        { type: "text", title: "Create a Geometry source", text: "Open Geometry and place a Box. Save a named Project, then add this Workbook to the Project from Projects. The Geometry document and Workbook must both appear in that Project." },
+        { type: "text", title: "Question", text: "Which faces of the Box are visible from the current view, and how does the answer change after a transform?" },
+      ] },
+      { id: "compute", blocks: [
+        { type: "text", title: "Anchor an object and face", text: "Select the Box object, open Notes, choose From selection, write an observation, and Save to Project. Select one Box face and repeat. Attach another Note to this Workbook block with Note on block." },
+      ] },
+      { id: "visualize", blocks: [
+        { type: "visualize", title: "Geometry view", visualizeNotes: "Capture a view showing the selected Box face. Reopen Notes and use Open target for both selection Notes." },
+      ] },
+      { id: "explain", blocks: [
+        { type: "text", title: "Verify exact references", text: "Transform the Box: the object-local Note should stay current. Change its shape or topology: the face Note should report stale. Remove the source: both Notes should report detached. Save and reopen the Project to confirm the exact IDs persist." },
+      ] },
+    ],
+  },
+  {
+    id: "notes_mesh_selection",
+    title: "Mesh topology and Notes",
+    description: "A guided Project Workbook for Mesh object, face, result, and block references.",
+    tags: ["mesh", "notes", "project", "topology"],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    stages: [
+      { id: "define", blocks: [
+        { type: "text", title: "Create a Mesh source", text: "Open a Mesh with visible faces, save a named Project, then add this Workbook from Projects. Record the Mesh object and face you will inspect." },
+      ] },
+      { id: "compute", blocks: [
+        { type: "text", title: "Anchor Mesh evidence", text: "Select the Mesh object and a numbered face in turn. For each selection create a Note with From selection and Save to Project. If you have a saved Mesh analysis result, choose its exact ID with Note on result." },
+      ] },
+      { id: "visualize", blocks: [
+        { type: "visualize", title: "Mesh evidence", visualizeNotes: "Capture the selected Mesh face. Add a Note on this Workbook block, then reopen it with Open target." },
+      ] },
+      { id: "explain", blocks: [
+        { type: "text", title: "Check topology changes", text: "Reopen the Project and confirm Notes are current. Change Mesh topology and refresh Notes: the face Note should become stale. If the exact result is deleted, its Note should report detached." },
+      ] },
+    ],
+  },
+  {
+    id: "notes_surface_study",
+    title: "Surface investigation and Notes",
+    description: "A guided Project Workbook linking a Surface study, saved result, and Workbook blocks.",
+    tags: ["surface", "notes", "project", "curvature"],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    stages: [
+      { id: "define", blocks: [
+        { type: "text", title: "Define a Surface", text: "Choose a Surface such as a catenoid or sphere. Save it in a named Project and add this Workbook from Projects. Record the equation and domain here." },
+        { type: "formula", title: "Surface equation", formula: "σ(u,v) = (x(u,v), y(u,v), z(u,v))" },
+      ] },
+      { id: "compute", blocks: [
+        { type: "compute", title: "Curvature field", computeOperatorId: "surface.curvature" },
+        { type: "text", title: "Save evidence", text: "Save the curvature result to the Project. Open Notes, choose that result ID, and write an interpretation. Add a Note on this Workbook block to record the computation settings." },
+      ] },
+      { id: "visualize", blocks: [
+        { type: "visualize", title: "Curvature view", visualizeNotes: "Capture the color-mapped Surface. Reopen the result and Workbook Notes from the Project Notes sidebar." },
+      ] },
+      { id: "explain", blocks: [
+        { type: "text", title: "Check provenance", text: "Change the Surface definition and refresh Notes: the result reference should report stale or detached until a matching saved result exists. Edit this Workbook block and save it to the Project: the block Note should report stale." },
+      ] },
+    ],
+  },
+  {
     id: "compute_curvature",
     title: "Compute curvature",
     description: "Enable curvature coloring and interpret K/H/k1/k2 with a focused compute block.",

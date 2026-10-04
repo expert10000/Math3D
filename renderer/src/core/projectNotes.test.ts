@@ -75,6 +75,19 @@ describe("NTS01 Project Note contracts", () => {
     expect(inspectProjectNoteAnchor(block, resolver()).status).toBe("missing");
   });
 
+  it("keeps a Graph selection on its exact object and probe", () => {
+    const objectHash = structuralHash({ expression: "x^2" });
+    const note = createProjectNote({ projectId, stableKey: "graph-selection", kind: "text", title: "Graph point",
+      body: "Inspect this selected point.", createdAt: 100, anchor: {
+        kind: "graph-selection", source: source(), objectId: "curve-1", objectHash, probe: { x: 2, y: 4 },
+      } });
+    expect(parseProjectNote(serializeProjectNote(note))).toEqual(note);
+    expect(inspectProjectNoteAnchor(note, { ...resolver(), graphObject: () => objectHash }).status).toBe("current");
+    expect(inspectProjectNoteAnchor(note, { ...resolver(), graphObject: () => structuralHash("edited") }).status).toBe("stale");
+    expect(inspectProjectNoteAnchor(note, { ...resolver(), graphObject: () => null }).status).toBe("missing");
+    expect(normalizeProjectNoteAnchor({ ...note.anchor, probe: { x: Number.NaN, y: 4 } })).toBeNull();
+  });
+
   it("rejects oversized, malformed, or mismatched anchors", () => {
     const note = createProjectNote({ projectId, stableKey: "plain", kind: "text", title: "Observation", body: "A note.", createdAt: 100 });
     expect(inspectProjectNoteAnchor(note, resolver()).status).toBe("unanchored");

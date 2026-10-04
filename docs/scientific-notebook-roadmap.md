@@ -47,7 +47,7 @@ The target user journey is **explore â†’ capture a Note on a selection/result â†
 
 `WB00` is the integration point with the separate Projects work. Its Project format change should be based on the accepted Projects contract on `main`, rather than introducing a parallel container or changing the Workbook format in two places.
 
-`NTS02` adds session Note drafts, quick capture from the current committed selection or latest saved result, and a searchable Notes sidebar. Saving a named Project binds drafts to it; later Note saves keep their captured workspace sources with the Project. Exact object and Workbook-block attachment remains in `NTS03`.
+`NTS02` adds session Note drafts, quick capture and a searchable Notes sidebar. Saving a named Project binds drafts to it; later Note saves keep their captured workspace sources with the Project. `NTS03` attaches Notes to exact Geometry and Mesh object/subentity IDs, Graph objects and probes, chosen saved results, and saved Workbook blocks. The Notes sidebar checks current, stale, and missing targets and opens their source document or Workbook stage. Geometry, Mesh, and Surface study Workbook presets guide these checks.
 
 ## First milestone acceptance
 

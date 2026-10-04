@@ -51,3 +51,40 @@ test("NTS02 captures a session Note and reopens it with a named Project", async 
     await expect(ctx.page.getByTestId("project-notes-panel").locator("[data-testid^='project-note-']")).toHaveCount(2);
   } finally { await closeSurfaceApp(ctx); }
 });
+
+test("NTS03 attaches a Note to a saved Workbook block and reopens its exact target", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp();
+    await resetSurfaceAppState(ctx.page);
+    const page = ctx.page;
+    await page.getByTestId("notes-toggle").click();
+    await page.getByTestId("project-notes-panel").getByRole("button", { name: "Projects" }).click();
+    const projects = page.getByTestId("project-explorer-panel");
+    await projects.getByTestId("project-title").fill("Workbook Notes Study");
+    await projects.getByTestId("project-save").click();
+    await expect(projects.getByTestId("project-message")).toContainText("Saved");
+    await projects.getByTestId("project-save-active-workbook").click();
+    await expect(projects.getByTestId("project-message")).toContainText("to this Project");
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(saved.workbooks).toHaveLength(1);
+    await projects.getByRole("button", { name: "Close project explorer" }).click();
+    await page.getByTestId("notes-toggle").click();
+    const notes = page.getByTestId("project-notes-panel");
+    const blocks = notes.getByRole("combobox", { name: "Workbook block target" });
+    await expect(blocks.locator("option").nth(2)).toBeAttached();
+    await blocks.selectOption({ index: 2 });
+    await notes.getByRole("button", { name: "Note on block" }).click();
+    await notes.getByTestId("notes-save").click();
+    await expect(notes.getByTestId("notes-message")).toContainText("Saved 1 Note");
+    const note = notes.locator("[data-testid^='project-note-']").first();
+    await expect(note).toContainText("current");
+    const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(persisted.notes[0].anchor).toMatchObject({ kind: "workbook-block", workbookId: persisted.workbooks[0].id });
+    await page.getByTestId("notes-toggle").click();
+    await page.getByTestId("notes-toggle").click();
+    await expect(page.getByTestId("project-notes-panel").locator("[data-testid^='project-note-']").first()).toContainText("current");
+    await page.getByTestId("project-notes-panel").getByRole("button", { name: "Open target" }).click();
+    await expect(page.getByTestId("full-workbook-selected-block-title")).toHaveValue("Question");
+  } finally { await closeSurfaceApp(ctx); }
+});

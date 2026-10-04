@@ -19,13 +19,14 @@ import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibi
 import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
 import { captureProjectResources, exportProjectPackage, MAX_PROJECT_PACKAGE_BYTES, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
 import { commitProjectResources, loadProjectResources } from "../projects/projectResourceArchive";
-import { canonicalJsonStringify } from "@math3d/core";
+import { canonicalJsonStringify, structuralHash, type ProjectNoteAnchor, type StableDocumentId } from "@math3d/core";
 import { pointTableStore, installPortablePointTables } from "../graph2d/pointTableStore";
 import { prepareProjectExampleCollection, importProjectExamples, SAMSUNG_EXAMPLE_COUNT } from "../projects/projectExampleCollection";
 import { prepareProjectWorkbook, readProjectWorkbook } from "../projects/projectWorkbookBinding";
-import type { Workbook } from "@math3d/workbook";
+import type { Workbook, WorkbookStageId } from "@math3d/workbook";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
 import { bindProjectNoteDrafts, createProjectNoteDraft, type NoteCaptureKind, type ProjectNoteDraft } from "../projects/projectNoteDrafts";
+import { createProjectNoteSelectionAnchor, type NoteSelectionDescriptor } from "../projects/projectNoteTargets";
 
 export { PROJECT_STORAGE_KEY } from "../projects/projectLibrary";
 const ProjectThumbnail: React.FC<{ src: string | null }> = ({ src }) => {
@@ -38,7 +39,8 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   onCurrentProjectChange?: (project: Math3DProject) => void;
   captureActiveWorkbook?: () => Workbook | null;
-  onOpenWorkbook?: (workbook: Workbook) => void;
+  onOpenWorkbook?: (workbook: Workbook, stageId?: WorkbookStageId, blockId?: string) => void;
+  captureNoteSelection?: () => NoteSelectionDescriptor | null;
   capture: () => MixedWorkspaceDocument;
   canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
@@ -46,7 +48,7 @@ type Props = {
   resourceReader?: ProjectResourceReader;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onCurrentProjectChange, captureActiveWorkbook, onOpenWorkbook, capture, canNavigateDocument, onNavigateDocument, artifactAvailable, onRestoreWorkspace, resourceReader }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onCurrentProjectChange, captureActiveWorkbook, onOpenWorkbook, captureNoteSelection, capture, canNavigateDocument, onNavigateDocument, artifactAvailable, onRestoreWorkspace, resourceReader }) => {
 
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
   const resourceSessionId = useRef<string | null>(null);
@@ -57,6 +59,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   const [notesWorkspace, setNotesWorkspace] = useState<MixedWorkspaceDocument | null>(null);
   const [noteDrafts, setNoteDrafts] = useState<ProjectNoteDraft[]>([]);
   const [notesMessage, setNotesMessage] = useState("");
+  const [noteWorkbooks, setNoteWorkbooks] = useState<Array<{ workbook: Workbook; revision: number }>>([]);
+  const noteRefreshSequence = useRef(0);
   const [title, setTitle] = useState("Untitled project");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
@@ -112,21 +116,70 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   };
   useEffect(() => { if (open) { setNotesOpen(false); refresh(); } }, [open]);
   const refreshNotes = () => {
+    const sequence = ++noteRefreshSequence.current;
     try {
       const workspace = capture(); verifyMixedWorkspaceReplay(workspace);
       const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
       const active = raw ? parseMath3DProject(raw) : null;
       const saved = active && parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)).entries.some((entry) => entry.id === active.identity.id) ? active : null;
       setNotesWorkspace(workspace); setNotesProject(saved); setNotesMessage(saved ? "Notes for the active named Project." : "Notes remain session drafts until a named Project is saved.");
+      setNoteWorkbooks([]);
+      if (saved?.workbooks?.length) void loadProjectResources(saved).then((resources) => {
+        const loaded = saved.workbooks!.flatMap((reference) => {
+          const bytes = resources.bytes({ kind: "workbook-payload", id: reference.id });
+          return bytes ? [{ workbook: readProjectWorkbook(bytes, reference), revision: reference.revision }] : [];
+        });
+        if (noteRefreshSequence.current === sequence) setNoteWorkbooks(loaded);
+      }).catch((error) => { if (noteRefreshSequence.current === sequence) setNotesMessage(`Workbook Note targets unavailable: ${(error as Error).message}`); });
     } catch (error) { setNotesMessage(`Notes unavailable: ${(error as Error).message}`); }
   };
   const captureNote = (kind: NoteCaptureKind) => {
     try {
       const workspace = capture(); verifyMixedWorkspaceReplay(workspace);
-      const draft = createProjectNoteDraft(kind, workspace, crypto.randomUUID(), Date.now());
+      const selection = kind === "selection" ? captureNoteSelection?.() : null;
+      if (kind === "selection" && !selection) throw new Error("Select a Geometry, Mesh, or Graph object first.");
+      const selectionAnchor = selection ? createProjectNoteSelectionAnchor(workspace, selection) : undefined;
+      const draft = createProjectNoteDraft(kind, workspace, crypto.randomUUID(), Date.now(), selectionAnchor);
       setNoteDrafts((current) => [...current, draft]); setNotesWorkspace(workspace);
       setNotesMessage("Note captured as a session draft. Add your observation, then save it to the Project.");
     } catch (error) { setNotesMessage(`Note capture failed: ${(error as Error).message}`); }
+  };
+  const captureAnchoredNote = (anchor: ProjectNoteAnchor, title: string, body: string) => {
+    const draft: ProjectNoteDraft = { id: crypto.randomUUID(), title, body, anchor, createdAt: Date.now() };
+    setNoteDrafts((current) => [...current, draft]);
+    setNotesMessage("Note captured as a session draft. Add your observation, then save it to the Project.");
+  };
+  const captureResultNote = (resultId: string) => {
+    try {
+      const workspace = capture(); verifyMixedWorkspaceReplay(workspace);
+      const draft = createProjectNoteDraft("result", workspace, crypto.randomUUID(), Date.now(), undefined, resultId);
+      setNoteDrafts((current) => [...current, draft]); setNotesWorkspace(workspace);
+      setNotesMessage("Result Note captured as a session draft.");
+    } catch (error) { setNotesMessage(`Result Note capture failed: ${(error as Error).message}`); }
+  };
+  const captureWorkbookBlockNote = (workbookId: string, blockId: string) => {
+    const target = noteWorkbooks.find((item) => item.workbook.id === workbookId);
+    const stage = target?.workbook.stages.find((item) => item.blocks.some((block) => block.id === blockId));
+    const block = stage?.blocks.find((item) => item.id === blockId);
+    if (!target || !block) { setNotesMessage("Workbook block is unavailable. Refresh Notes."); return; }
+    captureAnchoredNote({ kind: "workbook-block", workbookId: target.workbook.id as StableDocumentId,
+      workbookRevision: target.revision, blockId, blockHash: structuralHash(block) },
+      `${block.title} observation`, `Workbook: ${target.workbook.title}; block: ${block.title}. Add your observation.`);
+  };
+  const openNoteTarget = (note: ProjectNote) => {
+    const anchor = note.anchor;
+    if (!anchor) return;
+    if (anchor.kind === "workbook-block") {
+      const target = noteWorkbooks.find((item) => item.workbook.id === anchor.workbookId);
+      const stage = target?.workbook.stages.find((item) => item.blocks.some((block) => block.id === anchor.blockId));
+      if (target && stage) { onOpenWorkbook?.(target.workbook, stage.id, anchor.blockId); setNotesOpen(false); }
+      else setNotesMessage("Workbook block is unavailable in this Project.");
+      return;
+    }
+    const entry = notesWorkspace?.entries.find((item) => item.expected.id === anchor.source.documentId);
+    if (entry && canNavigateDocument?.(entry.expected.id, entry.module)) {
+      onNavigateDocument?.(entry.expected.id, entry.module); setNotesOpen(false);
+    } else setNotesMessage("Source document is unavailable to open.");
   };
   const collectResources = (next: Math3DProject, extra = resourceSession.current, allowMissing = false, workbook?: { id: string; bytes: Uint8Array }) => captureProjectResources(next, (item) => {
     if (item.kind === "workbook-payload" && item.id === workbook?.id) return workbook.bytes;
@@ -424,8 +477,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       onOpenChange(false); refreshNotes(); setNotesOpen(true);
     }} style={{ position: "fixed", right: 14, bottom: 60, zIndex: 2502, border: "1px solid #64748b", borderRadius: 8, padding: "7px 10px", background: "#f8fafc", color: "#0f172a", fontWeight: 700 }}>Notes{noteDrafts.length ? ` (${noteDrafts.length})` : ""}</button>
     {notesOpen && <ProjectNotesPanel project={notesProject} workspace={notesWorkspace} drafts={noteDrafts} busy={busy} message={notesMessage}
+      selectionAvailable={Boolean(captureNoteSelection?.())} workbooks={noteWorkbooks}
       onClose={() => setNotesOpen(false)} onOpenProjects={() => { setNotesOpen(false); onOpenChange(true); }} onRefresh={refreshNotes}
-      onCapture={captureNote} onUpdateDraft={(id, patch) => setNoteDrafts((current) => current.map((draft) => draft.id === id ? { ...draft, ...patch } : draft))}
+      onCapture={captureNote} onCaptureResult={captureResultNote} onCaptureWorkbookBlock={captureWorkbookBlockNote} onOpenTarget={openNoteTarget}
+      onUpdateDraft={(id, patch) => setNoteDrafts((current) => current.map((draft) => draft.id === id ? { ...draft, ...patch } : draft))}
       onDiscardDraft={(id) => setNoteDrafts((current) => current.filter((draft) => draft.id !== id))}
       onSaveDrafts={saveNoteDrafts} onSaveNote={saveEditedNote} />}
     {open && <aside id="project-explorer-panel" data-testid="project-explorer-panel" aria-label="Project explorer"

@@ -123,6 +123,20 @@ describe("workbook model functional behavior", () => {
     expect(computeBlock.compute?.cache).toEqual({});
   });
 
+  it("creates guided Geometry, Mesh, and Surface Note Workbooks with stable block IDs", () => {
+    for (const id of ["notes_geometry_selection", "notes_mesh_selection", "notes_surface_study"]) {
+      const workbook = createWorkbookFromTemplate(id, makeIdFactory());
+      expect(workbook).not.toBeNull();
+      if (!workbook) continue;
+      expect(workbook.stages.map((stage) => stage.id)).toEqual(WORKBOOK_STAGE_ORDER.map((stage) => stage.id));
+      const blocks = workbook.stages.flatMap((stage) => stage.blocks);
+      expect(new Set(blocks.map((block) => block.id)).size).toBe(blocks.length);
+      expect(blocks.some((block) => block.type === "visualize")).toBe(true);
+      expect(JSON.stringify(blocks)).toContain("Project");
+      expect(JSON.stringify(blocks)).toContain("Note");
+    }
+  });
+
   it("keeps deterministic replay signature stable on a reference scene", () => {
     const workbook = createWorkbookFromTemplate("compute_curvature", makeIdFactory());
     expect(workbook).not.toBeNull();

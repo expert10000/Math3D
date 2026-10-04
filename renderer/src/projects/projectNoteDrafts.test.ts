@@ -34,5 +34,7 @@ describe("NTS02 Note drafts", () => {
     expect(createProjectNoteDraft("result", { ...workspace, results: [result] }, "r", 100).anchor).toEqual({
       kind: "result", source, resultId: result.resultId, resultHash: structuralHash(result),
     });
+    expect(createProjectNoteDraft("result", { ...workspace, results: [result] }, "r2", 101, undefined, result.resultId).anchor).toMatchObject({ resultId: result.resultId });
+    expect(() => createProjectNoteDraft("result", { ...workspace, results: [result] }, "r3", 102, undefined, "missing")).toThrow("Selected saved result is unavailable");
   });
 });
