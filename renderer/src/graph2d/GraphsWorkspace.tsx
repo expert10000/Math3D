@@ -131,6 +131,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
     galleryFocusFrame.current = null; galleryOpener.current?.focus();
   }); };
   const viewerRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [previewViewport, setPreviewViewport] = useState<Graph2DViewport | null>(null);
   const previewRef = useRef<Graph2DViewport | null>(null);
@@ -177,6 +178,16 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
     update();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
     observer?.observe(element);
+    if (!observer) window.addEventListener("resize", update);
+    return () => { observer?.disconnect(); if (!observer) window.removeEventListener("resize", update); };
+  }, []);
+  useEffect(() => {
+    const viewer = viewerRef.current, toolbar = toolbarRef.current;
+    if (!viewer || !toolbar) return;
+    const update = () => viewer.style.setProperty("--graph2d-toolbar-bottom", `${toolbar.offsetTop + toolbar.offsetHeight + 8}px`);
+    update();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(toolbar);
     if (!observer) window.addEventListener("resize", update);
     return () => { observer?.disconnect(); if (!observer) window.removeEventListener("resize", update); };
   }, []);
@@ -614,7 +625,7 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
           <button type="button" onClick={event => { exportOpener.current = event.currentTarget; finishWheel(); setExportOpen(true); }}>Export</button>
           <button type="button" data-testid="graph2d-presentation-exit" onClick={exitPresentation}>Exit presentation</button>
         </div>}
-        <div className="graph2d-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+        <div className="graph2d-toolbar" ref={toolbarRef} onPointerDown={(event) => event.stopPropagation()}>
           <button type="button" ref={presentationOpener} data-testid="graph2d-presentation-open" onClick={() => {
             finishWheel(); closeGrid(true, false); cancelParameter(); setParametersOpen(false); setScalesOpen(false); setToolsOpen(false);
             setParameterCards(false); setPresentation(true);

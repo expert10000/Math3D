@@ -202,6 +202,16 @@
   .graph2d-compact-panels details[open] > :not(summary) { margin-top: 10px; }
 }
 
+@media (min-width: 701px) and (max-width: 1100px) {
+  .graph2d-toolbar { max-height: calc(100% - 72px); overflow-y: auto; }
+  .graph2d-compact-panels:has(> details[open]) {
+    top: var(--graph2d-toolbar-bottom, 80px);
+    bottom: 8px;
+    z-index: 3;
+  }
+  .graph2d-compact-panels > details[open] { box-sizing: border-box; max-height: min(45vh, 100%); }
+}
+
 @media (max-width: 700px) {
   /* The host navigation leaves little plot height here; sticky controls must not cover the editable body. */
   .graph2d-parameters-panel header, .graph2d-parameter-preview-actions { position: static; }
