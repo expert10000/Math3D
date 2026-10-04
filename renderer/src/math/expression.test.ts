@@ -39,6 +39,15 @@ describe("compileExpression", () => {
     expect(compiled.error?.message).toContain("Unknown identifier");
   });
 
+  it("evaluates imported catenoid formulas and hyperbolic functions", () => {
+    const catenoid = compileExpression("cosh(v)*cos(u)", ["u", "v"]);
+    expect(catenoid.error).toBeUndefined();
+    expect(catenoid.fn?.({ u: 0, v: 1.4 })).toBeCloseTo((Math.exp(1.4) + Math.exp(-1.4)) / 2, 12);
+    const hyperbolic = compileExpression("sinh(v)/cosh(v)-tanh(v)", ["v"]);
+    expect(hyperbolic.error).toBeUndefined();
+    for (const v of [-1.4, 0, 1.4]) expect(hyperbolic.fn?.({ v })).toBeCloseTo(0, 12);
+  });
+
   it("returns an error for mismatched parentheses", () => {
     const compiled = compileExpression("(1 + 2", []);
     expect(compiled.fn).toBeUndefined();
