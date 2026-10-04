@@ -3,6 +3,7 @@
 - [Post-1.6.0 continuation audit and verified backlog](post-1.6.0-continuation-audit.md).
 - [Unified Projects delivery roadmap](unified-projects-roadmap.md).
 - [Unified Projects automated acceptance](unified-projects-acceptance.md).
+- [Scientific Notebook / Report roadmap](scientific-notebook-roadmap.md).
 - [Projects representation inventory (PRJ16)](project-representation-inventory.md).
 
 This site combines:
