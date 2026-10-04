@@ -21,13 +21,13 @@ describe("PRJ21 broader saved project previews", () => {
     expect(readMobilePreviewProject(stored).workspace.artifacts).toEqual(checkpoint.workspace.artifacts);
     expect(readMobilePreviewProject(stored).workspace.relations).toEqual(checkpoint.workspace.relations);
   });
-  it.each(["scene-topology-study", "curve-construction-study", "spline-surface-lab"] as const)("retains %s through import, inspection, export and restart without enabling editors", id => {
+  it.each(["scene-topology-study", "curve-construction-study", "spline-surface-lab"] as const)("retains %s through import, inspection, export and restart with qualified literal Surface editing", id => {
     const original = instantiateMath3DProjectTemplate(id, "preview"), raw = JSON.stringify(original, null, 4);
     const stored = importMobileProjectPreview(raw, [], "desktop.json", "desktop", 10);
     expect(readMobilePreviewProject(stored)).toEqual(original);
     expect(serializeMobileProjectHandoff(stored)).toBe(raw);
     expect(readMobilePreviewProject(JSON.parse(JSON.stringify(stored)))).toEqual(original);
-    expect(buildMobileProjectExplorer(raw).groups.flatMap(group => group.documents).every(document => document.editing === "Saved preview")).toBe(true);
+    expect(buildMobileProjectExplorer(raw).groups.flatMap(group => group.documents).every(document => document.editing === "Saved preview" || document.module === "surface" && document.editing === "Surface workspace")).toBe(true);
     expect(buildMobileProjectLibraryCards([stored], { section: "all", query: "", sort: "title" })[0]).toMatchObject({ compatible: true, projectType: "project-preview", objectCount: original.workspace.entries.length });
     expect(selectMobileStartupProject([stored], stored.id, false)).toBeNull();
     expect(duplicateMobileProject(stored, [stored])).toMatchObject({ ok: false });

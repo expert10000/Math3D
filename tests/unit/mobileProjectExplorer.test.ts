@@ -18,7 +18,7 @@ describe("PRJ21 read-only named-project explorer", () => {
     expect(() => buildMobileProjectExplorer('{"format":"future.project"}')).toThrow();
     const project = instantiateMath3DProjectTemplate("catenary-study", "mobile-explorer-replay");
     const replay = createMath3DProject(createMixedWorkspaceDocument({ ...project.workspace, entries: project.workspace.entries.map(entry => ({ ...entry, replay: { format: "future", payload: {} } })) }), { stableKey: "replay" });
-    expect(() => buildMobileProjectExplorer(serializeMath3DProject(replay))).toThrow("Export checkpoint JSON");
+    expect(() => buildMobileProjectExplorer(serializeMath3DProject(replay))).toThrow(/Unsupported .* replay format|Export checkpoint JSON/);
   });
   it("labels stale companions and historical analysis after the Graph changes", () => {
     const project = instantiateMath3DProjectTemplate("catenary-study", "mobile-explorer-stale"), graph = project.workspace.entries[0]!.checkpoint;

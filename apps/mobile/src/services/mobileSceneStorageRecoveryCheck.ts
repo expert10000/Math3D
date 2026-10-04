@@ -1,4 +1,4 @@
-import { instantiateMath3DProjectTemplate, serializeMath3DProject, structuralHash } from "@math3d/core";
+import { createSurfaceDocument, instantiateMath3DProjectTemplate, serializeMath3DProject, structuralHash } from "@math3d/core";
 import { importMobileProjectPreview } from "../models/mobileProjectPreview";
 import { canonicalJsonStringify, captureProjectResources, createMath3DProject, createMixedWorkspaceDocument,
   exportProjectPackage, getGraph2DPresetCatalog, Graph2DPointTableStore, instantiateGraph2DPreset } from "@math3d/core";
@@ -32,9 +32,13 @@ const mixedResourceFixture = () => {
   const preset = instantiateGraph2DPreset(getGraph2DPresetCatalog().get("piecewise-data-gaps")!, "native-resource-recovery");
   const second = createMobileGraph("Second recovery Graph", true, "native-resource-recovery-second");
   const curve = instantiateMath3DProjectTemplate("derivative-study", "native-curve-recovery").workspace.entries.find(entry => entry.module === "curve")!;
+  const surface = createSurfaceDocument({ stableKey: "native-surface-recovery", metadata: { title: "Recovery literal Surface" }, source: {
+    representation: "parametric", domain: { kind: "parameter", u: { min: -1, max: 1 }, v: { min: -1, max: 1 } },
+    units: { length: "unitless" }, orientation: {}, parameters: {}, branchPolicy: null,
+    definition: { familyId: "literal", expressions: { x: "u", y: "v", z: "u*v" } } } });
   const tables = new Graph2DPointTableStore(); for (const sidecar of preset.sidecars) tables.publish(sidecar.rows);
   const project = createMath3DProject(createMixedWorkspaceDocument({ ...template.workspace, entries: [...template.workspace.entries,
-    ...[preset.document, second].map(document => ({ module: "graph2d" as const, checkpoint: document, expected: document.identity, replay: null })), curve],
+    ...[preset.document, second].map(document => ({ module: "graph2d" as const, checkpoint: document, expected: document.identity, replay: null })), curve, { module: "surface", checkpoint: surface, expected: surface.identity, replay: null }],
     activeDocumentIds: [...template.workspace.activeDocumentIds, preset.document.identity.id, second.identity.id] }), { title: "Recovery mixed resources", stableKey: "native-resource-recovery" });
   const resources = captureProjectResources(project, item => {
     if (item.kind !== "graph-point-table") return null;
@@ -46,7 +50,10 @@ const mixedResourceFixture = () => {
   adapter.commitViewport({ ...adapter.document().display.viewport, xMin: -3, xMax: 3 });
   const curveAdapter = sessions.curve(curve.expected.id), source = curveAdapter.document().source;
   curveAdapter.commitSource({ ...source, definition: { ...source.definition, expressions: { ...source.definition.expressions, y: "x*x+1" } } });
-  return sessions.snapshot(curve.expected.id, 2);
+  const surfaceAdapter = sessions.surface(surface.identity.id);
+  surfaceAdapter.commitSource({ ...surface.source, definition: { ...surface.source.definition, expressions: { x: "u", y: "v", z: "u*v+1" } } });
+  surfaceAdapter.undo(); // retain a redo state as well as the selected Surface across repair
+  return sessions.snapshot(surface.identity.id, 2);
 };
 const reset = () => {
   directory.create({ idempotent: true, intermediates: true });

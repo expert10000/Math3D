@@ -3,20 +3,21 @@ import { adoptMixedWorkspaceProject, parseMath3DProject, parseMixedWorkspaceDocu
 import type { MobileStoredSceneProject } from "./mobileScene";
 import { mobileProjectResourceContext, readMobileProjectResources } from "./mobileProjectResources";
 import { resolveMobileProjectWorkspace } from "./mobileProjectReplay";
+import { mobileSurfaceUnavailableReason } from "./mobileProjectSurface";
 import { mobileCurveUnavailableReason } from "./mobileProjectCurve";
 
 /** Validate every checkpoint, retaining unsupported editors, lineage and unavailable resource references. */
 export const readMobilePreviewProject = (stored: MobileStoredSceneProject): Math3DProject => {
   if (stored.projectType !== "project-preview") throw new TypeError("Not a saved project preview.");
   const project = parseMath3DProject(stored.serializedProject);
-  if (project.workspace.entries.some(entry => !["graph2d", "curve"].includes(entry.module) && entry.replay !== null)) throw new TypeError("Export checkpoint JSON for documents other than Graphs and Curves on desktop before mobile preview import.");
+  if (project.workspace.entries.some(entry => !["graph2d", "curve", "surface"].includes(entry.module) && entry.replay !== null)) throw new TypeError("Export checkpoint JSON for documents other than Graphs, Curves and Surfaces on desktop before mobile preview import.");
   const documents = resolveMobileProjectWorkspace(project.workspace);
   if (project.identity.id !== stored.id || project.metadata.title !== stored.title) throw new TypeError("Project preview identity is inconsistent.");
   if (stored.projectResources !== undefined) readMobileProjectResources(stored);
   if (stored.activeGraphDocumentId !== undefined && !project.workspace.entries.some(entry => entry.module === "graph2d" &&
     entry.expected.id === stored.activeGraphDocumentId && !project.metadata.documents?.[entry.expected.id]?.archived))
     throw new TypeError("Selected mobile Graph is unavailable or archived.");
-  if (stored.activeGraphDocumentId !== undefined && stored.activeCurveDocumentId !== undefined)
+  if ([stored.activeGraphDocumentId, stored.activeCurveDocumentId, stored.activeSurfaceDocumentId].filter(id => id !== undefined).length > 1)
     throw new TypeError("Only one mobile project document may be active.");
   if (stored.activeCurveDocumentId !== undefined) {
     const curve = documents.get(stored.activeCurveDocumentId);
@@ -24,6 +25,13 @@ export const readMobilePreviewProject = (stored: MobileStoredSceneProject): Math
     if (curve?.format !== "math3d.curve-document" || project.metadata.documents?.[curve.identity.id]?.archived ||
         mobileCurveUnavailableReason(curve, replay?.payload as import("@math3d/kernel").CurveReplayBundle | undefined))
       throw new TypeError("Selected mobile Curve is unavailable, unsupported or archived.");
+  }
+  if (stored.activeSurfaceDocumentId !== undefined) {
+    const surface = documents.get(stored.activeSurfaceDocumentId);
+    const replay = project.workspace.entries.find(entry => entry.expected.id === stored.activeSurfaceDocumentId)?.replay;
+    if (surface?.format !== "math3d.surface-document" || project.metadata.documents?.[surface.identity.id]?.archived ||
+        mobileSurfaceUnavailableReason(surface, replay?.payload as import("@math3d/kernel").SurfaceReplayBundle | undefined))
+      throw new TypeError("Selected mobile Surface is unavailable, unsupported or archived.");
   }
   return project;
 };

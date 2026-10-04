@@ -787,3 +787,17 @@ record the actual device workflow. Subsequent documentation/fixture changes do n
 change the APK's mobile or kernel source. Other Curve representations, the other
 six mobile editors, broader mobile refresh and physical iOS/release signoff remain
 separate work.
+
+
+### PRJ28–PRJ30 mobile Surface continuation — October 4
+
+| Commit | Scope | Status |
+| --- | --- | --- |
+| PRJ28 | Shared bounded Surface replay; mobile independent nonperiodic literal parametric x(u,v), y(u,v), z(u,v) editor, domain controls, undo/redo/save and cold restart in the complete mixed project | Implemented; 40 focused model checks and desktop/mobile typechecks passed; signed device acceptance pending |
+| PRJ29 | Explicit fork refresh for Graph→Surface revolution/extrusion and qualified literal Curve→Surface revolution/extrusion; retained historical targets/results/resources and disabled reasons | Implemented; four adapters match desktop fork/lineage; signed device acceptance pending |
+| PRJ30 | Signed Samsung Graph/Curve/Surface editing, rejection, switching, refresh, cold restart, damaged-store recovery and actual package return to desktop/browser | In progress; Surface replay/selected-editor recovery fixture added; Samsung connected |
+
+Constructed and procedural Surface targets remain saved previews on mobile;
+editing is qualified only for independent literal parametric sources and their
+retained undo/redo recipes. Other representations, editors and physical iOS
+release acceptance remain separate work.

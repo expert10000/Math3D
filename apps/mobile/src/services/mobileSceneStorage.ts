@@ -10,7 +10,7 @@ import { readMobileGraph } from "../models/mobileGraphProject";
 import { readMobilePreviewProject } from "../models/mobileProjectPreview";
 import { readMobileProjectResources } from "../models/mobileProjectResources";
 
-export const MOBILE_SCENE_STORAGE_SCHEMA_VERSION = 5;
+export const MOBILE_SCENE_STORAGE_SCHEMA_VERSION = 6;
 const STORAGE_DIR_NAME = "math3d-mobile";
 const STORAGE_FILE_NAME = "scene-projects.json";
 const STORAGE_TEMP_FILE_NAME = "scene-projects.tmp";
@@ -135,6 +135,7 @@ const normalizeStoredProject = (
     serializedProject: value.serializedProject,
     ...(value.projectType ? { projectType: value.projectType } : {}),
     ...(value.projectResources !== undefined ? { projectResources: value.projectResources } : {}),
+    ...(value.activeSurfaceDocumentId !== undefined ? { activeSurfaceDocumentId: value.activeSurfaceDocumentId } : {}),
     ...(value.activeCurveDocumentId !== undefined ? { activeCurveDocumentId: value.activeCurveDocumentId } : {}),
     ...(value.activeGraphDocumentId !== undefined ? { activeGraphDocumentId: value.activeGraphDocumentId } : {}),
     ...(source ? { source } : {}),
@@ -159,7 +160,7 @@ export const decodeMobileSceneStorage = (raw: string): DecodedPayload => {
     if (payload.schemaVersion === undefined || payload.schemaVersion === 0) {
       projectList = payload.projects;
       migrated = true;
-    } else if (payload.schemaVersion === 1 || payload.schemaVersion === 2 || payload.schemaVersion === 3 || payload.schemaVersion === 4 || payload.schemaVersion === MOBILE_SCENE_STORAGE_SCHEMA_VERSION) {
+    } else if (payload.schemaVersion === 1 || payload.schemaVersion === 2 || payload.schemaVersion === 3 || payload.schemaVersion === 4 || payload.schemaVersion === 5 || payload.schemaVersion === MOBILE_SCENE_STORAGE_SCHEMA_VERSION) {
       projectList = payload.projects;
       migrated = payload.schemaVersion !== MOBILE_SCENE_STORAGE_SCHEMA_VERSION;
     } else {

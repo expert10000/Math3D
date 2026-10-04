@@ -5,7 +5,7 @@ import { buildMobileProjectExplorer } from "../models/mobileProjectExplorer";
 import type { ProjectResourceSidecar } from "@math3d/core";
 
 export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly ProjectResourceSidecar[]; onOpenGraph?: (id: string) => void;
-  onOpenCurve?: (id: string) => void; onRefresh?: (relationId: string) => Promise<boolean> }> = ({ raw, resources, onOpenGraph, onOpenCurve, onRefresh }) => {
+  onOpenSurface?: (id: string) => void; onOpenCurve?: (id: string) => void; onRefresh?: (relationId: string) => Promise<boolean> }> = ({ raw, resources, onOpenGraph, onOpenSurface, onOpenCurve, onRefresh }) => {
   const [refreshing, setRefreshing] = React.useState(false);
   const state = useMemo(() => {
     try { return { explorer: buildMobileProjectExplorer(raw, resources), error: null }; }
@@ -28,6 +28,13 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
           </Pressable>
           {document.unavailableReason && <Text style={styles.note}>{document.unavailableReason}</Text>}
         </>}
+        {document.module === "surface" && onOpenSurface && <>
+          <Pressable testID={`mobile-project-edit-surface-${document.id}`} disabled={document.editing !== "Surface workspace"}
+            accessibilityState={{ disabled: document.editing !== "Surface workspace" }} onPress={() => onOpenSurface(document.id)} style={styles.secondaryBtn}>
+            <Text style={styles.secondaryBtnText}>Edit Surface</Text>
+          </Pressable>
+          {document.unavailableReason && <Text style={styles.note}>{document.unavailableReason}</Text>}
+        </>}
         {document.module === "graph2d" && onOpenGraph && <>
           <Pressable testID={`mobile-project-edit-graph-${document.id}`} disabled={document.editing !== "Graph workspace"}
             accessibilityState={{ disabled: document.editing !== "Graph workspace" }} onPress={() => onOpenGraph(document.id)} style={styles.secondaryBtn}>
@@ -45,7 +52,7 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
         <Pressable testID={`mobile-project-refresh-${option.relationId}`} accessibilityRole="button"
           disabled={!option.canRefresh || refreshing} accessibilityState={{ disabled: !option.canRefresh || refreshing }} style={styles.secondaryBtn}
           onPress={() => { setRefreshing(true); void onRefresh(option.relationId).finally(() => setRefreshing(false)); }}>
-          <Text style={styles.secondaryBtnText}>Create refreshed Curve</Text>
+          <Text style={styles.secondaryBtnText}>Create refreshed {option.kind}</Text>
         </Pressable>
         <Text style={styles.note}>{option.reason}</Text>
       </View>)}
@@ -54,6 +61,6 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
     {results.map(result => <Text key={result.id} style={styles.itemMeta}>{result.operation} · {result.authority} · {result.freshness} · {titles.get(result.sourceDocumentId) ?? "Missing source"} revision {result.sourceRevision}</Text>)}
     <Text accessibilityRole="header" style={styles.itemTitle}>Source resources ({state.explorer.resources.filter(item => item.available).length}/{state.explorer.resources.length})</Text>
     {state.explorer.resources.map(item => <Text key={`${item.kind}:${item.id}`} style={styles.itemMeta}>{item.kind} · {item.available ? "Verified and retained" : item.required ? "Missing source bytes" : "Optional cache unavailable"}</Text>)}
-    <Text style={styles.note}>Import a desktop project package to retain Graph tables, Mesh and Volume source bytes. Package export includes verified retained bytes; missing resources stay missing. Edit an available Graph or Curve without changing other documents. Other modules remain saved previews; analysis artifact bytes may require separate transfer.</Text>
+    <Text style={styles.note}>Import a desktop project package to retain Graph tables, Mesh and Volume source bytes. Package export includes verified retained bytes; missing resources stay missing. Edit an available Graph, Curve or Surface without changing other documents. Other modules remain saved previews; analysis artifact bytes may require separate transfer.</Text>
   </View>;
 };

@@ -1,5 +1,6 @@
 import { buildProjectExplorer, evaluateDocumentRelationStatus, isAnalysisResultCurrent, matchesScientificSourceGeneration,
   parseMath3DProject, replayMixedWorkspaceDocument, viewerSourceFromDocument, projectResourceInventory, VerifiedProjectResources, type ProjectResourceSidecar } from "@math3d/core";
+import { mobileSurfaceUnavailableReason } from "./mobileProjectSurface";
 import { mobileCurveUnavailableReason } from "./mobileProjectCurve";
 import { mobileProjectRefreshOptions } from "./mobileProjectRefresh";
 import { resolveMobileProjectWorkspace } from "./mobileProjectReplay";
@@ -9,7 +10,7 @@ import { createInMemoryDependencyGraph } from "@math3d/kernel";
 /** Inspect checkpointed named projects without activating an editor or mutating storage. */
 export const buildMobileProjectExplorer = (raw: string, sidecars: readonly ProjectResourceSidecar[] = []) => {
   const project = parseMath3DProject(raw);
-  if (project.workspace.entries.some(entry => !["graph2d", "curve"].includes(entry.module) && entry.replay !== null)) throw new TypeError("Export checkpoint JSON for documents other than Graphs and Curves on desktop to inspect these documents on mobile.");
+  if (project.workspace.entries.some(entry => !["graph2d", "curve", "surface"].includes(entry.module) && entry.replay !== null)) throw new TypeError("Export checkpoint JSON for documents other than Graphs, Curves and Surfaces on desktop to inspect these documents on mobile.");
   const resolved = resolveMobileProjectWorkspace(project.workspace);
   const resources = new VerifiedProjectResources(project, sidecars, mobileProjectResourceContext);
   const inventory = projectResourceInventory(project, mobileProjectResourceContext);
@@ -27,14 +28,16 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
   });
   const curveReason = (id: string) => mobileCurveUnavailableReason(resolved.get(id)! as import("@math3d/core").CurveDocument,
     project.workspace.entries.find(entry => entry.expected.id === id)?.replay?.payload as import("@math3d/kernel").CurveReplayBundle | undefined);
+  const surfaceReason = (id: string) => mobileSurfaceUnavailableReason(resolved.get(id)! as import("@math3d/core").SurfaceDocument,
+    project.workspace.entries.find(entry => entry.expected.id === id)?.replay?.payload as import("@math3d/kernel").SurfaceReplayBundle | undefined);
   return {
     title: project.metadata.title,
     refreshOptions: mobileProjectRefreshOptions({ projectType: "project-preview", id: project.identity.id, title: project.metadata.title,
       serializedProject: raw, projectResources: [...sidecars], updatedAt: 0, lastOpenedAt: 0 }),
     resources: inventory.map(item => ({ id: item.id, kind: item.kind, required: item.required, available: resources.bytes(item) !== null })),
     groups: tree.groups.map(group => ({ ...group, documents: group.documents.map(document => ({ ...document,
-      editing: document.module === "curve" && !document.archived && resolved.get(document.id)?.format === "math3d.curve-document" && !curveReason(document.id) ? "Curve workspace" : document.module === "graph2d" && !document.archived && !inventory.some(item => item.kind === "graph-point-table" && item.owners.includes(document.id) && !resources.bytes(item)) ? "Graph workspace" : "Saved preview",
-      unavailableReason: document.module === "curve" ? document.archived ? "Archived documents cannot be edited." : curveReason(document.id) : document.module !== "graph2d" ? "This module remains a saved preview on mobile." : document.archived ? "Archived documents cannot be edited." :
+      editing: document.module === "surface" && !document.archived && !surfaceReason(document.id) ? "Surface workspace" : document.module === "curve" && !document.archived && resolved.get(document.id)?.format === "math3d.curve-document" && !curveReason(document.id) ? "Curve workspace" : document.module === "graph2d" && !document.archived && !inventory.some(item => item.kind === "graph-point-table" && item.owners.includes(document.id) && !resources.bytes(item)) ? "Graph workspace" : "Saved preview",
+      unavailableReason: document.module === "surface" ? document.archived ? "Archived documents cannot be edited." : surfaceReason(document.id) : document.module === "curve" ? document.archived ? "Archived documents cannot be edited." : curveReason(document.id) : document.module !== "graph2d" ? "This module remains a saved preview on mobile." : document.archived ? "Archived documents cannot be edited." :
         inventory.some(item => item.kind === "graph-point-table" && item.owners.includes(document.id) && !resources.bytes(item)) ? "Import missing Graph source tables before editing." : null,
       stale: relations.some(relation => relation.freshness !== "current" && relation.target.type === "document" && relation.target.generation.documentId === document.id),
     })) })),

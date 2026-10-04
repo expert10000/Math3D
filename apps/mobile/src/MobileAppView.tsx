@@ -8,6 +8,7 @@ import { MobileHomeScreen } from "./MobileHomeScreen";
 import { MobileProjectsScreen } from "./MobileProjectsScreen";
 import { MobileExploreScreen } from "./MobileExploreScreen";
 import { MobileSettingsScreen } from "./MobileSettingsScreen";
+import { MobileSurfaceWorkspace } from "./MobileSurfaceWorkspace";
 import { MobileCurveWorkspace } from "./MobileCurveWorkspace";
 import { MobileGraphsWorkspace } from "./MobileGraphsWorkspace";
 import { MobileGraphGallery } from "./MobileGraphGallery";
@@ -28,7 +29,8 @@ export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model 
         </View>
       </View>}
 
-      {tab === "workspace" && (model.curveDocument && model.projectCurveAdapter ? <MobileCurveWorkspace key={model.curveDocument.identity.id}
+      {tab === "workspace" && (model.surfaceDocument && model.projectSurfaceAdapter ? <MobileSurfaceWorkspace key={model.surfaceDocument.identity.id}
+        document={model.surfaceDocument} adapter={model.projectSurfaceAdapter} onChange={model.setSurfaceDocument} onSave={model.saveSurfaceProject} message={model.projectActionMessage} /> : model.curveDocument && model.projectCurveAdapter ? <MobileCurveWorkspace key={model.curveDocument.identity.id}
         document={model.curveDocument} adapter={model.projectCurveAdapter} onChange={model.setCurveDocument} onSave={model.saveCurveProject} message={model.projectActionMessage} /> : model.graphDocument ? <MobileGraphsWorkspace key={`${model.graphDocument.identity.id}/${model.graphDocument.metadata.title}`}
         document={model.graphDocument} onChange={model.setGraphDocument} onSave={model.saveGraphProject} message={model.projectActionMessage}
         sessionAdapter={model.projectGraphAdapter} pointTables={model.projectGraphTables}

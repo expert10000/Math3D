@@ -47,6 +47,7 @@ export type MobileStoredSceneProject = {
   projectResources?: import("@math3d/core").ProjectResourceSidecar[];
   activeGraphDocumentId?: string;
   activeCurveDocumentId?: string;
+  activeSurfaceDocumentId?: string;
   source?: {
     kind: "imported" | "shared" | "desktop";
     name: string;
