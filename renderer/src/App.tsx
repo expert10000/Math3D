@@ -79,6 +79,8 @@ import { WorkbookPanel } from "./components/WorkbookPanel";
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
 import { GeometryAnalysisInspectorPanel } from "./components/GeometryAnalysisInspectorPanel";
 import { KernelWorkspacePanel } from "./components/KernelWorkspacePanel";
+import { PROJECT_STORAGE_KEY } from "./projects/projectLibrary";
+import { readNotebookProjectContext } from "./workbook/notebookProjectContext";
 import { GeometryTessellationSettingsPanel } from "./components/GeometryTessellationSettingsPanel";
 import { UnifiedSelectionInspector } from "./components/UnifiedSelectionInspector";
 import { SharedInspectorShell, type SharedInspectorCategory } from "./components/SharedInspectorShell";
@@ -763,6 +765,7 @@ import {
   type MixedWorkspaceEntry,
   type MixedWorkspaceDocument,
   type KernelWorkspaceDocument,
+  type Math3DProject,
 } from "@math3d/core";
 import { GeometryDocumentAdapter } from "./geometry/geometryDocumentAdapter";
 import { MIXED_REPLAY_FORMATS } from "./kernel/mixedWorkspaceReplay";
@@ -1125,6 +1128,7 @@ import {
   createDefaultWorkbook,
   createWorkbookFromGeometryTask,
   createWorkbookFromTemplate,
+  normalizeNotebookReference,
   evaluateWorkbookGeometryTask,
   WORKBOOK_GEOMETRY_TASKS,
   WORKBOOK_STAGE_ORDER,
@@ -11206,6 +11210,7 @@ function sanitizeFileBase(label: string, fallback: string) {
 const WORKBOOK_EXPORT_BLOCK_LABELS: Record<WorkbookBlockType, string> = {
   text: "Text",
   formula: "Formula",
+  reference: "Project reference",
   visualize: "Visualize",
   compute: "Compute",
   interaction: "Interact",
@@ -11329,6 +11334,15 @@ const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string 
           lines.push("```");
           lines.push(block.formula ?? "");
           lines.push("```");
+        } else if (block.type === "reference") {
+          const reference = normalizeNotebookReference(block.notebookReference);
+          if (reference) {
+            lines.push(`Project: ${reference.projectId}`);
+            lines.push(`${reference.kind === "document" ? "Document" : "Saved result"}: ${reference.targetId}`);
+            lines.push(`Source: ${reference.source.documentId} revision ${reference.source.revision}`);
+            if (reference.kind === "result") lines.push(`Result hash: ${reference.resultHash}`);
+            lines.push("Status: verify against the named Project when opened.");
+          } else lines.push(block.notebookReference ? "_(Invalid Project reference)_" : "_(No Project target linked)_");
         } else if (block.type === "compute") {
           lines.push(`Operator: ${block.compute?.operatorId ?? "—"}`);
           if (block.compute?.lastRun?.status) lines.push(`Status: ${block.compute.lastRun.status}`);
@@ -11413,6 +11427,8 @@ const buildWorkbookAnalysisTablesCsv = (workbooks: Workbook[], activeWorkbookId:
               ? block.compute?.lastRun?.status ?? block.compute?.status ?? "stale"
               : block.type === "assert"
                 ? block.assert?.status ?? "pending"
+                : block.type === "reference"
+                  ? "unverified"
                 : "ok";
         const row = [
           workbook.title,
@@ -11527,6 +11543,15 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
           body = `<div class="block-body"><pre>${escapeHtml(block.text ?? "")}</pre></div>`;
         } else if (block.type === "formula") {
           body = `<div class="block-body"><pre>${escapeHtml(block.formula ?? "")}</pre></div>`;
+        } else if (block.type === "reference") {
+          const reference = normalizeNotebookReference(block.notebookReference);
+          body = reference ? `<div class="block-body">
+            <div>Project: ${escapeHtml(reference.projectId)}</div>
+            <div>${reference.kind === "document" ? "Document" : "Saved result"}: ${escapeHtml(reference.targetId)}</div>
+            <div>Source: ${escapeHtml(reference.source.documentId)} revision ${reference.source.revision}</div>
+            ${reference.kind === "result" ? `<div>Result hash: ${escapeHtml(reference.resultHash)}</div>` : ""}
+            <div>Status: verify against the named Project when opened.</div>
+          </div>` : `<div class="block-body">${block.notebookReference ? "Invalid Project reference." : "No Project target linked."}</div>`;
         } else if (block.type === "compute") {
           body = `<div class="block-body">
             <div>Operator: ${escapeHtml(block.compute?.operatorId ?? "—")}</div>
@@ -12475,6 +12500,7 @@ const getComputePorts = (operatorId?: string) => {
 const DEFAULT_BLOCK_PORTS: Record<WorkbookBlockType, { inputs: WorkbookPort[]; outputs: WorkbookPort[] }> = {
   text: { inputs: [], outputs: [{ id: "text", label: "Text", type: "text" }] },
   formula: { inputs: [], outputs: [{ id: "formula", label: "Formula", type: "formula" }] },
+  reference: { inputs: [], outputs: [] },
   visualize: {
     inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }],
     outputs: [{ id: "snapshot", label: "Snapshot", type: "snapshot" }],
@@ -54002,6 +54028,7 @@ case "mobius":
     const base: WorkbookBlock = { id: makeId(), type, title: `${type[0].toUpperCase()}${type.slice(1)} block` };
     if (type === "text") return applyDefaultPorts({ ...base, title: "Text", text: "" });
     if (type === "formula") return applyDefaultPorts({ ...base, title: "Formula", formula: "" });
+    if (type === "reference") return applyDefaultPorts({ ...base, title: "Project reference" });
     if (type === "visualize")
       return applyDefaultPorts({
         ...base,
@@ -77320,6 +77347,7 @@ case "mobius":
     SURFACE_MESH_PRESETS[1]?.id ??
     meshNewPresetId;
   const [projectsOpen, setProjectsOpen] = useState(false);
+  const activeNotebookProjectRef = useRef<Math3DProject | null>(null);
   const sectionNavEntries: Array<{
     id: "projects" | "surfaces" | "mesh" | "volume" | "curves" | "graphs" | "topology" | "geometry" | "complex_analysis";
     label: string;
@@ -79280,6 +79308,7 @@ case "mobius":
       <KernelWorkspacePanel
         projectsOpen={projectsOpen}
         onProjectsOpenChange={setProjectsOpen}
+        onCurrentProjectChange={(project) => { activeNotebookProjectRef.current = project; }}
         canNavigateDocument={(id, module) => restoredProjectRef.current?.graphs.has(id) || restoredProjectRef.current?.additional.has(id) || restoredProjectRef.current?.curves.has(id) || restoredProjectRef.current?.surfaces.has(id) || restoredProjectRef.current?.geometries.has(id) || restoredProjectRef.current?.topologies.has(id) || restoredProjectRef.current?.complexes.has(id) || restoredProjectRef.current?.volumes.has(id) || restoredProjectRef.current?.meshes.has(id) || graph2dPromotions.some((item) => item.document.identity.id === id) || ({
           geometry: geometryKernelAdapterRef.current?.document().identity.id,
           mesh: meshKernelDocument?.identity.id,
@@ -89848,6 +89877,23 @@ case "mobius":
                   ) : (
                     <WorkbookPanel
                       workbooks={workbooks}
+                      getNotebookProject={() => readNotebookProjectContext(activeNotebookProjectRef.current, localStorage.getItem(PROJECT_STORAGE_KEY), captureMixedKernelWorkspace)}
+                      onOpenProjects={() => setProjectsOpen(true)}
+                      onOpenNotebookDocument={(id, module) => {
+                        if (navigateRestoredDocument(id, module)) return;
+                        setActiveGraph2DTargetId(null);
+                        if (module === "graph2d") setMode("graphs");
+                        else if (module === "curve") setMode("curves");
+                        else if (module === "geometry") setMode("geometry");
+                        else if (module === "topology") setMode("topology");
+                        else {
+                          setMode("surfaces");
+                          if (module === "volume") setDatasetKind("volume");
+                          else if (module === "mesh") { setDatasetKind("mesh"); setSurfaceViewerKind("mesh"); }
+                          else if (module === "complex") { setDatasetKind("surface"); setSurfaceViewerKind("complex"); }
+                          else { setDatasetKind("surface"); setSurfaceViewerKind("param"); }
+                        }
+                      }}
                       activeWorkbookId={activeWorkbookId}
                       activeStageId={activeStageId}
                       computeStatusById={computeStatusById}

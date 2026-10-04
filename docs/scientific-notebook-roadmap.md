@@ -25,7 +25,7 @@ Math3D already has Workbooks with Define, Compute, Visualize and Explain stages;
 
 ## Ownership and order
 
-NOTE01 now provides the versioned reference and source-freshness inspection in `@math3d/workbook`, with a serialization and source-edit contract test. It does not yet add a reference picker or report cell to the UI; those are NOTE02–NOTE04.
+NOTE01 provides the versioned reference and source-freshness inspection in `@math3d/workbook`, with serialization and source-edit contract tests. NOTE02 adds a Project reference block to the existing Workbook editor. It links a document or saved analysis result from the active named Project, retains the original Project and source IDs, and reports current, stale, missing, or different-project status. The cell offers source navigation and survives normal Workbook save/reopen. A saved Project preview can resolve a reference, while creating a new link requires the named Project to be active. Markdown and report exports include the citation and explicitly require status verification when opened. Live embedding, verified artifact previews, and richer provenance remain NOTE03–NOTE04.
 
 NOTE01 is a small contract addition to `packages/workbook`. NOTE02–NOTE04 make that contract useful before adding rerun or export promises. Projects remains the authority for identity, provenance and resources; its separate workspace can continue without a parallel Project schema change here. The existing Workbook editor and exports remain the UI and migration base. A new top-level notebook mode is unnecessary until the linked-cell workflow is proven.
 

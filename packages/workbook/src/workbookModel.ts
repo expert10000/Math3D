@@ -12,6 +12,7 @@ export type WorkbookStageId = "define" | "compute" | "visualize" | "explain";
 export type WorkbookBlockType =
   | "text"
   | "formula"
+  | "reference"
   | "visualize"
   | "compute"
   | "assert"

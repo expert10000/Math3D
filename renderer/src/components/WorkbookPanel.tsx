@@ -1,4 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { KernelWorkspaceModule } from "@math3d/core";
+import type { NotebookReference } from "@math3d/workbook";
+import type { NotebookProjectContext } from "../workbook/notebookProjectContext";
+import { WorkbookProjectReferenceCell } from "./WorkbookProjectReferenceCell";
 import { uiStyles as styles } from "../uiStyles";
 import type {
   Workbook,
@@ -39,6 +43,9 @@ type WorkbookPanelProps = {
   onSelectStage: (id: WorkbookStageId) => void;
   onAddBlock: (stageId: WorkbookStageId, type: WorkbookBlockType) => void;
   onUpdateBlock: (stageId: WorkbookStageId, blockId: string, patch: Partial<WorkbookBlock>) => void;
+  getNotebookProject: () => NotebookProjectContext | null;
+  onOpenNotebookDocument: (id: string, module: KernelWorkspaceModule) => void;
+  onOpenProjects: () => void;
   onRemoveBlock: (stageId: WorkbookStageId, blockId: string) => void;
   onMoveBlock: (stageId: WorkbookStageId, blockId: string, dir: -1 | 1) => void;
   onToggleBlockEnabled: (stageId: WorkbookStageId, blockId: string, enabled: boolean) => void;
@@ -113,6 +120,7 @@ type WorkbookPanelProps = {
 const BLOCK_TYPE_LABELS: Record<WorkbookBlockType, string> = {
   text: "Text",
   formula: "Formula",
+  reference: "Project reference",
   visualize: "Visualize",
   compute: "Compute",
   interaction: "Interact",
@@ -122,6 +130,7 @@ const BLOCK_TYPE_LABELS: Record<WorkbookBlockType, string> = {
 const BLOCK_ACCENT: Record<WorkbookBlockType, string> = {
   text: "#7c7c7c",
   formula: "#6b4b1f",
+  reference: "#2563eb",
   visualize: "#1f3556",
   compute: "#0f766e",
   interaction: "#7c3aed",
@@ -471,6 +480,9 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onSelectStage,
   onAddBlock,
   onUpdateBlock,
+  getNotebookProject,
+  onOpenNotebookDocument,
+  onOpenProjects,
   onRemoveBlock,
   onMoveBlock,
   onToggleBlockEnabled,
@@ -1735,6 +1747,17 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                   placeholder="LaTeX or formula..."
                   disabled={readOnly}
                   style={{ width: "100%", padding: 6, fontSize: 12, fontFamily: "monospace" }}
+                />
+              )}
+
+              {block.type === "reference" && (
+                <WorkbookProjectReferenceCell
+                  reference={block.notebookReference}
+                  readOnly={readOnly}
+                  getProject={getNotebookProject}
+                  onChange={(reference: NotebookReference) => onUpdateBlock(activeStageId, block.id, { notebookReference: reference })}
+                  onOpenDocument={onOpenNotebookDocument}
+                  onOpenProjects={onOpenProjects}
                 />
               )}
 
