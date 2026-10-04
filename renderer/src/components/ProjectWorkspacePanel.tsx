@@ -57,6 +57,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
   const [inspectionOpen, setInspectionOpen] = useState(false), [inspectedId, setInspectedId] = useState<string | null>(null);
   const [incoming, setIncoming] = useState<ReturnType<typeof previewProjectImport> | null>(null);
   const importSequence = useRef(0);
+  const compatibilityRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (incoming) compatibilityRef.current?.scrollIntoView({ block: "nearest" }); }, [incoming]);
   const dependencies = useMemo(() => project && inspectionOpen ? inspectProjectDependencies(project, artifactAvailable) : null, [project, artifactAvailable, inspectionOpen]);
   const documentTitles = new Map(explorer?.groups.flatMap((group) => group.documents.map((document) => [document.id, document.title] as const)) ?? []);
 
@@ -272,10 +274,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
     {open && <aside id="project-explorer-panel" data-testid="project-explorer-panel" aria-label="Project explorer"
       style={{ position: "absolute", right: 0, top: 0, width: 420, boxSizing: "border-box", maxWidth: "calc(100vw - 28px)", maxHeight: "min(70vh, 650px)", overflow: "auto", padding: 14,
         background: "#fff", color: "#0f172a", border: "1px solid #94a3b8", borderRadius: 10, boxShadow: "0 10px 30px #0f172a30" }}>
+      <div data-testid="project-explorer-header" style={{ position: "sticky", top: -14, zIndex: 1, background: "#fff", padding: "10px 0", borderBottom: "1px solid #e2e8f0" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <strong>Projects</strong><button type="button" aria-label="Close project explorer" onClick={() => onOpenChange(false)}>Close</button>
       </div>
       <p data-testid="project-view-mode" role="status" style={{ padding: 8, background: "#eff6ff", borderRadius: 6 }}>{managed ? "Managing saved project" : preview ? "Saved project preview" : "Current workspace"} · {project?.metadata.title ?? "Untitled project"}</p>
+      <button type="button" data-testid="project-restore-saved" disabled={busy || !!managed || !project || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={previewSavedOpen}>Open saved project</button>
+      {preview && !managed && <p data-testid="project-open-guidance" style={{ marginBottom: 0 }}>Open saved project, then choose Open project in the compatibility preview to enable document buttons.</p>}
+      </div>
       {preview && !managed && <p>Previewing a saved project. Current workspace returns to your active editors; Manage saved project edits this saved copy.</p>}
       <label style={{ display: "grid", gap: 4, margin: "10px 0" }}>Project name
         <input data-testid="project-title" value={title} maxLength={160} disabled={(preview && !managed) || !project} onChange={(event) => setTitle(event.target.value)} />
@@ -290,7 +296,6 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
         <input data-testid="project-thumbnail" type="file" accept="image/png,image/jpeg" disabled={(preview && !managed) || !project} onChange={(event) => { void chooseThumbnail(event.target.files?.[0]); event.target.value = ""; }} style={{ maxWidth: "100%" }} />
       </label>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        <button type="button" data-testid="project-restore-saved" disabled={!preview || !!managed || !project} onClick={previewSavedOpen}>Open saved project</button>
         <button type="button" data-testid="project-current" onClick={refresh}>Current workspace</button>
         <button type="button" data-testid="project-save" disabled={busy || (preview && !managed) || !project || !title.trim()} onClick={save}>{managed ? "Save changes" : "Save project"}</button>
         <button type="button" data-testid="project-view-saved" onClick={viewSaved}>View saved project</button>
@@ -307,7 +312,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
         <input type="file" data-testid="project-import-file" disabled={busy} accept="application/json,.json" onChange={(event) => { void importFile(event.target.files?.[0]); event.target.value = ""; }} style={{ maxWidth: "100%" }} />
       </label>
       <p data-testid="project-message" role="status">{message}</p>
-      {incoming && <ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !busy} onCancel={() => { importSequence.current++; setIncoming(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} />}
+      {incoming && <div ref={compatibilityRef}><ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !busy} onCancel={() => { importSequence.current++; setIncoming(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div>}
       <ProjectTemplatesPanel onPreview={previewTemplate} />
       {project && <small data-testid="project-content-revision">{preview ? "Saved preview" : "Current workspace"} · project revision {project.identity.revision}</small>}
       <section data-testid="project-library" style={{ marginTop: 14 }}>
@@ -336,7 +341,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
         {group.documents.length ? <ul style={{ margin: "5px 0", paddingLeft: 20 }}>
           {group.documents.map((document) => <li key={document.id} style={{ marginBottom: 5, background: inspectedId === document.id && inspectionOpen ? "#eff6ff" : undefined }}>
             <button type="button" data-testid={`project-open-${document.id}`} disabled={preview || document.archived || !onNavigateDocument || !canNavigateDocument?.(document.id, document.module)}
-              title={document.id} onClick={() => navigate(document.id, document.module)} style={{ maxWidth: "100%", overflowWrap: "anywhere", textAlign: "left" }}>{document.title}</button>
+              title={document.archived ? "Archived document" : preview ? "Open saved project first" : !canNavigateDocument?.(document.id, document.module) ? "Document unavailable in the active workspace; inspect dependencies or open the saved project" : `Open ${document.title}`} onClick={() => navigate(document.id, document.module)}
+              style={{ maxWidth: "100%", overflowWrap: "anywhere", textAlign: "left", opacity: preview || document.archived || !canNavigateDocument?.(document.id, document.module) ? 0.55 : 1 }}>{document.title}</button>
+            {preview && !document.archived && <small> · open project first</small>}
             <small> · revision {document.revision}{document.archived ? " · archived" : ""}</small>
             <button type="button" data-testid={`project-inspect-${document.id}`} onClick={() => { setInspectedId(document.id); setInspectionOpen(true); }}>Inspect dependencies</button>
             {managed && project && <ProjectDocumentActions key={`${document.id}:${document.title}:${document.archived}`} project={project} document={document} onAction={documentAction} />}

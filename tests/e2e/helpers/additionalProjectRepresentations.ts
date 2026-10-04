@@ -32,6 +32,17 @@ export const exerciseAdditionalEditors=async(page:Page,fixture:ReturnType<typeof
   const panel=page.getByTestId("project-explorer-panel"),editor=page.getByTestId("project-source-editor");
   const show=async()=>{if(!await panel.isVisible())await page.getByTestId("projects-toggle").click();};
   await show();await panel.getByTestId("project-import-file").setInputFiles({name:"representations.json",mimeType:"application/json",buffer:Buffer.from(JSON.stringify(fixture.project))});
+  await panel.getByTestId("project-import-save").click();
+  await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
+  await expect(panel.getByTestId("project-open-guidance")).toContainText("enable document buttons");
+  const savedDocument = panel.getByTestId(`project-open-${fixture.docs[0].identity.id}`);
+  await expect(savedDocument).toBeDisabled();
+  await expect(savedDocument).toHaveAttribute("title", "Open saved project first");
+  await panel.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  const restore = panel.getByTestId("project-restore-saved"), headerBox = (await restore.boundingBox())!, panelBox = (await panel.boundingBox())!;
+  expect(headerBox.y).toBeGreaterThanOrEqual(panelBox.y);
+  expect(headerBox.y + headerBox.height).toBeLessThanOrEqual(panelBox.y + panelBox.height);
+  await restore.click();
   await expect(panel.getByTestId("project-import-open")).toBeEnabled();await panel.getByTestId("project-import-open").click();
   await panel.getByTestId("project-save").click();await expect(panel.getByTestId("project-message")).toContainText("Saved");
   expect((await page.evaluate(()=>JSON.parse(localStorage.getItem("math3d.project.v1")!))).workspace.entries.map((entry:any)=>entry.expected)).toEqual(fixture.docs.map((d)=>d.identity));

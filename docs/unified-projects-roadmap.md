@@ -818,3 +818,8 @@ cleanup now releases its context, the saved-source editor pauses the covered
 module workspace, and its camera fits the document bounds. Regression checks
 cover stable Curve canvases and visible saved Curve/Surface/Geometry/Topology
 drawings in Electron and both browser locales, including transfer and restart.
+
+Project-opening follow-up: the explorer keeps Open saved project visible while
+scrolling, explains why saved-preview document buttons are disabled, and brings
+the compatibility preview into view. A saved project can also be opened directly
+from the current-workspace view after a desktop restart.
