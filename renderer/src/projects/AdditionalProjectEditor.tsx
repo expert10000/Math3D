@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from "react";
 import { GeometryViewer } from "../components/GeometryViewer";
 import type { AdditionalProjectSession } from "./additionalProjectSession";
+import { SurfaceFormulaControls } from "./SurfaceFormulaControls";
 
-export const AdditionalProjectEditor = ({ session, onChange, onClose }: { session: AdditionalProjectSession; onChange: () => void; onClose: () => void }) => {
+export const AdditionalProjectEditor = ({ session, onChange, onClose, children }: { session: AdditionalProjectSession; onChange: () => void; onClose: () => void; children?: React.ReactNode }) => {
   const [version, setVersion] = useState(0), [draft, setDraft] = useState(() => JSON.stringify(session.document().source, null, 2)), [error, setError] = useState<string | null>(null);
   const document = session.document(), history = session.history();
   const { view, viewError } = useMemo(() => {
@@ -25,12 +26,17 @@ export const AdditionalProjectEditor = ({ session, onChange, onClose }: { sessio
       <button onClick={onClose}>Back to module</button>
       <span>Projects → Save project keeps edits.</span>
     </div>
-    <details style={{ padding: "0 10px 10px" }}><summary>Edit source definition</summary>
+    {document.format === "math3d.surface-document" && <SurfaceFormulaControls key={`${document.identity.revision}:${document.identity.structuralHash}`} document={document} onApply={source => {
+      session.commit(source as unknown as import("@math3d/core").CanonicalJsonValue);
+      setDraft(JSON.stringify(session.document().source, null, 2)); setError(null); setVersion(v => v + 1); onChange();
+    }} />}
+    <details style={{ padding: "0 10px 10px" }}><summary>Edit source definition · Advanced JSON</summary>
       <textarea aria-label="Saved source definition" data-testid="project-source-definition" value={draft} onChange={(event) => setDraft(event.target.value)} rows={12} style={{ width: "100%", boxSizing: "border-box", font: "12px Consolas, monospace" }} />
       <button data-testid="project-source-apply" onClick={() => action(() => session.commit(JSON.parse(draft)))}>Apply source</button>
     </details>
     {error && <div role="alert" style={{ padding: 10 }}>{error}</div>}
     {viewError && <div role="alert" style={{ padding: 10 }}>Saved dependency unavailable: {viewError}</div>}
+    {children}
     {view && <><div data-testid="project-source-measurement" style={{ padding: "0 10px 8px", overflowWrap: "anywhere" }}>{view.qualification} · {view.sampleCount} sampled points · bounds {JSON.stringify(view.bounds)}</div>
       <div style={{ flex: 1, minHeight: 200, position: "relative" }}><GeometryViewer key={version} scene={view.scene} meshOverrides={view.meshes} cameraFitCommand={cameraFitCommand} /></div></>}
   </section>;
