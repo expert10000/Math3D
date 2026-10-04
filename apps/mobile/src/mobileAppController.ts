@@ -289,7 +289,7 @@ export const useMobileAppController = () => {
   const [curveDocument, setCurveDocument] = useState<CurveDocument | null>(null);
   const mixedGraphSessions = useRef<MobileProjectGraphSessions | null>(null);
   const currentGraphWork = () => ({ graph: graphDocument, scene: viewerDocument,
-    project: mixedGraphSessions.current && (surfaceDocument || curveDocument || graphDocument && mixedGraphSessions.current.has(graphDocument.identity.id)) ? mixedGraphSessions.current.snapshot(surfaceDocument?.identity.id ?? curveDocument?.identity.id ?? graphDocument!.identity.id) : null });
+    project: mixedGraphSessions.current?.snapshotForOpenDocumentIds([surfaceDocument?.identity.id, curveDocument?.identity.id, graphDocument?.identity.id]) ?? null });
   const [graphGalleryOpen, setGraphGalleryOpen] = useState(false);
   const [graphProjectFavorites,setGraphProjectFavorites]=useState(emptyGraph2DProjectFavorites);
   const [graphProjectFavoritesError,setGraphProjectFavoritesError]=useState("");
@@ -2674,11 +2674,11 @@ export const useMobileAppController = () => {
     graphGalleryImportPreview,setGraphGalleryImportPreview,exportPersonalGraphProject,sharePersonalGraphDefinition,
     previewPersonalGraphFile,acceptPersonalGraphImport,
     surfaceDocument, setSurfaceDocument, openProjectSurface, saveSurfaceProject,
-    projectSurfaceAdapter: surfaceDocument ? mixedGraphSessions.current?.surface(surfaceDocument.identity.id) : undefined,
+    projectSurfaceAdapter: surfaceDocument && mixedGraphSessions.current?.hasSurface(surfaceDocument.identity.id) ? mixedGraphSessions.current.surface(surfaceDocument.identity.id) : undefined,
     curveDocument, setCurveDocument, openProjectCurve, saveCurveProject,
     refreshProjectDependency,
     projectInspectionSnapshot: tab === "projects" ? currentGraphWork().project : null,
-    projectCurveAdapter: curveDocument ? mixedGraphSessions.current?.curve(curveDocument.identity.id) : undefined,
+    projectCurveAdapter: curveDocument && mixedGraphSessions.current?.hasCurve(curveDocument.identity.id) ? mixedGraphSessions.current.curve(curveDocument.identity.id) : undefined,
     graphDocument, setGraphDocument, createGraphProject, importGraphProject, saveGraphProject, graphPromotions, createGraphPromotion,
     openProjectGraph,
     projectGraphAdapter: graphDocument && mixedGraphSessions.current?.has(graphDocument.identity.id) ? mixedGraphSessions.current.adapter(graphDocument.identity.id) : undefined,

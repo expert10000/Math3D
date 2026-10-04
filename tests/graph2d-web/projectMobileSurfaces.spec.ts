@@ -23,7 +23,7 @@ test("PRJ30 browser retains complete Surface packages and saved histories throug
   await panel.getByTestId("project-import-open").click(); await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
   if (process.env.MATH3D_PRJ30_RETURN) {
     const manifest = JSON.parse(readFileSync(resolve(output, "manifest.json"), "utf8"));
-    await panel.getByTestId(`project-open-${manifest.surfaceId}`).click(); await page.getByRole("button", { name: "Close project explorer" }).click();
+    await panel.getByTestId(`project-open-${manifest.surfaceId}`).click(); if (await panel.isVisible()) await page.getByRole("button", { name: "Close project explorer" }).click();
     await expect(page.getByLabel("z(u,v)", { exact: true })).toHaveValue("u*u-v*v+2");
     await page.getByTestId("project-editor-undo").click(); await expect(page.getByLabel("z(u,v)", { exact: true })).toHaveValue("u*u-v*v");
     await page.getByTestId("project-editor-redo").click(); await expect(page.getByLabel("z(u,v)", { exact: true })).toHaveValue("u*u-v*v+2");

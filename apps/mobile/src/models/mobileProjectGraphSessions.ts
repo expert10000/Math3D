@@ -42,6 +42,13 @@ export class MobileProjectGraphSessions {
   }
   projectId(): string { return this.#stored.id; }
   has(id: string): boolean { return this.#adapters.has(id); }
+  hasCurve(id: string): boolean { return this.#curves.has(id); }
+  hasSurface(id: string): boolean { return this.#surfaces.has(id); }
+  /** A session ref can change before React has replaced the previous editor state. */
+  snapshotForOpenDocumentIds(ids: readonly (string | undefined)[]): MobileStoredSceneProject | null {
+    const id = ids.find(id => id !== undefined && (this.has(id) || this.hasCurve(id) || this.hasSurface(id)));
+    return id ? this.snapshot(id) : null;
+  }
   tables(): Graph2DPointTableStore { return this.#tables; }
   adapter(id: string): Graph2DCommandAdapter {
     const adapter = this.#adapters.get(id); if (!adapter) throw new TypeError("This document is archived or has no mobile Graph editor."); return adapter;

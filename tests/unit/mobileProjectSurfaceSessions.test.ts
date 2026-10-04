@@ -23,6 +23,20 @@ const fixture = () => {
   return { original, project, stored, surface };
 };
 describe("PRJ28 mobile Surface history in complete projects", () => {
+  it("ignores an outgoing editor from another project while selecting the incoming Graph, Curve or Surface", () => {
+    const { stored, surface, original } = fixture(), sessions = new MobileProjectGraphSessions(stored);
+    const outgoing = "math3d:curve:outgoing-refreshed-target";
+    expect(sessions.snapshotForOpenDocumentIds([undefined, outgoing, undefined])).toBeNull();
+    expect(sessions.hasCurve(outgoing)).toBe(false);
+    expect(sessions.hasSurface(outgoing)).toBe(false);
+    const graph = sessions.snapshotForOpenDocumentIds([undefined, outgoing, original.graphIds[1]]);
+    expect(graph?.activeGraphDocumentId).toBe(original.graphIds[1]);
+    expect(graph?.activeCurveDocumentId).toBeUndefined();
+    expect(sessions.snapshotForOpenDocumentIds([surface.identity.id, outgoing, undefined])?.activeSurfaceDocumentId).toBe(surface.identity.id);
+    const curveId = buildMobileProjectExplorer(stored.serializedProject, stored.projectResources).groups.find(group => group.module === "curve")?.documents.find(document => document.editing === "Curve workspace")?.id;
+    expect(curveId).toBeTruthy();
+    expect(sessions.snapshotForOpenDocumentIds(["math3d:surface:outgoing", curveId || undefined])?.activeCurveDocumentId).toBe(curveId);
+  });
   it("retains Surface redo, active selection, Graph history and every unrelated document/resource on desktop return", () => {
     const { project, stored, surface, original } = fixture(), sessions = new MobileProjectGraphSessions(stored);
     const adapter = sessions.surface(surface.identity.id), graph = sessions.adapter(original.graphIds[1]!);
