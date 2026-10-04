@@ -208,20 +208,20 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
       setIncoming(prepared); setMessage("Project validated. Review compatibility before importing or opening.");
     } catch (error) { if (sequence === importSequence.current) setMessage(`Project import rejected: ${(error as Error).message}`); }
   };
-  const importPreview = async (openWorkspace: boolean) => {
-    if (!incoming || busy) return;
+  const importPreview = async (openWorkspace: boolean, candidate = incoming) => {
+    if (!candidate || busy) return false;
     setBusy(true);
     const previousResources = resourceSession.current;
     let previous: MixedWorkspaceDocument | null = null, rollbackTables: (() => void) | undefined;
     try {
-      const prepared = inspectProjectCompatibility(incoming.project, transferOptions(incoming.resources));
+      const prepared = inspectProjectCompatibility(candidate.project, transferOptions(candidate.resources));
       if (openWorkspace && (!onRestoreWorkspace || !prepared.canOpenWorkspace)) throw new Error("This project is preview-only on this host.");
       previous = openWorkspace ? capture() : null;
       const backupProject = previous ? adoptMixedWorkspaceProject(previous, "Before project open") : null;
       const backup = backupProject ? serializeMath3DProject(backupProject) : undefined;
       const backupResources = backupProject ? collectResources(backupProject, previousResources, true) : null;
       // Preview-only JSON may deliberately lack resources. Preserve that explicit state.
-      const resources = incoming.resources ?? await loadProjectResources(prepared.project);
+      const resources = candidate.resources ?? await loadProjectResources(prepared.project);
       const rollback = () => { rollbackTables?.(); if (previous && onRestoreWorkspace) onRestoreWorkspace(previous, previousResources); };
       setLibrary(await commitProjectResources(prepared.project, resources, () => importLibraryProject(localStorage, prepared.project, Date.now(), { activate: openWorkspace, backup,
         ...(openWorkspace && previous && onRestoreWorkspace ? { afterWrite: () => {
@@ -234,7 +234,26 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
         const first = prepared.documents.find((document) => document.module === "graph2d") ?? prepared.documents[0]!; onNavigateDocument?.(first.id, first.module);
       }
       setMessage(openWorkspace ? "Opened supported project workspace. Previous workspace saved locally; historical analysis and external refs are retained." : "Imported into the library as a verified saved preview. The current workspace is unchanged.");
-    } catch (error) { setMessage(`Project import failed: ${(error as Error).message}`); }
+      return true;
+    } catch (error) { setMessage(`Project import failed: ${(error as Error).message}`); return false; }
+    finally { setBusy(false); }
+  };
+  const openLibraryProject = async (id: string) => {
+    if (busy) return;
+    const sequence = ++importSequence.current;
+    setBusy(true);
+    try {
+      const next = loadLibraryProject(localStorage, id), resources = await loadProjectResources(next);
+      if (sequence !== importSequence.current) return;
+      const prepared = { ...inspectProjectCompatibility(next, transferOptions(resources)), resources, inputKind: "Saved project" };
+      recordView(id);
+      if (!onRestoreWorkspace || !prepared.canOpenWorkspace) {
+        display(next, true); setIncoming(prepared);
+        setMessage("This saved project has preview support. Review its compatibility details below.");
+        return;
+      }
+      if (await importPreview(true, prepared)) onOpenChange(false);
+    } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
   const previewSavedOpen = async () => {
@@ -325,7 +344,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, cap
           return <article key={entry.id} data-testid={`project-library-${entry.id}`} style={{ display: "flex", gap: 8, marginTop: 10, padding: 6, border: "1px solid #e2e8f0", borderRadius: 6 }}>
             <ProjectThumbnail key={src ?? "missing"} src={src} />
             <div style={{ minWidth: 0, flex: 1, overflowWrap: "anywhere" }}>
-              <button type="button" data-testid={`project-preview-${entry.id}`} onClick={() => viewLibraryProject(entry.id)} style={{ textAlign: "left", maxWidth: "100%", overflowWrap: "anywhere" }}>{entry.title}</button>
+              <button type="button" data-testid={`project-open-saved-${entry.id}`} disabled={busy} onClick={() => { void openLibraryProject(entry.id); }} style={{ textAlign: "left", maxWidth: "100%", overflowWrap: "anywhere" }}>Open {entry.title}</button>
+              <button type="button" data-testid={`project-preview-${entry.id}`} disabled={busy} aria-label={`Preview ${entry.title}`} onClick={() => viewLibraryProject(entry.id)} style={{ marginLeft: 4 }}>Preview</button>
               <button type="button" aria-label={`Favorite ${entry.title}`} aria-pressed={entry.favorite} onClick={() => favorite(entry.id, !entry.favorite)} style={{ marginLeft: 4 }}>{entry.favorite ? "★" : "☆"}</button>
               <small style={{ display: "block" }}>{entry.tags.join(" · ")}</small>
               <small style={{ display: "block" }}>Saved {new Date(entry.savedAt).toLocaleString()}{entry.viewedAt > 0 ? ` · Viewed ${new Date(entry.viewedAt).toLocaleString()}` : ""}</small>

@@ -9,6 +9,47 @@ import { runNamedProjectRoundTrip } from "./helpers/namedProjectRoundTrip";
 import { meshResourceFixture, inspectMeshPackage, scalarVolumeResourceFixture, inspectScalarVolumePackage } from "./helpers/meshProjectResources";
 const projectCore = require(resolve("packages/core/src/index.ts"));
 
+test("saved project cards open supported surfaces directly and explain preview-only projects", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    const surface = projectCore.createSurfaceDocument({ stableKey: "direct-open-helicoid", metadata: { title: "Helicoid" }, source: {
+      representation: "parametric", domain: { kind: "parameter", u: { min: -Math.PI, max: Math.PI, periodic: false }, v: { min: -2, max: 2, periodic: false } },
+      units: { length: "unitless" }, orientation: { sign: 1 }, definition: { familyId: "helicoid", expressions: { x: "v*cos(u)", y: "v*sin(u)", z: "u" } }, parameters: {}, branchPolicy: null,
+    } });
+    const missing = projectCore.createSurfaceDocument({ stableKey: "direct-open-missing", metadata: { title: "Missing mesh" }, source: {
+      ...surface.source, representation: "mesh-backed", domain: { kind: "mesh" }, definition: { familyId: "missing-mesh", meshId: "absent-source-mesh" },
+    } });
+    const make = (document: any, title: string) => projectCore.createMath3DProject(projectCore.createMixedWorkspaceDocument({
+      entries: [{ module: "surface", checkpoint: document, expected: document.identity, replay: null }], activeDocumentIds: [document.identity.id],
+      constructions: [], relations: [], results: [], artifacts: [], committedSelection: null,
+    }), { stableKey: title, title });
+    const supported = make(surface, "Helicoid"), unsupported = make(missing, "Missing mesh");
+    await page.getByTestId("projects-toggle").click();
+    for (const project of [supported, unsupported]) {
+      await panel.getByTestId("project-import-file").setInputFiles({ name: "project.json", mimeType: "application/json", buffer: Buffer.from(projectCore.serializeMath3DProject(project)) });
+      await panel.getByTestId("project-import-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
+    }
+    const originalPayloads = await page.evaluate(() => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.startsWith("math3d.project.v1.payload."))));
+    await panel.getByTestId(`project-open-saved-${supported.identity.id}`).click();
+    await expect(panel).toBeHidden();
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id)).toBe(supported.identity.id);
+    await expect(page.locator("canvas:visible").first()).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1.before-open"))).not.toBeNull();
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId(`project-preview-${supported.identity.id}`).click();
+    await expect(panel.getByTestId("project-view-mode")).toContainText("Saved project preview");
+    const active = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
+    await panel.getByTestId(`project-open-saved-${unsupported.identity.id}`).click();
+    await expect(panel.getByTestId("project-import-preview")).toContainText("Missing mesh");
+    await expect(panel.getByTestId("project-import-open")).toBeDisabled();
+    await expect(panel.getByTestId("project-import-preview")).toContainText("Required source sidecars are missing");
+    expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(active);
+    expect(await page.evaluate(() => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.startsWith("math3d.project.v1.payload."))))).toEqual(originalPayloads);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("PRJ19 multiple Graph sessions retain independent histories across Electron restart", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
   try {
