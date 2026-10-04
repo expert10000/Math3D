@@ -1,3 +1,4 @@
+import { capturedCurveSources } from "./capturedCurveSources";
 import { additionalReplayEditable } from "./additionalProjectSession";
 import { captureProjectResources, projectResourceInventory, verifyProjectResourceBytes, parseProjectPackage, MAX_PROJECT_PACKAGE_BYTES, type VerifiedProjectResources } from "./projectResources";
 import { meshReplayEditable } from "./nativeMeshRestore";
@@ -57,6 +58,7 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
     add({ id: item.id, kind: item.kind, checksum: item.checksum, byteLength: bytes?.length ?? (item.kind === "volume-payload" ? (item.reference as { byteLength: number }).byteLength : null), requiredForSource: item.required }, available);
   }
   if (!canonical.workspace.entries.length) reasons.push("The project has no documents to open.");
+  const capturedCurves = capturedCurveSources(canonical.workspace);
   const documents = canonical.workspace.entries.map((entry) => {
     let editable = entry.module === "graph2d";
     if (entry.module === "curve" || entry.module === "surface") {
@@ -77,7 +79,7 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
       catch { editable = false; }
     }
     if ((document.format === "math3d.topology-document" || document.format === "math3d.complex-analysis-document") && scientificDocumentEditable(document)) editable = true;
-    if (!editable && additionalReplayEditable(entry, document, { documents: resolved, resources: options.resources })) editable = true;
+    if (!editable && additionalReplayEditable(entry, document, { documents: resolved, resources: options.resources, capturedCurves })) editable = true;
     if (canonical.metadata.documents?.[entry.expected.id]?.archived) editable = false;
     if (!editable) reasons.push(`${entry.module}: this document has verified preview support; its editor state cannot be fully restored by this host adapter.`);
     return { id: entry.expected.id, module: entry.module, revision: entry.expected.revision, replayVerified: true, editable };

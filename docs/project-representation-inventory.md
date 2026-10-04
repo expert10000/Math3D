@@ -76,3 +76,14 @@ the editor shows the reason and retains the saved definition.
 Desktop/web evidence covers these controls, independent import and restart/reload.
 No additional Complex recipe, oriented/vector/segmentation Volume sampler, embedded
 Geometry surface/camera/overlay editor or physical mobile editing is implied.
+
+
+## PRJ28–PRJ30 mobile Surface extension
+
+Mobile **Edit Surface** qualifies independent literal parametric expressions and
+finite increasing nonperiodic u/v domains, including retained replay sources.
+Shared Surface kernel history supports undo/redo, save and selected-editor restart
+in the complete project. Constructed/procedural outputs remain saved previews.
+Explicit Graph/Curve Surface refresh uses the qualified revolution/extrusion
+adapters; other construction families remain desktop/browser operations.
+See [scope and device runbook](projects-mobile-surfaces.md).

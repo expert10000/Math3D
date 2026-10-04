@@ -42,7 +42,7 @@ geometry are not replaced with guessed results. Extending this registry is futur
 adapter work, separate from the delivered six Curve constructions and five Graph
 analysis types.
 
-## Mobile mixed projects, Graph and Curve editing
+## Mobile mixed projects, Graph, Curve and Surface editing
 
 **Projects → New Project → IMPORT → Math3D project** accepts
 complete checkpointed named projects, mixed-workspace/handoff checkpoints and
@@ -54,26 +54,29 @@ mixed cards open that view. **Edit Graph** opens an unarchived Graph whose curre
 and historical table resources are available. **Edit Curve** opens independent,
 nonperiodic explicit/parametric literal sources in 2D/3D. Expressions and domain
 bounds must evaluate to finite samples, including every retained undo/redo source.
-Other documents remain previews with their qualification reason.
+**Edit Surface** opens independent nonperiodic literal parametric sources with
+x(u,v), y(u,v), z(u,v) and u/v domain controls. Current and retained history
+recipes must produce finite samples. Other documents remain previews with their
+qualification reason.
 
-The library uses schema 5; schemas 1–4 migrate through the atomic backup writer.
+The library uses schema 6; schemas 1–5 migrate through the atomic backup writer.
 Named JSON and checked Graph tables, Mesh buffers and Volume payloads are retained
 in one atomic record. Packages are bounded to 25 MiB. **Import project resources**
 is available on mixed-project cards and attaches bytes only to the same saved
 workspace version. Import resource packages as mixed projects to edit their
-Graphs and qualified Curves; legacy single-Graph cards retain their existing save path. Corrupt or conflicting
+Graphs, qualified Curves and literal parametric Surfaces; legacy single-Graph cards retain their existing save path. Corrupt or conflicting
 resources reject without replacing existing work. Sources shows missing bytes.
 Export/share returns the full named project and retained source resources.
 Rename changes only project
 metadata. Identity conflicts reject; duplicate requires a desktop identity fork.
 Preview imports preserve current unsaved editor work before committing storage.
 Preview imports never become startup editor fallbacks. An explicitly selected
-Graph or qualified Curve is retained for restart; each document has independent bounded undo/redo.
+Graph, qualified Curve or qualified Surface is retained for restart; each document has independent bounded undo/redo.
 Switching and saving retain the complete enclosing project. A malformed import or failed save
 keeps the existing library and editor.
 
-Replay for modules other than Graph and qualified Curve must first be exported as
-**checkpoint JSON** on desktop. Verified Graph/Curve replay can reopen directly.
+Replay for modules other than Graph, Curve and Surface must first be exported as
+**checkpoint JSON** on desktop. Verified Graph/Curve/Surface replay can reopen directly.
 Missing source bytes block only the
 affected Graph; Mesh/Volume resources are retained without enabling their mobile
 editors. Analysis caches remain separate from source resources. Physical iOS
@@ -91,3 +94,11 @@ The [PRJ25–PRJ27 acceptance workflow](projects-mobile-curves.md) records the d
 scope. Signed Samsung editing/refresh/restart, actual desktop/browser return and
 damaged-store recovery passed on October 4; [exact-build evidence](evidence/projects-prj27-samsung-2026-10-04/acceptance.json)
 records the results and preservation checks.
+
+PRJ29 adds **Create refreshed Surface** for Graph revolution/extrusion and one
+qualified literal parametric t Curve's saved revolution/extrusion. These explicit
+forks preserve historical targets, results and resources. Constructed/procedural
+Surface targets remain mobile previews. Desktop/browser historical construction
+views use captured Curve recipes from verified retained replay when available.
+The [PRJ28–PRJ30 runbook](projects-mobile-surfaces.md) records the expanded workflow;
+signed device qualification is in progress.

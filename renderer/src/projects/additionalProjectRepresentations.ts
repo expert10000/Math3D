@@ -1,4 +1,4 @@
-import { canonicalJsonStringify, createCurveDocument, createSurfaceDocument, createGeometryDocument, geometryDocumentToSceneDocument,
+import { evaluateGraph2DPromotionGeometry, canonicalJsonStringify, createCurveDocument, createSurfaceDocument, createGeometryDocument, geometryDocumentToSceneDocument,
   evaluateDerivedConstructionObjects, canonicalizeFinite2DTopologyDocument, createTopologyDocument, createDocumentIdentity, type CurveDocument, type SurfaceDocument,
   type GeometryDocument, type TopologyDocument, type MixedWorkspaceEntry, type CanonicalJsonValue } from "@math3d/core";
 import { createSplineDefinition, evaluateSpline } from "@math3d/core";
@@ -15,8 +15,10 @@ import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 import type { GeometryScene } from "../geometry/types";
 import type { VerifiedProjectResources } from "./projectResources";
 
+import { capturedCurveKey } from "./capturedCurveSources";
+
 export type AdditionalDocument = CurveDocument | SurfaceDocument | GeometryDocument | TopologyDocument;
-export type RepresentationContext = { documents: ReadonlyMap<string, MixedWorkspaceEntry["checkpoint"]>; resources?: VerifiedProjectResources };
+export type RepresentationContext = { documents: ReadonlyMap<string, MixedWorkspaceEntry["checkpoint"]>; resources?: VerifiedProjectResources; capturedCurves?: ReadonlyMap<string, CurveDocument> };
 type Point = { x: number; y: number; z: number };
 export type RepresentationView = { scene: GeometryScene; meshes: SurfaceMeshData[]; qualification: string; sampleCount: number; bounds: { min: number[]; max: number[] } | null };
 const fail = (message: string): never => { throw new TypeError(message); };
@@ -102,7 +104,9 @@ const surfaceEvaluator = (document: SurfaceDocument, context: RepresentationCont
     const generations = source.parameters.sourceGenerations;
     if (!Array.isArray(generations) || generations.length !== source.definition.sourceIds.length) fail("Constructed Surface needs exact saved source generations.");
     const curves = source.definition.sourceIds.map((id, index) => {
-      const parent = context.documents.get(id), generation = (generations as CanonicalJsonValue[])[index] as Record<string, CanonicalJsonValue>;
+      const generation = (generations as CanonicalJsonValue[])[index] as Record<string, CanonicalJsonValue>;
+      const live = context.documents.get(id);
+      const parent = live && live.identity.revision === generation.revision && live.identity.structuralHash === generation.structuralHash ? live : context.capturedCurves?.get(capturedCurveKey(generation as unknown as import("@math3d/core").ScientificSourceGeneration));
       if (!parent || parent.format !== "math3d.curve-document" || generation.documentId !== id || generation.revision !== parent.identity.revision || generation.structuralHash !== parent.identity.structuralHash) fail("Constructed Surface parent generation is missing or stale.");
       const curve = parent as CurveDocument, fn = curveEvaluator(curve, context, stack);
       return (u: number) => fn(curve.source.domain.min + u * (curve.source.domain.max - curve.source.domain.min));
@@ -152,10 +156,17 @@ export const additionalRepresentationView = (document: AdditionalDocument, conte
     }
   } else if(document.format==="math3d.surface-document") {
     const source=document.source,domain=source.domain as Record<string,any>;
-    if(source.representation==="constructed") {
+    if(source.representation==="constructed" && ["graph2d.revolution", "graph2d.extrusion"].includes(source.definition.familyId)) {
+      // The promoted document embeds its captured profile/variables. Never
+      // substitute the live Graph when reopening a historical Surface.
+      if (Object.values(source.definition.expressions ?? {}).some(value => value.length > 4096)) fail("Promoted Surface expressions exceed the native bound.");
+      const geometry = evaluateGraph2DPromotionGeometry(document);
+      meshes = [{ label: document.metadata.title, positions: Float32Array.from(geometry.positions), indices: Uint32Array.from(geometry.indices), source: { kind: "bakedFromParam" } }];
+      qualification = "Numerical saved Graph promotion · captured profile expressions";
+    } else if(source.representation==="constructed") {
       const ids=source.definition.sourceIds,generations=source.parameters.sourceGenerations;
       if(!ids?.length||ids.length>16||!Array.isArray(generations)||generations.length!==ids.length||domain.kind!=="curve-construction"||canonicalJsonStringify(domain.u)!=="[0,1]"||canonicalJsonStringify(domain.v)!=="[0,1]")fail("Complete normalized construction source required.");
-      const parents=ids!.map((id,index)=>{const parent=context.documents.get(id),generation=(generations as any[])[index];if(!parent||parent.format!=="math3d.curve-document"||generation.documentId!==id||generation.revision!==parent.identity.revision||generation.structuralHash!==parent.identity.structuralHash)fail("Missing or stale construction source generation.");const curve=parent as CurveDocument;curveEvaluator(curve,context,[document.identity.id]);if(!["parametric","polyline","bezier","b-spline","nurbs"].includes(curve.source.representation)||curve.source.representation==="parametric"&&curve.source.domain.parameter!=="t")fail("This Curve needs an additional construction evaluator.");return curve;});
+      const parents=ids!.map((id,index)=>{const generation=(generations as any[])[index],live=context.documents.get(id),parent=live&&live.identity.revision===generation.revision&&live.identity.structuralHash===generation.structuralHash?live:context.capturedCurves?.get(capturedCurveKey(generation));if(!parent||parent.format!=="math3d.curve-document"||generation.documentId!==id||generation.revision!==parent.identity.revision||generation.structuralHash!==parent.identity.structuralHash)fail("Missing or stale construction source generation.");const curve=parent as CurveDocument;curveEvaluator(curve,context,[document.identity.id]);if(!["parametric","polyline","bezier","b-spline","nurbs"].includes(curve.source.representation)||curve.source.representation==="parametric"&&curve.source.domain.parameter!=="t")fail("This Curve needs an additional construction evaluator.");return curve;});
       const kind=source.definition.familyId;
       if(!["extrusion","revolution","ruled-surface","loft","sweep","tube-surface"].includes(kind)||(["ruled-surface","loft"].includes(kind)?parents.length<2:parents.length!==1))fail("Invalid construction kind/source arity.");
       for(const [name,max] of [["uSegments",256],["vSegments",128]] as const) { const value=source.parameters[name];if(value!==undefined&&(!Number.isSafeInteger(value)||Number(value)<4||Number(value)>max))fail("Construction resolution is outside its native bound."); }

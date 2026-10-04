@@ -14,6 +14,7 @@ import { ScientificProjectEditor } from "./projects/ScientificProjectEditor";
 import { verifyMixedWorkspaceReplay } from "./kernel/mixedWorkspaceReplay";
 // src/App.tsx
 import { AdditionalProjectSession } from "./projects/additionalProjectSession";
+import { capturedCurveSources } from "./projects/capturedCurveSources";
 import { additionalReplayEditable } from "./projects/additionalProjectSession";
 import { AdditionalProjectEditor } from "./projects/AdditionalProjectEditor";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -79184,10 +79185,11 @@ case "mobius":
     const topologies = new Map<string, TopologyDiagramCommandAdapter>(), complexes = new Map<string, ComplexAnalysisCommandAdapter>(), volumes = new Map<string, VolumeDocumentAdapter>();
     const meshes = new Map<string, MeshDocumentAdapter>();
     const additional = new Map<string, AdditionalProjectSession>();
+    const capturedCurves = capturedCurveSources(workspace);
     const context = () => {
       const documents = new Map(resolved);
       for (const adapter of [...graphs.values(), ...curves.values(), ...surfaces.values(), ...geometries.values(), ...topologies.values(), ...complexes.values(), ...volumes.values(), ...meshes.values(), ...additional.values()]) { const document = adapter.document(); documents.set(document.identity.id, document); }
-      return { documents, resources };
+      return { documents, resources, capturedCurves };
     };
     const promoted = new Set(workspace.relations.filter((relation) => relation.operation.startsWith("graph2d.") && relation.target.type === "document").map((relation) => relation.target.type === "document" ? relation.target.generation.documentId : ""));
     for (const entry of workspace.entries) {
