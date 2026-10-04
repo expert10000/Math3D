@@ -17,6 +17,9 @@ import { AdditionalProjectSession } from "./projects/additionalProjectSession";
 import { capturedCurveSources } from "./projects/capturedCurveSources";
 import { additionalReplayEditable } from "./projects/additionalProjectSession";
 import { AdditionalProjectEditor } from "./projects/AdditionalProjectEditor";
+import { createSavedSurfaceMesh, savedSurfaceMeshLinks } from "./projects/savedSurfaceMesh";
+import { analyzeSavedMesh, appendSavedMeshAnalysis, type SavedMeshAnalysisKind } from "./projects/savedMeshAnalysis";
+import { SavedMeshAnalysisPanel } from "./projects/SavedMeshAnalysisPanel";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
@@ -79235,9 +79238,37 @@ case "mobius":
     setAdditionalActiveId(null);
   };
 
+  const createMeshFromSavedSurface = (): string => {
+    const restored = restoredProjectRef.current, session = additionalActiveId ? restored?.additional.get(additionalActiveId) : null;
+    const document = session?.document();
+    if (!restored || !session || document?.format !== "math3d.surface-document") throw new TypeError("Open a saved Surface source first.");
+    const next = createSavedSurfaceMesh(captureMixedKernelWorkspace(), document, session.context());
+    restored.workspace = next.workspace;
+    if (!next.existing) restored.meshes.set(next.adapter.document().identity.id, next.adapter);
+    setAdditionalVersion(value => value + 1);
+    return next.adapter.document().identity.id;
+  };
+  const saveLinkedMeshAnalysis = (id: string, kind: SavedMeshAnalysisKind, endpoints?: { start: number; end: number }) => {
+    const restored = restoredProjectRef.current, adapter = restored?.meshes.get(id);
+    if (!restored || !adapter) throw new TypeError("Open a saved Mesh first.");
+    const workspace = captureMixedKernelWorkspace(), result = analyzeSavedMesh(adapter, kind, endpoints);
+    restored.workspace = appendSavedMeshAnalysis(workspace, result); setAdditionalVersion(value => value + 1);
+  };
+  const additionalSurface = additionalActiveId ? restoredProjectRef.current?.additional.get(additionalActiveId)?.document() : null;
+  const savedMeshSourceCurrent = () => {
+    const restored = restoredProjectRef.current, mesh = meshDocumentAdapterRef.current;
+    if (!restored || !mesh) return true;
+    const lineage = restored.workspace.relations.find(relation => relation.operation === "surface.tessellate-saved" && relation.target.type === "document" && relation.target.generation.documentId === mesh.document().identity.id);
+    if (!lineage) return true;
+    const source = lineage.sources[0], parent = restored.additional.get(source.documentId)?.document() ?? restored.surfaces.get(source.documentId)?.document();
+    return !!parent && parent.identity.revision === source.revision && parent.identity.structuralHash === source.structuralHash && lineage.target.type === "document" && lineage.target.generation.revision === mesh.document().identity.revision && lineage.target.generation.structuralHash === mesh.document().identity.structuralHash;
+  };
+
   return (
     <div data-testid="app-shell" style={rootStyle}>
-      {additionalActiveId && restoredProjectRef.current?.additional.get(additionalActiveId) && <AdditionalProjectEditor key={additionalActiveId} session={restoredProjectRef.current.additional.get(additionalActiveId)!} onChange={() => setAdditionalVersion((v) => v + 1)} onClose={() => setAdditionalActiveId(null)} />}
+      {additionalActiveId && restoredProjectRef.current?.additional.get(additionalActiveId) && <AdditionalProjectEditor key={additionalActiveId} session={restoredProjectRef.current.additional.get(additionalActiveId)!} onChange={() => setAdditionalVersion((v) => v + 1)} onClose={() => setAdditionalActiveId(null)}>
+        {additionalSurface?.format === "math3d.surface-document" && <SavedMeshAnalysisPanel key={additionalSurface.identity.id} meshes={savedSurfaceMeshLinks(restoredProjectRef.current.workspace, additionalSurface, restoredProjectRef.current.meshes)} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis} />}
+      </AdditionalProjectEditor>}
       <KernelWorkspacePanel
         projectsOpen={projectsOpen}
         onProjectsOpenChange={setProjectsOpen}
@@ -81530,6 +81561,11 @@ case "mobius":
       </div>}
       {restoredTopologyAdapter && mode === "topology" && <div data-testid="project-topology-editor" style={{ padding: "6px 14px" }}>Saved Topology · {restoredTopologyAdapter.current().name} · {restoredTopologyAdapter.document().identity.id} · Projects → Save project keeps these edits.</div>}
       {activeKernelModule === "mesh" && meshDocumentAdapterRef.current && restoredProjectRef.current?.meshes.has(meshDocumentAdapterRef.current.document().identity.id) && <MeshProjectEditor key={meshDocumentAdapterRef.current.document().identity.id} adapter={meshDocumentAdapterRef.current} onRestore={() => navigateRestoredDocument(meshDocumentAdapterRef.current!.document().identity.id, "mesh")} />}
+      {activeKernelModule === "mesh" && !additionalActiveId && meshDocumentAdapterRef.current && restoredProjectRef.current?.meshes.has(meshDocumentAdapterRef.current.document().identity.id) && <SavedMeshAnalysisPanel key={`analysis:${meshDocumentAdapterRef.current.document().identity.id}`} meshes={[{
+        id: meshDocumentAdapterRef.current.document().identity.id, title: meshDocumentAdapterRef.current.document().metadata.label, revision: meshDocumentAdapterRef.current.document().identity.revision, structuralHash: meshDocumentAdapterRef.current.document().identity.structuralHash,
+        vertexCount: meshDocumentAdapterRef.current.document().source.resource.vertexCount, current: savedMeshSourceCurrent(),
+        results: restoredProjectRef.current.workspace.results.filter(result => result.provenance.source.documentId === meshDocumentAdapterRef.current!.document().identity.id && result.provenance.operation.type.startsWith("mesh.saved.")),
+      }]} onAnalyze={saveLinkedMeshAnalysis} />}
       {nativeVolumeActive && activeKernelModule === "volume" && <VolumeProjectEditor key={restoredVolumeAdapter!.document().identity.id} adapter={restoredVolumeAdapter!} onRestore={() => navigateRestoredDocument(restoredVolumeAdapter!.document().identity.id, "volume")} />}
       {restoredComplexAdapter && activeKernelModule === "complex" && <ScientificProjectEditor adapter={restoredComplexAdapter} spec={complexMapSpec} onChange={updateComplexMapSpec} onRestore={() => navigateRestoredDocument(restoredComplexAdapter.document().identity.id, "complex")} />}
       {restoredProjectRef.current && (mode === "curves" && activeCurveKernelAdapter === restoredCurveAdapter || mode === "surfaces" && surfaceViewerKind === "param" && paramSurfaceId === "custom" && restoredSurfaceAdapter) && <div data-testid="project-editor-history" style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "6px 14px" }}>

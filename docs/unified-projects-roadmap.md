@@ -823,3 +823,38 @@ Project-opening follow-up: the explorer keeps Open saved project visible while
 scrolling, explains why saved-preview document buttons are disabled, and brings
 the compatibility preview into view. A saved project can also be opened directly
 from the current-workspace view after a desktop restart.
+
+### PRJ31–PRJ33 saved Surface workflow — October 4
+
+| Commit | Scope | Status |
+| --- | --- | --- |
+| PRJ31 | Normal formula and domain fields in the saved-source Surface editor, with Advanced JSON, validated Apply, independent undo/redo and project save | Delivered on desktop; Weierstrass g(z)/phi(z), literal parametric coordinates, explicit/implicit formulas and their represented ranges are covered |
+| PRJ32 | Create a saved Mesh from the applied Surface, with verified portable buffers and exact source-generation lineage | Delivered on desktop; Create Mesh and Open Mesh are available beside the source controls, unchanged snapshots are reused and refresh preserves historical or manually edited meshes |
+| PRJ33 | Connected, portable Mesh quality, discrete curvature and shortest edge-path analysis | Delivered on desktop; compact measurements, method, warnings and analysis-of relations survive resource-package transfer and Electron restart |
+
+Open a saved Surface document, edit its fields and choose **Apply surface**.
+Choose **Create Mesh**, then **Save mesh quality**, **Save discrete curvature**
+or **Save shortest edge path**. **Open Mesh** opens the retained Mesh document;
+the same analysis actions are also available there. **Projects → Save project**
+retains edits, meshes, results and relations. Export with source resources to
+transfer the Mesh buffers. Applying later edits marks earlier outputs historical;
+Create Mesh produces a fresh snapshot when the previous snapshot was edited.
+
+These actions use the existing bounded saved-source sampler (33 × 33 for
+Weierstrass and literal patches). Quality and curvature are mesh measurements;
+curvature summaries report unweighted statistics over valid vertices with
+boundary/neighborhood warning counts. Shortest paths use the saved triangle
+edges and preserve distinct vertex identities, including coincident sheets.
+They do not certify analytic minimality or continuous surface geodesics.
+Compact results are stored directly in canonical project data; this workflow
+does not persist dense curvature heatmaps. Local analysis is bounded to 100,000
+vertices and 200,000 triangles; larger work stays in Mesh Analyze.
+
+Validation: formula/domain rejection and history, verified Mesh sidecar
+round-trip, unchanged snapshot reuse, refresh after manual Mesh edits,
+known-square quality/path measurements, disconnected/coincident-sheet rejection
+and transitive stale-result tracking are covered by the project unit tests.
+`tests/e2e/saved-surface-workflow.spec.ts` exercises the complete Enneper workflow,
+historical results, independent package import, cold Electron restart and
+390-pixel layout. Desktop qualification is recorded here; this increment does
+not claim a new signed Samsung installation or physical iOS acceptance.
