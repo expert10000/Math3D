@@ -1,0 +1,15 @@
+{
+  "sourceId": "math3d:surface:e226551769cc19d17e1e768ca43ce2e9",
+  "raster": {
+    "width": 320,
+    "height": 177,
+    "colors": 4570
+  },
+  "cameraChangesPreview": true,
+  "scientificGenerationPreserved": true,
+  "manualOverridePreserved": true,
+  "captureFailurePreservedImageAndSavedProject": true,
+  "rejectedInvalidRects": true,
+  "coldRestart": true,
+  "compactWidth": 390
+}

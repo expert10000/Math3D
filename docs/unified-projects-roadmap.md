@@ -17,11 +17,11 @@ remain saved previews until their native editor adapters pass round-trip accepta
 
 ## Current delivery status (2026-10-05)
 
-Desktop delivery now includes PRJ39–PRJ47: Helicoid/Catenoid guided setups,
+Desktop delivery now includes PRJ39–PRJ48: Helicoid/Catenoid guided setups,
 saved Mesh curvature maps, canvas endpoint selection and point inspection,
 analysis resolution controls, comparison with PNG/JSON/CSV export, a centered
 Projects Gallery with right-side quick access, source navigation, persistent study
-names and retained parameter sweeps.
+names, retained parameter sweeps and automatic current-view project thumbnails.
 Acceptance and limitations are recorded in the October 5 entries below.
 
 PRJ01–PRJ12 are integrated into `main` at `766776a27c6601e50d513a2217e3a4bf513c8e0d`.
@@ -1189,3 +1189,42 @@ and affected regression journeys pass. Existing project-library, resource,
 history, construction and transfer journeys also passed during qualification.
 See [PRJ45–47 desktop evidence](evidence/projects-prj45-47-desktop-2026-10-05/README.md).
 No new Android/iOS build is included in this delivery.
+
+### PRJ48 automatic desktop project thumbnails — October 5
+
+Delivered on desktop: **Projects → Save project** captures the current visible
+viewer by default and displays it on the gallery card. The right quick panel uses
+the same behavior. Automatic images update on later saves; disabling the option
+keeps the previous image. Uploaded PNG/JPEG previews remain overrides until
+**Use current view → Save project** explicitly replaces them. Saved-copy metadata
+edits keep that project's image without capturing or activating the live viewer.
+
+Capture uses the active module's actual canvas/Graph plot, with a separate scope
+for additional saved-source viewers. It hides the Projects overlay/backdrop
+during capture, accounts for desktop zoom and window bounds, preserves aspect
+ratio and returns an in-memory JPEG within 320×200 pixels and 128 KiB. Image bytes
+and an exact automatic-image marker are local sidecars; scientific identities,
+project JSON/resource packages and the strict v1 library index remain unchanged.
+
+Unavailable/failed captures retain the old image and permit project saving.
+Optional automatic-image quota failures save the project/resources with the
+previous image. Manual uploads retain atomic failure behavior. Imported examples
+gain a preview when opened and saved; they are not silently opened or rendered.
+Browser-only hosts retain manual uploads; automatic capture is desktop-specific.
+
+The 17 library/transfer model tests, Node/renderer/e2e TypeScript checks and
+desktop build pass. Five final Electron journeys qualify real Surface/Graph
+images, camera updates without scientific-generation changes, manual overrides,
+explicit replacement, failure recovery, bounded rectangles, quick-panel capture,
+disabled capture, metadata management and cold restart, together with existing
+library/project-opening/transfer behavior. See
+[PRJ48 desktop evidence](evidence/projects-prj48-desktop-2026-10-05/README.md).
+
+### PRJ49–PRJ50 planned continuation — October 5
+
+- **PRJ49 — Complete sweep reports:** planned. Export the retained sweep chart
+  as PNG and all run names, parameters, sampling, source generations and qualified
+  measurements as JSON/CSV.
+- **PRJ50 — Resolution comparison:** planned. Run the same supported source at
+  Coarse, Medium and Fine and compare retained curvature estimates and excluded
+  vertices. Distinguish sampling comparisons from certified error bounds.
