@@ -518,6 +518,7 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
   open: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:open"),
   reopenRecent: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:reopenRecent"),
   consumeLaunch: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:consumeLaunch"),
+  openReference: (reference: unknown): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:openReference", reference),
 }));
 
 contextBridge.exposeInMainWorld("meshFiles", {

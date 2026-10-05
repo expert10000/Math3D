@@ -7,7 +7,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { importQuantumSceneBundle } = require("../dist/main/quantumScene/importer.js");
-const { rememberQuantumScene, reopenRecentQuantumScene } = require("../dist/main/quantumScene/recent.js");
+const { rememberQuantumScene, reopenRecentQuantumScene, reopenQuantumSceneReference, sceneFingerprint } = require("../dist/main/quantumScene/recent.js");
 const { quantumSceneLaunchDirectory } = require("../dist/main/ipc/quantumSceneIpc.js");
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const root = await mkdtemp(join(tmpdir(), "m3d-q01-"));
@@ -57,14 +57,20 @@ try {
   assert.deepEqual(reopened.imported.source, imported.source);
   assert.deepEqual(reopened.imported.document.geometry, imported.document.geometry);
   assert.deepEqual(reopened.imported.document.metadata, imported.document.metadata);
+  const workspaceReference = { directory, sceneFingerprint: sceneFingerprint(imported) };
+  const workspaceReopened = await reopenQuantumSceneReference(workspaceReference);
+  assert.deepEqual(workspaceReopened.imported.source, imported.source);
+  await assert.rejects(reopenQuantumSceneReference({ ...workspaceReference, directory: "relative.qscene" }), /Invalid workspace/);
 
   const corrupted=Buffer.from(data); corrupted[0]=1;
   await writeFile(join(directory,"vertices.f64"),corrupted);
   await assert.rejects(importQuantumSceneBundle(directory),/integrity/);
   await assert.rejects(reopenRecentQuantumScene(userData),/integrity/);
+  await assert.rejects(reopenQuantumSceneReference(workspaceReference),/integrity/);
   await writeFile(join(directory,"vertices.f64"),data);
   await writeScene({...scene,title:"Valid but different source"});
   await assert.rejects(reopenRecentQuantumScene(userData),/changed since it was opened/);
+  await assert.rejects(reopenQuantumSceneReference(workspaceReference),/changed since it was saved/);
   await writeScene(scene);
   await writeFile(join(directory,"scene.json"),"{}\n");
   await assert.rejects(importQuantumSceneBundle(directory),/size|integrity/);

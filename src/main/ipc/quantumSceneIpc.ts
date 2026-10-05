@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { importQuantumSceneBundle, type ImportedQuantumScene } from "../quantumScene/importer";
 import type { QuantumSceneOpenResponse } from "../quantumScene/ipcContract";
-import { rememberQuantumScene, reopenRecentQuantumScene } from "../quantumScene/recent";
+import { rememberQuantumScene, reopenRecentQuantumScene, reopenQuantumSceneReference, sceneFingerprint } from "../quantumScene/recent";
 import { isAbsolute, resolve } from "node:path";
 
 export function quantumSceneLaunchDirectory(argv: readonly string[]): string | null {
@@ -22,6 +22,7 @@ function trustedSender(event: Electron.IpcMainInvokeEvent): boolean {
 
 function opened(directory: string, imported: ImportedQuantumScene, remembered: boolean): QuantumSceneOpenResponse {
   return { ok: true, canceled: false, directory, remembered, document: imported.document,
+    reference: { directory: resolve(directory), sceneFingerprint: sceneFingerprint(imported) },
     mappedObjectIds: imported.mappedObjectIds, deferredObjectIds: imported.deferredObjectIds,
     deferredFieldIds: imported.deferredFieldIds };
 }
@@ -78,5 +79,13 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
     } catch (error) {
       return failed(error);
     }
+  });
+  ipcMain.handle("quantumScenes:openReference", async (event, ...args: unknown[]): Promise<QuantumSceneOpenResponse> => {
+    if (args.length !== 1) return { ok: false, canceled: false, error: "Workspace scene reopen requires one reference" };
+    if (!trustedSender(event)) return { ok: false, canceled: false, error: "Untrusted quantum scene IPC sender" };
+    try {
+      const { directory, imported } = await reopenQuantumSceneReference(args[0]);
+      return opened(directory, imported, false);
+    } catch (error) { return failed(error); }
   });
 }

@@ -1,5 +1,5 @@
 import { MeshProjectEditor } from "./projects/MeshProjectEditor";
-import { QuantumScenePreview, type QuantumSceneOpenResponse } from "./components/QuantumScenePreview";
+import { QuantumScenePreview, type QuantumSceneOpenResponse, type QuantumSceneWorkspaceReference } from "./components/QuantumScenePreview";
 import { meshDocumentEditable } from "./projects/nativeMeshRestore";
 import { createMeshDocument, canonicalJsonStringify, parseMath3DProject } from "@math3d/core";
 import { VerifiedProjectResources, type ProjectResourceRequirement } from "./projects/projectResources";
@@ -2163,6 +2163,7 @@ type WorkbookReplayPayload = {
   activeWorkbookId?: string | null;
   activeStageId?: WorkbookStageId;
   workspace?: WorkbookWorkspaceState;
+  quantumScene?: QuantumSceneWorkspaceReference | null;
 };
 type WorkbookStoredSession = {
   savedAt: number;
@@ -34347,6 +34348,8 @@ const App: React.FC = () => {
   }, [showSurfaceViewGizmo]);
 
   const [workbooks, setWorkbooks] = useState<Workbook[]>(() => loadWorkbooks());
+  const [quantumScenePreview, setQuantumScenePreview] = useState<Extract<QuantumSceneOpenResponse, { ok: true }> | null>(null);
+  const [quantumSceneReference, setQuantumSceneReference] = useState<QuantumSceneWorkspaceReference | null>(null);
   const [activeWorkbookId, setActiveWorkbookId] = useState<string | null>(() => {
     if (REPLAY_PAYLOAD?.activeWorkbookId) return REPLAY_PAYLOAD.activeWorkbookId;
     return localStorage.getItem(WORKBOOK_ACTIVE_KEY);
@@ -34617,8 +34620,9 @@ const App: React.FC = () => {
       workbooks,
       activeWorkbookId,
       activeStageId,
+      ...(quantumSceneReference ? { quantumScene: quantumSceneReference } : {}),
     }),
-    [workbooks, activeWorkbookId, activeStageId]
+    [workbooks, activeWorkbookId, activeStageId, quantumSceneReference]
   );
   const workbookSessionExportPayload = useMemo(
     () => ({
@@ -42895,12 +42899,11 @@ const App: React.FC = () => {
   const [commandInput, setCommandInput] = useState("");
   const [commandHistory, setCommandHistory] = useState<{ cmd: string; out: string }[]>([]);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const [quantumScenePreview, setQuantumScenePreview] = useState<Extract<QuantumSceneOpenResponse, { ok: true }> | null>(null);
   useEffect(() => {
     let mounted = true;
     void window.quantumScenes?.consumeLaunch?.().then((result) => {
       if (!mounted) return;
-      if (result.ok) setQuantumScenePreview(result);
+      if (result.ok) { setQuantumScenePreview(result); setQuantumSceneReference(result.reference); }
       else if (!result.canceled) setScreenshotStatus(`Quantum scene launch failed: ${result.error}`);
     }).catch((error) => {
       if (mounted) setScreenshotStatus(`Quantum scene launch failed: ${String((error as Error)?.message ?? error)}`);
@@ -56444,6 +56447,7 @@ case "mobius":
               workbooks: normalized,
               activeWorkbookId: nextActive,
               activeStageId: nextStage,
+              ...(migratedPayload?.quantumScene ? { quantumScene: migratedPayload.quantumScene } : {}),
             },
           },
           null,
@@ -56897,7 +56901,19 @@ case "mobius":
         const decoded = parseWorkbookProject(parsed);
         if (!decoded) return;
         setWorkbookBundleAssetMode(decoded.assetMode === "linked" ? "linked" : "embedded");
-        applyWorkbookPayload(decoded.payload);
+        if (!applyWorkbookPayload(decoded.payload)) return;
+        setQuantumScenePreview(null);
+        setQuantumSceneReference(null);
+        if (decoded.payload.quantumScene) {
+          if (!window.quantumScenes?.openReference) {
+            setScreenshotStatus("Saved quantum scene requires the desktop app to reopen.");
+            return;
+          }
+          void window.quantumScenes.openReference(decoded.payload.quantumScene).then((result) => {
+            if (result.ok) { setQuantumScenePreview(result); setQuantumSceneReference(result.reference); }
+            else if (!result.canceled) setScreenshotStatus(`Workspace quantum scene could not reopen: ${result.error}`);
+          }).catch((error) => setScreenshotStatus(`Workspace quantum scene could not reopen: ${String((error as Error)?.message ?? error)}`));
+        }
       } catch {
         // ignore
       }
@@ -71625,6 +71641,8 @@ case "mobius":
 
       switch (command) {
         case "file:new-workspace":
+          setQuantumScenePreview(null);
+          setQuantumSceneReference(null);
           setMode("surfaces");
           setShowRightPanel(true);
           setRightPanelTab("workbook");
@@ -71647,7 +71665,7 @@ case "mobius":
           }
           try {
             const result = await window.quantumScenes.open();
-            if (result.ok) setQuantumScenePreview(result);
+            if (result.ok) { setQuantumScenePreview(result); setQuantumSceneReference(result.reference); }
             else if (!result.canceled) notify(`Quantum scene import failed: ${result.error}`);
           } catch (error) {
             notify(`Quantum scene import failed: ${String((error as Error)?.message ?? error)}`);
@@ -71661,7 +71679,7 @@ case "mobius":
           }
           try {
             const result = await window.quantumScenes.reopenRecent();
-            if (result.ok) setQuantumScenePreview(result);
+            if (result.ok) { setQuantumScenePreview(result); setQuantumSceneReference(result.reference); }
             else if (!result.canceled) notify(`Quantum scene reopen failed: ${result.error}`);
           } catch (error) {
             notify(`Quantum scene reopen failed: ${String((error as Error)?.message ?? error)}`);

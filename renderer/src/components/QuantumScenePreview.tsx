@@ -10,8 +10,9 @@ type SceneSource = {
   objects: { id: string; label: string; kind: string; indices?: string; style: { color: string; opacity: number } }[];
   bands?: { objects: string[]; labels: string[]; energyUnit: string; bulkGap: number };
 };
+export type QuantumSceneWorkspaceReference = { directory: string; sceneFingerprint: string };
 export type QuantumSceneOpenResponse =
-  | { ok: true; canceled: false; directory: string; document: {
+  | { ok: true; canceled: false; directory: string; reference: QuantumSceneWorkspaceReference; document: {
       title: string; geometry: GeometryScene;
       cameras: { position: Vector3; target: Vector3; up: Vector3 }[];
       extensions: Record<string, unknown>;
@@ -71,7 +72,7 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
       <div style={{ width: "min(1200px, 96vw)", height: "min(790px, 94vh)", minHeight: 360, background: "var(--panel-strong, #fff)",
         color: "var(--text, #172033)", borderRadius: 12, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", overflow: "hidden" }}>
         <header style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, borderBottom: "1px solid var(--border, #cbd5e1)" }}>
-          <div><strong>{document.title}</strong><div style={{ fontSize: 12 }}>Verified quantum-scene/v1 · {scene.provenance.model}</div></div>
+          <div><strong>{document.title}</strong><div style={{ fontSize: 12 }}>Verified quantum-scene/v1 · {scene.provenance.model} · Save workspace to retain this source</div></div>
           <button type="button" onClick={onClose} data-testid="quantum-scene-close">Close</button>
         </header>
         <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)" }}>

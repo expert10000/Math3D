@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
@@ -58,7 +58,46 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await expect(page.getByTestId("quantum-scene-geometry")).toBeVisible();
     await page.getByTestId("quantum-scene-close").click();
     await expect(page.getByTestId("quantum-scene-preview")).toBeHidden();
+    const workspacePath = join(root, "quantum-workspace.math3d");
+    await page.evaluate(() => {
+      const capture = window as any;
+      const create = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = (blob) => { capture.__savedWorkspaceBlob = blob; return create(blob); };
+      const click = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function () {
+        if (this.download.endsWith(".math3d")) { capture.__savedWorkspaceName = this.download; return; }
+        click.call(this);
+      };
+    });
+    await app.evaluate(({BrowserWindow})=>{
+      BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command",{command:"file:save-workspace"});
+    });
+    await expect.poll(()=>page.evaluate(()=>(window as any).__savedWorkspaceName)).toMatch(/\.math3d$/);
+    await writeFile(workspacePath, await page.evaluate(async () => (window as any).__savedWorkspaceBlob.text()));
+    const workspace = JSON.parse(await readFile(workspacePath,"utf8"));
+    expect(workspace.payload.quantumScene).toMatchObject({directory,sceneFingerprint:expect.stringMatching(/^[a-f0-9]{64}$/)});
+    await app.evaluate(({BrowserWindow})=>{
+      BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command",{command:"file:new-workspace"});
+    });
+    const fileChooserPromise = page.waitForEvent("filechooser");
+    await app.evaluate(({BrowserWindow})=>{
+      BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command",{command:"file:open-workspace"});
+    });
+    await (await fileChooserPromise).setFiles(workspacePath);
+    await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
+    await expect(page.getByTestId("quantum-scene-preview")).toContainText("run-ipc");
+    await page.getByTestId("quantum-scene-close").click();
     const damaged=Buffer.from(data);damaged[0]=1;await writeFile(join(directory,"vertices.f64"),damaged);
+    const damagedWorkspaceChooser = page.waitForEvent("filechooser");
+    await app.evaluate(({BrowserWindow})=>{
+      BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command",{command:"file:open-workspace"});
+    });
+    await (await damagedWorkspaceChooser).setFiles(workspacePath);
+    await expect(page.getByText(/Workspace quantum scene could not reopen:.*integrity/)).toBeVisible();
+    await expect(page.getByTestId("quantum-scene-preview")).toBeHidden();
+    const referenceRefused=await page.evaluate(ref=>(window as any).quantumScenes.openReference(ref),workspace.payload.quantumScene);
+    expect(referenceRefused).toMatchObject({ok:false,canceled:false});
+    if(!referenceRefused.ok&&!referenceRefused.canceled)expect(referenceRefused.error).toMatch(/integrity/);
     const refused=await page.evaluate(()=>(window as any).quantumScenes.open());
     expect(refused).toMatchObject({ok:false,canceled:false});
     if(!refused.ok&&!refused.canceled)expect(refused.error).toMatch(/integrity/);

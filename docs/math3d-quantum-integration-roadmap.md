@@ -48,8 +48,12 @@ pinned in `tests/fixtures/quantum-scene` and checked by
 the last verified folder across app restarts and checks the complete bundle and
 source fingerprint before displaying it again. Theory Lab's **Open in Math3D**
 action can launch a built local Math3D checkout with a newly verified handoff
-folder; Math3D validates it independently before previewing. The preview is
-read-only and is not yet a persisted Math3D document. M3D-Q01
+folder; Math3D validates it independently before previewing. Saving a `.math3d`
+workspace retains the verified scene's absolute folder and source fingerprint.
+Opening that workspace checks the complete `.qscene` again and displays the
+read-only preview only if the source still matches. The workspace holds a
+reference, so moving or changing the source requires reopening it explicitly.
+The preview is not yet an editable Math3D document. M3D-Q01
 lifecycle admission and M3D-Q02–Q10 remain open.
 
 Quantum Lab must not call MATH3D internals, and MATH3D must not reproduce Quantum

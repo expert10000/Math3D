@@ -9,6 +9,7 @@ export type WorkbookReplayPayloadLike = {
   activeWorkbookId?: unknown;
   activeStageId?: unknown;
   workspace?: unknown;
+  quantumScene?: unknown;
 };
 
 export type WorkbookProjectEnvelopeV2 = {

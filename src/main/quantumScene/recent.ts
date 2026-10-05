@@ -7,6 +7,7 @@ const SCHEMA = "math3d.quantum-scene-recent/v1";
 const FILE = "quantum-scene-recent.json";
 const MAX_RECORD_BYTES = 8192;
 type RecentRecord = { schema: typeof SCHEMA; directory: string; sceneFingerprint: string };
+export type QuantumSceneWorkspaceReference = Pick<RecentRecord, "directory" | "sceneFingerprint">;
 
 export const sceneFingerprint = (imported: ImportedQuantumScene): string =>
   createHash("sha256").update(JSON.stringify(imported.source)).digest("hex");
@@ -57,8 +58,23 @@ async function readRecentQuantumScene(userData: string): Promise<RecentRecord> {
 
 export async function reopenRecentQuantumScene(userData: string): Promise<{ directory: string; imported: ImportedQuantumScene }> {
   const record = await readRecentQuantumScene(userData);
+  return reopenQuantumSceneReference(record, "Recent");
+}
+
+export async function reopenQuantumSceneReference(value: unknown, context: "Recent" | "Workspace" = "Workspace"): Promise<{ directory: string; imported: ImportedQuantumScene }> {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Invalid workspace quantum scene reference");
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort().join(",");
+  if (keys !== (context === "Recent" ? "directory,sceneFingerprint,schema" : "directory,sceneFingerprint") ||
+      (context === "Recent" && record.schema !== SCHEMA) || typeof record.directory !== "string" ||
+      !isAbsolute(record.directory) || resolve(record.directory) !== record.directory ||
+      !record.directory.toLowerCase().endsWith(".qscene") || record.directory.length > 4096 || record.directory.includes("\0") ||
+      typeof record.sceneFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(record.sceneFingerprint))
+    throw new Error("Invalid workspace quantum scene reference");
   const imported = await importQuantumSceneBundle(record.directory);
   if (sceneFingerprint(imported) !== record.sceneFingerprint)
-    throw new Error("Recent quantum scene changed since it was opened");
+    throw new Error(context === "Recent" ? "Recent quantum scene changed since it was opened" :
+      "Workspace quantum scene changed since it was saved");
   return { directory: record.directory, imported };
 }

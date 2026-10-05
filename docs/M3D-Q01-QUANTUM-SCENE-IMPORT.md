@@ -27,8 +27,10 @@ This boundary has no worker call and no direct Theory Lab connection. The
 first desktop integration slice adds a main-process folder picker exposed as
 `window.quantumScenes.open()`. The renderer cannot supply an arbitrary path;
 main verifies the selected bundle before returning a read-only scene document
-and explicit mapped/deferred IDs. A visible Math3D scene workspace and
-automatic `Open in Math3D` action are later integration steps.
+and explicit mapped/deferred IDs. Theory Lab can launch this preview directly.
+A saved `.math3d` workspace retains the source folder and fingerprint; opening
+the workspace rechecks the complete `.qscene` and refuses a missing or changed
+source. An editable Math3D scene workspace remains later integration work.
 
 Acceptance: `npm run test:quantum-scene:import` builds the Node module and
 tests a bounded bundle plus mutation refusals. The script also accepts a
