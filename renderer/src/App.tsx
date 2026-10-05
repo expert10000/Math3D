@@ -54067,12 +54067,13 @@ case "mobius":
   }, []);
 
   const handleCreateWorkbookFromTemplate = useCallback((templateId: string) => {
-    if (IS_REPLAY_MODE) return;
+    if (IS_REPLAY_MODE) return null;
     const wb = createWorkbookFromTemplate(templateId, makeId);
-    if (!wb) return;
+    if (!wb) return null;
     setWorkbooks((prev) => [wb, ...prev]);
     setActiveWorkbookId(wb.id);
     setActiveStageId("define");
+    return wb.id;
   }, []);
 
   const handleCreateWorkbookFromGeometryTask = useCallback((taskId: string) => {

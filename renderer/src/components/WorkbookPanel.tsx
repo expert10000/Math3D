@@ -34,7 +34,7 @@ type WorkbookPanelProps = {
   onSelectWorkbook: (id: string) => void;
   onCreateWorkbook: () => void;
   onCreateStarterWorkbooks: () => void;
-  onCreateWorkbookFromTemplate: (templateId: string) => void;
+  onCreateWorkbookFromTemplate: (templateId: string) => string | null;
   onCreateWorkbooksFromPack: (packId: string) => void;
   onCreateWorkbookFromGeometryTask: (taskId: string) => void;
   onDuplicateWorkbook: (id: string) => void;
@@ -555,12 +555,22 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
     [activeWorkbook, activeStageId]
   );
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const templateListRef = useRef<HTMLDetailsElement | null>(null);
+  const workbookPickerRef = useRef<HTMLLabelElement | null>(null);
+  const [templateNotice, setTemplateNotice] = useState<{ id: string; title: string } | null>(null);
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
   const [libraryQuery, setLibraryQuery] = useState("");
   const [libraryTags, setLibraryTags] = useState<string[]>([]);
   const [workspacePage, setWorkspacePage] = useState<"scene" | "datasets" | "analysis">("scene");
   const [snapshotName, setSnapshotName] = useState("");
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const useTemplate = (id: string, title: string) => {
+    const createdId = onCreateWorkbookFromTemplate(id);
+    if (!createdId) return;
+    setTemplateNotice({ id: createdId, title });
+    if (templateListRef.current) templateListRef.current.open = false;
+    requestAnimationFrame(() => workbookPickerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
   const issueCursorRef = useRef(0);
   const isBlockEnabled = useCallback((block: WorkbookBlock) => block.enabled !== false, []);
 
@@ -1103,7 +1113,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
       </details>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
-        <label style={{ fontSize: 11, fontWeight: 700 }}>
+        <label ref={workbookPickerRef} style={{ fontSize: 11, fontWeight: 700 }}>
           Workbook
           <select
             value={activeWorkbook?.id ?? ""}
@@ -1117,6 +1127,9 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
             ))}
           </select>
         </label>
+        {templateNotice?.id === activeWorkbookId && <p role="status" data-testid="workbook-template-message" style={{ margin: "2px 0", padding: "6px 8px", borderRadius: 6, background: "#ecfdf5", color: "#065f46", fontSize: 11 }}>
+          Created and opened “{templateNotice.title}”. Save it to a Project from Projects when ready.
+        </p>}
         {activeWorkbook && (
           <input
             type="text"
@@ -1147,7 +1160,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
         </div>
       </div>
 
-      <details style={{ marginBottom: 10 }}>
+      <details ref={templateListRef} style={{ marginBottom: 10 }}>
         <summary style={{ fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
           Templates & problem packs
         </summary>
@@ -1216,7 +1229,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                     <div style={{ fontSize: 12, fontWeight: 700 }}>{t.title}</div>
                     <button
                       type="button"
-                      onClick={() => onCreateWorkbookFromTemplate(t.id)}
+                      onClick={() => useTemplate(t.id, t.title)}
                       disabled={readOnly}
                       style={{ padding: "2px 8px", fontSize: 11 }}
                     >
@@ -1326,7 +1339,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                             <div style={{ fontSize: 11 }}>{t.title}</div>
                             <button
                               type="button"
-                              onClick={() => onCreateWorkbookFromTemplate(t.id)}
+                              onClick={() => useTemplate(t.id, t.title)}
                               disabled={readOnly}
                               style={{ padding: "2px 8px", fontSize: 11 }}
                             >
