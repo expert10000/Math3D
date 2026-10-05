@@ -1,0 +1,8 @@
+/* Saved studies sit above the module viewer. Keep that viewer's floating bars
+   in its own document flow while a study is expanded, including narrow layouts. */
+.math3d-app:has(.saved-mesh-visual-study[open]) [data-testid="app-status-bar"],
+.math3d-app:has(.saved-mesh-visual-study[open]) [data-testid="surface-bottom-nav"],
+.math3d-app:has(.saved-mesh-visual-study[open]) [data-testid="geometry-bottom-nav"] {
+  position: static !important;
+  margin: 8px 12px;
+}

@@ -15,7 +15,11 @@ Topology, supported Complex Function Explorer sources and self-contained scalar
 Volume recipes, plus qualified resource-backed Mesh sources. PRJ16 adds verified dense scalar Volume samples, additional Curve/Surface source editors, scene constructions and finite Topology sources. Other source types
 remain saved previews until their native editor adapters pass round-trip acceptance.
 
-## Current delivery status (2026-10-03)
+## Current delivery status (2026-10-05)
+
+Desktop delivery now includes PRJ39–PRJ41: Helicoid/Catenoid guided setups,
+saved Mesh Gaussian/mean curvature colour maps, and canvas endpoint selection.
+Acceptance and limitations are recorded in the October 5 entries below.
 
 PRJ01–PRJ12 are integrated into `main` at `766776a27c6601e50d513a2217e3a4bf513c8e0d`.
 The main Projects workflow passed in
@@ -990,3 +994,67 @@ button. `tests/e2e/project-analysis-live-workspace.spec.ts` checks implicit and
 parametric live sources without import, a saved curvature result, unchanged
 original document identities/sources, Curve navigation and return to that result.
 The imported Helicoid/Enneper guided-study scenarios remain regression checks.
+
+### PRJ39 Helicoid and Catenoid study setups — October 5
+
+Delivered on desktop: native saved parametric Surfaces offer **Guided analysis
+studies → Surface study setup**. Helicoid pitch and Catenoid waist presets include
+suggested domains, editable positive parameters and questions about curvature,
+boundaries and parameter changes. **Apply suggested setup** explicitly replaces
+the coordinate formulas/ranges through normal document history; selecting a
+preset alone makes no source changes. Units and other source metadata remain
+intact. Undo/redo restores the exact source, and earlier Meshes/results remain
+available as historical snapshots.
+
+Unit checks qualify finite sampled coordinates, the known Catenoid waist,
+parameter rejection and exact undo/redo. Electron checks apply both presets,
+reject invalid input, restore history and retain original results alongside a
+new Mesh. Setup presets add no analytic minimality certification.
+
+### PRJ40 saved Mesh curvature colour maps — October 5
+
+Delivered on desktop: **Saved Mesh visual study** displays the exact saved
+triangle buffers with **Gaussian K**, **Mean H** or solid colour. Curvature
+studies open the Gaussian map. Blue/white/red represent negative/zero/positive
+values on a symmetric automatic scale, with the actual interior range and vertex
+counts in the legend. Boundary and invalid estimates appear in grey. Signed H
+states its orientation convention and inverse-length dimension; K states its
+inverse-length-squared dimension. These use the existing discrete Mesh backend.
+
+Maps recompute from verified saved buffers, including deliberately selected
+historical Meshes; they do not alter the Surface or its stored results. Orbit,
+zoom and Fit operate independently of the main module's display resolution.
+The view renders on demand and disposes its GPU resources on close. While the
+visual study is expanded, the main viewer's floating bars return to document
+flow so they cannot obscure the legend or canvas at narrow widths.
+
+Unit checks cover a planar interior, excluded boundaries, positive sphere
+curvature, finite colours and the existing bounded analysis limits. Actual
+Electron checks switch K/H, export the resource package, import into an
+independent library, cold-restart and reproduce the exact payload and H legend.
+Colour maps are numerical sampled measurements, not proof of minimality.
+
+### PRJ41 canvas path endpoint selection — October 5
+
+Delivered on desktop: **Pick start on Mesh** and **Pick end on Mesh** choose
+vertices by clicking the saved study canvas. A hit snaps to the nearest vertex
+of that triangle, preserving coincident sheets' distinct vertex IDs. Dragging
+still orbits; Escape or Cancel exits picking. Green/purple markers show chosen
+endpoints and yellow shows the last saved edge path through the Mesh. Numeric
+indices remain available for keyboard entry.
+
+Edge-path studies use the selected saved Mesh, including historical snapshots;
+they never create a different Surface Mesh beneath picked indices. Source
+revision/hash changes reset endpoint selection. Saving records the existing
+qualified result, exact endpoint parameters, source generation and provenance.
+The path follows triangle edges and does not certify a continuous geodesic.
+
+Actual canvas clicks, drag rejection, selected historical-Mesh retention and
+exact saved path endpoints pass Electron acceptance. Export/import/restart keeps
+the path and source generation intact; a 390-pixel viewport has no horizontal
+overflow. The new two Electron journeys and existing Helicoid/Enneper guided
+study regressions pass, alongside seven targeted unit tests, TypeScript checks
+and the renderer build. See the
+[desktop visual-study evidence](evidence/projects-prj39-41-desktop-2026-10-05/README.md).
+PRJ39–PRJ41 are complete for desktop; this evidence does not qualify new mobile
+builds or unsupported source representations.

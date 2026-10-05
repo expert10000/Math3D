@@ -1,0 +1,25 @@
+{
+  "scope": "Desktop Electron, actual canvas ray picks; independent verified-resource import and cold restart",
+  "projectId": "math3d:project:2f64a27897db0c3a71bff87a05e2bb98",
+  "mesh": {
+    "documentId": "math3d:mesh:e4b2dd53a3899a4b904d51a6aac79158",
+    "generation": 1,
+    "revision": 1,
+    "structuralHash": "sha256:69aac33ca172a8ee9ea231b004c9974063ba2319029c899c463dd91f2602810d"
+  },
+  "picked": {
+    "end": 211,
+    "start": 1016
+  },
+  "edgePath": {
+    "length": 5.094088503136633,
+    "vertexCount": 38,
+    "firstVertex": 1016,
+    "lastVertex": 211
+  },
+  "meanColourLegend": "-0.00447624 · 0 · 0.00447624 · auto symmetric scaleInterior range 0.000286689 to 0.00447624 · 961 coloured vertices · 128 boundary/invalid vertices in grey.Signed mean H: inverse length; input winding for open meshes, outward orientation for closed meshes. Numerical estimates on this saved Mesh; colour maps do not prove minimality.",
+  "exactProjectRetained": true,
+  "exactColourLegendRetained": true,
+  "compactViewportWidth": 390,
+  "noHorizontalOverflow": true
+}

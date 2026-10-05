@@ -1,0 +1,138 @@
+import { test, expect } from "@playwright/test";
+import { readFileSync, mkdirSync, existsSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { launchSurfaceApp, closeSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+const collection = JSON.parse(readFileSync(resolve("renderer/src/projects/examples/samsung-projects.json"), "utf8"));
+
+test("Helicoid and Catenoid guided setups preserve editable history and historical Mesh results", async () => {
+  test.setTimeout(180_000); let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel"), workflow = page.getByTestId("project-saved-mesh-workflow");
+    const item = collection.projects.find((item: any) => (item.project ?? item).metadata.title === "Helicoid"), project = item.project ?? item;
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-import-file").setInputFiles({ name: "helix.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(item)) });
+    await panel.getByTestId("project-import-open").click();
+    await panel.getByTestId(`project-open-analysis-${project.workspace.entries[0].expected.id}`).click();
+    await expect(panel).toBeHidden();
+    await workflow.getByTestId("project-analysis-studies").locator("summary").click();
+    await workflow.getByTestId("project-analysis-run-study").click();
+    const originalMesh = await workflow.getByTestId("project-saved-mesh-choice").inputValue();
+    const originalZ = await page.getByTestId("project-surface-z").inputValue();
+    await workflow.getByTestId("project-surface-study-parameter").fill("-1");
+    await workflow.getByTestId("project-surface-study-apply").click();
+    await expect(workflow.getByRole("alert")).toContainText("positive study parameter");
+    await expect(page.getByTestId("project-surface-z")).toHaveValue(originalZ);
+    await workflow.getByTestId("project-surface-study-parameter").fill("1.25");
+    await workflow.getByTestId("project-surface-study-apply").click();
+    await expect(page.getByTestId("project-surface-z")).toHaveValue("1.25*u");
+    await expect(workflow.getByTestId("project-saved-mesh-freshness")).toContainText("Historical");
+    await page.getByTestId("project-editor-undo").click(); await expect(page.getByTestId("project-surface-z")).toHaveValue(originalZ);
+    await page.getByTestId("project-editor-redo").click(); await expect(page.getByTestId("project-surface-z")).toHaveValue("1.25*u");
+    await workflow.getByTestId("project-surface-study-preset").selectOption("catenoid");
+    await workflow.getByTestId("project-surface-study-parameter").fill("2");
+    await workflow.getByTestId("project-surface-study-apply").click();
+    await expect(page.getByTestId("project-surface-x")).toHaveValue("2*cosh(v/2)*cos(u)");
+    await expect(workflow.getByTestId("project-surface-study-presets")).toContainText("at the waist");
+    await workflow.getByTestId("project-analysis-run-study").click();
+    await expect(workflow.getByTestId("project-saved-mesh-choice").locator("option")).toHaveCount(2);
+    await workflow.getByTestId("project-saved-mesh-choice").selectOption(originalMesh);
+    await expect(workflow.getByTestId("project-saved-mesh-results")).toContainText("Discrete curvature");
+    await expect(workflow.getByTestId("project-saved-mesh-freshness")).toContainText("Historical");
+    await workflow.getByTestId("project-analysis-study").selectOption("edge-path");
+    await workflow.getByTestId("project-saved-mesh-path-end").fill("5");
+    await workflow.getByTestId("project-analysis-run-study").click();
+    await expect(workflow.getByTestId("project-saved-mesh-choice")).toHaveValue(originalMesh);
+    await expect(workflow.getByTestId("project-saved-mesh-choice").locator("option")).toHaveCount(2);
+    await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(saved.workspace.results.find((result: any) => result.provenance.operation.type === "mesh.saved.edge-path").provenance.source.documentId).toBe(originalMesh);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("saved Catenoid K/H maps and real canvas vertex picks retain the exact edge path through transfer and restart", async () => {
+  test.setTimeout(300_000); let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    let page = ctx.page, panel = page.getByTestId("project-explorer-panel"), workflow = page.getByTestId("project-saved-mesh-workflow");
+    const item = collection.projects.find((item: any) => (item.project ?? item).metadata.title === "Catenoid"), project = item.project ?? item;
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-import-file").setInputFiles({ name: "catenoid.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(item)) });
+    await panel.getByTestId("project-import-open").click();
+    await panel.getByTestId(`project-open-analysis-${project.workspace.entries[0].expected.id}`).click();
+    await workflow.getByTestId("project-analysis-studies").locator("summary").click();
+    await workflow.getByTestId("project-analysis-run-study").click();
+    const meshId = await workflow.getByTestId("project-saved-mesh-choice").inputValue();
+    const legend = workflow.getByTestId("project-curvature-legend");
+    await expect(legend).toHaveAttribute("data-field", "K"); await expect(legend).toHaveAttribute("data-source-id", meshId);
+    await expect(legend).toContainText("boundary/invalid vertices in grey");
+    await workflow.getByTestId("project-curvature-map").selectOption("H");
+    await expect(legend).toContainText("Signed mean H");
+    const hLegend = (await legend.textContent())!;
+    const canvas = workflow.getByTestId("project-study-viewport").locator("canvas");
+    await expect(canvas).toBeVisible(); await canvas.scrollIntoViewIfNeeded();
+    await workflow.getByTestId("project-path-pick-start").click();
+    await canvas.scrollIntoViewIfNeeded();
+    const bounds = (await canvas.boundingBox())!;
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2); await page.mouse.down();
+    await page.mouse.move(bounds.x + bounds.width / 2 + 30, bounds.y + bounds.height / 2, { steps: 4 }); await page.mouse.up();
+    await expect(workflow.getByTestId("project-path-pick-start")).toHaveAttribute("aria-pressed", "true");
+    await expect(workflow.getByTestId("project-path-selection")).toHaveAttribute("data-picked-start", "");
+    await workflow.getByTestId("project-study-view-fit").click();
+    const candidates = [.25,.4,.5,.6,.75].flatMap(x => [.25,.4,.5,.6,.75].map(y => ({ x, y })));
+    let start = "", end = "";
+    for (const position of candidates) {
+      await canvas.click({ position: { x: bounds.width * position.x, y: bounds.height * position.y } });
+      start = (await workflow.getByTestId("project-path-selection").getAttribute("data-picked-start"))!;
+      if (start) break;
+    }
+    expect(start).not.toBe("");
+    for (const position of candidates.reverse()) {
+      await workflow.getByTestId("project-path-pick-end").click();
+      await canvas.click({ position: { x: bounds.width * position.x, y: bounds.height * position.y } });
+      end = (await workflow.getByTestId("project-path-selection").getAttribute("data-picked-end"))!;
+      if (end && end !== start) break;
+    }
+    expect(end).not.toBe(""); expect(end).not.toBe(start);
+    await workflow.getByTestId("project-analysis-study").selectOption("edge-path");
+    await workflow.getByTestId("project-analysis-run-study").click();
+    await expect(workflow.getByTestId("project-saved-mesh-results")).toContainText("Shortest edge path");
+    await expect(page.getByTestId("app-status-bar")).toHaveCSS("position", "static");
+    await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const path = saved.workspace.results.find((result: any) => result.provenance.operation.type === "mesh.saved.edge-path");
+    expect(path.provenance.source.documentId).toBe(meshId);
+    expect(path.provenance.operation.parameters).toEqual({ start: Number(start), end: Number(end) });
+    expect(path.summary.vertexIndices[0]).toBe(Number(start)); expect(path.summary.vertexIndices.at(-1)).toBe(Number(end)); expect(path.summary.length).toBeGreaterThan(0);
+    const directory = resolve("output/projects-integration/prj39-41"); mkdirSync(directory, { recursive: true });
+    const exportPath = resolve(directory, `picked-catenoid-${Date.now()}.json`);
+    await ctx.app.evaluate(({ session }, target) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(target)), exportPath);
+    await panel.getByTestId("project-export-resources").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Exported project with verified");
+    await expect.poll(() => existsSync(exportPath)).toBe(true); const packageBytes = readFileSync(exportPath);
+    await closeSurfaceApp(ctx); ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    page = ctx.page; panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-import-file").setInputFiles({ name: "returned.json", mimeType: "application/json", buffer: packageBytes });
+    await panel.getByTestId("project-import-open").click();
+    const profile = ctx.profileDir; await ctx.app.close(); ctx = await launchSurfaceApp({}, profile);
+    page = ctx.page; panel = page.getByTestId("project-explorer-panel"); workflow = page.getByTestId("project-saved-mesh-workflow");
+    await page.getByTestId("projects-toggle").click(); await panel.getByTestId(`project-open-saved-${saved.identity.id}`).click();
+    await expect(panel).toBeHidden();
+    const restored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)); expect(restored).toEqual(saved);
+    await workflow.getByTestId("project-study-visuals").locator("summary").click();
+    await workflow.getByTestId("project-curvature-map").selectOption("H");
+    await expect(workflow.getByTestId("project-curvature-legend")).toHaveText(hLegend);
+    await expect(workflow.getByTestId("project-saved-mesh-results")).toContainText("Shortest edge path");
+    await workflow.getByTestId("project-study-viewport").scrollIntoViewIfNeeded();
+    await workflow.getByTestId("project-study-visuals").screenshot({ path: resolve(directory, "returned-catenoid-mean-map-path.png") });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByTestId("surface-bottom-nav")).toHaveCSS("position", "static");
+    await workflow.getByTestId("project-study-viewport").scrollIntoViewIfNeeded();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await page.screenshot({ path: resolve(directory, "returned-catenoid-compact.png") });
+    writeFileSync(resolve(directory, "acceptance.json"), JSON.stringify({ scope: "Desktop Electron, actual canvas ray picks; independent verified-resource import and cold restart", projectId: saved.identity.id, mesh: path.provenance.source, picked: path.provenance.operation.parameters, edgePath: { length: path.summary.length, vertexCount: path.summary.vertexIndices.length, firstVertex: path.summary.vertexIndices[0], lastVertex: path.summary.vertexIndices.at(-1) }, meanColourLegend: hLegend, exactProjectRetained: true, exactColourLegendRetained: true, compactViewportWidth: 390, noHorizontalOverflow: true }, null, 2));
+  } finally { await closeSurfaceApp(ctx); }
+});

@@ -20,6 +20,7 @@ import { AdditionalProjectEditor } from "./projects/AdditionalProjectEditor";
 import { createSavedSurfaceMesh, savedSurfaceMeshLinks } from "./projects/savedSurfaceMesh";
 import { analyzeSavedMesh, appendSavedMeshAnalysis, type SavedMeshAnalysisKind } from "./projects/savedMeshAnalysis";
 import { SavedMeshAnalysisPanel } from "./projects/SavedMeshAnalysisPanel";
+import { surfaceStudySource, type SurfaceStudyPresetId } from "./projects/surfaceStudyPresets";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
@@ -79298,6 +79299,18 @@ case "mobius":
     const workspace = captureMixedKernelWorkspace(), result = analyzeSavedMesh(adapter, kind, endpoints);
     restored.workspace = appendSavedMeshAnalysis(workspace, result); setAdditionalVersion(value => value + 1);
   };
+  const applySavedSurfaceStudyPreset = (id: SurfaceStudyPresetId, value: number) => {
+    if (!restoredSurfaceAdapter || !restoredProjectRef.current?.surfaces.has(restoredSurfaceAdapter.document().identity.id)) throw new TypeError("Open a saved literal parametric Surface first.");
+    captureMixedKernelWorkspace();
+    restoredSurfaceAdapter.commitSource(surfaceStudySource(restoredSurfaceAdapter.document().source, id, value));
+    navigateRestoredDocument(restoredSurfaceAdapter.document().identity.id, "surface");
+    setAdditionalVersion(version => version + 1);
+  };
+  const readSavedStudyMesh = useCallback((id: string) => {
+    const adapter = restoredProjectRef.current?.meshes.get(id);
+    if (!adapter) throw new TypeError("Saved Mesh buffers are unavailable.");
+    return adapter.mesh();
+  }, []);
   const [projectGraphAnalysisRequest, setProjectGraphAnalysisRequest] = useState<{ documentId: string; token: number } | null>(null);
   const [projectVolumeAnalysisRequest, setProjectVolumeAnalysisRequest] = useState<{ documentId: string; token: number } | null>(null);
   const additionalSurface = additionalActiveId ? restoredProjectRef.current?.additional.get(additionalActiveId)?.document() : null;
@@ -79312,9 +79325,9 @@ case "mobius":
   };
 
   return (
-    <div data-testid="app-shell" style={rootStyle}>
+    <div className="math3d-app" data-testid="app-shell" style={rootStyle}>
       {additionalActiveId && restoredProjectRef.current?.additional.get(additionalActiveId) && <AdditionalProjectEditor key={additionalActiveId} session={restoredProjectRef.current.additional.get(additionalActiveId)!} onChange={() => setAdditionalVersion((v) => v + 1)} onClose={() => setAdditionalActiveId(null)}>
-        {additionalSurface?.format === "math3d.surface-document" && <SavedMeshAnalysisPanel key={additionalSurface.identity.id} meshes={savedSurfaceMeshLinks(restoredProjectRef.current.workspace, additionalSurface, restoredProjectRef.current.meshes)} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis} />}
+        {additionalSurface?.format === "math3d.surface-document" && <SavedMeshAnalysisPanel key={additionalSurface.identity.id} readMesh={readSavedStudyMesh} meshes={savedSurfaceMeshLinks(restoredProjectRef.current.workspace, additionalSurface, restoredProjectRef.current.meshes)} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis} />}
       </AdditionalProjectEditor>}
       <KernelWorkspacePanel
         projectsOpen={projectsOpen}
@@ -81670,7 +81683,7 @@ case "mobius":
       </div>}
       {restoredTopologyAdapter && mode === "topology" && <div data-testid="project-topology-editor" style={{ padding: "6px 14px" }}>Saved Topology · {restoredTopologyAdapter.current().name} · {restoredTopologyAdapter.document().identity.id} · Projects → Save project keeps these edits.</div>}
       {activeKernelModule === "mesh" && meshDocumentAdapterRef.current && restoredProjectRef.current?.meshes.has(meshDocumentAdapterRef.current.document().identity.id) && <MeshProjectEditor key={meshDocumentAdapterRef.current.document().identity.id} adapter={meshDocumentAdapterRef.current} onRestore={() => navigateRestoredDocument(meshDocumentAdapterRef.current!.document().identity.id, "mesh")} />}
-      {activeKernelModule === "mesh" && !additionalActiveId && meshDocumentAdapterRef.current && restoredProjectRef.current?.meshes.has(meshDocumentAdapterRef.current.document().identity.id) && <SavedMeshAnalysisPanel key={`analysis:${meshDocumentAdapterRef.current.document().identity.id}`} meshes={[{
+      {activeKernelModule === "mesh" && !additionalActiveId && meshDocumentAdapterRef.current && restoredProjectRef.current?.meshes.has(meshDocumentAdapterRef.current.document().identity.id) && <SavedMeshAnalysisPanel key={`analysis:${meshDocumentAdapterRef.current.document().identity.id}`} readMesh={readSavedStudyMesh} meshes={[{
         id: meshDocumentAdapterRef.current.document().identity.id, title: meshDocumentAdapterRef.current.document().metadata.label, revision: meshDocumentAdapterRef.current.document().identity.revision, structuralHash: meshDocumentAdapterRef.current.document().identity.structuralHash,
         vertexCount: meshDocumentAdapterRef.current.document().source.resource.vertexCount, current: savedMeshSourceCurrent(),
         results: restoredProjectRef.current.workspace.results.filter(result => result.provenance.source.documentId === meshDocumentAdapterRef.current!.document().identity.id && result.provenance.operation.type.startsWith("mesh.saved.")),
@@ -81689,6 +81702,9 @@ case "mobius":
         <span>Projects → Save project keeps these edits.</span>
       </div>}
       {nativeSavedSurface && restoredProjectRef.current && <SavedMeshAnalysisPanel
+        readMesh={readSavedStudyMesh}
+        initialStudyPreset={/catenoid/i.test(`${nativeSavedSurface.source.definition.familyId} ${nativeSavedSurface.metadata.title}`) ? "catenoid" : "helicoid"}
+        onApplyStudyPreset={applySavedSurfaceStudyPreset}
         key={`surface-analysis:${nativeSavedSurface.identity.id}`}
         meshes={savedSurfaceMeshLinks(restoredProjectRef.current.workspace, nativeSavedSurface, restoredProjectRef.current.meshes)}
         onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis}
