@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { savedMeshCurvatureMap, pickedMeshVertex } from "./savedMeshExploration";
+import { savedMeshCurvatureMap, savedMeshCurvatureReport, savedMeshVertexInspection, pickedMeshVertex } from "./savedMeshExploration";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 import { IcosahedronGeometry } from "three";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -34,4 +34,15 @@ it("closed convex meshes colour positive curvature and reject oversized fields b
   }
   expect(() => savedMeshCurvatureMap({ ...square, positions: new Float32Array(300_003) }, "K")).toThrow("100,000 vertices");
   geometry.dispose(); welded.dispose();
+});
+it("vertex inspection exposes coordinates, normals, boundary warnings and invalid neighborhoods without modifying results", () => {
+  const report = savedMeshCurvatureReport(square), centre = savedMeshVertexInspection(square, report, 4);
+  expect(centre.coordinates).toEqual([.5, .5, 0]); expect(centre.valid).toBe(true); expect(centre.boundary).toBe(false);
+  expect(centre.K).toBeCloseTo(0); expect(centre.H).toBeCloseTo(0); expect(centre.normal[2]).toBeCloseTo(1);
+  const edge = savedMeshVertexInspection(square, report, 0);
+  expect(edge.boundary).toBe(true); expect(edge.warnings.join(" ")).toContain("Boundary vertex");
+  const invalid = { ...report, validMask: report.validMask.slice() }; invalid.validMask[4] = 0;
+  expect(savedMeshVertexInspection(square, invalid, 4).valid).toBe(false);
+  expect(report.validMask[4]).toBe(1);
+  for (const vertex of [-1, .5, 5, NaN]) expect(() => savedMeshVertexInspection(square, report, vertex)).toThrow();
 });

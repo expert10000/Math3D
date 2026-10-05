@@ -1,0 +1,71 @@
+{
+  "scope": "Desktop Electron actual point inspection and PNG/JSON/CSV downloads, independent resource import and cold restart",
+  "inspectedVertex": 1016,
+  "snapshots": {
+    "coarseId": "math3d:mesh:7ec89a05198610c546fe43b473f0cc6e",
+    "mediumId": "math3d:mesh:e4b2dd53a3899a4b904d51a6aac79158",
+    "fineId": "math3d:mesh:b87d89d84cd5aea9d56e30b0789e971d",
+    "changedId": "math3d:mesh:124097471411c7c4089a1345842cd056"
+  },
+  "comparison": [
+    {
+      "meshSource": {
+        "documentId": "math3d:mesh:124097471411c7c4089a1345842cd056",
+        "revision": 1,
+        "structuralHash": "sha256:51d5b1436c80171ac21255beba6c08e0452bea1b3ec11f9db7409cd6c0c78a9a",
+        "generation": 1
+      },
+      "surfaceSource": {
+        "documentId": "math3d:surface:b43d572316a47657993431828e1df1ca",
+        "generation": 2,
+        "revision": 2,
+        "structuralHash": "sha256:d4d980c9e63cfe841d540e9bf16024834dbad9304c9fc8114e8b6211eee21f85"
+      },
+      "samplingSize": 65,
+      "interior": {
+        "count": 3969,
+        "excluded": 256,
+        "averageK": -0.43708683898577194,
+        "averageH": -0.04641250955283334,
+        "averageAbsH": 0.06431389241221994,
+        "maxAbsH": 0.17886047065258026
+      }
+    },
+    {
+      "meshSource": {
+        "documentId": "math3d:mesh:7ec89a05198610c546fe43b473f0cc6e",
+        "revision": 1,
+        "structuralHash": "sha256:446f62ddd0841cfd22629e03d8038be3870a20d95464223d9ca46970a987657b",
+        "generation": 1
+      },
+      "surfaceSource": {
+        "documentId": "math3d:surface:b43d572316a47657993431828e1df1ca",
+        "generation": 1,
+        "revision": 1,
+        "structuralHash": "sha256:e9f75ff9aad6244a181d5d94e1fde3e09c8412be43f064073f07903c3b4fe4ba"
+      },
+      "samplingSize": 17,
+      "interior": {
+        "count": 225,
+        "excluded": 64,
+        "averageK": -0.49314521816041734,
+        "averageH": 0.00882701481692493,
+        "averageAbsH": 0.00882701481692493,
+        "maxAbsH": 0.017579732462763786
+      }
+    }
+  ],
+  "sharedScale": {
+    "min": -0.17886047065258026,
+    "max": 0.17886047065258026
+  },
+  "exactProjectRetained": true,
+  "exactScaleRetained": true,
+  "pngDimensions": [
+    1600,
+    1060
+  ],
+  "csvVertexRows": 4514,
+  "compactWidth": 390,
+  "noHorizontalOverflow": true
+}

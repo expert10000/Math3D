@@ -16,6 +16,7 @@ import type { GeometryScene } from "../geometry/types";
 import type { VerifiedProjectResources } from "./projectResources";
 
 import { capturedCurveKey } from "./capturedCurveSources";
+import { supportsSavedSurfaceResolution, validateSurfaceStudyResolution } from "./surfaceStudyResolution";
 
 export type AdditionalDocument = CurveDocument | SurfaceDocument | GeometryDocument | TopologyDocument;
 export type RepresentationContext = { documents: ReadonlyMap<string, MixedWorkspaceEntry["checkpoint"]>; resources?: VerifiedProjectResources; capturedCurves?: ReadonlyMap<string, CurveDocument> };
@@ -132,13 +133,15 @@ const surfaceRanges = (document: SurfaceDocument): [[number,number],[number,numb
   if (domain.kind === "graph") return [range(domain.x),range(domain.y)];
   return fail("This Surface domain is not fully represented.");
 };
-const samplePatch = (document: SurfaceDocument, evaluator: (u:number,v:number)=>Point): SurfaceMeshData => {
-  const [u,v]=surfaceRanges(document), n=33, positions=new Float32Array(n*n*3), indices:number[]=[];
+const samplePatch = (document: SurfaceDocument, evaluator: (u:number,v:number)=>Point, n = 33): SurfaceMeshData => {
+  const [u,v]=surfaceRanges(document), positions=new Float32Array(n*n*3), indices:number[]=[];
   for(let j=0;j<n;j++)for(let i=0;i<n;i++){ const p=evaluator(u[0]+(u[1]-u[0])*i/(n-1),v[0]+(v[1]-v[0])*j/(n-1)); if(!finite(p)) fail("Surface sampling produced a non-finite point."); positions.set([p.x,p.y,p.z],(j*n+i)*3); }
   for(let j=0;j<n-1;j++)for(let i=0;i<n-1;i++){const a=j*n+i;indices.push(a,a+1,a+n,a+1,a+n+1,a+n);}
   return {label:document.metadata.title,positions,indices:Uint32Array.from(indices),source:{kind:"bakedFromParam"}};
 };
-export const additionalRepresentationView = (document: AdditionalDocument, context: RepresentationContext): RepresentationView => {
+export const additionalRepresentationView = (document: AdditionalDocument, context: RepresentationContext, options: { surfaceResolution?: number } = {}): RepresentationView => {
+  const resolution = validateSurfaceStudyResolution(options.surfaceResolution ?? 33);
+  if (resolution !== 33 && (document.format !== "math3d.surface-document" || !supportsSavedSurfaceResolution(document))) fail("This representation retains its source-defined sampling; saved resolution controls are unavailable.");
   let scene:GeometryScene={},meshes:SurfaceMeshData[]=[],qualification="Numerical source preview";
   if(document.format==="math3d.curve-document") {
     const source=document.source;
@@ -186,7 +189,7 @@ export const additionalRepresentationView = (document: AdditionalDocument, conte
       const buffers=decodeMeshBuffers(bytes!);meshes=[{...buffers,label:document.metadata.title,source:{kind:"bakedFromParam"}}];qualification="Saved Mesh-backed Surface buffers";
     } else if(source.representation==="implicit") {
       if(domain.kind!=="spatial-bounds"||!Array.isArray(domain.min)||!Array.isArray(domain.max)||domain.min.length!==3||domain.max.length!==3)fail("Saved implicit spatial bounds are required.");
-      const ranges=domain.min.map((min:number,i:number)=>range([min,domain.max[i]])),fn=compiled(source.definition.expressions?.formula,["x","y","z"]),n=33,scalars=new Float32Array(n*n*n);
+      const ranges=domain.min.map((min:number,i:number)=>range([min,domain.max[i]])),fn=compiled(source.definition.expressions?.formula,["x","y","z"]),n=resolution,scalars=new Float32Array(n*n*n);
       for(let z=0;z<n;z++)for(let y=0;y<n;y++)for(let x=0;x<n;x++)scalars[(z*n+y)*n+x]=fn({x:ranges[0][0]+(ranges[0][1]-ranges[0][0])*x/(n-1),y:ranges[1][0]+(ranges[1][1]-ranges[1][0])*y/(n-1),z:ranges[2][0]+(ranges[2][1]-ranges[2][0])*z/(n-1)});
       if(!scalars.every(Number.isFinite))fail("Implicit Surface samples exceed the finite viewer range.");
       const iso=Number(source.definition.settings?.isoValue??0);if(!Number.isFinite(iso))fail("Finite saved isovalue required.");
@@ -199,10 +202,10 @@ export const additionalRepresentationView = (document: AdditionalDocument, conte
         if(typeof settings.splineSettings!=="string")fail("Spline Surface needs its saved control grid and knots.");
         validateSavedSplineSurfaceSettings(source.definition.familyId, JSON.parse(settings.splineSettings as string));
       }
-      const built=source.representation==="spline"?bakeParamSurface({surfaceId:source.definition.familyId as never,domain:savedDomain,resolution:33,label:document.metadata.title,splineSettings:JSON.parse(settings.splineSettings as string)}):
-        bakeWeierstrassSurface({gExpr:source.definition.expressions?.g??"",phiExpr:source.definition.expressions?.phi??"",domain:savedDomain,resolution:33,label:document.metadata.title,recenterRescale:false});
+      const built=source.representation==="spline"?bakeParamSurface({surfaceId:source.definition.familyId as never,domain:savedDomain,resolution,label:document.metadata.title,splineSettings:JSON.parse(settings.splineSettings as string)}):
+        bakeWeierstrassSurface({gExpr:source.definition.expressions?.g??"",phiExpr:source.definition.expressions?.phi??"",domain:savedDomain,resolution,label:document.metadata.title,recenterRescale:false});
       if("error"in built)fail(built.error);meshes=[(built as {mesh:SurfaceMeshData}).mesh];qualification=source.representation==="weierstrass"?"Numerical Weierstrass integration":"Numerical saved spline patch";
-    } else meshes=[samplePatch(document,surfaceEvaluator(document,context,[]))];
+    } else meshes=[samplePatch(document,surfaceEvaluator(document,context,[]),resolution)];
   } else if(document.format==="math3d.geometry-document") {
     if(document.source.objects.length||document.source.surfaces.length||document.display.overlays.length||document.display.cameras.length)fail("This combined Geometry scene needs an additional render adapter.");
     const saved=geometryDocumentToSceneDocument(document);scene=JSON.parse(JSON.stringify(saved.geometry??{}));

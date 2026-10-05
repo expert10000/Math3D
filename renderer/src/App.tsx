@@ -21,6 +21,7 @@ import { createSavedSurfaceMesh, savedSurfaceMeshLinks } from "./projects/savedS
 import { analyzeSavedMesh, appendSavedMeshAnalysis, type SavedMeshAnalysisKind } from "./projects/savedMeshAnalysis";
 import { SavedMeshAnalysisPanel } from "./projects/SavedMeshAnalysisPanel";
 import { surfaceStudySource, type SurfaceStudyPresetId } from "./projects/surfaceStudyPresets";
+import { supportsSavedSurfaceResolution, type SurfaceStudyResolution } from "./projects/surfaceStudyResolution";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
@@ -79278,7 +79279,7 @@ case "mobius":
     setAdditionalActiveId(null);
   };
 
-  const createMeshFromSavedSurface = (): string => {
+  const createMeshFromSavedSurface = (resolution: SurfaceStudyResolution = 33): string => {
     const restored = restoredProjectRef.current, session = additionalActiveId ? restored?.additional.get(additionalActiveId) : null;
     if (!restored) throw new TypeError("Open a saved Surface source first.");
     // Capture first: native formula fields commit through the Surface adapter.
@@ -79287,7 +79288,7 @@ case "mobius":
     const document = session?.document() ?? (!additionalActiveId && mode === "surfaces" && surfaceViewerKind === "param" && paramSurfaceId === "custom" ? restoredSurfaceAdapter?.document() : null);
     if (document?.format !== "math3d.surface-document" || !session && !restored.surfaces.has(document.identity.id)) throw new TypeError("Open a saved Surface source first.");
     const context = session?.context() ?? { documents: verifyMixedWorkspaceReplay(workspace), resources: restored.resources };
-    const next = createSavedSurfaceMesh(workspace, document, context);
+    const next = createSavedSurfaceMesh(workspace, document, context, resolution);
     restored.workspace = next.workspace;
     if (!next.existing) restored.meshes.set(next.adapter.document().identity.id, next.adapter);
     setAdditionalVersion(value => value + 1);
@@ -79327,7 +79328,7 @@ case "mobius":
   return (
     <div className="math3d-app" data-testid="app-shell" style={rootStyle}>
       {additionalActiveId && restoredProjectRef.current?.additional.get(additionalActiveId) && <AdditionalProjectEditor key={additionalActiveId} session={restoredProjectRef.current.additional.get(additionalActiveId)!} onChange={() => setAdditionalVersion((v) => v + 1)} onClose={() => setAdditionalActiveId(null)}>
-        {additionalSurface?.format === "math3d.surface-document" && <SavedMeshAnalysisPanel key={additionalSurface.identity.id} readMesh={readSavedStudyMesh} meshes={savedSurfaceMeshLinks(restoredProjectRef.current.workspace, additionalSurface, restoredProjectRef.current.meshes)} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis} />}
+        {additionalSurface?.format === "math3d.surface-document" && <SavedMeshAnalysisPanel key={additionalSurface.identity.id} resolutionSupported={supportsSavedSurfaceResolution(additionalSurface)} readMesh={readSavedStudyMesh} meshes={savedSurfaceMeshLinks(restoredProjectRef.current.workspace, additionalSurface, restoredProjectRef.current.meshes)} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis} />}
       </AdditionalProjectEditor>}
       <KernelWorkspacePanel
         projectsOpen={projectsOpen}
@@ -81702,13 +81703,14 @@ case "mobius":
         <span>Projects → Save project keeps these edits.</span>
       </div>}
       {nativeSavedSurface && restoredProjectRef.current && <SavedMeshAnalysisPanel
+        resolutionSupported={supportsSavedSurfaceResolution(nativeSavedSurface)}
         readMesh={readSavedStudyMesh}
         initialStudyPreset={/catenoid/i.test(`${nativeSavedSurface.source.definition.familyId} ${nativeSavedSurface.metadata.title}`) ? "catenoid" : "helicoid"}
         onApplyStudyPreset={applySavedSurfaceStudyPreset}
         key={`surface-analysis:${nativeSavedSurface.identity.id}`}
         meshes={savedSurfaceMeshLinks(restoredProjectRef.current.workspace, nativeSavedSurface, restoredProjectRef.current.meshes)}
         onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis}
-        creationHint="Uses saved formulas and ranges on a 33 × 33 grid, independent of display resolution. Projects → Save project keeps the Mesh and analysis."
+        creationHint="Uses saved formulas and ranges at the selected analysis resolution, independent of display resolution. Earlier Meshes and results remain available. Projects → Save project keeps them."
       />}
       <div
         style={{

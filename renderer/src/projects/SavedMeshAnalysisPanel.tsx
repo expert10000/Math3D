@@ -1,14 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
-import type { AnalysisResultEnvelope } from "@math3d/core";
+import type { AnalysisResultEnvelope, CanonicalJsonValue, ScientificSourceGeneration } from "@math3d/core";
 import { savedMeshAnalysisLabel, type SavedMeshAnalysisKind } from "./savedMeshAnalysis";
 import { SAVED_MESH_STUDIES, studyEndpoints } from "./savedMeshStudies";
 import { SURFACE_STUDY_PRESETS, type SurfaceStudyPresetId } from "./surfaceStudyPresets";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
-import { savedMeshCurvatureMap, CURVATURE_MAP_COLOURS, type CurvatureMapField } from "./savedMeshExploration";
+import { savedMeshCurvatureMap, savedMeshCurvatureReport, savedMeshVertexInspection, CURVATURE_MAP_COLOURS, type CurvatureMapField } from "./savedMeshExploration";
 import { SavedMeshStudyView } from "./SavedMeshStudyView";
 import "./savedMeshExploration.css";
+import { SURFACE_STUDY_RESOLUTIONS, type SurfaceStudyResolution } from "./surfaceStudyResolution";
+import { SavedMeshComparison } from "./SavedMeshComparison";
 
-export type SavedMeshChoice = { id: string; title: string; revision: number; structuralHash: string; vertexCount: number; sourceRevision?: number; current: boolean; results: readonly AnalysisResultEnvelope[] };
+export type SavedMeshChoice = { id: string; title: string; revision: number; structuralHash: string; vertexCount: number; meshGeneration?: ScientificSourceGeneration; sourceRevision?: number; surfaceGeneration?: ScientificSourceGeneration; samplingSize?: number; sampling?: CanonicalJsonValue; units?: string; current: boolean; results: readonly AnalysisResultEnvelope[] };
 const number = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toPrecision(6) : "unavailable";
 const resultDescription = (result: AnalysisResultEnvelope) => {
   const s = result.summary as Record<string, any>;
@@ -17,22 +19,29 @@ const resultDescription = (result: AnalysisResultEnvelope) => {
   if (result.provenance.operation.type === "mesh.saved.edge-path") return `Length ${number(s.length)} · ${Array.isArray(s.vertexIndices) ? s.vertexIndices.length : "unknown"} path vertices`;
   return result.provenance.operation.type;
 };
-export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onAnalyze, onApplyStudyPreset, readMesh, initialStudyPreset = "helicoid", creationHint = "Uses the applied surface. Apply formula changes first." }: { meshes: readonly SavedMeshChoice[]; onCreate?: () => string; onOpen?: (id: string) => void; onAnalyze: (id: string, kind: SavedMeshAnalysisKind, endpoints?: { start: number; end: number }) => void; onApplyStudyPreset?: (id: SurfaceStudyPresetId, value: number) => void; readMesh?: (id: string) => SurfaceMeshData; initialStudyPreset?: SurfaceStudyPresetId; creationHint?: string }) => {
+export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onAnalyze, onApplyStudyPreset, readMesh, resolutionSupported = false, initialStudyPreset = "helicoid", creationHint = "Uses the applied surface. Apply formula changes first." }: { meshes: readonly SavedMeshChoice[]; onCreate?: (resolution?: SurfaceStudyResolution) => string; onOpen?: (id: string) => void; onAnalyze: (id: string, kind: SavedMeshAnalysisKind, endpoints?: { start: number; end: number }) => void; onApplyStudyPreset?: (id: SurfaceStudyPresetId, value: number) => void; readMesh?: (id: string) => SurfaceMeshData; resolutionSupported?: boolean; initialStudyPreset?: SurfaceStudyPresetId; creationHint?: string }) => {
   const [selected, setSelected] = useState(""), [start, setStart] = useState("0"), [end, setEnd] = useState(""), [message, setMessage] = useState(""), [error, setError] = useState("");
   const [studyId, setStudyId] = useState<SavedMeshAnalysisKind>("curvature");
+  const [resolution, setResolution] = useState<SurfaceStudyResolution>(33);
   const [presetId, setPresetId] = useState<SurfaceStudyPresetId>(initialStudyPreset), [presetValue, setPresetValue] = useState(String(SURFACE_STUDY_PRESETS.find(item => item.id === initialStudyPreset)!.value));
   const preset = SURFACE_STUDY_PRESETS.find(item => item.id === presetId)!;
   const study = SAVED_MESH_STUDIES.find(item => item.id === studyId)!;
   const mesh = meshes.find(choice => choice.id === selected) ?? meshes.at(-1);
   const [viewOpen, setViewOpen] = useState(false), [mapField, setMapField] = useState<CurvatureMapField | "none">("none");
   const [pickTarget, setPickTarget] = useState<"start" | "end" | null>(null), [endpointsChosen, setEndpointsChosen] = useState(false);
-  useEffect(() => { setPickTarget(null); setEndpointsChosen(false); setStart("0"); setEnd(""); }, [mesh?.id, mesh?.revision, mesh?.structuralHash]);
+  const meshKey = mesh ? `${mesh.id}:${mesh.revision}:${mesh.structuralHash}` : "";
+  const [inspection, setInspection] = useState<{ key: string; index: number } | null>(null);
+  const inspected = inspection?.key === meshKey ? inspection.index : undefined;
+  const setInspected = (index: number | undefined) => setInspection(index === undefined ? null : { key: meshKey, index });
+  useEffect(() => { setPickTarget(null); setEndpointsChosen(false); setStart("0"); setEnd(""); setInspected(undefined); }, [mesh?.id, mesh?.revision, mesh?.structuralHash]);
   const viewData = useMemo(() => mesh && readMesh ? readMesh(mesh.id) : null, [mesh?.id, mesh?.revision, mesh?.structuralHash, readMesh]);
   const savedPath = mesh?.results.filter(result => result.provenance.operation.type === "mesh.saved.edge-path" && result.provenance.source.revision === mesh.revision && result.provenance.source.structuralHash === mesh.structuralHash).at(-1)?.summary as { vertexIndices?: number[] } | undefined;
-  const colourMap = useMemo(() => {
-    try { return { map: viewData && mapField !== "none" && viewOpen ? savedMeshCurvatureMap(viewData, mapField) : null, error: "" }; }
-    catch (failure) { return { map: null, error: (failure as Error).message }; }
-  }, [viewData, mapField, viewOpen]);
+  const curvature = useMemo(() => {
+    try { return { report: viewData && viewOpen ? savedMeshCurvatureReport(viewData) : null, error: "" }; }
+    catch (failure) { return { report: null, error: (failure as Error).message }; }
+  }, [viewData, viewOpen]);
+  const colourMap = useMemo(() => ({ map: viewData && mapField !== "none" && curvature.report ? savedMeshCurvatureMap(viewData, mapField, undefined, curvature.report) : null, error: curvature.error }), [viewData, mapField, curvature]);
+  const probe = viewData && curvature.report && inspected !== undefined ? savedMeshVertexInspection(viewData, curvature.report, inspected) : null;
   const run = (action: () => void) => { try { action(); setError(""); } catch (failure) { setError((failure as Error).message); } };
   const analyze = (kind: SavedMeshAnalysisKind) => run(() => {
     if (!mesh) throw new TypeError("Create a Mesh first.");
@@ -45,7 +54,7 @@ export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onAnalyze, on
     setMessage("");
     if (studyId === "edge-path" && !mesh) throw new TypeError("Create Mesh first to choose start and end vertices.");
     const endpoints = studyId === "edge-path" ? studyEndpoints(start, end, mesh!.vertexCount) : undefined;
-    const id = studyId === "edge-path" ? mesh!.id : onCreate ? onCreate() : mesh?.id;
+    const id = studyId === "edge-path" ? mesh!.id : onCreate ? onCreate(resolution) : mesh?.id;
     if (!id) throw new TypeError("Open a saved Mesh or Surface first.");
     onAnalyze(id, studyId, endpoints);
     setSelected(id);
@@ -71,10 +80,10 @@ export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onAnalyze, on
       {studyId === "edge-path" && !mesh && <div><small>Create Mesh first to choose vertex indices.</small></div>}
     </details>
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "8px 0" }}>
-      {onCreate && <><button data-testid="project-surface-create-mesh" onClick={() => run(() => { const id = onCreate(); setSelected(id); setMessage("Mesh ready. Its source revision is recorded; Projects → Save project keeps it."); })}>Create Mesh</button><small>{creationHint}</small></>}
+      {onCreate && <>{resolutionSupported && <label>Analysis resolution <select data-testid="project-analysis-resolution" value={resolution} onChange={event => setResolution(Number(event.target.value) as SurfaceStudyResolution)}>{SURFACE_STUDY_RESOLUTIONS.map(item => <option key={item.size} value={item.size}>{item.label}</option>)}</select></label>}<button data-testid="project-surface-create-mesh" onClick={() => run(() => { const id = onCreate(resolution); setSelected(id); setMessage("Mesh ready. Its source revision and sampling are recorded; Projects → Save project keeps it."); })}>Create Mesh</button><small>{creationHint}</small></>}
       {mesh && <><label style={{ maxWidth: "100%" }}>Saved Mesh <select style={{ maxWidth: "100%" }} data-testid="project-saved-mesh-choice" value={mesh.id} onChange={event => { setSelected(event.target.value); setMessage(""); setError(""); }}>{meshes.map(choice => <option key={choice.id} value={choice.id}>{choice.title}{choice.current ? "" : " · historical"}</option>)}</select></label>
         {onOpen && <button data-testid="project-saved-mesh-open" onClick={() => run(() => onOpen(mesh.id))}>Open Mesh</button>}
-        <span data-testid="project-saved-mesh-freshness">{mesh.vertexCount} vertices · {mesh.current ? "Current source" : "Historical source or edited Mesh; create a new Mesh from the Surface to refresh"}{mesh.sourceRevision !== undefined ? ` · surface r${mesh.sourceRevision}` : ""}</span>
+        <span data-testid="project-saved-mesh-freshness">{mesh.vertexCount} vertices{mesh.samplingSize ? ` · ${mesh.samplingSize} samples/axis` : ""} · {mesh.current ? "Current source" : "Historical source or edited Mesh; create a new Mesh from the Surface to refresh"}{mesh.sourceRevision !== undefined ? ` · surface r${mesh.sourceRevision}` : ""}</span>
       </>}
     </div>
     {mesh && <>
@@ -89,6 +98,18 @@ export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onAnalyze, on
           <small>{mapField === "K" ? "Gaussian K: inverse length squared." : "Signed mean H: inverse length; input winding for open meshes, outward orientation for closed meshes."} Numerical estimates on this saved Mesh; colour maps do not prove minimality.</small>
         </div>}
         {colourMap.error && <div role="alert">{colourMap.error}</div>}
+        <div style={{ margin: "8px 0" }}>
+          Click the Mesh to inspect a vertex; cyan marks the inspected point. Endpoint picking takes priority when armed.
+          <label style={{ display: "block" }}>Inspect vertex <input data-testid="project-inspect-vertex" type="number" min="0" max={mesh.vertexCount - 1} step="1" value={inspected ?? ""} onChange={event => run(() => { const text = event.target.value; if (!text) { setInspected(undefined); return; } const index = Number(text); if (!viewData || !curvature.report) throw new TypeError("Open the saved Mesh view first."); savedMeshVertexInspection(viewData, curvature.report, index); setInspected(index); })} style={{ width: 85 }} /></label>
+          {probe && <div data-testid="project-vertex-inspection" data-vertex={probe.index} data-source-id={mesh.id} data-source-revision={mesh.revision} data-valid={String(probe.valid)} data-boundary={String(probe.boundary)}>
+            <strong>Vertex {probe.index} · Mesh r{mesh.revision} · {mesh.current ? "current" : "historical"}</strong>
+            <div>Coordinates: {probe.coordinates.map(number).join(", ")}</div>
+            <div>K: {probe.valid ? number(probe.K) : "unavailable"} · H: {probe.valid ? number(probe.H) : "unavailable"}</div>
+            <div>Normal: {probe.valid ? probe.normal.map(number).join(", ") : "unavailable"}</div>
+            <small>{probe.valid ? probe.boundary ? "Boundary estimate; excluded from interior colour maps." : "Valid discrete estimate." : "Invalid neighborhood; curvature and normal are unavailable."} K has inverse-length-squared units; H has inverse-length units and follows the displayed orientation convention.</small>
+            {probe.warnings.map(warning => <div key={warning}>{warning}</div>)}
+          </div>}
+        </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "8px 0" }}>
           <button data-testid="project-path-pick-start" aria-pressed={pickTarget === "start"} onClick={() => { setViewOpen(true); setPickTarget("start"); }}>Pick start on Mesh</button>
           <button data-testid="project-path-pick-end" aria-pressed={pickTarget === "end"} onClick={() => { setViewOpen(true); setPickTarget("end"); }}>Pick end on Mesh</button>
@@ -97,10 +118,11 @@ export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onAnalyze, on
         <div role="status" data-testid="project-path-selection" data-picked-start={endpointsChosen ? start : ""} data-picked-end={endpointsChosen ? end : ""}>
           {pickTarget ? `Click the saved Mesh to choose ${pickTarget}. Picks snap to a vertex of the hit triangle; drag still orbits. Escape cancels.` : "Pick start, then end; save the shortest edge path below. Green = start, purple = end, yellow = last saved path (shown through the Mesh)."}
         </div>
-        {viewOpen && <SavedMeshStudyView mesh={viewData} colors={colourMap.map?.colors} picking={!!pickTarget} onCancelPick={() => setPickTarget(null)}
+        {viewOpen && <SavedMeshStudyView mesh={viewData} colors={colourMap.map?.colors} inspected={inspected} onInspect={setInspected} picking={!!pickTarget} onCancelPick={() => setPickTarget(null)}
           start={endpointsChosen ? Number(start) : undefined} end={endpointsChosen && end ? Number(end) : endpointsChosen ? mesh.vertexCount - 1 : undefined} path={savedPath?.vertexIndices}
           onPick={index => { if (pickTarget === "start") { setStart(String(index)); setPickTarget("end"); } else if (pickTarget === "end") { setEnd(String(index)); setPickTarget(null); } setEndpointsChosen(true); setError(""); }} />}
       </details>}
+      {readMesh && meshes.length > 1 && <SavedMeshComparison key={`${mesh.id}:${mesh.revision}:${mesh.structuralHash}`} choices={meshes} initialLeft={mesh.id} readMesh={readMesh} />}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <button data-testid="project-saved-mesh-quality" onClick={() => analyze("quality")}>Save mesh quality</button>
         <button data-testid="project-saved-mesh-curvature" onClick={() => analyze("curvature")}>Save discrete curvature</button>

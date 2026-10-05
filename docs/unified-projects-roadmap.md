@@ -17,8 +17,9 @@ remain saved previews until their native editor adapters pass round-trip accepta
 
 ## Current delivery status (2026-10-05)
 
-Desktop delivery now includes PRJ39–PRJ41: Helicoid/Catenoid guided setups,
-saved Mesh Gaussian/mean curvature colour maps, and canvas endpoint selection.
+Desktop delivery now includes PRJ39–PRJ44: Helicoid/Catenoid guided setups,
+saved Mesh curvature maps, canvas endpoint selection and point inspection,
+analysis resolution controls, and comparison with PNG/JSON/CSV export.
 Acceptance and limitations are recorded in the October 5 entries below.
 
 PRJ01–PRJ12 are integrated into `main` at `766776a27c6601e50d513a2217e3a4bf513c8e0d`.
@@ -1058,3 +1059,79 @@ and the renderer build. See the
 [desktop visual-study evidence](evidence/projects-prj39-41-desktop-2026-10-05/README.md).
 PRJ39–PRJ41 are complete for desktop; this evidence does not qualify new mobile
 builds or unsupported source representations.
+
+### PRJ42 click-to-inspect saved curvature — October 5
+
+Delivered on desktop: an ordinary click on the saved study canvas inspects the
+nearest vertex of the hit triangle. Cyan marks the inspected point; coordinates,
+Gaussian K, signed mean H, the computed normal and neighborhood warnings appear
+beside the view. Numeric vertex entry provides a keyboard alternative. Armed
+endpoint picking takes priority, while dragging continues to orbit.
+
+Inspection identifies the exact Mesh revision, retains boundary qualifications
+and hides unavailable curvature/normals for invalid neighborhoods. It makes no
+scientific source or saved-result changes. Changing Mesh identity, revision or
+hash clears inspection synchronously, including when a coarser Mesh has fewer
+vertices; no old index is evaluated against the new buffer.
+
+Model checks qualify flat interior coordinates/normal, boundary warnings,
+invalid neighborhoods and rejected indices. Actual Electron clicks expose the
+inspection, preserve path endpoints, and a drag preserves the inspected vertex.
+This is discrete vertex inspection, not interpolation of analytic derivatives
+at an arbitrary point on the continuous Surface.
+
+### PRJ43 saved analysis resolution controls — October 5
+
+Delivered on desktop: supported Surface sources offer **Analysis resolution**:
+Coarse (17), Medium (33) or Fine (65) samples per axis. **Create Mesh** and
+Curvature/quality **Run study** use that setting. Parametric, explicit, spline
+and Weierstrass patches use two parameter axes; implicit Surfaces use three
+spatial sample axes. Source-defined constructions and Mesh-backed sources keep
+their existing sampling and do not advertise this control.
+
+The Surface's formulas/domain and the main viewer's display resolution remain
+independent. Each resolution creates a distinct portable Mesh snapshot with its
+source generation, sampling size/dimension and units in lineage. Repeat runs
+reuse the exact unchanged sampling. Older Meshes and results remain selectable;
+edge paths always use the selected Mesh's original indices. The default sampler
+with 33 samples per axis preserves existing Mesh identities/resources and legacy
+snapshot reuse.
+
+Model checks cover all five sampler types without source mutation, exact
+vertex/triangle counts, snapshot reuse, resource round-trips and improving
+Gaussian-curvature accuracy at the known custom paraboloid's center. Electron
+checks create all three resolutions, retain earlier studies after a custom
+formula edit, and recover exact sampling and source generations after transfer
+and cold restart. Sampling comparisons remain numerical, not certified error
+bounds or a general proof of convergence.
+
+### PRJ44 saved study comparison and export — October 5
+
+Delivered on desktop: a Surface with two saved Meshes exposes **Compare saved
+studies**. Choose A/B snapshots, including historical parameter/resolution runs,
+and Gaussian K or mean H. Both views use one symmetric scale across valid
+interior estimates. Units must match; identical snapshots and unknown/mismatched
+units show an explicit reason. The views have independent orbit/zoom/Fit controls
+and stack at narrow widths. Interior counts, averages and mean/max |H| qualify
+sampling effects without treating different vertex distributions as pointwise
+error.
+
+**Export comparison PNG** includes both rendered snapshots, generation IDs/hashes,
+the shared legend, units and qualifications. **Export measurements JSON** records
+source lineage, sampling, method/version, conventions, warning flags, saved
+results and exact per-vertex coordinates/K/H/normals/validity. **Export vertex CSV**
+includes both snapshots' vertex rows, source IDs/hashes, units, scale and masks;
+invalid estimates are blank. These reports accompany the existing verified
+project package. Project saving retains the Meshes/results; comparison selection
+and point inspection are temporary UI state.
+
+The Electron acceptance in `tests/e2e/project-study-comparison.spec.ts` downloads
+and verifies all three file types, rejects identical snapshots, imports the
+resource package into an independent library and cold-restarts with the exact
+saved payload and shared scale. Both stacked canvases remain reachable at 390
+pixels without horizontal overflow. Model comparison/resource checks, existing
+Helicoid/Enneper guided studies, the PRJ39–41 exploration journeys, TypeScript
+checks and renderer build pass. See the
+[PRJ42–44 desktop evidence](evidence/projects-prj42-44-desktop-2026-10-05/README.md).
+PRJ42–PRJ44 are complete for qualified desktop sources; no new mobile build or
+continuous geodesic/minimality certification is claimed.
