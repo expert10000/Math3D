@@ -1,0 +1,81 @@
+{
+  "galleryCount": 25,
+  "sweepValues": [
+    0.5,
+    1,
+    1.5
+  ],
+  "samplingSize": 17,
+  "meshIds": [
+    "math3d:mesh:90d78b2e6511d77e34dced645f66e69a",
+    "math3d:mesh:ee86b3d8234cdbbba69c78d129ff3947",
+    "math3d:mesh:e8be7d7c99d1188c8e06ea90d33edf30"
+  ],
+  "unchangedOriginalZ": "0.42*u",
+  "namedReport": [
+    {
+      "title": "Helicoid pitch 0.5 · Coarse trial",
+      "meshSource": {
+        "documentId": "math3d:mesh:90d78b2e6511d77e34dced645f66e69a",
+        "revision": 1,
+        "structuralHash": "sha256:3866a1e0903a6b3d9256ff2cecebe23f562a6e7bd3bd337f1cf71a8355f814f2",
+        "generation": 1
+      },
+      "studyRun": {
+        "baseSource": {
+          "documentId": "math3d:surface:e226551769cc19d17e1e768ca43ce2e9",
+          "generation": 1,
+          "revision": 1,
+          "structuralHash": "sha256:8587e8f9fcc188acad0817d30cfe38af5d1cd7537023dcea744fe22a6514153d"
+        },
+        "interior": {
+          "averageAbsH": 0.03235445625252194,
+          "averageH": 0.03235445625252194,
+          "averageK": -1.0920052697923448,
+          "count": 225,
+          "excluded": 64,
+          "maxAbsH": 0.11712544411420822
+        },
+        "presetId": "helicoid",
+        "resolution": 17,
+        "resultId": "saved-mesh-analysis:ea8b590a9a272bcc365aca554bbd89e0b92b77797b11dfb5e418ecb423427217",
+        "sweepId": "surface-sweep:40cdb25d94592294aa98f94592ef8ad89b18f8ac63146d812afd62e79d0b19f8",
+        "value": 0.5
+      }
+    },
+    {
+      "title": "Helicoid pitch 1 · Coarse",
+      "meshSource": {
+        "documentId": "math3d:mesh:ee86b3d8234cdbbba69c78d129ff3947",
+        "revision": 1,
+        "structuralHash": "sha256:75455d16864f9eba54cace0106ad42d26d1c44d4013212f225eb75d8f561dbe3",
+        "generation": 1
+      },
+      "studyRun": {
+        "baseSource": {
+          "documentId": "math3d:surface:e226551769cc19d17e1e768ca43ce2e9",
+          "generation": 1,
+          "revision": 1,
+          "structuralHash": "sha256:8587e8f9fcc188acad0817d30cfe38af5d1cd7537023dcea744fe22a6514153d"
+        },
+        "interior": {
+          "averageAbsH": 0.015513073003126515,
+          "averageH": 0.015513073003126515,
+          "averageK": -0.5031608317957984,
+          "count": 225,
+          "excluded": 64,
+          "maxAbsH": 0.030891651287674904
+        },
+        "presetId": "helicoid",
+        "resolution": 17,
+        "resultId": "saved-mesh-analysis:fee573b360c4b7ca64e4836568a92772971f7fe39e60342320bfedbce59d3bd4",
+        "sweepId": "surface-sweep:40cdb25d94592294aa98f94592ef8ad89b18f8ac63146d812afd62e79d0b19f8",
+        "value": 1
+      }
+    }
+  ],
+  "resourceTransfer": true,
+  "independentLibrary": true,
+  "coldRestart": true,
+  "compactWidth": 390
+}

@@ -17,9 +17,11 @@ remain saved previews until their native editor adapters pass round-trip accepta
 
 ## Current delivery status (2026-10-05)
 
-Desktop delivery now includes PRJ39–PRJ44: Helicoid/Catenoid guided setups,
+Desktop delivery now includes PRJ39–PRJ47: Helicoid/Catenoid guided setups,
 saved Mesh curvature maps, canvas endpoint selection and point inspection,
-analysis resolution controls, and comparison with PNG/JSON/CSV export.
+analysis resolution controls, comparison with PNG/JSON/CSV export, a centered
+Projects Gallery with right-side quick access, source navigation, persistent study
+names and retained parameter sweeps.
 Acceptance and limitations are recorded in the October 5 entries below.
 
 PRJ01–PRJ12 are integrated into `main` at `766776a27c6601e50d513a2217e3a4bf513c8e0d`.
@@ -1137,17 +1139,53 @@ PRJ42–PRJ44 are complete for qualified desktop sources; no new mobile build or
 continuous geodesic/minimality certification is claimed.
 
 
-### PRJ45–PRJ47 next delivery — October 5
+### PRJ45 source navigation and centered Projects Gallery — October 5
 
-In implementation and qualification:
+Delivered on desktop: **Projects** opens a centered card gallery with library
+search, favorites, open/preview actions and workspace/document controls alongside
+the cards. **Quick panel** and **Full gallery** switch layouts while preserving
+search, selection and draft metadata. **Quick projects** opens the right overlay
+directly. The gallery adapts to a single column at 390 pixels, with reachable
+controls and no horizontal overflow. The public collection retains all 25 project
+identities, including its two independent Helicoid projects.
 
-- **PRJ45:** Direct saved-Mesh → source-Surface navigation, with exact snapshot
-  lineage and guidance that analysis resolution belongs to the source. Projects
-  also gains a centered card gallery, keeping the right overlay as quick access.
-- **PRJ46:** Persistent names for saved study runs, preserved in project resources,
-  replay and comparison exports without changing scientific generations.
-- **PRJ47:** Bounded Helicoid pitch / Catenoid waist parameter sweeps. Retain
-  independent Surface variants, Meshes and curvature results atomically; chart
-  qualified interior averages with exact run links. Never mutate the open Surface.
+Saved Mesh analysis offers **Open source Surface** through verified lineage.
+Historical Meshes explain their source revision and open the current retained
+Surface; they do not roll it back. Missing parents or unavailable lineage have an
+explicit reason. Guidance locates **Analysis resolution** on the Surface. Study
+controls scroll vertically while reserving native viewport height.
 
-Completion will be recorded after model and Electron acceptance.
+### PRJ46 persistent saved study names — October 5
+
+Delivered on desktop: **Study name → Save study name** gives a saved Mesh run a
+portable label. Renaming is a reversible metadata operation: its scientific
+generation, geometry and retained results stay unchanged. Project saving,
+verified-resource transfer, replay and cold restart preserve the name and rename
+history. Comparison PNG/JSON use the labels; vertex CSV adds a protected study-name
+column. Sweep-created runs receive descriptive parameter/resolution names.
+
+### PRJ47 retained Helicoid and Catenoid parameter sweeps — October 5
+
+Delivered on desktop: **Guided analysis studies → Parameter sweep** accepts 2–5
+distinct positive Helicoid pitch or Catenoid waist values up to 100. **Run sweep**
+prepares independent literal Surface variants, sampled Meshes and curvature
+results before publishing the complete workspace. The original Surface remains
+unchanged. Failed numerical variants or concurrent workspace changes publish no
+partial sweep. Repeat requests reuse unchanged snapshots; edited Meshes remain
+retained while a new snapshot is created.
+
+**Saved parameter sweeps** retains run links and charts mean |H| or average K,
+with exact source generations, sampling, units and interior/excluded counts.
+Resource export/import and cold restart restore names, measurements and charts.
+Helicoid Coarse runs retain 289 vertices; Catenoid Fine runs retain 4,225 vertices,
+including 3,969 interior and 256 excluded vertices. These are discrete numerical
+estimates. Boundary/invalid vertices are excluded, Catenoid axial domains scale
+with waist radius, and connecting averages is not a certified error bound or a
+proof of minimality.
+
+PRJ45–PRJ47 are complete for these desktop workflows. The 47 targeted model
+checks, full TypeScript checks, renderer build and 14 final Electron acceptance
+and affected regression journeys pass. Existing project-library, resource,
+history, construction and transfer journeys also passed during qualification.
+See [PRJ45–47 desktop evidence](evidence/projects-prj45-47-desktop-2026-10-05/README.md).
+No new Android/iOS build is included in this delivery.
