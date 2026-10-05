@@ -79382,18 +79382,15 @@ case "mobius":
             else { setDatasetKind("surface"); setSurfaceViewerKind("param"); }
           }
         }}
-        onOpenAnalysis={(id, module, route) => {
+        onOpenAnalysis={(id, module, route, workspace, resources) => {
           if (["surface", "surface-mesh", "mesh", "volume"].includes(route) && mode !== "surfaces") skipSurfacesAutoBrowseOnModeChangeRef.current = true;
           setDisplayMode("workspace"); setShowRightPanel(true);
           setProjectVolumeAnalysisRequest(previous => route === "volume" ? { documentId: id, token: (previous?.token ?? 0) + 1 } : null);
           if (!navigateRestoredDocument(id, module)) {
-            setAdditionalActiveId(null); setActiveGraph2DTargetId(null);
-            if (route === "complex") { setFunctionExplorerScene("other_complex"); setMode("mobius"); }
-            else if (["surface", "surface-mesh", "mesh", "volume"].includes(route)) {
-              setMode("surfaces"); setDatasetKind(route === "volume" ? "volume" : route === "mesh" ? "mesh" : "surface");
-              if (route === "mesh") setSurfaceViewerKind("mesh");
-              else if (route === "surface") setSurfaceViewerKind("param");
-            }
+            // Live library/custom sources need the same exact-document sessions
+            // as imported projects before saved analysis controls can operate.
+            reopenProjectWorkspace(workspace, resources);
+            if (!navigateRestoredDocument(id, module)) throw new TypeError("The captured document has no analysis editor.");
           }
           setRightPanelTab("inspector");
           if (route === "graph-tools") { setMode("graphs"); setProjectGraphAnalysisRequest(previous => ({ documentId: id, token: (previous?.token ?? 0) + 1 })); }

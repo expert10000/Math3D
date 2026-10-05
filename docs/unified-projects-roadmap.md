@@ -981,3 +981,12 @@ model tests, TypeScript checks and the renderer build pass. The
 separates model checks from actual UI execution. This completes PRJ36–PRJ38 on
 desktop; it does not qualify new Android/iOS builds or every operation in every
 mathematical module.
+
+PRJ36 desktop follow-up: **Open Analysis** also prepares captured live workspace
+sources through the exact-document restoration contract when they have not been
+opened from a saved project. This exposes saved studies for library/custom sources
+instead of merely switching modules. Opening failures appear beside the clicked
+button. `tests/e2e/project-analysis-live-workspace.spec.ts` checks implicit and
+parametric live sources without import, a saved curvature result, unchanged
+original document identities/sources, Curve navigation and return to that result.
+The imported Helicoid/Enneper guided-study scenarios remain regression checks.

@@ -45,7 +45,7 @@ type Props = {
   capture: () => MixedWorkspaceDocument;
   canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
-  onOpenAnalysis?: (id: string, module: KernelWorkspaceModule, route: ProjectAnalysisRoute) => void;
+  onOpenAnalysis?: (id: string, module: KernelWorkspaceModule, route: ProjectAnalysisRoute, workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => void;
   artifactAvailable?: (id: string, hash?: string | null) => boolean;
   resourceReader?: ProjectResourceReader;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => void;
@@ -55,6 +55,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
   const resourceSessionId = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesProject, setNotesProject] = useState<Math3DProject | null>(null);
@@ -122,6 +123,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       createMath3DProject(workspace, { stableKey: crypto.randomUUID(), title: title.trim() || "Untitled project" });
   };
   const refresh = () => {
+    setAnalysisError(null);
     refreshLibrary();
     try { display(liveProject(), false); setMessage("Current workspace documents."); }
     catch (error) { setMessage(`Project unavailable: ${(error as Error).message}`); }
@@ -591,7 +593,16 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
               return <div data-testid={`project-analysis-${document.id}`} data-analysis-route={analysis?.route ?? "unavailable"} data-analysis-reason={reason ?? ""} style={{ fontSize: 12, margin: "4px 0 8px", overflowWrap: "anywhere" }}>
                 <strong>Analysis: </strong>{analysis?.tools.join(" · ") || "Unavailable"}
                 <button type="button" data-testid={`project-open-analysis-${document.id}`} disabled={busy || !!reason || !analysis?.route || !onOpenAnalysis} title={reason ?? analysis?.qualification}
-                  onClick={() => { if (analysis?.route && !reason) { onOpenAnalysis?.(document.id, document.module, analysis.route); onOpenChange(false); } }}>Open Analysis</button>
+                  onClick={() => {
+                    if (!analysis?.route || reason || !project) return;
+                    setAnalysisError(null);
+                    try {
+                      const resources = captureProjectResources(project, item => resourceSession.current?.bytes(item) ?? resourceReader?.(item) ?? null, true);
+                      onOpenAnalysis?.(document.id, document.module, analysis.route, project.workspace, resources);
+                      onOpenChange(false);
+                    } catch (error) { setAnalysisError({ id: document.id, message: `Analysis could not open: ${(error as Error).message}` }); }
+                  }}>Open Analysis</button>
+                {analysisError?.id === document.id && <div role="alert">{analysisError.message}</div>}
                 <div>{reason ?? analysis?.qualification}</div>
               </div>;
             })()}

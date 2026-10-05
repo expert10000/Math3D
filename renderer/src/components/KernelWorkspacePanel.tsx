@@ -32,7 +32,7 @@ export type KernelWorkspacePanelProps = {
   artifactAvailable?: (artifactId: string, hash?: string | null) => boolean;
   onNavigateModule?: (module: KernelWorkspaceModule) => void;
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
-  onOpenAnalysis?: (id: string, module: KernelWorkspaceModule, route: ProjectAnalysisRoute) => void;
+  onOpenAnalysis?: (id: string, module: KernelWorkspaceModule, route: ProjectAnalysisRoute, workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => void;
   canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
   onReopen?: (workspace: MixedWorkspaceDocument) => void;
   resourceReader?: ProjectResourceReader;
