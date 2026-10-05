@@ -38,5 +38,9 @@ test("WB00 adopts a Workbook and reopens it through the named Project", async ()
     await reopened.getByTestId(`project-open-workbook-${boundId}`).click();
     await expect(reopened).toBeHidden();
     await expect.poll(() => ctx!.page.evaluate(() => localStorage.getItem("math3d.workbooks.active.v1"))).toBe(boundId);
+    await ctx.page.getByRole("button", { name: "Surfaces", exact: true }).first().click();
+    await ctx.page.getByRole("button", { name: "Workbook", exact: true }).first().click();
+    await ctx.page.getByTestId("workbook-view-document").click();
+    await expect(ctx.page.getByTestId("workbook-document-view")).toContainText("Workbook study / Workbook");
   } finally { await closeSurfaceApp(ctx); }
 });

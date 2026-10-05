@@ -4,6 +4,7 @@ import type { NotebookReference } from "@math3d/workbook";
 import type { NotebookProjectContext } from "../workbook/notebookProjectContext";
 import { WorkbookProjectReferenceCell } from "./WorkbookProjectReferenceCell";
 import { WorkbookDependencies } from "./WorkbookDependencies";
+import { WorkbookDocumentView } from "./WorkbookDocumentView";
 import { uiStyles as styles } from "../uiStyles";
 import type {
   Workbook,
@@ -569,6 +570,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   const [workspacePage, setWorkspacePage] = useState<"scene" | "datasets" | "analysis">("scene");
   const [snapshotName, setSnapshotName] = useState("");
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"outline" | "document" | "block">("block");
   const useTemplate = (id: string, title: string) => {
     const createdId = onCreateWorkbookFromTemplate(id);
     if (!createdId) return;
@@ -579,16 +581,19 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   const issueCursorRef = useRef(0);
   const isBlockEnabled = useCallback((block: WorkbookBlock) => block.enabled !== false, []);
   const [dependencyProject, setDependencyProject] = useState<Math3DProject | null>(null);
+  const [projectLive, setProjectLive] = useState(false);
   const getProjectRef = useRef(getNotebookProject);
   getProjectRef.current = getNotebookProject;
-  const hasExternalDependencies = !!activeWorkbook && workbookNeedsProjectInspection(activeWorkbook);
+  const hasExternalDependencies = !!activeWorkbook && (viewMode === "document" || workbookNeedsProjectInspection(activeWorkbook));
   useEffect(() => {
-    if (!hasExternalDependencies) { setDependencyProject(null); return; }
+    if (!hasExternalDependencies) { setDependencyProject(null); setProjectLive(false); return; }
     const refresh = () => {
       try {
-        const next = getProjectRef.current()?.project ?? null;
+        const context = getProjectRef.current();
+        const next = context?.project ?? null;
         setDependencyProject((previous) => previous?.identity.structuralHash === next?.identity.structuralHash ? previous : next);
-      } catch { setDependencyProject(null); }
+        setProjectLive(Boolean(context?.live));
+      } catch { setDependencyProject(null); setProjectLive(false); }
     };
     refresh();
     const timer = window.setInterval(refresh, 3000);
@@ -1488,6 +1493,21 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
         </div>
       )}
 
+      <div role="tablist" aria-label="Workbook views" style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        {(["outline", "document", "block"] as const).map((mode) => <button key={mode} type="button" role="tab"
+          aria-selected={viewMode === mode} data-testid={`workbook-view-${mode}`}
+          onClick={() => setViewMode(mode)}
+          style={{ padding: "4px 10px", background: viewMode === mode ? "var(--accent-soft)" : "#fff", border: "1px solid #cbd5e1", borderRadius: 6, fontWeight: viewMode === mode ? 700 : 400 }}>
+          {mode[0].toUpperCase() + mode.slice(1)}
+        </button>)}
+      </div>
+
+      {viewMode === "document" && activeWorkbook ? <WorkbookDocumentView workbook={activeWorkbook}
+        project={dependencyProject} projectLive={projectLive} readOnly={readOnly}
+        statusFor={getBlockStatus} onUpdateBlock={onUpdateBlock} onOpenDocument={onOpenNotebookDocument}
+        onOpenProjects={onOpenProjects} onEditBlock={(stageId, blockId) => {
+          onSelectStage(stageId); setSelectedBlockId(blockId); setPendingScrollId(blockId); setViewMode("block");
+        }} /> : <>
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Pages</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
@@ -1659,7 +1679,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
         )}
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {viewMode === "block" && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {activeStage?.blocks.length ? (
           activeStage.blocks.map((block, idx) => {
             const selected = selectedBlockId === block.id;
@@ -2509,9 +2529,9 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
             No blocks yet. Add a block below to start this stage.
           </div>
         )}
-      </div>
+      </div>}
 
-      <div style={{ marginTop: 12 }}>
+      {viewMode === "block" && <div style={{ marginTop: 12 }}>
         <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Add block</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {(Object.keys(BLOCK_TYPE_LABELS) as WorkbookBlockType[]).map((type) => (
@@ -2526,7 +2546,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
             </button>
           ))}
         </div>
-      </div>
+      </div>}
+      </>}
     </section>
   );
 };

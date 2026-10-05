@@ -19,5 +19,24 @@ test("Use template creates and opens the selected Workbook", async () => {
     await expect(page.getByRole("combobox", { name: "Workbook" })).toHaveValue(books[0].id);
     await expect(page.getByRole("combobox", { name: "Workbook" }).locator("option:checked")).toHaveText("Geometry selection and Notes");
     await expect(page.getByRole("combobox", { name: "Workbook" })).toBeInViewport();
+    await page.getByTestId("workbook-view-document").click();
+    const document = page.getByTestId("workbook-document-view");
+    await expect(document.getByRole("heading", { name: "Geometry selection and Notes" })).toBeVisible();
+    await expect(document).toContainText("Personal Workbook");
+    const textCell = document.locator("textarea").first();
+    await expect(textCell).toBeVisible();
+    await textCell.fill("Edited from Document view");
+    await page.getByTestId("workbook-view-block").click();
+    await expect(page.getByPlaceholder("Markdown text...").first()).toHaveValue("Edited from Document view");
+    await page.getByTestId("workbook-view-document").click();
+    await expect(document.locator("textarea").first()).toHaveValue("Edited from Document view");
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.workbooks.v1") ?? "[]")
+      .flatMap((book: { stages: { blocks: { text?: string }[] }[] }) => book.stages.flatMap((stage) => stage.blocks.map((block) => block.text)))
+      .includes("Edited from Document view"))).toBe(true);
+    await page.reload();
+    await page.getByRole("button", { name: "Surfaces", exact: true }).first().click();
+    await page.getByRole("button", { name: "Workbook", exact: true }).first().click();
+    await page.getByTestId("workbook-view-document").click();
+    await expect(page.getByTestId("workbook-document-view").locator("textarea").first()).toHaveValue("Edited from Document view");
   } finally { await closeSurfaceApp(ctx); }
 });
