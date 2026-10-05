@@ -59,8 +59,12 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
     } else if (object.kind === "mesh") {
       const indices = arrays.get(object.indices!)!;
       for (let i = 0; i < indices.length; i += 3)
-        geometry.triangles!.push({ a: point(positions, indices[i]), b: point(positions, indices[i + 1]),
-          c: point(positions, indices[i + 2]), color, opacity: object.style.opacity });
+        geometry.triangles!.push({
+          a: { ...point(positions, indices[i]), id: `${object.id}:${indices[i]}` },
+          b: { ...point(positions, indices[i + 1]), id: `${object.id}:${indices[i + 1]}` },
+          c: { ...point(positions, indices[i + 2]), id: `${object.id}:${indices[i + 2]}` },
+          color, opacity: object.style.opacity,
+        });
     } else {
       // Vectors require an explicit value-to-coordinate scale and are not silently converted.
       deferredObjectIds.push(object.id);

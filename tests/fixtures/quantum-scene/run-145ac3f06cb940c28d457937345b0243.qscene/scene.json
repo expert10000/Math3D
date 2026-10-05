@@ -1,0 +1,250 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-145ac3f06cb940c28d457937345b0243",
+  "title": "ssh · native",
+  "provenance": {
+    "runId": "run-145ac3f06cb940c28d457937345b0243",
+    "jobId": "math3d-fixture-ssh",
+    "model": "ssh",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-05T15:32:54.475575+00:00",
+    "resultSha256": "e58086ffcf87011885959d47b3a386882bfd6dbefdf9d71363841830b96b31a0",
+    "adapter": "qvis/1",
+    "parameters": {
+      "t1": 0.6,
+      "t2": 1,
+      "cells": 16,
+      "kPoints": 101
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "ssh"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "site index",
+      "display y",
+      "display z"
+    ],
+    "units": [
+      "site index",
+      "dimensionless",
+      "dimensionless"
+    ]
+  },
+  "camera": {
+    "position": [
+      15.5,
+      -14.4,
+      9.6
+    ],
+    "target": [
+      15.5,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "objects": [
+    {
+      "id": "chain",
+      "label": "Open SSH chain",
+      "kind": "polyline",
+      "positions": "sites",
+      "visible": false,
+      "style": {
+        "color": "#617888",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "edge-density",
+      "label": "Midgap-pair density (color)",
+      "kind": "point-cloud",
+      "positions": "sites",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 0.35
+      },
+      "scalars": "density"
+    },
+    {
+      "id": "ssh-t1-bonds",
+      "label": "Intracell A–B / t₁ = 0.6",
+      "kind": "mesh",
+      "positions": "t1-bond-vertices",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 1
+      },
+      "indices": "t1-bond-triangles"
+    },
+    {
+      "id": "ssh-t2-bonds",
+      "label": "Intercell B–A / t₂ = 1",
+      "kind": "mesh",
+      "positions": "t2-bond-vertices",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      },
+      "indices": "t2-bond-triangles"
+    },
+    {
+      "id": "sublattice-A",
+      "label": "Sublattice A guide (display row offset)",
+      "kind": "point-cloud",
+      "positions": "sublattice-A",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.2
+      }
+    },
+    {
+      "id": "sublattice-B",
+      "label": "Sublattice B guide (display row offset)",
+      "kind": "point-cloud",
+      "positions": "sublattice-B",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 0.2
+      }
+    }
+  ],
+  "datasets": [
+    {
+      "id": "sites",
+      "path": "sites.f64",
+      "format": "f64le",
+      "count": 32,
+      "components": 3,
+      "unit": "site index",
+      "bytes": 768,
+      "sha256": "b1b47a69ec30678a2a593e7ac81a7adc2acd38ce18361f60aa392889b7c23fac"
+    },
+    {
+      "id": "density",
+      "path": "density.f64",
+      "format": "f64le",
+      "count": 32,
+      "components": 1,
+      "unit": "probability per site",
+      "bytes": 256,
+      "sha256": "a03060a37b0cb43800740867fda47e192d9b9709b16f890e10b12ca981314a78"
+    },
+    {
+      "id": "t1-bond-vertices",
+      "path": "t1-bond-vertices.f64",
+      "format": "f64le",
+      "count": 64,
+      "components": 3,
+      "unit": "site index / schematic width",
+      "bytes": 1536,
+      "sha256": "a8474bbd84db8a86d2d3e61c0e2fcc427f76da64c3f491507b170e9f80298bdd"
+    },
+    {
+      "id": "t1-bond-triangles",
+      "path": "t1-bond-triangles.f64",
+      "format": "f64le",
+      "count": 32,
+      "components": 3,
+      "unit": "vertex index",
+      "bytes": 768,
+      "sha256": "bf143417a2974bf8b9a6f25b670445b1f142c55a534f67c24e5da86d720cb927"
+    },
+    {
+      "id": "t2-bond-vertices",
+      "path": "t2-bond-vertices.f64",
+      "format": "f64le",
+      "count": 60,
+      "components": 3,
+      "unit": "site index / schematic width",
+      "bytes": 1440,
+      "sha256": "c458a800ba1b7b9a6a7e9a433aae6e824ae3bf0aaf51fad94d7eec745b79ae1d"
+    },
+    {
+      "id": "t2-bond-triangles",
+      "path": "t2-bond-triangles.f64",
+      "format": "f64le",
+      "count": 30,
+      "components": 3,
+      "unit": "vertex index",
+      "bytes": 720,
+      "sha256": "0d0acb13866fc748a89ae7601d58e2fdfbb0bad26f909c11d6a6c4e1cfff6206"
+    },
+    {
+      "id": "sublattice-A",
+      "path": "sublattice-A.f64",
+      "format": "f64le",
+      "count": 16,
+      "components": 3,
+      "unit": "site index / display row offset",
+      "bytes": 384,
+      "sha256": "1afb3d642a5f11e8d1b84d4e185ed13670d6f4143974803c0d60af561a6e293d"
+    },
+    {
+      "id": "sublattice-B",
+      "path": "sublattice-B.f64",
+      "format": "f64le",
+      "count": 16,
+      "components": 3,
+      "unit": "site index / display row offset",
+      "bytes": 384,
+      "sha256": "5befcc55c2fdf5e5c89ea3c5311f6d69287ee68bfafeabf07af1887377ded866"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "invariant",
+      "text": "Winding 1 · bulk gap 0.80000 (normalized)",
+      "position": [
+        15.5,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "sublattice-key",
+      "text": "A₀ B₀ | A₁ B₁ … · orange t₁, teal t₂ · bond width not hopping magnitude",
+      "position": [
+        15.5,
+        0,
+        -1.5
+      ]
+    }
+  ],
+  "topology": {
+    "quantities": [],
+    "invariants": [
+      {
+        "id": "winding",
+        "label": "SSH winding",
+        "value": 1,
+        "status": "verified",
+        "method": "Worker phase criterion |t2| > |t1|, undefined at bulk gap closure"
+      }
+    ],
+    "limitations": [
+      "Open-chain density is not Berry connection; the viewer does not derive winding."
+    ]
+  }
+}

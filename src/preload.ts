@@ -516,6 +516,8 @@ contextBridge.exposeInMainWorld("topologyDocuments", {
 
 contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
   open: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:open"),
+  reopenRecent: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:reopenRecent"),
+  consumeLaunch: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:consumeLaunch"),
 }));
 
 contextBridge.exposeInMainWorld("meshFiles", {

@@ -4,3 +4,5 @@
 *.md text eol=lf
 docs/test-packs/** text eol=lf
 docs/evidence/projects-local-share-2026-10-03/*.json text eol=lf
+tests/fixtures/quantum-scene/**/*.json -text
+tests/fixtures/quantum-scene/**/*.f64 -text

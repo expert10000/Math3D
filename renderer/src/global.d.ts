@@ -590,12 +590,9 @@ declare global {
 
   interface Window {
     quantumScenes?: {
-      open: () => Promise<
-        | { ok: true; canceled: false; directory: string; document: unknown;
-            mappedObjectIds: string[]; deferredObjectIds: string[]; deferredFieldIds: string[] }
-        | { ok: false; canceled: true }
-        | { ok: false; canceled: false; error: string }
-      >;
+      open: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
+      reopenRecent: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
+      consumeLaunch: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
     };
     surfacePresets?: {
       list: (kind: PresetKind) => Promise<SurfacePresetRecord[]>;

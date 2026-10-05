@@ -1,0 +1,175 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-145ac3f06cb940c28d457937345b0243-bands",
+  "title": "SSH supplied energy bands",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-145ac3f06cb940c28d457937345b0243",
+    "jobId": "math3d-fixture-ssh",
+    "model": "ssh",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-05T15:32:54.475575+00:00",
+    "resultSha256": "e58086ffcf87011885959d47b3a386882bfd6dbefdf9d71363841830b96b31a0",
+    "adapter": "qvis/1",
+    "parameters": {
+      "t1": 0.6,
+      "t2": 1,
+      "cells": 16,
+      "kPoints": 101
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "ssh"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "k",
+      "energy",
+      "display z"
+    ],
+    "units": [
+      "rad / cell spacing",
+      "normalized energy (hbar=1)",
+      "dimensionless"
+    ]
+  },
+  "camera": {
+    "position": [
+      0,
+      -3.2,
+      8
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      1,
+      0
+    ]
+  },
+  "objects": [
+    {
+      "id": "band-0",
+      "label": "Lower band",
+      "kind": "polyline",
+      "positions": "band-positions-0",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "band-energy-0"
+    },
+    {
+      "id": "band-1",
+      "label": "Upper band",
+      "kind": "polyline",
+      "positions": "band-positions-1",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "band-energy-1"
+    }
+  ],
+  "datasets": [
+    {
+      "id": "band-k",
+      "path": "band-k.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 101,
+      "unit": "rad / cell spacing",
+      "bytes": 2424,
+      "sha256": "b25bd2a1f7db867197568d5825a0ed38b9175585ce9f331233062751eca49596"
+    },
+    {
+      "id": "band-energy-0",
+      "path": "band-energy-0.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 101,
+      "unit": "normalized energy (hbar=1)",
+      "bytes": 808,
+      "sha256": "e632cbfeebfc922e437966b00a078929c42d187ed0180fad5d0746ff86a00283"
+    },
+    {
+      "id": "band-positions-0",
+      "path": "band-positions-0.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 101,
+      "unit": "declared mixed scene units",
+      "bytes": 2424,
+      "sha256": "b03805737ff6ba0f1bebc6ac2b372886391ddf96a885a1271a35d7c5753982d9"
+    },
+    {
+      "id": "band-energy-1",
+      "path": "band-energy-1.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 101,
+      "unit": "normalized energy (hbar=1)",
+      "bytes": 808,
+      "sha256": "d5fe6037f7e93df1b78d7da42b40914a7ce416bc18b2131d2ac8d194d18fd144"
+    },
+    {
+      "id": "band-positions-1",
+      "path": "band-positions-1.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 101,
+      "unit": "declared mixed scene units",
+      "bytes": 2424,
+      "sha256": "a61276be1c143ce4f40fd6e5c178e8133b9fc21f2e68d5e8edb633309d647f60"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "band-convention",
+      "text": "Original worker samples. Lines/triangles are display connections, not interpolated scientific values. No periodic seam or topology inference.",
+      "position": [
+        0,
+        0,
+        1.6
+      ]
+    },
+    {
+      "id": "band-gap",
+      "text": "Worker bulk gap 0.8000000; sampled separations need not reach the exact global gap. Topology 1.",
+      "position": [
+        0,
+        0,
+        -1.6
+      ]
+    }
+  ],
+  "bands": {
+    "kind": "path",
+    "coordinates": "band-k",
+    "energies": [
+      "band-energy-0",
+      "band-energy-1"
+    ],
+    "objects": [
+      "band-0",
+      "band-1"
+    ],
+    "labels": [
+      "Lower band",
+      "Upper band"
+    ],
+    "energyUnit": "normalized energy (hbar=1)",
+    "bulkGap": 0.8
+  }
+}

@@ -1,4 +1,5 @@
 import { MeshProjectEditor } from "./projects/MeshProjectEditor";
+import { QuantumScenePreview, type QuantumSceneOpenResponse } from "./components/QuantumScenePreview";
 import { meshDocumentEditable } from "./projects/nativeMeshRestore";
 import { createMeshDocument, canonicalJsonStringify } from "@math3d/core";
 import { VerifiedProjectResources, type ProjectResourceRequirement } from "./projects/projectResources";
@@ -42887,6 +42888,18 @@ const App: React.FC = () => {
   const [commandInput, setCommandInput] = useState("");
   const [commandHistory, setCommandHistory] = useState<{ cmd: string; out: string }[]>([]);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [quantumScenePreview, setQuantumScenePreview] = useState<Extract<QuantumSceneOpenResponse, { ok: true }> | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    void window.quantumScenes?.consumeLaunch?.().then((result) => {
+      if (!mounted) return;
+      if (result.ok) setQuantumScenePreview(result);
+      else if (!result.canceled) setScreenshotStatus(`Quantum scene launch failed: ${result.error}`);
+    }).catch((error) => {
+      if (mounted) setScreenshotStatus(`Quantum scene launch failed: ${String((error as Error)?.message ?? error)}`);
+    });
+    return () => { mounted = false; };
+  }, []);
   const [commandPaletteQuery, setCommandPaletteQuery] = useState("");
   const [commandPaletteIndex, setCommandPaletteIndex] = useState(0);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
@@ -71620,6 +71633,34 @@ case "mobius":
               .catch((err) => notify(`Open workspace failed: ${String((err as any)?.message ?? err)}`));
           });
           return;
+        case "file:open-quantum-scene": {
+          if (!window.quantumScenes?.open) {
+            notify("Verified quantum-scene import is available in the desktop app.");
+            return;
+          }
+          try {
+            const result = await window.quantumScenes.open();
+            if (result.ok) setQuantumScenePreview(result);
+            else if (!result.canceled) notify(`Quantum scene import failed: ${result.error}`);
+          } catch (error) {
+            notify(`Quantum scene import failed: ${String((error as Error)?.message ?? error)}`);
+          }
+          return;
+        }
+        case "file:reopen-quantum-scene": {
+          if (!window.quantumScenes?.reopenRecent) {
+            notify("Verified quantum-scene import is available in the desktop app.");
+            return;
+          }
+          try {
+            const result = await window.quantumScenes.reopenRecent();
+            if (result.ok) setQuantumScenePreview(result);
+            else if (!result.canceled) notify(`Quantum scene reopen failed: ${result.error}`);
+          } catch (error) {
+            notify(`Quantum scene reopen failed: ${String((error as Error)?.message ?? error)}`);
+          }
+          return;
+        }
         case "file:open-recent-workspace": {
           if (!workbooks.length) {
             notify("No recent workspace found.");
@@ -71978,6 +72019,8 @@ case "mobius":
     () => [
       { id: "menu:new-workspace", title: "New workspace", keywords: "file workspace new", shortcut: "Ctrl/Cmd+N", run: () => handleMenuCommand("file:new-workspace") },
       { id: "menu:open-workspace", title: "Open workspace", keywords: "file workspace open", shortcut: "Ctrl/Cmd+O", run: () => handleMenuCommand("file:open-workspace") },
+      { id: "menu:open-quantum-scene", title: "Open verified quantum scene", keywords: "file import quantum qscene theory lab", run: () => handleMenuCommand("file:open-quantum-scene") },
+      { id: "menu:reopen-quantum-scene", title: "Reopen recent quantum scene", keywords: "file quantum qscene theory lab recent", run: () => handleMenuCommand("file:reopen-quantum-scene") },
       { id: "menu:save-workspace", title: "Save workspace", keywords: "file workspace save", shortcut: "Ctrl/Cmd+S", run: () => handleMenuCommand("file:save-workspace") },
       { id: "menu:save-workspace-as", title: "Save workspace as", keywords: "file workspace save as", shortcut: "Ctrl/Cmd+Shift+S", run: () => handleMenuCommand("file:save-workspace-as") },
       { id: "wb:run-stage", title: "Run compute stage", keywords: "workbook run stage compute", run: () => handleRunComputeStage(activeStageId) },
@@ -110626,6 +110669,7 @@ case "mobius":
           </>
         )}
       </div>
+      {quantumScenePreview && <QuantumScenePreview opened={quantumScenePreview} onClose={() => setQuantumScenePreview(null)} />}
       {workflowActionOverlayModel && !cleanScreenshotSurfaceActive && (
         <WorkflowActionOverlayDialog
           open={!!workflowActionOverlayModel}

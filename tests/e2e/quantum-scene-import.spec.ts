@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
 
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
@@ -29,25 +29,91 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
   await writeFile(join(directory,"vertices.f64"),data);
   await writeFile(join(directory,"bundle.json"),JSON.stringify({schema:"quantum-scene-bundle/v1",
     scene:{path:"scene.json",bytes:sceneBytes.length,sha256:hash(sceneBytes)}},null,2)+"\n");
-  const app = await launchRepoElectron({ args:["."], cwd:resolve(__dirname,"..","..") });
+  const launch = (args = ["."]) => launchRepoElectron({ args, cwd:resolve(__dirname,"..",".."),
+    env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: join(root, "profile") } });
+  let app = await launch();
   try {
     const page = await app.firstWindow();
     await page.waitForLoadState("domcontentloaded");
+    const fileActions=await app.evaluate(({Menu})=>Menu.getApplicationMenu()?.items
+      .find(item=>item.label==="File")?.submenu?.items.map(item=>item.label)??[]);
+    expect(fileActions).toContain("Open verified quantum scene...");
+    expect(fileActions).toContain("Reopen recent quantum scene");
     await expect.poll(()=>page.evaluate(()=>typeof (window as any).quantumScenes?.open)).toBe("function");
+    await expect.poll(()=>page.evaluate(()=>typeof (window as any).quantumScenes?.reopenRecent)).toBe("function");
     await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},directory);
     const opened = await page.evaluate(()=>(window as any).quantumScenes.open());
     expect(opened.ok).toBe(true);
     if(opened.ok){
+      expect(opened.remembered).toBe(true);
       expect(opened.document).toMatchObject({title:"IPC verified path",metadata:{sourceResultSha256:"a".repeat(64)}});
       expect(opened.mappedObjectIds).toEqual(["path"]);
       expect(opened.deferredFieldIds).toEqual([]);
     }
+    await app.evaluate(({BrowserWindow})=>{
+      BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command",{command:"file:open-quantum-scene"});
+    });
+    await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
+    await expect(page.getByTestId("quantum-scene-preview")).toContainText("run-ipc");
+    await expect(page.getByTestId("quantum-scene-geometry")).toBeVisible();
+    await page.getByTestId("quantum-scene-close").click();
+    await expect(page.getByTestId("quantum-scene-preview")).toBeHidden();
     const damaged=Buffer.from(data);damaged[0]=1;await writeFile(join(directory,"vertices.f64"),damaged);
     const refused=await page.evaluate(()=>(window as any).quantumScenes.open());
     expect(refused).toMatchObject({ok:false,canceled:false});
     if(!refused.ok&&!refused.canceled)expect(refused.error).toMatch(/integrity/);
+    const recentRefused=await page.evaluate(()=>(window as any).quantumScenes.reopenRecent());
+    expect(recentRefused).toMatchObject({ok:false,canceled:false});
+    if(!recentRefused.ok&&!recentRefused.canceled)expect(recentRefused.error).toMatch(/integrity/);
+
+    const realBundle=resolve(__dirname,"..","fixtures","quantum-scene","run-97a132d1d712414bb62bb8c9212f517e-bands.qscene");
+    await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},realBundle);
+    await app.evaluate(({BrowserWindow})=>{
+      BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command",{command:"file:open-quantum-scene"});
+    });
+    await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
+    await expect(page.getByTestId("quantum-scene-preview")).toContainText("qwz");
+    await expect(page.getByTestId("quantum-scene-preview")).toContainText("rad / lattice constant");
+    await expect(page.getByTestId("quantum-scene-preview")).toContainText("normalized energy (hbar=1)");
+    await expect(page.getByTestId("quantum-band-legend")).toContainText("Lower band");
+    await expect(page.getByTestId("quantum-band-legend")).toContainText("Upper band");
+    await expect(page.getByTestId("quantum-scene-preview")).toContainText("Supplied bulk gap: 2");
+    const canvas = page.getByTestId("quantum-scene-geometry").locator("canvas").first();
+    await expect(canvas).toBeVisible();
+    const bounds = (await canvas.boundingBox())!;
+    const samples = [.3, .45, .6, .7].flatMap(x => [.25, .4, .55, .7].map(y => ({
+      x: bounds.width * x, y: bounds.height * y,
+    })));
+    for (const position of samples) {
+      await canvas.click({ position });
+      if (await page.getByTestId("quantum-band-selection").count()) break;
+    }
+    await expect(page.getByTestId("quantum-band-selection")).toContainText("band-");
+    await page.getByTestId("quantum-scene-close").click();
+    await app.evaluate(({BrowserWindow})=>{
+      BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command",{command:"file:reopen-quantum-scene"});
+    });
+    await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
+    await expect(page.getByTestId("quantum-scene-preview")).toContainText("qwz");
+    await app.close();
+    app = await launch();
+    const restartedPage = await app.firstWindow();
+    await restartedPage.waitForLoadState("domcontentloaded");
+    await expect.poll(()=>restartedPage.evaluate(()=>typeof (window as any).quantumScenes?.reopenRecent)).toBe("function");
+    const reopenedAfterRestart = await restartedPage.evaluate(()=>(window as any).quantumScenes.reopenRecent());
+    expect(reopenedAfterRestart).toMatchObject({ok:true,remembered:true});
+    if(reopenedAfterRestart.ok)expect(reopenedAfterRestart.document.metadata.sourceModel).toBe("qwz");
+    await app.close();
+    app = await launch([".", "--quantum-scene", realBundle]);
+    const launchedPage = await app.firstWindow();
+    await launchedPage.waitForLoadState("domcontentloaded");
+    await expect(launchedPage.getByTestId("quantum-scene-preview")).toBeVisible();
+    await expect(launchedPage.getByTestId("quantum-scene-preview")).toContainText("QWZ supplied energy bands");
   } finally {
     await app.close();
-    await rm(root,{recursive:true,force:true});
+    const safeRoot = resolve(root);
+    if (!safeRoot.startsWith(resolve(tmpdir()) + sep) || !safeRoot.includes("m3d-qscene-ipc-"))
+      throw new Error("Unsafe quantum-scene E2E cleanup path");
+    await rm(safeRoot,{recursive:true,force:true});
   }
 });

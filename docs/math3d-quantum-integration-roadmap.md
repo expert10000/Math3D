@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Status:** planned
+**Status:** in progress — M3D-Q01 verified reader, desktop preview, and recent-scene reopen
 
 **Type:** interoperability and scientific-visualization program
 
@@ -35,6 +35,22 @@ Quantum Lab / another producer
               v
   MATH3D documents, artifacts, relations, and viewers
 ```
+
+The current desktop slice opens a regular `.qscene` folder through **File → Open
+verified quantum scene** or the command palette. Electron verifies the manifest,
+schema and every binary dataset before a bounded preview appears. Point clouds,
+polylines, segments and meshes use Math3D's GeometryViewer. Mesh objects retain their
+supplied colors; band surfaces can be picked to inspect the nearest supplied vertex,
+its stable source ID, and the declared coordinates and units. Vectors and fields are
+reported as deferred. Four real Theory Lab SSH/QWZ standard and band handoffs are
+pinned in `tests/fixtures/quantum-scene` and checked by
+`npm run test:quantum-scene:import`. **File → Reopen recent quantum scene** remembers
+the last verified folder across app restarts and checks the complete bundle and
+source fingerprint before displaying it again. Theory Lab's **Open in Math3D**
+action can launch a built local Math3D checkout with a newly verified handoff
+folder; Math3D validates it independently before previewing. The preview is
+read-only and is not yet a persisted Math3D document. M3D-Q01
+lifecycle admission and M3D-Q02–Q10 remain open.
 
 Quantum Lab must not call MATH3D internals, and MATH3D must not reproduce Quantum
 Lab's physics engines. Both applications meet at the portable, versioned scene

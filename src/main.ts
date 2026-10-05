@@ -9,7 +9,7 @@ import { registerCgalMeshIpc } from "./main/ipc/cgalMeshIpc";
 import { registerVtkMeshIpc } from "./main/ipc/vtkMeshIpc";
 import { registerSageServiceIpc } from "./main/ipc/sageServiceIpc";
 import { registerComputeEngineManagerIpc } from "./main/ipc/computeEngineManagerIpc";
-import { registerQuantumSceneIpc } from "./main/ipc/quantumSceneIpc";
+import { quantumSceneLaunchDirectory, registerQuantumSceneIpc } from "./main/ipc/quantumSceneIpc";
 import { registerProjectThumbnailIpc } from "./main/ipc/projectThumbnailIpc";
 import { runPythonWorkerStartupCheck, stopPythonWorker } from "./main/python/pythonWorker";
 import { stopNativeCgalWorker } from "./main/python/nativeCgalWorker";
@@ -997,7 +997,10 @@ app.whenReady().then(async () => {
   registerVtkMeshIpc();
   registerSageServiceIpc();
   registerComputeEngineManagerIpc();
-  registerQuantumSceneIpc();
+  let launchQuantumScene: string | null = null;
+  try { launchQuantumScene = quantumSceneLaunchDirectory(process.argv); }
+  catch (error) { console.error("Quantum scene launch ignored:", error); }
+  registerQuantumSceneIpc(launchQuantumScene);
   registerProjectThumbnailIpc();
 
   ipcMain.handle("app:capture-screenshot", async (evt, req: AppCaptureRequest): Promise<AppCaptureResponse> => {
@@ -1366,6 +1369,8 @@ function buildAppMenu(win: BrowserWindow) {
         action("Save as", "file:save-workspace-as", "CmdOrCtrl+Shift+S"),
         { type: "separator" },
         action("Import mesh", "file:import-mesh"),
+        action("Open verified quantum scene...", "file:open-quantum-scene"),
+        action("Reopen recent quantum scene", "file:reopen-quantum-scene"),
         action("Export mesh", "file:export-mesh"),
         action("Export screenshot", "file:export-screenshot", "CmdOrCtrl+Shift+E"),
         { type: "separator" },

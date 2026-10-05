@@ -1,0 +1,504 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-97a132d1d712414bb62bb8c9212f517e",
+  "title": "qwz · native",
+  "provenance": {
+    "runId": "run-97a132d1d712414bb62bb8c9212f517e",
+    "jobId": "math3d-fixture-qwz",
+    "model": "qwz",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-05T15:32:54.665323+00:00",
+    "resultSha256": "abbcae23a0bb3fe113205cab2ffd769c8c22c79f83cd4369215aba24328d9713",
+    "adapter": "qvis/1",
+    "parameters": {
+      "mass": -1,
+      "grid": 21
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "qwz"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "kx",
+      "ky",
+      "Berry curvature"
+    ],
+    "units": [
+      "rad / lattice constant",
+      "rad / lattice constant",
+      "dimensionless (a=1)"
+    ]
+  },
+  "camera": {
+    "position": [
+      9,
+      7,
+      7
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "objects": [
+    {
+      "id": "berry-curvature",
+      "label": "Lower-band Berry curvature",
+      "kind": "mesh",
+      "positions": "curvature-grid",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      },
+      "indices": "triangles",
+      "scalars": "curvature"
+    },
+    {
+      "id": "brillouin-boundary",
+      "label": "Brillouin-zone boundary at curvature height 0 (not a mesh seam)",
+      "kind": "polyline",
+      "positions": "bz-boundary",
+      "visible": true,
+      "style": {
+        "color": "#617888",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "kx-guide",
+      "label": "kx: −π → +π (rad/a)",
+      "kind": "polyline",
+      "positions": "kx-guide",
+      "visible": true,
+      "style": {
+        "color": "#a7bbc4",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "ky-guide",
+      "label": "ky: −π → +π (rad/a)",
+      "kind": "polyline",
+      "positions": "ky-guide",
+      "visible": true,
+      "style": {
+        "color": "#a7bbc4",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "curvature-guide",
+      "label": "height = Berry curvature (a=1)",
+      "kind": "polyline",
+      "positions": "curvature-guide",
+      "visible": true,
+      "style": {
+        "color": "#a7bbc4",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "symmetry-points",
+      "label": "Named high-symmetry k-points",
+      "kind": "point-cloud",
+      "positions": "symmetry-points",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.15
+      }
+    },
+    {
+      "id": "primitive-bz",
+      "label": "Supplied primitive Brillouin-zone boundary",
+      "kind": "polyline",
+      "positions": "primitive-bz",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "symmetry-path",
+      "label": "Γ → X → M → Γ",
+      "kind": "polyline",
+      "positions": "symmetry-path",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "reciprocal-b1",
+      "label": "Reciprocal b1 (2π convention)",
+      "kind": "vectors",
+      "positions": "reciprocal-origin-0",
+      "visible": true,
+      "style": {
+        "color": "#5995f0",
+        "opacity": 1,
+        "size": 1
+      },
+      "values": "reciprocal-basis-0"
+    },
+    {
+      "id": "reciprocal-b2",
+      "label": "Reciprocal b2 (2π convention)",
+      "kind": "vectors",
+      "positions": "reciprocal-origin-1",
+      "visible": true,
+      "style": {
+        "color": "#5995f0",
+        "opacity": 1,
+        "size": 1
+      },
+      "values": "reciprocal-basis-1"
+    }
+  ],
+  "datasets": [
+    {
+      "id": "curvature-grid",
+      "path": "curvature-grid.f64",
+      "format": "f64le",
+      "count": 441,
+      "components": 3,
+      "unit": "mixed: kx, ky, Berry curvature",
+      "bytes": 10584,
+      "sha256": "c14d365fedd6d61445049a1323afc1abf652e48700417d67559777594c41a555"
+    },
+    {
+      "id": "triangles",
+      "path": "triangles.f64",
+      "format": "f64le",
+      "count": 800,
+      "components": 3,
+      "unit": "vertex index",
+      "bytes": 19200,
+      "sha256": "33765386810e20f762a1cf1c6591f45ef1f23fb63747a6744bedc146ecece79e"
+    },
+    {
+      "id": "curvature",
+      "path": "curvature.f64",
+      "format": "f64le",
+      "count": 441,
+      "components": 1,
+      "unit": "dimensionless (a=1)",
+      "bytes": 3528,
+      "sha256": "ef18becd24e876a3008ea27daecf3d286b7c2c420f6b54a393d526f81beb1bd9"
+    },
+    {
+      "id": "bz-boundary",
+      "path": "bz-boundary.f64",
+      "format": "f64le",
+      "count": 5,
+      "components": 3,
+      "unit": "kx, ky, zero display height",
+      "bytes": 120,
+      "sha256": "ca64b02b579cbe5b41830cba9b223058cb8a0d499e2c1963fd0ffcf19601c29a"
+    },
+    {
+      "id": "kx-guide",
+      "path": "kx-guide.f64",
+      "format": "f64le",
+      "count": 2,
+      "components": 3,
+      "unit": "declared mixed scene units",
+      "bytes": 48,
+      "sha256": "94b2dd892e7c3530b3dd1f0ef27af1618950bacffd7ea6fc9d92900bde936ac6"
+    },
+    {
+      "id": "ky-guide",
+      "path": "ky-guide.f64",
+      "format": "f64le",
+      "count": 2,
+      "components": 3,
+      "unit": "declared mixed scene units",
+      "bytes": 48,
+      "sha256": "e9709c4dc21787337d0c3183eafdec80b1b5ee4939568de80fa67f180662d8c8"
+    },
+    {
+      "id": "curvature-guide",
+      "path": "curvature-guide.f64",
+      "format": "f64le",
+      "count": 2,
+      "components": 3,
+      "unit": "declared mixed scene units",
+      "bytes": 48,
+      "sha256": "c8cf9f46a4350606071d3f46d7e22705fbdba8b9b47b5f84b938f17375285516"
+    },
+    {
+      "id": "symmetry-points",
+      "path": "symmetry-points.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 3,
+      "unit": "rad / lattice constant",
+      "bytes": 72,
+      "sha256": "0b38b9e58e766d6f3b357b3424436f55765ea9c3506cce3d411675f8ed44d32d"
+    },
+    {
+      "id": "primitive-bz",
+      "path": "primitive-bz.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 5,
+      "unit": "rad / lattice constant",
+      "bytes": 120,
+      "sha256": "ca64b02b579cbe5b41830cba9b223058cb8a0d499e2c1963fd0ffcf19601c29a"
+    },
+    {
+      "id": "symmetry-path",
+      "path": "symmetry-path.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 4,
+      "unit": "rad / lattice constant",
+      "bytes": 96,
+      "sha256": "d98e2296bfc3f2f5625acf5a583b34b927bad7b62fe9c4fb20909bec9351013e"
+    },
+    {
+      "id": "reciprocal-origin-0",
+      "path": "reciprocal-origin-0.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1,
+      "unit": "rad / lattice constant",
+      "bytes": 24,
+      "sha256": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+    },
+    {
+      "id": "reciprocal-basis-0",
+      "path": "reciprocal-basis-0.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1,
+      "unit": "rad / lattice constant",
+      "bytes": 24,
+      "sha256": "216c5ff606d91a2157202f64f248b7b4ffe3b93c3b0253ce803a6374081b3546"
+    },
+    {
+      "id": "reciprocal-origin-1",
+      "path": "reciprocal-origin-1.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1,
+      "unit": "rad / lattice constant",
+      "bytes": 24,
+      "sha256": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+    },
+    {
+      "id": "reciprocal-basis-1",
+      "path": "reciprocal-basis-1.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1,
+      "unit": "rad / lattice constant",
+      "bytes": 24,
+      "sha256": "d406424da99864b9a400d28d960613e2af5da04fbd59876c5812b3f083d4936e"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "invariant",
+      "text": "Chern -1 · mesh 21×21 · no periodic seam interpolation",
+      "position": [
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "kx-guide-label",
+      "text": "kx: −π → +π (rad/a)",
+      "position": [
+        0,
+        -3.641592653589793,
+        0
+      ]
+    },
+    {
+      "id": "ky-guide-label",
+      "text": "ky: −π → +π (rad/a)",
+      "position": [
+        -3.641592653589793,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "curvature-guide-label",
+      "text": "height = Berry curvature (a=1)",
+      "position": [
+        -3.141592653589793,
+        -3.141592653589793,
+        1
+      ]
+    },
+    {
+      "id": "reciprocal-label-0",
+      "text": "b1",
+      "position": [
+        6.283185307179586,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "reciprocal-label-1",
+      "text": "b2",
+      "position": [
+        0,
+        6.283185307179586,
+        0
+      ]
+    },
+    {
+      "id": "k-label-Gamma",
+      "text": "Γ",
+      "position": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "k-label-X",
+      "text": "X",
+      "position": [
+        3.141592653589793,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "k-label-M",
+      "text": "M",
+      "position": [
+        3.141592653589793,
+        3.141592653589793,
+        0
+      ]
+    }
+  ],
+  "topology": {
+    "quantities": [
+      {
+        "id": "lower-curvature",
+        "label": "Lower-band Berry curvature",
+        "kind": "berry-curvature",
+        "object": "berry-curvature",
+        "dataset": "curvature",
+        "convention": "Occupied lower band; curvature at cell centers; a=1; kx-major/ky-fastest"
+      }
+    ],
+    "invariants": [
+      {
+        "id": "chern",
+        "label": "Chern number",
+        "value": -1,
+        "status": "verified",
+        "method": "Worker FHS lattice result cross-checked against independent Dirac mass-sign phase diagram"
+      }
+    ],
+    "limitations": [
+      "Curvature samples use midpoint quadrature, not the FHS plaquette array.",
+      "A coarse mesh can be unresolved; no invariant is inferred from the displayed surface.",
+      "No periodic seam interpolation or new Berry-connection computation."
+    ]
+  },
+  "reciprocal": {
+    "directBasis": [
+      [
+        1,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        0
+      ]
+    ],
+    "basis": [
+      [
+        6.283185307179586,
+        0,
+        0
+      ],
+      [
+        0,
+        6.283185307179586,
+        0
+      ]
+    ],
+    "directUnit": "lattice constant a=1",
+    "reciprocalUnit": "rad / lattice constant",
+    "pointObject": "symmetry-points",
+    "points": [
+      {
+        "id": "Gamma",
+        "label": "Γ",
+        "position": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "id": "X",
+        "label": "X",
+        "position": [
+          3.141592653589793,
+          0,
+          0
+        ]
+      },
+      {
+        "id": "M",
+        "label": "M",
+        "position": [
+          3.141592653589793,
+          3.141592653589793,
+          0
+        ]
+      }
+    ],
+    "paths": [
+      {
+        "object": "symmetry-path",
+        "label": "Γ → X → M → Γ",
+        "points": [
+          "Gamma",
+          "X",
+          "M",
+          "Gamma"
+        ]
+      }
+    ],
+    "boundaryObjects": [
+      "primitive-bz"
+    ]
+  }
+}
