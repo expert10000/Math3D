@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { instantiateMath3DProjectTemplate, MATH3D_PROJECT_TEMPLATES, evaluateGraph2DExpression, evaluateGraph2DPromotionGeometry,
-  serializeMath3DProject, type Graph2DDocument, type SurfaceDocument } from "@math3d/core";
+  geometryDocumentToSceneDocument, inspectProjectNoteAnchor, serializeMath3DProject,
+  type GeometryDocument, type Graph2DDocument, type SurfaceDocument } from "@math3d/core";
 import { inspectProjectCompatibility, previewProjectImport } from "./projectTransfer";
 import { inspectProjectDependencies } from "./projectDependencies";
 import { additionalRepresentationView, type AdditionalDocument } from "./additionalProjectRepresentations";
+import { projectNoteSourceResolver } from "./projectNoteTargets";
+import { resolveGeometryProjectNotePins } from "./projectNotePins";
 
 describe("PRJ07 scientific starter projects", () => {
   it("creates independent containers, documents, results and lineage without sharing mutable source", () => {
@@ -63,5 +66,22 @@ describe("PRJ07 scientific starter projects", () => {
     expect(view("curve-construction-study", "Curve on chart").bounds).toEqual({ min: [0,0,0], max: [1,1,2] });
     expect(view("curve-construction-study", "Profile revolution").bounds!.max[2]).toBeCloseTo(1, 8);
     expect(view("scene-topology-study", "Simplicial triangle").qualification).toContain("3 vertices");
+  });
+  it("opens the Geometry Notes starter with two current viewport pins", () => {
+    const project = instantiateMath3DProjectTemplate("geometry-note-pins", "example");
+    const geometry = project.workspace.entries[0]!.checkpoint as GeometryDocument;
+    const objects = geometryDocumentToSceneDocument(geometry).objects;
+    const pins = resolveGeometryProjectNotePins(project, geometry, objects);
+    expect(project.notes).toHaveLength(2);
+    expect(Object.fromEntries(pins.map((pin) => [pin.title, pin.position.x]))).toEqual({ "Box top": -2, "Sphere north pole": 2 });
+    const resolver = projectNoteSourceResolver(project.identity.id, project.workspace);
+    expect(project.notes!.map((note) => inspectProjectNoteAnchor(note, resolver).status)).toEqual(["current", "current"]);
+    expect(inspectProjectCompatibility(project).canOpenWorkspace).toBe(true);
+  });
+  it("includes current Graph and result Notes in the Minimal Surface starter", () => {
+    const project = instantiateMath3DProjectTemplate("catenary-study", "with-notes");
+    expect(project.notes).toHaveLength(2);
+    const resolver = projectNoteSourceResolver(project.identity.id, project.workspace);
+    expect(project.notes!.map((note) => inspectProjectNoteAnchor(note, resolver).status)).toEqual(["current", "current"]);
   });
 });

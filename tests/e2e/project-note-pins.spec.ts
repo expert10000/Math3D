@@ -20,3 +20,24 @@ test("NTS05 Geometry Project Note display modes persist", async () => {
     await expect(page.getByTestId("geometry-note-pins-mode")).toHaveValue("all");
   } finally { await closeSurfaceApp(ctx); }
 });
+
+test("Projects starter opens two current Geometry Note pins and their Notes", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp();
+    await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, projects = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await projects.getByTestId("project-template-select").selectOption("geometry-note-pins");
+    await projects.getByTestId("project-template-preview").click();
+    await expect(projects.getByTestId("project-import-preview")).toContainText("Geometry Notes and Pins");
+    await projects.getByTestId("project-import-open").click();
+    await expect(projects.getByTestId("project-message")).toContainText("Opened supported project");
+    await page.getByRole("button", { name: "Close project explorer" }).click();
+    await expect(page.getByTestId("geometry-note-pins-mode")).toBeVisible();
+    await expect(page.getByTitle("Current Geometry object-local Project Notes")).toHaveText("2");
+    await page.getByTestId("notes-toggle").click();
+    await expect(page.getByTestId("project-notes-panel")).toContainText("Box top");
+    await expect(page.getByTestId("project-notes-panel")).toContainText("Sphere north pole");
+  } finally { await closeSurfaceApp(ctx); }
+});

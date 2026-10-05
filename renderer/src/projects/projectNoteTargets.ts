@@ -1,5 +1,5 @@
-import { structuralHash, viewerSourceFromDocument,
-  type Graph2DDocument, type GeometryDocument, type KernelWorkspaceDocument, type MeshDocument,
+import { geometryObjectShape, structuralHash, viewerSourceFromDocument,
+  type Graph2DDocument, type KernelWorkspaceDocument, type MeshDocument,
   type MixedWorkspaceDocument, type ProjectNoteAnchor, type ProjectNoteAnchorResolver, type StableDocumentId } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 
@@ -10,11 +10,6 @@ export type NoteSelectionDescriptor = Readonly<{
   probe?: Readonly<{ x: number; y: number; parameter?: number; rowId?: string }> | null;
 }>;
 
-export const geometryObjectShape = (document: GeometryDocument, id: string) => {
-  const object = document.source.objects.find((item) => item.id === id);
-  return object ? structuralHash({ type: object.type, params: object.params, geometry: document.source.geometry,
-    constructions: document.source.constructions, relationships: document.source.relationships }) : null;
-};
 const meshShape = (document: MeshDocument, id: string) => id === document.source.objectId ? document.source.resource.checksum : null;
 const objectShape = (document: KernelWorkspaceDocument | undefined, id: string) =>
   document?.format === "math3d.geometry-document" ? geometryObjectShape(document, id) :

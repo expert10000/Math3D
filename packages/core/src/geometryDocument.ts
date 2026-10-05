@@ -5,6 +5,7 @@ import {
   createStableDocumentId,
   defineDocumentFieldPolicy,
   isDocumentIdentity,
+  structuralHash,
   type CanonicalJsonValue,
   type DocumentIdentity,
 } from "./documentIdentity";
@@ -37,6 +38,13 @@ export type GeometryDocumentSource = Readonly<{
   parameters: Readonly<Record<string, CanonicalJsonValue>>;
   extensions: Readonly<Record<string, CanonicalJsonValue>>;
 }>;
+
+/** A Note follows an object's transform while its defining geometry is unchanged. */
+export const geometryObjectShape = (document: GeometryDocument, id: string) => {
+  const object = document.source.objects.find((item) => item.id === id);
+  return object ? structuralHash({ type: object.type, params: object.params, geometry: document.source.geometry,
+    constructions: document.source.constructions, relationships: document.source.relationships }) : null;
+};
 
 export type GeometryObjectPresentation = Readonly<{
   name: string;

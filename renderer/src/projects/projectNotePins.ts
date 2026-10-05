@@ -1,7 +1,6 @@
 import * as THREE from "three";
-import { inspectProjectNoteAnchor, viewerSourceFromDocument,
+import { geometryObjectShape, inspectProjectNoteAnchor, viewerSourceFromDocument,
   type GeometryDocument, type GeometryObject, type Math3DProject } from "@math3d/core";
-import { geometryObjectShape } from "./projectNoteTargets";
 
 export type ProjectNoteViewerMode = "off" | "pins" | "labels" | "all";
 export type ProjectNotePin = Readonly<{
