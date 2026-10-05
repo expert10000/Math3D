@@ -1135,3 +1135,19 @@ checks and renderer build pass. See the
 [PRJ42–44 desktop evidence](evidence/projects-prj42-44-desktop-2026-10-05/README.md).
 PRJ42–PRJ44 are complete for qualified desktop sources; no new mobile build or
 continuous geodesic/minimality certification is claimed.
+
+
+### PRJ45–PRJ47 next delivery — October 5
+
+In implementation and qualification:
+
+- **PRJ45:** Direct saved-Mesh → source-Surface navigation, with exact snapshot
+  lineage and guidance that analysis resolution belongs to the source. Projects
+  also gains a centered card gallery, keeping the right overlay as quick access.
+- **PRJ46:** Persistent names for saved study runs, preserved in project resources,
+  replay and comparison exports without changing scientific generations.
+- **PRJ47:** Bounded Helicoid pitch / Catenoid waist parameter sweeps. Retain
+  independent Surface variants, Meshes and curvature results atomically; chart
+  qualified interior averages with exact run links. Never mutate the open Surface.
+
+Completion will be recorded after model and Electron acceptance.

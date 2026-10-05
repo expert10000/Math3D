@@ -10,6 +10,7 @@ import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { importLibraryProject, loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY,
   PROJECT_STORAGE_KEY, readProjectThumbnail, saveLibraryProject, updateLibraryActivity, type ProjectLibrary } from "../projects/projectLibrary";
 import { ProjectCommandAdapter } from "../projects/projectCommandAdapter";
+import { ProjectGalleryFrame } from "./ProjectGalleryFrame";
 import { ProjectTemplatesPanel } from "./ProjectTemplatesPanel";
 import { ProjectDocumentActions, type ProjectDocumentAction } from "./ProjectDocumentActions";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
@@ -30,10 +31,10 @@ import { createProjectNoteSelectionAnchor, type NoteSelectionDescriptor } from "
 import { projectAnalysisAvailability, type ProjectAnalysisRoute } from "../projects/projectAnalysisAvailability";
 
 export { PROJECT_STORAGE_KEY } from "../projects/projectLibrary";
-const ProjectThumbnail: React.FC<{ src: string | null }> = ({ src }) => {
+const ProjectThumbnail: React.FC<{ src: string | null; modules: string[] }> = ({ src, modules }) => {
   const [failed, setFailed] = useState(false);
-  return src && !failed ? <img src={src} alt="" onError={() => setFailed(true)} style={{ width: 64, height: 48, objectFit: "cover", borderRadius: 4 }} /> :
-    <span data-testid="project-thumbnail-fallback" style={{ width: 64, minHeight: 48, display: "grid", placeItems: "center", background: "#e2e8f0", borderRadius: 4, fontSize: 11, textAlign: "center" }}>No thumbnail</span>;
+  return src && !failed ? <img src={src} alt="Project thumbnail" onError={() => setFailed(true)} /> :
+    <div data-testid="project-thumbnail-fallback" className="project-gallery-fallback"><strong aria-hidden="true">{modules.includes("Surface") ? "σ(u,v)" : modules.includes("Graph") ? "f(x)" : "M³"}</strong><span>{modules.join(" · ") || "Project"}</span><small>No saved thumbnail</small></div>;
 };
 type Props = {
   open: boolean;
@@ -54,6 +55,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
 
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
   const resourceSessionId = useRef<string | null>(null);
+  const [quick, setQuick] = useState(false), [collection, setCollection] = useState("All projects");
+  useEffect(() => { if (!open) setQuick(false); }, [open]);
   const [busy, setBusy] = useState(false);
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
@@ -95,6 +98,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   }, [project]);
   const documentTitles = new Map(explorer?.groups.flatMap((group) => group.documents.map((document) => [document.id, document.title] as const)) ?? []);
 
+  const summaries = useMemo(() => new Map(library.entries.map(entry => {
+    try {
+      const saved = loadLibraryProject(localStorage, entry.id);
+      return [entry.id, { description: saved.metadata.description ?? "", documents: saved.workspace.entries.length, results: saved.workspace.results.length,
+        modules: [...new Set(saved.workspace.entries.map(item => ({ graph2d: "Graph", surface: "Surface", curve: "Curve", mesh: "Mesh", volume: "Volume", geometry: "Geometry", topology: "Topology", complex: "Complex" }[item.module] ?? item.module)))] }];
+    } catch { return [entry.id, { description: "Saved payload unavailable. Preview reports the recovery details.", documents: 0, results: 0, modules: [] as string[] }]; }
+  })), [library]);
+  const filteredProjects = orderProjectLibrary(library).filter(entry => (collection !== "Favorites" || entry.favorite) && `${entry.title} ${entry.tags.join(" ")}`.toLowerCase().includes(query.trim().toLowerCase()));
   const display = (next: Math3DProject, savedPreview: boolean, keepManagement = false) => {
     const resolved = verifyMixedWorkspaceReplay(next.workspace);
     const tree = buildProjectExplorer(next, resolved);
@@ -497,17 +508,38 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       onUpdateDraft={(id, patch) => setNoteDrafts((current) => current.map((draft) => draft.id === id ? { ...draft, ...patch } : draft))}
       onDiscardDraft={(id) => setNoteDrafts((current) => current.filter((draft) => draft.id !== id))}
       onSaveDrafts={saveNoteDrafts} onSaveNote={saveEditedNote} />}
-    {open && <aside id="project-explorer-panel" data-testid="project-explorer-panel" aria-label="Project explorer"
-      style={{ position: "absolute", right: 0, top: 0, width: 420, boxSizing: "border-box", maxWidth: "calc(100vw - 28px)", maxHeight: "min(70vh, 650px)", overflow: "auto", padding: 14,
-        background: "#fff", color: "#0f172a", border: "1px solid #94a3b8", borderRadius: 10, boxShadow: "0 10px 30px #0f172a30" }}>
-      <div data-testid="project-explorer-header" style={{ position: "sticky", top: -14, zIndex: 1, background: "#fff", padding: "10px 0", borderBottom: "1px solid #e2e8f0" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <strong>Projects</strong><button type="button" aria-label="Close project explorer" onClick={() => onOpenChange(false)}>Close</button>
-      </div>
+    <button type="button" data-testid="projects-quick-toggle" aria-label="Open quick Projects" onClick={() => { setQuick(true); onOpenChange(true); }} style={{ position:"fixed",right:14,bottom:100,zIndex:2502,padding:"7px 10px",border:"1px solid #64748b",borderRadius:8,background:"#f8fafc",color:"#0f172a",fontSize:11 }}>Quick projects</button>
+    {open && <ProjectGalleryFrame quick={quick} onClose={() => onOpenChange(false)}>
+      <header data-testid="project-explorer-header" className="project-gallery-header">
+        <div className="project-gallery-heading"><div><p>MATH3D · PROJECTS</p><h2>{quick ? "Quick Projects" : "Projects Gallery"}</h2></div><div style={{ display:"flex",gap:8 }}><button data-testid="project-gallery-layout-toggle" onClick={() => setQuick(value => !value)}>{quick ? "Full gallery" : "Quick panel"}</button><button type="button" aria-label="Close project explorer" onClick={() => onOpenChange(false)}>Close</button></div></div>
       <p data-testid="project-view-mode" role="status" style={{ padding: 8, background: "#eff6ff", borderRadius: 6 }}>{managed ? "Managing saved project" : preview ? "Saved project preview" : "Current workspace"} · {project?.metadata.title ?? "Untitled project"}</p>
       <button type="button" data-testid="project-restore-saved" disabled={busy || !!managed || !project || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={previewSavedOpen}>Open saved project</button>
       {preview && !managed && <p data-testid="project-open-guidance" style={{ marginBottom: 0 }}>Open saved project, then choose Open project in the compatibility preview to enable document buttons.</p>}
-      </div>
+      </header>
+      <div className="project-gallery-layout">
+<section data-testid="project-library" className="project-gallery-library">
+        <h3>Your saved projects ({library.entries.length})</h3><p>Favorites first, then recent. Open a project or preview its documents and compatibility.</p>
+        <label>Find by name or tag<input data-testid="project-library-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search your projects" /></label>
+        <div className="project-gallery-filters" aria-label="Project collection">{["All projects", "Favorites"].map(value => <button key={value} aria-pressed={collection === value} onClick={() => setCollection(value)}>{value}</button>)}</div>
+        {libraryMessage && <p role="status" data-testid="project-library-message">{libraryMessage}</p>}
+        {!library.entries.length && !libraryMessage && <p>No saved projects yet. Save the current workspace or import the included Samsung collection.</p>}
+        {!!library.entries.length && !filteredProjects.length && <p>No projects match this search or collection.</p>}
+        <div className="project-gallery-grid" data-testid="project-gallery-grid">{filteredProjects.map(entry => {
+          const src = readProjectThumbnail(localStorage, entry), summary = summaries.get(entry.id)!;
+          return <article className="project-gallery-card" key={entry.id} data-testid={`project-library-${entry.id}`}>
+            <ProjectThumbnail key={src ?? "missing"} src={src} modules={summary.modules} />
+            <div className="project-gallery-card-content"><h4>{entry.title}</h4><p>{summary.description || `${summary.documents} document(s) · ${summary.results} saved result(s)`}</p>
+              <span className="project-gallery-card-tags">{entry.tags.join(" · ")}</span>
+              <div className="project-gallery-card-actions"><button type="button" data-testid={`project-open-saved-${entry.id}`} aria-label={`Open ${entry.title}`} disabled={busy} onClick={() => { void openLibraryProject(entry.id); }}>Open</button>
+              <button type="button" data-testid={`project-preview-${entry.id}`} disabled={busy} aria-label={`Preview ${entry.title}`} onClick={() => { viewLibraryProject(entry.id); }}>Preview</button>
+              <button type="button" aria-label={`Favorite ${entry.title}`} aria-pressed={entry.favorite} onClick={() => favorite(entry.id, !entry.favorite)}>{entry.favorite ? "★" : "☆"}</button></div>
+              <small className="project-gallery-card-time">Saved {new Date(entry.savedAt).toLocaleString()}{entry.viewedAt > 0 ? ` · Viewed ${new Date(entry.viewedAt).toLocaleString()}` : ""}</small>
+            </div>
+          </article>;
+        })}</div>
+      </section>
+
+      <div className="project-gallery-workspace"><h3>Workspace and documents</h3>
       <section aria-label="Example projects" style={{ marginTop: 10 }}>
         <button type="button" data-testid="project-import-samsung-examples" disabled={busy} onClick={() => { void importSamsungExamples(); }}>Import Samsung projects ({SAMSUNG_EXAMPLE_COUNT})</button>
         <small style={{ display: "block", marginTop: 4 }}>Included with the app. Existing versions are kept. Your current workspace stays open; unsupported documents remain compatibility previews.</small>
@@ -555,25 +587,6 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       {incoming && <div ref={compatibilityRef}><ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !busy} onCancel={() => { importSequence.current++; setIncoming(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div>}
       <ProjectTemplatesPanel onPreview={previewTemplate} />
       {project && <small data-testid="project-content-revision">{preview ? "Saved preview" : "Current workspace"} · project revision {project.identity.revision}</small>}
-      <section data-testid="project-library" style={{ marginTop: 14 }}>
-        <strong>Saved projects · favorites first, then recent</strong>
-        <label style={{ display: "grid", marginTop: 6 }}>Find by name or tag<input data-testid="project-library-search" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-        {libraryMessage && <p role="status" data-testid="project-library-message">{libraryMessage}</p>}
-        {!library.entries.length && !libraryMessage && <p>No saved projects yet.</p>}
-        {orderProjectLibrary(library).filter((entry) => `${entry.title} ${entry.tags.join(" ")}`.toLowerCase().includes(query.trim().toLowerCase())).map((entry) => {
-          const src = readProjectThumbnail(localStorage, entry);
-          return <article key={entry.id} data-testid={`project-library-${entry.id}`} style={{ display: "flex", gap: 8, marginTop: 10, padding: 6, border: "1px solid #e2e8f0", borderRadius: 6 }}>
-            <ProjectThumbnail key={src ?? "missing"} src={src} />
-            <div style={{ minWidth: 0, flex: 1, overflowWrap: "anywhere" }}>
-              <button type="button" data-testid={`project-open-saved-${entry.id}`} disabled={busy} onClick={() => { void openLibraryProject(entry.id); }} style={{ textAlign: "left", maxWidth: "100%", overflowWrap: "anywhere" }}>Open {entry.title}</button>
-              <button type="button" data-testid={`project-preview-${entry.id}`} disabled={busy} aria-label={`Preview ${entry.title}`} onClick={() => viewLibraryProject(entry.id)} style={{ marginLeft: 4 }}>Preview</button>
-              <button type="button" aria-label={`Favorite ${entry.title}`} aria-pressed={entry.favorite} onClick={() => favorite(entry.id, !entry.favorite)} style={{ marginLeft: 4 }}>{entry.favorite ? "★" : "☆"}</button>
-              <small style={{ display: "block" }}>{entry.tags.join(" · ")}</small>
-              <small style={{ display: "block" }}>Saved {new Date(entry.savedAt).toLocaleString()}{entry.viewedAt > 0 ? ` · Viewed ${new Date(entry.viewedAt).toLocaleString()}` : ""}</small>
-            </div>
-          </article>;
-        })}
-      </section>
       {dependencies && <ProjectDependenciesPanel inspection={dependencies} selectedId={inspectedId} titles={documentTitles} onClose={() => setInspectionOpen(false)} onLocate={(id) => setInspectedId(id)}
         refreshOptions={managed && project ? projectDependencyRefreshOptions(project) : undefined} onRefresh={managed && !busy ? refreshDependency : undefined}
         analysisRefreshOptions={managed && project ? projectAnalysisRefreshOptions(project) : undefined} onRecompute={managed && !busy ? recomputeAnalysis : undefined} />}
@@ -617,6 +630,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
         </li>)}</ul>
         {!explorer.analysis.length && <small style={{ display: "block", marginTop: 4 }}>No saved results</small>}
       </section>}
-    </aside>}
+      </div></div>
+    </ProjectGalleryFrame>}
   </div>;
 };
