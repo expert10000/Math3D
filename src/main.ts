@@ -10,6 +10,7 @@ import { registerVtkMeshIpc } from "./main/ipc/vtkMeshIpc";
 import { registerSageServiceIpc } from "./main/ipc/sageServiceIpc";
 import { registerComputeEngineManagerIpc } from "./main/ipc/computeEngineManagerIpc";
 import { registerQuantumSceneIpc } from "./main/ipc/quantumSceneIpc";
+import { registerProjectThumbnailIpc } from "./main/ipc/projectThumbnailIpc";
 import { runPythonWorkerStartupCheck, stopPythonWorker } from "./main/python/pythonWorker";
 import { stopNativeCgalWorker } from "./main/python/nativeCgalWorker";
 import { recordPythonWorkerStartup, registerPythonWorkerDiagnosticsIpc } from "./main/python/pythonWorkerDiagnostics";
@@ -997,6 +998,7 @@ app.whenReady().then(async () => {
   registerSageServiceIpc();
   registerComputeEngineManagerIpc();
   registerQuantumSceneIpc();
+  registerProjectThumbnailIpc();
 
   ipcMain.handle("app:capture-screenshot", async (evt, req: AppCaptureRequest): Promise<AppCaptureResponse> => {
     try {

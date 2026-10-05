@@ -22,6 +22,7 @@ import { analyzeSavedMesh, appendSavedMeshAnalysis, type SavedMeshAnalysisKind }
 import { SavedMeshAnalysisPanel } from "./projects/SavedMeshAnalysisPanel";
 import { surfaceStudySource, type SurfaceStudyPresetId } from "./projects/surfaceStudyPresets";
 import { createSurfaceStudySweep, readSurfaceStudyRun } from "./projects/surfaceStudySweep";
+import { captureProjectViewThumbnail } from "./projects/projectViewThumbnail";
 import { supportsSavedSurfaceResolution, type SurfaceStudyResolution } from "./projects/surfaceStudyResolution";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -79358,6 +79359,7 @@ case "mobius":
         {additionalSurface?.format === "math3d.surface-document" && <SavedMeshAnalysisPanel key={additionalSurface.identity.id} resolutionSupported={supportsSavedSurfaceResolution(additionalSurface)} readMesh={readSavedStudyMesh} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface} meshes={savedSurfaceMeshLinks(restoredProjectRef.current.workspace, additionalSurface, restoredProjectRef.current.meshes)} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis} />}
       </AdditionalProjectEditor>}
       <KernelWorkspacePanel
+        captureProjectThumbnail={() => captureProjectViewThumbnail(document.querySelector(additionalActiveId ? '[data-testid="project-source-view"]' : '[data-testid="module-workspace"]'))}
         projectsOpen={projectsOpen}
         onProjectsOpenChange={setProjectsOpen}
         onCurrentProjectChange={(project) => { activeNotebookProjectRef.current = project; }}

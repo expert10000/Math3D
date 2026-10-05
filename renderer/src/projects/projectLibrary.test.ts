@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyGraph2DDocument, createGraph2DWorkspaceProject, createMath3DProject, serializeMath3DProject, updateMath3DProjectMetadata } from "@math3d/core";
 import { loadLibraryProject, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY, PROJECT_STORAGE_KEY, projectPayloadKey,
-  projectThumbnailKey, readProjectThumbnail, saveLibraryProject, updateLibraryActivity, validateProjectThumbnail } from "./projectLibrary";
+  projectThumbnailKey, readProjectThumbnail, isAutomaticProjectThumbnail, saveLibraryProject, updateLibraryActivity, validateProjectThumbnail } from "./projectLibrary";
 
 const project = (key = "study") => createMath3DProject(createGraph2DWorkspaceProject(createEmptyGraph2DDocument("source")), { stableKey: key, title: key });
 const thumbnail = "data:image/png;base64,aGVsbG8=";
@@ -10,6 +10,47 @@ const store = () => {
   return { values, getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
 };
 describe("PRJ03 local project library", () => {
+  it("refreshes automatic sidecars without changing scientific bytes and preserves explicit uploaded mode", () => {
+    const storage = store(), original = project(), first = saveLibraryProject(storage, original, 100, thumbnail, { thumbnailMode: "automatic" });
+    expect(isAutomaticProjectThumbnail(storage, first.entries[0])).toBe(true);
+    const bytes = storage.getItem(projectPayloadKey(original.identity.id)), updatedImage = "data:image/jpeg;base64,d29ybGQ=";
+    const updated = saveLibraryProject(storage, original, 200, updatedImage, { thumbnailMode: "automatic" });
+    expect(storage.getItem(projectPayloadKey(original.identity.id))).toBe(bytes);
+    expect(readProjectThumbnail(storage, updated.entries[0])).toBe(updatedImage);
+    expect(isAutomaticProjectThumbnail(storage, updated.entries[0])).toBe(true);
+    const uploaded = saveLibraryProject(storage, original, 300, thumbnail);
+    expect(isAutomaticProjectThumbnail(storage, uploaded.entries[0])).toBe(false);
+    const metadataOnly = saveLibraryProject(storage, updateMath3DProjectMetadata(original, { title: "Saved-copy label" }), 400, undefined, { activate: false });
+    expect(readProjectThumbnail(storage, metadataOnly.entries[0])).toBe(thumbnail);
+    expect(isAutomaticProjectThumbnail(storage, metadataOnly.entries[0])).toBe(false);
+    expect(parseProjectLibrary(storage.getItem(PROJECT_LIBRARY_KEY)).entries[0]).not.toHaveProperty("thumbnailMode");
+  });
+  it("treats legacy, missing or mismatched automatic markers as uploaded images", () => {
+    const storage = store(), original = project(), library = saveLibraryProject(storage, original, 100, thumbnail, { thumbnailMode: "automatic" });
+    const key = `${projectThumbnailKey(original.identity.id)}.automatic`;
+    storage.setItem(key, "unrelated"); expect(isAutomaticProjectThumbnail(storage, library.entries[0])).toBe(false);
+    storage.removeItem(key); expect(isAutomaticProjectThumbnail(storage, library.entries[0])).toBe(false);
+    saveLibraryProject(storage, original, 200, thumbnail, { thumbnailMode: "automatic" });
+    storage.setItem(projectThumbnailKey(original.identity.id), "data:image/png;base64,d29ybGQ=");
+    expect(isAutomaticProjectThumbnail(storage, library.entries[0])).toBe(false);
+  });
+  it("keeps the previous preview and commits the project when optional automatic image storage is full", () => {
+    const storage = store(), original = project(), first = saveLibraryProject(storage, original, 100, thumbnail, { thumbnailMode: "automatic" });
+    const marker = storage.getItem(`${projectThumbnailKey(original.identity.id)}.automatic`);
+    const failing = { ...storage, setItem: (key: string, value: string) => {
+      if (key === projectThumbnailKey(original.identity.id) && value !== thumbnail) throw new DOMException("Image quota", "QuotaExceededError");
+      storage.setItem(key, value);
+    } };
+    const changed = updateMath3DProjectMetadata(original, { title: "Project saved without new image" });
+    const saved = saveLibraryProject(failing, changed, 200, "data:image/png;base64,d29ybGQ=", { thumbnailMode: "automatic" });
+    expect(loadLibraryProject(storage, original.identity.id)).toEqual(changed);
+    expect(readProjectThumbnail(storage, saved.entries[0])).toBe(thumbnail);
+    expect(storage.getItem(`${projectThumbnailKey(original.identity.id)}.automatic`)).toBe(marker);
+    expect(isAutomaticProjectThumbnail(storage, first.entries[0])).toBe(true);
+    const before = [...storage.values];
+    expect(() => saveLibraryProject(failing, changed, 300, "data:image/png;base64,d29ybGQ=")).toThrow("Image quota");
+    expect([...storage.values]).toEqual(before);
+  });
   it("round-trips descriptions, tags, favorites and activity separately from source identities", () => {
     const storage = store(), original = project(), named = updateMath3DProjectMetadata(original, { title: "Study", description: "Catenary study", tags: ["geometry", "research"] });
     saveLibraryProject(storage, named, 100, thumbnail);

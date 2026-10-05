@@ -1,4 +1,4 @@
-import { canonicalJsonStringify, parseMath3DProject, serializeMath3DProject, type Math3DProject } from "@math3d/core";
+import { canonicalJsonStringify, parseMath3DProject, serializeMath3DProject, structuralHash, type Math3DProject } from "@math3d/core";
 
 export const PROJECT_STORAGE_KEY = "math3d.project.v1";
 export const PROJECT_LIBRARY_KEY = "math3d.project-library.v1";
@@ -53,6 +53,13 @@ export const readProjectThumbnail = (store: Store, entry: ProjectLibraryEntry): 
   catch { return null; }
 };
 
+/** An optional local marker binds the automatic mode to these exact image bytes.
+ * Legacy/uploaded images are manual; the v1 library and project formats stay intact. */
+export const isAutomaticProjectThumbnail = (store: Store, entry: ProjectLibraryEntry): boolean => {
+  const image = readProjectThumbnail(store, entry);
+  return !!image && store.getItem(`${projectThumbnailKey(entry.id)}.automatic`) === structuralHash(image);
+};
+
 // localStorage has no multi-key transaction. Validate first, roll back writes on
 // failure, and never prune payloads from an index. Interrupted saves may leave an
 // unindexed payload, which is safer than deleting project data.
@@ -69,7 +76,7 @@ const write = (store: Store, changes: readonly (readonly [string, string])[], af
   }
 };
 export const saveLibraryProject = (store: Store, project: Math3DProject, now: number, thumbnail?: string,
-  options: { activate?: boolean; expectedBytes?: string; afterWrite?: () => void; backup?: string } = {}): ProjectLibrary => {
+  options: { activate?: boolean; expectedBytes?: string; afterWrite?: () => void; backup?: string; thumbnailMode?: "automatic" | "manual" } = {}): ProjectLibrary => {
   const bytes = serializeMath3DProject(project), library = parseProjectLibrary(store.getItem(PROJECT_LIBRARY_KEY));
   const payloadKey = projectPayloadKey(project.identity.id), existing = store.getItem(payloadKey);
   if (options.expectedBytes !== undefined && existing !== options.expectedBytes) throw new Error("Saved project changed. Reopen it before saving your changes.");
@@ -86,9 +93,19 @@ export const saveLibraryProject = (store: Store, project: Math3DProject, now: nu
   if (options.backup !== undefined) changes.push([`${PROJECT_STORAGE_KEY}.before-open`, serializeMath3DProject(parseMath3DProject(options.backup))]);
   changes.push([payloadKey, bytes]);
   if (options.activate !== false) changes.push([PROJECT_STORAGE_KEY, bytes]);
-  if (thumbnail) changes.push([projectThumbnailKey(entry.id), validateProjectThumbnail(thumbnail)]);
+  if (thumbnail) {
+    changes.push([projectThumbnailKey(entry.id), validateProjectThumbnail(thumbnail)]);
+    changes.push([`${projectThumbnailKey(entry.id)}.automatic`, options.thumbnailMode === "automatic" ? structuralHash(thumbnail) : "manual"]);
+  }
   changes.push([PROJECT_LIBRARY_KEY, canonicalJsonStringify(next)]);
-  write(store, changes, options.afterWrite);
+  try { write(store, changes, options.afterWrite); }
+  catch (error) {
+    // Automatic previews are optional: quota exhaustion must not prevent a
+    // valid project/resource save. Manual uploads retain normal atomic failure.
+    if (thumbnail && options.thumbnailMode === "automatic" && error instanceof DOMException && error.name === "QuotaExceededError")
+      return saveLibraryProject(store, project, now, undefined, options);
+    throw error;
+  }
   return next;
 };
 export const importLibraryProject = (store: Store, project: Math3DProject, now: number,

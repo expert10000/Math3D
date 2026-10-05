@@ -8,7 +8,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { importLibraryProject, loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY,
-  PROJECT_STORAGE_KEY, readProjectThumbnail, saveLibraryProject, updateLibraryActivity, type ProjectLibrary } from "../projects/projectLibrary";
+  PROJECT_STORAGE_KEY, readProjectThumbnail, isAutomaticProjectThumbnail, saveLibraryProject, updateLibraryActivity, type ProjectLibrary } from "../projects/projectLibrary";
 import { ProjectCommandAdapter } from "../projects/projectCommandAdapter";
 import { ProjectGalleryFrame } from "./ProjectGalleryFrame";
 import { ProjectTemplatesPanel } from "./ProjectTemplatesPanel";
@@ -33,6 +33,7 @@ import { projectAnalysisAvailability, type ProjectAnalysisRoute } from "../proje
 export { PROJECT_STORAGE_KEY } from "../projects/projectLibrary";
 const ProjectThumbnail: React.FC<{ src: string | null; modules: string[] }> = ({ src, modules }) => {
   const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [src]);
   return src && !failed ? <img src={src} alt="Project thumbnail" onError={() => setFailed(true)} /> :
     <div data-testid="project-thumbnail-fallback" className="project-gallery-fallback"><strong aria-hidden="true">{modules.includes("Surface") ? "σ(u,v)" : modules.includes("Graph") ? "f(x)" : "M³"}</strong><span>{modules.join(" · ") || "Project"}</span><small>No saved thumbnail</small></div>;
 };
@@ -43,6 +44,7 @@ type Props = {
   captureActiveWorkbook?: () => Workbook | null;
   onOpenWorkbook?: (workbook: Workbook, stageId?: WorkbookStageId, blockId?: string) => void;
   captureNoteSelection?: () => NoteSelectionDescriptor | null;
+  captureProjectThumbnail?: () => Promise<string>;
   capture: () => MixedWorkspaceDocument;
   canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
@@ -51,7 +53,7 @@ type Props = {
   resourceReader?: ProjectResourceReader;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onCurrentProjectChange, captureActiveWorkbook, onOpenWorkbook, captureNoteSelection, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onCurrentProjectChange, captureActiveWorkbook, onOpenWorkbook, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader }) => {
 
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
   const resourceSessionId = useRef<string | null>(null);
@@ -71,6 +73,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
   const [thumbnail, setThumbnail] = useState<{ id: string; data: string } | null>(null);
+  const [automaticThumbnail, setAutomaticThumbnail] = useState(true), [replaceThumbnail, setReplaceThumbnail] = useState(false);
+  const [thumbnailMessage, setThumbnailMessage] = useState("");
   const [library, setLibrary] = useState<ProjectLibrary>(parseProjectLibrary(null));
   const [libraryMessage, setLibraryMessage] = useState("");
   const [exampleMessage, setExampleMessage] = useState("");
@@ -110,7 +114,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     const resolved = verifyMixedWorkspaceReplay(next.workspace);
     const tree = buildProjectExplorer(next, resolved);
     setProject(next); setTitle(next.metadata.title); setDescription(next.metadata.description ?? ""); setTags((next.metadata.tags ?? []).join(", "));
-    if (!keepManagement) setThumbnail(null); setExplorer(tree); setPreview(savedPreview);
+    if (!keepManagement) { setThumbnail(null); setReplaceThumbnail(false); setThumbnailMessage(""); } setExplorer(tree); setPreview(savedPreview);
     if (!keepManagement) { setManaged(null); setManagedBytes(undefined); }
     if (!keepManagement) { setInspectionOpen(false); setInspectedId(null); }
     if (!keepManagement) { setIncoming(null); importSequence.current++; }
@@ -120,7 +124,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     try { setLibrary(parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY))); setLibraryMessage(""); }
     catch (error) { setLibrary(parseProjectLibrary(null)); setLibraryMessage(`Library unavailable: ${(error as Error).message}`); }
   };
-  const liveProject = () => {
+  const liveProject = (capturedWorkspace?: MixedWorkspaceDocument) => {
     let base = preview ? null : project;
     // Read the saved name/identity once; workspace content always comes from the
     // live capture. Invalid saved bytes must not be silently replaced.
@@ -128,7 +132,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
       if (raw) base = parseMath3DProject(raw);
     }
-    const workspace = capture();
+    const workspace = capturedWorkspace ?? capture();
     verifyMixedWorkspaceReplay(workspace);
     return base ? replaceMath3DProjectWorkspace(base, mergeProjectLiveWorkspace(base.workspace, workspace)) :
       createMath3DProject(workspace, { stableKey: crypto.randomUUID(), title: title.trim() || "Untitled project" });
@@ -215,15 +219,32 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   const save = async () => {
     if (busy) return; setBusy(true);
     try {
-      let next = updateMath3DProjectMetadata(managed?.project() ?? liveProject(), { ...(managed?.project() ?? project)?.metadata,
+      const capturedWorkspace = managed ? undefined : capture();
+      let next = updateMath3DProjectMetadata(managed?.project() ?? liveProject(capturedWorkspace), { ...(managed?.project() ?? project)?.metadata,
         title: title.trim(), description, tags: [...new Set(tags.split(",").map((tag) => tag.trim()).filter(Boolean))] });
       if (!managed && noteDrafts.length) next = bindProjectNoteDrafts(next, noteDrafts);
       if (managed && serializeMath3DProject(next) !== serializeMath3DProject(managed.project())) next = managed.commit(next);
       const tree = buildProjectExplorer(next, verifyMixedWorkspaceReplay(next.workspace));
       const previousResources = managed ? await loadProjectResources(loadLibraryProject(localStorage, next.identity.id)) : resourceSessionId.current === next.identity.id ? resourceSession.current : project ? await loadProjectResources(project) : undefined;
       const resources = collectResources(next, previousResources, !!managed);
-      setLibrary(await commitProjectResources(next, resources, () => saveLibraryProject(localStorage, next, Date.now(), thumbnail?.id === next.identity.id ? thumbnail.data : undefined,
-        managed ? { activate: false, expectedBytes: managedBytes } : {})));
+      let image = thumbnail?.id === next.identity.id ? thumbnail.data : undefined;
+      let imageMode: "automatic" | "manual" = "manual", imageMessage = "";
+      const existing = parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)).entries.find(entry => entry.id === next.identity.id);
+      if (!managed && !image && automaticThumbnail && (replaceThumbnail || !existing || !readProjectThumbnail(localStorage, existing) || isAutomaticProjectThumbnail(localStorage, existing))) {
+        try {
+          if (!captureProjectThumbnail) throw new Error("Automatic previews are available in the desktop app.");
+          if (canonicalJsonStringify(capture()) !== canonicalJsonStringify(capturedWorkspace!)) throw new Error("The view changed during saving; save again to update its preview.");
+          const captured = await captureProjectThumbnail();
+          if (canonicalJsonStringify(capture()) !== canonicalJsonStringify(capturedWorkspace!)) throw new Error("The view changed during capture; the previous preview was kept.");
+          image = captured; imageMode = "automatic";
+        } catch (error) { imageMessage = `Preview kept: ${(error as Error).message}`; }
+      }
+      const savedLibrary = await commitProjectResources(next, resources, () => saveLibraryProject(localStorage, next, Date.now(), image,
+        { ...(managed ? { activate: false, expectedBytes: managedBytes } : {}), thumbnailMode: imageMode }));
+      setLibrary(savedLibrary);
+      if (imageMode === "automatic") imageMessage = readProjectThumbnail(localStorage, savedLibrary.entries.find(entry => entry.id === next.identity.id)!) === image ? "Current view saved as the project preview." : "Project saved; preview kept because image storage is full.";
+      else if (image) imageMessage = "Uploaded preview saved. It stays in place until you choose Use current view.";
+      setThumbnailMessage(imageMessage); setReplaceThumbnail(false);
       resourceSession.current = resources; resourceSessionId.current = next.identity.id;
       if (managed) setManagedBytes(serializeMath3DProject(next));
       setProject(next); setTags((next.metadata.tags ?? []).join(", ")); setTitle(next.metadata.title); setThumbnail(null); setExplorer(tree); setPreview(!!managed); setLibraryMessage("");
@@ -383,6 +404,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       });
       const image = new Image(); image.src = data; await image.decode();
       setThumbnail({ id, data }); setMessage("Thumbnail ready. Save project to keep it.");
+      setReplaceThumbnail(false); setThumbnailMessage("Uploaded preview ready. Save project to keep it.");
     } catch (error) { setMessage(`Thumbnail unavailable: ${(error as Error).message}`); }
   };
   const favorite = (id: string, value: boolean) => {
@@ -558,6 +580,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       <label style={{ display: "grid", gap: 4, margin: "10px 0" }}>Thumbnail (PNG/JPEG, up to 128 KiB)
         <input data-testid="project-thumbnail" type="file" accept="image/png,image/jpeg" disabled={(preview && !managed) || !project} onChange={(event) => { void chooseThumbnail(event.target.files?.[0]); event.target.value = ""; }} style={{ maxWidth: "100%" }} />
       </label>
+      <label style={{ display: "flex", gap: 7, alignItems: "center" }}><input type="checkbox" data-testid="project-thumbnail-auto" style={{ width: "auto", minHeight: 0, flex: "0 0 auto", margin: 0 }} checked={automaticThumbnail} disabled={busy || !!managed || preview} onChange={event => setAutomaticThumbnail(event.target.checked)} />Automatic preview when saving the current workspace</label>
+      <small>Uploaded previews stay in place. Saved-copy metadata edits keep that project's image.</small>
+      <div><button type="button" data-testid="project-thumbnail-current-view" disabled={busy || preview || !!managed || !project} onClick={() => { setThumbnail(null); setReplaceThumbnail(true); setAutomaticThumbnail(true); setThumbnailMessage("Current view will replace the preview when you save this project."); }}>Use current view</button></div>
+      {thumbnailMessage && <p role="status" data-testid="project-thumbnail-message">{thumbnailMessage}</p>}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         <button type="button" data-testid="project-current" onClick={refresh}>Current workspace</button>
         <button type="button" data-testid="project-save" disabled={busy || (preview && !managed) || !project || !title.trim()} onClick={save}>{managed ? "Save changes" : "Save project"}</button>

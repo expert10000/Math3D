@@ -499,6 +499,8 @@ contextBridge.exposeInMainWorld("appMenu", {
 });
 
 contextBridge.exposeInMainWorld("appCapture", {
+  captureProjectThumbnail: (rect: { x: number; y: number; width: number; height: number }): Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }> =>
+    ipcRenderer.invoke("app:capture-project-thumbnail", rect),
   captureScreenshot: (req: AppCaptureScreenshotRequest): Promise<AppCaptureScreenshotResponse> =>
     ipcRenderer.invoke("app:capture-screenshot", req),
   listScreenshots: (req?: AppCaptureListRequest): Promise<AppCaptureListResponse> =>

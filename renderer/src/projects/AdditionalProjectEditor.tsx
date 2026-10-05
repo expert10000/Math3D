@@ -38,6 +38,6 @@ export const AdditionalProjectEditor = ({ session, onChange, onClose, children }
     {viewError && <div role="alert" style={{ padding: 10 }}>Saved dependency unavailable: {viewError}</div>}
     {children}
     {view && <><div data-testid="project-source-measurement" style={{ padding: "0 10px 8px", overflowWrap: "anywhere" }}>{view.qualification} · {view.sampleCount} sampled points · bounds {JSON.stringify(view.bounds)}</div>
-      <div style={{ flex: 1, minHeight: 200, position: "relative" }}><GeometryViewer key={version} scene={view.scene} meshOverrides={view.meshes} cameraFitCommand={cameraFitCommand} /></div></>}
+      <div data-testid="project-source-view" style={{ flex: 1, minHeight: 200, position: "relative" }}><GeometryViewer key={version} scene={view.scene} meshOverrides={view.meshes} cameraFitCommand={cameraFitCommand} /></div></>}
   </section>;
 };

@@ -645,6 +645,7 @@ declare global {
       save: (req: VolumeFileSaveRequest) => Promise<VolumeFileSaveResponse>;
     };
     appCapture?: {
+      captureProjectThumbnail?: (rect: { x: number; y: number; width: number; height: number }) => Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }>;
       captureScreenshot: (req: AppCaptureScreenshotRequest) => Promise<AppCaptureScreenshotResponse>;
       listScreenshots: (req?: AppCaptureListRequest) => Promise<AppCaptureListResponse>;
     };
