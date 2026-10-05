@@ -3,8 +3,13 @@ import type { ProjectCompatibility } from "../projects/projectTransfer";
 
 export const ProjectCompatibilityPanel: React.FC<{ preview: ProjectCompatibility & { inputKind: string }; onCancel: () => void; onImport: () => void; onOpen: () => void; canOpen: boolean; busy?: boolean }> =
   ({ preview, onCancel, onImport, onOpen, canOpen, busy = false }) => <section data-testid="project-import-preview" style={{ marginTop: 12, padding: 8, border: "1px solid #64748b", borderRadius: 6, overflowWrap: "anywhere" }}>
-    <strong>Import preview: {preview.project.metadata.title}</strong>
-    <p>{preview.inputKind} · project revision {preview.project.identity.revision}. Nothing has been opened or saved yet.</p>
+    <strong>{preview.inputKind === "Independent starter project" ? "Starter project ready" : "Import preview"}: {preview.project.metadata.title}</strong>
+    <p>{preview.inputKind} · project revision {preview.project.identity.revision}. Nothing has been opened or saved yet. Open project saves it and switches the workspace; saving to the library keeps the current workspace open.</p>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, margin: "8px 0 12px" }}>
+      <button type="button" data-testid="project-import-open" disabled={!canOpen || !preview.canOpenWorkspace} onClick={onOpen}>Open project</button>
+      <button type="button" data-testid="project-import-save" disabled={busy} onClick={onImport}>Save to library</button>
+      <button type="button" data-testid="project-import-cancel" disabled={busy} onClick={onCancel}>Cancel</button>
+    </div>
     <strong>Document compatibility</strong>
     {preview.documents.map((document) => <div key={document.id}>{document.module} · revision {document.revision} · replay verified · {document.editable ? "editor supported" : "preview only"}</div>)}
     <strong style={{ display: "block", marginTop: 8 }}>Required Graph capabilities</strong>
@@ -16,9 +21,4 @@ export const ProjectCompatibilityPanel: React.FC<{ preview: ProjectCompatibility
     {!preview.sidecars.length && <div>No external source/result sidecars referenced.</div>}
     <p>Project JSON includes resource references. Export with resources transfers verified source bytes and undo/redo buffers; optional analysis caches and thumbnails remain local.</p>
     {preview.reasons.map((reason, index) => <div key={index}>{reason}</div>)}
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
-      <button type="button" data-testid="project-import-cancel" disabled={busy} onClick={onCancel}>Cancel</button>
-      <button type="button" data-testid="project-import-save" disabled={busy} onClick={onImport}>Import into library</button>
-      <button type="button" data-testid="project-import-open" disabled={!canOpen || !preview.canOpenWorkspace} onClick={onOpen}>Open project</button>
-    </div>
   </section>;

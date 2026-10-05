@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, parseMath3DProject,
   parseMixedWorkspaceDocument, updateMath3DProjectMetadata, replaceMath3DProjectWorkspace,
   deleteProjectDocument, duplicateProjectDocument, serializeMath3DProject, setProjectDocumentMetadata,
-  instantiateMath3DProjectTemplate, type Math3DProjectTemplateId,
+  instantiateMath3DProjectTemplate, MATH3D_PROJECT_TEMPLATES, type Math3DProjectTemplateId,
   upsertMath3DProjectWorkbook, upsertMath3DProjectNote, updateProjectNote,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule } from "@math3d/core";
@@ -11,7 +11,7 @@ import { importLibraryProject, loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, 
   PROJECT_STORAGE_KEY, readProjectThumbnail, isAutomaticProjectThumbnail, saveLibraryProject, updateLibraryActivity, type ProjectLibrary } from "../projects/projectLibrary";
 import { ProjectCommandAdapter } from "../projects/projectCommandAdapter";
 import { ProjectGalleryFrame } from "./ProjectGalleryFrame";
-import { ProjectTemplatesPanel } from "./ProjectTemplatesPanel";
+import { ProjectTemplatesPanel, StarterArtwork } from "./ProjectTemplatesPanel";
 import { ProjectDocumentActions, type ProjectDocumentAction } from "./ProjectDocumentActions";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
 import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnalysisRefreshOptions, recomputeProjectAnalysis } from "../projects/projectDependencyRefresh";
@@ -77,6 +77,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   const [automaticThumbnail, setAutomaticThumbnail] = useState(true), [replaceThumbnail, setReplaceThumbnail] = useState(false);
   const [thumbnailMessage, setThumbnailMessage] = useState("");
   const [library, setLibrary] = useState<ProjectLibrary>(parseProjectLibrary(null));
+  const [highlightedSavedId, setHighlightedSavedId] = useState<string | null>(null);
   const [libraryMessage, setLibraryMessage] = useState("");
   const [exampleMessage, setExampleMessage] = useState("");
   const [query, setQuery] = useState("");
@@ -88,8 +89,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   const [inspectionOpen, setInspectionOpen] = useState(false), [inspectedId, setInspectedId] = useState<string | null>(null);
   const [incoming, setIncoming] = useState<ReturnType<typeof previewProjectImport> | null>(null);
   const importSequence = useRef(0);
-  const compatibilityRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (incoming) compatibilityRef.current?.scrollIntoView({ block: "nearest" }); }, [incoming]);
+  useEffect(() => {
+    if (!highlightedSavedId) return;
+    const card = document.getElementById(`project-library-${highlightedSavedId}`);
+    card?.scrollIntoView({ block: "center" });
+    card?.focus({ preventScroll: true });
+  }, [highlightedSavedId]);
   const dependencies = useMemo(() => project && inspectionOpen ? inspectProjectDependencies(project, artifactAvailable) : null, [project, artifactAvailable, inspectionOpen]);
   // The explorer describes its captured Project snapshot; Refresh captures new bytes and generations.
   const analyses = useMemo(() => {
@@ -507,6 +512,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
         } } : {}) }), rollback, backupProject && backupResources ? { project: backupProject, resources: backupResources } : undefined));
       resourceSession.current = resources; resourceSessionId.current = prepared.project.identity.id;
       display(prepared.project, !openWorkspace);
+      setIncoming(null);
+      if (candidate.inputKind === "Independent starter project") setHighlightedSavedId(prepared.project.identity.id);
       if (openWorkspace) {
         const first = prepared.documents.find((document) => document.module === "graph2d") ?? prepared.documents[0]!; onNavigateDocument?.(first.id, first.module);
       }
@@ -551,6 +558,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       setMessage("Starter preview ready. Current work is unchanged until you choose to open it.");
     } catch (error) { setIncoming(null); setMessage(`Starter unavailable: ${(error as Error).message}`); }
   };
+  const openTemplate = async (id: Math3DProjectTemplateId) => {
+    importSequence.current++;
+    try {
+      const next = instantiateMath3DProjectTemplate(id, crypto.randomUUID());
+      const candidate = { ...inspectProjectCompatibility(next, transferOptions()), resources: undefined, inputKind: "Independent starter project" };
+      await importPreview(true, candidate);
+    } catch (error) { setMessage(`Starter unavailable: ${(error as Error).message}`); }
+  };
   const exportFile = async (checkpointOnly = false, withResources = false) => {
     if (!project) return;
     try {
@@ -582,12 +597,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     {open && <ProjectGalleryFrame quick={quick} onClose={() => onOpenChange(false)}>
       <header data-testid="project-explorer-header" className="project-gallery-header">
         <div className="project-gallery-heading"><div><p>MATH3D · PROJECTS</p><h2>{quick ? "Quick Projects" : "Projects Gallery"}</h2></div><div style={{ display:"flex",gap:8 }}><button data-testid="project-gallery-layout-toggle" onClick={() => setQuick(value => !value)}>{quick ? "Full gallery" : "Quick panel"}</button><button type="button" aria-label="Close project explorer" onClick={() => onOpenChange(false)}>Close</button></div></div>
-      <p data-testid="project-view-mode" role="status" style={{ padding: 8, background: "#eff6ff", borderRadius: 6 }}>{managed ? "Managing saved project" : preview ? "Saved project preview" : "Current workspace"} · {project?.metadata.title ?? "Untitled project"}</p>
-      <button type="button" data-testid="project-restore-saved" disabled={busy || !!managed || !project || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={previewSavedOpen}>Open saved project</button>
+        <div className="project-gallery-statusline"><p data-testid="project-view-mode" role="status">{managed ? "Managing saved project" : preview ? "Saved project preview" : "Current workspace"} · {project?.metadata.title ?? "Untitled project"}{project && library.entries.some((entry) => entry.id === project.identity.id) && <strong className="project-gallery-saved-badge">Saved in Your saved projects</strong>}</p>
+          <button type="button" data-testid="project-restore-saved" disabled={busy || !!managed || !project || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={previewSavedOpen}>Open saved project</button></div>
       {preview && !managed && <p data-testid="project-open-guidance" style={{ marginBottom: 0 }}>Open saved project, then choose Open project in the compatibility preview to enable document buttons.</p>}
       </header>
       <div className="project-gallery-layout">
 <section data-testid="project-library" className="project-gallery-library">
+        <ProjectTemplatesPanel onPreview={previewTemplate} onOpen={(id) => { void openTemplate(id); }} busy={busy} />
         <h3>Your saved projects ({library.entries.length})</h3><p>Favorites first, then recent. Open a project or preview its documents and compatibility.</p>
         <label>Find by name or tag<input data-testid="project-library-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search your projects" /></label>
         <div className="project-gallery-filters" aria-label="Project collection">{["All projects", "Favorites"].map(value => <button key={value} aria-pressed={collection === value} onClick={() => setCollection(value)}>{value}</button>)}</div>
@@ -596,8 +612,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
         {!!library.entries.length && !filteredProjects.length && <p>No projects match this search or collection.</p>}
         <div className="project-gallery-grid" data-testid="project-gallery-grid">{filteredProjects.map(entry => {
           const src = readProjectThumbnail(localStorage, entry), summary = summaries.get(entry.id)!;
-          return <article className="project-gallery-card" key={entry.id} data-testid={`project-library-${entry.id}`}>
-            <ProjectThumbnail key={src ?? "missing"} src={src} modules={summary.modules} />
+          const starter = MATH3D_PROJECT_TEMPLATES.find((item) => entry.tags.includes(item.id) || entry.title === item.title);
+          return <article id={`project-library-${entry.id}`} tabIndex={-1} className={`project-gallery-card${highlightedSavedId === entry.id ? " is-new" : ""}`} key={entry.id} data-testid={`project-library-${entry.id}`}>
+            {src || !starter ? <ProjectThumbnail key={src ?? "missing"} src={src} modules={summary.modules} />
+              : <div className="project-starter-art"><StarterArtwork id={starter.id} /></div>}
             <div className="project-gallery-card-content"><h4>{entry.title}</h4><p>{summary.description || `${summary.documents} document(s) · ${summary.results} saved result(s)`}</p>
               <span className="project-gallery-card-tags">{entry.tags.join(" · ")}</span>
               <div className="project-gallery-card-actions"><button type="button" data-testid={`project-open-saved-${entry.id}`} aria-label={`Open ${entry.title}`} disabled={busy} onClick={() => { void openLibraryProject(entry.id); }}>Open</button>
@@ -658,8 +676,6 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
           <small> · revision {item.revision}</small>
         </div>)}
       </section>
-      {incoming && <div ref={compatibilityRef}><ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !busy} onCancel={() => { importSequence.current++; setIncoming(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div>}
-      <ProjectTemplatesPanel onPreview={previewTemplate} />
       {project && <small data-testid="project-content-revision">{preview ? "Saved preview" : "Current workspace"} · project revision {project.identity.revision}</small>}
       {dependencies && <ProjectDependenciesPanel inspection={dependencies} selectedId={inspectedId} titles={documentTitles} onClose={() => setInspectionOpen(false)} onLocate={(id) => setInspectedId(id)}
         refreshOptions={managed && project ? projectDependencyRefreshOptions(project) : undefined} onRefresh={managed && !busy ? refreshDependency : undefined}
@@ -705,6 +721,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
         {!explorer.analysis.length && <small style={{ display: "block", marginTop: 4 }}>No saved results</small>}
       </section>}
       </div></div>
+      {incoming && <div className="project-gallery-preview-backdrop"><div className="project-gallery-preview-sheet"><ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !busy} onCancel={() => { importSequence.current++; setIncoming(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div></div>}
     </ProjectGalleryFrame>}
   </div>;
 };

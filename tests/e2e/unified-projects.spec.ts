@@ -430,7 +430,7 @@ test("PRJ07 previews independent scientific starters and opens their real docume
     await panel.getByTestId("project-template-preview").click();
     await expect(panel.getByTestId("project-import-preview")).toContainText("Derivative Study");
     await page.setViewportSize({ width: 390, height: 844 });
-    await panel.getByTestId("project-templates").screenshot({ path: test.info().outputPath("project-starter-phone.png") });
+    await page.screenshot({ path: test.info().outputPath("project-starter-phone.png") });
     const bounds = await panel.boundingBox(); expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
     await panel.getByTestId("project-import-cancel").click();
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id)).toBe(current.identity.id);

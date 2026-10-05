@@ -71,7 +71,7 @@ export const instantiateMath3DProjectTemplate = (id: string, instanceKey: string
       activeDocumentIds: [geometry.identity.id], constructions: [], results: [], relations: [], artifacts: [], committedSelection: null });
     let project = createMath3DProject(workspace, { stableKey: ["project-template", id, template.version, instanceKey], title: template.title });
     project = updateMath3DProjectMetadata(project, { ...project.metadata, description: template.description,
-      tags: ["starter", "geometry", "notes", `template-v${template.version}`], documents: { [geometry.identity.id]: { title: "Annotated solids" } } });
+      tags: ["starter", id, "geometry", "notes", `template-v${template.version}`], documents: { [geometry.identity.id]: { title: "Annotated solids" } } });
     for (const [objectId, title, body] of [
       ["box", "Box top", "This pin is on the box's top face. Move or rotate the box to see the anchor follow its transform."],
       ["sphere", "Sphere north pole", "This pin marks the sphere's north pole. Resize the sphere to see the Note become stale."],
