@@ -62,7 +62,7 @@ export const exerciseAdditionalEditors=async(page:Page,fixture:ReturnType<typeof
     await show();await panel.getByTestId(`project-open-${document.identity.id}`).click();if(await panel.isVisible())await page.getByRole("button",{name:"Close project explorer"}).click();
     await expect(editor).toHaveAttribute("data-document-id",document.identity.id);await expect(editor.getByTestId("project-source-measurement")).toContainText("bounds");
     await expectAdditionalPreview(page);
-    await editor.locator("summary").click();const source=JSON.parse(await editor.getByTestId("project-source-definition").inputValue());expect(source).toEqual(document.source);
+    await editor.getByTestId("project-source-json").locator("summary").click();const source=JSON.parse(await editor.getByTestId("project-source-definition").inputValue());expect(source).toEqual(document.source);
     const changed=JSON.parse(JSON.stringify(source));
     if(document.format==="math3d.topology-document")changed.model.vertexIds.push("extra");
     else if(document.format==="math3d.geometry-document")changed.geometry.points[1].x=6;
@@ -84,5 +84,5 @@ export const checkReopenedAdditionalHistory=async(page:Page,document:any)=>{
   const panel=page.getByTestId("project-explorer-panel");if(!await panel.isVisible())await page.getByTestId("projects-toggle").click();
   await panel.getByTestId(`project-open-${document.identity.id}`).click();if(await panel.isVisible())await page.getByRole("button",{name:"Close project explorer"}).click();
   const editor=page.getByTestId("project-source-editor");await expect(editor.getByTestId("project-source-undo")).toBeEnabled();
-  await editor.locator("summary").click();await editor.getByTestId("project-source-undo").click();expect(JSON.parse(await editor.getByTestId("project-source-definition").inputValue())).toEqual(document.source);await editor.getByTestId("project-source-redo").click();
+  await editor.getByTestId("project-source-json").locator("summary").click();await editor.getByTestId("project-source-undo").click();expect(JSON.parse(await editor.getByTestId("project-source-definition").inputValue())).toEqual(document.source);await editor.getByTestId("project-source-redo").click();
 };

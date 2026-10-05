@@ -31,6 +31,7 @@ describe("saved Surface to Mesh", () => {
     expect(Math.max(...originalPositions.filter((_, index) => index % 3 === 2))).toBe(2);
     expect(first.adapter.document().source.origin).toMatchObject({ units: { length: "m" } });
     adapter.commitSource(surfaceSourceFromEditor(surface.source, { ...seed, z: "2*u*v" }, seed));
+    expect(savedSurfaceMeshLinks(first.workspace, adapter.document(), new Map([[first.adapter.document().identity.id, first.adapter]]))[0].current).toBe(false);
     const current = adapter.document(), workspace = createMixedWorkspaceDocument({ ...first.workspace, entries: first.workspace.entries.map(entry => entry.expected.id === surface.identity.id ? { ...entry, checkpoint: current, expected: current.identity, replay: null } : entry) });
     const next = createSavedSurfaceMesh(workspace, current, { documents: new Map([[surface.identity.id, current]]) });
     expect(Math.max(...Array.from(next.adapter.mesh().positions).filter((_, index) => index % 3 === 2))).toBe(4);

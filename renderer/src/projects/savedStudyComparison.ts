@@ -33,7 +33,7 @@ export const savedStudyComparisonReport = (comparison: SavedStudyComparison) => 
   studies: [comparison.left, comparison.right].map((snapshot, side) => ({
     side: side === 0 ? "A" : "B", title: snapshot.choice.title,
     meshSource: snapshot.choice.meshGeneration ?? { documentId: snapshot.choice.id, revision: snapshot.choice.revision, structuralHash: snapshot.choice.structuralHash },
-    surfaceSource: snapshot.choice.surfaceGeneration ?? null, current: snapshot.choice.current,
+    surfaceSource: snapshot.choice.surfaceGeneration ?? null, studyRun: snapshot.choice.studyRun ?? null, current: snapshot.choice.current,
     samplingSize: snapshot.choice.samplingSize ?? null, sampling: snapshot.choice.sampling ?? null,
     vertexCount: snapshot.mesh.positions.length / 3, triangleCount: (snapshot.mesh.indices?.length ?? snapshot.mesh.positions.length / 3) / 3,
     interior: studyInteriorStatistics(snapshot), conventions: snapshot.report.conventions, savedResults: snapshot.choice.results,
@@ -50,7 +50,7 @@ export const savedStudyComparisonCsv = (comparison: SavedStudyComparison) => {
   const cell = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
   // Prefix text metadata starting with a formula character when opened in a spreadsheet.
   const text = (value: string) => /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
-  const rows: unknown[][] = [["side", "meshId", "meshRevision", "meshHash", "surfaceId", "surfaceRevision", "surfaceHash", "samplesPerAxis", "lengthUnits", "field", "scaleMin", "scaleMax", "vertex", "x", "y", "z", "K", "H", "normalX", "normalY", "normalZ", "valid", "interior", "warningMask"]];
-  for (const study of report.studies) for (const vertex of study.vertices) rows.push([study.side, text(study.meshSource.documentId), study.meshSource.revision, study.meshSource.structuralHash, study.surfaceSource?.documentId ?? "", study.surfaceSource?.revision ?? "", study.surfaceSource?.structuralHash ?? "", study.samplingSize, text(report.lengthUnits), report.field, report.sharedScale.min, report.sharedScale.max, vertex.index, ...vertex.coordinates, vertex.K, vertex.H, ...(vertex.normal ?? [null, null, null]), vertex.valid, vertex.interior, vertex.warningMask]);
+  const rows: unknown[][] = [["side", "studyName", "meshId", "meshRevision", "meshHash", "surfaceId", "surfaceRevision", "surfaceHash", "samplesPerAxis", "lengthUnits", "field", "scaleMin", "scaleMax", "vertex", "x", "y", "z", "K", "H", "normalX", "normalY", "normalZ", "valid", "interior", "warningMask"]];
+  for (const study of report.studies) for (const vertex of study.vertices) rows.push([study.side, text(study.title), text(study.meshSource.documentId), study.meshSource.revision, study.meshSource.structuralHash, study.surfaceSource?.documentId ?? "", study.surfaceSource?.revision ?? "", study.surfaceSource?.structuralHash ?? "", study.samplingSize, text(report.lengthUnits), report.field, report.sharedScale.min, report.sharedScale.max, vertex.index, ...vertex.coordinates, vertex.K, vertex.H, ...(vertex.normal ?? [null, null, null]), vertex.valid, vertex.interior, vertex.warningMask]);
   return "\uFEFF" + rows.map(row => row.map(cell).join(",")).join("\r\n") + "\r\n";
 };

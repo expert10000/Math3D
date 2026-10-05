@@ -26,7 +26,7 @@ export async function runNamedProjectRoundTrip(page: Page, exportJson: (checkpoi
   expect(before["math3d.project-library.v1"]).toBeDefined();
   expect(Object.keys(before).some((key) => key.startsWith("math3d.project.v1.payload."))).toBe(true);
   await panel.getByTestId("project-import-file").setInputFiles(upload);
-  await expect(panel.getByTestId("project-import-open")).toBeDisabled(); // Historical companions are retained, not silently regenerated.
+  await expect(panel.getByTestId("project-import-open")).toBeEnabled(); // Qualified native snapshots may open; their historical lineage is retained.
   await panel.getByTestId("project-import-save").click();
   await expect(panel.getByTestId("project-message")).toContainText("different saved version");
   expect(await projectStorage()).toEqual(before);

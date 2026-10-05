@@ -38,5 +38,10 @@ for (const title of ["Helicoid", "Enneper Study"]) test(`PRJ36–37 ${title} ana
     await workflow.getByTestId("project-analysis-studies").locator("summary").click();
     await workflow.getByTestId("project-analysis-study").selectOption("quality"); await workflow.getByTestId("project-analysis-run-study").click();
     await expect(workflow.getByTestId("project-saved-mesh-results")).toContainText("Saved analysis (3)");
+    await expect(workflow.getByTestId("project-study-source")).toContainText("Opens the current source r2");
+    await workflow.getByTestId("project-study-open-source").click();
+    if (title === "Helicoid") await expect(page.getByTestId("project-surface-z")).toHaveValue("0.5*u");
+    else await expect(page.getByTestId("project-surface-field-phi")).toHaveValue("2");
+    await expect(workflow.getByTestId("project-analysis-resolution")).toBeVisible();
   } finally { await closeSurfaceApp(ctx); }
 });

@@ -471,9 +471,9 @@ test("PRJ01/PRJ02 names and previews a project across restart and navigates live
     await expect(panel.getByTestId("project-title")).toHaveValue("Minimal Surface Study");
     await expect(panel.getByTestId("project-title")).toBeDisabled();
     await expect(panel.getByTestId("project-save")).toBeDisabled();
-    const buttons = panel.locator("button[data-testid^='project-open-']");
-    await expect(buttons).toHaveCount(originalIds.length);
-    for (let index = 0; index < originalIds.length; index++) await expect(buttons.nth(index)).toBeDisabled();
+    // Saved-card and analysis actions have their own project-open-* IDs. Verify
+    // the actual document buttons instead of conflating three action families.
+    for (const id of originalIds) await expect(panel.getByTestId(`project-open-${id}`)).toBeDisabled();
     const reopened = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(reopened).toEqual(saved);
     await panel.getByTestId("project-current").click();

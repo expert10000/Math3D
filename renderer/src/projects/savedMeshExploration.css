@@ -6,3 +6,20 @@
   position: static !important;
   margin: 8px 12px;
 }
+
+.saved-study-name { display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0; }
+.saved-study-name input { max-width:100%;width:240px; }
+.saved-study-sweep { margin:12px 0;max-width:900px; }
+.saved-study-sweep label { display:inline-flex;gap:6px;flex-wrap:wrap;margin:8px;max-width:100%; }
+.saved-study-sweep select { max-width:100%; }
+.saved-study-sweep table { width:100%;border-collapse:collapse;font-size:13px; }
+.saved-study-sweep td,.saved-study-sweep th { padding:8px;text-align:left;border-bottom:1px solid #cbd5e1; }
+
+/* Saved-study controls need document scrolling instead of squeezing the native
+   viewer to zero height on short windows or larger desktop font settings. */
+.math3d-app:has(> [data-testid="project-saved-mesh-workflow"]) { overflow-y:auto !important; }
+.math3d-app:has(> [data-testid="project-saved-mesh-workflow"]) > [data-testid="module-workspace"] {
+  flex:0 0 auto !important;
+  height:max(560px,60vh);
+  min-height:560px !important;
+}

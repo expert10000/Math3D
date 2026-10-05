@@ -30,7 +30,7 @@ export const AdditionalProjectEditor = ({ session, onChange, onClose, children }
       session.commit(source as unknown as import("@math3d/core").CanonicalJsonValue);
       setDraft(JSON.stringify(session.document().source, null, 2)); setError(null); setVersion(v => v + 1); onChange();
     }} />}
-    <details style={{ padding: "0 10px 10px" }}><summary>Edit source definition · Advanced JSON</summary>
+    <details data-testid="project-source-json" style={{ padding: "0 10px 10px" }}><summary>Edit source definition · Advanced JSON</summary>
       <textarea aria-label="Saved source definition" data-testid="project-source-definition" value={draft} onChange={(event) => setDraft(event.target.value)} rows={12} style={{ width: "100%", boxSizing: "border-box", font: "12px Consolas, monospace" }} />
       <button data-testid="project-source-apply" onClick={() => action(() => session.commit(JSON.parse(draft)))}>Apply source</button>
     </details>

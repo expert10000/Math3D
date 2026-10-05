@@ -118,6 +118,19 @@ export class MeshDocumentAdapter {
     return this.selection();
   }
 
+  /** A study name is persistent metadata; scientific generations remain unchanged. */
+  rename(label: string): MeshDocument {
+    const name = label.trim();
+    if (!name || name.length > 160) throw new TypeError("Study names must contain 1–160 characters.");
+    const previous = this.document().metadata.label;
+    if (previous !== name) this.#transact(
+      [{ type: MESH_COMMAND_TYPES.rename, payload: { label: name } }],
+      [{ type: MESH_COMMAND_TYPES.rename, payload: { label: previous } }],
+      { kind: "interactive", sourceId: "saved-study-name" }
+    );
+    return this.document();
+  }
+
   undo(): MeshDocument | null {
     const result = this.#kernel.undo();
     if (result.ok) this.#cursor = Math.max(0, this.#cursor - 1);

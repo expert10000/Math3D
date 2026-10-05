@@ -32,7 +32,7 @@ export const exerciseRepresentationStarters = async (page: Page) => {
       if (await panel.isVisible()) await page.getByRole("button", { name: "Close project explorer" }).click();
       await expect(editor).toHaveAttribute("data-document-id", entry.expected.id);
       await expect(editor.getByTestId("project-source-measurement")).toContainText("bounds");
-      if (await editor.locator("details").getAttribute("open") === null) await editor.locator("summary").click();
+      if (await editor.getByTestId("project-source-json").getAttribute("open") === null) await editor.getByTestId("project-source-json").locator("summary").click();
       expect(JSON.parse(await editor.getByTestId("project-source-definition").inputValue())).toEqual(entry.checkpoint.source);
     }
     await show(); await panel.getByTestId("project-save").click();
@@ -43,7 +43,7 @@ export const exerciseRepresentationStarters = async (page: Page) => {
     originalDocument = target.checkpoint;
     await panel.getByTestId(`project-open-${target.expected.id}`).click();
     if (await panel.isVisible()) await page.getByRole("button", { name: "Close project explorer" }).click();
-    if (await editor.locator("details").getAttribute("open") === null) await editor.locator("summary").click();
+    if (await editor.getByTestId("project-source-json").getAttribute("open") === null) await editor.getByTestId("project-source-json").locator("summary").click();
     const changed = JSON.parse(JSON.stringify(originalDocument.source));
     if (id === "spline-surface-lab") changed.definition.weights[1] = 3;
     else if (id === "curve-construction-study") changed.parameters.angle = Math.PI;
