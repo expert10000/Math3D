@@ -7,6 +7,7 @@ import type {
   SurfaceType,
 } from "@math3d/core";
 import type { NotebookReference } from "./notebookReferences";
+import type { WorkbookDependency } from "./workbookDependencies";
 
 export type WorkbookStageId = "define" | "compute" | "visualize" | "explain";
 export type WorkbookBlockType =
@@ -352,6 +353,7 @@ export type Workbook = {
   title: string;
   updatedAt: number;
   stages: WorkbookStage[];
+  dependencies?: WorkbookDependency[];
   geometryTask?: WorkbookGeometryTaskAssignment;
 };
 

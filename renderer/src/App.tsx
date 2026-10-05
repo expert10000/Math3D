@@ -1140,6 +1140,7 @@ import {
   WORKBOOK_PROBLEM_PACKS,
   type Workbook,
   type WorkbookBlock,
+  type WorkbookDependency,
   type WorkbookBlockType,
   type WorkbookStageId,
   type WorkbookViewSnapshot,
@@ -11082,6 +11083,7 @@ function migrateWorkbookReplayPayload(payload: WorkbookReplayPayload): WorkbookR
 function normalizeWorkbooks(raw: Workbook[]): Workbook[] {
   return raw.map((wb) => ({
     ...wb,
+    dependencies: wb.dependencies ?? [],
     stages: wb.stages.map((stage) => ({
       ...stage,
       blocks: stage.blocks.map((block) => {
@@ -54147,6 +54149,7 @@ case "mobius":
       if (IS_REPLAY_MODE) return;
       const base = workbooks.find((w) => w.id === id);
       if (!base) return;
+      const blockIds = new Map(base.stages.flatMap((stage) => stage.blocks).map((block) => [block.id, makeId()]));
       const copy: Workbook = {
         ...base,
         id: makeId(),
@@ -54154,7 +54157,15 @@ case "mobius":
         updatedAt: Date.now(),
         stages: base.stages.map((s) => ({
           ...s,
-          blocks: s.blocks.map((b) => ({ ...b, id: makeId() })),
+          blocks: s.blocks.map((b) => ({ ...b, id: blockIds.get(b.id)! })),
+        })),
+        dependencies: (base.dependencies ?? []).map((edge) => ({
+          ...edge,
+          id: makeId(),
+          targetBlockId: blockIds.get(edge.targetBlockId) ?? edge.targetBlockId,
+          source: edge.source.kind === "block"
+            ? { ...edge.source, blockId: blockIds.get(edge.source.blockId) ?? edge.source.blockId }
+            : edge.source,
         })),
       };
       setWorkbooks((prev) => [copy, ...prev]);
@@ -54247,6 +54258,13 @@ case "mobius":
     [activeWorkbookId, applyDefaultPorts]
   );
 
+  const handleChangeWorkbookDependencies = useCallback((dependencies: WorkbookDependency[]) => {
+    if (IS_REPLAY_MODE || !activeWorkbookId) return;
+    setWorkbooks((prev) => prev.map((workbook) => workbook.id === activeWorkbookId
+      ? { ...workbook, updatedAt: Date.now(), dependencies }
+      : workbook));
+  }, [activeWorkbookId]);
+
   const handleRemoveWorkbookBlock = useCallback(
     (stageId: WorkbookStageId, blockId: string) => {
       if (IS_REPLAY_MODE) return;
@@ -54261,6 +54279,8 @@ case "mobius":
                 stages: w.stages.map((s) =>
                   s.id === stageId ? { ...s, blocks: s.blocks.filter((b) => b.id !== blockId) } : s
                 ),
+                dependencies: (w.dependencies ?? []).filter((edge) => edge.targetBlockId !== blockId &&
+                  !(edge.source.kind === "block" && edge.source.blockId === blockId)),
               }
             : w
         )
@@ -90033,6 +90053,7 @@ case "mobius":
                       onSelectStage={setActiveStageId}
                       onAddBlock={handleAddWorkbookBlock}
                       onUpdateBlock={handleUpdateWorkbookBlock}
+                      onChangeDependencies={handleChangeWorkbookDependencies}
                       onRemoveBlock={handleRemoveWorkbookBlock}
                       onMoveBlock={handleMoveWorkbookBlock}
                       onToggleBlockEnabled={handleToggleWorkbookBlockEnabled}

@@ -3,6 +3,7 @@ import type { KernelWorkspaceModule } from "@math3d/core";
 import type { NotebookReference } from "@math3d/workbook";
 import type { NotebookProjectContext } from "../workbook/notebookProjectContext";
 import { WorkbookProjectReferenceCell } from "./WorkbookProjectReferenceCell";
+import { WorkbookDependencies } from "./WorkbookDependencies";
 import { uiStyles as styles } from "../uiStyles";
 import type {
   Workbook,
@@ -17,6 +18,7 @@ import type {
   WorkbookTemplateSpec,
   WorkbookProblemPack,
   WorkbookGeometryTaskSpec,
+  WorkbookDependency,
 } from "@math3d/workbook";
 import { WORKBOOK_STAGE_ORDER, WORKBOOK_OPERATOR_CATALOG } from "@math3d/workbook";
 import { bakeGraphSurface, bakeParamSurface, bakeWeierstrassSurface } from "../math/bakeSurface";
@@ -43,6 +45,7 @@ type WorkbookPanelProps = {
   onSelectStage: (id: WorkbookStageId) => void;
   onAddBlock: (stageId: WorkbookStageId, type: WorkbookBlockType) => void;
   onUpdateBlock: (stageId: WorkbookStageId, blockId: string, patch: Partial<WorkbookBlock>) => void;
+  onChangeDependencies: (dependencies: WorkbookDependency[]) => void;
   getNotebookProject: () => NotebookProjectContext | null;
   onOpenNotebookDocument: (id: string, module: KernelWorkspaceModule) => void;
   onOpenProjects: () => void;
@@ -480,6 +483,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onSelectStage,
   onAddBlock,
   onUpdateBlock,
+  onChangeDependencies,
   getNotebookProject,
   onOpenNotebookDocument,
   onOpenProjects,
@@ -1773,6 +1777,9 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                   onOpenProjects={onOpenProjects}
                 />
               )}
+
+              {activeWorkbook && <WorkbookDependencies workbook={activeWorkbook} blockId={block.id} readOnly={readOnly}
+                getProject={getNotebookProject} onChange={onChangeDependencies} />}
 
               {block.type === "visualize" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

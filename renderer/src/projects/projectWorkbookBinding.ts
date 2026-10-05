@@ -1,6 +1,6 @@
 import { canonicalJsonStringify, createStableDocumentId, MAX_PROJECT_WORKBOOK_BYTES, sha256Checksum,
   type Math3DProject, type ProjectWorkbookReference } from "@math3d/core";
-import { WORKBOOK_STAGE_ORDER, type Workbook } from "@math3d/workbook";
+import { WORKBOOK_STAGE_ORDER, validateWorkbookDependencies, type Workbook } from "@math3d/workbook";
 
 const validateWorkbook = (value: Workbook): void => {
   if (!value || typeof value.id !== "string" || !value.id || typeof value.title !== "string" ||
@@ -16,6 +16,7 @@ const validateWorkbook = (value: Workbook): void => {
       ids.add(block.id);
     }
   }
+  validateWorkbookDependencies(value);
 };
 
 /** Adoption creates a Project copy; subsequent saves of that copy advance its resource revision. */
