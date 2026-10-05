@@ -59,6 +59,8 @@ The target user journey is **explore → capture a Note on a selection/result �
 
 `NTS05` adds Off, Pins, Labels and All display modes to the Geometry viewer. Current object-local Note anchors in the active Project are placed with the live object's scale, rotation and translation. The viewer omits stale, missing, hidden and unsupported anchors; those Notes remain available in the Notes sidebar. Face, edge, vertex, Graph and Curve placement waits for precise coordinate contracts.
 
+**NTS05 delivery, October 6:** Geometry object-local pins and display modes are implemented (`357721b`). The **Geometry Notes and Pins** starter Project supplies a box and sphere with two anchored Notes (`abdcaf3`); its card opens an independent saved Project directly from the Projects Gallery (`d31907f`). A Fast viewport correction keeps the pins and readable labels visible and redraws immediately when the display mode changes (`5e7b990`). The three Project Notes desktop journeys, including an Off/All viewport pixel comparison in Fast mode, pass. Face, edge, vertex, Graph and Curve pin placement remains planned until their coordinate contracts are defined.
+
 ## First milestone acceptance
 
 Use the existing Minimal Surface Study. Create a Note on its Graph or Surface, attach another to a saved numerical result, add one Note to a Workbook, and view Graph → Curve → Surface → Analysis in Document view. Edit the Graph: the Note anchor and affected Workbook path must show the correct freshness without changing unrelated blocks. Save/reopen on desktop and web, then inspect the same IDs and explanations. The test must not call a numerical shortest-edge path a continuous geodesic or present numerical curvature as a proof of minimality.

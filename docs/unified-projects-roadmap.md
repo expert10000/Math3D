@@ -1155,6 +1155,13 @@ Surface; they do not roll it back. Missing parents or unavailable lineage have a
 explicit reason. Guidance locates **Analysis resolution** on the Surface. Study
 controls scroll vertically while reserving native viewport height.
 
+October 6 usability follow-up: starter Projects appear as named cards with
+artwork and separate **Open** and **Preview** actions (`d31907f`). **Open** creates
+an independent saved Project and switches to its workspace; **Preview** shows
+the import contents first. The Geometry Notes and Pins starter also provides
+two visible object-local Note anchors in the Geometry viewer (`abdcaf3`,
+`5e7b990`).
+
 ### PRJ46 persistent saved study names — October 5
 
 Delivered on desktop: **Study name → Save study name** gives a saved Mesh run a
