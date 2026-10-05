@@ -1,0 +1,720 @@
+{
+  "scope": "Electron desktop, offline bundled collection; fresh-profile transfer and cold restart",
+  "projects": [
+    {
+      "id": "math3d:project:6618e37f7e8535ebff95d5198758238f",
+      "title": "PRJ30 Graph Curve Surface Study (Samsung)",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:graph2d:d79b5d7eca7a0deb53fd4e61b35f23de",
+          "route": "graph-tools",
+          "reason": ""
+        },
+        {
+          "id": "math3d:mesh:c18802685b285e0b03af76f5174d60c9",
+          "route": "mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:mesh:9579fa77eb415f2f93157ba958ca8b09",
+          "route": "mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:volume:7b0518f14790e1e595229370eafea470",
+          "route": "volume",
+          "reason": ""
+        },
+        {
+          "id": "math3d:volume:3001bde79aebca0243a909227437c01f",
+          "route": "volume",
+          "reason": ""
+        },
+        {
+          "id": "math3d:curve:456bfb9935974cd1e64c5c4add46f576",
+          "route": "unavailable",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:surface:ca1a4c0bbbd64e2aeeec148042e0b6d4",
+          "route": "surface-mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:surface:9b8159f8a9df2ccef35013d8c52277d1",
+          "route": "surface-mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:geometry:c25243c629ab8edfb4430a0c47d6b03d",
+          "route": "unavailable",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:topology:751c1c6aa28feec80beefdc5e5705455",
+          "route": "unavailable",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:topology:cfc5f5e743a30098ca90c5aeff35a574",
+          "route": "unavailable",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:curve:a760cbbb0cf0eea227967de6238a90d0",
+          "route": "unavailable",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:surface:9de30b639cf092d27b919834eadb9946",
+          "route": "surface-mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:surface:59cdf6e079f9da4bedaa15d2e99a4d1a",
+          "route": "surface-mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:surface:c62b66edb1a7b61f80a49acdc19dfedb",
+          "route": "surface",
+          "reason": ""
+        },
+        {
+          "id": "math3d:curve:f44c894bc744555d2dc40e665fa0b8a9",
+          "route": "unavailable",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:complex:66e95acc94ad643b9d5020310ea362c5",
+          "route": "complex",
+          "reason": ""
+        },
+        {
+          "id": "math3d:graph2d:3f7bde5a0499641b2a98864b3f34532a",
+          "route": "graph-tools",
+          "reason": ""
+        },
+        {
+          "id": "math3d:curve:41f11685d3f2349a0f86c4082b2504b0",
+          "route": "curve",
+          "reason": ""
+        },
+        {
+          "id": "math3d:curve:c523edd3c02d188779570fef081c9f80",
+          "route": "curve",
+          "reason": ""
+        },
+        {
+          "id": "math3d:surface:643dd487040e2c38765d07d527a856fd",
+          "route": "surface",
+          "reason": ""
+        },
+        {
+          "id": "math3d:surface:3f9c0c13187a0f73f915fb22410f15a5",
+          "route": "surface-mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:surface:5dae6eacce7e1ee311ecbcbec8dfd381",
+          "route": "surface-mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:surface:d028b7822cf43e0ddc61510eb9fe33e9",
+          "route": "surface-mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:surface:e171e67f1cf367af612ee52408995ab5",
+          "route": "surface-mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:surface:b531ad88c3f08b84546f7fcf6894e9bc",
+          "route": "surface-mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:surface:3b5618809d5e6d94bbceb82027765556",
+          "route": "surface-mesh",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:bf97fe908a4dd4aa526d66a428334723",
+      "title": "PRJ27 Graph Curve Study",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:graph2d:d79b5d7eca7a0deb53fd4e61b35f23de",
+          "route": "graph-tools",
+          "reason": ""
+        },
+        {
+          "id": "math3d:mesh:c18802685b285e0b03af76f5174d60c9",
+          "route": "mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:mesh:9579fa77eb415f2f93157ba958ca8b09",
+          "route": "mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:volume:7b0518f14790e1e595229370eafea470",
+          "route": "volume",
+          "reason": ""
+        },
+        {
+          "id": "math3d:volume:3001bde79aebca0243a909227437c01f",
+          "route": "volume",
+          "reason": ""
+        },
+        {
+          "id": "math3d:curve:456bfb9935974cd1e64c5c4add46f576",
+          "route": "unavailable",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:surface:ca1a4c0bbbd64e2aeeec148042e0b6d4",
+          "route": "surface-mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:surface:9b8159f8a9df2ccef35013d8c52277d1",
+          "route": "surface-mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:geometry:c25243c629ab8edfb4430a0c47d6b03d",
+          "route": "unavailable",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:topology:751c1c6aa28feec80beefdc5e5705455",
+          "route": "unavailable",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:topology:cfc5f5e743a30098ca90c5aeff35a574",
+          "route": "unavailable",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:curve:a760cbbb0cf0eea227967de6238a90d0",
+          "route": "unavailable",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:surface:9de30b639cf092d27b919834eadb9946",
+          "route": "surface-mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:surface:59cdf6e079f9da4bedaa15d2e99a4d1a",
+          "route": "surface-mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:surface:c62b66edb1a7b61f80a49acdc19dfedb",
+          "route": "surface",
+          "reason": ""
+        },
+        {
+          "id": "math3d:curve:f44c894bc744555d2dc40e665fa0b8a9",
+          "route": "unavailable",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:complex:66e95acc94ad643b9d5020310ea362c5",
+          "route": "complex",
+          "reason": ""
+        },
+        {
+          "id": "math3d:graph2d:3f7bde5a0499641b2a98864b3f34532a",
+          "route": "graph-tools",
+          "reason": ""
+        },
+        {
+          "id": "math3d:curve:41f11685d3f2349a0f86c4082b2504b0",
+          "route": "curve",
+          "reason": ""
+        },
+        {
+          "id": "math3d:curve:c523edd3c02d188779570fef081c9f80",
+          "route": "curve",
+          "reason": ""
+        },
+        {
+          "id": "math3d:curve:c88e5b8db72e525e1072d034f951bb93",
+          "route": "curve",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:ac0a5c6416ff7098eb018f81177ea2dc",
+      "title": "PRJ24 Mixed Resource Study",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:graph2d:d79b5d7eca7a0deb53fd4e61b35f23de",
+          "route": "graph-tools",
+          "reason": ""
+        },
+        {
+          "id": "math3d:mesh:c18802685b285e0b03af76f5174d60c9",
+          "route": "mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:mesh:9579fa77eb415f2f93157ba958ca8b09",
+          "route": "mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:volume:7b0518f14790e1e595229370eafea470",
+          "route": "volume",
+          "reason": ""
+        },
+        {
+          "id": "math3d:volume:3001bde79aebca0243a909227437c01f",
+          "route": "volume",
+          "reason": ""
+        },
+        {
+          "id": "math3d:curve:456bfb9935974cd1e64c5c4add46f576",
+          "route": "unavailable",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:surface:ca1a4c0bbbd64e2aeeec148042e0b6d4",
+          "route": "surface-mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:surface:9b8159f8a9df2ccef35013d8c52277d1",
+          "route": "surface-mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:geometry:c25243c629ab8edfb4430a0c47d6b03d",
+          "route": "unavailable",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:topology:751c1c6aa28feec80beefdc5e5705455",
+          "route": "unavailable",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:topology:cfc5f5e743a30098ca90c5aeff35a574",
+          "route": "unavailable",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:curve:a760cbbb0cf0eea227967de6238a90d0",
+          "route": "unavailable",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:surface:9de30b639cf092d27b919834eadb9946",
+          "route": "surface-mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:surface:59cdf6e079f9da4bedaa15d2e99a4d1a",
+          "route": "surface-mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:surface:c62b66edb1a7b61f80a49acdc19dfedb",
+          "route": "surface",
+          "reason": ""
+        },
+        {
+          "id": "math3d:curve:f44c894bc744555d2dc40e665fa0b8a9",
+          "route": "unavailable",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:complex:66e95acc94ad643b9d5020310ea362c5",
+          "route": "complex",
+          "reason": ""
+        },
+        {
+          "id": "math3d:graph2d:3f7bde5a0499641b2a98864b3f34532a",
+          "route": "graph-tools",
+          "reason": ""
+        },
+        {
+          "id": "math3d:curve:41f11685d3f2349a0f86c4082b2504b0",
+          "route": "curve",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:895017800e716a07314639561bb05b1f",
+      "title": "PRJ17-Minimal-Study",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:graph2d:7cd26de9f049bbc7c3fec933275ebbf7",
+          "route": "graph-tools",
+          "reason": ""
+        },
+        {
+          "id": "math3d:curve:cbe4f454d241529b91419d6cf0e64080",
+          "route": "curve",
+          "reason": ""
+        },
+        {
+          "id": "math3d:surface:ab0aead92e741cc9af61b77ca2148b15",
+          "route": "surface-mesh",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:8cd452785d859252492beff411ce6aca",
+      "title": "PRJ21 Mixed Preview",
+      "previewOnly": true,
+      "routes": [],
+      "opened": false,
+      "saved": false,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:738af83b6709291a24df213a32585d8a",
+      "title": "Beating waves",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:graph2d:557ab3ef699ffc478591b02a7a82b5d6",
+          "route": "graph-tools",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:2ca48ed16c3b4867a4eb57b6e1b851ea",
+      "title": "Beating waves",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:graph2d:8d3fd28498ed3e1162cfb73b4d9a5974",
+          "route": "graph-tools",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:2f64a27897db0c3a71bff87a05e2bb98",
+      "title": "Catenoid",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:surface:b43d572316a47657993431828e1df1ca",
+          "route": "surface",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:d50d21470388ea9aac7c3a95bbd4ea61",
+      "title": "Two slopes import 2",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:graph2d:1a0a9352a90994d01b44f0b667d903a3",
+          "route": "graph-tools",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:34b336881e02359f3bcb7c196b27ee02",
+      "title": "Two slopes",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:graph2d:c9776e09ebe21f65f444438a80e5a5c8",
+          "route": "graph-tools",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:2d526088ad228dce608032118b5c95b3",
+      "title": "Endpoints and missing data",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:graph2d:598365e53a7946f2104aa2c335d1a99d",
+          "route": "graph-tools",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:3771ef6333f210dae19ddb6e92e096b2",
+      "title": "Beating waves",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:graph2d:88ff073d1ad40c3801c980f5fe338d8c",
+          "route": "graph-tools",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:26ab9291c8280eb1a1dc7a6ea2d48f03",
+      "title": "Inside, excluding the boundary",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:graph2d:607a945c01901a64a3c2822d371a300e",
+          "route": "graph-tools",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:fe1b6fe29bac1ccc9dd395aaa017169c",
+      "title": "Implicit conics",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:graph2d:696b8b386be4fde3badafa586e86b50d",
+          "route": "graph-tools",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:dc177ac60811d326f774c6cc39e67add",
+      "title": "A three-petal rose",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:graph2d:7605cfdd2902f8605af9c0cefdef3bc3",
+          "route": "graph-tools",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:d5c339b4224ef5af2b5c72ae8d91084e",
+      "title": "Lissajous loops",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:graph2d:ef7f466122f89115c80f652084751e0a",
+          "route": "graph-tools",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:95ce6b39fb7cc158f939e65c5a03e2c3",
+      "title": "Two slopes import 1",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:graph2d:a161acc895f5f4efb21237c6bac1c4de",
+          "route": "graph-tools",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:a75b6f696cbb9bef963e6770b1f7dc5b",
+      "title": "Enneper Study import",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:surface:5e637c3b813b3be260ca0f8f8e64aede",
+          "route": "surface-mesh",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:36c1f8e44e2886c7ff3519ca376d5e99",
+      "title": "G13-USB-20260928",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:graph2d:59618fb78e569342fcee97f61d389325",
+          "route": "graph-tools",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:12af744cfba5be98ad6992403046d40f",
+      "title": "Enneper Study",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:surface:e1162e717b9332a1f78af23c8584f15c",
+          "route": "surface-mesh",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:00b1a5b37541814e54f4ef8edef2ba9e",
+      "title": "Catenoid",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:surface:dd410c99edade10f84dbdaacfcc20b9c",
+          "route": "surface",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:2ae98bd32da5a597c670d2f2904c0745",
+      "title": "Helicoid",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:surface:e226551769cc19d17e1e768ca43ce2e9",
+          "route": "surface",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:afad3afe9cd0fe8171c3fccf08f20994",
+      "title": "Implicit Sphere",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:surface:98849afbfb25af90f4c397b3bb8ed87e",
+          "route": "surface-mesh",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:9ce0f8a6232440ebc428d2217deb521b",
+      "title": "Helicoid",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:surface:9cc61c4c469475da01f185b621c1a29e",
+          "route": "surface",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    },
+    {
+      "id": "math3d:project:11bc59de20402b1a6fd6c1c10fb46fec",
+      "title": "Parametric Lab",
+      "previewOnly": false,
+      "routes": [
+        {
+          "id": "math3d:surface:da92a6b72ffa4139892e3df275a4aec2",
+          "route": "surface-mesh",
+          "reason": ""
+        },
+        {
+          "id": "math3d:surface:a83f488f0b5a4bee85f23d673709fcd1",
+          "route": "surface",
+          "reason": ""
+        }
+      ],
+      "opened": true,
+      "saved": true,
+      "exported": true
+    }
+  ],
+  "analysisRoutesOpened": [
+    "graph-tools",
+    "mesh",
+    "curve",
+    "volume",
+    "complex",
+    "surface",
+    "surface-mesh"
+  ],
+  "transferred": 25,
+  "retainedAfterRestart": 25
+}

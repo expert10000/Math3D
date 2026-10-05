@@ -949,3 +949,35 @@ repeat-result preservation and endpoint rejection. Electron checks in
 Helicoid and saved-source Enneper editors, invalid endpoints, formula edits,
 historical outputs and the opened Mesh. Curvature is a discrete Mesh estimate;
 shortest edge paths do not certify continuous geodesics or analytic minimality.
+
+### PRJ38 desktop collection analysis acceptance — October 5
+
+Delivered: the full bundled Samsung collection now has desktop acceptance for
+analysis availability, navigation, saved studies and portable project retention.
+All 25 projects and 108 original documents are audited. Twenty-four projects
+qualify for opening; PRJ21 Mixed Preview stays a preview with blocked workspace
+and analysis actions. Each unavailable document retains an explicit reason.
+
+The model acceptance in `renderer/src/projects/projectCollectionAcceptance.test.ts`
+runs 76 saved Mesh quality/curvature operations across qualified Surface and Mesh
+sources. It also checks custom Graph or Surface edits, undo/redo, a known custom
+Graph derivative, exact result provenance, historical result retention, library
+reload and verified resource package round-trips. Original fixtures, results and
+resource bytes remain intact.
+
+The offline Electron acceptance in `tests/e2e/project-analysis-collection.spec.ts`
+checks every document's analysis button, opens Graph, Curve, native Surface,
+sampled Surface, Mesh, Volume and Complex analysis routes, and runs saved Surface
+curvature studies. It saves the openable projects, exports all 25, imports them
+into a separate fresh library and verifies exact saved payloads after a cold
+restart. Saved Enneper curvature remains accessible, including at a 390-pixel
+viewport. The checks exposed a Volume navigation issue: **Open Analysis** now
+preserves the workspace panel and selects that exact Volume's Analysis category.
+
+The two guided-study scenarios and the native/saved-source Surface regression
+scenarios cover all three presets, custom edits and historical outputs. Targeted
+model tests, TypeScript checks and the renderer build pass. The
+[desktop acceptance evidence](evidence/projects-prj36-38-desktop-2026-10-05/README.md)
+separates model checks from actual UI execution. This completes PRJ36–PRJ38 on
+desktop; it does not qualify new Android/iOS builds or every operation in every
+mathematical module.

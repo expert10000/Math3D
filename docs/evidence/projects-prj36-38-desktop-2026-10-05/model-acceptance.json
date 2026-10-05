@@ -1,0 +1,532 @@
+{
+  "scope": "Desktop model acceptance; UI acceptance is separate",
+  "projects": [
+    {
+      "id": "math3d:project:6618e37f7e8535ebff95d5198758238f",
+      "title": "PRJ30 Graph Curve Surface Study (Samsung)",
+      "openable": true,
+      "documents": 27,
+      "analysisRoutes": 21,
+      "unavailable": [
+        {
+          "id": "math3d:curve:456bfb9935974cd1e64c5c4add46f576",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:geometry:c25243c629ab8edfb4430a0c47d6b03d",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:topology:751c1c6aa28feec80beefdc5e5705455",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:topology:cfc5f5e743a30098ca90c5aeff35a574",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:curve:a760cbbb0cf0eea227967de6238a90d0",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:curve:f44c894bc744555d2dc40e665fa0b8a9",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        }
+      ],
+      "exercised": [
+        "custom Graph create/undo/redo and derivative",
+        "mesh:math3d:mesh:c18802685b285e0b03af76f5174d60c9:quality/curvature",
+        "mesh:math3d:mesh:9579fa77eb415f2f93157ba958ca8b09:quality/curvature",
+        "surface:math3d:surface:ca1a4c0bbbd64e2aeeec148042e0b6d4:quality/curvature",
+        "surface:math3d:surface:9b8159f8a9df2ccef35013d8c52277d1:quality/curvature",
+        "surface:math3d:surface:9de30b639cf092d27b919834eadb9946:quality/curvature",
+        "surface:math3d:surface:59cdf6e079f9da4bedaa15d2e99a4d1a:quality/curvature",
+        "surface:math3d:surface:c62b66edb1a7b61f80a49acdc19dfedb:quality/curvature",
+        "surface:math3d:surface:643dd487040e2c38765d07d527a856fd:quality/curvature",
+        "surface:math3d:surface:3f9c0c13187a0f73f915fb22410f15a5:quality/curvature",
+        "surface:math3d:surface:5dae6eacce7e1ee311ecbcbec8dfd381:quality/curvature",
+        "surface:math3d:surface:d028b7822cf43e0ddc61510eb9fe33e9:quality/curvature",
+        "surface:math3d:surface:e171e67f1cf367af612ee52408995ab5:quality/curvature",
+        "surface:math3d:surface:b531ad88c3f08b84546f7fcf6894e9bc:quality/curvature",
+        "surface:math3d:surface:3b5618809d5e6d94bbceb82027765556:quality/curvature"
+      ],
+      "sourceResources": 5,
+      "portableResources": 17,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:bf97fe908a4dd4aa526d66a428334723",
+      "title": "PRJ27 Graph Curve Study",
+      "openable": true,
+      "documents": 21,
+      "analysisRoutes": 15,
+      "unavailable": [
+        {
+          "id": "math3d:curve:456bfb9935974cd1e64c5c4add46f576",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:geometry:c25243c629ab8edfb4430a0c47d6b03d",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:topology:751c1c6aa28feec80beefdc5e5705455",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:topology:cfc5f5e743a30098ca90c5aeff35a574",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:curve:a760cbbb0cf0eea227967de6238a90d0",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:curve:f44c894bc744555d2dc40e665fa0b8a9",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        }
+      ],
+      "exercised": [
+        "custom Graph create/undo/redo and derivative",
+        "mesh:math3d:mesh:c18802685b285e0b03af76f5174d60c9:quality/curvature",
+        "mesh:math3d:mesh:9579fa77eb415f2f93157ba958ca8b09:quality/curvature",
+        "surface:math3d:surface:ca1a4c0bbbd64e2aeeec148042e0b6d4:quality/curvature",
+        "surface:math3d:surface:9b8159f8a9df2ccef35013d8c52277d1:quality/curvature",
+        "surface:math3d:surface:9de30b639cf092d27b919834eadb9946:quality/curvature",
+        "surface:math3d:surface:59cdf6e079f9da4bedaa15d2e99a4d1a:quality/curvature",
+        "surface:math3d:surface:c62b66edb1a7b61f80a49acdc19dfedb:quality/curvature"
+      ],
+      "sourceResources": 5,
+      "portableResources": 10,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:ac0a5c6416ff7098eb018f81177ea2dc",
+      "title": "PRJ24 Mixed Resource Study",
+      "openable": true,
+      "documents": 19,
+      "analysisRoutes": 13,
+      "unavailable": [
+        {
+          "id": "math3d:curve:456bfb9935974cd1e64c5c4add46f576",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:geometry:c25243c629ab8edfb4430a0c47d6b03d",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:topology:751c1c6aa28feec80beefdc5e5705455",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:topology:cfc5f5e743a30098ca90c5aeff35a574",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:curve:a760cbbb0cf0eea227967de6238a90d0",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:curve:f44c894bc744555d2dc40e665fa0b8a9",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        }
+      ],
+      "exercised": [
+        "custom Graph create/undo/redo and derivative",
+        "mesh:math3d:mesh:c18802685b285e0b03af76f5174d60c9:quality/curvature",
+        "mesh:math3d:mesh:9579fa77eb415f2f93157ba958ca8b09:quality/curvature",
+        "surface:math3d:surface:ca1a4c0bbbd64e2aeeec148042e0b6d4:quality/curvature",
+        "surface:math3d:surface:9b8159f8a9df2ccef35013d8c52277d1:quality/curvature",
+        "surface:math3d:surface:9de30b639cf092d27b919834eadb9946:quality/curvature",
+        "surface:math3d:surface:59cdf6e079f9da4bedaa15d2e99a4d1a:quality/curvature",
+        "surface:math3d:surface:c62b66edb1a7b61f80a49acdc19dfedb:quality/curvature"
+      ],
+      "sourceResources": 5,
+      "portableResources": 10,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:895017800e716a07314639561bb05b1f",
+      "title": "PRJ17-Minimal-Study",
+      "openable": true,
+      "documents": 3,
+      "analysisRoutes": 3,
+      "unavailable": [],
+      "exercised": [
+        "custom Graph create/undo/redo and derivative",
+        "surface:math3d:surface:ab0aead92e741cc9af61b77ca2148b15:quality/curvature"
+      ],
+      "sourceResources": 0,
+      "portableResources": 1,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:8cd452785d859252492beff411ce6aca",
+      "title": "PRJ21 Mixed Preview",
+      "openable": false,
+      "documents": 17,
+      "analysisRoutes": 7,
+      "unavailable": [
+        {
+          "id": "math3d:mesh:c18802685b285e0b03af76f5174d60c9",
+          "reason": "Verified Mesh source buffers are unavailable. Import the project with source resources."
+        },
+        {
+          "id": "math3d:mesh:9579fa77eb415f2f93157ba958ca8b09",
+          "reason": "Verified Mesh source buffers are unavailable. Import the project with source resources."
+        },
+        {
+          "id": "math3d:volume:7b0518f14790e1e595229370eafea470",
+          "reason": "This saved representation has preview support; its analysis editor cannot be restored."
+        },
+        {
+          "id": "math3d:volume:3001bde79aebca0243a909227437c01f",
+          "reason": "This saved representation has preview support; its analysis editor cannot be restored."
+        },
+        {
+          "id": "math3d:curve:456bfb9935974cd1e64c5c4add46f576",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:geometry:c25243c629ab8edfb4430a0c47d6b03d",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:topology:751c1c6aa28feec80beefdc5e5705455",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:topology:cfc5f5e743a30098ca90c5aeff35a574",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:curve:a760cbbb0cf0eea227967de6238a90d0",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        },
+        {
+          "id": "math3d:curve:f44c894bc744555d2dc40e665fa0b8a9",
+          "reason": "This representation has no qualified linked analysis entry point yet. Existing saved results remain available below."
+        }
+      ],
+      "exercised": [],
+      "sourceResources": 1,
+      "portableResources": 1,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:738af83b6709291a24df213a32585d8a",
+      "title": "Beating waves",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "custom Graph create/undo/redo and derivative"
+      ],
+      "sourceResources": 0,
+      "portableResources": 0,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:2ca48ed16c3b4867a4eb57b6e1b851ea",
+      "title": "Beating waves",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "custom Graph create/undo/redo and derivative"
+      ],
+      "sourceResources": 0,
+      "portableResources": 0,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:2f64a27897db0c3a71bff87a05e2bb98",
+      "title": "Catenoid",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "surface:math3d:surface:b43d572316a47657993431828e1df1ca:quality/curvature",
+        "custom Surface edit/undo/redo; retained historical analysis"
+      ],
+      "sourceResources": 0,
+      "portableResources": 1,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:d50d21470388ea9aac7c3a95bbd4ea61",
+      "title": "Two slopes import 2",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "custom Graph create/undo/redo and derivative"
+      ],
+      "sourceResources": 0,
+      "portableResources": 0,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:34b336881e02359f3bcb7c196b27ee02",
+      "title": "Two slopes",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "custom Graph create/undo/redo and derivative"
+      ],
+      "sourceResources": 0,
+      "portableResources": 0,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:2d526088ad228dce608032118b5c95b3",
+      "title": "Endpoints and missing data",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "custom Graph create/undo/redo and derivative"
+      ],
+      "sourceResources": 1,
+      "portableResources": 1,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:3771ef6333f210dae19ddb6e92e096b2",
+      "title": "Beating waves",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "custom Graph create/undo/redo and derivative"
+      ],
+      "sourceResources": 0,
+      "portableResources": 0,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:26ab9291c8280eb1a1dc7a6ea2d48f03",
+      "title": "Inside, excluding the boundary",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "custom Graph create/undo/redo and derivative"
+      ],
+      "sourceResources": 0,
+      "portableResources": 0,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:fe1b6fe29bac1ccc9dd395aaa017169c",
+      "title": "Implicit conics",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "custom Graph create/undo/redo and derivative"
+      ],
+      "sourceResources": 0,
+      "portableResources": 0,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:dc177ac60811d326f774c6cc39e67add",
+      "title": "A three-petal rose",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "custom Graph create/undo/redo and derivative"
+      ],
+      "sourceResources": 0,
+      "portableResources": 0,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:d5c339b4224ef5af2b5c72ae8d91084e",
+      "title": "Lissajous loops",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "custom Graph create/undo/redo and derivative"
+      ],
+      "sourceResources": 0,
+      "portableResources": 0,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:95ce6b39fb7cc158f939e65c5a03e2c3",
+      "title": "Two slopes import 1",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "custom Graph create/undo/redo and derivative"
+      ],
+      "sourceResources": 0,
+      "portableResources": 0,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:a75b6f696cbb9bef963e6770b1f7dc5b",
+      "title": "Enneper Study import",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "surface:math3d:surface:5e637c3b813b3be260ca0f8f8e64aede:quality/curvature",
+        "custom Surface edit/undo/redo; retained historical analysis"
+      ],
+      "sourceResources": 0,
+      "portableResources": 1,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:36c1f8e44e2886c7ff3519ca376d5e99",
+      "title": "G13-USB-20260928",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "custom Graph create/undo/redo and derivative"
+      ],
+      "sourceResources": 0,
+      "portableResources": 0,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:12af744cfba5be98ad6992403046d40f",
+      "title": "Enneper Study",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "surface:math3d:surface:e1162e717b9332a1f78af23c8584f15c:quality/curvature",
+        "custom Surface edit/undo/redo; retained historical analysis"
+      ],
+      "sourceResources": 0,
+      "portableResources": 1,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:00b1a5b37541814e54f4ef8edef2ba9e",
+      "title": "Catenoid",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "surface:math3d:surface:dd410c99edade10f84dbdaacfcc20b9c:quality/curvature",
+        "custom Surface edit/undo/redo; retained historical analysis"
+      ],
+      "sourceResources": 0,
+      "portableResources": 1,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:2ae98bd32da5a597c670d2f2904c0745",
+      "title": "Helicoid",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "surface:math3d:surface:e226551769cc19d17e1e768ca43ce2e9:quality/curvature",
+        "custom Surface edit/undo/redo; retained historical analysis"
+      ],
+      "sourceResources": 0,
+      "portableResources": 1,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:afad3afe9cd0fe8171c3fccf08f20994",
+      "title": "Implicit Sphere",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "surface:math3d:surface:98849afbfb25af90f4c397b3bb8ed87e:quality/curvature",
+        "custom Surface edit/undo/redo; retained historical analysis"
+      ],
+      "sourceResources": 0,
+      "portableResources": 1,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:9ce0f8a6232440ebc428d2217deb521b",
+      "title": "Helicoid",
+      "openable": true,
+      "documents": 1,
+      "analysisRoutes": 1,
+      "unavailable": [],
+      "exercised": [
+        "surface:math3d:surface:9cc61c4c469475da01f185b621c1a29e:quality/curvature",
+        "custom Surface edit/undo/redo; retained historical analysis"
+      ],
+      "sourceResources": 0,
+      "portableResources": 1,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    },
+    {
+      "id": "math3d:project:11bc59de20402b1a6fd6c1c10fb46fec",
+      "title": "Parametric Lab",
+      "openable": true,
+      "documents": 2,
+      "analysisRoutes": 2,
+      "unavailable": [],
+      "exercised": [
+        "surface:math3d:surface:da92a6b72ffa4139892e3df275a4aec2:quality/curvature",
+        "surface:math3d:surface:a83f488f0b5a4bee85f23d673709fcd1:quality/curvature",
+        "custom Surface edit/undo/redo; retained historical analysis"
+      ],
+      "sourceResources": 0,
+      "portableResources": 2,
+      "originalPreserved": true,
+      "storeAndPackageRoundTrip": true
+    }
+  ]
+}

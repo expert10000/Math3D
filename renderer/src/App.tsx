@@ -79299,6 +79299,7 @@ case "mobius":
     restored.workspace = appendSavedMeshAnalysis(workspace, result); setAdditionalVersion(value => value + 1);
   };
   const [projectGraphAnalysisRequest, setProjectGraphAnalysisRequest] = useState<{ documentId: string; token: number } | null>(null);
+  const [projectVolumeAnalysisRequest, setProjectVolumeAnalysisRequest] = useState<{ documentId: string; token: number } | null>(null);
   const additionalSurface = additionalActiveId ? restoredProjectRef.current?.additional.get(additionalActiveId)?.document() : null;
   const nativeSavedSurface = !additionalActiveId && mode === "surfaces" && surfaceViewerKind === "param" && paramSurfaceId === "custom" && restoredSurfaceAdapter && restoredProjectRef.current?.surfaces.has(restoredSurfaceAdapter.document().identity.id) ? restoredSurfaceAdapter.document() : null;
   const savedMeshSourceCurrent = () => {
@@ -79364,6 +79365,7 @@ case "mobius":
         }[module] === id)}
         onNavigateDocument={(id, module) => {
           setProjectGraphAnalysisRequest(null);
+          setProjectVolumeAnalysisRequest(null);
           if (navigateRestoredDocument(id, module)) return;
           const target = graph2dPromotions.find((item) => item.document.identity.id === id);
           if (target) { navigateRestoredDocument(target.trace.sourceDocumentId, "graph2d"); openGraph2DTarget(id); return; }
@@ -79381,6 +79383,9 @@ case "mobius":
           }
         }}
         onOpenAnalysis={(id, module, route) => {
+          if (["surface", "surface-mesh", "mesh", "volume"].includes(route) && mode !== "surfaces") skipSurfacesAutoBrowseOnModeChangeRef.current = true;
+          setDisplayMode("workspace"); setShowRightPanel(true);
+          setProjectVolumeAnalysisRequest(previous => route === "volume" ? { documentId: id, token: (previous?.token ?? 0) + 1 } : null);
           if (!navigateRestoredDocument(id, module)) {
             setAdditionalActiveId(null); setActiveGraph2DTargetId(null);
             if (route === "complex") { setFunctionExplorerScene("other_complex"); setMode("mobius"); }
@@ -79395,7 +79400,7 @@ case "mobius":
           else if (route === "curve") { setMode("curves"); setCurveWorkspaceTab("analysis"); }
           else if (route === "geometry") { setMode("geometry"); setGeometryProceduralPanelTab("analysis"); setGeometryRightPanelTab("analysis"); }
           else if (route === "complex") { setOtherComplexSummaryOpen(true); }
-          else { setSurfacesPanelState("work"); setSurfacesLeftTab("analysis"); if (route === "mesh") setMeshWorkspaceLeftTab("analyze"); }
+          else { setSurfacesPanelState("work"); setSurfacesLeftTab("analysis"); setMeshWorkspaceRequestedInspectorTab("analysis"); if (route === "mesh") setMeshWorkspaceLeftTab("analyze"); }
         }}
         onReopen={reopenGraphWorkspace}
         onRestoreProject={reopenProjectWorkspace}
@@ -89462,6 +89467,7 @@ case "mobius":
                         dataset={volumeDataset}
                         volumeObject={canonicalVolumeObject}
                         kernelDocument={activeVolumeKernelAdapter.document()}
+                        analysisRequest={projectVolumeAnalysisRequest}
                         valueRange={volumeScalarRange}
                         viewMode={volumeViewMode}
                         crosshair={volumeCrosshair}

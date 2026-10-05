@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { VolumeDocument } from "@math3d/core";
 import { SharedInspectorShell, type SharedInspectorCategory } from "./SharedInspectorShell";
 
@@ -39,6 +39,7 @@ export type VolumeInspectorPanelProps = {
   dataset: VolumeDataset;
   volumeObject: VolumeObject;
   kernelDocument?: VolumeDocument;
+  analysisRequest?: { documentId: string; token: number } | null;
   valueRange: { min: number; max: number };
   viewMode: "slices" | "3d";
   crosshair: [number, number, number] | null;
@@ -222,6 +223,7 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   dataset,
   volumeObject,
   kernelDocument,
+  analysisRequest,
   valueRange,
   viewMode,
   crosshair,
@@ -347,6 +349,9 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<VolumeInspectorTab>("volume");
   const [category, setCategory] = useState<SharedInspectorCategory>("summary");
+  useEffect(() => {
+    if (analysisRequest && analysisRequest.documentId === kernelDocument?.identity.id) { setCategory("analysis"); setActiveTab("analysis"); }
+  }, [analysisRequest, kernelDocument?.identity.id]);
   const grid = dataset.grid;
   const { spatial } = volumeObject;
   const spacing = spatial.spacing;
