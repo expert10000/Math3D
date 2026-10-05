@@ -72,6 +72,12 @@ journeys. Initial failures led to the source-freshness/viewport fixes and precis
 legacy test selectors; all affected journeys passed in the final runs above.
 The e2e TypeScript project also passes after those test updates.
 
+Before pushing, remote main advanced to `9b5c923` with the independent Quantum
+scene importer. Integration merge `d05ec58` preserved that work. The combined
+main-process build, synthetic verified-bundle/tamper checks and e2e TypeScript
+checks pass. The three gallery/sweep journeys plus the Quantum desktop picker
+test were rerun against that build: **4 passed (2.3m)**.
+
 [acceptance.json](acceptance.json) records exact source generations, parameters,
 sampling, interior statistics and resource/restart evidence from actual execution.
 
