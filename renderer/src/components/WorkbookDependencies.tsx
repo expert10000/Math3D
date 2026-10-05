@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { addWorkbookDependency, createNoteDependencySource, createProjectDependencySource, inspectWorkbookDependency,
-  type Workbook, type WorkbookDependency } from "@math3d/workbook";
+import type { Math3DProject } from "@math3d/core";
+import { addWorkbookDependency, createBlockDependencySource, createNoteDependencySource, createProjectDependencySource,
+  inspectWorkbookDependency, refreshWorkbookDependency,
+  type Workbook, type WorkbookBlockFreshness, type WorkbookDependency } from "@math3d/workbook";
 import type { NotebookProjectContext } from "../workbook/notebookProjectContext";
 
 type Props = {
@@ -9,9 +11,11 @@ type Props = {
   readOnly: boolean;
   getProject: () => NotebookProjectContext | null;
   onChange: (dependencies: WorkbookDependency[]) => void;
+  freshness?: WorkbookBlockFreshness;
+  project?: Math3DProject | null;
 };
 
-export const WorkbookDependencies: React.FC<Props> = ({ workbook, blockId, readOnly, getProject, onChange }) => {
+export const WorkbookDependencies: React.FC<Props> = ({ workbook, blockId, readOnly, getProject, onChange, freshness, project: liveProject }) => {
   const [context, setContext] = useState<NotebookProjectContext | null>(null);
   const [selection, setSelection] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -19,8 +23,8 @@ export const WorkbookDependencies: React.FC<Props> = ({ workbook, blockId, readO
     try { setContext(getProject()); setError(null); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Project could not be read."); }
   };
-  useEffect(() => { refresh(); }, [workbook.id, blockId]);
-  const project = context?.project ?? null;
+  useEffect(() => { refresh(); }, [workbook.id, blockId, liveProject?.identity.id]);
+  const project = liveProject === undefined ? context?.project ?? null : liveProject;
   const incoming = (workbook.dependencies ?? []).filter((edge) => edge.targetBlockId === blockId);
   const blocks = workbook.stages.flatMap((stage) => stage.blocks).filter((block) => block.id !== blockId);
   const choices = [
@@ -39,7 +43,7 @@ export const WorkbookDependencies: React.FC<Props> = ({ workbook, blockId, readO
       const latest = kind === "block" ? null : getProject();
       if (kind !== "block" && !latest?.live) throw new Error("Open and save the named Project before linking its content.");
       const source: WorkbookDependency["source"] = kind === "block"
-        ? { kind: "block", blockId: id }
+        ? createBlockDependencySource(workbook, id)
         : kind === "note"
           ? createNoteDependencySource(latest!.project, id)
           : kind === "document" || kind === "result"
@@ -53,9 +57,24 @@ export const WorkbookDependencies: React.FC<Props> = ({ workbook, blockId, readO
       setError(null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not add dependency."); }
   };
+  const refreshLink = (edgeId: string) => {
+    try {
+      const edge = workbook.dependencies?.find((item) => item.id === edgeId);
+      const latest = edge?.source.kind === "block" ? context : getProject();
+      const next = refreshWorkbookDependency(workbook, edgeId, latest?.live ? latest.project : null);
+      onChange(next.dependencies ?? []);
+      setContext(latest);
+      setError(null);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not refresh dependency."); }
+  };
   return <details data-testid={`workbook-dependencies-${blockId}`} style={{ marginTop: 8, padding: 7, border: "1px solid #dbeafe", borderRadius: 7, background: "#f8fbff", fontSize: 11 }}>
     <summary style={{ cursor: "pointer", fontWeight: 700 }}>Dependencies ({incoming.length})</summary>
     <div style={{ display: "grid", gap: 6, marginTop: 7 }}>
+      {freshness && freshness.status !== "current" && <div role="status" style={{ color: freshness.status === "stale" ? "#92400e" : "#b91c1c" }}>
+        {freshness.status}: {freshness.reason}
+        {freshness.path.length > 1 && <div>Affected path: {freshness.path.map((id) =>
+          workbook.stages.flatMap((stage) => stage.blocks).find((block) => block.id === id)?.title ?? id).join(" → ")}</div>}
+      </div>}
       {incoming.map((edge) => {
         const status = inspectWorkbookDependency(edge, workbook, project);
         const source = edge.source;
@@ -66,6 +85,7 @@ export const WorkbookDependencies: React.FC<Props> = ({ workbook, blockId, readO
             : `${source.reference.kind === "document" ? "Document" : "Saved result"} · ${source.reference.targetId} · r${source.reference.source.revision}`;
         return <div key={edge.id} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <span style={{ overflowWrap: "anywhere", flex: 1 }} title={status.reason}>{label} · <strong>{status.status}</strong></span>
+          {!readOnly && status.status === "stale" && <button type="button" onClick={() => refreshLink(edge.id)}>Refresh link</button>}
           {!readOnly && <button type="button" onClick={() => onChange((workbook.dependencies ?? []).filter((item) => item.id !== edge.id))}>Remove</button>}
         </div>;
       })}

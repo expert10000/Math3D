@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { KernelWorkspaceModule } from "@math3d/core";
+import type { KernelWorkspaceModule, Math3DProject } from "@math3d/core";
 import type { NotebookReference } from "@math3d/workbook";
 import type { NotebookProjectContext } from "../workbook/notebookProjectContext";
 import { WorkbookProjectReferenceCell } from "./WorkbookProjectReferenceCell";
@@ -20,7 +20,7 @@ import type {
   WorkbookGeometryTaskSpec,
   WorkbookDependency,
 } from "@math3d/workbook";
-import { WORKBOOK_STAGE_ORDER, WORKBOOK_OPERATOR_CATALOG } from "@math3d/workbook";
+import { WORKBOOK_STAGE_ORDER, WORKBOOK_OPERATOR_CATALOG, resolveWorkbookFreshness, workbookNeedsProjectInspection } from "@math3d/workbook";
 import { bakeGraphSurface, bakeParamSurface, bakeWeierstrassSurface } from "../math/bakeSurface";
 import { isSplinePatchSurfaceId } from "../math/splineSurface";
 import { computeMeanEdgeLength } from "../mesh/meshOps";
@@ -142,6 +142,7 @@ const BLOCK_ACCENT: Record<WorkbookBlockType, string> = {
 const STATUS_COLORS: Record<string, string> = {
   ok: "#14532d",
   stale: "#92400e",
+  missing: "#b91c1c",
   fail: "#b91c1c",
   failed: "#b91c1c",
   disabled: "#475569",
@@ -577,11 +578,35 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   };
   const issueCursorRef = useRef(0);
   const isBlockEnabled = useCallback((block: WorkbookBlock) => block.enabled !== false, []);
+  const [dependencyProject, setDependencyProject] = useState<Math3DProject | null>(null);
+  const getProjectRef = useRef(getNotebookProject);
+  getProjectRef.current = getNotebookProject;
+  const hasExternalDependencies = !!activeWorkbook && workbookNeedsProjectInspection(activeWorkbook);
+  useEffect(() => {
+    if (!hasExternalDependencies) { setDependencyProject(null); return; }
+    const refresh = () => {
+      try {
+        const next = getProjectRef.current()?.project ?? null;
+        setDependencyProject((previous) => previous?.identity.structuralHash === next?.identity.structuralHash ? previous : next);
+      } catch { setDependencyProject(null); }
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 3000);
+    return () => window.clearInterval(timer);
+  }, [activeWorkbookId, hasExternalDependencies]);
+  const freshnessById = useMemo(() => {
+    if (!activeWorkbook) return new Map();
+    return resolveWorkbookFreshness(activeWorkbook, dependencyProject, computeStatusById);
+  }, [activeWorkbook, computeStatusById, dependencyProject]);
 
-  const getBlockStatus = (block: WorkbookBlock): { state: "ok" | "stale" | "fail" | "pending" | "disabled"; label: string } => {
+  const getBlockStatus = (block: WorkbookBlock): { state: "ok" | "stale" | "missing" | "fail" | "pending" | "disabled"; label: string } => {
     if (!isBlockEnabled(block)) {
       return { state: "disabled", label: "disabled" };
     }
+    const freshness = freshnessById.get(block.id);
+    if (freshness?.status === "failed") return { state: "fail", label: "failed" };
+    if (freshness?.status === "missing") return { state: "missing", label: "missing" };
+    if (freshness?.status === "stale") return { state: "stale", label: "stale" };
     if (block.type === "compute") {
       const derived = computeStatusById[block.id];
       const status: string = derived ?? block.compute?.lastRun?.status ?? block.compute?.status ?? "idle";
@@ -605,7 +630,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
       stageId: WorkbookStageId;
       stageTitle: string;
       block: WorkbookBlock;
-      status: { state: "ok" | "stale" | "fail" | "pending" | "disabled"; label: string };
+      status: { state: "ok" | "stale" | "missing" | "fail" | "pending" | "disabled"; label: string };
     }> = [];
     for (const stage of activeWorkbook.stages) {
       for (const block of stage.blocks) {
@@ -618,11 +643,11 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
       }
     }
     return items;
-  }, [activeWorkbook, currentDatasetRef, computeStatusById, isBlockEnabled]);
+  }, [activeWorkbook, currentDatasetRef, computeStatusById, isBlockEnabled, freshnessById]);
 
   const issueItems = useMemo(
     () =>
-      outlineItems.filter((item) => item.status.state === "stale" || item.status.state === "fail"),
+      outlineItems.filter((item) => item.status.state === "stale" || item.status.state === "fail" || item.status.state === "missing"),
     [outlineItems]
   );
   const templateById = useMemo(() => new Map(templates.map((t) => [t.id, t])), [templates]);
@@ -666,10 +691,9 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
     () => problemPacks.filter((p) => matchesLibrary(p.title, p.description, p.tags)),
     [problemPacks, matchesLibrary]
   );
-  const hasStale = useMemo(
-    () => Object.values(computeStatusById).some((status) => status === "stale"),
-    [computeStatusById]
-  );
+  const hasStale = useMemo(() => activeWorkbook?.stages.some((stage) => stage.blocks.some((block) =>
+    block.type === "compute" && freshnessById.get(block.id)?.status === "stale" &&
+    !freshnessById.get(block.id)?.blockedBySource)) ?? false, [activeWorkbook, freshnessById]);
   const hasComputeBlocks = useMemo(
     () => Object.values(computeStatusById).some((status) => status !== "disabled"),
     [computeStatusById]
@@ -1064,7 +1088,13 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ fontSize: 11, fontWeight: 700 }}>
           Status:{" "}
-          {workbookStatus === "ok"
+          {outlineItems.some((item) => item.status.state === "missing")
+            ? "✗ missing source"
+            : outlineItems.some((item) => item.status.state === "fail")
+              ? "✗ failed"
+              : outlineItems.some((item) => item.status.state === "stale")
+                ? "⟳ stale"
+                : workbookStatus === "ok"
             ? "✓ up to date"
             : workbookStatus === "failed"
               ? "✗ failed"
@@ -1604,8 +1634,10 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 <span style={{ fontWeight: 700, color: "#111827" }}>{item.stageTitle}</span>
                 <span style={{ opacity: 0.7 }}>·</span>
                 <span style={{ flex: 1 }}>{item.block.title || BLOCK_TYPE_LABELS[item.block.type]}</span>
-                {(item.block.type === "compute" || item.block.type === "assert") && (
+                {(item.block.type === "compute" || item.block.type === "assert" ||
+                  item.status.state === "stale" || item.status.state === "missing" || item.status.state === "fail") && (
                   <span
+                    title={freshnessById.get(item.block.id)?.reason}
                     style={{
                       padding: "1px 6px",
                       borderRadius: 999,
@@ -1779,7 +1811,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
               )}
 
               {activeWorkbook && <WorkbookDependencies workbook={activeWorkbook} blockId={block.id} readOnly={readOnly}
-                getProject={getNotebookProject} onChange={onChangeDependencies} />}
+                getProject={getNotebookProject} onChange={onChangeDependencies} freshness={freshnessById.get(block.id)}
+                project={dependencyProject} />}
 
               {block.type === "visualize" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1977,7 +2010,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                         <button
                           type="button"
                           onClick={() => onRunComputeBlock(activeStageId, block.id, block.compute?.operatorId)}
-                          disabled={readOnly || !block.compute?.operatorId}
+                          disabled={readOnly || !block.compute?.operatorId || !!freshnessById.get(block.id)?.blockedBySource}
+                          title={freshnessById.get(block.id)?.blockedBySource ? freshnessById.get(block.id)?.reason : undefined}
                           style={{ padding: "4px 8px" }}
                         >
                           Run operator
@@ -1985,7 +2019,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                         <button
                           type="button"
                           onClick={() => onRunFromBlock(activeStageId, block.id)}
-                          disabled={readOnly || !block.compute?.operatorId}
+                          disabled={readOnly || !block.compute?.operatorId || !!freshnessById.get(block.id)?.blockedBySource}
+                          title={freshnessById.get(block.id)?.blockedBySource ? freshnessById.get(block.id)?.reason : undefined}
                           style={{ padding: "4px 8px" }}
                         >
                           Run from here

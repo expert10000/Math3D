@@ -1,4 +1,4 @@
-import { isStableDocumentId, isStructuralHash, normalizeMath3DProject, type Math3DProject, type StableDocumentId, type StructuralHash } from "@math3d/core";
+import { isStableDocumentId, isStructuralHash, normalizeMath3DProject, structuralHash, type Math3DProject, type StableDocumentId, type StructuralHash } from "@math3d/core";
 import { createNotebookReference, inspectNotebookReference, normalizeNotebookReference, type NotebookReference } from "./notebookReferences";
 import type { Workbook, WorkbookBlock } from "./workbookModel";
 
@@ -7,7 +7,7 @@ export type WorkbookDependency = Readonly<{
   id: string;
   targetBlockId: string;
   source:
-    | Readonly<{ kind: "block"; blockId: string; outputPortId?: string; inputPortId?: string }>
+    | Readonly<{ kind: "block"; blockId: string; sourceHash?: StructuralHash; outputPortId?: string; inputPortId?: string }>
     | Readonly<{ kind: "project"; reference: NotebookReference }>
     | Readonly<{ kind: "note"; projectId: StableDocumentId; noteId: StableDocumentId; revision: number; hash: StructuralHash }>;
 }>;
@@ -38,6 +38,7 @@ export function validateWorkbookDependencies(workbook: Workbook): void {
     if (source.kind === "block") {
       if (!validId(source.blockId) || !blocks.has(source.blockId) || source.blockId === edge.targetBlockId) throw new TypeError("Invalid block dependency source.");
       if ((source.outputPortId === undefined) !== (source.inputPortId === undefined)) throw new TypeError("A port link requires both ports.");
+      if (source.sourceHash !== undefined && !isStructuralHash(source.sourceHash)) throw new TypeError("Invalid block dependency generation.");
       if (source.outputPortId !== undefined) {
         const output = blocks.get(source.blockId)?.outputs?.find((port) => port.id === source.outputPortId);
         const input = blocks.get(edge.targetBlockId)?.inputs?.find((port) => port.id === source.inputPortId);
@@ -100,6 +101,62 @@ export function createProjectDependencySource(project: Math3DProject, kind: Note
   return { kind: "project", reference: createNotebookReference(project, kind, targetId) };
 }
 
+/** Hashes user-visible source content and current output, excluding history/cache bookkeeping. */
+export function workbookBlockSourceHash(block: WorkbookBlock): StructuralHash {
+  return structuralHash({
+    type: block.type, enabled: block.enabled !== false, text: block.text ?? null, formula: block.formula ?? null,
+    reference: block.notebookReference ?? null, inputs: block.inputs ?? null, outputs: block.outputs ?? null,
+    params: block.params?.values ?? null, visualize: block.visualize ?? null, interaction: block.interaction ?? null,
+    assertion: block.assert ?? null,
+    compute: block.compute ? { operatorId: block.compute.operatorId ?? null,
+      inputHash: block.compute.lastRun?.inputHash ?? null, outputHash: block.compute.outputHash ?? null,
+      status: block.compute.lastRun?.status ?? null } : null,
+  });
+}
+
+export function createBlockDependencySource(workbook: Workbook, blockId: string): WorkbookDependency["source"] {
+  const block = blocksOf(workbook).find((item) => item.id === blockId);
+  if (!block) throw new RangeError(`Workbook block '${blockId}' was not found.`);
+  return { kind: "block", blockId, sourceHash: workbookBlockSourceHash(block) };
+}
+
+/** Stable input fingerprint for the existing compute cache and saved-run hash. */
+export function workbookDependencyInputSignature(workbook: Workbook, targetBlockId: string): readonly unknown[] {
+  const blocks = new Map(blocksOf(workbook).map((block) => [block.id, block]));
+  return (workbook.dependencies ?? []).filter((edge) => edge.targetBlockId === targetBlockId)
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((edge) => edge.source.kind === "block"
+      ? { id: edge.id, source: edge.source.blockId,
+        hash: blocks.has(edge.source.blockId) ? workbookBlockSourceHash(blocks.get(edge.source.blockId)!) : "missing" }
+      : { id: edge.id, source: edge.source });
+}
+
+/** Explicitly advance a link to the current generation of its same stable target. */
+export function refreshWorkbookDependency(workbook: Workbook, edgeId: string, project: Math3DProject | null): Workbook {
+  const edge = workbook.dependencies?.find((item) => item.id === edgeId);
+  if (!edge) throw new RangeError("Workbook dependency was not found.");
+  const source = edge.source;
+  const nextSource: WorkbookDependency["source"] = source.kind === "block"
+    ? { ...source, sourceHash: workbookBlockSourceHash(blocksOf(workbook).find((item) => item.id === source.blockId) ??
+      (() => { throw new RangeError("Source block is missing."); })()) }
+    : source.kind === "project"
+      ? (() => {
+        if (!project || project.identity.id !== source.reference.projectId) throw new TypeError("Open the linked Project before refreshing.");
+        const next = createProjectDependencySource(project, source.reference.kind, source.reference.targetId);
+        if (next.kind !== "project" || inspectNotebookReference(project, next.reference).status !== "current") {
+          throw new TypeError("This saved result is historical. Create a new result and link it explicitly.");
+        }
+        return next;
+      })()
+      : (() => {
+        if (!project || project.identity.id !== source.projectId) throw new TypeError("Open the linked Project before refreshing.");
+        return createNoteDependencySource(project, source.noteId);
+      })();
+  const next = { ...workbook, dependencies: (workbook.dependencies ?? []).map((item) => item.id === edgeId ? { ...item, source: nextSource } : item) };
+  validateWorkbookDependencies(next);
+  return next;
+}
+
 export function createNoteDependencySource(project: Math3DProject, noteId: string): WorkbookDependency["source"] {
   const checked = normalizeMath3DProject(project);
   if (!checked.ok) throw new TypeError(checked.errors.join(" "));
@@ -114,7 +171,14 @@ export function inspectWorkbookDependency(edge: WorkbookDependency, workbook: Wo
   try { validateWorkbookDependencies({ ...workbook, dependencies: [edge] }); }
   catch (error) { return { status: "invalid", reason: error instanceof Error ? error.message : "Invalid dependency." }; }
   const source = edge.source;
-  if (source.kind === "block") return { status: "current", reason: "Source Workbook block is available." };
+  if (source.kind === "block") {
+    const block = blocksOf(workbook).find((item) => item.id === source.blockId);
+    if (!block) return { status: "missing", reason: "Source Workbook block is missing." };
+    if (!source.sourceHash) return { status: "stale", reason: "This older block link has no recorded source generation. Refresh it to establish one." };
+    return source.sourceHash === workbookBlockSourceHash(block)
+      ? { status: "current", reason: "Block source generation matches." }
+      : { status: "stale", reason: "The source block changed after this link was recorded." };
+  }
   if (!project) return { status: "missing", reason: "Open the linked Project to inspect this dependency." };
   if (source.kind === "project") {
     const result = inspectNotebookReference(project, source.reference);

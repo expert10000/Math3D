@@ -1133,6 +1133,10 @@ import {
   createWorkbookFromGeometryTask,
   createWorkbookFromTemplate,
   normalizeNotebookReference,
+  workbookBlockSourceHash,
+  workbookDependencyInputSignature,
+  workbookNeedsProjectInspection,
+  resolveWorkbookFreshness,
   evaluateWorkbookGeometryTask,
   WORKBOOK_GEOMETRY_TASKS,
   WORKBOOK_STAGE_ORDER,
@@ -43646,11 +43650,13 @@ const App: React.FC = () => {
 
       if (block.type === "compute") {
         const operatorId = block.compute?.operatorId ?? "";
+        const explicitDependencies = workbookDependencyInputSignature(activeWorkbook, block.id);
         const inputHash = hashValue({
           operatorId,
           datasetRef: currentDatasetRef,
           viewerKind: surfaceViewerKind,
           inputs: inputRefs,
+          ...(explicitDependencies.length ? { explicitDependencies } : {}),
           params: block.params?.values ?? null,
         });
         inputRefsById.set(block.id, inputRefs);
@@ -43720,6 +43726,9 @@ const App: React.FC = () => {
     }
     return map;
   }, [workbookGraph]);
+  const workbookExecutionRef = useRef({ workbook: activeWorkbook, graph: workbookGraph, computeStatusById });
+  workbookExecutionRef.current = { workbook: activeWorkbook, graph: workbookGraph, computeStatusById };
+  const getWorkbookDependencyProjectRef = useRef<() => Math3DProject | null>(() => null);
   const workbookStatus = useMemo(() => {
     const statuses = Object.values(computeStatusById);
     if (!statuses.length) return "ok";
@@ -69715,11 +69724,35 @@ case "mobius":
     async (stageId: WorkbookStageId, blockId: string, operatorId?: string) => {
       if (IS_REPLAY_MODE) return;
       if (!activeWorkbookId) return;
-      const meta = workbookGraph.blockMetaById.get(blockId);
+      const execution = workbookExecutionRef.current;
+      if (execution.workbook?.id !== activeWorkbookId) return;
+      const graph = execution.graph;
+      const meta = graph.blockMetaById.get(blockId);
       const block = meta?.block;
       if (block && !isWorkbookBlockEnabled(block)) {
         return;
       }
+      const freshness = execution.workbook
+        ? resolveWorkbookFreshness(execution.workbook,
+          workbookNeedsProjectInspection(execution.workbook)
+            ? getWorkbookDependencyProjectRef.current() : null,
+          execution.computeStatusById).get(blockId)
+        : null;
+      if (freshness?.blockedBySource) {
+        handleUpdateWorkbookBlock(stageId, blockId, { compute: { status: "stale", summary: `Resolve dependency first: ${freshness.reason}` } });
+        return;
+      }
+      const sourceHashes = new Map<string, ReturnType<typeof workbookBlockSourceHash>>();
+      for (const edge of execution.workbook?.dependencies ?? []) if (edge.targetBlockId === blockId && edge.source.kind === "block") {
+        const sourceBlock = graph.blockMetaById.get(edge.source.blockId)?.block;
+        if (sourceBlock) sourceHashes.set(edge.source.blockId, workbookBlockSourceHash(sourceBlock));
+      }
+      const acknowledgeBlockSources = (dependencies: WorkbookDependency[] | undefined) => dependencies?.map((edge) =>
+        edge.targetBlockId === blockId && edge.source.kind === "block" && sourceHashes.has(edge.source.blockId)
+          ? { ...edge, source: { ...edge.source, sourceHash: sourceHashes.get(edge.source.blockId)! } }
+          : edge);
+      const dependencyRefs = (acknowledgeBlockSources(execution.workbook?.dependencies) ?? [])
+        .filter((edge) => edge.targetBlockId === blockId);
       const resolvedOperator = operatorId ?? block?.compute?.operatorId;
       if (!resolvedOperator) {
         handleUpdateWorkbookBlock(stageId, blockId, {
@@ -69742,9 +69775,9 @@ case "mobius":
         return;
       }
 
-      const inputRefs = workbookGraph.inputRefsById.get(blockId) ?? [];
+      const inputRefs = graph.inputRefsById.get(blockId) ?? [];
       const inputHash =
-        workbookGraph.inputHashById.get(blockId) ??
+        graph.inputHashById.get(blockId) ??
         hashValue({
           operatorId: resolvedOperator,
           datasetRef: currentDatasetRef,
@@ -69772,6 +69805,7 @@ case "mobius":
           viewerKind: surfaceViewerKind,
           inputHash,
           inputRefs: cloneInputRefs(inputRefs),
+          dependencyRefs,
           params: { ...(block?.params?.values ?? {}) },
           viewSnapshot: buildViewerSnapshot(),
           status: "ok",
@@ -69823,6 +69857,7 @@ case "mobius":
                         }
                       : s
                   ),
+                  dependencies: acknowledgeBlockSources(w.dependencies),
                 }
               : w
           )
@@ -69892,6 +69927,7 @@ case "mobius":
         viewerKind: surfaceViewerKind,
         inputHash,
         inputRefs: cloneInputRefs(inputRefs),
+        dependencyRefs,
         params: { ...(block?.params?.values ?? {}) },
         viewSnapshot: buildViewerSnapshot(),
         status,
@@ -69943,6 +69979,7 @@ case "mobius":
                       }
                     : s
                 ),
+                ...(status === "ok" ? { dependencies: acknowledgeBlockSources(w.dependencies) } : {}),
               }
             : w
         )
@@ -69979,13 +70016,25 @@ case "mobius":
 
   const handleRunAllStale = useCallback(async () => {
     if (IS_REPLAY_MODE) return;
-    for (const [id, status] of Object.entries(computeStatusById)) {
-      if (status !== "stale") continue;
-      const meta = workbookGraph.blockMetaById.get(id);
-      if (!meta) continue;
-      await handleRunComputeBlock(meta.stageId, id, meta.block.compute?.operatorId);
+    const startedWorkbookId = workbookExecutionRef.current.workbook?.id;
+    const attempted = new Set<string>();
+    const limit = workbookExecutionRef.current.graph.orderedBlocks.length;
+    for (let pass = 0; pass < limit; pass++) {
+      const execution = workbookExecutionRef.current;
+      if (!execution.workbook || execution.workbook.id !== startedWorkbookId) return;
+      const freshness = resolveWorkbookFreshness(execution.workbook,
+        workbookNeedsProjectInspection(execution.workbook)
+          ? getWorkbookDependencyProjectRef.current() : null,
+        execution.computeStatusById);
+      const next = execution.graph.orderedBlocks.find(({ block }) => block.type === "compute" &&
+        !attempted.has(block.id) && isWorkbookBlockEnabled(block) &&
+        freshness.get(block.id)?.status === "stale" && !freshness.get(block.id)?.blockedBySource);
+      if (!next) break;
+      attempted.add(next.block.id);
+      await handleRunComputeBlock(next.stageId, next.block.id, next.block.compute?.operatorId);
+      await new Promise((resolve) => setTimeout(resolve, 0));
     }
-  }, [computeStatusById, handleRunComputeBlock, workbookGraph]);
+  }, [handleRunComputeBlock]);
 
   const handleRunFromBlock = useCallback(
     async (stageId: WorkbookStageId, blockId: string) => {
@@ -78062,6 +78111,12 @@ case "mobius":
       results: uniqueResults, artifacts, relations: uniqueRelations,
       committedSelection: activeKernelSource ? { state: "committed", source: activeKernelSource, entityIds: activeKernelEvidence?.selectedEntityIds ?? [] } : null,
       constructions });
+  };
+  getWorkbookDependencyProjectRef.current = () => {
+    try {
+      return readNotebookProjectContext(activeNotebookProjectRef.current,
+        localStorage.getItem(PROJECT_STORAGE_KEY), captureMixedKernelWorkspace)?.project ?? null;
+    } catch { return null; }
   };
   const cgalServiceColor = cgalServiceReady ? "#1f894f" : "#b42318";
   const meshOperationServiceColor = meshOperationServiceReady ? "#1f894f" : "#b42318";

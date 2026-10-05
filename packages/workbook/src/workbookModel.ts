@@ -134,6 +134,7 @@ export type WorkbookComputeSavedRun = {
   viewerKind: string;
   inputHash: string;
   inputRefs: WorkbookComputeInputRef[];
+  dependencyRefs?: WorkbookDependency[];
   params: Record<string, WorkbookParamValue>;
   viewSnapshot: WorkbookViewSnapshot | null;
   status: WorkbookComputeRunStatus;

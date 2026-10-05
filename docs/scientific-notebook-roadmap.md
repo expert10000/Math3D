@@ -51,6 +51,8 @@ The target user journey is **explore → capture a Note on a selection/result �
 
 `WB01` adds explicit dependencies to the existing Workbook: a block may depend on another block, a Project document/result, or a Note. Project sources retain their recorded generation; Note links retain ID, revision and hash. The block editor shows link status and rejects cycles, including a Note anchored to a downstream Workbook block. This is a provenance and ordering contract; `WB02` will propagate freshness through the graph, and reruns remain explicit.
 
+`WB02` resolves current, stale, missing and failed states across those links and existing Project reference cells, with an affected path in the Workbook editor. New block links record a source fingerprint; older links report stale until explicitly refreshed. Compute input hashes include linked sources, so an edited block or refreshed Project/Note link invalidates the existing saved run without deleting it. Run controls skip unresolved sources and never start work automatically.
+
 ## First milestone acceptance
 
 Use the existing Minimal Surface Study. Create a Note on its Graph or Surface, attach another to a saved numerical result, add one Note to a Workbook, and view Graph → Curve → Surface → Analysis in Document view. Edit the Graph: the Note anchor and affected Workbook path must show the correct freshness without changing unrelated blocks. Save/reopen on desktop and web, then inspect the same IDs and explanations. The test must not call a numerical shortest-edge path a continuous geodesic or present numerical curvature as a proof of minimality.
