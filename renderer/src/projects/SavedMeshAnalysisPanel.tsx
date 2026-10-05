@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import type { AnalysisResultEnvelope } from "@math3d/core";
 import { savedMeshAnalysisLabel, type SavedMeshAnalysisKind } from "./savedMeshAnalysis";
+import { SAVED_MESH_STUDIES, studyEndpoints } from "./savedMeshStudies";
 
 export type SavedMeshChoice = { id: string; title: string; revision: number; structuralHash: string; vertexCount: number; sourceRevision?: number; current: boolean; results: readonly AnalysisResultEnvelope[] };
 const number = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toPrecision(6) : "unavailable";
@@ -13,6 +14,8 @@ const resultDescription = (result: AnalysisResultEnvelope) => {
 };
 export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onAnalyze, creationHint = "Uses the applied surface. Apply formula changes first." }: { meshes: readonly SavedMeshChoice[]; onCreate?: () => string; onOpen?: (id: string) => void; onAnalyze: (id: string, kind: SavedMeshAnalysisKind, endpoints?: { start: number; end: number }) => void; creationHint?: string }) => {
   const [selected, setSelected] = useState(""), [start, setStart] = useState("0"), [end, setEnd] = useState(""), [message, setMessage] = useState(""), [error, setError] = useState("");
+  const [studyId, setStudyId] = useState<SavedMeshAnalysisKind>("curvature");
+  const study = SAVED_MESH_STUDIES.find(item => item.id === studyId)!;
   const mesh = meshes.find(choice => choice.id === selected) ?? meshes.at(-1);
   const run = (action: () => void) => { try { action(); setError(""); } catch (failure) { setError((failure as Error).message); } };
   const analyze = (kind: SavedMeshAnalysisKind) => run(() => {
@@ -21,7 +24,25 @@ export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onAnalyze, cr
     onAnalyze(mesh.id, kind, kind === "edge-path" ? { start: Number(start), end: Number(end || mesh.vertexCount - 1) } : undefined);
     setMessage(`${savedMeshAnalysisLabel(kind)} saved in the workspace. Projects → Save project keeps it.`);
   });
+  const runStudy = () => run(() => {
+    setMessage("");
+    if (studyId === "edge-path" && !mesh) throw new TypeError("Create Mesh first to choose start and end vertices.");
+    const endpoints = studyId === "edge-path" ? studyEndpoints(start, end, mesh!.vertexCount) : undefined;
+    const id = onCreate ? onCreate() : mesh?.id;
+    if (!id) throw new TypeError("Open a saved Mesh or Surface first.");
+    onAnalyze(id, studyId, endpoints);
+    setSelected(id);
+    setMessage(`${study.label} saved. Repeated runs reuse an unchanged result. Projects → Save project keeps it.`);
+  });
   return <section data-testid="project-saved-mesh-workflow" style={{ padding: "0 10px 10px", borderTop: "1px solid #cbd5e1", maxWidth: "100%", overflowWrap: "anywhere" }}>
+    <details data-testid="project-analysis-studies" style={{ padding: "8px 0" }}>
+      <summary>Guided analysis studies</summary>
+      <label>Study <select data-testid="project-analysis-study" value={studyId} onChange={event => { setStudyId(event.target.value as SavedMeshAnalysisKind); setMessage(""); setError(""); }}>{SAVED_MESH_STUDIES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+      <button data-testid="project-analysis-run-study" onClick={runStudy} disabled={!onCreate && !mesh || studyId === "edge-path" && !mesh}>Run study</button>
+      <div>{study.purpose}</div><small>{study.qualification}</small>
+      {onCreate && <div><small>Uses the current Surface formulas and ranges, creates or reuses a saved Mesh, and retains earlier Meshes and results.</small></div>}
+      {studyId === "edge-path" && !mesh && <div><small>Create Mesh first to choose vertex indices.</small></div>}
+    </details>
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "8px 0" }}>
       {onCreate && <><button data-testid="project-surface-create-mesh" onClick={() => run(() => { const id = onCreate(); setSelected(id); setMessage("Mesh ready. Its source revision is recorded; Projects → Save project keeps it."); })}>Create Mesh</button><small>{creationHint}</small></>}
       {mesh && <><label style={{ maxWidth: "100%" }}>Saved Mesh <select style={{ maxWidth: "100%" }} data-testid="project-saved-mesh-choice" value={mesh.id} onChange={event => { setSelected(event.target.value); setMessage(""); setError(""); }}>{meshes.map(choice => <option key={choice.id} value={choice.id}>{choice.title}{choice.current ? "" : " · historical"}</option>)}</select></label>

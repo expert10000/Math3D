@@ -927,3 +927,25 @@ Unit checks qualify all bundled document identities and reject archived and
 resource-missing targets. The desktop collection and guided-study checks cover
 navigation and preview blocking. This increment adds no mobile analysis editor
 and does not extend the mathematical scope of existing module operations.
+
+### PRJ37 guided saved analysis studies — October 5
+
+Delivered on desktop: **Guided analysis studies** offers Curvature, Mesh quality
+and Edge-path studies beside the saved Surface and Mesh controls. **Run study**
+uses the existing saved Mesh operations and publishes normal qualified results,
+provenance and analysis-of relations. It adds no new numerical backend or queue.
+Each study explains its output and limitations before execution.
+
+From a Surface, a study creates or reuses a Mesh of the current applied formulas
+and ranges. Earlier Meshes/results remain historical. From an opened Mesh it
+uses that exact saved Mesh, including an intentionally selected historical
+snapshot. Edge-path studies require a Mesh first and reject invalid vertex
+indices. Unchanged runs retain the existing saved result. Project save and
+resource export keep all outputs through transfer and restart.
+
+The study model checks exact source provenance, known square-path length,
+repeat-result preservation and endpoint rejection. Electron checks in
+`tests/e2e/project-analysis-studies.spec.ts` exercise all three presets in native
+Helicoid and saved-source Enneper editors, invalid endpoints, formula edits,
+historical outputs and the opened Mesh. Curvature is a discrete Mesh estimate;
+shortest edge paths do not certify continuous geodesics or analytic minimality.
