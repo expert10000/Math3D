@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { QuantumSceneOpenResponse } from "./main/quantumScene/ipcContract";
 
 export type PresetKind = "graph" | "implicit" | "param";
 
@@ -510,6 +511,10 @@ contextBridge.exposeInMainWorld("topologyDocuments", {
   open: (): Promise<TopologyDocumentOpenResponse> =>
     ipcRenderer.invoke("topology:document:open"),
 });
+
+contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
+  open: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:open"),
+}));
 
 contextBridge.exposeInMainWorld("meshFiles", {
   open: (): Promise<MeshFileOpenResponse> =>

@@ -589,6 +589,14 @@ declare global {
   };
 
   interface Window {
+    quantumScenes?: {
+      open: () => Promise<
+        | { ok: true; canceled: false; directory: string; document: unknown;
+            mappedObjectIds: string[]; deferredObjectIds: string[]; deferredFieldIds: string[] }
+        | { ok: false; canceled: true }
+        | { ok: false; canceled: false; error: string }
+      >;
+    };
     surfacePresets?: {
       list: (kind: PresetKind) => Promise<SurfacePresetRecord[]>;
       upsert: (preset: SurfacePresetRecord) => Promise<void>;

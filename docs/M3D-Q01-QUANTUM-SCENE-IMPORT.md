@@ -23,9 +23,12 @@ unit interpretation needs a dedicated later adapter. Verified numerical
 arrays remain available on the returned import result; they are not invented
 from the Math3D geometry.
 
-This boundary has no worker call and no direct Theory Lab connection. It does
-not yet expose a desktop picker or an `Open in Math3D` action. Those are
-separate integration steps after the importer is accepted.
+This boundary has no worker call and no direct Theory Lab connection. The
+first desktop integration slice adds a main-process folder picker exposed as
+`window.quantumScenes.open()`. The renderer cannot supply an arbitrary path;
+main verifies the selected bundle before returning a read-only scene document
+and explicit mapped/deferred IDs. A visible Math3D scene workspace and
+automatic `Open in Math3D` action are later integration steps.
 
 Acceptance: `npm run test:quantum-scene:import` builds the Node module and
 tests a bounded bundle plus mutation refusals. The script also accepts a
