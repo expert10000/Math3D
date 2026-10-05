@@ -10,14 +10,14 @@ export type NoteSelectionDescriptor = Readonly<{
   probe?: Readonly<{ x: number; y: number; parameter?: number; rowId?: string }> | null;
 }>;
 
-const geometryShape = (document: GeometryDocument, id: string) => {
+export const geometryObjectShape = (document: GeometryDocument, id: string) => {
   const object = document.source.objects.find((item) => item.id === id);
   return object ? structuralHash({ type: object.type, params: object.params, geometry: document.source.geometry,
     constructions: document.source.constructions, relationships: document.source.relationships }) : null;
 };
 const meshShape = (document: MeshDocument, id: string) => id === document.source.objectId ? document.source.resource.checksum : null;
 const objectShape = (document: KernelWorkspaceDocument | undefined, id: string) =>
-  document?.format === "math3d.geometry-document" ? geometryShape(document, id) :
+  document?.format === "math3d.geometry-document" ? geometryObjectShape(document, id) :
     document?.format === "math3d.mesh-document" ? meshShape(document, id) : null;
 
 /** Resolve a committed UI selection to a source-owned ID, never a list index or display label. */

@@ -57,6 +57,8 @@ The target user journey is **explore → capture a Note on a selection/result �
 
 `NTS04` lets a saved Project Note be sent to a block in a Workbook owned by that same Project. The existing dependency edge stores the Note ID and generation, and the Project saves the updated Workbook resource. Workbook views expose an Open Note action; later Note edits leave the recorded link stale until explicitly refreshed. Sending does not alter the Note's original anchor or copy its prose into the Workbook.
 
+`NTS05` adds Off, Pins, Labels and All display modes to the Geometry viewer. Current object-local Note anchors in the active Project are placed with the live object's scale, rotation and translation. The viewer omits stale, missing, hidden and unsupported anchors; those Notes remain available in the Notes sidebar. Face, edge, vertex, Graph and Curve placement waits for precise coordinate contracts.
+
 ## First milestone acceptance
 
 Use the existing Minimal Surface Study. Create a Note on its Graph or Surface, attach another to a saved numerical result, add one Note to a Workbook, and view Graph → Curve → Surface → Analysis in Document view. Edit the Graph: the Note anchor and affected Workbook path must show the correct freshness without changing unrelated blocks. Save/reopen on desktop and web, then inspect the same IDs and explanations. The test must not call a numerical shortest-edge path a continuous geodesic or present numerical curvature as a proof of minimality.

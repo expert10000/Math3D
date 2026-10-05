@@ -1,7 +1,7 @@
 import { MeshProjectEditor } from "./projects/MeshProjectEditor";
 import { QuantumScenePreview, type QuantumSceneOpenResponse } from "./components/QuantumScenePreview";
 import { meshDocumentEditable } from "./projects/nativeMeshRestore";
-import { createMeshDocument, canonicalJsonStringify } from "@math3d/core";
+import { createMeshDocument, canonicalJsonStringify, parseMath3DProject } from "@math3d/core";
 import { VerifiedProjectResources, type ProjectResourceRequirement } from "./projects/projectResources";
 import type { MeshReplayBundle } from "./mesh/meshReplay";
 import { geometryEditorSeed as restoredGeometryEditorSeed, geometryDocumentEditable, geometrySourceFromEditor, geometryDisplayFromEditor, retainConstructionSource } from "./projects/nativeGeometryRestore";
@@ -86,6 +86,7 @@ import { GeometryAnalysisInspectorPanel } from "./components/GeometryAnalysisIns
 import { KernelWorkspacePanel } from "./components/KernelWorkspacePanel";
 import { PROJECT_STORAGE_KEY } from "./projects/projectLibrary";
 import { readNotebookProjectContext } from "./workbook/notebookProjectContext";
+import { resolveGeometryProjectNotePins, type ProjectNoteViewerMode } from "./projects/projectNotePins";
 import { GeometryTessellationSettingsPanel } from "./components/GeometryTessellationSettingsPanel";
 import { UnifiedSelectionInspector } from "./components/UnifiedSelectionInspector";
 import { SharedInspectorShell, type SharedInspectorCategory } from "./components/SharedInspectorShell";
@@ -2082,6 +2083,7 @@ const UI_GEOMETRY_MODE_KEY = "math3d.ui.geometryMode.v1";
 const UI_GEOMETRY_PROCEDURAL_PANEL_KEY = "math3d.ui.geometryProceduralPanel.v1";
 const UI_GEOMETRY_VIEWER_CONTROLS_KEY = "math3d.ui.geometryViewerControls.v1";
 const UI_GEOMETRY_VIEWER_CONTROLS_DENSITY_KEY = "math3d.ui.geometryViewerControlsDensity.v1";
+const UI_GEOMETRY_NOTE_PINS_KEY = "math3d.ui.geometryNotePins.v1";
 const UI_GEOMETRY_VIEWPORT_SETTINGS_KEY = "math3d.ui.geometryViewportSettings.v1";
 const UI_GEOMETRY_CONSTRUCT_PANEL_KEY = "math3d.ui.geometryConstructPanel.v1";
 const WORKBOOK_AUTOSAVE_INTERVAL_SEC = 30;
@@ -13764,6 +13766,11 @@ const App: React.FC = () => {
   const [geometryShowViewportBadges, setGeometryShowViewportBadges] = useState(() =>
     readGeometryViewportBoolean("badges", true)
   );
+  const [geometryNoteDisplayMode, setGeometryNoteDisplayMode] = useState<ProjectNoteViewerMode>(() => {
+    const saved = localStorage.getItem(UI_GEOMETRY_NOTE_PINS_KEY);
+    return saved === "off" || saved === "pins" || saved === "labels" || saved === "all" ? saved : "all";
+  });
+  useEffect(() => { localStorage.setItem(UI_GEOMETRY_NOTE_PINS_KEY, geometryNoteDisplayMode); }, [geometryNoteDisplayMode]);
   const [showGeometryDependencyOverlay, setShowGeometryDependencyOverlay] = useState(() =>
     readGeometryViewportBoolean("dependencies", false)
   );
@@ -77469,7 +77476,7 @@ case "mobius":
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [projectNoteRequest, setProjectNoteRequest] = useState<{ id: string; token: number } | null>(null);
   const activeNotebookProjectRef = useRef<Math3DProject | null>(null);
-  const [, setNotebookProjectVersion] = useState(0);
+  const [notebookProjectVersion, setNotebookProjectVersion] = useState(0);
   const sectionNavEntries: Array<{
     id: "projects" | "surfaces" | "mesh" | "volume" | "curves" | "graphs" | "topology" | "geometry" | "complex_analysis";
     label: string;
@@ -78012,6 +78019,35 @@ case "mobius":
         activeKernelModule === "mesh" ? meshKernelDocument : activeKernelModule === "surface" ?
           (restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom" ? restoredSurfaceAdapter : surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId))?.document() ?? null : null);
   const activeKernelSource = activeKernelDocument ? viewerSourceFromDocument(activeKernelDocument) : null;
+  const projectForNotePins = useMemo(() => {
+    try {
+      const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
+      if (!raw) return null;
+      const saved = parseMath3DProject(raw);
+      return activeNotebookProjectRef.current?.identity.id === saved.identity.id ? activeNotebookProjectRef.current : saved;
+    } catch { return null; }
+  }, [notebookProjectVersion]);
+  const geometryNotePins = useMemo(() =>
+    mode === "geometry" && geometryMode === "procedural" && activeKernelDocument?.format === "math3d.geometry-document"
+      ? resolveGeometryProjectNotePins(projectForNotePins, activeKernelDocument, geometryObjects)
+      : [],
+    [mode, geometryMode, projectForNotePins, geometryObjects, activeKernelDocument?.identity.id, activeKernelDocument?.identity.structuralHash],
+  );
+  const geometryNotePointSets = useMemo<OverlayPointSet[] | null>(() =>
+    (geometryNoteDisplayMode === "pins" || geometryNoteDisplayMode === "all") && geometryNotePins.length
+      ? [{ points: geometryNotePins.map((pin) => pin.position), color: 0xf59e0b, size: 0.12, opacity: 1 }]
+      : null, [geometryNoteDisplayMode, geometryNotePins]);
+  const geometryNoteLabelSets = useMemo<OverlayLabelSet[] | null>(() =>
+    (geometryNoteDisplayMode === "labels" || geometryNoteDisplayMode === "all") && geometryNotePins.length
+      ? [{ labels: geometryNotePins.map((pin) => ({ text: pin.title.length > 60 ? `${pin.title.slice(0, 57)}…` : pin.title,
+        position: pin.position, color: 0x92400e })), size: 0.8 }]
+      : null, [geometryNoteDisplayMode, geometryNotePins]);
+  const geometryPointSetsWithNotes = useMemo(() => [
+    ...(geometryProceduralSelectionPointSets ?? []), ...(geometryNotePointSets ?? []),
+  ], [geometryProceduralSelectionPointSets, geometryNotePointSets]);
+  const geometryLabelSetsWithNotes = useMemo(() => [
+    ...(geometryProceduralViewerLabelSets ?? []), ...(geometryNoteLabelSets ?? []),
+  ], [geometryProceduralViewerLabelSets, geometryNoteLabelSets]);
   const activeVolumeLineage = activeKernelModule === "volume" ? volumeExtractionRecords.find((record) => !record.promoted) ?? null : null;
   const activeKernelEvidence = activeKernelSource ? createViewerProvenanceEvidence({
     source: activeKernelSource, current: activeKernelSource,
@@ -103885,6 +103921,17 @@ case "mobius":
                     position: "relative",
                   }}
                 >
+                  {geometryMode === "procedural" && <label style={{ position: "absolute", top: 7, left: 8, zIndex: 60, display: "flex", alignItems: "center", gap: 5, fontSize: 11 }}>
+                    Notes
+                    <select aria-label="Project Note pins" data-testid="geometry-note-pins-mode"
+                      value={geometryNoteDisplayMode}
+                      onChange={(event) => setGeometryNoteDisplayMode(event.target.value as ProjectNoteViewerMode)}
+                      style={{ fontSize: 11 }}>
+                      <option value="off">Off</option><option value="pins">Pins</option>
+                      <option value="labels">Labels</option><option value="all">All</option>
+                    </select>
+                    <span title="Current Geometry object-local Project Notes">{geometryNotePins.length}</span>
+                  </label>}
                   <ViewerControlsModeSelect
                     testId="geometry-viewer-controls-mode"
                     value={geometryViewerControlsDensity}
@@ -104123,6 +104170,19 @@ case "mobius":
                         onChange={(e) => setGeometryShowViewportBadges(e.target.checked)}
                       />
                       Badges
+                    </label>
+                    <label style={{ ...viewerControlCheckStyle, gap: 4 }}>
+                      Notes
+                      <select aria-label="Project Note pins" data-testid="geometry-note-pins-mode"
+                        value={geometryNoteDisplayMode}
+                        onChange={(event) => setGeometryNoteDisplayMode(event.target.value as ProjectNoteViewerMode)}
+                        style={{ fontSize: 11 }}>
+                        <option value="off">Off</option>
+                        <option value="pins">Pins</option>
+                        <option value="labels">Labels</option>
+                        <option value="all">All</option>
+                      </select>
+                      <span title="Current Geometry object-local Project Notes">{geometryNotePins.length}</span>
                     </label>
                     <label style={viewerControlCheckStyle}>
                       <input
@@ -105420,7 +105480,7 @@ case "mobius":
                   meshOverrides={geometryProceduralMeshOverridesForViewer}
                   extraOverlayPolylineGroups={geometryProceduralViewerOverlayPolylineGroups}
                   extraOverlayMeshGroups={geometryProceduralViewerOverlayMeshGroups}
-                  extraOverlayPointSets={geometryProceduralSelectionPointSets}
+                  extraOverlayPointSets={geometryPointSetsWithNotes}
                   wireframe={geometryWireframe}
                   showPlanes={geometryShowPlanes}
                   planeGridSettings={geometryEffectivePlaneGridSettings}
@@ -105462,7 +105522,7 @@ case "mobius":
                         ? null
                         : geometryProceduralHighlightPointSets
                   }
-                  overlayLabelSets={geometryProceduralViewerLabelSets}
+                  overlayLabelSets={geometryLabelSetsWithNotes}
                   dragEnabled={
                     (geometryTransformGizmoActive && geometryGizmoMode === "translate") ||
                     ((geometryMode === "scratch" || geometryMode === "workbook") &&
