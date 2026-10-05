@@ -499,6 +499,8 @@ export type OverlayLabelSet = {
   labels: OverlayLabel[];
   font?: string;
   color?: number;
+  backgroundColor?: number;
+  borderColor?: number;
   opacity?: number;
   size?: number;
 };
@@ -1698,6 +1700,8 @@ type Props = {
   overlayPointSets?: OverlayPointSet[] | null;
   overlayMeshGroups?: OverlayMeshGroup[] | null;
   overlayLabelSets?: OverlayLabelSet[] | null;
+  persistentOverlayPointSets?: OverlayPointSet[] | null;
+  persistentOverlayLabelSets?: OverlayLabelSet[] | null;
   geodesicDiskEnabled?: boolean;
   geodesicDiskPickEnabled?: boolean;
   onGeodesicDiskPick?: (info: {
@@ -1970,6 +1974,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     overlayPointSets = null,
     overlayMeshGroups = null,
     overlayLabelSets = null,
+    persistentOverlayPointSets = null,
+    persistentOverlayLabelSets = null,
     geodesicDiskEnabled = false,
     geodesicDiskPickEnabled = false,
     geodesicDiskCenter = null,
@@ -2091,11 +2097,17 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     suppressInteractionOverlays && meshInteractionHideSceneOverlays;
   const effectiveOverlayMeshGroups = hideSceneOverlaysDuringInteraction || fastPreviewHelpersHidden
     ? selectionHighlightOverlays?.meshGroups : overlayMeshGroups;
-  const effectiveOverlayLabelSets = hideSceneOverlaysDuringInteraction || fastPreviewHelpersHidden ? null : overlayLabelSets;
+  const effectiveOverlayLabelSets = useMemo(() => {
+    const base = hideSceneOverlaysDuringInteraction || fastPreviewHelpersHidden ? null : overlayLabelSets;
+    return persistentOverlayLabelSets?.length ? [...(base ?? []), ...persistentOverlayLabelSets] : base;
+  }, [hideSceneOverlaysDuringInteraction, fastPreviewHelpersHidden, overlayLabelSets, persistentOverlayLabelSets]);
   const effectiveOverlayPolylineGroups =
     hideSceneOverlaysDuringInteraction || fastPreviewHelpersHidden ? selectionHighlightOverlays?.polylineGroups : overlayPolylineGroups;
-  const effectiveOverlayPointSets = hideSceneOverlaysDuringInteraction || fastPreviewHelpersHidden
-    ? selectionHighlightOverlays?.pointSets : overlayPointSets;
+  const effectiveOverlayPointSets = useMemo(() => {
+    const base = hideSceneOverlaysDuringInteraction || fastPreviewHelpersHidden
+      ? selectionHighlightOverlays?.pointSets : overlayPointSets;
+    return persistentOverlayPointSets?.length ? [...(base ?? []), ...persistentOverlayPointSets] : base;
+  }, [hideSceneOverlaysDuringInteraction, fastPreviewHelpersHidden, selectionHighlightOverlays?.pointSets, overlayPointSets, persistentOverlayPointSets]);
 
   const mountRef = useRef<HTMLDivElement | null>(null);
 
@@ -2117,6 +2129,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const overlayPointSetsRef = useRef<THREE.Group | null>(null);
   const overlayMeshGroupsRef = useRef<THREE.Group | null>(null);
   const overlayLabelSetsRef = useRef<THREE.Group | null>(null);
+  const requestOverlayRenderRef = useRef<(() => void) | null>(null);
   const chartGridRef = useRef<THREE.Group | null>(null);
   const chartGridPickMeshRef = useRef<THREE.Mesh | null>(null);
   const chartGridCellsRef = useRef<SurfaceDecompositionCell[]>([]);
@@ -4075,6 +4088,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const markRenderDirty = () => {
       renderDirty = true;
     };
+    requestOverlayRenderRef.current = markRenderDirty;
     const estimateGpuBytes = (root: THREE.Object3D): number => {
       const seen = new Set<string>();
       let total = 0;
@@ -6155,6 +6169,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         preservedCameraSignatureRef.current = cameraSignature;
       }
       forceReframeRef.current = null;
+      requestOverlayRenderRef.current = null;
       stopCameraTour("stopped", false);
       cancelAnimationFrame(frameId);
       if (topologyGizmoDragFrameRef.current != null) {
@@ -8602,6 +8617,15 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         canvas.width = width;
         canvas.height = height;
         ctx.font = fontWithSize;
+        if (set.backgroundColor != null) {
+          ctx.fillStyle = toCss(set.backgroundColor);
+          ctx.fillRect(0, 0, width, height);
+          if (set.borderColor != null) {
+            ctx.strokeStyle = toCss(set.borderColor);
+            ctx.lineWidth = Math.max(2, Math.round(fontSize * 0.08));
+            ctx.strokeRect(ctx.lineWidth / 2, ctx.lineWidth / 2, width - ctx.lineWidth, height - ctx.lineWidth);
+          }
+        }
         ctx.fillStyle = toCss(color);
         ctx.textBaseline = "middle";
         ctx.textAlign = "center";
@@ -8820,6 +8844,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     overlayPointSetsRef.current = group;
     recordOverlayBuildMs(overlayBuildStartedAt);
   }, [effectiveOverlayPointSets, recordOverlayBuildMs, sceneEpoch]);
+
+  useEffect(() => {
+    requestOverlayRenderRef.current?.();
+  }, [effectiveOverlayLabelSets, effectiveOverlayPointSets, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;

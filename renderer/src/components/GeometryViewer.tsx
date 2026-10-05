@@ -60,6 +60,7 @@ export type GeometryViewerProps = {
   extraOverlayPolylineGroups?: OverlayPolylineGroup[] | null;
   extraOverlayMeshGroups?: OverlayMeshGroup[] | null;
   extraOverlayPointSets?: OverlayPointSet[] | null;
+  persistentOverlayPointSets?: OverlayPointSet[] | null;
   highlightPolygons?: Polygon3[] | null;
   highlightColor?: number;
   highlightOpacity?: number;
@@ -69,6 +70,7 @@ export type GeometryViewerProps = {
   highlightFillOffset?: number;
   highlightPointSets?: OverlayPointSet[] | null;
   overlayLabelSets?: OverlayLabelSet[] | null;
+  persistentOverlayLabelSets?: OverlayLabelSet[] | null;
   dragEnabled?: boolean;
   onDragStart?: (info: {
     point: { x: number; y: number; z: number };
@@ -175,6 +177,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   extraOverlayPolylineGroups = null,
   extraOverlayMeshGroups = null,
   extraOverlayPointSets = null,
+  persistentOverlayPointSets = null,
   highlightPolygons,
   highlightColor = 0xf97316,
   highlightOpacity = 0.9,
@@ -184,6 +187,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   highlightFillOffset = 0.004,
   highlightPointSets,
   overlayLabelSets,
+  persistentOverlayLabelSets = null,
   dragEnabled = false,
   onDragStart,
   onDrag,
@@ -361,8 +365,10 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
       planeGridSettings={planeGridSettings}
       overlayPolylineGroups={overlayPolylineGroups}
       overlayPointSets={overlayPointSets}
+      persistentOverlayPointSets={persistentOverlayPointSets}
       overlayMeshGroups={overlayMeshGroups}
       overlayLabelSets={overlayLabelSets}
+      persistentOverlayLabelSets={persistentOverlayLabelSets}
       showContours={false}
       showBoundingBox={showBoundingBox}
       resetToken={resetToken}

@@ -78053,19 +78053,15 @@ case "mobius":
   );
   const geometryNotePointSets = useMemo<OverlayPointSet[] | null>(() =>
     (geometryNoteDisplayMode === "pins" || geometryNoteDisplayMode === "all") && geometryNotePins.length
-      ? [{ points: geometryNotePins.map((pin) => pin.position), color: 0xf59e0b, size: 0.12, opacity: 1 }]
+      ? [{ points: geometryNotePins.map((pin) => pin.position), color: 0xffffff, size: 1.05, opacity: 1 },
+        { points: geometryNotePins.map((pin) => pin.position), color: 0xf59e0b, size: 0.76, opacity: 1 }]
       : null, [geometryNoteDisplayMode, geometryNotePins]);
   const geometryNoteLabelSets = useMemo<OverlayLabelSet[] | null>(() =>
     (geometryNoteDisplayMode === "labels" || geometryNoteDisplayMode === "all") && geometryNotePins.length
       ? [{ labels: geometryNotePins.map((pin) => ({ text: pin.title.length > 60 ? `${pin.title.slice(0, 57)}…` : pin.title,
-        position: pin.position, color: 0x92400e })), size: 0.8 }]
+        position: { ...pin.position, y: pin.position.y + 0.4 }, color: 0x78350f })),
+        size: 3.2, backgroundColor: 0xfffbeb, borderColor: 0xf59e0b }]
       : null, [geometryNoteDisplayMode, geometryNotePins]);
-  const geometryPointSetsWithNotes = useMemo(() => [
-    ...(geometryProceduralSelectionPointSets ?? []), ...(geometryNotePointSets ?? []),
-  ], [geometryProceduralSelectionPointSets, geometryNotePointSets]);
-  const geometryLabelSetsWithNotes = useMemo(() => [
-    ...(geometryProceduralViewerLabelSets ?? []), ...(geometryNoteLabelSets ?? []),
-  ], [geometryProceduralViewerLabelSets, geometryNoteLabelSets]);
   const activeVolumeLineage = activeKernelModule === "volume" ? volumeExtractionRecords.find((record) => !record.promoted) ?? null : null;
   const activeKernelEvidence = activeKernelSource ? createViewerProvenanceEvidence({
     source: activeKernelSource, current: activeKernelSource,
@@ -105498,7 +105494,8 @@ case "mobius":
                   meshOverrides={geometryProceduralMeshOverridesForViewer}
                   extraOverlayPolylineGroups={geometryProceduralViewerOverlayPolylineGroups}
                   extraOverlayMeshGroups={geometryProceduralViewerOverlayMeshGroups}
-                  extraOverlayPointSets={geometryPointSetsWithNotes}
+                  extraOverlayPointSets={geometryProceduralSelectionPointSets}
+                  persistentOverlayPointSets={geometryNotePointSets}
                   wireframe={geometryWireframe}
                   showPlanes={geometryShowPlanes}
                   planeGridSettings={geometryEffectivePlaneGridSettings}
@@ -105540,7 +105537,8 @@ case "mobius":
                         ? null
                         : geometryProceduralHighlightPointSets
                   }
-                  overlayLabelSets={geometryLabelSetsWithNotes}
+                  overlayLabelSets={geometryProceduralViewerLabelSets}
+                  persistentOverlayLabelSets={geometryNoteLabelSets}
                   dragEnabled={
                     (geometryTransformGizmoActive && geometryGizmoMode === "translate") ||
                     ((geometryMode === "scratch" || geometryMode === "workbook") &&
