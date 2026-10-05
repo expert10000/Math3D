@@ -11,7 +11,7 @@ const resultDescription = (result: AnalysisResultEnvelope) => {
   if (result.provenance.operation.type === "mesh.saved.edge-path") return `Length ${number(s.length)} · ${Array.isArray(s.vertexIndices) ? s.vertexIndices.length : "unknown"} path vertices`;
   return result.provenance.operation.type;
 };
-export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onAnalyze }: { meshes: readonly SavedMeshChoice[]; onCreate?: () => string; onOpen?: (id: string) => void; onAnalyze: (id: string, kind: SavedMeshAnalysisKind, endpoints?: { start: number; end: number }) => void }) => {
+export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onAnalyze, creationHint = "Uses the applied surface. Apply formula changes first." }: { meshes: readonly SavedMeshChoice[]; onCreate?: () => string; onOpen?: (id: string) => void; onAnalyze: (id: string, kind: SavedMeshAnalysisKind, endpoints?: { start: number; end: number }) => void; creationHint?: string }) => {
   const [selected, setSelected] = useState(""), [start, setStart] = useState("0"), [end, setEnd] = useState(""), [message, setMessage] = useState(""), [error, setError] = useState("");
   const mesh = meshes.find(choice => choice.id === selected) ?? meshes.at(-1);
   const run = (action: () => void) => { try { action(); setError(""); } catch (failure) { setError((failure as Error).message); } };
@@ -23,7 +23,7 @@ export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onAnalyze }: 
   });
   return <section data-testid="project-saved-mesh-workflow" style={{ padding: "0 10px 10px", borderTop: "1px solid #cbd5e1", maxWidth: "100%", overflowWrap: "anywhere" }}>
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "8px 0" }}>
-      {onCreate && <><button data-testid="project-surface-create-mesh" onClick={() => run(() => { const id = onCreate(); setSelected(id); setMessage("Mesh ready. Its source revision is recorded; Projects → Save project keeps it."); })}>Create Mesh</button><small>Uses the applied surface. Apply formula changes first.</small></>}
+      {onCreate && <><button data-testid="project-surface-create-mesh" onClick={() => run(() => { const id = onCreate(); setSelected(id); setMessage("Mesh ready. Its source revision is recorded; Projects → Save project keeps it."); })}>Create Mesh</button><small>{creationHint}</small></>}
       {mesh && <><label style={{ maxWidth: "100%" }}>Saved Mesh <select style={{ maxWidth: "100%" }} data-testid="project-saved-mesh-choice" value={mesh.id} onChange={event => { setSelected(event.target.value); setMessage(""); setError(""); }}>{meshes.map(choice => <option key={choice.id} value={choice.id}>{choice.title}{choice.current ? "" : " · historical"}</option>)}</select></label>
         {onOpen && <button data-testid="project-saved-mesh-open" onClick={() => run(() => onOpen(mesh.id))}>Open Mesh</button>}
         <span data-testid="project-saved-mesh-freshness">{mesh.vertexCount} vertices · {mesh.current ? "Current source" : "Historical source or edited Mesh; create a new Mesh from the Surface to refresh"}{mesh.sourceRevision !== undefined ? ` · surface r${mesh.sourceRevision}` : ""}</span>

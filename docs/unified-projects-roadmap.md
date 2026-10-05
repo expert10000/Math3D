@@ -877,3 +877,29 @@ edited-project preservation, repeat import, corrupt input, capacity rejection
 and storage-failure retry. `tests/e2e/project-example-collection.spec.ts` verifies
 the import in a fresh offline Electron profile, normal Surface/Graph/mixed
 resource opening, preview-only rejection and library survival after restart.
+
+### PRJ35 native saved parametric Surface analysis — October 5
+
+Delivered on desktop: saved literal parametric Surfaces, including the imported
+Helicoid and custom coordinate formulas, expose **Create Mesh**, **Open Mesh**,
+**Save mesh quality**, **Save discrete curvature** and **Save shortest edge path**
+directly beside their native document editor. Both Surface editors use the same
+portable Mesh and analysis contracts from PRJ32–PRJ33. This is a saved-project
+workflow; selecting an unsaved library preset does not create a saved document.
+
+Creation captures the committed coordinate formulas, ranges, units and exact
+source generation. Its 33 × 33 grid is independent of the live display resolution
+and is stated in the toolbar. An unchanged snapshot is reused. Formula edits or
+Mesh edits make earlier outputs historical; explicit creation preserves them
+and produces a new snapshot. Surface undo/redo, analysis provenance, verified
+resource export and project save/reopen retain their existing contracts.
+
+Unit qualification checks native custom sampling bounds, units, refreshed
+lineage and verified portable buffers. The Electron acceptance in
+`tests/e2e/native-saved-surface-workflow.spec.ts` covers Helicoid creation, all
+three saved analyses, a custom pitch edit, undo/redo, historical results,
+duplicate reuse, invalid endpoint rejection, Mesh navigation, independent
+package import and cold restart. The Enneper saved-source workflow remains a
+regression gate. These are sampled Mesh measurements with the qualifications
+already declared under PRJ33; this increment does not add signed mobile support
+or analysis for unsupported preview-only representations.

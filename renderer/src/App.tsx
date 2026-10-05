@@ -79279,9 +79279,14 @@ case "mobius":
 
   const createMeshFromSavedSurface = (): string => {
     const restored = restoredProjectRef.current, session = additionalActiveId ? restored?.additional.get(additionalActiveId) : null;
-    const document = session?.document();
-    if (!restored || !session || document?.format !== "math3d.surface-document") throw new TypeError("Open a saved Surface source first.");
-    const next = createSavedSurfaceMesh(captureMixedKernelWorkspace(), document, session.context());
+    if (!restored) throw new TypeError("Open a saved Surface source first.");
+    // Capture first: native formula fields commit through the Surface adapter.
+    // The snapshot and its lineage must describe that same committed generation.
+    const workspace = captureMixedKernelWorkspace();
+    const document = session?.document() ?? (!additionalActiveId && mode === "surfaces" && surfaceViewerKind === "param" && paramSurfaceId === "custom" ? restoredSurfaceAdapter?.document() : null);
+    if (document?.format !== "math3d.surface-document" || !session && !restored.surfaces.has(document.identity.id)) throw new TypeError("Open a saved Surface source first.");
+    const context = session?.context() ?? { documents: verifyMixedWorkspaceReplay(workspace), resources: restored.resources };
+    const next = createSavedSurfaceMesh(workspace, document, context);
     restored.workspace = next.workspace;
     if (!next.existing) restored.meshes.set(next.adapter.document().identity.id, next.adapter);
     setAdditionalVersion(value => value + 1);
@@ -79294,6 +79299,7 @@ case "mobius":
     restored.workspace = appendSavedMeshAnalysis(workspace, result); setAdditionalVersion(value => value + 1);
   };
   const additionalSurface = additionalActiveId ? restoredProjectRef.current?.additional.get(additionalActiveId)?.document() : null;
+  const nativeSavedSurface = !additionalActiveId && mode === "surfaces" && surfaceViewerKind === "param" && paramSurfaceId === "custom" && restoredSurfaceAdapter && restoredProjectRef.current?.surfaces.has(restoredSurfaceAdapter.document().identity.id) ? restoredSurfaceAdapter.document() : null;
   const savedMeshSourceCurrent = () => {
     const restored = restoredProjectRef.current, mesh = meshDocumentAdapterRef.current;
     if (!restored || !mesh) return true;
@@ -81661,6 +81667,12 @@ case "mobius":
         </div>}
         <span>Projects → Save project keeps these edits.</span>
       </div>}
+      {nativeSavedSurface && restoredProjectRef.current && <SavedMeshAnalysisPanel
+        key={`surface-analysis:${nativeSavedSurface.identity.id}`}
+        meshes={savedSurfaceMeshLinks(restoredProjectRef.current.workspace, nativeSavedSurface, restoredProjectRef.current.meshes)}
+        onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis}
+        creationHint="Uses saved formulas and ranges on a 33 × 33 grid, independent of display resolution. Projects → Save project keeps the Mesh and analysis."
+      />}
       <div
         style={{
           ...styles.wrap,

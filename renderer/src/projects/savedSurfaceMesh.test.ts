@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { createMath3DProject, createMixedWorkspaceDocument } from "@math3d/core";
+import { createMath3DProject, createMixedWorkspaceDocument, createSurfaceDocument } from "@math3d/core";
 import { additionalRepresentationFixture } from "../../../tests/fixtures/unified-projects/additionalRepresentations";
 import { createSavedSurfaceMesh, savedSurfaceMeshLinks } from "./savedSurfaceMesh";
 import { AdditionalProjectSession } from "./additionalProjectSession";
 import { captureProjectResources, exportProjectPackage, parseProjectPackage } from "./projectResources";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
+import { SurfaceDocumentAdapter } from "../surfaceAnalysis/surfaceDocumentAdapter";
+import { surfaceEditorSeed, surfaceSourceFromEditor } from "./nativeProjectRestore";
 
 const savedSurfaceFixture = () => {
   const f = additionalRepresentationFixture(), surface = f.docs.find(d => d.format === "math3d.surface-document" && d.source.representation === "weierstrass")!;
@@ -15,6 +17,30 @@ const savedSurfaceFixture = () => {
   return { surface, workspace, context, session: new AdditionalProjectSession(entry, surface, () => context) };
 };
 describe("saved Surface to Mesh", () => {
+  it("retains the exact native custom source, ranges and units when creating and refreshing portable meshes", () => {
+    const surface = createSurfaceDocument({ stableKey: "native-custom-mesh", metadata: { title: "Custom saddle" }, source: {
+      representation: "parametric", definition: { familyId: "custom", expressions: { x: "u", y: "v", z: "u*v" } },
+      domain: { kind: "parameter", u: { min: -2, max: 2, periodic: false }, v: { min: -1, max: 1, periodic: false } },
+      parameters: {}, units: { length: "m" }, orientation: { sign: 1 }, branchPolicy: null,
+    } });
+    const workspaceBefore = createMixedWorkspaceDocument({ entries: [{ module: "surface", checkpoint: surface, expected: surface.identity, replay: null }], activeDocumentIds: [surface.identity.id], relations: [], results: [], artifacts: [], constructions: [], committedSelection: null });
+    const adapter = new SurfaceDocumentAdapter(surface), seed = surfaceEditorSeed(surface);
+    const first = createSavedSurfaceMesh(workspaceBefore, surface, { documents: new Map([[surface.identity.id, surface]]) });
+    const originalPositions = Array.from(first.adapter.mesh().positions);
+    expect(Math.min(...originalPositions.filter((_, index) => index % 3 === 0))).toBe(-2);
+    expect(Math.max(...originalPositions.filter((_, index) => index % 3 === 2))).toBe(2);
+    expect(first.adapter.document().source.origin).toMatchObject({ units: { length: "m" } });
+    adapter.commitSource(surfaceSourceFromEditor(surface.source, { ...seed, z: "2*u*v" }, seed));
+    const current = adapter.document(), workspace = createMixedWorkspaceDocument({ ...first.workspace, entries: first.workspace.entries.map(entry => entry.expected.id === surface.identity.id ? { ...entry, checkpoint: current, expected: current.identity, replay: null } : entry) });
+    const next = createSavedSurfaceMesh(workspace, current, { documents: new Map([[surface.identity.id, current]]) });
+    expect(Math.max(...Array.from(next.adapter.mesh().positions).filter((_, index) => index % 3 === 2))).toBe(4);
+    expect(Array.from(first.adapter.mesh().positions)).toEqual(originalPositions);
+    expect(next.workspace.relations.at(-1)?.sources[0]).toMatchObject({ documentId: current.identity.id, revision: current.identity.revision, structuralHash: current.identity.structuralHash });
+    expect(savedSurfaceMeshLinks(next.workspace, current, new Map([first.adapter, next.adapter].map(mesh => [mesh.document().identity.id, mesh]))).map(link => link.current)).toEqual([false, true]);
+    const exportedProject = createMath3DProject(next.workspace, { stableKey: "native-custom-mesh-transfer" }), resources = captureProjectResources(exportedProject, item => first.adapter.resources.bytes(item.reference as never) ?? next.adapter.resources.bytes(item.reference as never));
+    const parsed = parseProjectPackage(exportProjectPackage(exportedProject, resources));
+    expect(parsed.resources.meshStore(parsed.project).resolve(next.adapter.document().source.resource)?.positions).toEqual(next.adapter.mesh().positions);
+  });
   it("exports verified triangle buffers and exact lineage and keeps older generations on refresh", () => {
     const f = savedSurfaceFixture(), first = createSavedSurfaceMesh(f.workspace, f.surface, f.context), doc = first.adapter.document();
     expect(first.workspace.relations.at(-1)?.sources[0].structuralHash).toBe(f.surface.identity.structuralHash);
