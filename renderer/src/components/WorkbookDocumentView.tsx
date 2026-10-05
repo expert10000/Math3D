@@ -12,6 +12,7 @@ type Props = {
   onEditBlock: (stageId: WorkbookStageId, blockId: string) => void;
   onOpenDocument: (id: string, module: KernelWorkspaceModule) => void;
   onOpenProjects: () => void;
+  onOpenNote: (noteId: string) => void;
 };
 
 const blockKinds: Record<WorkbookBlock["type"], string> = {
@@ -21,7 +22,7 @@ const blockKinds: Record<WorkbookBlock["type"], string> = {
 
 /** A reading surface over the live Workbook model. Project targets are resolved by ID, never copied. */
 export const WorkbookDocumentView: React.FC<Props> = ({
-  workbook, project, projectLive, readOnly, statusFor, onUpdateBlock, onEditBlock, onOpenDocument, onOpenProjects,
+  workbook, project, projectLive, readOnly, statusFor, onUpdateBlock, onEditBlock, onOpenDocument, onOpenProjects, onOpenNote,
 }) => {
   const projectWorkbook = project?.workbooks?.find((item) => item.id === workbook.id);
   return <article data-testid="workbook-document-view" style={{ display: "grid", gap: 16, fontSize: 12 }}>
@@ -102,6 +103,7 @@ export const WorkbookDocumentView: React.FC<Props> = ({
               <small>Project Note · {note ? current ? "current" : "stale" : "missing"}</small>
               <div style={{ fontWeight: 700 }}>{note?.title ?? noteSource.noteId}</div>
               {note && <div style={{ whiteSpace: "pre-wrap" }}>{note.body}</div>}
+              <button type="button" disabled={!note || !projectLive} onClick={() => onOpenNote(noteSource.noteId)} style={{ marginTop: 5, fontSize: 11 }}>Open Note</button>
             </aside>;
           })}
         </section>;

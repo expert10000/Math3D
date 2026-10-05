@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { inspectProjectNoteAnchor, structuralHash,
   type Math3DProject, type MixedWorkspaceDocument, type ProjectNote } from "@math3d/core";
 import type { Workbook } from "@math3d/workbook";
@@ -14,10 +14,16 @@ const anchorLabel = (anchor: ProjectNote["anchor"]) => !anchor ? "Unanchored" :
   anchor.kind === "workbook-block" ? `Workbook block ${anchor.blockId}` : anchor.kind === "result" ? `Result ${anchor.resultId}` :
     anchor.kind === "graph-selection" ? `Graph ${anchor.objectId}${anchor.probe ? ` · probe (${anchor.probe.x}, ${anchor.probe.y})` : ""}` :
     "objectId" in anchor ? `${anchor.objectId}${"entityId" in anchor ? ` · ${anchor.entityKind} ${anchor.entityId}` : ""}` : `Document ${anchor.source.documentId}`;
-const SavedNote: React.FC<{ note: ProjectNote; status: string; busy: boolean; onSave: (note: ProjectNote, title: string, body: string) => Promise<boolean>; onOpen: (note: ProjectNote) => void }> = ({ note, status, busy, onSave, onOpen }) => {
+type WorkbookBlockChoice = { workbookId: string; blockId: string; label: string };
+const SavedNote: React.FC<{ note: ProjectNote; status: string; busy: boolean; targets: WorkbookBlockChoice[];
+  onSave: (note: ProjectNote, title: string, body: string) => Promise<boolean>;
+  onOpen: (note: ProjectNote) => void;
+  onSendToWorkbook: (note: ProjectNote, workbookId: string, blockId: string) => Promise<boolean>;
+}> = ({ note, status, busy, targets, onSave, onOpen, onSendToWorkbook }) => {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(note.title), [body, setBody] = useState(note.body);
-  return <article data-testid={`project-note-${note.identity.id}`} style={{ border: "1px solid #cbd5e1", borderRadius: 7, padding: 8, marginTop: 7 }}>
+  const [targetKey, setTargetKey] = useState("");
+  return <article id={`project-note-${note.identity.id}`} tabIndex={-1} data-testid={`project-note-${note.identity.id}`} style={{ border: "1px solid #cbd5e1", borderRadius: 7, padding: 8, marginTop: 7 }}>
     {editing ? <>
       <input aria-label="Note title" value={title} maxLength={160} onChange={(event) => setTitle(event.target.value)} style={{ width: "100%", boxSizing: "border-box" }} />
       <textarea aria-label="Note body" value={body} maxLength={8192} rows={3} onChange={(event) => setBody(event.target.value)} style={{ width: "100%", boxSizing: "border-box", marginTop: 5 }} />
@@ -27,6 +33,16 @@ const SavedNote: React.FC<{ note: ProjectNote; status: string; busy: boolean; on
       <strong>{note.title}</strong><p style={{ whiteSpace: "pre-wrap", margin: "5px 0" }}>{note.body}</p>
       <button type="button" disabled={busy} onClick={() => setEditing(true)}>Edit</button>
       {note.anchor && <button type="button" disabled={busy} onClick={() => onOpen(note)} style={{ marginLeft: 5 }}>Open target</button>}
+      <div style={{ display: "flex", gap: 5, marginTop: 7 }}>
+        <select aria-label={`Workbook block for ${note.title}`} value={targetKey} onChange={(event) => setTargetKey(event.target.value)} style={{ minWidth: 0, flex: 1 }}>
+          <option value="">Choose Project Workbook block</option>
+          {targets.map((target) => <option key={`${target.workbookId}:${target.blockId}`} value={`${target.workbookId}:${target.blockId}`}>{target.label}</option>)}
+        </select>
+        <button type="button" disabled={busy || !targets.some((target) => `${target.workbookId}:${target.blockId}` === targetKey)}
+          onClick={() => { const target = targets.find((item) => `${item.workbookId}:${item.blockId}` === targetKey); if (target) void onSendToWorkbook(note, target.workbookId, target.blockId); }}>
+          Send to Workbook
+        </button>
+      </div>
     </>}
     <small style={{ display: "block", marginTop: 5 }}>{category(note.anchor)} · {anchorLabel(note.anchor)} · {status} · revision {note.identity.revision}</small>
   </article>;
@@ -40,7 +56,9 @@ export const ProjectNotesPanel: React.FC<{
   onCaptureResult: (resultId: string) => void; onCaptureWorkbookBlock: (workbookId: string, blockId: string) => void; onOpenTarget: (note: ProjectNote) => void;
   onDiscardDraft: (id: string) => void; onSaveDrafts: () => void;
   onSaveNote: (note: ProjectNote, title: string, body: string) => Promise<boolean>;
-}> = ({ project, workspace, drafts, busy, message, selectionAvailable, workbooks, onClose, onOpenProjects, onRefresh, onCapture, onCaptureResult, onCaptureWorkbookBlock, onOpenTarget, onUpdateDraft, onDiscardDraft, onSaveDrafts, onSaveNote }) => {
+  onSendToWorkbook: (note: ProjectNote, workbookId: string, blockId: string) => Promise<boolean>;
+  focusNoteId?: string | null;
+}> = ({ project, workspace, drafts, busy, message, selectionAvailable, workbooks, onClose, onOpenProjects, onRefresh, onCapture, onCaptureResult, onCaptureWorkbookBlock, onOpenTarget, onUpdateDraft, onDiscardDraft, onSaveDrafts, onSaveNote, onSendToWorkbook, focusNoteId }) => {
   const [query, setQuery] = useState(""), [filter, setFilter] = useState<Filter>("all");
   const [resultId, setResultId] = useState(""), [blockKey, setBlockKey] = useState("");
   const notes = project?.notes ?? [];
@@ -50,6 +68,17 @@ export const ProjectNotesPanel: React.FC<{
     return { drafts: drafts.filter((draft) => matches(draft.title, draft.body, draft.anchor)), notes: notes.filter((note) => matches(note.title, note.body, note.anchor)) };
   }, [drafts, notes, filter, query]);
   const blocks = workbooks.flatMap(({ workbook }) => workbook.stages.flatMap((stage) => stage.blocks.map((block) => ({ workbook, stage, block, key: `${workbook.id}:${block.id}` }))));
+  const targets: WorkbookBlockChoice[] = blocks.map(({ workbook, stage, block }) => ({ workbookId: workbook.id, blockId: block.id, label: `${workbook.title} / ${stage.title} / ${block.title}` }));
+  useEffect(() => { if (focusNoteId) { setQuery(""); setFilter("all"); } }, [focusNoteId]);
+  useEffect(() => {
+    if (!focusNoteId) return;
+    const frame = requestAnimationFrame(() => {
+      const note = document.getElementById(`project-note-${focusNoteId}`);
+      note?.scrollIntoView({ block: "nearest" });
+      note?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusNoteId, notes.length, query, filter]);
   const resolver = useMemo(() => project && workspace ? projectNoteSourceResolver(project.identity.id, workspace) : null, [project?.identity.id, workspace]);
   const status = (note: ProjectNote): string => {
     if (!resolver) return "Source unavailable";
@@ -94,7 +123,7 @@ export const ProjectNotesPanel: React.FC<{
       <small>{category(draft.anchor)} · Session draft</small><button type="button" onClick={() => onDiscardDraft(draft.id)} style={{ marginLeft: 7 }}>Discard</button>
     </article>)}
     <strong style={{ display: "block", marginTop: 11 }}>Saved Notes ({notes.length})</strong>
-    {visible.notes.map((note) => <SavedNote key={`${note.identity.id}:${note.identity.revision}`} note={note} status={status(note)} busy={busy} onSave={onSaveNote} onOpen={onOpenTarget} />)}
+    {visible.notes.map((note) => <SavedNote key={`${note.identity.id}:${note.identity.revision}`} note={note} status={status(note)} busy={busy} targets={targets} onSave={onSaveNote} onOpen={onOpenTarget} onSendToWorkbook={onSendToWorkbook} />)}
     {!visible.drafts.length && !visible.notes.length && <p>No Notes match this view.</p>}
     <p role="status" data-testid="notes-message">{message}</p>
   </aside>;

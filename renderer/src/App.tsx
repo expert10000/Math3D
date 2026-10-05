@@ -77424,7 +77424,9 @@ case "mobius":
     SURFACE_MESH_PRESETS[1]?.id ??
     meshNewPresetId;
   const [projectsOpen, setProjectsOpen] = useState(false);
+  const [projectNoteRequest, setProjectNoteRequest] = useState<{ id: string; token: number } | null>(null);
   const activeNotebookProjectRef = useRef<Math3DProject | null>(null);
+  const [, setNotebookProjectVersion] = useState(0);
   const sectionNavEntries: Array<{
     id: "projects" | "surfaces" | "mesh" | "volume" | "curves" | "graphs" | "topology" | "geometry" | "complex_analysis";
     label: string;
@@ -79438,7 +79440,8 @@ case "mobius":
         captureProjectThumbnail={() => captureProjectViewThumbnail(document.querySelector(additionalActiveId ? '[data-testid="project-source-view"]' : '[data-testid="module-workspace"]'))}
         projectsOpen={projectsOpen}
         onProjectsOpenChange={setProjectsOpen}
-        onCurrentProjectChange={(project) => { activeNotebookProjectRef.current = project; }}
+        noteRequest={projectNoteRequest}
+        onCurrentProjectChange={(project) => { activeNotebookProjectRef.current = project; setNotebookProjectVersion((version) => version + 1); }}
         captureActiveWorkbook={() => workbooks.find((workbook) => workbook.id === activeWorkbookId) ?? null}
         captureNoteSelection={() => {
           const documentId = activeKernelDocument?.identity.id;
@@ -90077,6 +90080,7 @@ case "mobius":
                       workbooks={workbooks}
                       getNotebookProject={() => readNotebookProjectContext(activeNotebookProjectRef.current, localStorage.getItem(PROJECT_STORAGE_KEY), captureMixedKernelWorkspace)}
                       onOpenProjects={() => setProjectsOpen(true)}
+                      onOpenNote={(id) => setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }))}
                       onOpenNotebookDocument={(id, module) => {
                         if (navigateRestoredDocument(id, module)) return;
                         setActiveGraph2DTargetId(null);
@@ -91428,6 +91432,17 @@ case "mobius":
                           style={{ fontSize: 11 }}
                         />
                       </label>
+                      {(activeWorkbook?.dependencies ?? []).filter((edge) => edge.targetBlockId === fullWorkbookSelectedBlockMeta.block.id && edge.source.kind === "note").map((edge) => {
+                        if (edge.source.kind !== "note") return null;
+                        const source = edge.source;
+                        const project = activeNotebookProjectRef.current;
+                        const note = project?.identity.id === source.projectId ? project.notes?.find((item) => item.identity.id === source.noteId) : null;
+                        const status = !note ? "missing" : note.identity.revision === source.revision && note.identity.structuralHash === source.hash ? "current" : "stale";
+                        return <div key={edge.id} data-testid={`full-workbook-linked-note-${source.noteId}`} style={{ border: "1px solid #dbeafe", borderRadius: 6, padding: 7, fontSize: 11 }}>
+                          Project Note: {note?.title ?? source.noteId} · {status}
+                          <button type="button" disabled={!note} onClick={() => setProjectNoteRequest((previous) => ({ id: source.noteId, token: (previous?.token ?? 0) + 1 }))} style={{ marginLeft: 6, fontSize: 11 }}>Open Note</button>
+                        </div>;
+                      })}
                       {fullWorkbookSelectedBlockMeta.block.type === "text" && (
                         <label style={{ fontSize: 11, display: "grid", gap: 4 }}>
                           Body

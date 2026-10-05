@@ -13,9 +13,10 @@ type Props = {
   onChange: (dependencies: WorkbookDependency[]) => void;
   freshness?: WorkbookBlockFreshness;
   project?: Math3DProject | null;
+  onOpenNote?: (noteId: string) => void;
 };
 
-export const WorkbookDependencies: React.FC<Props> = ({ workbook, blockId, readOnly, getProject, onChange, freshness, project: liveProject }) => {
+export const WorkbookDependencies: React.FC<Props> = ({ workbook, blockId, readOnly, getProject, onChange, freshness, project: liveProject, onOpenNote }) => {
   const [context, setContext] = useState<NotebookProjectContext | null>(null);
   const [selection, setSelection] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +86,9 @@ export const WorkbookDependencies: React.FC<Props> = ({ workbook, blockId, readO
             : `${source.reference.kind === "document" ? "Document" : "Saved result"} · ${source.reference.targetId} · r${source.reference.source.revision}`;
         return <div key={edge.id} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <span style={{ overflowWrap: "anywhere", flex: 1 }} title={status.reason}>{label} · <strong>{status.status}</strong></span>
+          {source.kind === "note" && <button type="button" data-testid={`workbook-open-note-${source.noteId}`}
+            disabled={!onOpenNote || project?.identity.id !== source.projectId || !project?.notes?.some((note) => note.identity.id === source.noteId)}
+            onClick={() => onOpenNote?.(source.noteId)}>Open Note</button>}
           {!readOnly && status.status === "stale" && <button type="button" onClick={() => refreshLink(edge.id)}>Refresh link</button>}
           {!readOnly && <button type="button" onClick={() => onChange((workbook.dependencies ?? []).filter((item) => item.id !== edge.id))}>Remove</button>}
         </div>;

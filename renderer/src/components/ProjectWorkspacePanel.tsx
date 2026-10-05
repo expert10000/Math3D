@@ -24,7 +24,7 @@ import { canonicalJsonStringify, structuralHash, type ProjectNoteAnchor, type St
 import { pointTableStore, installPortablePointTables } from "../graph2d/pointTableStore";
 import { prepareProjectExampleCollection, importProjectExamples, SAMSUNG_EXAMPLE_COUNT } from "../projects/projectExampleCollection";
 import { prepareProjectWorkbook, readProjectWorkbook } from "../projects/projectWorkbookBinding";
-import type { Workbook, WorkbookStageId } from "@math3d/workbook";
+import { addWorkbookDependency, createNoteDependencySource, type Workbook, type WorkbookStageId } from "@math3d/workbook";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
 import { bindProjectNoteDrafts, createProjectNoteDraft, type NoteCaptureKind, type ProjectNoteDraft } from "../projects/projectNoteDrafts";
 import { createProjectNoteSelectionAnchor, type NoteSelectionDescriptor } from "../projects/projectNoteTargets";
@@ -43,6 +43,7 @@ type Props = {
   onCurrentProjectChange?: (project: Math3DProject) => void;
   captureActiveWorkbook?: () => Workbook | null;
   onOpenWorkbook?: (workbook: Workbook, stageId?: WorkbookStageId, blockId?: string) => void;
+  noteRequest?: { id: string; token: number } | null;
   captureNoteSelection?: () => NoteSelectionDescriptor | null;
   captureProjectThumbnail?: () => Promise<string>;
   capture: () => MixedWorkspaceDocument;
@@ -53,7 +54,7 @@ type Props = {
   resourceReader?: ProjectResourceReader;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onCurrentProjectChange, captureActiveWorkbook, onOpenWorkbook, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onCurrentProjectChange, captureActiveWorkbook, onOpenWorkbook, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader }) => {
 
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
   const resourceSessionId = useRef<string | null>(null);
@@ -162,6 +163,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       }).catch((error) => { if (noteRefreshSequence.current === sequence) setNotesMessage(`Workbook Note targets unavailable: ${(error as Error).message}`); });
     } catch (error) { setNotesMessage(`Notes unavailable: ${(error as Error).message}`); }
   };
+  useEffect(() => {
+    if (!noteRequest) return;
+    onOpenChange(false);
+    refreshNotes();
+    setNotesOpen(true);
+  }, [noteRequest?.token]);
   const captureNote = (kind: NoteCaptureKind) => {
     try {
       const workspace = capture(); verifyMixedWorkspaceReplay(workspace);
@@ -289,6 +296,47 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       if (!current || current.identity.revision !== note.identity.revision) throw new Error("Note changed. Reopen the Project before editing it.");
       return upsertMath3DProjectNote(saved, updateProjectNote(current, { title: noteTitle.trim(), body }, Date.now()));
     }, `Saved “${noteTitle.trim()}”.`);
+  const sendNoteToWorkbook = async (note: ProjectNote, workbookId: string, blockId: string): Promise<boolean> => {
+    if (busy) return false;
+    setBusy(true);
+    try {
+      const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
+      if (!raw) throw new Error("Save a named Project first.");
+      const saved = parseMath3DProject(raw);
+      if (saved.identity.id !== note.projectId || !parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)).entries.some((entry) => entry.id === saved.identity.id))
+        throw new Error("Open the Note's named Project first.");
+      const currentNote = saved.notes?.find((item) => item.identity.id === note.identity.id);
+      if (!currentNote || currentNote.identity.revision !== note.identity.revision || currentNote.identity.structuralHash !== note.identity.structuralHash)
+        throw new Error("Note changed. Refresh Notes before linking it.");
+      const reference = saved.workbooks?.find((item) => item.id === workbookId);
+      if (!reference) throw new Error("The target Workbook is not in this Project.");
+      const previous = await loadProjectResources(saved);
+      const bytes = previous.bytes({ kind: "workbook-payload", id: workbookId });
+      if (!bytes) throw new Error("The target Workbook resource is unavailable.");
+      const workbook = readProjectWorkbook(bytes, reference);
+      const stage = workbook.stages.find((item) => item.blocks.some((block) => block.id === blockId));
+      if (!stage) throw new Error("The target block is no longer in this Workbook.");
+      if (workbook.dependencies?.some((edge) => edge.targetBlockId === blockId && edge.source.kind === "note" && edge.source.noteId === note.identity.id))
+        throw new Error("This Note is already linked to that block. Use Refresh link in the Workbook after a Note edit.");
+      const linked = addWorkbookDependency(workbook, {
+        id: crypto.randomUUID(), targetBlockId: blockId, source: createNoteDependencySource(saved, note.identity.id),
+      }, saved);
+      const prepared = prepareProjectWorkbook(saved, { ...linked, updatedAt: Date.now() }, crypto.randomUUID());
+      const next = upsertMath3DProjectWorkbook(saved, prepared.reference);
+      const resources = collectResources(next, previous, false, { id: prepared.reference.id, bytes: prepared.bytes });
+      setLibrary(await commitProjectResources(next, resources, () => saveLibraryProject(localStorage, next, Date.now(), undefined,
+        { expectedBytes: serializeMath3DProject(saved) })));
+      resourceSession.current = resources; resourceSessionId.current = next.identity.id;
+      display(next, false); setNotesProject(next);
+      setNoteWorkbooks((current) => current.map((item) => item.workbook.id === workbookId
+        ? { workbook: prepared.workbook, revision: prepared.reference.revision } : item));
+      setNotesMessage(`Linked “${note.title}” to ${workbook.title} / ${stage.title}.`);
+      onOpenWorkbook?.(prepared.workbook, stage.id, blockId);
+      setNotesOpen(false);
+      return true;
+    } catch (error) { setNotesMessage(`Workbook link failed: ${(error as Error).message}`); return false; }
+    finally { setBusy(false); }
+  };
   const saveActiveWorkbook = async () => {
     if (busy || preview || managed || !project) return;
     setBusy(true);
@@ -523,13 +571,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       if (notesOpen) { setNotesOpen(false); return; }
       onOpenChange(false); refreshNotes(); setNotesOpen(true);
     }} style={{ position: "fixed", right: 14, bottom: 60, zIndex: 2502, border: "1px solid #64748b", borderRadius: 8, padding: "7px 10px", background: "#f8fafc", color: "#0f172a", fontWeight: 700 }}>Notes{noteDrafts.length ? ` (${noteDrafts.length})` : ""}</button>
-    {notesOpen && <ProjectNotesPanel project={notesProject} workspace={notesWorkspace} drafts={noteDrafts} busy={busy} message={notesMessage}
+    {notesOpen && <ProjectNotesPanel project={notesProject} workspace={notesWorkspace} drafts={noteDrafts} busy={busy} message={notesMessage} focusNoteId={noteRequest?.id}
       selectionAvailable={Boolean(captureNoteSelection?.())} workbooks={noteWorkbooks}
       onClose={() => setNotesOpen(false)} onOpenProjects={() => { setNotesOpen(false); onOpenChange(true); }} onRefresh={refreshNotes}
       onCapture={captureNote} onCaptureResult={captureResultNote} onCaptureWorkbookBlock={captureWorkbookBlockNote} onOpenTarget={openNoteTarget}
       onUpdateDraft={(id, patch) => setNoteDrafts((current) => current.map((draft) => draft.id === id ? { ...draft, ...patch } : draft))}
       onDiscardDraft={(id) => setNoteDrafts((current) => current.filter((draft) => draft.id !== id))}
-      onSaveDrafts={saveNoteDrafts} onSaveNote={saveEditedNote} />}
+      onSaveDrafts={saveNoteDrafts} onSaveNote={saveEditedNote} onSendToWorkbook={sendNoteToWorkbook} />}
     <button type="button" data-testid="projects-quick-toggle" aria-label="Open quick Projects" onClick={() => { setQuick(true); onOpenChange(true); }} style={{ position:"fixed",right:14,bottom:100,zIndex:2502,padding:"7px 10px",border:"1px solid #64748b",borderRadius:8,background:"#f8fafc",color:"#0f172a",fontSize:11 }}>Quick projects</button>
     {open && <ProjectGalleryFrame quick={quick} onClose={() => onOpenChange(false)}>
       <header data-testid="project-explorer-header" className="project-gallery-header">

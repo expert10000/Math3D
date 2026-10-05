@@ -88,3 +88,60 @@ test("NTS03 attaches a Note to a saved Workbook block and reopens its exact targ
     await expect(page.getByTestId("full-workbook-selected-block-title")).toHaveValue("Question");
   } finally { await closeSurfaceApp(ctx); }
 });
+
+test("NTS04 sends a Project Note to a Workbook and opens the linked Note", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp();
+    await resetSurfaceAppState(ctx.page);
+    const page = ctx.page;
+    await page.getByTestId("projects-toggle").click();
+    const projects = page.getByTestId("project-explorer-panel");
+    await projects.getByTestId("project-title").fill("Linked Notes Study");
+    await projects.getByTestId("project-save").click();
+    await expect(projects.getByTestId("project-message")).toContainText("Saved");
+    await projects.getByTestId("project-save-active-workbook").click();
+    await expect(projects.getByTestId("project-message")).toContainText("to this Project");
+    await projects.getByRole("button", { name: "Close project explorer" }).click();
+    await page.getByTestId("notes-toggle").click();
+    const notes = page.getByTestId("project-notes-panel");
+    await notes.getByTestId("notes-new").click();
+    const draft = notes.locator("[data-testid^='note-draft-']").first();
+    await draft.getByRole("textbox", { name: "Draft title" }).fill("Surface observation");
+    await draft.getByRole("textbox", { name: "Draft body" }).fill("Record the surface before analysis.");
+    await notes.getByTestId("notes-save").click();
+    await expect(notes.getByTestId("notes-message")).toContainText("Saved 1 Note");
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const noteId = saved.notes[0].identity.id as string;
+    const note = notes.getByTestId(`project-note-${noteId}`);
+    const target = note.getByRole("combobox", { name: "Workbook block for Surface observation" });
+    await expect(target.locator("option").nth(1)).toBeAttached();
+    await target.selectOption({ index: 1 });
+    await note.getByRole("button", { name: "Send to Workbook" }).click();
+    await expect(notes).toBeHidden();
+    const link = page.getByTestId(`full-workbook-linked-note-${noteId}`);
+    await expect(link).toContainText("Surface observation · current");
+    await link.getByRole("button", { name: "Open Note" }).click();
+    await expect(notes).toBeVisible();
+    await expect(notes.getByTestId(`project-note-${noteId}`)).toContainText("Record the surface before analysis.");
+    await notes.getByTestId(`project-note-${noteId}`).getByRole("button", { name: "Edit" }).click();
+    await notes.getByTestId(`project-note-${noteId}`).getByRole("textbox", { name: "Note body" }).fill("Updated surface observation.");
+    await notes.getByTestId(`project-note-${noteId}`).getByRole("button", { name: "Save changes" }).click();
+    await expect(notes.getByTestId("notes-message")).toContainText("Saved “Surface observation”");
+    await notes.getByRole("button", { name: "Close" }).click();
+    await expect(link).toContainText("Surface observation · stale");
+    const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(persisted.notes[0].identity.id).toBe(noteId);
+    expect(persisted.workbooks[0].revision).toBeGreaterThan(saved.workbooks[0].revision);
+    const profile = ctx.profileDir;
+    await ctx.app.close();
+    ctx = await launchSurfaceApp({}, profile);
+    await ctx.page.getByTestId("projects-toggle").click();
+    const reopened = ctx.page.getByTestId("project-explorer-panel");
+    await reopened.getByTestId(`project-open-workbook-${persisted.workbooks[0].id}`).click();
+    const reopenedLink = ctx.page.getByTestId(`full-workbook-linked-note-${noteId}`);
+    await expect(reopenedLink).toContainText("Surface observation · stale");
+    await reopenedLink.getByRole("button", { name: "Open Note" }).click();
+    await expect(ctx.page.getByTestId(`project-note-${noteId}`)).toContainText("Updated surface observation.");
+  } finally { await closeSurfaceApp(ctx); }
+});

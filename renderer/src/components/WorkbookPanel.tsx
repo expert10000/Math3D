@@ -50,6 +50,7 @@ type WorkbookPanelProps = {
   getNotebookProject: () => NotebookProjectContext | null;
   onOpenNotebookDocument: (id: string, module: KernelWorkspaceModule) => void;
   onOpenProjects: () => void;
+  onOpenNote: (noteId: string) => void;
   onRemoveBlock: (stageId: WorkbookStageId, blockId: string) => void;
   onMoveBlock: (stageId: WorkbookStageId, blockId: string, dir: -1 | 1) => void;
   onToggleBlockEnabled: (stageId: WorkbookStageId, blockId: string, enabled: boolean) => void;
@@ -489,6 +490,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   getNotebookProject,
   onOpenNotebookDocument,
   onOpenProjects,
+  onOpenNote,
   onRemoveBlock,
   onMoveBlock,
   onToggleBlockEnabled,
@@ -1505,7 +1507,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
       {viewMode === "document" && activeWorkbook ? <WorkbookDocumentView workbook={activeWorkbook}
         project={dependencyProject} projectLive={projectLive} readOnly={readOnly}
         statusFor={getBlockStatus} onUpdateBlock={onUpdateBlock} onOpenDocument={onOpenNotebookDocument}
-        onOpenProjects={onOpenProjects} onEditBlock={(stageId, blockId) => {
+        onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} onEditBlock={(stageId, blockId) => {
           onSelectStage(stageId); setSelectedBlockId(blockId); setPendingScrollId(blockId); setViewMode("block");
         }} /> : <>
       <div style={{ marginBottom: 10 }}>
@@ -1832,7 +1834,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
 
               {activeWorkbook && <WorkbookDependencies workbook={activeWorkbook} blockId={block.id} readOnly={readOnly}
                 getProject={getNotebookProject} onChange={onChangeDependencies} freshness={freshnessById.get(block.id)}
-                project={dependencyProject} />}
+                project={dependencyProject} onOpenNote={onOpenNote} />}
 
               {block.type === "visualize" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
