@@ -79298,6 +79298,7 @@ case "mobius":
     const workspace = captureMixedKernelWorkspace(), result = analyzeSavedMesh(adapter, kind, endpoints);
     restored.workspace = appendSavedMeshAnalysis(workspace, result); setAdditionalVersion(value => value + 1);
   };
+  const [projectGraphAnalysisRequest, setProjectGraphAnalysisRequest] = useState<{ documentId: string; token: number } | null>(null);
   const additionalSurface = additionalActiveId ? restoredProjectRef.current?.additional.get(additionalActiveId)?.document() : null;
   const nativeSavedSurface = !additionalActiveId && mode === "surfaces" && surfaceViewerKind === "param" && paramSurfaceId === "custom" && restoredSurfaceAdapter && restoredProjectRef.current?.surfaces.has(restoredSurfaceAdapter.document().identity.id) ? restoredSurfaceAdapter.document() : null;
   const savedMeshSourceCurrent = () => {
@@ -79362,6 +79363,7 @@ case "mobius":
           graph2d: graph2dDocument.identity.id,
         }[module] === id)}
         onNavigateDocument={(id, module) => {
+          setProjectGraphAnalysisRequest(null);
           if (navigateRestoredDocument(id, module)) return;
           const target = graph2dPromotions.find((item) => item.document.identity.id === id);
           if (target) { navigateRestoredDocument(target.trace.sourceDocumentId, "graph2d"); openGraph2DTarget(id); return; }
@@ -79377,6 +79379,23 @@ case "mobius":
             else if (module === "complex") { setDatasetKind("surface"); setSurfaceViewerKind("complex"); }
             else { setDatasetKind("surface"); setSurfaceViewerKind("param"); }
           }
+        }}
+        onOpenAnalysis={(id, module, route) => {
+          if (!navigateRestoredDocument(id, module)) {
+            setAdditionalActiveId(null); setActiveGraph2DTargetId(null);
+            if (route === "complex") { setFunctionExplorerScene("other_complex"); setMode("mobius"); }
+            else if (["surface", "surface-mesh", "mesh", "volume"].includes(route)) {
+              setMode("surfaces"); setDatasetKind(route === "volume" ? "volume" : route === "mesh" ? "mesh" : "surface");
+              if (route === "mesh") setSurfaceViewerKind("mesh");
+              else if (route === "surface") setSurfaceViewerKind("param");
+            }
+          }
+          setRightPanelTab("inspector");
+          if (route === "graph-tools") { setMode("graphs"); setProjectGraphAnalysisRequest(previous => ({ documentId: id, token: (previous?.token ?? 0) + 1 })); }
+          else if (route === "curve") { setMode("curves"); setCurveWorkspaceTab("analysis"); }
+          else if (route === "geometry") { setMode("geometry"); setGeometryProceduralPanelTab("analysis"); setGeometryRightPanelTab("analysis"); }
+          else if (route === "complex") { setOtherComplexSummaryOpen(true); }
+          else { setSurfacesPanelState("work"); setSurfacesLeftTab("analysis"); if (route === "mesh") setMeshWorkspaceLeftTab("analyze"); }
         }}
         onReopen={reopenGraphWorkspace}
         onRestoreProject={reopenProjectWorkspace}
@@ -90035,7 +90054,7 @@ case "mobius":
             )}
           </div>
         ) : mode === "graphs" ? (
-          <GraphsWorkspace key={graph2dDocument.identity.id} dockLayout={activeDockLayout} document={graph2dDocument}
+          <GraphsWorkspace key={graph2dDocument.identity.id} dockLayout={activeDockLayout} document={graph2dDocument} analysisRequest={projectGraphAnalysisRequest}
             onExportPersonalProject={id => exportPersonalGraphProject(captureMixedKernelWorkspace,id,localStorage)}
             onCopyGraphDefinition={id => personalGraphDefinition(captureMixedKernelWorkspace,id,localStorage)}
             onPreviewPersonalImport={raw => previewPersonalGraphImport(raw,localStorage)}

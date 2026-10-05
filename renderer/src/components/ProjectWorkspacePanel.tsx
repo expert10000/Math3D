@@ -27,6 +27,7 @@ import type { Workbook, WorkbookStageId } from "@math3d/workbook";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
 import { bindProjectNoteDrafts, createProjectNoteDraft, type NoteCaptureKind, type ProjectNoteDraft } from "../projects/projectNoteDrafts";
 import { createProjectNoteSelectionAnchor, type NoteSelectionDescriptor } from "../projects/projectNoteTargets";
+import { projectAnalysisAvailability, type ProjectAnalysisRoute } from "../projects/projectAnalysisAvailability";
 
 export { PROJECT_STORAGE_KEY } from "../projects/projectLibrary";
 const ProjectThumbnail: React.FC<{ src: string | null }> = ({ src }) => {
@@ -44,11 +45,12 @@ type Props = {
   capture: () => MixedWorkspaceDocument;
   canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
+  onOpenAnalysis?: (id: string, module: KernelWorkspaceModule, route: ProjectAnalysisRoute) => void;
   artifactAvailable?: (id: string, hash?: string | null) => boolean;
   resourceReader?: ProjectResourceReader;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onCurrentProjectChange, captureActiveWorkbook, onOpenWorkbook, captureNoteSelection, capture, canNavigateDocument, onNavigateDocument, artifactAvailable, onRestoreWorkspace, resourceReader }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onCurrentProjectChange, captureActiveWorkbook, onOpenWorkbook, captureNoteSelection, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader }) => {
 
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
   const resourceSessionId = useRef<string | null>(null);
@@ -80,6 +82,16 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   const compatibilityRef = useRef<HTMLDivElement>(null);
   useEffect(() => { if (incoming) compatibilityRef.current?.scrollIntoView({ block: "nearest" }); }, [incoming]);
   const dependencies = useMemo(() => project && inspectionOpen ? inspectProjectDependencies(project, artifactAvailable) : null, [project, artifactAvailable, inspectionOpen]);
+  // The explorer describes its captured Project snapshot; Refresh captures new bytes and generations.
+  const analyses = useMemo(() => {
+    if (!project) return new Map();
+    try {
+      const resources = captureProjectResources(project, item => resourceSession.current?.bytes(item) ?? resourceReader?.(item) ?? null, true);
+      return new Map(projectAnalysisAvailability(project, { resources, artifactAvailable, tableAvailable: reference => pointTableStore.resolve(reference) !== null }).map(item => [item.id, item]));
+    } catch (error) {
+      return new Map(project.workspace.entries.map(entry => [entry.expected.id, { route: null, tools: [], reason: `Analysis unavailable: ${(error as Error).message}`, qualification: "" }]));
+    }
+  }, [project]);
   const documentTitles = new Map(explorer?.groups.flatMap((group) => group.documents.map((document) => [document.id, document.title] as const)) ?? []);
 
   const display = (next: Math3DProject, savedPreview: boolean, keepManagement = false) => {
@@ -573,6 +585,16 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
             {preview && !document.archived && <small> · open project first</small>}
             <small> · revision {document.revision}{document.archived ? " · archived" : ""}</small>
             <button type="button" data-testid={`project-inspect-${document.id}`} onClick={() => { setInspectedId(document.id); setInspectionOpen(true); }}>Inspect dependencies</button>
+            {(() => {
+              const analysis = analyses.get(document.id);
+              const reason = preview ? "Open the saved project first to enable analysis." : analysis?.reason ?? (!canNavigateDocument?.(document.id, document.module) ? "Document unavailable in the active workspace." : !onOpenAnalysis ? "Analysis navigation is unavailable on this host." : null);
+              return <div data-testid={`project-analysis-${document.id}`} data-analysis-route={analysis?.route ?? "unavailable"} data-analysis-reason={reason ?? ""} style={{ fontSize: 12, margin: "4px 0 8px", overflowWrap: "anywhere" }}>
+                <strong>Analysis: </strong>{analysis?.tools.join(" · ") || "Unavailable"}
+                <button type="button" data-testid={`project-open-analysis-${document.id}`} disabled={busy || !!reason || !analysis?.route || !onOpenAnalysis} title={reason ?? analysis?.qualification}
+                  onClick={() => { if (analysis?.route && !reason) { onOpenAnalysis?.(document.id, document.module, analysis.route); onOpenChange(false); } }}>Open Analysis</button>
+                <div>{reason ?? analysis?.qualification}</div>
+              </div>;
+            })()}
             {managed && project && <ProjectDocumentActions key={`${document.id}:${document.title}:${document.archived}`} project={project} document={document} onAction={documentAction} />}
           </li>)}
         </ul> : <small style={{ display: "block", marginTop: 4 }}>No documents</small>}

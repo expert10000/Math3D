@@ -55,6 +55,7 @@ function readGraph2DLeftPalette(): Graph2DLeftPalette {
 type Props = {
   dockLayout: WorkspaceDockLayout;
   document: Graph2DDocument;
+  analysisRequest?: { documentId: string; token: number } | null;
   status?: "ready" | "loading" | "error";
   errorMessage?: string;
   onViewportCommit?: (viewport: Graph2DViewport) => void;
@@ -79,7 +80,7 @@ type Props = {
 };
 
 /** Desktop/web projection of shared Graph2D source and persistent display state. */
-export function GraphsWorkspace({ dockLayout, document, status = "ready", errorMessage, onViewportCommit,
+export function GraphsWorkspace({ dockLayout, document, analysisRequest, status = "ready", errorMessage, onViewportCommit,
   onGridModeCommit, onAxesCommit, onProbesCommit, onAuthoringCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onOpenPreset, onResumeCheckpoint, onCopyProject,
   onExportPersonalProject, onCopyGraphDefinition, onPreviewPersonalImport, onImportPersonalProject }: Props) {
@@ -93,6 +94,11 @@ export function GraphsWorkspace({ dockLayout, document, status = "ready", errorM
   const presentationOpener = useRef<HTMLButtonElement>(null);
   const exitPresentation = () => { setPresentation(false); requestAnimationFrame(() => presentationOpener.current?.focus()); };
   const [toolsOpen, setToolsOpen] = useState(false);
+  useEffect(() => {
+    if (analysisRequest?.documentId === document.identity.id) {
+      setGalleryOpen(false); setGridOpen(false); setGridPreview(null); setScalesOpen(false); setParametersOpen(false); setToolsOpen(true);
+    }
+  }, [analysisRequest, document.identity.id]);
   const [toolHint, setToolHint] = useState("");
   const toolsOpener = useRef<HTMLButtonElement>(null);
   const closeTools = () => { setToolsOpen(false); toolsOpener.current?.focus(); };

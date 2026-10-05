@@ -903,3 +903,27 @@ package import and cold restart. The Enneper saved-source workflow remains a
 regression gate. These are sampled Mesh measurements with the qualifications
 already declared under PRJ33; this increment does not add signed mobile support
 or analysis for unsupported preview-only representations.
+
+### PRJ36 analysis availability and navigation — October 5
+
+Delivered on desktop: every Project document row shows **Analysis**, its
+qualified tools and **Open Analysis**, or an explicit unavailable reason.
+Availability resolves the saved replay and checks representation, archive state
+and verified source resources. Graph tools report supported probes, roots,
+extrema, intersections, regression and tangent prerequisites. Native parametric
+Surfaces distinguish their formula-based analysis from saved sampled Mesh
+studies. Supported Curve, Geometry, Volume and Complex sources open their module
+tools; other saved previews retain results without promising unsupported analysis.
+
+Opening analysis selects the exact document ID and appropriate module panel;
+it does not run a scientific operation. A saved-project preview must be opened
+before its analysis actions become active. Archived documents, missing buffers
+or tables, and unqualified representations show their reason beside the button.
+Graph tools also recheck object/probe prerequisites after opening. The explorer
+describes its current captured Project snapshot; reopening/refreshing it captures
+new source generations and resources.
+
+Unit checks qualify all bundled document identities and reject archived and
+resource-missing targets. The desktop collection and guided-study checks cover
+navigation and preview blocking. This increment adds no mobile analysis editor
+and does not extend the mathematical scope of existing module operations.

@@ -14,6 +14,7 @@ import { probeRendererPlatformCapabilities } from "../kernel/rendererPlatformCap
 import { ProjectWorkspacePanel } from "./ProjectWorkspacePanel";
 import type { Workbook } from "@math3d/workbook";
 import type { NoteSelectionDescriptor } from "../projects/projectNoteTargets";
+import type { ProjectAnalysisRoute } from "../projects/projectAnalysisAvailability";
 
 const STORAGE_KEY = "math3d.mixed-workspace.v1";
 const HANDOFF_KEY = "math3d.graph2d-handoff.v2";
@@ -31,6 +32,7 @@ export type KernelWorkspacePanelProps = {
   artifactAvailable?: (artifactId: string, hash?: string | null) => boolean;
   onNavigateModule?: (module: KernelWorkspaceModule) => void;
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
+  onOpenAnalysis?: (id: string, module: KernelWorkspaceModule, route: ProjectAnalysisRoute) => void;
   canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
   onReopen?: (workspace: MixedWorkspaceDocument) => void;
   resourceReader?: ProjectResourceReader;
@@ -38,7 +40,7 @@ export type KernelWorkspacePanelProps = {
   graphDocumentId?: string;
 };
 
-export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ projectsOpen, onProjectsOpenChange, onCurrentProjectChange, captureActiveWorkbook, onOpenWorkbook, captureNoteSelection, capture, activeModule, activeEvidence, artifactAvailable, onNavigateModule, onNavigateDocument, canNavigateDocument, onReopen, onRestoreProject, graphDocumentId, resourceReader }) => {
+export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ projectsOpen, onProjectsOpenChange, onCurrentProjectChange, captureActiveWorkbook, onOpenWorkbook, captureNoteSelection, capture, activeModule, activeEvidence, artifactAvailable, onNavigateModule, onNavigateDocument, onOpenAnalysis, canNavigateDocument, onReopen, onRestoreProject, graphDocumentId, resourceReader }) => {
   const [open, setOpen] = useState(false);
   const [reopened, setReopened] = useState<MixedWorkspaceDocument | null>(null);
   const [message, setMessage] = useState("No mixed workspace opened.");
@@ -122,7 +124,7 @@ export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ proj
   const index = reopened?.relations.length ? createDocumentRelationIndex(reopened.relations) : null;
   return (
     <div data-testid="kernel-workspace-shell" style={{ position: "fixed", right: 14, bottom: 14, zIndex: 2500, fontSize: 11 }}>
-      <ProjectWorkspacePanel resourceReader={resourceReader} open={projectsOpen} onOpenChange={onProjectsOpenChange} onCurrentProjectChange={onCurrentProjectChange} captureActiveWorkbook={captureActiveWorkbook} onOpenWorkbook={onOpenWorkbook} captureNoteSelection={captureNoteSelection} capture={capture} onNavigateDocument={onNavigateDocument} canNavigateDocument={canNavigateDocument} artifactAvailable={artifactAvailable} onRestoreWorkspace={onRestoreProject ?? onReopen} />
+      <ProjectWorkspacePanel resourceReader={resourceReader} open={projectsOpen} onOpenChange={onProjectsOpenChange} onCurrentProjectChange={onCurrentProjectChange} captureActiveWorkbook={captureActiveWorkbook} onOpenWorkbook={onOpenWorkbook} captureNoteSelection={captureNoteSelection} capture={capture} onNavigateDocument={onNavigateDocument} onOpenAnalysis={onOpenAnalysis} canNavigateDocument={canNavigateDocument} artifactAvailable={artifactAvailable} onRestoreWorkspace={onRestoreProject ?? onReopen} />
       <button type="button" data-testid="kernel-workspace-toggle" onClick={() => setOpen((value) => !value)}
         style={{ border: "1px solid #64748b", borderRadius: 8, background: "#f8fafc", color: "#0f172a", padding: "7px 10px", fontWeight: 700 }}>
         Kernel workspace
