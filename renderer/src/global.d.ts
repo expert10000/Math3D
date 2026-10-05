@@ -589,6 +589,10 @@ declare global {
   };
 
   interface Window {
+    workspaceFiles?: {
+      open: () => Promise<{ ok: true; canceled: false; content: string } |
+        { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
+    };
     quantumScenes?: {
       open: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
       reopenRecent: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;

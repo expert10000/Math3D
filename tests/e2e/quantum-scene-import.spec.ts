@@ -79,25 +79,28 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await app.evaluate(({BrowserWindow})=>{
       BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command",{command:"file:new-workspace"});
     });
-    const fileChooserPromise = page.waitForEvent("filechooser");
+    await app.evaluate(({dialog},file)=>{
+      (dialog as any).showOpenDialog=async (_window:unknown,options:{properties?:string[]})=>{
+        if (!options.properties?.includes("openFile")) throw new Error("Workspace must use the native file picker");
+        return {canceled:false,filePaths:[file]};
+      };
+    },workspacePath);
     await app.evaluate(({BrowserWindow})=>{
       BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command",{command:"file:open-workspace"});
     });
-    await (await fileChooserPromise).setFiles(workspacePath);
     await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
     await expect(page.getByTestId("quantum-scene-preview")).toContainText("run-ipc");
     await page.getByTestId("quantum-scene-close").click();
     const damaged=Buffer.from(data);damaged[0]=1;await writeFile(join(directory,"vertices.f64"),damaged);
-    const damagedWorkspaceChooser = page.waitForEvent("filechooser");
     await app.evaluate(({BrowserWindow})=>{
       BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command",{command:"file:open-workspace"});
     });
-    await (await damagedWorkspaceChooser).setFiles(workspacePath);
     await expect(page.getByText(/Workspace quantum scene could not reopen:.*integrity/)).toBeVisible();
     await expect(page.getByTestId("quantum-scene-preview")).toBeHidden();
     const referenceRefused=await page.evaluate(ref=>(window as any).quantumScenes.openReference(ref),workspace.payload.quantumScene);
     expect(referenceRefused).toMatchObject({ok:false,canceled:false});
     if(!referenceRefused.ok&&!referenceRefused.canceled)expect(referenceRefused.error).toMatch(/integrity/);
+    await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},directory);
     const refused=await page.evaluate(()=>(window as any).quantumScenes.open());
     expect(refused).toMatchObject({ok:false,canceled:false});
     if(!refused.ok&&!refused.canceled)expect(refused.error).toMatch(/integrity/);

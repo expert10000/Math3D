@@ -53,6 +53,8 @@ workspace retains the verified scene's absolute folder and source fingerprint.
 Opening that workspace checks the complete `.qscene` again and displays the
 read-only preview only if the source still matches. The workspace holds a
 reference, so moving or changing the source requires reopening it explicitly.
+On desktop, **File → Open workspace** uses a native file picker for the saved
+`.math3d` file. **File → Open verified quantum scene** selects a `.qscene` folder.
 The preview is not yet an editable Math3D document. M3D-Q01
 lifecycle admission and M3D-Q02–Q10 remain open.
 

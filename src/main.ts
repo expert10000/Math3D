@@ -10,6 +10,7 @@ import { registerVtkMeshIpc } from "./main/ipc/vtkMeshIpc";
 import { registerSageServiceIpc } from "./main/ipc/sageServiceIpc";
 import { registerComputeEngineManagerIpc } from "./main/ipc/computeEngineManagerIpc";
 import { quantumSceneLaunchDirectory, registerQuantumSceneIpc } from "./main/ipc/quantumSceneIpc";
+import { registerWorkspaceFileIpc } from "./main/ipc/workspaceFileIpc";
 import { registerProjectThumbnailIpc } from "./main/ipc/projectThumbnailIpc";
 import { runPythonWorkerStartupCheck, stopPythonWorker } from "./main/python/pythonWorker";
 import { stopNativeCgalWorker } from "./main/python/nativeCgalWorker";
@@ -1001,6 +1002,7 @@ app.whenReady().then(async () => {
   try { launchQuantumScene = quantumSceneLaunchDirectory(process.argv); }
   catch (error) { console.error("Quantum scene launch ignored:", error); }
   registerQuantumSceneIpc(launchQuantumScene);
+  registerWorkspaceFileIpc();
   registerProjectThumbnailIpc();
 
   ipcMain.handle("app:capture-screenshot", async (evt, req: AppCaptureRequest): Promise<AppCaptureResponse> => {

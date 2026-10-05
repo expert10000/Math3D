@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { QuantumSceneOpenResponse } from "./main/quantumScene/ipcContract";
+import type { WorkspaceFileOpenResponse } from "./main/ipc/workspaceFileIpc";
 
 export type PresetKind = "graph" | "implicit" | "param";
 
@@ -519,6 +520,10 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
   reopenRecent: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:reopenRecent"),
   consumeLaunch: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:consumeLaunch"),
   openReference: (reference: unknown): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:openReference", reference),
+}));
+
+contextBridge.exposeInMainWorld("workspaceFiles", Object.freeze({
+  open: (): Promise<WorkspaceFileOpenResponse> => ipcRenderer.invoke("workspaceFiles:open"),
 }));
 
 contextBridge.exposeInMainWorld("meshFiles", {

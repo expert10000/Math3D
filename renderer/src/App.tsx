@@ -56899,9 +56899,15 @@ case "mobius":
       try {
         const parsed = JSON.parse(raw);
         const decoded = parseWorkbookProject(parsed);
-        if (!decoded) return;
+        if (!decoded) {
+          setScreenshotStatus("Open workspace failed: choose a .math3d workspace file. For a .qscene folder, use Open verified quantum scene.");
+          return;
+        }
+        if (!applyWorkbookPayload(decoded.payload)) {
+          setScreenshotStatus("Open workspace failed: the file has no valid workbooks.");
+          return;
+        }
         setWorkbookBundleAssetMode(decoded.assetMode === "linked" ? "linked" : "embedded");
-        if (!applyWorkbookPayload(decoded.payload)) return;
         setQuantumScenePreview(null);
         setQuantumSceneReference(null);
         if (decoded.payload.quantumScene) {
@@ -56914,8 +56920,8 @@ case "mobius":
             else if (!result.canceled) setScreenshotStatus(`Workspace quantum scene could not reopen: ${result.error}`);
           }).catch((error) => setScreenshotStatus(`Workspace quantum scene could not reopen: ${String((error as Error)?.message ?? error)}`));
         }
-      } catch {
-        // ignore
+      } catch (error) {
+        setScreenshotStatus(`Open workspace failed: ${String((error as Error)?.message ?? error)}`);
       }
     },
     [applyWorkbookPayload]
@@ -71649,6 +71655,12 @@ case "mobius":
           handleCreateWorkbook();
           return;
         case "file:open-workspace":
+          if (window.workspaceFiles?.open) {
+            const result = await window.workspaceFiles.open();
+            if (result.ok) handleImportWorkbooks(result.content);
+            else if (!result.canceled) notify(`Open workspace failed: ${result.error}`);
+            return;
+          }
           openFilePicker(".math3d,.json,application/json", (files) => {
             const file = files[0];
             if (!file) return;
