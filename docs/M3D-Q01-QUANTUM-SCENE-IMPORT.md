@@ -41,4 +41,6 @@ Theory Lab `.qscene` folder path as an optional argument for cross-repository
 acceptance; evolution, orbital and supplied-band bundles were checked during
 M3D-Q01 delivery. Real 1s and 2p orbital bundles are now pinned as ongoing
 M3D-Q02 compatibility fixtures; their stored inputs, density/node samples and
-units are checked without adding a Math3D physics engine.
+units are checked without adding a Math3D physics engine. A bounded, read-only
+density isosurface preview is derived from those verified amplitude grids in
+Electron main; it does not create a native editable Volume document.

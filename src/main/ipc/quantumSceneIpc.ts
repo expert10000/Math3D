@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { importQuantumSceneBundle, type ImportedQuantumScene } from "../quantumScene/importer";
 import { inspectVerifiedFieldSample, renderVerifiedFieldSlice, type FieldSampleRequest, type FieldSliceRequest } from "../quantumScene/fieldSlice";
+import { deriveVerifiedFieldSurface, type FieldSurfaceRequest } from "../quantumScene/fieldSurface";
 import type { QuantumSceneOpenResponse } from "../quantumScene/ipcContract";
 import { rememberQuantumScene, reopenRecentQuantumScene, reopenQuantumSceneReference, sceneFingerprint } from "../quantumScene/recent";
 import { isAbsolute, resolve } from "node:path";
@@ -112,5 +113,10 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
     if (args.length !== 1) throw new TypeError("Field sample requires one request");
     const imported = activeField(event, args[0]);
     return inspectVerifiedFieldSample(imported, args[0] as FieldSampleRequest);
+  });
+  ipcMain.handle("quantumScenes:fieldSurface", (event, ...args: unknown[]) => {
+    if (args.length !== 1) throw new TypeError("Field surface requires one request");
+    const imported = activeField(event, args[0]);
+    return deriveVerifiedFieldSurface(imported, args[0] as FieldSurfaceRequest);
   });
 }

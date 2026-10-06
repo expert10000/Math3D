@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { QuantumSceneOpenResponse } from "./main/quantumScene/ipcContract";
 import type { FieldSample, FieldSampleRequest, FieldSlice, FieldSliceRequest } from "./main/quantumScene/fieldSlice";
+import type { FieldSurface, FieldSurfaceRequest } from "./main/quantumScene/fieldSurface";
 import type { WorkspaceFileOpenResponse } from "./main/ipc/workspaceFileIpc";
 
 export type PresetKind = "graph" | "implicit" | "param";
@@ -523,6 +524,7 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
   openReference: (reference: unknown): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:openReference", reference),
   fieldSlice: (request: FieldSliceRequest): Promise<FieldSlice> => ipcRenderer.invoke("quantumScenes:fieldSlice", request),
   fieldSample: (request: FieldSampleRequest): Promise<FieldSample> => ipcRenderer.invoke("quantumScenes:fieldSample", request),
+  fieldSurface: (request: FieldSurfaceRequest): Promise<FieldSurface> => ipcRenderer.invoke("quantumScenes:fieldSurface", request),
 }));
 
 contextBridge.exposeInMainWorld("workspaceFiles", Object.freeze({

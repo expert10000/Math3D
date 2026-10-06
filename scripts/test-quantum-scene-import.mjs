@@ -10,6 +10,7 @@ const { importQuantumSceneBundle } = require("../dist/main/quantumScene/importer
 const { rememberQuantumScene, reopenRecentQuantumScene, reopenQuantumSceneReference, sceneFingerprint } = require("../dist/main/quantumScene/recent.js");
 const { quantumSceneLaunchDirectory } = require("../dist/main/ipc/quantumSceneIpc.js");
 const { renderVerifiedFieldSlice, inspectVerifiedFieldSample } = require("../dist/main/quantumScene/fieldSlice.js");
+const { deriveVerifiedFieldSurface } = require("../dist/main/quantumScene/fieldSurface.js");
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const root = await mkdtemp(join(tmpdir(), "m3d-q01-"));
 try {
@@ -186,6 +187,15 @@ try {
     assert.deepEqual([slice.width, slice.height, slice.unit, slice.rgba.length], [21, 21, "a0^-3", 21 * 21 * 4]);
     const center = inspectVerifiedFieldSample(real, { ...request, u: 10, v: 10 });
     assert.deepEqual(center.position, [0, 0, 0]);
+    const surface = deriveVerifiedFieldSurface(real, { fingerprint: sceneFingerprint(real), fieldId: "wavefunction", level: 0.1 });
+    assert.ok(surface.triangleCount > 0 && surface.triangleCount <= 20_000);
+    assert.equal(surface.indices.length, surface.triangleCount * 3);
+    assert.equal(surface.positions.length, surface.normals.length);
+    assert.deepEqual(surface.coordinateUnits, ["a0", "a0", "a0"]);
+    assert.equal(surface.unit, "a0^-3");
+    assert.ok(Math.abs(surface.threshold / surface.maximum - 0.1) < 1e-14);
+    assert.ok(surface.positions.every(value => Number.isFinite(value) && Math.abs(value) <= (n === 1 ? 8 : 16)));
+    assert.throws(() => deriveVerifiedFieldSurface(real, { fingerprint: sceneFingerprint(real), fieldId: "wavefunction", level: 0.0001 }), /threshold/);
     if (n === 1) assert.ok(Math.abs(center.value - 1 / Math.PI) < 1e-12, "Hydrogenic 1s center density disagrees with analytic value");
     else {
       assert.equal(center.value, 0, "Hydrogenic 2p has a central node");
@@ -193,7 +203,7 @@ try {
       assert.ok(inspectVerifiedFieldSample(real, { ...request, u: 11, v: 10 }).value > 0);
     }
   }
-  console.log("M3D-Q02 real Theory Lab 1s/2p fields, inputs, units and nodes passed");
+  console.log("M3D-Q02 real Theory Lab 1s/2p fields, inputs, units, nodes and bounded density surfaces passed");
 
   const copied = join(root, "real-lab-tamper.qscene");
   await cp(join(fixtureRoot, fixtureNames[0]), copied, { recursive: true });

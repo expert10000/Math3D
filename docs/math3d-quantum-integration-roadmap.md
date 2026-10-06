@@ -61,8 +61,10 @@ derived density or phase), with exact grid-sample inspection, source coordinates
 and units. Electron retains the verified arrays; only a maximum 49×49 RGBA
 plane and one requested value cross to the renderer. Phase is explicitly
 undefined at near-zero amplitude. Real Theory Lab 1s and 2p bundles are pinned
-and checked for stored quantum numbers, central density/node, and units. This
-is not an orbital isosurface or a full M3D-Q02 delivery. M3D-Q01 lifecycle
+and checked for stored quantum numbers, central density/node, and units. A
+read-only density isosurface preview now derives bounded triangles from verified
+amplitudes in Electron main, without transferring the full grid. It has no
+phase/sign coloring and is not a full M3D-Q02 delivery. M3D-Q01 lifecycle
 admission and the remaining M3D-Q02–Q10 work remain open.
 
 Quantum Lab must not call MATH3D internals, and MATH3D must not reproduce Quantum
@@ -281,10 +283,10 @@ produce one transaction; any failed validation or artifact admission produces no
 
 ### M3D-Q02 — `feat(math3d-quantum): import atomic and orbital scenes`
 
-**Status:** Partial — verified, read-only field slices and exact samples are
-implemented, with real 1s/2p cross-repository fixtures; orbital isosurfaces,
-atom/bond adapters, source locate-back and native project admission are not yet
-implemented.
+**Status:** Partial — verified, read-only field slices, exact samples, and
+bounded density isosurfaces are implemented with real 1s/2p cross-repository
+fixtures. Phase/sign-colored lobes, wider orbital acceptance, atom/bond adapters,
+source locate-back and native project admission are not yet implemented.
 
 **Scope.** Render atomic sites, bonds, labels, orbital isosurfaces, probability
 density, sign/phase coloring, and field slices. Preserve atomic/orbital quantum

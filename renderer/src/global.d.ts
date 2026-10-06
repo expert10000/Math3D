@@ -600,6 +600,7 @@ declare global {
       openReference: (reference: unknown) => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
       fieldSlice: (request: import("./components/QuantumFieldSlice").FieldSliceRequest) => Promise<import("./components/QuantumFieldSlice").FieldSlice>;
       fieldSample: (request: import("./components/QuantumFieldSlice").FieldSampleRequest) => Promise<import("./components/QuantumFieldSlice").FieldSample>;
+      fieldSurface: (request: import("./components/QuantumFieldSurface").FieldSurfaceRequest) => Promise<import("./components/QuantumFieldSurface").FieldSurface>;
     };
     surfacePresets?: {
       list: (kind: PresetKind) => Promise<SurfacePresetRecord[]>;

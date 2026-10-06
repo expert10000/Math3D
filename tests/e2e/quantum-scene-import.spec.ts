@@ -176,6 +176,19 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     const orbitalBounds=(await orbitalCanvas.boundingBox())!;
     await orbitalCanvas.click({position:{x:orbitalBounds.width*.5,y:orbitalBounds.height*.5}});
     await expect(page.getByTestId("quantum-field-sample")).toContainText("undefined near a node");
+    await page.getByRole("button",{name:"Density surface"}).click();
+    await expect(page.getByTestId("quantum-field-surface")).toBeVisible();
+    await expect(page.getByTestId("quantum-surface-legend")).toContainText("a0^-3");
+    await expect(page.getByTestId("quantum-surface-legend")).toContainText("10% of sampled maximum");
+    await expect(page.getByTestId("quantum-field-surface").locator("canvas").first()).toBeVisible();
+    await page.getByRole("combobox",{name:"Quantum surface threshold"}).selectOption("0.2");
+    await expect(page.getByTestId("quantum-surface-legend")).toContainText("20% of sampled maximum");
+    const orbitalReference=await page.evaluate(async()=>{
+      const opened=await (window as any).quantumScenes.reopenRecent();
+      return opened.ok ? opened.reference : null;
+    });
+    expect(orbitalReference).not.toBeNull();
+    if(!orbitalReference)throw new Error("Orbital reference was not remembered");
     await page.getByTestId("quantum-scene-close").click();
 
     const realBundle=resolve(__dirname,"..","fixtures","quantum-scene","run-97a132d1d712414bb62bb8c9212f517e-bands.qscene");
@@ -185,6 +198,11 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     });
     await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
     await expect(page.getByTestId("quantum-scene-preview")).toContainText("qwz");
+    const staleSurfaceRequest=await page.evaluate(async fingerprint=>{
+      try { await (window as any).quantumScenes.fieldSurface({fingerprint,fieldId:"wavefunction",level:0.1});return "accepted"; }
+      catch(error){return String(error);}
+    },orbitalReference.sceneFingerprint);
+    expect(staleSurfaceRequest).toMatch(/active verified scene/);
     await expect(page.getByTestId("quantum-scene-preview")).toContainText("rad / lattice constant");
     await expect(page.getByTestId("quantum-scene-preview")).toContainText("normalized energy (hbar=1)");
     await expect(page.getByTestId("quantum-band-legend")).toContainText("Lower band");
