@@ -39,4 +39,6 @@ Acceptance: `npm run test:quantum-scene:import` builds the Node module and
 tests a bounded bundle plus mutation refusals. The script also accepts a
 Theory Lab `.qscene` folder path as an optional argument for cross-repository
 acceptance; evolution, orbital and supplied-band bundles were checked during
-M3D-Q01 delivery.
+M3D-Q01 delivery. Real 1s and 2p orbital bundles are now pinned as ongoing
+M3D-Q02 compatibility fixtures; their stored inputs, density/node samples and
+units are checked without adding a Math3D physics engine.

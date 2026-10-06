@@ -86,6 +86,7 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units }: {
         : safeQuantity === "density" ? "Dark → bright: low → high sampled density"
           : "Blue → white → red: negative → zero → positive component"}</div>
       <div>Verified {field.grid.order} grid · {safeQuantity === "density" || safeQuantity === "phase" ? "display quantity derived from supplied amplitudes" : "supplied component"}</div>
+      <div>Grid {field.grid.shape.join(" × ")} · origin [{field.grid.origin.map(value => value.toPrecision(5)).join(", ")}] · spacing [{field.grid.spacing.map(value => value.toPrecision(5)).join(", ")}]</div>
       {sample && <div data-testid="quantum-field-sample">Grid [{sample.grid.join(", ")}] · {sample.position.map((value, coordinate) =>
         `${axes[coordinate]}=${value.toPrecision(5)} ${units[coordinate]}`).join(" · ")} · {safeQuantity} = {
           sample.undefinedNearNode ? "undefined near a node" : sample.value?.toPrecision(7)} {sample.unit}</div>}

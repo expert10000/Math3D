@@ -5,7 +5,8 @@ import { QuantumFieldSlice, type QuantumField } from "./QuantumFieldSlice";
 
 type Vector3 = { x: number; y: number; z: number };
 type SceneSource = {
-  provenance: { runId: string; model: string; resultSha256: string; engine: string; engineVersion: string };
+  provenance: { runId: string; model: string; resultSha256: string; engine: string; engineVersion: string;
+    parameters?: Record<string, number | string> };
   coordinates: { axes: [string, string, string]; units: [string, string, string]; handedness: string };
   datasets: { id: string; count: number; components: number; unit: string }[];
   objects: { id: string; label: string; kind: string; indices?: string; style: { color: string; opacity: number } }[];
@@ -99,6 +100,11 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
             <div><b>Run:</b> {scene.provenance.runId}</div>
             <div><b>Result SHA-256:</b> <code style={{ overflowWrap: "anywhere" }}>{scene.provenance.resultSha256}</code></div>
             <div><b>Engine:</b> {scene.provenance.engine} {scene.provenance.engineVersion}</div>
+            {scene.provenance.parameters && <><h3>Stored model inputs</h3><dl data-testid="quantum-scene-parameters" style={{ margin: 0 }}>
+              {Object.entries(scene.provenance.parameters).map(([key, value]) => <div key={key} style={{ display: "flex", gap: 8 }}>
+                <dt style={{ minWidth: 55 }}>{key}</dt><dd style={{ margin: 0 }}>{String(value)}</dd>
+              </div>)}
+            </dl></>}
             <div><b>Axes:</b> {scene.coordinates.axes.join(", ")} ({scene.coordinates.handedness}-handed)</div>
             <div><b>Coordinate units:</b> {scene.coordinates.units.join(", ")}</div>
             {scene.bands && <>

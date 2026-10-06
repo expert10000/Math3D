@@ -1,0 +1,115 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-3ee956128a3040dfa0d736370490b57f",
+  "title": "hydrogenic · native",
+  "provenance": {
+    "runId": "run-3ee956128a3040dfa0d736370490b57f",
+    "jobId": "math3d-orbital-1s",
+    "model": "hydrogenic",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-06T09:40:16.917938+00:00",
+    "resultSha256": "4631456558643e74e8eb870d51ea888d3eb6f3a29cf0a2b0896912702ce6a267",
+    "adapter": "qvis/1",
+    "parameters": {
+      "n": 1,
+      "l": 0,
+      "m": 0,
+      "basis": "complex",
+      "Z": 1,
+      "radius": 8,
+      "grid": 21
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "x",
+      "y",
+      "z"
+    ],
+    "units": [
+      "a0",
+      "a0",
+      "a0"
+    ]
+  },
+  "camera": {
+    "position": [
+      6,
+      5.1,
+      4.5
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "objects": [],
+  "datasets": [
+    {
+      "id": "psi-real",
+      "path": "psi-real.f64",
+      "format": "f64le",
+      "count": 9261,
+      "components": 1,
+      "unit": "a0^-3/2",
+      "bytes": 74088,
+      "sha256": "e8e1a27e1f90a58e186e5b2c2778c085f3d920f38b65970547cdab7d0c8476b4"
+    },
+    {
+      "id": "psi-imaginary",
+      "path": "psi-imaginary.f64",
+      "format": "f64le",
+      "count": 9261,
+      "components": 1,
+      "unit": "a0^-3/2",
+      "bytes": 74088,
+      "sha256": "2dd8ec0f340352b0e426d2bb002c77022bf2ec4fb512ddc53fa74005beee4cf3"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "assumptions",
+      "text": "One-electron Coulomb · infinite nuclear mass · E=-0.50000 Hartree",
+      "position": [
+        0,
+        0,
+        8
+      ]
+    }
+  ],
+  "fields": [
+    {
+      "id": "wavefunction",
+      "label": "Hydrogenic ψ · n=1, l=0, m=0 · complex",
+      "kind": "complex-field",
+      "real": "psi-real",
+      "imaginary": "psi-imaginary",
+      "grid": {
+        "shape": [
+          21,
+          21,
+          21
+        ],
+        "origin": [
+          -8,
+          -8,
+          -8
+        ],
+        "spacing": [
+          0.8,
+          0.8,
+          0.8
+        ],
+        "order": "xyz-z-fastest"
+      }
+    }
+  ]
+}

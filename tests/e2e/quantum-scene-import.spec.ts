@@ -161,6 +161,23 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
       .getContext("2d")!.getImageData(1,1,1,1).data[3])).toBe(0);
     await page.getByTestId("quantum-scene-close").click();
 
+    const orbitalBundle=resolve(__dirname,"..","fixtures","quantum-scene-orbitals","orbital-2p.qscene");
+    await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},orbitalBundle);
+    await app.evaluate(({BrowserWindow})=>{
+      BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command",{command:"file:open-quantum-scene"});
+    });
+    await expect(page.getByTestId("quantum-scene-preview")).toContainText("hydrogenic");
+    await expect(page.getByTestId("quantum-scene-parameters")).toContainText("basis");
+    await expect(page.getByTestId("quantum-scene-parameters")).toContainText("complex");
+    await expect(page.getByTestId("quantum-field-slice")).toBeVisible();
+    await expect(page.getByTestId("quantum-field-legend")).toContainText("a0^-3");
+    await page.getByRole("combobox",{name:"Quantum field quantity"}).selectOption("phase");
+    const orbitalCanvas=page.getByTestId("quantum-field-canvas");
+    const orbitalBounds=(await orbitalCanvas.boundingBox())!;
+    await orbitalCanvas.click({position:{x:orbitalBounds.width*.5,y:orbitalBounds.height*.5}});
+    await expect(page.getByTestId("quantum-field-sample")).toContainText("undefined near a node");
+    await page.getByTestId("quantum-scene-close").click();
+
     const realBundle=resolve(__dirname,"..","fixtures","quantum-scene","run-97a132d1d712414bb62bb8c9212f517e-bands.qscene");
     await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},realBundle);
     await app.evaluate(({BrowserWindow})=>{

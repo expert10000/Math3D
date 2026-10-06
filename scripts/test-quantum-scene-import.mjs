@@ -173,6 +173,28 @@ try {
   }
   assert.deepEqual(acceptedViews, new Set(["ssh/standard", "ssh/bands", "qwz/standard", "qwz/bands"]));
 
+  const orbitalRoot = resolve("tests/fixtures/quantum-scene-orbitals");
+  for (const [name, n, l, m] of [["orbital-1s.qscene", 1, 0, 0], ["orbital-2p.qscene", 2, 1, 1]]) {
+    const real = await importQuantumSceneBundle(join(orbitalRoot, name));
+    assert.equal(real.source.provenance.model, "hydrogenic");
+    assert.deepEqual(real.source.coordinates.units, ["a0", "a0", "a0"]);
+    assert.deepEqual(real.source.provenance.parameters, { n, l, m, basis: "complex", Z: 1, radius: n === 1 ? 8 : 16, grid: 21 });
+    assert.deepEqual(real.source.fields?.[0]?.grid.shape, [21, 21, 21]);
+    assert.deepEqual(real.deferredFieldIds, ["wavefunction"]);
+    const request = { fingerprint: sceneFingerprint(real), fieldId: "wavefunction", axis: 2, index: 10, quantity: "density" };
+    const slice = renderVerifiedFieldSlice(real, request);
+    assert.deepEqual([slice.width, slice.height, slice.unit, slice.rgba.length], [21, 21, "a0^-3", 21 * 21 * 4]);
+    const center = inspectVerifiedFieldSample(real, { ...request, u: 10, v: 10 });
+    assert.deepEqual(center.position, [0, 0, 0]);
+    if (n === 1) assert.ok(Math.abs(center.value - 1 / Math.PI) < 1e-12, "Hydrogenic 1s center density disagrees with analytic value");
+    else {
+      assert.equal(center.value, 0, "Hydrogenic 2p has a central node");
+      assert.equal(inspectVerifiedFieldSample(real, { ...request, quantity: "phase", u: 10, v: 10 }).value, null);
+      assert.ok(inspectVerifiedFieldSample(real, { ...request, u: 11, v: 10 }).value > 0);
+    }
+  }
+  console.log("M3D-Q02 real Theory Lab 1s/2p fields, inputs, units and nodes passed");
+
   const copied = join(root, "real-lab-tamper.qscene");
   await cp(join(fixtureRoot, fixtureNames[0]), copied, { recursive: true });
   const copiedScene = JSON.parse(await readFile(join(copied, "scene.json"), "utf8"));
