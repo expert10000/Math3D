@@ -5,9 +5,9 @@ import {
   type MixedWorkspaceDocument,
 } from "@math3d/core";
 import { mergeProjectLiveWorkspace } from "../projects/projectTransfer";
-import type { NotebookArtifactReader } from "@math3d/workbook";
+import type { NotebookReference, NotebookArtifactReader } from "@math3d/workbook";
 
-export type NotebookProjectContext = Readonly<{ project: Math3DProject; live: boolean; readArtifact?: NotebookArtifactReader }>;
+export type NotebookProjectContext = Readonly<{ project: Math3DProject; live: boolean; readArtifact?: NotebookArtifactReader; rerunAnalysis?: (reference: NotebookReference, signal: AbortSignal) => Promise<NotebookReference> }>;
 
 /** Only a saved Project ID can back a durable Workbook reference. */
 export function readNotebookProjectContext(

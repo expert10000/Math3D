@@ -7,6 +7,7 @@ import {
   type NotebookReference,
 } from "@math3d/workbook";
 import type { NotebookProjectContext } from "../workbook/notebookProjectContext";
+import { WorkbookAnalysisRerun } from "./WorkbookAnalysisRerun";
 import { WorkbookProvenance } from "./WorkbookProvenance";
 
 type Props = {
@@ -88,6 +89,7 @@ export const WorkbookProjectReferenceCell: React.FC<Props> = ({ reference, readO
       <span style={{ overflowWrap: "anywhere", color: "#64748b" }}>{validReference.targetId}</span>
       <span>{inspection?.reason ?? "Open the referenced Project to verify this link."}</span>
       <WorkbookProvenance project={project ?? null} reference={validReference} reader={context?.readArtifact} />
+      {!readOnly && <WorkbookAnalysisRerun context={context} reference={validReference} onRelink={onChange} />}
       <button type="button" disabled={!context?.live || !sourceEntry || inspection?.status === "different-project" || inspection?.status === "missing"} onClick={() => sourceEntry && onOpenDocument(sourceEntry.expected.id, sourceEntry.module)} style={{ width: "fit-content", fontSize: 11 }}>
         {validReference.kind === "result" ? "Open source document" : "Open current document"}
       </button>

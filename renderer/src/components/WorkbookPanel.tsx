@@ -1521,7 +1521,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
       </div>
 
       {viewMode === "document" && activeWorkbook ? <WorkbookDocumentView workbook={activeWorkbook}
-        project={dependencyProject} projectLive={projectLive} readArtifact={artifactContext?.readArtifact} readOnly={readOnly}
+        project={dependencyProject} context={artifactContext} projectLive={projectLive} readArtifact={artifactContext?.readArtifact} readOnly={readOnly}
         statusFor={getBlockStatus} onUpdateBlock={onUpdateBlock} onOpenDocument={onOpenNotebookDocument}
         onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} onEditBlock={(stageId, blockId) => {
           onSelectStage(stageId); setSelectedBlockId(blockId); setPendingScrollId(blockId); setViewMode("block");

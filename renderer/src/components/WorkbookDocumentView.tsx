@@ -1,6 +1,8 @@
 import React from "react";
 import type { KernelWorkspaceModule, Math3DProject } from "@math3d/core";
 import { inspectNotebookReference, type NotebookArtifactReader, type Workbook, type WorkbookBlock, type WorkbookStageId } from "@math3d/workbook";
+import type { NotebookProjectContext } from "../workbook/notebookProjectContext";
+import { WorkbookAnalysisRerun } from "./WorkbookAnalysisRerun";
 import { WorkbookProvenance } from "./WorkbookProvenance";
 import { WorkbookClaimEditor } from "./WorkbookClaimEditor";
 import { renderNotebookMarkdown, renderNotebookMath, workbookDocumentContentHtml } from "../workbook/notebookContent";
@@ -10,6 +12,7 @@ import { projectNoteRenderedBody } from "../projects/projectNoteValues";
 
 type Props = {
   workbook: Workbook;
+  context?: NotebookProjectContext | null;
   project: Math3DProject | null;
   projectLive: boolean;
   readArtifact?: NotebookArtifactReader;
@@ -29,7 +32,7 @@ const blockKinds: Record<WorkbookBlock["type"], string> = {
 
 /** A reading surface over the live Workbook model. Project targets are resolved by ID, never copied. */
 export const WorkbookDocumentView: React.FC<Props> = ({
-  workbook, project, projectLive, readArtifact, readOnly, statusFor, onUpdateBlock, onEditBlock, onOpenDocument, onOpenProjects, onOpenNote,
+  workbook, context, project, projectLive, readArtifact, readOnly, statusFor, onUpdateBlock, onEditBlock, onOpenDocument, onOpenProjects, onOpenNote,
 }) => {
   const projectWorkbook = project?.workbooks?.find((item) => item.id === workbook.id);
   return <article data-testid="workbook-document-view" style={{ display: "grid", gap: 16, fontSize: 12, minWidth: 0 }}>
@@ -89,6 +92,7 @@ export const WorkbookDocumentView: React.FC<Props> = ({
               <span>{reference.kind === "document" ? "Document" : "Saved result"} · source revision {reference.source.revision} · {inspection?.status ?? "unresolved"}</span>
               <span style={{ color: "#64748b" }}>{inspection?.reason ?? "Open the named Project to inspect this reference."}</span>
               <WorkbookProvenance project={project} reference={reference} reader={readArtifact} />
+              {!readOnly && <WorkbookAnalysisRerun context={context ?? null} reference={reference} onRelink={notebookReference => onUpdateBlock(stage.id, block.id, { notebookReference })} />}
               <button type="button" disabled={!projectLive || !source || inspection?.status === "missing" || inspection?.status === "different-project"}
                 onClick={() => source && onOpenDocument(source.expected.id, source.module)} style={{ justifySelf: "start", fontSize: 11 }}>Open source document</button>
             </> : <span>No Project target linked yet.</span>}

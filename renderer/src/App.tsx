@@ -19,6 +19,7 @@ import { capturedCurveSources } from "./projects/capturedCurveSources";
 import { additionalReplayEditable } from "./projects/additionalProjectSession";
 import { AdditionalProjectEditor } from "./projects/AdditionalProjectEditor";
 import { createSavedSurfaceMesh, savedSurfaceMeshLinks, savedMeshSurfaceSource } from "./projects/savedSurfaceMesh";
+import { rerunNotebookAnalysis } from "./workbook/notebookRerun";
 import { analyzeSavedMesh, appendSavedMeshAnalysis, type SavedMeshAnalysisKind } from "./projects/savedMeshAnalysis";
 import { SavedMeshAnalysisPanel } from "./projects/SavedMeshAnalysisPanel";
 import { surfaceStudySource, type SurfaceStudyPresetId } from "./projects/surfaceStudyPresets";
@@ -28,8 +29,9 @@ import { renderNotebookMarkdown, renderNotebookMath, workbookDocumentContentHtml
 import { normalizeWorkbookDocumentContent, workbookTableMarkdown, isWorkbookFigureImage } from "@math3d/workbook";
 import { WorkbookClaimEditor } from "./components/WorkbookClaimEditor";
 import { WorkbookNamedParameters } from "./components/WorkbookNamedParameters";
+import { WorkbookAnalysisRerun } from "./components/WorkbookAnalysisRerun";
 import { WorkbookProvenance } from "./components/WorkbookProvenance";
-import type { NotebookArtifactReader } from "@math3d/workbook";
+import type { NotebookReference, NotebookArtifactReader } from "@math3d/workbook";
 import { captureProjectViewThumbnail } from "./projects/projectViewThumbnail";
 import { supportsSavedSurfaceResolution, type SurfaceStudyResolution } from "./projects/surfaceStudyResolution";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -78312,7 +78314,17 @@ case "mobius":
     const volume = volumeExtractionBridgeRef.current?.artifacts().resolve(handle, source);
     return volume?.ok ? volume.bytes : null;
   };
-  const getNotebookContext = () => readNotebookProjectContext(activeNotebookProjectRef.current, localStorage.getItem(PROJECT_STORAGE_KEY), captureMixedKernelWorkspace, readNotebookArtifact);
+  const readNotebookContext = () => readNotebookProjectContext(activeNotebookProjectRef.current, localStorage.getItem(PROJECT_STORAGE_KEY), captureMixedKernelWorkspace, readNotebookArtifact);
+  const getNotebookContext = () => {
+    const context = readNotebookContext();
+    return context && { ...context, rerunAnalysis: (reference: NotebookReference, signal: AbortSignal) => rerunNotebookAnalysis(reference, signal, readNotebookContext,
+      id => restoredProjectRef.current?.meshes.get(id), result => {
+        const restored = restoredProjectRef.current;
+        if (!restored) throw new TypeError("Open the cited Project first.");
+        restored.workspace = appendSavedMeshAnalysis(captureMixedKernelWorkspace(), result);
+        setAdditionalVersion(value => value + 1);
+      }) };
+  };
   const workbookClaimProject = activeWorkbook?.stages.some(stage => stage.blocks.some(block => !!block.claim)) ? getWorkbookDependencyProjectRef.current() : null;
   const workbookEvidenceClaims = activeWorkbook?.stages.flatMap(stage => stage.blocks.filter(block => !!block.claim).map(block => ({
     workbookId: activeWorkbook.id, stageId: stage.id, blockId: block.id, title: block.title, text: block.claim!.text,
@@ -91643,6 +91655,7 @@ case "mobius":
                     <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 10, display: "grid", gap: 8 }}>
                       <div style={{ fontSize: 11, fontWeight: 700 }}>Selected block editor</div>
                       {fullWorkbookSelectedBlockMeta.block.notebookReference && <WorkbookProvenance reference={fullWorkbookSelectedBlockMeta.block.notebookReference} project={getWorkbookDependencyProjectRef.current()} reader={readNotebookArtifact} />}
+                      {fullWorkbookSelectedBlockMeta.block.notebookReference && !IS_REPLAY_MODE && <WorkbookAnalysisRerun context={getNotebookContext()} reference={fullWorkbookSelectedBlockMeta.block.notebookReference} onRelink={notebookReference => handleUpdateWorkbookBlock(fullWorkbookSelectedBlockMeta.stageId, fullWorkbookSelectedBlockMeta.block.id, { notebookReference })} />}
                       {fullWorkbookSelectedBlockMeta.block.type === "assert" && activeWorkbook && (() => {
                         const context = getNotebookContext();
                         return <WorkbookClaimEditor key={fullWorkbookSelectedBlockMeta.block.id} workbook={activeWorkbook} block={fullWorkbookSelectedBlockMeta.block}

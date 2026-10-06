@@ -23,6 +23,8 @@ import { commitProjectResources, loadProjectResources } from "../projects/projec
 import { canonicalJsonStringify, structuralHash, type ProjectNoteAnchor, type StableDocumentId } from "@math3d/core";
 import { pointTableStore, installPortablePointTables } from "../graph2d/pointTableStore";
 import { prepareProjectExampleCollection, importProjectExamples, SAMSUNG_EXAMPLE_COUNT } from "../projects/projectExampleCollection";
+import { instantiateNotebookStarter, NOTEBOOK_STARTERS, type NotebookStarterId } from "../projects/notebookStarters";
+import type { ProjectStarterId } from "./ProjectTemplatesPanel";
 import { prepareProjectWorkbook, readProjectWorkbook } from "../projects/projectWorkbookBinding";
 import { addWorkbookDependency, createNoteDependencySource, type Workbook, type WorkbookStageId } from "@math3d/workbook";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
@@ -565,19 +567,21 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       setMessage("Review editor compatibility before opening this saved project.");
     } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
   };
-  const previewTemplate = (id: Math3DProjectTemplateId) => {
+  const previewTemplate = (id: ProjectStarterId) => {
     importSequence.current++;
     try {
-      const next = instantiateMath3DProjectTemplate(id, crypto.randomUUID());
-      setIncoming({ ...inspectProjectCompatibility(next, transferOptions()), resources: undefined, inputKind: "Independent starter project" });
+      const token = crypto.randomUUID(), bundle = NOTEBOOK_STARTERS.some(item => item.id === id) ? instantiateNotebookStarter(id as NotebookStarterId, token) : { project: instantiateMath3DProjectTemplate(id, token), resources: undefined };
+      const next = bundle.project;
+      setIncoming({ ...inspectProjectCompatibility(next, transferOptions(bundle.resources)), resources: bundle.resources, inputKind: "Independent starter project" });
       setMessage("Starter preview ready. Current work is unchanged until you choose to open it.");
     } catch (error) { setIncoming(null); setMessage(`Starter unavailable: ${(error as Error).message}`); }
   };
-  const openTemplate = async (id: Math3DProjectTemplateId) => {
+  const openTemplate = async (id: ProjectStarterId) => {
     importSequence.current++;
     try {
-      const next = instantiateMath3DProjectTemplate(id, crypto.randomUUID());
-      const candidate = { ...inspectProjectCompatibility(next, transferOptions()), resources: undefined, inputKind: "Independent starter project" };
+      const token = crypto.randomUUID(), bundle = NOTEBOOK_STARTERS.some(item => item.id === id) ? instantiateNotebookStarter(id as NotebookStarterId, token) : { project: instantiateMath3DProjectTemplate(id, token), resources: undefined };
+      const next = bundle.project;
+      const candidate = { ...inspectProjectCompatibility(next, transferOptions(bundle.resources)), resources: bundle.resources, inputKind: "Independent starter project" };
       await importPreview(true, candidate);
     } catch (error) { setMessage(`Starter unavailable: ${(error as Error).message}`); }
   };
