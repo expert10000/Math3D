@@ -10,7 +10,7 @@ export function notebookRerunSupported(result?: AnalysisResultEnvelope): boolean
   if (!result) return false;
   const op = result.provenance.operation, p = op.parameters as Record<string, unknown>;
   if (!p || typeof p !== "object" || Array.isArray(p)) return false;
-  if (op.type === "graph2d.derivative") return op.algorithm === "symbolic-rules-or-richardson" && op.algorithmVersion === "1" && typeof p.objectId === "string" && typeof p.x === "number" && Number.isFinite(p.x) && [1, 2].includes(p.order as number) && typeof p.tolerance === "number" && p.tolerance > 0;
+  if (op.type === "graph2d.derivative") return op.algorithm === "symbolic-rules-or-richardson" && op.algorithmVersion === "1" && typeof p.objectId === "string" && typeof p.x === "number" && Number.isFinite(p.x) && [1, 2].includes(p.order as number) && typeof p.tolerance === "number" && Number.isFinite(p.tolerance) && p.tolerance > 0;
   if (op.type === "mesh.saved.curvature") return op.algorithm === "angle-defect-cotan-shape-operator-v2" && op.algorithmVersion === "2" && Object.keys(p).length === 0;
   if (op.type === "mesh.saved.quality") return op.algorithm === "vtk-verdict-compatible-triangle-quality" && op.algorithmVersion === "1" && Object.keys(p).length === 0;
   return op.type === "mesh.saved.edge-path" && op.algorithm === "edge-graph-dijkstra" && op.algorithmVersion === "1" && Object.keys(p).sort().join() === "end,start" && [p.start, p.end].every(v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0);

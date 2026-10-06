@@ -33,9 +33,25 @@ do not include those source bytes.
 
 
 In **Workbook → Visualize**, select a Figure block and use **Capture A** or
-**Capture B**. Its frozen record includes the camera, coloring, visibility,
+**Capture B**. Its frozen record names the displayed viewer source separately from the wider
+Project context, and includes the camera, coloring, visibility,
 committed selection, rendered Notes, source generations and exact result hashes.
 In **Document**, expand **Snapshot A/B · frozen capture** to inspect that record.
 The live scene and frozen captures are labelled separately. Replacing a captured
 slot changes its content hash and makes old snapshot citations stale. Captured
 artifact availability is historical; export verifies required bytes again.
+
+
+In **Workbook**, expand **Publish selected report blocks** (also present beside
+the export controls in the full Geometry Workbook). Select blocks and choose
+**Export selected Markdown**, **Export selected HTML**, **Print selected / PDF**
+or **Export portable report**. Existing whole-Workbook Markdown and print/PDF
+exports also include a linked-source manifest.
+
+The portable output is a standalone HTML report. Open it in a fresh browser,
+even offline. After it verifies the embedded checksums, **Download embedded
+Project with resources** becomes available. Import that ordinary Project package
+through **Projects → Import**, open its saved Workbook and choose Document.
+The package retains the saved Workbook; the report includes only selected blocks.
+Unavailable required source/artifact bytes stop portable export. Stale numerical
+summaries remain historical evidence and carry their qualifications.

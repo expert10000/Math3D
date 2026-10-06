@@ -4,6 +4,8 @@ import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { createNotebookReference, inspectNotebookReference } from "@math3d/workbook";
 import { appendSavedMeshAnalysis } from "../projects/savedMeshAnalysis";
 import { notebookRerunSupported, rerunNotebookAnalysis } from "./notebookRerun";
+import { instantiateNotebookStarter } from "../projects/notebookStarters";
+import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
 
 const fixture = () => {
   let project = instantiateMath3DProjectTemplate("derivative-study", "rerun");
@@ -11,9 +13,9 @@ const fixture = () => {
   const entry = project.workspace.entries.find(item => item.module === "graph2d")!;
   if (entry.checkpoint.format !== "math3d.graph2d-document") throw new Error("Graph missing");
   const adapter = new Graph2DCommandAdapter(entry.checkpoint);
-  const change = () => {
+  const change = (remove = false) => {
     const before = adapter.document();
-    const next = adapter.commitScene({ source: { ...before.source, variables: [{ name: "a", value: before.identity.revision }] }, display: before.display, selection: before.selection }, "edit");
+    const next = adapter.commitScene({ source: { ...before.source, objects: remove ? [] : before.source.objects, variables: [{ name: "a", value: before.identity.revision }] }, display: remove ? { ...before.display, objects: [] } : before.display, selection: remove ? { objectId: null, probe: null } : before.selection }, "edit");
     project = replaceMath3DProjectWorkspace(project, createMixedWorkspaceDocument({ ...project.workspace, entries: project.workspace.entries.map(item => item.expected.id === next.identity.id ? { ...item, checkpoint: next, expected: next.identity } : item) }));
   };
   change();
@@ -36,7 +38,28 @@ describe("NOTE05 guarded reruns", () => {
       expect(published).toBe(false); expect(f.read().project.workspace.results).toEqual([f.previous]);
     }
   });
-  it("rejects unavailable Mesh bytes, unsupported methods and saved previews", async () => {
+  it("checks cancellation after calculation and preserves evidence on operation failure", async () => {
+    const f = fixture(), controller = new AbortController();
+    const work = rerunNotebookAnalysis(f.reference, controller.signal, f.read, () => undefined, f.publish);
+    setTimeout(() => controller.abort(), 0);
+    await expect(work).rejects.toThrow(/cancelled/);
+    expect(f.read().project.workspace.results).toEqual([f.previous]);
+    const failed = fixture(); failed.change(true);
+    await expect(rerunNotebookAnalysis(failed.reference, new AbortController().signal, failed.read, () => undefined, failed.publish)).rejects.toThrow();
+    expect(failed.read().project.workspace.results).toEqual([failed.previous]);
+  });
+  it("rejects unavailable exact Mesh bytes without publishing", async () => {
+    const made = instantiateNotebookStarter("edge-path-evidence", "missing-rerun"), entry = made.project.workspace.entries.find(item => item.module === "mesh")!;
+    if (entry.checkpoint.format !== "math3d.mesh-document") throw new Error("Mesh missing");
+    const result = made.project.workspace.results.find(item => item.provenance.operation.type === "mesh.saved.edge-path")!, reference = createNotebookReference(made.project, "result", result.resultId);
+    const adapter = new MeshDocumentAdapter(entry.checkpoint, made.resources.meshStore(made.project)), mesh = adapter.mesh();
+    adapter.replaceMesh({ ...mesh, positions: mesh.positions.map(value => value * 2) }, "object-edit", { scale: 2 });
+    const document = adapter.document(), project = replaceMath3DProjectWorkspace(made.project, createMixedWorkspaceDocument({ ...made.project.workspace, entries: made.project.workspace.entries.map(item => item === entry ? { ...item, checkpoint: document, expected: document.identity } : item) }));
+    let published = false;
+    await expect(rerunNotebookAnalysis(reference, new AbortController().signal, () => ({ project, live: true }), () => undefined, () => { published = true; })).rejects.toThrow(/Mesh source bytes/);
+    expect(published).toBe(false); expect(project.workspace.results).toEqual(made.project.workspace.results);
+  });
+  it("rejects unsupported methods and saved previews", async () => {
     const f = fixture(); expect(notebookRerunSupported({ ...f.previous, provenance: { ...f.previous.provenance, operation: { ...f.previous.provenance.operation, algorithmVersion: "unknown" } } })).toBe(false);
     await expect(rerunNotebookAnalysis(f.reference, new AbortController().signal, () => ({ ...f.read(), live: false }), () => undefined, f.publish)).rejects.toThrow(/supported stale/);
   });

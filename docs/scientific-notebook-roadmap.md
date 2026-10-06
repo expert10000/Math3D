@@ -143,3 +143,39 @@ and qualified publication artifacts.
 Use the existing Minimal Surface Study. Create a Note on its Graph or Surface, attach another to a saved numerical result, add one Note to a Workbook, and view Graph → Curve → Surface → Analysis in Document view. Edit the Graph: the Note anchor and affected Workbook path must show the correct freshness without changing unrelated blocks. Save/reopen on desktop and web, then inspect the same IDs and explanations. The test must not call a numerical shortest-edge path a continuous geodesic or present numerical curvature as a proof of minimality.
 
 Mobile can read shared records only when its Project contract and UI support them; unsupported anchors and cells must remain explicit instead of being dropped during transfer.
+
+
+## NOTE05, WB06 and NOTE06 delivery — October 6
+
+**NOTE05:** Workbook result cells offer guarded local reruns for the recorded
+Graph derivative and saved Mesh quality, curvature and edge-path methods.
+Execution reuses the existing analysis functions. Cancellation, unavailable
+source bytes, changed generations and failures preserve historical results.
+Publication precedes an explicit cell relink; claim citations remain untouched.
+
+**WB06:** Capture A/B freezes Project source generations, result IDs and hashes,
+camera and view settings, committed selection, document presentation and rendered
+Notes. The captured record survives Workbook resource reopen and is labelled
+separately from the live scene. Its artifact availability describes capture time;
+export must verify bytes again.
+
+**NOTE06:** Selected-block Markdown, HTML, print/PDF and standalone portable HTML
+reports include exact source manifests, authority, warnings, claim qualifications
+and frozen capture records. Portable HTML embeds an ordinary Project resource
+package and verified artifact bytes. Missing or corrupt required bytes fail
+before export; the standalone browser verifies checksums before enabling download.
+A fresh desktop profile imports the embedded package through existing Projects.
+
+Two ready-to-open Gallery recipes bring part of NOTE07/WB07 forward:
+**Catenoid Evidence Notebook** and **Edge Path Evidence Notebook** include real
+numerical Mesh results, value-bound Notes, a bound chart-grid parameter and a
+bounded evidence claim. See [the UI guide](notebook-examples-and-ui.md).
+The broader guided-investigation/catalog acceptance in NOTE07/WB07 remains next.
+
+
+Validation: focused Workbook/Note/export contracts and the Project/mobile
+contracts pass. Desktop acceptance covers opening the Gallery Notebook, frozen
+capture and selected export, offline fresh-browser checksum verification,
+fresh-profile Project/Workbook import, and explicit stale-result rerun/relink.
+Renderer, desktop/e2e and mobile type checks, desktop/browser builds and dependency
+boundaries are checked alongside the existing reference/template journeys.

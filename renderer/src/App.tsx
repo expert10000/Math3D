@@ -19,6 +19,9 @@ import { capturedCurveSources } from "./projects/capturedCurveSources";
 import { additionalReplayEditable } from "./projects/additionalProjectSession";
 import { AdditionalProjectEditor } from "./projects/AdditionalProjectEditor";
 import { createSavedSurfaceMesh, savedSurfaceMeshLinks, savedMeshSurfaceSource } from "./projects/savedSurfaceMesh";
+import { WorkbookPublication, type PublicationKind } from "./components/WorkbookPublication";
+import { loadProjectResources } from "./projects/projectResourceArchive";
+import { createPortableNotebookPublication, notebookPublicationManifest, notebookPublicationMarkdown, notebookPublicationManifestHtml, portableNotebookPublicationHtml } from "./workbook/notebookPublication";
 import { freezeWorkbookSnapshot, workbookSnapshotQualification } from "@math3d/workbook";
 import { rerunNotebookAnalysis } from "./workbook/notebookRerun";
 import { analyzeSavedMesh, appendSavedMeshAnalysis, type SavedMeshAnalysisKind } from "./projects/savedMeshAnalysis";
@@ -11332,7 +11335,7 @@ const escapeHtml = (value: string) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string | null, project: Math3DProject | null = null) => {
+const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string | null, project: Math3DProject | null = null, selected?: readonly string[], reader?: NotebookArtifactReader) => {
   const exportedAt = formatExportTimestamp(Date.now());
   if (!workbooks.length) {
     return ["# Math3D Workbook Export", `_Exported ${exportedAt}_`, "_No workbooks available._"].join("\n\n");
@@ -11355,7 +11358,7 @@ const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string 
         lines.push("_No blocks in this stage._");
         return;
       }
-      stage.blocks.forEach((block, blockIndex) => {
+      stage.blocks.filter(block => !selected || selected.includes(block.id)).forEach((block, blockIndex) => {
         const blockLabel = WORKBOOK_EXPORT_BLOCK_LABELS[block.type];
         const blockTitle = block.title || blockLabel;
         lines.push(`${multi ? "####" : "###"} ${stageIndex + 1}.${blockIndex + 1} ${blockTitle}`);
@@ -11436,6 +11439,7 @@ const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string 
       });
     });
   });
+  lines.push(notebookPublicationMarkdown(notebookPublicationManifest(workbooks, project, reader, selected)));
   return lines.join("\n\n");
 };
 
@@ -11507,7 +11511,7 @@ const buildWorkbookAnalysisTablesCsv = (workbooks: Workbook[], activeWorkbookId:
   return rows.join("\n");
 };
 
-const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: string | null, project: Math3DProject | null = null) => {
+const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: string | null, project: Math3DProject | null = null, selected?: readonly string[], reader?: NotebookArtifactReader) => {
   const exportedAt = formatExportTimestamp(Date.now());
   const multi = workbooks.length > 1;
   const hasWorkbooks = workbooks.length > 0;
@@ -11558,7 +11562,7 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
       : "";
     const caption = `Captured ${formatExportTimestamp(snap.capturedAt)}. ${workbookSnapshotQualification(snap)}`;
     const image = snap.thumbnail
-      ? `<img src="${snap.thumbnail}" alt="Snapshot ${label}" />`
+      ? `<img src="${escapeHtml(snap.thumbnail)}" alt="Snapshot ${label}" />`
       : `<div class="missing">No thumbnail</div>`;
     return `
       <div class="snapshot">
@@ -11572,6 +11576,7 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
 
   const blocksHtml = (blocks: Workbook["stages"][number]["blocks"], workbook: Workbook) =>
     blocks
+      .filter(block => !selected || selected.includes(block.id))
       .map((block, blockIndex) => {
         const blockLabel = WORKBOOK_EXPORT_BLOCK_LABELS[block.type];
         const blockTitle = block.title || blockLabel;
@@ -11685,6 +11690,7 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
     <div class="report">
       ${header}
       ${workbooksHtml}
+      ${notebookPublicationManifestHtml(notebookPublicationManifest(workbooks, project, reader, selected))}
     </div>
   </body>
 </html>`;
@@ -78338,6 +78344,34 @@ case "mobius":
       }) };
   };
   getNotebookCaptureContextRef.current = getNotebookContext;
+  const exportNotebookPublication = async (kind: PublicationKind, selected: string[]) => {
+    if (!activeWorkbook || !selected.length) throw new TypeError("Select a Workbook and report blocks first.");
+    const book = activeWorkbook, context = getNotebookContext(), project = context?.project ?? null;
+    const base = sanitizeFileBase(book.title, "workbook");
+    if (kind === "markdown") {
+      downloadTextFile(buildWorkbooksMarkdown([book], book.id, project, selected, context?.readArtifact), base + ".report.md", "text/markdown"); return;
+    }
+    const html = buildWorkbooksReportHtml([book], book.id, project, selected, context?.readArtifact);
+    if (kind === "pdf") {
+      const opened = window.open("", "_blank");
+      if (!opened) { downloadTextFile(html, base + ".report.html", "text/html"); return; }
+      opened.document.open(); opened.document.write(html); opened.document.close(); opened.focus(); opened.print(); return;
+    }
+    if (kind === "html") { downloadTextFile(html, base + ".report.html", "text/html"); return; }
+    if (!context?.live || !project) throw new TypeError("Open and save a named Project before making a portable report.");
+    const saved = parseMath3DProject(localStorage.getItem(PROJECT_STORAGE_KEY)!);
+    const resources = await loadProjectResources(saved);
+    if (canonicalJsonStringify(getNotebookContext()?.project) !== canonicalJsonStringify(project) || workbookExecutionRef.current.workbook?.id !== book.id || JSON.stringify(workbookExecutionRef.current.workbook) !== JSON.stringify(book)) throw new TypeError("Source or Workbook changed during publication; export again.");
+    const payload = createPortableNotebookPublication(project, [book], resources, context.readArtifact, item => {
+      const stored = restoredProjectRef.current?.resources?.bytes(item); if (stored) return stored;
+      if (item.kind === "mesh-buffers") for (const adapter of [meshDocumentAdapterRef.current, ...restoredProjectRef.current?.meshes.values() ?? []]) {
+        const bytes = adapter?.resources.bytes(item.reference as import("@math3d/core").MeshResourceReference); if (bytes) return bytes;
+      }
+      if (item.kind === "volume-payload") { const data = volumeStorageStoreRef.current.get(item.id); if (data) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength).slice(); }
+      return null;
+    }, selected);
+    downloadTextFile(portableNotebookPublicationHtml(html, payload), base + ".portable.html", "text/html");
+  };
   const workbookClaimProject = activeWorkbook?.stages.some(stage => stage.blocks.some(block => !!block.claim)) ? getWorkbookDependencyProjectRef.current() : null;
   const workbookEvidenceClaims = activeWorkbook?.stages.flatMap(stage => stage.blocks.filter(block => !!block.claim).map(block => ({
     workbookId: activeWorkbook.id, stageId: stage.id, blockId: block.id, title: block.title, text: block.claim!.text,
@@ -90319,6 +90353,7 @@ case "mobius":
                     <WorkbookPanel
                       workbooks={workbooks}
                       getNotebookProject={getNotebookContext}
+                      onExportPublication={exportNotebookPublication}
                       onOpenProjects={() => setProjectsOpen(true)}
                       onOpenNote={(id) => setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }))}
                       onOpenNotebookDocument={(id, module) => {
@@ -91499,6 +91534,7 @@ case "mobius":
                     <button type="button" onClick={handleSaveWorkbookAs} disabled={IS_REPLAY_MODE} style={{ fontSize: 11, textAlign: "left" }}>
                       Save as...
                     </button>
+                    {activeWorkbook && <WorkbookPublication workbook={activeWorkbook} onExport={exportNotebookPublication} />}
                     <button type="button" onClick={handleExportWorkbooksMarkdown} style={{ fontSize: 11, textAlign: "left" }}>
                       Export Markdown
                     </button>

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { KernelWorkspaceModule, Math3DProject } from "@math3d/core";
 import type { NotebookReference } from "@math3d/workbook";
 import type { NotebookProjectContext } from "../workbook/notebookProjectContext";
+import { WorkbookPublication, type PublicationKind } from "./WorkbookPublication";
 import { WorkbookSnapshotRecord } from "./WorkbookSnapshotRecord";
 import { WorkbookProjectReferenceCell } from "./WorkbookProjectReferenceCell";
 import { WorkbookDependencies } from "./WorkbookDependencies";
@@ -93,6 +94,7 @@ type WorkbookPanelProps = {
   onArmInteraction: (stageId: WorkbookStageId, blockId: string) => void;
   onFinishInteraction: (stageId: WorkbookStageId, blockId: string) => void;
   onClearInteraction: (stageId: WorkbookStageId, blockId: string) => void;
+  onExportPublication: (kind: PublicationKind, blockIds: string[]) => Promise<void>;
   onExportJson: () => void;
   onExportMarkdown: () => void;
   onExportPdf: () => void;
@@ -524,6 +526,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onArmInteraction,
   onFinishInteraction,
   onClearInteraction,
+  onExportPublication,
   onExportJson,
   onExportMarkdown,
   onExportPdf,
@@ -1521,6 +1524,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
         </button>)}
       </div>
 
+      {activeWorkbook && <WorkbookPublication workbook={activeWorkbook} onExport={onExportPublication} />}
       {viewMode === "document" && activeWorkbook ? <WorkbookDocumentView workbook={activeWorkbook}
         project={dependencyProject} context={artifactContext} projectLive={projectLive} readArtifact={artifactContext?.readArtifact} readOnly={readOnly}
         statusFor={getBlockStatus} onUpdateBlock={onUpdateBlock} onOpenDocument={onOpenNotebookDocument}
