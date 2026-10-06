@@ -28,6 +28,13 @@ SQLite/better-sqlite3, and their transitive dependencies. Their copyright and
 license files are retained in the npm/Python distributions and generated
 release SBOM. VTK is distributed under its BSD-style license.
 
+KaTeX 0.19.0 renders Workbook equations in the desktop and web clients.
+Copyright (c) 2013-2020 Khan Academy and other contributors; the MIT license
+is retained in `LICENSES/KaTeX-MIT.txt` and shipped with desktop releases.
+The font files retain their Design Science and Khan Academy copyright notices
+and reserved names under SIL OFL 1.1 in `LICENSES/KaTeX-fonts-OFL.txt`. Both texts
+are also distributed in the desktop and web client at `licenses/`.
+
 No project name or contributor name may be used to imply endorsement where a
 third-party license prohibits it.
 

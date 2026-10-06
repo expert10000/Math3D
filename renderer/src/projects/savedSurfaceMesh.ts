@@ -4,6 +4,7 @@ import { additionalRepresentationView, type RepresentationContext } from "./addi
 import { supportsSavedSurfaceResolution, validateSurfaceStudyResolution } from "./surfaceStudyResolution";
 import { readSurfaceStudyRun, SURFACE_STUDY_VARIANT_OPERATION } from "./surfaceStudyRun";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
+import { readSurfaceResolutionRun } from "./surfaceResolutionRun";
 
 export const SAVED_SURFACE_MESH_OPERATION = "surface.tessellate-saved";
 const samplingParameters = (value: CanonicalJsonValue): Readonly<Record<string, CanonicalJsonValue>> => value && typeof value === "object" && !Array.isArray(value) ? value as Readonly<Record<string, CanonicalJsonValue>> : {};
@@ -69,7 +70,7 @@ export const savedSurfaceMeshLinks = (workspace: MixedWorkspaceDocument, surface
       return [{ id: adapter.document().identity.id, title: adapter.document().metadata.label, revision: adapter.document().identity.revision, structuralHash: adapter.document().identity.structuralHash,
         vertexCount: adapter.document().source.resource.vertexCount, meshGeneration: adapter.sourceGeneration(), sourceRevision: relation.sources[0].revision, surfaceGeneration: relation.sources[0],
         samplingSize: typeof sampling.samplingSize === "number" ? sampling.samplingSize : undefined,
-        units: typeof sampling.units === "string" ? sampling.units : "unknown", sampling: relation.parameters, studyRun,
+        units: typeof sampling.units === "string" ? sampling.units : "unknown", sampling: relation.parameters, studyRun, resolutionStudy: readSurfaceResolutionRun(relation.parameters),
         current: !!source && matchesScientificSourceGeneration(relation.sources[0], viewerSourceFromDocument(source)) && matchesScientificSourceGeneration(relation.target.generation, adapter.sourceGeneration()) && (!studyRun || matchesScientificSourceGeneration(studyRun.baseSource, viewerSourceFromDocument(surface))),
         results: workspace.results.filter(result => result.provenance.source.documentId === adapter.document().identity.id && result.provenance.operation.type.startsWith("mesh.saved.")),
       }];

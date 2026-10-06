@@ -12,6 +12,17 @@ const fixture = () => {
 };
 
 describe("WB00 Project Workbook binding", () => {
+  it("retains NOTE03 prose, equations, tables and figure captions in the existing resource payload", () => {
+    const { project, personal } = fixture();
+    personal.stages[0]!.blocks.push({ id: "rich-text", type: "text", title: "Catenoid investigation", text: "**Observation**: $H=0$",
+      documentContent: { schemaVersion: 1, kind: "table", caption: "Resolution study", columns: ["n", "K"], rows: [["17", "-1"]] } },
+      { id: "equation", type: "formula", title: "Equation", formula: "x=\\cosh(v)\\cos(u)" },
+      { id: "caption", type: "visualize", title: "Surface", documentContent: { schemaVersion: 1, kind: "figure", caption: "Captured catenoid", alt: "Narrow neck and flared ends" } });
+    const prepared = prepareProjectWorkbook(project, personal, "rich-content");
+    expect(readProjectWorkbook(prepared.bytes, prepared.reference).stages).toEqual(personal.stages);
+    personal.stages[0]!.blocks.at(-3)!.documentContent = { schemaVersion: 1, kind: "table", caption: "Invalid", columns: ["n", "K"], rows: [["17"]] };
+    expect(() => prepareProjectWorkbook(project, personal, "bad-content")).toThrow(/match/);
+  });
   it("adopts a copy and reopens its blocks from a Project resource package", () => {
     const { project, personal } = fixture();
     const original = JSON.stringify(personal);

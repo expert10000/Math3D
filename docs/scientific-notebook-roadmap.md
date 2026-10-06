@@ -53,13 +53,49 @@ The target user journey is **explore → capture a Note on a selection/result �
 
 `WB02` resolves current, stale, missing and failed states across those links and existing Project reference cells, with an affected path in the Workbook editor. New block links record a source fingerprint; older links report stale until explicitly refreshed. Compute input hashes include linked sources, so an edited block or refreshed Project/Note link invalidates the existing saved run without deleting it. Run controls skip unresolved sources and never start work automatically.
 
-`WB03` adds Outline, Document and Block views over the same Workbook record. Document view reads stages in order and resolves Project documents, saved results and linked Notes by their IDs, showing their current status and the named Project that owns the Workbook. Text and formula edits in Document view update the existing blocks; Edit block returns to the full editor. Personal Workbooks remain drafts until explicitly saved from Projects. Rendering richer Markdown, equations and tables belongs to `NOTE03`.
+`WB03` adds Outline, Document and Block views over the same Workbook record. Document view reads stages in order and resolves Project documents, saved results and linked Notes by their IDs, showing their current status and the named Project that owns the Workbook. Text and formula edits in Document view update the existing blocks; Edit block returns to the full editor. Personal Workbooks remain drafts until explicitly saved from Projects. `NOTE03` extends this view with richer content.
 
 `NTS04` lets a saved Project Note be sent to a block in a Workbook owned by that same Project. The existing dependency edge stores the Note ID and generation, and the Project saves the updated Workbook resource. Workbook views expose an Open Note action; later Note edits leave the recorded link stale until explicitly refreshed. Sending does not alter the Note's original anchor or copy its prose into the Workbook.
 
 `NTS05` adds Off, Pins, Labels and All display modes to the Geometry viewer. Current object-local Note anchors in the active Project are placed with the live object's scale, rotation and translation. The viewer omits stale, missing, hidden and unsupported anchors; those Notes remain available in the Notes sidebar. Face, edge, vertex, Graph and Curve placement waits for precise coordinate contracts.
 
 **NTS05 delivery, October 6:** Geometry object-local pins and display modes are implemented (`357721b`). The **Geometry Notes and Pins** starter Project supplies a box and sphere with two anchored Notes (`abdcaf3`); its card opens an independent saved Project directly from the Projects Gallery (`d31907f`). A Fast viewport correction keeps the pins and readable labels visible and redraws immediately when the display mode changes (`5e7b990`). The three Project Notes desktop journeys, including an Off/All viewport pixel comparison in Fast mode, pass. Face, edge, vertex, Graph and Curve pin placement remains planned until their coordinate contracts are defined.
+
+## NOTE03 and NTS06 delivery — October 6
+
+**NOTE03 delivery, October 6:** Existing text/formula/view blocks now render
+bounded Markdown, inline math and display equations, literal tables and captured
+figures with captions and accessible descriptions. Tables allow 1–12 named
+columns and up to 100 rows; figures use existing Snapshot A with bounded inline
+PNG/JPEG bytes. HTML and image syntax in prose remain literal, and math rendering
+disables trusted HTML commands and bounds input, expansion and output. Invalid
+equations preserve their source with an explicit fallback. Document and Block
+views edit the same records. Project Workbook resources retain the new content;
+Markdown and print/PDF reports include it. Shared Workbook definitions initialize
+in their own production chunk to keep both editors usable on startup. The
+Catenoid Investigation desktop journey verifies rendering, editing, literal
+HTML, image labels, Markdown/HTML output and cold reopen of the bound Workbook.
+
+**NTS06 delivery, October 6:** Saved Notes have an explicit typed value picker
+and `{{value:id}}` tokens. Supported targets are controlled Graph variables,
+numeric source parameters, Geometry object position coordinates and an
+allowlist of saved length, curvature, count and topology scalars. Targets retain
+document IDs/generations, object or parameter IDs, and exact result IDs/hashes;
+labels never resolve a target. Live values display units, source and
+current/stale/unavailable status. Source edits qualify values as stale, removed
+targets become unavailable, and unknown tokens remain literal. Freeze values
+records a checked snapshot against the workspace being saved. Export value
+snapshot captures a separate immutable Note without changing the saved Project;
+Project resource exports also retain frozen values. Old Notes preserve their
+existing serialized fields and hashes. The parameter desktop journey verifies
+live edits, units, freshness, unknown tokens, nonmutating snapshot export,
+freeze, Project export and cold reopen, followed by a return to live values.
+
+Verification for these deliveries: Project contract tests, Workbook/Notes unit
+regressions, application and mobile typechecks, desktop/web builds, kernel
+dependency checks, and `tests/e2e/project-next-three.spec.ts`. The next integrated
+Notebook item is **WB04**. Other selection coordinate systems, richer result
+types and provenance-aware publication bundles remain in the later rows.
 
 ## First milestone acceptance
 

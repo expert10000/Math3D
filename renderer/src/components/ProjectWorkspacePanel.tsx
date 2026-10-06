@@ -28,7 +28,9 @@ import { addWorkbookDependency, createNoteDependencySource, type Workbook, type 
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
 import { bindProjectNoteDrafts, createProjectNoteDraft, type NoteCaptureKind, type ProjectNoteDraft } from "../projects/projectNoteDrafts";
 import { createProjectNoteSelectionAnchor, type NoteSelectionDescriptor } from "../projects/projectNoteTargets";
+import { resolveProjectNoteValues } from "../projects/projectNoteValues";
 import { projectAnalysisAvailability, type ProjectAnalysisRoute } from "../projects/projectAnalysisAvailability";
+import type { NoteValuePatch } from "./ProjectNoteLiveValues";
 
 export { PROJECT_STORAGE_KEY } from "../projects/projectLibrary";
 const ProjectThumbnail: React.FC<{ src: string | null; modules: string[] }> = ({ src, modules }) => {
@@ -301,6 +303,19 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       if (!current || current.identity.revision !== note.identity.revision) throw new Error("Note changed. Reopen the Project before editing it.");
       return upsertMath3DProjectNote(saved, updateProjectNote(current, { title: noteTitle.trim(), body }, Date.now()));
     }, `Saved “${noteTitle.trim()}”.`);
+  const changeNoteValues = (note: ProjectNote, patch: NoteValuePatch): Promise<boolean> => commitNotes(saved => {
+    const current = saved.notes?.find(item => item.identity.id === note.identity.id);
+    if (!current || current.identity.revision !== note.identity.revision || current.identity.structuralHash !== note.identity.structuralHash) throw new Error("Note changed. Refresh before binding values.");
+    const capturedPatch = patch.valueSnapshot ? { ...patch, valueSnapshot: { capturedAt: Date.now(), values: resolveProjectNoteValues({ ...current, valueSnapshot: null }, saved.workspace) } } : patch;
+    return upsertMath3DProjectNote(saved, updateProjectNote(current, capturedPatch, Date.now()));
+  }, `Saved values for “${note.title}”.`, true);
+  useEffect(() => {
+    if (!notesOpen) return;
+    try {
+      const workspace = capture(); verifyMixedWorkspaceReplay(workspace);
+      setNotesWorkspace(current => current && canonicalJsonStringify(current) === canonicalJsonStringify(workspace) ? current : workspace);
+    } catch { setNotesWorkspace(null); }
+  }, [notesOpen, capture]);
   const sendNoteToWorkbook = async (note: ProjectNote, workbookId: string, blockId: string): Promise<boolean> => {
     if (busy) return false;
     setBusy(true);
@@ -592,7 +607,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       onCapture={captureNote} onCaptureResult={captureResultNote} onCaptureWorkbookBlock={captureWorkbookBlockNote} onOpenTarget={openNoteTarget}
       onUpdateDraft={(id, patch) => setNoteDrafts((current) => current.map((draft) => draft.id === id ? { ...draft, ...patch } : draft))}
       onDiscardDraft={(id) => setNoteDrafts((current) => current.filter((draft) => draft.id !== id))}
-      onSaveDrafts={saveNoteDrafts} onSaveNote={saveEditedNote} onSendToWorkbook={sendNoteToWorkbook} />}
+      onSaveDrafts={saveNoteDrafts} onSaveNote={saveEditedNote} onChangeValues={changeNoteValues} onSendToWorkbook={sendNoteToWorkbook} />}
     <button type="button" data-testid="projects-quick-toggle" aria-label="Open quick Projects" onClick={() => { setQuick(true); onOpenChange(true); }} style={{ position:"fixed",right:14,bottom:100,zIndex:2502,padding:"7px 10px",border:"1px solid #64748b",borderRadius:8,background:"#f8fafc",color:"#0f172a",fontSize:11 }}>Quick projects</button>
     {open && <ProjectGalleryFrame quick={quick} onClose={() => onOpenChange(false)}>
       <header data-testid="project-explorer-header" className="project-gallery-header">

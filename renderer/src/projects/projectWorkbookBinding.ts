@@ -1,6 +1,6 @@
 import { canonicalJsonStringify, createStableDocumentId, MAX_PROJECT_WORKBOOK_BYTES, sha256Checksum,
   type Math3DProject, type ProjectWorkbookReference } from "@math3d/core";
-import { WORKBOOK_STAGE_ORDER, validateWorkbookDependencies, type Workbook } from "@math3d/workbook";
+import { WORKBOOK_STAGE_ORDER, validateWorkbookDependencies, normalizeWorkbookDocumentContent, type Workbook } from "@math3d/workbook";
 
 const validateWorkbook = (value: Workbook): void => {
   if (!value || typeof value.id !== "string" || !value.id || typeof value.title !== "string" ||
@@ -14,6 +14,10 @@ const validateWorkbook = (value: Workbook): void => {
       if (!block || typeof block.id !== "string" || !block.id || ids.has(block.id) ||
         typeof block.type !== "string" || typeof block.title !== "string") throw new TypeError("Invalid Workbook block.");
       ids.add(block.id);
+      if (block.documentContent !== undefined) {
+        const content = normalizeWorkbookDocumentContent(block.documentContent);
+        if (content.kind === "table" ? block.type !== "text" : block.type !== "visualize") throw new TypeError("Document content does not match its Workbook block.");
+      }
     }
   }
   validateWorkbookDependencies(value);

@@ -9,6 +9,7 @@ import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
 import { savedStudyComparisonReport, compareSavedMeshStudies, savedStudyComparisonCsv } from "./savedStudyComparison";
 import { savedMeshCurvatureReport } from "./savedMeshExploration";
 import { SurfaceDocumentAdapter } from "../surfaceAnalysis/surfaceDocumentAdapter";
+import { savedStudySweepReport, savedStudySweepCsv, availableSavedSweepRuns } from "./savedStudySweepReport";
 
 const fixture = () => {
   const surface = createSurfaceDocument({ stableKey: "named-study-sweep", metadata: { title: "Custom original" }, source: {
@@ -17,6 +18,65 @@ const fixture = () => {
   const workspace = createMixedWorkspaceDocument({ entries: [{ module: "surface", expected: surface.identity, checkpoint: surface, replay: null }], activeDocumentIds: [surface.identity.id], relations: [], results: [], artifacts: [], constructions: [], committedSelection: null });
   return { surface, workspace, context: { documents: new Map([[surface.identity.id, surface]]) } };
 };
+
+it("exports every retained sweep run with exact source/result provenance after resource round-trip", async () => {
+  const f = fixture(), next = await createSurfaceStudySweep(f.workspace, f.surface, f.context, "catenoid", [1.5, .5, 1], 17);
+  next.meshes[0].rename('=waist, "small"');
+  const entries = next.workspace.entries.map(entry => {
+    const adapter = next.meshes.find(mesh => mesh.document().identity.id === entry.expected.id);
+    return adapter ? { ...entry, checkpoint: adapter.document(), expected: adapter.document().identity } : entry;
+  });
+  const project = createMath3DProject(createMixedWorkspaceDocument({ ...next.workspace, entries }), { stableKey: "sweep-report-round-trip" });
+  const resources = captureProjectResources(project, item => next.meshes.map(mesh => mesh.resources.bytes(item.reference as never)).find(bytes => bytes !== null) ?? null);
+  const parsed = parseProjectPackage(exportProjectPackage(project, resources));
+  const adapters = new Map([...verifyMixedWorkspaceReplay(parsed.project.workspace).values()].flatMap(document => document.format === "math3d.mesh-document" ?
+    [[document.identity.id, new MeshDocumentAdapter(document, parsed.resources.meshStore(parsed.project))] as const] : []));
+  const choices = savedSurfaceMeshLinks(parsed.project.workspace, f.surface, adapters), before = JSON.stringify(choices);
+  const report = savedStudySweepReport([...choices].reverse(), next.sweepId, "averageK");
+  expect(report.runs.map(run => run.parameterValue)).toEqual([.5, 1, 1.5]);
+  expect(report.runs[0].title).toBe('=waist, "small"'); expect(report.chart.units).toBe("m^-2");
+  expect(report.baseSource.documentId).toBe(f.surface.identity.id); expect(report.excludedRuns).toEqual([]);
+  for (const run of report.runs) {
+    expect(run.meshSource).toEqual(run.savedResult.provenance.source);
+    expect(run.surfaceSource!.documentId).not.toBe(report.baseSource.documentId);
+    expect(run.savedResult.status).toBe("numerical"); expect(run.savedResult.warnings.length).toBeGreaterThan(0);
+    expect(run.interior.count + run.interior.excluded).toBe(run.vertexCount);
+    expect(run.interior.averageK).toBeLessThan(0); expect(run.sampling).toBeTruthy();
+  }
+  const csv = savedStudySweepCsv(report);
+  expect(csv).toContain('"\'=waist, ""small"""');
+  expect(csv).toContain('"numerical"'); expect(csv).toContain(report.qualification);
+  expect(csv.split("\r\n")).toHaveLength(5); expect(JSON.stringify(choices)).toBe(before);
+});
+
+it("keeps historical sources qualified but excludes results for changed, missing or unrelated Mesh generations", async () => {
+  const f = fixture(), next = await createSurfaceStudySweep(f.workspace, f.surface, f.context, "helicoid", [.5, 1, 1.5], 17);
+  const choices = savedSurfaceMeshLinks(next.workspace, f.surface, new Map(next.meshes.map(mesh => [mesh.document().identity.id, mesh])));
+  const historical = choices.map(choice => ({ ...choice, current: false }));
+  expect(savedStudySweepReport(historical, next.sweepId, "averageAbsH").runs.every(run => !run.current)).toBe(true);
+  const changed = [{ ...choices[0], revision: choices[0].revision + 1 }, { ...choices[1], results: [] }, choices[2]];
+  const report = savedStudySweepReport(changed, next.sweepId, "averageAbsH");
+  expect(report.runs).toHaveLength(1); expect(report.excludedRuns).toHaveLength(2);
+  expect(report.excludedRuns.map(run => run.parameterValue)).toEqual([.5, 1]);
+  expect(savedStudySweepCsv(report)).toContain('"false","The recorded curvature result');
+  const foreign = { ...choices[0], id: "foreign-document" };
+  expect(availableSavedSweepRuns([foreign])).toEqual([]);
+  expect(() => savedStudySweepReport([foreign], next.sweepId, "averageK")).toThrow("no retained");
+  expect(() => savedStudySweepReport(choices, "unknown-sweep", "averageK")).toThrow("no retained");
+});
+
+it("rejects incompatible sweep metadata and protects all CSV text cells without changing numeric measurements", async () => {
+  const f = fixture(), next = await createSurfaceStudySweep(f.workspace, f.surface, f.context, "helicoid", [.5, 1], 17);
+  const choices = savedSurfaceMeshLinks(next.workspace, f.surface, new Map(next.meshes.map(mesh => [mesh.document().identity.id, mesh])));
+  expect(() => savedStudySweepReport([choices[0], { ...choices[1], units: "cm" }], next.sweepId, "averageK")).toThrow("share");
+  const metric = savedStudySweepReport(choices, next.sweepId, "averageK");
+  for (const title of ["=SUM(A1)", " +SUM(A1)", "\tformula", "@command", 'quote"and\nnewline']) {
+    const report = { ...metric, runs: metric.runs.map(run => ({ ...run, title })) };
+    const csv = savedStudySweepCsv(report);
+    const expectedTitle = title.startsWith("quote") ? '"quote""and\nnewline"' : `"'${title}"`;
+    expect(csv).toContain(expectedTitle); expect(csv).toContain(`"${report.runs[0].interior.averageK}"`);
+  }
+});
 
 it("retains independent Helicoid and Catenoid variants, precise lineage and bounded interior measurements without editing the source", async () => {
   for (const preset of ["helicoid", "catenoid"] as const) {

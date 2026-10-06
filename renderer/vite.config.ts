@@ -128,6 +128,9 @@ export default defineConfig({
           // allowing Rollup to absorb them into a UI feature creates an init cycle.
           if (mod.includes("/packages/core/src/")) return "shared-core";
           if (mod.includes("/packages/kernel/src/")) return "shared-kernel";
+          // Document and block editors share Workbook constants. Keep these
+          // definitions outside UI chunks so their catalogs initialize first.
+          if (mod.includes("/packages/workbook/src/")) return "shared-workbook";
 
           // Keep the CommonJS base-64 helper out of feature-services. React's
           // CJS bridge also uses that helper; assigning it to a feature chunk

@@ -15,14 +15,15 @@ Topology, supported Complex Function Explorer sources and self-contained scalar
 Volume recipes, plus qualified resource-backed Mesh sources. PRJ16 adds verified dense scalar Volume samples, additional Curve/Surface source editors, scene constructions and finite Topology sources. Other source types
 remain saved previews until their native editor adapters pass round-trip acceptance.
 
-## Current delivery status (2026-10-05)
+## Current delivery status (2026-10-06)
 
-Desktop delivery now includes PRJ39–PRJ48: Helicoid/Catenoid guided setups,
+Desktop delivery now includes PRJ39–PRJ50: Helicoid/Catenoid guided setups,
 saved Mesh curvature maps, canvas endpoint selection and point inspection,
 analysis resolution controls, comparison with PNG/JSON/CSV export, a centered
 Projects Gallery with right-side quick access, source navigation, persistent study
-names, retained parameter sweeps and automatic current-view project thumbnails.
-Acceptance and limitations are recorded in the October 5 entries below.
+names, retained parameter sweeps, automatic current-view project thumbnails and
+qualified sweep PNG/JSON/CSV reports and retained resolution comparisons. Acceptance and limitations are recorded in
+the October 5–6 entries below.
 
 PRJ01–PRJ12 are integrated into `main` at `766776a27c6601e50d513a2217e3a4bf513c8e0d`.
 The main Projects workflow passed in
@@ -1227,11 +1228,60 @@ disabled capture, metadata management and cold restart, together with existing
 library/project-opening/transfer behavior. See
 [PRJ48 desktop evidence](evidence/projects-prj48-desktop-2026-10-05/README.md).
 
-### PRJ49–PRJ50 planned continuation — October 5
+### PRJ49 complete sweep reports — October 6
 
-- **PRJ49 — Complete sweep reports:** planned. Export the retained sweep chart
-  as PNG and all run names, parameters, sampling, source generations and qualified
-  measurements as JSON/CSV.
-- **PRJ50 — Resolution comparison:** planned. Run the same supported source at
-  Coarse, Medium and Fine and compare retained curvature estimates and excluded
-  vertices. Distinguish sampling comparisons from certified error bounds.
+Delivered on desktop: **Saved parameter sweeps** provides **Export sweep PNG**,
+**Export sweep JSON** and **Export sweep CSV** for the selected sweep. PNG captures
+the selected Mean |H| or Average Gaussian K chart and appends every included run's
+name, parameter, sampling, interior/excluded vertex counts, measurements, exact
+base/variant Surface and Mesh generations, result identity, method and backend.
+
+JSON uses `math3d.saved-study-sweep.v1` and retains complete sampling and saved
+result envelopes, including numerical authority, conventions and warnings. CSV
+provides one row per run with source generations, measurements, method, backend,
+warnings and qualifications; text cells are quoted and protected against formula
+interpretation in spreadsheets. All formats state that these discrete estimates
+are not error bounds or proof of convergence/minimality.
+
+Historical source runs remain exportable with their recorded generations. A
+missing result or edited Mesh generation is omitted from measurements and listed
+explicitly as excluded in the report. Export reads retained values without
+recomputing, editing sources or changing Project persistence. Failed PNG encoding
+shows an error and permits a later retry.
+
+The Projects contract gate passes 273 model tests and its fixture typecheck after
+including the renderer's Vite environment declarations. Two Electron journeys
+verify Helicoid Coarse and Catenoid Fine PNG/JSON/CSV downloads, quoted run names,
+historical-source qualifications, exact counts, failure/retry, compact layout and
+unchanged saved Project data. A Helicoid resource transfer into a fresh library
+and cold restart produces an identical exported report. Both exported PNGs were
+visually inspected. Desktop build and full application typecheck pass.
+
+Verification: `npm run test:projects:contracts`, `npm run typecheck:noemit`,
+`npm run build:core`, and
+`npx playwright test tests/e2e/project-sweep-exports.spec.ts --reporter=list`.
+
+### PRJ50 resolution comparison — October 6
+
+Guided Surface studies now include **Compare Coarse, Medium and Fine**. The
+action stages 17/33/65 samples per axis from one exact supported Surface
+generation, then publishes all three Meshes and curvature results together.
+Failed sampling or a Project edit during computation publishes no partial study.
+Repeated runs reuse the retained snapshots and results. The source formulas and
+ranges remain unchanged.
+
+The saved comparison table shows vertices, valid interior and excluded counts,
+mean absolute H and average K, units, source revision, current/historical state,
+and links to each study. JSON export retains the exact result envelopes and
+sampling. Missing results or edited Mesh generations are excluded explicitly;
+mixed source generations or units cannot form a comparison. These discrete
+sampling differences are not certified error bounds, convergence rates or proofs
+of minimality.
+
+Model acceptance covers atomic failure, repeated runs, resource transfer and
+generation checks. The Catenoid desktop journey verifies counts of
+289/1089/4225 vertices, 225/961/3969 interior vertices and 64/128/256 exclusions,
+unchanged source data, repeated runs, exported resources and an identical report
+after cold reopen. Verification: `npm run test:projects:contracts`,
+`npm run typecheck:noemit`, `npm run build:core`, and the PRJ50 journey in
+`tests/e2e/project-next-three.spec.ts`.

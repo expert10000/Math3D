@@ -12,8 +12,10 @@ import { parseSweepValues, type SurfaceStudyRun } from "./surfaceStudySweep";
 import { SavedStudySweepChart } from "./SavedStudySweepChart";
 import type { savedMeshSurfaceSource } from "./savedSurfaceMesh";
 import { SavedMeshComparison } from "./SavedMeshComparison";
+import { SavedResolutionComparison } from "./SavedResolutionComparison";
+import type { SurfaceResolutionRun } from "./surfaceResolutionRun";
 
-export type SavedMeshChoice = { id: string; title: string; revision: number; structuralHash: string; vertexCount: number; meshGeneration?: ScientificSourceGeneration; sourceRevision?: number; surfaceGeneration?: ScientificSourceGeneration; samplingSize?: number; sampling?: CanonicalJsonValue; units?: string; current: boolean; results: readonly AnalysisResultEnvelope[]; studyRun?: SurfaceStudyRun };
+export type SavedMeshChoice = { id: string; title: string; revision: number; structuralHash: string; vertexCount: number; meshGeneration?: ScientificSourceGeneration; sourceRevision?: number; surfaceGeneration?: ScientificSourceGeneration; samplingSize?: number; sampling?: CanonicalJsonValue; units?: string; current: boolean; results: readonly AnalysisResultEnvelope[]; studyRun?: SurfaceStudyRun; resolutionStudy?: SurfaceResolutionRun };
 const number = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toPrecision(6) : "unavailable";
 const resultDescription = (result: AnalysisResultEnvelope) => {
   const s = result.summary as Record<string, any>;
@@ -22,7 +24,7 @@ const resultDescription = (result: AnalysisResultEnvelope) => {
   if (result.provenance.operation.type === "mesh.saved.edge-path") return `Length ${number(s.length)} · ${Array.isArray(s.vertexIndices) ? s.vertexIndices.length : "unknown"} path vertices`;
   return result.provenance.operation.type;
 };
-export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onNameStudy, onOpenSource, sourceInfo, onSweep, onAnalyze, onApplyStudyPreset, readMesh, resolutionSupported = false, initialStudyPreset = "helicoid", creationHint = "Uses the applied surface. Apply formula changes first." }: { meshes: readonly SavedMeshChoice[]; onNameStudy?: (id: string, name: string) => void; onOpenSource?: (id: string) => void; sourceInfo?: ReturnType<typeof savedMeshSurfaceSource>; onSweep?: (id: SurfaceStudyPresetId, values: readonly number[], resolution: SurfaceStudyResolution) => Promise<string[]>; onCreate?: (resolution?: SurfaceStudyResolution) => string; onOpen?: (id: string) => void; onAnalyze: (id: string, kind: SavedMeshAnalysisKind, endpoints?: { start: number; end: number }) => void; onApplyStudyPreset?: (id: SurfaceStudyPresetId, value: number) => void; readMesh?: (id: string) => SurfaceMeshData; resolutionSupported?: boolean; initialStudyPreset?: SurfaceStudyPresetId; creationHint?: string }) => {
+export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onNameStudy, onOpenSource, sourceInfo, onSweep, onResolutionCompare, onAnalyze, onApplyStudyPreset, readMesh, resolutionSupported = false, initialStudyPreset = "helicoid", creationHint = "Uses the applied surface. Apply formula changes first." }: { meshes: readonly SavedMeshChoice[]; onNameStudy?: (id: string, name: string) => void; onOpenSource?: (id: string) => void; sourceInfo?: ReturnType<typeof savedMeshSurfaceSource>; onResolutionCompare?: () => Promise<string[]>; onSweep?: (id: SurfaceStudyPresetId, values: readonly number[], resolution: SurfaceStudyResolution) => Promise<string[]>; onCreate?: (resolution?: SurfaceStudyResolution) => string; onOpen?: (id: string) => void; onAnalyze: (id: string, kind: SavedMeshAnalysisKind, endpoints?: { start: number; end: number }) => void; onApplyStudyPreset?: (id: SurfaceStudyPresetId, value: number) => void; readMesh?: (id: string) => SurfaceMeshData; resolutionSupported?: boolean; initialStudyPreset?: SurfaceStudyPresetId; creationHint?: string }) => {
   const [selected, setSelected] = useState(""), [start, setStart] = useState("0"), [end, setEnd] = useState(""), [message, setMessage] = useState(""), [error, setError] = useState("");
   const [studyId, setStudyId] = useState<SavedMeshAnalysisKind>("curvature");
   const [studyName, setStudyName] = useState(""), [sweepValues, setSweepValues] = useState("0.5, 1, 1.5"), [sweepBusy, setSweepBusy] = useState(false);
@@ -78,6 +80,15 @@ export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onNameStudy, 
     } catch (failure) { setError((failure as Error).message); setMessage(""); }
     finally { setSweepBusy(false); }
   };
+  const runResolutionComparison = async () => {
+    try {
+      if (!onResolutionCompare) return;
+      setSweepBusy(true); setError(""); setMessage("Preparing Coarse, Medium and Fine snapshots…");
+      const ids = await onResolutionCompare();
+      setSelected(ids.at(-1)!); setViewOpen(true); setMapField("K");
+      setMessage("Three resolution studies retained from the same Surface generation. Projects → Save project keeps them.");
+    } catch (failure) { setError((failure as Error).message); setMessage(""); } finally { setSweepBusy(false); }
+  };
   return <section data-testid="project-saved-mesh-workflow" style={{ padding: "0 10px 10px", borderTop: "1px solid #cbd5e1", maxWidth: "100%", overflowWrap: "anywhere" }}>
     <details data-testid="project-analysis-studies" style={{ padding: "8px 0" }}>
       <summary>Guided analysis studies</summary>
@@ -94,6 +105,10 @@ export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onNameStudy, 
         <button data-testid="project-study-sweep-run" onClick={() => void runSweep()}>Run {presetId} sweep</button>
         <small style={{ display: "block" }}>2–5 distinct positive values up to 100. Uses Analysis resolution below; retains separate Surface variants, named Meshes and curvature results. Your current formulas stay unchanged.</small>
       </fieldset>}
+      {onResolutionCompare && resolutionSupported && <fieldset disabled={sweepBusy} style={{ margin: "8px 0", minWidth: 0 }}>
+        <legend>Resolution comparison</legend><button data-testid="project-resolution-run" onClick={() => void runResolutionComparison()}>Compare Coarse, Medium and Fine</button>
+        <small style={{ display: "block" }}>Keeps the same applied Surface source. Retains three sampled Meshes and numerical curvature results; sampling differences are not certified error bounds.</small>
+      </fieldset>}
       <label>Study <select data-testid="project-analysis-study" value={studyId} onChange={event => { setStudyId(event.target.value as SavedMeshAnalysisKind); setMessage(""); setError(""); }}>{SAVED_MESH_STUDIES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
       <button data-testid="project-analysis-run-study" onClick={runStudy} disabled={sweepBusy || !onCreate && !mesh || studyId === "edge-path" && !mesh}>Run study</button>
       <div>{study.purpose}</div><small>{study.qualification}</small>
@@ -108,6 +123,7 @@ export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onNameStudy, 
       </>}
     </div>
     {meshes.some(choice => choice.studyRun) && <SavedStudySweepChart meshes={meshes} onSelect={id => { setSelected(id); setViewOpen(true); setMapField("K"); }} />}
+    {meshes.some(choice => choice.resolutionStudy) && <SavedResolutionComparison meshes={meshes} onSelect={id => { setSelected(id); setViewOpen(true); setMapField("K"); }} />}
     {mesh && <>
       {onNameStudy && <div className="saved-study-name"><label>Study name <input data-testid="project-study-name" maxLength={160} value={studyName} onChange={event => setStudyName(event.target.value)} /></label><button data-testid="project-study-name-save" disabled={!studyName.trim() || sweepBusy} onClick={() => run(() => { onNameStudy(mesh.id, studyName); setMessage("Study name saved in the workspace. Geometry and result generations are unchanged. Projects → Save project retains the name."); })}>Save study name</button></div>}
       {onOpenSource && <div data-testid="project-study-source">

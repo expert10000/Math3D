@@ -8,6 +8,7 @@ import type {
 } from "@math3d/core";
 import type { NotebookReference } from "./notebookReferences";
 import type { WorkbookDependency } from "./workbookDependencies";
+import type { WorkbookDocumentContent } from "./workbookDocumentContent";
 
 export type WorkbookStageId = "define" | "compute" | "visualize" | "explain";
 export type WorkbookBlockType =
@@ -313,6 +314,7 @@ export type WorkbookBlock = {
   outputs?: WorkbookPort[];
   text?: string;
   formula?: string;
+  documentContent?: WorkbookDocumentContent;
   notebookReference?: NotebookReference;
   params?: WorkbookParamState;
   visualize?: {

@@ -4,6 +4,8 @@ import { inspectProjectNoteAnchor, structuralHash,
 import type { Workbook } from "@math3d/workbook";
 import type { NoteCaptureKind, ProjectNoteDraft } from "../projects/projectNoteDrafts";
 import { projectNoteSourceResolver } from "../projects/projectNoteTargets";
+import { projectNoteRenderedBody } from "../projects/projectNoteValues";
+import { ProjectNoteLiveValues, type NoteValuePatch } from "./ProjectNoteLiveValues";
 
 type Filter = "all" | "scene" | "object" | "result" | "workbook";
 const category = (anchor: ProjectNote["anchor"]): Exclude<Filter, "all"> | "global" =>
@@ -15,11 +17,12 @@ const anchorLabel = (anchor: ProjectNote["anchor"]) => !anchor ? "Unanchored" :
     anchor.kind === "graph-selection" ? `Graph ${anchor.objectId}${anchor.probe ? ` · probe (${anchor.probe.x}, ${anchor.probe.y})` : ""}` :
     "objectId" in anchor ? `${anchor.objectId}${"entityId" in anchor ? ` · ${anchor.entityKind} ${anchor.entityId}` : ""}` : `Document ${anchor.source.documentId}`;
 type WorkbookBlockChoice = { workbookId: string; blockId: string; label: string };
-const SavedNote: React.FC<{ note: ProjectNote; status: string; busy: boolean; targets: WorkbookBlockChoice[];
+const SavedNote: React.FC<{ note: ProjectNote; status: string; busy: boolean; targets: WorkbookBlockChoice[]; workspace: MixedWorkspaceDocument | null;
+  onChangeValues: (note: ProjectNote, patch: NoteValuePatch) => Promise<boolean>;
   onSave: (note: ProjectNote, title: string, body: string) => Promise<boolean>;
   onOpen: (note: ProjectNote) => void;
   onSendToWorkbook: (note: ProjectNote, workbookId: string, blockId: string) => Promise<boolean>;
-}> = ({ note, status, busy, targets, onSave, onOpen, onSendToWorkbook }) => {
+}> = ({ note, status, busy, targets, workspace, onChangeValues, onSave, onOpen, onSendToWorkbook }) => {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(note.title), [body, setBody] = useState(note.body);
   const [targetKey, setTargetKey] = useState("");
@@ -30,7 +33,8 @@ const SavedNote: React.FC<{ note: ProjectNote; status: string; busy: boolean; ta
       <button type="button" disabled={busy || !title.trim() || !body.trim()} onClick={() => { void onSave(note, title, body).then((saved) => { if (saved) setEditing(false); }); }}>Save changes</button>
       <button type="button" onClick={() => { setTitle(note.title); setBody(note.body); setEditing(false); }}>Cancel</button>
     </> : <>
-      <strong>{note.title}</strong><p style={{ whiteSpace: "pre-wrap", margin: "5px 0" }}>{note.body}</p>
+      <strong>{note.title}</strong><p data-testid="note-rendered-body" style={{ whiteSpace: "pre-wrap", margin: "5px 0" }}>{projectNoteRenderedBody(note, workspace)}</p>
+      <ProjectNoteLiveValues note={note} workspace={workspace} busy={busy} onChange={onChangeValues} />
       <button type="button" disabled={busy} onClick={() => setEditing(true)}>Edit</button>
       {note.anchor && <button type="button" disabled={busy} onClick={() => onOpen(note)} style={{ marginLeft: 5 }}>Open target</button>}
       <div style={{ display: "flex", gap: 5, marginTop: 7 }}>
@@ -56,9 +60,10 @@ export const ProjectNotesPanel: React.FC<{
   onCaptureResult: (resultId: string) => void; onCaptureWorkbookBlock: (workbookId: string, blockId: string) => void; onOpenTarget: (note: ProjectNote) => void;
   onDiscardDraft: (id: string) => void; onSaveDrafts: () => void;
   onSaveNote: (note: ProjectNote, title: string, body: string) => Promise<boolean>;
+  onChangeValues: (note: ProjectNote, patch: NoteValuePatch) => Promise<boolean>;
   onSendToWorkbook: (note: ProjectNote, workbookId: string, blockId: string) => Promise<boolean>;
   focusNoteId?: string | null;
-}> = ({ project, workspace, drafts, busy, message, selectionAvailable, workbooks, onClose, onOpenProjects, onRefresh, onCapture, onCaptureResult, onCaptureWorkbookBlock, onOpenTarget, onUpdateDraft, onDiscardDraft, onSaveDrafts, onSaveNote, onSendToWorkbook, focusNoteId }) => {
+}> = ({ project, workspace, drafts, busy, message, selectionAvailable, workbooks, onClose, onOpenProjects, onRefresh, onCapture, onCaptureResult, onCaptureWorkbookBlock, onOpenTarget, onUpdateDraft, onDiscardDraft, onSaveDrafts, onSaveNote, onChangeValues, onSendToWorkbook, focusNoteId }) => {
   const [query, setQuery] = useState(""), [filter, setFilter] = useState<Filter>("all");
   const [resultId, setResultId] = useState(""), [blockKey, setBlockKey] = useState("");
   const notes = project?.notes ?? [];
@@ -123,7 +128,7 @@ export const ProjectNotesPanel: React.FC<{
       <small>{category(draft.anchor)} · Session draft</small><button type="button" onClick={() => onDiscardDraft(draft.id)} style={{ marginLeft: 7 }}>Discard</button>
     </article>)}
     <strong style={{ display: "block", marginTop: 11 }}>Saved Notes ({notes.length})</strong>
-    {visible.notes.map((note) => <SavedNote key={`${note.identity.id}:${note.identity.revision}`} note={note} status={status(note)} busy={busy} targets={targets} onSave={onSaveNote} onOpen={onOpenTarget} onSendToWorkbook={onSendToWorkbook} />)}
+    {visible.notes.map((note) => <SavedNote key={`${note.identity.id}:${note.identity.revision}`} note={note} status={status(note)} busy={busy} targets={targets} workspace={workspace} onChangeValues={onChangeValues} onSave={onSaveNote} onOpen={onOpenTarget} onSendToWorkbook={onSendToWorkbook} />)}
     {!visible.drafts.length && !visible.notes.length && <p>No Notes match this view.</p>}
     <p role="status" data-testid="notes-message">{message}</p>
   </aside>;

@@ -5,6 +5,7 @@ import type { NotebookProjectContext } from "../workbook/notebookProjectContext"
 import { WorkbookProjectReferenceCell } from "./WorkbookProjectReferenceCell";
 import { WorkbookDependencies } from "./WorkbookDependencies";
 import { WorkbookDocumentView } from "./WorkbookDocumentView";
+import { WorkbookContentEditor } from "./WorkbookContentEditor";
 import { uiStyles as styles } from "../uiStyles";
 import type {
   Workbook,
@@ -1821,6 +1822,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 />
               )}
 
+              {(block.type === "text" || block.type === "visualize") && <WorkbookContentEditor block={block} readOnly={readOnly} onChange={patch => onUpdateBlock(activeStageId, block.id, patch)} />}
               {block.type === "reference" && (
                 <WorkbookProjectReferenceCell
                   reference={block.notebookReference}

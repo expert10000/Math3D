@@ -8,6 +8,7 @@ import {
   type ScientificSourceGeneration,
 } from "./scientificJobs";
 import type { ValidationResult } from "./validation";
+import { normalizeProjectNoteValueBindings, normalizeProjectNoteValueSnapshot, type ProjectNoteValueBinding, type ProjectNoteValueSnapshot } from "./projectNoteValues";
 
 export const PROJECT_NOTE_SCHEMA_VERSION = 1 as const;
 export const MAX_PROJECT_NOTE_BYTES = 16 * 1024;
@@ -33,6 +34,8 @@ export type ProjectNote = Readonly<{
   anchor: ProjectNoteAnchor | null;
   createdAt: number;
   updatedAt: number;
+  valueBindings?: readonly ProjectNoteValueBinding[];
+  valueSnapshot?: ProjectNoteValueSnapshot | null;
 }>;
 
 export type ProjectNoteAnchorInspection = Readonly<{
@@ -106,14 +109,16 @@ export const normalizeProjectNoteAnchor = (value: unknown): ProjectNoteAnchor | 
   return JSON.parse(canonicalJsonStringify(value)) as ProjectNoteAnchor;
 };
 
-const noteSource = (note: Pick<ProjectNote, "projectId" | "kind" | "title" | "body" | "anchor">) => ({
+const noteSource = (note: Pick<ProjectNote, "projectId" | "kind" | "title" | "body" | "anchor" | "valueBindings" | "valueSnapshot">) => ({
   projectId: note.projectId, kind: note.kind, title: note.title, body: note.body, anchor: note.anchor,
+  ...(note.valueBindings !== undefined ? { valueBindings: note.valueBindings } : {}),
+  ...(note.valueSnapshot !== undefined ? { valueSnapshot: note.valueSnapshot } : {}),
 });
 
 export const normalizeProjectNote = (value: unknown): ValidationResult<ProjectNote> => {
   try {
     if (canonicalJsonByteLength(value) > MAX_PROJECT_NOTE_BYTES) return { ok: false, errors: ["Note exceeds its size limit."] };
-    if (!record(value) || !exact(value, ["schemaVersion", "identity", "projectId", "kind", "title", "body", "anchor", "createdAt", "updatedAt"]) ||
+    if (!record(value) || !exact(value, ["schemaVersion", "identity", "projectId", "kind", "title", "body", "anchor", "createdAt", "updatedAt", ...("valueBindings" in value ? ["valueBindings"] : []), ...("valueSnapshot" in value ? ["valueSnapshot"] : [])]) ||
       value.schemaVersion !== PROJECT_NOTE_SCHEMA_VERSION || !record(value.identity) ||
       !exact(value.identity, ["schemaVersion", "id", "revision", "structuralHash"]) || !isDocumentIdentity(value.identity) ||
       !value.identity.id.startsWith("math3d:note:") || !isStableDocumentId(value.projectId) ||
@@ -129,6 +134,8 @@ export const normalizeProjectNote = (value: unknown): ValidationResult<ProjectNo
     if ((value.kind === "pinned" && anchor?.kind !== "object-local" && anchor?.kind !== "subentity") ||
       (value.kind === "result" && anchor?.kind !== "result")) return { ok: false, errors: ["Note kind requires a matching anchor."] };
     const normalized = JSON.parse(canonicalJsonStringify({ ...value, anchor })) as ProjectNote;
+    if (normalized.valueBindings !== undefined) normalizeProjectNoteValueBindings(normalized.valueBindings);
+    if (normalized.valueSnapshot !== undefined && normalized.valueSnapshot !== null) normalizeProjectNoteValueSnapshot(normalized.valueSnapshot, normalized.valueBindings ?? []);
     if (normalized.identity.structuralHash !== structuralHash(noteSource(normalized))) return { ok: false, errors: ["Note content hash does not match its identity."] };
     return { ok: true, value: normalized };
   } catch (error) { return { ok: false, errors: [String((error as Error).message ?? error)] }; }
@@ -150,14 +157,16 @@ export const createProjectNote = (input: {
     ...source, createdAt: input.createdAt, updatedAt: input.createdAt });
 };
 
-export const updateProjectNote = (note: ProjectNote, patch: Partial<Pick<ProjectNote, "kind" | "title" | "body" | "anchor">>, updatedAt: number): ProjectNote => {
+export const updateProjectNote = (note: ProjectNote, patch: Partial<Pick<ProjectNote, "kind" | "title" | "body" | "anchor" | "valueBindings" | "valueSnapshot">>, updatedAt: number): ProjectNote => {
   const current = requireNote(note);
-  if (!record(patch) || Object.keys(patch).some((key) => !["kind", "title", "body", "anchor"].includes(key)))
+  if (!record(patch) || Object.keys(patch).some((key) => !["kind", "title", "body", "anchor", "valueBindings", "valueSnapshot"].includes(key)))
     throw new TypeError("Note update contains unsupported fields.");
   if (!time(updatedAt) || updatedAt < current.updatedAt) throw new TypeError("Note update time cannot precede its current version.");
   const source = noteSource({
     projectId: current.projectId, kind: patch.kind ?? current.kind, title: patch.title ?? current.title,
     body: patch.body ?? current.body, anchor: "anchor" in patch ? patch.anchor! : current.anchor,
+    ...(patch.valueBindings !== undefined ? { valueBindings: patch.valueBindings } : current.valueBindings !== undefined ? { valueBindings: current.valueBindings } : {}),
+    ...("valueSnapshot" in patch ? { valueSnapshot: patch.valueSnapshot } : current.valueSnapshot !== undefined ? { valueSnapshot: current.valueSnapshot } : {}),
   });
   const identity = advanceDocumentIdentity(current.identity, source);
   if (identity === current.identity) return current;

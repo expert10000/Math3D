@@ -1,6 +1,10 @@
 import React from "react";
 import type { KernelWorkspaceModule, Math3DProject } from "@math3d/core";
 import { inspectNotebookReference, type Workbook, type WorkbookBlock, type WorkbookStageId } from "@math3d/workbook";
+import { renderNotebookMarkdown, renderNotebookMath, workbookDocumentContentHtml } from "../workbook/notebookContent";
+import { WorkbookContentEditor } from "./WorkbookContentEditor";
+import "katex/dist/katex.min.css";
+import { projectNoteRenderedBody } from "../projects/projectNoteValues";
 
 type Props = {
   workbook: Workbook;
@@ -25,7 +29,7 @@ export const WorkbookDocumentView: React.FC<Props> = ({
   workbook, project, projectLive, readOnly, statusFor, onUpdateBlock, onEditBlock, onOpenDocument, onOpenProjects, onOpenNote,
 }) => {
   const projectWorkbook = project?.workbooks?.find((item) => item.id === workbook.id);
-  return <article data-testid="workbook-document-view" style={{ display: "grid", gap: 16, fontSize: 12 }}>
+  return <article data-testid="workbook-document-view" style={{ display: "grid", gap: 16, fontSize: 12, minWidth: 0 }}>
     <header style={{ borderBottom: "1px solid #cbd5e1", paddingBottom: 10 }}>
       <div style={{ color: "#475569", fontSize: 11 }}>
         <button type="button" onClick={onOpenProjects} style={{ padding: "2px 6px", fontSize: 11 }}>Projects</button>
@@ -54,7 +58,7 @@ export const WorkbookDocumentView: React.FC<Props> = ({
         const latestRun = runs[runs.length - 1];
         const snapshots = [block.visualize?.snapshotA ?? block.visualize?.snapshot, block.visualize?.snapshotB].filter((value) => value != null);
         return <section key={block.id} data-testid={`workbook-document-block-${block.id}`} aria-labelledby={`wb-document-block-${block.id}`}
-          style={{ border: "1px solid #dbe2ea", borderLeft: "4px solid #2563eb", borderRadius: 8, padding: 12, background: "#fff", display: "grid", gap: 7 }}>
+          style={{ border: "1px solid #dbe2ea", borderLeft: "4px solid #2563eb", borderRadius: 8, padding: 12, background: "#fff", display: "grid", gap: 7, minWidth: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <div>
               <small style={{ color: "#64748b" }}>{blockKinds[block.type]}</small>
@@ -69,9 +73,13 @@ export const WorkbookDocumentView: React.FC<Props> = ({
             onChange={(event) => onUpdateBlock(stage.id, block.id, { text: event.target.value })} readOnly={readOnly}
             rows={Math.max(3, Math.min(12, (block.text ?? "").split("\n").length + 1))}
             style={{ width: "100%", boxSizing: "border-box", resize: "vertical", font: "inherit", lineHeight: 1.55, border: readOnly ? "none" : "1px solid #e2e8f0", background: "transparent", padding: 5 }} />}
+          {block.type === "text" && <div data-testid="workbook-prose-rendered" style={{ overflowWrap: "anywhere", overflowX: "auto" }} dangerouslySetInnerHTML={{ __html: renderNotebookMarkdown(block.text ?? "") }} />}
           {block.type === "formula" && <textarea aria-label={`${block.title || "Equation"} formula`} value={block.formula ?? ""}
             onChange={(event) => onUpdateBlock(stage.id, block.id, { formula: event.target.value })} readOnly={readOnly} rows={3}
             style={{ width: "100%", boxSizing: "border-box", fontFamily: "monospace", background: "#f8fafc", border: "1px solid #e2e8f0", padding: 6 }} />}
+          {block.type === "formula" && <div data-testid="workbook-equation-rendered" style={{ overflowX: "auto" }} dangerouslySetInnerHTML={{ __html: renderNotebookMath(block.formula ?? "", true) }} />}
+          {block.documentContent && <div data-testid="workbook-document-content" style={{ minWidth: 0 }} dangerouslySetInnerHTML={{ __html: workbookDocumentContentHtml(block) ?? "" }} />}
+          {(block.type === "text" || block.type === "visualize") && <details><summary>Edit document content</summary><WorkbookContentEditor block={block} readOnly={readOnly} onChange={patch => onUpdateBlock(stage.id, block.id, patch)} /></details>}
           {block.type === "reference" && <div style={{ display: "grid", gap: 4 }}>
             {reference ? <>
               <strong>{reference.kind === "document" ? sourceTitle || source?.module || "Project document" : inspection?.result?.provenance.operation.type || "Project result"}</strong>
@@ -86,7 +94,7 @@ export const WorkbookDocumentView: React.FC<Props> = ({
             {latestRun && <small>Saved run: {latestRun.status} · {new Date(latestRun.savedAt).toLocaleString()} · input {latestRun.inputHash.slice(0, 12)}</small>}
             {!latestRun && <small>No saved run yet.</small>}
           </div>}
-          {block.type === "visualize" && <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {block.type === "visualize" && !block.documentContent && <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {snapshots.length ? snapshots.map((snapshot, index) => <figure key={index} style={{ margin: 0, maxWidth: 260 }}>
               {snapshot?.thumbnail && <img src={snapshot.thumbnail} alt={`${block.title || "Figure"} snapshot ${index + 1}`} style={{ maxWidth: "100%", maxHeight: 180, objectFit: "contain" }} />}
               <figcaption>{snapshot?.datasetRef ?? "Captured view"} · {snapshot?.viewerKind ?? "viewer"}</figcaption>
@@ -102,7 +110,7 @@ export const WorkbookDocumentView: React.FC<Props> = ({
             return <aside key={edge.id} style={{ padding: 8, background: "#eff6ff", borderRadius: 6 }}>
               <small>Project Note · {note ? current ? "current" : "stale" : "missing"}</small>
               <div style={{ fontWeight: 700 }}>{note?.title ?? noteSource.noteId}</div>
-              {note && <div style={{ whiteSpace: "pre-wrap" }}>{note.body}</div>}
+              {note && <div style={{ whiteSpace: "pre-wrap" }}>{projectNoteRenderedBody(note, project?.workspace ?? null)}</div>}
               <button type="button" disabled={!note || !projectLive} onClick={() => onOpenNote(noteSource.noteId)} style={{ marginTop: 5, fontSize: 11 }}>Open Note</button>
             </aside>;
           })}

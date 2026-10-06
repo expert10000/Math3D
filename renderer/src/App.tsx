@@ -23,6 +23,9 @@ import { analyzeSavedMesh, appendSavedMeshAnalysis, type SavedMeshAnalysisKind }
 import { SavedMeshAnalysisPanel } from "./projects/SavedMeshAnalysisPanel";
 import { surfaceStudySource, type SurfaceStudyPresetId } from "./projects/surfaceStudyPresets";
 import { createSurfaceStudySweep, readSurfaceStudyRun } from "./projects/surfaceStudySweep";
+import { createSurfaceResolutionStudy } from "./projects/surfaceResolutionStudy";
+import { renderNotebookMarkdown, renderNotebookMath, workbookDocumentContentHtml } from "./workbook/notebookContent";
+import { normalizeWorkbookDocumentContent, workbookTableMarkdown, isWorkbookFigureImage } from "@math3d/workbook";
 import { captureProjectViewThumbnail } from "./projects/projectViewThumbnail";
 import { supportsSavedSurfaceResolution, type SurfaceStudyResolution } from "./projects/surfaceStudyResolution";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -11348,9 +11351,9 @@ const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string 
         if (block.type === "text") {
           lines.push(block.text?.trim() ? block.text : "_(No text)_");
         } else if (block.type === "formula") {
-          lines.push("```");
+          lines.push("$$");
           lines.push(block.formula ?? "");
-          lines.push("```");
+          lines.push("$$");
         } else if (block.type === "reference") {
           const reference = normalizeNotebookReference(block.notebookReference);
           if (reference) {
@@ -11370,7 +11373,7 @@ const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string 
         } else if (block.type === "assert") {
           if (block.assert?.expected) lines.push(`Expected: ${block.assert.expected}`);
           if (block.assert?.status) lines.push(`Status: ${block.assert.status}`);
-        } else if (block.type === "visualize") {
+        } else if (block.type === "visualize" && !block.documentContent) {
           const note = block.visualize?.notes?.trim();
           if (note) lines.push(`> ${note}`);
           const snapshots: { label: string; snap: WorkbookViewSnapshot | null }[] = [
@@ -11390,6 +11393,16 @@ const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string 
               if (details.length) lines.push(details.map((d) => `- ${d}`).join("\n"));
             }
           });
+        }
+        if (block.documentContent) {
+          const content = normalizeWorkbookDocumentContent(block.documentContent);
+          if (content.kind === "table") lines.push(workbookTableMarkdown(content));
+          else {
+            const snapshot = block.visualize?.snapshotA ?? block.visualize?.snapshot;
+            lines.push(content.caption);
+            if (isWorkbookFigureImage(snapshot?.thumbnail)) lines.push(`![${content.alt.replace(/[\[\]\r\n]/g, " ")}](${snapshot.thumbnail})`);
+            else lines.push("_(Figure bytes unavailable)_");
+          }
         }
         const params = block.params;
         if (params?.defs?.length) {
@@ -11557,9 +11570,9 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
             : "";
         let body = "";
         if (block.type === "text") {
-          body = `<div class="block-body"><pre>${escapeHtml(block.text ?? "")}</pre></div>`;
+          body = `<div class="block-body">${renderNotebookMarkdown(block.text ?? "", true)}</div>`;
         } else if (block.type === "formula") {
-          body = `<div class="block-body"><pre>${escapeHtml(block.formula ?? "")}</pre></div>`;
+          body = `<div class="block-body">${renderNotebookMath(block.formula ?? "", true, true)}</div>`;
         } else if (block.type === "reference") {
           const reference = normalizeNotebookReference(block.notebookReference);
           body = reference ? `<div class="block-body">
@@ -11585,7 +11598,7 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
             ${block.assert?.expected ? `<div>Expected: ${escapeHtml(block.assert.expected)}</div>` : ""}
             ${block.assert?.status ? `<div>Status: ${escapeHtml(block.assert.status)}</div>` : ""}
           </div>`;
-        } else if (block.type === "visualize") {
+        } else if (block.type === "visualize" && !block.documentContent) {
           const note = block.visualize?.notes?.trim();
           const snapA = resolveVisualizeSnapshot(block.visualize, "A");
           const snapB = resolveVisualizeSnapshot(block.visualize, "B");
@@ -11605,6 +11618,7 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
             </div>
             ${params}
             ${body}
+            ${workbookDocumentContentHtml(block) ?? ""}
           </div>
         `;
       })
@@ -79523,6 +79537,18 @@ case "mobius":
     if (!adapter) throw new TypeError("Saved Mesh buffers are unavailable.");
     return adapter.mesh();
   }, []);
+  const runSavedResolutionStudy = async () => {
+    const restored = restoredProjectRef.current, session = additionalActiveId ? restored?.additional.get(additionalActiveId) : null;
+    const surface = session?.document() ?? restoredSurfaceAdapter?.document();
+    if (!restored || surface?.format !== "math3d.surface-document") throw new TypeError("Open a saved Surface source first.");
+    const workspace = captureMixedKernelWorkspace(), before = canonicalJsonStringify(workspace);
+    const next = await createSurfaceResolutionStudy(workspace, surface, session?.context() ?? { documents: verifyMixedWorkspaceReplay(workspace), resources: restored.resources });
+    if (restoredProjectRef.current !== restored || canonicalJsonStringify(captureMixedKernelWorkspace()) !== before) throw new TypeError("The project changed during the resolution study. Retry; no new results were published.");
+    restored.workspace = next.workspace;
+    for (const adapter of next.meshes) if (!restored.meshes.has(adapter.document().identity.id)) restored.meshes.set(adapter.document().identity.id, adapter);
+    setAdditionalVersion(value => value + 1);
+    return next.meshes.map(adapter => adapter.document().identity.id);
+  };
   const [projectGraphAnalysisRequest, setProjectGraphAnalysisRequest] = useState<{ documentId: string; token: number } | null>(null);
   const [projectVolumeAnalysisRequest, setProjectVolumeAnalysisRequest] = useState<{ documentId: string; token: number } | null>(null);
   const additionalSurface = additionalActiveId ? restoredProjectRef.current?.additional.get(additionalActiveId)?.document() : null;
@@ -79539,7 +79565,7 @@ case "mobius":
   return (
     <div className="math3d-app" data-testid="app-shell" style={rootStyle}>
       {additionalActiveId && restoredProjectRef.current?.additional.get(additionalActiveId) && <AdditionalProjectEditor key={additionalActiveId} session={restoredProjectRef.current.additional.get(additionalActiveId)!} onChange={() => setAdditionalVersion((v) => v + 1)} onClose={() => setAdditionalActiveId(null)}>
-        {additionalSurface?.format === "math3d.surface-document" && <SavedMeshAnalysisPanel key={additionalSurface.identity.id} resolutionSupported={supportsSavedSurfaceResolution(additionalSurface)} readMesh={readSavedStudyMesh} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface} meshes={savedSurfaceMeshLinks(restoredProjectRef.current.workspace, additionalSurface, restoredProjectRef.current.meshes)} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis} />}
+        {additionalSurface?.format === "math3d.surface-document" && <SavedMeshAnalysisPanel key={additionalSurface.identity.id} resolutionSupported={supportsSavedSurfaceResolution(additionalSurface)} readMesh={readSavedStudyMesh} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface} meshes={savedSurfaceMeshLinks(restoredProjectRef.current.workspace, additionalSurface, restoredProjectRef.current.meshes)} onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis} />}
       </AdditionalProjectEditor>}
       <KernelWorkspacePanel
         captureProjectThumbnail={() => captureProjectViewThumbnail(document.querySelector(additionalActiveId ? '[data-testid="project-source-view"]' : '[data-testid="module-workspace"]'))}
@@ -81926,7 +81952,7 @@ case "mobius":
         onSweep={runSavedSurfaceSweep} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface}
         key={`surface-analysis:${nativeSavedSurface.identity.id}`}
         meshes={savedSurfaceMeshLinks(restoredProjectRef.current.workspace, nativeSavedSurface, restoredProjectRef.current.meshes)}
-        onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis}
+        onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis}
         creationHint="Uses saved formulas and ranges at the selected analysis resolution, independent of display resolution. Earlier Meshes and results remain available. Projects → Save project keeps them."
       />}
       <div

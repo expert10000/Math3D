@@ -59,6 +59,7 @@ export * from "./viewerProvenance";
 export * from "./mixedWorkspace";
 export * from "./math3dProject";
 export * from "./projectNotes";
+export * from "./projectNoteValues";
 export * from "./projectOperations";
 export * from "./projectExplorer";
 export * from "./projectTemplates";
