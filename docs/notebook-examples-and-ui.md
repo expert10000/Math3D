@@ -31,7 +31,8 @@ choose **Explore Workbooks, Notes and documents**. Choose a Workbook to read
 its stages and blocks, and a Note to read its body and anchor status. Notes
 anchored to a Workbook block also appear beside that block. A missing Workbook
 payload is shown as unavailable; importing the resource package supplies its
-verified content. Mobile currently presents this Notebook content read-only.
+verified content. Mobile presents Workbook content read-only and can create or edit
+Project Notes, including Notes anchored to a Workbook block.
 
 ## Numerical evidence examples
 

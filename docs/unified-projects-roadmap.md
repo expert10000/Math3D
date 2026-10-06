@@ -19,11 +19,29 @@ remain saved previews until their native editor adapters pass round-trip accepta
 
 Desktop delivery now includes PRJ39–PRJ50: Helicoid/Catenoid guided setups,
 saved Mesh curvature maps, canvas endpoint selection and point inspection,
-analysis resolution controls, comparison with PNG/JSON/CSV export, a centered
+analysis resolution controls, comparison with PNG/JSON/CSV export, a
 Projects Gallery with right-side quick access, source navigation, persistent study
 names, retained parameter sweeps, automatic current-view project thumbnails and
 qualified sweep PNG/JSON/CSV reports and retained resolution comparisons. Acceptance and limitations are recorded in
 the October 5–6 entries below.
+
+**Post-PRJ50 layout and cross-platform continuation, October 6:** The full
+Projects Gallery now occupies the main application workspace under the header;
+Quick Projects remains a side panel. The web path opens a Project-owned
+Workbook and its saved Notes. Mobile Project inspection reads verified Workbook
+resources and Notes, including anchor status, without copying document data.
+Mobile can now create and edit Project Notes, including Notes anchored to a
+verified Workbook block. The Android emulator imported a real Project package,
+saved and edited a block Note, and retained its anchor and text across an app
+restart. Physical-device acceptance remains open. Gallery opening defers live
+workspace capture and loads saved-card details in cached batches. With 25 saved
+projects, isolated Electron measurement showed Gallery first paint at roughly
+0.1–0.2 seconds and card summaries ready about 1.1 seconds later. Opening a
+saved Project remained around 5 seconds: most time was spent validating and
+retaining the current workspace as a recoverable before-open snapshot, followed
+by the transactional resource/library commit. Improving that verified restore
+path is still open. The older PRJ45 "centered gallery" description below records
+the layout as originally delivered.
 
 PRJ01–PRJ12 are integrated into `main` at `766776a27c6601e50d513a2217e3a4bf513c8e0d`.
 The main Projects workflow passed in

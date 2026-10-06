@@ -6,6 +6,7 @@ import { stageMobileGraphPresetSidecars, mobileGraphPointTables } from "./servic
 import { createMobileGraph, readMobileGraph, readMobileNamedGraphProject, storeMobileGraph, updateStoredMobileGraph } from "./models/mobileGraphProject";
 import { importMobileProjectPreview } from "./models/mobileProjectPreview";
 import { attachMobileProjectResources } from "./models/mobileProjectResources";
+import { saveMobileProjectNote, type MobileProjectNoteInput } from "./models/mobileProjectNotes";
 import { MobileProjectGraphSessions } from "./models/mobileProjectGraphSessions";
 import { refreshMobileProjectDependency } from "./models/mobileProjectRefresh";
 import { commitMobileGraphPromotion, readMobileGraphPromotions } from "./models/mobileGraphPromotions";
@@ -1750,14 +1751,14 @@ export const useMobileAppController = () => {
         if (!graphEditable && format === "math3d.project") {
           const preserved = preserveMobilePersonalGraphWork(storedProjects, currentGraphWork());
           const project = importMobileProjectPreview(picked.serializedProject, preserved, picked.sourceName, source === "import" ? "imported" : source);
-          const saved = await persistProjectMutation([project, ...preserved], `Imported ${project.title} as a saved preview. Use Documents and relations; current editors were kept.`, "Could not import project preview");
+          const saved = await persistProjectMutation([project, ...preserved], `Imported ${project.title} as a saved preview. Explore its Workbooks, Notes and documents; current editors were kept.`, "Could not import project preview");
           if (saved) { setSceneSearchQuery(project.title); setLibrarySection("all"); setTab("projects"); }
           return saved;
         }
         if (format !== "math3d.project") {
           const preserved = preserveMobilePersonalGraphWork(storedProjects, currentGraphWork());
           const project = importMobileProjectPreview(picked.serializedProject, preserved, picked.sourceName, source === "import" ? "imported" : source);
-          const saved = await persistProjectMutation([project, ...preserved], `Imported ${project.title} as a saved preview. Use Documents and relations; current editors were kept.`, "Could not import project preview");
+          const saved = await persistProjectMutation([project, ...preserved], `Imported ${project.title} as a saved preview. Explore its Workbooks, Notes and documents; current editors were kept.`, "Could not import project preview");
           if (saved) { setSceneSearchQuery(project.title); setLibrarySection("all"); setTab("projects"); }
           return saved;
         }
@@ -1827,6 +1828,15 @@ export const useMobileAppController = () => {
       const next = attachMobileProjectResources(target, picked.serializedProject);
       return await persistProjectMutation(upsertStoredProject(preserved, next), "Verified project resources imported. Export includes retained source bytes.", "Could not import project resources");
     } catch (error) { setProjectActionMessage(`Resource import failed: ${(error as Error).message}`); return false; }
+  };
+  const saveProjectNote = async (projectId: string, input: MobileProjectNoteInput): Promise<boolean> => {
+    try {
+      const preserved = preserveMobilePersonalGraphWork(storedProjects, currentGraphWork());
+      const target = preserved.find(project => project.id === projectId);
+      if (!target || target.projectType !== "project-preview") throw new TypeError("Saved Project unavailable.");
+      const next = saveMobileProjectNote(target, input);
+      return await persistProjectMutation(upsertStoredProject(preserved, next), `Saved Note in ${next.title}.`, "Could not save Project Note");
+    } catch (error) { setProjectActionMessage(`Note save failed: ${(error as Error).message}`); return false; }
   };
   const refreshProjectDependency = async (projectId: string, relationId: string): Promise<boolean> => {
     try {
@@ -2824,6 +2834,7 @@ export const useMobileAppController = () => {
     resolvePendingProjectHandoff,
     exportStoredScene,
     importProjectResources,
+    saveProjectNote,
     shareStoredScene,
     openViewerWithExample,
     openLearningExample,

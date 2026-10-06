@@ -57,6 +57,7 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
   const surfaceReason = (id: string) => mobileSurfaceUnavailableReason(resolved.get(id)! as import("@math3d/core").SurfaceDocument,
     project.workspace.entries.find(entry => entry.expected.id === id)?.replay?.payload as import("@math3d/kernel").SurfaceReplayBundle | undefined);
   return {
+    projectId: project.identity.id,
     title: project.metadata.title,
     workbooks, notes,
     refreshOptions: mobileProjectRefreshOptions({ projectType: "project-preview", id: project.identity.id, title: project.metadata.title,
