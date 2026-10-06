@@ -2,8 +2,21 @@ import { describe, expect, it } from "vitest";
 import { createMath3DProject, createMixedWorkspaceDocument, instantiateMath3DProjectTemplate, serializeMath3DProject } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { buildMobileProjectExplorer } from "../../apps/mobile/src/models/mobileProjectExplorer";
+import { instantiateNotebookStarter } from "../../renderer/src/projects/notebookStarters";
 
 describe("PRJ21 read-only named-project explorer", () => {
+  it("opens a Project Workbook and its Notes from verified mobile resource bytes", () => {
+    const { project, resources } = instantiateNotebookStarter("graph-derivative-notebook", "mobile-notebook-journey");
+    const explorer = buildMobileProjectExplorer(serializeMath3DProject(project), resources.sidecars());
+    expect(explorer.workbooks).toHaveLength(1);
+    expect(explorer.workbooks[0]?.available).toBe(true);
+    expect(explorer.workbooks[0]?.stages.map(stage => stage.id)).toEqual(["define", "compute", "visualize", "explain"]);
+    expect(explorer.notes.map(note => note.title)).toContain("Derivative source");
+    expect(explorer.notes[0]?.status).toBe("current");
+    const withoutPayload = buildMobileProjectExplorer(serializeMath3DProject(project));
+    expect(withoutPayload.workbooks[0]?.available).toBe(false);
+    expect(withoutPayload.notes).toHaveLength(1);
+  });
   it("shows all companions, revisions, relations and analysis without modifying the saved project", () => {
     const project = instantiateMath3DProjectTemplate("catenary-study", "mobile-explorer");
     const bytes = serializeMath3DProject(project), explorer = buildMobileProjectExplorer(bytes);

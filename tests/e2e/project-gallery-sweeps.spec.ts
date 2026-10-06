@@ -5,14 +5,15 @@ import { launchSurfaceApp, closeSurfaceApp, resetSurfaceAppState, type LaunchedS
 const collection = JSON.parse(readFileSync(resolve("renderer/src/projects/examples/samsung-projects.json"), "utf8"));
 const directory = resolve("docs/evidence/projects-prj45-47-desktop-2026-10-05");
 
-test("Projects opens a centered card gallery and shares filters and pending metadata with the right quick panel", async () => {
+test("Projects opens in the workspace and shares filters and pending metadata with the right quick panel", async () => {
   test.setTimeout(180_000); let ctx: LaunchedSurfaceApp | null = null;
   try {
     mkdirSync(directory, { recursive: true }); ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
     const page = ctx.page; await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByTestId("projects-toggle").click(); let panel = page.getByTestId("project-explorer-panel");
-    await expect(panel).toHaveJSProperty("tagName", "DIALOG"); await expect(panel).toHaveJSProperty("open", true);
-    const box = (await panel.boundingBox())!; expect(Math.abs(box.x + box.width / 2 - 720)).toBeLessThan(3);
+    await expect(panel).toHaveJSProperty("tagName", "SECTION"); await expect(page.getByTestId("project-gallery-host")).toContainText("Projects Gallery");
+    const box = (await panel.boundingBox())!, host = (await page.getByTestId("project-gallery-host").boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(host.x); expect(box.x + box.width).toBeLessThanOrEqual(host.x + host.width + 1);
     await panel.getByTestId("project-title").fill("Unsaved gallery draft");
     await panel.getByTestId("project-import-samsung-examples").click();
     await expect(panel.getByTestId("project-example-import-message")).toContainText("25", { timeout: 60_000 });
@@ -28,15 +29,16 @@ test("Projects opens a centered card gallery and shares filters and pending meta
     await expect(panel.getByTestId("project-library-search")).toHaveValue("Helicoid");
     await panel.screenshot({ path: resolve(directory, "projects-quick-panel.png") });
     await panel.getByTestId("project-gallery-layout-toggle").click(); panel = page.getByTestId("project-explorer-panel");
-    await expect(panel).toHaveJSProperty("tagName", "DIALOG"); await expect(panel.getByTestId("project-title")).toHaveValue("Unsaved gallery draft");
+    await expect(panel).toHaveJSProperty("tagName", "SECTION"); await expect(panel.getByTestId("project-title")).toHaveValue("Unsaved gallery draft");
     await panel.getByTestId(`project-preview-${helicoid}`).click(); await expect(panel.getByTestId("project-view-mode")).toContainText("Saved project preview · Helicoid");
     await panel.getByTestId(`project-open-saved-${helicoid}`).click(); await expect(panel).toBeHidden();
     await page.getByTestId("projects-quick-toggle").click(); await expect(panel).toHaveJSProperty("tagName", "ASIDE");
     await panel.getByRole("button", { name: "Close project explorer" }).click();
-    await page.getByTestId("projects-toggle").click(); await expect(panel).toHaveJSProperty("tagName", "DIALOG");
+    await page.getByTestId("projects-toggle").click(); await expect(panel).toHaveJSProperty("tagName", "SECTION");
     await panel.getByTestId("project-library-search").fill(""); await panel.getByRole("button", { name: "All projects", exact: true }).click();
     await page.setViewportSize({ width: 390, height: 844 });
     await expect.poll(() => panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await panel.getByTestId("project-gallery-grid").locator("article").first().scrollIntoViewIfNeeded();
     await expect(panel.getByTestId("project-gallery-grid").locator("article").first()).toBeInViewport();
     await page.screenshot({ path: resolve(directory, "projects-gallery-compact.png") });
     await page.keyboard.press("Escape"); await expect(panel).toBeHidden();

@@ -315,7 +315,7 @@ export const MobileProjectsScreen: React.FC<{ model: MobileAppController }> = ({
           </Pressable>
           {named && stored && <>
             <Pressable testID={`mobile-project-inspect-${scene.id}`} onPress={() => setInspectedProjectId(inspectedProjectId === scene.id ? null : scene.id)} style={styles.secondaryBtn}>
-              <Text style={styles.secondaryBtnText}>{inspectedProjectId === scene.id ? "Close documents" : "Documents and relations"}</Text>
+              <Text style={styles.secondaryBtnText}>{inspectedProjectId === scene.id ? "Close Project" : "Explore Workbooks, Notes and documents"}</Text>
             </Pressable>
             {stored.projectType === "project-preview" && <Pressable testID={`mobile-project-import-resources-${scene.id}`} onPress={() => void runTransfer(`resources-${scene.id}`, () => model.importProjectResources(scene.id))} style={styles.secondaryBtn}>
               <Text style={styles.secondaryBtnText}>Import project resources</Text>

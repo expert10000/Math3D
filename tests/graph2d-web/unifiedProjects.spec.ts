@@ -7,6 +7,29 @@ import { runNamedProjectRoundTrip } from "../e2e/helpers/namedProjectRoundTrip";
 import { inspectMeshPackage, meshResourceFixture, pointResourceFixture, scalarVolumeResourceFixture, inspectScalarVolumePackage } from "../e2e/helpers/meshProjectResources";
 import { projectFreezeFixture, inspectFreezePackage, editFreezeProject, freezeControls, checkFreezeHistory, checkFreezeResources } from "../e2e/helpers/projectFreeze";
 
+test("Project → Workbook → Note opens from the main web workspace", async ({ page }) => {
+  const raw = readFileSync("tests/fixtures/project-workbook-note-journey.json", "utf8");
+  const project = JSON.parse(raw).project;
+  await page.goto("/");
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); });
+  await page.reload();
+  await page.getByTestId("projects-toggle").click();
+  const panel = page.getByTestId("project-explorer-panel");
+  await expect(page.getByTestId("project-gallery-host")).toContainText("Projects Gallery");
+  await panel.getByTestId("project-import-file").setInputFiles({ name: "notebook.resources.json", mimeType: "application/json", buffer: Buffer.from(raw) });
+  await expect(panel.getByTestId("project-import-open")).toBeEnabled();
+  await panel.getByTestId("project-import-open").click();
+  await expect(panel.getByTestId("project-workbooks")).toContainText("Graph Derivative Investigation");
+  await panel.getByTestId(`project-open-workbook-${project.workbooks![0]!.id}`).click();
+  await expect(panel).toBeHidden();
+  await page.getByTestId("notes-toggle").click();
+  await expect(page.getByTestId(`project-note-${project.notes![0]!.identity.id}`)).toContainText("The saved derivative");
+  await page.getByTestId("project-notes-panel").getByRole("button", { name: "Close" }).click();
+  await page.getByTestId("projects-toggle").click();
+  await panel.getByTestId(`project-open-note-${project.notes![0]!.identity.id}`).click();
+  await expect(page.getByTestId(`project-note-${project.notes![0]!.identity.id}`)).toContainText("The saved derivative");
+});
+
 test("PRJ19 browser retains separate Graph histories after reload and independent import", async ({ page, browser }) => {
   await page.goto("/"); await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); }); await page.reload();
   const saved = await exerciseMultipleGraphs(page); await page.reload(); await checkMultipleGraphHistory(page, saved);

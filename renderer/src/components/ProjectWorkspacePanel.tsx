@@ -72,6 +72,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [notesProject, setNotesProject] = useState<Math3DProject | null>(null);
   const [notesWorkspace, setNotesWorkspace] = useState<MixedWorkspaceDocument | null>(null);
   const [noteDrafts, setNoteDrafts] = useState<ProjectNoteDraft[]>([]);
@@ -116,16 +117,45 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   }, [project]);
   const documentTitles = new Map(explorer?.groups.flatMap((group) => group.documents.map((document) => [document.id, document.title] as const)) ?? []);
 
-  const summaries = useMemo(() => new Map(library.entries.map(entry => {
-    try {
-      const saved = loadLibraryProject(localStorage, entry.id);
-      return [entry.id, { description: saved.metadata.description ?? "", documents: saved.workspace.entries.length, results: saved.workspace.results.length,
-        modules: [...new Set([...saved.workspace.entries.map(item => ({ graph2d: "Graph", surface: "Surface", curve: "Curve", mesh: "Mesh", volume: "Volume", geometry: "Geometry", topology: "Topology", complex: "Complex" }[item.module] ?? item.module)),
-          ...(saved.workbooks?.length ? ["Workbook"] : []), ...(saved.notes?.length ? ["Notes"] : []), ...(saved.workspace.results.length ? ["Analysis"] : [])])] }];
-    } catch { return [entry.id, { description: "Saved payload unavailable. Preview reports the recovery details.", documents: 0, results: 0, modules: [] as string[] }]; }
-  })), [library]);
+  type CardSummary = { description: string; documents: number; results: number; modules: string[] };
+  const [summaries, setSummaries] = useState<Map<string, CardSummary>>(new Map());
+  const summaryCache = useRef(new Map<string, { savedAt: number; summary: CardSummary }>());
+  useEffect(() => {
+    if (!open) return;
+    const entries = orderProjectLibrary(library);
+    const fresh = new Map<string, CardSummary>();
+    for (const entry of entries) {
+      const cached = summaryCache.current.get(entry.id);
+      if (cached?.savedAt === entry.savedAt) fresh.set(entry.id, cached.summary);
+    }
+    setSummaries(fresh);
+    let loaded = fresh;
+    let index = 0, cancelled = false;
+    const batch = () => {
+      if (cancelled) return;
+      const next = new Map(loaded);
+      for (let count = 0; index < entries.length && count < 2; index++, count++) {
+        const entry = entries[index]!;
+        if (next.has(entry.id)) continue;
+        let summary: CardSummary;
+        try {
+          const saved = loadLibraryProject(localStorage, entry.id);
+          summary = { description: saved.metadata.description ?? "", documents: saved.workspace.entries.length, results: saved.workspace.results.length,
+            modules: [...new Set([...saved.workspace.entries.map(item => ({ graph2d: "Graph", surface: "Surface", curve: "Curve", mesh: "Mesh", volume: "Volume", geometry: "Geometry", topology: "Topology", complex: "Complex" }[item.module] ?? item.module)),
+              ...(saved.workbooks?.length ? ["Workbook"] : []), ...(saved.notes?.length ? ["Notes"] : []), ...(saved.workspace.results.length ? ["Analysis"] : [])])] };
+        } catch { summary = { description: "Saved payload unavailable. Preview reports the recovery details.", documents: 0, results: 0, modules: [] }; }
+        summaryCache.current.set(entry.id, { savedAt: entry.savedAt, summary });
+        next.set(entry.id, summary);
+      }
+      setSummaries(next);
+      loaded = next;
+      if (index < entries.length) timer = window.setTimeout(batch, 0);
+    };
+    let timer = window.setTimeout(batch, 0);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [library, open]);
   const filteredProjects = orderProjectLibrary(library).filter(entry => (collection !== "Favorites" || entry.favorite) &&
-    (moduleFilter === "All modules" || summaries.get(entry.id)?.modules.includes(moduleFilter)) &&
+    (moduleFilter === "All modules" || !summaries.has(entry.id) || summaries.get(entry.id)?.modules.includes(moduleFilter)) &&
     `${entry.title} ${entry.tags.join(" ")} ${summaries.get(entry.id)?.description ?? ""} ${summaries.get(entry.id)?.modules.join(" ") ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()));
   const readActiveProjectId = () => { const raw = localStorage.getItem(PROJECT_STORAGE_KEY); return raw ? parseMath3DProject(raw).identity.id : null; };
   const starterCopies = useMemo(() => {
@@ -170,7 +200,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     try { display(liveProject(), false); setMessage("Current workspace documents."); }
     catch (error) { setMessage(`Project unavailable: ${(error as Error).message}`); }
   };
-  useEffect(() => { if (open) { setNotesOpen(false); refresh(); } }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    setNotesOpen(false);
+    setMessage("Loading current workspace…");
+    const timer = window.setTimeout(refresh, 0);
+    return () => window.clearTimeout(timer);
+  }, [open]);
   const refreshNotes = () => {
     const sequence = ++noteRefreshSequence.current;
     try {
@@ -191,6 +227,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   };
   useEffect(() => {
     if (!noteRequest) return;
+    setSelectedNoteId(null);
     onOpenChange(false);
     refreshNotes();
     setNotesOpen(true);
@@ -640,9 +677,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   return <div style={{ position: "fixed", right: 14, top: 90, zIndex: 2501, fontSize: 13 }}>
     <button type="button" data-testid="notes-toggle" aria-label="Open Notes" aria-expanded={notesOpen} onClick={() => {
       if (notesOpen) { setNotesOpen(false); return; }
+      setSelectedNoteId(null);
       onOpenChange(false); refreshNotes(); setNotesOpen(true);
     }} style={{ position: "fixed", right: 14, bottom: 60, zIndex: 2502, border: "1px solid #64748b", borderRadius: 8, padding: "7px 10px", background: "#f8fafc", color: "#0f172a", fontWeight: 700 }}>Notes{noteDrafts.length ? ` (${noteDrafts.length})` : ""}</button>
-    {notesOpen && <ProjectNotesPanel project={notesProject} workspace={notesWorkspace} drafts={noteDrafts} busy={busy} message={notesMessage} focusNoteId={noteRequest?.id}
+    {notesOpen && <ProjectNotesPanel project={notesProject} workspace={notesWorkspace} drafts={noteDrafts} busy={busy} message={notesMessage} focusNoteId={selectedNoteId ?? noteRequest?.id}
       selectionAvailable={Boolean(captureNoteSelection?.())} workbooks={noteWorkbooks}
       onClose={() => setNotesOpen(false)} onOpenProjects={() => { setNotesOpen(false); onOpenChange(true); }} onRefresh={refreshNotes}
       onCapture={captureNote} onCaptureResult={captureResultNote} onCaptureWorkbookBlock={captureWorkbookBlockNote} onOpenTarget={openNoteTarget}
@@ -673,7 +711,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
         {!library.entries.length && !libraryMessage && <p>No saved projects yet. Save the current workspace or import the included Samsung collection.</p>}
         {!!library.entries.length && !filteredProjects.length && <p>No projects match this search or collection.</p>}
         <div className="project-gallery-grid" data-testid="project-gallery-grid">{filteredProjects.map(entry => {
-          const src = readProjectThumbnail(localStorage, entry), summary = summaries.get(entry.id)!;
+          const src = readProjectThumbnail(localStorage, entry), summary = summaries.get(entry.id) ?? { description: "Loading project details…", documents: 0, results: 0, modules: [] };
           const starter = [...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS].find((item) => entry.tags.includes(item.id) || entry.title === item.title);
           return <article id={`project-library-${entry.id}`} tabIndex={-1} className={`project-gallery-card${highlightedSavedId === entry.id ? " is-new" : ""}`} key={entry.id} data-testid={`project-library-${entry.id}`}>
             {src || !starter ? <ProjectThumbnail key={src ?? "missing"} src={src} modules={summary.modules} />
@@ -752,7 +790,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
           <section className="project-workspace-notes" aria-label="Project Notes">
             <strong>Notes ({project?.notes?.length ?? 0})</strong>
             <button type="button" disabled={preview || !!managed || busy} onClick={() => { onOpenChange(false); refreshNotes(); setNotesOpen(true); }}>Open Notes</button>
-            {project?.notes?.map(note => <p key={note.identity.id}>{note.title}</p>)}
+            {project?.notes?.map(note => <button type="button" key={note.identity.id} data-testid={`project-open-note-${note.identity.id}`} disabled={preview || busy} title={preview ? "Open this Project first to view its Notes" : undefined}
+              onClick={() => { setSelectedNoteId(note.identity.id); onOpenChange(false); refreshNotes(); setNotesOpen(true); }}>{note.title}</button>)}
           </section>
           <button type="button" data-testid="project-inspect-relations" disabled={!project} onClick={() => { setInspectedId(null); setInspectionOpen(true); }}>Inspect relations and availability</button>
       {dependencies && <ProjectDependenciesPanel inspection={dependencies} selectedId={inspectedId} titles={documentTitles} onClose={() => setInspectionOpen(false)} onLocate={(id) => setInspectedId(id)}

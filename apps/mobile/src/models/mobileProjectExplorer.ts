@@ -1,4 +1,4 @@
-import { buildProjectExplorer, evaluateDocumentRelationStatus, isAnalysisResultCurrent, matchesScientificSourceGeneration,
+import { buildProjectExplorer, evaluateDocumentRelationStatus, inspectProjectNoteAnchor, isAnalysisResultCurrent, matchesScientificSourceGeneration, structuralHash,
   parseMath3DProject, replayMixedWorkspaceDocument, viewerSourceFromDocument, projectResourceInventory, VerifiedProjectResources, type ProjectResourceSidecar } from "@math3d/core";
 import { mobileSurfaceUnavailableReason } from "./mobileProjectSurface";
 import { mobileCurveUnavailableReason } from "./mobileProjectCurve";
@@ -17,6 +17,32 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
   const tree = buildProjectExplorer(project, resolved);
   const sources = new Map([...resolved].map(([id, document]) => [id, viewerSourceFromDocument(document)]));
   const dependencies = createInMemoryDependencyGraph({ relations: project.workspace.relations, resolveSource: id => sources.get(id) ?? null });
+  type MobileWorkbook = { id: string; title: string; stages: { id: string; title: string; blocks: { id: string; title: string; type: string; text?: string; formula?: string }[] }[] };
+  const workbooks = (project.workbooks ?? []).map(reference => {
+    const bytes = resources.bytes({ kind: "workbook-payload", id: reference.id });
+    if (!bytes) return { id: reference.id, title: reference.title, revision: reference.revision, available: false, stages: [] as MobileWorkbook["stages"] };
+    try {
+      const workbook = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as MobileWorkbook;
+      if (workbook.id !== reference.id || workbook.title !== reference.title || !Array.isArray(workbook.stages) || workbook.stages.length !== 4 ||
+        workbook.stages.some(stage => !stage || typeof stage.id !== "string" || typeof stage.title !== "string" || !Array.isArray(stage.blocks) ||
+          stage.blocks.some(block => !block || typeof block.id !== "string" || typeof block.title !== "string" || typeof block.type !== "string" ||
+            block.text !== undefined && typeof block.text !== "string" || block.formula !== undefined && typeof block.formula !== "string"))) throw new Error("Invalid Workbook");
+      return { id: reference.id, title: reference.title, revision: reference.revision, available: true, stages: workbook.stages };
+    } catch { return { id: reference.id, title: reference.title, revision: reference.revision, available: false, stages: [] as MobileWorkbook["stages"] }; }
+  });
+  const notes = (project.notes ?? []).map(note => ({ id: note.identity.id, title: note.title, body: note.body, kind: note.kind,
+    anchor: note.anchor, status: inspectProjectNoteAnchor(note, {
+      projectId: project.identity.id, source: id => sources.get(id) ?? null,
+      result: id => {
+        const result = project.workspace.results.find(item => item.resultId === id);
+        return result ? { source: result.provenance.source, hash: structuralHash(result) } : null;
+      },
+      workbookBlock: (workbookId, blockId) => {
+        const workbook = workbooks.find(item => item.id === workbookId && item.available);
+        const block = workbook?.stages.flatMap(stage => stage.blocks).find(item => item.id === blockId);
+        return workbook && block ? { revision: workbook.revision, hash: structuralHash(block) } : null;
+      },
+    }).status }));
   const rank = { current: 0, stale: 1, unavailable: 2, broken: 3 } as const;
   const merge = (left: keyof typeof rank, right: keyof typeof rank) => rank[left] >= rank[right] ? left : right;
   const relations = project.workspace.relations.map(relation => {
@@ -32,6 +58,7 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
     project.workspace.entries.find(entry => entry.expected.id === id)?.replay?.payload as import("@math3d/kernel").SurfaceReplayBundle | undefined);
   return {
     title: project.metadata.title,
+    workbooks, notes,
     refreshOptions: mobileProjectRefreshOptions({ projectType: "project-preview", id: project.identity.id, title: project.metadata.title,
       serializedProject: raw, projectResources: [...sidecars], updatedAt: 0, lastOpenedAt: 0 }),
     resources: inventory.map(item => ({ id: item.id, kind: item.kind, required: item.required, available: resources.bytes(item) !== null })),

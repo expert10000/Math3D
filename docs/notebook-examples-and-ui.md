@@ -20,6 +20,19 @@ copy; **New copy** creates another independent Project. Open the Workbook under
 Document** to read it. The starter recipe remains unchanged when you edit your
 copy.
 
+On web and desktop, the full Projects Gallery occupies the main workspace.
+After opening a Project Workbook, use **Notes** to inspect its saved Notes, or
+return to **Projects → Contents → Notes** and select a Note by title. The Quick
+Projects control remains a compact side panel. Saved card details load in small
+batches so the Gallery can appear before every Project payload is parsed.
+
+On mobile, import the Project package **with resources**, open its card, then
+choose **Explore Workbooks, Notes and documents**. Choose a Workbook to read
+its stages and blocks, and a Note to read its body and anchor status. Notes
+anchored to a Workbook block also appear beside that block. A missing Workbook
+payload is shown as unavailable; importing the resource package supplies its
+verified content. Mobile currently presents this Notebook content read-only.
+
 ## Numerical evidence examples
 
 Open **Projects → Starter projects** and choose **Catenoid Evidence Notebook**

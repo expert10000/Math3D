@@ -81758,6 +81758,7 @@ case "mobius":
           )}
         </div>}
       </header>
+      <div id="project-gallery-host" data-testid="project-gallery-host" />
 
       {showSurfaceWorkflowStrip && (
         <div style={{ padding: isSurfacePreviewMode ? "0 0 6px" : "0 0 10px" }}>
