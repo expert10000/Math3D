@@ -183,12 +183,32 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await expect(page.getByTestId("quantum-field-surface").locator("canvas").first()).toBeVisible();
     await page.getByRole("combobox",{name:"Quantum surface threshold"}).selectOption("0.2");
     await expect(page.getByTestId("quantum-surface-legend")).toContainText("20% of sampled maximum");
+    await page.getByRole("combobox",{name:"Quantum surface color"}).selectOption("phase");
+    await expect(page.getByTestId("quantum-surface-color-counts")).toContainText("8 phase color bins");
+    await expect(page.getByTestId("quantum-field-surface").getByTestId("surface-viewer-canvas-host"))
+      .toHaveAttribute("data-rendered-mesh-count","8");
+    await page.getByRole("combobox",{name:"Quantum surface color"}).selectOption("real-sign");
+    await expect(page.getByTestId("quantum-surface-color-counts")).toContainText("2 real-sign color bins");
+    await expect(page.getByTestId("quantum-field-surface").getByTestId("surface-viewer-canvas-host"))
+      .toHaveAttribute("data-rendered-mesh-count","2");
     const orbitalReference=await page.evaluate(async()=>{
       const opened=await (window as any).quantumScenes.reopenRecent();
       return opened.ok ? opened.reference : null;
     });
     expect(orbitalReference).not.toBeNull();
     if(!orbitalReference)throw new Error("Orbital reference was not remembered");
+    await page.getByTestId("quantum-scene-close").click();
+
+    const radialBundle=resolve(__dirname,"..","fixtures","quantum-scene-orbitals","orbital-2s.qscene");
+    await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},radialBundle);
+    await app.evaluate(({BrowserWindow})=>{
+      BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command",{command:"file:open-quantum-scene"});
+    });
+    await expect(page.getByTestId("quantum-scene-preview")).toContainText("hydrogenic");
+    await page.getByRole("button",{name:"Density surface"}).click();
+    await page.getByRole("combobox",{name:"Quantum surface threshold"}).selectOption("0.01");
+    await page.getByRole("combobox",{name:"Quantum surface color"}).selectOption("real-sign");
+    await expect(page.getByTestId("quantum-surface-color-counts")).toContainText("2 real-sign color bins");
     await page.getByTestId("quantum-scene-close").click();
 
     const realBundle=resolve(__dirname,"..","fixtures","quantum-scene","run-97a132d1d712414bb62bb8c9212f517e-bands.qscene");

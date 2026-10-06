@@ -1,0 +1,115 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-0f754eaddddc45f8ae77fc0c01c4900b",
+  "title": "hydrogenic · native",
+  "provenance": {
+    "runId": "run-0f754eaddddc45f8ae77fc0c01c4900b",
+    "jobId": "math3d-orbital-3d",
+    "model": "hydrogenic",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-06T10:32:00.419777+00:00",
+    "resultSha256": "b18df730fa77eec539a94fa0a4cb90460f51c0ea2215a3a76a80307cc9fe384b",
+    "adapter": "qvis/1",
+    "parameters": {
+      "n": 3,
+      "l": 2,
+      "m": 2,
+      "basis": "complex",
+      "Z": 1,
+      "radius": 18,
+      "grid": 21
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "x",
+      "y",
+      "z"
+    ],
+    "units": [
+      "a0",
+      "a0",
+      "a0"
+    ]
+  },
+  "camera": {
+    "position": [
+      42,
+      35.699999999999996,
+      31.5
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "objects": [],
+  "datasets": [
+    {
+      "id": "psi-real",
+      "path": "psi-real.f64",
+      "format": "f64le",
+      "count": 9261,
+      "components": 1,
+      "unit": "a0^-3/2",
+      "bytes": 74088,
+      "sha256": "e02b4848fa8407b2a988d0c53f9cf17f8138a969d356e72b5b144eee1708273e"
+    },
+    {
+      "id": "psi-imaginary",
+      "path": "psi-imaginary.f64",
+      "format": "f64le",
+      "count": 9261,
+      "components": 1,
+      "unit": "a0^-3/2",
+      "bytes": 74088,
+      "sha256": "c95668c9b269b7b78a6e10057238dc66c302231e0a00015c21178b7931c9e802"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "assumptions",
+      "text": "One-electron Coulomb · infinite nuclear mass · E=-0.055556 Hartree",
+      "position": [
+        0,
+        0,
+        18
+      ]
+    }
+  ],
+  "fields": [
+    {
+      "id": "wavefunction",
+      "label": "Hydrogenic ψ · n=3, l=2, m=2 · complex",
+      "kind": "complex-field",
+      "real": "psi-real",
+      "imaginary": "psi-imaginary",
+      "grid": {
+        "shape": [
+          21,
+          21,
+          21
+        ],
+        "origin": [
+          -18,
+          -18,
+          -18
+        ],
+        "spacing": [
+          1.8,
+          1.8,
+          1.8
+        ],
+        "order": "xyz-z-fastest"
+      }
+    }
+  ]
+}
