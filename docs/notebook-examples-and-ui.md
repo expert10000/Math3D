@@ -4,7 +4,15 @@ Open **Projects → Starter projects** and choose **Catenoid Evidence Notebook**
 or **Edge Path Evidence Notebook**. Click **Open** to create an independent saved
 Project, including its Mesh source bytes, computed analysis, Notes and Workbook.
 
-In **Projects → Workbooks**, click **Open Catenoid Evidence Notebook** or
+The Gallery collection buttons switch between all projects, starters, your saved
+projects and favorites. Search matches names, topics, tags and modules; the
+**Module** filter includes **Workbook** and **Notes**. The right-hand panel labels
+the current workspace, a saved preview, or a saved copy being edited. Use
+**Project details**, **Contents**, and **Import / export** to jump between its
+sections. **Edit saved copy** changes the saved snapshot; **Back to current
+workspace** returns to the active editors.
+
+In **Projects → Contents → Workbooks**, click **Open Catenoid Evidence Notebook** or
 **Open Edge Path Evidence Notebook**. The full Geometry Workbook opens. For the
 reading layout, switch to **Surfaces → Workbook → Document**.
 
@@ -27,7 +35,7 @@ method version. The new result is published first. **Relink this cell to
 published result** is a separate action; other citations and claims retain their
 historical references. Cancelled or failed work retains the prior result.
 
-Use **Projects → Export with resources** to carry the ordinary Project and its
+Use **Projects → Import / export → Download with resources** to carry the ordinary Project and its
 verified Mesh/Workbook sidecars to another installation. Metadata-only exports
 do not include those source bytes.
 
@@ -51,7 +59,7 @@ exports also include a linked-source manifest.
 The portable output is a standalone HTML report. Open it in a fresh browser,
 even offline. After it verifies the embedded checksums, **Download embedded
 Project with resources** becomes available. Import that ordinary Project package
-through **Projects → Import**, open its saved Workbook and choose Document.
+through **Projects → Import / export → Import a project file**, open its saved Workbook and choose Document.
 The package retains the saved Workbook; the report includes only selected blocks.
 Unavailable required source/artifact bytes stop portable export. Stale numerical
 summaries remain historical evidence and carry their qualifications.

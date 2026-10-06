@@ -63,6 +63,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
   const resourceSessionId = useRef<string | null>(null);
   const [quick, setQuick] = useState(false), [collection, setCollection] = useState("All projects");
+  const [moduleFilter, setModuleFilter] = useState("All modules");
+  const workspacePanel = useRef<HTMLElement>(null);
+  const detailsSection = useRef<HTMLElement>(null), contentsSection = useRef<HTMLElement>(null), transferSection = useRef<HTMLElement>(null);
+  const jumpTo = (section: React.RefObject<HTMLElement | null>) => { section.current?.scrollIntoView({ block: "start" }); section.current?.focus({ preventScroll: true }); };
   useEffect(() => { if (!open) setQuick(false); }, [open]);
   const [busy, setBusy] = useState(false);
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
@@ -116,11 +120,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     try {
       const saved = loadLibraryProject(localStorage, entry.id);
       return [entry.id, { description: saved.metadata.description ?? "", documents: saved.workspace.entries.length, results: saved.workspace.results.length,
-        modules: [...new Set(saved.workspace.entries.map(item => ({ graph2d: "Graph", surface: "Surface", curve: "Curve", mesh: "Mesh", volume: "Volume", geometry: "Geometry", topology: "Topology", complex: "Complex" }[item.module] ?? item.module)))] }];
+        modules: [...new Set([...saved.workspace.entries.map(item => ({ graph2d: "Graph", surface: "Surface", curve: "Curve", mesh: "Mesh", volume: "Volume", geometry: "Geometry", topology: "Topology", complex: "Complex" }[item.module] ?? item.module)),
+          ...(saved.workbooks?.length ? ["Workbook"] : []), ...(saved.notes?.length ? ["Notes"] : []), ...(saved.workspace.results.length ? ["Analysis"] : [])])] }];
     } catch { return [entry.id, { description: "Saved payload unavailable. Preview reports the recovery details.", documents: 0, results: 0, modules: [] as string[] }]; }
   })), [library]);
-  const filteredProjects = orderProjectLibrary(library).filter(entry => (collection !== "Favorites" || entry.favorite) && `${entry.title} ${entry.tags.join(" ")}`.toLowerCase().includes(query.trim().toLowerCase()));
+  const filteredProjects = orderProjectLibrary(library).filter(entry => (collection !== "Favorites" || entry.favorite) &&
+    (moduleFilter === "All modules" || summaries.get(entry.id)?.modules.includes(moduleFilter)) &&
+    `${entry.title} ${entry.tags.join(" ")} ${summaries.get(entry.id)?.description ?? ""} ${summaries.get(entry.id)?.modules.join(" ") ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()));
   const display = (next: Math3DProject, savedPreview: boolean, keepManagement = false) => {
+    if (!keepManagement) workspacePanel.current?.scrollTo({ top: 0 });
     const resolved = verifyMixedWorkspaceReplay(next.workspace);
     const tree = buildProjectExplorer(next, resolved);
     setProject(next); setTitle(next.metadata.title); setDescription(next.metadata.description ?? ""); setTags((next.metadata.tags ?? []).join(", "));
@@ -501,7 +509,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       const progress = await importProjectExamples(localStorage, examples, example => commitProjectResources(example.project, example.resources,
         () => importLibraryProject(localStorage, example.project, Date.now(), { activate: false })),
         progress => setExampleMessage(`Imported ${progress.imported}; kept ${progress.kept} existing; ${progress.remaining} remaining…`));
-      refreshLibrary(); setQuery("");
+      refreshLibrary(); setQuery(""); setCollection("Your saved projects"); setModuleFilter("All modules");
       setExampleMessage(progress.error ? `Import stopped: ${progress.error}. Imported ${progress.imported}; kept ${progress.kept} existing; ${progress.remaining} remaining. Retry to continue.` :
         `Imported ${progress.imported} Samsung projects; kept ${progress.kept} existing versions.${progress.previewOnly ? ` ${progress.previewOnly} imported project is available as a compatibility preview.` : ""} Choose Open on a saved project below.`);
     } catch (failure) { setExampleMessage(`Samsung collection import failed: ${(failure as Error).message}`); }
@@ -530,7 +538,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       resourceSession.current = resources; resourceSessionId.current = prepared.project.identity.id;
       display(prepared.project, !openWorkspace);
       setIncoming(null);
-      if (candidate.inputKind === "Independent starter project") setHighlightedSavedId(prepared.project.identity.id);
+      if (candidate.inputKind === "Independent starter project") { setHighlightedSavedId(prepared.project.identity.id); setCollection("All projects"); setQuery(""); setModuleFilter("All modules"); }
       if (openWorkspace) {
         const first = prepared.documents.find((document) => document.module === "graph2d") ?? prepared.documents[0]!; onNavigateDocument?.(first.id, first.module);
       }
@@ -622,37 +630,58 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       </header>
       <div className="project-gallery-layout">
 <section data-testid="project-library" className="project-gallery-library">
-        <ProjectTemplatesPanel onPreview={previewTemplate} onOpen={(id) => { void openTemplate(id); }} busy={busy} />
+        <div className="project-gallery-browse-controls">
+          <div className="project-gallery-filters" aria-label="Project collection">{["All projects", "Starter projects", "Your saved projects", "Favorites"].map(value => <button type="button" key={value} aria-pressed={collection === value} onClick={() => setCollection(value)}>{value}</button>)}</div>
+          <div className="project-gallery-search-row"><label>Search projects<input data-testid="project-library-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search names, topics or tags" /></label>
+            <label>Module<select data-testid="project-library-module" value={moduleFilter} onChange={event => setModuleFilter(event.target.value)}>{["All modules", "Graph", "Curve", "Surface", "Mesh", "Volume", "Geometry", "Topology", "Complex", "Workbook", "Notes", "Analysis"].map(value => <option key={value}>{value}</option>)}</select></label>
+            {(query || moduleFilter !== "All modules") && <button type="button" onClick={() => { setQuery(""); setModuleFilter("All modules"); }}>Clear filters</button>}
+          </div>
+        </div>
+        {(collection === "All projects" || collection === "Starter projects") && <ProjectTemplatesPanel query={query} moduleFilter={moduleFilter} onPreview={previewTemplate} onOpen={(id) => { void openTemplate(id); }} busy={busy} />}
+        {collection !== "Starter projects" && <>
         <h3>Your saved projects ({library.entries.length})</h3><p>Favorites first, then recent. Open a project or preview its documents and compatibility.</p>
-        <label>Find by name or tag<input data-testid="project-library-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search your projects" /></label>
-        <div className="project-gallery-filters" aria-label="Project collection">{["All projects", "Favorites"].map(value => <button key={value} aria-pressed={collection === value} onClick={() => setCollection(value)}>{value}</button>)}</div>
         {libraryMessage && <p role="status" data-testid="project-library-message">{libraryMessage}</p>}
         {!library.entries.length && !libraryMessage && <p>No saved projects yet. Save the current workspace or import the included Samsung collection.</p>}
         {!!library.entries.length && !filteredProjects.length && <p>No projects match this search or collection.</p>}
         <div className="project-gallery-grid" data-testid="project-gallery-grid">{filteredProjects.map(entry => {
           const src = readProjectThumbnail(localStorage, entry), summary = summaries.get(entry.id)!;
-          const starter = MATH3D_PROJECT_TEMPLATES.find((item) => entry.tags.includes(item.id) || entry.title === item.title);
+          const starter = [...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS].find((item) => entry.tags.includes(item.id) || entry.title === item.title);
           return <article id={`project-library-${entry.id}`} tabIndex={-1} className={`project-gallery-card${highlightedSavedId === entry.id ? " is-new" : ""}`} key={entry.id} data-testid={`project-library-${entry.id}`}>
             {src || !starter ? <ProjectThumbnail key={src ?? "missing"} src={src} modules={summary.modules} />
               : <div className="project-starter-art"><StarterArtwork id={starter.id} /></div>}
             <div className="project-gallery-card-content"><h4>{entry.title}</h4><p>{summary.description || `${summary.documents} document(s) · ${summary.results} saved result(s)`}</p>
+              <div className="project-starter-modules">{summary.modules.map(module => <span key={module}>{module}</span>)}</div>
               <span className="project-gallery-card-tags">{entry.tags.join(" · ")}</span>
               <div className="project-gallery-card-actions"><button type="button" data-testid={`project-open-saved-${entry.id}`} aria-label={`Open ${entry.title}`} disabled={busy} onClick={() => { void openLibraryProject(entry.id); }}>Open</button>
               <button type="button" data-testid={`project-preview-${entry.id}`} disabled={busy} aria-label={`Preview ${entry.title}`} onClick={() => { viewLibraryProject(entry.id); }}>Preview</button>
               <button type="button" aria-label={`Favorite ${entry.title}`} aria-pressed={entry.favorite} onClick={() => favorite(entry.id, !entry.favorite)}>{entry.favorite ? "★" : "☆"}</button></div>
-              <small className="project-gallery-card-time">Saved {new Date(entry.savedAt).toLocaleString()}{entry.viewedAt > 0 ? ` · Viewed ${new Date(entry.viewedAt).toLocaleString()}` : ""}</small>
+              <small className="project-gallery-card-time">Saved {new Date(entry.savedAt).toLocaleDateString()}{entry.viewedAt > 0 ? ` · Viewed ${new Date(entry.viewedAt).toLocaleDateString()}` : ""}</small>
             </div>
           </article>;
-        })}</div>
+        })}</div></>}
       </section>
 
-      <div className="project-gallery-workspace"><h3>Workspace and documents</h3>
-      <section aria-label="Example projects" style={{ marginTop: 10 }}>
-        <button type="button" data-testid="project-import-samsung-examples" disabled={busy} onClick={() => { void importSamsungExamples(); }}>Import Samsung projects ({SAMSUNG_EXAMPLE_COUNT})</button>
-        <small style={{ display: "block", marginTop: 4 }}>Included with the app. Existing versions are kept. Your current workspace stays open; unsupported documents remain compatibility previews.</small>
-        {exampleMessage && <p role="status" data-testid="project-example-import-message">{exampleMessage}</p>}
-      </section>
-      {preview && !managed && <p>Previewing a saved project. Current workspace returns to your active editors; Manage saved project edits this saved copy.</p>}
+      <aside ref={workspacePanel} className="project-gallery-workspace" aria-label="Project workspace">
+        <div className="project-workspace-summary">
+          <p className="project-workspace-eyebrow">{managed ? "EDITING SAVED COPY" : preview ? "SAVED COPY · PREVIEW" : "CURRENT WORKSPACE"}</p>
+          <h3>{project?.metadata.title ?? "Untitled project"}</h3>
+          <p>{project?.workspace.entries.length ?? 0} {project?.workspace.entries.length === 1 ? "document" : "documents"} · {project?.workbooks?.length ?? 0} {project?.workbooks?.length === 1 ? "workbook" : "workbooks"} · {project?.notes?.length ?? 0} {project?.notes?.length === 1 ? "note" : "notes"}</p>
+          <p className="project-workspace-guidance">{managed ? "Edits apply to this saved copy. Save changes to keep them." : preview ? "This is a saved snapshot. Open it to work with its documents, or edit its saved details." : "Save keeps the current workspace and its documents in your library."}</p>
+          <div className="project-workspace-primary-actions">
+            {preview && !managed
+              ? <button type="button" className="project-gallery-primary" data-testid="project-sidebar-open" disabled={busy || !project} onClick={() => { if (project) void openLibraryProject(project.identity.id); }}>Open this project</button>
+              : <button type="button" className="project-gallery-primary" data-testid="project-save" disabled={busy || !project || !title.trim()} onClick={save}>{busy ? "Working…" : managed ? "Save changes" : "Save project"}</button>}
+            <button type="button" data-testid="project-current" disabled={busy} onClick={refresh}>{preview || managed ? "Back to current workspace" : "Refresh workspace"}</button>
+          </div>
+        </div>
+        <nav className="project-workspace-nav" aria-label="Jump to project section">
+          <button type="button" onClick={() => jumpTo(detailsSection)}>Project details</button>
+          <button type="button" onClick={() => jumpTo(contentsSection)}>Contents</button>
+          <button type="button" onClick={() => jumpTo(transferSection)}>Import / export</button>
+        </nav>
+        <p data-testid="project-message" className="project-workspace-message" role="status">{message}</p>
+        <section ref={detailsSection} tabIndex={-1} className="project-workspace-section" data-testid="project-sidebar-details" aria-label="Project details">
+          <h3>Project details</h3>
       <label style={{ display: "grid", gap: 4, margin: "10px 0" }}>Project name
         <input data-testid="project-title" value={title} maxLength={160} disabled={(preview && !managed) || !project} onChange={(event) => setTitle(event.target.value)} />
       </label>
@@ -669,23 +698,19 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       <small>Uploaded previews stay in place. Saved-copy metadata edits keep that project's image.</small>
       <div><button type="button" data-testid="project-thumbnail-current-view" disabled={busy || preview || !!managed || !project} onClick={() => { setThumbnail(null); setReplaceThumbnail(true); setAutomaticThumbnail(true); setThumbnailMessage("Current view will replace the preview when you save this project."); }}>Use current view</button></div>
       {thumbnailMessage && <p role="status" data-testid="project-thumbnail-message">{thumbnailMessage}</p>}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        <button type="button" data-testid="project-current" onClick={refresh}>Current workspace</button>
-        <button type="button" data-testid="project-save" disabled={busy || (preview && !managed) || !project || !title.trim()} onClick={save}>{managed ? "Save changes" : "Save project"}</button>
-        <button type="button" data-testid="project-view-saved" onClick={viewSaved}>View saved project</button>
-        <button type="button" data-testid="project-new" onClick={newProject}>New project</button>
-        <button type="button" data-testid="project-manage" disabled={!project || !!managed || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={manageSaved}>Manage saved project</button>
-        <button type="button" data-testid="project-inspect-relations" disabled={!project} onClick={() => { setInspectedId(null); setInspectionOpen(true); }}>Relations and availability</button>
-        <button type="button" data-testid="project-export" disabled={!project} onClick={() => exportFile()}>Export project</button>
-        <button type="button" data-testid="project-export-resources" disabled={!project || busy} onClick={() => { void exportFile(false, true); }}>Export with resources</button>
-        <button type="button" data-testid="project-export-checkpoint" disabled={!project} title="Resolve replay into validated snapshots for hosts that require checkpoints. Mobile editing supports one Graph with Curve/Surface companions." onClick={() => exportFile(true)}>Export checkpoint JSON</button>
-        {managed && <><button type="button" data-testid="project-undo" disabled={!managed.history().undoDepth} onClick={() => history("undo")}>Undo</button>
-          <button type="button" data-testid="project-redo" disabled={!managed.history().redoDepth} onClick={() => history("redo")}>Redo</button></>}
-      </div>
-      <label style={{ display: "grid", gap: 4, marginTop: 10 }}>Preview project import
-        <input type="file" data-testid="project-import-file" disabled={busy} accept="application/json,.json" onChange={(event) => { void importFile(event.target.files?.[0]); event.target.value = ""; }} style={{ maxWidth: "100%" }} />
-      </label>
-      <p data-testid="project-message" role="status">{message}</p>
+          <div className="project-workspace-actions">
+            <button type="button" data-testid="project-new" disabled={busy} onClick={newProject}>New from current workspace</button>
+            <button type="button" data-testid="project-view-saved" disabled={busy} onClick={viewSaved}>Preview saved version</button>
+            <button type="button" data-testid="project-manage" disabled={busy || !project || !!managed || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={manageSaved}>Edit saved copy</button>
+            {managed && <><button type="button" data-testid="project-undo" disabled={!managed.history().undoDepth} onClick={() => history("undo")}>Undo</button>
+              <button type="button" data-testid="project-redo" disabled={!managed.history().redoDepth} onClick={() => history("redo")}>Redo</button></>}
+          </div>
+          <small>New from current workspace creates a separate project using your open documents.</small>
+          {project && <small data-testid="project-content-revision">{preview ? "Saved preview" : "Current workspace"} · project revision {project.identity.revision}</small>}
+        </section>
+        <section ref={contentsSection} tabIndex={-1} className="project-workspace-section" data-testid="project-sidebar-contents" aria-label="Project contents">
+          <h3>Contents</h3>
+          <p className="project-workspace-section-hint">{preview ? "Open this project to edit its documents." : "Open a document or workbook to continue working."}</p>
       <section data-testid="project-workbooks" style={{ marginTop: 12 }}>
         <strong>Workbooks ({project?.workbooks?.length ?? 0})</strong>
         <div style={{ marginTop: 6 }}><button type="button" data-testid="project-save-active-workbook" disabled={busy || preview || !!managed || !project || !captureActiveWorkbook?.()} onClick={() => { void saveActiveWorkbook(); }}>Save active Workbook to Project</button></div>
@@ -695,14 +720,20 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
           <small> · revision {item.revision}</small>
         </div>)}
       </section>
-      {project && <small data-testid="project-content-revision">{preview ? "Saved preview" : "Current workspace"} · project revision {project.identity.revision}</small>}
+          <section className="project-workspace-notes" aria-label="Project Notes">
+            <strong>Notes ({project?.notes?.length ?? 0})</strong>
+            <button type="button" disabled={preview || !!managed || busy} onClick={() => { onOpenChange(false); refreshNotes(); setNotesOpen(true); }}>Open Notes</button>
+            {project?.notes?.map(note => <p key={note.identity.id}>{note.title}</p>)}
+          </section>
+          <button type="button" data-testid="project-inspect-relations" disabled={!project} onClick={() => { setInspectedId(null); setInspectionOpen(true); }}>Inspect relations and availability</button>
       {dependencies && <ProjectDependenciesPanel inspection={dependencies} selectedId={inspectedId} titles={documentTitles} onClose={() => setInspectionOpen(false)} onLocate={(id) => setInspectedId(id)}
         refreshOptions={managed && project ? projectDependencyRefreshOptions(project) : undefined} onRefresh={managed && !busy ? refreshDependency : undefined}
         analysisRefreshOptions={managed && project ? projectAnalysisRefreshOptions(project) : undefined} onRecompute={managed && !busy ? recomputeAnalysis : undefined} />}
-      {explorer?.groups.map((group) => <section key={group.module} data-testid={`project-group-${group.module}`} style={{ marginTop: 12 }}>
+      {explorer && !project?.workspace.entries.length && <p className="project-gallery-empty">No documents yet. Open a starter or create a document in the workspace.</p>}
+      {explorer?.groups.filter(group => group.documents.length > 0).map((group) => <section key={group.module} data-testid={`project-group-${group.module}`} style={{ marginTop: 12 }}>
         <strong>{group.title} ({group.documents.length})</strong>
-        {group.documents.length ? <ul style={{ margin: "5px 0", paddingLeft: 20 }}>
-          {group.documents.map((document) => <li key={document.id} style={{ marginBottom: 5, background: inspectedId === document.id && inspectionOpen ? "#eff6ff" : undefined }}>
+        <ul className="project-document-list">
+          {group.documents.map((document) => <li key={document.id} style={{ background: inspectedId === document.id && inspectionOpen ? "#eff6ff" : undefined }}>
             <button type="button" data-testid={`project-open-${document.id}`} disabled={preview || document.archived || !onNavigateDocument || !canNavigateDocument?.(document.id, document.module)}
               title={document.archived ? "Archived document" : preview ? "Open saved project first" : !canNavigateDocument?.(document.id, document.module) ? "Document unavailable in the active workspace; inspect dependencies or open the saved project" : `Open ${document.title}`} onClick={() => navigate(document.id, document.module)}
               style={{ maxWidth: "100%", overflowWrap: "anywhere", textAlign: "left", opacity: preview || document.archived || !canNavigateDocument?.(document.id, document.module) ? 0.55 : 1 }}>{document.title}</button>
@@ -730,7 +761,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
             })()}
             {managed && project && <ProjectDocumentActions key={`${document.id}:${document.title}:${document.archived}`} project={project} document={document} onAction={documentAction} />}
           </li>)}
-        </ul> : <small style={{ display: "block", marginTop: 4 }}>No documents</small>}
+        </ul>
       </section>)}
       {explorer && <section data-testid="project-group-analysis" style={{ marginTop: 12 }}>
         <strong>Analysis ({explorer.analysis.length})</strong>
@@ -739,7 +770,30 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
         </li>)}</ul>
         {!explorer.analysis.length && <small style={{ display: "block", marginTop: 4 }}>No saved results</small>}
       </section>}
-      </div></div>
+        </section>
+        <section ref={transferSection} tabIndex={-1} className="project-workspace-section" data-testid="project-sidebar-transfer" aria-label="Import and export">
+          <h3>Import / export</h3>
+          <p className="project-workspace-section-hint">Bring in a project or download a copy to use elsewhere.</p>
+          <label className="project-workspace-file">Import a project file
+            <input type="file" data-testid="project-import-file" disabled={busy} accept="application/json,.json" onChange={(event) => { void importFile(event.target.files?.[0]); event.target.value = ""; }} />
+          </label>
+          <small>Choose a JSON file, then review its contents before importing or opening it.</small>
+          <div className="project-workspace-transfer-options">
+            <button type="button" className="project-gallery-primary" data-testid="project-export-resources" disabled={!project || busy} onClick={() => { void exportFile(false, true); }}>Download with resources</button>
+            <small>Includes available source data and workbooks. Best for moving a project to another device.</small>
+            <button type="button" data-testid="project-export" disabled={!project || busy} onClick={() => exportFile()}>Download project JSON</button>
+            <small>Project definitions and history. Resource files transfer separately.</small>
+            <button type="button" data-testid="project-export-checkpoint" disabled={!project || busy} onClick={() => exportFile(true)}>Download checkpoint JSON</button>
+            <small>Document snapshots for hosts that require checkpoints. Undo history is not transferred.</small>
+          </div>
+          <section aria-label="Example projects" className="project-workspace-examples">
+            <strong>Included examples</strong>
+            <button type="button" data-testid="project-import-samsung-examples" disabled={busy} onClick={() => { void importSamsungExamples(); }}>Add Samsung projects ({SAMSUNG_EXAMPLE_COUNT})</button>
+            <small>Adds examples to your library and keeps existing versions. Your workspace stays open.</small>
+            {exampleMessage && <p role="status" data-testid="project-example-import-message">{exampleMessage}</p>}
+          </section>
+        </section>
+      </aside></div>
       {incoming && <div className="project-gallery-preview-backdrop"><div className="project-gallery-preview-sheet"><ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !busy} onCancel={() => { importSequence.current++; setIncoming(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div></div>}
     </ProjectGalleryFrame>}
   </div>;

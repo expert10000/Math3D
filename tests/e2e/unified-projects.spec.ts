@@ -445,14 +445,15 @@ test("PRJ01/PRJ02 names and previews a project across restart and navigates live
     await page.getByTestId("projects-toggle").click();
     await expect(panel).toBeVisible();
     await expect(panel.getByTestId("project-message")).toContainText("Current workspace");
-    for (const module of ["graph2d", "geometry", "curve", "surface", "mesh", "volume", "topology", "complex", "analysis"]) {
-      await expect(panel.getByTestId(`project-group-${module}`)).toHaveCount(1);
-    }
     await panel.getByTestId("project-title").fill("Minimal Surface Study");
     await panel.getByTestId("project-save").click();
     await expect(panel.getByTestId("project-message")).toContainText("Saved “Minimal Surface Study”");
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(saved.workspace.entries.length).toBeGreaterThan(1);
+    for (const module of ["graph2d", "geometry", "curve", "surface", "mesh", "volume", "topology", "complex"]) {
+      await expect(panel.getByTestId(`project-group-${module}`)).toHaveCount(saved.workspace.entries.some((entry: any) => entry.module === module) ? 1 : 0);
+    }
+    await expect(panel.getByTestId("project-group-analysis")).toHaveCount(1);
     const originalIds = saved.workspace.entries.map((entry: any) => entry.expected.id);
     await panel.screenshot({ path: test.info().outputPath("project-explorer-desktop.png") });
     await page.setViewportSize({ width: 390, height: 844 });
@@ -470,7 +471,8 @@ test("PRJ01/PRJ02 names and previews a project across restart and navigates live
     await panel.getByTestId("project-view-saved").click();
     await expect(panel.getByTestId("project-title")).toHaveValue("Minimal Surface Study");
     await expect(panel.getByTestId("project-title")).toBeDisabled();
-    await expect(panel.getByTestId("project-save")).toBeDisabled();
+    await expect(panel.getByTestId("project-save")).toHaveCount(0);
+    await expect(panel.getByTestId("project-sidebar-open")).toBeEnabled();
     // Saved-card and analysis actions have their own project-open-* IDs. Verify
     // the actual document buttons instead of conflating three action families.
     for (const id of originalIds) await expect(panel.getByTestId(`project-open-${id}`)).toBeDisabled();
@@ -526,9 +528,9 @@ test("PRJ03 persists library metadata, favorites, activity and thumbnail sidecar
     await expect(panel.getByTestId("project-message")).toContainText("Saved “Second study”");
     const activeId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id);
     expect(activeId).not.toBe(saved.identity.id);
-    await expect(panel.getByTestId("project-library").locator("article").first()).toHaveAttribute("data-testid", `project-library-${saved.identity.id}`);
-    await panel.getByTestId("project-library-search").fill("geometry");
-    await expect(panel.getByTestId("project-library").locator("article")).toHaveCount(1);
+    await expect(panel.getByTestId("project-gallery-grid").locator("article").first()).toHaveAttribute("data-testid", `project-library-${saved.identity.id}`);
+    await panel.getByTestId("project-library-search").fill("research");
+    await expect(panel.getByTestId("project-gallery-grid").locator("article")).toHaveCount(1);
     await firstCard.getByTestId(`project-preview-${saved.identity.id}`).click();
     await expect(panel.getByTestId("project-description")).toHaveValue("Minimal surface workflow");
     await expect(panel.getByTestId("project-tags")).toHaveValue("geometry, research");
