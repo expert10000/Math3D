@@ -44,6 +44,16 @@ the current workspace's large Volume sidecar for its recoverable before-open
 snapshot. The older PRJ45 "centered gallery" description below records
 the layout as originally delivered.
 
+The Projects workspace now offers a dedicated Project detail view alongside
+the browse gallery. It places Project Workbooks and Notes ahead of metadata and
+transfer controls, shows Workbook-block Notes beneath their parent Workbook,
+and provides direct Open Workbook, New Note, and export actions. A desktop
+round-trip test exercises a starter Project, Note creation, Workbook anchoring,
+resource export and reopen. On app startup, Projects can show the validated
+saved Project until live editors finish restoring; the full Projects view now
+stays above Curve and other editor canvases. Samsung physical-device acceptance
+remains separate.
+
 PRJ01–PRJ12 are integrated into `main` at `766776a27c6601e50d513a2217e3a4bf513c8e0d`.
 The main Projects workflow passed in
 [CI 36892375601](https://github.com/expert10000/Math3D/actions/runs/36892375601).

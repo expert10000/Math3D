@@ -62,12 +62,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
 
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
   const resourceSessionId = useRef<string | null>(null);
-  const [quick, setQuick] = useState(false), [collection, setCollection] = useState("All projects");
+  const [quick, setQuick] = useState(false), [detailView, setDetailView] = useState(false), [collection, setCollection] = useState("All projects");
   const [moduleFilter, setModuleFilter] = useState("All modules");
   const workspacePanel = useRef<HTMLElement>(null);
   const detailsSection = useRef<HTMLElement>(null), contentsSection = useRef<HTMLElement>(null), transferSection = useRef<HTMLElement>(null);
   const jumpTo = (section: React.RefObject<HTMLElement | null>) => { section.current?.scrollIntoView({ block: "start" }); section.current?.focus({ preventScroll: true }); };
-  useEffect(() => { if (!open) setQuick(false); }, [open]);
+  useEffect(() => { if (!open) { setQuick(false); setDetailView(false); } }, [open]);
   const [busy, setBusy] = useState(false);
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
@@ -198,7 +198,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     setAnalysisError(null);
     refreshLibrary();
     try { display(liveProject(), false); setMessage("Current workspace documents."); }
-    catch (error) { setMessage(`Project unavailable: ${(error as Error).message}`); }
+    catch (error) {
+      try {
+        const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
+        if (!raw) throw error;
+        const saved = parseMath3DProject(raw);
+        display(saved, false);
+        setMessage("Showing the saved Project while its editor documents load. Refresh workspace after loading to include live edits.");
+      } catch { setMessage(`Project unavailable: ${(error as Error).message}`); }
+    }
   };
   useEffect(() => {
     if (!open) return;
@@ -242,6 +250,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       setNoteDrafts((current) => [...current, draft]); setNotesWorkspace(workspace);
       setNotesMessage("Note captured as a session draft. Add your observation, then save it to the Project.");
     } catch (error) { setNotesMessage(`Note capture failed: ${(error as Error).message}`); }
+  };
+  const openProjectNotes = (noteId?: string, create = false) => {
+    setSelectedNoteId(noteId ?? null);
+    onOpenChange(false);
+    refreshNotes();
+    setNotesOpen(true);
+    if (create) captureNote("global");
   };
   const captureAnchoredNote = (anchor: ProjectNoteAnchor, title: string, body: string) => {
     const draft: ProjectNoteDraft = { id: crypto.randomUUID(), title, body, anchor, createdAt: Date.now() };
@@ -690,12 +705,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     <button type="button" data-testid="projects-quick-toggle" aria-label="Open quick Projects" onClick={() => { setQuick(true); onOpenChange(true); }} style={{ position:"fixed",right:14,bottom:100,zIndex:2502,padding:"7px 10px",border:"1px solid #64748b",borderRadius:8,background:"#f8fafc",color:"#0f172a",fontSize:11 }}>Quick projects</button>
     {open && <ProjectGalleryFrame quick={quick} onClose={() => onOpenChange(false)}>
       <header data-testid="project-explorer-header" className="project-gallery-header">
-        <div className="project-gallery-heading"><div><p>MATH3D · PROJECTS</p><h2>{quick ? "Quick Projects" : "Projects Gallery"}</h2></div><div style={{ display:"flex",gap:8 }}><button data-testid="project-gallery-layout-toggle" onClick={() => setQuick(value => !value)}>{quick ? "Full gallery" : "Quick panel"}</button><button type="button" aria-label="Close project explorer" onClick={() => onOpenChange(false)}>Close</button></div></div>
+        <div className="project-gallery-heading"><div><p>MATH3D · PROJECTS</p><h2>{quick ? "Quick Projects" : detailView ? project?.metadata.title ?? "Project" : "Projects Gallery"}</h2></div><div style={{ display:"flex",gap:8 }}>
+          {!quick && <button type="button" data-testid="project-detail-toggle" aria-pressed={detailView} onClick={() => { workspacePanel.current?.scrollTo({ top: 0 }); setDetailView(value => !value); }}>{detailView ? "Browse projects" : "View current project"}</button>}
+          <button data-testid="project-gallery-layout-toggle" onClick={() => setQuick(value => !value)}>{quick ? "Full gallery" : "Quick panel"}</button><button type="button" aria-label="Close project explorer" onClick={() => onOpenChange(false)}>Close</button></div></div>
         <div className="project-gallery-statusline"><p data-testid="project-view-mode" role="status">{managed ? "Managing saved project" : preview ? "Saved project preview" : "Current workspace"} · {project?.metadata.title ?? "Untitled project"}{project && library.entries.some((entry) => entry.id === project.identity.id) && <strong className="project-gallery-saved-badge">Saved in Your saved projects</strong>}</p>
-          <button type="button" data-testid="project-restore-saved" disabled={busy || !!managed || !project || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={previewSavedOpen}>Open saved project</button></div>
+          <button type="button" data-testid="project-restore-saved" disabled={busy || !!managed || !project || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={previewSavedOpen}>{preview ? "Open saved project" : "Review saved version"}</button></div>
       {preview && !managed && <p data-testid="project-open-guidance" style={{ marginBottom: 0 }}>Open saved project, then choose Open project in the compatibility preview to enable document buttons.</p>}
       </header>
-      <div className="project-gallery-layout">
+      <div className={`project-gallery-layout${detailView && !quick ? " project-gallery-layout-detail" : ""}`}>
 <section data-testid="project-library" className="project-gallery-library">
         <div className="project-gallery-browse-controls">
           <div className="project-gallery-filters" aria-label="Project collection">{["All projects", "Starter projects", "Your saved projects", "Favorites"].map(value => <button type="button" key={value} aria-pressed={collection === value} onClick={() => setCollection(value)}>{value}</button>)}</div>
@@ -721,6 +738,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
               <span className="project-gallery-card-tags">{entry.tags.join(" · ")}</span>
               <div className="project-gallery-card-actions"><button type="button" data-testid={`project-open-saved-${entry.id}`} aria-label={`Open ${entry.title}`} disabled={busy} onClick={() => { void openLibraryProject(entry.id); }}>Open</button>
               <button type="button" data-testid={`project-preview-${entry.id}`} disabled={busy} aria-label={`Preview ${entry.title}`} onClick={() => { viewLibraryProject(entry.id); }}>Preview</button>
+              <button type="button" data-testid={`project-details-${entry.id}`} disabled={busy} aria-label={`View ${entry.title} details`} onClick={() => { viewLibraryProject(entry.id); setDetailView(true); }}>Details</button>
               <button type="button" aria-label={`Favorite ${entry.title}`} aria-pressed={entry.favorite} onClick={() => favorite(entry.id, !entry.favorite)}>{entry.favorite ? "★" : "☆"}</button></div>
               <small className="project-gallery-card-time">Saved {new Date(entry.savedAt).toLocaleDateString()}{entry.viewedAt > 0 ? ` · Viewed ${new Date(entry.viewedAt).toLocaleDateString()}` : ""}</small>
             </div>
@@ -734,6 +752,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
           <h3>{project?.metadata.title ?? "Untitled project"}</h3>
           <p>{project?.workspace.entries.length ?? 0} {project?.workspace.entries.length === 1 ? "document" : "documents"} · {project?.workbooks?.length ?? 0} {project?.workbooks?.length === 1 ? "workbook" : "workbooks"} · {project?.notes?.length ?? 0} {project?.notes?.length === 1 ? "note" : "notes"}</p>
           <p className="project-workspace-guidance">{managed ? "Edits apply to this saved copy. Save changes to keep them." : preview ? "This is a saved snapshot. Open it to work with its documents, or edit its saved details." : "Save keeps the current workspace and its documents in your library."}</p>
+          {!!project?.metadata.description && <p className="project-workspace-description">{project.metadata.description}</p>}
           <div className="project-workspace-primary-actions">
             {preview && !managed
               ? <button type="button" className="project-gallery-primary" data-testid="project-sidebar-open" disabled={busy || !project} onClick={() => { if (project) void openLibraryProject(project.identity.id); }}>Open this project</button>
@@ -747,7 +766,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
           <button type="button" onClick={() => jumpTo(transferSection)}>Import / export</button>
         </nav>
         <p data-testid="project-message" className="project-workspace-message" role="status">{message}</p>
-        <section ref={detailsSection} tabIndex={-1} className="project-workspace-section" data-testid="project-sidebar-details" aria-label="Project details">
+        <section id="project-details-section" ref={detailsSection} tabIndex={-1} className="project-workspace-section" data-testid="project-sidebar-details" aria-label="Project details">
           <h3>Project details</h3>
       <label style={{ display: "grid", gap: 4, margin: "10px 0" }}>Project name
         <input data-testid="project-title" value={title} maxLength={160} disabled={(preview && !managed) || !project} onChange={(event) => setTitle(event.target.value)} />
@@ -775,24 +794,37 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
           <small>New from current workspace creates a separate project using your open documents.</small>
           {project && <small data-testid="project-content-revision">{preview ? "Saved preview" : "Current workspace"} · project revision {project.identity.revision}</small>}
         </section>
-        <section ref={contentsSection} tabIndex={-1} className="project-workspace-section" data-testid="project-sidebar-contents" aria-label="Project contents">
+        <section id="project-content-section" ref={contentsSection} tabIndex={-1} className="project-workspace-section" data-testid="project-sidebar-contents" aria-label="Project contents">
           <h3>Contents</h3>
           <p className="project-workspace-section-hint">{preview ? "Open this project to edit its documents." : "Open a document or workbook to continue working."}</p>
-      <section data-testid="project-workbooks" style={{ marginTop: 12 }}>
-        <strong>Workbooks ({project?.workbooks?.length ?? 0})</strong>
-        <div style={{ marginTop: 6 }}><button type="button" data-testid="project-save-active-workbook" disabled={busy || preview || !!managed || !project || !captureActiveWorkbook?.()} onClick={() => { void saveActiveWorkbook(); }}>Save active Workbook to Project</button></div>
-        {!project?.workbooks?.length && <small style={{ display: "block", marginTop: 5 }}>Save a named Project, then add the active Workbook here.</small>}
-        {project?.workbooks?.map((item) => <div key={item.id} style={{ marginTop: 5 }}>
-          <button type="button" data-testid={`project-open-workbook-${item.id}`} disabled={busy || !onOpenWorkbook} onClick={() => { void openProjectWorkbook(item.id); }}>Open {item.title}</button>
-          <small> · revision {item.revision}</small>
-        </div>)}
-      </section>
-          <section className="project-workspace-notes" aria-label="Project Notes">
-            <strong>Notes ({project?.notes?.length ?? 0})</strong>
-            <button type="button" disabled={preview || !!managed || busy} onClick={() => { onOpenChange(false); refreshNotes(); setNotesOpen(true); }}>Open Notes</button>
-            {project?.notes?.map(note => <button type="button" key={note.identity.id} data-testid={`project-open-note-${note.identity.id}`} disabled={preview || busy} title={preview ? "Open this Project first to view its Notes" : undefined}
-              onClick={() => { setSelectedNoteId(note.identity.id); onOpenChange(false); refreshNotes(); setNotesOpen(true); }}>{note.title}</button>)}
-          </section>
+          <div className="project-workspace-children">
+            <section data-testid="project-workbooks" className="project-workspace-child-group" aria-label="Project Workbooks">
+              <div className="project-workspace-child-heading"><div><span>01 · PROJECT CONTENT</span><h4>Workbooks ({project?.workbooks?.length ?? 0})</h4></div>
+                <button type="button" data-testid="project-save-active-workbook" disabled={busy || preview || !!managed || !project || !captureActiveWorkbook?.()} onClick={() => { void saveActiveWorkbook(); }}>Add active Workbook</button></div>
+              {!project?.workbooks?.length && <p className="project-workspace-child-empty">Open a Workbook in the app, then add it to this saved Project.</p>}
+              {project?.workbooks?.map((item) => {
+                const linkedNotes = project.notes?.filter(note => note.anchor?.kind === "workbook-block" && note.anchor.workbookId === item.id) ?? [];
+                return <article key={item.id} className="project-workspace-workbook" data-testid={`project-workbook-${item.id}`}>
+                  <div className="project-workspace-workbook-heading"><div><strong>{item.title}</strong><small>Workbook · revision {item.revision}</small></div>
+                    <button type="button" data-testid={`project-open-workbook-${item.id}`} disabled={busy || !onOpenWorkbook} onClick={() => { void openProjectWorkbook(item.id); }}>Open Workbook</button></div>
+                  <div className="project-workspace-linked-notes"><span>Notes in this Workbook ({linkedNotes.length})</span>
+                    {linkedNotes.length ? linkedNotes.map(note => <button type="button" key={note.identity.id} data-testid={`project-open-note-${note.identity.id}`} disabled={preview || busy} title={preview ? "Open this Project first to view its Notes" : undefined} onClick={() => openProjectNotes(note.identity.id)}>↳ {note.title}</button>) : <small>No linked Notes yet</small>}
+                  </div>
+                </article>;
+              })}
+            </section>
+            <section className="project-workspace-child-group project-workspace-notes" aria-label="Project Notes">
+              <div className="project-workspace-child-heading"><div><span>02 · PROJECT CONTENT</span><h4>Notes ({project?.notes?.length ?? 0})</h4></div>
+                <button type="button" data-testid="project-new-note" disabled={preview || !!managed || busy || !project || !library.entries.some(entry => entry.id === project.identity.id)} onClick={() => openProjectNotes(undefined, true)}>New Note</button></div>
+              <p>Notes belong to this Project. Workbook Notes also appear beneath their Workbook.</p>
+              <button type="button" data-testid="project-all-notes" disabled={preview || !!managed || busy} onClick={() => openProjectNotes()}>Open all Notes</button>
+              {project?.notes?.filter(note => {
+                const anchor = note.anchor;
+                return anchor?.kind !== "workbook-block" || !project.workbooks?.some(item => item.id === anchor.workbookId);
+              }).map(note => <button type="button" key={note.identity.id} data-testid={`project-open-note-${note.identity.id}`} disabled={preview || busy} title={preview ? "Open this Project first to view its Notes" : undefined} onClick={() => openProjectNotes(note.identity.id)}>{note.title}</button>)}
+              {!project?.notes?.length && <small>No Notes yet. Create one to record observations in this Project.</small>}
+            </section>
+          </div>
           <button type="button" data-testid="project-inspect-relations" disabled={!project} onClick={() => { setInspectedId(null); setInspectionOpen(true); }}>Inspect relations and availability</button>
       {dependencies && <ProjectDependenciesPanel inspection={dependencies} selectedId={inspectedId} titles={documentTitles} onClose={() => setInspectionOpen(false)} onLocate={(id) => setInspectedId(id)}
         refreshOptions={managed && project ? projectDependencyRefreshOptions(project) : undefined} onRefresh={managed && !busy ? refreshDependency : undefined}
@@ -839,7 +871,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
         {!explorer.analysis.length && <small style={{ display: "block", marginTop: 4 }}>No saved results</small>}
       </section>}
         </section>
-        <section ref={transferSection} tabIndex={-1} className="project-workspace-section" data-testid="project-sidebar-transfer" aria-label="Import and export">
+        <section id="project-transfer-section" ref={transferSection} tabIndex={-1} className="project-workspace-section" data-testid="project-sidebar-transfer" aria-label="Import and export">
           <h3>Import / export</h3>
           <p className="project-workspace-section-hint">Bring in a project or download a copy to use elsewhere.</p>
           <label className="project-workspace-file">Import a project file
