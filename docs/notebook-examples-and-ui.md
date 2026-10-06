@@ -30,3 +30,12 @@ historical references. Cancelled or failed work retains the prior result.
 Use **Projects → Export with resources** to carry the ordinary Project and its
 verified Mesh/Workbook sidecars to another installation. Metadata-only exports
 do not include those source bytes.
+
+
+In **Workbook → Visualize**, select a Figure block and use **Capture A** or
+**Capture B**. Its frozen record includes the camera, coloring, visibility,
+committed selection, rendered Notes, source generations and exact result hashes.
+In **Document**, expand **Snapshot A/B · frozen capture** to inspect that record.
+The live scene and frozen captures are labelled separately. Replacing a captured
+slot changes its content hash and makes old snapshot citations stale. Captured
+artifact availability is historical; export verifies required bytes again.

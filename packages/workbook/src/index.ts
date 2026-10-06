@@ -7,3 +7,4 @@ export * from "./workbookDocumentContent";
 export * from "./workbookNamedParameters";
 export * from "./notebookProvenance";
 export * from "./workbookClaims";
+export * from "./workbookSnapshotProvenance";

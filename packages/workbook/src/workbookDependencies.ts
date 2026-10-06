@@ -1,3 +1,4 @@
+import { normalizeWorkbookSnapshotProvenance } from "./workbookSnapshotProvenance";
 import { isStableDocumentId, isStructuralHash, normalizeMath3DProject, structuralHash, type Math3DProject, type StableDocumentId, type StructuralHash } from "@math3d/core";
 import { createNotebookReference, inspectNotebookReference, normalizeNotebookReference, type NotebookReference } from "./notebookReferences";
 import type { Workbook, WorkbookBlock } from "./workbookModel";
@@ -31,6 +32,7 @@ export function validateWorkbookDependencies(workbook: Workbook): void {
     if (block.type !== "assert") throw new TypeError("Evidence claims belong to assert blocks.");
     normalizeWorkbookClaim(block.claim);
   }
+  for (const block of blocksOf(workbook)) for (const snapshot of [block.visualize?.snapshot, block.visualize?.snapshotA, block.visualize?.snapshotB]) if (snapshot?.provenance !== undefined) normalizeWorkbookSnapshotProvenance(snapshot.provenance);
   if (workbook.dependencies === undefined) return;
   if (!Array.isArray(workbook.dependencies)) throw new TypeError("Invalid Workbook dependencies.");
   const blocks = new Map(blocksOf(workbook).map((block) => [block.id, block]));

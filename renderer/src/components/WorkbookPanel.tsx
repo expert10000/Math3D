@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { KernelWorkspaceModule, Math3DProject } from "@math3d/core";
 import type { NotebookReference } from "@math3d/workbook";
 import type { NotebookProjectContext } from "../workbook/notebookProjectContext";
+import { WorkbookSnapshotRecord } from "./WorkbookSnapshotRecord";
 import { WorkbookProjectReferenceCell } from "./WorkbookProjectReferenceCell";
 import { WorkbookDependencies } from "./WorkbookDependencies";
 import { WorkbookDocumentView } from "./WorkbookDocumentView";
@@ -1854,6 +1855,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 getProject={getNotebookProject} onChange={onChangeDependencies} freshness={freshnessById.get(block.id)}
                 project={dependencyProject} onOpenNote={onOpenNote} />}
 
+              {block.type === "visualize" && <WorkbookSnapshotRecord block={block} />}
               {block.type === "visualize" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {(() => {

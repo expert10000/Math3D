@@ -3,6 +3,7 @@ import type { KernelWorkspaceModule, Math3DProject } from "@math3d/core";
 import { inspectNotebookReference, type NotebookArtifactReader, type Workbook, type WorkbookBlock, type WorkbookStageId } from "@math3d/workbook";
 import type { NotebookProjectContext } from "../workbook/notebookProjectContext";
 import { WorkbookAnalysisRerun } from "./WorkbookAnalysisRerun";
+import { WorkbookSnapshotRecord } from "./WorkbookSnapshotRecord";
 import { WorkbookProvenance } from "./WorkbookProvenance";
 import { WorkbookClaimEditor } from "./WorkbookClaimEditor";
 import { renderNotebookMarkdown, renderNotebookMath, workbookDocumentContentHtml } from "../workbook/notebookContent";
@@ -75,6 +76,7 @@ export const WorkbookDocumentView: React.FC<Props> = ({
               <button type="button" onClick={() => onEditBlock(stage.id, block.id)} style={{ fontSize: 11 }}>Edit block</button>
             </div>
           </div>
+          {block.type === "visualize" && <WorkbookSnapshotRecord block={block} />}
           {block.type === "text" && <textarea aria-label={`${block.title || "Text"} content`} value={block.text ?? ""}
             onChange={(event) => onUpdateBlock(stage.id, block.id, { text: event.target.value })} readOnly={readOnly}
             rows={Math.max(3, Math.min(12, (block.text ?? "").split("\n").length + 1))}

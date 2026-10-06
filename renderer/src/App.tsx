@@ -19,6 +19,7 @@ import { capturedCurveSources } from "./projects/capturedCurveSources";
 import { additionalReplayEditable } from "./projects/additionalProjectSession";
 import { AdditionalProjectEditor } from "./projects/AdditionalProjectEditor";
 import { createSavedSurfaceMesh, savedSurfaceMeshLinks, savedMeshSurfaceSource } from "./projects/savedSurfaceMesh";
+import { freezeWorkbookSnapshot, workbookSnapshotQualification } from "@math3d/workbook";
 import { rerunNotebookAnalysis } from "./workbook/notebookRerun";
 import { analyzeSavedMesh, appendSavedMeshAnalysis, type SavedMeshAnalysisKind } from "./projects/savedMeshAnalysis";
 import { SavedMeshAnalysisPanel } from "./projects/SavedMeshAnalysisPanel";
@@ -94,7 +95,9 @@ import { GeometryPickReadout } from "./components/GeometryPickReadout";
 import { GeometryAnalysisInspectorPanel } from "./components/GeometryAnalysisInspectorPanel";
 import { KernelWorkspacePanel } from "./components/KernelWorkspacePanel";
 import { PROJECT_STORAGE_KEY } from "./projects/projectLibrary";
-import { readNotebookProjectContext } from "./workbook/notebookProjectContext";
+import { projectNoteRenderedBody } from "./projects/projectNoteValues";
+import { WorkbookSnapshotRecord } from "./components/WorkbookSnapshotRecord";
+import { readNotebookProjectContext, type NotebookProjectContext } from "./workbook/notebookProjectContext";
 import { resolveGeometryProjectNotePins, type ProjectNoteViewerMode } from "./projects/projectNotePins";
 import { GeometryTessellationSettingsPanel } from "./components/GeometryTessellationSettingsPanel";
 import { UnifiedSelectionInspector } from "./components/UnifiedSelectionInspector";
@@ -11404,6 +11407,7 @@ const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string 
             }
             if (snap) {
               lines.push(`Captured: ${formatExportTimestamp(snap.capturedAt)}`);
+              lines.push(workbookSnapshotQualification(snap));
               const details = buildSnapshotDetails(snap);
               if (details.length) lines.push(details.map((d) => `- ${d}`).join("\n"));
             }
@@ -11552,7 +11556,7 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
     const detailList = details.length
       ? `<ul class="details">${details.map((d) => `<li>${escapeHtml(d)}</li>`).join("")}</ul>`
       : "";
-    const caption = `Captured ${formatExportTimestamp(snap.capturedAt)}`;
+    const caption = `Captured ${formatExportTimestamp(snap.capturedAt)}. ${workbookSnapshotQualification(snap)}`;
     const image = snap.thumbnail
       ? `<img src="${snap.thumbnail}" alt="Snapshot ${label}" />`
       : `<div class="missing">No thumbnail</div>`;
@@ -43785,6 +43789,8 @@ const App: React.FC = () => {
   }, [workbookGraph]);
   const workbookExecutionRef = useRef({ workbook: activeWorkbook, graph: workbookGraph, computeStatusById });
   workbookExecutionRef.current = { workbook: activeWorkbook, graph: workbookGraph, computeStatusById };
+  const getNotebookSnapshotSourceRef = useRef<() => ReturnType<typeof viewerSourceFromDocument> | null>(() => null);
+  const getNotebookCaptureContextRef = useRef<() => NotebookProjectContext | null>(() => null);
   const getWorkbookDependencyProjectRef = useRef<() => Math3DProject | null>(() => null);
   const workbookStatus = useMemo(() => {
     const statuses = Object.values(computeStatusById);
@@ -54994,7 +55000,12 @@ case "mobius":
   const handleCaptureVisualize = useCallback(
     (stageId: WorkbookStageId, blockId: string, slot: WorkbookSnapshotSlot) => {
       if (IS_REPLAY_MODE) return;
-      const snapshot = buildViewerSnapshot();
+      const context = getNotebookCaptureContextRef.current();
+      const viewer = getNotebookSnapshotSourceRef.current();
+      const currentViewer = context?.project.workspace.entries.find(entry => entry.expected.id === viewer?.documentId);
+      const snapshot = freezeWorkbookSnapshot(buildViewerSnapshot(), context?.project ?? null, context?.readArtifact,
+        context?.project.notes?.map(note => ({ id: note.identity.id, hash: note.identity.structuralHash, title: note.title, body: projectNoteRenderedBody(note, context.project.workspace) })),
+        context ? Object.fromEntries([...verifyMixedWorkspaceReplay(context.project.workspace)].map(([id, document]) => [id, "display" in document ? document.display : null])) as CanonicalJsonValue : null, currentViewer ? viewerSourceFromDocument({ identity: currentViewer.expected }) : viewer);
       if (!activeWorkbookId) return;
       setCompareBlockId(blockId);
       setWorkbooks((prev) =>
@@ -55056,7 +55067,7 @@ case "mobius":
                     ? {
                         ...s,
                         blocks: s.blocks.map((b) => {
-                          if (b.id !== blockId) return b;
+                          if (b.id !== blockId || resolveVisualizeSnapshot(b.visualize, slot)?.capturedAt !== snapshot.capturedAt) return b;
                           const prevSnapshotA = resolveVisualizeSnapshot(b.visualize, "A");
                           const prevSnapshotB = resolveVisualizeSnapshot(b.visualize, "B");
                           const nextSnapshot = {
@@ -78158,6 +78169,7 @@ case "mobius":
         size: 3.2, backgroundColor: 0xfffbeb, borderColor: 0xf59e0b }]
       : null, [geometryNoteDisplayMode, geometryNotePins]);
   const activeVolumeLineage = activeKernelModule === "volume" ? volumeExtractionRecords.find((record) => !record.promoted) ?? null : null;
+  getNotebookSnapshotSourceRef.current = () => activeKernelSource;
   const activeKernelEvidence = activeKernelSource ? createViewerProvenanceEvidence({
     source: activeKernelSource, current: activeKernelSource,
     relations: activeGraph2DTarget ? [activeGraph2DTarget.relation] : activeVolumeLineage?.relations ?? [], result: activeVolumeLineage?.result ?? null,
@@ -78325,6 +78337,7 @@ case "mobius":
         setAdditionalVersion(value => value + 1);
       }) };
   };
+  getNotebookCaptureContextRef.current = getNotebookContext;
   const workbookClaimProject = activeWorkbook?.stages.some(stage => stage.blocks.some(block => !!block.claim)) ? getWorkbookDependencyProjectRef.current() : null;
   const workbookEvidenceClaims = activeWorkbook?.stages.flatMap(stage => stage.blocks.filter(block => !!block.claim).map(block => ({
     workbookId: activeWorkbook.id, stageId: stage.id, blockId: block.id, title: block.title, text: block.claim!.text,
@@ -91654,6 +91667,7 @@ case "mobius":
                   {fullWorkbookSelectedBlockMeta ? (
                     <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 10, display: "grid", gap: 8 }}>
                       <div style={{ fontSize: 11, fontWeight: 700 }}>Selected block editor</div>
+                      {fullWorkbookSelectedBlockMeta.block.type === "visualize" && <WorkbookSnapshotRecord block={fullWorkbookSelectedBlockMeta.block} />}
                       {fullWorkbookSelectedBlockMeta.block.notebookReference && <WorkbookProvenance reference={fullWorkbookSelectedBlockMeta.block.notebookReference} project={getWorkbookDependencyProjectRef.current()} reader={readNotebookArtifact} />}
                       {fullWorkbookSelectedBlockMeta.block.notebookReference && !IS_REPLAY_MODE && <WorkbookAnalysisRerun context={getNotebookContext()} reference={fullWorkbookSelectedBlockMeta.block.notebookReference} onRelink={notebookReference => handleUpdateWorkbookBlock(fullWorkbookSelectedBlockMeta.stageId, fullWorkbookSelectedBlockMeta.block.id, { notebookReference })} />}
                       {fullWorkbookSelectedBlockMeta.block.type === "assert" && activeWorkbook && (() => {

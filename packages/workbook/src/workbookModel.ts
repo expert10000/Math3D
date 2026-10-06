@@ -215,6 +215,7 @@ export type WorkbookCameraState = {
 };
 
 export type WorkbookViewSnapshot = {
+  provenance?: import("./workbookSnapshotProvenance").WorkbookSnapshotProvenance;
   datasetRef: string;
   datasetKind: DatasetKind;
   surfaceType?: SurfaceType;
