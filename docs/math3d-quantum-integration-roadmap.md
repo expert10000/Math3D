@@ -286,8 +286,10 @@ produce one transaction; any failed validation or artifact admission produces no
 
 **Status:** Partial — verified, read-only field slices, exact samples, and
 bounded density isosurfaces with phase/sign coloring are implemented with real
-1s, 2s, 2p, 3p and 3d cross-repository fixtures. Atom/bond adapters, source
-locate-back and native project admission are not yet implemented.
+1s, 2s, 2p, 3p and 3d cross-repository fixtures. The UI can reveal the
+re-verified source bundle by its active fingerprint; this does not locate the
+original Theory Lab run. Atom/bond adapters, Lab run locate-back and native
+project admission are not yet implemented.
 
 **Scope.** Render atomic sites, bonds, labels, orbital isosurfaces, probability
 density, sign/phase coloring, and field slices. Preserve atomic/orbital quantum

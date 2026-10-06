@@ -69,6 +69,17 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
     await expect(page.getByTestId("quantum-scene-preview")).toContainText("run-ipc");
     await expect(page.getByTestId("quantum-scene-geometry")).toBeVisible();
+    await expect(page.getByTestId("quantum-source-directory")).toHaveText(directory);
+    await app.evaluate(({shell})=>{
+      const state=globalThis as any;
+      state.__originalQuantumReveal=shell.showItemInFolder;
+      state.__quantumRevealCount=0;
+      (shell as any).showItemInFolder=(path:string)=>{state.__revealedQuantumSource=path;state.__quantumRevealCount++;};
+    });
+    await page.getByTestId("quantum-reveal-source").click();
+    await expect(page.getByTestId("quantum-reveal-status")).toContainText("re-verified bundle");
+    expect(await app.evaluate(()=> (globalThis as any).__revealedQuantumSource)).toBe(directory);
+    expect(await app.evaluate(()=> (globalThis as any).__quantumRevealCount)).toBe(1);
     await page.getByRole("button",{name:"Field slice"}).click();
     await expect(page.getByTestId("quantum-field-slice")).toBeVisible();
     await expect(page.getByTestId("quantum-field-legend")).toContainText("a0^-3");
@@ -84,6 +95,8 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
       catch(error){return String(error);}
     });
     expect(wrongField).toMatch(/does not match the active verified scene/);
+    const wrongReveal=await page.evaluate(()=>(window as any).quantumScenes.revealSource("0".repeat(64)));
+    expect(wrongReveal).toMatchObject({ok:false});
     await page.getByTestId("quantum-scene-close").click();
     await expect(page.getByTestId("quantum-scene-preview")).toBeHidden();
     const workspacePath = join(root, "quantum-workspace.math3d");
@@ -118,6 +131,9 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     });
     await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
     await expect(page.getByTestId("quantum-scene-preview")).toContainText("run-ipc");
+    await page.getByTestId("quantum-reveal-source").click();
+    await expect(page.getByTestId("quantum-reveal-status")).toContainText("re-verified bundle");
+    expect(await app.evaluate(()=> (globalThis as any).__quantumRevealCount)).toBe(2);
     await page.getByRole("button",{name:"Field slice"}).click();
     await expect(page.getByTestId("quantum-field-legend")).toContainText("a0^-3");
     await page.getByTestId("quantum-scene-close").click();
@@ -137,6 +153,17 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     const recentRefused=await page.evaluate(()=>(window as any).quantumScenes.reopenRecent());
     expect(recentRefused).toMatchObject({ok:false,canceled:false});
     if(!recentRefused.ok&&!recentRefused.canceled)expect(recentRefused.error).toMatch(/integrity/);
+    const damagedReveal=await page.evaluate(ref=>(window as any).quantumScenes.revealSource(ref.sceneFingerprint),workspace.payload.quantumScene);
+    expect(damagedReveal).toMatchObject({ok:false,error:expect.stringMatching(/integrity/)});
+    expect(await app.evaluate(()=> (globalThis as any).__revealedQuantumSource)).toBe(directory);
+    expect(await app.evaluate(()=> (globalThis as any).__quantumRevealCount)).toBe(2);
+    await app.evaluate(({shell})=>{
+      const state=globalThis as any;
+      (shell as any).showItemInFolder=state.__originalQuantumReveal;
+      delete state.__originalQuantumReveal;
+      delete state.__revealedQuantumSource;
+      delete state.__quantumRevealCount;
+    });
 
     const fieldOnly=join(root,"field-only.qscene");
     await mkdir(fieldOnly);

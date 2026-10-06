@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { importQuantumSceneBundle, type ImportedQuantumScene } from "../quantumScene/importer";
 import { inspectVerifiedFieldSample, renderVerifiedFieldSlice, type FieldSampleRequest, type FieldSliceRequest } from "../quantumScene/fieldSlice";
 import { deriveVerifiedFieldSurface, type FieldSurfaceRequest } from "../quantumScene/fieldSurface";
@@ -35,9 +35,9 @@ function failed(error: unknown): QuantumSceneOpenResponse {
 
 export function registerQuantumSceneIpc(initialDirectory: string | null = null): void {
   let launchDirectory = initialDirectory;
-  const verifiedBySender = new WeakMap<Electron.WebContents, { fingerprint: string; imported: ImportedQuantumScene }>();
+  const verifiedBySender = new WeakMap<Electron.WebContents, { fingerprint: string; directory: string; imported: ImportedQuantumScene }>();
   const openedFor = (event: Electron.IpcMainInvokeEvent, directory: string, imported: ImportedQuantumScene, remembered: boolean) => {
-    verifiedBySender.set(event.sender, { fingerprint: sceneFingerprint(imported), imported });
+    verifiedBySender.set(event.sender, { fingerprint: sceneFingerprint(imported), directory: resolve(directory), imported });
     return opened(directory, imported, remembered);
   };
   const activeField = (event: Electron.IpcMainInvokeEvent, request: unknown) => {
@@ -47,7 +47,7 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
     const active = verifiedBySender.get(event.sender);
     if (typeof fingerprint !== "string" || !active || active.fingerprint !== fingerprint)
       throw new Error("Field request does not match the active verified scene");
-    return active.imported;
+    return active;
   };
   ipcMain.handle("quantumScenes:consumeLaunch", async (event, ...args: unknown[]): Promise<QuantumSceneOpenResponse> => {
     if (args.length) return { ok: false, canceled: false, error: "Quantum scene launch accepts no renderer paths" };
@@ -106,17 +106,27 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
   });
   ipcMain.handle("quantumScenes:fieldSlice", (event, ...args: unknown[]) => {
     if (args.length !== 1) throw new TypeError("Field slice requires one request");
-    const imported = activeField(event, args[0]);
-    return renderVerifiedFieldSlice(imported, args[0] as FieldSliceRequest);
+    const active = activeField(event, args[0]);
+    return renderVerifiedFieldSlice(active.imported, args[0] as FieldSliceRequest);
   });
   ipcMain.handle("quantumScenes:fieldSample", (event, ...args: unknown[]) => {
     if (args.length !== 1) throw new TypeError("Field sample requires one request");
-    const imported = activeField(event, args[0]);
-    return inspectVerifiedFieldSample(imported, args[0] as FieldSampleRequest);
+    const active = activeField(event, args[0]);
+    return inspectVerifiedFieldSample(active.imported, args[0] as FieldSampleRequest);
   });
   ipcMain.handle("quantumScenes:fieldSurface", (event, ...args: unknown[]) => {
     if (args.length !== 1) throw new TypeError("Field surface requires one request");
-    const imported = activeField(event, args[0]);
-    return deriveVerifiedFieldSurface(imported, args[0] as FieldSurfaceRequest);
+    const active = activeField(event, args[0]);
+    return deriveVerifiedFieldSurface(active.imported, args[0] as FieldSurfaceRequest);
+  });
+  ipcMain.handle("quantumScenes:revealSource", async (event, ...args: unknown[]) => {
+    if (args.length !== 1) return { ok: false, error: "Source reveal requires one active-scene fingerprint" };
+    try {
+      const active = activeField(event, args[0]);
+      // Re-read and hash every source artifact immediately before invoking the OS file manager.
+      await reopenQuantumSceneReference({ directory: active.directory, sceneFingerprint: active.fingerprint });
+      shell.showItemInFolder(active.directory);
+      return { ok: true, directory: active.directory };
+    } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
   });
 }

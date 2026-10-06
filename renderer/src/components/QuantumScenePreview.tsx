@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { GeometryScene } from "../geometry/types";
 import { GeometryViewer } from "./GeometryViewer";
 import { QuantumFieldSlice, type QuantumField } from "./QuantumFieldSlice";
@@ -37,6 +37,23 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
     (document.geometry.triangles?.length ?? 0);
   const [view, setView] = useState<"geometry" | "slice" | "surface">(scene.fields?.length && count === 0 ? "slice" : "geometry");
   useEffect(() => { setView(scene.fields?.length && count === 0 ? "slice" : "geometry"); }, [opened.reference.sceneFingerprint]);
+  const [locateStatus, setLocateStatus] = useState("");
+  const [locating, setLocating] = useState(false);
+  const locateGeneration = useRef(0);
+  useEffect(() => {
+    locateGeneration.current += 1; setLocateStatus(""); setLocating(false);
+  }, [opened.reference.sceneFingerprint]);
+  const revealSource = async () => {
+    const current = ++locateGeneration.current;
+    setLocating(true); setLocateStatus("");
+    try {
+      const result = await window.quantumScenes!.revealSource(opened.reference.sceneFingerprint);
+      if (locateGeneration.current === current) setLocateStatus(result.ok ?
+        "Requested the system file manager to reveal the re-verified bundle." : `Source reveal refused: ${result.error}`);
+    } catch (error) {
+      if (locateGeneration.current === current) setLocateStatus(`Source reveal refused: ${String((error as Error)?.message ?? error)}`);
+    } finally { if (locateGeneration.current === current) setLocating(false); }
+  };
   const camera = document.cameras[0];
   const [pickedBandSample, setPickedBandSample] = useState<PickedBandSample | null>(null);
   const meshObjects = useMemo(() => {
@@ -105,6 +122,12 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
             <h3 style={{ marginTop: 0 }}>Source and coordinates</h3>
             <div><b>Run:</b> {scene.provenance.runId}</div>
             <div><b>Result SHA-256:</b> <code style={{ overflowWrap: "anywhere" }}>{scene.provenance.resultSha256}</code></div>
+            <div><b>Bundle:</b> <code data-testid="quantum-source-directory" style={{ overflowWrap: "anywhere" }}>{opened.directory}</code></div>
+            <button type="button" data-testid="quantum-reveal-source" disabled={locating} onClick={() => void revealSource()}>
+              {locating ? "Re-verifying source…" : "Reveal verified bundle"}
+            </button>
+            {locateStatus && <p role="status" data-testid="quantum-reveal-status">{locateStatus}</p>}
+            <p>This locates the exported bundle, not the original Theory Lab run. The run ID above is its provenance identifier.</p>
             <div><b>Engine:</b> {scene.provenance.engine} {scene.provenance.engineVersion}</div>
             {scene.provenance.parameters && <><h3>Stored model inputs</h3><dl data-testid="quantum-scene-parameters" style={{ margin: 0 }}>
               {Object.entries(scene.provenance.parameters).map(([key, value]) => <div key={key} style={{ display: "flex", gap: 8 }}>
