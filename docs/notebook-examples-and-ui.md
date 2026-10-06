@@ -1,5 +1,27 @@
 # Evidence Workbooks and Notes
 
+## Graph and Curve investigations
+
+**Graph Derivative Investigation** opens a parabola Graph, its Curve snapshot,
+the recorded numerical derivative at x = 1, a source Note and a Project
+Workbook. In the Workbook's Document view, inspect the three exact citations.
+Edit the Graph to see that the recorded result belongs to its earlier source
+generation; the Workbook does not silently replace it.
+
+**Curve Construction Investigation** opens a measured Curve, its revolution and
+extrusion Surfaces, a source Note and a Project Workbook. The Workbook cites the
+ordinary Project documents. Inspect Relations after editing the measured Curve
+to see which constructions use its recorded generation. This starter contains
+no computed curvature or minimality result.
+
+Both appear under **Projects → Starter projects**. **Open** resumes your saved
+copy; **New copy** creates another independent Project. Open the Workbook under
+**Projects → Contents → Workbooks**, then choose **Surfaces → Workbook →
+Document** to read it. The starter recipe remains unchanged when you edit your
+copy.
+
+## Numerical evidence examples
+
 Open **Projects → Starter projects** and choose **Catenoid Evidence Notebook**
 or **Edge Path Evidence Notebook**. **Open** creates the first saved copy, then
 resumes the current or most recently used copy. **New copy** explicitly creates

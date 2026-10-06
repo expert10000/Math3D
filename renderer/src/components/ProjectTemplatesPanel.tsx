@@ -15,6 +15,8 @@ export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]
   "geometry-note-pins": ["Geometry", "Notes"],
   "catenoid-evidence": ["Surface", "Mesh", "Workbook", "Notes"],
   "edge-path-evidence": ["Mesh", "Analysis", "Workbook", "Notes"],
+  "graph-derivative-notebook": ["Graph", "Curve", "Analysis", "Workbook", "Notes"],
+  "curve-construction-notebook": ["Curve", "Surface", "Workbook", "Notes"],
 };
 
 export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <svg viewBox="0 0 320 152" aria-hidden="true" focusable="false">
@@ -28,9 +30,9 @@ export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <s
     <path d="M63 90H248M81 60H258M156 30L109 120M212 30L174 120M45 120L156 30M109 120L212 30M174 120L268 30" fill="none" stroke="#93b5dc" strokeWidth="1.5" />
     <path d="M45 120L126 90L175 60L268 30" fill="none" stroke="#d97706" strokeWidth="5" strokeLinejoin="round" />
     {[ [45,120], [126,90], [175,60], [268,30] ].map(([x,y]) => <circle key={`${x}-${y}`} cx={x} cy={y} r="6" fill="#d97706" stroke="#fff" strokeWidth="2" />)}</>}
-  {id === "derivative-study" && <><path d="M20 20 Q160 185 300 20" fill="none" stroke="#2563eb" strokeWidth="5" /><path d="M38 143L280 39" stroke="#db2777" strokeWidth="3" strokeDasharray="8 5" /><circle cx="210" cy="78" r="6" fill="#db2777" /></>}
+  {(id === "derivative-study" || id === "graph-derivative-notebook") && <><path d="M20 20 Q160 185 300 20" fill="none" stroke="#2563eb" strokeWidth="5" /><path d="M38 143L280 39" stroke="#db2777" strokeWidth="3" strokeDasharray="8 5" /><circle cx="210" cy="78" r="6" fill="#db2777" /></>}
   {id === "spline-surface-lab" && <><path d="M30 116 C88 12 148 137 205 42 S268 50 294 100" fill="none" stroke="#2563eb" strokeWidth="5" /><path d="M38 60Q150 0 280 60M38 91Q150 31 280 91M38 122Q150 62 280 122M86 35Q116 85 86 130M160 27Q190 82 160 122M234 35Q264 85 234 130" fill="none" stroke="#70a5d7" strokeWidth="2" /></>}
-  {id === "curve-construction-study" && <><path d="M48 120L82 78L115 103L151 40" fill="none" stroke="#2563eb" strokeWidth="5" /><path d="M151 40C194 20 248 32 264 72C247 119 194 130 151 104" fill="#dbeafe" stroke="#3984c9" strokeWidth="2" /><path d="M151 40C176 81 176 83 151 104M190 31C216 73 216 96 190 119M230 42C255 76 255 91 230 107" fill="none" stroke="#70a5d7" strokeWidth="2" /></>}
+  {(id === "curve-construction-study" || id === "curve-construction-notebook") && <><path d="M48 120L82 78L115 103L151 40" fill="none" stroke="#2563eb" strokeWidth="5" /><path d="M151 40C194 20 248 32 264 72C247 119 194 130 151 104" fill="#dbeafe" stroke="#3984c9" strokeWidth="2" /><path d="M151 40C176 81 176 83 151 104M190 31C216 73 216 96 190 119M230 42C255 76 255 91 230 107" fill="none" stroke="#70a5d7" strokeWidth="2" /></>}
   {id === "scene-topology-study" && <><path d="M48 116L154 27L273 116Z" fill="#eaf3ff" stroke="#2563eb" strokeWidth="4" /><path d="M48 116L273 116M154 27L154 116" stroke="#93b5dc" strokeWidth="2" /><circle cx="48" cy="116" r="7" fill="#2563eb" /><circle cx="154" cy="27" r="7" fill="#2563eb" /><circle cx="273" cy="116" r="7" fill="#2563eb" /><circle cx="154" cy="116" r="7" fill="#e69b22" /></>}
   {id === "geometry-note-pins" && <><path d="M40 60L88 35L137 60L88 84Z" fill="#7c95ce" /><path d="M40 60V112L88 136V84Z" fill="#526daa" /><path d="M88 84V136L137 112V60Z" fill="#647fb7" /><circle cx="229" cy="85" r="47" fill="#2fa895" stroke="#178774" strokeWidth="3" /><circle cx="88" cy="35" r="8" fill="#f59e0b" stroke="#fff" strokeWidth="3" /><circle cx="229" cy="38" r="8" fill="#f59e0b" stroke="#fff" strokeWidth="3" /></>}
 </svg>;

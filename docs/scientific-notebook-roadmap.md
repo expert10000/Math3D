@@ -170,7 +170,16 @@ Two ready-to-open Gallery recipes bring part of NOTE07/WB07 forward:
 **Catenoid Evidence Notebook** and **Edge Path Evidence Notebook** include real
 numerical Mesh results, value-bound Notes, a bound chart-grid parameter and a
 bounded evidence claim. See [the UI guide](notebook-examples-and-ui.md).
-The broader guided-investigation/catalog acceptance in NOTE07/WB07 remains next.
+
+**NOTE07/WB07 desktop continuation, October 6:** **Graph Derivative
+Investigation** and **Curve Construction Investigation** complete the initial
+Graph, Curve, Surface and Mesh starter range. Each Gallery card opens or resumes
+a normal saved Project with a Project-owned Workbook and Note; **New copy**
+creates an independent identity. Graph citations use its actual saved numerical
+derivative, while the Curve construction Workbook cites normal source documents
+and supplies no invented analysis. Project package round trips preserve the
+references. The Graph/Curve desktop Gallery journey and four starter model
+checks pass. See [the UI guide](notebook-examples-and-ui.md).
 
 
 Validation: focused Workbook/Note/export contracts and the Project/mobile

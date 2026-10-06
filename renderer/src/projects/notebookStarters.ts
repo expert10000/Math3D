@@ -1,4 +1,4 @@
-import { createProjectNote, instantiateMath3DProjectTemplate, replaceMath3DProjectWorkspace, structuralHash, updateMath3DProjectMetadata, updateProjectNote, upsertMath3DProjectNote, upsertMath3DProjectWorkbook } from "@math3d/core";
+import { createProjectNote, instantiateMath3DProjectTemplate, replaceMath3DProjectWorkspace, structuralHash, updateMath3DProjectMetadata, updateProjectNote, upsertMath3DProjectNote, upsertMath3DProjectWorkbook, viewerSourceFromDocument } from "@math3d/core";
 import { bindWorkbookNamedParameter, createDefaultWorkbook, createNotebookReference } from "@math3d/workbook";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { createSavedSurfaceMesh } from "./savedSurfaceMesh";
@@ -9,13 +9,63 @@ import { prepareProjectWorkbook } from "./projectWorkbookBinding";
 export const NOTEBOOK_STARTERS = [
   { id: "catenoid-evidence", title: "Catenoid Evidence Notebook", description: "A saved catenoid Mesh, computed curvature, live Note values and a bounded scalar claim." },
   { id: "edge-path-evidence", title: "Edge Path Evidence Notebook", description: "A computed Mesh edge path with exact citations, a length check and a bound Workbook grid parameter." },
+  { id: "graph-derivative-notebook", title: "Graph Derivative Investigation", description: "Compare a parabola, its Curve snapshot and a recorded numerical derivative in a Project Workbook." },
+  { id: "curve-construction-notebook", title: "Curve Construction Investigation", description: "Follow a measured Curve into revolution and extrusion Surfaces with exact source references." },
 ] as const;
 export type NotebookStarterId = typeof NOTEBOOK_STARTERS[number]["id"];
+
+const instantiateDocumentNotebookStarter = (id: "graph-derivative-notebook" | "curve-construction-notebook", token: string) => {
+  const graph = id === "graph-derivative-notebook";
+  const recipe = NOTEBOOK_STARTERS.find(item => item.id === id)!;
+  let project = instantiateMath3DProjectTemplate(graph ? "derivative-study" : "curve-construction-study", token);
+  project = updateMath3DProjectMetadata(project, { ...project.metadata, title: recipe.title, description: recipe.description,
+    tags: ["starter", id, "workbook", "notes", graph ? "graph" : "curve"] });
+  const entry = (module: string, title?: string) => {
+    const found = project.workspace.entries.find(item => item.module === module && (!title || ("metadata" in item.checkpoint && "title" in item.checkpoint.metadata && item.checkpoint.metadata.title === title)));
+    if (!found) throw new TypeError(`Starter ${module} source is unavailable.`);
+    return found;
+  };
+  const primary = graph ? entry("graph2d") : entry("curve", "Measured profile");
+  const note = createProjectNote({ projectId: project.identity.id, stableKey: [id, token, "source-note"], kind: "text",
+    title: graph ? "Derivative source" : "Construction source",
+    body: graph
+      ? "The saved derivative at x = 1 is a numerical result for this Graph generation. Edit the parabola and inspect the historical citation before drawing a new conclusion."
+      : "The measured Curve is the source for the revolution and extrusion. Edit it to inspect stale descendants; this starter contains no computed curvature or minimality claim.",
+    anchor: { kind: "document", source: viewerSourceFromDocument({ identity: primary.expected }) }, createdAt: 0 });
+  project = upsertMath3DProjectNote(project, note);
+  let sequence = 0;
+  const workbook = createDefaultWorkbook(() => `${id}-${token}-${++sequence}`);
+  workbook.title = recipe.title;
+  workbook.stages[0]!.blocks[0]!.text = graph
+    ? "Open the Graph, compare its Curve snapshot and inspect the saved derivative at x = 1. Source edits leave the recorded numerical result historical until an explicit rerun."
+    : "Open the measured Curve, then compare its revolution and extrusion Surfaces. Inspect Project Relations after editing the source Curve; no analysis result is supplied by this starter.";
+  workbook.stages[0]!.blocks[1]!.formula = graph ? "y=x^2,\\quad y'=2x" : "C(t)\\rightarrow\\{\\text{revolution},\\text{extrusion}\\}";
+  const cited = graph
+    ? [primary, entry("curve")]
+    : [primary, entry("surface", "Profile revolution"), entry("surface", "Profile extrusion")];
+  workbook.stages[1]!.blocks = cited.map((item, index) => ({ id: `${id}-source-${index}`, type: "reference" as const,
+    title: "metadata" in item.checkpoint && "title" in item.checkpoint.metadata ? item.checkpoint.metadata.title : item.module,
+    notebookReference: createNotebookReference(project, "document", item.expected.id) }));
+  if (graph) {
+    const result = project.workspace.results[0];
+    if (!result) throw new TypeError("Starter derivative result is unavailable.");
+    workbook.stages[1]!.blocks.push({ id: `${id}-result`, type: "reference", title: "Recorded numerical derivative",
+      notebookReference: createNotebookReference(project, "result", result.resultId) });
+  }
+  workbook.stages[3]!.blocks = [{ id: `${id}-explanation`, type: "text", title: "Interpret the sources",
+    text: graph
+      ? "The derivative citation records a numerical evaluation at x = 1 with its original Graph generation. The Curve is a snapshot, not a live edit of the Graph. Inspect freshness before comparing them."
+      : "The revolution and extrusion cite the measured profile through Project Relations. Their geometry is constructed from recorded source generations; this Workbook does not assert curvature, convergence or minimality." }];
+  const bound = prepareProjectWorkbook(project, workbook, token);
+  project = upsertMath3DProjectWorkbook(project, bound.reference);
+  return { project, resources: captureProjectResources(project, item => item.kind === "workbook-payload" ? bound.bytes : null) };
+};
 
 /** Numerical records and source sidecars use the same implementations as the editors. */
 export function instantiateNotebookStarter(id: NotebookStarterId, token: string) {
   const recipe = NOTEBOOK_STARTERS.find(item => item.id === id);
   if (!recipe) throw new TypeError("Unknown Notebook starter.");
+  if (id === "graph-derivative-notebook" || id === "curve-construction-notebook") return instantiateDocumentNotebookStarter(id, token);
   let project = instantiateMath3DProjectTemplate("catenary-study", token);
   const surface = project.workspace.entries.find(entry => entry.module === "surface")!.checkpoint;
   if (surface.format !== "math3d.surface-document") throw new TypeError("Starter Surface is unavailable.");
