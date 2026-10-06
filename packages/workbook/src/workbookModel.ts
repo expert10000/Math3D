@@ -9,6 +9,8 @@ import type {
 import type { NotebookReference } from "./notebookReferences";
 import type { WorkbookDependency } from "./workbookDependencies";
 import type { WorkbookDocumentContent } from "./workbookDocumentContent";
+import type { WorkbookNamedParameter } from "./workbookNamedParameters";
+import type { WorkbookClaim } from "./workbookClaims";
 
 export type WorkbookStageId = "define" | "compute" | "visualize" | "explain";
 export type WorkbookBlockType =
@@ -49,6 +51,7 @@ export type WorkbookParamOption = { value: string; label: string };
 export type WorkbookParamDef = {
   id: string;
   label: string;
+  unit?: string;
   kind: WorkbookParamKind;
   min?: number;
   max?: number;
@@ -315,6 +318,7 @@ export type WorkbookBlock = {
   text?: string;
   formula?: string;
   documentContent?: WorkbookDocumentContent;
+  claim?: WorkbookClaim;
   notebookReference?: NotebookReference;
   params?: WorkbookParamState;
   visualize?: {
@@ -357,6 +361,7 @@ export type Workbook = {
   updatedAt: number;
   stages: WorkbookStage[];
   dependencies?: WorkbookDependency[];
+  namedParameters?: readonly WorkbookNamedParameter[];
   geometryTask?: WorkbookGeometryTaskAssignment;
 };
 

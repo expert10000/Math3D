@@ -4,3 +4,6 @@ export * from "./notebookReferences";
 export * from "./workbookDependencies";
 export * from "./workbookFreshness";
 export * from "./workbookDocumentContent";
+export * from "./workbookNamedParameters";
+export * from "./notebookProvenance";
+export * from "./workbookClaims";

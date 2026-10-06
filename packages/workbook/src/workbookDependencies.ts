@@ -1,6 +1,8 @@
 import { isStableDocumentId, isStructuralHash, normalizeMath3DProject, structuralHash, type Math3DProject, type StableDocumentId, type StructuralHash } from "@math3d/core";
 import { createNotebookReference, inspectNotebookReference, normalizeNotebookReference, type NotebookReference } from "./notebookReferences";
 import type { Workbook, WorkbookBlock } from "./workbookModel";
+import { normalizeWorkbookNamedParameters, workbookNamedParameterHash, inspectWorkbookParameterBinding } from "./workbookNamedParameters";
+import { normalizeWorkbookClaim } from "./workbookClaims";
 
 /** Dependency edges record provenance and ordering. They do not execute or copy target content. */
 export type WorkbookDependency = Readonly<{
@@ -9,6 +11,7 @@ export type WorkbookDependency = Readonly<{
   source:
     | Readonly<{ kind: "block"; blockId: string; sourceHash?: StructuralHash; outputPortId?: string; inputPortId?: string }>
     | Readonly<{ kind: "project"; reference: NotebookReference }>
+    | Readonly<{ kind: "parameter"; parameterId: string; targetParamId: string; sourceHash: StructuralHash }>
     | Readonly<{ kind: "note"; projectId: StableDocumentId; noteId: StableDocumentId; revision: number; hash: StructuralHash }>;
 }>;
 
@@ -23,6 +26,11 @@ const keyOf = (edge: WorkbookDependency): string => JSON.stringify([edge.targetB
 
 /** Checks the graph without modifying persisted blocks, ports, or saved runs. */
 export function validateWorkbookDependencies(workbook: Workbook): void {
+  if (workbook.namedParameters !== undefined) normalizeWorkbookNamedParameters(workbook.namedParameters);
+  for (const block of blocksOf(workbook)) if (block.claim !== undefined) {
+    if (block.type !== "assert") throw new TypeError("Evidence claims belong to assert blocks.");
+    normalizeWorkbookClaim(block.claim);
+  }
   if (workbook.dependencies === undefined) return;
   if (!Array.isArray(workbook.dependencies)) throw new TypeError("Invalid Workbook dependencies.");
   const blocks = new Map(blocksOf(workbook).map((block) => [block.id, block]));
@@ -45,6 +53,9 @@ export function validateWorkbookDependencies(workbook: Workbook): void {
         if (!output || !input || output.type !== input.type) throw new TypeError("Workbook dependency ports are missing or incompatible.");
       }
       outgoing.set(source.blockId, [...outgoing.get(source.blockId) ?? [], edge.targetBlockId]);
+    } else if (source.kind === "parameter") {
+      if (!validId(source.parameterId) || !validId(source.targetParamId) || !isStructuralHash(source.sourceHash) || !["compute", "visualize"].includes(blocks.get(edge.targetBlockId)!.type)) throw new TypeError("Invalid named parameter binding.");
+      if ([...workbook.dependencies].filter(item => item.targetBlockId === edge.targetBlockId && item.source.kind === "parameter" && item.source.targetParamId === source.targetParamId).length > 1) throw new TypeError("Duplicate named parameter target.");
     } else if (source.kind === "project") {
       if (!normalizeNotebookReference(source.reference)) throw new TypeError("Invalid Project dependency reference.");
     } else if (source.kind === "note") {
@@ -107,6 +118,8 @@ export function workbookBlockSourceHash(block: WorkbookBlock): StructuralHash {
     type: block.type, enabled: block.enabled !== false, text: block.text ?? null, formula: block.formula ?? null,
     reference: block.notebookReference ?? null, inputs: block.inputs ?? null, outputs: block.outputs ?? null,
     params: block.params?.values ?? null, visualize: block.visualize ?? null, interaction: block.interaction ?? null,
+    ...(block.documentContent ? { documentContent: block.documentContent } : {}),
+    ...(block.claim ? { claim: block.claim } : {}),
     assertion: block.assert ?? null,
     compute: block.compute ? { operatorId: block.compute.operatorId ?? null,
       inputHash: block.compute.lastRun?.inputHash ?? null, outputHash: block.compute.outputHash ?? null,
@@ -128,6 +141,8 @@ export function workbookDependencyInputSignature(workbook: Workbook, targetBlock
     .map((edge) => edge.source.kind === "block"
       ? { id: edge.id, source: edge.source.blockId,
         hash: blocks.has(edge.source.blockId) ? workbookBlockSourceHash(blocks.get(edge.source.blockId)!) : "missing" }
+      : edge.source.kind === "parameter" ? { id: edge.id, source: edge.source.parameterId, targetParamId: edge.source.targetParamId,
+        hash: workbook.namedParameters?.some(item => edge.source.kind === "parameter" && item.id === edge.source.parameterId) ? workbookNamedParameterHash(workbook.namedParameters.find(item => edge.source.kind === "parameter" && item.id === edge.source.parameterId)!) : "missing" }
       : { id: edge.id, source: edge.source });
 }
 
@@ -139,6 +154,8 @@ export function refreshWorkbookDependency(workbook: Workbook, edgeId: string, pr
   const nextSource: WorkbookDependency["source"] = source.kind === "block"
     ? { ...source, sourceHash: workbookBlockSourceHash(blocksOf(workbook).find((item) => item.id === source.blockId) ??
       (() => { throw new RangeError("Source block is missing."); })()) }
+    : source.kind === "parameter"
+      ? { ...source, sourceHash: workbookNamedParameterHash(workbook.namedParameters?.find(item => item.id === source.parameterId) ?? (() => { throw new RangeError("Named parameter is missing."); })()) }
     : source.kind === "project"
       ? (() => {
         if (!project || project.identity.id !== source.reference.projectId) throw new TypeError("Open the linked Project before refreshing.");
@@ -179,6 +196,7 @@ export function inspectWorkbookDependency(edge: WorkbookDependency, workbook: Wo
       ? { status: "current", reason: "Block source generation matches." }
       : { status: "stale", reason: "The source block changed after this link was recorded." };
   }
+  if (source.kind === "parameter") return inspectWorkbookParameterBinding(edge, workbook);
   if (!project) return { status: "missing", reason: "Open the linked Project to inspect this dependency." };
   if (source.kind === "project") {
     const result = inspectNotebookReference(project, source.reference);

@@ -6,6 +6,9 @@ import { WorkbookProjectReferenceCell } from "./WorkbookProjectReferenceCell";
 import { WorkbookDependencies } from "./WorkbookDependencies";
 import { WorkbookDocumentView } from "./WorkbookDocumentView";
 import { WorkbookContentEditor } from "./WorkbookContentEditor";
+import { WorkbookNamedParameters } from "./WorkbookNamedParameters";
+import { WorkbookClaimEditor } from "./WorkbookClaimEditor";
+import { assessWorkbookClaim } from "@math3d/workbook";
 import { uiStyles as styles } from "../uiStyles";
 import type {
   Workbook,
@@ -48,6 +51,9 @@ type WorkbookPanelProps = {
   onAddBlock: (stageId: WorkbookStageId, type: WorkbookBlockType) => void;
   onUpdateBlock: (stageId: WorkbookStageId, blockId: string, patch: Partial<WorkbookBlock>) => void;
   onChangeDependencies: (dependencies: WorkbookDependency[]) => void;
+  onChangeNamedParameters: (workbook: Workbook) => void;
+  parameterAffectedBlocks: (parameterId: string) => readonly string[];
+  onRunParameterAffected: (parameterId: string) => Promise<void>;
   getNotebookProject: () => NotebookProjectContext | null;
   onOpenNotebookDocument: (id: string, module: KernelWorkspaceModule) => void;
   onOpenProjects: () => void;
@@ -488,6 +494,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onAddBlock,
   onUpdateBlock,
   onChangeDependencies,
+  onChangeNamedParameters, parameterAffectedBlocks, onRunParameterAffected,
   getNotebookProject,
   onOpenNotebookDocument,
   onOpenProjects,
@@ -585,18 +592,20 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   const isBlockEnabled = useCallback((block: WorkbookBlock) => block.enabled !== false, []);
   const [dependencyProject, setDependencyProject] = useState<Math3DProject | null>(null);
   const [projectLive, setProjectLive] = useState(false);
+  const [artifactContext, setArtifactContext] = useState<NotebookProjectContext | null>(null);
   const getProjectRef = useRef(getNotebookProject);
   getProjectRef.current = getNotebookProject;
-  const hasExternalDependencies = !!activeWorkbook && (viewMode === "document" || workbookNeedsProjectInspection(activeWorkbook));
+  const hasExternalDependencies = !!activeWorkbook && (viewMode === "document" || workbookNeedsProjectInspection(activeWorkbook) || activeWorkbook.stages.some(stage => stage.blocks.some(block => block.type === "assert")));
   useEffect(() => {
-    if (!hasExternalDependencies) { setDependencyProject(null); setProjectLive(false); return; }
+    if (!hasExternalDependencies) { setDependencyProject(null); setProjectLive(false); setArtifactContext(null); return; }
     const refresh = () => {
       try {
         const context = getProjectRef.current();
         const next = context?.project ?? null;
         setDependencyProject((previous) => previous?.identity.structuralHash === next?.identity.structuralHash ? previous : next);
         setProjectLive(Boolean(context?.live));
-      } catch { setDependencyProject(null); setProjectLive(false); }
+        setArtifactContext(context);
+      } catch { setDependencyProject(null); setProjectLive(false); setArtifactContext(null); }
     };
     refresh();
     const timer = window.setInterval(refresh, 3000);
@@ -624,6 +633,10 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
       return { state: "stale", label: status === "idle" ? "stale" : status };
     }
     if (block.type === "assert") {
+      if (block.claim && activeWorkbook) {
+        const claim = assessWorkbookClaim(block.claim, activeWorkbook, dependencyProject);
+        return { state: claim.status === "supported" ? "ok" : claim.status === "contradicted" ? "fail" : claim.status === "stale" ? "stale" : "pending", label: claim.status };
+      }
       const st = block.assert?.status ?? "pending";
       if (st === "fail") return { state: "fail", label: "fail" };
       if (st === "pass") return { state: "ok", label: "pass" };
@@ -1134,6 +1147,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
           </button>
         </div>
       </div>
+      {activeWorkbook && <WorkbookNamedParameters key={activeWorkbook.id} workbook={activeWorkbook} catalog={paramCatalog} readOnly={readOnly}
+        onChange={onChangeNamedParameters} affected={parameterAffectedBlocks} onRunAffected={onRunParameterAffected} />}
       <details style={{ marginBottom: 10 }}>
         <summary style={{ fontSize: 11, fontWeight: 700, cursor: "pointer" }}>How to use interaction blocks</summary>
         <div style={{ fontSize: 11, opacity: 0.8, marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1506,7 +1521,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
       </div>
 
       {viewMode === "document" && activeWorkbook ? <WorkbookDocumentView workbook={activeWorkbook}
-        project={dependencyProject} projectLive={projectLive} readOnly={readOnly}
+        project={dependencyProject} projectLive={projectLive} readArtifact={artifactContext?.readArtifact} readOnly={readOnly}
         statusFor={getBlockStatus} onUpdateBlock={onUpdateBlock} onOpenDocument={onOpenNotebookDocument}
         onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} onEditBlock={(stageId, blockId) => {
           onSelectStage(stageId); setSelectedBlockId(blockId); setPendingScrollId(blockId); setViewMode("block");
@@ -1823,6 +1838,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
               )}
 
               {(block.type === "text" || block.type === "visualize") && <WorkbookContentEditor block={block} readOnly={readOnly} onChange={patch => onUpdateBlock(activeStageId, block.id, patch)} />}
+              {block.type === "assert" && activeWorkbook && <WorkbookClaimEditor workbook={activeWorkbook} block={block} project={dependencyProject} projectLive={projectLive} reader={artifactContext?.readArtifact} readOnly={readOnly} onChange={claim => onUpdateBlock(activeStageId, block.id, { claim })} />}
               {block.type === "reference" && (
                 <WorkbookProjectReferenceCell
                   reference={block.notebookReference}
@@ -2314,7 +2330,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 </div>
               )}
 
-              {block.type === "assert" && (
+              {block.type === "assert" && !block.claim && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <textarea
                     value={block.assert?.expected ?? ""}
@@ -2376,11 +2392,12 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 {(block.params?.defs?.length ?? 0) > 0 ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
                     {block.params?.defs.map((def) => {
+                      const binding = activeWorkbook?.dependencies?.find(edge => edge.targetBlockId === block.id && edge.source.kind === "parameter" && edge.source.targetParamId === def.id);
                       const value = block.params?.values?.[def.id] ?? def.defaultValue ?? (def.kind === "toggle" ? false : 0);
                       return (
                         <div key={def.id} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <span style={{ fontSize: 11, fontWeight: 700 }}>{def.label}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700 }}>{def.label}{binding ? " · edit named parameter" : ""}</span>
                             <button
                               type="button"
                               onClick={() => onRemoveBlockParam(activeStageId, block.id, def.id)}
@@ -2431,7 +2448,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                                 onChange={(e) =>
                                   onUpdateBlockParam(activeStageId, block.id, def.id, Number(e.target.value), !!block.params?.scrub)
                                 }
-                                disabled={readOnly}
+                                disabled={readOnly || !!binding}
                               />
                               <input
                                 type="number"
@@ -2442,7 +2459,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                                 onChange={(e) =>
                                   onUpdateBlockParam(activeStageId, block.id, def.id, Number(e.target.value), false)
                                 }
-                                disabled={readOnly}
+                                disabled={readOnly || !!binding}
                                 style={{ fontSize: 11 }}
                               />
                             </>

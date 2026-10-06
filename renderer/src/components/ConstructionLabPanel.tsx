@@ -125,6 +125,8 @@ type ConstructionLabPanelProps = {
   workspaceTab?: ConstructionWorkspaceTab;
   onWorkspaceTabChange?: (tab: ConstructionWorkspaceTab) => void;
   hideWorkspaceTabs?: boolean;
+  workbookClaims?: readonly { workbookId: string; stageId: string; blockId: string; title: string; text: string; status: string; reason: string }[];
+  onOpenWorkbookClaim?: (workbookId: string, stageId: string, blockId: string) => void;
 };
 
 type ConstructionHistoryState = {
@@ -798,6 +800,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   workspaceTab: controlledWorkspaceTab,
   onWorkspaceTabChange,
   hideWorkspaceTabs = false,
+  workbookClaims = [], onOpenWorkbookClaim,
 }) => {
   const seededState = normalizeConstructionSeed(seed);
   const [nodes, setNodes] = useState<ConstructionNode[]>(() =>
@@ -3244,8 +3247,17 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
 
       {workspaceTab === "claims" && (
         <div style={{ display: "grid", gap: 8 }}>
+          <section data-testid="geometry-workbook-evidence-claims" style={{ border: "1px solid #bfdbfe", padding: 8, borderRadius: 8 }}>
+            <strong>Workbook evidence claims</strong>
+            <p style={{ fontSize: 11 }}>Saved result and snapshot citations with scoped scalar checks.</p>
+            {workbookClaims.map(claim => <div key={`${claim.workbookId}:${claim.blockId}`} style={{ fontSize: 11, margin: "6px 0" }}>
+              <strong>{claim.title} · {claim.status}</strong><p>{claim.text || "No claim text."}</p><p>{claim.reason}</p>
+              <button type="button" onClick={() => onOpenWorkbookClaim?.(claim.workbookId, claim.stageId, claim.blockId)}>Open Workbook claim</button>
+            </div>)}
+            {!workbookClaims.length && <p style={{ fontSize: 11 }}>No evidence claims in the active Workbook. Add one to a Workbook Check block.</p>}
+          </section>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-            <div style={{ fontSize: 12, fontWeight: 700 }}>Claims</div>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>Construction claims</div>
             <select
               value={claimsSortMode}
               onChange={(e) => setClaimsSortMode(e.target.value as ClaimsSortMode)}

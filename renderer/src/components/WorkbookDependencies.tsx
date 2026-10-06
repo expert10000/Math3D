@@ -61,7 +61,7 @@ export const WorkbookDependencies: React.FC<Props> = ({ workbook, blockId, readO
   const refreshLink = (edgeId: string) => {
     try {
       const edge = workbook.dependencies?.find((item) => item.id === edgeId);
-      const latest = edge?.source.kind === "block" ? context : getProject();
+      const latest = edge?.source.kind === "block" || edge?.source.kind === "parameter" ? context : getProject();
       const next = refreshWorkbookDependency(workbook, edgeId, latest?.live ? latest.project : null);
       onChange(next.dependencies ?? []);
       setContext(latest);
@@ -81,6 +81,7 @@ export const WorkbookDependencies: React.FC<Props> = ({ workbook, blockId, readO
         const source = edge.source;
         const label = source.kind === "block"
           ? `Block · ${blocks.find((block) => block.id === source.blockId)?.title ?? source.blockId}`
+          : source.kind === "parameter" ? `Parameter · ${workbook.namedParameters?.find(item => item.id === source.parameterId)?.label ?? source.parameterId} → ${source.targetParamId}`
           : source.kind === "note"
             ? `Note · ${project?.notes?.find((note) => note.identity.id === source.noteId)?.title ?? source.noteId} · r${source.revision}`
             : `${source.reference.kind === "document" ? "Document" : "Saved result"} · ${source.reference.targetId} · r${source.reference.source.revision}`;
@@ -89,7 +90,7 @@ export const WorkbookDependencies: React.FC<Props> = ({ workbook, blockId, readO
           {source.kind === "note" && <button type="button" data-testid={`workbook-open-note-${source.noteId}`}
             disabled={!onOpenNote || project?.identity.id !== source.projectId || !project?.notes?.some((note) => note.identity.id === source.noteId)}
             onClick={() => onOpenNote?.(source.noteId)}>Open Note</button>}
-          {!readOnly && status.status === "stale" && <button type="button" onClick={() => refreshLink(edge.id)}>Refresh link</button>}
+          {!readOnly && status.status === "stale" && source.kind !== "parameter" && <button type="button" onClick={() => refreshLink(edge.id)}>Refresh link</button>}
           {!readOnly && <button type="button" onClick={() => onChange((workbook.dependencies ?? []).filter((item) => item.id !== edge.id))}>Remove</button>}
         </div>;
       })}

@@ -2,6 +2,7 @@ import type { Math3DProject } from "@math3d/core";
 import { inspectWorkbookDependency } from "./workbookDependencies";
 import { inspectNotebookReference } from "./notebookReferences";
 import type { Workbook, WorkbookBlock } from "./workbookModel";
+import { assessWorkbookClaim } from "./workbookClaims";
 
 export type WorkbookFreshnessStatus = "current" | "stale" | "missing" | "failed";
 export type WorkbookBlockFreshness = Readonly<{
@@ -18,8 +19,8 @@ type IntrinsicStatus = "ok" | "stale" | "failed" | "disabled";
 const priority: Record<WorkbookFreshnessStatus, number> = { current: 0, stale: 1, missing: 2, failed: 3 };
 
 export function workbookNeedsProjectInspection(workbook: Workbook): boolean {
-  return !!workbook.dependencies?.some((edge) => edge.source.kind !== "block") ||
-    workbook.stages.some((stage) => stage.blocks.some((block) => block.type === "reference" && !!block.notebookReference));
+  return !!workbook.dependencies?.some((edge) => edge.source.kind === "project" || edge.source.kind === "note") ||
+    workbook.stages.some((stage) => stage.blocks.some((block) => block.type === "reference" && !!block.notebookReference || block.claim?.evidence.some(item => item.kind === "result")));
 }
 
 /** Derives affected blocks without changing runs or scheduling work. */
@@ -46,7 +47,7 @@ export function resolveWorkbookFreshness(
       : null;
     const base = block.enabled === false || intrinsicComputeStatus[id] === "disabled"
       ? { status: "missing" as const, reason: "Block is disabled.", path: [id], blockedBySource: false }
-      : intrinsicComputeStatus[id] === "failed" || block.type === "assert" && block.assert?.status === "fail"
+      : intrinsicComputeStatus[id] === "failed" || block.type === "assert" && !block.claim && block.assert?.status === "fail"
         ? { status: "failed" as const, reason: "Block failed.", path: [id], blockedBySource: false }
         : reference && reference.status !== "current"
           ? { status: reference.status === "different-project" ? "missing" as const : reference.status,
@@ -55,6 +56,11 @@ export function resolveWorkbookFreshness(
           ? { status: "stale" as const, reason: "Compute inputs or parameters changed.", path: [id], blockedBySource: false }
           : { status: "current" as const, reason: "Sources match.", path: [id], blockedBySource: false };
     let state: WorkbookBlockFreshness = base;
+    if (block.claim && block.enabled !== false && intrinsicComputeStatus[id] !== "disabled") {
+      const claim = assessWorkbookClaim(block.claim, workbook, project);
+      if (claim.status === "stale") state = { status: "stale", reason: claim.reason, path: [id], blockedBySource: true };
+      else if (claim.status === "contradicted") state = { status: "failed", reason: claim.reason, path: [id], blockedBySource: false };
+    }
     for (const edge of incoming.get(id) ?? []) {
       const check = inspectWorkbookDependency(edge, workbook, project);
       const sourceState = edge.source.kind === "block" ? visit(edge.source.blockId) : null;
@@ -65,7 +71,7 @@ export function resolveWorkbookFreshness(
           path: [...sourceState.path, id], edgeId: edge.id, blockedBySource: true }
         : { status: direct, reason: check.reason,
           path: edge.source.kind === "block" ? [edge.source.blockId, id] : [id], edgeId: edge.id,
-          blockedBySource: edge.source.kind === "block" ? !!sourceState && sourceState.status !== "current"
+          blockedBySource: edge.source.kind === "parameter" ? direct === "missing" : edge.source.kind === "block" ? !!sourceState && sourceState.status !== "current"
             : direct !== "current" };
       const blockedBySource = state.blockedBySource || candidate.blockedBySource;
       if (priority[candidate.status] > priority[state.status]) state = { ...candidate, blockedBySource };

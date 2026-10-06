@@ -26,6 +26,10 @@ import { createSurfaceStudySweep, readSurfaceStudyRun } from "./projects/surface
 import { createSurfaceResolutionStudy } from "./projects/surfaceResolutionStudy";
 import { renderNotebookMarkdown, renderNotebookMath, workbookDocumentContentHtml } from "./workbook/notebookContent";
 import { normalizeWorkbookDocumentContent, workbookTableMarkdown, isWorkbookFigureImage } from "@math3d/workbook";
+import { WorkbookClaimEditor } from "./components/WorkbookClaimEditor";
+import { WorkbookNamedParameters } from "./components/WorkbookNamedParameters";
+import { WorkbookProvenance } from "./components/WorkbookProvenance";
+import type { NotebookArtifactReader } from "@math3d/workbook";
 import { captureProjectViewThumbnail } from "./projects/projectViewThumbnail";
 import { supportsSavedSurfaceResolution, type SurfaceStudyResolution } from "./projects/surfaceStudyResolution";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -1139,9 +1143,12 @@ import {
   createWorkbookFromTemplate,
   normalizeNotebookReference,
   workbookBlockSourceHash,
+  workbookNamedParameterHash,
+  workbookParameterAffectedBlocks,
   workbookDependencyInputSignature,
   workbookNeedsProjectInspection,
   resolveWorkbookFreshness,
+  assessWorkbookClaim,
   evaluateWorkbookGeometryTask,
   WORKBOOK_GEOMETRY_TASKS,
   WORKBOOK_STAGE_ORDER,
@@ -11320,7 +11327,7 @@ const escapeHtml = (value: string) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string | null) => {
+const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string | null, project: Math3DProject | null = null) => {
   const exportedAt = formatExportTimestamp(Date.now());
   if (!workbooks.length) {
     return ["# Math3D Workbook Export", `_Exported ${exportedAt}_`, "_No workbooks available._"].join("\n\n");
@@ -11371,8 +11378,14 @@ const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string 
           if (block.interaction?.kind) lines.push(`Interaction: ${block.interaction.kind}`);
           if (block.interaction?.summary) lines.push(`Summary: ${block.interaction.summary}`);
         } else if (block.type === "assert") {
-          if (block.assert?.expected) lines.push(`Expected: ${block.assert.expected}`);
-          if (block.assert?.status) lines.push(`Status: ${block.assert.status}`);
+          if (block.claim) {
+            const assessment = assessWorkbookClaim(block.claim, workbook, project);
+            lines.push(`Evidence claim: ${block.claim.text}`, `Status at export: ${assessment.status}`, assessment.reason,
+              `Recorded citations: ${JSON.stringify(block.claim.evidence)}`, `Bounded checker: ${JSON.stringify(block.claim.checker ?? null)}`);
+          } else {
+            if (block.assert?.expected) lines.push(`Expected: ${block.assert.expected}`);
+            if (block.assert?.status) lines.push(`Status: ${block.assert.status}`);
+          }
         } else if (block.type === "visualize" && !block.documentContent) {
           const note = block.visualize?.notes?.trim();
           if (note) lines.push(`> ${note}`);
@@ -11488,7 +11501,7 @@ const buildWorkbookAnalysisTablesCsv = (workbooks: Workbook[], activeWorkbookId:
   return rows.join("\n");
 };
 
-const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: string | null) => {
+const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: string | null, project: Math3DProject | null = null) => {
   const exportedAt = formatExportTimestamp(Date.now());
   const multi = workbooks.length > 1;
   const hasWorkbooks = workbooks.length > 0;
@@ -11551,7 +11564,7 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
     `;
   };
 
-  const blocksHtml = (blocks: Workbook["stages"][number]["blocks"]) =>
+  const blocksHtml = (blocks: Workbook["stages"][number]["blocks"], workbook: Workbook) =>
     blocks
       .map((block, blockIndex) => {
         const blockLabel = WORKBOOK_EXPORT_BLOCK_LABELS[block.type];
@@ -11594,7 +11607,10 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
             ${block.interaction?.summary ? `<div>Summary: ${escapeHtml(block.interaction.summary)}</div>` : ""}
           </div>`;
         } else if (block.type === "assert") {
-          body = `<div class="block-body">
+          if (block.claim) {
+            const assessment = assessWorkbookClaim(block.claim, workbook, project);
+            body = `<div class="block-body"><strong>Evidence claim</strong><p>${escapeHtml(block.claim.text)}</p><p>Status at export: ${assessment.status}</p><p>${escapeHtml(assessment.reason)}</p><p>Recorded citations: ${escapeHtml(JSON.stringify(block.claim.evidence))}</p><p>Bounded checker: ${escapeHtml(JSON.stringify(block.claim.checker ?? null))}</p></div>`;
+          } else body = `<div class="block-body">
             ${block.assert?.expected ? `<div>Expected: ${escapeHtml(block.assert.expected)}</div>` : ""}
             ${block.assert?.status ? `<div>Status: ${escapeHtml(block.assert.status)}</div>` : ""}
           </div>`;
@@ -11637,7 +11653,7 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
               (stage, stageIndex) => `
                 <div class="stage">
                   <h3>${stageIndex + 1}. ${escapeHtml(stage.title)}</h3>
-                  ${stage.blocks.length ? blocksHtml(stage.blocks) : `<div class="meta">No blocks.</div>`}
+                  ${stage.blocks.length ? blocksHtml(stage.blocks, workbook) : `<div class="meta">No blocks.</div>`}
                 </div>
               `
             )
@@ -43602,6 +43618,8 @@ const App: React.FC = () => {
       title: block.title,
       text: block.text ?? "",
       formula: block.formula ?? "",
+      ...(block.documentContent ? { documentContent: block.documentContent } : {}),
+      ...(block.claim ? { claim: block.claim } : {}),
       visualize: block.visualize
         ? {
             live: block.visualize.live,
@@ -54420,6 +54438,7 @@ case "mobius":
             ? {
                 ...w,
                 updatedAt: Date.now(),
+                dependencies: w.dependencies?.filter(edge => !(edge.targetBlockId === blockId && edge.source.kind === "parameter" && edge.source.targetParamId === paramId)),
                 stages: w.stages.map((s) =>
                   s.id === stageId
                     ? {
@@ -54461,6 +54480,7 @@ case "mobius":
     ) => {
       if (IS_REPLAY_MODE) return;
       if (!activeWorkbookId) return;
+      if (workbookExecutionRef.current.workbook?.dependencies?.some(edge => edge.targetBlockId === blockId && edge.source.kind === "parameter" && edge.source.targetParamId === paramId)) return;
       const def = paramDefById.get(paramId);
       let value = rawValue;
       if (def?.kind === "number") {
@@ -56844,7 +56864,7 @@ case "mobius":
   }, [workbookBundleJson]);
 
   const handleExportWorkbooksMarkdown = useCallback(() => {
-    const markdown = buildWorkbooksMarkdown(workbooks, activeWorkbookId);
+    const markdown = buildWorkbooksMarkdown(workbooks, activeWorkbookId, getWorkbookDependencyProjectRef.current());
     const base =
       workbooks.length > 1
         ? "math3d-book"
@@ -56853,7 +56873,7 @@ case "mobius":
   }, [workbooks, activeWorkbookId, activeWorkbook]);
 
   const handleExportWorkbooksPdf = useCallback(() => {
-    const html = buildWorkbooksReportHtml(workbooks, activeWorkbookId);
+    const html = buildWorkbooksReportHtml(workbooks, activeWorkbookId, getWorkbookDependencyProjectRef.current());
     const base =
       workbooks.length > 1
         ? "math3d-book"
@@ -69799,6 +69819,7 @@ case "mobius":
         return;
       }
       const sourceHashes = new Map<string, ReturnType<typeof workbookBlockSourceHash>>();
+      const parameterHashes = new Map((execution.workbook?.namedParameters ?? []).map(parameter => [parameter.id, workbookNamedParameterHash(parameter)]));
       for (const edge of execution.workbook?.dependencies ?? []) if (edge.targetBlockId === blockId && edge.source.kind === "block") {
         const sourceBlock = graph.blockMetaById.get(edge.source.blockId)?.block;
         if (sourceBlock) sourceHashes.set(edge.source.blockId, workbookBlockSourceHash(sourceBlock));
@@ -69806,6 +69827,8 @@ case "mobius":
       const acknowledgeBlockSources = (dependencies: WorkbookDependency[] | undefined) => dependencies?.map((edge) =>
         edge.targetBlockId === blockId && edge.source.kind === "block" && sourceHashes.has(edge.source.blockId)
           ? { ...edge, source: { ...edge.source, sourceHash: sourceHashes.get(edge.source.blockId)! } }
+          : edge.targetBlockId === blockId && edge.source.kind === "parameter" && parameterHashes.has(edge.source.parameterId)
+            ? { ...edge, source: { ...edge.source, sourceHash: parameterHashes.get(edge.source.parameterId)! } }
           : edge);
       const dependencyRefs = (acknowledgeBlockSources(execution.workbook?.dependencies) ?? [])
         .filter((edge) => edge.targetBlockId === blockId);
@@ -70091,6 +70114,50 @@ case "mobius":
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
   }, [handleRunComputeBlock]);
+
+  const parameterAffectedBlocks = useCallback((parameterId: string) => activeWorkbook
+    ? workbookParameterAffectedBlocks(activeWorkbook, parameterId, workbookGraph.dependenciesById) : [], [activeWorkbook, workbookGraph]);
+  const handleChangeNamedParameters = useCallback((next: Workbook) => {
+    if (IS_REPLAY_MODE) return;
+    setWorkbooks(previous => previous.map(workbook => workbook.id === next.id && next.id === activeWorkbookId ? { ...next, updatedAt: Date.now() } : workbook));
+  }, [activeWorkbookId]);
+  const handleRunParameterAffected = useCallback(async (parameterId: string) => {
+    if (IS_REPLAY_MODE) return;
+    const start = workbookExecutionRef.current;
+    const parameter = start.workbook?.namedParameters?.find(item => item.id === parameterId);
+    if (!parameter || !start.workbook) return;
+    const hash = workbookNamedParameterHash(parameter), workbookId = start.workbook.id;
+    const affected = new Set(workbookParameterAffectedBlocks(start.workbook, parameterId, start.graph.dependenciesById));
+    const attempted = new Set<string>();
+    for (let pass = 0; pass < affected.size; pass++) {
+      const execution = workbookExecutionRef.current, workbook = execution.workbook;
+      const current = workbook?.namedParameters?.find(item => item.id === parameterId);
+      if (!workbook || workbook.id !== workbookId || !current || workbookNamedParameterHash(current) !== hash) return;
+      const freshness = resolveWorkbookFreshness(workbook, workbookNeedsProjectInspection(workbook) ? getWorkbookDependencyProjectRef.current() : null, execution.computeStatusById);
+      const next = execution.graph.orderedBlocks.find(({ block }) => affected.has(block.id) && !attempted.has(block.id) &&
+        ["compute", "visualize"].includes(block.type) && isWorkbookBlockEnabled(block) && !freshness.get(block.id)?.blockedBySource);
+      if (!next) break;
+      attempted.add(next.block.id);
+      if (next.block.type === "compute") await handleRunComputeBlock(next.stageId, next.block.id, next.block.compute?.operatorId);
+      else {
+        Object.entries(next.block.params?.values ?? {}).forEach(([id, value]) => applyParamValue(id, value));
+        // Acknowledge only the source generation whose values were applied.
+        setWorkbooks(previous => previous.map(book => book.id !== workbookId ? book : { ...book, updatedAt: Date.now(), dependencies: book.dependencies?.map(edge => {
+          if (edge.targetBlockId !== next.block.id) return edge;
+          if (edge.source.kind === "parameter") {
+            const source = workbook.namedParameters?.find(item => item.id === (edge.source.kind === "parameter" ? edge.source.parameterId : ""));
+            return source ? { ...edge, source: { ...edge.source, sourceHash: workbookNamedParameterHash(source) } } : edge;
+          }
+          if (edge.source.kind === "block") {
+            const source = execution.graph.blockMetaById.get(edge.source.blockId)?.block;
+            return source ? { ...edge, source: { ...edge.source, sourceHash: workbookBlockSourceHash(source) } } : edge;
+          }
+          return edge;
+        }) }));
+      }
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+  }, [handleRunComputeBlock, applyParamValue]);
 
   const handleRunFromBlock = useCallback(
     async (stageId: WorkbookStageId, blockId: string) => {
@@ -78238,6 +78305,23 @@ case "mobius":
       return readNotebookProjectContext(activeNotebookProjectRef.current,
         localStorage.getItem(PROJECT_STORAGE_KEY), captureMixedKernelWorkspace)?.project ?? null;
     } catch { return null; }
+  };
+  const readNotebookArtifact: NotebookArtifactReader = (handle, source) => {
+    const mesh = meshAnalysisKernelBridge.artifactRegistry().resolve(handle, source);
+    if (mesh.ok) return mesh.bytes;
+    const volume = volumeExtractionBridgeRef.current?.artifacts().resolve(handle, source);
+    return volume?.ok ? volume.bytes : null;
+  };
+  const getNotebookContext = () => readNotebookProjectContext(activeNotebookProjectRef.current, localStorage.getItem(PROJECT_STORAGE_KEY), captureMixedKernelWorkspace, readNotebookArtifact);
+  const workbookClaimProject = activeWorkbook?.stages.some(stage => stage.blocks.some(block => !!block.claim)) ? getWorkbookDependencyProjectRef.current() : null;
+  const workbookEvidenceClaims = activeWorkbook?.stages.flatMap(stage => stage.blocks.filter(block => !!block.claim).map(block => ({
+    workbookId: activeWorkbook.id, stageId: stage.id, blockId: block.id, title: block.title, text: block.claim!.text,
+    ...assessWorkbookClaim(block.claim!, activeWorkbook, workbookClaimProject),
+  }))) ?? [];
+  const openWorkbookClaim = (workbookId: string, stageId: string, blockId: string) => {
+    setActiveWorkbookId(workbookId); setActiveStageId(stageId as WorkbookStageId);
+    setFullWorkbookSelectedBlockRef({ stageId: stageId as WorkbookStageId, blockId });
+    setGeometryWorkspaceTab("build"); setGeometryMode("workbook"); setGeometryWorkbookUiMode("full"); setRightPanelTab("workbook");
   };
   const cgalServiceColor = cgalServiceReady ? "#1f894f" : "#b42318";
   const meshOperationServiceColor = meshOperationServiceReady ? "#1f894f" : "#b42318";
@@ -90209,7 +90293,7 @@ case "mobius":
                   ) : (
                     <WorkbookPanel
                       workbooks={workbooks}
-                      getNotebookProject={() => readNotebookProjectContext(activeNotebookProjectRef.current, localStorage.getItem(PROJECT_STORAGE_KEY), captureMixedKernelWorkspace)}
+                      getNotebookProject={getNotebookContext}
                       onOpenProjects={() => setProjectsOpen(true)}
                       onOpenNote={(id) => setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }))}
                       onOpenNotebookDocument={(id, module) => {
@@ -90244,6 +90328,9 @@ case "mobius":
                       onAddBlock={handleAddWorkbookBlock}
                       onUpdateBlock={handleUpdateWorkbookBlock}
                       onChangeDependencies={handleChangeWorkbookDependencies}
+                      onChangeNamedParameters={handleChangeNamedParameters}
+                      parameterAffectedBlocks={parameterAffectedBlocks}
+                      onRunParameterAffected={handleRunParameterAffected}
                       onRemoveBlock={handleRemoveWorkbookBlock}
                       onMoveBlock={handleMoveWorkbookBlock}
                       onToggleBlockEnabled={handleToggleWorkbookBlockEnabled}
@@ -91510,9 +91597,15 @@ case "mobius":
 
               <div style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff", minHeight: 0, overflow: "auto" }}>
                 <div style={{ borderBottom: "1px solid #e5e7eb", padding: "8px 10px", fontSize: 12, fontWeight: 700 }}>
-                  Block editor
+                  {geometryWorkspaceTab === "claims" ? "Claims" : "Block editor"}
                 </div>
                 <div style={{ padding: 10, display: "grid", gap: 10 }}>
+                  {geometryWorkspaceTab === "claims" ? <ConstructionLabPanel key={geometryEditorPanelKey} seed={geometryEditorSeed}
+                    workspaceTab="claims" hideWorkspaceTabs onChange={handleConstructionLabChange}
+                    onFocusObjectInScene={handleConstructionLabFocusObjectInScene}
+                    workbookClaims={workbookEvidenceClaims} onOpenWorkbookClaim={openWorkbookClaim} /> : <>
+                  {activeWorkbook && <WorkbookNamedParameters key={activeWorkbook.id} workbook={activeWorkbook} catalog={paramCatalog} readOnly={IS_REPLAY_MODE}
+                    onChange={handleChangeNamedParameters} affected={parameterAffectedBlocks} onRunAffected={handleRunParameterAffected} />}
                   <div style={{ fontSize: 11, fontWeight: 700 }}>
                     {fullWorkbookSelectedStage
                       ? `Stage: ${fullWorkbookSelectedStage.title}`
@@ -91549,6 +91642,13 @@ case "mobius":
                   {fullWorkbookSelectedBlockMeta ? (
                     <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 10, display: "grid", gap: 8 }}>
                       <div style={{ fontSize: 11, fontWeight: 700 }}>Selected block editor</div>
+                      {fullWorkbookSelectedBlockMeta.block.notebookReference && <WorkbookProvenance reference={fullWorkbookSelectedBlockMeta.block.notebookReference} project={getWorkbookDependencyProjectRef.current()} reader={readNotebookArtifact} />}
+                      {fullWorkbookSelectedBlockMeta.block.type === "assert" && activeWorkbook && (() => {
+                        const context = getNotebookContext();
+                        return <WorkbookClaimEditor key={fullWorkbookSelectedBlockMeta.block.id} workbook={activeWorkbook} block={fullWorkbookSelectedBlockMeta.block}
+                          project={context?.project ?? null} projectLive={context?.live ?? false} reader={context?.readArtifact} readOnly={IS_REPLAY_MODE}
+                          onChange={claim => handleUpdateWorkbookBlock(fullWorkbookSelectedBlockMeta.stageId, fullWorkbookSelectedBlockMeta.block.id, { claim })} />;
+                      })()}
                       <label style={{ fontSize: 11, display: "grid", gap: 4 }}>
                         Title
                         <input
@@ -91604,7 +91704,7 @@ case "mobius":
                           />
                         </label>
                       )}
-                      {fullWorkbookSelectedBlockMeta.block.type === "assert" && (
+                      {fullWorkbookSelectedBlockMeta.block.type === "assert" && !fullWorkbookSelectedBlockMeta.block.claim && (
                         <label style={{ fontSize: 11, display: "grid", gap: 4 }}>
                           Expected
                           <textarea
@@ -91664,6 +91764,7 @@ case "mobius":
                   ) : (
                     <div style={{ fontSize: 11, opacity: 0.75 }}>No block selected.</div>
                   )}
+                  </>}
                 </div>
               </div>
 
@@ -103872,6 +103973,8 @@ case "mobius":
                     </div>
                     <ConstructionLabPanel
                       key={geometryEditorPanelKey}
+                      workbookClaims={workbookEvidenceClaims}
+                      onOpenWorkbookClaim={openWorkbookClaim}
                       seed={geometryEditorSeed}
                       workspaceTab={geometryWorkspaceTab}
                       onWorkspaceTabChange={setGeometryWorkspaceTab}

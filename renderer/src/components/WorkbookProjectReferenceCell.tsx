@@ -7,6 +7,7 @@ import {
   type NotebookReference,
 } from "@math3d/workbook";
 import type { NotebookProjectContext } from "../workbook/notebookProjectContext";
+import { WorkbookProvenance } from "./WorkbookProvenance";
 
 type Props = {
   reference?: NotebookReference;
@@ -37,7 +38,7 @@ export const WorkbookProjectReferenceCell: React.FC<Props> = ({ reference, readO
       setError(cause instanceof Error ? cause.message : "Project status could not be read.");
     }
   };
-  useEffect(() => { refresh(); }, [reference?.projectId, reference?.targetId]);
+  useEffect(() => { refresh(); const timer = window.setInterval(refresh, 3000); return () => window.clearInterval(timer); }, [reference?.projectId, reference?.targetId, getProject]);
 
   const validReference = reference ? normalizeNotebookReference(reference) : null;
   const project = context?.project;
@@ -86,7 +87,7 @@ export const WorkbookProjectReferenceCell: React.FC<Props> = ({ reference, readO
       <span>{validReference.kind === "document" ? "Document" : "Saved result"} · source revision {validReference.source.revision} · {inspection?.status ?? "unresolved"}</span>
       <span style={{ overflowWrap: "anywhere", color: "#64748b" }}>{validReference.targetId}</span>
       <span>{inspection?.reason ?? "Open the referenced Project to verify this link."}</span>
-      {result && <span>Authority: {result.status} · method: {result.provenance.operation.algorithm} · artifacts: {result.artifacts.length} (availability checked in Projects)</span>}
+      <WorkbookProvenance project={project ?? null} reference={validReference} reader={context?.readArtifact} />
       <button type="button" disabled={!context?.live || !sourceEntry || inspection?.status === "different-project" || inspection?.status === "missing"} onClick={() => sourceEntry && onOpenDocument(sourceEntry.expected.id, sourceEntry.module)} style={{ width: "fit-content", fontSize: 11 }}>
         {validReference.kind === "result" ? "Open source document" : "Open current document"}
       </button>

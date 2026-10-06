@@ -1,6 +1,8 @@
 import React from "react";
 import type { KernelWorkspaceModule, Math3DProject } from "@math3d/core";
-import { inspectNotebookReference, type Workbook, type WorkbookBlock, type WorkbookStageId } from "@math3d/workbook";
+import { inspectNotebookReference, type NotebookArtifactReader, type Workbook, type WorkbookBlock, type WorkbookStageId } from "@math3d/workbook";
+import { WorkbookProvenance } from "./WorkbookProvenance";
+import { WorkbookClaimEditor } from "./WorkbookClaimEditor";
 import { renderNotebookMarkdown, renderNotebookMath, workbookDocumentContentHtml } from "../workbook/notebookContent";
 import { WorkbookContentEditor } from "./WorkbookContentEditor";
 import "katex/dist/katex.min.css";
@@ -10,6 +12,7 @@ type Props = {
   workbook: Workbook;
   project: Math3DProject | null;
   projectLive: boolean;
+  readArtifact?: NotebookArtifactReader;
   readOnly: boolean;
   statusFor: (block: WorkbookBlock) => { state: string; label: string };
   onUpdateBlock: (stageId: WorkbookStageId, blockId: string, patch: Partial<WorkbookBlock>) => void;
@@ -26,7 +29,7 @@ const blockKinds: Record<WorkbookBlock["type"], string> = {
 
 /** A reading surface over the live Workbook model. Project targets are resolved by ID, never copied. */
 export const WorkbookDocumentView: React.FC<Props> = ({
-  workbook, project, projectLive, readOnly, statusFor, onUpdateBlock, onEditBlock, onOpenDocument, onOpenProjects, onOpenNote,
+  workbook, project, projectLive, readArtifact, readOnly, statusFor, onUpdateBlock, onEditBlock, onOpenDocument, onOpenProjects, onOpenNote,
 }) => {
   const projectWorkbook = project?.workbooks?.find((item) => item.id === workbook.id);
   return <article data-testid="workbook-document-view" style={{ display: "grid", gap: 16, fontSize: 12, minWidth: 0 }}>
@@ -85,6 +88,7 @@ export const WorkbookDocumentView: React.FC<Props> = ({
               <strong>{reference.kind === "document" ? sourceTitle || source?.module || "Project document" : inspection?.result?.provenance.operation.type || "Project result"}</strong>
               <span>{reference.kind === "document" ? "Document" : "Saved result"} · source revision {reference.source.revision} · {inspection?.status ?? "unresolved"}</span>
               <span style={{ color: "#64748b" }}>{inspection?.reason ?? "Open the named Project to inspect this reference."}</span>
+              <WorkbookProvenance project={project} reference={reference} reader={readArtifact} />
               <button type="button" disabled={!projectLive || !source || inspection?.status === "missing" || inspection?.status === "different-project"}
                 onClick={() => source && onOpenDocument(source.expected.id, source.module)} style={{ justifySelf: "start", fontSize: 11 }}>Open source document</button>
             </> : <span>No Project target linked yet.</span>}
@@ -100,8 +104,11 @@ export const WorkbookDocumentView: React.FC<Props> = ({
               <figcaption>{snapshot?.datasetRef ?? "Captured view"} · {snapshot?.viewerKind ?? "viewer"}</figcaption>
             </figure>) : <span>No figure captured yet.</span>}
           </div>}
-          {block.type === "assert" && <div>{block.assert?.expected || "No expected condition yet."} · {block.assert?.status ?? "pending"}</div>}
+          {block.type === "assert" && !block.claim && <div>{block.assert?.expected || "No expected condition yet."} · {block.assert?.status ?? "pending"}</div>}
+          {block.type === "assert" && <WorkbookClaimEditor key={block.id} workbook={workbook} block={block} project={project} projectLive={projectLive} reader={readArtifact} readOnly={readOnly} onChange={claim => onUpdateBlock(stage.id, block.id, { claim })} />}
           {block.type === "interaction" && <div>{block.interaction?.kind || "Interaction"} · open the Block view to use the controls.</div>}
+          {workbook.dependencies?.filter(edge => edge.targetBlockId === block.id && edge.source.kind === "project").map(edge => edge.source.kind === "project" &&
+            <WorkbookProvenance key={edge.id} project={project} reference={edge.source.reference} reader={readArtifact} />)}
           {notes.map((edge) => {
             if (edge.source.kind !== "note") return null;
             const noteSource = edge.source;

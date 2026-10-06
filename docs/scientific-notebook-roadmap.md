@@ -93,9 +93,50 @@ freeze, Project export and cold reopen, followed by a return to live values.
 
 Verification for these deliveries: Project contract tests, Workbook/Notes unit
 regressions, application and mobile typechecks, desktop/web builds, kernel
-dependency checks, and `tests/e2e/project-next-three.spec.ts`. The next integrated
-Notebook item is **WB04**. Other selection coordinate systems, richer result
-types and provenance-aware publication bundles remain in the later rows.
+dependency checks, and `tests/e2e/project-next-three.spec.ts`. At that point, the
+next integrated Notebook item was **WB04**. Other selection coordinate systems,
+richer result types and provenance-aware publication bundles remain in later rows.
+
+## WB04, NOTE04 and WB05 delivery — October 6
+
+**WB04:** Workbooks now retain up to 32 named numeric parameters with stable
+IDs, explicit units, finite bounds and steps. Bindings connect these sources to
+existing operation/view inputs. Edits update only explicit consumers and mark
+their descendants stale; display renames preserve the generation hash. Missing
+sources remain unavailable instead of resolving by label. `Run affected`
+previews explicit and existing inferred input dependencies, executes existing
+Workbook operators, and applies bound view values. Successful runs acknowledge
+the captured parameter generation; failures retain prior outputs and stale
+bindings. Local bound inputs are read-only. Named sources and bindings survive
+checksummed Project Workbook export and cold reopen.
+
+**NOTE04:** Linked cells, Document view, evidence citations and Geometry's full
+Workbook editor expose recorded/current source generations, Project relations,
+result authority, method/version, backend/version, parameters, numeric context,
+warnings and saved summaries. Historical results remain visible as stale.
+Artifact inspection resolves the exact source/handle through existing registries
+and verifies bytes against the retained checksum and byte count. Missing bytes
+are unavailable; metadata or an absent reader remains unverified. Checks run
+when the provenance disclosure is opened. Saved results declaring no sidecars
+are labeled explicitly.
+
+**WB05:** Existing Check blocks can carry bounded claim text and up to eight
+exact result or Snapshot A/B citations. Claims derive unverified, supported,
+contradicted or stale status. The explicit scalar-range checker checks an
+allowlisted finite saved summary field against inclusive bounds in reported
+units, retaining result authority and method. It does not prove arbitrary prose;
+there is no manually selectable verified state. Changed/missing evidence becomes
+stale without relinking. Editing prose or citations clears the checker.
+Geometry's compact and full Claims views display Workbook evidence separately
+from construction checks, with a link to the same claim editor. Project resources
+retain citations/checkers, and Markdown/print reports include the export-time
+assessment, exact citations and bounded qualifications.
+
+Validation includes the Project contracts, Workbook regressions, desktop/mobile
+typechecks, desktop/web builds, dependency/license checks and desktop journeys in
+`tests/e2e/workbook-evidence.spec.ts`. The next three integrated items are
+**NOTE05**, **WB06** and **NOTE06**: supported reruns, provenance-aware snapshots
+and qualified publication artifacts.
 
 ## First milestone acceptance
 
