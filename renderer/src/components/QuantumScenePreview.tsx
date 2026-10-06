@@ -1,13 +1,18 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { GeometryScene } from "../geometry/types";
 import { GeometryViewer } from "./GeometryViewer";
+import { QuantumFieldSlice, type QuantumField } from "./QuantumFieldSlice";
+import { QuantumFieldSurface } from "./QuantumFieldSurface";
 
 type Vector3 = { x: number; y: number; z: number };
 type SceneSource = {
-  provenance: { runId: string; model: string; resultSha256: string; engine: string; engineVersion: string };
+  provenance: { runId: string; model: string; resultSha256: string; engine: string; engineVersion: string;
+    parameters?: Record<string, number | string> };
   coordinates: { axes: [string, string, string]; units: [string, string, string]; handedness: string };
   datasets: { id: string; count: number; components: number; unit: string }[];
   objects: { id: string; label: string; kind: string; indices?: string; style: { color: string; opacity: number } }[];
+  fields?: QuantumField[];
+  annotations: { id: string; text: string }[];
   bands?: { objects: string[]; labels: string[]; energyUnit: string; bulkGap: number };
 };
 export type QuantumSceneWorkspaceReference = { directory: string; sceneFingerprint: string };
@@ -28,6 +33,27 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
   const document = opened.document;
   const details = document.extensions["quantum-scene/v1"] as { scene: SceneSource; selectionTransferred: false };
   const scene = details.scene;
+  const count = (document.geometry.points?.length ?? 0) + (document.geometry.segments?.length ?? 0) +
+    (document.geometry.triangles?.length ?? 0);
+  const [view, setView] = useState<"geometry" | "slice" | "surface">(scene.fields?.length && count === 0 ? "slice" : "geometry");
+  useEffect(() => { setView(scene.fields?.length && count === 0 ? "slice" : "geometry"); }, [opened.reference.sceneFingerprint]);
+  const [locateStatus, setLocateStatus] = useState("");
+  const [locating, setLocating] = useState(false);
+  const locateGeneration = useRef(0);
+  useEffect(() => {
+    locateGeneration.current += 1; setLocateStatus(""); setLocating(false);
+  }, [opened.reference.sceneFingerprint]);
+  const revealSource = async () => {
+    const current = ++locateGeneration.current;
+    setLocating(true); setLocateStatus("");
+    try {
+      const result = await window.quantumScenes!.revealSource(opened.reference.sceneFingerprint);
+      if (locateGeneration.current === current) setLocateStatus(result.ok ?
+        "Requested the system file manager to reveal the re-verified bundle." : `Source reveal refused: ${result.error}`);
+    } catch (error) {
+      if (locateGeneration.current === current) setLocateStatus(`Source reveal refused: ${String((error as Error)?.message ?? error)}`);
+    } finally { if (locateGeneration.current === current) setLocating(false); }
+  };
   const camera = document.cameras[0];
   const [pickedBandSample, setPickedBandSample] = useState<PickedBandSample | null>(null);
   const meshObjects = useMemo(() => {
@@ -63,9 +89,6 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
       Math.hypot(best.x - info.point.x, best.y - info.point.y, best.z - info.point.z) ? candidate : best);
     setPickedBandSample({ objectId: mesh.id, label: mesh.label, sampleId: nearest.id ?? "unknown", point: nearest });
   };
-  const count = (document.geometry.points?.length ?? 0) + (document.geometry.segments?.length ?? 0) +
-    (document.geometry.triangles?.length ?? 0);
-
   return (
     <div role="dialog" aria-modal="true" aria-label="Verified quantum scene" data-testid="quantum-scene-preview"
       style={{ position: "fixed", inset: 0, zIndex: 2900, background: "rgba(15,23,42,.64)", display: "grid", placeItems: "center", padding: 20 }}>
@@ -76,18 +99,41 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
           <button type="button" onClick={onClose} data-testid="quantum-scene-close">Close</button>
         </header>
         <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)" }}>
-          <div style={{ minHeight: 0, position: "relative" }} data-testid="quantum-scene-geometry">
-            {count > 0 ? <GeometryViewer scene={viewerScene} meshOverrides={meshObjects} showPlanes={false}
+          <div style={{ minHeight: 0, position: "relative", display: "flex", flexDirection: "column" }} data-testid="quantum-scene-geometry">
+            {Boolean(scene.fields?.length) && <div style={{ padding: 8, display: "flex", gap: 8 }}>
+              {count > 0 && <button type="button" onClick={() => setView("geometry")} aria-pressed={view === "geometry"}>Geometry</button>}
+              <button type="button" onClick={() => setView("slice")} aria-pressed={view === "slice"}>Field slice</button>
+              {scene.fields?.some(field => field.kind === "complex-field") &&
+                <button type="button" onClick={() => setView("surface")} aria-pressed={view === "surface"}>Density surface</button>}
+            </div>}
+            <div style={{ minHeight: 0, flex: 1, position: "relative" }}>
+            {view === "slice" && scene.fields?.length ? <QuantumFieldSlice fingerprint={opened.reference.sceneFingerprint}
+              fields={scene.fields} axes={scene.coordinates.axes} units={scene.coordinates.units} /> :
+              view === "surface" && scene.fields?.length ? <QuantumFieldSurface fingerprint={opened.reference.sceneFingerprint}
+                resultSha256={scene.provenance.resultSha256} fields={scene.fields} camera={camera} /> :
+              count > 0 ? <GeometryViewer scene={viewerScene} meshOverrides={meshObjects} showPlanes={false}
               pickEnabled={meshObjects.length > 0} onPick={pickBand} onPickMiss={() => setPickedBandSample(null)}
               inspectSelectionMeshKey={pickedBandSample?.objectId}
               cameraOverride={camera ? { position: camera.position, target: camera.target, up: camera.up } : null} />
               : <p style={{ padding: 20 }}>This scene has no mapped geometry. Its field datasets are listed in the inspector.</p>}
+            </div>
           </div>
           <aside style={{ padding: 16, overflow: "auto", borderLeft: "1px solid var(--border, #cbd5e1)", fontSize: 12, lineHeight: 1.5 }}>
             <h3 style={{ marginTop: 0 }}>Source and coordinates</h3>
             <div><b>Run:</b> {scene.provenance.runId}</div>
             <div><b>Result SHA-256:</b> <code style={{ overflowWrap: "anywhere" }}>{scene.provenance.resultSha256}</code></div>
+            <div><b>Bundle:</b> <code data-testid="quantum-source-directory" style={{ overflowWrap: "anywhere" }}>{opened.directory}</code></div>
+            <button type="button" data-testid="quantum-reveal-source" disabled={locating} onClick={() => void revealSource()}>
+              {locating ? "Re-verifying source…" : "Reveal verified bundle"}
+            </button>
+            {locateStatus && <p role="status" data-testid="quantum-reveal-status">{locateStatus}</p>}
+            <p>This locates the exported bundle, not the original Theory Lab run. The run ID above is its provenance identifier.</p>
             <div><b>Engine:</b> {scene.provenance.engine} {scene.provenance.engineVersion}</div>
+            {scene.provenance.parameters && <><h3>Stored model inputs</h3><dl data-testid="quantum-scene-parameters" style={{ margin: 0 }}>
+              {Object.entries(scene.provenance.parameters).map(([key, value]) => <div key={key} style={{ display: "flex", gap: 8 }}>
+                <dt style={{ minWidth: 55 }}>{key}</dt><dd style={{ margin: 0 }}>{String(value)}</dd>
+              </div>)}
+            </dl></>}
             <div><b>Axes:</b> {scene.coordinates.axes.join(", ")} ({scene.coordinates.handedness}-handed)</div>
             <div><b>Coordinate units:</b> {scene.coordinates.units.join(", ")}</div>
             {scene.bands && <>
@@ -114,7 +160,10 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
             </li>)}</ul>
             <div><b>Rendered objects:</b> {opened.mappedObjectIds.length}</div>
             <div><b>Deferred objects:</b> {opened.deferredObjectIds.length}</div>
-            <div><b>Deferred fields:</b> {opened.deferredFieldIds.length}</div>
+            <div><b>Native field documents deferred:</b> {opened.deferredFieldIds.length}</div>
+            {scene.fields?.length ? <p>Field slices and bounded density surfaces are read-only views derived from verified amplitudes. Native Volume admission, phase-colored lobes, and editable 3D field documents remain deferred.</p> : null}
+            {scene.annotations?.length ? <><h3>Source annotations</h3>{scene.annotations.map(annotation =>
+              <p key={annotation.id}>{annotation.text}</p>)}</> : null}
             {(opened.deferredObjectIds.length > 0 || opened.deferredFieldIds.length > 0) &&
               <p>Deferred data remains verified in the source bundle; this preview does not render it yet.</p>}
             <p>Full saved-run scene. Local Lab time or site selection was not transferred.</p>

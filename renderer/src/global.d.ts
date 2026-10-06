@@ -598,6 +598,10 @@ declare global {
       reopenRecent: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
       consumeLaunch: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
       openReference: (reference: unknown) => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
+      fieldSlice: (request: import("./components/QuantumFieldSlice").FieldSliceRequest) => Promise<import("./components/QuantumFieldSlice").FieldSlice>;
+      fieldSample: (request: import("./components/QuantumFieldSlice").FieldSampleRequest) => Promise<import("./components/QuantumFieldSlice").FieldSample>;
+      fieldSurface: (request: import("./components/QuantumFieldSurface").FieldSurfaceRequest) => Promise<import("./components/QuantumFieldSurface").FieldSurface>;
+      revealSource: (fingerprint: string) => Promise<{ ok: true; directory: string } | { ok: false; error: string }>;
     };
     surfacePresets?: {
       list: (kind: PresetKind) => Promise<SurfacePresetRecord[]>;

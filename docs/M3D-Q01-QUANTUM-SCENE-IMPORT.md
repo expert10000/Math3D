@@ -17,9 +17,12 @@ point clouds, polylines, endpoint segments and indexed meshes map to existing
 Math3D geometry without coordinate conversion; a 20,000-primitive cap defers
 oversized objects rather than truncating them. The source camera, axes,
 units, provenance, dataset descriptors, source object IDs and annotations
-remain in the returned validated scene/extension. Vector objects, scalar or
-complex fields and hidden objects are marked deferred, because rendering or
-unit interpretation needs a dedicated later adapter. Verified numerical
+remain in the returned validated scene/extension. Vector objects, native scalar
+or complex field documents and hidden objects are marked deferred, because full
+project admission or unit interpretation needs a dedicated later adapter. A
+bounded field-slice inspector covers supplied scalar/complex grids: main retains
+verified arrays and the renderer receives a small RGBA plane or bounded derived
+surface plus exact selected samples. Verified numerical
 arrays remain available on the returned import result; they are not invented
 from the Math3D geometry.
 
@@ -36,4 +39,13 @@ Acceptance: `npm run test:quantum-scene:import` builds the Node module and
 tests a bounded bundle plus mutation refusals. The script also accepts a
 Theory Lab `.qscene` folder path as an optional argument for cross-repository
 acceptance; evolution, orbital and supplied-band bundles were checked during
-M3D-Q01 delivery.
+M3D-Q01 delivery. Real 1s and 2p orbital bundles are now pinned as ongoing
+M3D-Q02 compatibility fixtures, joined by real 2s, 3p and 3d bundles. Their
+stored inputs, density/node samples, units and surface phase/sign bins are
+checked without adding a Math3D physics engine. A bounded, read-only density
+isosurface preview is derived from those verified amplitude grids in Electron
+main; it does not create a native editable Volume document.
+The read-only preview can reveal its exported `.qscene` folder in the system
+file manager. That action reopens and hashes the source bundle first, accepts
+only the active scene fingerprint from the renderer, and refuses changed or
+missing sources. It does not infer a path to the original Theory Lab run.

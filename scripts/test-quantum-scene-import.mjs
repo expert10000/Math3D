@@ -9,6 +9,8 @@ const require = createRequire(import.meta.url);
 const { importQuantumSceneBundle } = require("../dist/main/quantumScene/importer.js");
 const { rememberQuantumScene, reopenRecentQuantumScene, reopenQuantumSceneReference, sceneFingerprint } = require("../dist/main/quantumScene/recent.js");
 const { quantumSceneLaunchDirectory } = require("../dist/main/ipc/quantumSceneIpc.js");
+const { renderVerifiedFieldSlice, inspectVerifiedFieldSample } = require("../dist/main/quantumScene/fieldSlice.js");
+const { deriveVerifiedFieldSurface } = require("../dist/main/quantumScene/fieldSurface.js");
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const root = await mkdtemp(join(tmpdir(), "m3d-q01-"));
 try {
@@ -84,6 +86,58 @@ try {
   await assert.rejects(importQuantumSceneBundle(directory),/Invalid quantum-scene\/v1/);
   console.log("M3D-Q01 synthetic bundle, mapping and tamper refusal passed");
 
+  const fieldDirectory = join(root, "orbital.qscene");
+  await mkdir(fieldDirectory);
+  const realValues = [], imaginaryValues = [];
+  for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) {
+    realValues.push(x); imaginaryValues.push(y);
+  }
+  const fieldBytes = values => {
+    const bytes = Buffer.alloc(values.length * 8);
+    values.forEach((value, index) => bytes.writeDoubleLE(value, index * 8));
+    return bytes;
+  };
+  const realBytes = fieldBytes(realValues), imaginaryBytes = fieldBytes(imaginaryValues);
+  const fieldScene = {
+    ...scene, id: "fixture-orbital", title: "Verified orbital field", objects: [],
+    coordinates: { handedness: "right", axes: ["x", "y", "z"], units: ["a0", "a0", "a0"] },
+    datasets: [["real", realBytes], ["imaginary", imaginaryBytes]].map(([id, bytes]) => ({
+      id, path: `${id}.f64`, format: "f64le", count: 27, components: 1, unit: "a0^-3/2",
+      bytes: bytes.length, sha256: hash(bytes),
+    })),
+    fields: [{ id: "wavefunction", label: "Synthetic complex field", kind: "complex-field", real: "real", imaginary: "imaginary",
+      grid: { shape: [3, 3, 3], origin: [-1, -1, -1], spacing: [1, 1, 1], order: "xyz-z-fastest" } }],
+  };
+  const fieldSceneBytes = Buffer.from(JSON.stringify(fieldScene, null, 2) + "\n");
+  await writeFile(join(fieldDirectory, "scene.json"), fieldSceneBytes);
+  await writeFile(join(fieldDirectory, "real.f64"), realBytes);
+  await writeFile(join(fieldDirectory, "imaginary.f64"), imaginaryBytes);
+  await writeFile(join(fieldDirectory, "bundle.json"), JSON.stringify({ schema: "quantum-scene-bundle/v1",
+    scene: { path: "scene.json", bytes: fieldSceneBytes.length, sha256: hash(fieldSceneBytes) } }, null, 2) + "\n");
+  const orbital = await importQuantumSceneBundle(fieldDirectory);
+  assert.deepEqual(orbital.deferredFieldIds, ["wavefunction"]);
+  const request = { fingerprint: sceneFingerprint(orbital), fieldId: "wavefunction", axis: 2, index: 1, quantity: "density" };
+  const density = renderVerifiedFieldSlice(orbital, request);
+  assert.deepEqual([density.width, density.height, density.rgba.length, density.unit, density.range],
+    [3, 3, 36, "a0^-3", [0, 2]]);
+  const phase = renderVerifiedFieldSlice(orbital, { ...request, quantity: "phase" });
+  assert.equal(phase.rgba[(1 * 3 + 1) * 4 + 3], 0, "phase at a zero-amplitude node is transparent");
+  const sample = inspectVerifiedFieldSample(orbital, { ...request, u: 2, v: 1 });
+  assert.deepEqual(sample, { grid: [2, 1, 1], position: [1, 0, 0], value: 1, unit: "a0^-3", undefinedNearNode: false });
+  assert.equal(inspectVerifiedFieldSample(orbital, { ...request, quantity: "phase", u: 1, v: 1 }).value, null);
+  assert.throws(() => renderVerifiedFieldSlice(orbital, { ...request, index: 3 }), /Invalid field slice index/);
+  assert.throws(() => renderVerifiedFieldSlice(orbital, { ...request, fieldId: "missing" }), /Unknown verified scene field/);
+  const mismatchedUnits = { ...orbital, source: { ...orbital.source, datasets: orbital.source.datasets.map(dataset =>
+    dataset.id === "imaginary" ? { ...dataset, unit: "dimensionless" } : dataset) } };
+  assert.throws(() => renderVerifiedFieldSlice(mismatchedUnits, request), /different units/);
+  const scalar = { ...orbital, source: { ...orbital.source, fields: [{ ...orbital.source.fields[0], kind: "scalar-field", imaginary: undefined }] } };
+  assert.equal(renderVerifiedFieldSlice(scalar, { ...request, quantity: "real" }).unit, "a0^-3/2");
+  assert.throws(() => renderVerifiedFieldSlice(scalar, request), /Unsupported field quantity/);
+  const brokenField = Buffer.from(realBytes); brokenField[0] ^= 1;
+  await writeFile(join(fieldDirectory, "real.f64"), brokenField);
+  await assert.rejects(importQuantumSceneBundle(fieldDirectory), /integrity/);
+  console.log("M3D-Q02 bounded verified orbital slice and sample passed");
+
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
   const fixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
@@ -119,6 +173,64 @@ try {
     acceptedViews.add(key);
   }
   assert.deepEqual(acceptedViews, new Set(["ssh/standard", "ssh/bands", "qwz/standard", "qwz/bands"]));
+
+  const orbitalRoot = resolve("tests/fixtures/quantum-scene-orbitals");
+  const orbitals = [
+    ["1s", 1, 0, 0, "complex", 8, 0.1],
+    ["2s", 2, 0, 0, "complex", 12, 0.01],
+    ["2p", 2, 1, 1, "complex", 16, 0.1],
+    ["3p", 3, 1, 1, "real_cos", 24, 0.1],
+    ["3d", 3, 2, 2, "complex", 18, 0.1],
+  ];
+  for (const [name, n, l, m, basis, radius, level] of orbitals) {
+    const folder = `orbital-${name}.qscene`;
+    const real = await importQuantumSceneBundle(join(orbitalRoot, folder));
+    assert.equal(real.source.provenance.model, "hydrogenic");
+    assert.deepEqual(real.source.coordinates.units, ["a0", "a0", "a0"]);
+    assert.deepEqual(real.source.provenance.parameters, { n, l, m, basis, Z: 1, radius, grid: 21 });
+    assert.deepEqual(real.source.fields?.[0]?.grid.shape, [21, 21, 21]);
+    assert.deepEqual(real.deferredFieldIds, ["wavefunction"]);
+    const request = { fingerprint: sceneFingerprint(real), fieldId: "wavefunction", axis: 2, index: 10, quantity: "density" };
+    const slice = renderVerifiedFieldSlice(real, request);
+    assert.deepEqual([slice.width, slice.height, slice.unit, slice.rgba.length], [21, 21, "a0^-3", 21 * 21 * 4]);
+    const center = inspectVerifiedFieldSample(real, { ...request, u: 10, v: 10 });
+    assert.deepEqual(center.position, [0, 0, 0]);
+    const surface = deriveVerifiedFieldSurface(real, { fingerprint: sceneFingerprint(real), fieldId: "wavefunction", level });
+    assert.ok(surface.triangleCount > 0 && surface.triangleCount <= 20_000);
+    assert.equal(surface.indices.length, surface.triangleCount * 3);
+    assert.equal(surface.positions.length, surface.normals.length);
+    assert.deepEqual(surface.coordinateUnits, ["a0", "a0", "a0"]);
+    assert.equal(surface.unit, "a0^-3");
+    assert.ok(Math.abs(surface.threshold / surface.maximum - level) < 1e-14);
+    assert.ok(surface.positions.every(value => Number.isFinite(value) && Math.abs(value) <= radius));
+    assert.equal(surface.phaseBins.length, surface.triangleCount);
+    assert.equal(surface.realSignBins.length, surface.triangleCount);
+    assert.ok([...surface.phaseBins].every(bin => bin >= 0 && bin <= 8));
+    assert.ok([...surface.realSignBins].every(bin => bin >= 0 && bin <= 2));
+    assert.throws(() => deriveVerifiedFieldSurface(real, { fingerprint: sceneFingerprint(real), fieldId: "wavefunction", level: 0.0001 }), /threshold/);
+    if (name === "1s") {
+      assert.ok(Math.abs(center.value - 1 / Math.PI) < 1e-12, "Hydrogenic 1s center density disagrees with analytic value");
+      assert.deepEqual([...new Set(surface.realSignBins)], [1]);
+    } else if (name === "2s") {
+      assert.ok(Math.abs(center.value - 1 / (8 * Math.PI)) < 1e-12, "Hydrogenic 2s center density disagrees with analytic value");
+      assert.deepEqual(new Set(surface.realSignBins), new Set([0, 1]), "2s radial sign change was lost");
+      assert.deepEqual(new Set(surface.phaseBins), new Set([0, 4]), "2s real phase jump was lost");
+    } else {
+      assert.equal(center.value, 0, `Hydrogenic ${name} has a central node`);
+      assert.equal(inspectVerifiedFieldSample(real, { ...request, quantity: "phase", u: 10, v: 10 }).value, null);
+      if (name === "2p") assert.ok(inspectVerifiedFieldSample(real, { ...request, u: 11, v: 10 }).value > 0);
+      assert.deepEqual(new Set(surface.realSignBins), new Set([0, 1]));
+      assert.deepEqual(new Set(surface.phaseBins), basis === "real_cos" ? new Set([0, 4]) : new Set([0, 1, 2, 3, 4, 5, 6, 7]));
+    }
+  }
+  console.log("M3D-Q02 real Theory Lab 1s/2s/2p/3p/3d fields, units, nodes and phase/sign surface bins passed");
+
+  const orbitalTamper = join(root, "orbital-tamper.qscene");
+  await cp(join(orbitalRoot, "orbital-3d.qscene"), orbitalTamper, { recursive: true });
+  const damagedOrbital = Buffer.from(await readFile(join(orbitalTamper, "psi-real.f64")));
+  damagedOrbital[0] ^= 1;
+  await writeFile(join(orbitalTamper, "psi-real.f64"), damagedOrbital);
+  await assert.rejects(importQuantumSceneBundle(orbitalTamper), /integrity/);
 
   const copied = join(root, "real-lab-tamper.qscene");
   await cp(join(fixtureRoot, fixtureNames[0]), copied, { recursive: true });
