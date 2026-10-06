@@ -20,6 +20,9 @@ test("Project detail keeps Workbooks and Notes together through save, reopen and
     await expect(projects.getByRole("heading", { name: "Graph Derivative Investigation", exact: true, level: 2 })).toBeVisible();
     await expect(projects.getByTestId("project-library")).toBeHidden();
     await expect(projects.getByTestId(`project-workbook-${workbookId}`)).toBeVisible();
+    const saveButtonWidth = await projects.getByTestId("project-save").evaluate((button) => button.getBoundingClientRect().width);
+    const summaryWidth = await projects.locator(".project-workspace-summary").evaluate((summary) => summary.getBoundingClientRect().width);
+    expect(saveButtonWidth).toBeLessThan(summaryWidth / 2);
 
     await projects.getByTestId("project-new-note").click();
     const notes = page.getByTestId("project-notes-panel");
@@ -41,8 +44,8 @@ test("Project detail keeps Workbooks and Notes together through save, reopen and
     const linked = saved.notes.find((note: any) => note.anchor?.kind === "workbook-block");
     expect(linked.anchor.workbookId).toBe(workbookId);
 
-    await notes.getByRole("button", { name: "Projects", exact: true }).click();
-    await projects.getByTestId("project-detail-toggle").click();
+    await notes.getByRole("button", { name: "Back to Project" }).click();
+    await expect(projects.getByTestId("project-detail-toggle")).toHaveAttribute("aria-pressed", "true");
     await expect(projects.getByTestId(`project-workbook-${workbookId}`).getByTestId(`project-open-note-${linked.identity.id}`)).toBeVisible();
     await expect(projects.getByTestId("project-all-notes")).toBeVisible();
     await projects.getByTestId("project-workbooks").scrollIntoViewIfNeeded();

@@ -105,6 +105,38 @@ test("Project Gallery keeps its sections reachable on a narrow screen and in the
   } finally { await closeSurfaceApp(ctx); }
 });
 
+test("Catenoid Project Notes open from the Project detail page", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, projects = page.getByTestId("project-explorer-panel");
+    await page.setViewportSize({ width: 2048, height: 1107 });
+    await page.getByTestId("projects-toggle").click();
+    await projects.getByTestId("project-template-open-catenoid-evidence").click();
+    await expect(projects.getByTestId("project-detail-toggle")).toHaveAttribute("aria-pressed", "true");
+    await projects.getByTestId("project-all-notes").click();
+    const notes = page.getByTestId("project-notes-panel");
+    await expect(notes).toBeVisible();
+    await expect(projects).toBeVisible();
+    await expect(projects.getByTestId("project-library")).toBeHidden();
+    await expect(notes).toHaveClass(/project-notes-page-panel/);
+    await expect(notes).toContainText("Catenoid Evidence Notebook");
+    await expect(notes.locator("article[data-testid^='project-note-']")).toHaveCount(3);
+    await page.screenshot({ path: test.info().outputPath("catenoid-notes-open.png") });
+    await projects.getByTestId("project-detail-toggle").click();
+    await expect(notes).toBeHidden();
+    await expect(projects.getByTestId("project-library")).toBeVisible();
+    await projects.getByTestId("project-detail-toggle").click();
+    await projects.getByTestId("project-all-notes").click();
+    await notes.getByRole("button", { name: "Back to Project" }).click();
+    await expect(projects.getByTestId("project-workbooks")).toBeVisible();
+    const active = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    await projects.getByTestId(`project-open-note-${active.notes[0].identity.id}`).click();
+    await expect(projects).toBeVisible();
+    await expect(notes.getByTestId(`project-note-${active.notes[0].identity.id}`)).toBeVisible();
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("starter Open and Preview reuse edited copies; only New copy adds another project", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
   try {

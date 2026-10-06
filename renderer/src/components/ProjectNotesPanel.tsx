@@ -54,6 +54,7 @@ const SavedNote: React.FC<{ note: ProjectNote; status: string; busy: boolean; ta
 
 export const ProjectNotesPanel: React.FC<{
   project: Math3DProject | null; workspace: MixedWorkspaceDocument | null; drafts: readonly ProjectNoteDraft[];
+  layout?: "floating" | "page";
   busy: boolean; message: string; onClose: () => void; onOpenProjects: () => void; onRefresh: () => void;
   selectionAvailable: boolean; workbooks: readonly { workbook: Workbook; revision: number }[];
   onCapture: (kind: NoteCaptureKind) => void; onUpdateDraft: (id: string, patch: Partial<Pick<ProjectNoteDraft, "title" | "body">>) => void;
@@ -63,7 +64,7 @@ export const ProjectNotesPanel: React.FC<{
   onChangeValues: (note: ProjectNote, patch: NoteValuePatch) => Promise<boolean>;
   onSendToWorkbook: (note: ProjectNote, workbookId: string, blockId: string) => Promise<boolean>;
   focusNoteId?: string | null;
-}> = ({ project, workspace, drafts, busy, message, selectionAvailable, workbooks, onClose, onOpenProjects, onRefresh, onCapture, onCaptureResult, onCaptureWorkbookBlock, onOpenTarget, onUpdateDraft, onDiscardDraft, onSaveDrafts, onSaveNote, onChangeValues, onSendToWorkbook, focusNoteId }) => {
+}> = ({ project, workspace, drafts, layout = "floating", busy, message, selectionAvailable, workbooks, onClose, onOpenProjects, onRefresh, onCapture, onCaptureResult, onCaptureWorkbookBlock, onOpenTarget, onUpdateDraft, onDiscardDraft, onSaveDrafts, onSaveNote, onChangeValues, onSendToWorkbook, focusNoteId }) => {
   const [query, setQuery] = useState(""), [filter, setFilter] = useState<Filter>("all");
   const [resultId, setResultId] = useState(""), [blockKey, setBlockKey] = useState("");
   const notes = project?.notes ?? [];
@@ -94,15 +95,20 @@ export const ProjectNotesPanel: React.FC<{
     } });
     return `${state.status === "missing" ? "Detached" : state.status}${state.reason ? ` — ${state.reason}` : ""}`;
   };
-  return <aside aria-label="Project Notes" data-testid="project-notes-panel" style={{ position: "absolute", right: 0, top: 0, width: 420, maxWidth: "calc(100vw - 28px)", maxHeight: "min(72vh, 680px)", overflow: "auto", boxSizing: "border-box", padding: 14, background: "#fff", color: "#0f172a", border: "1px solid #94a3b8", borderRadius: 10, boxShadow: "0 10px 30px #0f172a30" }}>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong>Notes</strong><button type="button" onClick={onClose}>Close</button></div>
+  return <aside aria-label="Project Notes" data-testid="project-notes-panel" className={layout === "page" ? "project-notes-page-panel" : undefined}
+    style={{ position: layout === "page" ? "static" : "absolute", right: layout === "page" ? undefined : 0, top: layout === "page" ? undefined : 0,
+      width: layout === "page" ? "100%" : 420, maxWidth: layout === "page" ? "100%" : "calc(100vw - 28px)",
+      maxHeight: layout === "page" ? "none" : "min(72vh, 680px)", overflow: layout === "page" ? "visible" : "auto",
+      boxSizing: "border-box", padding: layout === "page" ? 20 : 14, background: "#fff", color: "#0f172a",
+      border: "1px solid #94a3b8", borderRadius: 10, boxShadow: layout === "page" ? "none" : "0 10px 30px #0f172a30" }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong>Notes</strong><button type="button" onClick={onClose}>{layout === "page" ? "Back to Project" : "Close"}</button></div>
     <p style={{ margin: "7px 0" }}>{project ? `Project: ${project.metadata.title}` : "Session drafts. Save a named Project to keep these Notes."}</p>
     <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
       <button type="button" data-testid="notes-new" disabled={busy} onClick={() => onCapture("global")}>New Note</button>
       <button type="button" data-testid="notes-capture-selection" disabled={busy || !selectionAvailable} onClick={() => onCapture("selection")}>From selection</button>
       <button type="button" data-testid="notes-capture-result" disabled={busy || !workspace?.results.length} onClick={() => onCapture("result")}>From latest result</button>
       <button type="button" disabled={busy} onClick={onRefresh}>Refresh</button>
-      <button type="button" onClick={onOpenProjects}>Projects</button>
+      {layout === "floating" && <button type="button" onClick={onOpenProjects}>Projects</button>}
     </div>
     {!!workspace?.results.length && <div style={{ display: "flex", gap: 5, marginTop: 7 }}>
       <select aria-label="Saved result target" value={resultId} onChange={(event) => setResultId(event.target.value)} style={{ minWidth: 0, flex: 1 }}><option value="">Choose saved result</option>

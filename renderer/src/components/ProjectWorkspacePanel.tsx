@@ -72,6 +72,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [notesPlacement, setNotesPlacement] = useState<"floating" | "project">("floating");
+  useEffect(() => { if (!open && notesPlacement === "project") setNotesOpen(false); }, [open, notesPlacement]);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [notesProject, setNotesProject] = useState<Math3DProject | null>(null);
   const [notesWorkspace, setNotesWorkspace] = useState<MixedWorkspaceDocument | null>(null);
@@ -236,6 +238,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   useEffect(() => {
     if (!noteRequest) return;
     setSelectedNoteId(null);
+    setNotesPlacement("floating");
     onOpenChange(false);
     refreshNotes();
     setNotesOpen(true);
@@ -253,7 +256,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   };
   const openProjectNotes = (noteId?: string, create = false) => {
     setSelectedNoteId(noteId ?? null);
-    onOpenChange(false);
+    setQuick(false);
+    setDetailView(true);
+    setNotesPlacement("project");
+    workspacePanel.current?.scrollTo({ top: 0 });
     refreshNotes();
     setNotesOpen(true);
     if (create) captureNote("global");
@@ -286,13 +292,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     if (anchor.kind === "workbook-block") {
       const target = noteWorkbooks.find((item) => item.workbook.id === anchor.workbookId);
       const stage = target?.workbook.stages.find((item) => item.blocks.some((block) => block.id === anchor.blockId));
-      if (target && stage) { onOpenWorkbook?.(target.workbook, stage.id, anchor.blockId); setNotesOpen(false); }
+      if (target && stage) { onOpenWorkbook?.(target.workbook, stage.id, anchor.blockId); setNotesOpen(false); if (notesPlacement === "project") onOpenChange(false); }
       else setNotesMessage("Workbook block is unavailable in this Project.");
       return;
     }
     const entry = notesWorkspace?.entries.find((item) => item.expected.id === anchor.source.documentId);
     if (entry && canNavigateDocument?.(entry.expected.id, entry.module)) {
-      onNavigateDocument?.(entry.expected.id, entry.module); setNotesOpen(false);
+      onNavigateDocument?.(entry.expected.id, entry.module); setNotesOpen(false); if (notesPlacement === "project") onOpenChange(false);
     } else setNotesMessage("Source document is unavailable to open.");
   };
   const collectResources = (next: Math3DProject, extra = resourceSession.current, allowMissing = false, workbook?: { id: string; bytes: Uint8Array }) => captureProjectResources(next, (item) => {
@@ -424,6 +430,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       setNotesMessage(`Linked “${note.title}” to ${workbook.title} / ${stage.title}.`);
       onOpenWorkbook?.(prepared.workbook, stage.id, blockId);
       setNotesOpen(false);
+      if (notesPlacement === "project") onOpenChange(false);
       return true;
     } catch (error) { setNotesMessage(`Workbook link failed: ${(error as Error).message}`); return false; }
     finally { setBusy(false); }
@@ -694,25 +701,27 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   const navigate = (id: string, module: KernelWorkspaceModule) => {
     if (!preview && canNavigateDocument?.(id, module)) { onNavigateDocument?.(id, module); onOpenChange(false); }
   };
+  const projectNotesView = open && notesOpen && notesPlacement === "project";
+  const renderNotesPanel = (layout: "floating" | "page") => <ProjectNotesPanel layout={layout} project={notesProject} workspace={notesWorkspace} drafts={noteDrafts} busy={busy} message={notesMessage} focusNoteId={selectedNoteId ?? noteRequest?.id}
+    selectionAvailable={Boolean(captureNoteSelection?.())} workbooks={noteWorkbooks}
+    onClose={() => setNotesOpen(false)} onOpenProjects={() => { setNotesOpen(false); if (layout === "floating") { setDetailView(true); onOpenChange(true); } }} onRefresh={refreshNotes}
+    onCapture={captureNote} onCaptureResult={captureResultNote} onCaptureWorkbookBlock={captureWorkbookBlockNote} onOpenTarget={openNoteTarget}
+    onUpdateDraft={(id, patch) => setNoteDrafts((current) => current.map((draft) => draft.id === id ? { ...draft, ...patch } : draft))}
+    onDiscardDraft={(id) => setNoteDrafts((current) => current.filter((draft) => draft.id !== id))}
+    onSaveDrafts={saveNoteDrafts} onSaveNote={saveEditedNote} onChangeValues={changeNoteValues} onSendToWorkbook={sendNoteToWorkbook} />;
   return <div style={{ position: "fixed", right: 14, top: 90, zIndex: 2501, fontSize: 13 }}>
     <button type="button" data-testid="notes-toggle" aria-label="Open Notes" aria-expanded={notesOpen} onClick={() => {
       if (notesOpen) { setNotesOpen(false); return; }
       setSelectedNoteId(null);
-      onOpenChange(false); refreshNotes(); setNotesOpen(true);
+      setNotesPlacement("floating"); onOpenChange(false); refreshNotes(); setNotesOpen(true);
     }} style={{ position: "fixed", right: 14, bottom: 60, zIndex: 2502, border: "1px solid #64748b", borderRadius: 8, padding: "7px 10px", background: "#f8fafc", color: "#0f172a", fontWeight: 700 }}>Notes{noteDrafts.length ? ` (${noteDrafts.length})` : ""}</button>
-    {notesOpen && <ProjectNotesPanel project={notesProject} workspace={notesWorkspace} drafts={noteDrafts} busy={busy} message={notesMessage} focusNoteId={selectedNoteId ?? noteRequest?.id}
-      selectionAvailable={Boolean(captureNoteSelection?.())} workbooks={noteWorkbooks}
-      onClose={() => setNotesOpen(false)} onOpenProjects={() => { setNotesOpen(false); onOpenChange(true); }} onRefresh={refreshNotes}
-      onCapture={captureNote} onCaptureResult={captureResultNote} onCaptureWorkbookBlock={captureWorkbookBlockNote} onOpenTarget={openNoteTarget}
-      onUpdateDraft={(id, patch) => setNoteDrafts((current) => current.map((draft) => draft.id === id ? { ...draft, ...patch } : draft))}
-      onDiscardDraft={(id) => setNoteDrafts((current) => current.filter((draft) => draft.id !== id))}
-      onSaveDrafts={saveNoteDrafts} onSaveNote={saveEditedNote} onChangeValues={changeNoteValues} onSendToWorkbook={sendNoteToWorkbook} />}
-    <button type="button" data-testid="projects-quick-toggle" aria-label="Open quick Projects" onClick={() => { setQuick(true); onOpenChange(true); }} style={{ position:"fixed",right:14,bottom:100,zIndex:2502,padding:"7px 10px",border:"1px solid #64748b",borderRadius:8,background:"#f8fafc",color:"#0f172a",fontSize:11 }}>Quick projects</button>
+    {notesOpen && notesPlacement === "floating" && renderNotesPanel("floating")}
+    <button type="button" data-testid="projects-quick-toggle" aria-label="Open quick Projects" onClick={() => { setNotesOpen(false); setQuick(true); onOpenChange(true); }} style={{ position:"fixed",right:14,bottom:100,zIndex:2502,padding:"7px 10px",border:"1px solid #64748b",borderRadius:8,background:"#f8fafc",color:"#0f172a",fontSize:11 }}>Quick projects</button>
     {open && <ProjectGalleryFrame quick={quick} onClose={() => onOpenChange(false)}>
       <header data-testid="project-explorer-header" className="project-gallery-header">
         <div className="project-gallery-heading"><div><p>MATH3D · PROJECTS</p><h2>{quick ? "Quick Projects" : detailView ? project?.metadata.title ?? "Project" : "Projects Gallery"}</h2></div><div style={{ display:"flex",gap:8 }}>
-          {!quick && <button type="button" data-testid="project-detail-toggle" aria-pressed={detailView} onClick={() => { workspacePanel.current?.scrollTo({ top: 0 }); setDetailView(value => !value); }}>{detailView ? "Browse projects" : "View current project"}</button>}
-          <button data-testid="project-gallery-layout-toggle" onClick={() => setQuick(value => !value)}>{quick ? "Full gallery" : "Quick panel"}</button><button type="button" aria-label="Close project explorer" onClick={() => onOpenChange(false)}>Close</button></div></div>
+          {!quick && <button type="button" data-testid="project-detail-toggle" aria-pressed={detailView} onClick={() => { setNotesOpen(false); workspacePanel.current?.scrollTo({ top: 0 }); setDetailView(value => !value); }}>{detailView ? "Browse projects" : "View current project"}</button>}
+          <button data-testid="project-gallery-layout-toggle" onClick={() => { setNotesOpen(false); setQuick(value => !value); }}>{quick ? "Full gallery" : "Quick panel"}</button><button type="button" aria-label="Close project explorer" onClick={() => onOpenChange(false)}>Close</button></div></div>
         <div className="project-gallery-statusline"><p data-testid="project-view-mode" role="status">{managed ? "Managing saved project" : preview ? "Saved project preview" : "Current workspace"} · {project?.metadata.title ?? "Untitled project"}{project && library.entries.some((entry) => entry.id === project.identity.id) && <strong className="project-gallery-saved-badge">Saved in Your saved projects</strong>}</p>
           <button type="button" data-testid="project-restore-saved" disabled={busy || !!managed || !project || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={previewSavedOpen}>{preview ? "Open saved project" : "Review saved version"}</button></div>
       {preview && !managed && <p data-testid="project-open-guidance" style={{ marginBottom: 0 }}>Open saved project, then choose Open project in the compatibility preview to enable document buttons.</p>}
@@ -751,7 +760,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
         })}</div></>}
       </section>
 
-      <aside ref={workspacePanel} className="project-gallery-workspace" aria-label="Project workspace">
+      <aside ref={workspacePanel} className="project-gallery-workspace" aria-label="Project workspace" data-notes-view={projectNotesView ? "true" : undefined}>
+        {projectNotesView && <div className="project-notes-workspace"><p className="project-workspace-eyebrow">PROJECT / NOTES</p>{renderNotesPanel("page")}</div>}
+        <div className="project-workspace-main">
         <div className="project-workspace-summary">
           <p className="project-workspace-eyebrow">{managed ? "EDITING SAVED COPY" : preview ? "SAVED COPY · PREVIEW" : "CURRENT WORKSPACE"}</p>
           <h3>{project?.metadata.title ?? "Untitled project"}</h3>
@@ -898,6 +909,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
             {exampleMessage && <p role="status" data-testid="project-example-import-message">{exampleMessage}</p>}
           </section>
         </section>
+        </div>
       </aside></div>
       {incoming && <div className="project-gallery-preview-backdrop"><div className="project-gallery-preview-sheet"><ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !busy} onCancel={() => { importSequence.current++; setIncoming(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div></div>}
     </ProjectGalleryFrame>}
