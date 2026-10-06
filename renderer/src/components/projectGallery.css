@@ -126,6 +126,7 @@
 .project-workspace-child-empty { color:#64748b;font-size:12px; }
 .project-workspace-workbook { padding:12px;border:1px solid #c9d9ed;border-radius:9px;background:#f8fbff;margin-top:8px; }
 .project-workspace-workbook-heading { display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap; }
+.project-workspace-workbook-actions { display:flex;flex-wrap:wrap;gap:6px; }
 .project-workspace-workbook-heading strong,.project-workspace-workbook-heading small { display:block; }
 .project-workspace-linked-notes { display:grid;justify-items:start;gap:5px;margin:10px 0 0 10px;padding-left:12px;border-left:2px solid #bfd4ef; }
 .project-workspace-linked-notes span { font-size:11px;font-weight:700;color:#45617d; }
@@ -153,6 +154,20 @@
 .project-quick-panel .project-starters-heading { display:block; }
 .project-quick-panel .project-starter-picker { margin-top:12px; }
 .project-quick-panel .project-workspace-nav { position:static; }
+.project-viewer-panel { left:14px;right:auto;width:420px; }
+.project-viewer-panel .project-gallery-header { padding:12px 14px; }
+.project-viewer-panel .project-gallery-heading { align-items:flex-start; }
+.project-viewer-panel .project-gallery-heading h2 { font-size:19px; }
+.project-viewer-panel .project-gallery-statusline { display:none; }
+.project-viewer-panel .project-gallery-layout { padding:12px 14px; }
+.project-viewer-switcher { position:sticky;top:0;z-index:2;padding:0 0 10px;background:#fff; }
+.project-viewer-switcher label { display:grid;gap:4px;font-size:12px;font-weight:700;color:#45617d; }
+.project-viewer-switcher select { width:100%; }
+.project-viewer-panel .project-workspace-summary,.project-viewer-panel .project-workspace-nav,.project-viewer-panel #project-details-section,.project-viewer-panel #project-transfer-section { display:none; }
+.project-viewer-panel #project-content-section { border-top:0;margin-top:0;padding-top:0; }
+.project-viewer-panel .project-workspace-children { grid-template-columns:minmax(0,1fr); }
+.project-viewer-panel .project-notes-workspace { width:100%;margin:0; }
+.project-viewer-panel .project-notes-page-panel { padding:12px!important; }
 @media(max-width:1200px) { .project-gallery-grid,.project-starter-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:1000px) { .project-gallery-layout { grid-template-columns:minmax(0,1fr);overflow:auto; } .project-gallery-library,.project-gallery-workspace { height:auto;overflow:visible; } .project-gallery-workspace { border-left:0;border-top:1px solid #e2e8f0;padding:20px 0 0; } .project-workspace-nav { position:static; } }
 @media(max-width:760px) { .project-gallery-layout-detail .project-workspace-children { grid-template-columns:minmax(0,1fr); } }

@@ -137,6 +137,46 @@ test("Catenoid Project Notes open from the Project detail page", async () => {
   } finally { await closeSurfaceApp(ctx); }
 });
 
+test("Project documents and Notes can stay beside the live viewer", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, projects = page.getByTestId("project-explorer-panel");
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    await page.getByTestId("projects-toggle").click();
+    await projects.getByTestId("project-template-open-catenoid-evidence").click();
+    await expect(projects.getByTestId("project-detail-toggle")).toHaveAttribute("aria-pressed", "true");
+    await expect(projects.getByTestId("project-message")).toContainText("Opened supported project");
+    const active = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const surface = active.workspace.entries.find((entry: { module: string }) => entry.module === "surface");
+    expect(surface).toBeTruthy();
+    await projects.getByTestId(`project-view-${surface.expected.id}`).click();
+    await expect(projects).toHaveClass(/project-viewer-panel/);
+    const viewerCanvas = page.locator("canvas:visible").first();
+    await expect(viewerCanvas).toBeVisible();
+    expect((await viewerCanvas.boundingBox())?.width ?? 0).toBeGreaterThan(100);
+    await expect(projects.getByTestId("project-viewer-document")).toHaveValue(surface.expected.id);
+    await expect(projects.getByTestId("project-workbooks")).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("project-beside-viewer.png") });
+    await projects.getByTestId(`project-view-workbook-${active.workbooks[0].id}`).click();
+    await expect(projects).toHaveClass(/project-viewer-panel/);
+    await expect(projects.getByTestId("project-viewer-document")).toHaveValue("");
+    await projects.getByTestId("project-viewer-document").selectOption(surface.expected.id);
+    await expect(projects.getByTestId("project-viewer-document")).toHaveValue(surface.expected.id);
+    await projects.getByTestId("project-all-notes").click();
+    const notes = projects.getByTestId("project-notes-panel");
+    await expect(notes).toBeVisible();
+    const anchored = active.notes.find((note: { anchor?: unknown }) => note.anchor);
+    await notes.getByTestId(`project-note-${anchored.identity.id}`).getByRole("button", { name: "Open target" }).click();
+    await expect(projects).toHaveClass(/project-viewer-panel/);
+    await expect(notes).toBeVisible();
+    await expect(projects.getByTestId("project-viewer-document")).toHaveValue(anchored.anchor.source.documentId);
+    await projects.getByTestId("project-gallery-layout-toggle").click();
+    await expect(projects).toHaveClass(/project-gallery-page/);
+    await expect(notes).toBeVisible();
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("starter Open and Preview reuse edited copies; only New copy adds another project", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
   try {

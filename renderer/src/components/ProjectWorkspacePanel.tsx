@@ -62,12 +62,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
 
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
   const resourceSessionId = useRef<string | null>(null);
-  const [quick, setQuick] = useState(false), [detailView, setDetailView] = useState(false), [collection, setCollection] = useState("All projects");
+  const [quick, setQuick] = useState(false), [detailView, setDetailView] = useState(false), [viewerCompanion, setViewerCompanion] = useState(false), [collection, setCollection] = useState("All projects");
+  const [viewingDocumentId, setViewingDocumentId] = useState<string | null>(null);
   const [moduleFilter, setModuleFilter] = useState("All modules");
   const workspacePanel = useRef<HTMLElement>(null);
   const detailsSection = useRef<HTMLElement>(null), contentsSection = useRef<HTMLElement>(null), transferSection = useRef<HTMLElement>(null);
   const jumpTo = (section: React.RefObject<HTMLElement | null>) => { section.current?.scrollIntoView({ block: "start" }); section.current?.focus({ preventScroll: true }); };
-  useEffect(() => { if (!open) { setQuick(false); setDetailView(false); } }, [open]);
+  useEffect(() => { if (!open) { setQuick(false); setDetailView(false); setViewerCompanion(false); setViewingDocumentId(null); } }, [open]);
   const [busy, setBusy] = useState(false);
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
@@ -256,7 +257,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   };
   const openProjectNotes = (noteId?: string, create = false) => {
     setSelectedNoteId(noteId ?? null);
-    setQuick(false);
+    if (!viewerCompanion) setQuick(false);
     setDetailView(true);
     setNotesPlacement("project");
     workspacePanel.current?.scrollTo({ top: 0 });
@@ -292,13 +293,19 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     if (anchor.kind === "workbook-block") {
       const target = noteWorkbooks.find((item) => item.workbook.id === anchor.workbookId);
       const stage = target?.workbook.stages.find((item) => item.blocks.some((block) => block.id === anchor.blockId));
-      if (target && stage) { onOpenWorkbook?.(target.workbook, stage.id, anchor.blockId); setNotesOpen(false); if (notesPlacement === "project") onOpenChange(false); }
+      if (target && stage) {
+        onOpenWorkbook?.(target.workbook, stage.id, anchor.blockId);
+        if (notesPlacement === "project") { setViewingDocumentId(null); setQuick(true); setViewerCompanion(true); setDetailView(true); }
+        else setNotesOpen(false);
+      }
       else setNotesMessage("Workbook block is unavailable in this Project.");
       return;
     }
     const entry = notesWorkspace?.entries.find((item) => item.expected.id === anchor.source.documentId);
     if (entry && canNavigateDocument?.(entry.expected.id, entry.module)) {
-      onNavigateDocument?.(entry.expected.id, entry.module); setNotesOpen(false); if (notesPlacement === "project") onOpenChange(false);
+      onNavigateDocument?.(entry.expected.id, entry.module);
+      if (notesPlacement === "project") { setViewingDocumentId(entry.expected.id); setQuick(true); setViewerCompanion(true); setDetailView(true); }
+      else setNotesOpen(false);
     } else setNotesMessage("Source document is unavailable to open.");
   };
   const collectResources = (next: Math3DProject, extra = resourceSession.current, allowMissing = false, workbook?: { id: string; bytes: Uint8Array }) => captureProjectResources(next, (item) => {
@@ -460,7 +467,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     } catch (error) { setMessage(`Workbook save failed: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
-  const openProjectWorkbook = async (id: string) => {
+  const openProjectWorkbook = async (id: string, besideProject = false) => {
     if (!project || busy) return;
     setBusy(true);
     try {
@@ -473,7 +480,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       const workbook = readProjectWorkbook(bytes, reference);
       onOpenWorkbook?.(workbook);
       setMessage(`Opened “${workbook.title}” from this Project.`);
-      onOpenChange(false);
+      if (besideProject) { setViewingDocumentId(null); setQuick(true); setViewerCompanion(true); setDetailView(true); }
+      else onOpenChange(false);
     } catch (error) { setMessage(`Workbook open failed: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
@@ -701,6 +709,16 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   const navigate = (id: string, module: KernelWorkspaceModule) => {
     if (!preview && canNavigateDocument?.(id, module)) { onNavigateDocument?.(id, module); onOpenChange(false); }
   };
+  const viewBesideProject = (id: string, module: KernelWorkspaceModule) => {
+    if (preview || !canNavigateDocument?.(id, module)) return;
+    onNavigateDocument?.(id, module);
+    setViewingDocumentId(id);
+    setNotesOpen(false);
+    setDetailView(true);
+    setViewerCompanion(true);
+    setQuick(true);
+  };
+  const viewerDocuments = explorer?.groups.flatMap(group => group.documents).filter(document => !document.archived && canNavigateDocument?.(document.id, document.module)) ?? [];
   const projectNotesView = open && notesOpen && notesPlacement === "project";
   const renderNotesPanel = (layout: "floating" | "page") => <ProjectNotesPanel layout={layout} project={notesProject} workspace={notesWorkspace} drafts={noteDrafts} busy={busy} message={notesMessage} focusNoteId={selectedNoteId ?? noteRequest?.id}
     selectionAvailable={Boolean(captureNoteSelection?.())} workbooks={noteWorkbooks}
@@ -717,16 +735,16 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     }} style={{ position: "fixed", right: 14, bottom: 60, zIndex: 2502, border: "1px solid #64748b", borderRadius: 8, padding: "7px 10px", background: "#f8fafc", color: "#0f172a", fontWeight: 700 }}>Notes{noteDrafts.length ? ` (${noteDrafts.length})` : ""}</button>
     {notesOpen && notesPlacement === "floating" && renderNotesPanel("floating")}
     <button type="button" data-testid="projects-quick-toggle" aria-label="Open quick Projects" onClick={() => { setNotesOpen(false); setQuick(true); onOpenChange(true); }} style={{ position:"fixed",right:14,bottom:100,zIndex:2502,padding:"7px 10px",border:"1px solid #64748b",borderRadius:8,background:"#f8fafc",color:"#0f172a",fontSize:11 }}>Quick projects</button>
-    {open && <ProjectGalleryFrame quick={quick} onClose={() => onOpenChange(false)}>
+    {open && <ProjectGalleryFrame quick={quick} viewerCompanion={viewerCompanion} onClose={() => onOpenChange(false)}>
       <header data-testid="project-explorer-header" className="project-gallery-header">
-        <div className="project-gallery-heading"><div><p>MATH3D · PROJECTS</p><h2>{quick ? "Quick Projects" : detailView ? project?.metadata.title ?? "Project" : "Projects Gallery"}</h2></div><div style={{ display:"flex",gap:8 }}>
+        <div className="project-gallery-heading"><div><p>MATH3D · PROJECTS</p><h2>{quick && !viewerCompanion ? "Quick Projects" : detailView ? project?.metadata.title ?? "Project" : "Projects Gallery"}</h2></div><div style={{ display:"flex",gap:8 }}>
           {!quick && <button type="button" data-testid="project-detail-toggle" aria-pressed={detailView} onClick={() => { setNotesOpen(false); workspacePanel.current?.scrollTo({ top: 0 }); setDetailView(value => !value); }}>{detailView ? "Browse projects" : "View current project"}</button>}
-          <button data-testid="project-gallery-layout-toggle" onClick={() => { setNotesOpen(false); setQuick(value => !value); }}>{quick ? "Full gallery" : "Quick panel"}</button><button type="button" aria-label="Close project explorer" onClick={() => onOpenChange(false)}>Close</button></div></div>
+          <button data-testid="project-gallery-layout-toggle" onClick={() => { if (!viewerCompanion) setNotesOpen(false); setQuick(value => !value); setViewerCompanion(false); }}>{quick ? viewerCompanion ? "Full Project" : "Full gallery" : "Quick panel"}</button><button type="button" aria-label="Close project explorer" onClick={() => onOpenChange(false)}>Close</button></div></div>
         <div className="project-gallery-statusline"><p data-testid="project-view-mode" role="status">{managed ? "Managing saved project" : preview ? "Saved project preview" : "Current workspace"} · {project?.metadata.title ?? "Untitled project"}{project && library.entries.some((entry) => entry.id === project.identity.id) && <strong className="project-gallery-saved-badge">Saved in Your saved projects</strong>}</p>
           <button type="button" data-testid="project-restore-saved" disabled={busy || !!managed || !project || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={previewSavedOpen}>{preview ? "Open saved project" : "Review saved version"}</button></div>
       {preview && !managed && <p data-testid="project-open-guidance" style={{ marginBottom: 0 }}>Open saved project, then choose Open project in the compatibility preview to enable document buttons.</p>}
       </header>
-      <div className={`project-gallery-layout${detailView && !quick ? " project-gallery-layout-detail" : ""}`}>
+      <div className={`project-gallery-layout${detailView && (!quick || viewerCompanion) ? " project-gallery-layout-detail" : ""}`}>
 <section data-testid="project-library" className="project-gallery-library">
         <div className="project-gallery-browse-controls">
           <div className="project-gallery-filters" aria-label="Project collection">{["All projects", "Starter projects", "Your saved projects", "Favorites"].map(value => <button type="button" key={value} aria-pressed={collection === value} onClick={() => setCollection(value)}>{value}</button>)}</div>
@@ -761,6 +779,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       </section>
 
       <aside ref={workspacePanel} className="project-gallery-workspace" aria-label="Project workspace" data-notes-view={projectNotesView ? "true" : undefined}>
+        {viewerCompanion && quick && <div className="project-viewer-switcher"><label>Viewer document
+          <select data-testid="project-viewer-document" value={viewingDocumentId ?? ""} onChange={event => {
+            const selected = viewerDocuments.find(document => document.id === event.target.value);
+            if (!selected) return;
+            onNavigateDocument?.(selected.id, selected.module);
+            setViewingDocumentId(selected.id);
+          }}><option value="">Choose document</option>{viewerDocuments.map(document => <option key={document.id} value={document.id}>{document.title}</option>)}</select>
+        </label></div>}
         {projectNotesView && <div className="project-notes-workspace"><p className="project-workspace-eyebrow">PROJECT / NOTES</p>{renderNotesPanel("page")}</div>}
         <div className="project-workspace-main">
         <div className="project-workspace-summary">
@@ -812,7 +838,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
         </section>
         <section id="project-content-section" ref={contentsSection} tabIndex={-1} className="project-workspace-section" data-testid="project-sidebar-contents" aria-label="Project contents">
           <h3>Contents</h3>
-          <p className="project-workspace-section-hint">{preview ? "Open this project to edit its documents." : "Open a document or workbook to continue working."}</p>
+          <p className="project-workspace-section-hint">{preview ? "Open this project to edit its documents." : "Open a document or workbook to continue working. View with Project keeps the live viewer and Project side by side."}</p>
           <div className="project-workspace-children">
             <section data-testid="project-workbooks" className="project-workspace-child-group" aria-label="Project Workbooks">
               <div className="project-workspace-child-heading"><div><span>01 · PROJECT CONTENT</span><h4>Workbooks ({project?.workbooks?.length ?? 0})</h4></div>
@@ -822,7 +848,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
                 const linkedNotes = project.notes?.filter(note => note.anchor?.kind === "workbook-block" && note.anchor.workbookId === item.id) ?? [];
                 return <article key={item.id} className="project-workspace-workbook" data-testid={`project-workbook-${item.id}`}>
                   <div className="project-workspace-workbook-heading"><div><strong>{item.title}</strong><small>Workbook · revision {item.revision}</small></div>
-                    <button type="button" data-testid={`project-open-workbook-${item.id}`} disabled={busy || !onOpenWorkbook} onClick={() => { void openProjectWorkbook(item.id); }}>Open Workbook</button></div>
+                    <div className="project-workspace-workbook-actions"><button type="button" data-testid={`project-open-workbook-${item.id}`} disabled={busy || !onOpenWorkbook} onClick={() => { void openProjectWorkbook(item.id); }}>Open Workbook</button>
+                      <button type="button" data-testid={`project-view-workbook-${item.id}`} disabled={busy || !onOpenWorkbook} onClick={() => { void openProjectWorkbook(item.id, true); }}>View with Project</button></div></div>
                   <div className="project-workspace-linked-notes"><span>Notes in this Workbook ({linkedNotes.length})</span>
                     {linkedNotes.length ? linkedNotes.map(note => <button type="button" key={note.identity.id} data-testid={`project-open-note-${note.identity.id}`} disabled={preview || busy} title={preview ? "Open this Project first to view its Notes" : undefined} onClick={() => openProjectNotes(note.identity.id)}>↳ {note.title}</button>) : <small>No linked Notes yet</small>}
                   </div>
@@ -853,6 +880,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
             <button type="button" data-testid={`project-open-${document.id}`} disabled={preview || document.archived || !onNavigateDocument || !canNavigateDocument?.(document.id, document.module)}
               title={document.archived ? "Archived document" : preview ? "Open saved project first" : !canNavigateDocument?.(document.id, document.module) ? "Document unavailable in the active workspace; inspect dependencies or open the saved project" : `Open ${document.title}`} onClick={() => navigate(document.id, document.module)}
               style={{ maxWidth: "100%", overflowWrap: "anywhere", textAlign: "left", opacity: preview || document.archived || !canNavigateDocument?.(document.id, document.module) ? 0.55 : 1 }}>{document.title}</button>
+            <button type="button" data-testid={`project-view-${document.id}`} disabled={preview || document.archived || !onNavigateDocument || !canNavigateDocument?.(document.id, document.module)} onClick={() => viewBesideProject(document.id, document.module)}>View with Project</button>
             {preview && !document.archived && <small> · open project first</small>}
             <small> · revision {document.revision}{document.archived ? " · archived" : ""}</small>
             <button type="button" data-testid={`project-inspect-${document.id}`} onClick={() => { setInspectedId(document.id); setInspectionOpen(true); }}>Inspect dependencies</button>
