@@ -186,6 +186,34 @@ test("Project documents and Notes can stay beside the live viewer", async () => 
   } finally { await closeSurfaceApp(ctx); }
 });
 
+test("reopening a saved Catenoid starter shows its Surface in the viewer", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, projects = page.getByTestId("project-explorer-panel");
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    await page.getByTestId("projects-toggle").click();
+    await projects.getByTestId("project-template-open-catenoid-evidence").click();
+    await expect(projects.getByTestId("project-message")).toContainText("Opened supported project");
+    const catenoid = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const surface = catenoid.workspace.entries.find((entry: { module: string }) => entry.module === "surface");
+    expect(surface).toBeTruthy();
+    await expect(projects.getByTestId("project-viewer-document")).toHaveValue(surface.expected.id);
+    await projects.getByTestId("project-gallery-layout-toggle").click();
+    await projects.getByTestId("project-detail-toggle").click();
+    await projects.getByTestId("project-template-open-edge-path-evidence").click();
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id)).not.toBe(catenoid.identity.id);
+    await projects.getByTestId("project-gallery-layout-toggle").click();
+    await projects.getByTestId("project-detail-toggle").click();
+    await projects.getByTestId("project-template-open-catenoid-evidence").click();
+    await expect(projects).toHaveClass(/project-viewer-panel/);
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id)).toBe(catenoid.identity.id);
+    await expect(projects.getByTestId("project-viewer-document")).toHaveValue(surface.expected.id);
+    await expect(page.getByTestId("surface-viewer-canvas-host")).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("catenoid-reopened-surface.png") });
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("starter Open and Preview reuse edited copies; only New copy adds another project", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
   try {

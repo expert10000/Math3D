@@ -646,7 +646,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     try {
       const next = loadLibraryProject(localStorage, id), resources = await loadProjectResources(next);
       if (sequence !== importSequence.current) return;
-      const prepared = { ...inspectProjectCompatibility(next, transferOptions(resources)), resources, inputKind: "Saved project" };
+      const prepared = { ...inspectProjectCompatibility(next, transferOptions(resources)), resources, inputKind: showDetails ? "Saved starter copy" : "Saved project" };
       recordView(id);
       if (!onRestoreWorkspace || !prepared.canOpenWorkspace) {
         display(next, true); setIncoming(prepared);
