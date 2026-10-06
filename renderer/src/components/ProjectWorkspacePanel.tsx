@@ -600,6 +600,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       display(prepared.project, !openWorkspace);
       setIncoming(null);
       if (candidate.inputKind === "Independent starter project") { setHighlightedSavedId(prepared.project.identity.id); setCollection("All projects"); setQuery(""); setModuleFilter("All modules"); }
+      if (openWorkspace && (candidate.inputKind === "Independent starter project" || candidate.inputKind === "Saved starter copy")) { setQuick(false); setDetailView(true); }
       if (openWorkspace) {
         const first = prepared.documents.find((document) => document.module === "graph2d") ?? prepared.documents[0]!; onNavigateDocument?.(first.id, first.module);
       }
@@ -608,7 +609,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     } catch (error) { setMessage(`Project import failed: ${(error as Error).message}`); return false; }
     finally { setBusy(false); }
   };
-  const openLibraryProject = async (id: string) => {
+  const openLibraryProject = async (id: string, showDetails = false) => {
     if (busy) return;
     const sequence = ++importSequence.current;
     setBusy(true);
@@ -622,7 +623,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
         setMessage("This saved project has preview support. Review its compatibility details below.");
         return;
       }
-      if (await importPreview(true, prepared)) onOpenChange(false);
+      if (await importPreview(true, prepared)) {
+        if (showDetails) { setQuick(false); setDetailView(true); }
+        else onOpenChange(false);
+      }
     } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
@@ -663,8 +667,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
         if (copy) {
           loadLibraryProject(localStorage, copy.id);
           if (copy.id === activeId && !preview && !managed && project?.identity.id === copy.id) {
-            onOpenChange(false); // The live edited workspace is already open; do not restore an older saved snapshot.
-          } else await openLibraryProject(copy.id);
+            setQuick(false);
+            setDetailView(true); // Keep the active edited Project; do not restore an older saved snapshot.
+          } else await openLibraryProject(copy.id, true);
           return;
         }
       }

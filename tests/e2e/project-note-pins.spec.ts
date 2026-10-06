@@ -83,7 +83,8 @@ test("Opening a starter card creates a saved Project and opens its Geometry", as
     await expect(projects.getByTestId("project-view-mode")).toContainText("Saved in Your saved projects");
     const current = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(current.metadata.title).toBe("Geometry Notes and Pins");
-    await expect(projects.getByTestId(`project-library-${current.identity.id}`)).toBeVisible();
+    await expect(projects.getByTestId("project-detail-toggle")).toHaveAttribute("aria-pressed", "true");
+    await expect(projects.getByRole("region", { name: "Project Notes" })).toContainText(`Notes (${current.notes.length})`);
     await expect(page.getByTestId("workspace-nav-geometry")).toHaveAttribute("aria-pressed", "true");
     await page.screenshot({ path: test.info().outputPath("project-starter-opened.png") });
   } finally { await closeSurfaceApp(ctx); }

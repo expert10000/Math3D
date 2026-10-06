@@ -53,6 +53,9 @@ resource export and reopen. On app startup, Projects can show the validated
 saved Project until live editors finish restoring; the full Projects view now
 stays above Curve and other editor canvases. Samsung physical-device acceptance
 remains separate.
+Starter Open now lands on that Project detail view, so a newly opened Catenoid
+or other starter immediately exposes its Workbooks, Notes and documents. Browse
+projects returns to the gallery without reopening or duplicating the Project.
 
 PRJ01–PRJ12 are integrated into `main` at `766776a27c6601e50d513a2217e3a4bf513c8e0d`.
 The main Projects workflow passed in

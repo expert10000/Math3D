@@ -26,7 +26,11 @@ test("Project Gallery filters starters and saved projects and keeps browsing sep
     await panel.getByRole("button", { name: "Clear filters", exact: true }).click();
     await panel.getByTestId("project-template-open-catenoid-evidence").click();
     await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
+    await expect(panel.getByTestId("project-detail-toggle")).toHaveAttribute("aria-pressed", "true");
     const active = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    await expect(panel.getByTestId("project-workbooks")).toContainText(active.workbooks[0].title);
+    await expect(panel.locator(".project-workspace-notes")).toContainText(`Notes (${active.notes.length})`);
+    await panel.getByTestId("project-detail-toggle").click();
     await panel.getByRole("button", { name: "Your saved projects", exact: true }).click();
     await panel.getByTestId("project-library-module").selectOption("Workbook");
     const card = panel.getByTestId(`project-library-${active.identity.id}`);
@@ -94,6 +98,10 @@ test("Project Gallery keeps its sections reachable on a narrow screen and in the
     await expect(panel.getByTestId("project-title")).toHaveValue("Phone project");
     expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     await panel.screenshot({ path: test.info().outputPath("project-gallery-quick.png") });
+    await panel.getByRole("button", { name: "Starter projects", exact: true }).click();
+    await panel.getByTestId("project-template-open-catenoid-evidence").click();
+    await expect(panel).toHaveClass(/project-gallery-page/);
+    await expect(panel.getByTestId("project-detail-toggle")).toHaveAttribute("aria-pressed", "true");
   } finally { await closeSurfaceApp(ctx); }
 });
 
@@ -115,14 +123,15 @@ test("starter Open and Preview reuse edited copies; only New copy adds another p
     await panel.getByTestId("project-save").click();
     await expect(panel.getByTestId("project-message")).toContainText("Saved “My edited edge path”");
     const edited = await payload(first.identity.id);
+    await panel.getByTestId("project-detail-toggle").click();
     await expect(panel.getByTestId("project-template-copy-edge-path-evidence")).toContainText("My edited edge path");
     for (let repeat = 0; repeat < 2; repeat++) {
       await panel.getByTestId("project-template-open-edge-path-evidence").click();
-      await expect(panel).toBeHidden();
+      await expect(panel.getByTestId("project-detail-toggle")).toHaveAttribute("aria-pressed", "true");
       expect(await size()).toBe(1);
       expect((await active()).identity.id).toBe(first.identity.id);
       expect(await payload(first.identity.id)).toBe(edited);
-      await show();
+      await panel.getByTestId("project-detail-toggle").click();
     }
     await panel.getByTestId("project-template-card-preview-edge-path-evidence").click();
     await expect(panel.getByTestId("project-import-preview")).toContainText("My edited edge path");
@@ -135,29 +144,32 @@ test("starter Open and Preview reuse edited copies; only New copy adds another p
     await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
     expect(await size()).toBe(1);
     expect((await active()).identity.id).toBe(first.identity.id);
+    await panel.getByTestId("project-detail-toggle").click();
 
     await panel.getByTestId("project-template-new-copy-edge-path-evidence").click();
     await expect.poll(size).toBe(2);
     const second = await active();
     expect(second.identity.id).not.toBe(first.identity.id);
     expect(await payload(first.identity.id)).toBe(edited);
+    await panel.getByTestId("project-detail-toggle").click();
     // Choose the older copy explicitly; starter Open must prefer it while active.
     await panel.getByTestId(`project-open-saved-${first.identity.id}`).click();
     await expect(panel).toBeHidden(); await show();
     await panel.getByTestId("project-template-open-edge-path-evidence").click();
-    await expect(panel).toBeHidden();
+    await expect(panel.getByTestId("project-detail-toggle")).toHaveAttribute("aria-pressed", "true");
     expect(await size()).toBe(2);
     expect((await active()).identity.id).toBe(first.identity.id);
-    await show();
+    await panel.getByTestId("project-detail-toggle").click();
     await panel.getByTestId(`project-library-${second.identity.id}`).getByRole("button", { name: `Favorite ${second.metadata.title}`, exact: true }).click();
     await panel.getByTestId("project-template-open-catenoid-evidence").click();
     await expect.poll(size).toBe(3);
+    await panel.getByTestId("project-detail-toggle").click();
     await panel.getByTestId("project-template-open-edge-path-evidence").click();
-    await expect(panel).toBeHidden();
+    await expect(panel.getByTestId("project-detail-toggle")).toHaveAttribute("aria-pressed", "true");
     expect(await size()).toBe(3);
     expect((await active()).identity.id).toBe(first.identity.id);
     expect(await payload(first.identity.id)).toBe(edited);
-    await show();
+    await panel.getByTestId("project-detail-toggle").click();
     await panel.getByRole("button", { name: "Starter projects", exact: true }).click();
     await panel.getByTestId("project-library-module").selectOption("Workbook");
     await panel.screenshot({ path: test.info().outputPath("starter-open-existing-copy.png") });
@@ -173,6 +185,7 @@ test("a missing starter payload reports an error without silently creating anoth
     await panel.getByTestId("project-template-open-edge-path-evidence").click();
     await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
     const original = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
+    await panel.getByTestId("project-detail-toggle").click();
     await page.evaluate(() => {
       const project = JSON.parse(localStorage.getItem("math3d.project.v1")!);
       localStorage.removeItem(`math3d.project.v1.payload.${project.identity.id}`);

@@ -16,7 +16,7 @@ test("Project detail keeps Workbooks and Notes together through save, reopen and
     await expect(projects.getByTestId("project-message")).toContainText("Opened supported project workspace");
     const starter = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     const workbookId = starter.workbooks[0].id;
-    await projects.getByTestId("project-detail-toggle").click();
+    await expect(projects.getByTestId("project-detail-toggle")).toHaveAttribute("aria-pressed", "true");
     await expect(projects.getByRole("heading", { name: "Graph Derivative Investigation", exact: true, level: 2 })).toBeVisible();
     await expect(projects.getByTestId("project-library")).toBeHidden();
     await expect(projects.getByTestId(`project-workbook-${workbookId}`)).toBeVisible();
