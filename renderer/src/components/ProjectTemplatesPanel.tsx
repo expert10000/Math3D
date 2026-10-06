@@ -2,8 +2,9 @@ import React, { useState } from "react";
 import { MATH3D_PROJECT_TEMPLATES, type Math3DProjectTemplateId } from "@math3d/core";
 
 import { NOTEBOOK_STARTERS, type NotebookStarterId } from "../projects/notebookStarters";
+import type { ProjectLibraryEntry } from "../projects/projectLibrary";
 export type ProjectStarterId = Math3DProjectTemplateId | NotebookStarterId;
-const starters = [...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS.map(item => ({ ...item, steps: ["Open its saved Workbook from Projects → Workbooks and choose Document."] }))];
+const starters = [...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS.map(item => ({ ...item, steps: ["Find its Workbook and Notes in Projects → Contents."] }))];
 
 export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]> = {
   "catenary-study": ["Graph", "Curve", "Surface", "Notes"],
@@ -34,13 +35,13 @@ export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <s
   {id === "geometry-note-pins" && <><path d="M40 60L88 35L137 60L88 84Z" fill="#7c95ce" /><path d="M40 60V112L88 136V84Z" fill="#526daa" /><path d="M88 84V136L137 112V60Z" fill="#647fb7" /><circle cx="229" cy="85" r="47" fill="#2fa895" stroke="#178774" strokeWidth="3" /><circle cx="88" cy="35" r="8" fill="#f59e0b" stroke="#fff" strokeWidth="3" /><circle cx="229" cy="38" r="8" fill="#f59e0b" stroke="#fff" strokeWidth="3" /></>}
 </svg>;
 
-export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId) => void; onOpen: (id: ProjectStarterId) => void; busy: boolean; query?: string; moduleFilter?: string }> = ({ onPreview, onOpen, busy, query = "", moduleFilter = "All modules" }) => {
+export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId) => void; onOpen: (id: ProjectStarterId) => void; onNewCopy: (id: ProjectStarterId) => void; copies: Partial<Record<ProjectStarterId, ProjectLibraryEntry>>; busy: boolean; query?: string; moduleFilter?: string }> = ({ onPreview, onOpen, onNewCopy, copies, busy, query = "", moduleFilter = "All modules" }) => {
   const [id, setId] = useState<ProjectStarterId>("catenary-study");
   const matches = starters.filter(item => (moduleFilter === "All modules" || PROJECT_STARTER_MODULES[item.id].includes(moduleFilter)) &&
     `${item.title} ${item.description} ${PROJECT_STARTER_MODULES[item.id].join(" ")}`.toLowerCase().includes(query.trim().toLowerCase()));
   const selected = matches.find(item => item.id === id) ?? matches[0];
   return <section data-testid="project-templates" className="project-starters">
-    <div className="project-starters-heading"><div><h3>Starter projects <span className="project-gallery-count">{matches.length}</span></h3><p>Choose an example to create your own editable project.</p></div>
+    <div className="project-starters-heading"><div><h3>Starter projects <span className="project-gallery-count">{matches.length}</span></h3><p>Open creates your first copy, then resumes it. New copy starts a separate project.</p></div>
       <div className="project-starter-picker"><label>Choose starter
         <select data-testid="project-template-select" disabled={!selected} value={selected?.id ?? ""} onChange={(event) => setId(event.target.value as ProjectStarterId)}>
           {matches.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
@@ -53,8 +54,10 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
       <div className="project-starter-art"><StarterArtwork id={item.id} /></div>
       <div className="project-starter-body"><div className="project-starter-modules">{PROJECT_STARTER_MODULES[item.id].map((module) => <span key={module}>{module}</span>)}</div>
         <h4>{item.title}</h4><p>{item.description}</p><small>{item.steps[0]}</small>
+        <small data-testid={`project-template-copy-${item.id}`}>{copies[item.id] ? `Open resumes “${copies[item.id]!.title}”.` : "Open creates your first saved copy."}</small>
         <div className="project-starter-actions"><button type="button" data-testid={`project-template-open-${item.id}`} disabled={busy} onClick={() => onOpen(item.id)}>Open</button>
-          <button type="button" data-testid={`project-template-card-preview-${item.id}`} disabled={busy} onClick={() => { setId(item.id); onPreview(item.id); }}>Preview</button></div>
+          <button type="button" data-testid={`project-template-card-preview-${item.id}`} disabled={busy} onClick={() => { setId(item.id); onPreview(item.id); }}>Preview</button>
+          {copies[item.id] && <button type="button" data-testid={`project-template-new-copy-${item.id}`} disabled={busy} onClick={() => onNewCopy(item.id)}>New copy</button>}</div>
       </div>
     </article>)}</div>
   </section>;

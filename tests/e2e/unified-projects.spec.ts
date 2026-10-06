@@ -420,7 +420,7 @@ test("PRJ07 previews independent scientific starters and opens their real docume
     await panel.getByTestId("project-template-preview").click(); await panel.getByTestId("project-import-open").click();
     await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
     const current = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
-    expect(current.identity.id).not.toBe(first); expect(current.workspace.entries.map((entry: any) => entry.module)).toEqual(["graph2d", "curve", "surface"]);
+    expect(current.identity.id).toBe(first); expect(current.workspace.entries.map((entry: any) => entry.module)).toEqual(["graph2d", "curve", "surface"]);
     await expect(page.getByTestId("workspace-nav-graphs")).toHaveAttribute("aria-pressed", "true");
     await expect(panel.getByTestId("project-group-surface")).toContainText("catenoid");
     await expect(panel.getByTestId("project-group-analysis")).toContainText("numerical");

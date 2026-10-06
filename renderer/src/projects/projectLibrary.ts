@@ -39,6 +39,11 @@ export const parseProjectLibrary = (raw: string | null): ProjectLibrary => {
 export const orderProjectLibrary = (library: ProjectLibrary): readonly ProjectLibraryEntry[] => [...library.entries].sort((a, b) =>
   Number(b.favorite) - Number(a.favorite) || Math.max(b.savedAt, b.viewedAt) - Math.max(a.savedAt, a.viewedAt) || a.id.localeCompare(b.id));
 
+/** Resume the active starter copy, then the most recently used copy, regardless of favorites. */
+export const findProjectStarterCopy = (library: ProjectLibrary, starterId: string, activeId: string | null): ProjectLibraryEntry | null =>
+  library.entries.filter(entry => entry.tags.includes("starter") && entry.tags.includes(starterId)).sort((a, b) =>
+    Number(b.id === activeId) - Number(a.id === activeId) || Math.max(b.savedAt, b.viewedAt) - Math.max(a.savedAt, a.viewedAt) || a.id.localeCompare(b.id))[0] ?? null;
+
 /** Raster sidecar only; thumbnail bytes never enter the project/source hash. */
 export const validateProjectThumbnail = (raw: string): string => {
   if (raw.length > Math.ceil(MAX_PROJECT_THUMBNAIL_BYTES * 4 / 3) + 64 || !/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/.test(raw)) {

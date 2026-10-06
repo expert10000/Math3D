@@ -96,3 +96,90 @@ test("Project Gallery keeps its sections reachable on a narrow screen and in the
     await panel.screenshot({ path: test.info().outputPath("project-gallery-quick.png") });
   } finally { await closeSurfaceApp(ctx); }
 });
+
+test("starter Open and Preview reuse edited copies; only New copy adds another project", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    const show = async () => { if (!await panel.isVisible()) await page.getByTestId("projects-toggle").click(); };
+    const size = () => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project-library.v1")!).entries.length);
+    const active = () => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const payload = (id: string) => page.evaluate(id => localStorage.getItem(`math3d.project.v1.payload.${id}`), id);
+    await show();
+    await panel.getByTestId("project-template-open-edge-path-evidence").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
+    const first = await active();
+    await panel.getByTestId("project-title").fill("My edited edge path");
+    await panel.getByTestId("project-description").fill("Keep my observations and recorded evidence.");
+    await panel.getByTestId("project-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Saved “My edited edge path”");
+    const edited = await payload(first.identity.id);
+    await expect(panel.getByTestId("project-template-copy-edge-path-evidence")).toContainText("My edited edge path");
+    for (let repeat = 0; repeat < 2; repeat++) {
+      await panel.getByTestId("project-template-open-edge-path-evidence").click();
+      await expect(panel).toBeHidden();
+      expect(await size()).toBe(1);
+      expect((await active()).identity.id).toBe(first.identity.id);
+      expect(await payload(first.identity.id)).toBe(edited);
+      await show();
+    }
+    await panel.getByTestId("project-template-card-preview-edge-path-evidence").click();
+    await expect(panel.getByTestId("project-import-preview")).toContainText("My edited edge path");
+    await panel.getByTestId("project-import-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
+    expect(await size()).toBe(1);
+    expect(await payload(first.identity.id)).toBe(edited);
+    await panel.getByTestId("project-template-card-preview-edge-path-evidence").click();
+    await panel.getByTestId("project-import-open").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
+    expect(await size()).toBe(1);
+    expect((await active()).identity.id).toBe(first.identity.id);
+
+    await panel.getByTestId("project-template-new-copy-edge-path-evidence").click();
+    await expect.poll(size).toBe(2);
+    const second = await active();
+    expect(second.identity.id).not.toBe(first.identity.id);
+    expect(await payload(first.identity.id)).toBe(edited);
+    // Choose the older copy explicitly; starter Open must prefer it while active.
+    await panel.getByTestId(`project-open-saved-${first.identity.id}`).click();
+    await expect(panel).toBeHidden(); await show();
+    await panel.getByTestId("project-template-open-edge-path-evidence").click();
+    await expect(panel).toBeHidden();
+    expect(await size()).toBe(2);
+    expect((await active()).identity.id).toBe(first.identity.id);
+    await show();
+    await panel.getByTestId(`project-library-${second.identity.id}`).getByRole("button", { name: `Favorite ${second.metadata.title}`, exact: true }).click();
+    await panel.getByTestId("project-template-open-catenoid-evidence").click();
+    await expect.poll(size).toBe(3);
+    await panel.getByTestId("project-template-open-edge-path-evidence").click();
+    await expect(panel).toBeHidden();
+    expect(await size()).toBe(3);
+    expect((await active()).identity.id).toBe(first.identity.id);
+    expect(await payload(first.identity.id)).toBe(edited);
+    await show();
+    await panel.getByRole("button", { name: "Starter projects", exact: true }).click();
+    await panel.getByTestId("project-library-module").selectOption("Workbook");
+    await panel.screenshot({ path: test.info().outputPath("starter-open-existing-copy.png") });
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("a missing starter payload reports an error without silently creating another copy", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-template-open-edge-path-evidence").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
+    const original = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
+    await page.evaluate(() => {
+      const project = JSON.parse(localStorage.getItem("math3d.project.v1")!);
+      localStorage.removeItem(`math3d.project.v1.payload.${project.identity.id}`);
+    });
+    await panel.getByTestId("project-template-open-edge-path-evidence").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Saved project payload is missing");
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project-library.v1")!).entries.length)).toBe(1);
+    expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(original);
+  } finally { await closeSurfaceApp(ctx); }
+});

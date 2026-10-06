@@ -7,7 +7,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
-import { importLibraryProject, loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY,
+import { findProjectStarterCopy, importLibraryProject, loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY,
   PROJECT_STORAGE_KEY, readProjectThumbnail, isAutomaticProjectThumbnail, saveLibraryProject, updateLibraryActivity, type ProjectLibrary } from "../projects/projectLibrary";
 import { ProjectCommandAdapter } from "../projects/projectCommandAdapter";
 import { ProjectGalleryFrame } from "./ProjectGalleryFrame";
@@ -127,6 +127,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   const filteredProjects = orderProjectLibrary(library).filter(entry => (collection !== "Favorites" || entry.favorite) &&
     (moduleFilter === "All modules" || summaries.get(entry.id)?.modules.includes(moduleFilter)) &&
     `${entry.title} ${entry.tags.join(" ")} ${summaries.get(entry.id)?.description ?? ""} ${summaries.get(entry.id)?.modules.join(" ") ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()));
+  const readActiveProjectId = () => { const raw = localStorage.getItem(PROJECT_STORAGE_KEY); return raw ? parseMath3DProject(raw).identity.id : null; };
+  const starterCopies = useMemo(() => {
+    let activeId: string | null = null;
+    try { activeId = readActiveProjectId(); } catch { /* Open reports invalid saved bytes without replacing them. */ }
+    return Object.fromEntries([...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS].flatMap(item => {
+      const copy = findProjectStarterCopy(library, item.id, activeId);
+      return copy ? [[item.id, copy]] : [];
+    }));
+  }, [library, project]);
   const display = (next: Math3DProject, savedPreview: boolean, keepManagement = false) => {
     if (!keepManagement) workspacePanel.current?.scrollTo({ top: 0 });
     const resolved = verifyMixedWorkspaceReplay(next.workspace);
@@ -575,18 +584,38 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       setMessage("Review editor compatibility before opening this saved project.");
     } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
   };
-  const previewTemplate = (id: ProjectStarterId) => {
-    importSequence.current++;
+  const previewTemplate = async (id: ProjectStarterId) => {
+    if (busy) return;
+    const sequence = ++importSequence.current;
     try {
+      const copy = findProjectStarterCopy(parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)), id, readActiveProjectId());
+      if (copy) {
+        const next = loadLibraryProject(localStorage, copy.id), resources = await loadProjectResources(next);
+        if (sequence !== importSequence.current) return;
+        setIncoming({ ...inspectProjectCompatibility(next, transferOptions(resources)), resources, inputKind: "Saved starter copy" });
+        setMessage(`Previewing your saved copy “${next.metadata.title}”. Opening or saving this preview keeps the same project.`);
+        return;
+      }
       const token = crypto.randomUUID(), bundle = NOTEBOOK_STARTERS.some(item => item.id === id) ? instantiateNotebookStarter(id as NotebookStarterId, token) : { project: instantiateMath3DProjectTemplate(id, token), resources: undefined };
       const next = bundle.project;
       setIncoming({ ...inspectProjectCompatibility(next, transferOptions(bundle.resources)), resources: bundle.resources, inputKind: "Independent starter project" });
       setMessage("Starter preview ready. Current work is unchanged until you choose to open it.");
-    } catch (error) { setIncoming(null); setMessage(`Starter unavailable: ${(error as Error).message}`); }
+    } catch (error) { if (sequence === importSequence.current) { setIncoming(null); setMessage(`Starter unavailable: ${(error as Error).message}`); } }
   };
-  const openTemplate = async (id: ProjectStarterId) => {
+  const openTemplate = async (id: ProjectStarterId, newCopy = false) => {
+    if (busy) return;
     importSequence.current++;
     try {
+      if (!newCopy) {
+        const activeId = readActiveProjectId(), copy = findProjectStarterCopy(parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)), id, activeId);
+        if (copy) {
+          loadLibraryProject(localStorage, copy.id);
+          if (copy.id === activeId && !preview && !managed && project?.identity.id === copy.id) {
+            onOpenChange(false); // The live edited workspace is already open; do not restore an older saved snapshot.
+          } else await openLibraryProject(copy.id);
+          return;
+        }
+      }
       const token = crypto.randomUUID(), bundle = NOTEBOOK_STARTERS.some(item => item.id === id) ? instantiateNotebookStarter(id as NotebookStarterId, token) : { project: instantiateMath3DProjectTemplate(id, token), resources: undefined };
       const next = bundle.project;
       const candidate = { ...inspectProjectCompatibility(next, transferOptions(bundle.resources)), resources: bundle.resources, inputKind: "Independent starter project" };
@@ -637,7 +666,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
             {(query || moduleFilter !== "All modules") && <button type="button" onClick={() => { setQuery(""); setModuleFilter("All modules"); }}>Clear filters</button>}
           </div>
         </div>
-        {(collection === "All projects" || collection === "Starter projects") && <ProjectTemplatesPanel query={query} moduleFilter={moduleFilter} onPreview={previewTemplate} onOpen={(id) => { void openTemplate(id); }} busy={busy} />}
+        {(collection === "All projects" || collection === "Starter projects") && <ProjectTemplatesPanel query={query} moduleFilter={moduleFilter} copies={starterCopies} onPreview={id => { void previewTemplate(id); }} onOpen={(id) => { void openTemplate(id); }} onNewCopy={id => { void openTemplate(id, true); }} busy={busy} />}
         {collection !== "Starter projects" && <>
         <h3>Your saved projects ({library.entries.length})</h3><p>Favorites first, then recent. Open a project or preview its documents and compatibility.</p>
         {libraryMessage && <p role="status" data-testid="project-library-message">{libraryMessage}</p>}

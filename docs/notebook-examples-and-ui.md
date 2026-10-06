@@ -1,8 +1,11 @@
 # Evidence Workbooks and Notes
 
 Open **Projects → Starter projects** and choose **Catenoid Evidence Notebook**
-or **Edge Path Evidence Notebook**. Click **Open** to create an independent saved
-Project, including its Mesh source bytes, computed analysis, Notes and Workbook.
+or **Edge Path Evidence Notebook**. **Open** creates the first saved copy, then
+resumes the current or most recently used copy. **New copy** explicitly creates
+another independent Project, including its Mesh source bytes, computed analysis,
+Notes and Workbook. Preview shows the saved copy when one is available; opening
+or saving that preview keeps the same Project identity.
 
 The Gallery collection buttons switch between all projects, starters, your saved
 projects and favorites. Search matches names, topics, tags and modules; the
