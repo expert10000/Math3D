@@ -26,9 +26,10 @@ export const captureProjectResources = (project: Math3DProject, reader: ProjectR
   for (const item of projectResourceInventory(project)) {
     const bytes = reader(item);
     if (!bytes) { if (item.required && !allowMissing) throw new TypeError(`Missing source resource '${item.id}'.`); continue; }
-    verifyProjectResourceBytes(item, bytes);
-    sidecars.push({ id: item.id, kind: item.kind, checksum: sha256Checksum(bytes), byteLength: bytes.length, encoding: item.encoding, shape: item.shape, owners: item.owners, data: encodeProjectResourceBytes(bytes) });
+    sidecars.push({ id: item.id, kind: item.kind, checksum: item.checksum ?? sha256Checksum(bytes), byteLength: bytes.length,
+      encoding: item.encoding, shape: item.shape, owners: item.owners, data: encodeProjectResourceBytes(bytes) });
   }
+  // The staging constructor verifies hashes, ownership and byte shape once.
   return new VerifiedProjectResources(project, sidecars);
 };
 export const exportProjectPackage = (project: Math3DProject, resources: VerifiedProjectResources): string => {

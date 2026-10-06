@@ -1,4 +1,4 @@
-import { canonicalJsonStringify, sha256Checksum } from "./documentIdentity";
+import { canonicalJsonStringify, sha256Checksum, structuralHash } from "./documentIdentity";
 import type { CommandEnvelope } from "./commands";
 import { Graph2DPointTableStore } from "./graph2dPointSeries";
 import { GRAPH2D_COMMAND_TYPES } from "./graph2dCommands";
@@ -74,6 +74,8 @@ export const projectResourceInventory = (project: Math3DProject, context: Projec
   return [...inventory.values()].sort((a, b) => key(a).localeCompare(key(b)));
 };
 export const encodeProjectResourceBytes = (bytes: Uint8Array): string => {
+  const native = (bytes as Uint8Array & { toBase64?: () => string }).toBase64;
+  if (typeof native === "function") return native.call(bytes);
   let text = "";
   for (let offset = 0; offset < bytes.length; offset += 0x8000) text += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
   return btoa(text);
@@ -81,7 +83,12 @@ export const encodeProjectResourceBytes = (bytes: Uint8Array): string => {
 const decode = (value: ProjectResourceSidecar) => {
   if (!Number.isSafeInteger(value.byteLength) || value.byteLength < 0 || value.byteLength > MAX_PROJECT_RESOURCE_BYTES || typeof value.data !== "string" ||
     value.data.length !== 4 * Math.ceil(value.byteLength / 3) || !/^[A-Za-z0-9+/]*={0,2}$/.test(value.data)) throw new TypeError("Invalid or oversized resource bytes.");
-  const bytes = Uint8Array.from(atob(value.data), (char) => char.charCodeAt(0));
+  const native = (Uint8Array as typeof Uint8Array & { fromBase64?: (data: string) => Uint8Array }).fromBase64;
+  const bytes = typeof native === "function" ? native.call(Uint8Array, value.data) : (() => {
+    const binary = atob(value.data), decoded = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index++) decoded[index] = binary.charCodeAt(index);
+    return decoded;
+  })();
   if (bytes.length !== value.byteLength || sha256Checksum(bytes) !== value.checksum) throw new TypeError("Resource checksum or byte length does not match.");
   return bytes;
 };
@@ -121,6 +128,7 @@ export const verifyProjectResourceBytes = (item: ProjectResourceRequirement, byt
 export class VerifiedProjectResources {
   readonly #bytes = new Map<string, Uint8Array>();
   readonly #sidecars: ProjectResourceSidecar[];
+  readonly #projectFingerprint: string;
   constructor(project: Math3DProject, sidecars: readonly ProjectResourceSidecar[] = [], context: ProjectResourceContext = {}) {
     const inventory = new Map(projectResourceInventory(project, context).map((item) => [key(item), item]));
     if (!Array.isArray(sidecars) || sidecars.length > 1024) throw new TypeError("Too many resource sidecars.");
@@ -135,7 +143,10 @@ export class VerifiedProjectResources {
       verifyProjectResourceBytes(item, bytes); this.#bytes.set(key(sidecar), bytes);
     }
     this.#sidecars = JSON.parse(JSON.stringify(sidecars));
+    this.#projectFingerprint = structuralHash(project);
   }
+  /** Reuse this verified snapshot only while its Project content is unchanged. */
+  verifiedFor(project: Math3DProject): boolean { return this.#projectFingerprint === structuralHash(project); }
   bytes(item: { kind: string; id: string }): Uint8Array | null { return this.#bytes.get(key(item))?.slice() ?? null; }
   sidecars(): ProjectResourceSidecar[] { return JSON.parse(JSON.stringify(this.#sidecars)); }
 

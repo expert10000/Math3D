@@ -36,8 +36,10 @@ export const loadProjectResources = async (project: Math3DProject): Promise<Veri
  */
 export const commitProjectResources = async <T>(project: Math3DProject, resources: VerifiedProjectResources, commit: () => T, rollbackHost?: () => void,
   backup?: { project: Math3DProject; resources: VerifiedProjectResources }): Promise<T> => {
-  const record: Record = { id: project.identity.id, schemaVersion: 1, resources: new VerifiedProjectResources(project, resources.sidecars()).sidecars() };
-  const backupRecord: Record | null = backup ? { id: "before-open", projectId: backup.project.identity.id, schemaVersion: 1, resources: new VerifiedProjectResources(backup.project, backup.resources.sidecars()).sidecars() } : null;
+  const record: Record = { id: project.identity.id, schemaVersion: 1,
+    resources: (resources.verifiedFor(project) ? resources : new VerifiedProjectResources(project, resources.sidecars())).sidecars() };
+  const backupRecord: Record | null = backup ? { id: "before-open", projectId: backup.project.identity.id, schemaVersion: 1,
+    resources: (backup.resources.verifiedFor(backup.project) ? backup.resources : new VerifiedProjectResources(backup.project, backup.resources.sidecars())).sidecars() } : null;
   const db = await open();
   const before = new Map<string, string>();
   for (let index = 0; index < localStorage.length; index++) {

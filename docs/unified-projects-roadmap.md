@@ -36,11 +36,12 @@ saved and edited a block Note, and retained its anchor and text across an app
 restart. Physical-device acceptance remains open. Gallery opening defers live
 workspace capture and loads saved-card details in cached batches. With 25 saved
 projects, isolated Electron measurement showed Gallery first paint at roughly
-0.1–0.2 seconds and card summaries ready about 1.1 seconds later. Opening a
-saved Project remained around 5 seconds: most time was spent validating and
-retaining the current workspace as a recoverable before-open snapshot, followed
-by the transactional resource/library commit. Improving that verified restore
-path is still open. The older PRJ45 "centered gallery" description below records
+0.1–0.2 seconds and card summaries ready about 1.1 seconds later. A subsequent
+resource-staging pass removed repeated validation of unchanged Project content;
+the same 25-project Electron check measured saved-card opening at about 2.9
+seconds, down from 4.2–4.6 seconds. The remaining cost is encoding and verifying
+the current workspace's large Volume sidecar for its recoverable before-open
+snapshot. The older PRJ45 "centered gallery" description below records
 the layout as originally delivered.
 
 PRJ01–PRJ12 are integrated into `main` at `766776a27c6601e50d513a2217e3a4bf513c8e0d`.

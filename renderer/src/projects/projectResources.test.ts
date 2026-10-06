@@ -35,6 +35,8 @@ describe("PRJ15 verified project resources", () => {
   });
   it("rejects changed bytes, lengths, encoding, ownership, shape, duplicates and unowned resources during staging", () => {
     const { project, resources } = fixture(), sidecars = resources.sidecars();
+    expect(resources.verifiedFor(project)).toBe(true);
+    expect(resources.verifiedFor({ ...project, metadata: { ...project.metadata, title: "Changed after verification" } })).toBe(false);
     for (const mutate of [
       (row: any) => { row.data = "AAAA" + row.data.slice(4); },
       (row: any) => { row.byteLength++; }, (row: any) => { row.encoding = "future"; },
