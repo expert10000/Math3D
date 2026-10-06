@@ -154,7 +154,11 @@
 .project-quick-panel .project-starters-heading { display:block; }
 .project-quick-panel .project-starter-picker { margin-top:12px; }
 .project-quick-panel .project-workspace-nav { position:static; }
-.project-viewer-panel { left:14px;right:auto;width:420px; }
+.project-viewer-panel { left:14px;right:auto;width:360px; }
+body:has(.project-viewer-panel) [data-testid="projects-quick-toggle"],body:has(.project-viewer-panel) [data-testid="notes-toggle"],body:has(.project-viewer-panel) [data-testid="kernel-workspace-toggle"] { display:none!important; }
+body:has(.project-viewer-panel) [data-testid="geometry-viewer-panel"] { grid-template-columns:minmax(0,1fr)!important;min-height:540px!important; }
+body:has(.project-viewer-panel) [data-testid="geometry-right-panel"] { display:none!important; }
+body:has(.project-viewer-panel) .math3d-app:has([data-testid="geometry-viewer-panel"]) [data-testid="module-workspace"] { min-height:600px!important; }
 .project-viewer-panel .project-gallery-header { padding:12px 14px; }
 .project-viewer-panel .project-gallery-heading { align-items:flex-start; }
 .project-viewer-panel .project-gallery-heading h2 { font-size:19px; }

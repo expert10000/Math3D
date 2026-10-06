@@ -64,6 +64,16 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   const resourceSessionId = useRef<string | null>(null);
   const [quick, setQuick] = useState(false), [detailView, setDetailView] = useState(false), [viewerCompanion, setViewerCompanion] = useState(false), [collection, setCollection] = useState("All projects");
   const [viewingDocumentId, setViewingDocumentId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open || !quick || !viewerCompanion) return;
+    const timer = window.setTimeout(() => {
+      const workspace = document.querySelector('[data-testid="module-workspace"]');
+      const viewer = [...workspace?.querySelectorAll('[data-testid="main-viewer"], [data-testid="surface-primary-viewer"], canvas') ?? []]
+        .find(element => element.getBoundingClientRect().height > 100) ?? workspace;
+      viewer?.scrollIntoView({ block: "center", behavior: "auto" });
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [open, quick, viewerCompanion, viewingDocumentId]);
   const [moduleFilter, setModuleFilter] = useState("All modules");
   const workspacePanel = useRef<HTMLElement>(null);
   const detailsSection = useRef<HTMLElement>(null), contentsSection = useRef<HTMLElement>(null), transferSection = useRef<HTMLElement>(null);
@@ -615,9 +625,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       display(prepared.project, !openWorkspace);
       setIncoming(null);
       if (candidate.inputKind === "Independent starter project") { setHighlightedSavedId(prepared.project.identity.id); setCollection("All projects"); setQuery(""); setModuleFilter("All modules"); }
-      if (openWorkspace && (candidate.inputKind === "Independent starter project" || candidate.inputKind === "Saved starter copy")) { setQuick(false); setDetailView(true); }
+      const starterOpen = openWorkspace && (candidate.inputKind === "Independent starter project" || candidate.inputKind === "Saved starter copy");
       if (openWorkspace) {
-        const first = prepared.documents.find((document) => document.module === "graph2d") ?? prepared.documents[0]!; onNavigateDocument?.(first.id, first.module);
+        const first = starterOpen
+          ? (["geometry", "surface", "mesh", "volume", "curve", "graph2d"] as const).map(module => prepared.documents.find(document => document.module === module)).find(Boolean) ?? prepared.documents[0]!
+          : prepared.documents.find(document => document.module === "graph2d") ?? prepared.documents[0]!;
+        onNavigateDocument?.(first.id, first.module);
+        setViewingDocumentId(first.id);
+        if (starterOpen) { setQuick(true); setViewerCompanion(true); setDetailView(true); }
       }
       setMessage(openWorkspace ? "Opened supported project workspace. Previous workspace saved locally; historical analysis and external refs are retained." : "Imported into the library as a verified saved preview. The current workspace is unchanged.");
       return true;
@@ -639,7 +654,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
         return;
       }
       if (await importPreview(true, prepared)) {
-        if (showDetails) { setQuick(false); setDetailView(true); }
+        if (showDetails) { setQuick(true); setViewerCompanion(true); setDetailView(true); }
         else onOpenChange(false);
       }
     } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
@@ -682,7 +697,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
         if (copy) {
           loadLibraryProject(localStorage, copy.id);
           if (copy.id === activeId && !preview && !managed && project?.identity.id === copy.id) {
-            setQuick(false);
+            const first = (["geometry", "surface", "mesh", "volume", "curve", "graph2d"] as const)
+              .map(module => project.workspace.entries.find(entry => entry.module === module)).find(Boolean) ?? project.workspace.entries[0];
+            if (first) { onNavigateDocument?.(first.expected.id, first.module); setViewingDocumentId(first.expected.id); }
+            setQuick(true);
+            setViewerCompanion(true);
             setDetailView(true); // Keep the active edited Project; do not restore an older saved snapshot.
           } else await openLibraryProject(copy.id, true);
           return;
@@ -738,8 +757,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     {open && <ProjectGalleryFrame quick={quick} viewerCompanion={viewerCompanion} onClose={() => onOpenChange(false)}>
       <header data-testid="project-explorer-header" className="project-gallery-header">
         <div className="project-gallery-heading"><div><p>MATH3D · PROJECTS</p><h2>{quick && !viewerCompanion ? "Quick Projects" : detailView ? project?.metadata.title ?? "Project" : "Projects Gallery"}</h2></div><div style={{ display:"flex",gap:8 }}>
+          {!quick && detailView && !preview && viewingDocumentId && <button type="button" data-testid="project-viewer-return" onClick={() => { setViewerCompanion(true); setQuick(true); }}>Back to viewer</button>}
           {!quick && <button type="button" data-testid="project-detail-toggle" aria-pressed={detailView} onClick={() => { setNotesOpen(false); workspacePanel.current?.scrollTo({ top: 0 }); setDetailView(value => !value); }}>{detailView ? "Browse projects" : "View current project"}</button>}
-          <button data-testid="project-gallery-layout-toggle" onClick={() => { if (!viewerCompanion) setNotesOpen(false); setQuick(value => !value); setViewerCompanion(false); }}>{quick ? viewerCompanion ? "Full Project" : "Full gallery" : "Quick panel"}</button><button type="button" aria-label="Close project explorer" onClick={() => onOpenChange(false)}>Close</button></div></div>
+          <button data-testid="project-gallery-layout-toggle" onClick={() => { if (!viewerCompanion) setNotesOpen(false); setQuick(value => !value); setViewerCompanion(false); }}>{quick ? viewerCompanion ? "Project details" : "Full gallery" : "Quick panel"}</button><button type="button" aria-label="Close project explorer" onClick={() => onOpenChange(false)}>Close</button></div></div>
         <div className="project-gallery-statusline"><p data-testid="project-view-mode" role="status">{managed ? "Managing saved project" : preview ? "Saved project preview" : "Current workspace"} · {project?.metadata.title ?? "Untitled project"}{project && library.entries.some((entry) => entry.id === project.identity.id) && <strong className="project-gallery-saved-badge">Saved in Your saved projects</strong>}</p>
           <button type="button" data-testid="project-restore-saved" disabled={busy || !!managed || !project || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={previewSavedOpen}>{preview ? "Open saved project" : "Review saved version"}</button></div>
       {preview && !managed && <p data-testid="project-open-guidance" style={{ marginBottom: 0 }}>Open saved project, then choose Open project in the compatibility preview to enable document buttons.</p>}

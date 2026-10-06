@@ -27,6 +27,8 @@ test("Projects starter opens two current Geometry Note pins and their Notes", as
     ctx = await launchSurfaceApp();
     await resetSurfaceAppState(ctx.page);
     const page = ctx.page, projects = page.getByTestId("project-explorer-panel");
+    await ctx.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(2048, 1000));
+    await page.setViewportSize({ width: 2048, height: 1000 });
     await page.setViewportSize({ width: 2048, height: 1100 });
     await page.getByTestId("projects-toggle").click();
     await projects.getByTestId("project-template-select").selectOption("geometry-note-pins");
@@ -83,9 +85,22 @@ test("Opening a starter card creates a saved Project and opens its Geometry", as
     await expect(projects.getByTestId("project-view-mode")).toContainText("Saved in Your saved projects");
     const current = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(current.metadata.title).toBe("Geometry Notes and Pins");
-    await expect(projects.getByTestId("project-detail-toggle")).toHaveAttribute("aria-pressed", "true");
+    await expect(projects).toHaveClass(/project-viewer-panel/);
+    await expect(page.locator("canvas:visible").first()).toBeVisible();
+    await expect(projects.getByTestId("project-viewer-document")).toHaveValue(current.workspace.entries[0].expected.id);
     await expect(projects.getByRole("region", { name: "Project Notes" })).toContainText(`Notes (${current.notes.length})`);
     await expect(page.getByTestId("workspace-nav-geometry")).toHaveAttribute("aria-pressed", "true");
+    const viewer = page.getByTestId("main-viewer"), viewerBox = await viewer.boundingBox(), projectBox = await projects.boundingBox();
+    await expect(viewer).toBeVisible();
+    expect(viewerBox!.width).toBeGreaterThan(300);
+    expect(viewerBox!.height).toBeGreaterThan(250);
+    expect(projectBox!.x + projectBox!.width).toBeLessThanOrEqual(viewerBox!.x + 2);
+    await expect.poll(async () => (await viewer.boundingBox())?.y ?? Infinity).toBeLessThan(450);
     await page.screenshot({ path: test.info().outputPath("project-starter-opened.png") });
+    await projects.getByTestId("project-gallery-layout-toggle").click();
+    await expect(projects).toHaveClass(/project-gallery-page/);
+    await projects.getByTestId("project-viewer-return").click();
+    await expect(projects).toHaveClass(/project-viewer-panel/);
+    await expect(viewer).toBeVisible();
   } finally { await closeSurfaceApp(ctx); }
 });

@@ -14,6 +14,8 @@ test("Project detail keeps Workbooks and Notes together through save, reopen and
     let projects = page.getByTestId("project-explorer-panel");
     await projects.getByTestId("project-template-open-graph-derivative-notebook").click();
     await expect(projects.getByTestId("project-message")).toContainText("Opened supported project workspace");
+    await expect(projects).toHaveClass(/project-viewer-panel/);
+    await projects.getByTestId("project-gallery-layout-toggle").click();
     const starter = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     const workbookId = starter.workbooks[0].id;
     await expect(projects.getByTestId("project-detail-toggle")).toHaveAttribute("aria-pressed", "true");
