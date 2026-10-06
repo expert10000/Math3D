@@ -9,6 +9,7 @@ const require = createRequire(import.meta.url);
 const { importQuantumSceneBundle } = require("../dist/main/quantumScene/importer.js");
 const { rememberQuantumScene, reopenRecentQuantumScene, reopenQuantumSceneReference, sceneFingerprint } = require("../dist/main/quantumScene/recent.js");
 const { quantumSceneLaunchDirectory } = require("../dist/main/ipc/quantumSceneIpc.js");
+const { renderVerifiedFieldSlice, inspectVerifiedFieldSample } = require("../dist/main/quantumScene/fieldSlice.js");
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const root = await mkdtemp(join(tmpdir(), "m3d-q01-"));
 try {
@@ -83,6 +84,58 @@ try {
   await writeScene({...scene,datasets:[{...scene.datasets[0],path:"../escape.f64"}]});
   await assert.rejects(importQuantumSceneBundle(directory),/Invalid quantum-scene\/v1/);
   console.log("M3D-Q01 synthetic bundle, mapping and tamper refusal passed");
+
+  const fieldDirectory = join(root, "orbital.qscene");
+  await mkdir(fieldDirectory);
+  const realValues = [], imaginaryValues = [];
+  for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) {
+    realValues.push(x); imaginaryValues.push(y);
+  }
+  const fieldBytes = values => {
+    const bytes = Buffer.alloc(values.length * 8);
+    values.forEach((value, index) => bytes.writeDoubleLE(value, index * 8));
+    return bytes;
+  };
+  const realBytes = fieldBytes(realValues), imaginaryBytes = fieldBytes(imaginaryValues);
+  const fieldScene = {
+    ...scene, id: "fixture-orbital", title: "Verified orbital field", objects: [],
+    coordinates: { handedness: "right", axes: ["x", "y", "z"], units: ["a0", "a0", "a0"] },
+    datasets: [["real", realBytes], ["imaginary", imaginaryBytes]].map(([id, bytes]) => ({
+      id, path: `${id}.f64`, format: "f64le", count: 27, components: 1, unit: "a0^-3/2",
+      bytes: bytes.length, sha256: hash(bytes),
+    })),
+    fields: [{ id: "wavefunction", label: "Synthetic complex field", kind: "complex-field", real: "real", imaginary: "imaginary",
+      grid: { shape: [3, 3, 3], origin: [-1, -1, -1], spacing: [1, 1, 1], order: "xyz-z-fastest" } }],
+  };
+  const fieldSceneBytes = Buffer.from(JSON.stringify(fieldScene, null, 2) + "\n");
+  await writeFile(join(fieldDirectory, "scene.json"), fieldSceneBytes);
+  await writeFile(join(fieldDirectory, "real.f64"), realBytes);
+  await writeFile(join(fieldDirectory, "imaginary.f64"), imaginaryBytes);
+  await writeFile(join(fieldDirectory, "bundle.json"), JSON.stringify({ schema: "quantum-scene-bundle/v1",
+    scene: { path: "scene.json", bytes: fieldSceneBytes.length, sha256: hash(fieldSceneBytes) } }, null, 2) + "\n");
+  const orbital = await importQuantumSceneBundle(fieldDirectory);
+  assert.deepEqual(orbital.deferredFieldIds, ["wavefunction"]);
+  const request = { fingerprint: sceneFingerprint(orbital), fieldId: "wavefunction", axis: 2, index: 1, quantity: "density" };
+  const density = renderVerifiedFieldSlice(orbital, request);
+  assert.deepEqual([density.width, density.height, density.rgba.length, density.unit, density.range],
+    [3, 3, 36, "a0^-3", [0, 2]]);
+  const phase = renderVerifiedFieldSlice(orbital, { ...request, quantity: "phase" });
+  assert.equal(phase.rgba[(1 * 3 + 1) * 4 + 3], 0, "phase at a zero-amplitude node is transparent");
+  const sample = inspectVerifiedFieldSample(orbital, { ...request, u: 2, v: 1 });
+  assert.deepEqual(sample, { grid: [2, 1, 1], position: [1, 0, 0], value: 1, unit: "a0^-3", undefinedNearNode: false });
+  assert.equal(inspectVerifiedFieldSample(orbital, { ...request, quantity: "phase", u: 1, v: 1 }).value, null);
+  assert.throws(() => renderVerifiedFieldSlice(orbital, { ...request, index: 3 }), /Invalid field slice index/);
+  assert.throws(() => renderVerifiedFieldSlice(orbital, { ...request, fieldId: "missing" }), /Unknown verified scene field/);
+  const mismatchedUnits = { ...orbital, source: { ...orbital.source, datasets: orbital.source.datasets.map(dataset =>
+    dataset.id === "imaginary" ? { ...dataset, unit: "dimensionless" } : dataset) } };
+  assert.throws(() => renderVerifiedFieldSlice(mismatchedUnits, request), /different units/);
+  const scalar = { ...orbital, source: { ...orbital.source, fields: [{ ...orbital.source.fields[0], kind: "scalar-field", imaginary: undefined }] } };
+  assert.equal(renderVerifiedFieldSlice(scalar, { ...request, quantity: "real" }).unit, "a0^-3/2");
+  assert.throws(() => renderVerifiedFieldSlice(scalar, request), /Unsupported field quantity/);
+  const brokenField = Buffer.from(realBytes); brokenField[0] ^= 1;
+  await writeFile(join(fieldDirectory, "real.f64"), brokenField);
+  await assert.rejects(importQuantumSceneBundle(fieldDirectory), /integrity/);
+  console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
   const fixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))

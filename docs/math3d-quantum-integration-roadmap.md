@@ -55,8 +55,14 @@ read-only preview only if the source still matches. The workspace holds a
 reference, so moving or changing the source requires reopening it explicitly.
 On desktop, **File → Open workspace** uses a native file picker for the saved
 `.math3d` file. **File → Open verified quantum scene** selects a `.qscene` folder.
-The preview is not yet an editable Math3D document. M3D-Q01
-lifecycle admission and M3D-Q02–Q10 remain open.
+The preview is not yet an editable Math3D document. A bounded first M3D-Q02
+slice now displays a verified scalar or complex field plane (real, imaginary,
+derived density or phase), with exact grid-sample inspection, source coordinates
+and units. Electron retains the verified arrays; only a maximum 49×49 RGBA
+plane and one requested value cross to the renderer. Phase is explicitly
+undefined at near-zero amplitude. This is not an orbital isosurface or a full
+M3D-Q02 delivery. M3D-Q01 lifecycle admission and the remaining M3D-Q02–Q10
+work remain open.
 
 Quantum Lab must not call MATH3D internals, and MATH3D must not reproduce Quantum
 Lab's physics engines. Both applications meet at the portable, versioned scene
@@ -273,6 +279,10 @@ Python validator; canonical serialization and hashes are stable; valid imports
 produce one transaction; any failed validation or artifact admission produces none.
 
 ### M3D-Q02 — `feat(math3d-quantum): import atomic and orbital scenes`
+
+**Status:** Partial — verified, read-only field slices and exact samples are
+implemented; orbital isosurfaces, atom/bond adapters, source locate-back and
+native project admission are not yet implemented.
 
 **Scope.** Render atomic sites, bonds, labels, orbital isosurfaces, probability
 density, sign/phase coloring, and field slices. Preserve atomic/orbital quantum

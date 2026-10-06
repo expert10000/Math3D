@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { GeometryScene } from "../geometry/types";
 import { GeometryViewer } from "./GeometryViewer";
+import { QuantumFieldSlice, type QuantumField } from "./QuantumFieldSlice";
 
 type Vector3 = { x: number; y: number; z: number };
 type SceneSource = {
@@ -8,6 +9,8 @@ type SceneSource = {
   coordinates: { axes: [string, string, string]; units: [string, string, string]; handedness: string };
   datasets: { id: string; count: number; components: number; unit: string }[];
   objects: { id: string; label: string; kind: string; indices?: string; style: { color: string; opacity: number } }[];
+  fields?: QuantumField[];
+  annotations: { id: string; text: string }[];
   bands?: { objects: string[]; labels: string[]; energyUnit: string; bulkGap: number };
 };
 export type QuantumSceneWorkspaceReference = { directory: string; sceneFingerprint: string };
@@ -28,6 +31,10 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
   const document = opened.document;
   const details = document.extensions["quantum-scene/v1"] as { scene: SceneSource; selectionTransferred: false };
   const scene = details.scene;
+  const count = (document.geometry.points?.length ?? 0) + (document.geometry.segments?.length ?? 0) +
+    (document.geometry.triangles?.length ?? 0);
+  const [showField, setShowField] = useState(Boolean(scene.fields?.length && count === 0));
+  useEffect(() => { setShowField(Boolean(scene.fields?.length && count === 0)); }, [opened.reference.sceneFingerprint]);
   const camera = document.cameras[0];
   const [pickedBandSample, setPickedBandSample] = useState<PickedBandSample | null>(null);
   const meshObjects = useMemo(() => {
@@ -63,9 +70,6 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
       Math.hypot(best.x - info.point.x, best.y - info.point.y, best.z - info.point.z) ? candidate : best);
     setPickedBandSample({ objectId: mesh.id, label: mesh.label, sampleId: nearest.id ?? "unknown", point: nearest });
   };
-  const count = (document.geometry.points?.length ?? 0) + (document.geometry.segments?.length ?? 0) +
-    (document.geometry.triangles?.length ?? 0);
-
   return (
     <div role="dialog" aria-modal="true" aria-label="Verified quantum scene" data-testid="quantum-scene-preview"
       style={{ position: "fixed", inset: 0, zIndex: 2900, background: "rgba(15,23,42,.64)", display: "grid", placeItems: "center", padding: 20 }}>
@@ -76,12 +80,19 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
           <button type="button" onClick={onClose} data-testid="quantum-scene-close">Close</button>
         </header>
         <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)" }}>
-          <div style={{ minHeight: 0, position: "relative" }} data-testid="quantum-scene-geometry">
-            {count > 0 ? <GeometryViewer scene={viewerScene} meshOverrides={meshObjects} showPlanes={false}
+          <div style={{ minHeight: 0, position: "relative", display: "flex", flexDirection: "column" }} data-testid="quantum-scene-geometry">
+            {count > 0 && Boolean(scene.fields?.length) && <div style={{ padding: 8, display: "flex", gap: 8 }}>
+              <button type="button" onClick={() => setShowField(false)} aria-pressed={!showField}>Geometry</button>
+              <button type="button" onClick={() => setShowField(true)} aria-pressed={showField}>Field slice</button>
+            </div>}
+            <div style={{ minHeight: 0, flex: 1, position: "relative" }}>
+            {showField && scene.fields?.length ? <QuantumFieldSlice fingerprint={opened.reference.sceneFingerprint}
+              fields={scene.fields} axes={scene.coordinates.axes} units={scene.coordinates.units} /> : count > 0 ? <GeometryViewer scene={viewerScene} meshOverrides={meshObjects} showPlanes={false}
               pickEnabled={meshObjects.length > 0} onPick={pickBand} onPickMiss={() => setPickedBandSample(null)}
               inspectSelectionMeshKey={pickedBandSample?.objectId}
               cameraOverride={camera ? { position: camera.position, target: camera.target, up: camera.up } : null} />
               : <p style={{ padding: 20 }}>This scene has no mapped geometry. Its field datasets are listed in the inspector.</p>}
+            </div>
           </div>
           <aside style={{ padding: 16, overflow: "auto", borderLeft: "1px solid var(--border, #cbd5e1)", fontSize: 12, lineHeight: 1.5 }}>
             <h3 style={{ marginTop: 0 }}>Source and coordinates</h3>
@@ -114,7 +125,10 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
             </li>)}</ul>
             <div><b>Rendered objects:</b> {opened.mappedObjectIds.length}</div>
             <div><b>Deferred objects:</b> {opened.deferredObjectIds.length}</div>
-            <div><b>Deferred fields:</b> {opened.deferredFieldIds.length}</div>
+            <div><b>3D field surfaces deferred:</b> {opened.deferredFieldIds.length}</div>
+            {scene.fields?.length ? <p>Field slices display verified grid samples. Full 3D field surfaces remain deferred.</p> : null}
+            {scene.annotations?.length ? <><h3>Source annotations</h3>{scene.annotations.map(annotation =>
+              <p key={annotation.id}>{annotation.text}</p>)}</> : null}
             {(opened.deferredObjectIds.length > 0 || opened.deferredFieldIds.length > 0) &&
               <p>Deferred data remains verified in the source bundle; this preview does not render it yet.</p>}
             <p>Full saved-run scene. Local Lab time or site selection was not transferred.</p>

@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { importQuantumSceneBundle, type ImportedQuantumScene } from "../quantumScene/importer";
+import { inspectVerifiedFieldSample, renderVerifiedFieldSlice, type FieldSampleRequest, type FieldSliceRequest } from "../quantumScene/fieldSlice";
 import type { QuantumSceneOpenResponse } from "../quantumScene/ipcContract";
 import { rememberQuantumScene, reopenRecentQuantumScene, reopenQuantumSceneReference, sceneFingerprint } from "../quantumScene/recent";
 import { isAbsolute, resolve } from "node:path";
@@ -33,6 +34,20 @@ function failed(error: unknown): QuantumSceneOpenResponse {
 
 export function registerQuantumSceneIpc(initialDirectory: string | null = null): void {
   let launchDirectory = initialDirectory;
+  const verifiedBySender = new WeakMap<Electron.WebContents, { fingerprint: string; imported: ImportedQuantumScene }>();
+  const openedFor = (event: Electron.IpcMainInvokeEvent, directory: string, imported: ImportedQuantumScene, remembered: boolean) => {
+    verifiedBySender.set(event.sender, { fingerprint: sceneFingerprint(imported), imported });
+    return opened(directory, imported, remembered);
+  };
+  const activeField = (event: Electron.IpcMainInvokeEvent, request: unknown) => {
+    if (!trustedSender(event)) throw new Error("Untrusted quantum scene IPC sender");
+    if (!request || typeof request !== "object" || Array.isArray(request)) throw new TypeError("Invalid field request");
+    const fingerprint = (request as Record<string, unknown>).fingerprint;
+    const active = verifiedBySender.get(event.sender);
+    if (typeof fingerprint !== "string" || !active || active.fingerprint !== fingerprint)
+      throw new Error("Field request does not match the active verified scene");
+    return active.imported;
+  };
   ipcMain.handle("quantumScenes:consumeLaunch", async (event, ...args: unknown[]): Promise<QuantumSceneOpenResponse> => {
     if (args.length) return { ok: false, canceled: false, error: "Quantum scene launch accepts no renderer paths" };
     if (!trustedSender(event))
@@ -44,7 +59,7 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
       const imported = await importQuantumSceneBundle(directory);
       const remembered = await rememberQuantumScene(app.getPath("userData"), directory, imported)
         .then(() => true, () => false);
-      return opened(directory, imported, remembered);
+      return openedFor(event, directory, imported, remembered);
     } catch (error) {
       return failed(error);
     }
@@ -64,7 +79,7 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
       const imported = await importQuantumSceneBundle(directory);
       const remembered = await rememberQuantumScene(app.getPath("userData"), directory, imported)
         .then(() => true, () => false);
-      return opened(directory, imported, remembered);
+      return openedFor(event, directory, imported, remembered);
     } catch (error) {
       return failed(error);
     }
@@ -75,7 +90,7 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
       return { ok: false, canceled: false, error: "Untrusted quantum scene IPC sender" };
     try {
       const { directory, imported } = await reopenRecentQuantumScene(app.getPath("userData"));
-      return opened(directory, imported, true);
+      return openedFor(event, directory, imported, true);
     } catch (error) {
       return failed(error);
     }
@@ -85,7 +100,17 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
     if (!trustedSender(event)) return { ok: false, canceled: false, error: "Untrusted quantum scene IPC sender" };
     try {
       const { directory, imported } = await reopenQuantumSceneReference(args[0]);
-      return opened(directory, imported, false);
+      return openedFor(event, directory, imported, false);
     } catch (error) { return failed(error); }
+  });
+  ipcMain.handle("quantumScenes:fieldSlice", (event, ...args: unknown[]) => {
+    if (args.length !== 1) throw new TypeError("Field slice requires one request");
+    const imported = activeField(event, args[0]);
+    return renderVerifiedFieldSlice(imported, args[0] as FieldSliceRequest);
+  });
+  ipcMain.handle("quantumScenes:fieldSample", (event, ...args: unknown[]) => {
+    if (args.length !== 1) throw new TypeError("Field sample requires one request");
+    const imported = activeField(event, args[0]);
+    return inspectVerifiedFieldSample(imported, args[0] as FieldSampleRequest);
   });
 }

@@ -13,6 +13,13 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
   await mkdir(directory);
   const data = Buffer.alloc(48);
   [0,0,0,1,0,0].forEach((value,index) => data.writeDoubleLE(value,index * 8));
+  const fieldData = (sample: (x: number, y: number) => number) => {
+    const bytes = Buffer.alloc(27 * 8);
+    let offset = 0;
+    for(let x=-1;x<=1;x++)for(let y=-1;y<=1;y++)for(let z=-1;z<=1;z++)bytes.writeDoubleLE(sample(x,y),offset++*8);
+    return bytes;
+  };
+  const real = fieldData((x)=>x), imaginary = fieldData((_x,y)=>y);
   const scene = {
     schema: "quantum-scene/v1", id: "ipc-fixture", title: "IPC verified path",
     provenance: { runId: "run-ipc", jobId: "job-ipc", model: "two_level", engine: "native", engineVersion: "1",
@@ -20,13 +27,19 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     coordinates: { handedness: "right", axes: ["x","y","z"], units: ["dimensionless","dimensionless","dimensionless"] },
     camera: { position: [3,2,2], target: [0,0,0], up: [0,0,1] },
     datasets: [{ id: "vertices", path: "vertices.f64", format: "f64le", count: 2, components: 3,
-      unit: "dimensionless", bytes: data.length, sha256: hash(data) }],
+      unit: "dimensionless", bytes: data.length, sha256: hash(data) },
+    ...[["real",real],["imaginary",imaginary]].map(([id,bytes])=>({id,path:`${id}.f64`,format:"f64le",count:27,components:1,
+      unit:"a0^-3/2",bytes:(bytes as Buffer).length,sha256:hash(bytes as Buffer)}))],
     objects: [{ id: "path", label: "Path", kind: "polyline", positions: "vertices", visible: true,
       style: { color: "#0088ff", opacity: 1, size: 1 } }], annotations: [],
+    fields: [{id:"wavefunction",label:"Synthetic orbital field",kind:"complex-field",real:"real",imaginary:"imaginary",
+      grid:{shape:[3,3,3],origin:[-1,-1,-1],spacing:[1,1,1],order:"xyz-z-fastest"}}],
   };
   const sceneBytes = Buffer.from(JSON.stringify(scene,null,2)+"\n");
   await writeFile(join(directory,"scene.json"),sceneBytes);
   await writeFile(join(directory,"vertices.f64"),data);
+  await writeFile(join(directory,"real.f64"),real);
+  await writeFile(join(directory,"imaginary.f64"),imaginary);
   await writeFile(join(directory,"bundle.json"),JSON.stringify({schema:"quantum-scene-bundle/v1",
     scene:{path:"scene.json",bytes:sceneBytes.length,sha256:hash(sceneBytes)}},null,2)+"\n");
   const launch = (args = ["."]) => launchRepoElectron({ args, cwd:resolve(__dirname,"..",".."),
@@ -48,7 +61,7 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
       expect(opened.remembered).toBe(true);
       expect(opened.document).toMatchObject({title:"IPC verified path",metadata:{sourceResultSha256:"a".repeat(64)}});
       expect(opened.mappedObjectIds).toEqual(["path"]);
-      expect(opened.deferredFieldIds).toEqual([]);
+      expect(opened.deferredFieldIds).toEqual(["wavefunction"]);
     }
     await app.evaluate(({BrowserWindow})=>{
       BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command",{command:"file:open-quantum-scene"});
@@ -56,6 +69,21 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
     await expect(page.getByTestId("quantum-scene-preview")).toContainText("run-ipc");
     await expect(page.getByTestId("quantum-scene-geometry")).toBeVisible();
+    await page.getByRole("button",{name:"Field slice"}).click();
+    await expect(page.getByTestId("quantum-field-slice")).toBeVisible();
+    await expect(page.getByTestId("quantum-field-legend")).toContainText("a0^-3");
+    const fieldCanvas=page.getByTestId("quantum-field-canvas");
+    const fieldBounds=(await fieldCanvas.boundingBox())!;
+    await fieldCanvas.click({position:{x:fieldBounds.width*.83,y:fieldBounds.height*.5}});
+    await expect(page.getByTestId("quantum-field-sample")).toContainText("Grid [2, 1, 1]");
+    await expect(page.getByTestId("quantum-field-sample")).toContainText("density = 1.000000");
+    await page.getByTestId("quantum-scene-geometry").getByRole("button",{name:"Geometry",exact:true}).click();
+    await expect(page.getByTestId("quantum-field-slice")).toHaveCount(0);
+    const wrongField=await page.evaluate(async()=>{
+      try {await (window as any).quantumScenes.fieldSlice({fingerprint:"0".repeat(64),fieldId:"wavefunction",axis:2,index:1,quantity:"density"});return "accepted";}
+      catch(error){return String(error);}
+    });
+    expect(wrongField).toMatch(/does not match the active verified scene/);
     await page.getByTestId("quantum-scene-close").click();
     await expect(page.getByTestId("quantum-scene-preview")).toBeHidden();
     const workspacePath = join(root, "quantum-workspace.math3d");
@@ -90,6 +118,8 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     });
     await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
     await expect(page.getByTestId("quantum-scene-preview")).toContainText("run-ipc");
+    await page.getByRole("button",{name:"Field slice"}).click();
+    await expect(page.getByTestId("quantum-field-legend")).toContainText("a0^-3");
     await page.getByTestId("quantum-scene-close").click();
     const damaged=Buffer.from(data);damaged[0]=1;await writeFile(join(directory,"vertices.f64"),damaged);
     await app.evaluate(({BrowserWindow})=>{
@@ -107,6 +137,29 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     const recentRefused=await page.evaluate(()=>(window as any).quantumScenes.reopenRecent());
     expect(recentRefused).toMatchObject({ok:false,canceled:false});
     if(!recentRefused.ok&&!recentRefused.canceled)expect(recentRefused.error).toMatch(/integrity/);
+
+    const fieldOnly=join(root,"field-only.qscene");
+    await mkdir(fieldOnly);
+    const fieldScene={...scene,id:"field-only",title:"Verified field-only scene",objects:[],
+      provenance:{...scene.provenance,runId:"run-field-only",model:"synthetic_field"},
+      datasets:scene.datasets.filter(dataset=>dataset.id!=="vertices")};
+    const fieldSceneBytes=Buffer.from(JSON.stringify(fieldScene,null,2)+"\n");
+    await writeFile(join(fieldOnly,"scene.json"),fieldSceneBytes);
+    await writeFile(join(fieldOnly,"real.f64"),real);
+    await writeFile(join(fieldOnly,"imaginary.f64"),imaginary);
+    await writeFile(join(fieldOnly,"bundle.json"),JSON.stringify({schema:"quantum-scene-bundle/v1",
+      scene:{path:"scene.json",bytes:fieldSceneBytes.length,sha256:hash(fieldSceneBytes)}},null,2)+"\n");
+    await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},fieldOnly);
+    await app.evaluate(({BrowserWindow})=>{
+      BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command",{command:"file:open-quantum-scene"});
+    });
+    await expect(page.getByTestId("quantum-scene-preview")).toContainText("Verified field-only scene");
+    await expect(page.getByTestId("quantum-field-slice")).toBeVisible();
+    await page.getByRole("combobox",{name:"Quantum field quantity"}).selectOption("phase");
+    await expect(page.getByTestId("quantum-field-legend")).toContainText("rad");
+    expect(await page.getByTestId("quantum-field-canvas").evaluate(canvas=>(canvas as HTMLCanvasElement)
+      .getContext("2d")!.getImageData(1,1,1,1).data[3])).toBe(0);
+    await page.getByTestId("quantum-scene-close").click();
 
     const realBundle=resolve(__dirname,"..","fixtures","quantum-scene","run-97a132d1d712414bb62bb8c9212f517e-bands.qscene");
     await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},realBundle);

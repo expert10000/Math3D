@@ -17,9 +17,12 @@ point clouds, polylines, endpoint segments and indexed meshes map to existing
 Math3D geometry without coordinate conversion; a 20,000-primitive cap defers
 oversized objects rather than truncating them. The source camera, axes,
 units, provenance, dataset descriptors, source object IDs and annotations
-remain in the returned validated scene/extension. Vector objects, scalar or
-complex fields and hidden objects are marked deferred, because rendering or
-unit interpretation needs a dedicated later adapter. Verified numerical
+remain in the returned validated scene/extension. Vector objects, full scalar or
+complex field surfaces and hidden objects are marked deferred, because rendering or
+unit interpretation needs a dedicated later adapter. A bounded field-slice
+inspector now covers supplied scalar/complex grids without claiming a 3D
+isosurface: the main process retains verified arrays, and the renderer receives
+only a small RGBA plane plus an exact selected sample. Verified numerical
 arrays remain available on the returned import result; they are not invented
 from the Math3D geometry.
 
