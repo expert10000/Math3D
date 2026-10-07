@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Pressable, ScrollView, StatusBar, Text, View } from "react-native";
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StatusBar, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { tabs, type MobileAppController } from "./mobileAppController";
 import { styles } from "./mobileAppStyles";
@@ -18,6 +18,8 @@ export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model 
   const { tab, setTab } = model;
   const [graphPresentation, setGraphPresentation] = useState(false);
   return (
+    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : "height"}
+      enabled={tab !== "workspace" && !model.graphGalleryOpen}>
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor="#f4f6f8" translucent={false} />
       {!(tab === "workspace" && model.graphDocument) && <View style={styles.header}>
@@ -38,7 +40,7 @@ export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model 
         onPresentationChange={setGraphPresentation} /> :
         <MobileWorkspaceScreen model={model} />)}
 
-      {tab !== "workspace" && <ScrollView contentContainerStyle={styles.content}>
+      {tab !== "workspace" && <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {tab === "home" && <MobileHomeScreen model={model} />}
         {tab === "projects" && <MobileProjectsScreen model={model} />}
         {tab === "explore" && <MobileExploreScreen model={model} />}
@@ -73,5 +75,6 @@ export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model 
         ))}
       </View>}
     </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 };
