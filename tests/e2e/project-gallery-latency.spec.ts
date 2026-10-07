@@ -42,7 +42,8 @@ test("profile Projects Gallery and saved-card opening with 25 projects", async (
     expect(helicoid).toBeTruthy();
     const savedCardOpenMs = await measureClick(`[data-testid='project-open-saved-${helicoid}']`, false);
     await expect(panel).toBeHidden({ timeout: 60_000 });
-    const metrics = { platform: "desktop Electron", projectCount: 25, emptyFirstPaintMs: emptyMs, coldFirstPaintMs, coldReadyMs, warmFirstPaintMs, savedCardOpenMs };
+    const openPhases = await page.evaluate(() => Object.fromEntries(performance.getEntriesByType("measure").filter(entry => entry.name.startsWith("project-open:")).map(entry => [entry.name.replace("project-open:", ""), Math.round(entry.duration)])));
+    const metrics = { platform: "desktop Electron", projectCount: 25, emptyFirstPaintMs: emptyMs, coldFirstPaintMs, coldReadyMs, warmFirstPaintMs, savedCardOpenMs, openPhases };
     console.log(`PROJECT_GALLERY_LATENCY ${JSON.stringify(metrics)}`);
     writeFileSync(test.info().outputPath("project-gallery-latency.json"), `${JSON.stringify(metrics, null, 2)}\n`);
   } finally { await closeSurfaceApp(context); }

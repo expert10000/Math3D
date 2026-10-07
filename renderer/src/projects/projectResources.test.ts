@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { Buffer } from "node:buffer";
 import { canonicalJsonStringify, createMath3DProject, createMeshDocument, createMixedWorkspaceDocument, createVolumeDocument, createGraph2DWorkspaceProject, getGraph2DPresetCatalog, instantiateGraph2DPreset, Graph2DPointTableStore, sha256Checksum } from "@math3d/core";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
 import { meshReplayState } from "../mesh/meshReplay";
-import { captureProjectResources, encodeProjectResourceBytes, exportProjectPackage, parseProjectPackage, projectResourceInventory, VerifiedProjectResources } from "./projectResources";
+import { captureProjectResources, captureProjectResourcesAsync, encodeProjectResourceBytes, exportProjectPackage, parseProjectPackage, projectResourceInventory, VerifiedProjectResources } from "./projectResources";
 import { inspectProjectCompatibility, previewProjectImport } from "./projectTransfer";
 
 const triangle = (x = 0) => ({ label: "Resource triangle", source: { kind: "import" as const, format: "obj" as const, filename: "triangle.obj" }, positions: new Float32Array([x,0,0, x+1,0,0, x,1,0]), indices: new Uint32Array([0,1,2]), normals: new Float32Array([0,0,1,0,0,1,0,0,1]), uvs: new Float32Array([0,0,1,0,0,1]) });
@@ -17,6 +18,35 @@ const fixture = () => {
 };
 
 describe("PRJ15 verified project resources", () => {
+  it("checks native asynchronous captures without retaining mutable input buffers", async () => {
+    const { project, resources } = fixture(), input = resources.byteEntries();
+    const pending = VerifiedProjectResources.fromCapturedBytes(project, input);
+    input[0]!.bytes.fill(0); input[0]!.owners.length = 0;
+    expect((await pending).sidecars()).toEqual(resources.sidecars());
+    expect((await captureProjectResourcesAsync(project, item => resources.bytes(item))).sidecars()).toEqual(resources.sidecars());
+    const corrupt = resources.byteEntries(); corrupt[0]!.bytes[0] ^= 1;
+    await expect(VerifiedProjectResources.fromCapturedBytes(project, corrupt)).rejects.toThrow("checksum");
+    await expect(captureProjectResourcesAsync(project, () => null)).rejects.toThrow("Missing source");
+  });
+  it("keeps binary archive snapshots detached and preserves portable sidecar compatibility", () => {
+    const { project, resources } = fixture();
+    const entries = resources.byteEntries();
+    const restored = new VerifiedProjectResources(project, [], entries);
+    entries[0]!.bytes.fill(0); entries[0]!.owners.length = 0;
+    const copy = restored.byteEntries(); copy[0]!.bytes.fill(0);
+    expect(restored.sidecars()).toEqual(resources.sidecars());
+    const nodeEntries = resources.byteEntries().map(item => ({ ...item, bytes: Buffer.from(item.bytes) }));
+    const nodeRestored = new VerifiedProjectResources(project, [], nodeEntries);
+    nodeEntries[0]!.bytes.fill(0);
+    expect(nodeRestored.sidecars()).toEqual(resources.sidecars());
+    expect(parseProjectPackage(exportProjectPackage(project, restored)).resources.sidecars()).toEqual(resources.sidecars());
+    const badChecksum = resources.byteEntries(); badChecksum[0]!.bytes[0] ^= 1;
+    expect(() => new VerifiedProjectResources(project, [], badChecksum)).toThrow("checksum");
+    const badOwner = resources.byteEntries(); badOwner[0]!.owners = ["other-document"];
+    expect(() => new VerifiedProjectResources(project, [], badOwner)).toThrow("ownership");
+    expect(() => new VerifiedProjectResources(project, [], [...resources.byteEntries(), resources.byteEntries()[0]!])).toThrow("ownership");
+    expect(() => new VerifiedProjectResources(project, resources.sidecars(), resources.byteEntries())).toThrow("archive");
+  });
   it("transfers original and edited Mesh buffers to an independent store with exact selection and history", () => {
     const { adapter, project, resources } = fixture(), original = JSON.stringify(project);
     const imported = parseProjectPackage(exportProjectPackage(project, resources));

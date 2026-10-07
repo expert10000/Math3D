@@ -18,7 +18,7 @@ import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnaly
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint } from "../projects/projectTransfer";
 import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
-import { captureProjectResources, exportProjectPackage, MAX_PROJECT_PACKAGE_BYTES, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
+import { captureProjectResources, captureProjectResourcesAsync, exportProjectPackage, projectResourceInventory, MAX_PROJECT_PACKAGE_BYTES, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
 import { commitProjectResources, loadProjectResources } from "../projects/projectResourceArchive";
 import { canonicalJsonStringify, structuralHash, type ProjectNoteAnchor, type StableDocumentId } from "@math3d/core";
 import { pointTableStore, installPortablePointTables } from "../graph2d/pointTableStore";
@@ -318,12 +318,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       else setNotesOpen(false);
     } else setNotesMessage("Source document is unavailable to open.");
   };
-  const collectResources = (next: Math3DProject, extra = resourceSession.current, allowMissing = false, workbook?: { id: string; bytes: Uint8Array }) => captureProjectResources(next, (item) => {
+  const resourceBytes = (extra = resourceSession.current, workbook?: { id: string; bytes: Uint8Array }): ProjectResourceReader => (item) => {
     if (item.kind === "workbook-payload" && item.id === workbook?.id) return workbook.bytes;
     const live = resourceReader?.(item); if (live) return live;
     if (item.kind === "graph-point-table") { const rows = pointTableStore.resolve(item.reference as import("@math3d/core").Graph2DPointTableReference); if (rows) return new TextEncoder().encode(canonicalJsonStringify(rows)); }
     return extra?.bytes(item) ?? null;
-  }, allowMissing);
+  };
+  const collectResources = (next: Math3DProject, extra = resourceSession.current, allowMissing = false, workbook?: { id: string; bytes: Uint8Array }) => captureProjectResources(next, resourceBytes(extra, workbook), allowMissing);
   const save = async () => {
     if (busy) return; setBusy(true);
     try {
@@ -607,20 +608,35 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     const previousResources = resourceSession.current;
     let previous: MixedWorkspaceDocument | null = null, rollbackTables: (() => void) | undefined;
     try {
+      let phaseStart = performance.now();
+      const measurePhase = (name: string) => {
+        performance.clearMeasures(`project-open:${name}`);
+        performance.measure(`project-open:${name}`, { start: phaseStart, end: performance.now() });
+        phaseStart = performance.now();
+      };
       const prepared = inspectProjectCompatibility(candidate.project, transferOptions(candidate.resources));
+      measurePhase("compatibility");
       if (openWorkspace && (!onRestoreWorkspace || !prepared.canOpenWorkspace)) throw new Error("This project is preview-only on this host.");
       previous = openWorkspace ? capture() : null;
+      measurePhase("capture");
       const backupProject = previous ? adoptMixedWorkspaceProject(previous, "Before project open") : null;
       const backup = backupProject ? serializeMath3DProject(backupProject) : undefined;
-      const backupResources = backupProject ? collectResources(backupProject, previousResources, true) : null;
+      measurePhase("backup-document");
+      const backupResources = backupProject ? await captureProjectResourcesAsync(backupProject, resourceBytes(previousResources), true) : null;
+      measurePhase("backup-resources");
+      if (previous && canonicalJsonStringify(capture()) !== canonicalJsonStringify(previous)) throw new Error("The workspace changed while preparing its backup. Retry opening the Project.");
       // Preview-only JSON may deliberately lack resources. Preserve that explicit state.
       const resources = candidate.resources ?? await loadProjectResources(prepared.project);
       const rollback = () => { rollbackTables?.(); if (previous && onRestoreWorkspace) onRestoreWorkspace(previous, previousResources); };
       setLibrary(await commitProjectResources(prepared.project, resources, () => importLibraryProject(localStorage, prepared.project, Date.now(), { activate: openWorkspace, backup,
         ...(openWorkspace && previous && onRestoreWorkspace ? { afterWrite: () => {
-          rollbackTables = installPortablePointTables(resources.sidecars().filter((item) => item.kind === "graph-point-table").map((item) => ({ id: item.id, content: new TextDecoder().decode(resources.bytes(item)!) })));
+          rollbackTables = installPortablePointTables(projectResourceInventory(prepared.project).filter((item) => item.kind === "graph-point-table").flatMap((item) => {
+            const bytes = resources.bytes(item);
+            return bytes ? [{ id: item.id, content: new TextDecoder().decode(bytes) }] : [];
+          }));
           onRestoreWorkspace(prepared.project.workspace, resources);
         } } : {}) }), rollback, backupProject && backupResources ? { project: backupProject, resources: backupResources } : undefined));
+      measurePhase("commit-and-restore");
       resourceSession.current = resources; resourceSessionId.current = prepared.project.identity.id;
       display(prepared.project, !openWorkspace);
       setIncoming(null);

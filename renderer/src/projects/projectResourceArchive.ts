@@ -1,8 +1,11 @@
 import type { Math3DProject } from "@math3d/core";
-import { VerifiedProjectResources, type ProjectResourceSidecar } from "./projectResources";
+import { VerifiedProjectResources, type ProjectResourceSidecar, type ProjectResourceBytes } from "./projectResources";
 
 const DATABASE = "math3d.project-resources.v1", STORE = "projects";
-type Record = { id: string; projectId?: string; schemaVersion: 1; resources: ProjectResourceSidecar[] };
+type Record = { id: string; projectId?: string } & (
+  { schemaVersion: 1; resources: ProjectResourceSidecar[] } |
+  { schemaVersion: 2; resources: ProjectResourceBytes[] }
+);
 const open = (): Promise<IDBDatabase> => new Promise((resolve, reject) => {
   const request = indexedDB.open(DATABASE, 1);
   request.onupgradeneeded = () => request.result.createObjectStore(STORE, { keyPath: "id" });
@@ -25,8 +28,8 @@ export const loadProjectResources = async (project: Math3DProject): Promise<Veri
       };
       request.onerror = () => reject(request.error);
     });
-    if (record && (record.schemaVersion !== 1 || (record.projectId ?? record.id) !== project.identity.id)) throw new TypeError("Unsupported saved resource archive.");
-    return new VerifiedProjectResources(project, record?.resources ?? []);
+    if (record && (![1, 2].includes(record.schemaVersion) || (record.projectId ?? record.id) !== project.identity.id)) throw new TypeError("Unsupported saved resource archive.");
+    return record?.schemaVersion === 2 ? new VerifiedProjectResources(project, [], record.resources) : new VerifiedProjectResources(project, record?.resources ?? []);
   } finally { db.close(); }
 };
 
@@ -36,10 +39,10 @@ export const loadProjectResources = async (project: Math3DProject): Promise<Veri
  */
 export const commitProjectResources = async <T>(project: Math3DProject, resources: VerifiedProjectResources, commit: () => T, rollbackHost?: () => void,
   backup?: { project: Math3DProject; resources: VerifiedProjectResources }): Promise<T> => {
-  const record: Record = { id: project.identity.id, schemaVersion: 1,
-    resources: (resources.verifiedFor(project) ? resources : new VerifiedProjectResources(project, resources.sidecars())).sidecars() };
-  const backupRecord: Record | null = backup ? { id: "before-open", projectId: backup.project.identity.id, schemaVersion: 1,
-    resources: (backup.resources.verifiedFor(backup.project) ? backup.resources : new VerifiedProjectResources(backup.project, backup.resources.sidecars())).sidecars() } : null;
+  const record: Record = { id: project.identity.id, schemaVersion: 2,
+    resources: (resources.verifiedFor(project) ? resources : new VerifiedProjectResources(project, [], resources.byteEntries())).byteEntries() };
+  const backupRecord: Record | null = backup ? { id: "before-open", projectId: backup.project.identity.id, schemaVersion: 2,
+    resources: (backup.resources.verifiedFor(backup.project) ? backup.resources : new VerifiedProjectResources(backup.project, [], backup.resources.byteEntries())).byteEntries() } : null;
   const db = await open();
   const before = new Map<string, string>();
   for (let index = 0; index < localStorage.length; index++) {

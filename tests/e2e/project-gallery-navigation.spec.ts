@@ -1,14 +1,35 @@
 import { expect, test } from "@playwright/test";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+
+test("reactivating Projects during resize keeps the Gallery and its filters open", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const toggle = ctx.page.getByTestId("projects-toggle"), panel = ctx.page.getByTestId("project-explorer-panel");
+    // Two activations characterize the former toggle race without timing sleeps.
+    await toggle.evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click(); });
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(panel).toBeVisible();
+    await panel.getByRole("button", { name: "Starter projects", exact: true }).click();
+    await panel.getByTestId("project-library-search").fill("edge path");
+    await resizeSurfaceAppWindow(ctx, 1440, 1000);
+    await toggle.click();
+    await expect(panel.getByTestId("project-library-search")).toHaveValue("edge path");
+    await expect(panel.locator(".project-starter-card")).toHaveCount(1);
+    await panel.getByRole("button", { name: "Close project explorer" }).click();
+    await expect(panel).toBeHidden();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  } finally { await closeSurfaceApp(ctx); }
+});
 
 test("Project Gallery filters starters and saved projects and keeps browsing separate from project actions", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
   try {
     ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
     const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
-    await page.setViewportSize({ width: 1440, height: 1000 });
+    await resizeSurfaceAppWindow(ctx, 1440, 1000);
     await page.getByTestId("projects-toggle").click();
     await panel.getByRole("button", { name: "Starter projects", exact: true }).click();
     await panel.getByTestId("project-library-module").selectOption("Workbook");
@@ -81,7 +102,7 @@ test("Project Gallery keeps its sections reachable on a narrow screen and in the
   try {
     ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
     const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
-    await page.setViewportSize({ width: 390, height: 844 });
+    await resizeSurfaceAppWindow(ctx, 390, 844);
     await page.getByTestId("projects-toggle").click();
     await panel.getByRole("button", { name: "Your saved projects", exact: true }).click();
     await panel.getByTestId("project-title").fill("Phone project");

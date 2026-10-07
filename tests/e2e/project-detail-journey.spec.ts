@@ -51,7 +51,7 @@ test("Project detail keeps Workbooks and Notes together through save, reopen and
     await expect(projects.getByTestId(`project-workbook-${workbookId}`).getByTestId(`project-open-note-${linked.identity.id}`)).toBeVisible();
     await expect(projects.getByTestId("project-all-notes")).toBeVisible();
     await projects.getByTestId("project-workbooks").scrollIntoViewIfNeeded();
-    await projects.screenshot({ path: test.info().outputPath("project-detail-desktop.png") });
+    await page.screenshot({ path: test.info().outputPath("project-detail-desktop.png"), animations: "disabled" });
     await projects.getByTestId("project-detail-toggle").click();
     await projects.getByTestId(`project-details-${saved.identity.id}`).click();
     await expect(projects.getByTestId("project-view-mode")).toContainText("Saved project preview");
@@ -66,6 +66,33 @@ test("Project detail keeps Workbooks and Notes together through save, reopen and
     expect(exported.project.identity.id).toBe(saved.identity.id);
     expect(exported.project.workbooks).toHaveLength(1);
     expect(exported.project.notes).toHaveLength(saved.notes.length);
+
+    // Cold reopen must also read archives written by the previous base64 version.
+    const archiveShape = await page.evaluate(async projectId => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open("math3d.project-resources.v1", 1);
+        request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+      });
+      try {
+        return await new Promise<{ schemaVersion: number; binary: boolean }>((resolve, reject) => {
+          const transaction = db.transaction("projects", "readwrite"), store = transaction.objectStore("projects"), request = store.get(projectId);
+          let shape: { schemaVersion: number; binary: boolean };
+          request.onsuccess = () => {
+            const record = request.result;
+            shape = { schemaVersion: record.schemaVersion, binary: record.resources.every((item: { bytes: unknown }) => item.bytes instanceof Uint8Array) };
+            const resources = record.resources.map(({ bytes, ...descriptor }: { bytes: Uint8Array }) => {
+              let data = "";
+              for (let offset = 0; offset < bytes.length; offset += 0x8000) data += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+              return { ...descriptor, data: btoa(data) };
+            });
+            store.put({ ...record, schemaVersion: 1, resources });
+          };
+          transaction.oncomplete = () => resolve(shape);
+          transaction.onabort = () => reject(transaction.error);
+        });
+      } finally { db.close(); }
+    }, saved.identity.id);
+    expect(archiveShape).toEqual({ schemaVersion: 2, binary: true });
 
     const profile = ctx.profileDir;
     await ctx.app.close();

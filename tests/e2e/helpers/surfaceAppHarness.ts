@@ -59,6 +59,14 @@ export async function resetSurfaceAppState(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
 }
 
+/** Resize the native Electron content area so pointer coordinates and CSS viewport agree. */
+export async function resizeSurfaceAppWindow(ctx: LaunchedSurfaceApp, width: number, height: number): Promise<void> {
+  await ctx.app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.width, size.height), { width, height });
+  // Windows display scaling can round native content bounds by one CSS pixel.
+  await ctx.page.setViewportSize({ width, height });
+  await expect.poll(() => ctx.page.evaluate(() => ({ width: innerWidth, height: innerHeight }))).toEqual({ width, height });
+}
+
 export async function readWorkerStatusText(page: Page): Promise<string> {
   return page.evaluate(() => {
     const normalize = (text: string) => text.replace(/\s+/g, " ").trim();

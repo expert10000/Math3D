@@ -123,6 +123,10 @@ export default defineConfig({
         manualChunks(id) {
           const mod = id.replace(/\\/g, "/");
 
+          // Surface controls load when their docks are used, outside the application entry.
+          if (mod.endsWith("/src/surfacePanels.tsx")) return "surface-panels";
+          if (mod.endsWith("/src/surfacePanelShared.tsx")) return "surface-panel-shared";
+
           // Shared document definitions must initialize before feature singletons.
           // Resource transfer makes Graph and Mesh depend on the same core types;
           // allowing Rollup to absorb them into a UI feature creates an init cycle.

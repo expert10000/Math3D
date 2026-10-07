@@ -1,16 +1,21 @@
 import { canonicalJsonStringify, parseMath3DProject, serializeMath3DProject, sha256Checksum,
   VerifiedProjectResources as SharedVerifiedProjectResources, projectResourceInventory as sharedInventory,
   encodeProjectResourceBytes, verifyProjectResourceBytes, MAX_PROJECT_RESOURCE_BYTES, MAX_PROJECT_PACKAGE_BYTES,
-  type Math3DProject, type MeshResourceReference, type ProjectResourceRequirement, type ProjectResourceSidecar } from "@math3d/core";
+  type Math3DProject, type MeshResourceReference, type ProjectResourceRequirement, type ProjectResourceSidecar, type ProjectResourceBytes, type ProjectResourceCapture } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { MeshResourceStore } from "../mesh/meshResourceStore";
 import { volumePayloadRequired } from "./nativeVolumeRestore";
 export { encodeProjectResourceBytes, verifyProjectResourceBytes, MAX_PROJECT_RESOURCE_BYTES, MAX_PROJECT_PACKAGE_BYTES };
-export type { ProjectResourceKind, ProjectResourceRequirement, ProjectResourceSidecar } from "@math3d/core";
+export type { ProjectResourceKind, ProjectResourceRequirement, ProjectResourceSidecar, ProjectResourceBytes } from "@math3d/core";
 const context = { resolveWorkspace: verifyMixedWorkspaceReplay, volumePayloadRequired };
 export const projectResourceInventory = (project: Math3DProject) => sharedInventory(project, context);
 export class VerifiedProjectResources extends SharedVerifiedProjectResources {
-  constructor(project: Math3DProject, sidecars: readonly ProjectResourceSidecar[] = []) { super(project, sidecars, context); }
+  constructor(project: Math3DProject, sidecars: readonly ProjectResourceSidecar[] = [], binarySources?: readonly ProjectResourceBytes[]) { super(project, sidecars, context, binarySources); }
+  static async fromCapturedBytes(project: Math3DProject, sources: readonly ProjectResourceCapture[]): Promise<VerifiedProjectResources> {
+    const resources = new VerifiedProjectResources(project);
+    await resources.initializeCapturedSources(project, sources, context);
+    return resources;
+  }
   meshStore(project: Math3DProject): MeshResourceStore {
     const store = new MeshResourceStore();
     for (const item of projectResourceInventory(project).filter(item => item.kind === "mesh-buffers")) {
@@ -21,16 +26,26 @@ export class VerifiedProjectResources extends SharedVerifiedProjectResources {
   }
 }
 export type ProjectResourceReader = (item: ProjectResourceRequirement) => Uint8Array | null;
-export const captureProjectResources = (project: Math3DProject, reader: ProjectResourceReader, allowMissing = false): VerifiedProjectResources => {
-  const sidecars: ProjectResourceSidecar[] = [];
+export const captureProjectResourcesAsync = async (project: Math3DProject, reader: ProjectResourceReader, allowMissing = false): Promise<VerifiedProjectResources> => {
+  const sources: ProjectResourceCapture[] = [];
   for (const item of projectResourceInventory(project)) {
     const bytes = reader(item);
     if (!bytes) { if (item.required && !allowMissing) throw new TypeError(`Missing source resource '${item.id}'.`); continue; }
-    sidecars.push({ id: item.id, kind: item.kind, checksum: item.checksum ?? sha256Checksum(bytes), byteLength: bytes.length,
-      encoding: item.encoding, shape: item.shape, owners: item.owners, data: encodeProjectResourceBytes(bytes) });
+    sources.push({ id: item.id, kind: item.kind, checksum: item.checksum, byteLength: bytes.length,
+      encoding: item.encoding, shape: item.shape, owners: item.owners, bytes });
+  }
+  return VerifiedProjectResources.fromCapturedBytes(project, sources);
+};
+export const captureProjectResources = (project: Math3DProject, reader: ProjectResourceReader, allowMissing = false): VerifiedProjectResources => {
+  const sources: ProjectResourceBytes[] = [];
+  for (const item of projectResourceInventory(project)) {
+    const bytes = reader(item);
+    if (!bytes) { if (item.required && !allowMissing) throw new TypeError(`Missing source resource '${item.id}'.`); continue; }
+    sources.push({ id: item.id, kind: item.kind, checksum: item.checksum ?? sha256Checksum(bytes), byteLength: bytes.length,
+      encoding: item.encoding, shape: item.shape, owners: item.owners, bytes });
   }
   // The staging constructor verifies hashes, ownership and byte shape once.
-  return new VerifiedProjectResources(project, sidecars);
+  return new VerifiedProjectResources(project, [], sources);
 };
 export const exportProjectPackage = (project: Math3DProject, resources: VerifiedProjectResources): string => {
   const checked = parseMath3DProject(serializeMath3DProject(project));

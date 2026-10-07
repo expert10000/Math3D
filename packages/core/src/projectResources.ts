@@ -20,6 +20,9 @@ export type ProjectResourceRequirement = {
   owners: string[]; required: boolean; reference: MeshResourceReference | Graph2DPointTableReference | NonNullable<VolumeDocument["source"]["payload"]> | ProjectWorkbookReference;
 };
 export type ProjectResourceSidecar = Omit<ProjectResourceRequirement, "required" | "reference"> & { checksum: string; byteLength: number; data: string };
+/** Structured-clone storage keeps source bytes binary until a portable export is requested. */
+export type ProjectResourceBytes = Omit<ProjectResourceSidecar, "data"> & { bytes: Uint8Array };
+export type ProjectResourceCapture = Omit<ProjectResourceBytes, "checksum"> & { checksum: string | null };
 const key = (item: { kind: string; id: string }) => `${item.kind}:${item.id}`;
 const scalarBytes: Record<string, number> = { float32: 4, float64: 8, int32: 4, uint32: 4, int16: 2, uint16: 2, int8: 1, uint8: 1 };
 
@@ -127,11 +130,41 @@ export const verifyProjectResourceBytes = (item: ProjectResourceRequirement, byt
 /** Detached, fully validated staging area; preview never writes to a host store. */
 export class VerifiedProjectResources {
   readonly #bytes = new Map<string, Uint8Array>();
-  readonly #sidecars: ProjectResourceSidecar[];
+  #sidecars: ProjectResourceSidecar[] | null;
+  readonly #descriptors: Omit<ProjectResourceSidecar, "data">[] = [];
   readonly #projectFingerprint: string;
-  constructor(project: Math3DProject, sidecars: readonly ProjectResourceSidecar[] = [], context: ProjectResourceContext = {}) {
+  /** Stage detached inputs before yielding; native SHA-256 avoids blocking the viewer on large grids. */
+  protected async initializeCapturedSources(project: Math3DProject, sources: readonly ProjectResourceCapture[], context: ProjectResourceContext = {}): Promise<void> {
+    if (this.#bytes.size || !Array.isArray(sources) || sources.length > 1024) throw new TypeError("Unsupported binary resource archive.");
+    const inventory = new Map(projectResourceInventory(project, context).map(item => [key(item), item]));
+    let total = 0;
+    const seen = new Set<string>();
+    const detached = sources.map(source => {
+      if (!source || Object.keys(source).sort().join() !== ["id", "kind", "checksum", "encoding", "shape", "owners", "byteLength", "bytes"].sort().join() ||
+        !(source.bytes instanceof Uint8Array) || source.byteLength !== source.bytes.length) throw new TypeError("Unsupported binary resource descriptor.");
+      const item = inventory.get(key(source));
+      if (!item || seen.has(key(source)) || source.encoding !== item.encoding || canonicalJsonStringify(source.shape) !== canonicalJsonStringify(item.shape) ||
+        canonicalJsonStringify(source.owners) !== canonicalJsonStringify(item.owners)) throw new TypeError("Resource ownership, shape or encoding does not match the project.");
+      seen.add(key(source)); total += source.bytes.length;
+      if (total > MAX_PROJECT_RESOURCE_BYTES) throw new TypeError("Project source resources exceed 64 MiB.");
+      const { bytes, ...descriptor } = source;
+      return { descriptor: JSON.parse(JSON.stringify(descriptor)) as Omit<ProjectResourceCapture, "bytes">, bytes: Uint8Array.from(bytes), item };
+    });
+    for (const { descriptor, bytes, item } of detached) {
+      const digest = globalThis.crypto?.subtle ? new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes)) : null;
+      const checksum = digest ? `sha256:${Array.from(digest, value => value.toString(16).padStart(2, "0")).join("")}` : sha256Checksum(bytes);
+      if (descriptor.checksum !== null && descriptor.checksum !== checksum || item.checksum !== null && item.checksum !== checksum) throw new TypeError("Resource checksum does not match its bytes.");
+      // The checksum was checked above; shape and domain checks still run normally.
+      verifyProjectResourceBytes({ ...item, checksum: null }, bytes);
+      this.#bytes.set(key(descriptor), bytes);
+      this.#descriptors.push({ ...descriptor, checksum });
+    }
+    this.#sidecars = null;
+  }
+  constructor(project: Math3DProject, sidecars: readonly ProjectResourceSidecar[] = [], context: ProjectResourceContext = {}, binarySources?: readonly ProjectResourceBytes[]) {
     const inventory = new Map(projectResourceInventory(project, context).map((item) => [key(item), item]));
     if (!Array.isArray(sidecars) || sidecars.length > 1024) throw new TypeError("Too many resource sidecars.");
+    if (binarySources && (!Array.isArray(binarySources) || binarySources.length > 1024 || sidecars.length)) throw new TypeError("Unsupported binary resource archive.");
     let total = 0;
     for (const sidecar of sidecars) {
       if (!sidecar || Object.keys(sidecar).sort().join() !== ["id", "kind", "checksum", "encoding", "shape", "owners", "byteLength", "data"].sort().join()) throw new TypeError("Unsupported resource descriptor.");
@@ -142,13 +175,35 @@ export class VerifiedProjectResources {
       if (total > MAX_PROJECT_RESOURCE_BYTES) throw new TypeError("Project source resources exceed 64 MiB.");
       verifyProjectResourceBytes(item, bytes); this.#bytes.set(key(sidecar), bytes);
     }
-    this.#sidecars = JSON.parse(JSON.stringify(sidecars));
+    for (const source of binarySources ?? []) {
+      if (!source || Object.keys(source).sort().join() !== ["id", "kind", "checksum", "encoding", "shape", "owners", "byteLength", "bytes"].sort().join() ||
+        !(source.bytes instanceof Uint8Array) || source.byteLength !== source.bytes.length) throw new TypeError("Unsupported binary resource descriptor.");
+      const item = inventory.get(key(source));
+      if (!item || this.#bytes.has(key(source)) || source.encoding !== item.encoding || canonicalJsonStringify(source.shape) !== canonicalJsonStringify(item.shape) ||
+        canonicalJsonStringify(source.owners) !== canonicalJsonStringify(item.owners)) throw new TypeError("Resource ownership, shape or encoding does not match the project.");
+      total += source.bytes.length;
+      if (total > MAX_PROJECT_RESOURCE_BYTES) throw new TypeError("Project source resources exceed 64 MiB.");
+      const bytes = Uint8Array.from(source.bytes);
+      if (source.checksum !== sha256Checksum(bytes)) throw new TypeError("Resource checksum does not match its bytes.");
+      verifyProjectResourceBytes(item, bytes);
+      const { bytes: _sourceBytes, ...descriptor } = source;
+      this.#bytes.set(key(source), bytes);
+      this.#descriptors.push(JSON.parse(JSON.stringify(descriptor)));
+    }
+    this.#sidecars = binarySources ? null : JSON.parse(JSON.stringify(sidecars));
+    if (!binarySources) this.#descriptors.push(...sidecars.map(({ data: _data, ...descriptor }) => JSON.parse(JSON.stringify(descriptor))));
     this.#projectFingerprint = structuralHash(project);
   }
   /** Reuse this verified snapshot only while its Project content is unchanged. */
   verifiedFor(project: Math3DProject): boolean { return this.#projectFingerprint === structuralHash(project); }
   bytes(item: { kind: string; id: string }): Uint8Array | null { return this.#bytes.get(key(item))?.slice() ?? null; }
-  sidecars(): ProjectResourceSidecar[] { return JSON.parse(JSON.stringify(this.#sidecars)); }
+  byteEntries(): ProjectResourceBytes[] {
+    return this.#descriptors.map(descriptor => ({ ...JSON.parse(JSON.stringify(descriptor)), bytes: this.#bytes.get(key(descriptor))!.slice() }));
+  }
+  sidecars(): ProjectResourceSidecar[] {
+    this.#sidecars ??= this.#descriptors.map(descriptor => ({ ...descriptor, data: encodeProjectResourceBytes(this.#bytes.get(key(descriptor))!) }));
+    return JSON.parse(JSON.stringify(this.#sidecars));
+  }
 
 }
 export type ProjectResourceReader = (item: ProjectResourceRequirement) => Uint8Array | null;

@@ -10,6 +10,13 @@ The machine-readable inventory is
 `tests/fixtures/platform-v1.5.0/baseline-manifest.json`.  Focused expectations live
 beside it under `topology/` and `complex/`.
 
+F01 is already delivered in `main`; its execution record is in
+`math3d-topology-complex-kernel-program-roadmap.md`. Recheck the frozen baseline
+with `npm run test:platform:baseline` (unit fixtures, production desktop build,
+and both desktop laboratory journeys). Use `test:platform:baseline:unit` or
+`test:platform:baseline:desktop` for focused follow-up verification. The manifest
+gate also checks that every referenced fixture and desktop test exists.
+
 ## Authority classes
 
 - **Exact:** finite Topology incidence, chain condition, Z/Z2 homology, eligible
