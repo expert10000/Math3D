@@ -73,7 +73,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   const [resumeStatus, setResumeStatus] = useState<string | null>(null);
   useEffect(() => {
     if (activeProjectDocumentId !== undefined) setViewingDocumentId(activeProjectDocumentId);
-  }, [activeProjectDocumentId]);
+  }, [activeProjectDocumentId, open]);
   useEffect(() => {
     if (activeProjectDocumentId !== undefined || !open || !viewerCompanion || !activeModule) return;
     try {
@@ -906,6 +906,16 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
             setViewingDocumentId(selected.id);
           }}><option value="">Choose document</option>{viewerDocuments.map(document => <option key={document.id} value={document.id}>{document.title}</option>)}</select>
         </label></div>}
+        {viewerCompanion && quick && <nav className="project-document-tree" data-testid="project-document-tree" aria-label="Project documents">
+          <h3>Documents</h3>
+          {explorer?.groups.filter(group => group.documents.some(document => !document.archived)).map(group => <section key={group.module}>
+            <strong>{group.title}</strong>
+            <ul>{group.documents.filter(document => !document.archived).map(document => <li key={document.id}>
+              <button type="button" data-testid={`project-tree-document-${document.id}`} aria-current={viewingDocumentId === document.id ? "page" : undefined}
+                disabled={preview || !canNavigateDocument?.(document.id, document.module)} onClick={() => viewBesideProject(document.id, document.module)}>{document.title}</button>
+            </li>)}</ul>
+          </section>)}
+        </nav>}
         {projectNotesView && <div className="project-notes-workspace"><p className="project-workspace-eyebrow">PROJECT / NOTES</p>{renderNotesPanel("page")}</div>}
         <div className="project-workspace-main">
         <div className="project-workspace-summary">
@@ -992,7 +1002,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
         refreshOptions={managed && project ? projectDependencyRefreshOptions(project) : undefined} onRefresh={managed && !busy ? refreshDependency : undefined}
         analysisRefreshOptions={managed && project ? projectAnalysisRefreshOptions(project) : undefined} onRecompute={managed && !busy ? recomputeAnalysis : undefined} />}
       {explorer && !project?.workspace.entries.length && <p className="project-gallery-empty">No documents yet. Open a starter or create a document in the workspace.</p>}
-      {explorer?.groups.filter(group => group.documents.length > 0).map((group) => <section key={group.module} data-testid={`project-group-${group.module}`} style={{ marginTop: 12 }}>
+      {!(viewerCompanion && quick) && explorer?.groups.filter(group => group.documents.length > 0).map((group) => <section key={group.module} data-testid={`project-group-${group.module}`} style={{ marginTop: 12 }}>
         <strong>{group.title} ({group.documents.length})</strong>
         <ul className="project-document-list">
           {group.documents.map((document) => <li key={document.id} style={{ background: inspectedId === document.id && inspectionOpen ? "#eff6ff" : undefined }}>

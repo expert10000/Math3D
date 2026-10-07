@@ -21,7 +21,7 @@ test("Graph and Curve investigation starters open saved Project Workbooks with c
       expect(project.workbooks).toHaveLength(1);
       await projects.getByTestId(`project-open-workbook-${project.workbooks[0].id}`).click();
       await page.getByRole("button", { name: "Surfaces", exact: true }).first().click();
-      const back = page.getByRole("button", { name: "Back to module" });
+      const back = page.getByTestId("project-source-back-to-module");
       if (await back.isVisible()) await back.click();
       await page.getByRole("button", { name: "Workbook", exact: true }).first().click();
       await page.getByTestId("workbook-view-document").click();

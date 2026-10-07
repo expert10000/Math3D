@@ -56,6 +56,23 @@
   box-sizing: border-box;
 }
 
+@media (min-width: 821px) {
+  .project-source-editor button,
+  [data-testid="project-saved-mesh-workflow"] button,
+  [data-testid="project-mesh-editor"] button {
+    font: 600 10px Georgia, "Times New Roman", serif;
+    line-height: normal;
+    padding: 4px 9px;
+    min-height: 0;
+    border: 1px solid var(--workspace-control-border);
+    border-radius: 999px;
+    background: var(--workspace-control-bg);
+    color: var(--workspace-control-text);
+    box-shadow: none;
+  }
+  .project-source-inspector :is(input, select) { font-size: 12px; padding: 4px 6px; }
+}
+
 @container (max-width: 760px) {
   .project-source-workspace {
     grid-template-columns: minmax(0, 1fr);

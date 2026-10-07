@@ -1,0 +1,9 @@
+{
+  "openingMs": 7917,
+  "switchesMs": [
+    5153,
+    5413,
+    6515
+  ],
+  "profile": "isolated Electron; click to visible canvas; not a GPU frame-rate benchmark"
+}

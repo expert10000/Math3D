@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createMath3DProject, createMixedWorkspaceDocument, createSurfaceDocument } from "@math3d/core";
 import { additionalRepresentationFixture } from "../../../tests/fixtures/unified-projects/additionalRepresentations";
-import { createSavedSurfaceMesh, savedSurfaceMeshLinks } from "./savedSurfaceMesh";
+import { createSavedSurfaceMesh, savedSurfaceMeshLinks, savedMeshSurfaceSource } from "./savedSurfaceMesh";
 import { AdditionalProjectSession } from "./additionalProjectSession";
 import { captureProjectResources, exportProjectPackage, parseProjectPackage } from "./projectResources";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
@@ -58,6 +58,9 @@ describe("saved Surface to Mesh", () => {
     expect(second.adapter.document().identity.id).not.toBe(doc.identity.id); expect(second.workspace.entries).toHaveLength(3);
     const links = savedSurfaceMeshLinks(second.workspace, current, new Map([first.adapter, second.adapter].map(adapter => [adapter.document().identity.id, adapter])));
     expect(links.map(link => link.current)).toEqual([false, true]);
+    const verified = verifyMixedWorkspaceReplay(second.workspace);
+    expect(savedSurfaceMeshLinks(second.workspace, current, new Map([first.adapter, second.adapter].map(adapter => [adapter.document().identity.id, adapter])), verified)).toEqual(links);
+    expect(savedMeshSurfaceSource(second.workspace, doc.identity.id, verified)).toMatchObject({ current: false, generation: { structuralHash: f.surface.identity.structuralHash } });
     expect(second.workspace.entries.find(entry => entry.expected.id === doc.identity.id)?.checkpoint).toEqual(doc);
   });
   it("creates a fresh snapshot after mesh edits and reuses that snapshot without overwriting the edit", () => {

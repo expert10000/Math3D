@@ -34,6 +34,19 @@ const modified=(document:AdditionalDocument):CanonicalJsonValue=>{
 };
 
 describe("PRJ16 additional saved representations",()=>{
+  it("reuses unchanged render buffers and invalidates source and missing-parent generations",()=>{
+    const document=fixture.docs.find(d=>title(d)==="Saved extrusion")!;
+    const entry=fixture.project.workspace.entries.find(e=>e.expected.id===document.identity.id)!;
+    const documents=new Map(context.documents), session=new AdditionalProjectSession(entry,document,()=>({documents}));
+    const initial=session.view();
+    expect(session.view()).toBe(initial);
+    session.commit(modified(document));
+    const edited=session.view();expect(edited).not.toBe(initial);expect(session.view()).toBe(edited);
+    session.undo();expect(session.view().bounds).toEqual(initial.bounds);
+    const source=document.source as { definition: { sourceIds: string[] } };
+    documents.delete(source.definition.sourceIds[0]!);
+    expect(()=>session.view()).toThrow(/Missing|stale/);
+  });
   for(const document of fixture.docs)it(`${title(document)} preserves source, edit history, independent export and reopen`,()=>{
     const entry=fixture.project.workspace.entries.find((e)=>e.expected.id===document.identity.id)!;
     const session=new AdditionalProjectSession(entry,document,()=>context),before=canonicalJsonStringify(document);

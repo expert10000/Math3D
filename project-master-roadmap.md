@@ -1025,6 +1025,49 @@ Implemented and checked on 2026-10-07: the navigation repair, responsive header
 clearance and retained source draft pass Windows Electron acceptance. See the
 [navigation evidence](docs/evidence/project-master-desktop-2026-10-07/surface-module-navigation.md).
 
+### Workspace clarity and responsiveness correction — 2026-10-08
+
+The open Project panel must make its scientific documents visible before
+Workbooks and Notes. A compact tree groups Graphs, Surfaces, Meshes and other
+owning documents, highlights the selected document and opens it beside Project.
+The existing selector remains a shortcut. Detailed document actions stay in
+Project details; gallery cards keep their larger presentation controls.
+
+Desktop controls in the open Project panel and saved-document toolbar/Inspector
+use the same font size and padding as global workspace buttons. Touch layouts
+retain larger targets. A Surface document's exit is labelled **Surfaces
+workspace**. While it is displayed, hide the unrelated global Surface action
+toolbar and label the current viewport with the Project document's title/type.
+
+Opening a saved Project should construct each qualified saved-source session
+once. Retain one sampled render binding per unchanged source and dependency
+generation; invalidate it when the source, retained parents or verified resources
+change. Qualification of saved replay and historical sources remains mandatory.
+Measure opening and leave/reopen latency separately from rendering frame rate;
+do not claim that every responsiveness issue is solved from a navigation test.
+
+Linked-Mesh lists and source links use the already qualified live document
+sessions. Navigation between existing members changes active-document order
+without replaying and hashing the entire Project. Import, command commits and
+save remain validation boundaries; lineage/generation checks still determine
+whether each linked Mesh or result is current or historical.
+
+Acceptance: locate Catenoid under Surfaces without scrolling past Workbooks or
+Notes; switch to its Mesh and return through the tree; leave to the normal
+Surfaces workspace; reopen Project with the selector and active row correct;
+check desktop button metrics against global buttons; retain save/restart and
+draft behavior. Record measured navigation timings and remaining limitations.
+
+The same-document native Surface/Sampled presentation still belongs to PM04.
+This correction improves access to the available saved-source view.
+
+Implemented and verified on 2026-10-08: compact tree, explicit exit, contextual
+toolbar, control sizes and removal of redundant replay/sampling work. Opening
+still measured 7.3 seconds and leave/reopen measured 4.6–5.8 seconds in the final
+isolated Electron run. This remains a responsiveness issue: profile remaining
+validation and renderer creation before claiming completion of performance work.
+See [workspace acceptance and timing evidence](docs/evidence/project-workspace-2026-10-08/acceptance.md).
+
 ## Later phase: Project comparison and composition
 
 Begin this phase only after PM10 acceptance. It references existing documents

@@ -5,7 +5,7 @@ import { launchSurfaceApp, closeSurfaceApp, resetSurfaceAppState, type LaunchedS
 
 const openWorkbook = async (page: Page) => {
   await page.getByRole("button", { name: "Surfaces", exact: true }).first().click();
-  const back = page.getByRole("button", { name: "Back to module" }); if (await back.isVisible()) await back.click();
+  const back = page.getByTestId("project-source-back-to-module"); if (await back.isVisible()) await back.click();
   await page.getByRole("button", { name: "Workbook", exact: true }).first().click();
 };
 const bookState = (page: Page) => page.evaluate(() => {

@@ -5,12 +5,13 @@ import { GeometryDocumentAdapter, type GeometryReplayBundle } from "../geometry/
 import { TopologyDiagramCommandAdapter } from "../topology/topologyCommandAdapter";
 import type { TopologyReplayBundle } from "@math3d/core";
 import { MIXED_REPLAY_FORMATS } from "../kernel/mixedWorkspaceReplay";
-import { additionalRepresentationView, replaceAdditionalSource, type AdditionalDocument, type RepresentationContext } from "./additionalProjectRepresentations";
+import { additionalRepresentationView, replaceAdditionalSource, type AdditionalDocument, type RepresentationContext, type RepresentationView } from "./additionalProjectRepresentations";
 
 /** A source UI over the existing module adapters; no separate persistence format. */
 export class AdditionalProjectSession {
   // Ephemeral editor text, retained across module navigation; excluded from replay.
   sourceDraft: string | null = null;
+  private cachedView: { generations: string; resources: RepresentationContext["resources"]; view: RepresentationView } | null = null;
   readonly adapter: CurveDocumentAdapter | SurfaceDocumentAdapter | GeometryDocumentAdapter | TopologyDiagramCommandAdapter;
   readonly original: MixedWorkspaceEntry;
   readonly context: () => RepresentationContext;
@@ -32,7 +33,17 @@ export class AdditionalProjectSession {
     }
   }
   document(): AdditionalDocument { return this.adapter.document(); }
-  view() { return additionalRepresentationView(this.document(), this.context()); }
+  view() {
+    const document = this.document(), context = this.context();
+    // Dependency changes must invalidate the sampled view, including retained parents.
+    const generations = JSON.stringify([document.identity,
+      [...context.documents].map(([id, value]) => [id, value.identity]).sort(([a], [b]) => String(a).localeCompare(String(b))),
+      [...(context.capturedCurves ?? [])].map(([id, value]) => [id, value.identity]).sort(([a], [b]) => String(a).localeCompare(String(b)))]);
+    if (this.cachedView?.generations === generations && this.cachedView.resources === context.resources) return this.cachedView.view;
+    const view = additionalRepresentationView(document, context);
+    this.cachedView = { generations, resources: context.resources, view };
+    return view;
+  }
   preview(source: CanonicalJsonValue) {
     const candidate = replaceAdditionalSource(this.document(), source);
     const context = this.context(), documents = new Map(context.documents); documents.set(candidate.identity.id, candidate);
@@ -54,9 +65,10 @@ export class AdditionalProjectSession {
   }
 }
 
-export const additionalReplayEditable = (entry: MixedWorkspaceEntry, current: MixedWorkspaceEntry["checkpoint"], context: RepresentationContext) => {
+export const tryRestoreAdditionalProjectSession = (entry: MixedWorkspaceEntry, current: MixedWorkspaceEntry["checkpoint"], context: () => RepresentationContext) => {
   try {
-    if (!["math3d.curve-document", "math3d.surface-document", "math3d.geometry-document", "math3d.topology-document"].includes(current.format)) return false;
-    new AdditionalProjectSession(entry, current as AdditionalDocument, () => context); return true;
-  } catch { return false; }
+    if (!["math3d.curve-document", "math3d.surface-document", "math3d.geometry-document", "math3d.topology-document"].includes(current.format)) return null;
+    return new AdditionalProjectSession(entry, current as AdditionalDocument, context);
+  } catch { return null; }
 };
+export const additionalReplayEditable = (entry: MixedWorkspaceEntry, current: MixedWorkspaceEntry["checkpoint"], context: RepresentationContext) => !!tryRestoreAdditionalProjectSession(entry, current, () => context);

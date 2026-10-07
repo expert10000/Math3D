@@ -18,7 +18,7 @@ import { verifyMixedWorkspaceReplay } from "./kernel/mixedWorkspaceReplay";
 // src/App.tsx
 import { AdditionalProjectSession } from "./projects/additionalProjectSession";
 import { capturedCurveSources } from "./projects/capturedCurveSources";
-import { additionalReplayEditable } from "./projects/additionalProjectSession";
+import { tryRestoreAdditionalProjectSession } from "./projects/additionalProjectSession";
 import { AdditionalProjectEditor } from "./projects/AdditionalProjectEditor";
 import { createSavedSurfaceMesh, savedSurfaceMeshLinks, savedMeshSurfaceSource } from "./projects/savedSurfaceMesh";
 import { WorkbookPublication, type PublicationKind } from "./components/WorkbookPublication";
@@ -11381,8 +11381,8 @@ const App: React.FC = () => {
     setAdditionalActiveId(null); setActiveProjectDocumentId(null);
     setActiveGraph2DTargetId(null); setRestoredSurfaceAdapter(null);
   }, []);
-  const [, setAdditionalVersion] = useState(0);
-  const restoredProjectRef = useRef<{ graphs: Map<string, Graph2DCommandAdapter>; additional: Map<string, AdditionalProjectSession>; workspace: MixedWorkspaceDocument; curves: Map<string, CurveDocumentAdapter>; surfaces: Map<string, SurfaceDocumentAdapter>; geometries: Map<string, GeometryDocumentAdapter>; topologies: Map<string, TopologyDiagramCommandAdapter>; complexes: Map<string, ComplexAnalysisCommandAdapter>; volumes: Map<string, VolumeDocumentAdapter>; meshes: Map<string, MeshDocumentAdapter>; resources?: VerifiedProjectResources } | null>(null);
+  const [additionalVersion, setAdditionalVersion] = useState(0);
+  const restoredProjectRef = useRef<{ graphs: Map<string, Graph2DCommandAdapter>; additional: Map<string, AdditionalProjectSession>; workspace: MixedWorkspaceDocument; curves: Map<string, CurveDocumentAdapter>; surfaces: Map<string, SurfaceDocumentAdapter>; geometries: Map<string, GeometryDocumentAdapter>; topologies: Map<string, TopologyDiagramCommandAdapter>; complexes: Map<string, ComplexAnalysisCommandAdapter>; volumes: Map<string, VolumeDocumentAdapter>; meshes: Map<string, MeshDocumentAdapter>; resources?: VerifiedProjectResources; context: () => import("./projects/additionalProjectRepresentations").RepresentationContext } | null>(null);
   const [curvePresetId, setCurvePresetId] = useState<string>("circle2d");
   const [curveCustomXExpr, setCurveCustomXExpr] = useState("cos(t)");
   const [curveCustomYExpr, setCurveCustomYExpr] = useState("sin(2*t)");
@@ -78237,8 +78237,9 @@ case "mobius":
       setActiveProjectDocumentId(id);
       // Scientific active-document membership can contain several documents;
       // put the selected one first for checkpoint consumers and legacy resume.
-      restored.workspace = createMixedWorkspaceDocument({ ...restored.workspace,
-        activeDocumentIds: [id, ...restored.workspace.activeDocumentIds.filter(value => value !== id)] });
+      // This selects an existing verified member; sources/replay are unchanged.
+      restored.workspace = { ...restored.workspace,
+        activeDocumentIds: [id, ...restored.workspace.activeDocumentIds.filter(value => value !== id)] };
     }
     const graph = restored?.graphs.get(id);
     if (graph) {
@@ -78371,7 +78372,10 @@ case "mobius":
       if (document.format === "math3d.complex-analysis-document" && scientificDocumentEditable(document)) complexes.set(document.identity.id, entry.replay ? ComplexAnalysisCommandAdapter.restore(entry.replay.payload as Parameters<typeof ComplexAnalysisCommandAdapter.restore>[0]) : new ComplexAnalysisCommandAdapter(document));
       if (document.format === "math3d.geometry-document" && geometryDocumentEditable(document)) geometries.set(document.identity.id, entry.replay ? GeometryDocumentAdapter.restore(entry.replay.payload as Parameters<typeof GeometryDocumentAdapter.restore>[0]) : new GeometryDocumentAdapter(document));
       const legacyEditable = document.format === "math3d.curve-document" || document.format === "math3d.surface-document" ? nativeDocumentEditable(document) : document.format === "math3d.geometry-document" ? geometryDocumentEditable(document) : document.format === "math3d.topology-document" ? scientificDocumentEditable(document) : true;
-      if (!legacyEditable && additionalReplayEditable(entry, document, context())) { additional.set(document.identity.id, new AdditionalProjectSession(entry, document as import("./projects/additionalProjectRepresentations").AdditionalDocument, context)); continue; }
+      if (!legacyEditable) {
+        const session = tryRestoreAdditionalProjectSession(entry, document, context);
+        if (session) { additional.set(document.identity.id, session); continue; }
+      }
       // Edited promotion companions keep their own saved Curve history on return.
       if (promoted.has(document.identity.id) && !(document.format === "math3d.curve-document" && entry.replay)) continue;
       if (document.format === "math3d.curve-document" && nativeDocumentEditable(document)) curves.set(document.identity.id, entry.replay ? CurveDocumentAdapter.fromReplayBundle(entry.replay.payload as Parameters<typeof CurveDocumentAdapter.fromReplayBundle>[0]) : new CurveDocumentAdapter(document));
@@ -78379,7 +78383,7 @@ case "mobius":
     }
     const checkpoint = createMixedWorkspaceDocument({ ...workspace, entries: workspace.entries.map((entry) => ({ ...entry, checkpoint: resolved.get(entry.expected.id)!, replay: null })) });
     reopenGraphWorkspace(checkpoint); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null);
-    restoredProjectRef.current = { workspace, graphs, curves, surfaces, geometries, topologies, complexes, volumes, meshes, resources, additional };
+    restoredProjectRef.current = { workspace, graphs, curves, surfaces, geometries, topologies, complexes, volumes, meshes, resources, additional, context };
     const firstGraph = graphs.values().next().value;
     if (firstGraph) { graph2dAdapterRef.current = firstGraph; setGraph2dDocument(firstGraph.document()); }
     setAdditionalActiveId(null);
@@ -78460,6 +78464,16 @@ case "mobius":
   const [projectVolumeAnalysisRequest, setProjectVolumeAnalysisRequest] = useState<{ documentId: string; token: number } | null>(null);
   const additionalSurface = additionalActiveId ? restoredProjectRef.current?.additional.get(additionalActiveId)?.document() : null;
   const nativeSavedSurface = !additionalActiveId && mode === "surfaces" && surfaceViewerKind === "param" && paramSurfaceId === "custom" && restoredSurfaceAdapter && restoredProjectRef.current?.surfaces.has(restoredSurfaceAdapter.document().identity.id) ? restoredSurfaceAdapter.document() : null;
+  const savedSurfaceMeshChoices = useMemo(() => {
+    const restored = restoredProjectRef.current, surface = additionalSurface ?? nativeSavedSurface;
+    if (!restored || surface?.format !== "math3d.surface-document") return [];
+    return savedSurfaceMeshLinks(restored.workspace, surface, restored.meshes, restored.context().documents);
+  }, [additionalSurface, nativeSavedSurface, additionalVersion, restoredProjectRef.current?.workspace]);
+  const savedMeshParent = useMemo(() => {
+    const restored = restoredProjectRef.current, mesh = meshDocumentAdapterRef.current;
+    if (!restored || activeKernelModule !== "mesh" || !mesh || !restored.meshes.has(mesh.document().identity.id)) return null;
+    return savedMeshSurfaceSource(restored.workspace, mesh.document().identity.id, restored.context().documents);
+  }, [activeKernelModule, meshKernelDocument, additionalVersion, restoredProjectRef.current?.workspace]);
   const savedMeshSourceCurrent = () => {
     const restored = restoredProjectRef.current, mesh = meshDocumentAdapterRef.current;
     if (!restored || !mesh) return true;
@@ -78471,11 +78485,11 @@ case "mobius":
 
   return (
     <div className="math3d-app" data-testid="app-shell" data-project-document-id={activeProjectDocumentId ?? undefined} style={rootStyle}>
-      {additionalActiveId && restoredProjectRef.current?.additional.get(additionalActiveId) && <AdditionalProjectEditor key={additionalActiveId} session={restoredProjectRef.current.additional.get(additionalActiveId)!} onChange={() => setAdditionalVersion((v) => v + 1)} onClose={() => {
+      {additionalActiveId && restoredProjectRef.current?.additional.get(additionalActiveId) && <AdditionalProjectEditor key={additionalActiveId} documentTitle={activeNotebookProjectRef.current?.metadata.documents?.[additionalActiveId]?.title} session={restoredProjectRef.current.additional.get(additionalActiveId)!} onChange={() => setAdditionalVersion((v) => v + 1)} onClose={() => {
         leaveProjectDocumentView();
         if (mode === "surfaces") { setSurfacesPanelState("browse"); setSurfacesWorkGalleryOpen(false); }
       }}>
-        {additionalSurface?.format === "math3d.surface-document" && <SavedMeshAnalysisPanel key={additionalSurface.identity.id} resolutionSupported={supportsSavedSurfaceResolution(additionalSurface)} readMesh={readSavedStudyMesh} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface} meshes={savedSurfaceMeshLinks(restoredProjectRef.current.workspace, additionalSurface, restoredProjectRef.current.meshes)} onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis} />}
+        {additionalSurface?.format === "math3d.surface-document" && <SavedMeshAnalysisPanel key={additionalSurface.identity.id} resolutionSupported={supportsSavedSurfaceResolution(additionalSurface)} readMesh={readSavedStudyMesh} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface} meshes={savedSurfaceMeshChoices} onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis} />}
       </AdditionalProjectEditor>}
       <KernelWorkspacePanel
         captureProjectThumbnail={() => captureProjectViewThumbnail(document.querySelector(additionalActiveId ? '[data-testid="project-source-view"]' : '[data-testid="module-workspace"]'))}
@@ -79267,7 +79281,7 @@ case "mobius":
                   )}
                 </div>
               )}
-              {mode === "surfaces" && !activeGraph2DTarget && surfaceViewerKind !== "complex" && !isPhoneViewerPriorityLayout && (
+              {mode === "surfaces" && !additionalActiveId && !activeGraph2DTarget && surfaceViewerKind !== "complex" && !isPhoneViewerPriorityLayout && (
                 <div style={topNavContextBarStyle}>
                   <div style={surfacesModeStripWrapStyle}>
                     <div style={surfacesModeGroupStyle("panel")}>
@@ -80851,10 +80865,10 @@ case "mobius":
       {restoredTopologyAdapter && mode === "topology" && <div data-testid="project-topology-editor" style={{ padding: "6px 14px" }}>Saved Topology · {restoredTopologyAdapter.current().name} · {restoredTopologyAdapter.document().identity.id} · Projects → Save project keeps these edits.</div>}
       {activeKernelModule === "mesh" && meshDocumentAdapterRef.current && restoredProjectRef.current?.meshes.has(meshDocumentAdapterRef.current.document().identity.id) && <MeshProjectEditor key={meshDocumentAdapterRef.current.document().identity.id} adapter={meshDocumentAdapterRef.current} onRestore={() => navigateRestoredDocument(meshDocumentAdapterRef.current!.document().identity.id, "mesh")} />}
       {activeKernelModule === "mesh" && !additionalActiveId && meshDocumentAdapterRef.current && restoredProjectRef.current?.meshes.has(meshDocumentAdapterRef.current.document().identity.id) && <SavedMeshAnalysisPanel key={`analysis:${meshDocumentAdapterRef.current.document().identity.id}`} readMesh={readSavedStudyMesh} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface}
-        sourceInfo={savedMeshSurfaceSource(restoredProjectRef.current.workspace, meshDocumentAdapterRef.current.document().identity.id)} meshes={[{
+        sourceInfo={savedMeshParent} meshes={[{
         id: meshDocumentAdapterRef.current.document().identity.id, title: meshDocumentAdapterRef.current.document().metadata.label, revision: meshDocumentAdapterRef.current.document().identity.revision, structuralHash: meshDocumentAdapterRef.current.document().identity.structuralHash,
-        surfaceGeneration: savedMeshSurfaceSource(restoredProjectRef.current.workspace, meshDocumentAdapterRef.current.document().identity.id)?.generation,
-        studyRun: readSurfaceStudyRun(savedMeshSurfaceSource(restoredProjectRef.current.workspace, meshDocumentAdapterRef.current.document().identity.id)?.sampling ?? null),
+        surfaceGeneration: savedMeshParent?.generation,
+        studyRun: readSurfaceStudyRun(savedMeshParent?.sampling ?? null),
         vertexCount: meshDocumentAdapterRef.current.document().source.resource.vertexCount, current: savedMeshSourceCurrent(),
         results: restoredProjectRef.current.workspace.results.filter(result => result.provenance.source.documentId === meshDocumentAdapterRef.current!.document().identity.id && result.provenance.operation.type.startsWith("mesh.saved.")),
       }]} onAnalyze={saveLinkedMeshAnalysis} />}
@@ -80878,7 +80892,7 @@ case "mobius":
         onApplyStudyPreset={applySavedSurfaceStudyPreset}
         onSweep={runSavedSurfaceSweep} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface}
         key={`surface-analysis:${nativeSavedSurface.identity.id}`}
-        meshes={savedSurfaceMeshLinks(restoredProjectRef.current.workspace, nativeSavedSurface, restoredProjectRef.current.meshes)}
+        meshes={savedSurfaceMeshChoices}
         onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis}
         creationHint="Uses saved formulas and ranges at the selected analysis resolution, independent of display resolution. Earlier Meshes and results remain available. Projects → Save project keeps them."
       />}

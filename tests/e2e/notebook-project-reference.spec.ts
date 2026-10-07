@@ -27,7 +27,7 @@ test("Workbook Project document and result references survive save and reopen", 
     await page.getByRole("button", { name: "Close project explorer" }).click();
 
     await page.getByRole("button", { name: "Surfaces", exact: true }).first().click();
-    const back = page.getByRole("button", { name: "Back to module" });
+    const back = page.getByTestId("project-source-back-to-module");
     await expect.poll(async () => await back.isVisible() || await page.getByRole("button", { name: "Workbook", exact: true }).first().isVisible()).toBe(true);
     if (await back.isVisible()) await back.click();
     await page.getByRole("button", { name: "Workbook", exact: true }).first().click();

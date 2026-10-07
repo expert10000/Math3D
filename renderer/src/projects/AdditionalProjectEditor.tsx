@@ -4,7 +4,7 @@ import type { AdditionalProjectSession } from "./additionalProjectSession";
 import { SurfaceFormulaControls } from "./SurfaceFormulaControls";
 import "./additionalProjectEditor.css";
 
-export const AdditionalProjectEditor = ({ session, onChange, onClose, children }: { session: AdditionalProjectSession; onChange: () => void; onClose: () => void; children?: React.ReactNode }) => {
+export const AdditionalProjectEditor = ({ session, documentTitle, onChange, onClose, children }: { session: AdditionalProjectSession; documentTitle?: string; onChange: () => void; onClose: () => void; children?: React.ReactNode }) => {
   const editorRef = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
     const editor = editorRef.current;
@@ -26,10 +26,10 @@ export const AdditionalProjectEditor = ({ session, onChange, onClose, children }
   const [version, setVersion] = useState(0), [draft, setDraft] = useState(() => session.sourceDraft ?? JSON.stringify(session.document().source, null, 2)), [error, setError] = useState<string | null>(null);
   const updateDraft = (text: string) => { session.sourceDraft = text; setDraft(text); };
   const document = session.document(), history = session.history();
-  const { view, viewError } = useMemo(() => {
+  const { view, viewError } = (() => {
     try { return { view: session.view(), viewError: null }; }
     catch (failure) { return { view: null, viewError: (failure as Error).message }; }
-  }, [session, document.identity.revision, document.identity.structuralHash]);
+  })();
   const cameraFitCommand = useMemo(() => {
     if (!view?.bounds) return null;
     const { min, max } = view.bounds;
@@ -39,11 +39,11 @@ export const AdditionalProjectEditor = ({ session, onChange, onClose, children }
   const action = (fn: () => void) => { try { fn(); updateDraft(JSON.stringify(session.document().source, null, 2)); setError(null); setVersion((v) => v + 1); onChange(); } catch (failure) { setError((failure as Error).message); } };
   return <section ref={editorRef} className="project-source-editor" data-testid="project-source-editor" data-document-id={document.identity.id} data-source-hash={document.identity.structuralHash} data-document-module={session.original.module}>
     <div className="project-source-toolbar">
-      <strong>{("metadata" in document ? document.metadata.title : session.original.module)} · saved source</strong>
+      <strong>{documentTitle ?? ("metadata" in document ? document.metadata.title : session.original.module)} · Project {session.original.module === "surface" ? "Surface" : session.original.module}</strong>
       <span data-testid="project-source-revision">Revision {document.identity.revision}</span>
       <button data-testid="project-source-undo" disabled={!history.undoDepth} onClick={() => action(() => session.undo())}>Undo document</button>
       <button data-testid="project-source-redo" disabled={!history.redoDepth} onClick={() => action(() => session.redo())}>Redo document</button>
-      <button data-testid="project-source-back-to-module" title="Open the module workspace; retain this saved document and its source draft in Project" onClick={onClose}>Back to module</button>
+      <button data-testid="project-source-back-to-module" title="Open the module workspace; retain this saved document and its source draft in Project" onClick={onClose}>{session.original.module === "surface" ? "Surfaces workspace" : "Back to module"}</button>
       <span>Projects → Save project keeps edits.</span>
     </div>
     <div className="project-source-workspace">

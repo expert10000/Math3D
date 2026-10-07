@@ -49,17 +49,19 @@ export const createSavedSurfaceMesh = (workspace: MixedWorkspaceDocument, surfac
 };
 
 /** Recover exact lineage even when opened directly in the Mesh module. */
-export const savedMeshSurfaceSource = (workspace: MixedWorkspaceDocument, meshId: string) => {
+// UI callers may supply documents from the qualified live adapters. Import and
+// independent callers still verify the workspace before resolving lineage.
+export const savedMeshSurfaceSource = (workspace: MixedWorkspaceDocument, meshId: string, verifiedDocuments?: RepresentationContext["documents"]) => {
   const relation = workspace.relations.find(item => item.operation === SAVED_SURFACE_MESH_OPERATION && item.target.type === "document" && item.target.generation.documentId === meshId && item.sources.length === 1);
   if (!relation) return null;
-  const generation = relation.sources[0], document = verifyMixedWorkspaceReplay(workspace).get(generation.documentId);
+  const generation = relation.sources[0], document = (verifiedDocuments ?? verifyMixedWorkspaceReplay(workspace)).get(generation.documentId);
   return { generation, document: document?.format === "math3d.surface-document" ? document : null,
     current: !!document && matchesScientificSourceGeneration(viewerSourceFromDocument(document), generation), sampling: relation.parameters };
 };
 
-export const savedSurfaceMeshLinks = (workspace: MixedWorkspaceDocument, surface: SurfaceDocument, adapters: ReadonlyMap<string, MeshDocumentAdapter>) => {
+export const savedSurfaceMeshLinks = (workspace: MixedWorkspaceDocument, surface: SurfaceDocument, adapters: ReadonlyMap<string, MeshDocumentAdapter>, verifiedDocuments?: RepresentationContext["documents"]) => {
   const variants = workspace.relations.filter(relation => relation.operation === SURFACE_STUDY_VARIANT_OPERATION && relation.sources.length === 1 && relation.sources[0].documentId === surface.identity.id && relation.target.type === "document");
-  const documents = verifyMixedWorkspaceReplay(workspace);
+  const documents = verifiedDocuments ?? verifyMixedWorkspaceReplay(workspace);
   return workspace.relations.filter(relation => relation.operation === SAVED_SURFACE_MESH_OPERATION && relation.sources.length === 1 && (relation.sources[0].documentId === surface.identity.id || variants.some(variant => variant.target.type === "document" && matchesScientificSourceGeneration(variant.target.generation, relation.sources[0]))) && relation.target.type === "document")
     .flatMap(relation => {
       if (relation.target.type !== "document") return [];
