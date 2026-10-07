@@ -1001,9 +1001,11 @@ the visible workspace, not only hidden module state.
   available for reopening through Project's document selector.
 - The saved-source viewport follows the actual header height, including wrapped
   navigation rows. It must not cover family buttons at narrower window widths.
-- Back to module opens the module gallery. Clicking the already active Surfaces
-  navigation button from the saved-source screen also provides access to that
-  gallery. An unrelated module/preset is not labelled as the selected Project
+- **Back to normal Surfaces** opens the module gallery. The top **Surfaces**
+  navigation button always opens that normal workspace, including repeated
+  clicks and returning from Mesh. It never implicitly reopens a saved Project
+  Surface; select that document in Project's tree or selector. An unrelated
+  module/preset is not labelled as the selected Project
   document; its Project document selector is empty until a retained document is
   explicitly selected again.
 - Opening the global Catenoid preset through Parametric → Catenoid is ordinary
@@ -1035,8 +1037,8 @@ Project details; gallery cards keep their larger presentation controls.
 
 Desktop controls in the open Project panel and saved-document toolbar/Inspector
 use the same font size and padding as global workspace buttons. Touch layouts
-retain larger targets. A Surface document's exit is labelled **Surfaces
-workspace**. While it is displayed, hide the unrelated global Surface action
+retain larger targets. A Surface document's exit is labelled **Back to normal
+Surfaces**. While it is displayed, hide the unrelated global Surface action
 toolbar and label the current viewport with the Project document's title/type.
 
 Opening a saved Project should construct each qualified saved-source session

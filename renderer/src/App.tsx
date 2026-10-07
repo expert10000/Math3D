@@ -52483,6 +52483,15 @@ case "mobius":
     }
   }, [leaveProjectDocumentView]);
 
+  const openNormalSurfacesWorkspace = useCallback(() => {
+    leaveProjectDocumentView();
+    setMode("surfaces");
+    setDatasetKind("surface");
+    setSurfaceViewerKind((kind) => kind === "mesh" || kind === "complex" ? "param" : kind);
+    setSurfacesPanelState("browse");
+    setSurfacesWorkGalleryOpen(false);
+  }, [leaveProjectDocumentView]);
+
   const createMeshOperationBooleanDemoObjects = useCallback(() => {
     const meshA = buildMeshOperationBooleanDemoCubeMesh("Boolean demo A", -0.35);
     const meshB = buildMeshOperationBooleanDemoCubeMesh("Boolean demo B", 0.35);
@@ -78486,8 +78495,8 @@ case "mobius":
   return (
     <div className="math3d-app" data-testid="app-shell" data-project-document-id={activeProjectDocumentId ?? undefined} style={rootStyle}>
       {additionalActiveId && restoredProjectRef.current?.additional.get(additionalActiveId) && <AdditionalProjectEditor key={additionalActiveId} documentTitle={activeNotebookProjectRef.current?.metadata.documents?.[additionalActiveId]?.title} session={restoredProjectRef.current.additional.get(additionalActiveId)!} onChange={() => setAdditionalVersion((v) => v + 1)} onClose={() => {
-        leaveProjectDocumentView();
-        if (mode === "surfaces") { setSurfacesPanelState("browse"); setSurfacesWorkGalleryOpen(false); }
+        if (additionalSurface?.format === "math3d.surface-document") openNormalSurfacesWorkspace();
+        else leaveProjectDocumentView();
       }}>
         {additionalSurface?.format === "math3d.surface-document" && <SavedMeshAnalysisPanel key={additionalSurface.identity.id} resolutionSupported={supportsSavedSurfaceResolution(additionalSurface)} readMesh={readSavedStudyMesh} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface} meshes={savedSurfaceMeshChoices} onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis} />}
       </AdditionalProjectEditor>}
@@ -78737,11 +78746,10 @@ case "mobius":
                           aria-expanded={entry.id === "projects" ? projectsOpen : undefined}
                           aria-controls={entry.id === "projects" ? "project-explorer-panel" : undefined}
                           onClick={() => {
-                            if (entry.id === "surfaces" && entry.active && additionalActiveId) {
-                              leaveProjectDocumentView(); setSurfacesPanelState("browse");
-                              setSurfacesWorkGalleryOpen(false); return;
+                            if (entry.id === "surfaces") {
+                              openNormalSurfacesWorkspace(); return;
                             }
-                            const module = entry.id === "curves" ? "curve" : entry.id === "surfaces" ? "surface" : entry.id;
+                            const module = entry.id === "curves" ? "curve" : entry.id;
                             const saved = restoredProjectRef.current?.workspace.entries.find((document) => document.module === module);
                             if (saved && navigateRestoredDocument(saved.expected.id, saved.module)) return;
                             if (entry.id !== "projects") leaveProjectDocumentView();

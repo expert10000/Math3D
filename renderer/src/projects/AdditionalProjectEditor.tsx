@@ -43,7 +43,7 @@ export const AdditionalProjectEditor = ({ session, documentTitle, onChange, onCl
       <span data-testid="project-source-revision">Revision {document.identity.revision}</span>
       <button data-testid="project-source-undo" disabled={!history.undoDepth} onClick={() => action(() => session.undo())}>Undo document</button>
       <button data-testid="project-source-redo" disabled={!history.redoDepth} onClick={() => action(() => session.redo())}>Redo document</button>
-      <button data-testid="project-source-back-to-module" title="Open the module workspace; retain this saved document and its source draft in Project" onClick={onClose}>{session.original.module === "surface" ? "Surfaces workspace" : "Back to module"}</button>
+      <button data-testid="project-source-back-to-module" title="Leave the Project document viewer and open the normal module workspace" onClick={onClose}>{session.original.module === "surface" ? "Back to normal Surfaces" : "Back to module"}</button>
       <span>Projects → Save project keeps edits.</span>
     </div>
     <div className="project-source-workspace">

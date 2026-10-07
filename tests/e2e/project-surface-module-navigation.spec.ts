@@ -36,6 +36,10 @@ test("saved Catenoid does not cover global Surfaces navigation and retains its d
     await page.getByTestId("workspace-nav-surfaces").click();
     await expect(editor).toHaveCount(0);
     await expect(page.getByTestId("module-workspace")).toBeVisible();
+    // Repeated module navigation must not silently reopen the saved source.
+    await page.getByTestId("workspace-nav-surfaces").click();
+    await expect(editor).toHaveCount(0);
+    await expect(page.getByTestId("app-shell")).not.toHaveAttribute("data-project-document-id", id!);
     await page.getByTestId("surface-family-parametric").first().click();
     const preset = page.getByTestId("module-workspace").getByRole("button", { name: /^Catenoid(?:\s|$)/ }).first();
     await expect(preset).toBeVisible(); await preset.click();
@@ -43,8 +47,14 @@ test("saved Catenoid does not cover global Surfaces navigation and retains its d
     await expect(editor).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath("global-catenoid-module.png") });
     await reopenSaved();
+    await expect(editor.getByTestId("project-source-back-to-module")).toHaveText("Back to normal Surfaces");
     await editor.getByTestId("project-source-back-to-module").click();
     await expect(editor).toHaveCount(0); await expect(page.getByTestId("module-workspace")).toBeVisible();
+    await page.getByTestId("workspace-nav-mesh").click();
+    await page.getByTestId("workspace-nav-surfaces").click();
+    await expect(editor).toHaveCount(0);
+    await expect(page.getByTestId("app-shell")).not.toHaveAttribute("data-project-document-id", id!);
+    await expect(page.getByTestId("surface-family-parametric").first()).toHaveAttribute("aria-pressed", "true");
     await reopenSaved();
     expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(savedBytes);
     await page.screenshot({ path: test.info().outputPath("retained-catenoid-reopened-draft.png") });

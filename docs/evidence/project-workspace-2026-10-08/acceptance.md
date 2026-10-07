@@ -10,7 +10,7 @@ and isolated temporary profiles at 1600 × 1000 CSS pixels.
 - Selecting its Mesh and returning to Catenoid through the tree preserves the
   document ID/source hash. Closing and reopening Project restores the selector.
 - The saved Surface toolbar says **catenoid · Project Surface** and its exit is
-  labelled **Surfaces workspace**. The unrelated global Surface action toolbar is
+  labelled **Back to normal Surfaces**. The unrelated global Surface action toolbar is
   hidden while this saved document is active.
 - Desktop Project controls, the contextual Project toggle and saved Surface/Mesh
   controls use the global navigation font size/padding. Gallery controls remain
@@ -60,3 +60,20 @@ The existing Mesh workbench still has its own tools and layout; fully shared
 Project/Source/Tools panels and same-document native Surface/Sampled bindings
 remain roadmap work. The user's pre-existing desktop window and installed
 application copies were not restarted or validated during this run.
+
+## Exit navigation follow-up
+
+The top **Surfaces** button now always opens the normal module gallery, including
+repeated clicks and returning from a saved Mesh. Previously a second click could
+select the first retained Surface again because the button also served as an
+implicit Project-document shortcut. Reopening the saved Catenoid is explicit
+through Project's tree or selector. The toolbar exit and top navigation use the
+same action; Project sessions and unapplied source text are retained.
+
+Regression coverage checks repeated Surfaces clicks, Mesh → normal Surfaces,
+the explicit exit label, reopening the original ID/hash/draft and unchanged
+saved Project bytes. The compact-control test checks the updated label and
+document tree. Results are recorded in `output/project-exit-final-e2e.log`;
+build and renderer typecheck logs are `output/project-exit-build.log` and
+`output/project-exit-typecheck.log`. This correction does not resolve the
+previously measured opening/switching latency.
