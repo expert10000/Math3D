@@ -72,10 +72,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   const [hasOpenProject, setHasOpenProject] = useState(false);
   const [resumeStatus, setResumeStatus] = useState<string | null>(null);
   useEffect(() => {
-    if (activeProjectDocumentId) setViewingDocumentId(activeProjectDocumentId);
+    if (activeProjectDocumentId !== undefined) setViewingDocumentId(activeProjectDocumentId);
   }, [activeProjectDocumentId]);
   useEffect(() => {
-    if (activeProjectDocumentId || !open || !viewerCompanion || !activeModule) return;
+    if (activeProjectDocumentId !== undefined || !open || !viewerCompanion || !activeModule) return;
     try {
       const workspace = capture();
       const entry = workspace.entries.find(entry => entry.module === activeModule && workspace.activeDocumentIds.includes(entry.expected.id));

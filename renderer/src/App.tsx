@@ -11376,6 +11376,11 @@ const App: React.FC = () => {
   const [restoredVolumeRevision, setRestoredVolumeRevision] = useState(0);
   const [additionalActiveId, setAdditionalActiveId] = useState<string | null>(null);
   const [activeProjectDocumentId, setActiveProjectDocumentId] = useState<string | null>(null);
+  const leaveProjectDocumentView = useCallback(() => {
+    // Keep the loaded Project adapters/history; only leave its document viewport.
+    setAdditionalActiveId(null); setActiveProjectDocumentId(null);
+    setActiveGraph2DTargetId(null); setRestoredSurfaceAdapter(null);
+  }, []);
   const [, setAdditionalVersion] = useState(0);
   const restoredProjectRef = useRef<{ graphs: Map<string, Graph2DCommandAdapter>; additional: Map<string, AdditionalProjectSession>; workspace: MixedWorkspaceDocument; curves: Map<string, CurveDocumentAdapter>; surfaces: Map<string, SurfaceDocumentAdapter>; geometries: Map<string, GeometryDocumentAdapter>; topologies: Map<string, TopologyDiagramCommandAdapter>; complexes: Map<string, ComplexAnalysisCommandAdapter>; volumes: Map<string, VolumeDocumentAdapter>; meshes: Map<string, MeshDocumentAdapter>; resources?: VerifiedProjectResources } | null>(null);
   const [curvePresetId, setCurvePresetId] = useState<string>("circle2d");
@@ -51794,6 +51799,7 @@ case "mobius":
   }, []);
 
   const handlePickParamSurface = (id: ParamSurfaceId) => {
+    leaveProjectDocumentView();
     setDatasetKind("surface");
     setSurfaceViewerKind("param");
     setParamSurfaceId(id);
@@ -52468,13 +52474,14 @@ case "mobius":
   }, [focusMeshOperationRow]);
 
   const handleChangeViewerKind = useCallback((kind: SurfaceViewerKind) => {
+    leaveProjectDocumentView();
     setSurfaceViewerKind(kind);
     setDatasetKind(kind === "mesh" ? "mesh" : "surface");
     if (kind === "weierstrass" || kind === "mesh" || kind === "complex") {
       setCompareEnabled(false);
       setCameraSync(null);
     }
-  }, []);
+  }, [leaveProjectDocumentView]);
 
   const createMeshOperationBooleanDemoObjects = useCallback(() => {
     const meshA = buildMeshOperationBooleanDemoCubeMesh("Boolean demo A", -0.35);
@@ -78464,7 +78471,10 @@ case "mobius":
 
   return (
     <div className="math3d-app" data-testid="app-shell" data-project-document-id={activeProjectDocumentId ?? undefined} style={rootStyle}>
-      {additionalActiveId && restoredProjectRef.current?.additional.get(additionalActiveId) && <AdditionalProjectEditor key={additionalActiveId} session={restoredProjectRef.current.additional.get(additionalActiveId)!} onChange={() => setAdditionalVersion((v) => v + 1)} onClose={() => setAdditionalActiveId(null)}>
+      {additionalActiveId && restoredProjectRef.current?.additional.get(additionalActiveId) && <AdditionalProjectEditor key={additionalActiveId} session={restoredProjectRef.current.additional.get(additionalActiveId)!} onChange={() => setAdditionalVersion((v) => v + 1)} onClose={() => {
+        leaveProjectDocumentView();
+        if (mode === "surfaces") { setSurfacesPanelState("browse"); setSurfacesWorkGalleryOpen(false); }
+      }}>
         {additionalSurface?.format === "math3d.surface-document" && <SavedMeshAnalysisPanel key={additionalSurface.identity.id} resolutionSupported={supportsSavedSurfaceResolution(additionalSurface)} readMesh={readSavedStudyMesh} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface} meshes={savedSurfaceMeshLinks(restoredProjectRef.current.workspace, additionalSurface, restoredProjectRef.current.meshes)} onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis} />}
       </AdditionalProjectEditor>}
       <KernelWorkspacePanel
@@ -78713,10 +78723,14 @@ case "mobius":
                           aria-expanded={entry.id === "projects" ? projectsOpen : undefined}
                           aria-controls={entry.id === "projects" ? "project-explorer-panel" : undefined}
                           onClick={() => {
+                            if (entry.id === "surfaces" && entry.active && additionalActiveId) {
+                              leaveProjectDocumentView(); setSurfacesPanelState("browse");
+                              setSurfacesWorkGalleryOpen(false); return;
+                            }
                             const module = entry.id === "curves" ? "curve" : entry.id === "surfaces" ? "surface" : entry.id;
                             const saved = restoredProjectRef.current?.workspace.entries.find((document) => document.module === module);
                             if (saved && navigateRestoredDocument(saved.expected.id, saved.module)) return;
-                            if (entry.id !== "projects") setAdditionalActiveId(null);
+                            if (entry.id !== "projects") leaveProjectDocumentView();
                             entry.onSelect();
                           }}
                           disabled={disabled}
@@ -79138,6 +79152,7 @@ case "mobius":
                       <button
                         type="button"
                         data-testid="surface-family-explicit"
+                        aria-pressed={headerIsSurface && surfaceViewerKind === "graph"}
                         onClick={() => {
                           setSurfacesPanelState("browse");
                           setDatasetKind("surface");
@@ -79150,6 +79165,7 @@ case "mobius":
                       <button
                         type="button"
                         data-testid="surface-family-implicit"
+                        aria-pressed={headerIsSurface && surfaceViewerKind === "implicit"}
                         onClick={() => {
                           setSurfacesPanelState("browse");
                           setDatasetKind("surface");
@@ -79162,6 +79178,7 @@ case "mobius":
                       <button
                         type="button"
                         data-testid="surface-family-parametric"
+                        aria-pressed={headerIsParamFormula}
                         onClick={() => {
                           setSurfacesPanelState("browse");
                           if (paramSurfaceSourceKindFor(paramSurfaceId) !== "formula") handlePickParamSurface("torus");
@@ -79177,6 +79194,7 @@ case "mobius":
                       <button
                         type="button"
                         data-testid="surface-family-spline"
+                        aria-pressed={headerIsParamSpline}
                         onClick={() => {
                           setSurfacesPanelState("browse");
                           if (!isSplineParamSurfaceId(paramSurfaceId)) handlePickParamSurface("bezierSurface");
@@ -79192,6 +79210,7 @@ case "mobius":
                       <button
                         type="button"
                         data-testid="surface-family-constructed"
+                        aria-pressed={headerIsParamConstructed}
                         onClick={() => {
                           setSurfacesPanelState("browse");
                           if (!isConstructedParamSurfaceId(paramSurfaceId)) handlePickParamSurface("rotationalGraph");

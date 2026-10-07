@@ -989,6 +989,42 @@ of opening either Mesh.
 6. Verify module navigation, document/view switches, Related links and Back/
    Forward all use the active Project context and reject late async bindings.
 
+### Immediate correction: access to the normal Surfaces module
+
+The reported screenshot shows Implicit highlighted while the saved Catenoid
+source editor still covers the viewport. A family/navigation change must update
+the visible workspace, not only hidden module state.
+
+- Explicit, Implicit, Parametric, Spline and Constructed family actions leave the
+  saved-source viewport and open the chosen family in the normal Surfaces module.
+  The loaded Project, document adapters, history and unapplied source text remain
+  available for reopening through Project's document selector.
+- The saved-source viewport follows the actual header height, including wrapped
+  navigation rows. It must not cover family buttons at narrower window widths.
+- Back to module opens the module gallery. Clicking the already active Surfaces
+  navigation button from the saved-source screen also provides access to that
+  gallery. An unrelated module/preset is not labelled as the selected Project
+  document; its Project document selector is empty until a retained document is
+  explicitly selected again.
+- Opening the global Catenoid preset through Parametric → Catenoid is ordinary
+  module/preset navigation. It is a distinct source from the retained Graph
+  revolution and is not the native presentation of that saved document.
+- The intended Surface / Sampled switch belongs to the selected saved Catenoid's
+  viewport. Surface becomes available after PM04's exact-source adapter is
+  qualified. Until then, describe the available path as the saved sampled view;
+  do not advertise a working same-document native switch or replace the source
+  with a built-in Catenoid to simulate one.
+
+Acceptance for this correction: open saved Catenoid, activate Implicit and prove
+that its normal module workspace is visible; reopen the retained source and its
+draft; open the global Catenoid preset and prove that it uses the normal viewer;
+then return to the retained document with its original ID/hash/history and saved
+Project bytes intact. This navigation repair does not complete PM04–PM05.
+
+Implemented and checked on 2026-10-07: the navigation repair, responsive header
+clearance and retained source draft pass Windows Electron acceptance. See the
+[navigation evidence](docs/evidence/project-master-desktop-2026-10-07/surface-module-navigation.md).
+
 ## Later phase: Project comparison and composition
 
 Begin this phase only after PM10 acceptance. It references existing documents

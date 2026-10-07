@@ -9,6 +9,8 @@ import { additionalRepresentationView, replaceAdditionalSource, type AdditionalD
 
 /** A source UI over the existing module adapters; no separate persistence format. */
 export class AdditionalProjectSession {
+  // Ephemeral editor text, retained across module navigation; excluded from replay.
+  sourceDraft: string | null = null;
   readonly adapter: CurveDocumentAdapter | SurfaceDocumentAdapter | GeometryDocumentAdapter | TopologyDiagramCommandAdapter;
   readonly original: MixedWorkspaceEntry;
   readonly context: () => RepresentationContext;
