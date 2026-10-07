@@ -709,3 +709,168 @@ optional engines follow their representation/engine acceptance requirements.
 Bundle optimization follows measured profiling after the opening and layout
 repair is accepted. This plan changes no release version or signing identity by
 itself.
+
+## Foundation clarifications and the next Project phase
+
+This extension consolidates the reviewed architecture suggestions without adding
+another foundation program. PM01–PM10 retain their immediate purpose: make the
+selected Project document trustworthy throughout opening, navigation, rendering,
+saving and restart. First qualify the complete Catenoid flow; then add the simple
+middle-area flip. Richer navigation and multi-document work follow that gate.
+
+### Project and contained-document terminology
+
+Use `ProjectDocument` as an alias for the existing Project envelope, introduced
+with PM02 if useful to the implementation:
+
+```ts
+export type ProjectDocument = Math3DProject;
+```
+
+This is a terminology refactor with no change to `math3d.project`, its version,
+identity, hashing or saved files. A ProjectDocument contains domain documents
+through the existing mixed-workspace envelope. Reuse `KernelWorkspaceDocument`
+as the existing domain union; a public `KernelDocument` alias may be introduced
+where it improves clarity rather than defining a second incompatible union.
+
+### Explicit activation and one active Project context
+
+PM02 formalizes the runtime lifecycle using the existing opening transaction:
+
+```ts
+type ProjectActivationState =
+  | { kind: "closed" }
+  | { kind: "preparing"; projectId: string; documentId: string; token: number }
+  | { kind: "active"; context: ActiveProjectContext }
+  | { kind: "error"; projectId: string; reason: ProjectOpenError };
+
+type ActiveProjectContext = {
+  projectId: string;
+  projectRevision: number;
+  activeDocumentId: string;
+  activeModule: KernelWorkspaceModule;
+  activationToken: number;
+};
+```
+
+These are proposed UI runtime contracts, not additional kernel owners. Preparation
+retains the previous committed context and workspace; failure/cancellation returns
+to it with an error. An error must not destroy an already active Project. Publish
+the new active context only after its document/resources are prepared and accepted.
+
+Header, Project panel, document selector, module host and Inspector consume this
+one context. They must not independently infer the active Project from local
+storage. A saved Project record, a loaded Project, a prepared document and an
+active viewport are distinct facts. Activation tokens reject late asynchronous
+results. Selected objects/results belong to the existing domain selection and
+evidence services; expose them through the context without creating competing
+mutable copies.
+
+### Selection levels
+
+Preserve three separate selection scopes:
+
+```text
+Project selection:     GeometryDocument / MeshDocument / SurfaceDocument
+Document selection:    Geometry object / supported Mesh object or dataset
+Subentity selection:   face / edge / vertex / supported domain entity
+```
+
+The Project controller activates a document. A tree object shortcut then asks
+its domain adapter to select the object or entity. Object IDs and entity IDs do
+not replace document IDs. Add an invariant test proving that selecting a face or
+changing an object does not change the owning Project/document unexpectedly.
+
+### Adapter capabilities
+
+Use one adapter capability contract, backed by the exact representation and
+available resources. An illustrative shape is:
+
+```ts
+type DocumentCapabilities = {
+  view: boolean;
+  editSource: boolean;
+  selectObject: boolean;
+  selectSubentity: boolean;
+  analyze: boolean;
+  displayResults: boolean;
+  capture: boolean;
+  export: boolean;
+  compose?: boolean; // later qualified composition
+};
+```
+
+Capabilities also provide operation-specific limits and unavailable reasons;
+`analyze` alone cannot authorize every analysis. Source, Tools, Results, Capture
+and Export use these capabilities rather than broad module-name assumptions.
+Viewing a tessellated Surface does not automatically grant analytic Surface tools.
+
+### Stronger navigation after the first complete flow
+
+- **Recent documents:** a bounded per-Project navigation list or document
+  switcher complements the per-module last-document selection. It is UI state,
+  not another document envelope or source generation.
+- **Breadcrumbs:** use Project → module → document → object/result where
+  applicable. Inspector/view headers show the same selected ownership. Example:
+  Catenoid Evidence → Mesh → Sampled Catenoid → Gaussian curvature.
+- **Related:** provide practical links grouped as Source, Derived, Evidence,
+  Used in Workbooks and Notes. Resolve existing relations and anchors; qualify
+  historical or missing targets instead of synthesizing new scientific lineage.
+- **Overview:** a small view of the opened Project shows document/Workbook/Note/
+  result counts, Continue with the selected document, Recent and an existing
+  relation summary. It is distinct from the Projects library.
+
+### Workbook and Project-content navigation
+
+Keep the active mathematical document while a Workbook or Project-detail view
+uses the middle area:
+
+```ts
+type ProjectMiddleContent =
+  | { kind: "document" }
+  | { kind: "workbook"; workbookId: string; blockId?: string }
+  | { kind: "project-detail"; section: string };
+```
+
+For example, a Mesh remains the active domain document when the user opens its
+Workbook. The middle shows the Workbook; Return to Mesh restores the same Mesh,
+camera and selection. Only an explicit document reference action activates a
+different mathematical document. Preserve the existing viewport session and
+pause it while hidden where supported. Workbook resources remain governed by
+their current Project contract, not added to the domain union merely for UI parity.
+
+## Later phase: Project comparison and composition
+
+Begin this phase only after PM10 acceptance. It references existing documents
+without transferring ownership or merging their scientific sources. Coordinate
+systems, units, transforms, historical generations, capabilities and resource
+budgets must be explicit before members can be combined.
+
+| Slice | Planned commit title | Scope and acceptance |
+| --- | --- | --- |
+| PC01 | `feat(projects): define non-owning document composition references` | Define checked member references, source generations, coordinates/units and missing/historical status; preserve original documents and Projects. |
+| PC02 | `feat(viewer): expose composable SurfaceViewer render bindings` | Reuse shared Mesh/Geometry rendering inputs with explicit member identity and independent selection/appearance; qualify resource cleanup. |
+| PC03 | `feat(projects): overlay Geometry and Mesh documents` | Overlay only compatible, explicitly selected document members; retain ownership and reject incompatible frames/units. |
+| PC04 | `feat(projects): add per-member visibility and appearance` | Maintain UI visibility/material/field choices independently of scientific sources; validate every field generation. |
+| PC05 | `feat(projects): add synchronized side-by-side comparison` | Compare heterogeneous renderer families in separate panes; each shows its exact source and selection. |
+| PC06 | `feat(projects): add compatible camera synchronization` | Offer explicit camera synchronization only for compatible dimensions/frames and retain independent camera mode. |
+| PC07 | `feat(workbook): embed project comparisons in Visualize blocks` | Resolve checked comparison references from Workbook content without changing the active scientific sources. |
+| PC08 | `feat(workbook): freeze comparison captures with both source generations` | Store provenance-qualified immutable captures with member generations, view settings and current/historical status. |
+| PC09 | `feat(notes): allow observations spanning multiple source documents` | Extend checked Note references with compatibility/migration acceptance; do not silently broaden existing anchor semantics. |
+| PC10 | `test(projects): qualify multi-document composition and comparison` | Prove ownership, generation, units, missing-data, selection, capture, restart and renderer-lifetime parity for the declared supported modes. |
+
+Keep two distinct modes:
+
+- **Overlay:** compatible Geometry and Mesh members share a SurfaceViewer scene
+  with explicit member transforms and ownership.
+- **Compare:** separate viewers can show Parametric Surface beside Mesh, or other
+  qualified combinations. Synchronization is optional and capability-checked.
+
+Generation comparison is a priority within PC05: current versus retained historic
+Surface, Mesh before versus after remeshing, result versus result, or snapshot
+versus live document. Resolve retained snapshots and missing resources explicitly;
+never reconstruct unavailable history from a current source and call it historical.
+
+The trajectory is: reliable active document first; stronger Related/Overview/
+Workbook navigation next; explicit comparison/composition of multiple retained
+documents last.
