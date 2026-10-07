@@ -1,0 +1,69 @@
+.project-source-editor {
+  position: fixed;
+  inset: 96px 0 0;
+  z-index: 2450;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #f8fafc;
+  color: #0f172a;
+  font: 13px system-ui;
+  container-type: inline-size;
+}
+
+.project-source-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.project-source-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  flex: 1;
+  min-height: 0;
+}
+
+.project-source-view {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.project-source-inspector {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-left: 1px solid #cbd5e1;
+  background: #fff;
+  overflow-wrap: anywhere;
+}
+
+.project-source-inspector h2 {
+  margin: 0;
+  padding: 10px;
+  font-size: 14px;
+}
+
+.project-source-inspector :is(input, select, textarea, button) {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@container (max-width: 760px) {
+  .project-source-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+  }
+
+  .project-source-inspector {
+    border-left: 0;
+    border-top: 1px solid #cbd5e1;
+  }
+}

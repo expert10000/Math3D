@@ -37,3 +37,23 @@ Evidence is local under `test-results/project-placement-final` and
 `test-results/project-placement-regression`, including screenshots of each
 placement. The initial defaults and scientific Project serialization are
 unchanged by a placement action.
+
+## Saved document viewer correction
+
+The saved source editor previously stacked formulas, Mesh analysis, and source
+measurements above its canvas. Opening the Catenoid evidence starter pushed the
+viewer down the page. The editor now reserves the main area for the viewer and
+puts those controls in a separate, independently scrolling right Inspector.
+Below 760 pixels of available editor width, the Inspector sits below the viewer
+and scrolls within its own bounded area.
+
+Renderer/E2E TypeScript checks and both production builds passed. The two
+placement journeys and the saved Surface formula/Mesh analysis/transfer/restart
+journey passed. A new Catenoid regression checks the actual viewer canvas,
+non-overlapping Project/viewer/Inspector bounds, a viewer above 750 pixels high
+at 1600×1000, unchanged viewer bounds after expanding and scrolling analysis,
+and a visible viewer above 300 pixels high at 390×844. It passed after correcting
+the test selector to distinguish the scene canvas from the orientation control.
+
+Screenshots: `test-results/project-viewer-catenoid-final`, with the other three
+journeys under `test-results/project-viewer-fix`.

@@ -101,3 +101,43 @@ test("Project docking also preserves the saved source editor", async () => {
     }
   } finally { await closeSurfaceApp(ctx); }
 });
+
+test("Catenoid viewer stays beside a scrolling inspector with Project docked", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page); await resizeSurfaceAppWindow(ctx, 1600, 1000);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-template-open-catenoid-evidence").click();
+    const editor = page.getByTestId("project-source-editor"), viewer = editor.getByTestId("project-source-view");
+    const inspector = editor.getByTestId("project-source-inspector");
+    await expect(editor).toBeVisible();
+    await expect(viewer.getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
+    await expect(inspector.getByTestId("project-saved-mesh-results")).toContainText("Discrete curvature");
+    const initial = (await viewer.boundingBox())!;
+    expect(initial.y).toBeLessThan(200); expect(initial.height).toBeGreaterThan(750);
+    expect(initial.width).toBeGreaterThan(800);
+    const projectBounds = (await panel.boundingBox())!, inspectorBounds = (await inspector.boundingBox())!;
+    expect(initial.x).toBeGreaterThanOrEqual(projectBounds.x + projectBounds.width);
+    expect(initial.x + initial.width).toBeLessThanOrEqual(inspectorBounds.x);
+    await inspector.getByTestId("project-source-json").locator("summary").click();
+    await inspector.getByTestId("project-analysis-studies").locator("summary").click();
+    await expect.poll(() => inspector.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+    await inspector.evaluate(element => { element.scrollTop = element.scrollHeight; });
+    expect(await viewer.boundingBox()).toEqual(initial);
+    await expect(viewer.getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
+    expect(await viewer.evaluate(element => { const rect = element.getBoundingClientRect(); return element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)); })).toBe(true);
+    await inspector.evaluate(element => { element.scrollTop = 0; });
+    await page.screenshot({ path: test.info().outputPath("catenoid-viewer-inspector.png") });
+    await page.getByRole("button", { name: "Project", exact: true }).click();
+    await resizeSurfaceAppWindow(ctx, 390, 844);
+    await expect(panel).toBeHidden();
+    const narrowViewer = (await viewer.boundingBox())!, narrowInspector = (await inspector.boundingBox())!;
+    expect(narrowViewer.height).toBeGreaterThan(300);
+    expect(narrowViewer.y + narrowViewer.height).toBeLessThanOrEqual(narrowInspector.y);
+    expect(narrowInspector.y + narrowInspector.height).toBeLessThanOrEqual(844);
+    expect(await editor.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await expect(viewer.getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("catenoid-viewer-narrow.png") });
+  } finally { await closeSurfaceApp(ctx); }
+});
