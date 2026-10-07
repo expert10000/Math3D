@@ -18,7 +18,7 @@ export const AdditionalProjectEditor = ({ session, onChange, onClose, children }
       radius: Math.max(0.01, Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2) };
   }, [view, version]);
   const action = (fn: () => void) => { try { fn(); setDraft(JSON.stringify(session.document().source, null, 2)); setError(null); setVersion((v) => v + 1); onChange(); } catch (failure) { setError((failure as Error).message); } };
-  return <section className="project-source-editor" data-testid="project-source-editor" data-document-id={document.identity.id}>
+  return <section className="project-source-editor" data-testid="project-source-editor" data-document-id={document.identity.id} data-source-hash={document.identity.structuralHash} data-document-module={session.original.module}>
     <div className="project-source-toolbar">
       <strong>{("metadata" in document ? document.metadata.title : session.original.module)} · saved source</strong>
       <span data-testid="project-source-revision">Revision {document.identity.revision}</span>

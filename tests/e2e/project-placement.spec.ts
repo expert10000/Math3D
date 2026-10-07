@@ -141,3 +141,22 @@ test("Catenoid viewer stays beside a scrolling inspector with Project docked", a
     await page.screenshot({ path: test.info().outputPath("catenoid-viewer-narrow.png") });
   } finally { await closeSurfaceApp(ctx); }
 });
+
+test("saved Catenoid Project does not show an unrelated Surface after restart", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-template-open-catenoid-evidence").click();
+    await expect(page.getByTestId("project-source-editor")).toBeVisible();
+    const project = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const surface = project.workspace.entries.find((entry: { module: string }) => entry.module === "surface");
+    await page.reload();
+    await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
+    await page.getByRole("button", { name: "Project", exact: true }).click();
+    await expect(panel.getByTestId("project-viewer-document")).toHaveValue(surface.expected.id);
+    await expect(page.getByTestId("project-source-editor")).toBeVisible();
+    await expect(page.getByTestId("project-source-view").getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
+  } finally { await closeSurfaceApp(ctx); }
+});

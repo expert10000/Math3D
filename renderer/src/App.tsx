@@ -11375,6 +11375,7 @@ const App: React.FC = () => {
   const [restoredVolumeAdapter, setRestoredVolumeAdapter] = useState<VolumeDocumentAdapter | null>(null);
   const [restoredVolumeRevision, setRestoredVolumeRevision] = useState(0);
   const [additionalActiveId, setAdditionalActiveId] = useState<string | null>(null);
+  const [activeProjectDocumentId, setActiveProjectDocumentId] = useState<string | null>(null);
   const [, setAdditionalVersion] = useState(0);
   const restoredProjectRef = useRef<{ graphs: Map<string, Graph2DCommandAdapter>; additional: Map<string, AdditionalProjectSession>; workspace: MixedWorkspaceDocument; curves: Map<string, CurveDocumentAdapter>; surfaces: Map<string, SurfaceDocumentAdapter>; geometries: Map<string, GeometryDocumentAdapter>; topologies: Map<string, TopologyDiagramCommandAdapter>; complexes: Map<string, ComplexAnalysisCommandAdapter>; volumes: Map<string, VolumeDocumentAdapter>; meshes: Map<string, MeshDocumentAdapter>; resources?: VerifiedProjectResources } | null>(null);
   const [curvePresetId, setCurvePresetId] = useState<string>("circle2d");
@@ -78225,13 +78226,26 @@ case "mobius":
 
   const navigateRestoredDocument = (id: string, module: KernelWorkspaceModule): boolean => {
     const restored = restoredProjectRef.current;
+    if (restored?.workspace.entries.some(entry => entry.expected.id === id && entry.module === module)) {
+      setActiveProjectDocumentId(id);
+      // Scientific active-document membership can contain several documents;
+      // put the selected one first for checkpoint consumers and legacy resume.
+      restored.workspace = createMixedWorkspaceDocument({ ...restored.workspace,
+        activeDocumentIds: [id, ...restored.workspace.activeDocumentIds.filter(value => value !== id)] });
+    }
     const graph = restored?.graphs.get(id);
     if (graph) {
       graph2dAdapterRef.current = graph; setGraph2dDocument(graph.document());
       setAdditionalActiveId(null); setActiveGraph2DTargetId(null); setMode("graphs"); return true;
     }
     const additional = restored?.additional.get(id);
-    if (additional) { setAdditionalActiveId(id); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null); setRestoredComplexAdapter(null); setRestoredVolumeAdapter(null); setRestoredTopologyAdapter(null); setMode(module === "curve" ? "curves" : module === "surface" ? "surfaces" : module === "topology" ? "topology" : "geometry"); setAdditionalVersion((v) => v + 1); return true; }
+    if (additional) {
+      setAdditionalActiveId(id); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null);
+      setRestoredComplexAdapter(null); setRestoredVolumeAdapter(null); setRestoredTopologyAdapter(null);
+      if (module === "surface") { setDatasetKind("surface"); setSurfaceViewerKind("param"); }
+      setMode(module === "curve" ? "curves" : module === "surface" ? "surfaces" : module === "topology" ? "topology" : "geometry");
+      setAdditionalVersion((v) => v + 1); return true;
+    }
     setAdditionalActiveId(null);
     const curve = restored?.curves.get(id), surface = restored?.surfaces.get(id), geometry = restored?.geometries.get(id);
     const topology = restored?.topologies.get(id), complex = restored?.complexes.get(id);
@@ -78241,6 +78255,7 @@ case "mobius":
       clearSurfaceMeshTopologySessionState();
       nativeMeshSelectionKeysRef.current = ""; setMeshMultiSelectionSet(createUnifiedSelectionSet([]));
       setMeshDataset(mesh.mesh(), "project-restore");
+      setMeshViewerControlsOpen(false);
       setActiveGraph2DTargetId(null); setMode("surfaces"); setDatasetKind("mesh"); setSurfaceViewerKind("mesh");
       setSurfacesPanelState("work"); setSurfacesLeftTab("object"); return true;
     }
@@ -78448,13 +78463,14 @@ case "mobius":
   };
 
   return (
-    <div className="math3d-app" data-testid="app-shell" style={rootStyle}>
+    <div className="math3d-app" data-testid="app-shell" data-project-document-id={activeProjectDocumentId ?? undefined} style={rootStyle}>
       {additionalActiveId && restoredProjectRef.current?.additional.get(additionalActiveId) && <AdditionalProjectEditor key={additionalActiveId} session={restoredProjectRef.current.additional.get(additionalActiveId)!} onChange={() => setAdditionalVersion((v) => v + 1)} onClose={() => setAdditionalActiveId(null)}>
         {additionalSurface?.format === "math3d.surface-document" && <SavedMeshAnalysisPanel key={additionalSurface.identity.id} resolutionSupported={supportsSavedSurfaceResolution(additionalSurface)} readMesh={readSavedStudyMesh} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface} meshes={savedSurfaceMeshLinks(restoredProjectRef.current.workspace, additionalSurface, restoredProjectRef.current.meshes)} onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis} />}
       </AdditionalProjectEditor>}
       <KernelWorkspacePanel
         captureProjectThumbnail={() => captureProjectViewThumbnail(document.querySelector(additionalActiveId ? '[data-testid="project-source-view"]' : '[data-testid="module-workspace"]'))}
         projectsOpen={projectsOpen}
+        activeProjectDocumentId={activeProjectDocumentId}
         onProjectsOpenChange={setProjectsOpen}
         noteRequest={projectNoteRequest}
         onCurrentProjectChange={(project) => { activeNotebookProjectRef.current = project; setNotebookProjectVersion((version) => version + 1); }}
@@ -78506,7 +78522,13 @@ case "mobius":
           setProjectVolumeAnalysisRequest(null);
           if (navigateRestoredDocument(id, module)) return;
           const target = graph2dPromotions.find((item) => item.document.identity.id === id);
-          if (target) { navigateRestoredDocument(target.trace.sourceDocumentId, "graph2d"); openGraph2DTarget(id); return; }
+          if (target) {
+            navigateRestoredDocument(target.trace.sourceDocumentId, "graph2d"); openGraph2DTarget(id);
+            // Opening a promotion prepares its Graph source, but the visible
+            // Curve/Surface target remains the selected Project document.
+            setActiveProjectDocumentId(id);
+            return;
+          }
           setActiveGraph2DTargetId(null);
           if (module === "graph2d") setMode("graphs");
           else if (module === "curve") setMode("curves");
@@ -109996,7 +110018,7 @@ case "mobius":
           </div>
         </div>
       )}
-      {showStatusBar && (
+      {showStatusBar && !additionalActiveId && (
         <div
           data-testid="app-status-bar"
           style={{

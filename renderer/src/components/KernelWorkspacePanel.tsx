@@ -30,6 +30,7 @@ export type KernelWorkspacePanelProps = {
   captureProjectThumbnail?: () => Promise<string>;
   capture: () => MixedWorkspaceDocument;
   activeModule: KernelWorkspaceModule | null;
+  activeProjectDocumentId?: string | null;
   activeEvidence: ViewerProvenanceEvidence | null;
   artifactAvailable?: (artifactId: string, hash?: string | null) => boolean;
   onNavigateModule?: (module: KernelWorkspaceModule) => void;
@@ -42,7 +43,7 @@ export type KernelWorkspacePanelProps = {
   graphDocumentId?: string;
 };
 
-export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ projectsOpen, onProjectsOpenChange, onCurrentProjectChange, captureActiveWorkbook, onOpenWorkbook, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, activeModule, activeEvidence, artifactAvailable, onNavigateModule, onNavigateDocument, onOpenAnalysis, canNavigateDocument, onReopen, onRestoreProject, graphDocumentId, resourceReader }) => {
+export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ projectsOpen, onProjectsOpenChange, onCurrentProjectChange, captureActiveWorkbook, onOpenWorkbook, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, activeModule, activeProjectDocumentId, activeEvidence, artifactAvailable, onNavigateModule, onNavigateDocument, onOpenAnalysis, canNavigateDocument, onReopen, onRestoreProject, graphDocumentId, resourceReader }) => {
   const [open, setOpen] = useState(false);
   const [reopened, setReopened] = useState<MixedWorkspaceDocument | null>(null);
   const [message, setMessage] = useState("No mixed workspace opened.");
@@ -126,7 +127,7 @@ export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ proj
   const index = reopened?.relations.length ? createDocumentRelationIndex(reopened.relations) : null;
   return (
     <div data-testid="kernel-workspace-shell" style={{ position: "fixed", right: 14, bottom: 14, zIndex: 2500, fontSize: 11 }}>
-      <ProjectWorkspacePanel activeModule={activeModule} captureProjectThumbnail={captureProjectThumbnail} resourceReader={resourceReader} open={projectsOpen} onOpenChange={onProjectsOpenChange} onCurrentProjectChange={onCurrentProjectChange} captureActiveWorkbook={captureActiveWorkbook} onOpenWorkbook={onOpenWorkbook} noteRequest={noteRequest} captureNoteSelection={captureNoteSelection} capture={capture} onNavigateDocument={onNavigateDocument} onOpenAnalysis={onOpenAnalysis} canNavigateDocument={canNavigateDocument} artifactAvailable={artifactAvailable} onRestoreWorkspace={onRestoreProject ?? onReopen} />
+      <ProjectWorkspacePanel activeProjectDocumentId={activeProjectDocumentId} activeModule={activeModule} captureProjectThumbnail={captureProjectThumbnail} resourceReader={resourceReader} open={projectsOpen} onOpenChange={onProjectsOpenChange} onCurrentProjectChange={onCurrentProjectChange} captureActiveWorkbook={captureActiveWorkbook} onOpenWorkbook={onOpenWorkbook} noteRequest={noteRequest} captureNoteSelection={captureNoteSelection} capture={capture} onNavigateDocument={onNavigateDocument} onOpenAnalysis={onOpenAnalysis} canNavigateDocument={canNavigateDocument} artifactAvailable={artifactAvailable} onRestoreWorkspace={onRestoreProject ?? onReopen} />
       <button type="button" data-testid="kernel-workspace-toggle" onClick={() => setOpen((value) => !value)}
         style={{ border: "1px solid #64748b", borderRadius: 8, background: "#f8fafc", color: "#0f172a", padding: "7px 10px", fontWeight: 700 }}>
         Kernel workspace

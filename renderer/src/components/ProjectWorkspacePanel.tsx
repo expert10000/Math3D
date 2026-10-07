@@ -34,6 +34,7 @@ import { createProjectNoteSelectionAnchor, type NoteSelectionDescriptor } from "
 import { resolveProjectNoteValues } from "../projects/projectNoteValues";
 import { projectAnalysisAvailability, type ProjectAnalysisRoute } from "../projects/projectAnalysisAvailability";
 import type { NoteValuePatch } from "./ProjectNoteLiveValues";
+import { PROJECT_RESUME_KEY, projectResumeDocument, rememberProjectDocument } from "../projects/projectResume";
 
 export { PROJECT_STORAGE_KEY } from "../projects/projectLibrary";
 const ProjectThumbnail: React.FC<{ src: string | null; modules: string[] }> = ({ src, modules }) => {
@@ -58,24 +59,29 @@ type Props = {
   artifactAvailable?: (id: string, hash?: string | null) => boolean;
   resourceReader?: ProjectResourceReader;
   activeModule?: KernelWorkspaceModule | null;
+  activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onCurrentProjectChange, captureActiveWorkbook, onOpenWorkbook, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onCurrentProjectChange, captureActiveWorkbook, onOpenWorkbook, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeProjectDocumentId }) => {
 
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
   const resourceSessionId = useRef<string | null>(null);
   const [quick, setQuick] = useState(false), [detailView, setDetailView] = useState(false), [viewerCompanion, setViewerCompanion] = useState(false), [collection, setCollection] = useState("All projects");
   const [viewingDocumentId, setViewingDocumentId] = useState<string | null>(null);
   const [projectPlacement, setProjectPlacement] = useState<ProjectPlacement>("left");
-  const [hasOpenProject, setHasOpenProject] = useState(() => Boolean(localStorage.getItem(PROJECT_STORAGE_KEY)));
+  const [hasOpenProject, setHasOpenProject] = useState(false);
+  const [resumeStatus, setResumeStatus] = useState<string | null>(null);
   useEffect(() => {
-    if (!open || !viewerCompanion || !activeModule) return;
+    if (activeProjectDocumentId) setViewingDocumentId(activeProjectDocumentId);
+  }, [activeProjectDocumentId]);
+  useEffect(() => {
+    if (activeProjectDocumentId || !open || !viewerCompanion || !activeModule) return;
     try {
       const workspace = capture();
       const entry = workspace.entries.find(entry => entry.module === activeModule && workspace.activeDocumentIds.includes(entry.expected.id));
       if (entry) setViewingDocumentId(entry.expected.id);
     } catch { /* Keep the selected document while its module is loading. */ }
-  }, [activeModule, open, viewerCompanion]);
+  }, [activeModule, open, viewerCompanion, activeProjectDocumentId]);
   useEffect(() => {
     if (!open || !quick || !viewerCompanion) return;
     const timer = window.setTimeout(() => {
@@ -200,7 +206,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     if (!keepManagement) { setManaged(null); setManagedBytes(undefined); }
     if (!keepManagement) { setInspectionOpen(false); setInspectedId(null); }
     if (!keepManagement) { setIncoming(null); importSequence.current++; }
-    if (!savedPreview) { setHasOpenProject(Boolean(localStorage.getItem(PROJECT_STORAGE_KEY))); onCurrentProjectChange?.(next); }
+    if (!savedPreview) { onCurrentProjectChange?.(next); }
   };
   const refreshLibrary = () => {
     try { setLibrary(parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY))); setLibraryMessage(""); }
@@ -369,7 +375,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       resourceSession.current = resources; resourceSessionId.current = next.identity.id;
       if (managed) setManagedBytes(serializeMath3DProject(next));
       setProject(next); setTags((next.metadata.tags ?? []).join(", ")); setTitle(next.metadata.title); setThumbnail(null); setExplorer(tree); setPreview(!!managed); setLibraryMessage("");
-      if (!managed) onCurrentProjectChange?.(next);
+      if (!managed) { setHasOpenProject(true); onCurrentProjectChange?.(next); }
       if (!managed) { setNotesProject(next); setNoteDrafts([]); }
       setMessage(`Saved “${next.metadata.title}” with ${next.workspace.entries.length} documents.`);
     } catch (error) { setMessage(`Project save failed: ${(error as Error).message}`); }
@@ -655,11 +661,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       if (candidate.inputKind === "Independent starter project") { setHighlightedSavedId(prepared.project.identity.id); setCollection("All projects"); setQuery(""); setModuleFilter("All modules"); }
       const starterOpen = openWorkspace && (candidate.inputKind === "Independent starter project" || candidate.inputKind === "Saved starter copy");
       if (openWorkspace) {
-        const first = starterOpen
+        const resumed = projectResumeDocument(prepared.project, localStorage.getItem(PROJECT_RESUME_KEY));
+        const first = resumed ? { id: resumed.expected.id, module: resumed.module } : starterOpen
           ? (["geometry", "surface", "mesh", "volume", "curve", "graph2d"] as const).map(module => prepared.documents.find(document => document.module === module)).find(Boolean) ?? prepared.documents[0]!
           : prepared.documents.find(document => document.module === "graph2d") ?? prepared.documents[0]!;
         onNavigateDocument?.(first.id, first.module);
         setViewingDocumentId(first.id);
+        setHasOpenProject(true);
+        setResumeStatus(null);
+        rememberProjectDocument(localStorage, prepared.project, first.id);
         if (starterOpen) { setQuick(true); setViewerCompanion(true); setDetailView(true); }
       }
       setMessage(openWorkspace ? "Opened supported project workspace. Previous workspace saved locally; historical analysis and external refs are retained." : "Imported into the library as a verified saved preview. The current workspace is unchanged.");
@@ -688,6 +698,47 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
+  // Saved bytes alone do not mean an active Project. Verify resources before
+  // resuming, and reject a late read if another opening action supersedes it.
+  useEffect(() => {
+    const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
+    if (!raw || !onRestoreWorkspace) return;
+    const sequence = ++importSequence.current;
+    let cancelled = false;
+    setResumeStatus("Restoring saved Project…");
+    void (async () => {
+      try {
+        const saved = parseMath3DProject(raw);
+        const resources = await loadProjectResources(saved);
+        if (cancelled || sequence !== importSequence.current) return;
+        const prepared = inspectProjectCompatibility(saved, transferOptions(resources));
+        if (!prepared.canOpenWorkspace) throw new Error("Saved Project needs compatibility review in Projects.");
+        const selected = projectResumeDocument(saved, localStorage.getItem(PROJECT_RESUME_KEY)) ??
+          (saved.metadata.tags?.includes("starter") ? (["geometry", "surface", "mesh", "volume", "curve", "graph2d"] as const)
+            .map(module => saved.workspace.entries.find(entry => entry.module === module)).find(Boolean) : null) ??
+          saved.workspace.entries.find(entry => saved.workspace.activeDocumentIds.includes(entry.expected.id)) ?? saved.workspace.entries[0];
+        if (!selected) throw new Error("Saved Project has no document to resume.");
+        installPortablePointTables(projectResourceInventory(saved).filter(item => item.kind === "graph-point-table").flatMap(item => {
+          const bytes = resources.bytes(item);
+          return bytes ? [{ id: item.id, content: new TextDecoder().decode(bytes) }] : [];
+        }));
+        onRestoreWorkspace(saved.workspace, resources);
+        onNavigateDocument?.(selected.expected.id, selected.module);
+        resourceSession.current = resources; resourceSessionId.current = saved.identity.id;
+        display(saved, false);
+        setViewingDocumentId(selected.expected.id);
+        setHasOpenProject(true);
+        setResumeStatus(null);
+      } catch (error) {
+        if (!cancelled && sequence === importSequence.current) setResumeStatus(`Project resume failed: ${(error as Error).message}`);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
+    if (hasOpenProject && project && !preview && !managed && activeProjectDocumentId)
+      rememberProjectDocument(localStorage, project, activeProjectDocumentId);
+  }, [hasOpenProject, project, preview, managed, activeProjectDocumentId]);
   const previewSavedOpen = async () => {
     if (!project || busy) return;
     const sequence = ++importSequence.current;
@@ -724,7 +775,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
         const activeId = readActiveProjectId(), copy = findProjectStarterCopy(parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)), id, activeId);
         if (copy) {
           loadLibraryProject(localStorage, copy.id);
-          if (copy.id === activeId && !preview && !managed && project?.identity.id === copy.id) {
+          if (hasOpenProject && copy.id === activeId && !preview && !managed && project?.identity.id === copy.id) {
             const first = (["geometry", "surface", "mesh", "volume", "curve", "graph2d"] as const)
               .map(module => project.workspace.entries.find(entry => entry.module === module)).find(Boolean) ?? project.workspace.entries[0];
             if (first) { onNavigateDocument?.(first.expected.id, first.module); setViewingDocumentId(first.expected.id); }
@@ -787,18 +838,21 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       setNotesPlacement("floating"); onOpenChange(false); refreshNotes(); setNotesOpen(true);
     }} style={{ position: "fixed", right: 14, bottom: 60, zIndex: 2502, border: "1px solid #64748b", borderRadius: 8, padding: "7px 10px", background: "#f8fafc", color: "#0f172a", fontWeight: 700 }}>Notes{noteDrafts.length ? ` (${noteDrafts.length})` : ""}</button>
     {notesOpen && notesPlacement === "floating" && renderNotesPanel("floating")}
-    {createPortal(<button type="button" data-testid="projects-quick-toggle" data-active-project={hasOpenProject} aria-label={hasOpenProject ? "Project" : "Open quick Projects"}
+    {resumeStatus && <p role="status" data-testid="project-resume-status" style={{ background: "#fff", padding: 10 }}>{resumeStatus}</p>}
+    {hasOpenProject && createPortal(<button type="button" data-testid="projects-quick-toggle" data-active-project={hasOpenProject} aria-label={hasOpenProject ? "Project" : "Open quick Projects"}
       aria-expanded={open} aria-controls="project-explorer-panel" aria-pressed={hasOpenProject && open && viewerCompanion}
       onClick={() => {
         if (hasOpenProject && open) { onOpenChange(false); return; }
         setNotesOpen(false);
-        if (hasOpenProject) placeProject(projectPlacement); else setQuick(true);
+        if (hasOpenProject) {
+          placeProject(projectPlacement);
+        } else setQuick(true);
         onOpenChange(true);
       }} className="project-context-toggle">{hasOpenProject ? "Project" : "Quick projects"}</button>, document.body)}
     {open && <ProjectGalleryFrame quick={quick} viewerCompanion={viewerCompanion} placement={projectPlacement} onClose={() => onOpenChange(false)}>
       <header data-testid="project-explorer-header" className="project-gallery-header">
         <div className="project-gallery-heading"><div><p>MATH3D · PROJECTS</p><h2>{quick && !viewerCompanion ? "Quick Projects" : detailView ? project?.metadata.title ?? "Project" : "Projects Gallery"}</h2></div><div style={{ display:"flex",gap:8 }}>
-          {!quick && detailView && !preview && viewingDocumentId && <button type="button" data-testid="project-viewer-return" onClick={() => { setViewerCompanion(true); setQuick(true); }}>Back to viewer</button>}
+          {!quick && detailView && !preview && viewingDocumentId && <button type="button" data-testid="project-viewer-return" onClick={() => { setViewerCompanion(true); setQuick(true); }}>Return to document</button>}
           {!quick && <button type="button" data-testid="project-detail-toggle" aria-pressed={detailView} onClick={() => { setNotesOpen(false); workspacePanel.current?.scrollTo({ top: 0 }); setDetailView(value => !value); }}>{detailView ? "Browse projects" : "View current project"}</button>}
           <button data-testid="project-gallery-layout-toggle" onClick={() => { if (!viewerCompanion) setNotesOpen(false); setQuick(value => !value); setViewerCompanion(false); }}>{quick ? viewerCompanion ? "Project details" : "Full gallery" : "Quick panel"}</button><button type="button" aria-label="Close project explorer" onClick={() => onOpenChange(false)}>Close</button></div></div>
         <div className="project-gallery-statusline"><p data-testid="project-view-mode" role="status">{managed ? "Managing saved project" : preview ? "Saved project preview" : "Current workspace"} · {project?.metadata.title ?? "Untitled project"}{project && library.entries.some((entry) => entry.id === project.identity.id) && <strong className="project-gallery-saved-badge">Saved in Your saved projects</strong>}</p>
