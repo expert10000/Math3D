@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, parseMath3DProject,
   parseMixedWorkspaceDocument, updateMath3DProjectMetadata, replaceMath3DProjectWorkspace,
   deleteProjectDocument, duplicateProjectDocument, serializeMath3DProject, setProjectDocumentMetadata,
@@ -10,7 +11,7 @@ import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { findProjectStarterCopy, importLibraryProject, loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY,
   PROJECT_STORAGE_KEY, readProjectThumbnail, isAutomaticProjectThumbnail, saveLibraryProject, updateLibraryActivity, type ProjectLibrary } from "../projects/projectLibrary";
 import { ProjectCommandAdapter } from "../projects/projectCommandAdapter";
-import { ProjectGalleryFrame } from "./ProjectGalleryFrame";
+import { ProjectGalleryFrame, type ProjectPlacement } from "./ProjectGalleryFrame";
 import { ProjectTemplatesPanel, StarterArtwork } from "./ProjectTemplatesPanel";
 import { ProjectDocumentActions, type ProjectDocumentAction } from "./ProjectDocumentActions";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
@@ -56,14 +57,25 @@ type Props = {
   onOpenAnalysis?: (id: string, module: KernelWorkspaceModule, route: ProjectAnalysisRoute, workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => void;
   artifactAvailable?: (id: string, hash?: string | null) => boolean;
   resourceReader?: ProjectResourceReader;
+  activeModule?: KernelWorkspaceModule | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onCurrentProjectChange, captureActiveWorkbook, onOpenWorkbook, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onCurrentProjectChange, captureActiveWorkbook, onOpenWorkbook, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule }) => {
 
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
   const resourceSessionId = useRef<string | null>(null);
   const [quick, setQuick] = useState(false), [detailView, setDetailView] = useState(false), [viewerCompanion, setViewerCompanion] = useState(false), [collection, setCollection] = useState("All projects");
   const [viewingDocumentId, setViewingDocumentId] = useState<string | null>(null);
+  const [projectPlacement, setProjectPlacement] = useState<ProjectPlacement>("left");
+  const [hasOpenProject, setHasOpenProject] = useState(() => Boolean(localStorage.getItem(PROJECT_STORAGE_KEY)));
+  useEffect(() => {
+    if (!open || !viewerCompanion || !activeModule) return;
+    try {
+      const workspace = capture();
+      const entry = workspace.entries.find(entry => entry.module === activeModule && workspace.activeDocumentIds.includes(entry.expected.id));
+      if (entry) setViewingDocumentId(entry.expected.id);
+    } catch { /* Keep the selected document while its module is loading. */ }
+  }, [activeModule, open, viewerCompanion]);
   useEffect(() => {
     if (!open || !quick || !viewerCompanion) return;
     const timer = window.setTimeout(() => {
@@ -188,7 +200,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
     if (!keepManagement) { setManaged(null); setManagedBytes(undefined); }
     if (!keepManagement) { setInspectionOpen(false); setInspectedId(null); }
     if (!keepManagement) { setIncoming(null); importSequence.current++; }
-    if (!savedPreview) onCurrentProjectChange?.(next);
+    if (!savedPreview) { setHasOpenProject(Boolean(localStorage.getItem(PROJECT_STORAGE_KEY))); onCurrentProjectChange?.(next); }
   };
   const refreshLibrary = () => {
     try { setLibrary(parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY))); setLibraryMessage(""); }
@@ -755,6 +767,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
   };
   const viewerDocuments = explorer?.groups.flatMap(group => group.documents).filter(document => !document.archived && canNavigateDocument?.(document.id, document.module)) ?? [];
   const projectNotesView = open && notesOpen && notesPlacement === "project";
+  const placeProject = (placement: ProjectPlacement) => {
+    setProjectPlacement(placement);
+    setDetailView(true);
+    setViewerCompanion(true);
+    setQuick(true);
+  };
   const renderNotesPanel = (layout: "floating" | "page") => <ProjectNotesPanel layout={layout} project={notesProject} workspace={notesWorkspace} drafts={noteDrafts} busy={busy} message={notesMessage} focusNoteId={selectedNoteId ?? noteRequest?.id}
     selectionAvailable={Boolean(captureNoteSelection?.())} workbooks={noteWorkbooks}
     onClose={() => setNotesOpen(false)} onOpenProjects={() => { setNotesOpen(false); if (layout === "floating") { setDetailView(true); onOpenChange(true); } }} onRefresh={refreshNotes}
@@ -769,8 +787,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
       setNotesPlacement("floating"); onOpenChange(false); refreshNotes(); setNotesOpen(true);
     }} style={{ position: "fixed", right: 14, bottom: 60, zIndex: 2502, border: "1px solid #64748b", borderRadius: 8, padding: "7px 10px", background: "#f8fafc", color: "#0f172a", fontWeight: 700 }}>Notes{noteDrafts.length ? ` (${noteDrafts.length})` : ""}</button>
     {notesOpen && notesPlacement === "floating" && renderNotesPanel("floating")}
-    <button type="button" data-testid="projects-quick-toggle" aria-label="Open quick Projects" onClick={() => { setNotesOpen(false); setQuick(true); onOpenChange(true); }} style={{ position:"fixed",right:14,bottom:100,zIndex:2502,padding:"7px 10px",border:"1px solid #64748b",borderRadius:8,background:"#f8fafc",color:"#0f172a",fontSize:11 }}>Quick projects</button>
-    {open && <ProjectGalleryFrame quick={quick} viewerCompanion={viewerCompanion} onClose={() => onOpenChange(false)}>
+    {createPortal(<button type="button" data-testid="projects-quick-toggle" data-active-project={hasOpenProject} aria-label={hasOpenProject ? "Project" : "Open quick Projects"}
+      aria-expanded={open} aria-controls="project-explorer-panel" aria-pressed={hasOpenProject && open && viewerCompanion}
+      onClick={() => {
+        if (hasOpenProject && open) { onOpenChange(false); return; }
+        setNotesOpen(false);
+        if (hasOpenProject) placeProject(projectPlacement); else setQuick(true);
+        onOpenChange(true);
+      }} className="project-context-toggle">{hasOpenProject ? "Project" : "Quick projects"}</button>, document.body)}
+    {open && <ProjectGalleryFrame quick={quick} viewerCompanion={viewerCompanion} placement={projectPlacement} onClose={() => onOpenChange(false)}>
       <header data-testid="project-explorer-header" className="project-gallery-header">
         <div className="project-gallery-heading"><div><p>MATH3D · PROJECTS</p><h2>{quick && !viewerCompanion ? "Quick Projects" : detailView ? project?.metadata.title ?? "Project" : "Projects Gallery"}</h2></div><div style={{ display:"flex",gap:8 }}>
           {!quick && detailView && !preview && viewingDocumentId && <button type="button" data-testid="project-viewer-return" onClick={() => { setViewerCompanion(true); setQuick(true); }}>Back to viewer</button>}
@@ -779,6 +804,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ open, onOpenChange, onC
         <div className="project-gallery-statusline"><p data-testid="project-view-mode" role="status">{managed ? "Managing saved project" : preview ? "Saved project preview" : "Current workspace"} · {project?.metadata.title ?? "Untitled project"}{project && library.entries.some((entry) => entry.id === project.identity.id) && <strong className="project-gallery-saved-badge">Saved in Your saved projects</strong>}</p>
           <button type="button" data-testid="project-restore-saved" disabled={busy || !!managed || !project || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={previewSavedOpen}>{preview ? "Open saved project" : "Review saved version"}</button></div>
       {preview && !managed && <p data-testid="project-open-guidance" style={{ marginBottom: 0 }}>Open saved project, then choose Open project in the compatibility preview to enable document buttons.</p>}
+      {hasOpenProject && !preview && !managed && detailView && <div className="project-placement-controls" role="group" aria-label="Project placement">
+        {(["left", "middle", "right", "all"] as const).map(placement => <button key={placement} type="button" data-testid={`project-placement-${placement}`}
+          aria-pressed={viewerCompanion && quick && projectPlacement === placement} onClick={() => placeProject(placement)}>{placement[0].toUpperCase() + placement.slice(1)}</button>)}
+      </div>}
       </header>
       <div className={`project-gallery-layout${detailView && (!quick || viewerCompanion) ? " project-gallery-layout-detail" : ""}`}>
 <section data-testid="project-library" className="project-gallery-library">

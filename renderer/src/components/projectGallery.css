@@ -3,7 +3,7 @@
 #project-gallery-host:empty { display:none; }
 #project-gallery-host:not(:empty) { position:relative;z-index:2600;width:100%;min-width:0;padding:0 10px 12px;box-sizing:border-box; }
 .math3d-app:has(> #project-gallery-host:not(:empty)) > #project-gallery-host ~ * { display:none!important; }
-.math3d-app:has(> #project-gallery-host:not(:empty)) :is([data-testid="projects-quick-toggle"],[data-testid="notes-toggle"],[data-testid="kernel-workspace-toggle"]) { display:none!important; }
+body:has(#project-gallery-host:not(:empty)) :is([data-testid="projects-quick-toggle"][data-active-project="false"],[data-testid="notes-toggle"],[data-testid="kernel-workspace-toggle"]) { display:none!important; }
 .project-quick-panel { position:fixed;right:14px;top:90px;width:440px;max-width:calc(100vw - 28px);max-height:calc(100vh - 125px);overflow:auto;z-index:2501; }
 .project-gallery-page *, .project-quick-panel * { box-sizing:border-box; }
 .project-gallery-page button,.project-quick-panel button { font:600 13px/1.35 system-ui,sans-serif;white-space:normal;padding:8px 12px;border:1px solid #cbd5e1;background:#fff;color:#183a5c;border-radius:8px;min-height:38px;cursor:pointer;box-shadow:none; }
@@ -155,10 +155,7 @@
 .project-quick-panel .project-starter-picker { margin-top:12px; }
 .project-quick-panel .project-workspace-nav { position:static; }
 .project-viewer-panel { left:14px;right:auto;width:360px; }
-body:has(.project-viewer-panel) [data-testid="projects-quick-toggle"],body:has(.project-viewer-panel) [data-testid="notes-toggle"],body:has(.project-viewer-panel) [data-testid="kernel-workspace-toggle"] { display:none!important; }
-body:has(.project-viewer-panel) [data-testid="geometry-viewer-panel"] { grid-template-columns:minmax(0,1fr)!important;min-height:540px!important; }
-body:has(.project-viewer-panel) [data-testid="geometry-right-panel"] { display:none!important; }
-body:has(.project-viewer-panel) .math3d-app:has([data-testid="geometry-viewer-panel"]) [data-testid="module-workspace"] { min-height:600px!important; }
+body:has(.project-viewer-panel) [data-testid="notes-toggle"],body:has(.project-viewer-panel) [data-testid="kernel-workspace-toggle"] { display:none!important; }
 .project-viewer-panel .project-gallery-header { padding:12px 14px; }
 .project-viewer-panel .project-gallery-heading { align-items:flex-start; }
 .project-viewer-panel .project-gallery-heading h2 { font-size:19px; }
@@ -172,6 +169,26 @@ body:has(.project-viewer-panel) .math3d-app:has([data-testid="geometry-viewer-pa
 .project-viewer-panel .project-workspace-children { grid-template-columns:minmax(0,1fr); }
 .project-viewer-panel .project-notes-workspace { width:100%;margin:0; }
 .project-viewer-panel .project-notes-page-panel { padding:12px!important; }
+.project-context-toggle { position:fixed;right:14px;bottom:100px;z-index:2702;padding:7px 10px;border:1px solid #64748b;border-radius:8px;background:#f8fafc;color:#0f172a;font:600 12px system-ui,sans-serif;cursor:pointer; }
+.project-context-toggle[aria-pressed="true"] { background:#e0edff;border-color:#2563eb;color:#1d4ed8; }
+.project-context-toggle:focus-visible { outline:3px solid #93b4e6;outline-offset:2px; }
+.project-placement-controls { display:flex;flex-wrap:wrap;gap:6px;margin-top:10px; }
+.project-placement-controls button[aria-pressed="true"] { background:#e0edff;border-color:#2563eb;color:#1d4ed8; }
+.project-viewer-panel[data-project-placement="right"] { left:auto;right:14px; }
+.project-viewer-panel[data-project-placement="middle"] { left:50%;right:auto;transform:translateX(-50%);width:min(1000px,calc(100vw - 28px)); }
+.project-viewer-panel[data-project-placement="all"] { left:14px;right:14px;width:auto; }
+.project-viewer-panel:is([data-project-placement="middle"],[data-project-placement="all"]) { height:calc(100dvh - 125px);display:flex;flex-direction:column;overflow:hidden; }
+.project-viewer-panel:is([data-project-placement="middle"],[data-project-placement="all"]) .project-gallery-layout { min-height:0;overflow:auto; }
+.project-viewer-panel:is([data-project-placement="middle"],[data-project-placement="all"]) .project-workspace-summary { display:block; }
+.project-viewer-panel:is([data-project-placement="middle"],[data-project-placement="all"]) .project-workspace-nav { display:flex; }
+.project-viewer-panel:is([data-project-placement="middle"],[data-project-placement="all"]) :is(#project-details-section,#project-transfer-section) { display:block; }
+.project-viewer-panel:is([data-project-placement="middle"],[data-project-placement="all"]) .project-workspace-children { grid-template-columns:repeat(2,minmax(0,1fr)); }
+body:has(.project-viewer-panel[data-project-placement="all"]) .math3d-app > :is([data-testid="module-workspace"],[data-testid="project-source-editor"]) { display:none!important; }
+@media(min-width:1440px) {
+  body:has(.project-viewer-panel[data-project-placement="left"]) .math3d-app > :is([data-testid="module-workspace"],[data-testid="project-source-editor"]) { margin-left:380px!important;width:calc(100% - 380px)!important; }
+  body:has(.project-viewer-panel[data-project-placement="right"]) .math3d-app > :is([data-testid="module-workspace"],[data-testid="project-source-editor"]) { margin-right:380px!important;width:calc(100% - 380px)!important; }
+}
+@media(max-width:760px) { .project-viewer-panel:is([data-project-placement="middle"],[data-project-placement="all"]) .project-workspace-children { grid-template-columns:minmax(0,1fr); } }
 @media(max-width:1200px) { .project-gallery-grid,.project-starter-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:1000px) { .project-gallery-layout { grid-template-columns:minmax(0,1fr);overflow:auto; } .project-gallery-library,.project-gallery-workspace { height:auto;overflow:visible; } .project-gallery-workspace { border-left:0;border-top:1px solid #e2e8f0;padding:20px 0 0; } .project-workspace-nav { position:static; } }
 @media(max-width:760px) { .project-gallery-layout-detail .project-workspace-children { grid-template-columns:minmax(0,1fr); } }
