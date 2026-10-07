@@ -839,6 +839,156 @@ different mathematical document. Preserve the existing viewport session and
 pause it while hidden where supported. Workbook resources remain governed by
 their current Project contract, not added to the domain union merely for UI parity.
 
+## One owning document, multiple views and document access
+
+This is the agreed design for integrating the existing Surfaces workbench and
+saved-document controls. It extends PM04–PM06; it is not a claim that the full
+integration is already implemented. First prove that one retained Catenoid
+session can drive the existing viewers correctly, then integrate the view
+switcher and panels around that contract.
+
+### Ownership and the meaning of a view
+
+| Part | Responsibility |
+| --- | --- |
+| Project | Organizes documents, resources, Workbooks, Notes and their relationships. |
+| Domain document session | Owns scientific source/buffers, identity, generation, edits and undo/redo. |
+| Module workbench | Supplies source controls, tools, Inspector and operation-specific capabilities. |
+| Viewer binding | Presents one exact document generation through an existing renderer. |
+
+One owning document session may support one or more useful views. Do not require
+two views for every document. A view is neither a duplicate document nor a second
+owner of its source/history. The built-in Catenoid preset and a retained
+Graph-derived Catenoid remain distinct documents unless explicitly related;
+their name or similar shape cannot establish identity or justify replacing one
+with the other.
+
+| Document | Primary view | Optional second view | Scientific ownership |
+| --- | --- | --- | --- |
+| Surface | Parameterized Surface through the existing ParamSurfaceViewer where supported | Sampled preview through the existing SurfaceViewer | Both bind to the same Surface document/generation. |
+| Saved Mesh | Existing Mesh workbench over SurfaceViewer | Study view for qualified curvature, quality or other numerical evidence | Both bind to the same Mesh document/generation/buffers. Start with one complete Mesh view. |
+
+Surface / Sampled is a presentation switch within a Surface session. Open Mesh
+activates a separately saved Mesh document. A sampled Surface preview becomes a
+saved Mesh only through an explicit create/save-derived-document operation that
+records its source generation and sampling. Switching views alone creates no
+scientific document, source revision or saved analysis result.
+
+A Mesh's Open source Surface action navigates to its linked Surface generation;
+it does not reconstruct an analytic Surface from Mesh buffers. If only a
+historical source reference is available, qualify and resolve that generation
+through retained data. If it cannot be resolved, show an unavailable source
+action with the reason rather than substituting the current Surface.
+
+### View bindings and controls
+
+- Both Surface views preserve the saved axis, coordinates, domain, periodic
+  seams, orientation and exact source generation. The current built-in Catenoid
+  and the saved Graph revolution use different default axes; a binding must
+  preserve those definitions rather than select a named preset for convenience.
+- Existing saved-document controls—undo/redo, structured source editing,
+  advanced JSON, provenance and linked Mesh studies—become sections of the module
+  workbench. The document session remains their command owner. A display
+  projection must not rewrite a constructed source as an independent parametric
+  source when opening, saving or changing views.
+- Tool availability follows the selected document, representation, view and
+  resources. Label analytic and numerical operations accurately. A general
+  sampled rendering cannot enable a preset-specific analytic operation merely
+  because the object looks like a Catenoid.
+- Source edits invalidate/rebuild the sampled preview for the new generation.
+  Existing saved Meshes and results remain attached to their recorded generations
+  and acquire historical status when appropriate; they are not overwritten by
+  changing a view or editing the Surface.
+- Async preparations carry the activation token, document ID, source generation
+  and sampling configuration. Late geometry/results cannot appear under a newer
+  document selection or view.
+- Camera transfers only between compatible frames. Store camera/display state
+  per document and view. Share semantic selection only through a valid mapping;
+  UV probes, sampled vertices and saved-Mesh face IDs are not interchangeable.
+  Explain or clear an unmappable selection while retaining the owning document.
+- Run one active viewport by default and retain view state when switching.
+  Simultaneous rendering belongs to the later explicit Compare/Overlay phase.
+
+The UI view key is scoped to the document, for example `surface`,
+`sampled-surface`, `mesh` or `mesh-study`. Extend validated local resume state
+with that view key and relevant display state; this does not enter scientific
+source hashes. Restore the saved document first, then its supported view. If a
+view is unavailable, explain that and offer a supported view of the same
+document. Never resume an unrelated preset as a silent fallback.
+
+### Access: one Catenoid Surface and two saved Mesh documents
+
+For this example, “Mesh ×2” means two independently saved Mesh documents, such
+as different sampling resolutions or an edited derivative. Their owning entries
+appear once in the Project document tree:
+
+```text
+Catenoid Evidence · Project
+  Documents
+    Surfaces
+      Catenoid
+    Meshes
+      Catenoid Mesh 1 · 65 × 65 samples
+      Catenoid Mesh 2 · 97 × 97 samples
+  Workbooks
+  Notes
+```
+
+Sampling labels are illustrative; actual labels come from each Mesh's recorded
+sampling and generation. If “Mesh ×2” instead means two presentations of one
+Mesh, there is one Mesh entry with an optional Mesh / Study switch.
+
+| Access point | Action and resulting ownership |
+| --- | --- |
+| Main Projects navigation | Opens the Project library; this option remains available. |
+| Contextual Project tab/button | Shows the opened Project's tree in the left panel. |
+| Catenoid document row or document switcher | Activates that Surface in Surfaces, restores its last valid view and shows its matching Inspector. |
+| Surface / Sampled switch above the viewport | Changes the view of Catenoid; document ID, source generation and command history remain the same. |
+| Mesh 1 or Mesh 2 document row/switcher entry | Activates that exact saved Mesh in Mesh, with its own generation, selection, appearance and results. |
+| Catenoid Inspector → Related → Derived Meshes | Lists both Meshes with name, sampling, source generation and current/historical status. Open activates the chosen Mesh; these are references to its existing tree entry. |
+| Mesh Inspector → Related → Source Surface | Resolves the recorded source Surface generation. Open activates that exact target or reports its unavailable/historical state. |
+| Mesh / Study switch, when supported | Changes the presentation of the selected Mesh without selecting Mesh 1/2 or its source Surface implicitly. |
+| Main Surfaces / Mesh navigation | Resumes the last valid document selected in that module within the opened Project. With multiple candidates and no remembered selection, show a document chooser; with one candidate, activate it. |
+| Back / Forward | Restores the previous document and view in the same Project, with the corresponding Inspector and compatible view state. |
+| Project details → Return to document | Flips the middle content while retaining the active mathematical document and view. |
+
+Two selectors have distinct purposes: the document switcher chooses Catenoid,
+Mesh 1 or Mesh 2; the view switcher chooses a supported presentation of that
+document. View choices do not appear as extra documents in the tree.
+
+Example journey:
+
+```text
+Project → Catenoid [Surface ↔ Sampled]
+        → Related / Mesh 1 [Mesh; optional Study]
+        → Related / Mesh 2 [Mesh; optional Study]
+        → Open source Surface → Catenoid
+```
+
+Mesh-to-Mesh navigation uses the document switcher/Project tree or an explicit
+sibling link resolved through their shared Surface relation. The Inspector
+always states which Mesh is selected and which Surface generation produced it.
+Showing both Meshes at once is a later Compare action, not the ordinary meaning
+of opening either Mesh.
+
+### Acceptance before completing the shared workbench integration
+
+1. Render the retained Catenoid through both qualified bindings and check
+   source identity/hash, coordinates, axis, orientation, domains and periodic
+   seams. No built-in preset substitution or source conversion is allowed.
+2. Switch Surface / Sampled without changing source/history; preserve source
+   drafts and compatible camera state. Qualify selection mappings explicitly.
+3. Open Mesh 1 and Mesh 2 independently; prove that buffers, fields, generation
+   and Inspector/results belong to the chosen Mesh. Return to their exact
+   recorded source, including historical/missing-source cases.
+4. Edit the Surface and prove that its preview updates while both retained
+   Meshes/results preserve their recorded ownership and historical status.
+5. Save/restart with each supported document/view selected. Restore the same
+   document and supported presentation or provide an explicit unavailable-view
+   explanation.
+6. Verify module navigation, document/view switches, Related links and Back/
+   Forward all use the active Project context and reject late async bindings.
+
 ## Later phase: Project comparison and composition
 
 Begin this phase only after PM10 acceptance. It references existing documents
