@@ -1,11 +1,15 @@
 # Mobile Project Notes: physical-device acceptance
 
-Status on October 7, 2026: pending. The Samsung SM-A566B is now connected and
-authorized through ADB. The existing internal-signing configuration has not yet
-been located. The local
-October 4 candidate APK predates the Notes delivery and fails the source check.
+Status on October 7, 2026: the physical Notes journey passed in the isolated,
+standalone `Math3D Notes Check` package on the Samsung SM-A566B (Android 16).
+See [the device report](mobile-project-notes-samsung-20261007.md) for build identity
+and export verification. Testing found and fixed a keyboard overlap in Projects.
+
+Internal-channel acceptance remains pending: the existing internal-signing
+configuration has not been located, so the installed internal app was not updated.
+The local October 4 candidate APK predates Notes and fails the source check.
 The September 30 Samsung baseline signoff does not cover the subsequent Notes
-editing delivery. Emulator and model results do not close this gate.
+editing delivery. The isolated debug-signed test does not approve that channel.
 
 ## Prepared input and build
 
