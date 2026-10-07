@@ -874,3 +874,27 @@ never reconstruct unavailable history from a current source and call it historic
 The trajectory is: reliable active document first; stronger Related/Overview/
 Workbook navigation next; explicit comparison/composition of multiple retained
 documents last.
+
+## First-flow implementation — 2026-10-07
+
+The first implementation slice is `ba423d2`:
+
+- Open Catenoid Evidence from Projects and display its retained constructed
+  Surface through the existing GeometryViewer/SurfaceViewer rendering path.
+- Open its retained sampled Mesh, return through Open source Surface, save and
+  resume the same Project/document after a cold Electron restart. Mesh selection
+  also survives save/restart; source identity and hash are checked.
+- Show the contextual Project button after workspace activation; keep Projects
+  available in the main navigation. Restore resources before publishing the
+  opened Project and report resume failures explicitly.
+- Use Project details to flip the middle area to deeper Project content, then
+  Return to document. The renderer remains mounted and its source draft survives.
+- Keep linked Mesh/source-return controls reachable beside a docked Project,
+  open saved Meshes with viewport controls collapsed and keep the selected
+  document/module consistent when returning to Surface or a promoted Curve.
+
+This qualifies the first journey and the simple flip. The complete shared
+DocumentWorkspaceHost, adapter capability UI, Workbook flip, camera persistence
+across restart and launcher/installed-app acceptance remain in PM01–PM10.
+Detailed evidence is kept in
+`docs/evidence/project-master-desktop-2026-10-07/acceptance.md`.

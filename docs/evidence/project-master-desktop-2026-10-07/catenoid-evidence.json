@@ -1,0 +1,36 @@
+{
+  "projectId": "math3d:project:c45b05aece659279aec8678d12bacdea",
+  "surface": {
+    "id": "math3d:surface:bb08050ef2dd3ddff5d7146784f26a67",
+    "revision": 1,
+    "schemaVersion": 1,
+    "structuralHash": "sha256:579bfbc0b03740442062dec978d1bdc5d34673dd69057c17af48602bde2e410c"
+  },
+  "mesh": {
+    "id": "math3d:mesh:0d8a16ee4315f8c3ac65ae5a75f53f7d",
+    "revision": 1,
+    "schemaVersion": 1,
+    "structuralHash": "sha256:aefacd6c53e3105eb21a895b0f4c1df7f5370dabb6cbc3ddb62e49003b930e66"
+  },
+  "bounds": {
+    "min": [
+      -1.5,
+      -2.352409601211548,
+      -2.352409601211548
+    ],
+    "max": [
+      1.5,
+      2.352409601211548,
+      2.352409601211548
+    ]
+  },
+  "module": "surface",
+  "openingPath": "Projects Gallery → Catenoid Evidence → Open Mesh → Open source Surface → Save → cold Electron restart",
+  "viewport": {
+    "width": 1600,
+    "height": 1000,
+    "devicePixelRatio": 1.0000000149011612
+  },
+  "renderer": "GeometryViewer → shared SurfaceViewer; captured Graph revolution",
+  "profile": "isolated temporary Electron profile"
+}
