@@ -108,3 +108,38 @@ repeated layout checks into one renderer query, successful save/cold restore.
 The expanded two-launch flow now has a four-minute overall limit; individual
 action timeouts are unchanged. This functional check does not establish a new
 interactive performance result.
+
+## Correction: stable navigation and the full native viewer toolstrip
+
+Both workspaces now use `SavedSurfaceToolbar`. Surface/Custom, document history,
+breadcrumb, related documents and exit keep the same positions. The Custom
+rendering selector and return action reserve their space in native Surface.
+The Surface action row stays visible in both views. Choosing a native action
+from Custom returns to Surface. The document toolbar uses horizontal scrolling
+on narrow windows instead of wrapping and moving the view switch.
+
+The native Surface had inherited the gallery-mode condition that hides the
+desktop viewer controls. Saved Surface now shows the existing module's full
+`ViewerControlsStrip`: display, quality, camera and viewport-panel controls.
+Opening the document also enables its existing Geodesic/Slice plane overlays and
+camera gizmo. The gizmo is independent of the overlay toggle. Clean screenshots
+continue to hide it.
+
+Edit routes to the saved source. Create project Mesh records a Mesh linked to
+that source and opens its document. Fit Surface reframes the native saved Surface,
+using the viewer's existing reframe operation. Global Mesh fitting and baking
+are not used for these project actions. Compact layouts retain the existing
+floating controls at the bottom right, away from Slice plane.
+
+The focused Electron flow passed in 1.9 minutes. At 1600 × 1000 and 2200 × 1000,
+the Surface/Custom button coordinates, shared toolbar height and Surface action
+row coordinates matched exactly across native Surface, Custom Surface and Custom
+Sampled. Fit, Reset camera, overlay hiding with the gizmo retained, source editing,
+and Create project Mesh → Back to catenoid were checked. Document identity and
+source hash remained unchanged; no page errors were reported. The renderer build
+passed, and renderer/E2E type checks passed. Tests used temporary profiles and did
+not restart the user's window.
+
+![Native Surface with the full module viewer toolstrip](surface-native-tools.png)
+
+![Custom view with navigation at the same level](surface-custom-stable-nav.png)

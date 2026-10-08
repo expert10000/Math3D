@@ -3,33 +3,22 @@ import type { CanonicalJsonValue, SurfaceDocument } from "@math3d/core";
 import type { AdditionalProjectSession } from "../projects/additionalProjectSession";
 import { SurfaceFormulaControls } from "../projects/SurfaceFormulaControls";
 import "./documentWorkspace.css";
+import { SavedSurfaceToolbar } from "./SavedSurfaceToolbar";
 
 /** Adds document ownership to the existing module layout, without replacing its panels. */
-export function SavedSurfaceModuleFrame({ session, title, related, onOpenRelated, onChange, onCustom, onClose, children }: {
-  session: AdditionalProjectSession | null; title?: string; related?: ReturnType<typeof import("./relatedDocuments").relatedDocuments>; onOpenRelated?: (id: string, module: import("@math3d/core").KernelWorkspaceModule) => void;
-  onChange: () => void; onCustom: () => void; onClose: () => void; children: React.ReactNode;
+export function SavedSurfaceModuleFrame({ session, title, projectTitle, related, onOpenRelated, onChange, onCustom, onProject, onClose, children }: {
+  session: AdditionalProjectSession | null; title?: string; projectTitle?: string; related?: ReturnType<typeof import("./relatedDocuments").relatedDocuments>; onOpenRelated?: (id: string, module: import("@math3d/core").KernelWorkspaceModule) => void;
+  onChange: () => void; onCustom: () => void; onProject: () => void; onClose: () => void; children: React.ReactNode;
 }) {
   const [error, setError] = useState<string | null>(null);
   if (!session) return <>{children}</>;
-  const document = session.document(), history = session.history();
+  const document = session.document();
   const action = (run: () => void) => {
     try { run(); session.sourceDraft = JSON.stringify(session.document().source, null, 2); setError(null); onChange(); }
     catch (failure) { setError((failure as Error).message); }
   };
   return <section className="saved-surface-module" data-testid="project-source-editor" data-document-id={document.identity.id} data-source-hash={document.identity.structuralHash} data-document-module="surface">
-    <div className="document-toolbar">
-      <strong data-testid="document-breadcrumb">{title} · Project Surface</strong>
-      <span data-testid="project-source-revision">Revision {document.identity.revision}</span>
-      <button data-testid="project-source-undo" disabled={!history.undoDepth} onClick={() => action(() => session.undo())}>Undo document</button>
-      <button data-testid="project-source-redo" disabled={!history.redoDepth} onClick={() => action(() => session.redo())}>Redo document</button>
-      <div className="document-view-switch" role="group" aria-label="Document view">
-        <button data-testid="document-surface-view" aria-pressed="true">Surface</button>
-        <button data-testid="document-custom-view" aria-pressed="false" onClick={onCustom}>Custom</button>
-      </div>
-      <button data-testid="project-source-back-to-module" onClick={onClose}>Exit project view</button>
-      {!!related?.length && <nav data-testid="document-related" aria-label="Related documents">{related.map(item => <button key={item.id} onClick={() => onOpenRelated?.(item.id, item.module)}>{item.label}</button>)}</nav>}
-      {error && <span role="alert">{error}</span>}
-    </div>
+    <div className="document-toolbar"><SavedSurfaceToolbar session={session} title={title} projectTitle={projectTitle} custom={false} onSelectView={view => { if (view === "custom") onCustom(); }} onUndo={() => action(() => session.undo())} onRedo={() => action(() => session.redo())} onProject={onProject} onClose={onClose} related={related} onOpenRelated={onOpenRelated} error={error} /></div>
     {children}
   </section>;
 }

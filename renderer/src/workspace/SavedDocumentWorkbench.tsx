@@ -7,6 +7,7 @@ import { readSurfaceDocumentView, type SurfaceDocumentView } from "../surfaceAna
 import type { AdditionalProjectSession } from "../projects/additionalProjectSession";
 import { SurfaceFormulaControls } from "../projects/SurfaceFormulaControls";
 import { DocumentWorkspaceHost } from "./DocumentWorkspaceHost";
+import { SavedSurfaceToolbar } from "./SavedSurfaceToolbar";
 import { DocumentViewport } from "./DocumentViewport";
 import { surfaceDocumentBinding } from "./surfaceDocumentBinding";
 import { documentPresentationKey, readDocumentPresentation, saveDocumentPresentation } from "./documentPresentation";
@@ -66,7 +67,7 @@ export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, p
   const measurement = prepared.view && <div data-testid="project-source-measurement" style={{ padding: 10 }}>{prepared.view.qualification} · {prepared.view.sampleCount} sampled points · bounds {JSON.stringify(prepared.view.bounds)}</div>;
   return <DocumentWorkspaceHost documentId={document.identity.id} sourceHash={document.identity.structuralHash} module={session.original.module}
     integratedInspector={!!nativeInspector}
-    toolbar={<>
+    toolbar={moduleView ? <SavedSurfaceToolbar session={session} title={documentTitle} projectTitle={projectTitle} custom={customView} onSelectView={view => onSelectView?.(view)} onUndo={() => action(() => session.undo())} onRedo={() => action(() => session.redo())} onProject={onOpenProject} onClose={onClose} related={related} onOpenRelated={onOpenRelated} onPresentation={view => { session.presentation = view; setPresentation(view); setProbe(false); setProbeResult(null); changed(); }} error={error} /> : <>
       <button data-testid="document-project-open" onClick={onOpenProject}>Project overview</button>
       <strong data-testid="document-breadcrumb">{projectTitle ?? "Project"} → {session.original.module === "surface" ? "Surface" : session.original.module} → {documentTitle ?? ("metadata" in document ? document.metadata.title : session.original.module)}</strong>
       <span data-testid="project-source-revision">Revision {document.identity.revision}</span>

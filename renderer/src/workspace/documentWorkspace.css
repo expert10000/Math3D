@@ -1,6 +1,13 @@
 .document-workspace { position:relative;display:flex;flex-direction:column;height:calc(100dvh - var(--document-header-height,140px));min-height:400px;overflow:hidden;background:#f8fafc;color:#0f172a;font:13px system-ui;container-type:inline-size; }
 .document-toolbar { display:flex;flex:0 0 auto;flex-wrap:wrap;align-items:center;gap:8px;padding:10px;border-bottom:1px solid #cbd5e1; }
 .document-view-switch { display:inline-flex;align-items:center;gap:4px; }
+.document-toolbar:has(> .saved-surface-toolbar) { flex-wrap:nowrap;padding:8px 10px;min-height:44px;box-sizing:border-box;overflow-x:auto; }
+.saved-surface-toolbar { display:flex;align-items:center;gap:8px;flex-wrap:nowrap;width:max-content;min-width:100%; }
+.saved-surface-toolbar > * { flex-shrink:0;white-space:nowrap; }
+.saved-surface-toolbar > strong { width:240px;overflow:hidden;text-overflow:ellipsis; }
+.saved-surface-toolbar nav { display:inline-flex;gap:4px; }
+.saved-surface-custom-options { display:inline-flex;align-items:center;gap:4px; }
+.saved-surface-toolbar .saved-surface-custom-options select { font-size:12px;padding:4px 6px; }
 .document-workspace .document-view-switch button[aria-pressed=true] { background:#e0edff;border-color:#2563eb;color:#1d4ed8; }
 .saved-surface-module { display:flex;flex-direction:column;flex:1;min-height:0;width:100%; }
 .saved-surface-module > .document-toolbar { font:13px system-ui; }

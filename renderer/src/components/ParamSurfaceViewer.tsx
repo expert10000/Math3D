@@ -7234,8 +7234,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         </>
       )}
 
-      {showOverlayControls && showViewGizmo && (
+      {showViewGizmo && (
         <div
+          data-testid="surface-view-gizmo"
           style={{
             position: "absolute",
             left: 12,

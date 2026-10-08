@@ -74373,7 +74373,7 @@ case "mobius":
       : meshAnalysisWorkflowValidationLabel === "Unverified"
         ? { border: "#dbe4ee", background: "#f8fafc", color: "#475467" }
         : { border: "#fcd34d", background: "#fffbeb", color: "#92400e" };
-  const showSurfaceLocalToolStrip = showSurfaceWorkflowStrip && !isSurfacePreviewMode;
+  const showSurfaceLocalToolStrip = (showSurfaceWorkflowStrip || (savedSurfaceModuleActive && !isPresentDisplayMode && !cleanScreenshotSurfaceActive && !isPhoneViewerPriorityLayout)) && !isSurfacePreviewMode;
   const showMeshViewerLocalToolStrip =
     mode === "surfaces" &&
     isSurfaceDatasetKind(datasetKind) &&
@@ -77206,11 +77206,12 @@ case "mobius":
     surfaceViewerKind !== "mesh" &&
     surfaceViewerKind !== "complex";
   const openSavedSurfaceSource = () => {
+    setSavedSurfaceCustomView(false);
     setSurfacesPanelState("work"); setSurfacesLeftTab("object"); setSurfacesWorkGalleryOpen(false);
     window.dispatchEvent(new CustomEvent("math3d:hide-project-dock", { detail: "left" }));
   };
   const surfacesQuickEditLabel =
-    savedSurfaceModuleActive ? "Edit saved Surface" : datasetKind === "volume"
+    activeSavedSurfaceBinding ? "Edit saved Surface" : datasetKind === "volume"
       ? (volumePresetId === "custom" ? "Already custom" : "Edit custom F(x,y,z)")
       : surfaceViewerKind === "graph"
       ? "Edit custom z=f(x,y)"
@@ -77220,7 +77221,7 @@ case "mobius":
           ? "Edit custom σ(u,v)"
           : null;
   const surfacesQuickEditEnabled =
-    savedSurfaceModuleActive ? true : datasetKind === "volume"
+    activeSavedSurfaceBinding ? true : datasetKind === "volume"
       ? volumePresetId !== "custom"
       : surfaceViewerKind === "graph"
       ? canEditGraphAsCustom || graphSurfaceId === "graph_custom"
@@ -77235,7 +77236,7 @@ case "mobius":
     setSurfacesWorkGalleryOpen(false);
   };
   const handleSurfacesQuickEdit =
-    savedSurfaceModuleActive ? openSavedSurfaceSource : datasetKind === "volume"
+    activeSavedSurfaceBinding ? openSavedSurfaceSource : datasetKind === "volume"
       ? () => {
           if (nativeVolumeActive) {
             prepareSurfaceCustomEditing();
@@ -78320,6 +78321,7 @@ case "mobius":
         setDatasetKind("surface"); setSurfaceViewerKind("param"); setSurfacesPanelState("browse"); setSurfacesWorkGalleryOpen(false);
         setDisplayMode("workspace"); setShowRightPanel(true); setRightPanelTab("inspector");
         setSurfacePreviewFocusMode(false); setCleanScreenshotActive(false); setSurfaceDrawerPanel("left");
+        setShowInViewportOverlayControls(true); setShowSurfaceViewGizmo(true);
         setWorkspaceDockLayouts(layouts => ({ ...layouts, surfaces: { ...(layouts.surfaces ?? recommendedWorkspaceDockLayout("surfaces")), leftCollapsed: false, rightCollapsed: false, viewerMaximized: false } }));
       }
       setMode(module === "curve" ? "curves" : module === "surface" ? "surfaces" : module === "topology" ? "topology" : "geometry");
@@ -78689,7 +78691,7 @@ case "mobius":
                             onSurfaceCellSelectionEnabledChange={handleSurfaceCellSelectionEnabledChange}
                             showOverlayControls={cleanScreenshotSurfaceActive ? false : showInViewportOverlayControls}
                             onRequestHideOverlayControls={() => setShowInViewportOverlayControls(false)}
-                            showViewGizmo={showSurfaceViewGizmo}
+                            showViewGizmo={cleanScreenshotSurfaceActive ? false : showSurfaceViewGizmo}
                             chartGridCountU={chartGridCountU}
                             chartGridCountV={chartGridCountV}
                             paramDomain={activeParamLikeDomain}
@@ -79347,7 +79349,7 @@ case "mobius":
           style={{
             display: "grid",
             gap: isSurfacePreviewMode ? 6 : isPhoneLandscapeLayout ? 2 : 7,
-            marginBottom: hasSavedDocumentViewport ? 0 : isSurfacePreviewMode ? 2 : isPhoneLandscapeLayout ? 2 : 10,
+            marginBottom: hasSavedDocumentViewport && !activeSavedSurfaceBinding ? 0 : isSurfacePreviewMode ? 2 : isPhoneLandscapeLayout ? 2 : 10,
           }}
         >
           {isSurfacePreviewMode ? (
@@ -79951,8 +79953,8 @@ case "mobius":
                   )}
                 </div>
               )}
-              {mode === "surfaces" && (!additionalActiveId || savedSurfaceModuleActive) && !activeGraph2DTarget && surfaceViewerKind !== "complex" && !isPhoneViewerPriorityLayout && (
-                <div style={topNavContextBarStyle}>
+              {mode === "surfaces" && (!additionalActiveId || activeSavedSurfaceBinding) && !activeGraph2DTarget && surfaceViewerKind !== "complex" && !isPhoneViewerPriorityLayout && (
+                <div data-testid="surface-module-actions" style={topNavContextBarStyle} onClickCapture={() => { if (activeSavedSurfaceBinding) setSavedSurfaceCustomView(false); }}>
                   <div style={surfacesModeStripWrapStyle}>
                     <div style={surfacesModeGroupStyle("panel")}>
                     <span style={surfacesModeLabelStyle("panel")}>
@@ -79971,7 +79973,7 @@ case "mobius":
                             setSurfacesPanelState("work");
                             setSurfacesLeftTab(tab);
                             setSurfacesWorkGalleryOpen(false);
-                            if (savedSurfaceModuleActive) window.dispatchEvent(new CustomEvent("math3d:hide-project-dock", { detail: "left" }));
+                            if (activeSavedSurfaceBinding) window.dispatchEvent(new CustomEvent("math3d:hide-project-dock", { detail: "left" }));
                           }}
                           disabled={disabled}
                           aria-pressed={active}
@@ -81253,7 +81255,7 @@ case "mobius":
 
 
 
-      {!hasSavedDocumentViewport && showSurfaceWorkflowStrip && (
+      {!hasSavedDocumentViewport && !activeSavedSurfaceBinding && showSurfaceWorkflowStrip && (
         <div style={{ padding: isSurfacePreviewMode ? "0 0 6px" : "0 0 10px" }}>
           {isMeshAnalysisWorkflowContext ? (
             <div
@@ -81485,7 +81487,7 @@ case "mobius":
           )}
         </div>
       )}
-      {!hasSavedDocumentViewport && showSurfaceWorkbookQuickStrip && (
+      {!hasSavedDocumentViewport && !activeSavedSurfaceBinding && showSurfaceWorkbookQuickStrip && (
         <div style={{ padding: "0 0 10px" }}>
           <div
             style={{
@@ -81583,7 +81585,7 @@ case "mobius":
         onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis}
         creationHint="Uses saved formulas and ranges at the selected analysis resolution, independent of display resolution. Earlier Meshes and results remain available. Projects → Save project keeps them."
       />}
-      {!hasSavedDocumentViewport && (<SavedSurfaceModuleFrame session={savedSurfaceModuleActive ? activeSavedSurfaceSession ?? null : null} title={activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId ?? ""]?.title ?? "Saved Surface"} related={savedSurfaceModuleActive ? relatedDocuments(restoredProjectRef.current?.workspace, additionalActiveId!, restoredProjectRef.current?.context().documents) : undefined} onOpenRelated={navigateRestoredDocument} onChange={() => setAdditionalVersion(value => value + 1)} onCustom={() => setSavedSurfaceCustomView(true)} onClose={openNormalSurfacesWorkspace}><div
+      {!hasSavedDocumentViewport && (<SavedSurfaceModuleFrame projectTitle={activeNotebookProjectRef.current?.metadata.title} onProject={() => setProjectsOpen(true)} session={savedSurfaceModuleActive ? activeSavedSurfaceSession ?? null : null} title={activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId ?? ""]?.title ?? "Saved Surface"} related={savedSurfaceModuleActive ? relatedDocuments(restoredProjectRef.current?.workspace, additionalActiveId!, restoredProjectRef.current?.context().documents) : undefined} onOpenRelated={navigateRestoredDocument} onChange={() => setAdditionalVersion(value => value + 1)} onCustom={() => setSavedSurfaceCustomView(true)} onClose={openNormalSurfacesWorkspace}><div
         data-testid="module-workspace"
         style={{
           ...styles.wrap,
@@ -85812,7 +85814,7 @@ case "mobius":
                       !surfacePanelsAsDrawers &&
                       (surfaceViewerKind !== "mesh" || meshViewerControlsOpen) && (
                       <ViewerControlsStrip
-                        testId={surfaceViewerKind === "mesh" ? "mesh-viewer-controls-strip" : undefined}
+                        testId={surfaceViewerKind === "mesh" ? "mesh-viewer-controls-strip" : "surface-viewer-controls-strip"}
                         density={surfaceViewerKind === "mesh" ? meshViewerControlsDensity : "normal"}
                         style={{
                           position: "relative",
@@ -85830,24 +85832,25 @@ case "mobius":
                           }}
                       >
                         <ViewerControlGroup
-                          label={surfaceViewerKind === "mesh" && meshViewerControlsDensity === "compact" ? "M" : "Mesh"}
+                          label={savedSurfaceModuleActive ? "Surface" : surfaceViewerKind === "mesh" && meshViewerControlsDensity === "compact" ? "M" : "Mesh"}
                           density={surfaceViewerKind === "mesh" ? meshViewerControlsDensity : "normal"}
                           style={{
                             flex: meshViewerControlsDensity === "compact" ? "0 0 auto" : "0 0 100%",
                             alignSelf: "flex-start",
                           }}
                         >
-                          {showSurfaceFormulaEditorLauncher && (
+                          {(savedSurfaceModuleActive || showSurfaceFormulaEditorLauncher) && (
                             <button
                               type="button"
                               onClick={() => {
+                                if (savedSurfaceModuleActive) { openSavedSurfaceSource(); return; }
                                 if (surfaceFormulaEditorOpen) {
                                   setSurfaceFormulaEditorOpen(false);
                                   return;
                                 }
                                 openSurfaceFormulaEditor();
                               }}
-                              disabled={!canOpenSurfaceFormulaEditor}
+                              disabled={!savedSurfaceModuleActive && !canOpenSurfaceFormulaEditor}
                               style={{
                                 borderRadius: 8,
                                 border:
@@ -85877,7 +85880,7 @@ case "mobius":
                                   : "Choose an editable preset first."
                               }
                             >
-                              {surfaceFormulaEditorOpen
+                              {savedSurfaceModuleActive ? "Edit saved Surface" : surfaceFormulaEditorOpen
                                 ? meshViewerControlsDensity === "compact"
                                   ? "Editor on"
                                   : "Surface editor: on"
@@ -85886,7 +85889,7 @@ case "mobius":
                                   : "Surface editor"}
                             </button>
                           )}
-                          <button
+                          {!savedSurfaceModuleActive && <button
                             type="button"
                             data-testid="mesh-open-in-geometry"
                             onClick={isMeshAnalysisWorkflowContext ? handleReturnMeshAnalyzeToGeometry : handleDatasetToGeometryScene}
@@ -85928,11 +85931,11 @@ case "mobius":
                             }
                           >
                             {surfaceViewerKind === "mesh" ? "Open in Geometry" : unifiedMeshObjectActionLabel}
-                          </button>
+                          </button>}
                           <button
                             type="button"
-                            onClick={handleConvertToMesh}
-                            disabled={surfaceViewerKind === "mesh" || !surfaceMeshExportable}
+                            onClick={() => { if (savedSurfaceModuleActive) navigateRestoredDocument(createMeshFromSavedSurface(), "mesh"); else handleConvertToMesh(); }}
+                            disabled={!savedSurfaceModuleActive && (surfaceViewerKind === "mesh" || !surfaceMeshExportable)}
                             style={{
                               borderRadius: 8,
                               border:
@@ -85946,14 +85949,14 @@ case "mobius":
                               cursor: surfaceViewerKind !== "mesh" && surfaceMeshExportable ? "pointer" : "not-allowed",
                             }}
                             title={
-                              surfaceViewerKind === "mesh"
+                              savedSurfaceModuleActive ? "Create a saved Mesh linked to this Surface source." : surfaceViewerKind === "mesh"
                                 ? "This object is already a SurfaceMesh. Use Open in Geometry for Geometry handoff."
                                 : surfaceMeshExportable
                                 ? "Promote current surface definition to SurfaceMesh dataset."
                                 : "Surface must be bake-ready to promote."
                             }
                           >
-                            {surfaceViewerKind === "mesh" ? "Already SurfaceMesh" : "Promote to SurfaceMesh"}
+                            {savedSurfaceModuleActive ? "Create project Mesh" : surfaceViewerKind === "mesh" ? "Already SurfaceMesh" : "Promote to SurfaceMesh"}
                           </button>
                           {isSurfaceDatasetKind(datasetKind) && (surfaceViewerKind === "graph" || surfaceViewerKind === "implicit") && (
                             <button
@@ -86198,11 +86201,11 @@ case "mobius":
                           <button
                             type="button"
                             data-testid="mesh-viewer-fit-mesh"
-                            onClick={handleFitMeshViewport}
+                            onClick={() => { if (savedSurfaceModuleActive) setWindowReframeToken(token => token + 1); else handleFitMeshViewport(); }}
                             style={viewerControlButtonStyle(false, meshViewerControlsDensity)}
-                            title="Frame the active mesh in the viewport"
+                            title={savedSurfaceModuleActive ? "Frame this saved Surface in the viewport" : "Frame the active mesh in the viewport"}
                           >
-                            {meshViewerControlsDensity === "compact" ? "Fit" : "Fit mesh"}
+                            {savedSurfaceModuleActive ? "Fit Surface" : meshViewerControlsDensity === "compact" ? "Fit" : "Fit mesh"}
                           </button>
                           <span style={{ ...viewerControlLabelStyle, marginLeft: 4 }}>
                             {meshViewerControlsDensity === "compact" ? "Cam" : "Camera"}
@@ -86923,7 +86926,7 @@ case "mobius":
                           </div>
                         )}
                         {surfacePanelsAsDrawers && !cleanScreenshotSurfaceActive && (
-                          <div data-testid="surface-floating-toolbar" style={floatingToolbarStyle}>
+                          <div data-testid="surface-floating-toolbar" style={{ ...floatingToolbarStyle, ...(savedSurfaceModuleActive ? { top: undefined, bottom: 12 } : {}) }}>
                             <div style={floatingToolbarRowStyle}>
                               <button
                                 type="button"
@@ -86933,25 +86936,26 @@ case "mobius":
                               >
                                 Reset
                               </button>
-                              {showSurfaceFormulaEditorLauncher && (
+                              {(savedSurfaceModuleActive || showSurfaceFormulaEditorLauncher) && (
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    if (savedSurfaceModuleActive) { openSavedSurfaceSource(); return; }
                                     if (surfaceFormulaEditorOpen) {
                                       setSurfaceFormulaEditorOpen(false);
                                       return;
                                     }
                                     openSurfaceFormulaEditor();
                                   }}
-                                  disabled={!canOpenSurfaceFormulaEditor}
+                                  disabled={!savedSurfaceModuleActive && !canOpenSurfaceFormulaEditor}
                                   aria-pressed={surfaceFormulaEditorOpen}
                                   style={{
                                     ...floatingToolButtonStyle(surfaceFormulaEditorOpen),
-                                    opacity: canOpenSurfaceFormulaEditor ? 1 : 0.48,
-                                    cursor: canOpenSurfaceFormulaEditor ? "pointer" : "not-allowed",
+                                    opacity: savedSurfaceModuleActive || canOpenSurfaceFormulaEditor ? 1 : 0.48,
+                                    cursor: savedSurfaceModuleActive || canOpenSurfaceFormulaEditor ? "pointer" : "not-allowed",
                                   }}
                                   title={
-                                    canOpenSurfaceFormulaEditor
+                                    savedSurfaceModuleActive ? "Edit saved Surface" : canOpenSurfaceFormulaEditor
                                       ? `${surfaceFormulaEditorOpen ? "Close" : "Open"} ${surfaceFormulaEditorTitle.toLowerCase()}`
                                       : "Choose an editable preset first."
                                   }
@@ -87004,7 +87008,7 @@ case "mobius":
                                 >
                                   Grid
                                 </button>
-                                {showParamSurfaceOverlayLauncher && (
+                                {showParamSurfaceOverlayLauncher && !savedSurfaceModuleActive && (
                                   <button
                                     type="button"
                                     onClick={() => setParamSurfaceOverlayOpen(true)}
@@ -87902,7 +87906,7 @@ case "mobius":
                             bottomSheet={surfacePanelsAsDrawers}
                           />
                         )}
-                        {showParamSurfaceOverlayLauncher && !paramSurfaceOverlayOpen && !cleanScreenshotSurfaceActive && (
+                        {showParamSurfaceOverlayLauncher && !savedSurfaceModuleActive && !paramSurfaceOverlayOpen && !cleanScreenshotSurfaceActive && (
                           <button
                             type="button"
                             onClick={() => setParamSurfaceOverlayOpen(true)}
@@ -87924,7 +87928,7 @@ case "mobius":
                             Open surface params
                           </button>
                         )}
-                        {showParamSurfaceOverlayLauncher && !cleanScreenshotSurfaceActive && (
+                        {showParamSurfaceOverlayLauncher && !savedSurfaceModuleActive && !cleanScreenshotSurfaceActive && (
                           <ParamSurfaceOverlayDialog
                             open={paramSurfaceOverlayOpen}
                             activeTab={paramSurfaceOverlayTab}

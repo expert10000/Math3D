@@ -1263,3 +1263,22 @@ The button uses the owning document's Project title. **Exit project view** is a
 separate action that opens the independent normal module workspace. Native
 Surface already displays the Catenoid, so its toolbar only needs that explicit
 exit alongside Surface/Custom selection.
+
+#### Stable Surface/Custom navigation and native viewer tools
+
+Surface and Custom use one shared document toolbar. The view switch, breadcrumb,
+history and exit actions keep their positions when switching. Custom rendering
+and its return button occupy reserved toolbar space in Surface. The native
+Surface action row remains at the same level in both views; choosing a native
+action from Custom returns to the Surface workspace. On smaller windows the
+document toolbar scrolls horizontally instead of changing its number of rows.
+
+Opening a saved Surface enables the existing desktop viewer toolstrip, including
+display options, rendering quality and Reset camera. Edit opens the saved source;
+Create project Mesh saves a Mesh linked to that source. Compact layouts keep the
+existing Reset/Edit/More strip. Camera orientation, Orbit/Fit, Geodesic and Slice
+plane overlays are available in the viewer.
+Camera orientation remains available when overlays are hidden. Edit opens the
+owning saved source. The desktop strip is above the viewer; the compact strip
+sits at the bottom right to avoid Slice plane. Clean screenshots still hide the
+viewer controls.
