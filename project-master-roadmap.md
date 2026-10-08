@@ -1282,3 +1282,21 @@ Camera orientation remains available when overlays are hidden. Edit opens the
 owning saved source. The desktop strip is above the viewer; the compact strip
 sits at the bottom right to avoid Slice plane. Clean screenshots still hide the
 viewer controls.
+
+#### Startup must finish opening before the workspace accepts input
+
+While automatic Project resume reads and verifies saved resources, show an
+**Opening [Project title]** dialog. The background workspace cannot accept clicks
+or text input during this operation. **Cancel opening** explicitly stops the
+pending activation and leaves the saved Project intact. Startup hydration of
+the independent module must not be mistaken for an edit to the saved Project.
+
+Successful resume opens the selected document and reveals the Project tree at
+its saved Left/Middle/Right/All placement. Cancellation or a resume failure offers
+**Resume Project** directly, even when automatic resume is enabled. Explicit
+opening still protects edits entered while resources are being prepared.
+
+The normal Surface module also exposes its existing desktop viewer toolstrip
+in gallery mode. Gallery selection must not hide camera, display, quality and
+viewport controls. Present, clean screenshot, phone and preview layouts keep
+their existing visibility rules.

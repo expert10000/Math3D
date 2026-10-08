@@ -74373,7 +74373,7 @@ case "mobius":
       : meshAnalysisWorkflowValidationLabel === "Unverified"
         ? { border: "#dbe4ee", background: "#f8fafc", color: "#475467" }
         : { border: "#fcd34d", background: "#fffbeb", color: "#92400e" };
-  const showSurfaceLocalToolStrip = (showSurfaceWorkflowStrip || (savedSurfaceModuleActive && !isPresentDisplayMode && !cleanScreenshotSurfaceActive && !isPhoneViewerPriorityLayout)) && !isSurfacePreviewMode;
+  const showSurfaceLocalToolStrip = mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && !isPresentDisplayMode && !cleanScreenshotSurfaceActive && !isPhoneViewerPriorityLayout && !isSurfacePreviewMode;
   const showMeshViewerLocalToolStrip =
     mode === "surfaces" &&
     isSurfaceDatasetKind(datasetKind) &&

@@ -143,3 +143,42 @@ not restart the user's window.
 ![Native Surface with the full module viewer toolstrip](surface-native-tools.png)
 
 ![Custom view with navigation at the same level](surface-custom-stable-nav.png)
+
+## Correction: protected startup resume and normal gallery tools
+
+The reported startup screen showed an independent global Surface and a
+"Workspace changed during startup resume" error. The resume guard treated
+background interactions during the asynchronous resource read as a competing
+workspace operation. Startup also restored the document without reopening the
+Project tree.
+
+Automatic resume now shows a modal **Opening Catenoid Evidence Notebook** while
+saved resources are read and verified. Its opaque backdrop keeps the fallback
+workspace out of view and the browser blocks background input. Clicking inside
+the loading dialog does not count as a workspace edit. **Cancel opening**
+invalidates the pending activation, preserves saved bytes and offers **Resume
+Project**. Failure also offers that direct recovery action when automatic resume
+is enabled. Successful resume reveals the Project at its saved panel placement.
+Explicit openings retain the existing protection for unapplied source input.
+
+The normal Surfaces gallery now shows the existing desktop viewer toolstrip,
+including camera, display, quality and viewport controls. The previous change
+enabled it only for a saved Surface while gallery mode still hid it globally.
+Present, clean screenshot, phone and preview visibility rules remain in effect.
+
+The startup test deliberately delays the Project resource database read. It
+checks the native modal state, loading-dialog interaction, original Catenoid
+document ID/source hash, visible left Project tree, full viewer tools and gizmo.
+It then cancels a second delayed reload, checks unchanged saved Project bytes,
+and explicitly resumes the same document. Tests use temporary Electron profiles.
+
+This startup flow passed in 45 seconds with no page errors. Renderer build and
+renderer/E2E type checks passed. An earlier run exposed the missing Project tree
+after resume; the activation path now opens its saved placement explicitly.
+The two existing regressions also passed: disabled resume/stale selection
+recovery in 31 seconds, and preservation of unapplied source entered during
+resource preparation in 28 seconds.
+
+![Opening the saved Catenoid Project](catenoid-opening.png)
+
+![Catenoid restored with its Project tree and native viewer tools](catenoid-resumed.png)

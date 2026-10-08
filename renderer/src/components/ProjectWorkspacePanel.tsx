@@ -19,6 +19,7 @@ import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnaly
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint } from "../projects/projectTransfer";
 import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
+import { ProjectResumeDialog } from "./ProjectResumeDialog";
 import { captureProjectResources, captureProjectResourcesAsync, exportProjectPackage, projectResourceInventory, MAX_PROJECT_PACKAGE_BYTES, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
 import { commitProjectResources, loadProjectResources } from "../projects/projectResourceArchive";
 import { canonicalJsonStringify, structuralHash, type ProjectNoteAnchor, type StableDocumentId } from "@math3d/core";
@@ -86,6 +87,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     if (open && quick && viewerCompanion) window.dispatchEvent(new CustomEvent("math3d:project-dock-visible", { detail: projectPlacement }));
   }, [open, quick, viewerCompanion, projectPlacement]);
   const [resumeStatus, setResumeStatus] = useState<string | null>(null);
+  const [resumePending, setResumePending] = useState<string | null>(() => preferences.resumeEnabled && onRestoreWorkspace && localStorage.getItem(PROJECT_STORAGE_KEY) ? "saved Project" : null);
+  const cancelResume = () => {
+    importSequence.current++;
+    setResumePending(null);
+    setResumeStatus("Project resume cancelled. Resume the saved Project when ready.");
+  };
   useEffect(() => {
     if (activeProjectDocumentId !== undefined) setViewingDocumentId(activeProjectDocumentId);
   }, [activeProjectDocumentId, open]);
@@ -689,7 +696,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         setHasOpenProject(true);
         setResumeStatus(choice?.recovery ?? null);
         rememberProjectDocument(localStorage, prepared.project, first.id);
-        if (!resumeUnedited) { placeProject("left"); onOpenChange(true); }
+        placeProject(resumeUnedited ? preferences.placement : "left");
+        onOpenChange(true);
       }
       setMessage(openWorkspace ? resumeUnedited ? "Resumed supported project workspace; historical analysis and external refs are retained." : "Opened supported project workspace. Previous workspace saved locally; historical analysis and external refs are retained." : "Imported into the library as a verified saved preview. The current workspace is unchanged.");
       return true;
@@ -720,9 +728,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
     if (!raw || !onRestoreWorkspace || !preferences.resumeEnabled) return;
     const sequence = ++importSequence.current;
+    const startupInputToken = workspaceInputSequence.current;
     let cancelled = false;
     let userChangedWorkspace = false;
-    const markInteraction = () => { userChangedWorkspace = true; };
+    const markInteraction = (event: Event) => {
+      if ((event.target as Element | null)?.closest?.('[data-testid="project-resume-progress"]')) return;
+      userChangedWorkspace = true;
+    };
     document.addEventListener("input", markInteraction, true);
     document.addEventListener("pointerdown", markInteraction, true);
     setResumeStatus("Restoring saved Project…");
@@ -730,16 +742,19 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       try {
         const previous = currentCapture.current();
         const saved = parseMath3DProject(raw);
+        setResumePending(saved.metadata.title);
         const resources = await loadProjectResources(saved);
         if (cancelled || sequence !== importSequence.current) return;
         // Initial module hydration can publish default derived buffers. Only an
         // interaction during the read can supersede startup with a user's edit.
-        if (userChangedWorkspace && canonicalJsonStringify(currentCapture.current()) !== canonicalJsonStringify(previous)) throw new Error("Workspace changed during startup resume. Open the saved Project explicitly.");
+        if (startupInputToken !== workspaceInputSequence.current || userChangedWorkspace && canonicalJsonStringify(currentCapture.current()) !== canonicalJsonStringify(previous)) throw new Error("Workspace changed during startup resume. Open the saved Project explicitly.");
         const prepared = inspectProjectCompatibility(saved, transferOptions(resources));
         if (!prepared.canOpenWorkspace) throw new Error("Saved Project needs compatibility review in Projects.");
         await importPreview(true, { ...prepared, resources, inputKind: "Startup resume" }, () => !userChangedWorkspace);
       } catch (error) {
         if (!cancelled && sequence === importSequence.current) setResumeStatus(`Project resume failed: ${(error as Error).message}`);
+      } finally {
+        if (!cancelled) setResumePending(null);
       }
     })();
     return () => { cancelled = true; document.removeEventListener("input", markInteraction, true); document.removeEventListener("pointerdown", markInteraction, true); };
@@ -772,9 +787,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
   };
   const resumableProject = useMemo(() => {
-    if (preferences.resumeEnabled || hasOpenProject) return null;
+    if (hasOpenProject || resumePending || preferences.resumeEnabled && !resumeStatus) return null;
     try { const raw = localStorage.getItem(PROJECT_STORAGE_KEY); return raw ? parseMath3DProject(raw) : null; } catch { return null; }
-  }, [preferences.resumeEnabled, hasOpenProject]);
+  }, [preferences.resumeEnabled, hasOpenProject, resumePending, resumeStatus]);
   const previewTemplate = async (id: ProjectStarterId) => {
     if (busy) return;
     const sequence = ++importSequence.current;
@@ -858,14 +873,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     onDiscardDraft={(id) => setNoteDrafts((current) => current.filter((draft) => draft.id !== id))}
     onSaveDrafts={saveNoteDrafts} onSaveNote={saveEditedNote} onChangeValues={changeNoteValues} onSendToWorkbook={sendNoteToWorkbook} />;
   return <div style={{ position: "fixed", right: 14, top: 90, zIndex: 2501, fontSize: 13 }}>
+    <ProjectResumeDialog title={resumePending} onCancel={cancelResume} />
     <button type="button" data-testid="notes-toggle" aria-label="Open Notes" aria-expanded={notesOpen} onClick={() => {
       if (notesOpen) { setNotesOpen(false); return; }
       setSelectedNoteId(null);
       setNotesPlacement("floating"); onOpenChange(false); refreshNotes(); setNotesOpen(true);
     }} style={{ position: "fixed", right: 14, bottom: 60, zIndex: 2502, border: "1px solid #64748b", borderRadius: 8, padding: "7px 10px", background: "#f8fafc", color: "#0f172a", fontWeight: 700 }}>Notes{noteDrafts.length ? ` (${noteDrafts.length})` : ""}</button>
     {notesOpen && notesPlacement === "floating" && renderNotesPanel("floating")}
-    {resumeStatus && <p role="status" data-testid="project-resume-status" style={{ position: "fixed", bottom: 10, left: 14, maxWidth: 340, pointerEvents: "none", background: "#fff", padding: 10 }}>{resumeStatus}</p>}
-    {resumableProject && <div style={{ position: "fixed", bottom: 14, left: 14, maxWidth: 340, background: "#fff", padding: 10 }}>Saved Project: {resumableProject.metadata.title}<br /><button data-testid="project-resume-explicit" disabled={busy} onClick={() => { void openLibraryProject(resumableProject.identity.id, true); }}>Resume Project</button></div>}
+    {resumeStatus && !resumableProject && !resumePending && <p role="status" data-testid="project-resume-status" style={{ position: "fixed", bottom: 10, left: 14, maxWidth: 340, pointerEvents: "none", background: "#fff", padding: 10 }}>{resumeStatus}</p>}
+    {resumableProject && <div style={{ position: "fixed", bottom: 14, left: 14, maxWidth: 340, background: "#fff", padding: 10 }}>{resumeStatus && <p role="status" data-testid="project-resume-status">{resumeStatus}</p>}Saved Project: {resumableProject.metadata.title}<br /><button data-testid="project-resume-explicit" disabled={busy} onClick={() => { void openLibraryProject(resumableProject.identity.id, true); }}>Resume Project</button></div>}
     {hasOpenProject && createPortal(<button type="button" data-testid="projects-quick-toggle" data-active-project={hasOpenProject} aria-label={hasOpenProject ? "Project" : "Open quick Projects"}
       aria-expanded={open} aria-controls="project-explorer-panel" aria-pressed={hasOpenProject && open && viewerCompanion}
       onClick={() => {
