@@ -11,10 +11,11 @@ import { DocumentViewport } from "./DocumentViewport";
 import { surfaceDocumentBinding } from "./surfaceDocumentBinding";
 import { documentPresentationKey, readDocumentPresentation, saveDocumentPresentation } from "./documentPresentation";
 
-export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, projectTitle, documentTitle, related, onOpenRelated, onChange, onClose, onOpenProject, children }:
+export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, projectTitle, documentTitle, related, onOpenRelated, onChange, onClose, onOpenProject, moduleView, customView = false, onToggleCustomView, children }:
   { session: AdditionalProjectSession; workspaceVersion: number; projectId?: string; projectTitle?: string; documentTitle?: string;
     related?: ReturnType<typeof import("./relatedDocuments").relatedDocuments>; onOpenRelated?: (id: string, module: import("@math3d/core").KernelWorkspaceModule) => void;
-    onChange: () => void; onClose: () => void; onOpenProject: () => void; children?: React.ReactNode }) {
+    onChange: () => void; onClose: () => void; onOpenProject: () => void; children?: React.ReactNode;
+    moduleView?: { viewport: React.ReactNode; inspector: React.ReactNode; tools: React.ReactNode }; customView?: boolean; onToggleCustomView?: () => void }) {
   const uiKey = documentPresentationKey(projectId ?? "project", session.original.expected.id);
   const [version, setVersion] = useState(0), [draft, setDraft] = useState(() => session.sourceDraft ?? JSON.stringify(session.document().source, null, 2));
   const [error, setError] = useState<string | null>(null), [presentation, setPresentation] = useState(session.presentation);
@@ -23,7 +24,9 @@ export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, p
   const [probeInfo, setProbeInfo] = useState<{ hash: string; value: ProbeInfo } | null>(null);
   const [curvature, setCurvature] = useState<{ hash: string; value: PrincipalCurvatureScalars | null } | null>(null);
   const [probeUV, setProbeUV] = useState<{ hash: string; uv: { u: number; v: number } } | null>(null), [probeToken, setProbeToken] = useState(0), [resetToken, setResetToken] = useState(0);
-  const document = session.document(), history = session.history();
+  // Kernel queries return fresh immutable clones. Keep one snapshot per source
+  // change, so panel/probe updates cannot rebuild the viewer and publish again.
+  const document = useMemo(() => session.document(), [session, version, workspaceVersion]), history = session.history();
   useEffect(() => {
     if (!projectId || session.presentationLoaded) return;
     const ui = readDocumentPresentation(localStorage.getItem(uiKey));
@@ -52,6 +55,8 @@ export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, p
   const updateView = (value: Partial<SurfaceDocumentView>) => { session.surfaceView = readSurfaceDocumentView({ ...session.surfaceView, ...value }); setSurfaceView(session.surfaceView); };
   const updateWireframe = (value: boolean) => { session.wireframe = value; setWireframe(value); };
   const nativeInspector = document.format === "math3d.surface-document" && prepared.binding && presentation === "surface";
+  const showModule = !!moduleView && !!nativeInspector && !customView;
+  useEffect(() => { setSurfaceView(session.surfaceView); setWireframe(session.wireframe); }, [session, customView]);
   const visibleProbe = probeInfo?.hash === document.identity.structuralHash ? probeInfo.value : null;
   const visibleCurvature = curvature?.hash === document.identity.structuralHash ? curvature.value : null;
   const provenance = <><div style={{ padding: 10 }} data-testid="document-generation">{document.identity.id} · r{document.identity.revision}<br />{document.identity.structuralHash}</div>
@@ -65,10 +70,11 @@ export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, p
       <span data-testid="project-source-revision">Revision {document.identity.revision}</span>
       <button data-testid="project-source-undo" disabled={!history.undoDepth} onClick={() => action(() => session.undo())}>Undo document</button>
       <button data-testid="project-source-redo" disabled={!history.redoDepth} onClick={() => action(() => session.redo())}>Redo document</button>
+      {moduleView && <button data-testid="document-custom-view" aria-pressed={customView} onClick={onToggleCustomView}>{customView ? "Surface module view" : "Custom view"}</button>}
       {prepared.binding && <label>View <select data-testid="document-view-choice" value={presentation} onChange={event => { session.presentation = event.target.value as typeof presentation; setPresentation(session.presentation); setProbe(false); setProbeResult(null); changed(); }}><option value="surface">Surface</option><option value="sampled">Sampled</option></select></label>}
       <button data-testid="project-source-back-to-module" onClick={onClose}>{session.original.module === "surface" ? "Back to normal Surfaces" : "Back to module"}</button>
     </>}
-    viewport={prepared.view ? <DocumentViewport view={prepared.view} binding={prepared.binding} presentation={presentation} camera={session.camera} cameraToken={version}
+    viewport={showModule ? <div style={{ width: "100%", height: "100%" }} data-testid="document-viewport" data-view="surface" data-workbench="module" data-document-id={document.identity.id} data-source-hash={document.identity.structuralHash}>{moduleView!.viewport}</div> : prepared.view ? <DocumentViewport view={prepared.view} binding={prepared.binding} presentation={presentation} camera={session.camera} cameraToken={version}
       rememberCamera={rememberCamera} wireframe={wireframe} probe={probe} surfaceView={surfaceView} probeUV={probeUV?.hash === document.identity.structuralHash ? probeUV.uv : null} probeToken={probeToken} resetToken={resetToken}
       onProbe={handleProbe} onCurvature={handleCurvature} /> : <div role="alert">Saved dependency unavailable: {prepared.error}</div>}
     source={<>
@@ -80,8 +86,8 @@ export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, p
       </details>
       {error && <div role="alert" style={{ padding: 10 }}>{error}</div>}
     </>}
-    tools={<div style={{ padding: 10 }}><h2>Tools</h2>{prepared.binding && presentation === "surface" ? <label><input data-testid="document-surface-probe" type="checkbox" checked={probe} onChange={event => { setProbe(event.target.checked); changed(); }} /> Surface probe and normal</label> : <p>Sampled presentation. Parameter probes require the native Surface view; Mesh vertex selection belongs to a saved Mesh.</p>}</div>}
-    inspector={nativeInspector ? <SurfaceDocumentInspector document={document} title={documentTitle ?? "Saved Surface"} binding={prepared.binding!} view={surfaceView} onView={updateView}
+    tools={showModule ? moduleView!.tools : <div style={{ padding: 10 }}><h2>Tools</h2>{prepared.binding && presentation === "surface" ? <label><input data-testid="document-surface-probe" type="checkbox" checked={probe} onChange={event => { setProbe(event.target.checked); changed(); }} /> Surface probe and normal</label> : <p>Sampled presentation. Parameter probes require the native Surface view; Mesh vertex selection belongs to a saved Mesh.</p>}</div>}
+    inspector={showModule ? <div data-testid="document-module-inspector" data-document-id={document.identity.id} data-source-hash={document.identity.structuralHash} style={{ padding: 10 }}>{moduleView!.inspector}{provenance}{measurement}{children}</div> : nativeInspector ? <SurfaceDocumentInspector document={document} title={documentTitle ?? "Saved Surface"} binding={prepared.binding!} view={surfaceView} onView={updateView}
       viewControls={{ lightPreset: surfaceView.lightPreset, onChangeLightPreset: value => updateView({ lightPreset: value }),
         materialRoughness: surfaceView.roughness, onSetMaterialRoughness: value => updateView({ roughness: value }),
         materialMetalness: surfaceView.metalness, onSetMaterialMetalness: value => updateView({ metalness: value }),

@@ -164,7 +164,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [summaries, setSummaries] = useState<Map<string, CardSummary>>(new Map());
   const summaryCache = useRef(new Map<string, { savedAt: number; summary: CardSummary }>());
   useEffect(() => {
-    if (!open) return;
+    if (!open || (quick && viewerCompanion)) return;
     const entries = orderProjectLibrary(library);
     const fresh = new Map<string, CardSummary>();
     for (const entry of entries) {
@@ -196,7 +196,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     };
     let timer = window.setTimeout(batch, 0);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [library, open]);
+  }, [library, open, quick, viewerCompanion]);
   const filteredProjects = orderProjectLibrary(library).filter(entry => (collection !== "Favorites" || entry.favorite) &&
     (moduleFilter === "All modules" || !summaries.has(entry.id) || summaries.get(entry.id)?.modules.includes(moduleFilter)) &&
     `${entry.title} ${entry.tags.join(" ")} ${summaries.get(entry.id)?.description ?? ""} ${summaries.get(entry.id)?.modules.join(" ") ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()));
@@ -253,6 +253,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   };
   useEffect(() => {
     if (!open) return;
+    // Reopening a dock is presentation only. Refresh/Save capture live sources;
+    // doing that here replays and hashes every document on each panel switch.
+    if (hasOpenProject && viewerCompanion && project) return;
     setNotesOpen(false);
     setMessage("Loading current workspace…");
     const timer = window.setTimeout(refresh, 0);
@@ -747,7 +750,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       rememberProjectDocument(localStorage, project, activeProjectDocumentId);
   }, [hasOpenProject, project, preview, managed, activeProjectDocumentId]);
   useEffect(() => {
-    const show = () => { if (hasOpenProject) { setQuick(true); setViewerCompanion(true); setDetailView(true); onOpenChange(true); } };
+    const show = (event: Event) => { if (hasOpenProject) {
+      const placement = (event as CustomEvent).detail;
+      if (["left", "middle", "right", "all"].includes(placement)) {
+        setProjectPlacement(placement);
+        setPreferences(previous => { const next = { ...previous, placement }; rememberProjectUi(localStorage, next); return next; });
+      }
+      setQuick(true); setViewerCompanion(true); setDetailView(true); onOpenChange(true);
+    } };
     const hide = (event: Event) => { if (viewerCompanion && (event as CustomEvent).detail === projectPlacement) onOpenChange(false); };
     window.addEventListener("math3d:open-project-dock", show); window.addEventListener("math3d:hide-project-dock", hide);
     return () => { window.removeEventListener("math3d:open-project-dock", show); window.removeEventListener("math3d:hide-project-dock", hide); };

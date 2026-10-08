@@ -7,6 +7,8 @@ test("Project shows native Surface tools and Inspector for its exact saved Caten
     ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page); await resizeSurfaceAppWindow(ctx, 1600, 1000);
     const page = ctx.page;
     await page.getByTestId("projects-toggle").click(); await page.getByTestId("project-template-open-catenoid-evidence").click();
+    await expect(page.getByTestId("document-module-inspector")).toBeVisible();
+    await page.getByTestId("document-custom-view").click();
     const panel = page.getByTestId("project-explorer-panel"), editor = page.getByTestId("project-source-editor"), inspector = page.getByTestId("document-surface-inspector"), viewport = page.getByTestId("document-viewport");
     await expect(panel).toHaveAttribute("data-project-placement", "left"); await expect(inspector).toBeVisible();
     const id = (await editor.getAttribute("data-document-id"))!, hash = (await editor.getAttribute("data-source-hash"))!;
@@ -46,6 +48,8 @@ test("Project shows native Surface tools and Inspector for its exact saved Caten
     await panel.getByRole("button", { name: "Close project explorer", exact: true }).click(); await expect(panel).toHaveCount(0); await expect(inspector).toBeVisible();
     const profile = ctx.profileDir; await ctx.app.close(); ctx = null;
     ctx = await launchSurfaceApp({}, profile);
+    await expect(ctx.page.getByTestId("document-module-inspector")).toBeVisible();
+    await ctx.page.getByTestId("document-custom-view").click();
     await expect(ctx.page.getByTestId("document-surface-inspector")).toHaveAttribute("data-document-id", id);
     await expect(ctx.page.getByTestId("document-surface-resolution")).toHaveValue("40"); await expect(ctx.page.getByTestId("document-wireframe")).toBeChecked();
     await expect(ctx.page.getByRole("slider", { name: "Opacity", exact: true })).toHaveValue("0.1");

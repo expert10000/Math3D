@@ -8,7 +8,7 @@ export function DocumentWorkspaceHost({ documentId, sourceHash, module, toolbar,
   const host = useRef<HTMLElement>(null);
   const [left, setLeft] = useState("Source/Object"), [right, setRight] = useState("Inspector");
   const [projectDock, setProjectDock] = useState<string | null>(null);
-  const showProject = () => window.dispatchEvent(new Event("math3d:open-project-dock"));
+  const showProject = (placement: string) => window.dispatchEvent(new CustomEvent("math3d:open-project-dock", { detail: placement }));
   const showModule = (placement: string) => window.dispatchEvent(new CustomEvent("math3d:hide-project-dock", { detail: placement }));
   useLayoutEffect(() => {
     const element = host.current, header = element?.closest(".math3d-app")?.querySelector("header");
@@ -24,13 +24,13 @@ export function DocumentWorkspaceHost({ documentId, sourceHash, module, toolbar,
     <div className="document-toolbar">{toolbar}</div>
     <div className="document-docks">
       <aside className="document-source-dock" aria-label="Document source and tools">
-        <div role="tablist" aria-label="Document controls"><button role="tab" aria-selected={projectDock === "left"} className="document-project-tab" onClick={showProject}>Project</button>{["Source/Object", "Tools"].map(tab => <button key={tab} role="tab" aria-selected={projectDock !== "left" && left === tab} onClick={() => { showModule("left"); setLeft(tab); }}>{tab}</button>)}</div>
+        <div role="tablist" aria-label="Document controls"><button role="tab" aria-selected={projectDock === "left"} className="document-project-tab" onClick={() => showProject("left")}>Project</button>{["Source/Object", "Tools"].map(tab => <button key={tab} role="tab" aria-selected={projectDock !== "left" && left === tab} onClick={() => { showModule("left"); setLeft(tab); }}>{tab}</button>)}</div>
         <div className="document-project-slot" data-placement="left" />
         <div className="document-module-controls"><div hidden={left !== "Source/Object"}>{source}</div><div hidden={left !== "Tools"}>{tools}</div></div>
       </aside>
       <div className="document-viewport" data-testid="project-source-view"><div className="document-primary-view">{viewport}</div><div className="document-project-slot document-project-expanded" data-placement="middle" /><div className="document-project-slot document-project-expanded" data-placement="all" /></div>
       <aside className="document-inspector" data-testid="project-source-inspector" aria-label="Document inspector">
-        <div role="tablist" aria-label="Document details"><button role="tab" aria-selected={projectDock === "right"} onClick={showProject}>Project</button>{(integratedInspector ? ["Inspector"] : ["Inspector", "Display", "Results"]).map(tab => <button key={tab} role="tab" aria-selected={projectDock !== "right" && (integratedInspector || right === tab)} onClick={() => { showModule("right"); setRight(tab); }}>{tab}</button>)}</div>
+        <div role="tablist" aria-label="Document details"><button role="tab" aria-selected={projectDock === "right"} onClick={() => showProject("right")}>Project</button>{(integratedInspector ? ["Inspector"] : ["Inspector", "Display", "Results"]).map(tab => <button key={tab} role="tab" aria-selected={projectDock !== "right" && (integratedInspector || right === tab)} onClick={() => { showModule("right"); setRight(tab); }}>{tab}</button>)}</div>
         <div className="document-project-slot" data-placement="right" />
         <div className="document-module-controls"><div hidden={!integratedInspector && right !== "Inspector"}>{inspector}</div>{!integratedInspector && <><div hidden={right !== "Display"}>{display}</div><div hidden={right !== "Results"}>{results}</div></>}</div>
       </aside>

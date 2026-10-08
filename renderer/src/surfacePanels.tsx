@@ -9650,6 +9650,8 @@ onChangeImplicitExpr,
 export type MeshAnalyzeDiagnosticsSummary = MeshDiagnosticsAnalysisPayload;
 
 export type SurfacesRightPanelProps = {
+  documentDomainReadOnly?: boolean;
+  documentDefinition?: { label: string; formula: string; note: string };
   viewerKind: SurfaceViewerKind;
   meshKernelDocument: MeshDocument | null;
   meshAnalysisActive: boolean;
@@ -9931,6 +9933,8 @@ export type MeshAnalysisFeatureRow = {
 };
 
 export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
+  documentDomainReadOnly = false,
+  documentDefinition,
   viewerKind,
   meshKernelDocument,
   meshAnalysisActive,
@@ -10255,13 +10259,13 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     formula: "Triangle surface mesh",
     note: "Imported or generated triangle mesh.",
   };
-  const activeMeta = isMeshViewer
+  const activeMeta = documentDefinition ?? (isMeshViewer
     ? meshMeta
     : isWeierstrass
       ? WEIERSTRASS_META
       : isParamViewer
         ? paramMeta
-        : eqMeta;
+        : eqMeta);
   const inspectorSectionCard: React.CSSProperties = {
     marginBottom: 12,
     padding: "10px 10px 12px",
@@ -13438,7 +13442,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               </div>
             </>
           )}
-          {isParamViewer && (
+          {isParamViewer && (documentDomainReadOnly ? <p>Saved construction domain: u {safeParamDomain.uMin} … {safeParamDomain.uMax}, v {safeParamDomain.vMin} … {safeParamDomain.vMax}. Edit its profile and construction in Source/Object.</p> : (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 <label style={{ fontSize: 11 }}>
@@ -13534,7 +13538,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 </div>
               )}
             </>
-          )}
+          ))}
           {isImplicitViewer && (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>

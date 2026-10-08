@@ -1,0 +1,174 @@
+{
+  "input": "test-results/playwright/project-surface-module-sav-0b999-s-not-recapture-the-Project/project-inspector-switch-cpu.json",
+  "durationMs": 15921,
+  "self": [
+    {
+      "name": "(program)",
+      "source": "(runtime)",
+      "line": 0,
+      "ms": 13585
+    },
+    {
+      "name": "Yrt",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\index-BhH7AhBD.js",
+      "line": 608,
+      "ms": 84
+    },
+    {
+      "name": "Ss",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js",
+      "line": 9,
+      "ms": 83
+    },
+    {
+      "name": "Mf",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-three-core-CkJaCqCv.js",
+      "line": 3947,
+      "ms": 68
+    },
+    {
+      "name": "pi",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js",
+      "line": 8,
+      "ms": 58
+    },
+    {
+      "name": "jf",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js",
+      "line": 8,
+      "ms": 53
+    },
+    {
+      "name": "J1",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js",
+      "line": 8,
+      "ms": 50
+    },
+    {
+      "name": "Zf",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js",
+      "line": 8,
+      "ms": 48
+    },
+    {
+      "name": "Urt",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\index-BhH7AhBD.js",
+      "line": 608,
+      "ms": 41
+    },
+    {
+      "name": "M",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js",
+      "line": 8,
+      "ms": 41
+    },
+    {
+      "name": "Yv",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js",
+      "line": 8,
+      "ms": 41
+    },
+    {
+      "name": "getBoundingClientRect",
+      "source": "(runtime)",
+      "line": 0,
+      "ms": 40
+    }
+  ],
+  "inclusive": [
+    {
+      "name": "(root)",
+      "source": "(runtime)",
+      "line": 0,
+      "ms": 15921
+    },
+    {
+      "name": "(program)",
+      "source": "(runtime)",
+      "line": 0,
+      "ms": 13585
+    },
+    {
+      "name": "ny",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js",
+      "line": 8,
+      "ms": 1459
+    },
+    {
+      "name": "Hc",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js",
+      "line": 8,
+      "ms": 1098
+    },
+    {
+      "name": "P1",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js",
+      "line": 8,
+      "ms": 1095
+    },
+    {
+      "name": "my",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js",
+      "line": 8,
+      "ms": 1079
+    },
+    {
+      "name": "At",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js",
+      "line": 1,
+      "ms": 1071
+    },
+    {
+      "name": "Oy",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js",
+      "line": 8,
+      "ms": 1044
+    },
+    {
+      "name": "Yv",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js",
+      "line": 8,
+      "ms": 820
+    },
+    {
+      "name": "(anonymous)",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js",
+      "line": 8,
+      "ms": 573
+    },
+    {
+      "name": "cc",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js",
+      "line": 8,
+      "ms": 556
+    },
+    {
+      "name": "Zf",
+      "source": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js",
+      "line": 8,
+      "ms": 550
+    }
+  ],
+  "stacks": [
+    {
+      "ms": 13585,
+      "stack": "(program) ((runtime):0) <- (root) ((runtime):0)"
+    },
+    {
+      "ms": 83,
+      "stack": "Ss (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:9) <- oc (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- $v (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- xl (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- $v (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- xl (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- $v (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- xl (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- $v (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- xl (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8)"
+    },
+    {
+      "ms": 71,
+      "stack": "Yrt (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\index-BhH7AhBD.js:608) <- Zf (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- cc (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- Yv (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- my (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- P1 (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- Hc (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- ny (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- Oy (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- At (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:1)"
+    },
+    {
+      "ms": 68,
+      "stack": "Mf (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-three-core-CkJaCqCv.js:3947) <- renderBufferDirect (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-three-core-CkJaCqCv.js:3947) <- Vl (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-three-core-CkJaCqCv.js:3947) <- Tr (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-three-core-CkJaCqCv.js:3947) <- Bl (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-three-core-CkJaCqCv.js:3947) <- render (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-three-core-CkJaCqCv.js:3947) <- Lu (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\feature-surfaces-Be_R9BXG.js:19) <- (root) ((runtime):0)"
+    },
+    {
+      "ms": 58,
+      "stack": "pi (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- ll (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:9) <- Ss (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:9) <- oc (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- $v (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- xl (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- $v (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- xl (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- $v (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8) <- xl (C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\renderer\\dist\\assets\\vendor-react-DZWDkjOS.js:8)"
+    }
+  ]
+}

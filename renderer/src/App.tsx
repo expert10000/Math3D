@@ -19,6 +19,9 @@ import { verifyMixedWorkspaceReplay } from "./kernel/mixedWorkspaceReplay";
 import { AdditionalProjectSession } from "./projects/additionalProjectSession";
 import { capturedCurveSources } from "./projects/capturedCurveSources";
 import { tryRestoreAdditionalProjectSession } from "./projects/additionalProjectSession";
+import { surfaceDocumentBinding } from "./workspace/surfaceDocumentBinding";
+import { savedSurfaceDefinition } from "./workspace/savedSurfaceDefinition";
+import { documentPresentationKey, readDocumentPresentation, saveDocumentPresentation } from "./workspace/documentPresentation";
 import { SavedDocumentWorkbench } from "./workspace/SavedDocumentWorkbench";
 import { DocumentWorkspaceHost } from "./workspace/DocumentWorkspaceHost";
 import { MeshDocumentViewport } from "./workspace/MeshDocumentViewport";
@@ -11386,7 +11389,14 @@ const App: React.FC = () => {
     setActiveGraph2DTargetId(null); setRestoredSurfaceAdapter(null);
   }, []);
   const [additionalVersion, setAdditionalVersion] = useState(0);
+  const [savedSurfaceCustomView, setSavedSurfaceCustomView] = useState(false);
+  const derivedProjectSurfaceRef = useRef<string | null>(null);
+  const restoreNormalSurfacePresentationRef = useRef<(() => void) | null>(null);
   const restoredProjectRef = useRef<{ graphs: Map<string, Graph2DCommandAdapter>; additional: Map<string, AdditionalProjectSession>; workspace: MixedWorkspaceDocument; curves: Map<string, CurveDocumentAdapter>; surfaces: Map<string, SurfaceDocumentAdapter>; geometries: Map<string, GeometryDocumentAdapter>; topologies: Map<string, TopologyDiagramCommandAdapter>; complexes: Map<string, ComplexAnalysisCommandAdapter>; volumes: Map<string, VolumeDocumentAdapter>; meshes: Map<string, MeshDocumentAdapter>; resources?: VerifiedProjectResources; context: () => import("./projects/additionalProjectRepresentations").RepresentationContext } | null>(null);
+  const activeSavedSurfaceSession = additionalActiveId ? restoredProjectRef.current?.additional.get(additionalActiveId) : null;
+  const activeSavedSurfaceDocument = useMemo(() => activeSavedSurfaceSession?.document(), [activeSavedSurfaceSession, additionalVersion]);
+  const activeSavedSurfaceBinding = useMemo(() => activeSavedSurfaceDocument?.format === "math3d.surface-document"
+    ? surfaceDocumentBinding(activeSavedSurfaceDocument) : null, [activeSavedSurfaceDocument, additionalVersion]);
   const [curvePresetId, setCurvePresetId] = useState<string>("circle2d");
   const [curveCustomXExpr, setCurveCustomXExpr] = useState("cos(t)");
   const [curveCustomYExpr, setCurveCustomYExpr] = useState("sin(2*t)");
@@ -42326,8 +42336,9 @@ const App: React.FC = () => {
   const compareCameraSyncEnabled = compareEnabled && compareCameraSync;
   const handleSurfaceCameraSync = useCallback((state: CameraSyncState) => {
     surfaceCameraSnapshotRef.current = state;
+    if (activeSavedSurfaceSession) activeSavedSurfaceSession.camera = state;
     if (cameraSyncEnabled) setCameraSync(state);
-  }, [cameraSyncEnabled]);
+  }, [cameraSyncEnabled, activeSavedSurfaceSession]);
   const workbookGraph = useMemo(() => {
     if (!activeWorkbook) {
       return {
@@ -42871,6 +42882,8 @@ const App: React.FC = () => {
   const surfaceAnalysisRegistryRef = useRef(createSurfaceAnalysisRegistry());
   const [surfaceAnalysisResultStore, setSurfaceAnalysisResultStore] = useState(createSurfaceAnalysisResultStore);
   const activeCanonicalSurfaceDefinition = useMemo(() => {
+    if (activeSavedSurfaceBinding && activeSavedSurfaceDocument?.format === "math3d.surface-document")
+      return savedSurfaceDefinition(activeSavedSurfaceDocument, activeSavedSurfaceBinding, paramResolution);
     let seed: SurfaceAdapterInput;
     if (surfaceViewerKind === "graph") {
       const label = SURFACES_EQ_META_BY_ID.get(graphSurfaceId)?.label ?? graphSurfaceId;
@@ -42963,6 +42976,7 @@ const App: React.FC = () => {
     const revision = resolveSurfaceRevision(surfaceRevisionTrackerRef.current, seed.id, fingerprint);
     return adaptSurfaceDefinition({ ...seed, revision } as SurfaceAdapterInput);
   }, [
+    activeSavedSurfaceDocument, activeSavedSurfaceBinding,
     activeGraphDomain.xSpan,
     activeGraphDomain.ySpan,
     activeImplicitExpr,
@@ -42999,6 +43013,45 @@ const App: React.FC = () => {
     weierstrassPhiExpr,
     weierstrassResolution,
   ]);
+  useEffect(() => {
+    if (!activeSavedSurfaceBinding || !activeSavedSurfaceSession) {
+      restoreNormalSurfacePresentationRef.current?.(); restoreNormalSurfacePresentationRef.current = null;
+      return;
+    }
+    if (!restoreNormalSurfacePresentationRef.current) {
+      restoreNormalSurfacePresentationRef.current = () => {
+        setParamResolution(paramResolution); setLightPreset(lightPreset); setMaterialRoughness(materialRoughness);
+        setMaterialMetalness(materialMetalness); setMaterialOpacity(materialOpacity); setShowWireframe(showWireframe);
+        setShowPlanes(showPlanes); setShowPrincipalDirections(showPrincipalDirections); setShowPrincipalLines(showPrincipalLines); setShowCurvatureLines(showCurvatureLines);
+      };
+    }
+    const session = activeSavedSurfaceSession;
+    if (!session.presentationLoaded) {
+      const key = documentPresentationKey(activeNotebookProjectRef.current?.identity.id ?? "project", session.original.expected.id);
+      const ui = readDocumentPresentation(localStorage.getItem(key));
+      session.surfaceView = ui.surfaceView; session.wireframe = ui.wireframe; session.camera = ui.camera; session.presentation = ui.presentation; session.presentationLoaded = true;
+    }
+    setCompareEnabled(false); setProbeEnabled(false); setProbeInfo(null); setParamProbeCurv(null); setParamProbeUV(null); setSurfaceSampleSet(null);
+    setParamResolution(session.surfaceView.resolution); setLightPreset(session.surfaceView.lightPreset);
+    setMaterialRoughness(session.surfaceView.roughness); setMaterialMetalness(session.surfaceView.metalness); setMaterialOpacity(session.surfaceView.opacity);
+    setShowWireframe(session.wireframe); setShowPlanes(session.surfaceView.showPlanes); setShowPrincipalDirections(session.surfaceView.showPrincipalDirections);
+    setShowPrincipalLines(session.surfaceView.showPrincipalLines); setShowCurvatureLines(session.surfaceView.showCurvatureLines);
+  }, [activeSavedSurfaceSession, savedSurfaceCustomView]);
+  useEffect(() => {
+    if (!activeSavedSurfaceBinding || !activeSavedSurfaceSession || savedSurfaceCustomView) return;
+    const session = activeSavedSurfaceSession;
+    session.surfaceView = { ...session.surfaceView, resolution: paramResolution, lightPreset, roughness: materialRoughness, metalness: materialMetalness, opacity: materialOpacity,
+      showPlanes, showPrincipalDirections, showPrincipalLines, showCurvatureLines, showProbeNormal, showProbeTangentPlane, showProbeTangents };
+    session.wireframe = showWireframe;
+    const save = () => saveDocumentPresentation(documentPresentationKey(activeNotebookProjectRef.current?.identity.id ?? "project", session.original.expected.id),
+      { presentation: session.presentation, surfaceView: session.surfaceView, wireframe: session.wireframe, camera: session.camera });
+    save(); window.addEventListener("beforeunload", save); return () => { save(); window.removeEventListener("beforeunload", save); };
+  }, [activeSavedSurfaceSession, savedSurfaceCustomView, paramResolution, lightPreset, materialRoughness, materialMetalness, materialOpacity, showWireframe, showPlanes,
+    showPrincipalDirections, showPrincipalLines, showCurvatureLines, showProbeNormal, showProbeTangentPlane, showProbeTangents]);
+  useEffect(() => {
+    if (!activeSavedSurfaceBinding) return;
+    setProbeInfo(null); setParamProbeCurv(null); setParamProbeUV(null);
+  }, [activeSavedSurfaceBinding?.generation.structuralHash]);
   const activeSurfaceDefinitionMethod: SurfaceAnalysisMethod = activeCanonicalSurfaceDefinition.representation === "mesh-backed"
     ? "mesh-approximation"
     : activeCanonicalSurfaceDefinition.representation === "explicit" || activeCanonicalSurfaceDefinition.representation === "implicit"
@@ -43006,8 +43059,12 @@ const App: React.FC = () => {
       : "analytic";
   useEffect(() => {
     const definition = activeCanonicalSurfaceDefinition;
-    let adapter = restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom" ? restoredSurfaceAdapter : surfaceDocumentAdapters.get(definition.identity.surfaceId);
-    if (!adapter) {
+    const savedAdapter = activeSavedSurfaceBinding && activeSavedSurfaceSession?.adapter instanceof SurfaceDocumentAdapter ? activeSavedSurfaceSession.adapter : null;
+    let adapter = savedAdapter ?? (restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom" ? restoredSurfaceAdapter : surfaceDocumentAdapters.get(definition.identity.surfaceId));
+    if (savedAdapter) {
+      adapter = savedAdapter;
+      surfaceDocumentAdapters.set(definition.identity.surfaceId, savedAdapter);
+    } else if (!adapter) {
       adapter = new SurfaceDocumentAdapter(surfaceDocumentFromLegacyDefinition(definition));
       surfaceDocumentAdapters.set(definition.identity.surfaceId, adapter);
     } else if (adapter === restoredSurfaceAdapter) {
@@ -43050,7 +43107,7 @@ const App: React.FC = () => {
       const kernelReplayBundles = [...document.kernelReplayBundles.filter((entry) => entry.surfaceId !== definition.identity.surfaceId), { surfaceId: definition.identity.surfaceId, bundle: adapter.replayBundle() }];
       return { ...document, definitions, kernelDocuments, kernelReplayBundles, kernelHandoffs: surfaceMeshKernelHandoff.records().slice(-64) };
     });
-  }, [activeCanonicalSurfaceDefinition, activeSurfaceDefinitionMethod, surfaceDocumentAdapters, surfaceMeshKernelHandoff, restoredSurfaceAdapter]);
+  }, [activeCanonicalSurfaceDefinition, activeSurfaceDefinitionMethod, surfaceDocumentAdapters, surfaceMeshKernelHandoff, restoredSurfaceAdapter, activeSavedSurfaceBinding, activeSavedSurfaceSession]);
   useEffect(() => {
     try {
       localStorage.setItem(SURFACE_ANALYSIS_WORKSPACE_KEY, serializeSurfaceAnalysisWorkspace(surfaceAnalysisWorkspaceDocument));
@@ -43091,7 +43148,7 @@ const App: React.FC = () => {
     [activeCanonicalSurfaceDefinition.identity, activeSurfaceCurvatureResult, activeSurfaceDefinitionResult, surfaceAnalysisResultStore]
   );
   const activeParamLikeDomain =
-    surfaceViewerKind === "weierstrass" ? activeWeierstrassDomain : activeParamDomain;
+    activeSavedSurfaceBinding?.domain ?? (surfaceViewerKind === "weierstrass" ? activeWeierstrassDomain : activeParamDomain);
   const activeParamLikeResolution =
     surfaceViewerKind === "weierstrass" ? weierstrassResolution : paramResolution;
   const isWeierstrassViewer = surfaceViewerKind === "weierstrass";
@@ -49952,7 +50009,7 @@ case "mobius":
       domain: "surface",
       samplingResolution: { ...definition.sampling, sampleCount: surfaceCurvatureSource.sampleCount },
       analysisKind: "curvature",
-      parameters: { histogramBins: 16, classificationTolerance: "scale-aware", directionPolicy: "undefined-at-umbilic-or-uncertain" },
+      parameters: { histogramBins: 16, classificationTolerance: "scale-aware", directionPolicy: "undefined-at-umbilic-or-uncertain", sourceFingerprint: definition.fingerprint },
       method,
       dependencyRevisions: { "differential-geometry": definition.identity.surfaceRevision },
     });
@@ -50941,6 +50998,8 @@ case "mobius":
       comparison: { enabled: compareEnabled, surfaceId: compareSurfaceId, paramId: compareParamId },
       openedAt: Date.now(),
     });
+    derivedProjectSurfaceRef.current = activeSavedSurfaceBinding?.generation.id ?? null;
+    if (derivedProjectSurfaceRef.current) { setAdditionalActiveId(null); setActiveProjectDocumentId(null); }
     setMeshDataset(mesh, analysis ? "surface-handoff:open-analysis" : "surface-handoff:show-live");
     setSurfaceViewerKind("mesh");
     setDatasetKind("mesh");
@@ -50964,7 +51023,7 @@ case "mobius":
       setCameraOverrideToken((token) => token + 1);
     }
     setSurfaceDerivedMeshStatus(`${analysis ? "Opened in Mesh Analysis" : "Showing live Mesh"}: ${record.label} · ${record.identity.state} · ${mapping.state} selection mapping · ${camera ? "camera framing transferred" : "mesh fitted"}.`);
-  }, [activeCanonicalSurfaceDefinition.units, cameraOverride, cameraSync, compareEnabled, compareParamId, compareSurfaceId, inspectIdx, selectionMask?.selected, setMeshDataset, surfaceMeshKernelHandoff, surfaceViewerKind]);
+  }, [activeCanonicalSurfaceDefinition.units, activeSavedSurfaceBinding, cameraOverride, cameraSync, compareEnabled, compareParamId, compareSurfaceId, inspectIdx, selectionMask?.selected, setMeshDataset, surfaceMeshKernelHandoff, surfaceViewerKind]);
 
   const handleShowLiveSurfaceMesh = useCallback(() => {
     const live = activeSourceDerivedMeshRecords.find((record) => record.identity.state === "live-current");
@@ -51005,6 +51064,10 @@ case "mobius":
       : mapDerivedMeshSelectionToSource(handoff.payload.correspondence, [selectedMeshVertex]);
     setMode("surfaces");
     setSurfaceViewerKind(handoff.sourceViewerKind);
+    if (derivedProjectSurfaceRef.current && restoredProjectRef.current?.additional.has(derivedProjectSurfaceRef.current)) {
+      setAdditionalActiveId(derivedProjectSurfaceRef.current); setActiveProjectDocumentId(derivedProjectSurfaceRef.current);
+      setSavedSurfaceCustomView(false); setAdditionalVersion(value => value + 1);
+    }
     setDatasetKind("surface");
     setSurfacesLeftTab("analysis");
     if (mapped.sourceIndices.length) selectSurfaceChartIndices(mapped.sourceIndices);
@@ -77331,7 +77394,7 @@ case "mobius":
                   onChangeAnalysisFocusedSection={setAnalysisFocusedSection}
                   viewerKind={surfaceViewerKind}
                   surfaceId={activeEqSurfaceId}
-                  paramId={paramSurfaceId}
+                  paramId={activeSavedSurfaceBinding ? "custom" : paramSurfaceId}
                   datasetKind={datasetKind}
                   volumeDatasetOverride={volumeDatasetOverride}
                   volumeDistanceBusy={volumeDistanceBusy}
@@ -78218,6 +78281,7 @@ case "mobius":
     }
     const additional = restored?.additional.get(id);
     if (additional) {
+      setSavedSurfaceCustomView(false);
       setAdditionalActiveId(id); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null);
       setRestoredComplexAdapter(null); setRestoredVolumeAdapter(null); setRestoredTopologyAdapter(null);
       if (module === "surface") { setDatasetKind("surface"); setSurfaceViewerKind("param"); }
@@ -78434,7 +78498,7 @@ case "mobius":
   };
   const [projectGraphAnalysisRequest, setProjectGraphAnalysisRequest] = useState<{ documentId: string; token: number } | null>(null);
   const [projectVolumeAnalysisRequest, setProjectVolumeAnalysisRequest] = useState<{ documentId: string; token: number } | null>(null);
-  const additionalSurface = additionalActiveId ? restoredProjectRef.current?.additional.get(additionalActiveId)?.document() : null;
+  const additionalSurface = activeSavedSurfaceDocument;
   const nativeSavedSurface = !additionalActiveId && mode === "surfaces" && surfaceViewerKind === "param" && paramSurfaceId === "custom" && restoredSurfaceAdapter && restoredProjectRef.current?.surfaces.has(restoredSurfaceAdapter.document().identity.id) ? restoredSurfaceAdapter.document() : null;
   const savedSurfaceMeshChoices = useMemo(() => {
     const restored = restoredProjectRef.current, surface = additionalSurface ?? nativeSavedSurface;
@@ -78463,6 +78527,600 @@ case "mobius":
   const navigateProjectBack = () => { const location = projectNavigationRef.current.back(); if (location) navigateRestoredDocument(location.id, location.module); };
   const navigateProjectForward = () => { const location = projectNavigationRef.current.forward(); if (location) navigateRestoredDocument(location.id, location.module); };
 
+  const renderNativeSurfaceDisplay = () => activeSurfaceCurvatureField ? (<SurfaceCurvatureDisplayControls
+                        field={activeSurfaceCurvatureField}
+                        scalar={surfaceCurvatureScalar}
+                        palette={colorPalette}
+                        rangeMode={surfaceCurvatureRangeMode}
+                        visible={surfaceCurvatureVisible}
+                        directionsVisible={showPrincipalDirections}
+                        onSelectScalar={handleSelectSurfaceCurvatureScalar}
+                        onSelectPalette={(palette) => setColorPalette(palette as ColorPalette)}
+                        onSelectRangeMode={setSurfaceCurvatureRangeMode}
+                        onToggleVisible={handleToggleSurfaceCurvatureVisible}
+                        onToggleDirections={() => setShowPrincipalDirections((visible) => !visible)}
+                      />) : null;
+  const renderNativeSurfaceComputation = () => (<SurfaceAnalysisComputationPanel
+                    definition={activeCanonicalSurfaceDefinition}
+                    selected={activeSurfaceComputation}
+                    onSelect={handleSelectSurfaceComputation}
+                    configurationOpen={surfaceLegacyAnalysisOpen}
+                    onOpenConfiguration={() => setSurfaceLegacyAnalysisOpen(true)}
+                    curvatureState={!surfaceCurvatureSource ? "unavailable" : activeSurfaceCurvatureField ? "computed" : "ready"}
+                    curvatureExecution={surfaceCurvatureExecution}
+                    onComputeCurvature={() => void handleComputeSurfaceCurvature()}
+                    onCancelCurvature={handleCancelSurfaceCurvature}
+                    probeState={!surfaceCurvatureSource ? "unavailable" : canonicalSurfaceProbe ? "active" : "ready"}
+                    onProbeCurrentSample={() => void handleProbeCurrentSurfaceSample()}
+                    curveLayerState={activeSurfaceCurvesResult?.state === "ready" ? "collected" : "ready"}
+                    featureLayerState={activeSurfaceFeaturesResult?.state === "ready" ? "collected" : "ready"}
+                    onCollectCurveLayers={() => handleCollectSurfaceCurveLayers()}
+                    onCollectFeatureLayers={() => handleCollectSurfaceFeatureLayers()}
+                    chartState={!surfaceChartSamples.length ? "unavailable" : activeSurfaceChart ? "computed" : "ready"}
+                    onComputeChart={() => publishSurfaceChart()}
+                    activePresetId={activeSurfaceAnalysisPresetId}
+                    presetStatus={surfaceAnalysisPresetStatus}
+                    onApplyPreset={handleApplySurfaceAnalysisPreset}
+                    derivedMesh={{
+                      available: !!surfaceDerivedMeshCandidate,
+                      label: activeSurfaceDerivedMeshRecord?.label ?? `${activeCanonicalSurfaceDefinition.identity.label} live tessellation`,
+                      vertexCount: surfaceDerivedMeshCandidate?.vertexCount ?? 0,
+                      faceCount: surfaceDerivedMeshCandidate?.faceCount ?? 0,
+                    }}
+                    derivedMeshLifecycle={{
+                      selected: activeSurfaceDerivedMeshRecord ? {
+                        id: activeSurfaceDerivedMeshRecord.identity.meshId,
+                        label: activeSurfaceDerivedMeshRecord.label,
+                        state: activeSurfaceDerivedMeshRecord.identity.state,
+                        sourceRevision: activeSurfaceDerivedMeshRecord.identity.source.surfaceRevision,
+                        meshRevision: activeSurfaceDerivedMeshRecord.identity.meshRevision,
+                        method: activeSurfaceDerivedMeshRecord.identity.tessellation.method,
+                        backend: activeSurfaceDerivedMeshRecord.identity.backend.id,
+                        backendVersion: activeDerivedSurfaceMeshBackendSummary?.backendVersion ?? null,
+                        variant: activeDerivedSurfaceMeshBackendSummary?.variant ?? "native-tessellation",
+                        correspondence: `${activeSurfaceDerivedMeshRecord.correspondence.kind}/${activeSurfaceDerivedMeshRecord.correspondence.state}`,
+                        mappedVertexCount: activeSurfaceDerivedMeshRecord.correspondence.mappedVertexCount,
+                        watertight: activeDerivedSurfaceMeshBackendSummary?.validation?.watertight ?? null,
+                        boundaryEdgeCount: activeDerivedSurfaceMeshBackendSummary?.validation?.boundaryEdgeCount ?? null,
+                        staleReason: activeSurfaceDerivedMeshRecord.identity.staleReason,
+                        historyCount: activeSurfaceDerivedMeshRecord.history.length,
+                      } : null,
+                      records: activeSourceDerivedMeshRecords.map((record) => ({ id: record.identity.meshId, label: record.label, state: record.identity.state })),
+                      status: surfaceDerivedMeshStatus,
+                      backendAvailability: activeDerivedSurfaceMeshBackendSummary?.availability ?? "checking",
+                      backendAvailabilityMessage: activeDerivedSurfaceMeshBackendSummary?.availabilityMessage ?? "Checking the shared Python/CGAL worker.",
+                      onSelect: setSurfaceDerivedMeshSelectedId,
+                      onRegenerate: handleRegenerateDerivedSurfaceMesh,
+                      onShowLive: handleShowLiveSurfaceMesh,
+                      onBake: handleBakeSurfaceMeshSnapshot,
+                      onDetach: () => handleTransitionDerivedSurfaceMesh("detached"),
+                      onDelete: handleDeleteDerivedSurfaceMesh,
+                      onOpenSource: handleOpenDerivedSurfaceSource,
+                      onInspect: handleInspectDerivedSurfaceMesh,
+                      onMapSourceToMesh: handleMapSurfaceSelectionToDerivedMesh,
+                      onMapMeshToSource: handleMapDerivedSelectionToSurface,
+                      onRemesh: () => handleOpenDerivedMeshBackendWorkflow("remesh"),
+                      onRobustMesh: () => handleOpenDerivedMeshBackendWorkflow("robust-mesh"),
+                    }}
+                    onOpenDerivedMesh={handleOpenSelectedDerivedMeshAnalysis}
+                    surfaceSourceHandoff={surfaceMeshAnalysisHandoff ? {
+                      label: surfaceMeshAnalysisHandoff.record.identity.source.label,
+                      sourceRevision: surfaceMeshAnalysisHandoff.record.identity.source.surfaceRevision,
+                      meshState: surfaceMeshAnalysisHandoff.record.identity.state,
+                      meshRevision: surfaceMeshAnalysisHandoff.record.identity.meshRevision,
+                      units: surfaceMeshData?.source.kind === "derivedSurface" ? surfaceMeshData.source.units.length : "scene-unit",
+                      comparisonTarget: surfaceMeshAnalysisHandoff.comparison.enabled
+                        ? (surfaceMeshAnalysisHandoff.sourceViewerKind === "param" ? surfaceMeshAnalysisHandoff.comparison.paramId : surfaceMeshAnalysisHandoff.comparison.surfaceId)
+                        : "none",
+                      mappedSelectionCount: surfaceMeshAnalysisHandoff.meshSelectionIndices.length,
+                      onReturn: handleReturnToSurfaceSource,
+                    } : null}
+                  />);
+  const renderNativeParamSurfaceViewer = () => (<ParamSurfaceViewer
+                            key={activeSavedSurfaceBinding?.generation.structuralHash}
+                            documentBinding={activeSavedSurfaceBinding ?? undefined}
+                            surfaceId={activeSavedSurfaceBinding ? "custom" : primaryParamId}
+                            renderQuality={surfaceRenderQuality}
+                            sceneBackgroundMode={cleanScreenshotSceneBackgroundMode}
+                            customX={paramXExpr}
+                            customY={paramYExpr}
+                            customZ={paramZExpr}
+                            rotationalProfileMode={rotationalProfileMode}
+                            rotationalProfileRExpr={rotationalProfileRExpr}
+                            rotationalProfileZExpr={rotationalProfileZExpr}
+                            rotationalProfilePointsText={rotationalProfilePointsText}
+                            rotationalAxisOrigin={rotationalAxisOrigin}
+                            rotationalAxisDirection={rotationalAxisDirection}
+                            rmfRibbonTwistEnabled={rmfRibbonTwistEnabled}
+                            rmfRibbonTwistTurns={rmfRibbonTwistTurns}
+                            wireframe={primaryOverlay.showWireframe}
+                            showPlanes={cleanScreenshotSurfaceActive ? false : primaryOverlay.showPlanes}
+                            showPrincipalProjections={cleanScreenshotSurfaceActive ? false : showPrincipalProjections}
+                            principalProjectionXY={principalProjectionXY}
+                            principalProjectionYZ={principalProjectionYZ}
+                            principalProjectionXZ={principalProjectionXZ}
+                            planeGridSettings={planeGridSettings}
+                            lightPreset={lightPreset}
+                            materialRoughness={materialRoughness}
+                            materialMetalness={materialMetalness}
+                            materialOpacity={materialOpacity}
+                            paramResolution={activeParamLikeResolution}
+                            colorMode={primaryOverlay.colorMode}
+                            colorPalette={primaryOverlay.colorPalette}
+                            showChartGrid={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : primaryOverlay.showChartGrid}
+                            chartGridMode={meshChartGridMode === "meshFace" ? "mesh-face" : "local"}
+                            onSurfaceCellSelectionEnabledChange={handleSurfaceCellSelectionEnabledChange}
+                            showOverlayControls={cleanScreenshotSurfaceActive ? false : showInViewportOverlayControls}
+                            onRequestHideOverlayControls={() => setShowInViewportOverlayControls(false)}
+                            showViewGizmo={showSurfaceViewGizmo}
+                            chartGridCountU={chartGridCountU}
+                            chartGridCountV={chartGridCountV}
+                            paramDomain={activeParamLikeDomain}
+                            splineSettings={splineSurfaceSettings}
+                            weierstrassGExpr={weierstrassGExpr}
+                            weierstrassPhiExpr={weierstrassPhiExpr}
+                            weierstrassResolution={weierstrassResolution}
+                            weierstrassRecenter={weierstrassRecenter}
+                            onWeierstrassError={setWeierstrassError}
+                            onWeierstrassPathDisagreement={setWeierstrassPathDisagreement}
+                            probeEnabled={cleanScreenshotSurfaceActive ? false : probeEnabled}
+                            showProbeNormal={cleanScreenshotSurfaceActive ? false : showProbeNormal}
+                            showProbeTangentPlane={cleanScreenshotSurfaceActive ? false : showProbeTangentPlane}
+                            showProbeTangents={cleanScreenshotSurfaceActive ? false : showProbeTangents}
+                            showPrincipalDirections={cleanScreenshotSurfaceActive ? false : showPrincipalDirections}
+                            showPrincipalNormalPlanes={cleanScreenshotSurfaceActive ? false : showPrincipalNormalPlanes}
+                            showPrincipalLines={cleanScreenshotSurfaceActive ? false : showPrincipalLines}
+                            showPrincipalGlyphs={cleanScreenshotSurfaceActive ? false : showPrincipalGlyphs}
+                            principalGlyphDensity={principalGlyphDensity}
+                            principalGlyphLength={principalGlyphLength}
+                            principalGlyphMode={principalGlyphMode}
+                            showCurvatureLines={cleanScreenshotSurfaceActive ? false : showCurvatureLines}
+                            curvatureLineField={curvatureLineField}
+                            curvatureSeedSource={curvatureSeedSource}
+                            curvatureSeedDensity={curvatureSeedDensity}
+                            curvatureStepSize={curvatureStepSize}
+                            curvatureMaxSteps={curvatureMaxSteps}
+                            curvatureMaxLines={curvatureMaxLines}
+                            curvatureRebuildToken={curvatureRebuildToken}
+                            showRidges={cleanScreenshotSurfaceActive ? false : showRidges}
+                            showValleys={cleanScreenshotSurfaceActive ? false : showValleys}
+                            ridgeValleySelectionOnly={ridgeValleySelectionOnly}
+                            ridgeValleyMagMin={ridgeValleyMagMin}
+                            ridgeValleyContrast={ridgeValleyContrast}
+                            ridgeValleyMinCos={ridgeValleyMinCos}
+                            ridgeValleySegmentScale={ridgeValleySegmentScale}
+                            ridgeValleySampleMode={ridgeValleySampleMode}
+                            ridgeValleyStitch={ridgeValleyStitch}
+                            ridgeValleyDecimate={ridgeValleyDecimate}
+                            ridgeValleyMaxCurves={ridgeValleyMaxCurves}
+                            ridgeValleyMinConf={ridgeValleyMinConf}
+                            showBoundingBox={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : primaryOverlay.showBoundingBox}
+                            resetToken={cameraResetToken}
+                            windowReframeToken={windowReframeToken}
+                            reframePaddingFactor={surfacePreviewReframePaddingFactor}
+                            onViewportDebug={handlePrimaryViewportDebug}
+                            onProbe={handleProbe}
+                            onParamCurvature={handleParamCurvature}
+                            paramProbeUV={paramProbeUV}
+                            paramProbeToken={paramProbeToken}
+                            onSetCustomX={setParamXExpr}
+                            onSetCustomY={setParamYExpr}
+                            onSetCustomZ={setParamZExpr}
+                            isCameraLeader={!!activeSavedSurfaceBinding || cameraSyncEnabled}
+                            onCameraSync={handleSurfaceCameraSync}
+                            cameraOverride={activeSavedSurfaceBinding ? activeSavedSurfaceSession?.camera ?? null : cameraOverride}
+                            cameraOverrideToken={cameraOverrideToken}
+                            cameraTourCommand={isSurfaceDatasetKind(datasetKind) ? surfacesCameraTourCommand : null}
+                            onCameraTourEvent={isSurfaceDatasetKind(datasetKind) ? handleSurfacesCameraTourEvent : undefined}
+                            captureToken={workbookCaptureToken}
+                            onCaptureThumbnail={handleWorkbookThumbnail}
+                          gaussMapEnabled={cleanScreenshotSurfaceActive ? false : showGaussMap}
+                          onToggleGaussMap={isMeshAnalysisWorkflowContext ? undefined : () => setShowGaussMap((v) => !v)}
+                          onGaussPoints={handleGaussPoints}
+                          gaussHighlightPoint={gaussHighlightPoint}
+                            onSampleSet={handleSampleSet}
+                            selectionMask={selectionMask}
+                            selectRegionEnabled={selectRegionEnabled}
+                            onSelectionPick={handleSurfaceSelectionPick}
+                            inspectEnabled={inspectEnabled}
+                            onInspectPick={handleInspectPick}
+                            inspectPoint={inspectPos}
+                            selectionOverlayVisible={selectionOverlayVisible}
+                            selectionOverlayOnTop={selectionOverlayOnTop}
+                            selectionSphere={selectionSphere}
+                            geodesicPathEnabled={geodesicPathEnabled}
+                            onGeodesicPathPick={handleGeodesicPathPick}
+                            geodesicPathStart={geodesicPathStart}
+                            geodesicPathEnd={geodesicPathEnd}
+                            geodesicPathIndices={geodesicPathIndices}
+                            geodesicPathSmooth={geodesicPathSmooth}
+                            geodesicPathDebug={geodesicPathDebug}
+                            geodesicHeatEnabled={geodesicHeatEnabled && geodesicHeatAvailable}
+                            onGeodesicHeatPick={handleGeodesicHeatPick}
+                            geodesicHeatStart={
+                              geodesicPathEnabled && geodesicPathMethod === "surface"
+                                ? null
+                                : geodesicHeatStart
+                                ? { point: geodesicHeatStart.point, meshKey: geodesicHeatStart.meshKey }
+                                : null
+                            }
+                            geodesicHeatEnd={
+                              geodesicPathEnabled && geodesicPathMethod === "surface"
+                                ? null
+                                : geodesicHeatEnd
+                                ? { point: geodesicHeatEnd.point, meshKey: geodesicHeatEnd.meshKey }
+                                : null
+                            }
+                            geodesicHeatPolylines={
+                              geodesicPathEnabled && geodesicPathMethod === "surface"
+                                ? geodesicPathPolylines
+                                : geodesicHeatPolylines
+                            }
+                            geodesicHeatmapValues={geodesicHeatHeatmapValues}
+                            geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
+                            overlayPolylineGroups={meshWorkspaceOverlayPolylineGroupsWithDiagnostics}
+                            overlayPointSets={meshViewerOverlayPointSetsWithDiagnostics}
+                            overlayLabelSets={combinedOverlayLabelSetsWithDiagnostics}
+                            overlayMeshGroups={meshViewerOverlayMeshGroups}
+                            geodesicDiskEnabled={geodesicDiskEnabled}
+                            geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
+                            onGeodesicDiskPick={handleGeodesicDiskPick}
+                            geodesicDiskCenter={
+                              geodesicDiskCenter ? { point: geodesicDiskCenter.point } : null
+                            }
+                            geodesicDiskMesh={geodesicDiskResult?.mesh ?? null}
+                            geodesicDiskBoundary={geodesicDiskResult?.boundary ?? null}
+                            geodesicDiskShowBoundary={geodesicDiskShowBoundary}
+                            zoomToRegion={zoomToRegion}
+                            zoomToRegionToken={zoomNowToken}
+                            weierstrassDiagnostics={
+                              surfaceViewerKind === "weierstrass" ? weierstrassDiagnostics : null
+                            }
+                            showDriftArrow={surfaceViewerKind === "weierstrass" ? showDriftArrow : false}
+                            onParamGeodesicState={handleParamGeodesicState}
+                          />);
+  const renderNativeSurfaceInspector = () => (<>
+                    {(activeSavedSurfaceBinding || surfacesLeftTab === "analysis") && <SurfaceAnalysisInspectorPanel
+                      definition={activeCanonicalSurfaceDefinition}
+                      preferredTab={activeSurfaceComputation === "surface-probe" ? "probe" : "result"}
+                      result={surfaceInspectDerivedMesh
+                        ? activeDerivedSurfaceMeshResult ?? activeSurfaceAnalysisResult
+                        : activeSurfaceComputation === "surface-probe"
+                        ? activeSurfaceProbeResult ?? activeSurfaceAnalysisResult
+                        : activeSurfaceComputation === "surface-curves"
+                          ? activeSurfaceCurvesResult ?? activeSurfaceAnalysisResult
+                          : activeSurfaceComputation === "surface-features"
+                            ? activeSurfaceFeaturesResult ?? activeSurfaceAnalysisResult
+                            : activeSurfaceComputation === "chart-diagnostics"
+                              ? activeSurfaceChartResult ?? activeSurfaceAnalysisResult
+                            : activeSurfaceAnalysisResult}
+                      historyCount={surfaceAnalysisResultStore.history.length}
+                      savedResultCount={surfaceAnalysisWorkspaceDocument.savedResults.length}
+                      probeRows={probeInfo ? [
+                        { label: "Position", value: `(${fmt(probeInfo.point.x)}, ${fmt(probeInfo.point.y)}, ${fmt(probeInfo.point.z)})` },
+                        { label: "Normal", value: `(${fmt(probeInfo.normal.x)}, ${fmt(probeInfo.normal.y)}, ${fmt(probeInfo.normal.z)})` },
+                        ...(probeInfo.uv ? [{ label: "Domain (u,v)", value: `(${fmt(probeInfo.uv.u)}, ${fmt(probeInfo.uv.v)})` }] : []),
+                        ...(probeInfo.xy ? [{ label: "Domain (x,y)", value: `(${fmt(probeInfo.xy.x)}, ${fmt(probeInfo.xy.y)})` }] : []),
+                      ] : []}
+                      curvatureActions={activeSurfaceCurvatureField ? {
+                        selectedField: surfaceCurvatureScalar,
+                        visible: surfaceCurvatureVisible,
+                        compareLabel: surfaceCurvatureCompareLabel,
+                        onSelectRegion: handleSelectSurfaceCurvatureRegion,
+                        onSave: handleSaveSurfaceCurvature,
+                        onCompare: handleCompareSurfaceCurvature,
+                        onExport: handleExportSurfaceCurvature,
+                        onToggleVisible: handleToggleSurfaceCurvatureVisible,
+                        onRecompute: handleComputeSurfaceCurvature,
+                      } : undefined}
+                      probeActions={canonicalSurfaceProbe ? {
+                        probe: canonicalSurfaceProbe,
+                        angleDeg: surfaceProbeAngleDeg,
+                        evidenceVisible: surfaceProbeEvidenceVisible,
+                        compareLabel: surfaceProbeCompareLabel,
+                        pinned: surfacePinnedProbes,
+                        onChangeAngle: setSurfaceProbeAngleDeg,
+                        onToggleEvidence: handleToggleSurfaceProbeEvidence,
+                        onPin: handlePinSurfaceProbe,
+                        onCompare: handleCompareSurfaceProbe,
+                        onCopy: handleCopySurfaceProbe,
+                        onExport: handleExportSurfaceProbe,
+                        onReplay: handleReplaySurfaceProbe,
+                      } : undefined}
+                      layerActions={activeSurfaceLayerPayload ? {
+                        payload: activeSurfaceLayerPayload,
+                        compareLabel: surfaceLayerCompareLabel,
+                        onAction: handleSurfaceLayerAction,
+                      } : undefined}
+                      chartActions={activeSurfaceChart ? {
+                        chart: activeSurfaceChart,
+                        focusedIndex: inspectIdx,
+                        onSelectIndex: (index) => selectSurfaceChartIndices([index]),
+                        onSelectRegion: handleSelectSurfaceChartRegion,
+                        onToggleOverlay: handleToggleSurfaceChartOverlay,
+                        onSave: handleSaveSurfaceChart,
+                        onExport: handleExportSurfaceChart,
+                        onRecompute: publishSurfaceChart,
+                      } : undefined}
+                      derivedMeshInspection={surfaceInspectDerivedMesh && activeSurfaceDerivedMeshRecord ? {
+                        record: activeSurfaceDerivedMeshRecord,
+                        payload: activeDerivedSurfaceMeshPayload,
+                      } : undefined}
+                    />}
+                    <SurfacesRightPanel
+                      viewerKind={surfaceViewerKind}
+                      meshKernelDocument={meshKernelDocument}
+                      meshAnalysisActive={surfaceViewerKind === "mesh" && surfacesLeftTab === "analysis"}
+                      surfaceId={activeEqSurfaceId}
+                      paramId={activeSavedSurfaceBinding ? "custom" : paramSurfaceId}
+                      documentDomainReadOnly={!!activeSavedSurfaceBinding}
+                      documentDefinition={activeSavedSurfaceDocument?.format === "math3d.surface-document" && activeSavedSurfaceBinding ? {
+                        label: activeNotebookProjectRef.current?.metadata.documents?.[activeSavedSurfaceDocument.identity.id]?.title ?? activeSavedSurfaceDocument.metadata.title,
+                        formula: `${activeSavedSurfaceDocument.source.definition.familyId === "graph2d.revolution" ? "Revolution" : "Extrusion"} of profile ${Object.entries(activeSavedSurfaceDocument.source.definition.expressions ?? {}).map(([name, expression]) => `${name} = ${expression}`).join(", ")}`,
+                        note: "Uses the captured Graph profile and construction. Edit their formulas and ranges in Source/Object.",
+                      } : undefined}
+                      surfaceMeshLabel={surfaceMeshLabel}
+                      meshActiveAnalysisResult={meshActiveAnalysisResult}
+                      meshAnalysisComputationHistory={meshAnalysisComputationHistory}
+                      meshSelectedScientificFields={meshSelectedScientificFields}
+                      meshWorkspaceSummary={meshWorkspaceInspectorSummary}
+                      meshWorkspaceSelectedProvenanceEntry={meshWorkspaceSelectedProvenanceEntry}
+                      requestedInspectorTab={meshWorkspaceRequestedInspectorTab}
+                      meshActiveSelectionCardType={meshActiveSelectionSummary.type}
+                      meshActiveSelectionCardId={meshActiveSelectionSummary.entityId}
+                      meshActiveSelectionCardActions={meshActiveSelectionSummary.actions}
+                      meshActiveSelectionCardActionButtons={meshActiveSelectionCardActionButtons}
+                      meshActiveSelectionCardEmptyState={meshActiveSelectionSummary.emptyState}
+                      meshActiveSelectionCardConfirmationLabel={meshContextToolbarConfirmationLabel}
+                      meshActiveSelectionCardLastCommandLabel={meshContextToolbarLastCommandLabel}
+                      meshActiveSelectionCardCanUndoLast={surfaceMeshTopologyHistory.length > 0}
+                      meshAdaptiveTopologyGizmoLabel={meshAdaptiveTopologyGizmoLabel}
+                      onUndoSurfaceMeshTopologyEdit={undoLatestSurfaceMeshTopologyEdit}
+                      onOpenSurfaceMeshTopologyHistory={handleOpenMeshContextHistory}
+                      onClearSurfaceMeshTopologySelection={handleClearSurfaceMeshTopologyContextSelection}
+                      meshCanBookmarkSelection={Boolean(filteredMeshUnifiedSelection && !meshActiveSelectionCardEmptyState)}
+                      onBookmarkMeshSelection={handleBookmarkMeshSelection}
+                      meshCanRedoSelection={Boolean(meshRedoSelectionEntry)}
+                      onRedoMeshSelection={handleRedoMeshSelection}
+                      meshSelectionHistoryItems={meshSelectionHistory}
+                      meshSelectionBookmarks={meshSelectionBookmarks}
+                      onRestoreMeshSelection={handleRestoreMeshSelectionEntry}
+                      onRemoveMeshSelectionBookmark={(entry) =>
+                        setMeshSelectionBookmarks((bookmarks) => removeSelectionBookmark(bookmarks, entry.key))
+                      }
+                      meshContextualPreviewActive={Boolean(meshVisibleContextualViewportPreview)}
+                      commandPreviewHighVisibility={commandPreviewHighVisibility}
+                      onOpenPreviewSettings={() => setPreferencesOpen(true)}
+                      surfaceMeshStats={surfaceMeshStats}
+                      surfaceMeshBounds={surfaceMeshBounds}
+                      surfaceMeshSource={surfaceMeshData?.source ?? null}
+                      graphResolution={graphResolution}
+                      onSetGraphResolution={setGraphResolution}
+                      paramResolution={paramResolution}
+                      onSetParamResolution={setParamResolution}
+                      weierstrassResolution={weierstrassResolution}
+                      onSetWeierstrassResolution={setWeierstrassResolution}
+                      lightPreset={lightPreset}
+                      onChangeLightPreset={setLightPreset}
+                      materialRoughness={materialRoughness}
+                      onSetMaterialRoughness={setMaterialRoughness}
+                      materialMetalness={materialMetalness}
+                      onSetMaterialMetalness={setMaterialMetalness}
+                      materialOpacity={materialOpacity}
+                      onSetMaterialOpacity={setMaterialOpacity}
+                      showWireframe={showWireframe}
+                      onToggleWireframe={() => setShowWireframe((v) => !v)}
+                      showPlanes={showPlanes}
+                      onTogglePlanes={toggleCoordinatePlanes}
+                      showGaussMap={showGaussMap}
+                      onToggleGaussMap={() => setShowGaussMap((v) => !v)}
+                      showContours={showContours}
+                      onToggleContours={() => setShowContours((v) => !v)}
+                      contourCount={contourCount}
+                      onSetContourCount={setContourCount}
+                      showPrincipalDirections={showPrincipalDirections}
+                      onTogglePrincipalDirections={() => setShowPrincipalDirections((v) => !v)}
+                      showPrincipalLines={showPrincipalLines}
+                      onTogglePrincipalLines={() => setShowPrincipalLines((v) => !v)}
+                      showCurvatureLines={showCurvatureLines}
+                      onToggleCurvatureLines={() => setShowCurvatureLines((v) => !v)}
+                      canDuplicate={!!unifiedSelectedSceneObject && !unifiedSelectedSceneLocked}
+                      onDuplicate={handleDuplicateUnifiedSelectedObject}
+                      canExport={unifiedCanExportSelectedObject}
+                      onExport={() => {
+                        void handleExportUnifiedSelectedObject();
+                      }}
+                      canBake={unifiedCanBake}
+                      onBake={() => runUnifiedPipelineAction("bake")}
+                      canCompare={unifiedCanSendToCompare}
+                      onCompare={handleSendUnifiedObjectToCompare}
+                      surfaceWorkflowActiveStepId={surfaceWorkflowActiveStepId}
+                      surfaceWorkflowStepStateById={surfaceWorkflowStepStateById}
+                      onPickEqSurface={handlePickEqSurface}
+                      onPickParamSurface={handlePickParamSurface}
+                      graphExpr={graphExpr}
+                      implicitExpr={implicitExpr}
+                      onChangeImplicitExpr={setImplicitExpr}
+                      onLoadDeterministicImplicitSample={handleLoadDeterministicImplicitSample}
+                      implicitResolution={implicitResolution}
+                      meshOperationPreviewBusy={meshOperationPreviewBusy}
+                      meshOperationPreviewError={meshOperationPreviewError}
+                      generateSurfaceStatus={generateSurfaceStatus}
+                      meshOperationPreviewTargetFaces={meshOperationPreviewTargetFaces}
+                      meshOperationPreviewUseDecimate={meshOperationPreviewUseDecimate}
+                      meshLastOperation={meshLastOperation}
+                      meshOperationLastValidation={meshOperationLastValidation}
+                      meshOperationHistory={meshOperationHistory}
+                      surfaceMeshTopologyHistory={surfaceMeshTopologyHistory}
+                      meshOperationError={meshOperationError}
+                      onValidateActiveMesh={handleMeshOperationValidate}
+                      onShowMeshHealthProblems={handleShowMeshHealthProblems}
+                      onValidateLastMeshOperationResult={handleValidateLastMeshOperationResult}
+                      onPreviewMeshOperationHistoryEntry={previewMeshOperationHistoryEntry}
+                      onRestoreMeshOperationHistoryEntry={restoreMeshOperationHistoryEntry}
+                      onPreviewSurfaceMeshTopologyHistoryEntry={previewSurfaceMeshTopologyHistoryEntry}
+                      onRestoreSurfaceMeshTopologyHistoryEntry={restoreSurfaceMeshTopologyHistoryEntry}
+                      onUndoLatestMeshOperation={undoLatestMeshOperation}
+                      canUndoLatestMeshOperation={canUndoLatestMeshOperation}
+                      onSaveMeshOperationPreset={handleSaveMeshOperationPreset}
+                      onChangeMeshOperationPreviewTargetFaces={setMeshOperationPreviewTargetFaces}
+                      onChangeMeshOperationPreviewUseDecimate={setMeshOperationPreviewUseDecimate}
+                      onRunMeshOperationPreview={handleMeshOperationPreviewImplicit}
+                      cgalHealthState={cgalHealthState}
+                      cgalBusy={cgalBusy}
+                      cgalError={cgalError}
+                      cgalTargetEdge={cgalTargetEdge}
+                      cgalAutoTargetEdge={cgalAutoTargetEdge}
+                      onChangeCgalTargetEdge={setCgalTargetEdge}
+                      onChangeCgalAutoTargetEdge={setCgalAutoTargetEdge}
+                      cgalPadFrac={cgalPadFrac}
+                      onChangeCgalPadFrac={setCgalPadFrac}
+                      cgalTriBudgetEnabled={cgalTriBudgetEnabled}
+                      onChangeCgalTriBudgetEnabled={setCgalTriBudgetEnabled}
+                      cgalTriBudget={cgalTriBudget}
+                      onChangeCgalTriBudget={setCgalTriBudget}
+                      cgalAutoEdge={cgalAutoEdge}
+                      cgalTriBudgetEdge={cgalTriBudgetEdge}
+                      cgalRadiusBound={cgalRadiusBound}
+                      onChangeCgalRadiusBound={setCgalRadiusBound}
+                      cgalMinTrisEnabled={cgalMinTrisEnabled}
+                      onChangeCgalMinTrisEnabled={setCgalMinTrisEnabled}
+                      cgalMinTris={cgalMinTris}
+                      onChangeCgalMinTris={setCgalMinTris}
+                      cgalDomainDiag={cgalDomainDiag}
+                      cgalEffectiveEdge={cgalEffectiveEdge}
+                      cgalEstimatedTris={cgalEstimatedTris}
+                      cgalTooHeavy={cgalTooHeavy}
+                      cgalVerbose={cgalVerbose}
+                      onChangeCgalVerbose={setCgalVerbose}
+                      cgalPreflightSamples={cgalPreflightSamples}
+                      onChangeCgalPreflightSamples={setCgalPreflightSamples}
+                      onRunCgalMesh={handleRunCgalMesh}
+                      onStopCgalWorker={handleStopCgalWorker}
+                      cgalMeshInfo={cgalMeshInfo}
+                      isDevMode={isDev}
+                      surfacePerformanceSnapshot={surfacePerformanceSnapshot}
+                      meshPerformanceBenchmarkId={meshPerfBenchmarkId}
+                      meshPerformanceLastBuildMs={meshPerformanceLastBuildMs}
+                      meshPipelineProfile={meshPipelineProfile}
+                      meshDebugMonitor={meshDebugMonitor}
+                      onOpenMeshDeveloperDiagnostics={() => setMeshDebugDrawerOpen(true)}
+                      onClearMeshDebugMonitor={clearMeshDebugMonitor}
+                      onRunMeshPerformanceBenchmark={handleRunMeshPerformanceBenchmark}
+                      onRestoreMeshPerformanceBaseline={handleRestoreMeshPerformanceBaseline}
+                      meshBenchmarkPerformanceSuite={meshBenchmarkPerformanceSuite}
+                      onRunMeshBenchmarkPerformanceSuite={() => {
+                        void handleRunMeshBenchmarkPerformanceSuite();
+                      }}
+                      meshInteractionQualityMode={meshInteractionQualityMode}
+                      onChangeMeshInteractionQualityMode={setMeshInteractionQualityMode}
+                      meshInteractionRestoreDelayMs={meshInteractionRestoreDelayMs}
+                      onChangeMeshInteractionRestoreDelayMs={setMeshInteractionRestoreDelayMs}
+                      meshInteractionPreviewTriangleTarget={meshInteractionPreviewTriangleTarget}
+                      onChangeMeshInteractionPreviewTriangleTarget={setMeshInteractionPreviewTriangleTarget}
+                      meshInteractionHideVertexMarkers={meshInteractionHideVertexMarkers}
+                      onChangeMeshInteractionHideVertexMarkers={setMeshInteractionHideVertexMarkers}
+                      meshInteractionHideFaceNormals={meshInteractionHideFaceNormals}
+                      onChangeMeshInteractionHideFaceNormals={setMeshInteractionHideFaceNormals}
+                      meshInteractionHideCurvatureGlyphs={meshInteractionHideCurvatureGlyphs}
+                      onChangeMeshInteractionHideCurvatureGlyphs={setMeshInteractionHideCurvatureGlyphs}
+                      meshInteractionHideWireframe={meshInteractionHideWireframe}
+                      onChangeMeshInteractionHideWireframe={setMeshInteractionHideWireframe}
+                      meshInspectorStats={surfaceInspectorMeshStats}
+                      deferredSurfaceSampleSetInfo={deferredSurfaceSampleSetInfo}
+                      onPrepareDeferredSurfaceAnalysisData={handlePrepareDeferredSurfaceAnalysisData}
+                      meshTopologyDetails={surfaceInspectorTopologyDetails}
+                      meshAnalyzeDiagnostics={surfaceMeshAnalyzeDiagnostics}
+                      meshBenchmarkVerification={activeSurfaceMeshBenchmarkVerification}
+                      onHighlightMeshAnalyzeBoundary={handleHighlightMeshAnalyzeBoundary}
+                      onHighlightMeshAnalyzeDuplicates={handleHighlightMeshAnalyzeDuplicates}
+                      onPreviewMeshAnalyzeWeld={handlePreviewMeshAnalyzeWeld}
+                      onRecomputeMeshAnalyzeDiagnostics={handleRecomputeMeshAnalyzeDiagnostics}
+                      badTriangleCount={surfaceInspectorBadTriangleCount}
+                      geodesicPathLength={geodesicHeatLength}
+                      curvatureRanges={surfaceInspectorCurvatureRanges}
+                      analysisFocusedSection={analysisFocusedSection}
+                      meshQualityReport={meshQualityReport}
+                      meshQualityBusy={meshQualityBusy}
+                      meshQualityProgress={meshQualityProgress}
+                      meshQualityPhase={meshQualityPhase}
+                      calculusScalarSource={calculusScalarSource}
+                      calculusVectorSource={calculusVectorSource}
+                      calculusActiveVectorField={calculusActiveVectorField}
+                      calculusVectorOverlayEnabled={calculusVectorOverlayEnabled}
+                      calculusVectorDensity={calculusVectorDensity}
+                      calculusVectorScale={calculusVectorScale}
+                      calculusStatus={calculusStatus}
+                      calculusError={calculusError}
+                      activeVectorMagnitudeRange={surfaceInspectorActiveVectorMagnitudeRange}
+                      curvatureLineField={curvatureLineField}
+                      curvatureSeedSource={curvatureSeedSource}
+                      curvatureSeedDensity={curvatureSeedDensity}
+                      curvatureMaxSteps={curvatureMaxSteps}
+                      curvatureMaxLines={curvatureMaxLines}
+                      onRebuildCurvatureLines={() => setCurvatureRebuildToken((t) => t + 1)}
+                      onSelectMeshAnalysisCurvatureField={(field) => {
+                        handleSelectMeshAnalyzeCurvatureField(
+                          field === "K" ? "gaussian" : field === "H" ? "mean" : field
+                        );
+                      }}
+                      probeInfo={probeInfo}
+                      probeCurv={probeCurv}
+                      paramProbeCurv={paramProbeCurv}
+                      probeEnabled={probeEnabled}
+                      onToggleProbe={() => setProbeEnabled((v) => !v)}
+                      showProbeNormal={showProbeNormal}
+                      onToggleProbeNormal={() => setShowProbeNormal((v) => !v)}
+                      showProbeTangentPlane={showProbeTangentPlane}
+                      onToggleProbeTangentPlane={() => setShowProbeTangentPlane((v) => !v)}
+                      showProbeTangents={showProbeTangents}
+                      onToggleProbeTangents={() => setShowProbeTangents((v) => !v)}
+                      inspectEnabled={inspectEnabled}
+                      onToggleInspectEnabled={() => setInspectEnabled((v) => !v)}
+                      onClearInspect={clearInspect}
+                      inspectIdx={inspectIdx}
+                      inspectPos={inspectPos}
+                      inspectNormal={inspectNormal}
+                      inspectMetrics={inspectMetrics}
+                      meshDifferentialGeometrySummary={surfaceMeshCurvatures?.summary ?? null}
+                      meshAnalyzeProbeHistory={meshAnalyzeProbeHistory}
+                      onRestoreMeshAnalyzeProbe={replayMeshAnalyzeProbeHistoryEntry}
+                      onClearMeshAnalyzeProbeHistory={() => {
+                        setMeshAnalyzeProbeHistory([]);
+                        setSurfaceMeshTopologyStatus("Probe history cleared.");
+                      }}
+                      geometryProbeSelectionMode={geometryProbeSelectionMode}
+                      geometryProbeSelectionDetails={geometryProbeSelectionDetails}
+                      geometryProbeHoverSelectionDetails={geometryProbeHoverSelectionDetails}
+                      onPickDomainUV={handlePickDomainUV}
+                      onPickDomainXY={handlePickDomainXY}
+                      onPickDomainXYZ={handlePickDomainXYZ}
+                      graphDomain={activeGraphDomain}
+                      onChangeGraphDomain={handleChangeGraphDomain}
+                      paramDomain={activeParamLikeDomain}
+                      onChangeParamDomain={handleChangeParamDomain}
+                      implicitDomain={activeImplicitDomain}
+                      onChangeImplicitDomain={handleChangeImplicitDomain}
+                      graphDomainPresets={graphDomainPresets}
+                      paramDomainPresets={paramDomainPresets}
+                      implicitDomainPresets={implicitDomainPresets}
+                      onSaveGraphDomainPreset={saveGraphDomainPreset}
+                      onSaveParamDomainPreset={saveParamDomainPreset}
+                      onSaveImplicitDomainPreset={saveImplicitDomainPreset}
+                      onApplyGraphDomainPreset={applyGraphDomainPreset}
+                      onApplyParamDomainPreset={applyParamDomainPreset}
+                      onApplyImplicitDomainPreset={applyImplicitDomainPreset}
+                      onRemoveGraphDomainPreset={removeGraphDomainPreset}
+                      onRemoveParamDomainPreset={removeParamDomainPreset}
+                      onRemoveImplicitDomainPreset={removeImplicitDomainPreset}
+                    />
+                    <details style={{ marginTop: 10 }} open={isInspectDisplayMode}>
+                      <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Tools</summary>
+                      <div style={{ marginTop: 8 }}>
+                        {renderSurfacesInspectorPanel("tools")}
+                      </div>
+                    </details>
+                    </>);
   return (
     <div className="math3d-app" data-testid="app-shell" data-project-document-id={activeProjectDocumentId ?? undefined} style={rootStyle}>
       <KernelWorkspacePanel
@@ -80530,7 +81188,9 @@ case "mobius":
         </div>}
       </header>
       <div id="project-gallery-host" data-testid="project-gallery-host" />
-      {additionalActiveId && restoredProjectRef.current?.additional.get(additionalActiveId) && <SavedDocumentWorkbench workspaceVersion={additionalVersion} key={additionalActiveId} related={relatedDocuments(restoredProjectRef.current?.workspace, additionalActiveId, restoredProjectRef.current?.context().documents)} onOpenRelated={navigateRestoredDocument} projectId={activeNotebookProjectRef.current?.identity.id} projectTitle={activeNotebookProjectRef.current?.metadata.title} onOpenProject={() => setProjectsOpen(true)} documentTitle={activeNotebookProjectRef.current?.metadata.documents?.[additionalActiveId]?.title} session={restoredProjectRef.current.additional.get(additionalActiveId)!} onChange={() => setAdditionalVersion((v) => v + 1)} onClose={() => {
+      {additionalActiveId && restoredProjectRef.current?.additional.get(additionalActiveId) && <SavedDocumentWorkbench customView={savedSurfaceCustomView} onToggleCustomView={() => setSavedSurfaceCustomView(value => !value)}
+        moduleView={activeSavedSurfaceBinding ? { viewport: <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>{activeSurfaceCurvatureField && activeSurfaceComputation === "curvature-field" && renderNativeSurfaceDisplay()}<div style={{ flex: 1, minHeight: 0 }}>{renderNativeParamSurfaceViewer()}</div></div>, inspector: renderNativeSurfaceInspector(), tools: <>{renderNativeSurfaceComputation()}<details><summary>Advanced Surface tools</summary>{renderSurfacesInspectorPanel("analysis")}</details></> } : undefined}
+        workspaceVersion={additionalVersion} key={additionalActiveId} related={relatedDocuments(restoredProjectRef.current?.workspace, additionalActiveId, restoredProjectRef.current?.context().documents)} onOpenRelated={navigateRestoredDocument} projectId={activeNotebookProjectRef.current?.identity.id} projectTitle={activeNotebookProjectRef.current?.metadata.title} onOpenProject={() => setProjectsOpen(true)} documentTitle={activeNotebookProjectRef.current?.metadata.documents?.[additionalActiveId]?.title} session={restoredProjectRef.current.additional.get(additionalActiveId)!} onChange={() => setAdditionalVersion((v) => v + 1)} onClose={() => {
         if (additionalSurface?.format === "math3d.surface-document") openNormalSurfacesWorkspace();
         else leaveProjectDocumentView();
       }}>
@@ -82903,82 +83563,7 @@ case "mobius":
               )}
               {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "analysis" && (
                 <div style={{ marginTop: 10 }}>
-                  <SurfaceAnalysisComputationPanel
-                    definition={activeCanonicalSurfaceDefinition}
-                    selected={activeSurfaceComputation}
-                    onSelect={handleSelectSurfaceComputation}
-                    configurationOpen={surfaceLegacyAnalysisOpen}
-                    onOpenConfiguration={() => setSurfaceLegacyAnalysisOpen(true)}
-                    curvatureState={!surfaceCurvatureSource ? "unavailable" : activeSurfaceCurvatureField ? "computed" : "ready"}
-                    curvatureExecution={surfaceCurvatureExecution}
-                    onComputeCurvature={() => void handleComputeSurfaceCurvature()}
-                    onCancelCurvature={handleCancelSurfaceCurvature}
-                    probeState={!surfaceCurvatureSource ? "unavailable" : canonicalSurfaceProbe ? "active" : "ready"}
-                    onProbeCurrentSample={() => void handleProbeCurrentSurfaceSample()}
-                    curveLayerState={activeSurfaceCurvesResult?.state === "ready" ? "collected" : "ready"}
-                    featureLayerState={activeSurfaceFeaturesResult?.state === "ready" ? "collected" : "ready"}
-                    onCollectCurveLayers={() => handleCollectSurfaceCurveLayers()}
-                    onCollectFeatureLayers={() => handleCollectSurfaceFeatureLayers()}
-                    chartState={!surfaceChartSamples.length ? "unavailable" : activeSurfaceChart ? "computed" : "ready"}
-                    onComputeChart={() => publishSurfaceChart()}
-                    activePresetId={activeSurfaceAnalysisPresetId}
-                    presetStatus={surfaceAnalysisPresetStatus}
-                    onApplyPreset={handleApplySurfaceAnalysisPreset}
-                    derivedMesh={{
-                      available: !!surfaceDerivedMeshCandidate,
-                      label: activeSurfaceDerivedMeshRecord?.label ?? `${activeCanonicalSurfaceDefinition.identity.label} live tessellation`,
-                      vertexCount: surfaceDerivedMeshCandidate?.vertexCount ?? 0,
-                      faceCount: surfaceDerivedMeshCandidate?.faceCount ?? 0,
-                    }}
-                    derivedMeshLifecycle={{
-                      selected: activeSurfaceDerivedMeshRecord ? {
-                        id: activeSurfaceDerivedMeshRecord.identity.meshId,
-                        label: activeSurfaceDerivedMeshRecord.label,
-                        state: activeSurfaceDerivedMeshRecord.identity.state,
-                        sourceRevision: activeSurfaceDerivedMeshRecord.identity.source.surfaceRevision,
-                        meshRevision: activeSurfaceDerivedMeshRecord.identity.meshRevision,
-                        method: activeSurfaceDerivedMeshRecord.identity.tessellation.method,
-                        backend: activeSurfaceDerivedMeshRecord.identity.backend.id,
-                        backendVersion: activeDerivedSurfaceMeshBackendSummary?.backendVersion ?? null,
-                        variant: activeDerivedSurfaceMeshBackendSummary?.variant ?? "native-tessellation",
-                        correspondence: `${activeSurfaceDerivedMeshRecord.correspondence.kind}/${activeSurfaceDerivedMeshRecord.correspondence.state}`,
-                        mappedVertexCount: activeSurfaceDerivedMeshRecord.correspondence.mappedVertexCount,
-                        watertight: activeDerivedSurfaceMeshBackendSummary?.validation?.watertight ?? null,
-                        boundaryEdgeCount: activeDerivedSurfaceMeshBackendSummary?.validation?.boundaryEdgeCount ?? null,
-                        staleReason: activeSurfaceDerivedMeshRecord.identity.staleReason,
-                        historyCount: activeSurfaceDerivedMeshRecord.history.length,
-                      } : null,
-                      records: activeSourceDerivedMeshRecords.map((record) => ({ id: record.identity.meshId, label: record.label, state: record.identity.state })),
-                      status: surfaceDerivedMeshStatus,
-                      backendAvailability: activeDerivedSurfaceMeshBackendSummary?.availability ?? "checking",
-                      backendAvailabilityMessage: activeDerivedSurfaceMeshBackendSummary?.availabilityMessage ?? "Checking the shared Python/CGAL worker.",
-                      onSelect: setSurfaceDerivedMeshSelectedId,
-                      onRegenerate: handleRegenerateDerivedSurfaceMesh,
-                      onShowLive: handleShowLiveSurfaceMesh,
-                      onBake: handleBakeSurfaceMeshSnapshot,
-                      onDetach: () => handleTransitionDerivedSurfaceMesh("detached"),
-                      onDelete: handleDeleteDerivedSurfaceMesh,
-                      onOpenSource: handleOpenDerivedSurfaceSource,
-                      onInspect: handleInspectDerivedSurfaceMesh,
-                      onMapSourceToMesh: handleMapSurfaceSelectionToDerivedMesh,
-                      onMapMeshToSource: handleMapDerivedSelectionToSurface,
-                      onRemesh: () => handleOpenDerivedMeshBackendWorkflow("remesh"),
-                      onRobustMesh: () => handleOpenDerivedMeshBackendWorkflow("robust-mesh"),
-                    }}
-                    onOpenDerivedMesh={handleOpenSelectedDerivedMeshAnalysis}
-                    surfaceSourceHandoff={surfaceMeshAnalysisHandoff ? {
-                      label: surfaceMeshAnalysisHandoff.record.identity.source.label,
-                      sourceRevision: surfaceMeshAnalysisHandoff.record.identity.source.surfaceRevision,
-                      meshState: surfaceMeshAnalysisHandoff.record.identity.state,
-                      meshRevision: surfaceMeshAnalysisHandoff.record.identity.meshRevision,
-                      units: surfaceMeshData?.source.kind === "derivedSurface" ? surfaceMeshData.source.units.length : "scene-unit",
-                      comparisonTarget: surfaceMeshAnalysisHandoff.comparison.enabled
-                        ? (surfaceMeshAnalysisHandoff.sourceViewerKind === "param" ? surfaceMeshAnalysisHandoff.comparison.paramId : surfaceMeshAnalysisHandoff.comparison.surfaceId)
-                        : "none",
-                      mappedSelectionCount: surfaceMeshAnalysisHandoff.meshSelectionIndices.length,
-                      onReturn: handleReturnToSurfaceSource,
-                    } : null}
-                  />
+                  {renderNativeSurfaceComputation()}
                   <details
                     id="surface-analysis-legacy-tools"
                     data-testid="surface-analysis-legacy-tools"
@@ -85593,19 +86178,7 @@ case "mobius":
                       </ViewerControlsStrip>
                     )}
                     {surfacesLeftTab === "analysis" && activeSurfaceComputation === "curvature-field" && activeSurfaceCurvatureField && !cleanScreenshotSurfaceActive && (
-                      <SurfaceCurvatureDisplayControls
-                        field={activeSurfaceCurvatureField}
-                        scalar={surfaceCurvatureScalar}
-                        palette={colorPalette}
-                        rangeMode={surfaceCurvatureRangeMode}
-                        visible={surfaceCurvatureVisible}
-                        directionsVisible={showPrincipalDirections}
-                        onSelectScalar={handleSelectSurfaceCurvatureScalar}
-                        onSelectPalette={(palette) => setColorPalette(palette as ColorPalette)}
-                        onSelectRangeMode={setSurfaceCurvatureRangeMode}
-                        onToggleVisible={handleToggleSurfaceCurvatureVisible}
-                        onToggleDirections={() => setShowPrincipalDirections((visible) => !visible)}
-                      />
+                      renderNativeSurfaceDisplay()
                     )}
                     {surfaceViewerKind === "mesh" && surfaceMeshStats && !cleanScreenshotSurfaceActive && (
                       <div
@@ -86599,167 +87172,7 @@ case "mobius":
                           </div>
                         )}
                         {surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? (
-                        <ParamSurfaceViewer
-                            surfaceId={primaryParamId}
-                            renderQuality={surfaceRenderQuality}
-                            sceneBackgroundMode={cleanScreenshotSceneBackgroundMode}
-                            customX={paramXExpr}
-                            customY={paramYExpr}
-                            customZ={paramZExpr}
-                            rotationalProfileMode={rotationalProfileMode}
-                            rotationalProfileRExpr={rotationalProfileRExpr}
-                            rotationalProfileZExpr={rotationalProfileZExpr}
-                            rotationalProfilePointsText={rotationalProfilePointsText}
-                            rotationalAxisOrigin={rotationalAxisOrigin}
-                            rotationalAxisDirection={rotationalAxisDirection}
-                            rmfRibbonTwistEnabled={rmfRibbonTwistEnabled}
-                            rmfRibbonTwistTurns={rmfRibbonTwistTurns}
-                            wireframe={primaryOverlay.showWireframe}
-                            showPlanes={cleanScreenshotSurfaceActive ? false : primaryOverlay.showPlanes}
-                            showPrincipalProjections={cleanScreenshotSurfaceActive ? false : showPrincipalProjections}
-                            principalProjectionXY={principalProjectionXY}
-                            principalProjectionYZ={principalProjectionYZ}
-                            principalProjectionXZ={principalProjectionXZ}
-                            planeGridSettings={planeGridSettings}
-                            lightPreset={lightPreset}
-                            materialRoughness={materialRoughness}
-                            materialMetalness={materialMetalness}
-                            materialOpacity={materialOpacity}
-                            paramResolution={activeParamLikeResolution}
-                            colorMode={primaryOverlay.colorMode}
-                            colorPalette={primaryOverlay.colorPalette}
-                            showChartGrid={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : primaryOverlay.showChartGrid}
-                            chartGridMode={meshChartGridMode === "meshFace" ? "mesh-face" : "local"}
-                            onSurfaceCellSelectionEnabledChange={handleSurfaceCellSelectionEnabledChange}
-                            showOverlayControls={cleanScreenshotSurfaceActive ? false : showInViewportOverlayControls}
-                            onRequestHideOverlayControls={() => setShowInViewportOverlayControls(false)}
-                            showViewGizmo={showSurfaceViewGizmo}
-                            chartGridCountU={chartGridCountU}
-                            chartGridCountV={chartGridCountV}
-                            paramDomain={activeParamLikeDomain}
-                            splineSettings={splineSurfaceSettings}
-                            weierstrassGExpr={weierstrassGExpr}
-                            weierstrassPhiExpr={weierstrassPhiExpr}
-                            weierstrassResolution={weierstrassResolution}
-                            weierstrassRecenter={weierstrassRecenter}
-                            onWeierstrassError={setWeierstrassError}
-                            onWeierstrassPathDisagreement={setWeierstrassPathDisagreement}
-                            probeEnabled={cleanScreenshotSurfaceActive ? false : probeEnabled}
-                            showProbeNormal={cleanScreenshotSurfaceActive ? false : showProbeNormal}
-                            showProbeTangentPlane={cleanScreenshotSurfaceActive ? false : showProbeTangentPlane}
-                            showProbeTangents={cleanScreenshotSurfaceActive ? false : showProbeTangents}
-                            showPrincipalDirections={cleanScreenshotSurfaceActive ? false : showPrincipalDirections}
-                            showPrincipalNormalPlanes={cleanScreenshotSurfaceActive ? false : showPrincipalNormalPlanes}
-                            showPrincipalLines={cleanScreenshotSurfaceActive ? false : showPrincipalLines}
-                            showPrincipalGlyphs={cleanScreenshotSurfaceActive ? false : showPrincipalGlyphs}
-                            principalGlyphDensity={principalGlyphDensity}
-                            principalGlyphLength={principalGlyphLength}
-                            principalGlyphMode={principalGlyphMode}
-                            showCurvatureLines={cleanScreenshotSurfaceActive ? false : showCurvatureLines}
-                            curvatureLineField={curvatureLineField}
-                            curvatureSeedSource={curvatureSeedSource}
-                            curvatureSeedDensity={curvatureSeedDensity}
-                            curvatureStepSize={curvatureStepSize}
-                            curvatureMaxSteps={curvatureMaxSteps}
-                            curvatureMaxLines={curvatureMaxLines}
-                            curvatureRebuildToken={curvatureRebuildToken}
-                            showRidges={cleanScreenshotSurfaceActive ? false : showRidges}
-                            showValleys={cleanScreenshotSurfaceActive ? false : showValleys}
-                            ridgeValleySelectionOnly={ridgeValleySelectionOnly}
-                            ridgeValleyMagMin={ridgeValleyMagMin}
-                            ridgeValleyContrast={ridgeValleyContrast}
-                            ridgeValleyMinCos={ridgeValleyMinCos}
-                            ridgeValleySegmentScale={ridgeValleySegmentScale}
-                            ridgeValleySampleMode={ridgeValleySampleMode}
-                            ridgeValleyStitch={ridgeValleyStitch}
-                            ridgeValleyDecimate={ridgeValleyDecimate}
-                            ridgeValleyMaxCurves={ridgeValleyMaxCurves}
-                            ridgeValleyMinConf={ridgeValleyMinConf}
-                            showBoundingBox={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : primaryOverlay.showBoundingBox}
-                            resetToken={cameraResetToken}
-                            windowReframeToken={windowReframeToken}
-                            reframePaddingFactor={surfacePreviewReframePaddingFactor}
-                            onViewportDebug={handlePrimaryViewportDebug}
-                            onProbe={handleProbe}
-                            onParamCurvature={handleParamCurvature}
-                            paramProbeUV={paramProbeUV}
-                            paramProbeToken={paramProbeToken}
-                            onSetCustomX={setParamXExpr}
-                            onSetCustomY={setParamYExpr}
-                            onSetCustomZ={setParamZExpr}
-                            isCameraLeader={cameraSyncEnabled}
-                            onCameraSync={handleSurfaceCameraSync}
-                            cameraOverride={cameraOverride}
-                            cameraOverrideToken={cameraOverrideToken}
-                            cameraTourCommand={isSurfaceDatasetKind(datasetKind) ? surfacesCameraTourCommand : null}
-                            onCameraTourEvent={isSurfaceDatasetKind(datasetKind) ? handleSurfacesCameraTourEvent : undefined}
-                            captureToken={workbookCaptureToken}
-                            onCaptureThumbnail={handleWorkbookThumbnail}
-                          gaussMapEnabled={cleanScreenshotSurfaceActive ? false : showGaussMap}
-                          onToggleGaussMap={isMeshAnalysisWorkflowContext ? undefined : () => setShowGaussMap((v) => !v)}
-                          onGaussPoints={handleGaussPoints}
-                          gaussHighlightPoint={gaussHighlightPoint}
-                            onSampleSet={handleSampleSet}
-                            selectionMask={selectionMask}
-                            selectRegionEnabled={selectRegionEnabled}
-                            onSelectionPick={handleSurfaceSelectionPick}
-                            inspectEnabled={inspectEnabled}
-                            onInspectPick={handleInspectPick}
-                            inspectPoint={inspectPos}
-                            selectionOverlayVisible={selectionOverlayVisible}
-                            selectionOverlayOnTop={selectionOverlayOnTop}
-                            selectionSphere={selectionSphere}
-                            geodesicPathEnabled={geodesicPathEnabled}
-                            onGeodesicPathPick={handleGeodesicPathPick}
-                            geodesicPathStart={geodesicPathStart}
-                            geodesicPathEnd={geodesicPathEnd}
-                            geodesicPathIndices={geodesicPathIndices}
-                            geodesicPathSmooth={geodesicPathSmooth}
-                            geodesicPathDebug={geodesicPathDebug}
-                            geodesicHeatEnabled={geodesicHeatEnabled && geodesicHeatAvailable}
-                            onGeodesicHeatPick={handleGeodesicHeatPick}
-                            geodesicHeatStart={
-                              geodesicPathEnabled && geodesicPathMethod === "surface"
-                                ? null
-                                : geodesicHeatStart
-                                ? { point: geodesicHeatStart.point, meshKey: geodesicHeatStart.meshKey }
-                                : null
-                            }
-                            geodesicHeatEnd={
-                              geodesicPathEnabled && geodesicPathMethod === "surface"
-                                ? null
-                                : geodesicHeatEnd
-                                ? { point: geodesicHeatEnd.point, meshKey: geodesicHeatEnd.meshKey }
-                                : null
-                            }
-                            geodesicHeatPolylines={
-                              geodesicPathEnabled && geodesicPathMethod === "surface"
-                                ? geodesicPathPolylines
-                                : geodesicHeatPolylines
-                            }
-                            geodesicHeatmapValues={geodesicHeatHeatmapValues}
-                            geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
-                            overlayPolylineGroups={meshWorkspaceOverlayPolylineGroupsWithDiagnostics}
-                            overlayPointSets={meshViewerOverlayPointSetsWithDiagnostics}
-                            overlayLabelSets={combinedOverlayLabelSetsWithDiagnostics}
-                            overlayMeshGroups={meshViewerOverlayMeshGroups}
-                            geodesicDiskEnabled={geodesicDiskEnabled}
-                            geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
-                            onGeodesicDiskPick={handleGeodesicDiskPick}
-                            geodesicDiskCenter={
-                              geodesicDiskCenter ? { point: geodesicDiskCenter.point } : null
-                            }
-                            geodesicDiskMesh={geodesicDiskResult?.mesh ?? null}
-                            geodesicDiskBoundary={geodesicDiskResult?.boundary ?? null}
-                            geodesicDiskShowBoundary={geodesicDiskShowBoundary}
-                            zoomToRegion={zoomToRegion}
-                            zoomToRegionToken={zoomNowToken}
-                            weierstrassDiagnostics={
-                              surfaceViewerKind === "weierstrass" ? weierstrassDiagnostics : null
-                            }
-                            showDriftArrow={surfaceViewerKind === "weierstrass" ? showDriftArrow : false}
-                            onParamGeodesicState={handleParamGeodesicState}
-                          />
+                        renderNativeParamSurfaceViewer()
                         ) : (
                         <SurfaceViewer
                               surfaceId={primarySurfaceId}
@@ -88799,342 +89212,7 @@ case "mobius":
                         onExportProbes={handleExportVolumeProbes}
                       />
                     ) : (
-                    <>
-                    {surfacesLeftTab === "analysis" && <SurfaceAnalysisInspectorPanel
-                      definition={activeCanonicalSurfaceDefinition}
-                      preferredTab={activeSurfaceComputation === "surface-probe" ? "probe" : "result"}
-                      result={surfaceInspectDerivedMesh
-                        ? activeDerivedSurfaceMeshResult ?? activeSurfaceAnalysisResult
-                        : activeSurfaceComputation === "surface-probe"
-                        ? activeSurfaceProbeResult ?? activeSurfaceAnalysisResult
-                        : activeSurfaceComputation === "surface-curves"
-                          ? activeSurfaceCurvesResult ?? activeSurfaceAnalysisResult
-                          : activeSurfaceComputation === "surface-features"
-                            ? activeSurfaceFeaturesResult ?? activeSurfaceAnalysisResult
-                            : activeSurfaceComputation === "chart-diagnostics"
-                              ? activeSurfaceChartResult ?? activeSurfaceAnalysisResult
-                            : activeSurfaceAnalysisResult}
-                      historyCount={surfaceAnalysisResultStore.history.length}
-                      savedResultCount={surfaceAnalysisWorkspaceDocument.savedResults.length}
-                      probeRows={probeInfo ? [
-                        { label: "Position", value: `(${fmt(probeInfo.point.x)}, ${fmt(probeInfo.point.y)}, ${fmt(probeInfo.point.z)})` },
-                        { label: "Normal", value: `(${fmt(probeInfo.normal.x)}, ${fmt(probeInfo.normal.y)}, ${fmt(probeInfo.normal.z)})` },
-                        ...(probeInfo.uv ? [{ label: "Domain (u,v)", value: `(${fmt(probeInfo.uv.u)}, ${fmt(probeInfo.uv.v)})` }] : []),
-                        ...(probeInfo.xy ? [{ label: "Domain (x,y)", value: `(${fmt(probeInfo.xy.x)}, ${fmt(probeInfo.xy.y)})` }] : []),
-                      ] : []}
-                      curvatureActions={activeSurfaceCurvatureField ? {
-                        selectedField: surfaceCurvatureScalar,
-                        visible: surfaceCurvatureVisible,
-                        compareLabel: surfaceCurvatureCompareLabel,
-                        onSelectRegion: handleSelectSurfaceCurvatureRegion,
-                        onSave: handleSaveSurfaceCurvature,
-                        onCompare: handleCompareSurfaceCurvature,
-                        onExport: handleExportSurfaceCurvature,
-                        onToggleVisible: handleToggleSurfaceCurvatureVisible,
-                        onRecompute: handleComputeSurfaceCurvature,
-                      } : undefined}
-                      probeActions={canonicalSurfaceProbe ? {
-                        probe: canonicalSurfaceProbe,
-                        angleDeg: surfaceProbeAngleDeg,
-                        evidenceVisible: surfaceProbeEvidenceVisible,
-                        compareLabel: surfaceProbeCompareLabel,
-                        pinned: surfacePinnedProbes,
-                        onChangeAngle: setSurfaceProbeAngleDeg,
-                        onToggleEvidence: handleToggleSurfaceProbeEvidence,
-                        onPin: handlePinSurfaceProbe,
-                        onCompare: handleCompareSurfaceProbe,
-                        onCopy: handleCopySurfaceProbe,
-                        onExport: handleExportSurfaceProbe,
-                        onReplay: handleReplaySurfaceProbe,
-                      } : undefined}
-                      layerActions={activeSurfaceLayerPayload ? {
-                        payload: activeSurfaceLayerPayload,
-                        compareLabel: surfaceLayerCompareLabel,
-                        onAction: handleSurfaceLayerAction,
-                      } : undefined}
-                      chartActions={activeSurfaceChart ? {
-                        chart: activeSurfaceChart,
-                        focusedIndex: inspectIdx,
-                        onSelectIndex: (index) => selectSurfaceChartIndices([index]),
-                        onSelectRegion: handleSelectSurfaceChartRegion,
-                        onToggleOverlay: handleToggleSurfaceChartOverlay,
-                        onSave: handleSaveSurfaceChart,
-                        onExport: handleExportSurfaceChart,
-                        onRecompute: publishSurfaceChart,
-                      } : undefined}
-                      derivedMeshInspection={surfaceInspectDerivedMesh && activeSurfaceDerivedMeshRecord ? {
-                        record: activeSurfaceDerivedMeshRecord,
-                        payload: activeDerivedSurfaceMeshPayload,
-                      } : undefined}
-                    />}
-                    <SurfacesRightPanel
-                      viewerKind={surfaceViewerKind}
-                      meshKernelDocument={meshKernelDocument}
-                      meshAnalysisActive={surfaceViewerKind === "mesh" && surfacesLeftTab === "analysis"}
-                      surfaceId={activeEqSurfaceId}
-                      paramId={paramSurfaceId}
-                      surfaceMeshLabel={surfaceMeshLabel}
-                      meshActiveAnalysisResult={meshActiveAnalysisResult}
-                      meshAnalysisComputationHistory={meshAnalysisComputationHistory}
-                      meshSelectedScientificFields={meshSelectedScientificFields}
-                      meshWorkspaceSummary={meshWorkspaceInspectorSummary}
-                      meshWorkspaceSelectedProvenanceEntry={meshWorkspaceSelectedProvenanceEntry}
-                      requestedInspectorTab={meshWorkspaceRequestedInspectorTab}
-                      meshActiveSelectionCardType={meshActiveSelectionSummary.type}
-                      meshActiveSelectionCardId={meshActiveSelectionSummary.entityId}
-                      meshActiveSelectionCardActions={meshActiveSelectionSummary.actions}
-                      meshActiveSelectionCardActionButtons={meshActiveSelectionCardActionButtons}
-                      meshActiveSelectionCardEmptyState={meshActiveSelectionSummary.emptyState}
-                      meshActiveSelectionCardConfirmationLabel={meshContextToolbarConfirmationLabel}
-                      meshActiveSelectionCardLastCommandLabel={meshContextToolbarLastCommandLabel}
-                      meshActiveSelectionCardCanUndoLast={surfaceMeshTopologyHistory.length > 0}
-                      meshAdaptiveTopologyGizmoLabel={meshAdaptiveTopologyGizmoLabel}
-                      onUndoSurfaceMeshTopologyEdit={undoLatestSurfaceMeshTopologyEdit}
-                      onOpenSurfaceMeshTopologyHistory={handleOpenMeshContextHistory}
-                      onClearSurfaceMeshTopologySelection={handleClearSurfaceMeshTopologyContextSelection}
-                      meshCanBookmarkSelection={Boolean(filteredMeshUnifiedSelection && !meshActiveSelectionCardEmptyState)}
-                      onBookmarkMeshSelection={handleBookmarkMeshSelection}
-                      meshCanRedoSelection={Boolean(meshRedoSelectionEntry)}
-                      onRedoMeshSelection={handleRedoMeshSelection}
-                      meshSelectionHistoryItems={meshSelectionHistory}
-                      meshSelectionBookmarks={meshSelectionBookmarks}
-                      onRestoreMeshSelection={handleRestoreMeshSelectionEntry}
-                      onRemoveMeshSelectionBookmark={(entry) =>
-                        setMeshSelectionBookmarks((bookmarks) => removeSelectionBookmark(bookmarks, entry.key))
-                      }
-                      meshContextualPreviewActive={Boolean(meshVisibleContextualViewportPreview)}
-                      commandPreviewHighVisibility={commandPreviewHighVisibility}
-                      onOpenPreviewSettings={() => setPreferencesOpen(true)}
-                      surfaceMeshStats={surfaceMeshStats}
-                      surfaceMeshBounds={surfaceMeshBounds}
-                      surfaceMeshSource={surfaceMeshData?.source ?? null}
-                      graphResolution={graphResolution}
-                      onSetGraphResolution={setGraphResolution}
-                      paramResolution={paramResolution}
-                      onSetParamResolution={setParamResolution}
-                      weierstrassResolution={weierstrassResolution}
-                      onSetWeierstrassResolution={setWeierstrassResolution}
-                      lightPreset={lightPreset}
-                      onChangeLightPreset={setLightPreset}
-                      materialRoughness={materialRoughness}
-                      onSetMaterialRoughness={setMaterialRoughness}
-                      materialMetalness={materialMetalness}
-                      onSetMaterialMetalness={setMaterialMetalness}
-                      materialOpacity={materialOpacity}
-                      onSetMaterialOpacity={setMaterialOpacity}
-                      showWireframe={showWireframe}
-                      onToggleWireframe={() => setShowWireframe((v) => !v)}
-                      showPlanes={showPlanes}
-                      onTogglePlanes={toggleCoordinatePlanes}
-                      showGaussMap={showGaussMap}
-                      onToggleGaussMap={() => setShowGaussMap((v) => !v)}
-                      showContours={showContours}
-                      onToggleContours={() => setShowContours((v) => !v)}
-                      contourCount={contourCount}
-                      onSetContourCount={setContourCount}
-                      showPrincipalDirections={showPrincipalDirections}
-                      onTogglePrincipalDirections={() => setShowPrincipalDirections((v) => !v)}
-                      showPrincipalLines={showPrincipalLines}
-                      onTogglePrincipalLines={() => setShowPrincipalLines((v) => !v)}
-                      showCurvatureLines={showCurvatureLines}
-                      onToggleCurvatureLines={() => setShowCurvatureLines((v) => !v)}
-                      canDuplicate={!!unifiedSelectedSceneObject && !unifiedSelectedSceneLocked}
-                      onDuplicate={handleDuplicateUnifiedSelectedObject}
-                      canExport={unifiedCanExportSelectedObject}
-                      onExport={() => {
-                        void handleExportUnifiedSelectedObject();
-                      }}
-                      canBake={unifiedCanBake}
-                      onBake={() => runUnifiedPipelineAction("bake")}
-                      canCompare={unifiedCanSendToCompare}
-                      onCompare={handleSendUnifiedObjectToCompare}
-                      surfaceWorkflowActiveStepId={surfaceWorkflowActiveStepId}
-                      surfaceWorkflowStepStateById={surfaceWorkflowStepStateById}
-                      onPickEqSurface={handlePickEqSurface}
-                      onPickParamSurface={handlePickParamSurface}
-                      graphExpr={graphExpr}
-                      implicitExpr={implicitExpr}
-                      onChangeImplicitExpr={setImplicitExpr}
-                      onLoadDeterministicImplicitSample={handleLoadDeterministicImplicitSample}
-                      implicitResolution={implicitResolution}
-                      meshOperationPreviewBusy={meshOperationPreviewBusy}
-                      meshOperationPreviewError={meshOperationPreviewError}
-                      generateSurfaceStatus={generateSurfaceStatus}
-                      meshOperationPreviewTargetFaces={meshOperationPreviewTargetFaces}
-                      meshOperationPreviewUseDecimate={meshOperationPreviewUseDecimate}
-                      meshLastOperation={meshLastOperation}
-                      meshOperationLastValidation={meshOperationLastValidation}
-                      meshOperationHistory={meshOperationHistory}
-                      surfaceMeshTopologyHistory={surfaceMeshTopologyHistory}
-                      meshOperationError={meshOperationError}
-                      onValidateActiveMesh={handleMeshOperationValidate}
-                      onShowMeshHealthProblems={handleShowMeshHealthProblems}
-                      onValidateLastMeshOperationResult={handleValidateLastMeshOperationResult}
-                      onPreviewMeshOperationHistoryEntry={previewMeshOperationHistoryEntry}
-                      onRestoreMeshOperationHistoryEntry={restoreMeshOperationHistoryEntry}
-                      onPreviewSurfaceMeshTopologyHistoryEntry={previewSurfaceMeshTopologyHistoryEntry}
-                      onRestoreSurfaceMeshTopologyHistoryEntry={restoreSurfaceMeshTopologyHistoryEntry}
-                      onUndoLatestMeshOperation={undoLatestMeshOperation}
-                      canUndoLatestMeshOperation={canUndoLatestMeshOperation}
-                      onSaveMeshOperationPreset={handleSaveMeshOperationPreset}
-                      onChangeMeshOperationPreviewTargetFaces={setMeshOperationPreviewTargetFaces}
-                      onChangeMeshOperationPreviewUseDecimate={setMeshOperationPreviewUseDecimate}
-                      onRunMeshOperationPreview={handleMeshOperationPreviewImplicit}
-                      cgalHealthState={cgalHealthState}
-                      cgalBusy={cgalBusy}
-                      cgalError={cgalError}
-                      cgalTargetEdge={cgalTargetEdge}
-                      cgalAutoTargetEdge={cgalAutoTargetEdge}
-                      onChangeCgalTargetEdge={setCgalTargetEdge}
-                      onChangeCgalAutoTargetEdge={setCgalAutoTargetEdge}
-                      cgalPadFrac={cgalPadFrac}
-                      onChangeCgalPadFrac={setCgalPadFrac}
-                      cgalTriBudgetEnabled={cgalTriBudgetEnabled}
-                      onChangeCgalTriBudgetEnabled={setCgalTriBudgetEnabled}
-                      cgalTriBudget={cgalTriBudget}
-                      onChangeCgalTriBudget={setCgalTriBudget}
-                      cgalAutoEdge={cgalAutoEdge}
-                      cgalTriBudgetEdge={cgalTriBudgetEdge}
-                      cgalRadiusBound={cgalRadiusBound}
-                      onChangeCgalRadiusBound={setCgalRadiusBound}
-                      cgalMinTrisEnabled={cgalMinTrisEnabled}
-                      onChangeCgalMinTrisEnabled={setCgalMinTrisEnabled}
-                      cgalMinTris={cgalMinTris}
-                      onChangeCgalMinTris={setCgalMinTris}
-                      cgalDomainDiag={cgalDomainDiag}
-                      cgalEffectiveEdge={cgalEffectiveEdge}
-                      cgalEstimatedTris={cgalEstimatedTris}
-                      cgalTooHeavy={cgalTooHeavy}
-                      cgalVerbose={cgalVerbose}
-                      onChangeCgalVerbose={setCgalVerbose}
-                      cgalPreflightSamples={cgalPreflightSamples}
-                      onChangeCgalPreflightSamples={setCgalPreflightSamples}
-                      onRunCgalMesh={handleRunCgalMesh}
-                      onStopCgalWorker={handleStopCgalWorker}
-                      cgalMeshInfo={cgalMeshInfo}
-                      isDevMode={isDev}
-                      surfacePerformanceSnapshot={surfacePerformanceSnapshot}
-                      meshPerformanceBenchmarkId={meshPerfBenchmarkId}
-                      meshPerformanceLastBuildMs={meshPerformanceLastBuildMs}
-                      meshPipelineProfile={meshPipelineProfile}
-                      meshDebugMonitor={meshDebugMonitor}
-                      onOpenMeshDeveloperDiagnostics={() => setMeshDebugDrawerOpen(true)}
-                      onClearMeshDebugMonitor={clearMeshDebugMonitor}
-                      onRunMeshPerformanceBenchmark={handleRunMeshPerformanceBenchmark}
-                      onRestoreMeshPerformanceBaseline={handleRestoreMeshPerformanceBaseline}
-                      meshBenchmarkPerformanceSuite={meshBenchmarkPerformanceSuite}
-                      onRunMeshBenchmarkPerformanceSuite={() => {
-                        void handleRunMeshBenchmarkPerformanceSuite();
-                      }}
-                      meshInteractionQualityMode={meshInteractionQualityMode}
-                      onChangeMeshInteractionQualityMode={setMeshInteractionQualityMode}
-                      meshInteractionRestoreDelayMs={meshInteractionRestoreDelayMs}
-                      onChangeMeshInteractionRestoreDelayMs={setMeshInteractionRestoreDelayMs}
-                      meshInteractionPreviewTriangleTarget={meshInteractionPreviewTriangleTarget}
-                      onChangeMeshInteractionPreviewTriangleTarget={setMeshInteractionPreviewTriangleTarget}
-                      meshInteractionHideVertexMarkers={meshInteractionHideVertexMarkers}
-                      onChangeMeshInteractionHideVertexMarkers={setMeshInteractionHideVertexMarkers}
-                      meshInteractionHideFaceNormals={meshInteractionHideFaceNormals}
-                      onChangeMeshInteractionHideFaceNormals={setMeshInteractionHideFaceNormals}
-                      meshInteractionHideCurvatureGlyphs={meshInteractionHideCurvatureGlyphs}
-                      onChangeMeshInteractionHideCurvatureGlyphs={setMeshInteractionHideCurvatureGlyphs}
-                      meshInteractionHideWireframe={meshInteractionHideWireframe}
-                      onChangeMeshInteractionHideWireframe={setMeshInteractionHideWireframe}
-                      meshInspectorStats={surfaceInspectorMeshStats}
-                      deferredSurfaceSampleSetInfo={deferredSurfaceSampleSetInfo}
-                      onPrepareDeferredSurfaceAnalysisData={handlePrepareDeferredSurfaceAnalysisData}
-                      meshTopologyDetails={surfaceInspectorTopologyDetails}
-                      meshAnalyzeDiagnostics={surfaceMeshAnalyzeDiagnostics}
-                      meshBenchmarkVerification={activeSurfaceMeshBenchmarkVerification}
-                      onHighlightMeshAnalyzeBoundary={handleHighlightMeshAnalyzeBoundary}
-                      onHighlightMeshAnalyzeDuplicates={handleHighlightMeshAnalyzeDuplicates}
-                      onPreviewMeshAnalyzeWeld={handlePreviewMeshAnalyzeWeld}
-                      onRecomputeMeshAnalyzeDiagnostics={handleRecomputeMeshAnalyzeDiagnostics}
-                      badTriangleCount={surfaceInspectorBadTriangleCount}
-                      geodesicPathLength={geodesicHeatLength}
-                      curvatureRanges={surfaceInspectorCurvatureRanges}
-                      analysisFocusedSection={analysisFocusedSection}
-                      meshQualityReport={meshQualityReport}
-                      meshQualityBusy={meshQualityBusy}
-                      meshQualityProgress={meshQualityProgress}
-                      meshQualityPhase={meshQualityPhase}
-                      calculusScalarSource={calculusScalarSource}
-                      calculusVectorSource={calculusVectorSource}
-                      calculusActiveVectorField={calculusActiveVectorField}
-                      calculusVectorOverlayEnabled={calculusVectorOverlayEnabled}
-                      calculusVectorDensity={calculusVectorDensity}
-                      calculusVectorScale={calculusVectorScale}
-                      calculusStatus={calculusStatus}
-                      calculusError={calculusError}
-                      activeVectorMagnitudeRange={surfaceInspectorActiveVectorMagnitudeRange}
-                      curvatureLineField={curvatureLineField}
-                      curvatureSeedSource={curvatureSeedSource}
-                      curvatureSeedDensity={curvatureSeedDensity}
-                      curvatureMaxSteps={curvatureMaxSteps}
-                      curvatureMaxLines={curvatureMaxLines}
-                      onRebuildCurvatureLines={() => setCurvatureRebuildToken((t) => t + 1)}
-                      onSelectMeshAnalysisCurvatureField={(field) => {
-                        handleSelectMeshAnalyzeCurvatureField(
-                          field === "K" ? "gaussian" : field === "H" ? "mean" : field
-                        );
-                      }}
-                      probeInfo={probeInfo}
-                      probeCurv={probeCurv}
-                      paramProbeCurv={paramProbeCurv}
-                      probeEnabled={probeEnabled}
-                      onToggleProbe={() => setProbeEnabled((v) => !v)}
-                      showProbeNormal={showProbeNormal}
-                      onToggleProbeNormal={() => setShowProbeNormal((v) => !v)}
-                      showProbeTangentPlane={showProbeTangentPlane}
-                      onToggleProbeTangentPlane={() => setShowProbeTangentPlane((v) => !v)}
-                      showProbeTangents={showProbeTangents}
-                      onToggleProbeTangents={() => setShowProbeTangents((v) => !v)}
-                      inspectEnabled={inspectEnabled}
-                      onToggleInspectEnabled={() => setInspectEnabled((v) => !v)}
-                      onClearInspect={clearInspect}
-                      inspectIdx={inspectIdx}
-                      inspectPos={inspectPos}
-                      inspectNormal={inspectNormal}
-                      inspectMetrics={inspectMetrics}
-                      meshDifferentialGeometrySummary={surfaceMeshCurvatures?.summary ?? null}
-                      meshAnalyzeProbeHistory={meshAnalyzeProbeHistory}
-                      onRestoreMeshAnalyzeProbe={replayMeshAnalyzeProbeHistoryEntry}
-                      onClearMeshAnalyzeProbeHistory={() => {
-                        setMeshAnalyzeProbeHistory([]);
-                        setSurfaceMeshTopologyStatus("Probe history cleared.");
-                      }}
-                      geometryProbeSelectionMode={geometryProbeSelectionMode}
-                      geometryProbeSelectionDetails={geometryProbeSelectionDetails}
-                      geometryProbeHoverSelectionDetails={geometryProbeHoverSelectionDetails}
-                      onPickDomainUV={handlePickDomainUV}
-                      onPickDomainXY={handlePickDomainXY}
-                      onPickDomainXYZ={handlePickDomainXYZ}
-                      graphDomain={activeGraphDomain}
-                      onChangeGraphDomain={handleChangeGraphDomain}
-                      paramDomain={activeParamLikeDomain}
-                      onChangeParamDomain={handleChangeParamDomain}
-                      implicitDomain={activeImplicitDomain}
-                      onChangeImplicitDomain={handleChangeImplicitDomain}
-                      graphDomainPresets={graphDomainPresets}
-                      paramDomainPresets={paramDomainPresets}
-                      implicitDomainPresets={implicitDomainPresets}
-                      onSaveGraphDomainPreset={saveGraphDomainPreset}
-                      onSaveParamDomainPreset={saveParamDomainPreset}
-                      onSaveImplicitDomainPreset={saveImplicitDomainPreset}
-                      onApplyGraphDomainPreset={applyGraphDomainPreset}
-                      onApplyParamDomainPreset={applyParamDomainPreset}
-                      onApplyImplicitDomainPreset={applyImplicitDomainPreset}
-                      onRemoveGraphDomainPreset={removeGraphDomainPreset}
-                      onRemoveParamDomainPreset={removeParamDomainPreset}
-                      onRemoveImplicitDomainPreset={removeImplicitDomainPreset}
-                    />
-                    <details style={{ marginTop: 10 }} open={isInspectDisplayMode}>
-                      <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Tools</summary>
-                      <div style={{ marginTop: 8 }}>
-                        {renderSurfacesInspectorPanel("tools")}
-                      </div>
-                    </details>
-                    </>
+                    renderNativeSurfaceInspector()
                     )
                   ) : (
                     <WorkbookPanel

@@ -1182,3 +1182,21 @@ selection). TypeScript, production compilation, 16 binding/formula checks,
 dependency boundaries and nine distinct Electron checks passed. Evidence and
 remaining qualifications are recorded in
 `docs/evidence/project-workspace-2026-10-08/workbench-delivery.md`.
+
+## Surface module first and dock responsiveness — 2026-10-08
+
+Captured Graph revolutions/open extrusions now open the actual Surfaces module
+viewer, Inspector and computation controls, bound to the owning saved adapter.
+The previous document presentation is available through Custom view. Native
+curvature and local probe/Euler workflows use the captured source, units, ID and
+revision; source edits and Undo retain the existing document command boundary.
+
+Project/Inspector switching no longer recaptures and verifies the full workspace
+or loads hidden library summaries. Stable saved document snapshots also prevent
+panel/probe renders from repeatedly rebuilding the viewer and publishing analysis.
+Project tabs now select and remember the clicked column. The new regression
+profiles fifteen dock switches and checks no saved payload reads, source identity,
+native analysis after profile editing/Undo, Custom view switching and Close.
+Eight distinct Electron flows and eighteen unit checks passed. Detailed timings,
+qualifications and screenshots are in the delivery evidence above; opening and
+explicitly saving/verifying a Project remain separate work from dock switching.

@@ -222,3 +222,40 @@ The source was saved before restart and was not edited during this inspection.
 See [actual running layout](surface-inspector-running.png) and
 [build identity](surface-inspector-build-identity.json). The normal-profile test
 brings this follow-up's distinct Electron checks to nine.
+
+### Surface module first and responsive docks
+
+The default captured Surface view now renders the actual Surfaces module viewer,
+Inspector, computation panel and curvature display controls with their existing
+handlers. The saved adapter remains the owner: the native definition retains its
+ID, revision, structural hash, captured expressions, units and lineage. Custom
+view is an explicit toolbar button; switching back returns to Surface module view.
+The owning Source/Object editor and Project tree remain available beside it.
+
+Two causes of repeated work were removed. Dock reopening no longer captures,
+replays and hashes the entire live Project or prepares hidden library summaries.
+Kernel document queries return fresh immutable clones; saved workbenches now hold
+a stable snapshot until their source changes, avoiding repeated viewer rebuilds
+and analysis publication during panel/probe updates. Left and right Project tabs
+open their own column, remember that placement, and Inspector hides the right
+Project dock without replacing the viewer or owning adapter.
+
+Validation: TypeScript and production compilation passed; 18 unit checks and
+dependency boundaries passed. Eight distinct Electron flows passed: all three
+native-workbench regressions, Custom Inspector/restart, desktop/phone layout,
+the new native module flow and two normal Surfaces flows. The module regression
+checks fifteen dock switches with no saved Project/library payload reads, exact
+source identity, unchanged saved bytes, native field computation and Euler probe
+evidence. Curvature matches -1/(a² cosh(x/a)⁴) at the actual sampled coordinate
+before and after a radius-two source edit; Undo restores the original hash.
+It also checks Custom/module switching and Project Close without renderer errors.
+
+Click-to-visible dock timings ranged from 0.30–0.62 seconds in initial isolated
+runs, and 0.70–1.20 seconds in the final run while native desktop inspection was
+also active. These include Playwright synchronization and software rendering;
+they are not raw handler timings or a claim that every previous intermittent
+hang is reproduced. The CPU profile and payload-read regression replace the
+earlier unqualified inference that Close alone proved the freeze resolved.
+Evidence: [default module layout](surface-module-default.png),
+[switch timings](surface-module-switch-times.json), and
+[CPU summary](surface-module-switch-profile.json).
