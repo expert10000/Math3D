@@ -11,11 +11,11 @@ import { DocumentViewport } from "./DocumentViewport";
 import { surfaceDocumentBinding } from "./surfaceDocumentBinding";
 import { documentPresentationKey, readDocumentPresentation, saveDocumentPresentation } from "./documentPresentation";
 
-export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, projectTitle, documentTitle, related, onOpenRelated, onChange, onClose, onOpenProject, moduleView, customView = false, onToggleCustomView, children }:
+export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, projectTitle, documentTitle, related, onOpenRelated, onChange, onClose, onOpenProject, moduleView, customView = false, onSelectView, children }:
   { session: AdditionalProjectSession; workspaceVersion: number; projectId?: string; projectTitle?: string; documentTitle?: string;
     related?: ReturnType<typeof import("./relatedDocuments").relatedDocuments>; onOpenRelated?: (id: string, module: import("@math3d/core").KernelWorkspaceModule) => void;
     onChange: () => void; onClose: () => void; onOpenProject: () => void; children?: React.ReactNode;
-    moduleView?: { viewport: React.ReactNode; inspector: React.ReactNode; tools: React.ReactNode }; customView?: boolean; onToggleCustomView?: () => void }) {
+    moduleView?: { viewport: React.ReactNode; inspector: React.ReactNode; tools: React.ReactNode }; customView?: boolean; onSelectView?: (view: "surface" | "custom") => void }) {
   const uiKey = documentPresentationKey(projectId ?? "project", session.original.expected.id);
   const [version, setVersion] = useState(0), [draft, setDraft] = useState(() => session.sourceDraft ?? JSON.stringify(session.document().source, null, 2));
   const [error, setError] = useState<string | null>(null), [presentation, setPresentation] = useState(session.presentation);
@@ -54,8 +54,10 @@ export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, p
   };
   const updateView = (value: Partial<SurfaceDocumentView>) => { session.surfaceView = readSurfaceDocumentView({ ...session.surfaceView, ...value }); setSurfaceView(session.surfaceView); };
   const updateWireframe = (value: boolean) => { session.wireframe = value; setWireframe(value); };
-  const nativeInspector = document.format === "math3d.surface-document" && prepared.binding && presentation === "surface";
-  const showModule = !!moduleView && !!nativeInspector && !customView;
+  // Selecting the document opens its module. A remembered custom rendering
+  // choice only takes effect after the user explicitly selects Custom.
+  const showModule = !!moduleView && !customView;
+  const nativeInspector = document.format === "math3d.surface-document" && !!prepared.binding && (showModule || presentation === "surface");
   useEffect(() => { setSurfaceView(session.surfaceView); setWireframe(session.wireframe); }, [session, customView]);
   const visibleProbe = probeInfo?.hash === document.identity.structuralHash ? probeInfo.value : null;
   const visibleCurvature = curvature?.hash === document.identity.structuralHash ? curvature.value : null;
@@ -70,8 +72,11 @@ export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, p
       <span data-testid="project-source-revision">Revision {document.identity.revision}</span>
       <button data-testid="project-source-undo" disabled={!history.undoDepth} onClick={() => action(() => session.undo())}>Undo document</button>
       <button data-testid="project-source-redo" disabled={!history.redoDepth} onClick={() => action(() => session.redo())}>Redo document</button>
-      {moduleView && <button data-testid="document-custom-view" aria-pressed={customView} onClick={onToggleCustomView}>{customView ? "Surface module view" : "Custom view"}</button>}
-      {prepared.binding && <label>View <select data-testid="document-view-choice" value={presentation} onChange={event => { session.presentation = event.target.value as typeof presentation; setPresentation(session.presentation); setProbe(false); setProbeResult(null); changed(); }}><option value="surface">Surface</option><option value="sampled">Sampled</option></select></label>}
+      {moduleView && <div className="document-view-switch" role="group" aria-label="Document view">
+        <button data-testid="document-surface-view" aria-pressed={!customView} title="Use the Surfaces module viewer, tools and Inspector" onClick={() => onSelectView?.("surface")}>Surface</button>
+        <button data-testid="document-custom-view" aria-pressed={customView} title="Use the custom viewer and document controls" onClick={() => onSelectView?.("custom")}>Custom</button>
+      </div>}
+      {prepared.binding && !showModule && <label>Custom rendering <select data-testid="document-view-choice" value={presentation} onChange={event => { session.presentation = event.target.value as typeof presentation; setPresentation(session.presentation); setProbe(false); setProbeResult(null); changed(); }}><option value="surface">Surface</option><option value="sampled">Sampled</option></select></label>}
       <button data-testid="project-source-back-to-module" onClick={onClose}>{session.original.module === "surface" ? "Back to normal Surfaces" : "Back to module"}</button>
     </>}
     viewport={showModule ? <div style={{ width: "100%", height: "100%" }} data-testid="document-viewport" data-view="surface" data-workbench="module" data-document-id={document.identity.id} data-source-hash={document.identity.structuralHash}>{moduleView!.viewport}</div> : prepared.view ? <DocumentViewport view={prepared.view} binding={prepared.binding} presentation={presentation} camera={session.camera} cameraToken={version}

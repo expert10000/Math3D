@@ -23,6 +23,7 @@ import { surfaceDocumentBinding } from "./workspace/surfaceDocumentBinding";
 import { savedSurfaceDefinition } from "./workspace/savedSurfaceDefinition";
 import { documentPresentationKey, readDocumentPresentation, saveDocumentPresentation } from "./workspace/documentPresentation";
 import { SavedDocumentWorkbench } from "./workspace/SavedDocumentWorkbench";
+import { SavedSurfaceModuleFrame, SavedSurfaceModuleSource, SurfaceProjectDock } from "./workspace/SavedSurfaceModuleFrame";
 import { DocumentWorkspaceHost } from "./workspace/DocumentWorkspaceHost";
 import { MeshDocumentViewport } from "./workspace/MeshDocumentViewport";
 import { ProjectNavigation } from "./workspace/projectNavigation";
@@ -11397,6 +11398,7 @@ const App: React.FC = () => {
   const activeSavedSurfaceDocument = useMemo(() => activeSavedSurfaceSession?.document(), [activeSavedSurfaceSession, additionalVersion]);
   const activeSavedSurfaceBinding = useMemo(() => activeSavedSurfaceDocument?.format === "math3d.surface-document"
     ? surfaceDocumentBinding(activeSavedSurfaceDocument) : null, [activeSavedSurfaceDocument, additionalVersion]);
+  const savedSurfaceModuleActive = !!activeSavedSurfaceBinding && !savedSurfaceCustomView;
   const [curvePresetId, setCurvePresetId] = useState<string>("circle2d");
   const [curveCustomXExpr, setCurveCustomXExpr] = useState("cos(t)");
   const [curveCustomYExpr, setCurveCustomYExpr] = useState("sin(2*t)");
@@ -75813,7 +75815,7 @@ case "mobius":
     top: isPhoneLandscapeLayout ? 96 : undefined,
     bottom: showStatusBar ? 54 : 10,
     zIndex: 2500,
-    display: additionalActiveId ? "none" : "grid",
+    display: additionalActiveId && !savedSurfaceModuleActive ? "none" : "grid",
     gridTemplateColumns: isPhoneLandscapeLayout ? "1fr" : "repeat(5, minmax(0, 1fr))",
     gridTemplateRows: isPhoneLandscapeLayout ? "repeat(5, minmax(0, 1fr))" : undefined,
     gap: 4,
@@ -76582,11 +76584,13 @@ case "mobius":
       ]
     : null;
   const objectTabContextLabel =
-    surfacesPanelState === "work" && surfacesLeftTab === "object" && unifiedSelectedNode
+    savedSurfaceModuleActive
+      ? `Surface / ${activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId ?? ""]?.title ?? "Saved Surface"}`
+      : surfacesPanelState === "work" && surfacesLeftTab === "object" && unifiedSelectedNode
       ? `Object / ${selectedObjectRoleLabel} / ${unifiedSelectedNode.name}`
       : surfacesWorkBreadcrumb;
   const objectTabContextDetail =
-    surfacesPanelState === "work" &&
+    savedSurfaceModuleActive ? `Saved document · revision ${activeSavedSurfaceDocument?.identity.revision}` : surfacesPanelState === "work" &&
     surfacesLeftTab === "object" &&
     unifiedSelectedNode?.parentId &&
     unifiedObjectModel.nodeById.get(unifiedSelectedNode.parentId)?.name
@@ -76595,7 +76599,11 @@ case "mobius":
   const surfacesLayoutUsesLeftBrowseWork =
     surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3" || surfacesLayoutVariant === "layout4";
   const surfacesBrowseUsesCardPresets = surfacesLayoutVariant === "layout3" || surfacesLayoutVariant === "layout4";
-  const headerParamSourceKind = paramSurfaceSourceKindFor(paramSurfaceId);
+  // Catalog context chooses the family shown in the gallery; the saved binding still owns the geometry.
+  const surfaceGalleryContextId: ParamSurfaceId = activeSavedSurfaceBinding && activeSavedSurfaceDocument?.format === "math3d.surface-document"
+    ? activeSavedSurfaceDocument.source.definition.familyId === "graph2d.revolution" ? "rotationalGraph" : "sweepLinearExtrusion"
+    : paramSurfaceId;
+  const headerParamSourceKind = paramSurfaceSourceKindFor(surfaceGalleryContextId);
   const headerIsSurface = isSurfaceDatasetKind(datasetKind);
   const headerIsParamFormula = headerIsSurface && surfaceViewerKind === "param" && headerParamSourceKind === "formula";
   const headerIsParamSpline = headerIsSurface && surfaceViewerKind === "param" && headerParamSourceKind === "spline";
@@ -77177,8 +77185,12 @@ case "mobius":
     surfaceViewerKind !== "weierstrass" &&
     surfaceViewerKind !== "mesh" &&
     surfaceViewerKind !== "complex";
+  const openSavedSurfaceSource = () => {
+    setSurfacesPanelState("work"); setSurfacesLeftTab("object"); setSurfacesWorkGalleryOpen(false);
+    window.dispatchEvent(new CustomEvent("math3d:hide-project-dock", { detail: "left" }));
+  };
   const surfacesQuickEditLabel =
-    datasetKind === "volume"
+    savedSurfaceModuleActive ? "Edit saved Surface" : datasetKind === "volume"
       ? (volumePresetId === "custom" ? "Already custom" : "Edit custom F(x,y,z)")
       : surfaceViewerKind === "graph"
       ? "Edit custom z=f(x,y)"
@@ -77188,7 +77200,7 @@ case "mobius":
           ? "Edit custom σ(u,v)"
           : null;
   const surfacesQuickEditEnabled =
-    datasetKind === "volume"
+    savedSurfaceModuleActive ? true : datasetKind === "volume"
       ? volumePresetId !== "custom"
       : surfaceViewerKind === "graph"
       ? canEditGraphAsCustom || graphSurfaceId === "graph_custom"
@@ -77203,7 +77215,7 @@ case "mobius":
     setSurfacesWorkGalleryOpen(false);
   };
   const handleSurfacesQuickEdit =
-    datasetKind === "volume"
+    savedSurfaceModuleActive ? openSavedSurfaceSource : datasetKind === "volume"
       ? () => {
           if (nativeVolumeActive) {
             prepareSurfaceCustomEditing();
@@ -78284,7 +78296,7 @@ case "mobius":
       setSavedSurfaceCustomView(false);
       setAdditionalActiveId(id); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null);
       setRestoredComplexAdapter(null); setRestoredVolumeAdapter(null); setRestoredTopologyAdapter(null);
-      if (module === "surface") { setDatasetKind("surface"); setSurfaceViewerKind("param"); }
+      if (module === "surface") { setDatasetKind("surface"); setSurfaceViewerKind("param"); setSurfacesPanelState("browse"); setSurfacesWorkGalleryOpen(false); }
       setMode(module === "curve" ? "curves" : module === "surface" ? "surfaces" : module === "topology" ? "topology" : "geometry");
       setAdditionalVersion((v) => v + 1); return true;
     }
@@ -78520,8 +78532,8 @@ case "mobius":
   };
 
   const savedMeshActive = activeKernelModule === "mesh" && !additionalActiveId && Boolean(activeProjectDocumentId && meshDocumentAdapterRef.current && activeProjectDocumentId === meshDocumentAdapterRef.current.document().identity.id && restoredProjectRef.current?.meshes.has(activeProjectDocumentId));
-  const hasSavedDocumentViewport = Boolean(additionalActiveId) || savedMeshActive;
-  const workspaceHeaderContext = hasSavedDocumentViewport
+  const hasSavedDocumentViewport = (Boolean(additionalActiveId) && !savedSurfaceModuleActive) || savedMeshActive;
+  const workspaceHeaderContext = activeProjectDocumentId
     ? `${activeNotebookProjectRef.current?.metadata.title ?? "Project"} / ${savedMeshActive ? "Mesh" : restoredProjectRef.current?.additional.get(additionalActiveId!)?.original.module ?? "Document"} / ${activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId ?? ""]?.title ?? (savedMeshActive ? meshDocumentAdapterRef.current?.document().metadata.label : "Saved document")}`
     : headerContextLabel;
   const navigateProjectBack = () => { const location = projectNavigationRef.current.back(); if (location) navigateRestoredDocument(location.id, location.module); };
@@ -78858,6 +78870,7 @@ case "mobius":
                         label: activeNotebookProjectRef.current?.metadata.documents?.[activeSavedSurfaceDocument.identity.id]?.title ?? activeSavedSurfaceDocument.metadata.title,
                         formula: `${activeSavedSurfaceDocument.source.definition.familyId === "graph2d.revolution" ? "Revolution" : "Extrusion"} of profile ${Object.entries(activeSavedSurfaceDocument.source.definition.expressions ?? {}).map(([name, expression]) => `${name} = ${expression}`).join(", ")}`,
                         note: "Uses the captured Graph profile and construction. Edit their formulas and ranges in Source/Object.",
+                        displayStats: surfaceSampleSet?.meshData?.reduce((stats, mesh) => ({ vertCount: stats.vertCount + mesh.positions.length / 3, triCount: stats.triCount + (mesh.indices?.length ?? mesh.positions.length / 3) / 3 }), { vertCount: 0, triCount: 0 }),
                       } : undefined}
                       surfaceMeshLabel={surfaceMeshLabel}
                       meshActiveAnalysisResult={meshActiveAnalysisResult}
@@ -79913,7 +79926,7 @@ case "mobius":
                   )}
                 </div>
               )}
-              {mode === "surfaces" && !additionalActiveId && !activeGraph2DTarget && surfaceViewerKind !== "complex" && !isPhoneViewerPriorityLayout && (
+              {mode === "surfaces" && (!additionalActiveId || savedSurfaceModuleActive) && !activeGraph2DTarget && surfaceViewerKind !== "complex" && !isPhoneViewerPriorityLayout && (
                 <div style={topNavContextBarStyle}>
                   <div style={surfacesModeStripWrapStyle}>
                     <div style={surfacesModeGroupStyle("panel")}>
@@ -79933,6 +79946,7 @@ case "mobius":
                             setSurfacesPanelState("work");
                             setSurfacesLeftTab(tab);
                             setSurfacesWorkGalleryOpen(false);
+                            if (savedSurfaceModuleActive) window.dispatchEvent(new CustomEvent("math3d:hide-project-dock", { detail: "left" }));
                           }}
                           disabled={disabled}
                           aria-pressed={active}
@@ -80328,7 +80342,7 @@ case "mobius":
           )}
         </div>
 
-        {!hasSavedDocumentViewport && !activeGraph2DTarget && !isSurfacePreviewMode && !isPhoneViewerPriorityLayout && <div data-testid="global-module-controls" style={styles.controls}>
+        {!hasSavedDocumentViewport && !activeSavedSurfaceBinding && !activeGraph2DTarget && !isSurfacePreviewMode && !isPhoneViewerPriorityLayout && <div data-testid="global-module-controls" style={styles.controls}>
           {(mode === "mobius" || (mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "complex")) && (
             <div
               style={{
@@ -81188,7 +81202,7 @@ case "mobius":
         </div>}
       </header>
       <div id="project-gallery-host" data-testid="project-gallery-host" />
-      {additionalActiveId && restoredProjectRef.current?.additional.get(additionalActiveId) && <SavedDocumentWorkbench customView={savedSurfaceCustomView} onToggleCustomView={() => setSavedSurfaceCustomView(value => !value)}
+      {additionalActiveId && !savedSurfaceModuleActive && restoredProjectRef.current?.additional.get(additionalActiveId) && <SavedDocumentWorkbench customView={savedSurfaceCustomView} onSelectView={view => setSavedSurfaceCustomView(view === "custom")}
         moduleView={activeSavedSurfaceBinding ? { viewport: <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>{activeSurfaceCurvatureField && activeSurfaceComputation === "curvature-field" && renderNativeSurfaceDisplay()}<div style={{ flex: 1, minHeight: 0 }}>{renderNativeParamSurfaceViewer()}</div></div>, inspector: renderNativeSurfaceInspector(), tools: <>{renderNativeSurfaceComputation()}<details><summary>Advanced Surface tools</summary>{renderSurfacesInspectorPanel("analysis")}</details></> } : undefined}
         workspaceVersion={additionalVersion} key={additionalActiveId} related={relatedDocuments(restoredProjectRef.current?.workspace, additionalActiveId, restoredProjectRef.current?.context().documents)} onOpenRelated={navigateRestoredDocument} projectId={activeNotebookProjectRef.current?.identity.id} projectTitle={activeNotebookProjectRef.current?.metadata.title} onOpenProject={() => setProjectsOpen(true)} documentTitle={activeNotebookProjectRef.current?.metadata.documents?.[additionalActiveId]?.title} session={restoredProjectRef.current.additional.get(additionalActiveId)!} onChange={() => setAdditionalVersion((v) => v + 1)} onClose={() => {
         if (additionalSurface?.format === "math3d.surface-document") openNormalSurfacesWorkspace();
@@ -81544,7 +81558,7 @@ case "mobius":
         onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis}
         creationHint="Uses saved formulas and ranges at the selected analysis resolution, independent of display resolution. Earlier Meshes and results remain available. Projects → Save project keeps them."
       />}
-      {!hasSavedDocumentViewport && (<div
+      {!hasSavedDocumentViewport && (<SavedSurfaceModuleFrame session={savedSurfaceModuleActive ? activeSavedSurfaceSession ?? null : null} title={activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId ?? ""]?.title ?? "Saved Surface"} related={savedSurfaceModuleActive ? relatedDocuments(restoredProjectRef.current?.workspace, additionalActiveId!, restoredProjectRef.current?.context().documents) : undefined} onOpenRelated={navigateRestoredDocument} onChange={() => setAdditionalVersion(value => value + 1)} onCustom={() => setSavedSurfaceCustomView(true)} onClose={openNormalSurfacesWorkspace}><div
         data-testid="module-workspace"
         style={{
           ...styles.wrap,
@@ -81568,7 +81582,7 @@ case "mobius":
             : null),
         }}
       >
-        {additionalActiveId ? null : activeGraph2DTarget ? <PromotedDocumentWorkspace key={`${activeGraph2DTarget.document.identity.id}/${activeGraph2DTarget.document.identity.revision}`}
+        {additionalActiveId && !savedSurfaceModuleActive ? null : activeGraph2DTarget ? <PromotedDocumentWorkspace key={`${activeGraph2DTarget.document.identity.id}/${activeGraph2DTarget.document.identity.revision}`}
           promotion={activeGraph2DTarget} source={graph2dDocument}
           onEdit={acceptGraph2DPromotion} onClose={() => setActiveGraph2DTargetId(null)}
           onRegenerate={(action) => regenerateGraph2DTarget(activeGraph2DTarget.document.identity.id, action)}
@@ -81649,6 +81663,7 @@ case "mobius":
             {/* LEFT */}
             <div
               data-testid="surface-left-panel"
+              className={savedSurfaceModuleActive ? "native-module-panel" : undefined}
               style={{
                 ...styles.panelLeft,
                 width: isSurfaceStackedLayout ? "100%" : surfaceLeftPanelWidth,
@@ -81662,6 +81677,8 @@ case "mobius":
                 ...surfaceLeftDrawerStyle,
               }}
             >
+              {savedSurfaceModuleActive && <SurfaceProjectDock placement="left" />}
+              <div className="native-module-panel-content">
               {surfacePanelsAsDrawers && (
                 <div style={responsiveDrawerHeaderStyle}>
                   <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>Scene</div>
@@ -81693,6 +81710,7 @@ case "mobius":
               )}
               {surfacesLayoutUsesLeftBrowseWork && (
                 <SurfacesControls
+                  activeProjectSurfaceTitle={savedSurfaceModuleActive ? activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId ?? ""]?.title ?? "Saved Surface" : undefined}
                   panelMode={surfacesPanelState}
                   browsePresetLayout={surfacesBrowseUsesCardPresets ? "cards" : "chips"}
                   showBrowseContextBar={false}
@@ -81703,7 +81721,7 @@ case "mobius":
                   onChangeDatasetKind={setDatasetKind}
                   surfaceId={activeEqSurfaceId}
                   onChangeSurface={handlePickEqSurface}
-                  paramId={paramSurfaceId}
+                  paramId={surfaceGalleryContextId}
                   onChangeParamId={handlePickParamSurface}
                   activeWeierstrassPreset={activeWeierstrassPreset}
                   onApplyWeierstrassPreset={applyWeierstrassPreset}
@@ -81740,6 +81758,7 @@ case "mobius":
                   onChangeRotationalProfileZExpr={setRotationalProfileZExpr}
                   onChangeRotationalProfilePointsText={setRotationalProfilePointsText}
                   onEditRotationalProfile={() => {
+                    if (savedSurfaceModuleActive) { openSavedSurfaceSource(); return; }
                     setParamSurfaceOverlayTab("rotational");
                     setParamSurfaceOverlayOpen(true);
                   }}
@@ -83151,6 +83170,8 @@ case "mobius":
               )}
               {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "object" && (
                 <>
+                  {savedSurfaceModuleActive && activeSavedSurfaceSession && <SavedSurfaceModuleSource key={activeSavedSurfaceDocument?.identity.structuralHash} session={activeSavedSurfaceSession} onChange={() => setAdditionalVersion(value => value + 1)} />}
+                  <div hidden={savedSurfaceModuleActive}>
                   <SurfacesObjectPanel
                     currentFamilyLabel={objectTabContextLabel}
                     selectedNode={unifiedSelectedNode}
@@ -83438,6 +83459,7 @@ case "mobius":
                       )}
                     </div>
                   )}
+                  </div>
                 </>
               )}
               {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "theory" && (
@@ -85274,6 +85296,7 @@ case "mobius":
                   <SageSymbolicPanel compact />
                 </div>
               )}
+              </div>
             </div>
 
             <div
@@ -86853,6 +86876,7 @@ case "mobius":
                           height: largeSurfaceMeshFullPreviewJob ? undefined : "100%",
                         }}
                       >
+                        {savedSurfaceModuleActive && <><div className="document-project-slot document-project-expanded" data-placement="middle" /><div className="document-project-slot document-project-expanded" data-placement="all" /></>}
                         {openedCurveConstruction && surfaceMeshData?.source.kind === "derivedSurface" &&
                           surfaceMeshData.source.sourceSurfaceId === openedCurveConstruction.record.target.identity.id && (
                           <div data-testid="curve-construction-surface-lineage" style={{ position: "absolute", right: 10, top: 10, zIndex: 25, padding: 7, borderRadius: 7, background: "#eff6ff", border: "1px solid #93c5fd", fontSize: 11 }}>
@@ -87172,7 +87196,7 @@ case "mobius":
                           </div>
                         )}
                         {surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? (
-                        renderNativeParamSurfaceViewer()
+                        savedSurfaceModuleActive ? <div data-testid="document-viewport" data-workbench="module" data-view="surface" data-document-id={activeSavedSurfaceDocument?.identity.id} data-source-hash={activeSavedSurfaceDocument?.identity.structuralHash} style={{ width: "100%", height: "100%" }}>{renderNativeParamSurfaceViewer()}</div> : renderNativeParamSurfaceViewer()
                         ) : (
                         <SurfaceViewer
                               surfaceId={primarySurfaceId}
@@ -89020,6 +89044,7 @@ case "mobius":
             {showSurfacesRightPanel && (
             <div
               data-testid="surface-right-panel"
+              className={savedSurfaceModuleActive ? "native-module-panel" : undefined}
               style={{
                 ...styles.panelLeft,
                 width: isSurfaceStackedLayout ? "100%" : surfaceRightPanelWidth,
@@ -89038,6 +89063,8 @@ case "mobius":
                   </button>
                 </div>
               )}
+              {savedSurfaceModuleActive && <SurfaceProjectDock placement="right" />}
+              <div className="native-module-panel-content">
               {isPresentDisplayMode ? (
                 <div style={{ display: "grid", gap: 8 }}>
                   <div style={{ fontSize: 12, fontWeight: 700 }}>Inspector (compact)</div>
@@ -89212,7 +89239,10 @@ case "mobius":
                         onExportProbes={handleExportVolumeProbes}
                       />
                     ) : (
-                    renderNativeSurfaceInspector()
+                    <div data-testid={savedSurfaceModuleActive ? "document-module-inspector" : undefined} data-document-id={activeSavedSurfaceDocument?.identity.id} data-source-hash={activeSavedSurfaceDocument?.identity.structuralHash}>
+                      {renderNativeSurfaceInspector()}
+                      {savedSurfaceModuleActive && additionalSurface?.format === "math3d.surface-document" && <SavedMeshAnalysisPanel resolutionSupported={supportsSavedSurfaceResolution(additionalSurface)} readMesh={readSavedStudyMesh} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface} meshes={savedSurfaceMeshChoices} onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis} />}
+                    </div>
                     )
                   ) : (
                     <WorkbookPanel
@@ -89329,6 +89359,7 @@ case "mobius":
                   )}
                 </>
               )}
+              </div>
             </div>
             )}
           </div>
@@ -109813,7 +109844,7 @@ case "mobius":
             </div>
           </>
         )}
-      </div>)}
+      </div></SavedSurfaceModuleFrame>)}
       {quantumScenePreview && <QuantumScenePreview opened={quantumScenePreview} onClose={() => setQuantumScenePreview(null)} />}
       {workflowActionOverlayModel && !cleanScreenshotSurfaceActive && (
         <WorkflowActionOverlayDialog
@@ -111179,6 +111210,7 @@ const SURFACE_GALLERY_CARDS: SurfaceGalleryCard[] = [
 ];
 
 type SurfacesControlsProps = {
+  activeProjectSurfaceTitle?: string;
   panelMode: "browse" | "work";
   browsePresetLayout?: "chips" | "cards";
   showBrowseContextBar?: boolean;
@@ -111241,6 +111273,7 @@ type SurfacesControlsProps = {
 };
 
 const SurfacesControls: React.FC<SurfacesControlsProps> = ({
+  activeProjectSurfaceTitle,
   panelMode,
   browsePresetLayout = "chips",
   showBrowseContextBar = true,
@@ -112097,6 +112130,10 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
       {panelMode === "browse" && datasetKind !== "volume" && viewerKind !== "mesh" && viewerKind !== "complex" && (
         <div style={bandStyle}>
           <div style={bandTitleStyle}>Preset gallery</div>
+          {activeProjectSurfaceTitle && <div data-testid="surface-gallery-project-selection" style={{ border: "1px solid var(--workspace-control-active-border)", background: "var(--workspace-control-active-bg)", padding: "8px 10px", borderRadius: 8 }}>
+            <strong>{activeProjectSurfaceTitle} · Project Surface</strong>
+            <div style={{ fontSize: 11 }}>Saved document active. Selecting a preset opens the normal Surfaces workspace.</div>
+          </div>}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
             <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>
               Choose subtype, then choose a preset.
@@ -112199,6 +112236,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             {viewerKind === "param" && (
               <ParamSurfacesButtons
                 paramId={paramId}
+                suppressPresetSelection={!!activeProjectSurfaceTitle}
                 onChangeParamId={(id) => {
                   onChangeParamId(id);
                 }}
@@ -112717,6 +112755,7 @@ const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({
 };
 
 type ParamSurfacesButtonsProps = {
+  suppressPresetSelection?: boolean;
   paramId: ParamSurfaceId;
   onChangeParamId: (p: ParamSurfaceId) => void;
   rotationalProfileMode?: RotationalProfileMode;
@@ -112736,6 +112775,7 @@ type ParamSurfacesButtonsProps = {
 };
 
 const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
+  suppressPresetSelection = false,
   paramId,
   onChangeParamId,
   rotationalProfileMode = "formula",
@@ -113006,7 +113046,7 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
       {presetLayout === "cards" ? (
         <div className="surface-card-grid" data-testid="param-preset-grid" data-gallery-grid="true">
           {sortedEntries.map((s) => {
-            const active = paramId === s.id;
+            const active = !suppressPresetSelection && paramId === s.id;
             const formulaLine = formulaForParamSurface(s.id, s.formula);
             const sourceTag =
               sourceKind === "spline"
@@ -113119,9 +113159,9 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
               style={{
                 padding: "6px 10px",
                 borderRadius: 6,
-              border: "1px solid " + (paramId === s.id ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"),
-              background: paramId === s.id ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)",
-                fontWeight: paramId === s.id ? 600 : 400,
+              border: "1px solid " + (!suppressPresetSelection && paramId === s.id ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"),
+              background: !suppressPresetSelection && paramId === s.id ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)",
+                fontWeight: !suppressPresetSelection && paramId === s.id ? 600 : 400,
                 cursor: "pointer",
                 whiteSpace: "nowrap",
               }}

@@ -1187,7 +1187,7 @@ remaining qualifications are recorded in
 
 Captured Graph revolutions/open extrusions now open the actual Surfaces module
 viewer, Inspector and computation controls, bound to the owning saved adapter.
-The previous document presentation is available through Custom view. Native
+The previous document presentation is available through Custom. Native
 curvature and local probe/Euler workflows use the captured source, units, ID and
 revision; source edits and Undo retain the existing document command boundary.
 
@@ -1200,3 +1200,42 @@ native analysis after profile editing/Undo, Custom view switching and Close.
 Eight distinct Electron flows and eighteen unit checks passed. Detailed timings,
 qualifications and screenshots are in the delivery evidence above; opening and
 explicitly saving/verifying a Project remain separate work from dock switching.
+
+### Explicit Surface / Custom selection
+
+Opening the Catenoid Project shows its document tree in the left Project dock.
+Selecting its Surface document opens the existing Surfaces module viewer in the
+middle and the module Inspector on the right, inside the normal resizable
+Surfaces workspace. It must not render the custom DocumentWorkspaceHost shell
+under a Surface label. Project embeds into the module's left dock; Surface
+controls returns to its normal gallery/controls. Object edits and Analysis use
+the existing module panel actions, with the saved source adapter bound to them.
+
+Two compact buttons above the viewport identify the active workspace:
+**Surface** selects the full module layout and **Custom** selects the document's
+custom viewer/Inspector in its separate document host. Selecting an already
+active button keeps that workspace.
+Both use the same owning saved adapter, source generation, edits and history.
+Graph and Mesh rows continue to select their own owning documents.
+
+Every document activation, including return from Graph/Mesh and cold resume,
+defaults to Surface when a qualified native binding exists. A remembered
+Surface/Sampled rendering choice applies only inside Custom; it cannot bypass
+the module default. Custom retains that rendering choice and the existing
+camera/display preferences. The source draft survives workspace switches.
+
+Acceptance covers explicit and repeated Surface/Custom selections, exactly one
+active viewer, native module tools/Inspector, unchanged source ID/hash and draft,
+Graph/Mesh navigation, and cold restart with a previous Sampled custom choice.
+
+The gallery identifies the active saved Surface by its Project title. Its catalog
+family follows the captured construction; an unrelated global preset must not
+appear selected. **Edit saved Surface** and **Edit profile** open the owning
+Surface's Object controls. The module Inspector uses the active display geometry
+for display counts. Mesh document IDs, topology and diagnostics belong to the
+selected saved Mesh and must not leak into a Surface from a previous workspace.
+
+Implemented and checked on 2026-10-08. Five focused desktop flows passed,
+including the complete Catenoid → Mesh → Surface → save → restart journey.
+Screenshots, native analysis checks and measured dock-switch times are recorded
+in [the full module delivery evidence](docs/evidence/project-workspace-2026-10-08/surface-primary-delivery.md).

@@ -9651,7 +9651,7 @@ export type MeshAnalyzeDiagnosticsSummary = MeshDiagnosticsAnalysisPayload;
 
 export type SurfacesRightPanelProps = {
   documentDomainReadOnly?: boolean;
-  documentDefinition?: { label: string; formula: string; note: string };
+  documentDefinition?: { label: string; formula: string; note: string; displayStats?: { vertCount: number; triCount: number } };
   viewerKind: SurfaceViewerKind;
   meshKernelDocument: MeshDocument | null;
   meshAnalysisActive: boolean;
@@ -11637,8 +11637,10 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           <div style={{ display: "grid", gap: 2 }}>
             <strong>{activeMeta.label}</strong>
             <span>{isMeshViewer ? "Surface / Mesh" : activeMeta.formula}</span>
-            <span>{surfaceMeshStats ? `${surfaceMeshStats.vertCount.toLocaleString()} V · ${surfaceMeshStats.triCount.toLocaleString()} F` : "Geometry pending"}</span>
-            <span style={{ color: meshHealthStatusLabel === "Healthy" ? "#166534" : "#475467" }}>{meshHealthStatusDisplay} · pick {stickyPickLabel}</span>
+            <span>{documentDefinition
+              ? documentDefinition.displayStats ? `Display: ${documentDefinition.displayStats.vertCount.toLocaleString()} V · ${documentDefinition.displayStats.triCount.toLocaleString()} F` : "Display geometry pending"
+              : surfaceMeshStats ? `${surfaceMeshStats.vertCount.toLocaleString()} V · ${surfaceMeshStats.triCount.toLocaleString()} F` : "Geometry pending"}</span>
+            {!documentDefinition && <span style={{ color: meshHealthStatusLabel === "Healthy" ? "#166534" : "#475467" }}>{meshHealthStatusDisplay} · pick {stickyPickLabel}</span>}
           </div>
         }
       >
@@ -11903,7 +11905,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               </div>
             )}
 
-            <div style={inspectorSectionCard}>
+            {!documentDefinition && <div style={inspectorSectionCard}>
               <div style={inspectorSectionTitle}>Mesh Details</div>
               <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
                 {meshKernelDocument && (
@@ -11952,7 +11954,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 <div><strong>Watertight:</strong> {watertight == null ? "unknown" : watertight ? "yes" : "no"}</div>
                 <div><strong>Normal status:</strong> {normalStatus}</div>
               </div>
-            </div>
+            </div>}
 
           </>
         )}

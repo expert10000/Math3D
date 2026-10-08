@@ -26,11 +26,11 @@ test("saved Surface opens the real module and dock switching does not recapture 
     const cpu = await page.context().newCDPSession(page); await cpu.send("Profiler.enable"); await cpu.send("Profiler.start");
     for (let cycle = 0; cycle < 5; cycle++) {
       let started = Date.now();
-      await editor.getByRole("tablist", { name: "Document details" }).getByRole("tab", { name: "Project", exact: true }).click();
+      await editor.getByRole("navigation", { name: "Surface right dock" }).getByRole("button", { name: "Project", exact: true }).click();
       await expect(panel).toHaveAttribute("data-project-placement", "right"); timings.push(Date.now() - started);
-      started = Date.now(); await editor.getByRole("tablist", { name: "Document details" }).getByRole("tab", { name: "Inspector", exact: true }).click();
+      started = Date.now(); await editor.getByRole("navigation", { name: "Surface right dock" }).getByRole("button", { name: "Inspector", exact: true }).click();
       await expect(panel).toHaveCount(0); await expect(inspector).toBeVisible(); timings.push(Date.now() - started);
-      started = Date.now(); await editor.getByRole("tablist", { name: "Document controls" }).getByRole("tab", { name: "Project", exact: true }).click();
+      started = Date.now(); await editor.getByRole("navigation", { name: "Surface left dock" }).getByRole("button", { name: "Project", exact: true }).click();
       await expect(panel).toHaveAttribute("data-project-placement", "left"); timings.push(Date.now() - started);
     }
     const profile = await cpu.send("Profiler.stop"); await cpu.detach();
@@ -38,7 +38,7 @@ test("saved Surface opens the real module and dock switching does not recapture 
     writeFileSync(test.info().outputPath("project-inspector-switch-times.json"), JSON.stringify(timings));
     expect(await page.evaluate(() => (window as any).projectSwitchReads)).toEqual([]);
     expect(Math.max(...timings)).toBeLessThan(1500);
-    await editor.getByRole("tab", { name: "Tools", exact: true }).click();
+    await page.getByTestId("surfaces-left-tab-analysis").click();
     await page.getByTestId("surface-computation-curvature-field").click(); await page.getByTestId("surface-curvature-compute-button").click();
     await expect(page.getByTestId("surface-curvature-execution-state")).toHaveText(/Execution: (ready|cached)/);
     await expect(page.getByTestId("surface-curvature-statistics")).toContainText("RMS");
@@ -57,10 +57,10 @@ test("saved Surface opens the real module and dock switching does not recapture 
     await expect.poll(() => curvatureError(1)).toBeLessThan(0.0001);
     await expect(editor).toHaveAttribute("data-source-hash", hash);
     expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(saved);
-    await editor.getByRole("tab", { name: "Source/Object", exact: true }).click();
+    await page.getByTestId("surfaces-left-tab-object").click();
     await editor.getByTestId("project-surface-field-y").fill("2*(exp(x/2)+exp(-x/2))/2"); await editor.getByTestId("project-surface-apply").click();
     await expect(editor).not.toHaveAttribute("data-source-hash", hash); await expect(page.getByTestId("surface-local-probe-result")).toHaveCount(0);
-    await editor.getByRole("tab", { name: "Tools", exact: true }).click();
+    await page.getByTestId("surfaces-left-tab-analysis").click();
     await page.getByTestId("surface-computation-curvature-field").click(); await page.getByTestId("surface-curvature-compute-button").click();
     await expect(page.getByTestId("surface-curvature-execution-state")).toHaveText(/Execution: (ready|cached)/);
     await page.getByTestId("surface-computation-surface-probe").click(); await page.getByTestId("surface-probe-current-sample").click();
@@ -68,8 +68,8 @@ test("saved Surface opens the real module and dock switching does not recapture 
     await page.getByTestId("project-source-undo").click(); await expect(editor).toHaveAttribute("data-source-hash", hash);
     await page.getByTestId("document-custom-view").click(); await expect(page.getByTestId("document-surface-inspector")).toBeVisible();
     await expect(page.getByTestId("surface-viewer-canvas-host")).toHaveCount(1);
-    await page.getByTestId("document-custom-view").click(); await expect(inspector).toBeVisible(); await expect(editor).toHaveAttribute("data-source-hash", hash);
-    await editor.getByRole("tablist", { name: "Document controls" }).getByRole("tab", { name: "Project", exact: true }).click();
+    await page.getByTestId("document-surface-view").click(); await expect(inspector).toBeVisible(); await expect(editor).toHaveAttribute("data-source-hash", hash);
+    await editor.getByRole("navigation", { name: "Surface left dock" }).getByRole("button", { name: "Project", exact: true }).click();
     await panel.getByRole("button", { name: "Close project explorer", exact: true }).click(); await expect(panel).toHaveCount(0);
     expect(errors).toEqual([]);
   } finally { await closeSurfaceApp(ctx); }
