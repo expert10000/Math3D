@@ -23,9 +23,10 @@ describe("Project document resume", () => {
   it("does not let optional storage failure prevent scientific saving", () => {
     expect(() => rememberProjectDocument({ setItem: () => { throw new Error("Storage full"); } }, project, surface.expected.id)).not.toThrow();
   });
-  it("defaults resume on and recovers invalid presentation preferences", () => {
-    expect(projectUiPreferences("{")).toEqual({ resumeEnabled: true, placement: "left" });
-    expect(projectUiPreferences(JSON.stringify({ resumeEnabled: false, placement: "right" }))).toEqual({ resumeEnabled: false, placement: "right" });
+  it("retains placement and ignores legacy automatic opening preferences", () => {
+    expect(projectUiPreferences("{")).toEqual({ placement: "left" });
+    for (const resumeEnabled of [false, true])
+      expect(projectUiPreferences(JSON.stringify({ resumeEnabled, placement: "right" }))).toEqual({ placement: "right" });
   });
   it("recovers stale selection deterministically with an explanation", () => {
     const before = serializeMath3DProject(project);

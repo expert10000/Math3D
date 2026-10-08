@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+import { openLastSavedProject, closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
 test("Catenoid defaults to the full Surface module and explicitly opens Custom", async () => {
   // This flow includes two launches and verifies both owning-Surface returns.
@@ -87,6 +87,7 @@ test("Catenoid defaults to the full Surface module and explicitly opens Custom",
     const profile = ctx.profileDir; await ctx.app.close(); ctx = null;
     ctx = await launchSurfaceApp({}, profile); page = ctx.page; owner = page.getByTestId("project-source-editor");
     page.on("pageerror", error => errors.push(error.message));
+    await openLastSavedProject(page);
     await expect(owner).toHaveAttribute("data-document-id", id); await normal();
     await page.getByTestId("document-custom-view").click();
     await expect(page.getByTestId("document-viewport")).toHaveAttribute("data-view", "sampled");

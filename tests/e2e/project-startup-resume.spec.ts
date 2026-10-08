@@ -1,68 +1,47 @@
 import { expect, test } from "@playwright/test";
-import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+import { closeSurfaceApp, launchSurfaceApp, openLastSavedProject, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
-test("startup protects Catenoid resume, supports Cancel and explicit recovery", async () => {
-  test.setTimeout(240_000);
+for (const recover of [true, false]) test(`startup only offers autosave recovery (${recover ? "restore" : "decline"}); saved Project stays explicit`, async () => {
   let ctx: LaunchedSurfaceApp | null = null;
   try {
-    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page); await resizeSurfaceAppWindow(ctx, 1600, 1000);
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
     const page = ctx.page, errors: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
-    // Ordinary gallery view needs the desktop viewer strip too.
-    await expect(page.getByTestId("surface-viewer-controls-strip")).toBeVisible();
-    await page.getByTestId("projects-toggle").click(); await page.getByTestId("project-template-open-catenoid-evidence").click();
-    const owner = page.getByTestId("project-source-editor"), panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await page.getByTestId("project-template-open-catenoid-evidence").click();
+    const owner = page.getByTestId("project-source-editor");
     const id = (await owner.getAttribute("data-document-id"))!, hash = (await owner.getAttribute("data-source-hash"))!;
-    await panel.getByTestId("project-gallery-layout-toggle").click();
-    await panel.getByTestId("project-save").click();
-    await expect(panel.getByTestId("project-message")).toContainText("Saved");
     const saved = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
-    await page.addInitScript(() => {
-      const state = window as any, original = indexedDB.open.bind(indexedDB);
-      indexedDB.open = (...args: Parameters<IDBFactory["open"]>) => {
-        const request = original(...args);
-        if (args[0] !== "math3d.project-resources.v1") return request;
-        indexedDB.open = original;
-        const success = Object.getOwnPropertyDescriptor(IDBRequest.prototype, "onsuccess")!;
-        Object.defineProperty(request, "onsuccess", { set(handler) {
-          success.set!.call(request, async (event: Event) => {
-            await new Promise<void>(resolve => { state.releaseResumeResources = resolve; });
-            handler.call(request, event);
-          });
-        } });
-        return request;
-      };
+    // Existing installations may still carry the obsolete opt-in setting.
+    await page.evaluate(() => {
+      localStorage.setItem("math3d.project-ui.v1", JSON.stringify({ resumeEnabled: true, placement: "right" }));
+      const workbooks = JSON.parse(localStorage.getItem("math3d.workbooks.v1")!);
+      const recovered = structuredClone(workbooks); recovered[0].title = "Autosave recovery wins";
+      localStorage.setItem("math3d.workbook.autosave.v1", JSON.stringify({ savedAt: Date.now(), payload: { workbooks: recovered, activeWorkbookId: recovered[0].id, activeStageId: "define" } }));
+      localStorage.removeItem("math3d.workbook.manualSaveAt.v1");
+      localStorage.removeItem("math3d.workbook.autosaveRecoveryDismissedAt.v1");
     });
+    await page.addInitScript(accept => {
+      (window as any).startupPrompts = [];
+      window.confirm = message => { (window as any).startupPrompts.push(String(message)); return accept; };
+    }, recover);
     await page.reload();
-    const progress = page.getByTestId("project-resume-progress");
-    await expect(progress).toBeVisible();
-    await expect(progress).toContainText("Catenoid Evidence Notebook");
-    await expect.poll(() => page.evaluate(() => typeof (window as any).releaseResumeResources)).toBe("function");
-    expect(await progress.evaluate(element => element.matches(":modal"))).toBe(true);
-    // A click on the loading surface itself must not be mistaken for editing.
-    await progress.dispatchEvent("pointerdown");
-    await page.screenshot({ path: test.info().outputPath("catenoid-opening.png") });
-    await page.evaluate(() => (window as any).releaseResumeResources());
-    await expect(owner).toHaveAttribute("data-document-id", id);
-    await expect(owner).toHaveAttribute("data-source-hash", hash);
-    await expect(progress).not.toBeVisible();
-    await expect(panel).toBeVisible(); await expect(panel).toHaveAttribute("data-project-placement", "left");
-    await expect(page.getByTestId("surface-viewer-controls-strip")).toBeVisible();
-    await expect(page.getByTestId("surface-view-gizmo")).toBeVisible();
-    await expect(page.getByTestId("project-resume-status")).toHaveCount(0);
-    await page.screenshot({ path: test.info().outputPath("catenoid-resumed.png") });
-    await page.reload(); await expect(progress).toBeVisible();
-    await expect.poll(() => page.evaluate(() => typeof (window as any).releaseResumeResources)).toBe("function");
-    await page.getByTestId("project-resume-cancel").click();
-    await expect(progress).not.toBeVisible();
-    await page.evaluate(() => (window as any).releaseResumeResources());
-    await expect(page.getByTestId("project-resume-explicit")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => (window as any).startupPrompts?.length)).toBe(1);
+    expect(await page.evaluate(() => (window as any).startupPrompts[0])).toMatch(/^Recover last autosave/);
     await expect(owner).toHaveCount(0);
+    await expect(page.getByTestId("projects-quick-toggle")).toHaveCount(0);
+    await expect(page.getByTestId("project-resume-progress")).toHaveCount(0);
+    await expect(page.getByTestId("project-resume-explicit")).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.workbooks.v1")!)[0].title === "Autosave recovery wins")).toBe(recover);
     expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(saved);
-    await page.getByTestId("project-resume-explicit").click();
+    await page.screenshot({ path: test.info().outputPath(`startup-autosave-${recover ? "restored" : "declined"}.png`) });
+    await openLastSavedProject(page);
     await expect(owner).toHaveAttribute("data-document-id", id);
     await expect(owner).toHaveAttribute("data-source-hash", hash);
-    await expect(panel).toBeVisible();
+    await expect(page.getByTestId("project-explorer-panel")).toHaveAttribute("data-project-placement", "left");
+    await expect(page.getByTestId("surface-viewer-controls-strip")).toBeVisible();
+    await expect(page.getByTestId("project-resume-enabled")).toHaveCount(0);
     expect(errors).toEqual([]);
   } finally { await closeSurfaceApp(ctx); }
 });

@@ -3,13 +3,13 @@ import type { Math3DProject } from "@math3d/core";
 // Local navigation state; never part of a scientific document or its hash.
 export const PROJECT_RESUME_KEY = "math3d.project-resume.v1";
 export const PROJECT_UI_KEY = "math3d.project-ui.v1";
-export type ProjectUiPreferences = { resumeEnabled: boolean; placement: "left" | "middle" | "right" | "all" };
+export type ProjectUiPreferences = { placement: "left" | "middle" | "right" | "all" };
 export function projectUiPreferences(raw: string | null): ProjectUiPreferences {
   try {
     const value = raw ? JSON.parse(raw) : {};
-    return { resumeEnabled: value?.resumeEnabled !== false,
-      placement: ["left", "middle", "right", "all"].includes(value?.placement) ? value.placement : "left" };
-  } catch { return { resumeEnabled: true, placement: "left" }; }
+    // Legacy resumeEnabled is intentionally ignored: autosave owns startup recovery.
+    return { placement: ["left", "middle", "right", "all"].includes(value?.placement) ? value.placement : "left" };
+  } catch { return { placement: "left" }; }
 }
 export function rememberProjectUi(store: Pick<Storage, "setItem">, value: ProjectUiPreferences) {
   try { store.setItem(PROJECT_UI_KEY, JSON.stringify(value)); } catch { /* Optional presentation state. */ }

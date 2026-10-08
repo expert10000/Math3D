@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
 import { writeFileSync } from "node:fs";
-import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+import { openLastSavedProject, closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
 test("open Project placements preserve document and Note editing across modules", async () => {
   test.setTimeout(240_000);
@@ -146,7 +146,7 @@ test("Catenoid viewer stays beside a scrolling inspector with Project docked", a
   } finally { await closeSurfaceApp(ctx); }
 });
 
-test("saved Catenoid Project does not show an unrelated Surface after restart", async () => {
+test("saved Catenoid Project reopens its owning Surface explicitly after restart", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
   try {
     ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
@@ -158,7 +158,7 @@ test("saved Catenoid Project does not show an unrelated Surface after restart", 
     const surface = project.workspace.entries.find((entry: { module: string }) => entry.module === "surface");
     await page.reload();
     await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
-    await page.getByRole("button", { name: "Project", exact: true }).click();
+    await openLastSavedProject(page);
     await expect(panel.getByTestId("project-viewer-document")).toHaveValue(surface.expected.id);
     await expect(page.getByTestId("project-source-editor")).toBeVisible();
     await expect(page.getByTestId("project-source-view").getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();

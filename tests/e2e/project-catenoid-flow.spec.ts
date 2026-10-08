@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { writeFileSync } from "node:fs";
-import { launchSurfaceApp, closeSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+import { openLastSavedProject, launchSurfaceApp, closeSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
-test("Catenoid Surface → retained Mesh → Surface → save → cold restart", async () => {
+test("Catenoid Surface → retained Mesh → Surface → save → cold restart → explicit reopen", async () => {
   test.setTimeout(240_000);
   let ctx: LaunchedSurfaceApp | null = null;
   try {
@@ -50,6 +50,7 @@ test("Catenoid Surface → retained Mesh → Surface → save → cold restart",
     const profile = ctx.profileDir;
     await ctx.app.close();
     ctx = await launchSurfaceApp({}, profile); page = ctx.page;
+    await openLastSavedProject(page);
     await resizeSurfaceAppWindow(ctx, 1600, 1000);
     await expect(page.getByTestId("project-source-editor")).toHaveAttribute("data-document-id", surface.expected.id);
     await expect(page.getByTestId("project-source-editor")).toHaveAttribute("data-source-hash", surface.expected.structuralHash);
@@ -70,6 +71,7 @@ test("Catenoid Surface → retained Mesh → Surface → save → cold restart",
     await page.getByTestId("project-gallery-layout-toggle").click();
     await page.getByTestId("project-save").click(); await expect(page.getByTestId("project-save")).toBeEnabled();
     await ctx.app.close(); ctx = await launchSurfaceApp({}, profile); page = ctx.page;
+    await openLastSavedProject(page);
     await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", mesh.expected.id);
     await expect(page.getByTestId("project-study-open-source")).toBeVisible();
   } finally { await closeSurfaceApp(ctx); }

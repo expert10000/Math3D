@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+import { openLastSavedProject, closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
 test("Project shows native Surface tools and Inspector for its exact saved Catenoid", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
@@ -48,6 +48,7 @@ test("Project shows native Surface tools and Inspector for its exact saved Caten
     await panel.getByRole("button", { name: "Close project explorer", exact: true }).click(); await expect(panel).toHaveCount(0); await expect(inspector).toBeVisible();
     const profile = ctx.profileDir; await ctx.app.close(); ctx = null;
     ctx = await launchSurfaceApp({}, profile);
+    await openLastSavedProject(ctx.page);
     await expect(ctx.page.getByTestId("document-module-inspector")).toBeVisible();
     await ctx.page.getByTestId("document-custom-view").click();
     await expect(ctx.page.getByTestId("document-surface-inspector")).toHaveAttribute("data-document-id", id);

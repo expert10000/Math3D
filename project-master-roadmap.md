@@ -1,10 +1,23 @@
 # Project master roadmap
 
-Date: 2026-10-08 (delivery update; original plan dated October 7)
+Date: 2026-10-09 (startup simplification; original plan dated October 7)
 
 Status: local implementation committed and qualified on the supported desktop/browser paths. User acceptance, remote integration and installer release remain separate states.
 
 ## Current delivery
+
+**Startup contract — October 9:** autosave is the only startup recovery flow.
+Restoring it restores the workspace; it does not also open the last saved Project.
+Saved Projects open explicitly from Projects. The former automatic Project
+setting, opening dialog and startup Resume banner are removed, including for
+legacy installations that enabled the setting. This supersedes older automatic
+resume requirements and historical evidence below. Document selection and
+presentation remain remembered for explicit reopening.
+
+Current source checkout: `C:\Math3D`, branch `main`. Earlier delivery reports and
+checkout paths below describe their recorded builds.
+The [October 9 startup evidence](docs/evidence/project-workspace-2026-10-09/startup-recovery.md)
+records autosave restore/decline and explicit saved Catenoid reopening.
 
 Implementation: `3ac5ab75b1297c765ba1306e1ba7260e317063bd` on
 `codex/gallery-performance-platform-baseline`, after pulling remote main `b4cffbf`.
@@ -85,10 +98,10 @@ At that starting point, the uncommitted source changes were in
    and camera state within the shared three-panel layout.
 5. The user can open its Graph profile, sampled Mesh, saved result, Workbook or
    Note. Each action selects the corresponding retained object and module.
-6. Restart restores the last active Project and selected document when resume is
-   enabled. If automatic resume is disabled, the startup screen explicitly shows
-   a saved Project with a Resume action. An unrelated default surface cannot be
-   presented as that Project's active document.
+6. Restart offers only the existing autosave recovery. Restore or decline it;
+   saved Projects remain in the library. Explicitly Open the saved Project to
+   return to its selected document. An independent workspace must not be labelled
+   as an active saved Project.
 
 ## Requirements
 
@@ -113,15 +126,15 @@ At that starting point, the uncommitted source changes were in
 - Repeated Open is idempotent. Reusing an edited starter copy must not create a
   duplicate or restore an older snapshot over live edits.
 
-### R03 — Explicit startup and resume behavior
+### R03 — Autosave recovery and explicit Project reopening
 
 - Persist the last selected document, module and Project placement as UI state
   separate from scientific document identity and hashes.
-- Default desktop behavior resumes the last active Project and document once
-  application startup is ready. Provide an explicit setting to disable resume.
+- Autosave owns startup recovery. There is no second automatic Project opening,
+  setting, modal or Resume banner. Legacy automatic opening settings are ignored.
 - Validate persisted selection against the retained Project. When selection is
   missing, choose an available document deterministically and report the choice.
-- Gallery browsing remains distinct from opening or resuming a Project.
+- Gallery browsing remains distinct from explicitly opening a Project.
 - Loading has a bounded visible state followed by success or an actionable error;
   the message “editor documents load” cannot remain indefinitely.
 
@@ -671,7 +684,7 @@ commits. The October 8 implementation combines the supported slices in
 | --- | --- | --- |
 | PM01 | `test(projects): reproduce wrong document after restart and open` | Extend the existing restart reproduction to cold Electron restart and all opening entry points. Record the failing Project/document/module identities and ruled-plane mismatch. Status: partial local reproduction exists. |
 | PM02 | `fix(projects): unify project restore and active workspace state` | Introduce one opening transaction and explicit loaded Project state. Review the current Project-button patch within that operation. Pass rollback, idempotence, resources and live-edit preservation checks. |
-| PM03 | `feat(projects): resume selected document and persist placement` | Persist UI selection/placement separately; resume the last Project/document after startup, with a disable setting and explicit errors. Pass cold restart and stale-selection recovery. |
+| PM03 | `fix(projects): keep startup recovery separate from explicit Project open` | Persist UI selection/placement separately. Autosave alone owns startup; saved Projects reopen explicitly. Pass restore/decline, legacy setting migration and stale-selection recovery. |
 | PM04 | `feat(surfaces): open saved revolution sources in the workbench` | Introduce the typed Surface binding and adapter for captured Graph-derived revolution/extrusion sources, beginning with Catenoid. Reuse `ParamSurfaceViewer`; preserve generation/lineage and existing replay. Pass geometry, seam, source, save/reopen and historical-source checks. |
 | PM05 | `refactor(projects): integrate project viewer and inspector with shared docks` | Introduce the shared document host/viewport dispatcher and explicit Mesh binding over existing `SurfaceViewer`. Place source tools and Inspector in the main module layout. Replace the separate fixed layer after parity. Pass docking, scrolling, narrow width, scaling, draft, camera and resource-lifetime checks. |
 | PM06 | `fix(projects): keep module navigation and viewer selection consistent` | Align header navigation, document selector, Back/Forward, source links and View with Project. Pass all eight module mappings and stable Project ownership. |
@@ -720,8 +733,8 @@ physical/installed-engine gates remain open; this checklist is not user signoff.
 - [x] Opening Catenoid from Gallery selects its retained Surface in Surfaces.
 - [x] The visible geometry is the Catenoid, and its document/generation agree
       with the Project selector and Inspector.
-- [x] Cold desktop restart resumes the same Project/document, or shows the
-      explicit Resume state when automatic resume is disabled.
+- [x] Saved Project/document identity survives restart and explicit reopening.
+      Startup itself only offers autosave recovery (October 9 contract).
 - [x] Every opening entry point reaches the same verified workspace state.
 - [x] Left/Right docking and hide/show preserve source and Note drafts and camera.
 - [x] Middle/All and narrow layouts remain usable without hidden controls.
@@ -1283,18 +1296,15 @@ owning saved source. The desktop strip is above the viewer; the compact strip
 sits at the bottom right to avoid Slice plane. Clean screenshots still hide the
 viewer controls.
 
-#### Startup must finish opening before the workspace accepts input
+#### Single startup recovery — supersedes automatic Project opening
 
-While automatic Project resume reads and verifies saved resources, show an
-**Opening [Project title]** dialog. The background workspace cannot accept clicks
-or text input during this operation. **Cancel opening** explicitly stops the
-pending activation and leaves the saved Project intact. Startup hydration of
-the independent module must not be mistaken for an edit to the saved Project.
+Startup offers the existing **Recover last autosave** choice. Accept restores
+that workspace; decline continues in the normal workspace. Neither choice
+opens a saved Project or replaces the recovered state with a library snapshot.
 
-Successful resume opens the selected document and reveals the Project tree at
-its saved Left/Middle/Right/All placement. Cancellation or a resume failure offers
-**Resume Project** directly, even when automatic resume is enabled. Explicit
-opening still protects edits entered while resources are being prepared.
+Saved Projects stay in Projects and open on an explicit Open action. The last
+selected document and presentation are retained for that opening. Existing
+resource validation, backup and protection of unapplied edits still apply.
 
 The normal Surface module also exposes its existing desktop viewer toolstrip
 in gallery mode. Gallery selection must not hide camera, display, quality and

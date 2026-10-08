@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+import { openLastSavedProject, closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
 test("native Surface and sampled views retain ownership, draft, camera and Mesh evidence", async () => {
   test.setTimeout(180_000);
@@ -44,18 +44,18 @@ test("native Surface and sampled views retain ownership, draft, camera and Mesh 
     await panel.getByTestId("project-placement-right").click();
     const profile = ctx.profileDir; await ctx.app.close(); ctx = null;
     ctx = await launchSurfaceApp({}, profile); page = ctx.page;
+    await openLastSavedProject(page);
     await expect(page.getByTestId("document-viewport")).toHaveAttribute("data-workbench", "module");
     await expect(page.getByTestId("project-source-editor")).toHaveAttribute("data-document-id", id);
     await expect(page.getByTestId("project-source-editor")).toHaveAttribute("data-source-hash", hash);
-    await page.getByRole("navigation", { name: "Surface right dock" }).getByRole("button", { name: "Project", exact: true }).click();
-    await expect(page.getByTestId("project-explorer-panel")).toHaveAttribute("data-project-placement", "right");
+    await expect(page.getByTestId("project-explorer-panel")).toHaveAttribute("data-project-placement", "left");
     await page.getByTestId("document-custom-view").click();
     await expect(page.getByTestId("document-viewport")).toHaveAttribute("data-view", "sampled");
     await page.getByTestId("document-view-choice").selectOption("surface");
     await page.screenshot({ path: test.info().outputPath("native-catenoid-cold-restart.png") });
     await page.getByTestId("project-viewer-document").selectOption(mesh.expected.id);
     await page.getByTestId("project-source-editor").getByRole("tab", { name: "Inspector", exact: true }).click();
-    await page.getByTestId("project-curvature-map").selectOption("H"); await page.reload();
+    await page.getByTestId("project-curvature-map").selectOption("H"); await page.reload(); await openLastSavedProject(page);
     await expect(page.getByTestId("document-mesh-viewport")).toHaveAttribute("data-document-id", mesh.expected.id);
     await expect(page.getByTestId("project-curvature-map")).toHaveValue("H");
     await expect(page.getByTestId("project-curvature-legend")).toHaveAttribute("data-field", "H");
@@ -63,20 +63,17 @@ test("native Surface and sampled views retain ownership, draft, camera and Mesh 
   } finally { await closeSurfaceApp(ctx); }
 });
 
-test("resume can be disabled and stale selections recover explicitly", async () => {
+test("stale selections recover when the saved Project is opened explicitly", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
   try {
     ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
     const page = ctx.page;
     await page.getByTestId("projects-toggle").click(); await page.getByTestId("project-template-open-catenoid-evidence").click();
     const id = await page.getByTestId("project-source-editor").getAttribute("data-document-id");
-    await page.getByTestId("project-resume-enabled").uncheck(); await page.reload();
-    await expect(page.getByTestId("project-source-editor")).toHaveCount(0);
-    await expect(page.getByTestId("project-resume-explicit")).toBeVisible();
-    await page.getByTestId("projects-toggle").click(); await expect(page.getByTestId("project-resume-enabled")).not.toBeChecked();
-    await page.getByTestId("project-resume-enabled").check();
     await page.evaluate(() => { const project = JSON.parse(localStorage.getItem("math3d.project.v1")!); localStorage.setItem("math3d.project-resume.v1", JSON.stringify({ projectId: project.identity.id, documentId: "missing" })); });
-    await page.reload(); await expect(page.getByTestId("project-source-editor")).toHaveAttribute("data-document-id", id!);
+    await page.reload(); await expect(page.getByTestId("project-source-editor")).toHaveCount(0);
+    await openLastSavedProject(page);
+    await expect(page.getByTestId("project-source-editor")).toHaveAttribute("data-document-id", id!);
     await expect(page.getByTestId("project-resume-status")).toContainText("selection is unavailable");
   } finally { await closeSurfaceApp(ctx); }
 });

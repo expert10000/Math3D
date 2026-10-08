@@ -59,6 +59,13 @@ export async function resetSurfaceAppState(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
 }
 
+/** Saved Projects are opened explicitly; autosave alone owns startup recovery. */
+export async function openLastSavedProject(page: Page): Promise<void> {
+  const id = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id as string);
+  await page.getByTestId("projects-toggle").click();
+  await page.getByTestId(`project-open-saved-${id}`).click();
+}
+
 /** Resize the native Electron content area so pointer coordinates and CSS viewport agree. */
 export async function resizeSurfaceAppWindow(ctx: LaunchedSurfaceApp, width: number, height: number): Promise<void> {
   await ctx.app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.width, size.height), { width, height });
