@@ -58,9 +58,18 @@ const packCorrespondence = (payload: SurfaceDerivedMeshPayload): Uint8Array => {
   return bytes;
 };
 
+const sameBytes = (left: Uint8Array | null, right: Uint8Array | null) => {
+  if (!left || !right) return left === right;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index++) if (left[index] !== right[index]) return false;
+  return true;
+};
+
 export class SurfaceMeshKernelHandoff {
   #documents = new Map<StableDocumentId, SurfaceDocument>();
   #records = new Map<string, SurfaceMeshKernelHandoffRecord>();
+  // Owned packed copies allow reuse without trusting mutable caller buffers.
+  #publications = new Map<string, { signature: string; bytes: Uint8Array; mappingBytes: Uint8Array | null }>();
   #meshDocuments = new Map<StableDocumentId, MeshDocument>();
   #artifacts = createInMemoryArtifactRegistry({ resolveSource: (id) => this.#documents.has(id) ? sourceOf(this.#documents.get(id)!) : null });
   #snapshots = createInMemoryArtifactRegistry({ resolveSource: (id) => {
@@ -88,6 +97,7 @@ export class SurfaceMeshKernelHandoff {
         this.#artifacts.remove(record.handle.artifactId, "surface-mesh-handoff");
         if (record.mappingHandle) this.#artifacts.remove(record.mappingHandle.artifactId, "surface-mesh-handoff");
         this.#records.set(meshId, { ...record, relations: record.relations.map((relation) => withDocumentRelationStatus(relation, "stale")) });
+        this.#publications.delete(meshId);
       }
     }
   }
@@ -105,6 +115,15 @@ export class SurfaceMeshKernelHandoff {
     const bytes = packGeometry(input.geometry);
     const mappingBytes = input.payload ? packCorrespondence(input.payload) : null;
     if (bytes.byteLength > 256 * 1024 * 1024 || (mappingBytes && mappingBytes.byteLength > 256 * 1024 * 1024)) throw new RangeError("Surface tessellation artifact exceeds the managed cache limit.");
+    const signature = canonicalJsonStringify({ sources, tessellation: input.record.identity.tessellation,
+      backend: input.record.identity.backend, state: input.record.identity.state,
+      meshRevision: input.record.identity.meshRevision, vertexCount: input.record.vertexCount,
+      faceCount: input.record.faceCount, correspondence: input.record.correspondence });
+    const cached = this.#publications.get(input.record.identity.meshId);
+    const previous = this.#records.get(input.record.identity.meshId);
+    if (cached && previous && cached.signature === signature && sameBytes(cached.bytes, bytes) &&
+      sameBytes(cached.mappingBytes, mappingBytes) && this.resolve(previous.meshId).ok &&
+      (!previous.mappingHandle || this.resolveMapping(previous.meshId)?.ok)) return previous;
     this.#artifacts.declare({ handle, source, ownerId, encoding: "math3d.mesh-buffers.v1" });
     this.#artifacts.beginComputation(handle.artifactId, ownerId, source);
     this.#artifacts.publish({ artifactId: handle.artifactId, source, ownerId, bytes });
@@ -145,6 +164,7 @@ export class SurfaceMeshKernelHandoff {
       indexCount: input.geometry.indices?.length ?? 0, encoding: "math3d.mesh-buffers.v1",
     };
     this.#records.set(next.meshId, next);
+    this.#publications.set(next.meshId, { signature, bytes, mappingBytes });
     return next;
   }
 
@@ -225,5 +245,6 @@ export class SurfaceMeshKernelHandoff {
     this.#artifacts.remove(record.handle.artifactId, "surface-mesh-handoff");
     if (record.mappingHandle) this.#artifacts.remove(record.mappingHandle.artifactId, "surface-mesh-handoff");
     this.#records.delete(meshId);
+    this.#publications.delete(meshId);
   }
 }

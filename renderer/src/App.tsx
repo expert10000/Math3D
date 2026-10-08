@@ -19,7 +19,11 @@ import { verifyMixedWorkspaceReplay } from "./kernel/mixedWorkspaceReplay";
 import { AdditionalProjectSession } from "./projects/additionalProjectSession";
 import { capturedCurveSources } from "./projects/capturedCurveSources";
 import { tryRestoreAdditionalProjectSession } from "./projects/additionalProjectSession";
-import { AdditionalProjectEditor } from "./projects/AdditionalProjectEditor";
+import { SavedDocumentWorkbench } from "./workspace/SavedDocumentWorkbench";
+import { DocumentWorkspaceHost } from "./workspace/DocumentWorkspaceHost";
+import { MeshDocumentViewport } from "./workspace/MeshDocumentViewport";
+import { ProjectNavigation } from "./workspace/projectNavigation";
+import { relatedDocuments } from "./workspace/relatedDocuments";
 import { createSavedSurfaceMesh, savedSurfaceMeshLinks, savedMeshSurfaceSource } from "./projects/savedSurfaceMesh";
 import { WorkbookPublication, type PublicationKind } from "./components/WorkbookPublication";
 import { loadProjectResources } from "./projects/projectResourceArchive";
@@ -621,7 +625,7 @@ import {
   type RegionSelection,
   type SelectionMask,
 } from "./math/selection/selectionModel";
-import { buildMeshAdjacency, computeGeodesicDistances } from "./math/selection/geodesicSelection";
+import { createMeshAdjacencyLookup, computeGeodesicDistances } from "./math/selection/geodesicSelection";
 import {
   dijkstraDistancesAndPrev,
   reconstructPath,
@@ -63348,55 +63352,10 @@ case "mobius":
     paramGeodesicStateRef.current = state;
   }, []);
 
-  const geodesicAdjacency = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        neighbors: number[][];
-        weights: number[][];
-        vertexToMerged?: Int32Array;
-        mergedToVertex?: Int32Array;
-        edgeSources?: number[][];
-        edgeTargets?: number[][];
-      }
-    >();
-    const meshData = surfaceSampleSet?.meshData ?? [];
-    const cache = adjacencyCacheRef.current;
-    for (const mesh of meshData) {
-      const cached = cache.get(mesh.key);
-      if (
-        cached &&
-        cached.positions === mesh.positions &&
-        cached.indices === mesh.indices &&
-        cached.vertexToMerged &&
-        cached.edgeSources &&
-        cached.edgeTargets
-      ) {
-        map.set(mesh.key, {
-          neighbors: cached.neighbors,
-          weights: cached.weights,
-          vertexToMerged: cached.vertexToMerged,
-          mergedToVertex: cached.mergedToVertex,
-          edgeSources: cached.edgeSources,
-          edgeTargets: cached.edgeTargets,
-        });
-        continue;
-      }
-      const adj = buildMeshAdjacency(mesh.indices, mesh.positions);
-      cache.set(mesh.key, {
-        positions: mesh.positions,
-        indices: mesh.indices,
-        neighbors: adj.neighbors,
-        weights: adj.weights,
-        vertexToMerged: adj.vertexToMerged,
-        mergedToVertex: adj.mergedToVertex,
-        edgeSources: adj.edgeSources,
-        edgeTargets: adj.edgeTargets,
-      });
-      map.set(mesh.key, adj);
-    }
-    return map;
-  }, [surfaceSampleSet]);
+  const geodesicAdjacency = useMemo(
+    () => createMeshAdjacencyLookup(surfaceSampleSet?.meshData ?? [], adjacencyCacheRef.current),
+    [surfaceSampleSet]
+  );
 
   const buildHeatMesh = useCallback(
     (params: {
@@ -78240,9 +78199,11 @@ case "mobius":
           setGraph2dPromotions(restored); setActiveGraph2DTargetId(null);
           };
 
+  const projectNavigationRef = useRef(new ProjectNavigation());
   const navigateRestoredDocument = (id: string, module: KernelWorkspaceModule): boolean => {
     const restored = restoredProjectRef.current;
     if (restored?.workspace.entries.some(entry => entry.expected.id === id && entry.module === module)) {
+      projectNavigationRef.current.visit({ id, module });
       setActiveProjectDocumentId(id);
       // Scientific active-document membership can contain several documents;
       // put the selected one first for checkpoint consumers and legacy resume.
@@ -78339,7 +78300,7 @@ case "mobius":
     }
     return false;
   };
-  const reopenProjectWorkspace = (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => {
+  const reopenProjectWorkspace = (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => {
     const resolved = verifyMixedWorkspaceReplay(workspace);
     const graphs = new Map<string, Graph2DCommandAdapter>();
     const curves = new Map<string, CurveDocumentAdapter>(), surfaces = new Map<string, SurfaceDocumentAdapter>(), geometries = new Map<string, GeometryDocumentAdapter>();
@@ -78391,8 +78352,10 @@ case "mobius":
       if (document.format === "math3d.surface-document" && nativeDocumentEditable(document)) surfaces.set(document.identity.id, entry.replay ? SurfaceDocumentAdapter.fromReplayBundle(entry.replay.payload as Parameters<typeof SurfaceDocumentAdapter.fromReplayBundle>[0]) : new SurfaceDocumentAdapter(document));
     }
     const checkpoint = createMixedWorkspaceDocument({ ...workspace, entries: workspace.entries.map((entry) => ({ ...entry, checkpoint: resolved.get(entry.expected.id)!, replay: null })) });
+    projectNavigationRef.current = new ProjectNavigation();
     reopenGraphWorkspace(checkpoint); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null);
     restoredProjectRef.current = { workspace, graphs, curves, surfaces, geometries, topologies, complexes, volumes, meshes, resources, additional, context };
+    if (owner) activeNotebookProjectRef.current = owner;
     const firstGraph = graphs.values().next().value;
     if (firstGraph) { graph2dAdapterRef.current = firstGraph; setGraph2dDocument(firstGraph.document()); }
     setAdditionalActiveId(null);
@@ -78492,16 +78455,19 @@ case "mobius":
     return !!parent && parent.identity.revision === source.revision && parent.identity.structuralHash === source.structuralHash && lineage.target.type === "document" && lineage.target.generation.revision === mesh.document().identity.revision && lineage.target.generation.structuralHash === mesh.document().identity.structuralHash;
   };
 
+  const savedMeshActive = activeKernelModule === "mesh" && !additionalActiveId && Boolean(activeProjectDocumentId && meshDocumentAdapterRef.current && activeProjectDocumentId === meshDocumentAdapterRef.current.document().identity.id && restoredProjectRef.current?.meshes.has(activeProjectDocumentId));
+  const hasSavedDocumentViewport = Boolean(additionalActiveId) || savedMeshActive;
+  const workspaceHeaderContext = hasSavedDocumentViewport
+    ? `${activeNotebookProjectRef.current?.metadata.title ?? "Project"} / ${savedMeshActive ? "Mesh" : restoredProjectRef.current?.additional.get(additionalActiveId!)?.original.module ?? "Document"} / ${activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId ?? ""]?.title ?? (savedMeshActive ? meshDocumentAdapterRef.current?.document().metadata.label : "Saved document")}`
+    : headerContextLabel;
+  const navigateProjectBack = () => { const location = projectNavigationRef.current.back(); if (location) navigateRestoredDocument(location.id, location.module); };
+  const navigateProjectForward = () => { const location = projectNavigationRef.current.forward(); if (location) navigateRestoredDocument(location.id, location.module); };
+
   return (
     <div className="math3d-app" data-testid="app-shell" data-project-document-id={activeProjectDocumentId ?? undefined} style={rootStyle}>
-      {additionalActiveId && restoredProjectRef.current?.additional.get(additionalActiveId) && <AdditionalProjectEditor key={additionalActiveId} documentTitle={activeNotebookProjectRef.current?.metadata.documents?.[additionalActiveId]?.title} session={restoredProjectRef.current.additional.get(additionalActiveId)!} onChange={() => setAdditionalVersion((v) => v + 1)} onClose={() => {
-        if (additionalSurface?.format === "math3d.surface-document") openNormalSurfacesWorkspace();
-        else leaveProjectDocumentView();
-      }}>
-        {additionalSurface?.format === "math3d.surface-document" && <SavedMeshAnalysisPanel key={additionalSurface.identity.id} resolutionSupported={supportsSavedSurfaceResolution(additionalSurface)} readMesh={readSavedStudyMesh} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface} meshes={savedSurfaceMeshChoices} onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis} />}
-      </AdditionalProjectEditor>}
       <KernelWorkspacePanel
-        captureProjectThumbnail={() => captureProjectViewThumbnail(document.querySelector(additionalActiveId ? '[data-testid="project-source-view"]' : '[data-testid="module-workspace"]'))}
+        captureProjectThumbnail={() => captureProjectViewThumbnail(document.querySelector(hasSavedDocumentViewport ? '[data-testid="project-source-view"]' : '[data-testid="module-workspace"]'))}
+        projectNavigation={{ canBack: projectNavigationRef.current.canBack, canForward: projectNavigationRef.current.canForward, back: navigateProjectBack, forward: navigateProjectForward }}
         projectsOpen={projectsOpen}
         activeProjectDocumentId={activeProjectDocumentId}
         onProjectsOpenChange={setProjectsOpen}
@@ -78685,14 +78651,14 @@ case "mobius":
           style={{
             display: "grid",
             gap: isSurfacePreviewMode ? 6 : isPhoneLandscapeLayout ? 2 : 7,
-            marginBottom: isSurfacePreviewMode ? 2 : isPhoneLandscapeLayout ? 2 : 10,
+            marginBottom: hasSavedDocumentViewport ? 0 : isSurfacePreviewMode ? 2 : isPhoneLandscapeLayout ? 2 : 10,
           }}
         >
           {isSurfacePreviewMode ? (
             <div style={{ display: "grid", gap: 2 }}>
               <h1 style={{ ...styles.h1, margin: 0 }}>MATH3D</h1>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: "0.04em" }}>
-                {headerContextLabel}
+                {workspaceHeaderContext}
               </div>
             </div>
           ) : (
@@ -79698,13 +79664,13 @@ case "mobius":
                 </>
               )}
               <div style={{ ...topNavContextLabelStyle, display: isPhoneLandscapeLayout ? "none" : undefined }}>
-                {headerContextLabel}
+                {workspaceHeaderContext}
               </div>
             </>
           )}
         </div>
 
-        {!activeGraph2DTarget && !isSurfacePreviewMode && !isPhoneViewerPriorityLayout && <div style={styles.controls}>
+        {!hasSavedDocumentViewport && !activeGraph2DTarget && !isSurfacePreviewMode && !isPhoneViewerPriorityLayout && <div data-testid="global-module-controls" style={styles.controls}>
           {(mode === "mobius" || (mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "complex")) && (
             <div
               style={{
@@ -80564,8 +80530,31 @@ case "mobius":
         </div>}
       </header>
       <div id="project-gallery-host" data-testid="project-gallery-host" />
+      {additionalActiveId && restoredProjectRef.current?.additional.get(additionalActiveId) && <SavedDocumentWorkbench workspaceVersion={additionalVersion} key={additionalActiveId} related={relatedDocuments(restoredProjectRef.current?.workspace, additionalActiveId, restoredProjectRef.current?.context().documents)} onOpenRelated={navigateRestoredDocument} projectId={activeNotebookProjectRef.current?.identity.id} projectTitle={activeNotebookProjectRef.current?.metadata.title} onOpenProject={() => setProjectsOpen(true)} documentTitle={activeNotebookProjectRef.current?.metadata.documents?.[additionalActiveId]?.title} session={restoredProjectRef.current.additional.get(additionalActiveId)!} onChange={() => setAdditionalVersion((v) => v + 1)} onClose={() => {
+        if (additionalSurface?.format === "math3d.surface-document") openNormalSurfacesWorkspace();
+        else leaveProjectDocumentView();
+      }}>
+        {additionalSurface?.format === "math3d.surface-document" && <SavedMeshAnalysisPanel key={additionalSurface.identity.id} resolutionSupported={supportsSavedSurfaceResolution(additionalSurface)} readMesh={readSavedStudyMesh} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface} meshes={savedSurfaceMeshChoices} onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis} />}
+      </SavedDocumentWorkbench>}
+      {savedMeshActive && meshDocumentAdapterRef.current && restoredProjectRef.current && <SavedMeshAnalysisPanel key={`analysis:${meshDocumentAdapterRef.current.document().identity.id}`} renderWorkspace={(controls, view) => <DocumentWorkspaceHost documentId={meshDocumentAdapterRef.current!.document().identity.id} sourceHash={meshDocumentAdapterRef.current!.document().identity.structuralHash} module="mesh"
+        toolbar={<><button onClick={() => setProjectsOpen(true)}>Project overview</button><strong data-testid="document-breadcrumb">{activeNotebookProjectRef.current?.metadata.title ?? "Project"} → Mesh → {meshDocumentAdapterRef.current!.document().metadata.label}</strong><span>Revision {meshDocumentAdapterRef.current!.document().identity.revision}</span><button data-testid="project-source-back-to-module" onClick={openNormalSurfacesWorkspace}>Back to normal Surfaces</button></>}
+        source={<MeshProjectEditor adapter={meshDocumentAdapterRef.current!} onRestore={() => navigateRestoredDocument(meshDocumentAdapterRef.current!.document().identity.id, "mesh")} />}
+        tools={<p>Mesh tools and studies are available in Inspector.</p>}
+        viewport={view ? <MeshDocumentViewport projectId={activeNotebookProjectRef.current?.identity.id} documentId={meshDocumentAdapterRef.current!.document().identity.id} revision={meshDocumentAdapterRef.current!.document().identity.revision} hash={meshDocumentAdapterRef.current!.document().identity.structuralHash} view={view} /> : <div role="alert">Saved Mesh buffer unavailable.</div>}
+        inspector={controls} display={<p>Choose Gaussian K, Mean H or Solid in Inspector. The legend identifies the displayed Mesh generation.</p>}
+        results={<p>Saved measurements in Inspector retain their exact Mesh revision and hash. Historical measurements remain qualified there.</p>} />}
+        readMesh={readSavedStudyMesh} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface}
+        sourceInfo={savedMeshParent} meshes={[{
+        id: meshDocumentAdapterRef.current.document().identity.id, title: meshDocumentAdapterRef.current.document().metadata.label, revision: meshDocumentAdapterRef.current.document().identity.revision, structuralHash: meshDocumentAdapterRef.current.document().identity.structuralHash,
+        surfaceGeneration: savedMeshParent?.generation,
+        studyRun: readSurfaceStudyRun(savedMeshParent?.sampling ?? null),
+        vertexCount: meshDocumentAdapterRef.current.document().source.resource.vertexCount, current: savedMeshSourceCurrent(),
+        results: restoredProjectRef.current.workspace.results.filter(result => result.provenance.source.documentId === meshDocumentAdapterRef.current!.document().identity.id && result.provenance.operation.type.startsWith("mesh.saved.")),
+      }]} onAnalyze={saveLinkedMeshAnalysis} />}
 
-      {showSurfaceWorkflowStrip && (
+
+
+      {!hasSavedDocumentViewport && showSurfaceWorkflowStrip && (
         <div style={{ padding: isSurfacePreviewMode ? "0 0 6px" : "0 0 10px" }}>
           {isMeshAnalysisWorkflowContext ? (
             <div
@@ -80797,7 +80786,7 @@ case "mobius":
           )}
         </div>
       )}
-      {showSurfaceWorkbookQuickStrip && (
+      {!hasSavedDocumentViewport && showSurfaceWorkbookQuickStrip && (
         <div style={{ padding: "0 0 10px" }}>
           <div
             style={{
@@ -80871,15 +80860,6 @@ case "mobius":
         <span>Projects → Save project keeps these edits.</span>
       </div>}
       {restoredTopologyAdapter && mode === "topology" && <div data-testid="project-topology-editor" style={{ padding: "6px 14px" }}>Saved Topology · {restoredTopologyAdapter.current().name} · {restoredTopologyAdapter.document().identity.id} · Projects → Save project keeps these edits.</div>}
-      {activeKernelModule === "mesh" && meshDocumentAdapterRef.current && restoredProjectRef.current?.meshes.has(meshDocumentAdapterRef.current.document().identity.id) && <MeshProjectEditor key={meshDocumentAdapterRef.current.document().identity.id} adapter={meshDocumentAdapterRef.current} onRestore={() => navigateRestoredDocument(meshDocumentAdapterRef.current!.document().identity.id, "mesh")} />}
-      {activeKernelModule === "mesh" && !additionalActiveId && meshDocumentAdapterRef.current && restoredProjectRef.current?.meshes.has(meshDocumentAdapterRef.current.document().identity.id) && <SavedMeshAnalysisPanel key={`analysis:${meshDocumentAdapterRef.current.document().identity.id}`} readMesh={readSavedStudyMesh} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface}
-        sourceInfo={savedMeshParent} meshes={[{
-        id: meshDocumentAdapterRef.current.document().identity.id, title: meshDocumentAdapterRef.current.document().metadata.label, revision: meshDocumentAdapterRef.current.document().identity.revision, structuralHash: meshDocumentAdapterRef.current.document().identity.structuralHash,
-        surfaceGeneration: savedMeshParent?.generation,
-        studyRun: readSurfaceStudyRun(savedMeshParent?.sampling ?? null),
-        vertexCount: meshDocumentAdapterRef.current.document().source.resource.vertexCount, current: savedMeshSourceCurrent(),
-        results: restoredProjectRef.current.workspace.results.filter(result => result.provenance.source.documentId === meshDocumentAdapterRef.current!.document().identity.id && result.provenance.operation.type.startsWith("mesh.saved.")),
-      }]} onAnalyze={saveLinkedMeshAnalysis} />}
       {nativeVolumeActive && activeKernelModule === "volume" && <VolumeProjectEditor key={restoredVolumeAdapter!.document().identity.id} adapter={restoredVolumeAdapter!} onRestore={() => navigateRestoredDocument(restoredVolumeAdapter!.document().identity.id, "volume")} />}
       {restoredComplexAdapter && activeKernelModule === "complex" && <ScientificProjectEditor adapter={restoredComplexAdapter} spec={complexMapSpec} onChange={updateComplexMapSpec} onRestore={() => navigateRestoredDocument(restoredComplexAdapter.document().identity.id, "complex")} />}
       {restoredProjectRef.current && (mode === "curves" && activeCurveKernelAdapter === restoredCurveAdapter || mode === "surfaces" && surfaceViewerKind === "param" && paramSurfaceId === "custom" && restoredSurfaceAdapter) && <div data-testid="project-editor-history" style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "6px 14px" }}>
@@ -80904,10 +80884,11 @@ case "mobius":
         onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis}
         creationHint="Uses saved formulas and ranges at the selected analysis resolution, independent of display resolution. Earlier Meshes and results remain available. Projects → Save project keeps them."
       />}
-      <div
+      {!hasSavedDocumentViewport && (<div
         data-testid="module-workspace"
         style={{
           ...styles.wrap,
+          ...(hasSavedDocumentViewport ? { display: "none" } : null),
           ...(isSurfacePreviewMode
             ? {
                 padding: "4px 8px 10px",
@@ -109754,7 +109735,7 @@ case "mobius":
             </div>
           </>
         )}
-      </div>
+      </div>)}
       {quantumScenePreview && <QuantumScenePreview opened={quantumScenePreview} onClose={() => setQuantumScenePreview(null)} />}
       {workflowActionOverlayModel && !cleanScreenshotSurfaceActive && (
         <WorkflowActionOverlayDialog

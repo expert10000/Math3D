@@ -421,11 +421,14 @@ test("PRJ07 previews independent scientific starters and opens their real docume
     await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
     const current = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(current.identity.id).toBe(first); expect(current.workspace.entries.map((entry: any) => entry.module)).toEqual(["graph2d", "curve", "surface"]);
-    await expect(page.getByTestId("workspace-nav-graphs")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("workspace-nav-surfaces")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("project-source-editor")).toHaveAttribute("data-document-id", current.workspace.entries.find((entry: any) => entry.module === "surface").expected.id);
+    await panel.getByTestId("project-gallery-layout-toggle").click();
     await expect(panel.getByTestId("project-group-surface")).toContainText("catenoid");
     await expect(panel.getByTestId("project-group-analysis")).toContainText("numerical");
     await panel.getByTestId("project-inspect-relations").click();
     await expect(panel.getByTestId("project-dependencies")).toContainText("graph2d.revolve-surface");
+    await panel.getByTestId("project-detail-toggle").click();
     await panel.getByTestId("project-template-select").selectOption("derivative-study");
     await panel.getByTestId("project-template-preview").click();
     await expect(panel.getByTestId("project-import-preview")).toContainText("Derivative Study");

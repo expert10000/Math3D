@@ -13,7 +13,8 @@ export const SurfaceFormulaControls = ({ document, onApply }: { document: Surfac
     catch (failure) { setError((failure as Error).message); }
   }}>
     {fields.map(field => <label key={field.id} style={{ display: "grid", gap: 3, maxWidth: "100%" }}>{field.label}
-      <input data-testid={`project-surface-field-${field.id}`} type={field.numeric ? "number" : "text"} step={field.numeric ? "any" : undefined} value={values[field.id]} onChange={event => setValues(before => ({ ...before, [field.id]: event.target.value }))} style={{ width: field.numeric ? 85 : 220, maxWidth: "100%", boxSizing: "border-box" }} />
+      {field.options ? <select data-testid={`project-surface-field-${field.id}`} value={values[field.id]} onChange={event => setValues(before => ({ ...before, [field.id]: event.target.value }))}>{field.options.map(option => <option key={option}>{option}</option>)}</select>
+        : <input data-testid={`project-surface-field-${field.id}`} type={field.numeric ? "number" : "text"} step={field.numeric ? "any" : undefined} value={values[field.id]} onChange={event => setValues(before => ({ ...before, [field.id]: event.target.value }))} style={{ width: field.numeric ? 85 : 220, maxWidth: "100%", boxSizing: "border-box" }} />}
     </label>)}
     <button type="submit" data-testid="project-surface-apply">Apply surface</button>
     {error && <span role="alert">{error}</span>}

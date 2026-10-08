@@ -564,6 +564,7 @@ contextBridge.exposeInMainWorld("appWindow", {
 });
 
 contextBridge.exposeInMainWorld("appDiagnostics", {
+  getSystemInfo: (): Promise<unknown> => ipcRenderer.invoke("app:system-info"),
   getRendererMemory: (): Promise<unknown> =>
     ipcRenderer.invoke("app:renderer-memory"),
   traceMeshEvent: (packet: unknown): void => {

@@ -9,25 +9,34 @@ test("Project documents and workspace exit are visible with compact controls", a
     ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page); await resizeSurfaceAppWindow(ctx, 1600, 1000);
     const page = ctx.page, editor = page.getByTestId("project-source-editor");
     await page.getByTestId("projects-toggle").click();
+    const profiler = process.env.MATH3D_PROFILE_PROJECT === "1" ? await page.context().newCDPSession(page) : null;
+    if (profiler) { await profiler.send("Profiler.enable"); await profiler.send("Profiler.start"); }
     let start = Date.now();
     await page.getByTestId("project-template-open-catenoid-evidence").click();
     await expect(editor.getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
     const openingMs = Date.now() - start;
+    if (profiler) {
+      const result = await profiler.send("Profiler.stop");
+      writeFileSync(test.info().outputPath("project-open-cpu-profile.json"), JSON.stringify(result.profile));
+    }
     const id = (await editor.getAttribute("data-document-id"))!, hash = (await editor.getAttribute("data-source-hash"))!;
     const switchesMs: number[] = [];
-    const profiler = process.env.MATH3D_PROFILE_PROJECT === "1" ? await page.context().newCDPSession(page) : null;
-    if (profiler) { await profiler.send("Profiler.enable"); await profiler.send("Profiler.start"); }
+    const navigationSteps: { exitMs: number; reopenMs: number }[] = [];
+    if (profiler) await profiler.send("Profiler.start");
     for (let index = 0; index < 3; index++) {
       start = Date.now();
       await editor.getByTestId("project-source-back-to-module").click();
       await expect(editor).toHaveCount(0);
+      const exitMs = Date.now() - start;
+      const reopenStart = Date.now();
       await page.getByTestId("project-viewer-document").selectOption(id);
       await expect(editor).toHaveAttribute("data-source-hash", hash);
       await expect(editor.getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
       switchesMs.push(Date.now() - start);
+      navigationSteps.push({ exitMs, reopenMs: Date.now() - reopenStart });
     }
     if (profiler) { const result = await profiler.send("Profiler.stop"); writeFileSync(test.info().outputPath("project-switch-cpu-profile.json"), JSON.stringify(result.profile)); await profiler.detach(); }
-    writeFileSync(test.info().outputPath("project-navigation-timing.json"), JSON.stringify({ openingMs, switchesMs, profile: "isolated Electron; click to visible canvas; not a GPU frame-rate benchmark" }, null, 2));
+    writeFileSync(test.info().outputPath("project-navigation-timing.json"), JSON.stringify({ openingMs, switchesMs, navigationSteps, profile: "isolated Electron; click to visible canvas; not a GPU frame-rate benchmark" }, null, 2));
     if (process.env.MATH3D_CLARITY_BASELINE === "1") return;
     const tree = page.getByTestId("project-document-tree");
     await expect(tree).toBeVisible();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { instantiateMath3DProjectTemplate, serializeMath3DProject } from "@math3d/core";
-import { PROJECT_RESUME_KEY, projectResumeDocument, rememberProjectDocument } from "./projectResume";
+import { PROJECT_RESUME_KEY, projectResumeDocument, rememberProjectDocument, projectUiPreferences, selectProjectDocument } from "./projectResume";
 
 describe("Project document resume", () => {
   const project = instantiateMath3DProjectTemplate("catenary-study", "resume-contract");
@@ -22,5 +22,17 @@ describe("Project document resume", () => {
   });
   it("does not let optional storage failure prevent scientific saving", () => {
     expect(() => rememberProjectDocument({ setItem: () => { throw new Error("Storage full"); } }, project, surface.expected.id)).not.toThrow();
+  });
+  it("defaults resume on and recovers invalid presentation preferences", () => {
+    expect(projectUiPreferences("{")).toEqual({ resumeEnabled: true, placement: "left" });
+    expect(projectUiPreferences(JSON.stringify({ resumeEnabled: false, placement: "right" }))).toEqual({ resumeEnabled: false, placement: "right" });
+  });
+  it("recovers stale selection deterministically with an explanation", () => {
+    const before = serializeMath3DProject(project);
+    const choice = selectProjectDocument(project, JSON.stringify({ projectId: project.identity.id, documentId: "missing" }));
+    expect(choice.selected.module).toBe("surface");
+    expect(choice.recovery).toContain("unavailable");
+    expect(selectProjectDocument(project, JSON.stringify({ projectId: "another-project", documentId: "missing" })).recovery).toBeNull();
+    expect(serializeMath3DProject(project)).toBe(before);
   });
 });

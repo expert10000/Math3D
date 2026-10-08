@@ -320,6 +320,7 @@ const drawProbeLabelSprite = (label: ProbeLabelSprite, lines: string[]) => {
 export type ParamSurfaceId = CoreParamSurfaceId;
 
 type Props = {
+  documentBinding?: import("../workspace/surfaceDocumentBinding").SurfaceDocumentBinding | null;
   surfaceId: ParamSurfaceId;
   customX?: string;
   customY?: string;
@@ -1378,7 +1379,8 @@ type ViewerState = {
   ) => void;
 };
 
-export function wrapFlagsFor(surfaceId: ParamSurfaceId) {
+export function wrapFlagsFor(surfaceId: ParamSurfaceId, binding?: { wrapU: boolean; wrapV: boolean } | null) {
+  if (binding) return { wrapU: binding.wrapU, wrapV: binding.wrapV };
   // wrapping in (u,v) domain space
   // wrapU: parameter is periodic (angle)
   // wrapV: parameter is periodic (angle)
@@ -1442,6 +1444,7 @@ function clearGroup(group: THREE.Group) {
 
 export const ParamSurfaceViewer: React.FC<Props> = ({
   surfaceId,
+  documentBinding = null,
   customX,
   customY,
   customZ,
@@ -2003,6 +2006,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     if (principalGroupRef.current) clearGroup(principalGroupRef.current);
   }, [
     surfaceId,
+    documentBinding,
     customX,
     customY,
     customZ,
@@ -2885,7 +2889,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
           })
         : null;
 
-    if (surfaceId === "custom") {
+    if (documentBinding) {
+      paramFunc = (u, v, target) => target.set(...documentBinding.point(u, v));
+    } else if (surfaceId === "custom") {
       const xFn = makeSafeParamExpr(customX, (u) => u);
       const yFn = makeSafeParamExpr(customY, (_u, v) => v);
       const zFn = makeSafeParamExpr(customZ, () => 0);
@@ -3353,7 +3359,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     sampleSetRef.current = sampleSet;
     onSampleSet?.(sampleSet);
     if (onParamGeodesicState && mesh) {
-      const wrap = wrapFlagsFor(surfaceId);
+      const wrap = wrapFlagsFor(surfaceId, documentBinding);
       const paramWorld = (u: number, v: number, target?: THREE.Vector3) => {
         const t = target ?? new THREE.Vector3();
         paramFunc(u, v, t);
@@ -4669,7 +4675,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
       if (dedupUVs.length < 2) return null;
 
-      const { wrapU, wrapV } = wrapFlagsFor(surfaceId);
+      const { wrapU, wrapV } = wrapFlagsFor(surfaceId, documentBinding);
       const unwrapped: { u: number; v: number }[] = [];
       let prev = dedupUVs[0];
       unwrapped.push({ u: prev.u, v: prev.v });
@@ -4760,7 +4766,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       stepScale?: number;
     }): THREE.Vector3[] | null => {
       if (!uvAttr || rawUVs.length !== rawPoints.length) return null;
-      const { wrapU, wrapV } = wrapFlagsFor(surfaceId);
+      const { wrapU, wrapV } = wrapFlagsFor(surfaceId, documentBinding);
       const unwrapDelta = (a: number, b: number, range: number, wrap: boolean) => {
         let d = b - a;
         if (wrap && Number.isFinite(range) && range > 0) {
@@ -6197,7 +6203,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     if (!state) return;
 
     const { paramFunc, uMin, uMax, vMin, vMax } = state;
-    const { wrapU, wrapV } = wrapFlagsFor(surfaceId);
+    const { wrapU, wrapV } = wrapFlagsFor(surfaceId, documentBinding);
     const uCount = Math.max(2, Math.round(chartGridCountU));
     const vCount = Math.max(2, Math.round(chartGridCountV));
     const steps: number = 120;
@@ -6750,7 +6756,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       dv: geoDir.dv * vRange,
     };
 
-    const { wrapU, wrapV } = wrapFlagsFor(surfaceId);
+    const { wrapU, wrapV } = wrapFlagsFor(surfaceId, documentBinding);
 
     const eps = 1e-4 * Math.min(Math.abs(uRange), Math.abs(vRange));
     const h = 0.02; // integration step in "t"
@@ -6866,7 +6872,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     fontSize: 11,
     cursor: "pointer",
   });
-  const chartWrapFlags = wrapFlagsFor(surfaceId);
+  const chartWrapFlags = wrapFlagsFor(surfaceId, documentBinding);
   const chartSeamSupported = chartWrapFlags.wrapU || chartWrapFlags.wrapV;
   const selectedSurfaceCellMasked = !!(
     selectedSurfaceCellInfo && surfaceCellMaskedIds.has(selectedSurfaceCellInfo.id)
@@ -7317,7 +7323,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         </div>
       )}
 
-      {surfaceId === "custom" && (
+      {surfaceId === "custom" && !documentBinding && (
         <div
           style={{
             position: "absolute",

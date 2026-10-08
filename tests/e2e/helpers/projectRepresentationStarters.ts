@@ -28,7 +28,7 @@ export const exerciseRepresentationStarters = async (page: Page) => {
       await expect(panel.getByTestId("project-dependencies")).toContainText("surface.chart-curve");
     }
     for (const entry of opened.workspace.entries.filter((entry: any) => opened.metadata.documents[entry.expected.id]?.title !== "Parameter chart")) {
-      await show(); await panel.getByTestId(`project-open-${entry.expected.id}`).click();
+      await show(); await panel.getByTestId(`project-open-${entry.expected.id}`).or(panel.getByTestId(`project-tree-document-${entry.expected.id}`)).click();
       if (await panel.isVisible()) await page.getByRole("button", { name: "Close project explorer" }).click();
       await expect(editor).toHaveAttribute("data-document-id", entry.expected.id);
       await expect(editor.getByTestId("project-source-measurement")).toContainText("bounds");
@@ -41,7 +41,7 @@ export const exerciseRepresentationStarters = async (page: Page) => {
       .toEqual(opened.workspace.entries.map((entry: any) => entry.expected));
     const target = opened.workspace.entries.find((entry: any) => opened.metadata.documents[entry.expected.id]?.title === editTitle);
     originalDocument = target.checkpoint;
-    await panel.getByTestId(`project-open-${target.expected.id}`).click();
+    await panel.getByTestId(`project-open-${target.expected.id}`).or(panel.getByTestId(`project-tree-document-${target.expected.id}`)).click();
     if (await panel.isVisible()) await page.getByRole("button", { name: "Close project explorer" }).click();
     if (await editor.getByTestId("project-source-json").getAttribute("open") === null) await editor.getByTestId("project-source-json").locator("summary").click();
     const changed = JSON.parse(JSON.stringify(originalDocument.source));

@@ -52,6 +52,7 @@ export type GeometryViewerProps = {
   showPlanes?: boolean;
   planeGridSettings?: ReferencePlaneGridSettings;
   resetToken?: number;
+  onCameraSync?: (state: CameraSyncState) => void;
   cameraOverride?: CameraSyncState | null;
   cameraOverrideToken?: number;
   cameraFitCommand?: CameraFitCommand | null;
@@ -169,6 +170,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   showPlanes = false,
   planeGridSettings,
   resetToken,
+  onCameraSync,
   cameraOverride = null,
   cameraOverrideToken = 0,
   cameraFitCommand = null,
@@ -372,6 +374,8 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
       showContours={false}
       showBoundingBox={showBoundingBox}
       resetToken={resetToken}
+      isCameraLeader={Boolean(onCameraSync)}
+      onCameraSync={onCameraSync}
       cameraOverride={cameraOverride}
       cameraOverrideToken={cameraOverrideToken}
       cameraFitCommand={cameraFitCommand}

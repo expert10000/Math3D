@@ -35,10 +35,10 @@ export const editFreezeProject = async (page: Page, fixture: ReturnType<typeof p
   await controls.importOpen(fixture.raw);
   expect((await controls.save()).workspace.entries.map((entry: any) => entry.expected)).toEqual(fixture.project.workspace.entries.map((entry: any) => entry.expected));
   // Navigate every saved document in one container before editing any source.
-  for (const document of fixture.docs) { await controls.open(document.identity.id); await expect(page.getByTestId("app-status-bar")).not.toBeEmpty(); }
+  for (const document of fixture.docs) { await controls.open(document.identity.id); await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", document.identity.id); }
   for (const module of ["curve", "surface", "geometry", "topology"]) {
     await controls.open(fixture.targets[module]!); await expect(editor).toHaveAttribute("data-document-id", fixture.targets[module]!);
-    await editor.locator("summary").click(); const source = JSON.parse(await editor.getByTestId("project-source-definition").inputValue()), changed = structuredClone(source);
+    await editor.getByTestId("project-source-json").locator("summary").click(); const source = JSON.parse(await editor.getByTestId("project-source-definition").inputValue()), changed = structuredClone(source);
     if (module === "curve") changed.definition.weights[1] = 3;
     if (module === "surface") changed.definition.expressions.formula = "x*x+y*y+z*z-0.25";
     if (module === "geometry") changed.geometry.points[1].x = 6;
@@ -72,7 +72,7 @@ export const checkFreezeHistory = async (page: Page, fixture: ReturnType<typeof 
   for (const key of ["curve", "surface", "geometry", "topology"]) {
     await controls.open(fixture.targets[key]!);
     const editor = page.getByTestId("project-source-editor");
-    await editor.locator("summary").click();
+    await editor.getByTestId("project-source-json").locator("summary").click();
     await expect(editor.getByTestId("project-source-undo")).toBeEnabled();
     await editor.getByTestId("project-source-undo").click();
     const original = fixture.docs.find((document) => document.identity.id === fixture.targets[key]).source;

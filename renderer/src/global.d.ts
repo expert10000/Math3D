@@ -663,6 +663,7 @@ declare global {
       onStateChange: (handler: (packet: AppWindowStatePacket) => void) => () => void;
     };
     appDiagnostics?: {
+      getSystemInfo: () => Promise<Record<string, unknown>>;
       getRendererMemory: () => Promise<{
         ok: boolean;
         sampledAt: number;

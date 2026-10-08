@@ -11,6 +11,10 @@ import { additionalRepresentationView, replaceAdditionalSource, type AdditionalD
 export class AdditionalProjectSession {
   // Ephemeral editor text, retained across module navigation; excluded from replay.
   sourceDraft: string | null = null;
+  presentation: "surface" | "sampled" = "surface";
+  camera: import("../components/SurfaceViewer").CameraSyncState | null = null;
+  wireframe = false;
+  presentationLoaded = false;
   private cachedView: { generations: string; resources: RepresentationContext["resources"]; view: RepresentationView } | null = null;
   readonly adapter: CurveDocumentAdapter | SurfaceDocumentAdapter | GeometryDocumentAdapter | TopologyDiagramCommandAdapter;
   readonly original: MixedWorkspaceEntry;

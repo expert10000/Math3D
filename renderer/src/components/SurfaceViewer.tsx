@@ -1542,6 +1542,8 @@ type Props = {
   graphExpr?: string;
   implicitExpr?: string;
   implicitMeshOverride?: ImplicitMeshOverride | null;
+  /** Generation-qualified saved Mesh field colours; never document source. */
+  surfaceMeshColors?: Float32Array | null;
   surfaceMeshOverride?: SurfaceMeshOverride | null;
   surfaceMeshOverrideBufferKey?: string | null;
   surfaceMeshOverrides?: SurfaceMeshOverride[] | null;
@@ -1841,6 +1843,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     graphExpr,
     implicitExpr,
     implicitMeshOverride = null,
+    surfaceMeshColors = null,
     surfaceMeshOverride: surfaceMeshOverrideProp = null,
     surfaceMeshOverrideBufferKey = null,
     surfaceMeshOverrides = null,
@@ -11991,6 +11994,26 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     fontSize: 11,
     cursor: "pointer",
   });
+
+  const savedFieldColorsApplied = useRef(false);
+  useEffect(() => {
+    if (surfaceId !== "surface_mesh") { savedFieldColorsApplied.current = false; return; }
+    if (!surfaceMeshColors && !savedFieldColorsApplied.current) return;
+    savedFieldColorsApplied.current = Boolean(surfaceMeshColors);
+    surfaceObjRef.current?.traverse(object => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.geometry) return;
+      const geometry = mesh.geometry, count = geometry.getAttribute("position")?.count ?? 0;
+      const valid = surfaceMeshColors && surfaceMeshColors.length === count * 3;
+      if (valid) geometry.setAttribute("color", new THREE.BufferAttribute(surfaceMeshColors, 3));
+      else if (colorMode === "solid") geometry.deleteAttribute("color");
+      for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        const display = material as THREE.MeshStandardMaterial;
+        display.vertexColors = Boolean(valid) || colorMode !== "solid";
+        display.color?.set(valid ? 0xffffff : solidColorForPalette(colorPalette)); display.needsUpdate = true;
+      }
+    });
+  }, [surfaceMeshColors, surfaceMeshOverride, surfaceId, colorMode, colorPalette, resetToken]);
 
   return (
     <div

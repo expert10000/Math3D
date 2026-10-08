@@ -129,6 +129,7 @@ if (process.platform === "win32") {
 type AppRuntimeMode = "development" | "packaged";
 type AppInstallType = "development" | "installer" | "portable-or-unknown";
 type AppSystemInfo = {
+  buildIdentity: { commit: string; dirty: boolean; builtAt: string; rendererHash: string } | null;
   appName: string;
   appVersion: string;
   mode: AppRuntimeMode;
@@ -361,10 +362,15 @@ const inferInstallType = (execPath: string, mode: AppRuntimeMode): AppInstallTyp
   return "portable-or-unknown";
 };
 
+// Bind diagnostics to this process's launch, even if the checkout is rebuilt.
+const launchedBuildIdentity: AppSystemInfo["buildIdentity"] = (() => {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, "build-identity.json"), "utf8")); } catch { return null; }
+})();
 const buildAppSystemInfo = (): AppSystemInfo => {
   const mode: AppRuntimeMode = app.isPackaged ? "packaged" : "development";
   const execPath = process.execPath;
   return {
+    buildIdentity: launchedBuildIdentity,
     appName: app.getName(),
     appVersion: app.getVersion(),
     mode,
@@ -388,6 +394,9 @@ const formatAppSystemInfo = (info: AppSystemInfo): string => {
     `${info.appName} ${version}`,
     `Mode: ${info.mode}`,
     `Install type: ${info.installType}`,
+    `Source: ${info.buildIdentity ? `${info.buildIdentity.commit}${info.buildIdentity.dirty ? " (working changes)" : ""}` : "build identity unavailable"}`,
+    `Built: ${info.buildIdentity?.builtAt ?? "unknown"}`,
+    `Renderer: ${info.buildIdentity?.rendererHash ?? "unknown"}`,
     "",
     `Executable: ${info.execPath}`,
     `App folder: ${info.appPath}`,
@@ -982,6 +991,7 @@ app.whenReady().then(async () => {
     removePreset(id);
   });
 
+  ipcMain.handle("app:system-info", () => buildAppSystemInfo());
   ipcMain.handle("app:renderer-memory", (evt) => {
     const win = BrowserWindow.fromWebContents(evt.sender);
     if (!win) {

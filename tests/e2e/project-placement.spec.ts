@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
+import { writeFileSync } from "node:fs";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
 test("open Project placements preserve document and Note editing across modules", async () => {
@@ -91,10 +92,10 @@ test("Project docking also preserves the saved source editor", async () => {
       await panel.getByTestId(`project-placement-${placement}`).click();
       await expect(editor.getByTestId("project-surface-field-g")).toHaveValue("z^2");
       await expect(editor).toHaveAttribute("data-document-id", surface.identity.id);
-      if (placement === "all") await expect(editor).toBeHidden();
+      if (placement === "all") await expect(editor.locator(".document-primary-view")).toBeHidden();
       else await expect(editor).toBeVisible();
       if (placement === "left" || placement === "right") {
-        const bounds = (await panel.boundingBox())!, source = (await editor.boundingBox())!;
+        const bounds = (await panel.boundingBox())!, source = (await editor.getByTestId("project-source-view").boundingBox())!;
         if (placement === "left") expect(source.x).toBeGreaterThanOrEqual(bounds.x + bounds.width);
         else expect(source.x + source.width).toBeLessThanOrEqual(bounds.x);
       }
@@ -114,13 +115,14 @@ test("Catenoid viewer stays beside a scrolling inspector with Project docked", a
     await expect(editor).toBeVisible();
     await expect(viewer.getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
     await expect(inspector.getByTestId("project-saved-mesh-results")).toContainText("Discrete curvature");
+    await expect(page.getByTestId("global-module-controls")).toHaveCount(0);
     const initial = (await viewer.boundingBox())!;
     expect(initial.y).toBeLessThan(200); expect(initial.height).toBeGreaterThan(750);
-    expect(initial.width).toBeGreaterThan(800);
+    // Source, viewport and Inspector now occupy three shared docks.
+    expect(initial.width).toBeGreaterThan(650);
     const projectBounds = (await panel.boundingBox())!, inspectorBounds = (await inspector.boundingBox())!;
     expect(initial.x).toBeGreaterThanOrEqual(projectBounds.x + projectBounds.width);
     expect(initial.x + initial.width).toBeLessThanOrEqual(inspectorBounds.x);
-    await inspector.getByTestId("project-source-json").locator("summary").click();
     await inspector.getByTestId("project-analysis-studies").locator("summary").click();
     await expect.poll(() => inspector.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
     await inspector.evaluate(element => { element.scrollTop = element.scrollHeight; });
@@ -135,10 +137,12 @@ test("Catenoid viewer stays beside a scrolling inspector with Project docked", a
     const narrowViewer = (await viewer.boundingBox())!, narrowInspector = (await inspector.boundingBox())!;
     expect(narrowViewer.height).toBeGreaterThan(300);
     expect(narrowViewer.y + narrowViewer.height).toBeLessThanOrEqual(narrowInspector.y);
-    expect(narrowInspector.y + narrowInspector.height).toBeLessThanOrEqual(844);
+    // Fractional Windows display scaling can sum DOMRect values to 844.00006.
+    expect(narrowInspector.y + narrowInspector.height).toBeLessThanOrEqual(844 + 0.001);
     expect(await editor.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     await expect(viewer.getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
     await page.screenshot({ path: test.info().outputPath("catenoid-viewer-narrow.png") });
+    writeFileSync(test.info().outputPath("catenoid-viewer-layout.json"), JSON.stringify({ desktop: { viewer: initial, project: projectBounds, inspector: inspectorBounds }, narrow: { viewer: narrowViewer, inspector: narrowInspector } }, null, 2));
   } finally { await closeSurfaceApp(ctx); }
 });
 

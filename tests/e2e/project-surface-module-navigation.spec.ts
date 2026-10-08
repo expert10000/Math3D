@@ -11,13 +11,14 @@ test("saved Catenoid does not cover global Surfaces navigation and retains its d
     await expect(editor).toBeVisible();
     const id = await editor.getAttribute("data-document-id"), hash = await editor.getAttribute("data-source-hash");
     const savedBytes = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
+    await editor.getByRole("tab", { name: "Source/Object", exact: true }).click();
     await editor.getByTestId("project-source-json").locator("summary").click();
     await editor.getByTestId("project-source-definition").fill("Unapplied source draft survives a module visit.");
-    await page.getByRole("button", { name: "Project", exact: true }).click();
     await page.getByTestId("surface-family-implicit").first().click();
     await expect(editor).toHaveCount(0);
     await expect(page.getByTestId("surface-family-implicit").first()).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("module-workspace")).toBeVisible();
+    await expect(page.getByTestId("global-module-controls")).toBeVisible();
     await expect(page.getByTestId("app-shell")).not.toHaveAttribute("data-project-document-id", id!);
     await page.screenshot({ path: test.info().outputPath("global-implicit-after-catenoid.png") });
 
@@ -27,10 +28,10 @@ test("saved Catenoid does not cover global Surfaces navigation and retains its d
       await page.getByTestId("project-viewer-document").selectOption(id!);
       await expect(editor).toHaveAttribute("data-document-id", id!);
       await expect(editor).toHaveAttribute("data-source-hash", hash!);
+      await editor.getByRole("tab", { name: "Source/Object", exact: true }).click();
       await editor.getByTestId("project-source-json").locator("summary").click();
       await expect(editor.getByTestId("project-source-definition")).toHaveValue("Unapplied source draft survives a module visit.");
       await expect(editor.getByTestId("project-source-undo")).toBeDisabled();
-      await page.getByRole("button", { name: "Project", exact: true }).click();
     };
     await reopenSaved();
     await page.getByTestId("workspace-nav-surfaces").click();

@@ -81,6 +81,28 @@ describe("GK10 Surface document adapter", () => {
 });
 
 describe("GK11 Surface-to-Mesh kernel handoff", () => {
+  it("reuses identical publication, retains promotion and checks mutable geometry and mappings", () => {
+    const surface = surfaceDocumentFromLegacyDefinition(definition());
+    const payload = createDerivedSurfaceMeshPayload({ definition: definition(), label: "Grid", vertexCount: 3, faceCount: 1, method: "grid", settings: { resolution: 16 }, backend: { id: "native" }, correspondence: { parameterCoordinates: [0, 0, 1, 0, 0, 1] } });
+    const record = compactDerivedSurfaceMesh(payload, "Grid");
+    const geometry = { positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), indices: new Uint32Array([0, 1, 2]) };
+    const handoff = new SurfaceMeshKernelHandoff([surface]);
+    const input = { record, payload, sources: [surface], geometry };
+    handoff.publish(input);
+    const promoted = handoff.promote(record.identity.meshId, "Snapshot");
+    const snapshot = handoff.resolvePromoted(record.identity.meshId);
+    expect(handoff.publish(input)).toBe(promoted);
+    payload.correspondence.parameterCoordinates![0] = 0.5;
+    expect(handoff.publish(input)).not.toBe(promoted);
+    const before = handoff.resolve(record.identity.meshId);
+    geometry.positions[0] = 2;
+    handoff.publish(input);
+    const after = handoff.resolve(record.identity.meshId);
+    expect(before.ok && after.ok && before.metadata.checksum !== after.metadata.checksum).toBe(true);
+    expect(snapshot?.length).toBeGreaterThan(0);
+    geometry.positions[0] = NaN;
+    expect(() => handoff.publish(input)).toThrow(/Invalid/);
+  });
   it("publishes a revision-bound artifact and promotes a stable Mesh snapshot with lineage", () => {
     const surface = surfaceDocumentFromLegacyDefinition(definition());
     const payload = createDerivedSurfaceMeshPayload({ definition: definition(), label: "Graph mesh", vertexCount: 3, faceCount: 1, method: "grid", settings: { resolution: 16, tolerance: 0.01 }, backend: { id: "native", version: "1" }, correspondence: { parameterCoordinates: [0, 0, 1, 0, 0, 1] } });

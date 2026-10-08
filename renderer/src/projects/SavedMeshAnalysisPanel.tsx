@@ -24,7 +24,8 @@ const resultDescription = (result: AnalysisResultEnvelope) => {
   if (result.provenance.operation.type === "mesh.saved.edge-path") return `Length ${number(s.length)} · ${Array.isArray(s.vertexIndices) ? s.vertexIndices.length : "unknown"} path vertices`;
   return result.provenance.operation.type;
 };
-export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onNameStudy, onOpenSource, sourceInfo, onSweep, onResolutionCompare, onAnalyze, onApplyStudyPreset, readMesh, resolutionSupported = false, initialStudyPreset = "helicoid", creationHint = "Uses the applied surface. Apply formula changes first." }: { meshes: readonly SavedMeshChoice[]; onNameStudy?: (id: string, name: string) => void; onOpenSource?: (id: string) => void; sourceInfo?: ReturnType<typeof savedMeshSurfaceSource>; onResolutionCompare?: () => Promise<string[]>; onSweep?: (id: SurfaceStudyPresetId, values: readonly number[], resolution: SurfaceStudyResolution) => Promise<string[]>; onCreate?: (resolution?: SurfaceStudyResolution) => string; onOpen?: (id: string) => void; onAnalyze: (id: string, kind: SavedMeshAnalysisKind, endpoints?: { start: number; end: number }) => void; onApplyStudyPreset?: (id: SurfaceStudyPresetId, value: number) => void; readMesh?: (id: string) => SurfaceMeshData; resolutionSupported?: boolean; initialStudyPreset?: SurfaceStudyPresetId; creationHint?: string }) => {
+export type SavedMeshViewportState = { mesh: SurfaceMeshData; colors?: Float32Array | null; inspected?: number; picking: boolean; onInspect: (index: number) => void; onPick: (index: number) => void; onCancelPick: () => void; start?: number; end?: number; path?: readonly number[] };
+export const SavedMeshAnalysisPanel = ({ renderWorkspace, meshes, onCreate, onOpen, onNameStudy, onOpenSource, sourceInfo, onSweep, onResolutionCompare, onAnalyze, onApplyStudyPreset, readMesh, resolutionSupported = false, initialStudyPreset = "helicoid", creationHint = "Uses the applied surface. Apply formula changes first." }: { renderWorkspace?: (controls: React.ReactNode, viewport: SavedMeshViewportState | null) => React.ReactNode; meshes: readonly SavedMeshChoice[]; onNameStudy?: (id: string, name: string) => void; onOpenSource?: (id: string) => void; sourceInfo?: ReturnType<typeof savedMeshSurfaceSource>; onResolutionCompare?: () => Promise<string[]>; onSweep?: (id: SurfaceStudyPresetId, values: readonly number[], resolution: SurfaceStudyResolution) => Promise<string[]>; onCreate?: (resolution?: SurfaceStudyResolution) => string; onOpen?: (id: string) => void; onAnalyze: (id: string, kind: SavedMeshAnalysisKind, endpoints?: { start: number; end: number }) => void; onApplyStudyPreset?: (id: SurfaceStudyPresetId, value: number) => void; readMesh?: (id: string) => SurfaceMeshData; resolutionSupported?: boolean; initialStudyPreset?: SurfaceStudyPresetId; creationHint?: string }) => {
   const [selected, setSelected] = useState(""), [start, setStart] = useState("0"), [end, setEnd] = useState(""), [message, setMessage] = useState(""), [error, setError] = useState("");
   const [studyId, setStudyId] = useState<SavedMeshAnalysisKind>("curvature");
   const [studyName, setStudyName] = useState(""), [sweepValues, setSweepValues] = useState("0.5, 1, 1.5"), [sweepBusy, setSweepBusy] = useState(false);
@@ -33,7 +34,17 @@ export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onNameStudy, 
   const preset = SURFACE_STUDY_PRESETS.find(item => item.id === presetId)!;
   const study = SAVED_MESH_STUDIES.find(item => item.id === studyId)!;
   const mesh = meshes.find(choice => choice.id === selected) ?? meshes.at(-1);
-  const [viewOpen, setViewOpen] = useState(false), [mapField, setMapField] = useState<CurvatureMapField | "none">("none");
+  const [viewOpen, setViewOpen] = useState(Boolean(renderWorkspace)), [mapField, setMapField] = useState<CurvatureMapField | "none">(() => {
+    try {
+      const saved = mesh && JSON.parse(localStorage.getItem(`math3d.mesh-field.v1.${mesh.id}`) ?? "null");
+      if (renderWorkspace && saved?.revision === mesh?.revision && saved?.hash === mesh?.structuralHash && ["none", "K", "H"].includes(saved?.field)) return saved.field;
+    } catch { /* Recover optional appearance preferences. */ }
+    return renderWorkspace && mesh?.results.some(result => result.provenance.operation.type === "mesh.saved.curvature" && result.provenance.source.revision === mesh.revision && result.provenance.source.structuralHash === mesh.structuralHash) ? "K" : "none";
+  });
+  useEffect(() => {
+    if (!renderWorkspace || !mesh) return;
+    try { localStorage.setItem(`math3d.mesh-field.v1.${mesh.id}`, JSON.stringify({ revision: mesh.revision, hash: mesh.structuralHash, field: mapField })); } catch { /* Optional UI state. */ }
+  }, [Boolean(renderWorkspace), mesh?.id, mesh?.revision, mesh?.structuralHash, mapField]);
   const [pickTarget, setPickTarget] = useState<"start" | "end" | null>(null), [endpointsChosen, setEndpointsChosen] = useState(false);
   useEffect(() => { setStudyName(mesh?.title ?? ""); }, [mesh?.id, mesh?.title]);
   const meshKey = mesh ? `${mesh.id}:${mesh.revision}:${mesh.structuralHash}` : "";
@@ -89,7 +100,7 @@ export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onNameStudy, 
       setMessage("Three resolution studies retained from the same Surface generation. Projects → Save project keeps them.");
     } catch (failure) { setError((failure as Error).message); setMessage(""); } finally { setSweepBusy(false); }
   };
-  return <section data-testid="project-saved-mesh-workflow" style={{ padding: "0 10px 10px", borderTop: "1px solid #cbd5e1", maxWidth: "100%", overflowWrap: "anywhere" }}>
+  const controls = <section data-testid="project-saved-mesh-workflow" style={{ padding: "0 10px 10px", borderTop: "1px solid #cbd5e1", maxWidth: "100%", overflowWrap: "anywhere" }}>
     <details data-testid="project-analysis-studies" style={{ padding: "8px 0" }}>
       <summary>Guided analysis studies</summary>
       {onApplyStudyPreset && <fieldset style={{ margin: "8px 0", minWidth: 0 }} data-testid="project-surface-study-presets">
@@ -134,7 +145,7 @@ export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onNameStudy, 
         <summary>Saved Mesh visual study</summary>
         <div>{mesh.title} · Mesh r{mesh.revision} · {mesh.current ? "current source" : "historical source"}</div>
         <label>Colour map <select data-testid="project-curvature-map" value={mapField} onChange={event => setMapField(event.target.value as CurvatureMapField | "none")}><option value="none">Solid</option><option value="K">Gaussian K</option><option value="H">Mean H</option></select></label>
-        {colourMap.map && <div data-testid="project-curvature-legend" data-source-id={mesh.id} data-source-revision={mesh.revision} data-field={mapField}>
+        {colourMap.map && <div data-testid="project-curvature-legend" data-source-id={mesh.id} data-source-revision={mesh.revision} data-source-hash={mesh.structuralHash} data-field={mapField}>
           <div style={{ height: 12, maxWidth: 320, background: `linear-gradient(to right, ${CURVATURE_MAP_COLOURS.negative}, ${CURVATURE_MAP_COLOURS.zero}, ${CURVATURE_MAP_COLOURS.positive})` }} />
           {number(colourMap.map.range.min)} · 0 · {number(colourMap.map.range.max)} · auto symmetric scale
           <div>Interior range {number(colourMap.map.min)} to {number(colourMap.map.max)} · {colourMap.map.count} coloured vertices · {colourMap.map.excluded} boundary/invalid vertices in grey.</div>
@@ -161,7 +172,7 @@ export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onNameStudy, 
         <div role="status" data-testid="project-path-selection" data-picked-start={endpointsChosen ? start : ""} data-picked-end={endpointsChosen ? end : ""}>
           {pickTarget ? `Click the saved Mesh to choose ${pickTarget}. Picks snap to a vertex of the hit triangle; drag still orbits. Escape cancels.` : "Pick start, then end; save the shortest edge path below. Green = start, purple = end, yellow = last saved path (shown through the Mesh)."}
         </div>
-        {viewOpen && <SavedMeshStudyView mesh={viewData} colors={colourMap.map?.colors} inspected={inspected} onInspect={setInspected} picking={!!pickTarget} onCancelPick={() => setPickTarget(null)}
+        {viewOpen && !renderWorkspace && <SavedMeshStudyView mesh={viewData} colors={colourMap.map?.colors} inspected={inspected} onInspect={setInspected} picking={!!pickTarget} onCancelPick={() => setPickTarget(null)}
           start={endpointsChosen ? Number(start) : undefined} end={endpointsChosen && end ? Number(end) : endpointsChosen ? mesh.vertexCount - 1 : undefined} path={savedPath?.vertexIndices}
           onPick={index => { if (pickTarget === "start") { setStart(String(index)); setPickTarget("end"); } else if (pickTarget === "end") { setEnd(String(index)); setPickTarget(null); } setEndpointsChosen(true); setError(""); }} />}
       </details>}
@@ -185,4 +196,9 @@ export const SavedMeshAnalysisPanel = ({ meshes, onCreate, onOpen, onNameStudy, 
     {message && <div role="status" data-testid="project-saved-mesh-message">{message}</div>}
     {error && <div role="alert">{error}</div>}
   </section>;
+  return renderWorkspace ? renderWorkspace(controls, viewData && mesh ? { mesh: viewData, colors: colourMap.map?.colors, inspected, picking: Boolean(pickTarget),
+    onInspect: setInspected, onCancelPick: () => setPickTarget(null),
+    start: endpointsChosen ? Number(start) : undefined, end: endpointsChosen ? Number(end || mesh.vertexCount - 1) : undefined, path: savedPath?.vertexIndices,
+    onPick: index => { if (pickTarget === "start") { setStart(String(index)); setPickTarget("end"); } else if (pickTarget === "end") { setEnd(String(index)); setPickTarget(null); } setEndpointsChosen(true); setError(""); }
+  } : null) : controls;
 };
