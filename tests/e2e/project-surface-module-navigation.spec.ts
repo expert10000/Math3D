@@ -48,7 +48,7 @@ test("saved Catenoid does not cover global Surfaces navigation and retains its d
     await expect(editor).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath("global-catenoid-module.png") });
     await reopenSaved();
-    await expect(editor.getByTestId("project-source-back-to-module")).toHaveText("Back to normal Surfaces");
+    await expect(editor.getByTestId("project-source-back-to-module")).toHaveText("Exit project view");
     await editor.getByTestId("project-source-back-to-module").click();
     await expect(editor).toHaveCount(0); await expect(page.getByTestId("module-workspace")).toBeVisible();
     await page.getByTestId("workspace-nav-mesh").click();

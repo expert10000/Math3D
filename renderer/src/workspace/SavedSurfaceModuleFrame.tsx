@@ -26,7 +26,7 @@ export function SavedSurfaceModuleFrame({ session, title, related, onOpenRelated
         <button data-testid="document-surface-view" aria-pressed="true">Surface</button>
         <button data-testid="document-custom-view" aria-pressed="false" onClick={onCustom}>Custom</button>
       </div>
-      <button data-testid="project-source-back-to-module" onClick={onClose}>Back to normal Surfaces</button>
+      <button data-testid="project-source-back-to-module" onClick={onClose}>Exit project view</button>
       {!!related?.length && <nav data-testid="document-related" aria-label="Related documents">{related.map(item => <button key={item.id} onClick={() => onOpenRelated?.(item.id, item.module)}>{item.label}</button>)}</nav>}
       {error && <span role="alert">{error}</span>}
     </div>

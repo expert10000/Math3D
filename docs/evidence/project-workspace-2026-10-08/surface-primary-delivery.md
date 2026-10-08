@@ -13,7 +13,7 @@ Date: 2026-10-08. Checkout: `C:\Math3D`, based on main `0e6ead75`.
   selection is stable. Both retain the owning saved source, history and draft.
 - Document activation and cold resume default to Surface for qualified captured
   Graph revolutions and open extrusions. Related Graph/Mesh links select their
-  own documents. **Back to normal Surfaces** exits the saved document view.
+  own documents. **Exit project view** exits the saved document view.
 - The gallery identifies the saved Surface and shows its construction family
   without highlighting an unrelated global preset. **Edit saved Surface** and
   **Edit profile** open the owning Object controls.
@@ -81,3 +81,30 @@ switching flow passed again after the correction; its fifteen switches measured
 869–1054 ms, within the existing 1500 ms limit.
 
 ![Project tree on the left after opening from hidden docks](project-left-after-hidden-docks.png)
+
+## Correction: return to the owning Catenoid
+
+The previous **Back to normal Surfaces** action left the saved document and
+restored the independent global workspace. That could show an earlier Helicoid,
+as in the user's screenshot.
+
+Custom now offers **Back to catenoid**, which selects the same saved Surface in
+the full native Surfaces workspace. Its saved Mesh offers the same action and
+resolves the owning Surface through the recorded Mesh source relation. The
+Project document title supplies the label. Archived sources cannot be opened.
+**Exit project view** explicitly leaves the saved document for the independent
+global workspace. Both workspaces retain their existing renderers.
+
+The expanded Electron flow passed in 3.6 minutes. It starts with global Helicoid,
+opens the saved Catenoid, returns from its Mesh using the recorded Surface link,
+saves and cold-restarts, then returns from Custom to the same native Surface.
+Document ID and source hash are checked throughout; explicit exit is checked
+separately. No page errors were reported. Renderer build and renderer/E2E type
+checks passed.
+
+Earlier attempts exceeded the original three-minute overall test deadline, with
+no failed assertions. The trace showed successful Mesh return and, after grouping
+repeated layout checks into one renderer query, successful save/cold restore.
+The expanded two-launch flow now has a four-minute overall limit; individual
+action timeouts are unchanged. This functional check does not establish a new
+interactive performance result.

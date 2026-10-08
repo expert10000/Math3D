@@ -2,27 +2,36 @@ import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
 test("Catenoid defaults to the full Surface module and explicitly opens Custom", async () => {
-  test.setTimeout(180_000);
+  // This flow includes two launches and verifies both owning-Surface returns.
+  test.setTimeout(240_000);
   let ctx: LaunchedSurfaceApp | null = null;
   try {
     ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page); await resizeSurfaceAppWindow(ctx, 1600, 1000);
     let page = ctx.page;
     const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
+    await page.getByTestId("surface-family-constructed").first().click();
+    await page.getByTestId("param-constructed-subtype-ruled").click();
+    await page.getByRole("button", { name: "Helicoid", exact: true }).click();
     await page.getByTestId("projects-toggle").click(); await page.getByTestId("project-template-open-catenoid-evidence").click();
     let owner = page.getByTestId("project-source-editor");
     const id = (await owner.getAttribute("data-document-id"))!, hash = (await owner.getAttribute("data-source-hash"))!;
     const normal = async () => {
-      await expect(page.getByTestId("module-workspace")).toBeVisible();
-      await expect(page.getByTestId("surface-left-panel")).toBeVisible();
-      await expect(page.getByTestId("surface-right-panel")).toBeVisible();
-      await expect(page.getByTestId("surface-primary-viewer")).toBeVisible();
-      await expect(page.locator(".document-workspace")).toHaveCount(0);
-      await expect(page.getByTestId("document-viewport")).toHaveAttribute("data-workbench", "module");
-      await expect(page.getByTestId("document-viewport")).toHaveAttribute("data-source-hash", hash);
-      await expect(page.getByTestId("document-module-inspector").getByTestId("mesh-kernel-document")).toHaveCount(0);
-      await expect(page.getByTestId("surface-viewer-canvas-host")).toHaveCount(1);
-      const size = await page.getByTestId("surface-viewer-canvas-host").boundingBox();
-      expect(size!.height).toBeGreaterThan(200); expect(size!.width).toBeGreaterThan(200);
+      await expect.poll(() => page.evaluate(() => {
+        const find = (name: string) => document.querySelector(`[data-testid="${name}"]`);
+        const visible = (name: string) => {
+          const element = find(name), size = element?.getBoundingClientRect();
+          return !!element && !!size && size.width > 0 && size.height > 0 && getComputedStyle(element).visibility !== "hidden";
+        };
+        const viewport = find("document-viewport"), size = find("surface-viewer-canvas-host")?.getBoundingClientRect();
+        return {
+          visible: ["module-workspace", "surface-left-panel", "surface-right-panel", "surface-primary-viewer"].every(visible),
+          customHosts: document.querySelectorAll(".document-workspace").length,
+          workbench: viewport?.getAttribute("data-workbench"), hash: viewport?.getAttribute("data-source-hash"),
+          unrelatedMesh: document.querySelectorAll('[data-testid="document-module-inspector"] [data-testid="mesh-kernel-document"]').length,
+          canvases: document.querySelectorAll('[data-testid="surface-viewer-canvas-host"]').length,
+          usableSize: !!size && size.height > 200 && size.width > 200,
+        };
+      })).toEqual({ visible: true, customHosts: 0, workbench: "module", hash, unrelatedMesh: 0, canvases: 1, usableSize: true });
     };
     await normal();
     const panel = page.getByTestId("project-explorer-panel");
@@ -62,7 +71,11 @@ test("Catenoid defaults to the full Surface module and explicitly opens Custom",
       const entry = saved.workspace.entries.find((value: any) => value.module === module);
       await panel.getByTestId(`project-tree-document-${entry.expected.id}`).click();
       await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", entry.expected.id);
-      await panel.getByTestId(`project-tree-document-${id}`).click(); await normal();
+      if (module === "mesh") {
+        await expect(page.getByTestId("project-source-back-to-surface")).toHaveText("Back to catenoid");
+        await page.getByTestId("project-source-back-to-surface").click();
+      } else await panel.getByTestId(`project-tree-document-${id}`).click();
+      await normal(); await expect(owner).toHaveAttribute("data-document-id", id);
     }
     await page.getByTestId("document-custom-view").click();
     await expect(page.getByTestId("document-viewport")).toHaveAttribute("data-view", "sampled");
@@ -78,6 +91,10 @@ test("Catenoid defaults to the full Surface module and explicitly opens Custom",
     await page.getByTestId("document-custom-view").click();
     await expect(page.getByTestId("document-viewport")).toHaveAttribute("data-view", "sampled");
     await expect(owner).toHaveAttribute("data-source-hash", hash);
+    await expect(page.getByTestId("project-source-back-to-surface")).toHaveText("Back to catenoid");
+    await page.getByTestId("project-source-back-to-surface").click(); await normal();
+    await expect(owner).toHaveAttribute("data-document-id", id);
+    await expect(page.getByTestId("project-source-back-to-module")).toHaveText("Exit project view");
     await page.getByTestId("project-source-back-to-module").click();
     await expect(owner).toHaveCount(0);
     await expect(page.getByTestId("module-workspace")).toBeVisible();

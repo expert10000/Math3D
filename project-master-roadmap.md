@@ -1033,7 +1033,7 @@ the visible workspace, not only hidden module state.
   available for reopening through Project's document selector.
 - The saved-source viewport follows the actual header height, including wrapped
   navigation rows. It must not cover family buttons at narrower window widths.
-- **Back to normal Surfaces** opens the module gallery. The top **Surfaces**
+- **Exit project view** opens the module gallery. The top **Surfaces**
   navigation button always opens that normal workspace, including repeated
   clicks and returning from Mesh. It never implicitly reopens a saved Project
   Surface; select that document in Project's tree or selector. An unrelated
@@ -1252,3 +1252,14 @@ The floating Project button reveals an explorer hidden inside a collapsed dock;
 it must not treat that invisible explorer as an open panel to close. Regression
 coverage must begin with collapsed/focused docks and include saved-project Open,
 reopening an active starter, and recovery through the floating Project button.
+
+#### Return to the owning Surface
+
+**Back to Catenoid** in Custom returns to that same saved Catenoid in the native
+Surfaces module. In its saved Mesh, the return action follows the Mesh's recorded
+source relation to the owning Surface. It must not select the previous global
+preset, another Surface with a similar name, or a newly created document.
+The button uses the owning document's Project title. **Exit project view** is a
+separate action that opens the independent normal module workspace. Native
+Surface already displays the Catenoid, so its toolbar only needs that explicit
+exit alongside Surface/Custom selection.

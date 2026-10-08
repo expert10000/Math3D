@@ -45,7 +45,7 @@ test("Project documents and workspace exit are visible with compact controls", a
     const treeBox = await tree.boundingBox(), contentsBox = await panel.getByTestId("project-sidebar-contents").boundingBox();
     expect(treeBox!.y + treeBox!.height).toBeLessThan(contentsBox!.y);
     await expect(page.getByTestId("surfaces-action-gallery")).toHaveCount(0);
-    await expect(editor.getByTestId("project-source-back-to-module")).toHaveText("Back to normal Surfaces");
+    await expect(editor.getByTestId("project-source-back-to-module")).toHaveText("Exit project view");
     const sizes = await page.evaluate(() => {
       const metrics = (selector: string) => { const element = document.querySelector<HTMLElement>(selector)!; const style = getComputedStyle(element); return { font: style.fontSize, height: element.getBoundingClientRect().height }; };
       return { global: metrics('[data-testid="workspace-nav-surfaces"]'), project: metrics('[data-testid="project-placement-left"]'), source: metrics('[data-testid="project-source-back-to-module"]'), toggle: metrics('[data-testid="projects-quick-toggle"]') };

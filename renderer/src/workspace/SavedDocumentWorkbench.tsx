@@ -77,7 +77,8 @@ export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, p
         <button data-testid="document-custom-view" aria-pressed={customView} title="Use the custom viewer and document controls" onClick={() => onSelectView?.("custom")}>Custom</button>
       </div>}
       {prepared.binding && !showModule && <label>Custom rendering <select data-testid="document-view-choice" value={presentation} onChange={event => { session.presentation = event.target.value as typeof presentation; setPresentation(session.presentation); setProbe(false); setProbeResult(null); changed(); }}><option value="surface">Surface</option><option value="sampled">Sampled</option></select></label>}
-      <button data-testid="project-source-back-to-module" onClick={onClose}>{session.original.module === "surface" ? "Back to normal Surfaces" : "Back to module"}</button>
+      {moduleView && <button data-testid="project-source-back-to-surface" onClick={() => onSelectView?.("surface")}>Back to {documentTitle ?? "Surface"}</button>}
+      <button data-testid="project-source-back-to-module" onClick={onClose}>{session.original.module === "surface" ? "Exit project view" : "Back to module"}</button>
     </>}
     viewport={showModule ? <div style={{ width: "100%", height: "100%" }} data-testid="document-viewport" data-view="surface" data-workbench="module" data-document-id={document.identity.id} data-source-hash={document.identity.structuralHash}>{moduleView!.viewport}</div> : prepared.view ? <DocumentViewport view={prepared.view} binding={prepared.binding} presentation={presentation} camera={session.camera} cameraToken={version}
       rememberCamera={rememberCamera} wireframe={wireframe} probe={probe} surfaceView={surfaceView} probeUV={probeUV?.hash === document.identity.structuralHash ? probeUV.uv : null} probeToken={probeToken} resetToken={resetToken}
