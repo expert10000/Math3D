@@ -20,7 +20,7 @@ import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint } from "../projects/projectTransfer";
 import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
 import { captureProjectResources, captureProjectResourcesAsync, exportProjectPackage, projectResourceInventory, MAX_PROJECT_PACKAGE_BYTES, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
-import { commitProjectResources, loadProjectResources } from "../projects/projectResourceArchive";
+import { canReuseProjectResourceArchive, commitProjectResources, loadProjectResources, stageProjectBackupResources } from "../projects/projectResourceArchive";
 import { canonicalJsonStringify, structuralHash, type ProjectNoteAnchor, type StableDocumentId } from "@math3d/core";
 import { pointTableStore, installPortablePointTables } from "../graph2d/pointTableStore";
 import { prepareProjectExampleCollection, importProjectExamples, SAMSUNG_EXAMPLE_COUNT } from "../projects/projectExampleCollection";
@@ -67,6 +67,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
+  const stagedBackup = useRef<{ snapshot: string; inputToken: number; session: VerifiedProjectResources | undefined; project: Math3DProject; resources: VerifiedProjectResources; slot: "before-open-a" | "before-open-b" } | null>(null);
+  const backupStageSequence = useRef(0);
+  const backupStaging = useRef<Promise<void> | null>(null);
   const currentCapture = useRef(capture); currentCapture.current = capture;
   const workspaceInputSequence = useRef(0);
   useEffect(() => {
@@ -360,6 +363,32 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     if (item.kind === "graph-point-table") { const rows = pointTableStore.resolve(item.reference as import("@math3d/core").Graph2DPointTableReference); if (rows) return new TextEncoder().encode(canonicalJsonStringify(rows)); }
     return extra?.bytes(item) ?? null;
   };
+  useEffect(() => {
+    if (!open) return;
+    const sequence = ++backupStageSequence.current;
+    const timer = window.setTimeout(() => {
+      const earlier = backupStaging.current;
+      const work = async () => {
+        try {
+          await earlier;
+          if (sequence !== backupStageSequence.current) return;
+          const workspace = currentCapture.current(), snapshot = canonicalJsonStringify(workspace);
+          const inputToken = workspaceInputSequence.current, session = resourceSession.current;
+          if (stagedBackup.current?.snapshot === snapshot && stagedBackup.current.session === session && stagedBackup.current.inputToken === inputToken) return;
+          const project = adoptMixedWorkspaceProject(workspace, "Before project open");
+          const resources = await captureProjectResourcesAsync(project, resourceBytes(session), true);
+          if (!resources.byteEntries().length || sequence !== backupStageSequence.current) return;
+          const slot = await stageProjectBackupResources(project, resources);
+          if (sequence !== backupStageSequence.current || inputToken !== workspaceInputSequence.current || session !== resourceSession.current || canonicalJsonStringify(currentCapture.current()) !== snapshot) return;
+          stagedBackup.current = { snapshot, inputToken, session, project, resources, slot };
+          performance.clearMarks("project-open:backup-ready");
+          performance.mark("project-open:backup-ready");
+        } catch { /* Opening still captures and commits a fresh backup. */ }
+      };
+      backupStaging.current = work();
+    }, 200);
+    return () => { window.clearTimeout(timer); backupStageSequence.current++; };
+  }, [open]);
   const collectResources = (next: Math3DProject, extra = resourceSession.current, allowMissing = false, workbook?: { id: string; bytes: Uint8Array }) => captureProjectResources(next, resourceBytes(extra, workbook), allowMissing);
   const save = async () => {
     if (busy) return; setBusy(true);
@@ -638,7 +667,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     } catch (failure) { setExampleMessage(`Samsung collection import failed: ${(failure as Error).message}`); }
     finally { setBusy(false); }
   };
-  const importPreview = async (openWorkspace: boolean, candidate = incoming) => {
+  const importPreview = async (openWorkspace: boolean, candidate = incoming, reuseExistingResources = false) => {
     if (!candidate || busy) return false;
     setBusy(true);
     const activationToken = ++importSequence.current;
@@ -652,38 +681,60 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         performance.measure(`project-open:${name}`, { start: phaseStart, end: performance.now() });
         phaseStart = performance.now();
       };
+      const measurePart = (name: string, start: number) => {
+        performance.clearMeasures(`project-open:${name}`);
+        performance.measure(`project-open:${name}`, { start, end: performance.now() });
+      };
       const prepared = inspectProjectCompatibility(candidate.project, transferOptions(candidate.resources));
       measurePhase("compatibility");
       if (openWorkspace && (!onRestoreWorkspace || !prepared.canOpenWorkspace)) throw new Error("This project is preview-only on this host.");
       previous = openWorkspace ? currentCapture.current() : null;
       measurePhase("capture");
-      const backupProject = previous ? adoptMixedWorkspaceProject(previous, "Before project open") : null;
+      if (openWorkspace) await backupStaging.current;
+      const staged = previous && stagedBackup.current?.snapshot === canonicalJsonStringify(previous)
+        && stagedBackup.current.inputToken === inputToken && stagedBackup.current.session === previousResources ? stagedBackup.current : null;
+      performance.clearMarks("project-open:used-staged-backup");
+      performance.mark("project-open:used-staged-backup", { detail: !!staged });
+      const backupProject = previous ? staged?.project ?? adoptMixedWorkspaceProject(previous, "Before project open") : null;
       const backup = backupProject ? serializeMath3DProject(backupProject) : undefined;
       measurePhase("backup-document");
-      const backupResources = backupProject ? await captureProjectResourcesAsync(backupProject, resourceBytes(previousResources), true) : null;
+      const backupResources = backupProject ? staged?.resources ?? await captureProjectResourcesAsync(backupProject, resourceBytes(previousResources), true) : null;
       measurePhase("backup-resources");
       if (inputToken !== workspaceInputSequence.current || previous && canonicalJsonStringify(currentCapture.current()) !== canonicalJsonStringify(previous)) throw new Error("The workspace changed while preparing its backup. Retry opening the Project.");
       // Preview-only JSON may deliberately lack resources. Preserve that explicit state.
       const resources = candidate.resources ?? await loadProjectResources(prepared.project);
       const choice = openWorkspace ? selectProjectDocument(prepared.project, localStorage.getItem(PROJECT_RESUME_KEY)) : null;
       const rollback = () => { rollbackTables?.(); if (hostRestored && previous && onRestoreWorkspace) onRestoreWorkspace(previous, previousResources, previousOwner ?? undefined); };
-      setLibrary(await commitProjectResources(prepared.project, resources, () => importLibraryProject(localStorage, prepared.project, Date.now(), { activate: openWorkspace, backup,
+      const commitStart = performance.now();
+      setLibrary(await commitProjectResources(prepared.project, resources, () => {
+        const writeStart = performance.now();
+        const saved = importLibraryProject(localStorage, prepared.project, Date.now(), { activate: openWorkspace, backup,
         ...(openWorkspace && previous && onRestoreWorkspace ? { afterWrite: () => {
+          const restoreStart = performance.now();
           if (activationToken !== importSequence.current || inputToken !== workspaceInputSequence.current || canonicalJsonStringify(currentCapture.current()) !== canonicalJsonStringify(previous)) throw new Error("Project opening was superseded or the workspace changed. Retry opening the Project.");
           rollbackTables = installPortablePointTables(projectResourceInventory(prepared.project).filter((item) => item.kind === "graph-point-table").flatMap((item) => {
             const bytes = resources.bytes(item);
             return bytes ? [{ id: item.id, content: new TextDecoder().decode(bytes) }] : [];
           }));
+          measurePart("pre-restore-check", restoreStart);
+          const hostStart = performance.now();
           onRestoreWorkspace(prepared.project.workspace, resources, prepared.project);
+          measurePart("host-restore", hostStart);
           hostRestored = true;
           if (choice) onNavigateDocument?.(choice.selected.expected.id, choice.selected.module);
-        } } : {}) }), rollback, backupProject && backupResources ? { project: backupProject, resources: backupResources } : undefined));
+        } } : {}) });
+        measurePart("library-write", writeStart);
+        return saved;
+      }, rollback, backupProject && backupResources ? { project: backupProject, resources: backupResources } : undefined,
+      { reuseExistingProject: reuseExistingResources, stagedBackupSlot: staged?.slot }));
+      measurePart("resource-commit-total", commitStart);
       measurePhase("commit-and-restore");
       resourceSession.current = resources; resourceSessionId.current = prepared.project.identity.id;
       display(prepared.project, !openWorkspace);
       setIncoming(null);
       if (candidate.inputKind === "Independent starter project") { setHighlightedSavedId(prepared.project.identity.id); setCollection("All projects"); setQuery(""); setModuleFilter("All modules"); }
       if (openWorkspace) {
+        stagedBackup.current = null; backupStageSequence.current++;
         const first = { id: choice!.selected.expected.id, module: choice!.selected.module };
         setViewingDocumentId(first.id);
         setHasOpenProject(true);
@@ -711,7 +762,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         setMessage("This saved project has preview support. Review its compatibility details below.");
         return;
       }
-      await importPreview(true, prepared);
+      await importPreview(true, prepared, canReuseProjectResourceArchive(next, resources));
     } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };

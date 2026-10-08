@@ -38,12 +38,66 @@ test("profile Projects Gallery and saved-card opening with 25 projects", async (
     await page.getByRole("button", { name: "Close project explorer" }).click();
     const warmFirstPaintMs = await measureClick("[data-testid='projects-toggle']", true);
     await expect(panel).toBeVisible();
+    await expect.poll(() => page.evaluate(() => performance.getEntriesByName("project-open:backup-ready", "mark").length > 0), { timeout: 15_000 }).toBe(true);
     const helicoid = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project-library.v1")!).entries.find((item: { title: string }) => item.title === "Helicoid")?.id as string);
     expect(helicoid).toBeTruthy();
-    const savedCardOpenMs = await measureClick(`[data-testid='project-open-saved-${helicoid}']`, false);
-    await expect(panel).toBeHidden({ timeout: 60_000 });
+    const savedCardOpenMs = await page.evaluate(id => new Promise<number>((resolve, reject) => {
+      const button = document.querySelector<HTMLButtonElement>(`[data-testid='project-open-saved-${id}']`);
+      if (!button) { reject(new Error("Saved Project card is missing")); return; }
+      const start = performance.now();
+      const timeout = window.setTimeout(() => reject(new Error("Saved Project did not open")), 60_000);
+      const check = () => {
+        if (document.querySelector('[data-testid="project-message"]')?.textContent?.startsWith("Opened supported project workspace")) {
+          window.clearTimeout(timeout); resolve(Math.round(performance.now() - start));
+        } else requestAnimationFrame(check);
+      };
+      button.click(); requestAnimationFrame(check);
+    }), helicoid);
+    await expect(panel.getByTestId("project-message")).toContainText("Opened supported project workspace");
+    const stagedArchive = await page.evaluate(async () => {
+      const backup = JSON.parse(localStorage.getItem("math3d.project.v1.before-open")!);
+      const slot = localStorage.getItem("math3d.project-resource-backup-slot.v1")!;
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open("math3d.project-resources.v1", 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      try {
+        const record = await new Promise<any>((resolve, reject) => {
+          const request = db.transaction("projects").objectStore("projects").get(slot);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        return { slot, matchesBackup: record?.projectId === backup.identity.id, resources: record?.resources.length ?? 0,
+          bytes: record?.resources.reduce((total: number, item: any) => total + item.bytes.byteLength, 0) ?? 0 };
+      } finally { db.close(); }
+    });
+    expect(stagedArchive.slot).toMatch(/^before-open-[ab]$/);
+    expect(stagedArchive.matchesBackup).toBe(true);
+    expect(stagedArchive.resources).toBe(2);
+    expect(stagedArchive.bytes).toBeGreaterThan(1_000_000);
     const openPhases = await page.evaluate(() => Object.fromEntries(performance.getEntriesByType("measure").filter(entry => entry.name.startsWith("project-open:")).map(entry => [entry.name.replace("project-open:", ""), Math.round(entry.duration)])));
-    const metrics = { platform: "desktop Electron", projectCount: 25, emptyFirstPaintMs: emptyMs, coldFirstPaintMs, coldReadyMs, warmFirstPaintMs, savedCardOpenMs, openPhases };
+    const resourcePhases = await page.evaluate(() => Object.fromEntries(performance.getEntriesByType("measure").filter(entry => entry.name.startsWith("project-resource-commit:")).map(entry => [entry.name.replace("project-resource-commit:", ""), Math.round(entry.duration)])));
+    const resourceCounts = await page.evaluate(() => (performance.getEntriesByName("project-resource-commit:counts", "mark").at(-1) as PerformanceMark | undefined)?.detail);
+    const usedStagedBackup = await page.evaluate(() => (performance.getEntriesByName("project-open:used-staged-backup", "mark").at(-1) as PerformanceMark | undefined)?.detail);
+    await panel.getByTestId("project-gallery-layout-toggle").click();
+    await panel.getByTestId("project-detail-toggle").click();
+    await expect(panel.getByTestId(`project-open-saved-${helicoid}`)).toBeVisible();
+    const secondOpenMs = await page.evaluate(id => new Promise<number>((resolve, reject) => {
+      const button = document.querySelector<HTMLButtonElement>(`[data-testid='project-open-saved-${id}']`);
+      if (!button) { reject(new Error("Saved Project card is missing")); return; }
+      const previous = performance.getEntriesByName("project-open:commit-and-restore", "measure").at(-1)?.startTime ?? 0;
+      const start = performance.now();
+      const timeout = window.setTimeout(() => reject(new Error("Saved Project did not reopen")), 60_000);
+      const check = () => {
+        if ((performance.getEntriesByName("project-open:commit-and-restore", "measure").at(-1)?.startTime ?? 0) > previous) {
+          window.clearTimeout(timeout); resolve(Math.round(performance.now() - start));
+        } else requestAnimationFrame(check);
+      };
+      button.click(); requestAnimationFrame(check);
+    }), helicoid);
+    const secondResourceCounts = await page.evaluate(() => (performance.getEntriesByName("project-resource-commit:counts", "mark").at(-1) as PerformanceMark | undefined)?.detail);
+    const metrics = { platform: "desktop Electron", projectCount: 25, emptyFirstPaintMs: emptyMs, coldFirstPaintMs, coldReadyMs, warmFirstPaintMs, savedCardOpenMs, usedStagedBackup, stagedArchive, secondOpenMs, secondResourceCounts, openPhases, resourcePhases, resourceCounts };
     console.log(`PROJECT_GALLERY_LATENCY ${JSON.stringify(metrics)}`);
     writeFileSync(test.info().outputPath("project-gallery-latency.json"), `${JSON.stringify(metrics, null, 2)}\n`);
   } finally { await closeSurfaceApp(context); }

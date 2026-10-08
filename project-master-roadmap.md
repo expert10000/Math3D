@@ -14,6 +14,19 @@ legacy installations that enabled the setting. This supersedes older automatic
 resume requirements and historical evidence below. Document selection and
 presentation remain remembered for explicit reopening.
 
+**Saved Project Open performance — October 9:** opening the Projects Gallery
+now prepares the current workspace's binary recovery copy in an inactive
+IndexedDB slot. Open uses that copy only when the workspace and input sequence
+still match; otherwise it captures and commits a fresh backup. The active
+backup slot changes only after Project activation, so browsing the Gallery
+does not replace the previous recovery copy. A verified saved Project archive
+is reused instead of rewritten. In the desktop Electron test with 25 saved
+Projects and a 1,077,448-byte previous-workspace backup, click-to-open fell
+from 1.82 s to 0.48–0.53 s when staging had completed. Immediate clicks or
+workspace edits still take the safe fallback path. The staged backup's
+resource count, size and Project identity were checked after Open; Catenoid's
+explicit reopen after restart and the pending-input guard also passed.
+
 Current source checkout: `C:\Math3D`, branch `main`. Earlier delivery reports and
 checkout paths below describe their recorded builds.
 The [October 9 startup evidence](docs/evidence/project-workspace-2026-10-09/startup-recovery.md)
@@ -39,9 +52,10 @@ The layout failure is resolved for the measured desktop and phone configurations
 Navigation publication CPU fell from 2.713s to 0.756s inclusive across three
 cycles; first opening still takes about 3.6s and is dominated by starter/resource
 checksum and compatibility work. These are single-run measurements, with
-overlapping inclusive CPU times. The next performance slice should reduce
-repeated verified starter/resource construction while preserving validation at
-changed-byte, import, command and save boundaries.
+overlapping inclusive CPU times. That earlier first-opening figure covers the
+starter flow; the saved-card measurement above covers a prepared Gallery. A
+later performance slice should reduce repeated verified starter construction
+while preserving validation at changed-byte, import, command and save boundaries.
 
 ## Purpose and authority
 
