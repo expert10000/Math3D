@@ -1161,3 +1161,24 @@ DocumentWorkspaceHost, adapter capability UI, Workbook flip, camera persistence
 across restart and launcher/installed-app acceptance remain in PM01–PM10.
 Detailed evidence is kept in
 `docs/evidence/project-master-desktop-2026-10-07/acceptance.md`.
+
+## Shared Surface controls and desktop profile — 2026-10-08
+
+The captured Graph Surface workbench now keeps Project on the left, exposes the
+native ParamSurfaceViewer tools in the center, and uses shared Surfaces display,
+probe-result, parameter-picker and curvature-overlay components in the right
+Inspector. Source edits retain the owning adapter's commands; display preferences
+remain separate and survive navigation/restart. This covers Graph revolutions and
+open extrusions with the typed binding; other representations retain their
+qualified views, and full global Surface computation/export parity remains open.
+
+The normal current-build launcher now honors its explicit saved profile and
+session directory without requiring test mode. The user's saved Catenoid was
+saved, reopened in that normal app and inspected with unchanged Surface revision
+and source hash; the existing disabled startup-resume preference was preserved.
+
+Implementation: `efbf6cc0` (shared Surface controls) and `111f3896` (normal profile
+selection). TypeScript, production compilation, 16 binding/formula checks,
+dependency boundaries and nine distinct Electron checks passed. Evidence and
+remaining qualifications are recorded in
+`docs/evidence/project-workspace-2026-10-08/workbench-delivery.md`.

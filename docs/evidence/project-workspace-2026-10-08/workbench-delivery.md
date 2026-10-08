@@ -209,3 +209,16 @@ installed app's default profile behavior is unchanged. Main compilation and a
 dedicated Electron regression passed with all development/test flags removed;
 it verifies both user-data and session-data paths. Regression:
 `tests/e2e/desktop-profile.spec.ts`.
+
+Actual desktop delivery: source `111f38965451203ae457d68e77a07684477a89da`
+was launched through `scripts/launch-current-build.ps1` in normal mode against
+`C:\Users\janko\.math3d\projects-desktop-profile`. The existing Workbook
+autosave was recovered, then Resume Project explicitly reopened Catenoid Evidence
+Notebook. The startup-resume checkbox remains unchecked. The visible left Project
+tree, center native Surface viewport and right Inspector show the retained
+Surface at revision 1 with hash
+`sha256:cee167c7412ecb50934ce34b053912fa0939ef8de52eba3ca85ed78fccf33bb7`.
+The source was saved before restart and was not edited during this inspection.
+See [actual running layout](surface-inspector-running.png) and
+[build identity](surface-inspector-build-identity.json). The normal-profile test
+brings this follow-up's distinct Electron checks to nine.
