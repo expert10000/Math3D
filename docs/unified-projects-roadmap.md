@@ -15,7 +15,23 @@ Topology, supported Complex Function Explorer sources and self-contained scalar
 Volume recipes, plus qualified resource-backed Mesh sources. PRJ16 adds verified dense scalar Volume samples, additional Curve/Surface source editors, scene constructions and finite Topology sources. Other source types
 remain saved previews until their native editor adapters pass round-trip acceptance.
 
-## Current delivery status (2026-10-06)
+## Current delivery status (2026-10-08)
+
+**Project master continuation, October 8:** Local implementation `3ac5ab75`
+integrates captured Graph revolution/uncapped extrusion Surfaces and saved Mesh
+buffers into a shared document workbench. Open and Resume share validated
+activation, protect pending source/Note input, and support explicit resume disable
+and stale-selection recovery. Surface/Sampled preserves owning document identity;
+Mesh K/H uses its exact saved generation. Header Surfaces returns to the normal
+module; Project selector, history and Related links explicitly reopen retained
+documents. The fixed compatibility layer is removed. Supported desktop/phone
+layout, cold restart, rollback, all eight module mappings and browser contexts
+passed the focused gates. The current-build desktop shortcut was launched and
+inspected separately. [Delivery evidence](evidence/project-workspace-2026-10-08/workbench-delivery.md)
+records source/build identity, screenshots, qualification limits and remaining
+3.6-second opening cost. This is committed local delivery; remote integration,
+installer release, physical devices and installed engines are not qualified by
+this run. PRJ numbering and historical delivery records below remain unchanged.
 
 Desktop delivery now includes PRJ39–PRJ50: Helicoid/Catenoid guided setups,
 saved Mesh curvature maps, canvas endpoint selection and point inspection,

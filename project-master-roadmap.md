@@ -1,8 +1,34 @@
 # Project master roadmap
 
-Date: 2026-10-07
+Date: 2026-10-08 (delivery update; original plan dated October 7)
 
-Status: proposed execution plan; the user-visible Catenoid correction remains unaccepted.
+Status: local implementation committed and qualified on the supported desktop/browser paths. User acceptance, remote integration and installer release remain separate states.
+
+## Current delivery
+
+Implementation: `3ac5ab75b1297c765ba1306e1ba7260e317063bd` on
+`codex/gallery-performance-platform-baseline`, after pulling remote main `b4cffbf`.
+Current checkout: `C:\Users\janko\OneDrive\Dokumenty\Math3D`.
+The [delivery report](docs/evidence/project-workspace-2026-10-08/workbench-delivery.md)
+records tests, exact document generations, screenshots, build identity and the
+current-build desktop shortcut. Source is committed, built and locally launched;
+it has not been pushed, merged or packaged as an installer.
+
+| Slices | Qualified state |
+| --- | --- |
+| PM01–PM03 | Open/Resume/restart identities, a shared validated transaction, rollback and pending-input protection, resume disable and stale-selection recovery passed. |
+| PM04 | Captured Graph revolutions and uncapped extrusions use the saved definition in native `ParamSurfaceViewer`; independent geometry/seam/source/history/save gates passed. Capped extrusions retain qualified Sampled presentation. |
+| PM05 | Shared document host and existing Mesh viewer replace the fixed compatibility layer; desktop/phone docking, scrolling, drafts, camera and generation checks passed. |
+| PM06–PM07 | Normal module navigation, Project selection/history/Related links and exact Mesh K/H generation passed alongside existing qualified result/Workbook/Note flows. Universal native representation parity and comparison/composition remain open. |
+| PM08–PM10 | Build identity and repository launcher implemented; final desktop/browser gates passed. Current-build shortcut launch and visible Surface/Mesh evidence are recorded separately from automated cold-restart checks. |
+
+The layout failure is resolved for the measured desktop and phone configurations.
+Navigation publication CPU fell from 2.713s to 0.756s inclusive across three
+cycles; first opening still takes about 3.6s and is dominated by starter/resource
+checksum and compatibility work. These are single-run measurements, with
+overlapping inclusive CPU times. The next performance slice should reduce
+repeated verified starter/resource construction while preserving validation at
+changed-byte, import, command and save boundaries.
 
 ## Purpose and authority
 
@@ -17,7 +43,7 @@ delivery and scientific capabilities. The
 continues to own kernel architecture. PM01–PM10 below are new delivery slices;
 they do not renumber or reopen completed PRJ or GK work.
 
-## Verified starting point
+## Historical starting point (October 7)
 
 - Source checkout: `C:\Math3D`.
 - Branch: `main`. Last verified local and remote base: `731ded88`.
@@ -41,7 +67,7 @@ they do not renumber or reopen completed PRJ or GK work.
   the public Desktop `Math3D.lnk` points to installed 1.4.6. Installed applications
   are separate executables and do not automatically receive source changes.
 
-The current uncommitted source changes are in
+At that starting point, the uncommitted source changes were in
 `renderer/src/components/ProjectWorkspacePanel.tsx` and
 `tests/e2e/project-placement.spec.ts`. Review them as candidates within this plan.
 
@@ -151,7 +177,7 @@ The current uncommitted source changes are in
 
 ### R08 — Unambiguous desktop launch
 
-- Maintain one documented current-development launch entry point for `C:\Math3D`.
+- Maintain one documented current-development launch entry point for the current checkout.
 - Record each desktop shortcut's target and the exact running build identity.
 - Identify legacy installed builds clearly in launcher documentation and any
   agreed shortcut cleanup. Preserve the user's installed applications and data.
@@ -637,8 +663,9 @@ capability and mathematical parity gates pass.
 
 ## Commit sequence
 
-Commit titles below are planned titles, not existing Git commits. Execute in order;
-advance only after the listed behavior is demonstrated.
+Commit titles below preserve the original planned slices, not individual Git
+commits. The October 8 implementation combines the supported slices in
+`3ac5ab75`; the current delivery table and linked evidence state qualification.
 
 | Slice | Planned commit title | Scope and completion gate |
 | --- | --- | --- |
@@ -655,7 +682,8 @@ advance only after the listed behavior is demonstrated.
 
 PM04 begins after PM02; PM05 relies on the supported adapter from PM04. PM08 can
 be prepared independently, but its final launch evidence must use PM09's source.
-PM10 is the final acceptance step, not a substitute for unfinished implementation.
+PM10 records final local qualification. User acceptance and remote/release
+delivery are separate from passing these implementation gates.
 
 ## Verification and evidence
 
@@ -685,21 +713,25 @@ separate recorded observations.
 
 ## Final acceptance checklist
 
-- [ ] Opening Catenoid from Gallery selects its retained Surface in Surfaces.
-- [ ] The visible geometry is the Catenoid, and its document/generation agree
+October 8: the supported-path automated and visible-window observations for
+these gates are in the delivery report. Broader representation parity and
+physical/installed-engine gates remain open; this checklist is not user signoff.
+
+- [x] Opening Catenoid from Gallery selects its retained Surface in Surfaces.
+- [x] The visible geometry is the Catenoid, and its document/generation agree
       with the Project selector and Inspector.
-- [ ] Cold desktop restart resumes the same Project/document, or shows the
+- [x] Cold desktop restart resumes the same Project/document, or shows the
       explicit Resume state when automatic resume is disabled.
-- [ ] Every opening entry point reaches the same verified workspace state.
-- [ ] Left/Right docking and hide/show preserve source and Note drafts and camera.
-- [ ] Middle/All and narrow layouts remain usable without hidden controls.
-- [ ] Source Graph, sampled Mesh, colored fields, results, Workbooks and Notes
+- [x] Every opening entry point reaches the same verified workspace state.
+- [x] Left/Right docking and hide/show preserve source and Note drafts and camera.
+- [x] Middle/All and narrow layouts remain usable without hidden controls.
+- [x] Source Graph, sampled Mesh, colored fields, results, Workbooks and Notes
       open their exact retained targets with current/historical qualifications.
-- [ ] Failed opening retains current work and explains the failure.
-- [ ] The maintained desktop icon launches the verified current build.
-- [ ] Changes are committed; merged/deployed states are reported only after
+- [x] Failed opening retains current work and explains the failure.
+- [x] The maintained desktop icon launches the verified current build.
+- [x] Changes are committed; merged/deployed states are reported only after
       their corresponding operations actually complete.
-- [ ] The actual visible desktop window is inspected and captured successfully.
+- [x] The actual visible desktop window is inspected and captured successfully.
 
 ## Follow-up boundaries
 

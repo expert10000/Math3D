@@ -1,0 +1,1108 @@
+{
+  "date": "2026-10-08",
+  "baseline": "b4cffbf plus the initial dock repair",
+  "implementationCommit": "3ac5ab75b1297c765ba1306e1ba7260e317063bd",
+  "environment": {
+    "WindowsDisplayScale": 1.75,
+    "viewport": [
+      1600,
+      1000
+    ],
+    "gpu": "software",
+    "v8": "jitless",
+    "sourceMaps": true
+  },
+  "baselineUnprofiledTiming": {
+    "openingMs": 3650,
+    "switchesMs": [
+      2176,
+      2415,
+      2586
+    ],
+    "navigationSteps": [
+      {
+        "exitMs": 1578,
+        "reopenMs": 599
+      },
+      {
+        "exitMs": 1682,
+        "reopenMs": 733
+      },
+      {
+        "exitMs": 1701,
+        "reopenMs": 885
+      }
+    ],
+    "profile": "isolated Electron; click to visible canvas; not a GPU frame-rate benchmark"
+  },
+  "workbenchUnprofiledTiming": {
+    "openingMs": 3658,
+    "switchesMs": [
+      1974,
+      1585,
+      1704
+    ],
+    "navigationSteps": [
+      {
+        "exitMs": 1429,
+        "reopenMs": 545
+      },
+      {
+        "exitMs": 868,
+        "reopenMs": 717
+      },
+      {
+        "exitMs": 899,
+        "reopenMs": 805
+      }
+    ],
+    "profile": "isolated Electron; click to visible canvas; not a GPU frame-rate benchmark"
+  },
+  "workbenchProfileTiming": {
+    "openingMs": 3617,
+    "switchesMs": [
+      1870,
+      1399,
+      1765
+    ],
+    "navigationSteps": [
+      {
+        "exitMs": 1296,
+        "reopenMs": 574
+      },
+      {
+        "exitMs": 730,
+        "reopenMs": 669
+      },
+      {
+        "exitMs": 973,
+        "reopenMs": 792
+      }
+    ],
+    "profile": "isolated Electron; click to visible canvas; not a GPU frame-rate benchmark"
+  },
+  "profiles": [
+    {
+      "input": "test-results/project-workbench-profile/project-workspace-clarity--63694-sible-with-compact-controls/project-open-cpu-profile.json",
+      "durationMs": 3947,
+      "self": [
+        {
+          "name": "bytes",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 112,
+          "ms": 1526
+        },
+        {
+          "name": "ut",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 109,
+          "ms": 802
+        },
+        {
+          "name": "bytes",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 172,
+          "ms": 432
+        },
+        {
+          "name": "(program)",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 363
+        },
+        {
+          "name": "Uo",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 36,
+          "ms": 89
+        },
+        {
+          "name": "r",
+          "source": "packages/core/src/graph2dExpression.ts",
+          "line": 180,
+          "ms": 66
+        },
+        {
+          "name": "mesh",
+          "source": "renderer/src/mesh/meshDifferentialGeometry.ts",
+          "line": 211,
+          "ms": 60
+        },
+        {
+          "name": "key",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 81,
+          "ms": 47
+        },
+        {
+          "name": "(garbage collector)",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 31
+        },
+        {
+          "name": "input",
+          "source": "renderer/src/App.tsx",
+          "line": 11185,
+          "ms": 26
+        },
+        {
+          "name": "loseContext",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 24
+        },
+        {
+          "name": "(idle)",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 23
+        },
+        {
+          "name": "value",
+          "source": "packages/core/src/commands.ts",
+          "line": 116,
+          "ms": 16
+        },
+        {
+          "name": "getProgramInfoLog",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 16
+        },
+        {
+          "name": "Fa",
+          "source": "renderer/src/mesh/meshDifferentialGeometry.ts",
+          "line": 148,
+          "ms": 15
+        },
+        {
+          "name": "Z",
+          "source": "packages/core/src/graph2dExpression.ts",
+          "line": 172,
+          "ms": 14
+        },
+        {
+          "name": "scrollIntoView",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 12
+        },
+        {
+          "name": "(anonymous)",
+          "source": "packages/core/src/graph2dPromotionGeometry.ts",
+          "line": 26,
+          "ms": 12
+        },
+        {
+          "name": "Wv",
+          "source": "renderer/src/projects/savedMeshAnalysis.ts",
+          "line": 15,
+          "ms": 11
+        },
+        {
+          "name": "value",
+          "source": "packages/core/src/commands.ts",
+          "line": 113,
+          "ms": 11
+        },
+        {
+          "name": "(anonymous)",
+          "source": "renderer/src/App.tsx",
+          "line": 54546,
+          "ms": 9
+        },
+        {
+          "name": "encode",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 8
+        },
+        {
+          "name": "getBoundingClientRect",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 8
+        },
+        {
+          "name": "R",
+          "source": "renderer/src/mesh/meshDifferentialGeometry.ts",
+          "line": 272,
+          "ms": 8
+        },
+        {
+          "name": "Ge",
+          "source": "renderer/src/mesh/meshDifferentialGeometry.ts",
+          "line": 119,
+          "ms": 8
+        },
+        {
+          "name": "nt",
+          "source": "renderer/src/mesh/meshDifferentialGeometry.ts",
+          "line": 120,
+          "ms": 8
+        },
+        {
+          "name": "setSize",
+          "source": "renderer/node_modules/three/build/three.module.js",
+          "line": 15725,
+          "ms": 6
+        },
+        {
+          "name": "getExtension",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 6
+        },
+        {
+          "name": "key",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 62,
+          "ms": 6
+        },
+        {
+          "name": "value",
+          "source": "packages/core/src/mixedWorkspace.ts",
+          "line": 57,
+          "ms": 6
+        },
+        {
+          "name": "(anonymous)",
+          "source": "renderer/src/components/ParamSurfaceViewer.tsx",
+          "line": 2545,
+          "ms": 6
+        },
+        {
+          "name": "index",
+          "source": "renderer/src/mesh/meshDifferentialGeometry.ts",
+          "line": 217,
+          "ms": 6
+        },
+        {
+          "name": "Ert",
+          "source": "renderer/src/App.tsx",
+          "line": 11338,
+          "ms": 6
+        },
+        {
+          "name": "value",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 95,
+          "ms": 5
+        },
+        {
+          "name": "getContext",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 5
+        }
+      ],
+      "inclusive": [
+        {
+          "name": "(root)",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 3947
+        },
+        {
+          "name": "bytes",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 172,
+          "ms": 2760
+        },
+        {
+          "name": "bytes",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 112,
+          "ms": 2327
+        },
+        {
+          "name": "(anonymous)",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 12455,
+          "ms": 1896
+        },
+        {
+          "name": "batchedUpdates$1",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 1494,
+          "ms": 1896
+        },
+        {
+          "name": "dispatchEventForPluginEventSystem",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 12408,
+          "ms": 1896
+        },
+        {
+          "name": "dispatchEvent",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 15297,
+          "ms": 1896
+        },
+        {
+          "name": "processDispatchQueue",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 12272,
+          "ms": 1894
+        },
+        {
+          "name": "dispatchDiscreteEvent",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 15263,
+          "ms": 1894
+        },
+        {
+          "name": "bl",
+          "source": "renderer/src/components/ProjectWorkspacePanel.tsx",
+          "line": 787,
+          "ms": 1892
+        },
+        {
+          "name": "id",
+          "source": "renderer/src/components/ProjectWorkspacePanel.tsx",
+          "line": 898,
+          "ms": 1892
+        },
+        {
+          "name": "onClick",
+          "source": "renderer/src/components/ProjectTemplatesPanel.tsx",
+          "line": 60,
+          "ms": 1892
+        },
+        {
+          "name": "instantiateNotebookStarter",
+          "source": "renderer/src/projects/notebookStarters.ts",
+          "line": 65,
+          "ms": 1393
+        },
+        {
+          "name": "performWorkUntilDeadline",
+          "source": "renderer/node_modules/scheduler/cjs/scheduler.production.js",
+          "line": 121,
+          "ms": 1027
+        },
+        {
+          "name": "ut",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 109,
+          "ms": 802
+        },
+        {
+          "name": "performWorkOnRoot",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 10681,
+          "ms": 757
+        },
+        {
+          "name": "source",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 178,
+          "ms": 750
+        },
+        {
+          "name": "performWorkOnRootViaSchedulerTask",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 12065,
+          "ms": 743
+        },
+        {
+          "name": "performUnitOfWork",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11304,
+          "ms": 722
+        },
+        {
+          "name": "workLoopSync",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11181,
+          "ms": 722
+        },
+        {
+          "name": "renderRootSync",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11120,
+          "ms": 722
+        },
+        {
+          "name": "beginWork",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 7392,
+          "ms": 713
+        },
+        {
+          "name": "renderWithHooks",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 4333,
+          "ms": 709
+        },
+        {
+          "name": "updateFunctionComponent",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 6489,
+          "ms": 709
+        },
+        {
+          "name": "Ws.C.useMemo",
+          "source": "renderer/node_modules/react/cjs/react.production.js",
+          "line": 513,
+          "ms": 635
+        },
+        {
+          "name": "$s",
+          "source": "renderer/src/projects/projectResources.ts",
+          "line": 39,
+          "ms": 601
+        },
+        {
+          "name": "bytes",
+          "source": "renderer/src/mesh/meshResourceStore.ts",
+          "line": 54,
+          "ms": 574
+        },
+        {
+          "name": "Bo",
+          "source": "packages/core/src/projectResources.ts",
+          "line": 98,
+          "ms": 568
+        },
+        {
+          "name": "value",
+          "source": "packages/core/src/math3dProject.ts",
+          "line": 40,
+          "ms": 551
+        },
+        {
+          "name": "updateMemo",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 5162,
+          "ms": 519
+        },
+        {
+          "name": "nw",
+          "source": "packages/core/src/projectResources.ts",
+          "line": 164,
+          "ms": 517
+        },
+        {
+          "name": "un",
+          "source": "renderer/src/projects/projectResources.ts",
+          "line": 13,
+          "ms": 517
+        },
+        {
+          "name": "value",
+          "source": "packages/core/src/math3dProject.ts",
+          "line": 80,
+          "ms": 492
+        },
+        {
+          "name": "Ox",
+          "source": "renderer/src/components/ProjectWorkspacePanel.tsx",
+          "line": 66,
+          "ms": 487
+        },
+        {
+          "name": "jn",
+          "source": "renderer/src/projects/projectTransfer.ts",
+          "line": 27,
+          "ms": 484
+        }
+      ],
+      "stacks": [
+        {
+          "ms": 363,
+          "stack": "(program) ((runtime):0) <- (root) ((runtime):0)"
+        },
+        {
+          "ms": 78,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- publish (packages/kernel/src/artifactRegistry.ts:277) <- publish (renderer/src/surfaceAnalysis/surfaceMeshKernelHandoff.ts:105) <- (anonymous) (renderer/src/App.tsx:50740) <- commitHookEffectListMount (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:8571) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093)"
+        },
+        {
+          "ms": 74,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- Bo (packages/core/src/projectResources.ts:98) <- jn (renderer/src/projects/projectTransfer.ts:27) <- Pn (renderer/src/components/ProjectWorkspacePanel.tsx:635) <- bl (renderer/src/components/ProjectWorkspacePanel.tsx:787) <- id (renderer/src/components/ProjectWorkspacePanel.tsx:898) <- onClick (renderer/src/components/ProjectTemplatesPanel.tsx:60) <- processDispatchQueue (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:12272) <- (anonymous) (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:12455)"
+        },
+        {
+          "ms": 73,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- publish (packages/kernel/src/artifactRegistry.ts:277) <- import (renderer/src/mesh/meshResourceStore.ts:39) <- restore (renderer/src/mesh/meshDocumentAdapter.ts:192) <- H1e (renderer/src/App.tsx:78303) <- afterWrite (renderer/src/components/ProjectWorkspacePanel.tsx:665) <- Gv (renderer/src/projects/projectLibrary.ts:71) <- ri (renderer/src/projects/projectLibrary.ts:83) <- Hc (renderer/src/projects/projectLibrary.ts:116)"
+        },
+        {
+          "ms": 71,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- bytes (renderer/src/mesh/meshResourceStore.ts:54) <- resolve (renderer/src/mesh/meshResourceStore.ts:62) <- mesh (renderer/src/mesh/meshDocumentAdapter.ts:86) <- id (renderer/src/App.tsx:78418) <- (anonymous) (renderer/src/projects/SavedMeshAnalysisPanel.tsx:55) <- useMemo (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:5515) <- Ws.C.useMemo (renderer/node_modules/react/cjs/react.production.js:513) <- sae (renderer/src/projects/SavedMeshAnalysisPanel.tsx:28)"
+        },
+        {
+          "ms": 65,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- publish (packages/kernel/src/artifactRegistry.ts:277) <- import (renderer/src/mesh/meshResourceStore.ts:39) <- publish (renderer/src/mesh/meshResourceStore.ts:27) <- fromMesh (renderer/src/mesh/meshDocumentAdapter.ts:65) <- Ov (renderer/src/projects/savedSurfaceMesh.ts:12) <- instantiateNotebookStarter (renderer/src/projects/notebookStarters.ts:65) <- bl (renderer/src/components/ProjectWorkspacePanel.tsx:787) <- id (renderer/src/components/ProjectWorkspacePanel.tsx:898)"
+        },
+        {
+          "ms": 64,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- Bo (packages/core/src/projectResources.ts:98) <- jn (renderer/src/projects/projectTransfer.ts:27) <- Tx (renderer/src/projects/projectAnalysisAvailability.ts:12) <- (anonymous) (renderer/src/components/ProjectWorkspacePanel.tsx:152) <- updateMemo (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:5162) <- Ws.C.useMemo (renderer/node_modules/react/cjs/react.production.js:513) <- Ox (renderer/src/components/ProjectWorkspacePanel.tsx:66) <- renderWithHooks (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:4333)"
+        },
+        {
+          "ms": 63,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- Bo (packages/core/src/projectResources.ts:98) <- jn (renderer/src/projects/projectTransfer.ts:27) <- bl (renderer/src/components/ProjectWorkspacePanel.tsx:787) <- id (renderer/src/components/ProjectWorkspacePanel.tsx:898) <- onClick (renderer/src/components/ProjectTemplatesPanel.tsx:60) <- processDispatchQueue (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:12272) <- (anonymous) (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:12455) <- batchedUpdates$1 (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:1494)"
+        },
+        {
+          "ms": 62,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- nw (packages/core/src/projectResources.ts:164) <- un (renderer/src/projects/projectResources.ts:13) <- $s (renderer/src/projects/projectResources.ts:39) <- instantiateNotebookStarter (renderer/src/projects/notebookStarters.ts:65) <- bl (renderer/src/components/ProjectWorkspacePanel.tsx:787) <- id (renderer/src/components/ProjectWorkspacePanel.tsx:898) <- onClick (renderer/src/components/ProjectTemplatesPanel.tsx:60) <- processDispatchQueue (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:12272)"
+        },
+        {
+          "ms": 60,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- Bo (packages/core/src/projectResources.ts:98) <- nw (packages/core/src/projectResources.ts:164) <- un (renderer/src/projects/projectResources.ts:13) <- $s (renderer/src/projects/projectResources.ts:39) <- instantiateNotebookStarter (renderer/src/projects/notebookStarters.ts:65) <- bl (renderer/src/components/ProjectWorkspacePanel.tsx:787) <- id (renderer/src/components/ProjectWorkspacePanel.tsx:898) <- onClick (renderer/src/components/ProjectTemplatesPanel.tsx:60)"
+        },
+        {
+          "ms": 60,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- bytes (renderer/src/mesh/meshResourceStore.ts:54) <- xt (renderer/src/mesh/meshDocumentAdapter.ts:55) <- fromMesh (renderer/src/mesh/meshDocumentAdapter.ts:65) <- Ov (renderer/src/projects/savedSurfaceMesh.ts:12) <- instantiateNotebookStarter (renderer/src/projects/notebookStarters.ts:65) <- bl (renderer/src/components/ProjectWorkspacePanel.tsx:787) <- id (renderer/src/components/ProjectWorkspacePanel.tsx:898) <- onClick (renderer/src/components/ProjectTemplatesPanel.tsx:60)"
+        },
+        {
+          "ms": 60,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- Bo (packages/core/src/projectResources.ts:98) <- nw (packages/core/src/projectResources.ts:164) <- un (renderer/src/projects/projectResources.ts:13) <- $s (renderer/src/projects/projectResources.ts:39) <- (anonymous) (renderer/src/components/ProjectWorkspacePanel.tsx:152) <- updateMemo (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:5162) <- Ws.C.useMemo (renderer/node_modules/react/cjs/react.production.js:513) <- Ox (renderer/src/components/ProjectWorkspacePanel.tsx:66)"
+        },
+        {
+          "ms": 60,
+          "stack": "mesh (renderer/src/mesh/meshDifferentialGeometry.ts:211) <- Wv (renderer/src/projects/savedMeshAnalysis.ts:15) <- instantiateNotebookStarter (renderer/src/projects/notebookStarters.ts:65) <- bl (renderer/src/components/ProjectWorkspacePanel.tsx:787) <- id (renderer/src/components/ProjectWorkspacePanel.tsx:898) <- onClick (renderer/src/components/ProjectTemplatesPanel.tsx:60) <- processDispatchQueue (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:12272) <- (anonymous) (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:12455) <- batchedUpdates$1 (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:1494) <- dispatchEventForPluginEventSystem (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:12408)"
+        },
+        {
+          "ms": 59,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- bytes (renderer/src/mesh/meshResourceStore.ts:54) <- item (renderer/src/projects/notebookStarters.ts:94) <- $s (renderer/src/projects/projectResources.ts:39) <- instantiateNotebookStarter (renderer/src/projects/notebookStarters.ts:65) <- bl (renderer/src/components/ProjectWorkspacePanel.tsx:787) <- id (renderer/src/components/ProjectWorkspacePanel.tsx:898) <- onClick (renderer/src/components/ProjectTemplatesPanel.tsx:60) <- processDispatchQueue (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:12272)"
+        },
+        {
+          "ms": 57,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- publish (renderer/src/mesh/meshResourceStore.ts:27) <- fromMesh (renderer/src/mesh/meshDocumentAdapter.ts:65) <- Ov (renderer/src/projects/savedSurfaceMesh.ts:12) <- instantiateNotebookStarter (renderer/src/projects/notebookStarters.ts:65) <- bl (renderer/src/components/ProjectWorkspacePanel.tsx:787) <- id (renderer/src/components/ProjectWorkspacePanel.tsx:898) <- onClick (renderer/src/components/ProjectTemplatesPanel.tsx:60) <- processDispatchQueue (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:12272)"
+        },
+        {
+          "ms": 57,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- import (renderer/src/mesh/meshResourceStore.ts:39) <- restore (renderer/src/mesh/meshDocumentAdapter.ts:192) <- H1e (renderer/src/App.tsx:78303) <- afterWrite (renderer/src/components/ProjectWorkspacePanel.tsx:665) <- Gv (renderer/src/projects/projectLibrary.ts:71) <- ri (renderer/src/projects/projectLibrary.ts:83) <- Hc (renderer/src/projects/projectLibrary.ts:116) <- Pn.It.project (renderer/src/components/ProjectWorkspacePanel.tsx:664)"
+        },
+        {
+          "ms": 55,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- bytes (renderer/src/mesh/meshResourceStore.ts:54) <- xt (renderer/src/mesh/meshDocumentAdapter.ts:55) <- restore (renderer/src/mesh/meshDocumentAdapter.ts:192) <- H1e (renderer/src/App.tsx:78303) <- afterWrite (renderer/src/components/ProjectWorkspacePanel.tsx:665) <- Gv (renderer/src/projects/projectLibrary.ts:71) <- ri (renderer/src/projects/projectLibrary.ts:83) <- Hc (renderer/src/projects/projectLibrary.ts:116)"
+        },
+        {
+          "ms": 55,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- bytes (renderer/src/mesh/meshResourceStore.ts:54) <- resolve (renderer/src/mesh/meshResourceStore.ts:62) <- mesh (renderer/src/mesh/meshDocumentAdapter.ts:86) <- Wv (renderer/src/projects/savedMeshAnalysis.ts:15) <- instantiateNotebookStarter (renderer/src/projects/notebookStarters.ts:65) <- bl (renderer/src/components/ProjectWorkspacePanel.tsx:787) <- id (renderer/src/components/ProjectWorkspacePanel.tsx:898) <- onClick (renderer/src/components/ProjectTemplatesPanel.tsx:60)"
+        },
+        {
+          "ms": 53,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- nw (packages/core/src/projectResources.ts:164) <- un (renderer/src/projects/projectResources.ts:13) <- $s (renderer/src/projects/projectResources.ts:39) <- (anonymous) (renderer/src/components/ProjectWorkspacePanel.tsx:152) <- updateMemo (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:5162) <- Ws.C.useMemo (renderer/node_modules/react/cjs/react.production.js:513) <- Ox (renderer/src/components/ProjectWorkspacePanel.tsx:66) <- renderWithHooks (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:4333)"
+        },
+        {
+          "ms": 51,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- import (renderer/src/mesh/meshResourceStore.ts:39) <- publish (renderer/src/mesh/meshResourceStore.ts:27) <- fromMesh (renderer/src/mesh/meshDocumentAdapter.ts:65) <- Ov (renderer/src/projects/savedSurfaceMesh.ts:12) <- instantiateNotebookStarter (renderer/src/projects/notebookStarters.ts:65) <- bl (renderer/src/components/ProjectWorkspacePanel.tsx:787) <- id (renderer/src/components/ProjectWorkspacePanel.tsx:898) <- onClick (renderer/src/components/ProjectTemplatesPanel.tsx:60)"
+        }
+      ]
+    },
+    {
+      "input": "test-results/project-workbench-profile/project-workspace-clarity--63694-sible-with-compact-controls/project-switch-cpu-profile.json",
+      "durationMs": 5160,
+      "self": [
+        {
+          "name": "(program)",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 2335
+        },
+        {
+          "name": "bytes",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 112,
+          "ms": 614
+        },
+        {
+          "name": "ut",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 109,
+          "ms": 298
+        },
+        {
+          "name": "getProgramInfoLog",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 192
+        },
+        {
+          "name": "bytes",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 172,
+          "ms": 171
+        },
+        {
+          "name": "fromBufferAttribute",
+          "source": "renderer/node_modules/three/build/three.core.js",
+          "line": 5684,
+          "ms": 91
+        },
+        {
+          "name": "r",
+          "source": "packages/core/src/graph2dExpression.ts",
+          "line": 180,
+          "ms": 91
+        },
+        {
+          "name": "input",
+          "source": "renderer/src/App.tsx",
+          "line": 11185,
+          "ms": 90
+        },
+        {
+          "name": "Hke",
+          "source": "renderer/src/surfaceAnalysis/surfaceMeshKernelHandoff.ts",
+          "line": 61,
+          "ms": 66
+        },
+        {
+          "name": "(garbage collector)",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 60
+        },
+        {
+          "name": "(anonymous)",
+          "source": "renderer/src/components/ParamSurfaceViewer.tsx",
+          "line": 2545,
+          "ms": 51
+        },
+        {
+          "name": "getBoundingClientRect",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 51
+        },
+        {
+          "name": "computeVertexNormals",
+          "source": "renderer/node_modules/three/build/three.core.js",
+          "line": 19789,
+          "ms": 50
+        },
+        {
+          "name": "getExtension",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 36
+        },
+        {
+          "name": "setXYZ",
+          "source": "renderer/node_modules/three/build/three.core.js",
+          "line": 18373,
+          "ms": 35
+        },
+        {
+          "name": "(idle)",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 32
+        },
+        {
+          "name": "getZ",
+          "source": "renderer/node_modules/three/build/three.core.js",
+          "line": 18278,
+          "ms": 30
+        },
+        {
+          "name": "setSize",
+          "source": "renderer/node_modules/three/build/three.module.js",
+          "line": 15725,
+          "ms": 29
+        },
+        {
+          "name": "getX",
+          "source": "renderer/node_modules/three/build/three.core.js",
+          "line": 18212,
+          "ms": 26
+        },
+        {
+          "name": "s",
+          "source": "renderer/src/math/curvatureLines.ts",
+          "line": 116,
+          "ms": 26
+        },
+        {
+          "name": "fr",
+          "source": "renderer/node_modules/three/examples/jsm/geometries/ParametricGeometry.js",
+          "line": 31,
+          "ms": 25
+        },
+        {
+          "name": "Z",
+          "source": "packages/core/src/graph2dExpression.ts",
+          "line": 172,
+          "ms": 24
+        },
+        {
+          "name": "At",
+          "source": "renderer/src/components/ParamSurfaceViewer.tsx",
+          "line": 3257,
+          "ms": 23
+        },
+        {
+          "name": "getContext",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 22
+        },
+        {
+          "name": "geometry",
+          "source": "renderer/src/surfaceAnalysis/surfaceMeshKernelHandoff.ts",
+          "line": 31,
+          "ms": 21
+        },
+        {
+          "name": "(anonymous)",
+          "source": "renderer/src/App.tsx",
+          "line": 54546,
+          "ms": 19
+        },
+        {
+          "name": "getY",
+          "source": "renderer/node_modules/three/build/three.core.js",
+          "line": 18245,
+          "ms": 19
+        },
+        {
+          "name": "subVectors",
+          "source": "renderer/node_modules/three/build/three.core.js",
+          "line": 4806,
+          "ms": 17
+        },
+        {
+          "name": "crossVectors",
+          "source": "renderer/node_modules/three/build/three.core.js",
+          "line": 5351,
+          "ms": 17
+        },
+        {
+          "name": "add",
+          "source": "renderer/node_modules/three/build/three.core.js",
+          "line": 4707,
+          "ms": 17
+        },
+        {
+          "name": "Ert",
+          "source": "renderer/src/App.tsx",
+          "line": 11338,
+          "ms": 16
+        },
+        {
+          "name": "updateProperties",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 13577,
+          "ms": 16
+        },
+        {
+          "name": "(anonymous)",
+          "source": "packages/core/src/graph2dPromotionGeometry.ts",
+          "line": 26,
+          "ms": 14
+        },
+        {
+          "name": "max",
+          "source": "renderer/node_modules/three/build/three.core.js",
+          "line": 5072,
+          "ms": 14
+        },
+        {
+          "name": "areHookInputsEqual",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 4327,
+          "ms": 12
+        }
+      ],
+      "inclusive": [
+        {
+          "name": "(root)",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 5160
+        },
+        {
+          "name": "performWorkOnRoot",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 10681,
+          "ms": 2435
+        },
+        {
+          "name": "(program)",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 2335
+        },
+        {
+          "name": "performSyncWorkOnRoot",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 12084,
+          "ms": 2237
+        },
+        {
+          "name": "flushSyncWorkAcrossRoots_impl",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11918,
+          "ms": 2237
+        },
+        {
+          "name": "commitRoot",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11457,
+          "ms": 1809
+        },
+        {
+          "name": "commitRootWhenReady",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 10848,
+          "ms": 1809
+        },
+        {
+          "name": "flushSpawnedWork",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11670,
+          "ms": 1768
+        },
+        {
+          "name": "commitHookEffectListMount",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 8571,
+          "ms": 1729
+        },
+        {
+          "name": "flushPassiveEffects",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11741,
+          "ms": 1727
+        },
+        {
+          "name": "flushPendingEffects",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11735,
+          "ms": 1719
+        },
+        {
+          "name": "commitPassiveMountOnFiber",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 10109,
+          "ms": 1718
+        },
+        {
+          "name": "recursivelyTraversePassiveMountEffects",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 10093,
+          "ms": 1718
+        },
+        {
+          "name": "processRootScheduleInMicrotask",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11966,
+          "ms": 1542
+        },
+        {
+          "name": "(anonymous)",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 12089,
+          "ms": 1542
+        },
+        {
+          "name": "bytes",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 172,
+          "ms": 1084
+        },
+        {
+          "name": "bytes",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 112,
+          "ms": 912
+        },
+        {
+          "name": "(anonymous)",
+          "source": "renderer/src/App.tsx",
+          "line": 50740,
+          "ms": 884
+        },
+        {
+          "name": "publish",
+          "source": "renderer/src/surfaceAnalysis/surfaceMeshKernelHandoff.ts",
+          "line": 105,
+          "ms": 861
+        },
+        {
+          "name": "(anonymous)",
+          "source": "renderer/src/components/ParamSurfaceViewer.tsx",
+          "line": 2545,
+          "ms": 820
+        },
+        {
+          "name": "publish",
+          "source": "packages/kernel/src/artifactRegistry.ts",
+          "line": 277,
+          "ms": 756
+        },
+        {
+          "name": "performUnitOfWork",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11304,
+          "ms": 670
+        },
+        {
+          "name": "workLoopSync",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11181,
+          "ms": 670
+        },
+        {
+          "name": "renderRootSync",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11120,
+          "ms": 670
+        },
+        {
+          "name": "(anonymous)",
+          "source": "(runtime)",
+          "line": 1,
+          "ms": 653
+        },
+        {
+          "name": "dispatchEvent",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 15297,
+          "ms": 646
+        },
+        {
+          "name": "batchedUpdates$1",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 1494,
+          "ms": 645
+        },
+        {
+          "name": "dispatchEventForPluginEventSystem",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 12408,
+          "ms": 645
+        },
+        {
+          "name": "dispatchDiscreteEvent",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 15263,
+          "ms": 643
+        },
+        {
+          "name": "flushSyncWork$1",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 10987,
+          "ms": 642
+        },
+        {
+          "name": "dispatchEvent",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 642
+        },
+        {
+          "name": "selectOptions",
+          "source": "(runtime)",
+          "line": 7192,
+          "ms": 642
+        },
+        {
+          "name": "beginWork",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 7392,
+          "ms": 625
+        },
+        {
+          "name": "updateFunctionComponent",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 6489,
+          "ms": 594
+        },
+        {
+          "name": "renderWithHooks",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 4333,
+          "ms": 592
+        }
+      ],
+      "stacks": [
+        {
+          "ms": 2335,
+          "stack": "(program) ((runtime):0) <- (root) ((runtime):0)"
+        },
+        {
+          "ms": 439,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- publish (packages/kernel/src/artifactRegistry.ts:277) <- publish (renderer/src/surfaceAnalysis/surfaceMeshKernelHandoff.ts:105) <- (anonymous) (renderer/src/App.tsx:50740) <- commitHookEffectListMount (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:8571) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093)"
+        },
+        {
+          "ms": 210,
+          "stack": "ut (packages/core/src/documentIdentity.ts:109) <- bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- publish (packages/kernel/src/artifactRegistry.ts:277) <- publish (renderer/src/surfaceAnalysis/surfaceMeshKernelHandoff.ts:105) <- (anonymous) (renderer/src/App.tsx:50740) <- commitHookEffectListMount (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:8571) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109)"
+        },
+        {
+          "ms": 192,
+          "stack": "getProgramInfoLog ((runtime):0) <- onFirstUse (renderer/node_modules/three/build/three.module.js:6674) <- Ey.getUniforms (renderer/node_modules/three/build/three.module.js:6773) <- setProgram (renderer/node_modules/three/build/three.module.js:17279) <- renderBufferDirect (renderer/node_modules/three/build/three.module.js:16193) <- renderObject (renderer/node_modules/three/build/three.module.js:17101) <- renderObjects (renderer/node_modules/three/build/three.module.js:17074) <- renderScene (renderer/node_modules/three/build/three.module.js:16928) <- render (renderer/node_modules/three/build/three.module.js:16628) <- Lu (renderer/src/components/ParamSurfaceViewer.tsx:3846)"
+        },
+        {
+          "ms": 175,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- bytes (renderer/src/mesh/meshResourceStore.ts:54) <- resolve (renderer/src/mesh/meshResourceStore.ts:62) <- mesh (renderer/src/mesh/meshDocumentAdapter.ts:86) <- id (renderer/src/App.tsx:78418) <- (anonymous) (renderer/src/projects/SavedMeshAnalysisPanel.tsx:55) <- useMemo (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:5515) <- Ws.C.useMemo (renderer/node_modules/react/cjs/react.production.js:513) <- sae (renderer/src/projects/SavedMeshAnalysisPanel.tsx:28)"
+        },
+        {
+          "ms": 107,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:172) <- publish (packages/kernel/src/artifactRegistry.ts:277) <- publish (renderer/src/surfaceAnalysis/surfaceMeshKernelHandoff.ts:105) <- (anonymous) (renderer/src/App.tsx:50740) <- commitHookEffectListMount (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:8571) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109)"
+        },
+        {
+          "ms": 90,
+          "stack": "input (renderer/src/App.tsx:11185) <- (anonymous) (renderer/src/App.tsx:54546) <- updateMemo (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:5162) <- Ws.C.useMemo (renderer/node_modules/react/cjs/react.production.js:513) <- Ert (renderer/src/App.tsx:11338) <- renderWithHooks (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:4333) <- updateFunctionComponent (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:6489) <- beginWork (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:7392) <- performUnitOfWork (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:11304) <- workLoopSync (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:11181)"
+        },
+        {
+          "ms": 87,
+          "stack": "ut (packages/core/src/documentIdentity.ts:109) <- bytes (packages/core/src/documentIdentity.ts:112) <- bytes (packages/core/src/documentIdentity.ts:172) <- bytes (renderer/src/mesh/meshResourceStore.ts:54) <- resolve (renderer/src/mesh/meshResourceStore.ts:62) <- mesh (renderer/src/mesh/meshDocumentAdapter.ts:86) <- id (renderer/src/App.tsx:78418) <- (anonymous) (renderer/src/projects/SavedMeshAnalysisPanel.tsx:55) <- useMemo (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:5515) <- Ws.C.useMemo (renderer/node_modules/react/cjs/react.production.js:513)"
+        },
+        {
+          "ms": 66,
+          "stack": "Hke (renderer/src/surfaceAnalysis/surfaceMeshKernelHandoff.ts:61) <- publish (renderer/src/surfaceAnalysis/surfaceMeshKernelHandoff.ts:105) <- (anonymous) (renderer/src/App.tsx:50740) <- commitHookEffectListMount (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:8571) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- flushPassiveEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:11741)"
+        },
+        {
+          "ms": 66,
+          "stack": "fromBufferAttribute (renderer/node_modules/three/build/three.core.js:5684) <- computeVertexNormals (renderer/node_modules/three/build/three.core.js:19789) <- (anonymous) (renderer/src/components/ParamSurfaceViewer.tsx:2545) <- commitHookEffectListMount (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:8571) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093)"
+        },
+        {
+          "ms": 64,
+          "stack": "bytes (packages/core/src/documentIdentity.ts:172) <- bytes (renderer/src/mesh/meshResourceStore.ts:54) <- resolve (renderer/src/mesh/meshResourceStore.ts:62) <- mesh (renderer/src/mesh/meshDocumentAdapter.ts:86) <- id (renderer/src/App.tsx:78418) <- (anonymous) (renderer/src/projects/SavedMeshAnalysisPanel.tsx:55) <- useMemo (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:5515) <- Ws.C.useMemo (renderer/node_modules/react/cjs/react.production.js:513) <- sae (renderer/src/projects/SavedMeshAnalysisPanel.tsx:28) <- renderWithHooks (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:4333)"
+        },
+        {
+          "ms": 60,
+          "stack": "(garbage collector) ((runtime):0) <- (root) ((runtime):0)"
+        },
+        {
+          "ms": 51,
+          "stack": "(anonymous) (renderer/src/components/ParamSurfaceViewer.tsx:2545) <- commitHookEffectListMount (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:8571) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093)"
+        },
+        {
+          "ms": 50,
+          "stack": "computeVertexNormals (renderer/node_modules/three/build/three.core.js:19789) <- (anonymous) (renderer/src/components/ParamSurfaceViewer.tsx:2545) <- commitHookEffectListMount (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:8571) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109)"
+        },
+        {
+          "ms": 32,
+          "stack": "(idle) ((runtime):0) <- (root) ((runtime):0)"
+        },
+        {
+          "ms": 28,
+          "stack": "getExtension ((runtime):0) <- getExtension (renderer/node_modules/three/build/three.module.js:3946) <- init (renderer/node_modules/three/build/three.module.js:3970) <- initGLContext (renderer/node_modules/three/build/three.module.js:15505) <- nb (renderer/node_modules/three/build/three.module.js:15160) <- (anonymous) (renderer/src/components/ParamSurfaceViewer.tsx:2545) <- commitHookEffectListMount (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:8571) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109)"
+        },
+        {
+          "ms": 26,
+          "stack": "s (renderer/src/math/curvatureLines.ts:116) <- buildVertexAdjacency (renderer/src/math/curvatureLines.ts:110) <- set (renderer/src/App.tsx:10797) <- (anonymous) (renderer/src/App.tsx:49817) <- updateMemo (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:5162) <- Ws.C.useMemo (renderer/node_modules/react/cjs/react.production.js:513) <- Ert (renderer/src/App.tsx:11338) <- renderWithHooks (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:4333) <- updateFunctionComponent (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:6489) <- beginWork (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:7392)"
+        },
+        {
+          "ms": 25,
+          "stack": "setXYZ (renderer/node_modules/three/build/three.core.js:18373) <- computeVertexNormals (renderer/node_modules/three/build/three.core.js:19789) <- (anonymous) (renderer/src/components/ParamSurfaceViewer.tsx:2545) <- commitHookEffectListMount (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:8571) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093)"
+        },
+        {
+          "ms": 25,
+          "stack": "fr (renderer/node_modules/three/examples/jsm/geometries/ParametricGeometry.js:31) <- (anonymous) (renderer/src/components/ParamSurfaceViewer.tsx:2545) <- commitHookEffectListMount (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:8571) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109)"
+        },
+        {
+          "ms": 23,
+          "stack": "At (renderer/src/components/ParamSurfaceViewer.tsx:3257) <- fr (renderer/node_modules/three/examples/jsm/geometries/ParametricGeometry.js:31) <- (anonymous) (renderer/src/components/ParamSurfaceViewer.tsx:2545) <- commitHookEffectListMount (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:8571) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093) <- commitPassiveMountOnFiber (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10109) <- recursivelyTraversePassiveMountEffects (renderer/node_modules/react-dom/cjs/react-dom-client.production.js:10093)"
+        }
+      ]
+    }
+  ],
+  "qualification": "One baseline and one isolated run per configuration; inclusive CPU times overlap. Source binding and validation boundaries remain enforced. This is not a frame-rate benchmark.",
+  "adjacencyProfile": "No sampled frames from math/selection/geodesicSelection.ts in either final profile; lazy construction and cache invalidation also verified by unit tests."
+}

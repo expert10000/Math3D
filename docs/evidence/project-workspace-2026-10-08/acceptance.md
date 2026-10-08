@@ -77,3 +77,72 @@ document tree. Results are recorded in `output/project-exit-final-e2e.log`;
 build and renderer typecheck logs are `output/project-exit-build.log` and
 `output/project-exit-typecheck.log`. This correction does not resolve the
 previously measured opening/switching latency.
+
+## Local layout repair and navigation profile — 2026-10-08
+
+Verified the production build in `C:\Users\janko\OneDrive\Dokumenty\Math3D`
+against base commit `b4cffbf` plus the local layout changes. Electron tests used
+isolated temporary profiles, 175% Windows display scaling and the existing
+software GPU/jitless E2E defaults.
+
+The docked viewer initially began at 213px. The saved-document header now omits
+the unused global controls and their trailing spacing, while retaining module
+family navigation. The viewer begins at 190px, measures 860 × 810px and stays
+beside the independently scrolling Inspector. At 390 × 844, the narrower
+container reserves three quarters of the remaining document area for the canvas:
+the viewer is 325px tall and the Inspector retains a 108px scrolling area.
+The desktop position/size thresholds remain unchanged. The viewport-bottom
+assertion permits only 0.001px of arithmetic rounding because the fractional
+display scale reports `844.00006` for the 844px bottom edge.
+
+Screenshots: [docked viewer](catenoid-viewer-docked-local.png) and
+[phone viewer](catenoid-viewer-phone-local.png). Raw rectangles:
+[layout measurements](catenoid-viewer-layout-local.json).
+
+Renderer production build, full main/renderer/E2E typecheck, and the final E2E
+typecheck passed. Seven flow/navigation/clarity tests passed on the final compiled
+app; the layout test passed on rerun after the rounding correction. This includes
+Catenoid save/cold restart, Mesh/source return, middle flip, docking, unapplied
+drafts, repeated normal Surfaces navigation and Inspector scrolling. The local
+layout rerun log is `output/project-layout-final-e2e.log`.
+
+The profiling flag `MATH3D_PROFILE_PROJECT=1` now captures opening separately
+from three leave/reopen cycles and records each exit/reopen wall time. Source
+maps were enabled for those production builds. The later run without profiling
+measured 3.650s to open the starter, 1.578–1.701s to leave, and 0.599–0.885s to
+reopen. These measurements diagnose the remaining delay; the layout repair does
+not claim a performance improvement.
+
+The mapped CPU profile identifies two next optimization targets:
+
+- The automatic live Surface tessellation handoff effect in `App.tsx` republishes
+  mesh and correspondence artifacts during navigation. `artifactRegistry.publish`
+  accounted for 2.713s across the three cycles' 8.540s sampling interval;
+  `sha256Checksum` accounted for 3.057s across all callers. These inclusive
+  timings overlap. Reuse a current immutable publication by source generation,
+  tessellation settings and geometry identity; retain checksum verification at
+  changed-byte/import/command/save boundaries.
+- Geodesic adjacency construction accounted for 0.940s across those cycles.
+  Build it when its tools need it, or retain its qualified cache across navigation.
+
+Opening the built-in starter also spends substantial time in resource capture,
+verification and compatibility inspection: `sha256Checksum` accounted for 2.914s
+of its 4.430s sampling interval. Existing saved-project opening should be profiled
+separately from first starter creation before changing those validation paths.
+
+The [mapped profile summary](navigation-profile-summary.json) records call sites,
+timings, environment and limitations. Raw profiles remain local under
+`output/project-navigation-profile-2026-10-08`. Two instrumented runs with three
+cycles each are diagnostic samples, not a statistically robust benchmark or GPU
+frame-rate measurement. No performance optimization was applied in this repair.
+
+## Integrated workbench delivery — later October 8 qualification
+
+The initial layout/profile above records the earlier baseline. The subsequent
+committed implementation `3ac5ab75` adds native captured-source Surface binding,
+the shared document host, exact saved Mesh display, unified Open/Resume and
+navigation publication/adjacency reuse. The [final delivery report](workbench-delivery.md)
+supersedes that stage's dimensions and remaining optimization targets, with final
+test results, mapped timings and actual current-build desktop launch evidence.
+First opening still takes about 3.6 seconds. Physical devices, installed engines,
+remote integration and installer delivery remain separate gates.

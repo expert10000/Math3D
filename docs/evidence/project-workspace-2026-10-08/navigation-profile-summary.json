@@ -1,0 +1,639 @@
+{
+  "date": "2026-10-08",
+  "baseCommit": "b4cffbf",
+  "scope": "Local layout repair; remaining navigation cost profiled, no performance optimization applied.",
+  "environment": {
+    "platform": "Windows Electron",
+    "repository": "Math3D",
+    "desktopViewport": [
+      1600,
+      1000
+    ],
+    "devicePixelRatio": 1.75,
+    "profile": "isolated temporary profile",
+    "gpu": "software/SwiftShader (E2E default)",
+    "v8": "jitless (Windows default)",
+    "build": "Vite production build with source maps"
+  },
+  "timing": {
+    "openingMs": 4085,
+    "switchesMs": [
+      2476,
+      2685,
+      3252
+    ],
+    "navigationSteps": [
+      {
+        "exitMs": 1769,
+        "reopenMs": 708
+      },
+      {
+        "exitMs": 1854,
+        "reopenMs": 831
+      },
+      {
+        "exitMs": 2309,
+        "reopenMs": 943
+      }
+    ],
+    "profile": "isolated Electron; click to visible canvas; not a GPU frame-rate benchmark"
+  },
+  "findings": [
+    {
+      "operation": "Open Catenoid Evidence starter",
+      "observation": "Approximately 2.914 s of the 4.430 s CPU sampling interval ran under sha256Checksum. Starter instantiation, project resource capture/verification, compatibility inspection and Mesh buffer resolution are nested callers; these times overlap.",
+      "source": "packages/core/src/documentIdentity.ts:172"
+    },
+    {
+      "operation": "Three leave/reopen cycles",
+      "observation": "Approximately 2.713 s of the 8.540 s CPU sampling interval ran under artifactRegistry.publish, reached from the automatic live Surface tessellation handoff effect. sha256Checksum accounted for 3.057 s across all callers.",
+      "source": "renderer/src/App.tsx:50736"
+    },
+    {
+      "operation": "Three leave/reopen cycles",
+      "observation": "Geodesic adjacency construction accounted for approximately 0.940 s; vertex merging is its largest sampled cost.",
+      "source": "renderer/src/App.tsx:63351"
+    },
+    {
+      "operation": "Navigation wall time",
+      "observation": "Leaving took 1.769\u20132.309 s; reopening took 0.708\u20130.943 s in this instrumented run. Leaving is the larger contributor.",
+      "source": "tests/e2e/project-workspace-clarity.spec.ts"
+    }
+  ],
+  "recommendedNextSteps": [
+    "Qualify repeated live-tessellation publication against source generation, tessellation settings and geometry identity; reuse a current immutable artifact instead of repacking and hashing unchanged bytes.",
+    "Preserve verification when bytes/sources change and at import, command and save boundaries; do not remove checksum validation to meet navigation timings.",
+    "Construct geodesic adjacency when its selection/analysis tools need it, or preserve the qualified cache across module navigation.",
+    "Profile opening separately: distinguish first starter creation from opening an existing saved Project; inspect repeated resource verification without conflating nested timings."
+  ],
+  "limitations": [
+    "Two instrumented runs with three cycles each; these are diagnostics, not a statistically robust benchmark.",
+    "CPU sampling includes action/assertion overhead. It does not measure GPU frame rate or identify all native/runtime work.",
+    "Inclusive timings overlap; each mapped recursive frame is counted only once per sample in the final summary.",
+    "Source-map function names can refer to parameter tokens; source file and line identify the actual function."
+  ],
+  "profiles": [
+    {
+      "input": "project-open-cpu-profile.json",
+      "durationMs": 4430,
+      "self": [
+        {
+          "name": "bytes",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 112,
+          "ms": 1649
+        },
+        {
+          "name": "ut",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 109,
+          "ms": 817
+        },
+        {
+          "name": "(program)",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 612
+        },
+        {
+          "name": "bytes",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 172,
+          "ms": 447
+        },
+        {
+          "name": "Uo",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 36,
+          "ms": 126
+        },
+        {
+          "name": "mesh",
+          "source": "renderer/src/mesh/meshDifferentialGeometry.ts",
+          "line": 211,
+          "ms": 55
+        },
+        {
+          "name": "(garbage collector)",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 52
+        },
+        {
+          "name": "getProgramInfoLog",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 52
+        },
+        {
+          "name": "key",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 81,
+          "ms": 48
+        },
+        {
+          "name": "loseContext",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 36
+        },
+        {
+          "name": "(idle)",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 22
+        },
+        {
+          "name": "input",
+          "source": "renderer/src/App.tsx",
+          "line": 11181,
+          "ms": 19
+        },
+        {
+          "name": "getBoundingClientRect",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 14
+        },
+        {
+          "name": "k",
+          "source": "renderer/src/mesh/meshDifferentialGeometry.ts",
+          "line": 257,
+          "ms": 14
+        },
+        {
+          "name": "encode",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 13
+        },
+        {
+          "name": "Fa",
+          "source": "renderer/src/mesh/meshDifferentialGeometry.ts",
+          "line": 148,
+          "ms": 12
+        },
+        {
+          "name": "y",
+          "source": "renderer/src/surfaceAnalysis/derivedMeshBackendBridge.ts",
+          "line": 55,
+          "ms": 11
+        },
+        {
+          "name": "Ex",
+          "source": "renderer/src/projects/savedMeshAnalysis.ts",
+          "line": 15,
+          "ms": 11
+        },
+        {
+          "name": "add",
+          "source": "renderer/node_modules/three/build/three.core.js",
+          "line": 4707,
+          "ms": 10
+        },
+        {
+          "name": "(anonymous)",
+          "source": "renderer/src/App.tsx",
+          "line": 54542,
+          "ms": 10
+        }
+      ],
+      "inclusive": [
+        {
+          "name": "(root)",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 4430
+        },
+        {
+          "name": "bytes",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 172,
+          "ms": 2914
+        },
+        {
+          "name": "bytes",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 112,
+          "ms": 2467
+        },
+        {
+          "name": "Jn",
+          "source": "renderer/src/components/ProjectWorkspacePanel.tsx",
+          "line": 770,
+          "ms": 2010
+        },
+        {
+          "name": "id",
+          "source": "renderer/src/components/ProjectWorkspacePanel.tsx",
+          "line": 875,
+          "ms": 2010
+        },
+        {
+          "name": "onClick",
+          "source": "renderer/src/components/ProjectTemplatesPanel.tsx",
+          "line": 60,
+          "ms": 2010
+        },
+        {
+          "name": "processDispatchQueue",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 12272,
+          "ms": 2010
+        },
+        {
+          "name": "(anonymous)",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 12455,
+          "ms": 2010
+        },
+        {
+          "name": "batchedUpdates$1",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 1494,
+          "ms": 2010
+        },
+        {
+          "name": "dispatchEventForPluginEventSystem",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 12408,
+          "ms": 2010
+        },
+        {
+          "name": "dispatchEvent",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 15297,
+          "ms": 2010
+        },
+        {
+          "name": "dispatchDiscreteEvent",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 15263,
+          "ms": 2010
+        },
+        {
+          "name": "instantiateNotebookStarter",
+          "source": "renderer/src/projects/notebookStarters.ts",
+          "line": 65,
+          "ms": 1446
+        },
+        {
+          "name": "performWorkUntilDeadline",
+          "source": "renderer/node_modules/scheduler/cjs/scheduler.production.js",
+          "line": 121,
+          "ms": 1106
+        },
+        {
+          "name": "ut",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 109,
+          "ms": 817
+        },
+        {
+          "name": "source",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 178,
+          "ms": 783
+        },
+        {
+          "name": "performWorkOnRoot",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 10681,
+          "ms": 782
+        },
+        {
+          "name": "performWorkOnRootViaSchedulerTask",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 12065,
+          "ms": 762
+        },
+        {
+          "name": "performUnitOfWork",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11304,
+          "ms": 746
+        },
+        {
+          "name": "workLoopSync",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11181,
+          "ms": 746
+        }
+      ]
+    },
+    {
+      "input": "project-switch-cpu-profile.json",
+      "durationMs": 8540,
+      "self": [
+        {
+          "name": "(program)",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 2457
+        },
+        {
+          "name": "bytes",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 112,
+          "ms": 1521
+        },
+        {
+          "name": "ut",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 109,
+          "ms": 852
+        },
+        {
+          "name": "bytes",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 172,
+          "ms": 684
+        },
+        {
+          "name": "mergeVerticesByPosition",
+          "source": "renderer/src/math/selection/geodesicGraph.ts",
+          "line": 15,
+          "ms": 551
+        },
+        {
+          "name": "getProgramInfoLog",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 313
+        },
+        {
+          "name": "T",
+          "source": "renderer/src/math/selection/geodesicGraph.ts",
+          "line": 151,
+          "ms": 142
+        },
+        {
+          "name": "(garbage collector)",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 125
+        },
+        {
+          "name": "eps",
+          "source": "renderer/src/math/selection/geodesicGraph.ts",
+          "line": 147,
+          "ms": 124
+        },
+        {
+          "name": "(idle)",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 105
+        },
+        {
+          "name": "c",
+          "source": "renderer/src/math/selection/geodesicGraph.ts",
+          "line": 30,
+          "ms": 99
+        },
+        {
+          "name": "computeVertexNormals",
+          "source": "renderer/node_modules/three/build/three.core.js",
+          "line": 19789,
+          "ms": 88
+        },
+        {
+          "name": "fromBufferAttribute",
+          "source": "renderer/node_modules/three/build/three.core.js",
+          "line": 5684,
+          "ms": 84
+        },
+        {
+          "name": "input",
+          "source": "renderer/src/App.tsx",
+          "line": 11181,
+          "ms": 77
+        },
+        {
+          "name": "y",
+          "source": "renderer/src/surfaceAnalysis/derivedMeshBackendBridge.ts",
+          "line": 55,
+          "ms": 50
+        },
+        {
+          "name": "getExtension",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 42
+        },
+        {
+          "name": "getBoundingClientRect",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 41
+        },
+        {
+          "name": "getZ",
+          "source": "renderer/node_modules/three/build/three.core.js",
+          "line": 18278,
+          "ms": 41
+        },
+        {
+          "name": "getY",
+          "source": "renderer/node_modules/three/build/three.core.js",
+          "line": 18245,
+          "ms": 38
+        },
+        {
+          "name": "getX",
+          "source": "renderer/node_modules/three/build/three.core.js",
+          "line": 18212,
+          "ms": 38
+        }
+      ],
+      "inclusive": [
+        {
+          "name": "(root)",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 8540
+        },
+        {
+          "name": "performWorkUntilDeadline",
+          "source": "renderer/node_modules/scheduler/cjs/scheduler.production.js",
+          "line": 121,
+          "ms": 4071
+        },
+        {
+          "name": "flushPassiveEffects",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11741,
+          "ms": 3846
+        },
+        {
+          "name": "commitHookEffectListMount",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 8571,
+          "ms": 3830
+        },
+        {
+          "name": "commitPassiveMountOnFiber",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 10109,
+          "ms": 3821
+        },
+        {
+          "name": "recursivelyTraversePassiveMountEffects",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 10093,
+          "ms": 3821
+        },
+        {
+          "name": "bytes",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 172,
+          "ms": 3057
+        },
+        {
+          "name": "performWorkOnRoot",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 10681,
+          "ms": 2782
+        },
+        {
+          "name": "(anonymous)",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11497,
+          "ms": 2776
+        },
+        {
+          "name": "(anonymous)",
+          "source": "renderer/src/App.tsx",
+          "line": 50736,
+          "ms": 2762
+        },
+        {
+          "name": "publish",
+          "source": "renderer/src/surfaceAnalysis/surfaceMeshKernelHandoff.ts",
+          "line": 95,
+          "ms": 2748
+        },
+        {
+          "name": "publish",
+          "source": "packages/kernel/src/artifactRegistry.ts",
+          "line": 277,
+          "ms": 2713
+        },
+        {
+          "name": "(program)",
+          "source": "(runtime)",
+          "line": 0,
+          "ms": 2457
+        },
+        {
+          "name": "bytes",
+          "source": "packages/core/src/documentIdentity.ts",
+          "line": 112,
+          "ms": 2373
+        },
+        {
+          "name": "performUnitOfWork",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11304,
+          "ms": 1674
+        },
+        {
+          "name": "workLoopSync",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11181,
+          "ms": 1674
+        },
+        {
+          "name": "renderRootSync",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 11120,
+          "ms": 1674
+        },
+        {
+          "name": "beginWork",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 7392,
+          "ms": 1656
+        },
+        {
+          "name": "updateFunctionComponent",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 6489,
+          "ms": 1635
+        },
+        {
+          "name": "renderWithHooks",
+          "source": "renderer/node_modules/react-dom/cjs/react-dom-client.production.js",
+          "line": 4333,
+          "ms": 1633
+        }
+      ]
+    }
+  ],
+  "finalUnprofiledTiming": {
+    "openingMs": 3650,
+    "switchesMs": [
+      2176,
+      2415,
+      2586
+    ],
+    "navigationSteps": [
+      {
+        "exitMs": 1578,
+        "reopenMs": 599
+      },
+      {
+        "exitMs": 1682,
+        "reopenMs": 733
+      },
+      {
+        "exitMs": 1701,
+        "reopenMs": 885
+      }
+    ],
+    "profile": "isolated Electron; click to visible canvas; not a GPU frame-rate benchmark"
+  },
+  "layout": {
+    "desktop": {
+      "viewer": {
+        "x": 380.0000305175781,
+        "y": 190.1428680419922,
+        "width": 859.9999694824219,
+        "height": 809.8571929931641
+      },
+      "project": {
+        "x": 14.000000953674316,
+        "y": 90.00000762939453,
+        "width": 360.0000295639038,
+        "height": 875.0000534057617
+      },
+      "inspector": {
+        "x": 1240,
+        "y": 190.1428680419922,
+        "width": 360.0001220703125,
+        "height": 809.8571929931641
+      }
+    },
+    "narrow": {
+      "viewer": {
+        "x": 0,
+        "y": 410.46429443359375,
+        "width": 390.2857360839844,
+        "height": 325.15179443359375
+      },
+      "inspector": {
+        "x": 0,
+        "y": 735.6160888671875,
+        "width": 390.2857360839844,
+        "height": 108.38397216796875
+      }
+    }
+  },
+  "validation": {
+    "rendererBuild": "passed",
+    "fullTypecheck": "passed",
+    "finalE2ETypecheck": "passed",
+    "electronFlows": "7 passed in final compiled-app suite; layout passed on corrected assertion rerun",
+    "layoutThresholds": "desktop y < 200px, height > 750px, width > 800px; phone height > 300px; bottom <= viewport plus 0.001px rounding"
+  }
+}

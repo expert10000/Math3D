@@ -1,0 +1,156 @@
+{
+  "verifiedAt": "2026-10-08T11:12:41.299Z",
+  "shortcut": "Math3D Projects (current build).lnk",
+  "verificationArgument": "--verify (one launch, original shortcut arguments restored)",
+  "system": {
+    "buildIdentity": {
+      "version": "1.5.0",
+      "commit": "3ac5ab75b1297c765ba1306e1ba7260e317063bd",
+      "dirty": false,
+      "builtAt": "2026-10-08T10:51:35.666Z",
+      "rendererHash": "7825865854cbbf63a8106f9c99fd1dc11fdc223161c282d19a05f605443c00c8"
+    },
+    "appName": "math3d",
+    "appVersion": "1.5.0",
+    "mode": "development",
+    "installType": "development",
+    "execPath": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\node_modules\\electron\\dist\\electron.exe",
+    "appPath": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D",
+    "resourcesPath": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\node_modules\\electron\\dist\\resources",
+    "userDataPath": "C:\\Users\\janko\\.math3d\\projects-desktop-profile",
+    "workingDir": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D",
+    "electronVersion": "39.2.6",
+    "chromeVersion": "142.0.7444.226",
+    "nodeVersion": "22.21.1",
+    "platform": "win32",
+    "arch": "x64"
+  },
+  "rendererURL": "file:///C:/Users/janko/OneDrive/Dokumenty/Math3D/renderer/dist/index.html",
+  "viewport": {
+    "width": 1087,
+    "height": 688,
+    "devicePixelRatio": 1.75
+  },
+  "project": {
+    "id": "math3d:project:85e8d6ce0d043b30b135c339d2ff4e00",
+    "title": "Catenoid Evidence Notebook"
+  },
+  "surface": {
+    "id": "math3d:surface:55be04e00411d66d8cd44fe178eaa62a",
+    "revision": 1,
+    "schemaVersion": 1,
+    "structuralHash": "sha256:cee167c7412ecb50934ce34b053912fa0939ef8de52eba3ca85ed78fccf33bb7"
+  },
+  "capturedSource": {
+    "branchPolicy": null,
+    "definition": {
+      "expressions": {
+        "x": "x",
+        "y": "(exp(x) + exp(-x))/2"
+      },
+      "familyId": "graph2d.revolution",
+      "settings": {
+        "axis": "x",
+        "orientation": "positive"
+      },
+      "sourceIds": [
+        "math3d:graph2d:c514dc48b2a6d388d78e1d733e375a8c",
+        "profile"
+      ]
+    },
+    "domain": {
+      "angle": {
+        "max": 6.283185307179586,
+        "min": 0
+      },
+      "kind": "revolution",
+      "profile": {
+        "includeMax": true,
+        "includeMin": true,
+        "max": 1.5,
+        "min": -1.5
+      }
+    },
+    "orientation": {
+      "direction": "positive"
+    },
+    "parameters": {
+      "angleMax": 6.283185307179586,
+      "angleMin": 0,
+      "axis": "x",
+      "parameter": "x",
+      "variables": {}
+    },
+    "representation": "constructed",
+    "units": {
+      "angle": "rad",
+      "length": "unitless"
+    }
+  },
+  "mesh": {
+    "id": "math3d:mesh:3b4c2c1474ca252f010448ec1931a810",
+    "revision": 1,
+    "schemaVersion": 1,
+    "structuralHash": "sha256:7a2ac7b73424d8697ec275c917299496bd30991038e48401230cd4a5bf1cf902"
+  },
+  "meshField": "H",
+  "surfaceBounds": {
+    "x": 360.0000305175781,
+    "y": 193.00001525878906,
+    "width": 407.4285888671875,
+    "height": 495.0000305175781,
+    "top": 193.00001525878906,
+    "right": 767.4286193847656,
+    "bottom": 688.0000457763672,
+    "left": 360.0000305175781
+  },
+  "actions": [
+    "desktop shortcut launch",
+    "Open Catenoid saved starter copy",
+    "native Surface",
+    "exact saved Mesh and H field",
+    "return to Surface",
+    "Save Project",
+    "renderer reload",
+    "same Surface generation resumed"
+  ],
+  "nativeWindow": {
+    "id": 2165150,
+    "title": "MATH3D",
+    "app": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D\\node_modules\\electron\\dist\\electron.exe",
+    "mainProcessId": 4656,
+    "visibleInspectionAt": "2026-10-08T11:12:58.963Z",
+    "method": "Windows computer-use selected-window screenshot inspected after reload"
+  },
+  "shortcuts": [
+    {
+      "name": "Math3D Projects (current build).lnk",
+      "path": "C:\\Users\\janko\\OneDrive\\Desktop\\Math3D Projects (current build).lnk",
+      "target": "C:\\Users\\janko\\.math3d\\Launchers\\Math3DProjectsLauncher.exe",
+      "arguments": "",
+      "workingDirectory": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D"
+    },
+    {
+      "name": "Math3D Projects.lnk",
+      "path": "C:\\Users\\janko\\OneDrive\\Desktop\\Math3D Projects.lnk",
+      "target": "C:\\Users\\janko\\.math3d\\Launchers\\Math3DProjectsLauncher.exe",
+      "arguments": "",
+      "workingDirectory": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D"
+    },
+    {
+      "name": "Math3D Dev (this repo).lnk",
+      "path": "C:\\Users\\janko\\OneDrive\\Desktop\\Math3D Dev (this repo).lnk",
+      "target": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+      "arguments": "-NoExit -ExecutionPolicy Bypass -Command \"& { Set-Location -LiteralPath 'C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D'; npm run dev }\"",
+      "workingDirectory": "C:\\Users\\janko\\OneDrive\\Dokumenty\\Math3D"
+    },
+    {
+      "name": "Math3D.lnk",
+      "path": "C:\\Users\\janko\\OneDrive\\Desktop\\Math3D.lnk",
+      "target": "C:\\Users\\janko\\AppData\\Local\\Programs\\Math3D\\Math3D.exe",
+      "arguments": "",
+      "workingDirectory": "C:\\Users\\janko\\AppData\\Local\\Programs\\Math3D"
+    }
+  ],
+  "autosaveRecovery": "Existing Workbook autosave accepted through the native recovery prompt on launch and renderer reload; same Project/Surface generation resumed after recovery."
+}
