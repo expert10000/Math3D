@@ -200,3 +200,12 @@ since the enabled native orientation gizmo has its own canvas.
 Regression: `tests/e2e/project-surface-inspector.spec.ts`. Screenshots:
 [Project/Surface/Inspector layout](surface-inspector-layout.png) and
 [local Surface analysis](surface-inspector-analysis.png).
+
+The subsequent normal desktop launch exposed a profile-path issue: the launcher
+supplied `MATH3D_DEV_USER_DATA_DIR`, but main-process profile configuration ignored
+it unless development/test flags were also set. Explicit profile roots now apply
+to normal launches as well, including the existing `session` directory. The
+installed app's default profile behavior is unchanged. Main compilation and a
+dedicated Electron regression passed with all development/test flags removed;
+it verifies both user-data and session-data paths. Regression:
+`tests/e2e/desktop-profile.spec.ts`.
