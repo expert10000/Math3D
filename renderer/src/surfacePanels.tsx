@@ -1,3 +1,4 @@
+import { SurfaceViewControls, SurfaceOverlayControls, SurfaceProbeResult } from "./components/SurfaceInspectorControls";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { uiStyles as styles } from "./uiStyles";
 import { PlanePlot, type PlanePlotHandle } from "./components/PlanePlot";
@@ -13657,62 +13658,17 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
       <div style={inspectorSectionCard}>
         <div style={inspectorSectionTitle}>Selected surface point</div>
-        {!probeInfo ? (
-          <div style={{ fontSize: 11, color: "#475467", display: "grid", gap: 3 }}>
-            <div>No point selected.</div>
-            <div>Use Probe mode to inspect local values.</div>
-          </div>
-        ) : (
-          <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
-            <div><strong>p =</strong> ({fmt(probeInfo.point.x)}, {fmt(probeInfo.point.y)}, {fmt(probeInfo.point.z)})</div>
-            <div><strong>n =</strong> ({fmt(probeInfo.normal.x)}, {fmt(probeInfo.normal.y)}, {fmt(probeInfo.normal.z)})</div>
-            <div><strong>K =</strong> {selectedProbeCurvature?.K != null && Number.isFinite(selectedProbeCurvature.K) ? fmt(selectedProbeCurvature.K) : "n/a"}</div>
-            <div><strong>H =</strong> {selectedProbeCurvature?.H != null && Number.isFinite(selectedProbeCurvature.H) ? fmt(selectedProbeCurvature.H) : "n/a"}</div>
-            <div><strong>k1 =</strong> {selectedProbeCurvature?.k1 != null && Number.isFinite(selectedProbeCurvature.k1) ? fmt(selectedProbeCurvature.k1) : "n/a"}</div>
-            <div><strong>k2 =</strong> {selectedProbeCurvature?.k2 != null && Number.isFinite(selectedProbeCurvature.k2) ? fmt(selectedProbeCurvature.k2) : "n/a"}</div>
-            {!probeEnabled && (
-              <div style={{ color: "#475467" }}>Probe mode is currently off.</div>
-            )}
-          </div>
-        )}
+        <SurfaceProbeResult probeInfo={probeInfo} curvature={selectedProbeCurvature} probeEnabled={probeEnabled} />
       </div>
 
       <div style={inspectorSectionCard}>
         <div style={inspectorSectionTitle}>View</div>
-        <div style={{ fontSize: 11, display: "grid", gap: 7 }}>
-          <div><strong>Source kind:</strong> {viewSourceKind}</div>
-          <div><strong>Viewer:</strong> {viewerKind}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontWeight: 700 }}>Light</span>
-            {(["studio", "soft", "contrast", "neutral", "warm"] as const).map((preset) => (
-              <button
-                key={`inspector-light-${preset}`}
-                type="button"
-                onClick={() => onChangeLightPreset(preset)}
-                style={pill(lightPreset === preset)}
-                aria-pressed={lightPreset === preset}
-              >
-                {preset}
-              </button>
-            ))}
-          </div>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input type="checkbox" checked={showWireframe} onChange={onToggleWireframe} />
-            Wireframe
-          </label>
-          <label style={{ display: "grid", gap: 4 }}>
-            Roughness: {materialRoughness.toFixed(2)}
-            <input type="range" min={0} max={1} step={0.01} value={materialRoughness} onChange={(e) => onSetMaterialRoughness(Number(e.target.value))} />
-          </label>
-          <label style={{ display: "grid", gap: 4 }}>
-            Metalness: {materialMetalness.toFixed(2)}
-            <input type="range" min={0} max={1} step={0.01} value={materialMetalness} onChange={(e) => onSetMaterialMetalness(Number(e.target.value))} />
-          </label>
-          <label style={{ display: "grid", gap: 4 }}>
-            Opacity: {materialOpacity.toFixed(2)}
-            <input type="range" min={0.1} max={1} step={0.01} value={materialOpacity} onChange={(e) => onSetMaterialOpacity(Number(e.target.value))} />
-          </label>
-        </div>
+        <div style={{ fontSize: 11, marginBottom: 7 }}><strong>Source kind:</strong> {viewSourceKind}<br /><strong>Viewer:</strong> {viewerKind}</div>
+        <SurfaceViewControls lightPreset={lightPreset} onChangeLightPreset={onChangeLightPreset}
+          materialRoughness={materialRoughness} onSetMaterialRoughness={onSetMaterialRoughness}
+          materialMetalness={materialMetalness} onSetMaterialMetalness={onSetMaterialMetalness}
+          materialOpacity={materialOpacity} onSetMaterialOpacity={onSetMaterialOpacity}
+          showWireframe={showWireframe} onToggleWireframe={onToggleWireframe} />
       </div>
         </>
       )}
@@ -13869,45 +13825,10 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       <div style={workflowCardStyle("analyze")}>
         <div style={inspectorSectionTitle}>Analysis</div>
         <div style={{ marginTop: -2, marginBottom: 7 }}>{renderWorkflowStatus("Analyze", "analyze")}</div>
-        <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input type="checkbox" checked={showGaussMap} onChange={onToggleGaussMap} />
-            Gauss map
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input type="checkbox" checked={showContours} onChange={onToggleContours} />
-            Slice/contours
-          </label>
-          {showContours && (
-            <label style={{ display: "grid", gap: 4 }}>
-              Contour count: {contourCount}
-              <input
-                type="range"
-                min={2}
-                max={48}
-                step={1}
-                value={Math.max(2, Math.min(48, Math.round(contourCount)))}
-                onChange={(e) => onSetContourCount(Math.max(2, Math.min(48, Number(e.target.value))))}
-              />
-            </label>
-          )}
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input type="checkbox" checked={showPlanes} onChange={onTogglePlanes} />
-            Coordinate/slice planes
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input type="checkbox" checked={showPrincipalDirections} onChange={onTogglePrincipalDirections} />
-            Principal directions
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input type="checkbox" checked={showPrincipalLines} onChange={onTogglePrincipalLines} />
-            Principal lines
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input type="checkbox" checked={showCurvatureLines} onChange={onToggleCurvatureLines} />
-            Curvature overlays
-          </label>
-        </div>
+        <SurfaceOverlayControls showGaussMap={showGaussMap} onToggleGaussMap={onToggleGaussMap}
+          showContours={showContours} onToggleContours={onToggleContours} contourCount={contourCount} onSetContourCount={onSetContourCount}
+          showPlanes={showPlanes} onTogglePlanes={onTogglePlanes} showPrincipalDirections={showPrincipalDirections} onTogglePrincipalDirections={onTogglePrincipalDirections}
+          showPrincipalLines={showPrincipalLines} onTogglePrincipalLines={onTogglePrincipalLines} showCurvatureLines={showCurvatureLines} onToggleCurvatureLines={onToggleCurvatureLines} />
       </div>
 
       {isImplicitViewer && (

@@ -2,9 +2,9 @@ import React, { useLayoutEffect, useRef, useState } from "react";
 import "./documentWorkspace.css";
 
 /** Shared docks: changing a panel never replaces the owning session or viewport. */
-export function DocumentWorkspaceHost({ documentId, sourceHash, module, toolbar, viewport, source, tools, inspector, display, results }:
+export function DocumentWorkspaceHost({ documentId, sourceHash, module, toolbar, viewport, source, tools, inspector, display, results, integratedInspector = false }:
   { documentId: string; sourceHash: string; module: string; toolbar: React.ReactNode; viewport: React.ReactNode;
-    source: React.ReactNode; tools: React.ReactNode; inspector: React.ReactNode; display: React.ReactNode; results: React.ReactNode }) {
+    source: React.ReactNode; tools: React.ReactNode; inspector: React.ReactNode; display: React.ReactNode; results: React.ReactNode; integratedInspector?: boolean }) {
   const host = useRef<HTMLElement>(null);
   const [left, setLeft] = useState("Source/Object"), [right, setRight] = useState("Inspector");
   const [projectDock, setProjectDock] = useState<string | null>(null);
@@ -30,9 +30,9 @@ export function DocumentWorkspaceHost({ documentId, sourceHash, module, toolbar,
       </aside>
       <div className="document-viewport" data-testid="project-source-view"><div className="document-primary-view">{viewport}</div><div className="document-project-slot document-project-expanded" data-placement="middle" /><div className="document-project-slot document-project-expanded" data-placement="all" /></div>
       <aside className="document-inspector" data-testid="project-source-inspector" aria-label="Document inspector">
-        <div role="tablist" aria-label="Document details"><button role="tab" aria-selected={projectDock === "right"} onClick={showProject}>Project</button>{["Inspector", "Display", "Results"].map(tab => <button key={tab} role="tab" aria-selected={projectDock !== "right" && right === tab} onClick={() => { showModule("right"); setRight(tab); }}>{tab}</button>)}</div>
+        <div role="tablist" aria-label="Document details"><button role="tab" aria-selected={projectDock === "right"} onClick={showProject}>Project</button>{(integratedInspector ? ["Inspector"] : ["Inspector", "Display", "Results"]).map(tab => <button key={tab} role="tab" aria-selected={projectDock !== "right" && (integratedInspector || right === tab)} onClick={() => { showModule("right"); setRight(tab); }}>{tab}</button>)}</div>
         <div className="document-project-slot" data-placement="right" />
-        <div className="document-module-controls"><div hidden={right !== "Inspector"}>{inspector}</div><div hidden={right !== "Display"}>{display}</div><div hidden={right !== "Results"}>{results}</div></div>
+        <div className="document-module-controls"><div hidden={!integratedInspector && right !== "Inspector"}>{inspector}</div>{!integratedInspector && <><div hidden={right !== "Display"}>{display}</div><div hidden={right !== "Results"}>{results}</div></>}</div>
       </aside>
     </div>
   </section>;

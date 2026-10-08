@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { CanonicalJsonValue } from "@math3d/core";
-import type { CameraSyncState } from "../components/SurfaceViewer";
+import type { CameraSyncState, ProbeInfo } from "../components/SurfaceViewer";
+import type { PrincipalCurvatureScalars } from "../math/principalCurvature";
+import { SurfaceDocumentInspector } from "../surfaceAnalysis/SurfaceDocumentInspector";
+import { readSurfaceDocumentView, type SurfaceDocumentView } from "../surfaceAnalysis/surfaceDocumentView";
 import type { AdditionalProjectSession } from "../projects/additionalProjectSession";
 import { SurfaceFormulaControls } from "../projects/SurfaceFormulaControls";
 import { DocumentWorkspaceHost } from "./DocumentWorkspaceHost";
@@ -16,30 +19,46 @@ export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, p
   const [version, setVersion] = useState(0), [draft, setDraft] = useState(() => session.sourceDraft ?? JSON.stringify(session.document().source, null, 2));
   const [error, setError] = useState<string | null>(null), [presentation, setPresentation] = useState(session.presentation);
   const [wireframe, setWireframe] = useState(session.wireframe), [probe, setProbe] = useState(false), [probeResult, setProbeResult] = useState<unknown>(null);
+  const [surfaceView, setSurfaceView] = useState(session.surfaceView);
+  const [probeInfo, setProbeInfo] = useState<{ hash: string; value: ProbeInfo } | null>(null);
+  const [curvature, setCurvature] = useState<{ hash: string; value: PrincipalCurvatureScalars | null } | null>(null);
+  const [probeUV, setProbeUV] = useState<{ hash: string; uv: { u: number; v: number } } | null>(null), [probeToken, setProbeToken] = useState(0), [resetToken, setResetToken] = useState(0);
   const document = session.document(), history = session.history();
   useEffect(() => {
     if (!projectId || session.presentationLoaded) return;
     const ui = readDocumentPresentation(localStorage.getItem(uiKey));
-    session.presentation = ui.presentation; session.wireframe = ui.wireframe; session.camera = ui.camera; session.presentationLoaded = true;
-    setPresentation(ui.presentation); setWireframe(ui.wireframe); setVersion(value => value + 1);
+    session.presentation = ui.presentation; session.wireframe = ui.wireframe; session.camera = ui.camera; session.surfaceView = ui.surfaceView; session.presentationLoaded = true;
+    setPresentation(ui.presentation); setWireframe(ui.wireframe); setSurfaceView(ui.surfaceView); setVersion(value => value + 1);
   }, [session, projectId, uiKey]);
   const prepared = useMemo(() => {
     try { return { view: session.view(), binding: document.format === "math3d.surface-document" ? surfaceDocumentBinding(document) : null, error: null }; }
     catch (failure) { return { view: null, binding: null, error: (failure as Error).message }; }
   }, [session, document, workspaceVersion]);
   const rememberCamera = useCallback((camera: CameraSyncState) => { session.camera = camera; }, [session]);
+  const handleProbe = useCallback((value: ProbeInfo) => { setProbeInfo({ hash: document.identity.structuralHash, value }); setProbeResult(value); }, [document.identity.structuralHash]);
+  const handleCurvature = useCallback((value: PrincipalCurvatureScalars | null) => { setCurvature({ hash: document.identity.structuralHash, value }); }, [document.identity.structuralHash]);
   useEffect(() => {
-    const save = () => session.presentationLoaded && saveDocumentPresentation(uiKey, { presentation: session.presentation, wireframe: session.wireframe, camera: session.camera });
+    const save = () => session.presentationLoaded && saveDocumentPresentation(uiKey, { presentation: session.presentation, wireframe: session.wireframe, camera: session.camera, surfaceView: session.surfaceView });
     save(); window.addEventListener("beforeunload", save);
     return () => { save(); window.removeEventListener("beforeunload", save); };
-  }, [session, uiKey, presentation, wireframe]);
+  }, [session, uiKey, presentation, wireframe, surfaceView]);
+  useEffect(() => { setProbeInfo(null); setCurvature(null); setProbeResult(null); setProbeUV(null); }, [document.identity.structuralHash, presentation]);
   const updateDraft = (text: string) => { session.sourceDraft = text; setDraft(text); };
   const changed = () => { setVersion(value => value + 1); };
   const action = (fn: () => void) => {
     try { fn(); updateDraft(JSON.stringify(session.document().source, null, 2)); setError(null); changed(); onChange(); }
     catch (failure) { setError((failure as Error).message); }
   };
+  const updateView = (value: Partial<SurfaceDocumentView>) => { session.surfaceView = readSurfaceDocumentView({ ...session.surfaceView, ...value }); setSurfaceView(session.surfaceView); };
+  const updateWireframe = (value: boolean) => { session.wireframe = value; setWireframe(value); };
+  const nativeInspector = document.format === "math3d.surface-document" && prepared.binding && presentation === "surface";
+  const visibleProbe = probeInfo?.hash === document.identity.structuralHash ? probeInfo.value : null;
+  const visibleCurvature = curvature?.hash === document.identity.structuralHash ? curvature.value : null;
+  const provenance = <><div style={{ padding: 10 }} data-testid="document-generation">{document.identity.id} · r{document.identity.revision}<br />{document.identity.structuralHash}</div>
+    {!!related?.length && <nav data-testid="document-related" aria-label="Related documents" style={{ padding: 10 }}>{related.map(item => <button key={item.id} onClick={() => onOpenRelated?.(item.id, item.module)}>{item.label}</button>)}</nav>}</>;
+  const measurement = prepared.view && <div data-testid="project-source-measurement" style={{ padding: 10 }}>{prepared.view.qualification} · {prepared.view.sampleCount} sampled points · bounds {JSON.stringify(prepared.view.bounds)}</div>;
   return <DocumentWorkspaceHost documentId={document.identity.id} sourceHash={document.identity.structuralHash} module={session.original.module}
+    integratedInspector={!!nativeInspector}
     toolbar={<>
       <button data-testid="document-project-open" onClick={onOpenProject}>Project overview</button>
       <strong data-testid="document-breadcrumb">{projectTitle ?? "Project"} → {session.original.module === "surface" ? "Surface" : session.original.module} → {documentTitle ?? ("metadata" in document ? document.metadata.title : session.original.module)}</strong>
@@ -50,7 +69,8 @@ export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, p
       <button data-testid="project-source-back-to-module" onClick={onClose}>{session.original.module === "surface" ? "Back to normal Surfaces" : "Back to module"}</button>
     </>}
     viewport={prepared.view ? <DocumentViewport view={prepared.view} binding={prepared.binding} presentation={presentation} camera={session.camera} cameraToken={version}
-      rememberCamera={rememberCamera} wireframe={wireframe} probe={probe} onProbe={setProbeResult} /> : <div role="alert">Saved dependency unavailable: {prepared.error}</div>}
+      rememberCamera={rememberCamera} wireframe={wireframe} probe={probe} surfaceView={surfaceView} probeUV={probeUV?.hash === document.identity.structuralHash ? probeUV.uv : null} probeToken={probeToken} resetToken={resetToken}
+      onProbe={handleProbe} onCurvature={handleCurvature} /> : <div role="alert">Saved dependency unavailable: {prepared.error}</div>}
     source={<>
       <h2>Source / Object</h2>
       {document.format === "math3d.surface-document" && <SurfaceFormulaControls key={`${document.identity.revision}:${document.identity.structuralHash}`} document={document} onApply={source => action(() => session.commit(source as unknown as CanonicalJsonValue))} />}
@@ -61,11 +81,16 @@ export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, p
       {error && <div role="alert" style={{ padding: 10 }}>{error}</div>}
     </>}
     tools={<div style={{ padding: 10 }}><h2>Tools</h2>{prepared.binding && presentation === "surface" ? <label><input data-testid="document-surface-probe" type="checkbox" checked={probe} onChange={event => { setProbe(event.target.checked); changed(); }} /> Surface probe and normal</label> : <p>Sampled presentation. Parameter probes require the native Surface view; Mesh vertex selection belongs to a saved Mesh.</p>}</div>}
-    inspector={<><h2>Inspector</h2><div style={{ padding: 10 }} data-testid="document-generation">{document.identity.id} · r{document.identity.revision}<br />{document.identity.structuralHash}</div>
-      {!!related?.length && <nav data-testid="document-related" aria-label="Related documents" style={{ padding: 10 }}>{related.map(item => <button key={item.id} onClick={() => onOpenRelated?.(item.id, item.module)}>{item.label}</button>)}</nav>}
-      {prepared.view && <div data-testid="project-source-measurement" style={{ padding: 10 }}>{prepared.view.qualification} · {prepared.view.sampleCount} sampled points · bounds {JSON.stringify(prepared.view.bounds)}</div>}
-      {children}
-    </>}
-    display={<div style={{ padding: 10 }}><h2>Display</h2><label><input data-testid="document-wireframe" type="checkbox" checked={wireframe} onChange={event => { session.wireframe = event.target.checked; setWireframe(event.target.checked); changed(); }} /> Wireframe</label><p>{prepared.binding && presentation === "surface" ? "Native Surface · captured Graph profile and variables" : "Sampled view · same owning document"}</p></div>}
+    inspector={nativeInspector ? <SurfaceDocumentInspector document={document} title={documentTitle ?? "Saved Surface"} binding={prepared.binding!} view={surfaceView} onView={updateView}
+      viewControls={{ lightPreset: surfaceView.lightPreset, onChangeLightPreset: value => updateView({ lightPreset: value }),
+        materialRoughness: surfaceView.roughness, onSetMaterialRoughness: value => updateView({ roughness: value }),
+        materialMetalness: surfaceView.metalness, onSetMaterialMetalness: value => updateView({ metalness: value }),
+        materialOpacity: surfaceView.opacity, onSetMaterialOpacity: value => updateView({ opacity: value }), showWireframe: wireframe,
+        onToggleWireframe: () => updateWireframe(!wireframe), wireframeTestId: "document-wireframe" }}
+      probeEnabled={probe} onToggleProbe={() => setProbe(value => !value)} probeInfo={visibleProbe} curvature={visibleCurvature}
+      onPickDomainUV={value => { setProbe(true); setProbeUV({ hash: document.identity.structuralHash, uv: value }); setProbeToken(token => token + 1); }} onResetCamera={() => setResetToken(token => token + 1)}
+      provenance={provenance} measurement={measurement} history={history} onUndo={() => action(() => session.undo())} onRedo={() => action(() => session.redo())}>{children}</SurfaceDocumentInspector>
+      : <><h2>Inspector</h2>{provenance}{measurement}{children}</>}
+    display={<div style={{ padding: 10 }}><h2>Display</h2><label><input data-testid="document-wireframe" type="checkbox" checked={wireframe} onChange={event => updateWireframe(event.target.checked)} /> Wireframe</label><p>Sampled view · same owning document</p></div>}
     results={<div style={{ padding: 10 }}><h2>Results</h2>{probeResult ? <pre data-testid="document-probe-result" style={{ whiteSpace: "pre-wrap" }}>{JSON.stringify(probeResult, null, 2)}</pre> : <p>Enable the Surface probe in Tools, then pick a point. Saved Mesh studies are available in Inspector.</p>}</div>} />;
 }

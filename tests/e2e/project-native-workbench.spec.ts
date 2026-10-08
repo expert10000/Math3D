@@ -19,7 +19,7 @@ test("native Surface and sampled views retain ownership, draft, camera and Mesh 
     await editor.getByRole("tab", { name: "Source/Object", exact: true }).click();
     await editor.getByTestId("project-source-json").locator("summary").click();
     await editor.getByTestId("project-source-definition").fill("Unapplied draft remains attached to the owning Surface.");
-    const canvas = viewport.locator("canvas"), box = (await canvas.boundingBox())!;
+    const canvas = viewport.getByTestId("surface-viewer-canvas-host").locator("canvas"), box = (await canvas.boundingBox())!;
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.mouse.move(box.x + box.width / 2 + 90, box.y + box.height / 2 + 35, { steps: 10 }); await page.mouse.up();
     await editor.getByTestId("document-view-choice").selectOption("sampled");
     await expect(viewport).toHaveAttribute("data-view", "sampled"); await expect(editor).toHaveAttribute("data-source-hash", hash);

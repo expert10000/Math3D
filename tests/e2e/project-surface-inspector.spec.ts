@@ -1,0 +1,53 @@
+import { expect, test } from "@playwright/test";
+import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+
+test("Project shows native Surface tools and Inspector for its exact saved Catenoid", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page); await resizeSurfaceAppWindow(ctx, 1600, 1000);
+    const page = ctx.page;
+    await page.getByTestId("projects-toggle").click(); await page.getByTestId("project-template-open-catenoid-evidence").click();
+    const panel = page.getByTestId("project-explorer-panel"), editor = page.getByTestId("project-source-editor"), inspector = page.getByTestId("document-surface-inspector"), viewport = page.getByTestId("document-viewport");
+    await expect(panel).toHaveAttribute("data-project-placement", "left"); await expect(inspector).toBeVisible();
+    const id = (await editor.getAttribute("data-document-id"))!, hash = (await editor.getAttribute("data-source-hash"))!;
+    const saved = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
+    await expect(inspector).toHaveAttribute("data-document-id", id); await expect(inspector).toHaveAttribute("data-source-hash", hash);
+    await expect(page.getByTestId("surface-viewer-canvas-host")).toHaveCount(1);
+    const projectBounds = (await panel.boundingBox())!, viewBounds = (await viewport.boundingBox())!, inspectorBounds = (await inspector.boundingBox())!;
+    expect(viewBounds.x).toBeGreaterThanOrEqual(projectBounds.x + projectBounds.width);
+    expect(viewBounds.x + viewBounds.width).toBeLessThanOrEqual(inspectorBounds.x);
+    await expect(viewport.getByText("Slice plane", { exact: true })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("project-surface-layout.png") });
+    const canvas = viewport.getByTestId("surface-viewer-canvas-host").locator("canvas");
+    const before = (await canvas.screenshot()).toString("base64");
+    await inspector.getByRole("slider", { name: "Opacity", exact: true }).focus(); await page.keyboard.press("Home");
+    await expect.poll(async () => (await canvas.screenshot()).toString("base64")).not.toBe(before);
+    await inspector.getByTestId("document-wireframe").check();
+    await inspector.getByTestId("document-surface-resolution").fill("40");
+    await expect(editor).toHaveAttribute("data-source-hash", hash); await expect(editor.getByTestId("project-source-revision")).toHaveText("Revision 1");
+    expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(saved);
+    await inspector.getByTestId("shared-inspector-tab-selection").click();
+    const picker = inspector.getByTestId("document-surface-domain-picker").locator("svg");
+    await expect(picker).toBeVisible(); await picker.click({ position: { x: 130, y: 110 } });
+    await expect(inspector.getByTestId("document-surface-probe-toggle")).toBeChecked();
+    await expect.poll(async () => Number(await inspector.getByTestId("surface-probe-K").getAttribute("data-value"))).toBeCloseTo(-1, 3);
+    await expect.poll(async () => Number(await inspector.getByTestId("surface-probe-H").getAttribute("data-value"))).toBeCloseTo(0, 3);
+    await inspector.getByTestId("shared-inspector-tab-analysis").click(); await inspector.getByLabel("Principal directions", { exact: true }).check();
+    await inspector.getByLabel("Coordinate/slice planes", { exact: true }).check();
+    await page.screenshot({ path: test.info().outputPath("project-native-surface-inspector.png") });
+    await editor.getByRole("tab", { name: "Source/Object", exact: true }).click();
+    await editor.getByTestId("project-surface-field-y").fill("2*(exp(x/2)+exp(-x/2))/2"); await editor.getByTestId("project-surface-apply").click();
+    await expect(editor).not.toHaveAttribute("data-source-hash", hash); await expect(inspector.getByTestId("surface-probe-K")).toHaveCount(0);
+    await inspector.getByTestId("shared-inspector-tab-selection").click(); await picker.click({ position: { x: 130, y: 110 } });
+    await expect.poll(async () => Number(await inspector.getByTestId("surface-probe-K").getAttribute("data-value"))).toBeCloseTo(-0.25, 3);
+    await editor.getByTestId("project-source-undo").click(); await expect(editor).toHaveAttribute("data-source-hash", hash);
+    await inspector.getByTestId("shared-inspector-tab-summary").click();
+    await page.getByRole("button", { name: "Project", exact: true }).click(); await expect(panel).toHaveAttribute("data-project-placement", "left");
+    await panel.getByRole("button", { name: "Close project explorer", exact: true }).click(); await expect(panel).toHaveCount(0); await expect(inspector).toBeVisible();
+    const profile = ctx.profileDir; await ctx.app.close(); ctx = null;
+    ctx = await launchSurfaceApp({}, profile);
+    await expect(ctx.page.getByTestId("document-surface-inspector")).toHaveAttribute("data-document-id", id);
+    await expect(ctx.page.getByTestId("document-surface-resolution")).toHaveValue("40"); await expect(ctx.page.getByTestId("document-wireframe")).toBeChecked();
+    await expect(ctx.page.getByRole("slider", { name: "Opacity", exact: true })).toHaveValue("0.1");
+  } finally { await closeSurfaceApp(ctx); }
+});

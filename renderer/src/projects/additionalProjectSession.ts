@@ -5,6 +5,7 @@ import { GeometryDocumentAdapter, type GeometryReplayBundle } from "../geometry/
 import { TopologyDiagramCommandAdapter } from "../topology/topologyCommandAdapter";
 import type { TopologyReplayBundle } from "@math3d/core";
 import { MIXED_REPLAY_FORMATS } from "../kernel/mixedWorkspaceReplay";
+import { DEFAULT_SURFACE_DOCUMENT_VIEW } from "../surfaceAnalysis/surfaceDocumentView";
 import { additionalRepresentationView, replaceAdditionalSource, type AdditionalDocument, type RepresentationContext, type RepresentationView } from "./additionalProjectRepresentations";
 
 /** A source UI over the existing module adapters; no separate persistence format. */
@@ -14,6 +15,7 @@ export class AdditionalProjectSession {
   presentation: "surface" | "sampled" = "surface";
   camera: import("../components/SurfaceViewer").CameraSyncState | null = null;
   wireframe = false;
+  surfaceView = { ...DEFAULT_SURFACE_DOCUMENT_VIEW };
   presentationLoaded = false;
   private cachedView: { generations: string; resources: RepresentationContext["resources"]; view: RepresentationView } | null = null;
   readonly adapter: CurveDocumentAdapter | SurfaceDocumentAdapter | GeometryDocumentAdapter | TopologyDiagramCommandAdapter;

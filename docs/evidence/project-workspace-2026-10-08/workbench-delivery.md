@@ -165,3 +165,38 @@ close button are still needed for reproduction.
 
 Regression: `tests/e2e/project-panel-close.spec.ts`; local artifacts:
 `test-results/project-panel-close`. No runtime fix is claimed by this follow-up.
+
+## Saved Surface Inspector follow-up
+
+The Project remains docked on the left. The center now exposes the native
+ParamSurfaceViewer's view gizmo, fit/orbit, slice-plane and geodesic tools.
+The right Inspector uses the same lighting/material, probe-result and analysis
+overlay components as the normal Surfaces module, bound to the saved Surface's
+captured evaluator. Its parameter picker is the module's ParamDomainPreview.
+Summary, Selection, Geometry, Analysis, Diagnostics, Provenance and History
+show the owning document rather than the normal module's independent preset.
+
+Resolution, lighting, material, wireframe and overlay settings are local document
+presentation preferences. They survive navigation and cold restart without
+changing the scientific source or command history. Probe selections and local
+curvature are cleared when the source changes. Profile edits still use the
+existing owning adapter and Undo/Redo commands. Sampled and Mesh presentations
+retain their separate workflows. This adds shared native controls for captured
+Graph revolutions and open extrusions; it does not claim every global Surfaces
+computation/export workflow is available inside a saved document Inspector.
+
+Validation: main/renderer/E2E TypeScript passed, renderer production build passed,
+16 binding/formula tests passed, and dependency boundaries passed. Eight distinct
+Electron checks passed: the three native-workbench tests, Geometry Close,
+desktop/phone Catenoid layout, the new saved-Surface Inspector flow, and two
+normal Surfaces flows (viewport/Gauss controls and canonical local probe/Euler).
+The new Inspector flow checks actual rendered material changes, unchanged saved
+Project bytes, exact source ownership, K approximately -1 and H approximately 0
+at the unit Catenoid neck, K approximately -0.25 after a radius-two profile edit,
+stale-probe clearing, Undo, Close and persisted display preferences after cold
+restart. The existing camera test now targets the main viewer canvas explicitly,
+since the enabled native orientation gizmo has its own canvas.
+
+Regression: `tests/e2e/project-surface-inspector.spec.ts`. Screenshots:
+[Project/Surface/Inspector layout](surface-inspector-layout.png) and
+[local Surface analysis](surface-inspector-analysis.png).
