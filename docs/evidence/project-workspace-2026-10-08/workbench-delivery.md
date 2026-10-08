@@ -149,3 +149,19 @@ window. Automated isolated-profile cold Electron restarts are a separate gate.
 
 This is local committed, built and launched
 delivery. It has not been pushed, merged or packaged as an installer release.
+
+## Geometry close/freeze follow-up
+
+The reported Geometry Notes and Pins close/freeze remains unconfirmed as a root
+cause or fix. A focused regression opens that starter, closes and reopens the
+Project panel in all four placements, returns through the Gallery, checks retained
+Project bytes and document selection, navigates Surfaces/Geometry, and closes the
+Electron window. It passed on the current compiled implementation; E2E TypeScript
+also passed. The running desktop's Gallery Close control was separately clicked
+and the panel disappeared. Its process remained responsive. These observations
+do not disprove the reported intermittent freeze. The exact triggering action
+and whether the failed control is the Project Close button or the native window
+close button are still needed for reproduction.
+
+Regression: `tests/e2e/project-panel-close.spec.ts`; local artifacts:
+`test-results/project-panel-close`. No runtime fix is claimed by this follow-up.
