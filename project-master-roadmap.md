@@ -1239,3 +1239,16 @@ Implemented and checked on 2026-10-08. Five focused desktop flows passed,
 including the complete Catenoid → Mesh → Surface → save → restart journey.
 Screenshots, native analysis checks and measured dock-switch times are recorded
 in [the full module delivery evidence](docs/evidence/project-workspace-2026-10-08/surface-primary-delivery.md).
+
+#### Project opening must reveal its dock
+
+Explicit Open from the starter gallery or a saved Project shows the document tree
+on the left, even if the previous workspace collapsed its docks or maximized the
+viewer. Opening a saved Surface restores the normal left/viewer/right workspace
+and selects the module Inspector. Existing dock widths are retained. Selecting
+Left/Right/Middle/All remains available after opening.
+
+The floating Project button reveals an explorer hidden inside a collapsed dock;
+it must not treat that invisible explorer as an open panel to close. Regression
+coverage must begin with collapsed/focused docks and include saved-project Open,
+reopening an active starter, and recovery through the floating Project button.

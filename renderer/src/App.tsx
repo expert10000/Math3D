@@ -44499,6 +44499,26 @@ const App: React.FC = () => {
   const [surfacesTopActionsMoreOpen, setSurfacesTopActionsMoreOpen] = useState(false);
   const [surfacePreviewFocusMode, setSurfacePreviewFocusMode] = useState(false);
   const [surfaceDrawerPanel, setSurfaceDrawerPanel] = useState<"left" | "right" | null>(null);
+  const projectDockWorkspaceRef = useRef(activeDockWorkspace);
+  projectDockWorkspaceRef.current = activeDockWorkspace;
+  useEffect(() => {
+    const reveal = (event: Event) => {
+      const placement = (event as CustomEvent).detail;
+      if (placement !== "left" && placement !== "right") return;
+      const workspace = projectDockWorkspaceRef.current;
+      setWorkspaceDockLayouts(layouts => {
+        const layout = layouts[workspace] ?? recommendedWorkspaceDockLayout(workspace);
+        const collapsed = placement === "left" ? "leftCollapsed" : "rightCollapsed";
+        if (!layout[collapsed] && !layout.viewerMaximized) return layouts;
+        return { ...layouts, [workspace]: { ...layout, [collapsed]: false, viewerMaximized: false } };
+      });
+      setSurfacePreviewFocusMode(false); setCleanScreenshotActive(false);
+      setSurfaceDrawerPanel(placement);
+      if (placement === "right") setShowRightPanel(true);
+    };
+    window.addEventListener("math3d:project-dock-visible", reveal);
+    return () => window.removeEventListener("math3d:project-dock-visible", reveal);
+  }, []);
   const [geometryDrawerPanel, setGeometryDrawerPanel] = useState<"left" | "right" | null>(null);
   const [surfaceFloatingToolbarOpen, setSurfaceFloatingToolbarOpen] = useState(false);
   const [geometryFloatingToolbarOpen, setGeometryFloatingToolbarOpen] = useState(false);
@@ -78296,7 +78316,12 @@ case "mobius":
       setSavedSurfaceCustomView(false);
       setAdditionalActiveId(id); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null);
       setRestoredComplexAdapter(null); setRestoredVolumeAdapter(null); setRestoredTopologyAdapter(null);
-      if (module === "surface") { setDatasetKind("surface"); setSurfaceViewerKind("param"); setSurfacesPanelState("browse"); setSurfacesWorkGalleryOpen(false); }
+      if (module === "surface") {
+        setDatasetKind("surface"); setSurfaceViewerKind("param"); setSurfacesPanelState("browse"); setSurfacesWorkGalleryOpen(false);
+        setDisplayMode("workspace"); setShowRightPanel(true); setRightPanelTab("inspector");
+        setSurfacePreviewFocusMode(false); setCleanScreenshotActive(false); setSurfaceDrawerPanel("left");
+        setWorkspaceDockLayouts(layouts => ({ ...layouts, surfaces: { ...(layouts.surfaces ?? recommendedWorkspaceDockLayout("surfaces")), leftCollapsed: false, rightCollapsed: false, viewerMaximized: false } }));
+      }
       setMode(module === "curve" ? "curves" : module === "surface" ? "surfaces" : module === "topology" ? "topology" : "geometry");
       setAdditionalVersion((v) => v + 1); return true;
     }

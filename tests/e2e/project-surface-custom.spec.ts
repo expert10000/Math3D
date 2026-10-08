@@ -85,3 +85,41 @@ test("Catenoid defaults to the full Surface module and explicitly opens Custom",
     expect(errors).toEqual([]);
   } finally { await closeSurfaceApp(ctx); }
 });
+
+test("opening Catenoid reveals the left Project tree from collapsed and focused docks", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page); await resizeSurfaceAppWindow(ctx, 1600, 1000);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    const left = page.getByTestId("workspace-dock-left-toggle");
+    await left.click(); await page.getByTestId("workspace-dock-right-toggle").click();
+    await page.getByRole("button", { name: "Focus", exact: true }).click();
+    await expect(page.getByTestId("surface-left-panel")).not.toBeVisible();
+    await page.getByTestId("projects-toggle").click(); await page.getByTestId("project-template-open-catenoid-evidence").click();
+    const visibleProject = async () => {
+      await expect(page.getByTestId("surface-left-panel")).toBeVisible();
+      await expect(page.getByTestId("surface-right-panel")).toBeVisible();
+      await expect(panel).toBeVisible(); await expect(panel).toHaveAttribute("data-project-placement", "left");
+      await expect(page.getByTestId("surface-left-panel").getByTestId("project-document-tree")).toBeVisible();
+      await expect(page.getByTestId("document-module-inspector")).toBeVisible();
+    };
+    await visibleProject();
+    const owner = page.getByTestId("project-source-editor"), id = (await owner.getAttribute("data-document-id"))!, hash = (await owner.getAttribute("data-source-hash"))!;
+    await left.click(); await expect(panel).not.toBeVisible();
+    await page.getByTestId("projects-quick-toggle").click(); await visibleProject();
+    await page.getByRole("button", { name: "Focus", exact: true }).click(); await expect(panel).not.toBeVisible();
+    await page.getByTestId("projects-quick-toggle").click(); await visibleProject();
+    await panel.getByTestId("project-placement-right").click();
+    await expect(panel).toHaveAttribute("data-project-placement", "right");
+    await panel.getByTestId("project-gallery-layout-toggle").click();
+    await panel.getByTestId("project-detail-toggle").click();
+    await page.getByTestId("project-template-open-catenoid-evidence").click(); await visibleProject();
+    await expect(owner).toHaveAttribute("data-document-id", id); await expect(owner).toHaveAttribute("data-source-hash", hash);
+    const projectId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id);
+    await panel.getByTestId("project-placement-right").click();
+    await panel.getByTestId("project-gallery-layout-toggle").click(); await panel.getByTestId("project-detail-toggle").click();
+    await page.getByTestId(`project-open-saved-${projectId}`).click(); await visibleProject();
+    await expect(owner).toHaveAttribute("data-document-id", id); await expect(owner).toHaveAttribute("data-source-hash", hash);
+    await page.screenshot({ path: test.info().outputPath("project-left-after-hidden-docks.png") });
+  } finally { await closeSurfaceApp(ctx); }
+});

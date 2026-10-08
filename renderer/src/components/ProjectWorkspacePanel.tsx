@@ -82,6 +82,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [preferences, setPreferences] = useState(() => projectUiPreferences(localStorage.getItem(PROJECT_UI_KEY)));
   const [projectPlacement, setProjectPlacement] = useState<ProjectPlacement>(preferences.placement);
   const [hasOpenProject, setHasOpenProject] = useState(false);
+  useEffect(() => {
+    if (open && quick && viewerCompanion) window.dispatchEvent(new CustomEvent("math3d:project-dock-visible", { detail: projectPlacement }));
+  }, [open, quick, viewerCompanion, projectPlacement]);
   const [resumeStatus, setResumeStatus] = useState<string | null>(null);
   useEffect(() => {
     if (activeProjectDocumentId !== undefined) setViewingDocumentId(activeProjectDocumentId);
@@ -680,14 +683,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       display(prepared.project, !openWorkspace);
       setIncoming(null);
       if (candidate.inputKind === "Independent starter project") { setHighlightedSavedId(prepared.project.identity.id); setCollection("All projects"); setQuery(""); setModuleFilter("All modules"); }
-      const starterOpen = openWorkspace && (candidate.inputKind === "Independent starter project" || candidate.inputKind === "Saved starter copy");
       if (openWorkspace) {
         const first = { id: choice!.selected.expected.id, module: choice!.selected.module };
         setViewingDocumentId(first.id);
         setHasOpenProject(true);
         setResumeStatus(choice?.recovery ?? null);
         rememberProjectDocument(localStorage, prepared.project, first.id);
-        if (starterOpen) { setQuick(true); setViewerCompanion(true); setDetailView(true); }
+        if (!resumeUnedited) { placeProject("left"); onOpenChange(true); }
       }
       setMessage(openWorkspace ? resumeUnedited ? "Resumed supported project workspace; historical analysis and external refs are retained." : "Opened supported project workspace. Previous workspace saved locally; historical analysis and external refs are retained." : "Imported into the library as a verified saved preview. The current workspace is unchanged.");
       return true;
@@ -708,10 +710,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         setMessage("This saved project has preview support. Review its compatibility details below.");
         return;
       }
-      if (await importPreview(true, prepared)) {
-        if (showDetails) { setQuick(true); setViewerCompanion(true); setDetailView(true); }
-        else onOpenChange(false);
-      }
+      await importPreview(true, prepared);
     } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
@@ -806,9 +805,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             const first = (["geometry", "surface", "mesh", "volume", "curve", "graph2d"] as const)
               .map(module => project.workspace.entries.find(entry => entry.module === module)).find(Boolean) ?? project.workspace.entries[0];
             if (first) { onNavigateDocument?.(first.expected.id, first.module); setViewingDocumentId(first.expected.id); }
-            setQuick(true);
-            setViewerCompanion(true);
-            setDetailView(true); // Keep the active edited Project; do not restore an older saved snapshot.
+            placeProject("left"); onOpenChange(true); // Keep the active edited Project; do not restore an older saved snapshot.
           } else await openLibraryProject(copy.id, true);
           return;
         }
@@ -851,6 +848,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     setDetailView(true);
     setViewerCompanion(true);
     setQuick(true);
+    window.dispatchEvent(new CustomEvent("math3d:project-dock-visible", { detail: placement }));
   };
   const renderNotesPanel = (layout: "floating" | "page") => <ProjectNotesPanel layout={layout} project={notesProject} workspace={notesWorkspace} drafts={noteDrafts} busy={busy} message={notesMessage} focusNoteId={selectedNoteId ?? noteRequest?.id}
     selectionAvailable={Boolean(captureNoteSelection?.())} workbooks={noteWorkbooks}
@@ -871,7 +869,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     {hasOpenProject && createPortal(<button type="button" data-testid="projects-quick-toggle" data-active-project={hasOpenProject} aria-label={hasOpenProject ? "Project" : "Open quick Projects"}
       aria-expanded={open} aria-controls="project-explorer-panel" aria-pressed={hasOpenProject && open && viewerCompanion}
       onClick={() => {
-        if (hasOpenProject && open) { onOpenChange(false); return; }
+        if (hasOpenProject && open && document.getElementById("project-explorer-panel")?.getClientRects().length) { onOpenChange(false); return; }
         setNotesOpen(false);
         if (hasOpenProject) {
           placeProject(projectPlacement);

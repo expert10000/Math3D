@@ -56,3 +56,28 @@ Primary module view:
 Explicit Custom view with Sampled rendering:
 
 ![Separate Custom workspace](surface-explicit-custom.png)
+
+## Correction: Project hidden inside collapsed docks
+
+The initial checks used visible docks. The user's later screenshot exposed a
+missing case: the explorer was embedded inside a collapsed left dock. Some saved
+Project Open paths also closed the explorer after restoring the workspace.
+
+Explicit Project Open now selects left placement and shows the document tree.
+Saved Surface activation restores both docks, exits Focus/preview mode, and
+selects Inspector while retaining dock widths. The floating Project button
+reveals an explorer hidden in its dock. Explicit placement changes also reveal
+the selected dock.
+
+The complete Surface/Custom save/restart flow passed again. A new regression
+began with both docks collapsed and Focus enabled, recovered through the floating
+button after hiding the left dock and enabling Focus, then reopened the active
+starter and saved Project after choosing right placement. All checks passed in
+36.6 seconds. An initial test selector matched both global Left and Project Left;
+it now identifies the global dock control directly.
+
+Renderer build and renderer/E2E type checks passed. The native analysis and dock
+switching flow passed again after the correction; its fifteen switches measured
+869–1054 ms, within the existing 1500 ms limit.
+
+![Project tree on the left after opening from hidden docks](project-left-after-hidden-docks.png)
