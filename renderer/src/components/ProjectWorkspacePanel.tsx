@@ -5,7 +5,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   deleteProjectDocument, duplicateProjectDocument, serializeMath3DProject, setProjectDocumentMetadata,
   instantiateMath3DProjectTemplate, MATH3D_PROJECT_TEMPLATES, type Math3DProjectTemplateId,
   upsertMath3DProjectWorkbook, upsertMath3DProjectNote, updateProjectNote,
-  upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference,
+  relinkMath3DProjectQuantumScene, upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
@@ -51,6 +51,7 @@ type Props = {
   onCurrentProjectChange?: (project: Math3DProject) => void;
   verifiedQuantumScene?: ProjectQuantumSceneReference | null;
   onOpenQuantumScene?: (reference: ProjectQuantumSceneReference) => Promise<void>;
+  onRelinkQuantumScene?: (reference: ProjectQuantumSceneReference) => Promise<string | null>;
   captureActiveWorkbook?: () => Workbook | null;
   onOpenWorkbook?: (workbook: Workbook, stageId?: WorkbookStageId, blockId?: string) => void;
   noteRequest?: { id: string; token: number } | null;
@@ -66,7 +67,7 @@ type Props = {
   activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onOpenQuantumScene, captureActiveWorkbook, onOpenWorkbook, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeProjectDocumentId }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onOpenQuantumScene, onRelinkQuantumScene, captureActiveWorkbook, onOpenWorkbook, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeProjectDocumentId }) => {
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
@@ -122,6 +123,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [quantumSceneMessage, setQuantumSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
+  const projectStateRef = useRef(project); projectStateRef.current = project;
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesPlacement, setNotesPlacement] = useState<"floating" | "project">("floating");
   useEffect(() => { if (!open && notesPlacement === "project") setNotesOpen(false); }, [open, notesPlacement]);
@@ -146,6 +148,23 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [preview, setPreview] = useState(false);
   const [managed, setManaged] = useState<ProjectCommandAdapter | null>(null);
   const [managedBytes, setManagedBytes] = useState<string | undefined>();
+  const relinkQuantumScene = async (item: ProjectQuantumSceneReference) => {
+    if (busy || preview || managed || !project || !onRelinkQuantumScene) return;
+    const before = serializeMath3DProject(project);
+    setBusy(true); setQuantumSceneMessage("Choose the relocated copy of this exact scene…");
+    try {
+      const directory = await onRelinkQuantumScene(item);
+      if (directory === null) { setQuantumSceneMessage("Relink canceled; Project unchanged."); return; }
+      const current = projectStateRef.current;
+      if (!current || serializeMath3DProject(current) !== before)
+        throw new TypeError("Project changed while the picker was open; relink it again.");
+      const next = relinkMath3DProjectQuantumScene(current, item.sceneFingerprint, directory);
+      if (next === current) { setQuantumSceneMessage("This verified source is already linked at that location."); return; }
+      setProject(next);
+      setQuantumSceneMessage("Exact scene verified at the new location. Save project to retain the relink.");
+    } catch (error) { setQuantumSceneMessage(`Relink refused: ${String((error as Error).message)}`); }
+    finally { setBusy(false); }
+  };
   const [message, setMessage] = useState("");
   const [explorer, setExplorer] = useState<ReturnType<typeof buildProjectExplorer> | null>(null);
   const [inspectionOpen, setInspectionOpen] = useState(false), [inspectedId, setInspectedId] = useState<string | null>(null);
@@ -1033,6 +1052,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                 <strong>{item.title}</strong><small style={{ overflowWrap: "anywhere" }}> · SHA-256 {item.sceneFingerprint}</small>
                 <button type="button" data-testid={`project-open-quantum-scene-${item.sceneFingerprint}`} disabled={busy || !onOpenQuantumScene}
                   onClick={() => { if (!onOpenQuantumScene) return; setQuantumSceneMessage("Verifying external scene…"); void onOpenQuantumScene(item).then(() => setQuantumSceneMessage("Verified read-only scene opened.")).catch(error => setQuantumSceneMessage(`Scene unavailable: ${String((error as Error).message)}`)); }}>Verify and view scene</button>
+                <button type="button" data-testid={`project-relink-quantum-scene-${item.sceneFingerprint}`} disabled={busy || preview || !!managed || !onRelinkQuantumScene}
+                  onClick={() => { void relinkQuantumScene(item); }}>Relink source</button>
               </article>)}
               {quantumSceneMessage && <p role="status" data-testid="project-quantum-scene-message">{quantumSceneMessage}</p>}
             </section>

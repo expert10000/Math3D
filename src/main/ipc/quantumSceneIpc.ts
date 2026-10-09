@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { importQuantumSceneBundle, type ImportedQuantumScene } from "../quantumScene/importer";
 import { inspectVerifiedFieldSample, renderVerifiedFieldSlice, type FieldSampleRequest, type FieldSliceRequest } from "../quantumScene/fieldSlice";
 import { deriveVerifiedFieldSurface, type FieldSurfaceRequest } from "../quantumScene/fieldSurface";
-import type { QuantumSceneOpenResponse } from "../quantumScene/ipcContract";
+import type { QuantumSceneOpenResponse, QuantumSceneRelinkResponse } from "../quantumScene/ipcContract";
 import { rememberQuantumScene, reopenRecentQuantumScene, reopenQuantumSceneReference, sceneFingerprint } from "../quantumScene/recent";
 import { isAbsolute, resolve } from "node:path";
 
@@ -103,6 +103,29 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
       const { directory, imported } = await reopenQuantumSceneReference(args[0]);
       return openedFor(event, directory, imported, false);
     } catch (error) { return failed(error); }
+  });
+  ipcMain.handle("quantumScenes:pickMatchingReference", async (event, ...args: unknown[]): Promise<QuantumSceneRelinkResponse> => {
+    if (args.length !== 1 || typeof args[0] !== "string" || !/^[a-f0-9]{64}$/.test(args[0]))
+      return { ok: false, canceled: false, error: "Relink requires one saved scene fingerprint" };
+    if (!trustedSender(event)) return { ok: false, canceled: false, error: "Untrusted quantum scene IPC sender" };
+    try {
+      const win = BrowserWindow.fromWebContents(event.sender)!;
+      const picked = await dialog.showOpenDialog(win, {
+        title: "Relink the same verified quantum-scene/v1 bundle",
+        properties: ["openDirectory"],
+      });
+      if (picked.canceled || !picked.filePaths[0]) return { ok: false, canceled: true };
+      const directory = resolve(picked.filePaths[0]);
+      if (!isAbsolute(directory) || !directory.toLowerCase().endsWith(".qscene"))
+        return { ok: false, canceled: false, error: "Selected folder is not a .qscene bundle" };
+      const imported = await importQuantumSceneBundle(directory);
+      const fingerprint = sceneFingerprint(imported);
+      if (fingerprint !== args[0])
+        return { ok: false, canceled: false, error: "Selected bundle is valid but does not match the saved scene fingerprint" };
+      // Relinking is only a verification request. It does not replace the active
+      // field, recent-scene shortcut, or any Project bytes in Electron main.
+      return { ok: true, canceled: false, reference: { directory, sceneFingerprint: fingerprint } };
+    } catch (error) { return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) }; }
   });
   ipcMain.handle("quantumScenes:fieldSlice", (event, ...args: unknown[]) => {
     if (args.length !== 1) throw new TypeError("Field slice requires one request");

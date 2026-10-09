@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { QuantumSceneOpenResponse } from "./main/quantumScene/ipcContract";
+import type { QuantumSceneOpenResponse, QuantumSceneRelinkResponse } from "./main/quantumScene/ipcContract";
 import type { FieldSample, FieldSampleRequest, FieldSlice, FieldSliceRequest } from "./main/quantumScene/fieldSlice";
 import type { FieldSurface, FieldSurfaceRequest } from "./main/quantumScene/fieldSurface";
 import type { WorkspaceFileOpenResponse } from "./main/ipc/workspaceFileIpc";
@@ -522,6 +522,7 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
   reopenRecent: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:reopenRecent"),
   consumeLaunch: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:consumeLaunch"),
   openReference: (reference: unknown): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:openReference", reference),
+  pickMatchingReference: (fingerprint: string): Promise<QuantumSceneRelinkResponse> => ipcRenderer.invoke("quantumScenes:pickMatchingReference", fingerprint),
   fieldSlice: (request: FieldSliceRequest): Promise<FieldSlice> => ipcRenderer.invoke("quantumScenes:fieldSlice", request),
   fieldSample: (request: FieldSampleRequest): Promise<FieldSample> => ipcRenderer.invoke("quantumScenes:fieldSample", request),
   fieldSurface: (request: FieldSurfaceRequest): Promise<FieldSurface> => ipcRenderer.invoke("quantumScenes:fieldSurface", request),

@@ -79203,6 +79203,16 @@ case "mobius":
           setQuantumScenePreview(opened);
           setQuantumSceneReference(opened.reference);
         }}
+        onRelinkQuantumScene={async (reference) => {
+          if (!window.quantumScenes?.pickMatchingReference) throw new TypeError("Source relinking is available only in the desktop app.");
+          const picked = await window.quantumScenes.pickMatchingReference(reference.sceneFingerprint);
+          if (!picked.ok) {
+            if (picked.canceled) return null;
+            throw new TypeError(picked.error);
+          }
+          if (picked.reference.sceneFingerprint !== reference.sceneFingerprint) throw new TypeError("Verified scene fingerprint changed.");
+          return picked.reference.directory;
+        }}
         captureActiveWorkbook={() => workbooks.find((workbook) => workbook.id === activeWorkbookId) ?? null}
         captureNoteSelection={() => {
           const documentId = activeKernelDocument?.identity.id;

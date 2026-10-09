@@ -7,3 +7,8 @@ export type QuantumSceneOpenResponse =
       mappedObjectIds: string[]; deferredObjectIds: string[]; deferredFieldIds: string[] }
   | { ok: false; canceled: true }
   | { ok: false; canceled: false; error: string };
+
+export type QuantumSceneRelinkResponse =
+  | { ok: true; canceled: false; reference: QuantumSceneWorkspaceReference }
+  | { ok: false; canceled: true }
+  | { ok: false; canceled: false; error: string };
