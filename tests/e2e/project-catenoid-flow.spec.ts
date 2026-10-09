@@ -82,14 +82,24 @@ test("Project middle flip preserves the native Catenoid canvas and source identi
     await page.getByTestId("projects-toggle").click(); await page.getByTestId("project-template-open-catenoid-evidence").click();
     const editor = page.getByTestId("project-source-editor");
     const sourceHash = await editor.getAttribute("data-source-hash");
-    await editor.getByTestId("surface-viewer-canvas-host").locator("canvas").evaluate(canvas => canvas.setAttribute("data-retained-canvas", "catenoid-session"));
+    await expect(page.getByTestId("project-message")).toContainText("Opened supported project");
+    await page.evaluate(async () => {
+      const host = document.querySelector('[data-testid="project-source-editor"] [data-testid="surface-viewer-canvas-host"]')!;
+      let canvas = host.querySelector("canvas"), stableSince = performance.now();
+      while (!canvas || performance.now() - stableSince < 350) {
+        await new Promise(resolve => window.setTimeout(resolve, 50));
+        const current = host.querySelector("canvas");
+        if (current !== canvas) { canvas = current; stableSince = performance.now(); }
+      }
+      canvas.setAttribute("data-retained-canvas", "catenoid-session");
+    });
     const id = await editor.getAttribute("data-document-id");
-    await page.getByTestId("project-gallery-layout-toggle").click();
-    await expect(editor).toBeHidden();
-    await expect(page.getByTestId("project-sidebar-details")).toBeVisible();
+    await page.getByTestId("project-view-detail-middle").click();
+    await expect(page.getByTestId("project-middle-detail")).toBeVisible();
     await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", id!);
     await page.screenshot({ path: test.info().outputPath("project-middle-details.png") });
-    await page.getByTestId("project-viewer-return").click();
+    await page.getByTestId("project-detail-return").click();
+    await expect(page.getByTestId("project-middle-detail")).toHaveCount(0);
     await expect(editor).toBeVisible(); await expect(editor).toHaveAttribute("data-source-hash", sourceHash!);
     await expect(editor.getByTestId("surface-viewer-canvas-host").locator("canvas")).toHaveAttribute("data-retained-canvas", "catenoid-session");
   } finally { await closeSurfaceApp(ctx); }
