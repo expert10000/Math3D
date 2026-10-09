@@ -1,14 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { createEmptyGraph2DDocument, createGraph2DWorkspaceProject, createMath3DProject,
+import { createEmptyGraph2DDocument, createGraph2DWorkspaceProject, createMath3DProject, createMixedWorkspaceDocument, createQuantumSceneDocument,
   normalizeMath3DProject, parseMath3DProject, replaceMath3DProjectWorkspace, serializeMath3DProject,
   relinkMath3DProjectQuantumScene, upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference } from "@math3d/core";
 import { loadLibraryProject, projectPayloadKey, PROJECT_LIBRARY_KEY, PROJECT_STORAGE_KEY, saveLibraryProject } from "./projectLibrary";
+import { inspectProjectCompatibility, mergeProjectLiveWorkspace } from "./projectTransfer";
 
 const reference: ProjectQuantumSceneReference = {
   format: "quantum-scene/v1", title: "Hydrogen 2p", directory: "C:\\scenes\\hydrogen.qscene", sceneFingerprint: "a".repeat(64),
 };
 const fixture = () => createMath3DProject(createGraph2DWorkspaceProject(createEmptyGraph2DDocument("quantum-link")),
   { stableKey: "quantum-link", title: "Quantum project" });
+const nativeDocument = () => createQuantumSceneDocument({ sceneSchema: "quantum-scene/v1", sceneId: "q-scene", sceneFingerprint: reference.sceneFingerprint,
+  provenance: { runId: "run-1", model: "two_level", resultSha256: "b".repeat(64), engine: "QuTiP", engineVersion: "5", adapter: "qvis/1" },
+  coordinates: { axes: ["x", "y", "z"], units: ["1", "1", "1"], handedness: "right" },
+  datasets: [{ id: "positions", sha256: "c".repeat(64), count: 2, components: 3, unit: "1", bytes: 48 }],
+  objects: [{ id: "path", kind: "polyline", label: "Path" }] }, reference.directory, reference.title);
+const admitted = () => {
+  const linked = upsertMath3DProjectQuantumScene(fixture(), reference), document = nativeDocument();
+  const workspace = createMixedWorkspaceDocument({ ...linked.workspace,
+    entries: [...linked.workspace.entries, { module: "quantum", checkpoint: document, expected: document.identity, replay: null }],
+    activeDocumentIds: [...linked.workspace.activeDocumentIds, document.identity.id] });
+  return { document, project: replaceMath3DProjectWorkspace(linked, workspace) };
+};
 const store = () => {
   const values = new Map<string, string>();
   return { values, getItem: (key: string) => values.get(key) ?? null,
@@ -16,6 +29,24 @@ const store = () => {
 };
 
 describe("read-only Project quantum-scene links", () => {
+  it("admits a native read-only document, persists its descriptor, and never invokes an editor adapter", () => {
+    const { document, project } = admitted();
+    expect(inspectProjectCompatibility(project)).toMatchObject({ canOpenWorkspace: true,
+      documents: expect.arrayContaining([{ id: document.identity.id, module: "quantum", editable: false, readOnly: true,
+        revision: 1, replayVerified: true }]) });
+    expect(parseMath3DProject(serializeMath3DProject(project))).toEqual(project);
+    expect(mergeProjectLiveWorkspace(project.workspace, fixture().workspace).entries.find((entry) => entry.module === "quantum")?.checkpoint).toEqual(document);
+  });
+
+  it("relinks the native document without changing its scientific identity and refuses diverging locations", () => {
+    const { document, project } = admitted();
+    const moved = relinkMath3DProjectQuantumScene(project, reference.sceneFingerprint, "D:\\moved.qscene");
+    const movedDocument = moved.workspace.entries.find((entry) => entry.module === "quantum")!.checkpoint;
+    expect(movedDocument.identity).toEqual(document.identity);
+    expect(movedDocument).toMatchObject({ location: { directory: "D:\\moved.qscene" } });
+    expect(normalizeMath3DProject({ ...moved, workspace: project.workspace }).ok).toBe(false);
+    expect(mergeProjectLiveWorkspace(moved.workspace, project.workspace).entries.find((entry) => entry.module === "quantum")?.checkpoint).toEqual(movedDocument);
+  });
   it("seals a versioned external reference without embedding source arrays or changing workspace identity", () => {
     const original = fixture(), linked = upsertMath3DProjectQuantumScene(original, reference);
     expect(linked.workspace).toEqual(original.workspace);

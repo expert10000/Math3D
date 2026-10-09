@@ -17,6 +17,7 @@ export const projectAnalysisAvailability = (project: Math3DProject, options: Pro
     const document = entry.checkpoint;
     const item: ProjectAnalysisAvailability = { id: document.identity.id, module: entry.module, route: null, tools: [], reason: null, qualification: "" };
     if (project.metadata.documents?.[item.id]?.archived) return { ...item, reason: "Archived document. Restore it before opening analysis." };
+    if (entry.module === "quantum") return { ...item, reason: "Read-only verified scene; Math3D analysis and editable Geometry/Volume tools are unavailable." };
     if (!compatibility.documents.find(candidate => candidate.id === item.id)?.editable) return { ...item, reason: "This saved representation has preview support; its analysis editor cannot be restored." };
     if (document.format === "math3d.surface-document") {
       try {

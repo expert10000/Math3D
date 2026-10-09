@@ -81,8 +81,9 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
     if ((document.format === "math3d.topology-document" || document.format === "math3d.complex-analysis-document") && scientificDocumentEditable(document)) editable = true;
     if (!editable && additionalReplayEditable(entry, document, { documents: resolved, resources: options.resources, capturedCurves })) editable = true;
     if (canonical.metadata.documents?.[entry.expected.id]?.archived) editable = false;
-    if (!editable) reasons.push(`${entry.module}: this document has verified preview support; its editor state cannot be fully restored by this host adapter.`);
-    return { id: entry.expected.id, module: entry.module, revision: entry.expected.revision, replayVerified: true, editable };
+    if (!editable && entry.module !== "quantum") reasons.push(`${entry.module}: this document has verified preview support; its editor state cannot be fully restored by this host adapter.`);
+    return { id: entry.expected.id, module: entry.module, revision: entry.expected.revision, replayVerified: true, editable,
+      readOnly: entry.module === "quantum" };
   });
   if (!projectConstructionsEditable(canonical.workspace)) reasons.push("Saved construction/script state has preview support; the active editor adapters do not restore it.");
   const sidecars = [...resources.values()];
@@ -127,9 +128,14 @@ export const exportProjectCheckpointFile = (project: Math3DProject): string =>
   exportProjectFile(replaceMath3DProjectWorkspace(project, projectCheckpoint(project.workspace)));
 /** Retain imported analysis/companions while live source commands advance their own identities and replay. */
 export const mergeProjectLiveWorkspace = (retained: MixedWorkspaceDocument, live: MixedWorkspaceDocument): MixedWorkspaceDocument => {
-  const previousGraphs = retained.entries.filter((entry) => entry.module === "graph2d"), liveGraphs = live.entries.filter((entry) => entry.module === "graph2d");
-  if (previousGraphs.length !== 1 || liveGraphs.length !== 1 || previousGraphs[0]!.expected.id !== liveGraphs[0]!.expected.id) return live;
-  const merged = mergeGraph2DHandoffCheckpoint(projectCheckpoint(retained), projectCheckpoint(live));
-  const entries = new Map([...retained.entries, ...live.entries].map((entry) => [entry.expected.id, entry]));
+  const quantum = retained.entries.filter((entry) => entry.module === "quantum");
+  const combined = quantum.length ? createMixedWorkspaceDocument({ ...live,
+    entries: [...live.entries.filter((entry) => entry.module !== "quantum"), ...quantum],
+    activeDocumentIds: [...new Set([...live.activeDocumentIds.filter((id) => live.entries.some((entry) => entry.module !== "quantum" && entry.expected.id === id)),
+      ...retained.activeDocumentIds.filter((id) => quantum.some((entry) => entry.expected.id === id))])] }) : live;
+  const previousGraphs = retained.entries.filter((entry) => entry.module === "graph2d"), liveGraphs = combined.entries.filter((entry) => entry.module === "graph2d");
+  if (previousGraphs.length !== 1 || liveGraphs.length !== 1 || previousGraphs[0]!.expected.id !== liveGraphs[0]!.expected.id) return combined;
+  const merged = mergeGraph2DHandoffCheckpoint(projectCheckpoint(retained), projectCheckpoint(combined));
+  const entries = new Map([...retained.entries, ...combined.entries].map((entry) => [entry.expected.id, entry]));
   return createMixedWorkspaceDocument({ ...merged, constructions: live.constructions, entries: merged.entries.map((entry) => entries.get(entry.expected.id)!) });
 };

@@ -11,7 +11,7 @@ export const ProjectCompatibilityPanel: React.FC<{ preview: ProjectCompatibility
       <button type="button" data-testid="project-import-cancel" disabled={busy} onClick={onCancel}>Cancel</button>
     </div>
     <strong>Document compatibility</strong>
-    {preview.documents.map((document) => <div key={document.id}>{document.module} · revision {document.revision} · replay verified · {document.editable ? "editor supported" : "preview only"}</div>)}
+    {preview.documents.map((document) => <div key={document.id}>{document.module} · revision {document.revision} · replay verified · {document.readOnly ? "read-only document; external source re-verified before open" : document.editable ? "editor supported" : "preview only"}</div>)}
     <strong style={{ display: "block", marginTop: 8 }}>Required Graph capabilities</strong>
     <div>{preview.requiredCapabilities.join(", ") || "None"}</div>
     <strong style={{ display: "block", marginTop: 8 }}>Recorded result engines</strong>
@@ -19,6 +19,8 @@ export const ProjectCompatibilityPanel: React.FC<{ preview: ProjectCompatibility
     <strong style={{ display: "block", marginTop: 8 }}>External sidecars ({preview.sidecars.length})</strong>
     {preview.sidecars.map((resource) => <div key={`${resource.kind}:${resource.id}`}>{resource.kind} · {resource.requiredForSource ? "source input" : resource.kind === "volume-payload" ? "optional procedural cache" : "analysis record"} · {resource.available ? "available on this computer" : "missing or unverified"}<small style={{ display: "block" }}>{resource.id} · {resource.checksum ?? "No checksum"}</small></div>)}
     {!preview.sidecars.length && <div>No external source/result sidecars referenced.</div>}
-    <p>Project JSON includes resource references. Export with resources transfers verified source bytes and undo/redo buffers; optional analysis caches and thumbnails remain local.</p>
+    {!!preview.project.workspace.entries.filter((entry) => entry.module === "quantum").length &&
+      <p>Quantum scene documents retain external `.qscene` paths and fingerprints. The complete bundles are not embedded in Project exports; opening re-verifies each source, and a missing or changed source prevents activation.</p>}
+    <p>Project JSON includes resource references. Export with resources transfers verified Math3D source bytes and undo/redo buffers, not external quantum scenes; optional analysis caches and thumbnails remain local.</p>
     {preview.reasons.map((reason, index) => <div key={index}>{reason}</div>)}
   </section>;

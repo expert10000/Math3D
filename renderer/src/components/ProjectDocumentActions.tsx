@@ -10,7 +10,8 @@ export const ProjectDocumentActions: React.FC<{ project: Math3DProject; document
     <label>Document name<input aria-label={`Name ${document.title}`} data-testid={`project-document-name-${document.id}`} value={title} maxLength={160} onChange={(event) => setTitle(event.target.value)} style={{ width: "100%", boxSizing: "border-box" }} /></label>
     <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
       <button type="button" disabled={!title.trim()} onClick={() => onAction("rename", document.id, title)}>Rename</button>
-      <button type="button" onClick={() => onAction("duplicate", document.id)}>Duplicate source</button>
+      <button type="button" disabled={document.module === "quantum"} title={document.module === "quantum" ? "Quantum scenes retain their external immutable source." : undefined}
+        onClick={() => onAction("duplicate", document.id)}>Duplicate source</button>
       <button type="button" onClick={() => onAction(document.archived ? "restore" : "archive", document.id)}>{document.archived ? "Restore" : "Archive"}</button>
       <button type="button" onClick={() => setReview(!review)}>Review delete</button>
     </div>

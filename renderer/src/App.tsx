@@ -2,6 +2,7 @@ import { type SurfaceViewerKind, type BBox3, type MeshPromotionTraceState, type 
 import { type SurfacesLeftPanelProps, type SurfacesRightPanelProps } from "./surfacePanels";
 import { MeshProjectEditor } from "./projects/MeshProjectEditor";
 import { QuantumScenePreview, type QuantumSceneOpenResponse, type QuantumSceneWorkspaceReference } from "./components/QuantumScenePreview";
+import { quantumSceneDocumentFromVerifiedOpen } from "./projects/quantumSceneAdmission";
 import { meshDocumentEditable } from "./projects/nativeMeshRestore";
 import { createMeshDocument, canonicalJsonStringify, parseMath3DProject } from "@math3d/core";
 import { VerifiedProjectResources, type ProjectResourceRequirement } from "./projects/projectResources";
@@ -33157,6 +33158,8 @@ const App: React.FC = () => {
 
   const [workbooks, setWorkbooks] = useState<Workbook[]>(() => loadWorkbooks());
   const [quantumScenePreview, setQuantumScenePreview] = useState<Extract<QuantumSceneOpenResponse, { ok: true }> | null>(null);
+  const [quantumSceneNavigationError, setQuantumSceneNavigationError] = useState<string | null>(null);
+  const quantumSceneNavigationSequence = useRef(0);
   const [quantumSceneReference, setQuantumSceneReference] = useState<QuantumSceneWorkspaceReference | null>(null);
   const [verifiedQuantumSceneTitle, setVerifiedQuantumSceneTitle] = useState<string | null>(null);
   useEffect(() => { if (quantumScenePreview) setVerifiedQuantumSceneTitle(quantumScenePreview.document.title); }, [quantumScenePreview]);
@@ -78319,6 +78322,7 @@ case "mobius":
   const projectNavigationRef = useRef(new ProjectNavigation());
   const restoredMeshDatasetRef = useRef<{ documentId: string; sourceHash: string; mesh: SurfaceMeshData } | null>(null);
   const navigateRestoredDocument = (id: string, module: KernelWorkspaceModule): boolean => {
+    const navigationSequence = ++quantumSceneNavigationSequence.current;
     const restored = restoredProjectRef.current;
     if (restored?.workspace.entries.some(entry => entry.expected.id === id && entry.module === module)) {
       projectNavigationRef.current.visit({ id, module });
@@ -78328,6 +78332,27 @@ case "mobius":
       // This selects an existing verified member; sources/replay are unchanged.
       restored.workspace = { ...restored.workspace,
         activeDocumentIds: [id, ...restored.workspace.activeDocumentIds.filter(value => value !== id)] };
+    }
+    if (module === "quantum") {
+      const entry = restored?.workspace.entries.find((item) => item.expected.id === id && item.module === "quantum");
+      if (!entry || entry.checkpoint.format !== "math3d.quantum-scene-document") return false;
+      const checkpoint = entry.checkpoint;
+      setQuantumSceneNavigationError(null);
+      setQuantumScenePreview(null);
+      if (!window.quantumScenes?.openReference) { setQuantumSceneNavigationError("Verified quantum scenes require the desktop importer."); return true; }
+      void window.quantumScenes.openReference({ directory: checkpoint.location.directory,
+        sceneFingerprint: checkpoint.source.sceneFingerprint }).then((opened) => {
+        if (!opened.ok) throw new TypeError(opened.canceled ? "Scene opening was cancelled." : opened.error);
+        const document = quantumSceneDocumentFromVerifiedOpen(opened);
+        if (canonicalJsonStringify(document.source) !== canonicalJsonStringify(checkpoint.source))
+          throw new TypeError("The saved quantum document does not match the verified source.");
+        if (navigationSequence !== quantumSceneNavigationSequence.current) return;
+        setQuantumSceneReference(opened.reference); setQuantumScenePreview(opened);
+      }).catch((error) => {
+        if (navigationSequence === quantumSceneNavigationSequence.current)
+          setQuantumSceneNavigationError(`Quantum scene unavailable: ${String((error as Error).message)}`);
+      });
+      return true;
     }
     const graph = restored?.graphs.get(id);
     if (graph) {
@@ -79238,6 +79263,14 @@ case "mobius":
           setQuantumScenePreview(opened);
           setQuantumSceneReference(opened.reference);
         }}
+        onVerifyQuantumSceneDocument={async (reference) => {
+          if (!window.quantumScenes?.openReference) throw new TypeError("Verified quantum scenes are available only in the desktop app.");
+          const opened = await window.quantumScenes.openReference({ directory: reference.directory, sceneFingerprint: reference.sceneFingerprint });
+          if (!opened.ok) throw new TypeError(opened.canceled ? "Scene opening was cancelled." : opened.error);
+          if (opened.reference.sceneFingerprint !== reference.sceneFingerprint || opened.reference.directory !== reference.directory)
+            throw new TypeError("Verified scene reference changed.");
+          return quantumSceneDocumentFromVerifiedOpen(opened);
+        }}
         onRelinkQuantumScene={async (reference) => {
           if (!window.quantumScenes?.pickMatchingReference) throw new TypeError("Source relinking is available only in the desktop app.");
           const picked = await window.quantumScenes.pickMatchingReference(reference.sceneFingerprint);
@@ -79290,6 +79323,7 @@ case "mobius":
           topology: topologyKernelDocument?.identity.id,
           complex: complexPreviewSession.commands.document().identity.id,
           graph2d: graph2dDocument.identity.id,
+          quantum: restoredProjectRef.current?.workspace.entries.find((entry) => entry.module === "quantum" && entry.expected.id === id)?.expected.id,
         }[module] === id)}
         onNavigateDocument={(id, module) => {
           setProjectGraphAnalysisRequest(null);
@@ -109956,6 +109990,8 @@ case "mobius":
         )}
       </div></SavedSurfaceModuleFrame></SavedMeshModuleFrame>)}
       {quantumScenePreview && <QuantumScenePreview opened={quantumScenePreview} onClose={() => setQuantumScenePreview(null)} />}
+      {quantumSceneNavigationError && <div role="alert" data-testid="quantum-scene-navigation-error" style={{ position: "fixed", bottom: 16, right: 16, zIndex: 2901, padding: 12, background: "#7f1d1d", color: "white", maxWidth: 420 }}>
+        {quantumSceneNavigationError} <button type="button" onClick={() => setQuantumSceneNavigationError(null)}>Dismiss</button></div>}
       {workflowActionOverlayModel && !cleanScreenshotSurfaceActive && (
         <WorkflowActionOverlayDialog
           open={!!workflowActionOverlayModel}
