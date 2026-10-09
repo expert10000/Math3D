@@ -407,3 +407,69 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await rm(safeRoot,{recursive:true,force:true});
   }
 });
+
+test("verified site and link selection survives restart and refuses a changed bundle", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-qscene-sites-"));
+  const directory = join(root, "sites.qscene");
+  await mkdir(directory);
+  const bytes = Buffer.alloc(6 * 8);
+  [0, 0, 0, 2, 0, 0].forEach((value, index) => bytes.writeDoubleLE(value, index * 8));
+  const scene = {
+    schema: "quantum-scene/v1", id: "site-link-fixture", title: "Verified site/link scene",
+    provenance: { runId: "run-sites", jobId: "job-sites", model: "supplied_geometry", engine: "native",
+      engineVersion: "1", computedAt: "2026-10-05T00:00:00Z", resultSha256: "b".repeat(64), adapter: "qvis/1" },
+    coordinates: { handedness: "right", axes: ["x", "y", "z"], units: ["a0", "a0", "a0"] },
+    camera: { position: [1, 2, 5], target: [1, 0, 0], up: [0, 1, 0] },
+    datasets: ["sites", "links"].map(id => ({ id, path: `${id}.f64`, format: "f64le", count: 2,
+      components: 3, unit: "a0", bytes: bytes.length, sha256: hash(bytes) })),
+    objects: [
+      { id: "site-object", label: "Supplied centers", kind: "point-cloud", positions: "sites", visible: true,
+        style: { color: "#22aaff", opacity: 1, size: 2 } },
+      { id: "link-object", label: "Supplied connection", kind: "segments", positions: "links", visible: true,
+        style: { color: "#ff8800", opacity: 1, size: 2 } },
+    ], annotations: [],
+  };
+  const sceneBytes = Buffer.from(JSON.stringify(scene, null, 2) + "\n");
+  await writeFile(join(directory, "scene.json"), sceneBytes);
+  await writeFile(join(directory, "sites.f64"), bytes);
+  await writeFile(join(directory, "links.f64"), bytes);
+  await writeFile(join(directory, "bundle.json"), JSON.stringify({ schema: "quantum-scene-bundle/v1",
+    scene: { path: "scene.json", bytes: sceneBytes.length, sha256: hash(sceneBytes) } }, null, 2) + "\n");
+  const launch = (args = [".", "--quantum-scene", directory]) => launchRepoElectron({ args,
+    cwd: resolve(__dirname, "..", ".."), env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: join(root, "profile") } });
+  let app = await launch();
+  try {
+    let page = await app.firstWindow();
+    await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
+    await expect(page.getByTestId("quantum-primitive-objects")).toContainText("site-object");
+    await expect(page.getByTestId("quantum-primitive-objects")).toContainText("link-object");
+    await expect(page.getByTestId("quantum-scene-geometry").getByTestId("surface-viewer-canvas-host"))
+      .toHaveAttribute("data-rendered-mesh-count", "2");
+    const canvas = page.getByTestId("quantum-scene-geometry").locator("canvas").first();
+    const box = (await canvas.boundingBox())!;
+    for (const x of [0.35, 0.65, 0.5, 0.25, 0.75]) {
+      if (await page.getByTestId("quantum-primitive-selection").isVisible()) break;
+      await canvas.click({ position: { x: box.width * x, y: box.height * 0.5 } });
+    }
+    await expect(page.getByTestId("quantum-primitive-selection")).toContainText(/site-object|link-object/);
+    await expect(page.getByTestId("quantum-primitive-selection")).toContainText("a0");
+    await app.close();
+    app = await launch(["."]);
+    page = await app.firstWindow();
+    await expect.poll(() => page.evaluate(() => typeof (window as any).quantumScenes?.reopenRecent)).toBe("function");
+    const reopened = await page.evaluate(() => (window as any).quantumScenes.reopenRecent());
+    expect(reopened).toMatchObject({ ok: true, remembered: true, mappedObjectIds: ["site-object", "link-object"] });
+    const altered = Buffer.from(bytes); altered[0] ^= 1;
+    await writeFile(join(directory, "sites.f64"), altered);
+    const refused = await page.evaluate(() => (window as any).quantumScenes.reopenRecent());
+    expect(refused).toMatchObject({ ok: false });
+    expect(refused.error).toMatch(/integrity/);
+  } finally {
+    await app.close();
+    const safeRoot = resolve(root);
+    if (!safeRoot.startsWith(resolve(tmpdir()) + sep) || !safeRoot.includes("m3d-qscene-sites-"))
+      throw new Error("Unsafe site/link E2E cleanup path");
+    await rm(safeRoot, { recursive: true, force: true });
+  }
+});

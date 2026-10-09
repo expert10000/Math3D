@@ -4,6 +4,7 @@ import type { GeometryScene } from "../geometry/types";
 import { GeometryViewer } from "./GeometryViewer";
 import { QuantumFieldSlice, type QuantumField } from "./QuantumFieldSlice";
 import { QuantumFieldSurface } from "./QuantumFieldSurface";
+import { buildQuantumPrimitiveMeshes, type QuantumPrimitive } from "./quantumPrimitiveMeshes";
 
 type Vector3 = { x: number; y: number; z: number };
 type SceneSource = {
@@ -11,7 +12,7 @@ type SceneSource = {
     parameters?: Record<string, number | string> };
   coordinates: { axes: [string, string, string]; units: [string, string, string]; handedness: string };
   datasets: { id: string; count: number; components: number; unit: string }[];
-  objects: { id: string; label: string; kind: string; indices?: string; style: { color: string; opacity: number } }[];
+  objects: { id: string; label: string; kind: string; indices?: string; style: { color: string; opacity: number; size: number } }[];
   fields?: QuantumField[];
   annotations: { id: string; text: string }[];
   bands?: { objects: string[]; labels: string[]; energyUnit: string; bulkGap: number };
@@ -57,6 +58,10 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
   };
   const camera = document.cameras[0];
   const [pickedBandSample, setPickedBandSample] = useState<PickedBandSample | null>(null);
+  const [pickedPrimitive, setPickedPrimitive] = useState<QuantumPrimitive | null>(null);
+  useEffect(() => { setPickedBandSample(null); setPickedPrimitive(null); }, [opened.reference.sceneFingerprint]);
+  const primitiveMeshes = useMemo(() => buildQuantumPrimitiveMeshes(document.geometry, scene.objects, opened.mappedObjectIds),
+    [document.geometry, scene.objects, opened.mappedObjectIds]);
   const meshObjects = useMemo(() => {
     const mapped = new Set(opened.mappedObjectIds);
     const triangles = document.geometry.triangles ?? [];
@@ -79,9 +84,19 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
         color: Number.parseInt(object.style.color.slice(1), 16), opacity: object.style.opacity };
     });
   }, [document.geometry.triangles, opened.mappedObjectIds, scene.datasets, scene.objects]);
-  const viewerScene = useMemo(() => meshObjects.length ? { ...document.geometry, triangles: [] } : document.geometry,
-    [document.geometry, meshObjects]);
-  const pickBand = (info: { meshKey?: string; faceIndex?: number; point: Vector3 }) => {
+  const viewerScene = useMemo(() => {
+    const primitiveIds = new Set(primitiveMeshes.map(mesh => mesh.id));
+    return { ...document.geometry,
+      triangles: meshObjects.length ? [] : document.geometry.triangles,
+      points: document.geometry.points?.filter(point => !primitiveMeshes.length ||
+        ![...primitiveIds].some(id => point.id?.startsWith(`${id}:site:`))),
+      segments: document.geometry.segments?.filter(segment => !primitiveMeshes.length ||
+        ![...primitiveIds].some(id => segment.a.id?.startsWith(`${id}:link:`))) };
+  }, [document.geometry, meshObjects, primitiveMeshes]);
+  const pickScene = (info: { meshKey?: string; faceIndex?: number; point: Vector3 }) => {
+    const primitive = primitiveMeshes.find(entry => entry.id === info.meshKey)?.primitivesByFace[info.faceIndex ?? -1];
+    if (primitive) { setPickedPrimitive(primitive); setPickedBandSample(null); return; }
+    setPickedPrimitive(null);
     const mesh = meshObjects.find((entry) => entry.id === info.meshKey);
     const face: SceneTriangle | undefined = mesh?.faces[info.faceIndex ?? -1];
     if (!mesh || !face) { setPickedBandSample(null); return; }
@@ -112,9 +127,10 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
               fields={scene.fields} axes={scene.coordinates.axes} units={scene.coordinates.units} /> :
               view === "surface" && scene.fields?.length ? <QuantumFieldSurface fingerprint={opened.reference.sceneFingerprint}
                 resultSha256={scene.provenance.resultSha256} fields={scene.fields} camera={camera} /> :
-              count > 0 ? <GeometryViewer scene={viewerScene} meshOverrides={meshObjects} showPlanes={false}
-              pickEnabled={meshObjects.length > 0} onPick={pickBand} onPickMiss={() => setPickedBandSample(null)}
-              inspectSelectionMeshKey={pickedBandSample?.objectId}
+              count > 0 ? <GeometryViewer scene={viewerScene} meshOverrides={[...meshObjects, ...primitiveMeshes]} showPlanes={false}
+              pickEnabled={meshObjects.length + primitiveMeshes.length > 0} onPick={pickScene}
+              onPickMiss={() => { setPickedBandSample(null); setPickedPrimitive(null); }}
+              inspectSelectionMeshKey={pickedPrimitive?.objectId ?? pickedBandSample?.objectId}
               cameraOverride={camera ? { position: camera.position, target: camera.target, up: camera.up } : null} />
               : <p style={{ padding: 20 }}>This scene has no mapped geometry. Its field datasets are listed in the inspector.</p>}
             </div>
@@ -137,6 +153,23 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
             </dl></>}
             <div><b>Axes:</b> {scene.coordinates.axes.join(", ")} ({scene.coordinates.handedness}-handed)</div>
             <div><b>Coordinate units:</b> {scene.coordinates.units.join(", ")}</div>
+            {primitiveMeshes.length > 0 && <>
+              <h3>Supplied sites and links</h3>
+              <p>Click a rendered marker or link. The object ID is portable; the sample index identifies a position within its verified dataset. No chemical species or bond order is inferred.</p>
+              <ul data-testid="quantum-primitive-objects" style={{ paddingLeft: 18 }}>
+                {primitiveMeshes.map(mesh => <li key={mesh.id}>{mesh.label} · <code>{mesh.id}</code> · {
+                  new Set(mesh.primitivesByFace.map(primitive => primitive.sampleId)).size} samples</li>)}
+              </ul>
+              {pickedPrimitive && <div data-testid="quantum-primitive-selection">
+                <b>{pickedPrimitive.kind === "site" ? "Selected site" : "Selected link"}:</b> {pickedPrimitive.objectLabel}<br />
+                <b>Portable object ID:</b> <code>{pickedPrimitive.objectId}</code><br />
+                <b>Dataset sample:</b> {pickedPrimitive.index}<br />
+                {scene.coordinates.axes.map((axis, index) => <React.Fragment key={axis}>{axis}: {
+                  pickedPrimitive.position[["x", "y", "z"][index] as keyof Vector3].toPrecision(6)} {scene.coordinates.units[index]}<br /></React.Fragment>)}
+                {pickedPrimitive.endpoints && <div>Endpoints: {pickedPrimitive.endpoints.map(endpoint =>
+                  `(${endpoint.x.toPrecision(5)}, ${endpoint.y.toPrecision(5)}, ${endpoint.z.toPrecision(5)})`).join(" → ")}</div>}
+              </div>}
+            </>}
             {scene.bands && <>
               <h3>Bands</h3>
               <div data-testid="quantum-band-legend">{scene.bands.objects.map((id, index) => {
