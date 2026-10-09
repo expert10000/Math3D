@@ -4,6 +4,7 @@ import type { GeometryScene } from "../geometry/types";
 import { GeometryViewer } from "./GeometryViewer";
 import { QuantumFieldSlice, type QuantumField } from "./QuantumFieldSlice";
 import { QuantumFieldSurface } from "./QuantumFieldSurface";
+import { QuantumFieldVolume } from "./QuantumFieldVolume";
 import { buildQuantumPrimitiveMeshes, type QuantumPrimitive } from "./quantumPrimitiveMeshes";
 
 type Vector3 = { x: number; y: number; z: number };
@@ -37,8 +38,8 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
   const scene = details.scene;
   const count = (document.geometry.points?.length ?? 0) + (document.geometry.segments?.length ?? 0) +
     (document.geometry.triangles?.length ?? 0);
-  const [view, setView] = useState<"geometry" | "slice" | "surface">(scene.fields?.length && count === 0 ? "slice" : "geometry");
-  useEffect(() => { setView(scene.fields?.length && count === 0 ? "slice" : "geometry"); }, [opened.reference.sceneFingerprint]);
+  const [view, setView] = useState<"geometry" | "slice" | "surface" | "volume">(scene.fields?.length && count === 0 ? "volume" : "geometry");
+  useEffect(() => { setView(scene.fields?.length && count === 0 ? "volume" : "geometry"); }, [opened.reference.sceneFingerprint]);
   const [locateStatus, setLocateStatus] = useState("");
   const [locating, setLocating] = useState(false);
   const [openingRun, setOpeningRun] = useState(false);
@@ -144,11 +145,13 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
             {Boolean(scene.fields?.length) && <div style={{ padding: 8, display: "flex", gap: 8 }}>
               {count > 0 && <button type="button" onClick={() => setView("geometry")} aria-pressed={view === "geometry"}>Geometry</button>}
               <button type="button" onClick={() => setView("slice")} aria-pressed={view === "slice"}>Field slice</button>
+              <button type="button" onClick={() => setView("volume")} aria-pressed={view === "volume"}>Volume</button>
               {scene.fields?.some(field => field.kind === "complex-field") &&
                 <button type="button" onClick={() => setView("surface")} aria-pressed={view === "surface"}>Density surface</button>}
             </div>}
             <div style={{ minHeight: 0, flex: 1, position: "relative" }}>
-            {view === "slice" && scene.fields?.length ? <QuantumFieldSlice fingerprint={opened.reference.sceneFingerprint}
+            {view === "volume" && scene.fields?.length ? <QuantumFieldVolume fingerprint={opened.reference.sceneFingerprint} fields={scene.fields} /> :
+              view === "slice" && scene.fields?.length ? <QuantumFieldSlice fingerprint={opened.reference.sceneFingerprint}
               fields={scene.fields} axes={scene.coordinates.axes} units={scene.coordinates.units} /> :
               view === "surface" && scene.fields?.length ? <QuantumFieldSurface fingerprint={opened.reference.sceneFingerprint}
                 resultSha256={scene.provenance.resultSha256} fields={scene.fields} camera={camera} /> :

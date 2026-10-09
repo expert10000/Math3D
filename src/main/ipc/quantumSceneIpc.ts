@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { importQuantumSceneBundle, type ImportedQuantumScene } from "../quantumScene/importer";
 import { inspectVerifiedFieldSample, renderVerifiedFieldSlice, type FieldSampleRequest, type FieldSliceRequest } from "../quantumScene/fieldSlice";
 import { deriveVerifiedFieldSurface, type FieldSurfaceRequest } from "../quantumScene/fieldSurface";
+import { deriveVerifiedFieldVolume, type FieldVolumeRequest } from "../quantumScene/fieldVolume";
 import type { QuantumSceneOpenResponse, QuantumSceneRelinkResponse } from "../quantumScene/ipcContract";
 import { rememberQuantumScene, reopenRecentQuantumScene, reopenQuantumSceneReference, sceneFingerprint } from "../quantumScene/recent";
 import { isAbsolute, resolve } from "node:path";
@@ -142,6 +143,14 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
     if (args.length !== 1) throw new TypeError("Field surface requires one request");
     const active = activeField(event, args[0]);
     return deriveVerifiedFieldSurface(active.imported, args[0] as FieldSurfaceRequest);
+  });
+  ipcMain.handle("quantumScenes:fieldVolume", async (event, ...args: unknown[]) => {
+    if (args.length !== 1) throw new TypeError("Field Volume requires one request");
+    const active = activeField(event, args[0]);
+    const request = args[0] as FieldVolumeRequest;
+    const reopened = await reopenQuantumSceneReference({ directory: active.directory, sceneFingerprint: active.fingerprint });
+    if (verifiedBySender.get(event.sender) !== active) throw new Error("Quantum scene changed during Volume derivation");
+    return deriveVerifiedFieldVolume(reopened.imported, request);
   });
   ipcMain.handle("quantumScenes:revealSource", async (event, ...args: unknown[]) => {
     if (args.length !== 1) return { ok: false, error: "Source reveal requires one active-scene fingerprint" };
