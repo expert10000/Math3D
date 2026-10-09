@@ -136,6 +136,18 @@ export const upsertMath3DProjectQuantumScene = (project: Math3DProject, referenc
   return requireProject({ ...current, quantumScenes,
     identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, current.notes, quantumScenes)) });
 };
+/** Replace only the location of an already linked scene. Callers must independently verify the picked bundle. */
+export const relinkMath3DProjectQuantumScene = (project: Math3DProject, fingerprint: string, directory: string): Math3DProject => {
+  const current = requireProject(project);
+  const linked = current.quantumScenes?.find((item) => item.sceneFingerprint === fingerprint);
+  if (!linked) throw new TypeError("Quantum scene is not linked to this Project.");
+  const replacement: ProjectQuantumSceneReference = { ...linked, directory };
+  if (!validQuantumSceneReference(replacement)) throw new TypeError("Invalid replacement quantum-scene location.");
+  if (linked.directory === directory) return current;
+  const quantumScenes = current.quantumScenes!.map((item) => item.sceneFingerprint === fingerprint ? replacement : item);
+  return requireProject({ ...current, quantumScenes,
+    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, current.notes, quantumScenes)) });
+};
 export const updateMath3DProjectMetadata = (project: Math3DProject, metadata: Math3DProject["metadata"]): Math3DProject =>
   requireProject({ ...requireProject(project), metadata });
 export const renameMath3DProject = (project: Math3DProject, title: string): Math3DProject =>

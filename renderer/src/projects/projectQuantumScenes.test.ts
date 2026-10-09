@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyGraph2DDocument, createGraph2DWorkspaceProject, createMath3DProject,
   normalizeMath3DProject, parseMath3DProject, replaceMath3DProjectWorkspace, serializeMath3DProject,
-  upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference } from "@math3d/core";
+  relinkMath3DProjectQuantumScene, upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference } from "@math3d/core";
 import { loadLibraryProject, saveLibraryProject } from "./projectLibrary";
 
 const reference: ProjectQuantumSceneReference = {
@@ -32,6 +32,19 @@ describe("read-only Project quantum-scene links", () => {
     const revised = replaceMath3DProjectWorkspace(linked, linked.workspace);
     const storage = store(); saveLibraryProject(storage, revised, 100);
     expect(loadLibraryProject(storage, revised.identity.id).quantumScenes).toEqual([reference]);
+  });
+
+  it("relinks only the location of an existing fingerprint and preserves scientific workspace bytes", () => {
+    const linked = upsertMath3DProjectQuantumScene(fixture(), reference);
+    const moved = relinkMath3DProjectQuantumScene(linked, reference.sceneFingerprint, "D:\\moved\\hydrogen.qscene");
+    expect(moved.quantumScenes).toEqual([{ ...reference, directory: "D:\\moved\\hydrogen.qscene" }]);
+    expect(moved.workspace).toEqual(linked.workspace);
+    expect(moved.identity.revision).toBe(linked.identity.revision + 1);
+    expect(relinkMath3DProjectQuantumScene(moved, reference.sceneFingerprint, "D:\\moved\\hydrogen.qscene")).toEqual(moved);
+    expect(parseMath3DProject(serializeMath3DProject(moved))).toEqual(moved);
+    expect(() => relinkMath3DProjectQuantumScene(linked, "b".repeat(64), "D:\\moved\\hydrogen.qscene")).toThrow("not linked");
+    expect(() => relinkMath3DProjectQuantumScene(linked, reference.sceneFingerprint, "")).toThrow("Invalid replacement");
+    expect(linked.quantumScenes).toEqual([reference]);
   });
 
   it("refuses a changed path, fingerprint, format, unknown field, and duplicate reference even with an old hash", () => {

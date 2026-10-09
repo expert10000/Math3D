@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Status:** in progress — M3D-Q01 verified reader, desktop preview, and recent-scene reopen
+**Status:** in progress — M3D-Q01 verified reader, desktop preview, recent-scene reopen, and read-only saved-Project references
 
 **Type:** interoperability and scientific-visualization program
 
@@ -53,6 +53,11 @@ workspace retains the verified scene's absolute folder and source fingerprint.
 Opening that workspace checks the complete `.qscene` again and displays the
 read-only preview only if the source still matches. The workspace holds a
 reference, so moving or changing the source requires reopening it explicitly.
+Named Math3D Projects can also retain a hashed, read-only external reference
+to a verified scene. Project contents re-verify the bundle when viewing it;
+missing or changed source bytes leave the Project intact. This is a Project
+link, not a native quantum document in the mixed-workspace graph or an editable
+Volume. An explicit, verified relocation workflow is the next bounded step.
 On desktop, **File → Open workspace** uses a native file picker for the saved
 `.math3d` file. **File → Open verified quantum scene** selects a `.qscene` folder.
 The preview is not yet an editable Math3D document. A bounded first M3D-Q02
@@ -65,7 +70,7 @@ and checked for stored quantum numbers, central density/node, and units. A
 read-only density isosurface preview now derives bounded triangles from verified
 amplitudes in Electron main, without transferring the full grid. The 1s, 2s,
 2p, 3p and 3d fixtures verify phase and real-component sign bins on those
-surfaces. This is not a full M3D-Q02 delivery. M3D-Q01 lifecycle
+surfaces. This is not a full M3D-Q02 delivery. M3D-Q01 native lifecycle
 admission and the remaining M3D-Q02–Q10 work remain open.
 
 Quantum Lab must not call MATH3D internals, and MATH3D must not reproduce Quantum
@@ -289,7 +294,8 @@ bounded density isosurfaces with phase/sign coloring are implemented with real
 1s, 2s, 2p, 3p and 3d cross-repository fixtures. The UI can reveal the
 re-verified source bundle by its active fingerprint; this does not locate the
 original Theory Lab run. Atom/bond adapters, Lab run locate-back and native
-project admission are not yet implemented.
+project document admission are not yet implemented. A sealed external
+reference can be saved in the named Project, but is not a native document.
 
 **Scope.** Render atomic sites, bonds, labels, orbital isosurfaces, probability
 density, sign/phase coloring, and field slices. Preserve atomic/orbital quantum
