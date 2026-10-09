@@ -5,6 +5,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   deleteProjectDocument, duplicateProjectDocument, serializeMath3DProject, setProjectDocumentMetadata,
   instantiateMath3DProjectTemplate, MATH3D_PROJECT_TEMPLATES, type Math3DProjectTemplateId,
   upsertMath3DProjectWorkbook, upsertMath3DProjectNote, updateProjectNote,
+  upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
@@ -48,6 +49,8 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCurrentProjectChange?: (project: Math3DProject) => void;
+  verifiedQuantumScene?: ProjectQuantumSceneReference | null;
+  onOpenQuantumScene?: (reference: ProjectQuantumSceneReference) => Promise<void>;
   captureActiveWorkbook?: () => Workbook | null;
   onOpenWorkbook?: (workbook: Workbook, stageId?: WorkbookStageId, blockId?: string) => void;
   noteRequest?: { id: string; token: number } | null;
@@ -63,7 +66,7 @@ type Props = {
   activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, captureActiveWorkbook, onOpenWorkbook, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeProjectDocumentId }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onOpenQuantumScene, captureActiveWorkbook, onOpenWorkbook, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeProjectDocumentId }) => {
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
@@ -116,6 +119,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const jumpTo = (section: React.RefObject<HTMLElement | null>) => { section.current?.scrollIntoView({ block: "start" }); section.current?.focus({ preventScroll: true }); };
   useEffect(() => { if (!open) { setQuick(false); setDetailView(false); setViewerCompanion(false); setViewingDocumentId(null); } }, [open]);
   const [busy, setBusy] = useState(false);
+  const [quantumSceneMessage, setQuantumSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -1014,6 +1018,24 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           <h3>Contents</h3>
           <p className="project-workspace-section-hint">{preview ? "Open this project to edit its documents." : "Open a document or workbook to continue working. View with Project keeps the live viewer and Project side by side."}</p>
           <div className="project-workspace-children">
+            <section data-testid="project-quantum-scenes" className="project-workspace-child-group" aria-label="Read-only quantum scenes">
+              <div className="project-workspace-child-heading"><div><span>EXTERNAL VERIFIED SOURCE</span><h4>Quantum scenes ({project?.quantumScenes?.length ?? 0})</h4></div>
+                <button type="button" data-testid="project-attach-quantum-scene" disabled={busy || preview || !!managed || !project || !verifiedQuantumScene || !onOpenQuantumScene || project.quantumScenes?.some(item => item.sceneFingerprint === verifiedQuantumScene.sceneFingerprint)}
+                  onClick={() => { if (!project || !verifiedQuantumScene || !onOpenQuantumScene) return;
+                    const expectedProjectId = project.identity.id, reference = verifiedQuantumScene;
+                    setQuantumSceneMessage("Re-verifying source before attachment…");
+                    void onOpenQuantumScene(reference).then(() => { setProject(current => current?.identity.id === expectedProjectId ? upsertMath3DProjectQuantumScene(current, reference) : current); setQuantumSceneMessage("Verified source staged. Save project to retain the link."); })
+                      .catch(error => setQuantumSceneMessage(`Attachment refused: ${String((error as Error).message)}`));
+                  }}>Attach open verified scene</button></div>
+              <p>External quantum-scene/v1 bundles stay read-only. Opening a link re-verifies its fingerprint and source files; Project JSON does not embed the arrays.</p>
+              {!project?.quantumScenes?.length && <small>Open a verified quantum scene from File, then attach it here.</small>}
+              {project?.quantumScenes?.map(item => <article key={item.sceneFingerprint} className="project-workspace-workbook">
+                <strong>{item.title}</strong><small style={{ overflowWrap: "anywhere" }}> · SHA-256 {item.sceneFingerprint}</small>
+                <button type="button" data-testid={`project-open-quantum-scene-${item.sceneFingerprint}`} disabled={busy || !onOpenQuantumScene}
+                  onClick={() => { if (!onOpenQuantumScene) return; setQuantumSceneMessage("Verifying external scene…"); void onOpenQuantumScene(item).then(() => setQuantumSceneMessage("Verified read-only scene opened.")).catch(error => setQuantumSceneMessage(`Scene unavailable: ${String((error as Error).message)}`)); }}>Verify and view scene</button>
+              </article>)}
+              {quantumSceneMessage && <p role="status" data-testid="project-quantum-scene-message">{quantumSceneMessage}</p>}
+            </section>
             <section data-testid="project-workbooks" className="project-workspace-child-group" aria-label="Project Workbooks">
               <div className="project-workspace-child-heading"><div><span>01 · PROJECT CONTENT</span><h4>Workbooks ({project?.workbooks?.length ?? 0})</h4></div>
                 <button type="button" data-testid="project-save-active-workbook" disabled={busy || preview || !!managed || !project || !captureActiveWorkbook?.()} onClick={() => { void saveActiveWorkbook(); }}>Add active Workbook</button></div>

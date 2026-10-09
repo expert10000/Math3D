@@ -33158,6 +33158,8 @@ const App: React.FC = () => {
   const [workbooks, setWorkbooks] = useState<Workbook[]>(() => loadWorkbooks());
   const [quantumScenePreview, setQuantumScenePreview] = useState<Extract<QuantumSceneOpenResponse, { ok: true }> | null>(null);
   const [quantumSceneReference, setQuantumSceneReference] = useState<QuantumSceneWorkspaceReference | null>(null);
+  const [verifiedQuantumSceneTitle, setVerifiedQuantumSceneTitle] = useState<string | null>(null);
+  useEffect(() => { if (quantumScenePreview) setVerifiedQuantumSceneTitle(quantumScenePreview.document.title); }, [quantumScenePreview]);
   const [activeWorkbookId, setActiveWorkbookId] = useState<string | null>(() => {
     if (REPLAY_PAYLOAD?.activeWorkbookId) return REPLAY_PAYLOAD.activeWorkbookId;
     return localStorage.getItem(WORKBOOK_ACTIVE_KEY);
@@ -79192,6 +79194,15 @@ case "mobius":
         onProjectsOpenChange={setProjectsOpen}
         noteRequest={projectNoteRequest}
         onCurrentProjectChange={(project) => { activeNotebookProjectRef.current = project; setNotebookProjectVersion((version) => version + 1); }}
+        verifiedQuantumScene={verifiedQuantumSceneTitle && quantumSceneReference ? { format: "quantum-scene/v1", title: verifiedQuantumSceneTitle, ...quantumSceneReference } : null}
+        onOpenQuantumScene={async (reference) => {
+          if (!window.quantumScenes?.openReference) throw new TypeError("Verified quantum scenes are available only in the desktop app.");
+          const opened = await window.quantumScenes.openReference({ directory: reference.directory, sceneFingerprint: reference.sceneFingerprint });
+          if (!opened.ok) throw new TypeError(opened.canceled ? "Scene opening was cancelled." : opened.error);
+          if (opened.reference.sceneFingerprint !== reference.sceneFingerprint) throw new TypeError("Verified scene fingerprint changed.");
+          setQuantumScenePreview(opened);
+          setQuantumSceneReference(opened.reference);
+        }}
         captureActiveWorkbook={() => workbooks.find((workbook) => workbook.id === activeWorkbookId) ?? null}
         captureNoteSelection={() => {
           const documentId = activeKernelDocument?.identity.id;
