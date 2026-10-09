@@ -6,6 +6,8 @@ import { QuantumFieldSlice, type QuantumField } from "./QuantumFieldSlice";
 import { QuantumFieldSurface } from "./QuantumFieldSurface";
 import { QuantumFieldVolume } from "./QuantumFieldVolume";
 import { buildQuantumPrimitiveMeshes, type QuantumPrimitive } from "./quantumPrimitiveMeshes";
+import { buildQuantumLatticeSupercell, SUPERCELL_SITE_OBJECT_ID,
+  type LatticeGeometryDefinition, type LatticeSampleIdentity, type LatticeSupercell } from "./quantumLatticeOverlay";
 
 type Vector3 = { x: number; y: number; z: number };
 type SceneSource = {
@@ -14,9 +16,7 @@ type SceneSource = {
   coordinates: { axes: [string, string, string]; units: [string, string, string]; handedness: string };
   datasets: { id: string; count: number; components: number; unit: string }[];
   objects: { id: string; label: string; kind: string; positions: string; indices?: string; style: { color: string; opacity: number; size: number } }[];
-  lattice?: { dimensions: 2 | 3; basis: { label: string; position: [number, number, number] }[];
-    translations: [number, number, number][]; repeats: [number, number, number]; boundary: "open";
-    sites: string; cells: string; basisIndices: string };
+  lattice?: LatticeGeometryDefinition;
   fields?: QuantumField[];
   annotations: { id: string; text: string; position: [number, number, number] }[];
   bands?: { objects: string[]; labels: string[]; energyUnit: string; bulkGap: number };
@@ -34,11 +34,10 @@ export type QuantumSceneOpenResponse =
 type OpenedScene = Extract<QuantumSceneOpenResponse, { ok: true }>;
 type SceneTriangle = NonNullable<GeometryScene["triangles"]>[number];
 type PickedBandSample = { objectId: string; label: string; sampleId: string; point: Vector3 };
-type LatticeSample = { sampleIndex: number; cell: [number, number, number]; basisIndex: number };
 
 export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; onClose: () => void }) {
   const document = opened.document;
-  const details = document.extensions["quantum-scene/v1"] as { scene: SceneSource; selectionTransferred: false; latticeSamples?: LatticeSample[] };
+  const details = document.extensions["quantum-scene/v1"] as { scene: SceneSource; selectionTransferred: false; latticeSamples?: LatticeSampleIdentity[] };
   const scene = details.scene;
   const count = (document.geometry.points?.length ?? 0) + (document.geometry.segments?.length ?? 0) +
     (document.geometry.triangles?.length ?? 0);
@@ -81,13 +80,23 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
   const camera = document.cameras[0];
   const [pickedBandSample, setPickedBandSample] = useState<PickedBandSample | null>(null);
   const [pickedPrimitive, setPickedPrimitive] = useState<QuantumPrimitive | null>(null);
+  const [repeatDraft, setRepeatDraft] = useState<[number, number, number]>(scene.lattice?.repeats ?? [1, 1, 1]);
+  const [supercell, setSupercell] = useState<LatticeSupercell | null>(null);
+  const [supercellError, setSupercellError] = useState("");
+  useEffect(() => { setRepeatDraft(scene.lattice?.repeats ?? [1, 1, 1]); setSupercell(null); setSupercellError(""); }, [opened.reference.sceneFingerprint]);
   const latticeSiteObjects = useMemo(() => new Set(scene.objects.filter(object => object.positions === scene.lattice?.sites).map(object => object.id)),
     [scene.objects, scene.lattice?.sites]);
-  const pickedLatticeSample = pickedPrimitive?.kind === "site" && latticeSiteObjects.has(pickedPrimitive.objectId) ?
-    details.latticeSamples?.[pickedPrimitive.index] : undefined;
+  const pickedDerivedInstance = pickedPrimitive?.kind === "site" && supercell &&
+    pickedPrimitive.objectId === SUPERCELL_SITE_OBJECT_ID ? supercell.instances[pickedPrimitive.index] : undefined;
+  const pickedLatticeSample = pickedPrimitive?.kind === "site" ?
+    (pickedDerivedInstance ?? (latticeSiteObjects.has(pickedPrimitive.objectId) ?
+      details.latticeSamples?.[pickedPrimitive.index] : undefined)) : undefined;
   useEffect(() => { setPickedBandSample(null); setPickedPrimitive(null); }, [opened.reference.sceneFingerprint]);
   const primitiveMeshes = useMemo(() => buildQuantumPrimitiveMeshes(document.geometry, scene.objects, opened.mappedObjectIds),
     [document.geometry, scene.objects, opened.mappedObjectIds]);
+  const supercellMeshes = useMemo(() => supercell ? buildQuantumPrimitiveMeshes(supercell.geometry,
+    [supercell.siteObject], [SUPERCELL_SITE_OBJECT_ID]) : [], [supercell]);
+  const activePrimitiveMeshes = supercell ? supercellMeshes : primitiveMeshes;
   const meshObjects = useMemo(() => {
     const mapped = new Set(opened.mappedObjectIds);
     const triangles = document.geometry.triangles ?? [];
@@ -111,6 +120,7 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
     });
   }, [document.geometry.triangles, opened.mappedObjectIds, scene.datasets, scene.objects]);
   const viewerScene = useMemo(() => {
+    if (supercell) return { ...supercell.geometry, points: [] };
     const primitiveIds = new Set(primitiveMeshes.map(mesh => mesh.id));
     const translations = scene.lattice?.translations.map((vector, axis) => ({
       a: { x: 0, y: 0, z: 0, id: `lattice:translation:${axis}:origin` },
@@ -123,20 +133,20 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
         ![...primitiveIds].some(id => point.id?.startsWith(`${id}:site:`))),
       segments: [...(document.geometry.segments?.filter(segment => !primitiveMeshes.length ||
         ![...primitiveIds].some(id => segment.a.id?.startsWith(`${id}:link:`))) ?? []), ...translations] };
-  }, [document.geometry, meshObjects, primitiveMeshes, scene.lattice]);
+  }, [document.geometry, meshObjects, primitiveMeshes, scene.lattice, supercell]);
   const visibleLabels = useMemo(() => {
-    const supplied = scene.annotations.filter(annotation => annotation.text.length <= 64).map(annotation => ({
+    const supplied = (supercell ? [] : scene.annotations).filter(annotation => annotation.text.length <= 64).map(annotation => ({
       text: annotation.text, position: { x: annotation.position[0], y: annotation.position[1], z: annotation.position[2] },
     }));
     if (pickedPrimitive) supplied.push({ text: `${pickedPrimitive.objectLabel} · ${pickedPrimitive.index}`,
       position: pickedPrimitive.position });
     return supplied.length ? [{ labels: supplied, color: 0xe2e8f0, backgroundColor: 0x172033 }] : [];
-  }, [scene.annotations, pickedPrimitive]);
+  }, [scene.annotations, pickedPrimitive, supercell]);
   const pickScene = (info: { meshKey?: string; faceIndex?: number; point: Vector3 }) => {
-    const primitive = primitiveMeshes.find(entry => entry.id === info.meshKey)?.primitivesByFace[info.faceIndex ?? -1];
+    const primitive = activePrimitiveMeshes.find(entry => entry.id === info.meshKey)?.primitivesByFace[info.faceIndex ?? -1];
     if (primitive) { setPickedPrimitive(primitive); setPickedBandSample(null); return; }
     setPickedPrimitive(null);
-    const mesh = meshObjects.find((entry) => entry.id === info.meshKey);
+    const mesh = supercell ? undefined : meshObjects.find((entry) => entry.id === info.meshKey);
     const face: SceneTriangle | undefined = mesh?.faces[info.faceIndex ?? -1];
     if (!mesh || !face) { setPickedBandSample(null); return; }
     const nearest = [face.a, face.b, face.c].reduce((best, candidate) =>
@@ -168,12 +178,12 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
               fields={scene.fields} axes={scene.coordinates.axes} units={scene.coordinates.units} /> :
               view === "surface" && scene.fields?.length ? <QuantumFieldSurface fingerprint={opened.reference.sceneFingerprint}
                 resultSha256={scene.provenance.resultSha256} fields={scene.fields} camera={camera} /> :
-              count > 0 ? <GeometryViewer scene={viewerScene} meshOverrides={[...meshObjects, ...primitiveMeshes]}
+              count > 0 || scene.lattice || supercell ? <GeometryViewer scene={viewerScene} meshOverrides={supercell ? supercellMeshes : [...meshObjects, ...primitiveMeshes]}
               overlayLabelSets={visibleLabels} showPlanes={false}
-              pickEnabled={meshObjects.length + primitiveMeshes.length > 0} onPick={pickScene}
+              pickEnabled={(supercell ? supercellMeshes.length : meshObjects.length + primitiveMeshes.length) > 0} onPick={pickScene}
               onPickMiss={() => { setPickedBandSample(null); setPickedPrimitive(null); }}
               inspectSelectionMeshKey={pickedPrimitive?.objectId ?? pickedBandSample?.objectId}
-              cameraOverride={camera ? { position: camera.position, target: camera.target, up: camera.up } : null} />
+              cameraOverride={!supercell && camera ? { position: camera.position, target: camera.target, up: camera.up } : null} />
               : <p style={{ padding: 20 }}>This scene has no mapped geometry. Its field datasets are listed in the inspector.</p>}
             </div>
           </div>
@@ -202,11 +212,11 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
             </dl></>}
             <div><b>Axes:</b> {scene.coordinates.axes.join(", ")} ({scene.coordinates.handedness}-handed)</div>
             <div><b>Coordinate units:</b> {scene.coordinates.units.join(", ")}</div>
-            {primitiveMeshes.length > 0 && <>
+            {activePrimitiveMeshes.length > 0 && <>
               <h3>Supplied sites and links</h3>
               <p>Click a rendered marker or link. The object ID is portable; the sample index identifies a position within its verified dataset. No chemical species or bond order is inferred.</p>
               <ul data-testid="quantum-primitive-objects" style={{ paddingLeft: 18 }}>
-                {primitiveMeshes.map(mesh => <li key={mesh.id}>{mesh.label} · <code>{mesh.id}</code> · {
+                {activePrimitiveMeshes.map(mesh => <li key={mesh.id}>{mesh.label} · <code>{mesh.id}</code> · {
                   new Set(mesh.primitivesByFace.map(primitive => primitive.sampleId)).size} samples{" "}
                   <button type="button" aria-label={`Inspect first sample of ${mesh.id}`} onClick={() => {
                     setPickedPrimitive(mesh.primitivesByFace[0]); setPickedBandSample(null);
@@ -215,15 +225,16 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
               </ul>
               {pickedPrimitive && <div data-testid="quantum-primitive-selection">
                 <b>{pickedPrimitive.kind === "site" ? "Selected site" : "Selected link"}:</b> {pickedPrimitive.objectLabel}<br />
-                <b>Portable object ID:</b> <code>{pickedPrimitive.objectId}</code><br />
+                <b>{supercell ? "Derived view object ID" : "Portable object ID"}:</b> <code>{pickedPrimitive.objectId}</code><br />
                 <b>Dataset sample:</b> {pickedPrimitive.index}<br />
                 {scene.coordinates.axes.map((axis, index) => <React.Fragment key={axis}>{axis}: {
                   pickedPrimitive.position[["x", "y", "z"][index] as keyof Vector3].toPrecision(6)} {scene.coordinates.units[index]}<br /></React.Fragment>)}
                 {pickedPrimitive.endpoints && <div>Endpoints: {pickedPrimitive.endpoints.map(endpoint =>
                   `(${endpoint.x.toPrecision(5)}, ${endpoint.y.toPrecision(5)}, ${endpoint.z.toPrecision(5)})`).join(" → ")}</div>}
                 {pickedLatticeSample && scene.lattice && <div data-testid="quantum-lattice-site-selection">
-                  <b>Verified lattice site:</b> cell [{pickedLatticeSample.cell.join(", ")}] · basis {pickedLatticeSample.basisIndex}
-                  {" "}({scene.lattice.basis[pickedLatticeSample.basisIndex]?.label}) · source sample {pickedLatticeSample.sampleIndex}.
+                  <b>{supercell ? "Derived lattice site" : "Verified lattice site"}:</b> cell [{pickedLatticeSample.cell.join(", ")}] · basis {pickedLatticeSample.basisIndex}
+                  {" "}({scene.lattice.basis[pickedLatticeSample.basisIndex]?.label}) · {supercell ? "derived instance" : "source sample"} {pickedLatticeSample.sampleIndex}.
+                  {pickedDerivedInstance && <div>Source object: {pickedDerivedInstance.sourceObjectId ?? "not supplied"} · dataset: {pickedDerivedInstance.sourceDatasetId} · matching source sample: {pickedDerivedInstance.sourceSampleIndex ?? "outside supplied cells"}.</div>}
                 </div>}
               </div>}
             </>}
@@ -235,6 +246,23 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
                 `a${index + 1}=(${vector.map(value => value.toPrecision(5)).join(", ")})`).join("; ")}</div>
               <div>Position units: {scene.coordinates.units.join(", ")}</div>
               <div>Verified site identities: {details.latticeSamples?.length ?? 0}; click a site marker to inspect its cell and basis.</div>
+              <h4>Derived supercell preview</h4>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{scene.lattice.repeats.map((_, axis) =>
+                <label key={axis}>{scene.coordinates.axes[axis]} cells <input aria-label={`Supercell repeat ${axis}`} type="number" min={1} max={axis === 2 && scene.lattice!.dimensions === 2 ? 1 : 8}
+                  value={repeatDraft[axis]} onChange={event => setRepeatDraft(previous => previous.map((value, index) =>
+                    index === axis ? Number(event.target.value) : value) as [number, number, number])} style={{ width: 45 }} /></label>)}</div>
+              <button type="button" data-testid="quantum-preview-supercell" onClick={() => {
+                try {
+                  const sourceObjectId = [...latticeSiteObjects][0] ?? null;
+                  setSupercell(buildQuantumLatticeSupercell(scene.lattice!, repeatDraft, details.latticeSamples ?? [], sourceObjectId));
+                  setPickedPrimitive(null); setPickedBandSample(null); setSupercellError(""); setView("geometry");
+                } catch (error) { setSupercellError(String((error as Error)?.message ?? error)); }
+              }}>Preview expanded cells</button>
+              {supercell && <button type="button" data-testid="quantum-source-lattice" onClick={() => {
+                setSupercell(null); setPickedPrimitive(null); setSupercellError("");
+              }}>Return to supplied geometry</button>}
+              {supercellError && <p role="alert">{supercellError}</p>}
+              {supercell && <p data-testid="quantum-supercell-status">Derived {supercell.instances.length} basis-mapped sites and {supercell.edgeCount} primitive-cell guides for {supercell.repeats.join(" × ")} cells. Supplied bonds were not expanded; periodic-wrap bonds: unavailable (open source boundary).</p>}
               <p>Amber guides show supplied primitive translations. Supplied segments remain geometric guides; no atom species, bond order, or hopping is inferred. Periodic-wrap bonds are unavailable because this scene declares open boundaries.</p>
             </section>}
             {scene.bands && <>
