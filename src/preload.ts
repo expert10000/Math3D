@@ -528,6 +528,10 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
   fieldSurface: (request: FieldSurfaceRequest): Promise<FieldSurface> => ipcRenderer.invoke("quantumScenes:fieldSurface", request),
   revealSource: (fingerprint: string): Promise<{ ok: true; directory: string } | { ok: false; error: string }> =>
     ipcRenderer.invoke("quantumScenes:revealSource", { fingerprint }),
+  openSourceRun: (fingerprint: string): Promise<
+    { ok: true; canceled: false; runId: string; resultSha256: string } |
+    { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
+    ipcRenderer.invoke("quantumScenes:openSourceRun", { fingerprint }),
 }));
 
 contextBridge.exposeInMainWorld("workspaceFiles", Object.freeze({

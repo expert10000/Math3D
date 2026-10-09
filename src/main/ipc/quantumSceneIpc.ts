@@ -5,6 +5,7 @@ import { deriveVerifiedFieldSurface, type FieldSurfaceRequest } from "../quantum
 import type { QuantumSceneOpenResponse, QuantumSceneRelinkResponse } from "../quantumScene/ipcContract";
 import { rememberQuantumScene, reopenRecentQuantumScene, reopenQuantumSceneReference, sceneFingerprint } from "../quantumScene/recent";
 import { isAbsolute, resolve } from "node:path";
+import { chooseTheoryLabTarget, launchTheoryLab } from "../quantumScene/theoryLabLaunch";
 
 export function quantumSceneLaunchDirectory(argv: readonly string[]): string | null {
   const flags = argv.flatMap((arg, index) => arg === "--quantum-scene" ? [index] : []);
@@ -151,5 +152,28 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
       shell.showItemInFolder(active.directory);
       return { ok: true, directory: active.directory };
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
+  });
+  ipcMain.handle("quantumScenes:openSourceRun", async (event, ...args: unknown[]) => {
+    if (args.length !== 1) return { ok: false, canceled: false, error: "Source-run launch requires one active-scene fingerprint" };
+    try {
+      const active = activeField(event, args[0]);
+      const reference = { directory: active.directory, sceneFingerprint: active.fingerprint };
+      let reopened = await reopenQuantumSceneReference(reference);
+      if (reopened.imported.source.provenance.kind === "geometry-fixture")
+        throw new Error("Geometry examples have no saved Theory Lab run");
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win || win.isDestroyed()) throw new Error("Scene window is unavailable");
+      const target = await chooseTheoryLabTarget(win);
+      if (!target) return { ok: false, canceled: true };
+      // The chooser may have been open while the scene changed. Verify both the
+      // active identity and every source artifact again before spawning Lab.
+      activeField(event, args[0]);
+      reopened = await reopenQuantumSceneReference(reference);
+      const { runId, resultSha256 } = reopened.imported.source.provenance;
+      await launchTheoryLab(target, runId, resultSha256);
+      return { ok: true, canceled: false, runId, resultSha256 };
+    } catch (error) {
+      return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
+    }
   });
 }

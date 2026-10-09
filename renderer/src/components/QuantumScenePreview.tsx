@@ -9,7 +9,7 @@ import { buildQuantumPrimitiveMeshes, type QuantumPrimitive } from "./quantumPri
 type Vector3 = { x: number; y: number; z: number };
 type SceneSource = {
   provenance: { runId: string; model: string; resultSha256: string; engine: string; engineVersion: string;
-    parameters?: Record<string, number | string> };
+    kind?: "geometry-fixture" | "numerical-result"; parameters?: Record<string, number | string> };
   coordinates: { axes: [string, string, string]; units: [string, string, string]; handedness: string };
   datasets: { id: string; count: number; components: number; unit: string }[];
   objects: { id: string; label: string; kind: string; indices?: string; style: { color: string; opacity: number; size: number } }[];
@@ -41,9 +41,14 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
   useEffect(() => { setView(scene.fields?.length && count === 0 ? "slice" : "geometry"); }, [opened.reference.sceneFingerprint]);
   const [locateStatus, setLocateStatus] = useState("");
   const [locating, setLocating] = useState(false);
+  const [openingRun, setOpeningRun] = useState(false);
+  const [runStatus, setRunStatus] = useState("");
   const locateGeneration = useRef(0);
+  const runGeneration = useRef(0);
   useEffect(() => {
     locateGeneration.current += 1; setLocateStatus(""); setLocating(false);
+    runGeneration.current += 1;
+    setOpeningRun(false); setRunStatus("");
   }, [opened.reference.sceneFingerprint]);
   const revealSource = async () => {
     const current = ++locateGeneration.current;
@@ -55,6 +60,18 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
     } catch (error) {
       if (locateGeneration.current === current) setLocateStatus(`Source reveal refused: ${String((error as Error)?.message ?? error)}`);
     } finally { if (locateGeneration.current === current) setLocating(false); }
+  };
+  const openSourceRun = async () => {
+    const current = ++runGeneration.current;
+    setOpeningRun(true); setRunStatus("");
+    try {
+      const result = await window.quantumScenes!.openSourceRun(opened.reference.sceneFingerprint);
+      if (runGeneration.current === current) setRunStatus(result.ok
+        ? `Theory Lab launch requested for ${result.runId}; Lab will verify the exact saved result before opening it.`
+        : result.canceled ? "Theory Lab selection canceled." : `Source run unavailable: ${result.error}`);
+    } catch (error) {
+      if (runGeneration.current === current) setRunStatus(`Source run unavailable: ${String((error as Error)?.message ?? error)}`);
+    } finally { if (runGeneration.current === current) setOpeningRun(false); }
   };
   const camera = document.cameras[0];
   const [pickedBandSample, setPickedBandSample] = useState<PickedBandSample | null>(null);
@@ -153,7 +170,14 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
               {locating ? "Re-verifying source…" : "Reveal verified bundle"}
             </button>
             {locateStatus && <p role="status" data-testid="quantum-reveal-status">{locateStatus}</p>}
-            <p>This locates the exported bundle, not the original Theory Lab run. The run ID above is its provenance identifier.</p>
+            {scene.provenance.kind !== "geometry-fixture" && <>
+              <button type="button" data-testid="quantum-open-source-run" disabled={openingRun}
+                onClick={() => void openSourceRun()}>
+                {openingRun ? "Re-verifying source…" : "Open source run in Theory Lab"}
+              </button>
+              {runStatus && <p role="status" data-testid="quantum-source-run-status">{runStatus}</p>}
+            </>}
+            <p>Bundle reveal locates this export. Opening the original run requires a local Theory Lab checkout and a matching hash-verified saved run there; it does not call a worker from Math3D.</p>
             <div><b>Engine:</b> {scene.provenance.engine} {scene.provenance.engineVersion}</div>
             {scene.provenance.parameters && <><h3>Stored model inputs</h3><dl data-testid="quantum-scene-parameters" style={{ margin: 0 }}>
               {Object.entries(scene.provenance.parameters).map(([key, value]) => <div key={key} style={{ display: "flex", gap: 8 }}>

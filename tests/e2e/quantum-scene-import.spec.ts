@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createHash } from "node:crypto";
-import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readFile, rm, stat, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
@@ -436,8 +436,21 @@ test("verified site and link selection survives restart and refuses a changed bu
   await writeFile(join(directory, "links.f64"), bytes);
   await writeFile(join(directory, "bundle.json"), JSON.stringify({ schema: "quantum-scene-bundle/v1",
     scene: { path: "scene.json", bytes: sceneBytes.length, sha256: hash(sceneBytes) } }, null, 2) + "\n");
+  const target = join(root, "fake-theory-lab"), capture = join(root, "source-run-launches.jsonl");
+  const sourceDist = resolve(__dirname, "..", "..", "node_modules", "electron", "dist");
+  const linkedDist = join(target, "node_modules", "electron", "dist");
+  await mkdir(join(target, "dist"), { recursive: true });
+  await mkdir(join(target, "node_modules", "electron"), { recursive: true });
+  await writeFile(join(target, "package.json"), JSON.stringify({ name: "theory-lab", main: "dist/main.cjs" }));
+  await writeFile(join(target, "dist", "main.cjs"),
+    "require('node:fs').appendFileSync(process.env.MATH3D_LAB_CAPTURE, JSON.stringify({argv:process.argv}) + '\\n'); process.exit(0);\n");
+  await writeFile(join(target, "dist", "preload.cjs"), "\n");
+  await writeFile(join(target, "dist", "index.html"), "<!doctype html>\n");
+  const linkedDistIsSymlink = await symlink(sourceDist, linkedDist, process.platform === "win32" ? "junction" : "dir")
+    .then(() => true, async () => { await cp(sourceDist, linkedDist, { recursive: true }); return false; });
   const launch = (args = [".", "--quantum-scene", directory]) => launchRepoElectron({ args,
-    cwd: resolve(__dirname, "..", ".."), env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: join(root, "profile") } });
+    cwd: resolve(__dirname, "..", ".."), env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: join(root, "profile"),
+      MATH3D_THEORY_LAB_HOME: target, MATH3D_LAB_CAPTURE: capture } });
   let app = await launch();
   try {
     let page = await app.firstWindow();
@@ -460,6 +473,21 @@ test("verified site and link selection survives restart and refuses a changed bu
     await page.getByRole("button", { name: "Inspect first sample of link-object" }).click();
     await expect(page.getByTestId("quantum-primitive-selection")).toContainText("Selected link");
     await expect(page.getByTestId("quantum-primitive-selection")).toContainText("Endpoints");
+    const wrongSource = await page.evaluate(() => (window as any).quantumScenes.openSourceRun("0".repeat(64)));
+    expect(wrongSource).toMatchObject({ ok: false });
+    await page.getByTestId("quantum-open-source-run").click();
+    await expect(page.getByTestId("quantum-source-run-status")).toContainText("Lab will verify the exact saved result");
+    await expect.poll(async () => { try { return (await stat(capture)).size > 0; } catch { return false; } }).toBe(true);
+    const launches = async () => (await readFile(capture, "utf8")).trim().split("\n").map(line => JSON.parse(line));
+    const [firstLaunch] = await launches();
+    const flag = firstLaunch.argv.indexOf("--quantum-source-run");
+    expect(firstLaunch.argv.slice(flag + 1, flag + 3)).toEqual(["run-sites", "b".repeat(64)]);
+    const alteredBeforeLaunch = Buffer.from(bytes); alteredBeforeLaunch[0] ^= 1;
+    await writeFile(join(directory, "sites.f64"), alteredBeforeLaunch);
+    await page.getByTestId("quantum-open-source-run").click();
+    await expect(page.getByTestId("quantum-source-run-status")).toContainText(/integrity|changed/);
+    expect((await launches()).length).toBe(1);
+    await writeFile(join(directory, "sites.f64"), bytes);
     await app.close();
     app = await launch(["."]);
     page = await app.firstWindow();
@@ -476,6 +504,7 @@ test("verified site and link selection survives restart and refuses a changed bu
     const safeRoot = resolve(root);
     if (!safeRoot.startsWith(resolve(tmpdir()) + sep) || !safeRoot.includes("m3d-qscene-sites-"))
       throw new Error("Unsafe site/link E2E cleanup path");
+    if (linkedDistIsSymlink) await unlink(linkedDist);
     await rm(safeRoot, { recursive: true, force: true });
   }
 });

@@ -605,6 +605,9 @@ declare global {
       fieldSample: (request: import("./components/QuantumFieldSlice").FieldSampleRequest) => Promise<import("./components/QuantumFieldSlice").FieldSample>;
       fieldSurface: (request: import("./components/QuantumFieldSurface").FieldSurfaceRequest) => Promise<import("./components/QuantumFieldSurface").FieldSurface>;
       revealSource: (fingerprint: string) => Promise<{ ok: true; directory: string } | { ok: false; error: string }>;
+      openSourceRun: (fingerprint: string) => Promise<
+        { ok: true; canceled: false; runId: string; resultSha256: string } |
+        { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
     };
     surfacePresets?: {
       list: (kind: PresetKind) => Promise<SurfacePresetRecord[]>;
