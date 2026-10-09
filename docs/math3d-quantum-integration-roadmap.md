@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Status:** M3D-Q01 complete — strict verified import plus compact, read-only native Project document; M3D-Q02 partial, later milestones open
+**Status:** M3D-Q01 complete — strict verified import plus compact, read-only native Project document; bounded read-only M3D-Q02 complete for supplied quantum-scene/v1 content; later milestones open
 
 **Type:** interoperability and scientific-visualization program
 
@@ -81,11 +81,18 @@ amplitudes in Electron main, without transferring the full grid. The 1s, 2s,
 surfaces. Verified point-cloud sites and endpoint-pair links now have bounded,
 pickable 3D markers with portable object IDs, deterministic dataset-sample
 indices, declared coordinates and units, plus supplied short annotations and a
-selection label. The original bundle can be located only after re-verification;
-the scene contract does not provide a trusted link to the original Theory Lab
-run. The renderer does not infer element species, bond order, or orbital quantum
-numbers that are absent from source metadata. This is not a full M3D-Q02
-delivery; the remaining M3D-Q02–Q10 work remains open.
+selection label. The original bundle can be located only after re-verification.
+An explicit **Open source run in Theory Lab** action re-verifies the active
+bundle, starts a locally selected Theory Lab checkout with only its source run
+ID and expected result hash, and lets Lab verify its own saved run before
+opening the appropriate laboratory. Missing, changed or corrupt runs are
+refused by Lab; Math3D never reads Lab's private store or calls its worker.
+This requires the matching run in the selected Lab profile and starts a Lab
+process rather than focusing an existing window. The scene hash identifies a
+claimed source result, not the publisher's identity or proof that every scene
+value was derived from that run. The renderer does not infer element species,
+bond order, or orbital quantum numbers absent from source metadata. The
+remaining M3D-Q03–Q10 work remains open.
 
 Quantum Lab must not call MATH3D internals, and MATH3D must not reproduce Quantum
 Lab's physics engines. Both applications meet at the portable, versioned scene
@@ -313,15 +320,19 @@ produce one transaction; any failed validation or artifact admission produces no
 
 ### M3D-Q02 — `feat(math3d-quantum): import atomic and orbital scenes`
 
-**Status:** Partial — verified, read-only field slices, exact samples, and
+**Status:** Complete for bounded read-only quantum-scene/v1 imports — verified field slices, exact samples, and
 bounded density isosurfaces with phase/sign coloring are implemented with real
 1s, 2s, 2p, 3p and 3d cross-repository fixtures. Supplied point-cloud sites
 and endpoint-pair links are mapped to bounded pickable geometry, with portable
 object IDs, source sample positions, declared units, and short source labels.
-The UI can reveal the re-verified source bundle by its active fingerprint;
-this does not locate the original Theory Lab run. Compact native Project
-document admission is complete under M3D-Q01. Direct Lab-run locate-back and
-chemical metadata not carried by quantum-scene/v1 remain open.
+The UI can reveal the re-verified source bundle by its active fingerprint and
+ask a locally selected Theory Lab checkout to reopen the matching saved run by
+its ID and exact result hash. Lab verifies the run, job, result and artifact
+before the UI receives the saved result; absent, changed or corrupt runs stay
+unavailable. Compact native Project document admission is complete under
+M3D-Q01. No element species or bond-order interpretation is added where the
+portable contract supplies none; native editable Geometry/Volume resources and
+packaged-app discovery remain outside Q02.
 
 **Scope.** Render atomic sites, bonds, labels, orbital isosurfaces, probability
 density, sign/phase coloring, and field slices. Preserve atomic/orbital quantum

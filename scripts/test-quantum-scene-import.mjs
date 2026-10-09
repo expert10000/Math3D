@@ -232,6 +232,11 @@ try {
     assert.equal(real.source.provenance.model, "hydrogenic");
     assert.deepEqual(real.source.coordinates.units, ["a0", "a0", "a0"]);
     assert.deepEqual(real.source.provenance.parameters, { n, l, m, basis, Z: 1, radius, grid: 21 });
+    const camera = real.document.cameras[0];
+    assert.deepEqual(camera.target, { x: 0, y: 0, z: 0 });
+    const cameraDistance = Math.hypot(camera.position.x, camera.position.y, camera.position.z);
+    assert.ok(Number.isFinite(cameraDistance) && cameraDistance > 0 && cameraDistance < radius * 10,
+      `Hydrogenic ${name} source camera is outside the bounded field view`);
     assert.deepEqual(real.source.fields?.[0]?.grid.shape, [21, 21, 21]);
     assert.deepEqual(real.deferredFieldIds, ["wavefunction"]);
     const request = { fingerprint: sceneFingerprint(real), fieldId: "wavefunction", axis: 2, index: 10, quantity: "density" };
