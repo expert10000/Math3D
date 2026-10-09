@@ -32,7 +32,10 @@ export class MeshResourceStore {
       id, checksum, vertexCount: Math.floor(mesh.positions.length / 3), indexCount: mesh.indices?.length ?? 0,
       hasNormals: !!mesh.normals?.length, hasUvs: !!mesh.uvs?.length, encoding: ENCODING,
     };
-    this.import(reference, bytes);
+    // These bytes were just encoded from the Mesh and hashed for this reference.
+    // Import still validates external bytes; registry publication independently
+    // checks the retained copy against the reference below.
+    this.#install(reference, bytes);
     return reference;
   }
 
@@ -43,12 +46,21 @@ export class MeshResourceStore {
         !!decoded.normals?.length !== reference.hasNormals || !!decoded.uvs?.length !== reference.hasUvs) {
       throw new TypeError("Mesh sidecar counts do not match its reference.");
     }
+    this.#install(reference, bytes);
+  }
+
+  #install(reference: MeshResourceReference, bytes: Uint8Array): void {
     const documentId = createStableDocumentId("mesh-resource", { checksum: reference.checksum });
     const source: ScientificSourceGeneration = { documentId, revision: 1, structuralHash: reference.checksum, generation: 1 };
     this.#sources.set(documentId, source);
     const handle = { artifactId: reference.id, kind: "mesh" as const, role: "source-buffers" };
     this.#registry.declare({ handle, source, ownerId: "mesh-resource-store", encoding: ENCODING });
-    this.#registry.publish({ artifactId: reference.id, source, ownerId: "mesh-resource-store", bytes });
+    const published = this.#registry.publish({ artifactId: reference.id, source, ownerId: "mesh-resource-store", bytes });
+    if (published.checksum !== reference.checksum) {
+      this.#registry.remove(reference.id, "mesh-resource-store");
+      this.#sources.delete(documentId);
+      throw new TypeError("Mesh sidecar checksum does not match its reference.");
+    }
   }
 
   bytes(reference: MeshResourceReference): Uint8Array | null {

@@ -11,6 +11,22 @@ export type PromotionGeometry = Readonly<{
   grid?: Readonly<{ profileCount: number; sweepCount: number }>;
 }>;
 
+const surfacePointFromProfile = (document: SurfaceDocument, px: number, py: number, v: number): readonly [number, number, number] => {
+  const { definition, parameters } = document.source;
+  let point: readonly [number, number, number];
+  if (definition.familyId === "graph2d.revolution") {
+    const sign = definition.settings?.orientation === "negative" ? -1 : 1;
+    const angle = sign * (Number(parameters.angleMin) + v * (Number(parameters.angleMax) - Number(parameters.angleMin)));
+    point = parameters.axis === "x" ? [px, py * Math.cos(angle), py * Math.sin(angle)]
+      : [px * Math.cos(angle), py, px * Math.sin(angle)];
+  } else {
+    const direction = parameters.direction as number[], distance = v * Number(parameters.length);
+    point = [px + direction[0]! * distance, py + direction[1]! * distance, direction[2]! * distance];
+  }
+  if (!point.every(Number.isFinite)) throw new TypeError("Non-finite promoted geometry.");
+  return point;
+};
+
 /** Exact captured Graph profile evaluator shared by sampling and native presentation.
  * u is the saved profile parameter; v is the sweep fraction in [0,1]. */
 export function createGraph2DSurfacePointEvaluator(document: SurfaceDocument) {
@@ -27,18 +43,7 @@ export function createGraph2DSurfacePointEvaluator(document: SurfaceDocument) {
     const bindings = { ...variables, [parameter]: u };
     const px = evaluateGraph2DExpression(x.ast, bindings), py = evaluateGraph2DExpression(y.ast, bindings);
     if (!px.ok || !py.ok) throw new TypeError("Profile is undefined. Restrict its domain.");
-    let point: readonly [number, number, number];
-    if (definition.familyId === "graph2d.revolution") {
-      const sign = definition.settings?.orientation === "negative" ? -1 : 1;
-      const angle = sign * (Number(parameters.angleMin) + v * (Number(parameters.angleMax) - Number(parameters.angleMin)));
-      point = parameters.axis === "x" ? [px.value, py.value * Math.cos(angle), py.value * Math.sin(angle)]
-        : [px.value * Math.cos(angle), py.value, px.value * Math.sin(angle)];
-    } else {
-      const direction = parameters.direction as number[], distance = v * Number(parameters.length);
-      point = [px.value + direction[0]! * distance, py.value + direction[1]! * distance, direction[2]! * distance];
-    }
-    if (!point.every(Number.isFinite)) throw new TypeError("Non-finite promoted geometry.");
-    return point;
+    return surfacePointFromProfile(document, px.value, py.value, v);
   };
 }
 
@@ -60,7 +65,6 @@ export const evaluateGraph2DPromotionGeometry = (document: CurveDocument | Surfa
   if (!x.ok || !y.ok) throw new TypeError("Profile expressions are invalid.");
   const positions: number[] = [], indices: number[] = [];
   const profileCount = curve ? 256 : 128, sweepCount = curve ? 0 : 48;
-  const surfacePoint = surface ? createGraph2DSurfacePointEvaluator(surface) : null;
   for (let i = 0; i <= profileCount; i += 1) {
     const settings = source.definition.settings;
     const includeMin = curve ? settings?.includeMin !== false : "includeMin" in domain && domain.includeMin;
@@ -73,7 +77,7 @@ export const evaluateGraph2DPromotionGeometry = (document: CurveDocument | Surfa
     for (let j = 0; j <= sweepCount; j += 1) {
       if (curve) { positions.push(px.value, py.value, 0); continue; }
       const fractionV = j / sweepCount;
-      positions.push(...surfacePoint!(parameter, fractionV));
+      positions.push(...surfacePointFromProfile(surface!, px.value, py.value, fractionV));
       if (i > 0 && j > 0) {
         const a = (i - 1) * (sweepCount + 1) + j - 1, b = a + sweepCount + 1;
         indices.push(a, b, a + 1, b, b + 1, a + 1);

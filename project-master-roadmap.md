@@ -19,6 +19,19 @@ workspace again. An isolated Electron Catenoid first-open run measured 1.85 s
 before and 1.67 s on the final built change; the saved-card staging measurement
 below is a separate path. Starter construction remains the largest measured phase.
 
+**Catenoid Gallery preparation — October 9:** opening Projects now prepares the
+untouched Catenoid starter in a worker while the Gallery remains usable. Its
+binary resources are verified again when returned to the main renderer; an
+immediate click still waits for preparation. Mesh publication also avoids a
+redundant checksum pass for bytes it just encoded, while imported bytes retain
+full checksum and shape validation. In isolated Electron runs on `C:\Math3D`,
+click-to-canvas measured 3.38 s before this slice, 3.13–3.42 s for an immediate
+click after it, and 0.97–2.05 s after Gallery preparation completed. These are
+single-run diagnostics, not a release performance guarantee. An immediate
+click still waits for worker preparation; reducing the commit/restore phase
+remains further work. Saved-copy Open and the Catenoid Surface → Mesh → Surface
+→ save → restart flow passed.
+
 **Startup contract — October 9:** autosave is the only startup recovery flow.
 Restoring it restores the workspace; it does not also open the last saved Project.
 Saved Projects open explicitly from Projects. The former automatic Project
@@ -41,7 +54,7 @@ resource count, size and Project identity were checked after Open; Catenoid's
 explicit reopen after restart and the pending-input guard also passed.
 
 Current source checkout for this handoff:
-`C:\Users\janko\OneDrive\Dokumenty\Math3D`, branch `main`. Earlier delivery
+`C:\Math3D`, branch `main`. Earlier delivery
 reports and checkout paths below describe their recorded builds.
 The [October 9 startup evidence](docs/evidence/project-workspace-2026-10-09/startup-recovery.md)
 records autosave restore/decline and explicit saved Catenoid reopening.
@@ -101,9 +114,10 @@ Do not duplicate or regenerate a saved Catenoid source to provide the second
 view. The active-document and native module sessions remain the owners.
 
 If continuing performance work, profile starter construction separately from
-saved-card opening. Reusing already checked bytes removed one pass, but the
-remaining Mesh/Workbook/resource generation is still synchronous. Keep the
-existing profile test and atomic Project-open rollback checks as baselines.
+saved-card opening. Catenoid Mesh/Workbook/resource generation now runs in a
+Gallery preparation worker. An immediate click still waits for that worker;
+the commit/restore phase remains synchronous. Keep the existing profile test
+and atomic Project-open rollback checks as baselines.
 
 Working-tree note at this handoff: `docs/index.md` has an unrelated local
 modification; leave it out of Project commits unless its owner requests it.

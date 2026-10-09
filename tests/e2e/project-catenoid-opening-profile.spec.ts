@@ -28,3 +28,28 @@ test("profile first Catenoid Project opening", async () => {
     await test.info().attach("catenoid-open-profile", { body: JSON.stringify({ elapsedMs, phases }, null, 2), contentType: "application/json" });
   } finally { await closeSurfaceApp(ctx); }
 });
+
+test("profile Catenoid opening after Gallery preparation", async () => {
+  test.setTimeout(120_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp();
+    await resetSurfaceAppState(ctx.page);
+    await ctx.page.getByTestId("projects-toggle").click();
+    await ctx.page.waitForFunction(() => performance.getEntriesByName("project-open:catenoid-starter-ready", "mark").length > 0);
+    const elapsedMs = await ctx.page.evaluate(() => new Promise<number>((resolve, reject) => {
+      const button = document.querySelector<HTMLButtonElement>('[data-testid="project-template-open-catenoid-evidence"]');
+      if (!button) { reject(new Error("Catenoid starter is missing")); return; }
+      const started = performance.now();
+      const timeout = window.setTimeout(() => reject(new Error("Prepared Catenoid viewport did not open")), 60_000);
+      const check = () => {
+        const editor = document.querySelector<HTMLElement>('[data-testid="project-source-editor"][data-document-module="surface"]');
+        if (editor?.querySelector("canvas")) { window.clearTimeout(timeout); resolve(performance.now() - started); }
+        else requestAnimationFrame(check);
+      };
+      button.click(); requestAnimationFrame(check);
+    }));
+    await expect(ctx.page.getByTestId("project-source-editor")).toHaveAttribute("data-document-module", "surface");
+    console.log(`CATENOID_PREPARED_OPEN_PROFILE ${JSON.stringify({ elapsedMs: Math.round(elapsedMs) })}`);
+  } finally { await closeSurfaceApp(ctx); }
+});

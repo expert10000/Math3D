@@ -18,7 +18,7 @@ import { ProjectDocumentActions, type ProjectDocumentAction } from "./ProjectDoc
 import { inspectProjectDependencies } from "../projects/projectDependencies";
 import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnalysisRefreshOptions, recomputeProjectAnalysis } from "../projects/projectDependencyRefresh";
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
-import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint } from "../projects/projectTransfer";
+import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint, type ProjectCompatibility } from "../projects/projectTransfer";
 import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
 import { captureProjectResources, captureProjectResourcesAsync, exportProjectPackage, projectResourceInventory, MAX_PROJECT_PACKAGE_BYTES, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
 import { canReuseProjectResourceArchive, commitProjectResources, loadProjectResources, stageProjectBackupResources } from "../projects/projectResourceArchive";
@@ -26,6 +26,7 @@ import { canonicalJsonStringify, structuralHash, type ProjectNoteAnchor, type St
 import { pointTableStore, installPortablePointTables } from "../graph2d/pointTableStore";
 import { prepareProjectExampleCollection, importProjectExamples, SAMSUNG_EXAMPLE_COUNT } from "../projects/projectExampleCollection";
 import { instantiateNotebookStarter, NOTEBOOK_STARTERS, type NotebookStarterId } from "../projects/notebookStarters";
+import { prewarmNotebookStarter, takePreparedNotebookStarter } from "../projects/notebookStarterPreparation";
 import type { ProjectStarterId } from "./ProjectTemplatesPanel";
 import { prepareProjectWorkbook, readProjectWorkbook } from "../projects/projectWorkbookBinding";
 import { projectWorkbookUses } from "../projects/projectWorkbookUsage";
@@ -126,6 +127,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const jumpTo = (section: React.RefObject<HTMLElement | null>) => { section.current?.scrollIntoView({ block: "start" }); section.current?.focus({ preventScroll: true }); };
   useEffect(() => { if (!open) { setQuick(false); setDetailView(false); setViewerCompanion(false); setViewingDocumentId(null); } }, [open]);
   const [busy, setBusy] = useState(false);
+  const openingStarter = useRef(false);
   const [quantumSceneMessage, setQuantumSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
@@ -147,6 +149,17 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [automaticThumbnail, setAutomaticThumbnail] = useState(true), [replaceThumbnail, setReplaceThumbnail] = useState(false);
   const [thumbnailMessage, setThumbnailMessage] = useState("");
   const [library, setLibrary] = useState<ProjectLibrary>(parseProjectLibrary(null));
+  useEffect(() => {
+    if (!open || quick || hasOpenProject || !["All projects", "Starter projects"].includes(collection)) return;
+    try {
+      if (parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)).entries.some(entry => entry.tags.includes("catenoid-evidence"))) return;
+    } catch { /* An invalid library is reported by normal Gallery loading. */ }
+    // Let the Gallery paint before preparing the first copy off the UI thread.
+    const timer = window.setTimeout(() => {
+      void prewarmNotebookStarter("catenoid-evidence").then(() => performance.mark("project-open:catenoid-starter-ready"), () => {});
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [open, quick, hasOpenProject, collection, library]);
   const [highlightedSavedId, setHighlightedSavedId] = useState<string | null>(null);
   const [libraryMessage, setLibraryMessage] = useState("");
   const [exampleMessage, setExampleMessage] = useState("");
@@ -914,15 +927,19 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         setMessage(`Previewing your saved copy “${next.metadata.title}”. Opening or saving this preview keeps the same project.`);
         return;
       }
-      const token = crypto.randomUUID(), bundle = NOTEBOOK_STARTERS.some(item => item.id === id) ? instantiateNotebookStarter(id as NotebookStarterId, token) : { project: instantiateMath3DProjectTemplate(id, token), resources: undefined };
+      const token = crypto.randomUUID(), bundle = id === "catenoid-evidence" ? await takePreparedNotebookStarter(id) :
+        NOTEBOOK_STARTERS.some(item => item.id === id) ? instantiateNotebookStarter(id as NotebookStarterId, token) : { project: instantiateMath3DProjectTemplate(id, token), resources: undefined };
+      if (sequence !== importSequence.current) return;
       const next = bundle.project;
-      setIncoming({ ...inspectProjectCompatibility(next, transferOptions(bundle.resources)), resources: bundle.resources, inputKind: "Independent starter project" });
+      const inspection = "inspection" in bundle ? bundle.inspection as ProjectCompatibility : inspectProjectCompatibility(next, transferOptions(bundle.resources));
+      setIncoming({ ...inspection, resources: bundle.resources, inputKind: "Independent starter project" });
       setMessage("Starter preview ready. Current work is unchanged until you choose to open it.");
     } catch (error) { if (sequence === importSequence.current) { setIncoming(null); setMessage(`Starter unavailable: ${(error as Error).message}`); } }
   };
   const openTemplate = async (id: ProjectStarterId, newCopy = false) => {
-    if (busy) return;
-    importSequence.current++;
+    if (busy || openingStarter.current) return;
+    openingStarter.current = true;
+    const sequence = ++importSequence.current;
     try {
       if (!newCopy) {
         const activeId = readActiveProjectId(), copy = findProjectStarterCopy(parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)), id, activeId);
@@ -938,16 +955,21 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         }
       }
       const starterStart = performance.now();
-      const token = crypto.randomUUID(), bundle = NOTEBOOK_STARTERS.some(item => item.id === id) ? instantiateNotebookStarter(id as NotebookStarterId, token) : { project: instantiateMath3DProjectTemplate(id, token), resources: undefined };
+      if (id === "catenoid-evidence") setMessage("Preparing the Catenoid source and saved Mesh…");
+      const token = crypto.randomUUID(), bundle = id === "catenoid-evidence" ? await takePreparedNotebookStarter(id) :
+        NOTEBOOK_STARTERS.some(item => item.id === id) ? instantiateNotebookStarter(id as NotebookStarterId, token) : { project: instantiateMath3DProjectTemplate(id, token), resources: undefined };
+      if (sequence !== importSequence.current) return;
       performance.clearMeasures("project-open:starter-construction");
       performance.measure("project-open:starter-construction", { start: starterStart, end: performance.now() });
       const next = bundle.project;
       const inspectionStart = performance.now();
-      const candidate = { ...inspectProjectCompatibility(next, transferOptions(bundle.resources)), resources: bundle.resources, inputKind: "Independent starter project" };
+      const inspection = "inspection" in bundle ? bundle.inspection as ProjectCompatibility : inspectProjectCompatibility(next, transferOptions(bundle.resources));
+      const candidate = { ...inspection, resources: bundle.resources, inputKind: "Independent starter project" };
       performance.clearMeasures("project-open:starter-inspection");
       performance.measure("project-open:starter-inspection", { start: inspectionStart, end: performance.now() });
       await importPreview(true, candidate, false, true);
     } catch (error) { setMessage(`Starter unavailable: ${(error as Error).message}`); }
+    finally { openingStarter.current = false; }
   };
   const exportFile = async (checkpointOnly = false, withResources = false) => {
     if (!project) return;
