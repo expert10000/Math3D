@@ -9,6 +9,7 @@ import { normalizeVolumeDocument, type VolumeDocument } from "./volumeDocument";
 import { normalizeTopologyDocument, type TopologyDocument } from "./topologyDocument";
 import { normalizeComplexAnalysisDocument, type ComplexAnalysisDocument } from "./complexAnalysisDocument";
 import { normalizeGraph2DDocument, type Graph2DDocument } from "./graph2dDocument";
+import { normalizeQuantumSceneDocument, type QuantumSceneDocument } from "./quantumSceneDocument";
 import { normalizeViewerCommittedSelection, viewerSourceFromDocument, type ViewerCommittedSelection } from "./viewerProvenance";
 import { canonicalJsonByteLength, matchesScientificSourceGeneration, type ScientificSourceGeneration } from "./scientificJobs";
 import type { ValidationResult } from "./validation";
@@ -17,9 +18,9 @@ export const MIXED_WORKSPACE_FORMAT = "math3d.mixed-workspace" as const;
 export const MIXED_WORKSPACE_SCHEMA_VERSION = 1 as const;
 export const MAX_MIXED_WORKSPACE_BYTES = 16 * 1024 * 1024;
 export const MAX_MIXED_WORKSPACE_REPLAY_BYTES = 256 * 1024;
-export const KERNEL_WORKSPACE_MODULES = ["geometry", "mesh", "surface", "curve", "volume", "topology", "complex", "graph2d"] as const;
+export const KERNEL_WORKSPACE_MODULES = ["geometry", "mesh", "surface", "curve", "volume", "topology", "complex", "graph2d", "quantum"] as const;
 export type KernelWorkspaceModule = typeof KERNEL_WORKSPACE_MODULES[number];
-export type KernelWorkspaceDocument = GeometryDocument | MeshDocument | SurfaceDocument | CurveDocument | VolumeDocument | TopologyDocument | ComplexAnalysisDocument | Graph2DDocument;
+export type KernelWorkspaceDocument = GeometryDocument | MeshDocument | SurfaceDocument | CurveDocument | VolumeDocument | TopologyDocument | ComplexAnalysisDocument | Graph2DDocument | QuantumSceneDocument;
 export type MixedWorkspaceReplay = Readonly<{ format: string; payload: CanonicalJsonValue }>;
 export type MixedWorkspaceEntry = Readonly<{
   module: KernelWorkspaceModule;
@@ -67,6 +68,7 @@ const normalizeModuleDocument = (module: KernelWorkspaceModule, value: unknown):
     case "topology": return normalizeTopologyDocument(value);
     case "complex": return normalizeComplexAnalysisDocument(value);
     case "graph2d": return normalizeGraph2DDocument(value);
+    case "quantum": return normalizeQuantumSceneDocument(value);
   }
 };
 const entryKey = (entry: MixedWorkspaceEntry): string => `${entry.module}:${entry.expected.id}`;

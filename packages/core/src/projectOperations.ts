@@ -61,6 +61,7 @@ export const deleteProjectDocument = (project: Math3DProject, id: string): Math3
 /** Fork a verified source snapshot. Results stay attached to their original source; replay is checkpointed for the new identity. */
 export const duplicateProjectDocument = (project: Math3DProject, id: string, token: string, resolved: ReadonlyMap<string, KernelWorkspaceDocument>): Math3DProject => {
   const current = requireProject(project), tree = buildProjectExplorer(current, resolved), entry = requireEntry(current, id), document = resolved.get(id)!;
+  if (entry.module === "quantum") throw new TypeError("A verified quantum scene is read-only; attach another source instead of duplicating it.");
   if (!token.trim() || token.length > 200) throw new TypeError("Invalid duplicate token.");
   const nextId = createStableDocumentId(entry.module, { duplicateOf: id, projectId: current.identity.id, token });
   if (current.workspace.entries.some((item) => item.expected.id === nextId)) throw new TypeError("Duplicate identity already exists.");

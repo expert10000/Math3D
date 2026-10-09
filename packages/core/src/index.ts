@@ -58,6 +58,7 @@ export * from "./volumeCommands";
 export * from "./viewerProvenance";
 export * from "./mixedWorkspace";
 export * from "./math3dProject";
+export * from "./quantumSceneDocument";
 export * from "./projectNotes";
 export * from "./projectNoteValues";
 export * from "./projectOperations";

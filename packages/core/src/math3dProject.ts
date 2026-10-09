@@ -4,6 +4,7 @@ import { advanceDocumentIdentity, canonicalJsonStringify, createDocumentIdentity
 import { MAX_MIXED_WORKSPACE_BYTES, MIXED_WORKSPACE_FORMAT, normalizeMixedWorkspaceDocument,
   type MixedWorkspaceDocument } from "./mixedWorkspace";
 import { canonicalJsonByteLength } from "./scientificJobs";
+import { relocateQuantumSceneDocument } from "./quantumSceneDocument";
 import { normalizeProjectNote, type ProjectNote } from "./projectNotes";
 import type { ValidationResult } from "./validation";
 
@@ -80,6 +81,14 @@ export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DP
       !value.quantumScenes.every(validQuantumSceneReference) ||
       new Set(value.quantumScenes.map((item: ProjectQuantumSceneReference) => item.sceneFingerprint)).size !== value.quantumScenes.length))
       return { ok: false, errors: ["Invalid Project quantum-scene references."] };
+    for (const entry of workspace.value.entries.filter((item) => item.module === "quantum")) {
+      const checkpoint = entry.checkpoint;
+      if (entry.replay !== null || checkpoint.format !== "math3d.quantum-scene-document")
+        return { ok: false, errors: ["Quantum-scene documents must be compact, read-only checkpoints."] };
+      const linked = (value.quantumScenes as ProjectQuantumSceneReference[] | undefined)?.find((item) => item.sceneFingerprint === checkpoint.source.sceneFingerprint);
+      if (!linked || linked.directory !== checkpoint.location.directory)
+        return { ok: false, errors: ["Quantum-scene document requires its matching external Project reference."] };
+    }
     if (canonicalJsonByteLength(value.metadata) > 32 * 1024) return { ok: false, errors: ["Project metadata exceeds 32 KiB."] };
     if ("documents" in value.metadata) {
       const documents = value.metadata.documents, ids = new Set<string>(workspace.value.entries.map((entry) => entry.expected.id));
@@ -145,8 +154,11 @@ export const relinkMath3DProjectQuantumScene = (project: Math3DProject, fingerpr
   if (!validQuantumSceneReference(replacement)) throw new TypeError("Invalid replacement quantum-scene location.");
   if (linked.directory === directory) return current;
   const quantumScenes = current.quantumScenes!.map((item) => item.sceneFingerprint === fingerprint ? replacement : item);
-  return requireProject({ ...current, quantumScenes,
-    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, current.notes, quantumScenes)) });
+  const workspace = current.workspace.entries.some((entry) => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document" && entry.checkpoint.source.sceneFingerprint === fingerprint)
+    ? { ...current.workspace, entries: current.workspace.entries.map((entry) => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document" && entry.checkpoint.source.sceneFingerprint === fingerprint
+      ? { ...entry, checkpoint: relocateQuantumSceneDocument(entry.checkpoint, directory) } : entry) } : current.workspace;
+  return requireProject({ ...current, workspace, quantumScenes,
+    identity: advanceDocumentIdentity(current.identity, projectContent(workspace, current.workbooks, current.notes, quantumScenes)) });
 };
 export const updateMath3DProjectMetadata = (project: Math3DProject, metadata: Math3DProject["metadata"]): Math3DProject =>
   requireProject({ ...requireProject(project), metadata });

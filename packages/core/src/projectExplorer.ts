@@ -1,9 +1,9 @@
 import { normalizeMath3DProject, type Math3DProject } from "./math3dProject";
 import type { KernelWorkspaceDocument, KernelWorkspaceModule } from "./mixedWorkspace";
 
-export const PROJECT_EXPLORER_MODULES: readonly KernelWorkspaceModule[] = ["graph2d", "geometry", "curve", "surface", "mesh", "volume", "topology", "complex"];
+export const PROJECT_EXPLORER_MODULES: readonly KernelWorkspaceModule[] = ["graph2d", "geometry", "curve", "surface", "mesh", "volume", "topology", "complex", "quantum"];
 export const PROJECT_MODULE_LABELS: Record<KernelWorkspaceModule, string> = {
-  graph2d: "Graph", geometry: "Geometry", curve: "Curve", surface: "Surface", mesh: "Mesh", volume: "Volume", topology: "Topology", complex: "Complex Analysis",
+  graph2d: "Graph", geometry: "Geometry", curve: "Curve", surface: "Surface", mesh: "Mesh", volume: "Volume", topology: "Topology", complex: "Complex Analysis", quantum: "Quantum scene",
 };
 export type ProjectExplorerDocument = Readonly<{ id: string; module: KernelWorkspaceModule; title: string; revision: number; active: boolean; archived: boolean }>;
 const titleFor = (document: KernelWorkspaceDocument): string => {
@@ -16,6 +16,7 @@ const titleFor = (document: KernelWorkspaceDocument): string => {
     case "math3d.topology-document": return typeof document.source.model.name === "string" ? document.source.model.name : "Topology document";
     case "math3d.complex-analysis-document": return `f(z) = ${document.function.sourceText}`;
     case "math3d.volume-document": return document.metadata.title;
+    case "math3d.quantum-scene-document": return document.metadata.title;
   }
 };
 
