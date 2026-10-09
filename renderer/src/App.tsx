@@ -29,6 +29,7 @@ import { SavedMeshModuleFrame } from "./workspace/SavedMeshModuleFrame";
 import { DocumentWorkspaceHost } from "./workspace/DocumentWorkspaceHost";
 import { MeshDocumentViewport } from "./workspace/MeshDocumentViewport";
 import { ProjectNavigation } from "./workspace/projectNavigation";
+import { readProjectWorkbook } from "./projects/projectWorkbookBinding";
 import { relatedDocuments } from "./workspace/relatedDocuments";
 import { createSavedSurfaceMesh, savedSurfaceMeshLinks, savedMeshSurfaceSource } from "./projects/savedSurfaceMesh";
 import { WorkbookPublication, type PublicationKind } from "./components/WorkbookPublication";
@@ -110,6 +111,7 @@ import { GeometryPickReadout } from "./components/GeometryPickReadout";
 import { GeometryAnalysisInspectorPanel } from "./components/GeometryAnalysisInspectorPanel";
 import { KernelWorkspacePanel } from "./components/KernelWorkspacePanel";
 import { ProjectWorkbookMiddleView } from "./components/ProjectWorkbookMiddleView";
+import { ProjectDetailMiddleView } from "./components/ProjectDetailMiddleView";
 import { PROJECT_STORAGE_KEY } from "./projects/projectLibrary";
 import { projectNoteRenderedBody } from "./projects/projectNoteValues";
 import { WorkbookSnapshotRecord } from "./components/WorkbookSnapshotRecord";
@@ -11387,10 +11389,10 @@ const App: React.FC = () => {
   const [restoredVolumeRevision, setRestoredVolumeRevision] = useState(0);
   const [additionalActiveId, setAdditionalActiveId] = useState<string | null>(null);
   const [activeProjectDocumentId, setActiveProjectDocumentId] = useState<string | null>(null);
-  const [projectMiddleWorkbook, setProjectMiddleWorkbook] = useState<Workbook | null>(null);
+  const [projectMiddleContent, setProjectMiddleContent] = useState<{ kind: "workbook"; workbook: Workbook; focusBlockId?: string } | { kind: "project-detail" } | null>(null);
   const leaveProjectDocumentView = useCallback(() => {
     // Keep the loaded Project adapters/history; only leave its document viewport.
-    setAdditionalActiveId(null); setActiveProjectDocumentId(null);
+    setProjectMiddleContent(null); setAdditionalActiveId(null); setActiveProjectDocumentId(null);
     setActiveGraph2DTargetId(null); setRestoredSurfaceAdapter(null);
   }, []);
   const [additionalVersion, setAdditionalVersion] = useState(0);
@@ -78324,7 +78326,7 @@ case "mobius":
   const projectNavigationRef = useRef(new ProjectNavigation());
   const restoredMeshDatasetRef = useRef<{ documentId: string; sourceHash: string; mesh: SurfaceMeshData } | null>(null);
   const navigateRestoredDocument = (id: string, module: KernelWorkspaceModule): boolean => {
-    setProjectMiddleWorkbook(null);
+    setProjectMiddleContent(null);
     const navigationSequence = ++quantumSceneNavigationSequence.current;
     const restored = restoredProjectRef.current;
     if (restored?.workspace.entries.some(entry => entry.expected.id === id && entry.module === module)) {
@@ -79309,7 +79311,7 @@ case "mobius":
             localPosition: selected.localPosition ?? null };
         }}
         onOpenWorkbook={(workbook, stageId, blockId) => {
-          setProjectMiddleWorkbook(null);
+          setProjectMiddleContent(null);
           setWorkbooks((current) => [workbook, ...current.filter((item) => item.id !== workbook.id)]);
           setActiveWorkbookId(workbook.id);
           setActiveStageId(stageId ?? "define");
@@ -79319,10 +79321,11 @@ case "mobius":
           setGeometryWorkbookUiMode("full");
           setRightPanelTab("workbook");
         }}
-        onViewProjectWorkbook={(workbook) => {
+        onViewProjectWorkbook={(workbook, _stageId, blockId) => {
           setWorkbooks((current) => [workbook, ...current.filter((item) => item.id !== workbook.id)]);
-          setProjectMiddleWorkbook(workbook);
+          setProjectMiddleContent({ kind: "workbook", workbook, focusBlockId: blockId });
         }}
+        onViewProjectDetail={() => setProjectMiddleContent({ kind: "project-detail" })}
         canNavigateDocument={(id, module) => restoredProjectRef.current?.graphs.has(id) || restoredProjectRef.current?.additional.has(id) || restoredProjectRef.current?.curves.has(id) || restoredProjectRef.current?.surfaces.has(id) || restoredProjectRef.current?.geometries.has(id) || restoredProjectRef.current?.topologies.has(id) || restoredProjectRef.current?.complexes.has(id) || restoredProjectRef.current?.volumes.has(id) || restoredProjectRef.current?.meshes.has(id) || graph2dPromotions.some((item) => item.document.identity.id === id) || ({
           geometry: geometryKernelAdapterRef.current?.document().identity.id,
           mesh: meshKernelDocument?.identity.id,
@@ -79414,17 +79417,36 @@ case "mobius":
           }
         }}
       />
-      {projectMiddleWorkbook && activeProjectDocumentId && <ProjectWorkbookMiddleView
-        workbook={projectMiddleWorkbook} project={activeNotebookProjectRef.current}
+      {projectMiddleContent?.kind === "workbook" && activeProjectDocumentId && <ProjectWorkbookMiddleView
+        workbook={projectMiddleContent.workbook} project={activeNotebookProjectRef.current}
         documentTitle={activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId]?.title ?? "document"}
-        onReturn={() => setProjectMiddleWorkbook(null)}
+        focusBlockId={projectMiddleContent.focusBlockId}
+        onReturn={() => setProjectMiddleContent(null)}
         onEdit={() => {
-          setProjectMiddleWorkbook(null); setActiveWorkbookId(projectMiddleWorkbook.id); setActiveStageId("define");
+          setProjectMiddleContent(null); setActiveWorkbookId(projectMiddleContent.workbook.id); setActiveStageId("define");
           setMode("geometry"); setGeometryMode("workbook"); setGeometryWorkbookUiMode("full"); setRightPanelTab("workbook");
         }}
         onOpenDocument={(id, module) => { navigateRestoredDocument(id, module); }}
         onOpenNote={(id) => setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }))}
         onOpenProjects={() => setProjectsOpen(true)} />}
+      {projectMiddleContent?.kind === "project-detail" && activeProjectDocumentId && activeNotebookProjectRef.current && <ProjectDetailMiddleView
+        project={activeNotebookProjectRef.current} selectedDocumentId={activeProjectDocumentId}
+        documentTitle={activeNotebookProjectRef.current.metadata.documents?.[activeProjectDocumentId]?.title ?? "document"}
+        onReturn={() => setProjectMiddleContent(null)}
+        onOpenDocument={(id, module) => { navigateRestoredDocument(id, module); }}
+        onOpenWorkbook={async (id) => {
+          const project = activeNotebookProjectRef.current;
+          const reference = project?.workbooks?.find(item => item.id === id);
+          if (!project || !reference) throw new Error("The saved Workbook is missing from this Project.");
+          const resource = { kind: "workbook-payload" as const, id };
+          const bytes = restoredProjectRef.current?.resources?.bytes(resource) ?? (await loadProjectResources(project)).bytes(resource);
+          if (!bytes) throw new Error("The saved Workbook data is unavailable.");
+          const workbook = readProjectWorkbook(bytes, reference);
+          setWorkbooks((current) => [workbook, ...current.filter(item => item.id !== workbook.id)]);
+          setProjectMiddleContent({ kind: "workbook", workbook });
+        }}
+        onOpenNote={(id) => { setProjectsOpen(true); setProjectNoteRequest(previous => ({ id, token: (previous?.token ?? 0) + 1 })); }}
+        onOpenFullDetails={() => { setProjectMiddleContent(null); window.dispatchEvent(new Event("math3d:project-full-details")); }} />}
       {isDev && devError && (
         <div
           style={{

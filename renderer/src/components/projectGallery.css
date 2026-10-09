@@ -230,3 +230,6 @@ body:has(.project-viewer-panel:not(.project-embedded-panel)[data-project-placeme
 .project-navigation-links { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
 .project-navigation-links button,
 .project-navigation-links span { max-width: 100%; overflow-wrap: anywhere; text-align: left; }
+.project-context-breadcrumb { display:flex;align-items:center;flex-wrap:wrap;gap:5px;padding:3px 0 7px;color:#45617d;font-size:11px; }
+.project-context-breadcrumb button { min-height:22px;padding:2px 6px; }
+.project-context-breadcrumb strong { color:#183b5e; }

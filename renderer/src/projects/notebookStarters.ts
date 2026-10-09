@@ -63,15 +63,25 @@ const instantiateDocumentNotebookStarter = (id: "graph-derivative-notebook" | "c
 
 /** Numerical records and source sidecars use the same implementations as the editors. */
 export function instantiateNotebookStarter(id: NotebookStarterId, token: string) {
+  let phaseStart = performance.now();
+  const measurePhase = (name: string) => {
+    performance.clearMeasures(`project-open:starter-${name}`);
+    performance.measure(`project-open:starter-${name}`, { start: phaseStart, end: performance.now() });
+    phaseStart = performance.now();
+  };
   const recipe = NOTEBOOK_STARTERS.find(item => item.id === id);
   if (!recipe) throw new TypeError("Unknown Notebook starter.");
   if (id === "graph-derivative-notebook" || id === "curve-construction-notebook") return instantiateDocumentNotebookStarter(id, token);
   let project = instantiateMath3DProjectTemplate("catenary-study", token);
+  measurePhase("template");
   const surface = project.workspace.entries.find(entry => entry.module === "surface")!.checkpoint;
   if (surface.format !== "math3d.surface-document") throw new TypeError("Starter Surface is unavailable.");
   const made = createSavedSurfaceMesh(project.workspace, surface, { documents: verifyMixedWorkspaceReplay(project.workspace) });
+  measurePhase("mesh");
   const result = analyzeSavedMesh(made.adapter, id === "catenoid-evidence" ? "curvature" : "edge-path", { start: 0, end: 32 });
+  measurePhase("analysis");
   project = replaceMath3DProjectWorkspace(project, appendSavedMeshAnalysis(made.workspace, result));
+  measurePhase("project-update");
   project = updateMath3DProjectMetadata(project, { ...project.metadata, title: recipe.title, description: recipe.description, tags: ["starter", id, "workbook", "notes", "evidence"] });
   const field = id === "catenoid-evidence" ? "mean.avg" : "length";
   const note = createProjectNote({ projectId: project.identity.id, stableKey: [id, token, "measured"], kind: "result", title: "Measured evidence",
@@ -91,6 +101,8 @@ export function instantiateNotebookStarter(id: NotebookStarterId, token: string)
     checker: { kind: "scalar-range", evidenceIndex: 0, field, min: id === "catenoid-evidence" ? -100 : 0, max: 100 } };
   const bound = prepareProjectWorkbook(project, workbook, token);
   project = upsertMath3DProjectWorkbook(project, bound.reference);
+  measurePhase("workbook");
   const resources = captureProjectResources(project, item => item.kind === "workbook-payload" ? bound.bytes : item.kind === "mesh-buffers" ? made.adapter.resources.bytes(made.adapter.document().source.resource) : null);
+  measurePhase("resources");
   return { project, resources };
 }

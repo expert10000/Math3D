@@ -7,7 +7,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   upsertMath3DProjectWorkbook, upsertMath3DProjectNote, updateProjectNote,
   relinkMath3DProjectQuantumScene, upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference,
   type ProjectNote,
-  type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument } from "@math3d/core";
+  type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { findProjectStarterCopy, importLibraryProject, loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY,
   PROJECT_STORAGE_KEY, readProjectThumbnail, isAutomaticProjectThumbnail, saveLibraryProject, updateLibraryActivity, type ProjectLibrary } from "../projects/projectLibrary";
@@ -28,6 +28,7 @@ import { prepareProjectExampleCollection, importProjectExamples, SAMSUNG_EXAMPLE
 import { instantiateNotebookStarter, NOTEBOOK_STARTERS, type NotebookStarterId } from "../projects/notebookStarters";
 import type { ProjectStarterId } from "./ProjectTemplatesPanel";
 import { prepareProjectWorkbook, readProjectWorkbook } from "../projects/projectWorkbookBinding";
+import { projectWorkbookUses } from "../projects/projectWorkbookUsage";
 import { addWorkbookDependency, createNoteDependencySource, type Workbook, type WorkbookStageId } from "@math3d/workbook";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
 import { bindProjectNoteDrafts, createProjectNoteDraft, type NoteCaptureKind, type ProjectNoteDraft } from "../projects/projectNoteDrafts";
@@ -56,7 +57,8 @@ type Props = {
   onRelinkQuantumScene?: (reference: ProjectQuantumSceneReference) => Promise<string | null>;
   captureActiveWorkbook?: () => Workbook | null;
   onOpenWorkbook?: (workbook: Workbook, stageId?: WorkbookStageId, blockId?: string) => void;
-  onViewProjectWorkbook?: (workbook: Workbook) => void;
+  onViewProjectWorkbook?: (workbook: Workbook, stageId?: WorkbookStageId, blockId?: string) => void;
+  onViewProjectDetail?: () => void;
   noteRequest?: { id: string; token: number } | null;
   captureNoteSelection?: () => NoteSelectionDescriptor | null;
   captureProjectThumbnail?: () => Promise<string>;
@@ -67,10 +69,11 @@ type Props = {
   artifactAvailable?: (id: string, hash?: string | null) => boolean;
   resourceReader?: ProjectResourceReader;
   activeModule?: KernelWorkspaceModule | null;
+  activeEvidence?: ViewerProvenanceEvidence | null;
   activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeProjectDocumentId }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
@@ -255,6 +258,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     empty.notes = project.notes?.filter(note => note.anchor && "source" in note.anchor && note.anchor.source.documentId === viewingDocumentId) ?? [];
     return empty;
   }, [project, viewingDocumentId]);
+  const workbookUsage = useMemo(() => project && viewingDocumentId
+    ? projectWorkbookUses(project, viewingDocumentId, id => resourceSession.current?.bytes({ kind: "workbook-payload", id }) ?? null)
+    : { uses: [], unavailable: 0 }, [project, viewingDocumentId]);
 
   type CardSummary = { description: string; documents: number; results: number; modules: string[] };
   const [summaries, setSummaries] = useState<Map<string, CardSummary>>(new Map());
@@ -305,10 +311,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       return copy ? [[item.id, copy]] : [];
     }));
   }, [library, project]);
-  const display = (next: Math3DProject, savedPreview: boolean, keepManagement = false) => {
+  const display = (next: Math3DProject, savedPreview: boolean, keepManagement = false, resolved?: ReturnType<typeof verifyMixedWorkspaceReplay>) => {
     if (!keepManagement) workspacePanel.current?.scrollTo({ top: 0 });
-    const resolved = verifyMixedWorkspaceReplay(next.workspace);
-    const tree = buildProjectExplorer(next, resolved);
+    const tree = buildProjectExplorer(next, resolved ?? verifyMixedWorkspaceReplay(next.workspace));
     setProject(next); setTitle(next.metadata.title); setDescription(next.metadata.description ?? ""); setTags((next.metadata.tags ?? []).join(", "));
     if (!keepManagement) { setThumbnail(null); setReplaceThumbnail(false); setThumbnailMessage(""); } setExplorer(tree); setPreview(savedPreview);
     if (!keepManagement) { setManaged(null); setManagedBytes(undefined); }
@@ -634,7 +639,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     } catch (error) { setMessage(`Workbook save failed: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
-  const openProjectWorkbook = async (id: string, besideProject = false) => {
+  const openProjectWorkbook = async (id: string, besideProject = false, stageId?: WorkbookStageId, blockId?: string) => {
     if (!project || busy) return;
     setBusy(true);
     try {
@@ -645,8 +650,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const bytes = resources.bytes({ kind: "workbook-payload", id });
       if (!bytes) throw new Error("Workbook data is unavailable. Import a Project package with resources.");
       const workbook = readProjectWorkbook(bytes, reference);
-      if (besideProject && onViewProjectWorkbook) onViewProjectWorkbook(workbook);
-      else onOpenWorkbook?.(workbook);
+      if (besideProject && onViewProjectWorkbook) onViewProjectWorkbook(workbook, stageId, blockId);
+      else onOpenWorkbook?.(workbook, stageId, blockId);
       setMessage(`Opened “${workbook.title}” from this Project.`);
       if (besideProject) { setQuick(true); setViewerCompanion(true); setDetailView(true); }
       else onOpenChange(false);
@@ -759,7 +764,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     } catch (failure) { setExampleMessage(`Samsung collection import failed: ${(failure as Error).message}`); }
     finally { setBusy(false); }
   };
-  const importPreview = async (openWorkspace: boolean, candidate = incoming, reuseExistingResources = false) => {
+  const importPreview = async (openWorkspace: boolean, candidate = incoming, reuseExistingResources = false, inspectedForThisOpen = false) => {
     if (!candidate || busy) return false;
     setBusy(true);
     const activationToken = ++importSequence.current;
@@ -777,7 +782,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         performance.clearMeasures(`project-open:${name}`);
         performance.measure(`project-open:${name}`, { start, end: performance.now() });
       };
-      const prepared = inspectProjectCompatibility(candidate.project, transferOptions(candidate.resources));
+      // Immediate Open already inspected these exact bytes in its click handler.
+      // File previews still recheck when the user later commits their import.
+      const prepared = inspectedForThisOpen ? candidate : inspectProjectCompatibility(candidate.project, transferOptions(candidate.resources));
       measurePhase("compatibility");
       if (openWorkspace && (!onRestoreWorkspace || !prepared.canOpenWorkspace)) throw new Error("This project is preview-only on this host.");
       if (openWorkspace) await verifyProjectQuantumSceneDocuments(prepared.project, onVerifyQuantumSceneDocument);
@@ -827,7 +834,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       measurePart("resource-commit-total", commitStart);
       measurePhase("commit-and-restore");
       resourceSession.current = resources; resourceSessionId.current = prepared.project.identity.id;
-      display(prepared.project, !openWorkspace);
+      display(prepared.project, !openWorkspace, false, prepared.resolved);
       setIncoming(null);
       if (candidate.inputKind === "Independent starter project") { setHighlightedSavedId(prepared.project.identity.id); setCollection("All projects"); setQuery(""); setModuleFilter("All modules"); }
       if (openWorkspace) {
@@ -859,7 +866,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         setMessage("This saved project has preview support. Review its compatibility details below.");
         return;
       }
-      await importPreview(true, prepared, canReuseProjectResourceArchive(next, resources));
+      await importPreview(true, prepared, canReuseProjectResourceArchive(next, resources), true);
     } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
@@ -880,6 +887,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     window.addEventListener("math3d:open-project-dock", show); window.addEventListener("math3d:hide-project-dock", hide);
     return () => { window.removeEventListener("math3d:open-project-dock", show); window.removeEventListener("math3d:hide-project-dock", hide); };
   }, [hasOpenProject, viewerCompanion, projectPlacement, onOpenChange]);
+  useEffect(() => {
+    const showFullDetails = () => { if (!hasOpenProject) return; setQuick(false); setViewerCompanion(false); setDetailView(true); onOpenChange(true); };
+    window.addEventListener("math3d:project-full-details", showFullDetails);
+    return () => window.removeEventListener("math3d:project-full-details", showFullDetails);
+  }, [hasOpenProject, onOpenChange]);
   const previewSavedOpen = async () => {
     if (!project || busy) return;
     const sequence = ++importSequence.current;
@@ -925,10 +937,16 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           return;
         }
       }
+      const starterStart = performance.now();
       const token = crypto.randomUUID(), bundle = NOTEBOOK_STARTERS.some(item => item.id === id) ? instantiateNotebookStarter(id as NotebookStarterId, token) : { project: instantiateMath3DProjectTemplate(id, token), resources: undefined };
+      performance.clearMeasures("project-open:starter-construction");
+      performance.measure("project-open:starter-construction", { start: starterStart, end: performance.now() });
       const next = bundle.project;
+      const inspectionStart = performance.now();
       const candidate = { ...inspectProjectCompatibility(next, transferOptions(bundle.resources)), resources: bundle.resources, inputKind: "Independent starter project" };
-      await importPreview(true, candidate);
+      performance.clearMeasures("project-open:starter-inspection");
+      performance.measure("project-open:starter-inspection", { start: inspectionStart, end: performance.now() });
+      await importPreview(true, candidate, false, true);
     } catch (error) { setMessage(`Starter unavailable: ${(error as Error).message}`); }
   };
   const exportFile = async (checkpointOnly = false, withResources = false) => {
@@ -998,6 +1016,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           <button data-testid="project-gallery-layout-toggle" onClick={() => { if (!viewerCompanion) setNotesOpen(false); setQuick(value => !value); setViewerCompanion(false); }}>{quick ? viewerCompanion ? "Project details" : "Full gallery" : "Quick panel"}</button><button type="button" aria-label="Close project explorer" onClick={() => onOpenChange(false)}>Close</button></div></div>
         <div className="project-gallery-statusline"><p data-testid="project-view-mode" role="status">{managed ? "Managing saved project" : preview ? "Saved project preview" : "Current workspace"} · {project?.metadata.title ?? "Untitled project"}{project && library.entries.some((entry) => entry.id === project.identity.id) && <strong className="project-gallery-saved-badge">Saved in Your saved projects</strong>}</p>
           <button type="button" data-testid="project-restore-saved" disabled={busy || !!managed || !project || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={previewSavedOpen}>{preview ? "Open saved project" : "Review saved version"}</button></div>
+      {hasOpenProject && !preview && viewingDocumentId && <nav className="project-context-breadcrumb" data-testid="project-breadcrumb" aria-label="Project breadcrumb">
+        <button type="button" data-testid="project-breadcrumb-root" onClick={() => { setQuick(true); setViewerCompanion(true); onViewProjectDetail?.(); }}>{project?.metadata.title ?? "Project"}</button>
+        <span aria-hidden="true">›</span><span>{project?.workspace.entries.find(entry => entry.expected.id === viewingDocumentId)?.module ?? activeModule ?? "Document"}</span>
+        <span aria-hidden="true">›</span><strong>{documentTitles.get(viewingDocumentId) ?? viewingDocumentId}</strong>
+        {activeEvidence?.source.documentId === viewingDocumentId && activeEvidence.operation && <><span aria-hidden="true">›</span><span title={`Evidence ${activeEvidence.status}`}>{activeEvidence.operation} · {activeEvidence.status}</span></>}
+        {activeEvidence?.source.documentId === viewingDocumentId && !!activeEvidence.selectedEntityIds.length && <><span aria-hidden="true">›</span><span>{activeEvidence.selectedEntityIds[0]}{activeEvidence.selectedEntityIds.length > 1 ? ` +${activeEvidence.selectedEntityIds.length - 1}` : ""}</span></>}
+      </nav>}
       {preview && !managed && <p data-testid="project-open-guidance" style={{ marginBottom: 0 }}>Open saved project, then choose Open project in the compatibility preview to enable document buttons.</p>}
       {hasOpenProject && projectNavigation && <div aria-label="Project navigation"><button data-testid="project-navigation-back" disabled={!projectNavigation.canBack} onClick={projectNavigation.back}>Back</button><button data-testid="project-navigation-forward" disabled={!projectNavigation.canForward} onClick={projectNavigation.forward}>Forward</button></div>}
       {hasOpenProject && !preview && !managed && detailView && <div className="project-placement-controls" role="group" aria-label="Project placement">
@@ -1075,6 +1100,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           {hasOpenProject && !preview && !managed && <div data-testid="project-overview" className="project-navigation-overview">
             <h4>Project overview</h4>
             <p>{project?.workspace.results.length ?? 0} saved results · {project?.workspace.relations.length ?? 0} relations</p>
+            {viewingDocumentId && <button type="button" data-testid="project-view-detail-middle" onClick={() => onViewProjectDetail?.()}>
+              View Project details in middle
+            </button>}
             {viewingDocumentId && <button type="button" data-testid="project-overview-continue" onClick={() => { setQuick(true); setViewerCompanion(true); setDetailView(true); }}>
               Continue with {documentTitles.get(viewingDocumentId) ?? "selected document"}
             </button>}
@@ -1106,7 +1134,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                 {relatedSummary.notes.map(note => <button type="button" key={note.identity.id} onClick={() => openProjectNotes(note.identity.id)}>{note.title}</button>)}
                 {!relatedSummary.notes.length && <small>None anchored to this document</small>}
               </div></div>
-              {!!project?.workbooks?.length && <small>Project Workbooks are listed in Contents. Open one here while keeping this document active.</small>}
+              <div><small>Used in Workbooks</small><div className="project-navigation-links" data-testid="project-related-workbooks">
+                {workbookUsage.uses.map(item => <button type="button" key={`${item.workbookId}:${item.blockId}`}
+                  data-testid={`project-used-workbook-${item.workbookId}-${item.blockId}`}
+                  title={`${item.blockTitle} · ${item.status} reference`} onClick={() => { void openProjectWorkbook(item.workbookId, true, item.stageId, item.blockId); }}>
+                  {item.workbookTitle} › {item.blockTitle} · {item.status}
+                </button>)}
+                {!workbookUsage.uses.length && <small>None</small>}
+                {workbookUsage.unavailable > 0 && <small>{workbookUsage.unavailable} Workbook payload{workbookUsage.unavailable === 1 ? "" : "s"} unavailable for link inspection</small>}
+              </div></div>
             </div>}
           </div>}
         </div>

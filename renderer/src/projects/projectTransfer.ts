@@ -90,7 +90,7 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
   if (sidecars.some((resource) => resource.requiredForSource && !resource.available)) reasons.push("Required source sidecars are missing or unverified on this computer.");
   const engines = [...new Map(canonical.workspace.results.map((result) => [`${result.provenance.engine.name}@${result.provenance.engine.version}`, result.provenance.engine])).values()];
   const checkpoint = createMixedWorkspaceDocument({ ...canonical.workspace, entries: canonical.workspace.entries.map((entry) => ({ ...entry, checkpoint: resolved.get(entry.expected.id)!, replay: null })) });
-  return { project: canonical, checkpoint, documents, requiredCapabilities: [...requiredCapabilities].sort(), sidecars, engines, reasons, canOpenWorkspace: reasons.length === 0 };
+  return { project: canonical, checkpoint, resolved, documents, requiredCapabilities: [...requiredCapabilities].sort(), sidecars, engines, reasons, canOpenWorkspace: reasons.length === 0 };
 };
 export type ProjectCompatibility = ReturnType<typeof inspectProjectCompatibility>;
 

@@ -32,7 +32,8 @@ export type KernelWorkspacePanelProps = {
   onRelinkQuantumScene?: (reference: ProjectQuantumSceneReference) => Promise<string | null>;
   captureActiveWorkbook?: () => Workbook | null;
   onOpenWorkbook?: (workbook: Workbook, stageId?: import("@math3d/workbook").WorkbookStageId, blockId?: string) => void;
-  onViewProjectWorkbook?: (workbook: Workbook) => void;
+  onViewProjectWorkbook?: (workbook: Workbook, stageId?: import("@math3d/workbook").WorkbookStageId, blockId?: string) => void;
+  onViewProjectDetail?: () => void;
   noteRequest?: { id: string; token: number } | null;
   captureNoteSelection?: () => NoteSelectionDescriptor | null;
   captureProjectThumbnail?: () => Promise<string>;
@@ -51,7 +52,7 @@ export type KernelWorkspacePanelProps = {
   graphDocumentId?: string;
 };
 
-export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ projectNavigation, projectsOpen, onProjectsOpenChange, onCurrentProjectChange, verifiedQuantumScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, activeModule, activeProjectDocumentId, activeEvidence, artifactAvailable, onNavigateModule, onNavigateDocument, onOpenAnalysis, canNavigateDocument, onReopen, onRestoreProject, graphDocumentId, resourceReader }) => {
+export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ projectNavigation, projectsOpen, onProjectsOpenChange, onCurrentProjectChange, verifiedQuantumScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, activeModule, activeProjectDocumentId, activeEvidence, artifactAvailable, onNavigateModule, onNavigateDocument, onOpenAnalysis, canNavigateDocument, onReopen, onRestoreProject, graphDocumentId, resourceReader }) => {
   const [open, setOpen] = useState(false);
   const [reopened, setReopened] = useState<MixedWorkspaceDocument | null>(null);
   const [message, setMessage] = useState("No mixed workspace opened.");
@@ -135,7 +136,7 @@ export const KernelWorkspacePanel: React.FC<KernelWorkspacePanelProps> = ({ proj
   const index = reopened?.relations.length ? createDocumentRelationIndex(reopened.relations) : null;
   return (
     <div data-testid="kernel-workspace-shell" style={{ position: "fixed", right: 14, bottom: 14, zIndex: 2500, fontSize: 11 }}>
-      <ProjectWorkspacePanel projectNavigation={projectNavigation} activeProjectDocumentId={activeProjectDocumentId} activeModule={activeModule} captureProjectThumbnail={captureProjectThumbnail} resourceReader={resourceReader} open={projectsOpen} onOpenChange={onProjectsOpenChange} onCurrentProjectChange={onCurrentProjectChange} verifiedQuantumScene={verifiedQuantumScene} onOpenQuantumScene={onOpenQuantumScene} onVerifyQuantumSceneDocument={onVerifyQuantumSceneDocument} onRelinkQuantumScene={onRelinkQuantumScene} captureActiveWorkbook={captureActiveWorkbook} onOpenWorkbook={onOpenWorkbook} onViewProjectWorkbook={onViewProjectWorkbook} noteRequest={noteRequest} captureNoteSelection={captureNoteSelection} capture={capture} onNavigateDocument={onNavigateDocument} onOpenAnalysis={onOpenAnalysis} canNavigateDocument={canNavigateDocument} artifactAvailable={artifactAvailable} onRestoreWorkspace={onRestoreProject ?? onReopen} />
+      <ProjectWorkspacePanel projectNavigation={projectNavigation} activeProjectDocumentId={activeProjectDocumentId} activeModule={activeModule} activeEvidence={activeEvidence} captureProjectThumbnail={captureProjectThumbnail} resourceReader={resourceReader} open={projectsOpen} onOpenChange={onProjectsOpenChange} onCurrentProjectChange={onCurrentProjectChange} verifiedQuantumScene={verifiedQuantumScene} onOpenQuantumScene={onOpenQuantumScene} onVerifyQuantumSceneDocument={onVerifyQuantumSceneDocument} onRelinkQuantumScene={onRelinkQuantumScene} captureActiveWorkbook={captureActiveWorkbook} onOpenWorkbook={onOpenWorkbook} onViewProjectWorkbook={onViewProjectWorkbook} onViewProjectDetail={onViewProjectDetail} noteRequest={noteRequest} captureNoteSelection={captureNoteSelection} capture={capture} onNavigateDocument={onNavigateDocument} onOpenAnalysis={onOpenAnalysis} canNavigateDocument={canNavigateDocument} artifactAvailable={artifactAvailable} onRestoreWorkspace={onRestoreProject ?? onReopen} />
       <button type="button" data-testid="kernel-workspace-toggle" onClick={() => setOpen((value) => !value)}
         style={{ border: "1px solid #64748b", borderRadius: 8, background: "#f8fafc", color: "#0f172a", padding: "7px 10px", fontWeight: 700 }}>
         Kernel workspace

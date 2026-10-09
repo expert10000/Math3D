@@ -6,6 +6,16 @@ Status: local implementation committed and qualified on the supported desktop/br
 
 ## Current delivery
 
+**Project navigation and Catenoid first open — October 9:** the opened Project
+now has a full ownership breadcrumb, verified "Used in Workbooks" links to
+specific blocks, and a Project-details middle view. Switching to that view or
+a linked Workbook retains the active Surface/Mesh canvas and document; Return
+restores the same session. An immediate starter Open reuses its already checked
+compatibility result and resolved document map instead of replaying the same
+workspace again. An isolated Electron Catenoid first-open run measured 1.85 s
+before and 1.70 s after this change; the saved-card staging measurement below
+is a separate path. Starter construction remains the largest measured phase.
+
 **Startup contract — October 9:** autosave is the only startup recovery flow.
 Restoring it restores the workspace; it does not also open the last saved Project.
 Saved Projects open explicitly from Projects. The former automatic Project
