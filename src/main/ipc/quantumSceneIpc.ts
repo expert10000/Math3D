@@ -38,7 +38,9 @@ function failed(error: unknown): QuantumSceneOpenResponse {
 export function registerQuantumSceneIpc(initialDirectory: string | null = null): void {
   let launchDirectory = initialDirectory;
   const verifiedBySender = new WeakMap<Electron.WebContents, { fingerprint: string; directory: string; imported: ImportedQuantumScene }>();
+  const volumeJobs = new WeakMap<Electron.WebContents, Map<string, { cancelled: boolean }>>();
   const openedFor = (event: Electron.IpcMainInvokeEvent, directory: string, imported: ImportedQuantumScene, remembered: boolean) => {
+    for (const job of volumeJobs.get(event.sender)?.values() ?? []) job.cancelled = true;
     verifiedBySender.set(event.sender, { fingerprint: sceneFingerprint(imported), directory: resolve(directory), imported });
     return opened(directory, imported, remembered);
   };
@@ -148,9 +150,31 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
     if (args.length !== 1) throw new TypeError("Field Volume requires one request");
     const active = activeField(event, args[0]);
     const request = args[0] as FieldVolumeRequest;
-    const reopened = await reopenQuantumSceneReference({ directory: active.directory, sceneFingerprint: active.fingerprint });
-    if (verifiedBySender.get(event.sender) !== active) throw new Error("Quantum scene changed during Volume derivation");
-    return deriveVerifiedFieldVolume(reopened.imported, request);
+    if (typeof request.requestId !== "string" || !/^[a-f0-9-]{36}$/i.test(request.requestId))
+      throw new TypeError("Invalid Volume request identity");
+    const jobs = volumeJobs.get(event.sender) ?? new Map<string, { cancelled: boolean }>();
+    if (jobs.has(request.requestId) || jobs.size >= 2) throw new Error("Volume derivation already active");
+    volumeJobs.set(event.sender, jobs);
+    const job = { cancelled: false }; jobs.set(request.requestId, job);
+    const stale = () => job.cancelled || verifiedBySender.get(event.sender) !== active || event.sender.isDestroyed();
+    const reference = { directory: active.directory, sceneFingerprint: active.fingerprint };
+    try {
+      const reopened = await reopenQuantumSceneReference(reference);
+      if (stale()) throw new Error("Quantum Volume derivation cancelled or source superseded");
+      const result = await deriveVerifiedFieldVolume(reopened.imported, request, stale);
+      if (stale()) throw new Error("Quantum Volume derivation cancelled or source superseded");
+      // Source bytes may have changed while the async conversion was running.
+      // Re-read and hash them before allowing the artifact to cross IPC.
+      await reopenQuantumSceneReference(reference);
+      if (stale()) throw new Error("Quantum Volume derivation cancelled or source superseded");
+      return result;
+    } finally { jobs.delete(request.requestId); }
+  });
+  ipcMain.handle("quantumScenes:cancelFieldVolume", (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 1 || typeof args[0] !== "string") return false;
+    const job = volumeJobs.get(event.sender)?.get(args[0]);
+    if (job) job.cancelled = true;
+    return Boolean(job);
   });
   ipcMain.handle("quantumScenes:revealSource", async (event, ...args: unknown[]) => {
     if (args.length !== 1) return { ok: false, error: "Source reveal requires one active-scene fingerprint" };

@@ -606,6 +606,7 @@ declare global {
       fieldSurface: (request: import("./components/QuantumFieldSurface").FieldSurfaceRequest) => Promise<import("./components/QuantumFieldSurface").FieldSurface>;
       fieldVolume: (request: { fingerprint: string; fieldId: string; quantity: import("./volume/quantumFieldVolumeAdapter").QuantumFieldVolume["quantity"]; requestId: string }) =>
         Promise<import("./volume/quantumFieldVolumeAdapter").QuantumFieldVolume>;
+      cancelFieldVolume: (requestId: string) => Promise<boolean>;
       revealSource: (fingerprint: string) => Promise<{ ok: true; directory: string } | { ok: false; error: string }>;
       openSourceRun: (fingerprint: string) => Promise<
         { ok: true; canceled: false; runId: string; resultSha256: string } |

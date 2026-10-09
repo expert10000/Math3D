@@ -528,6 +528,7 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
   fieldSample: (request: FieldSampleRequest): Promise<FieldSample> => ipcRenderer.invoke("quantumScenes:fieldSample", request),
   fieldSurface: (request: FieldSurfaceRequest): Promise<FieldSurface> => ipcRenderer.invoke("quantumScenes:fieldSurface", request),
   fieldVolume: (request: FieldVolumeRequest): Promise<FieldVolume> => ipcRenderer.invoke("quantumScenes:fieldVolume", request),
+  cancelFieldVolume: (requestId: string): Promise<boolean> => ipcRenderer.invoke("quantumScenes:cancelFieldVolume", requestId),
   revealSource: (fingerprint: string): Promise<{ ok: true; directory: string } | { ok: false; error: string }> =>
     ipcRenderer.invoke("quantumScenes:revealSource", { fingerprint }),
   openSourceRun: (fingerprint: string): Promise<

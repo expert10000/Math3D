@@ -23,7 +23,7 @@ export function QuantumFieldVolume({ fingerprint, fields }: { fingerprint: strin
     void window.quantumScenes!.fieldVolume(request).then(result => {
       if (current === generation.current) { setArtifact(result); setIndex(Math.floor(result.shape[2] / 2)); }
     }).catch(cause => { if (current === generation.current) setError(String((cause as Error)?.message ?? cause)); });
-    return () => { generation.current++; };
+    return () => { generation.current++; void window.quantumScenes?.cancelFieldVolume(request.requestId); };
   }, [fingerprint, field?.id, safeQuantity]);
   const adapted = useMemo(() => artifact ? adaptQuantumFieldVolume(artifact) : null, [artifact]);
   const range = useMemo(() => {

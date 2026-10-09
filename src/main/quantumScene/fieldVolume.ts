@@ -12,8 +12,16 @@ export type FieldVolume = {
   undefinedNodeCount: number; undefinedMask: Uint8Array; values: Float32Array;
 };
 
-/** Read-only conversion from verified planar f64le, z-fastest QVIS data to Math3D's x-fastest Volume grid. */
-export function deriveVerifiedFieldVolume(imported: ImportedQuantumScene, request: FieldVolumeRequest): FieldVolume {
+const checkpoint = async (cancelled: () => boolean): Promise<void> => {
+  // Yield to Electron IPC so a cancel request or a newer scene can invalidate
+  // this derivation before any grid is published to the renderer.
+  await new Promise<void>(resolve => setImmediate(resolve));
+  if (cancelled()) throw new Error("Quantum Volume derivation cancelled or source superseded");
+};
+
+/** Read-only, cooperatively cancellable conversion from verified QVIS z-fastest to Volume x-fastest. */
+export async function deriveVerifiedFieldVolume(imported: ImportedQuantumScene, request: FieldVolumeRequest,
+  cancelled: () => boolean = () => false): Promise<FieldVolume> {
   const field = imported.source.fields?.find(candidate => candidate.id === request.fieldId);
   if (!field) throw new TypeError("Unknown verified scene field");
   if (!["real", "imaginary", "density", "phase"].includes(request.quantity) ||
@@ -28,8 +36,10 @@ export function deriveVerifiedFieldVolume(imported: ImportedQuantumScene, reques
   const [nx, ny, nz] = field.grid.shape;
   const values = new Float32Array(real.length), undefinedMask = new Uint8Array(real.length);
   let maximumDensity = 0;
-  if (request.quantity === "phase") for (let i = 0; i < real.length; i++)
+  if (request.quantity === "phase") for (let i = 0; i < real.length; i++) {
     maximumDensity = Math.max(maximumDensity, real[i] ** 2 + (imaginary?.[i] ?? 0) ** 2);
+    if (i % 8192 === 0) await checkpoint(cancelled);
+  }
   let undefinedNodeCount = 0;
   for (let x = 0; x < nx; x++) for (let y = 0; y < ny; y++) for (let z = 0; z < nz; z++) {
     const sourceIndex = (x * ny + y) * nz + z;
@@ -42,7 +52,9 @@ export function deriveVerifiedFieldVolume(imported: ImportedQuantumScene, reques
     if (!Number.isFinite(value) || Math.abs(value) > 3.4028234663852886e38)
       throw new RangeError("Field quantity exceeds Math3D Volume float32 range");
     values[targetIndex] = value;
+    if (sourceIndex % 8192 === 0) await checkpoint(cancelled);
   }
+  if (cancelled()) throw new Error("Quantum Volume derivation cancelled or source superseded");
   const amplitudeUnit = realDataset.unit;
   const valueUnit = request.quantity === "phase" ? "rad" : request.quantity === "density" ?
     amplitudeUnit === "a0^-3/2" ? "a0^-3" : amplitudeUnit === "dimensionless" ? amplitudeUnit : `(${amplitudeUnit})²` : amplitudeUnit;
