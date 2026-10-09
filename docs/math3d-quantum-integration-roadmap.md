@@ -68,7 +68,7 @@ location together while retaining scientific document identity. Cancellation,
 mismatch, corruption, or save failure leaves the saved Project unchanged.
 On desktop, **File → Open workspace** uses a native file picker for the saved
 `.math3d` file. **File → Open verified quantum scene** selects a `.qscene` folder.
-The preview is not yet an editable Math3D document. A bounded first M3D-Q02
+The preview is not yet an editable Geometry or Volume document. A bounded M3D-Q02
 slice now displays a verified scalar or complex field plane (real, imaginary,
 derived density or phase), with exact grid-sample inspection, source coordinates
 and units. Electron retains the verified arrays; only a maximum 49×49 RGBA
@@ -78,8 +78,14 @@ and checked for stored quantum numbers, central density/node, and units. A
 read-only density isosurface preview now derives bounded triangles from verified
 amplitudes in Electron main, without transferring the full grid. The 1s, 2s,
 2p, 3p and 3d fixtures verify phase and real-component sign bins on those
-surfaces. This is not a full M3D-Q02 delivery; the remaining M3D-Q02–Q10 work
-remains open.
+surfaces. Verified point-cloud sites and endpoint-pair links now have bounded,
+pickable 3D markers with portable object IDs, deterministic dataset-sample
+indices, declared coordinates and units, plus supplied short annotations and a
+selection label. The original bundle can be located only after re-verification;
+the scene contract does not provide a trusted link to the original Theory Lab
+run. The renderer does not infer element species, bond order, or orbital quantum
+numbers that are absent from source metadata. This is not a full M3D-Q02
+delivery; the remaining M3D-Q02–Q10 work remains open.
 
 Quantum Lab must not call MATH3D internals, and MATH3D must not reproduce Quantum
 Lab's physics engines. Both applications meet at the portable, versioned scene
@@ -309,11 +315,13 @@ produce one transaction; any failed validation or artifact admission produces no
 
 **Status:** Partial — verified, read-only field slices, exact samples, and
 bounded density isosurfaces with phase/sign coloring are implemented with real
-1s, 2s, 2p, 3p and 3d cross-repository fixtures. The UI can reveal the
-re-verified source bundle by its active fingerprint; this does not locate the
-original Theory Lab run. Atom/bond adapters, Lab run locate-back and native
-project document admission are not yet implemented. A sealed external
-reference can be saved in the named Project, but is not a native document.
+1s, 2s, 2p, 3p and 3d cross-repository fixtures. Supplied point-cloud sites
+and endpoint-pair links are mapped to bounded pickable geometry, with portable
+object IDs, source sample positions, declared units, and short source labels.
+The UI can reveal the re-verified source bundle by its active fingerprint;
+this does not locate the original Theory Lab run. Compact native Project
+document admission is complete under M3D-Q01. Direct Lab-run locate-back and
+chemical metadata not carried by quantum-scene/v1 remain open.
 
 **Scope.** Render atomic sites, bonds, labels, orbital isosurfaces, probability
 density, sign/phase coloring, and field slices. Preserve atomic/orbital quantum

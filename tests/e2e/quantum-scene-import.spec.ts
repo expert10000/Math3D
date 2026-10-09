@@ -454,6 +454,12 @@ test("verified site and link selection survives restart and refuses a changed bu
     }
     await expect(page.getByTestId("quantum-primitive-selection")).toContainText(/site-object|link-object/);
     await expect(page.getByTestId("quantum-primitive-selection")).toContainText("a0");
+    await page.getByRole("button", { name: "Inspect first sample of site-object" }).click();
+    await expect(page.getByTestId("quantum-primitive-selection")).toContainText("Selected site");
+    await expect(page.getByTestId("quantum-primitive-selection")).toContainText("site-object");
+    await page.getByRole("button", { name: "Inspect first sample of link-object" }).click();
+    await expect(page.getByTestId("quantum-primitive-selection")).toContainText("Selected link");
+    await expect(page.getByTestId("quantum-primitive-selection")).toContainText("Endpoints");
     await app.close();
     app = await launch(["."]);
     page = await app.firstWindow();

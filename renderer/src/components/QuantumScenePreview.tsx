@@ -14,7 +14,7 @@ type SceneSource = {
   datasets: { id: string; count: number; components: number; unit: string }[];
   objects: { id: string; label: string; kind: string; indices?: string; style: { color: string; opacity: number; size: number } }[];
   fields?: QuantumField[];
-  annotations: { id: string; text: string }[];
+  annotations: { id: string; text: string; position: [number, number, number] }[];
   bands?: { objects: string[]; labels: string[]; energyUnit: string; bulkGap: number };
 };
 export type QuantumSceneWorkspaceReference = { directory: string; sceneFingerprint: string };
@@ -93,6 +93,14 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
       segments: document.geometry.segments?.filter(segment => !primitiveMeshes.length ||
         ![...primitiveIds].some(id => segment.a.id?.startsWith(`${id}:link:`))) };
   }, [document.geometry, meshObjects, primitiveMeshes]);
+  const visibleLabels = useMemo(() => {
+    const supplied = scene.annotations.filter(annotation => annotation.text.length <= 64).map(annotation => ({
+      text: annotation.text, position: { x: annotation.position[0], y: annotation.position[1], z: annotation.position[2] },
+    }));
+    if (pickedPrimitive) supplied.push({ text: `${pickedPrimitive.objectLabel} · ${pickedPrimitive.index}`,
+      position: pickedPrimitive.position });
+    return supplied.length ? [{ labels: supplied, color: 0xe2e8f0, backgroundColor: 0x172033 }] : [];
+  }, [scene.annotations, pickedPrimitive]);
   const pickScene = (info: { meshKey?: string; faceIndex?: number; point: Vector3 }) => {
     const primitive = primitiveMeshes.find(entry => entry.id === info.meshKey)?.primitivesByFace[info.faceIndex ?? -1];
     if (primitive) { setPickedPrimitive(primitive); setPickedBandSample(null); return; }
@@ -127,7 +135,8 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
               fields={scene.fields} axes={scene.coordinates.axes} units={scene.coordinates.units} /> :
               view === "surface" && scene.fields?.length ? <QuantumFieldSurface fingerprint={opened.reference.sceneFingerprint}
                 resultSha256={scene.provenance.resultSha256} fields={scene.fields} camera={camera} /> :
-              count > 0 ? <GeometryViewer scene={viewerScene} meshOverrides={[...meshObjects, ...primitiveMeshes]} showPlanes={false}
+              count > 0 ? <GeometryViewer scene={viewerScene} meshOverrides={[...meshObjects, ...primitiveMeshes]}
+              overlayLabelSets={visibleLabels} showPlanes={false}
               pickEnabled={meshObjects.length + primitiveMeshes.length > 0} onPick={pickScene}
               onPickMiss={() => { setPickedBandSample(null); setPickedPrimitive(null); }}
               inspectSelectionMeshKey={pickedPrimitive?.objectId ?? pickedBandSample?.objectId}
@@ -158,7 +167,11 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
               <p>Click a rendered marker or link. The object ID is portable; the sample index identifies a position within its verified dataset. No chemical species or bond order is inferred.</p>
               <ul data-testid="quantum-primitive-objects" style={{ paddingLeft: 18 }}>
                 {primitiveMeshes.map(mesh => <li key={mesh.id}>{mesh.label} · <code>{mesh.id}</code> · {
-                  new Set(mesh.primitivesByFace.map(primitive => primitive.sampleId)).size} samples</li>)}
+                  new Set(mesh.primitivesByFace.map(primitive => primitive.sampleId)).size} samples{" "}
+                  <button type="button" aria-label={`Inspect first sample of ${mesh.id}`} onClick={() => {
+                    setPickedPrimitive(mesh.primitivesByFace[0]); setPickedBandSample(null);
+                  }}>Inspect first</button>
+                </li>)}
               </ul>
               {pickedPrimitive && <div data-testid="quantum-primitive-selection">
                 <b>{pickedPrimitive.kind === "site" ? "Selected site" : "Selected link"}:</b> {pickedPrimitive.objectLabel}<br />
