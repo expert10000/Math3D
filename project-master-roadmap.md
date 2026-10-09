@@ -1,8 +1,11 @@
 # Project master roadmap
 
-Date: 2026-10-09 (startup simplification; original plan dated October 7)
+Date: 2026-10-09 (navigation handoff; original plan dated October 7)
 
-Status: local implementation committed and qualified on the supported desktop/browser paths. User acceptance, remote integration and installer release remain separate states.
+Status: the Project navigation and first-open optimization are committed and
+pushed to remote `main` in `030f0010`. The supported Electron Project/Catenoid
+checks pass. Installer release and new comparison/composition capabilities
+remain separate work.
 
 ## Current delivery
 
@@ -13,8 +16,8 @@ a linked Workbook retains the active Surface/Mesh canvas and document; Return
 restores the same session. An immediate starter Open reuses its already checked
 compatibility result and resolved document map instead of replaying the same
 workspace again. An isolated Electron Catenoid first-open run measured 1.85 s
-before and 1.70 s after this change; the saved-card staging measurement below
-is a separate path. Starter construction remains the largest measured phase.
+before and 1.67 s on the final built change; the saved-card staging measurement
+below is a separate path. Starter construction remains the largest measured phase.
 
 **Startup contract — October 9:** autosave is the only startup recovery flow.
 Restoring it restores the workspace; it does not also open the last saved Project.
@@ -37,18 +40,20 @@ workspace edits still take the safe fallback path. The staged backup's
 resource count, size and Project identity were checked after Open; Catenoid's
 explicit reopen after restart and the pending-input guard also passed.
 
-Current source checkout: `C:\Math3D`, branch `main`. Earlier delivery reports and
-checkout paths below describe their recorded builds.
+Current source checkout for this handoff:
+`C:\Users\janko\OneDrive\Dokumenty\Math3D`, branch `main`. Earlier delivery
+reports and checkout paths below describe their recorded builds.
 The [October 9 startup evidence](docs/evidence/project-workspace-2026-10-09/startup-recovery.md)
 records autosave restore/decline and explicit saved Catenoid reopening.
 
-Implementation: `3ac5ab75b1297c765ba1306e1ba7260e317063bd` on
-`codex/gallery-performance-platform-baseline`, after pulling remote main `b4cffbf`.
-Current checkout: `C:\Users\janko\OneDrive\Dokumenty\Math3D`.
+The earlier workbench implementation was recorded as
+`3ac5ab75b1297c765ba1306e1ba7260e317063bd` on
+`codex/gallery-performance-platform-baseline`, after pulling remote main
+`b4cffbf`. Its report is historical; use current remote `main` for new work.
 The [delivery report](docs/evidence/project-workspace-2026-10-08/workbench-delivery.md)
 records tests, exact document generations, screenshots, build identity and the
-current-build desktop shortcut. Source is committed, built and locally launched;
-it has not been pushed, merged or packaged as an installer.
+current-build desktop shortcut. That report predates the current `main` push and
+does not establish an installer release.
 
 | Slices | Qualified state |
 | --- | --- |
@@ -63,9 +68,45 @@ Navigation publication CPU fell from 2.713s to 0.756s inclusive across three
 cycles; first opening still takes about 3.6s and is dominated by starter/resource
 checksum and compatibility work. These are single-run measurements, with
 overlapping inclusive CPU times. That earlier first-opening figure covers the
-starter flow; the saved-card measurement above covers a prepared Gallery. A
-later performance slice should reduce repeated verified starter construction
-while preserving validation at changed-byte, import, command and save boundaries.
+starter flow; the saved-card measurement above covers a prepared Gallery. The
+October 9 first-open work removed repeated compatibility/replay work. Further
+speed work should address measured starter construction while preserving
+validation at changed-byte, import, command and save boundaries.
+
+## Handoff for the next Codex task
+
+Start from remote `main` at or after `030f0010`. That commit delivered the full
+Project ownership breadcrumb, actual saved-Workbook usage links and block focus,
+a Project-details middle view, and retained Surface/Mesh viewer state when
+switching to Project or Workbook content. The open Project panel already has a
+bounded Recent documents list and grouped Source/Derived/Evidence/Notes links.
+The Project-details middle view is a compact reading view; multi-document
+composition and comparison are still planned.
+
+Validation on that code: `npm run typecheck:noemit`, `npm run build:core`, all
+10 tests in `project-gallery-navigation.spec.ts` and
+`project-catenoid-flow.spec.ts`, the updated Project-details → Workbook → Return
+test, and `project-catenoid-opening-profile.spec.ts` passed. The isolated first
+Catenoid Open profile reported 1,672 ms click-to-canvas: 942 ms starter
+construction (364 ms Mesh, 168 ms Workbook, 136 ms analysis, 124 ms resources),
+163 ms initial compatibility inspection and 0 ms repeated compatibility. These
+single-run timings are diagnostic, not a release performance guarantee.
+
+The next planned product phase is **PC01–PC10** below. Begin with PC01's checked,
+non-owning references for existing saved documents and its missing/historical
+source behavior. Confirm the PM10 acceptance prerequisite before implementing
+compare or overlay UI. PC05's Surface-beside-Mesh comparison is the concrete
+user example; PC03's overlay must first qualify coordinate frames and units.
+Do not duplicate or regenerate a saved Catenoid source to provide the second
+view. The active-document and native module sessions remain the owners.
+
+If continuing performance work, profile starter construction separately from
+saved-card opening. Reusing already checked bytes removed one pass, but the
+remaining Mesh/Workbook/resource generation is still synchronous. Keep the
+existing profile test and atomic Project-open rollback checks as baselines.
+
+Working-tree note at this handoff: `docs/index.md` has an unrelated local
+modification; leave it out of Project commits unless its owner requests it.
 
 ## Purpose and authority
 
@@ -1171,9 +1212,9 @@ Surface, Mesh before versus after remeshing, result versus result, or snapshot
 versus live document. Resolve retained snapshots and missing resources explicitly;
 never reconstruct unavailable history from a current source and call it historical.
 
-The trajectory is: reliable active document first; stronger Related/Overview/
-Workbook navigation next; explicit comparison/composition of multiple retained
-documents last.
+Reliable active-document navigation and the first Related/Overview/Workbook
+slice are delivered on `main`. Explicit comparison/composition of multiple
+retained documents remains the next planned phase after its prerequisite check.
 
 ## First-flow implementation — 2026-10-07
 
