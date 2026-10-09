@@ -4,6 +4,9 @@
 
 **Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; the periodic/1D lattice-metadata acceptance gate remains open under the frozen v1 contract. M3D-Q05–Q10 remain open.
 
+For the exact Theory Lab export and Math3D inspection workflow, see the
+[M3D-Q04 lattice usage guide](quantum-lattice-usage.md).
+
 **Type:** interoperability and scientific-visualization program
 
 **Executable sequence:** `M3D-Q01` through `M3D-Q10`
