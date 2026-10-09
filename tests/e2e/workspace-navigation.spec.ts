@@ -391,6 +391,8 @@ test.describe("Workspace navigation", () => {
 
   for (const depth of [1, 2, 5, 10] as const) {
     test(`back/forward supports history depth ${depth}`, async () => {
+      // The deepest case makes 30 workspace transitions, including costly Mesh mounts.
+      test.setTimeout(depth === 10 ? 360_000 : 180_000);
       let ctx: LaunchedSurfaceApp | null = null;
       try {
         ctx = await launchSurfaceApp();

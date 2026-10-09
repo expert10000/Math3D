@@ -109,6 +109,7 @@ import { WorkbookPanel } from "./components/WorkbookPanel";
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
 import { GeometryAnalysisInspectorPanel } from "./components/GeometryAnalysisInspectorPanel";
 import { KernelWorkspacePanel } from "./components/KernelWorkspacePanel";
+import { ProjectWorkbookMiddleView } from "./components/ProjectWorkbookMiddleView";
 import { PROJECT_STORAGE_KEY } from "./projects/projectLibrary";
 import { projectNoteRenderedBody } from "./projects/projectNoteValues";
 import { WorkbookSnapshotRecord } from "./components/WorkbookSnapshotRecord";
@@ -11386,6 +11387,7 @@ const App: React.FC = () => {
   const [restoredVolumeRevision, setRestoredVolumeRevision] = useState(0);
   const [additionalActiveId, setAdditionalActiveId] = useState<string | null>(null);
   const [activeProjectDocumentId, setActiveProjectDocumentId] = useState<string | null>(null);
+  const [projectMiddleWorkbook, setProjectMiddleWorkbook] = useState<Workbook | null>(null);
   const leaveProjectDocumentView = useCallback(() => {
     // Keep the loaded Project adapters/history; only leave its document viewport.
     setAdditionalActiveId(null); setActiveProjectDocumentId(null);
@@ -75779,7 +75781,7 @@ case "mobius":
   );
   const geometryRightSidePanelWidth = Math.max(300, Math.min(380, Math.round(viewportSize.width * 0.2)));
   const geometryStackedLeftPanelMaxHeight = isPhoneLandscapeLayout
-    ? Math.max(170, Math.floor(viewportSize.height * 0.38))
+    ? Math.max(150, Math.floor(viewportSize.height * 0.38))
     : Math.max(220, Math.floor(viewportSize.height * 0.42));
   const geometryCurrentToolMaxHeight = compactGeometryPanel
     ? Math.max(130, Math.min(220, Math.floor(viewportSize.height * 0.28)))
@@ -78322,6 +78324,7 @@ case "mobius":
   const projectNavigationRef = useRef(new ProjectNavigation());
   const restoredMeshDatasetRef = useRef<{ documentId: string; sourceHash: string; mesh: SurfaceMeshData } | null>(null);
   const navigateRestoredDocument = (id: string, module: KernelWorkspaceModule): boolean => {
+    setProjectMiddleWorkbook(null);
     const navigationSequence = ++quantumSceneNavigationSequence.current;
     const restored = restoredProjectRef.current;
     if (restored?.workspace.entries.some(entry => entry.expected.id === id && entry.module === module)) {
@@ -79248,7 +79251,8 @@ case "mobius":
     <div className="math3d-app" data-testid="app-shell" data-project-document-id={activeProjectDocumentId ?? undefined} style={rootStyle}>
       <KernelWorkspacePanel
         captureProjectThumbnail={() => captureProjectViewThumbnail(document.querySelector(hasSavedDocumentViewport ? '[data-testid="project-source-view"]' : '[data-testid="module-workspace"]'))}
-        projectNavigation={{ canBack: projectNavigationRef.current.canBack, canForward: projectNavigationRef.current.canForward, back: navigateProjectBack, forward: navigateProjectForward }}
+        projectNavigation={{ canBack: projectNavigationRef.current.canBack, canForward: projectNavigationRef.current.canForward,
+          back: navigateProjectBack, forward: navigateProjectForward, recent: projectNavigationRef.current.recent() }}
         projectsOpen={projectsOpen}
         activeProjectDocumentId={activeProjectDocumentId}
         onProjectsOpenChange={setProjectsOpen}
@@ -79305,6 +79309,7 @@ case "mobius":
             localPosition: selected.localPosition ?? null };
         }}
         onOpenWorkbook={(workbook, stageId, blockId) => {
+          setProjectMiddleWorkbook(null);
           setWorkbooks((current) => [workbook, ...current.filter((item) => item.id !== workbook.id)]);
           setActiveWorkbookId(workbook.id);
           setActiveStageId(stageId ?? "define");
@@ -79313,6 +79318,10 @@ case "mobius":
           setGeometryMode("workbook");
           setGeometryWorkbookUiMode("full");
           setRightPanelTab("workbook");
+        }}
+        onViewProjectWorkbook={(workbook) => {
+          setWorkbooks((current) => [workbook, ...current.filter((item) => item.id !== workbook.id)]);
+          setProjectMiddleWorkbook(workbook);
         }}
         canNavigateDocument={(id, module) => restoredProjectRef.current?.graphs.has(id) || restoredProjectRef.current?.additional.has(id) || restoredProjectRef.current?.curves.has(id) || restoredProjectRef.current?.surfaces.has(id) || restoredProjectRef.current?.geometries.has(id) || restoredProjectRef.current?.topologies.has(id) || restoredProjectRef.current?.complexes.has(id) || restoredProjectRef.current?.volumes.has(id) || restoredProjectRef.current?.meshes.has(id) || graph2dPromotions.some((item) => item.document.identity.id === id) || ({
           geometry: geometryKernelAdapterRef.current?.document().identity.id,
@@ -79405,6 +79414,17 @@ case "mobius":
           }
         }}
       />
+      {projectMiddleWorkbook && activeProjectDocumentId && <ProjectWorkbookMiddleView
+        workbook={projectMiddleWorkbook} project={activeNotebookProjectRef.current}
+        documentTitle={activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId]?.title ?? "document"}
+        onReturn={() => setProjectMiddleWorkbook(null)}
+        onEdit={() => {
+          setProjectMiddleWorkbook(null); setActiveWorkbookId(projectMiddleWorkbook.id); setActiveStageId("define");
+          setMode("geometry"); setGeometryMode("workbook"); setGeometryWorkbookUiMode("full"); setRightPanelTab("workbook");
+        }}
+        onOpenDocument={(id, module) => { navigateRestoredDocument(id, module); }}
+        onOpenNote={(id) => setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }))}
+        onOpenProjects={() => setProjectsOpen(true)} />}
       {isDev && devError && (
         <div
           style={{
@@ -91612,9 +91632,9 @@ case "mobius":
                       className={`gallery-panel-scroll${geometryGalleryCardSizeMode === "compact" ? " geometry-gallery-compact" : ""}`}
                       style={{
                         paddingBottom: 0,
-                        flex: compactGeometryCreatePanel ? "1 1 auto" : undefined,
-                        minHeight: compactGeometryCreatePanel ? 120 : undefined,
-                        maxHeight: compactGeometryCreatePanel ? "none" : undefined,
+                        flex: compactGeometryCreatePanel && viewportSize.height >= 600 ? "0 0 360px" : compactGeometryCreatePanel ? "1 1 auto" : undefined,
+                        minHeight: compactGeometryCreatePanel && viewportSize.height >= 600 ? 360 : compactGeometryCreatePanel ? 120 : undefined,
+                        maxHeight: compactGeometryCreatePanel && viewportSize.height >= 600 ? 360 : compactGeometryCreatePanel ? "none" : undefined,
                       }}
                     >
                       <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Cards</div>

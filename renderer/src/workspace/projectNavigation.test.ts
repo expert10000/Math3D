@@ -7,5 +7,6 @@ it("keeps navigation independent of scientific undo and truncates abandoned forw
   history.visit({ id: "mesh", module: "mesh" });
   expect(history.back()?.id).toBe("surface"); expect(history.forward()?.id).toBe("mesh");
   history.back(); history.visit({ id: "graph", module: "graph2d" }); expect(history.canForward).toBe(false);
+  expect(history.recent().map(item => item.id)).toEqual(["graph", "surface"]);
   expect(history.back()?.id).toBe("surface");
 });

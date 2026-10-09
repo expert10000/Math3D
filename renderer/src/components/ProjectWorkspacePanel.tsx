@@ -46,7 +46,7 @@ const ProjectThumbnail: React.FC<{ src: string | null; modules: string[] }> = ({
     <div data-testid="project-thumbnail-fallback" className="project-gallery-fallback"><strong aria-hidden="true">{modules.includes("Surface") ? "σ(u,v)" : modules.includes("Graph") ? "f(x)" : "M³"}</strong><span>{modules.join(" · ") || "Project"}</span><small>No saved thumbnail</small></div>;
 };
 type Props = {
-  projectNavigation?: { canBack: boolean; canForward: boolean; back: () => void; forward: () => void };
+  projectNavigation?: { canBack: boolean; canForward: boolean; back: () => void; forward: () => void; recent: readonly { id: string; module: KernelWorkspaceModule }[] };
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCurrentProjectChange?: (project: Math3DProject) => void;
@@ -56,6 +56,7 @@ type Props = {
   onRelinkQuantumScene?: (reference: ProjectQuantumSceneReference) => Promise<string | null>;
   captureActiveWorkbook?: () => Workbook | null;
   onOpenWorkbook?: (workbook: Workbook, stageId?: WorkbookStageId, blockId?: string) => void;
+  onViewProjectWorkbook?: (workbook: Workbook) => void;
   noteRequest?: { id: string; token: number } | null;
   captureNoteSelection?: () => NoteSelectionDescriptor | null;
   captureProjectThumbnail?: () => Promise<string>;
@@ -69,7 +70,7 @@ type Props = {
   activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, captureActiveWorkbook, onOpenWorkbook, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeProjectDocumentId }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeProjectDocumentId }) => {
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
@@ -223,6 +224,37 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     }
   }, [project]);
   const documentTitles = new Map(explorer?.groups.flatMap((group) => group.documents.map((document) => [document.id, document.title] as const)) ?? []);
+  const relatedSummary = useMemo(() => {
+    const empty = { sources: [] as { id: string; module: KernelWorkspaceModule; revision: number; historical: boolean }[],
+      derived: [] as { id: string; module: KernelWorkspaceModule; revision: number; historical: boolean }[],
+      evidence: [] as { id: string; operation: string; revision: number; historical: boolean }[],
+      notes: [] as ProjectNote[] };
+    if (!project || !viewingDocumentId) return empty;
+    const entries = new Map<string, (typeof project.workspace.entries)[number]>(project.workspace.entries.map(entry => [entry.expected.id, entry]));
+    const add = (items: typeof empty.sources, id: string, revision: number, hash: string) => {
+      const entry = entries.get(id);
+      if (!entry || items.some(item => item.id === id)) return;
+      items.push({ id, module: entry.module, revision,
+        historical: entry.expected.revision !== revision || entry.expected.structuralHash !== hash });
+    };
+    for (const relation of project.workspace.relations) {
+      if (relation.target.type !== "document") continue;
+      if (relation.target.generation.documentId === viewingDocumentId)
+        for (const source of relation.sources) add(empty.sources, source.documentId, source.revision, source.structuralHash);
+      if (relation.sources.some(source => source.documentId === viewingDocumentId)) {
+        const target = relation.target.generation;
+        add(empty.derived, target.documentId, target.revision, target.structuralHash);
+      }
+    }
+    const sourceEntry = entries.get(viewingDocumentId);
+    empty.evidence = project.workspace.results.filter(result => result.provenance.source.documentId === viewingDocumentId)
+      .map(result => ({ id: result.resultId, operation: result.provenance.operation.type,
+        revision: result.provenance.source.revision,
+        historical: sourceEntry?.expected.revision !== result.provenance.source.revision ||
+          sourceEntry?.expected.structuralHash !== result.provenance.source.structuralHash }));
+    empty.notes = project.notes?.filter(note => note.anchor && "source" in note.anchor && note.anchor.source.documentId === viewingDocumentId) ?? [];
+    return empty;
+  }, [project, viewingDocumentId]);
 
   type CardSummary = { description: string; documents: number; results: number; modules: string[] };
   const [summaries, setSummaries] = useState<Map<string, CardSummary>>(new Map());
@@ -613,9 +645,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const bytes = resources.bytes({ kind: "workbook-payload", id });
       if (!bytes) throw new Error("Workbook data is unavailable. Import a Project package with resources.");
       const workbook = readProjectWorkbook(bytes, reference);
-      onOpenWorkbook?.(workbook);
+      if (besideProject && onViewProjectWorkbook) onViewProjectWorkbook(workbook);
+      else onOpenWorkbook?.(workbook);
       setMessage(`Opened “${workbook.title}” from this Project.`);
-      if (besideProject) { setViewingDocumentId(null); setQuick(true); setViewerCompanion(true); setDetailView(true); }
+      if (besideProject) { setQuick(true); setViewerCompanion(true); setDetailView(true); }
       else onOpenChange(false);
     } catch (error) { setMessage(`Workbook open failed: ${(error as Error).message}`); }
     finally { setBusy(false); }
@@ -1039,6 +1072,43 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               : <button type="button" className="project-gallery-primary" data-testid="project-save" disabled={busy || !project || !title.trim()} onClick={save}>{busy ? "Working…" : managed ? "Save changes" : "Save project"}</button>}
             <button type="button" data-testid="project-current" disabled={busy} onClick={refresh}>{preview || managed ? "Back to current workspace" : "Refresh workspace"}</button>
           </div>
+          {hasOpenProject && !preview && !managed && <div data-testid="project-overview" className="project-navigation-overview">
+            <h4>Project overview</h4>
+            <p>{project?.workspace.results.length ?? 0} saved results · {project?.workspace.relations.length ?? 0} relations</p>
+            {viewingDocumentId && <button type="button" data-testid="project-overview-continue" onClick={() => { setQuick(true); setViewerCompanion(true); setDetailView(true); }}>
+              Continue with {documentTitles.get(viewingDocumentId) ?? "selected document"}
+            </button>}
+            <strong>Recent documents</strong>
+            <div data-testid="project-recent-documents" className="project-navigation-links">
+              {projectNavigation?.recent.filter(item => project?.workspace.entries.some(entry => entry.expected.id === item.id && entry.module === item.module)).map(item =>
+                <button type="button" key={item.id} data-testid={`project-recent-${item.id}`}
+                  disabled={!canNavigateDocument?.(item.id, item.module)} onClick={() => viewBesideProject(item.id, item.module)}>
+                  {documentTitles.get(item.id) ?? item.module}{item.id === viewingDocumentId ? " · current" : ""}
+                </button>)}
+              {!projectNavigation?.recent.length && <small>No documents opened in this Project yet.</small>}
+            </div>
+            {viewingDocumentId && <div data-testid="project-related-documents" className="project-navigation-related">
+              <strong>Related to {documentTitles.get(viewingDocumentId) ?? "selected document"}</strong>
+              {(["sources", "derived"] as const).map(kind => <div key={kind}>
+                <small>{kind === "sources" ? "Sources" : "Derived documents"}</small>
+                <div className="project-navigation-links">{relatedSummary[kind].map(item => <button type="button" key={item.id}
+                  data-testid={`project-related-${kind}-${item.id}`}
+                  disabled={!canNavigateDocument?.(item.id, item.module)} onClick={() => viewBesideProject(item.id, item.module)}
+                  title={item.historical ? `Recorded revision ${item.revision}; current document differs` : `Revision ${item.revision}`}>
+                  {documentTitles.get(item.id) ?? item.module}{item.historical ? ` · captured r${item.revision}` : ""}
+                </button>)}{!relatedSummary[kind].length && <small>None</small>}</div>
+              </div>)}
+              <div><small>Evidence</small><div className="project-navigation-links">
+                {relatedSummary.evidence.map(item => <span key={item.id} title={item.id}>{item.operation} · r{item.revision}{item.historical ? " · historical" : " · current"}</span>)}
+                {!relatedSummary.evidence.length && <small>None</small>}
+              </div></div>
+              <div><small>Notes</small><div className="project-navigation-links">
+                {relatedSummary.notes.map(note => <button type="button" key={note.identity.id} onClick={() => openProjectNotes(note.identity.id)}>{note.title}</button>)}
+                {!relatedSummary.notes.length && <small>None anchored to this document</small>}
+              </div></div>
+              {!!project?.workbooks?.length && <small>Project Workbooks are listed in Contents. Open one here while keeping this document active.</small>}
+            </div>}
+          </div>}
         </div>
         <nav className="project-workspace-nav" aria-label="Jump to project section">
           <button type="button" onClick={() => jumpTo(detailsSection)}>Project details</button>

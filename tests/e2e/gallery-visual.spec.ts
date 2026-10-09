@@ -138,6 +138,12 @@ const stabilizeGalleryVisuals = async (page: Page): Promise<void> => {
       [data-testid="weierstrass-preset-grid"] {
         font-family: "Segoe UI", Tahoma, Arial, sans-serif !important;
       }
+      [data-testid="surface-preset-grid"] .gallery-scan-card,
+      [data-testid="param-preset-grid"] .gallery-scan-card,
+      [data-testid="weierstrass-preset-grid"] .gallery-scan-card {
+        content-visibility: visible !important;
+        contain-intrinsic-size: auto !important;
+      }
       [data-testid="surface-preset-grid"] .gallery-scan-card-title,
       [data-testid="param-preset-grid"] .gallery-scan-card-title,
       [data-testid="weierstrass-preset-grid"] .gallery-scan-card-title {

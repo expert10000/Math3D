@@ -11,6 +11,14 @@ export class ProjectNavigation {
   }
   get canBack() { return this.cursor > 0; }
   get canForward() { return this.cursor < this.entries.length - 1; }
+  recent(limit = 6) {
+    const seen = new Set<string>();
+    return this.entries.slice(0, this.cursor + 1).reverse().filter((entry) => {
+      if (seen.has(entry.id)) return false;
+      seen.add(entry.id);
+      return true;
+    }).slice(0, limit);
+  }
   back() { return this.canBack ? this.entries[--this.cursor] : null; }
   forward() { return this.canForward ? this.entries[++this.cursor] : null; }
 }

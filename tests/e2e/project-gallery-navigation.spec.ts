@@ -61,14 +61,12 @@ test("Project Gallery filters starters and saved projects and keeps browsing sep
     await card.getByRole("button", { name: `Favorite ${active.metadata.title}`, exact: true }).click();
     await panel.getByRole("button", { name: "Favorites", exact: true }).click();
     await expect(panel.locator(".project-gallery-card")).toHaveCount(1);
-    await panel.screenshot({ path: test.info().outputPath("project-gallery-desktop.png") });
 
     const leftScroll = await panel.locator(".project-gallery-library").evaluate(element => element.scrollTop);
     await panel.getByRole("navigation", { name: "Jump to project section" }).getByRole("button", { name: "Contents", exact: true }).click();
     await expect(panel.getByTestId("project-sidebar-contents")).toBeFocused();
     await expect(panel.getByTestId("project-workbooks")).toContainText(active.workbooks[0].title);
     expect(await panel.locator(".project-gallery-library").evaluate(element => element.scrollTop)).toBe(leftScroll);
-    await panel.screenshot({ path: test.info().outputPath("project-gallery-contents.png") });
     const download = resolve(ctx.profileDir, "gallery-project.resources.json");
     await ctx.app.evaluate(({ session }, path) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(path)), download);
     await panel.getByRole("navigation", { name: "Jump to project section" }).getByRole("button", { name: "Import / export", exact: true }).click();
@@ -79,7 +77,6 @@ test("Project Gallery filters starters and saved projects and keeps browsing sep
     expect(exported.project.identity.id).toBe(active.identity.id);
     expect(exported.resources.some((item: any) => item.kind === "workbook-payload")).toBe(true);
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!))).toEqual(active);
-    await panel.screenshot({ path: test.info().outputPath("project-gallery-transfer.png") });
 
     await panel.getByTestId(`project-preview-${active.identity.id}`).click();
     await expect(panel.locator(".project-workspace-summary")).toContainText("SAVED COPY · PREVIEW");
@@ -92,7 +89,7 @@ test("Project Gallery filters starters and saved projects and keeps browsing sep
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!))).toEqual(active);
     await panel.getByTestId(`project-preview-${active.identity.id}`).click();
     await panel.getByTestId("project-sidebar-open").click();
-    await expect(panel).toBeHidden();
+    await expect(panel).toHaveClass(/project-viewer-panel/);
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).metadata.title)).toBe("My catenoid study");
   } finally { await closeSurfaceApp(ctx); }
 });
@@ -186,13 +183,28 @@ test("Project documents and Notes can stay beside the live viewer", async () => 
     await expect(viewerCanvas).toBeVisible();
     expect((await viewerCanvas.boundingBox())?.width ?? 0).toBeGreaterThan(100);
     await expect(projects.getByTestId("project-viewer-document")).toHaveValue(surface.expected.id);
+    await expect(projects.getByTestId("project-overview")).toBeVisible();
+    await expect(projects.getByTestId(`project-recent-${surface.expected.id}`)).toBeVisible();
+    const graph = active.workspace.entries.find((entry: { module: string }) => entry.module === "graph2d");
+    if (graph) await expect(projects.getByTestId(`project-related-sources-${graph.expected.id}`)).toBeVisible();
     await expect(projects.getByTestId("project-workbooks")).toBeVisible();
     await page.screenshot({ path: test.info().outputPath("project-beside-viewer.png") });
+    const retainedCanvas = page.getByTestId("project-source-editor").locator("canvas").first();
+    await retainedCanvas.evaluate(element => element.setAttribute("data-workbook-return", "same-canvas"));
     await projects.getByTestId(`project-view-workbook-${active.workbooks[0].id}`).click();
     await expect(projects).toHaveClass(/project-viewer-panel/);
-    await expect(projects.getByTestId("project-viewer-document")).toHaveValue("");
-    await projects.getByTestId("project-viewer-document").selectOption(surface.expected.id);
+    await expect(page.getByTestId("project-middle-workbook")).toBeVisible();
+    await expect(page.getByTestId("project-middle-workbook")).toContainText(active.workbooks[0].title);
     await expect(projects.getByTestId("project-viewer-document")).toHaveValue(surface.expected.id);
+    await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", surface.expected.id);
+    await page.getByTestId("project-return-to-document").click();
+    await expect(page.getByTestId("project-middle-workbook")).toHaveCount(0);
+    await expect(retainedCanvas).toHaveAttribute("data-workbook-return", "same-canvas");
+    const mesh = active.workspace.entries.find((entry: { module: string }) => entry.module === "mesh");
+    await projects.getByTestId(`project-tree-document-${mesh.expected.id}`).click();
+    await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", mesh.expected.id);
+    await projects.getByTestId(`project-recent-${surface.expected.id}`).click();
+    await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", surface.expected.id);
     await projects.getByTestId("project-all-notes").click();
     const notes = projects.getByTestId("project-notes-panel");
     await expect(notes).toBeVisible();
@@ -289,7 +301,9 @@ test("starter Open and Preview reuse edited copies; only New copy adds another p
     await panel.getByTestId("project-detail-toggle").click();
     // Choose the older copy explicitly; starter Open must prefer it while active.
     await panel.getByTestId(`project-open-saved-${first.identity.id}`).click();
-    await expect(panel).toBeHidden(); await show();
+    await expect(panel).toHaveClass(/project-viewer-panel/);
+    await full();
+    await panel.getByTestId("project-detail-toggle").click();
     await panel.getByTestId("project-template-open-edge-path-evidence").click();
     await full();
     await expect(panel.getByTestId("project-detail-toggle")).toHaveAttribute("aria-pressed", "true");

@@ -514,27 +514,16 @@ async function visibleTestIds(page: Page, limit = 80): Promise<string[]> {
 async function openSurfaceCanvas(page: Page): Promise<Awaited<ReturnType<typeof largestVisibleCanvasHost>>> {
   const labels = await getAvailableSections(page);
   await selectSection(page, labels, "Surfaces");
+  if (await waitForVisibleSurfaceCanvasHost(page, 1_000)) return largestVisibleCanvasHost(page);
 
-  const attempts: Array<() => Promise<void>> = [
-    async () => {
-      await setSurfacesLayout(page, 3);
-      await clickFirstVisibleByTestId(page, "surface-family-explicit");
-      await setSurfacesLayout3PanelMode(page, "work");
-    },
-    async () => {
-      await setSurfacesLayout(page, 2);
-      await clickFirstVisibleByTestId(page, "surface-family-explicit");
-    },
-    async () => {
-      await setSurfacesLayout(page, 1);
-      await clickFirstVisibleByTestId(page, "surface-family-explicit");
-    },
-  ];
+  // Choosing a family returns Surfaces to browse mode, so choose it before entering a work layout.
+  await clickFirstVisibleByTestId(page, "surface-family-explicit");
+  await setSurfacesLayout(page, 2);
+  if (await waitForVisibleSurfaceCanvasHost(page, 15_000)) return largestVisibleCanvasHost(page);
 
-  for (const attempt of attempts) {
-    await attempt();
-    if (await waitForVisibleSurfaceCanvasHost(page)) return largestVisibleCanvasHost(page);
-  }
+  await setSurfacesLayout(page, 3);
+  await setSurfacesLayout3PanelMode(page, "work");
+  if (await waitForVisibleSurfaceCanvasHost(page, 15_000)) return largestVisibleCanvasHost(page);
 
   const ids = await visibleTestIds(page);
   throw new Error(`No visible surface canvas host found after opening Surfaces. Visible test ids: ${ids.join(", ")}`);
