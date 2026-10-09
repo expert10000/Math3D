@@ -41872,9 +41872,12 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (mode !== "surfaces" || !isSurfaceDatasetKind(datasetKind) || surfaceViewportPresetAppliedRef.current) return;
+    // A project Mesh gets its own clean opening view below. Defer the user's
+    // regular Surface preset until they return to a normal Surface workspace.
+    if (activeProjectDocumentId && restoredProjectRef.current?.meshes.has(activeProjectDocumentId)) return;
     surfaceViewportPresetAppliedRef.current = true;
     applySurfaceViewportPreset(surfaceViewportPreset);
-  }, [applySurfaceViewportPreset, datasetKind, mode, surfaceViewportPreset]);
+  }, [activeProjectDocumentId, applySurfaceViewportPreset, datasetKind, mode, surfaceViewportPreset]);
 
   useEffect(() => {
     if (mode !== "surfaces" || !isSurfaceDatasetKind(datasetKind)) return;
@@ -78351,10 +78354,32 @@ case "mobius":
     const mesh = restored?.meshes.get(id);
     if (mesh) {
       setSavedMeshModuleView(true);
+      // Consume any pending Surface-presentation restore before setting the
+      // Mesh's clean view; its effect would otherwise re-enable old overlays.
+      restoreNormalSurfacePresentationRef.current?.();
+      restoreNormalSurfacePresentationRef.current = null;
       meshDocumentAdapterRef.current = mesh; setMeshKernelDocument(mesh.document());
       clearSurfaceMeshTopologySessionState();
       nativeMeshSelectionKeysRef.current = ""; setMeshMultiSelectionSet(createUnifiedSelectionSet([]));
+      setSurfaceMeshTopologySelectionCleared(true);
+      setSurfaceMeshHoverPick(null);
+      clearInspect();
       setMeshDataset(mesh.mesh(), "project-restore");
+      // Saved Meshes open as a clear object. Viewer overlays are still
+      // available through Mesh controls, but stale Surface/analysis settings
+      // must not cover the Mesh on first view or when revisiting it.
+      setColorMode("solid"); setShowWireframe(false); setShowBoundingBox(false);
+      setShowPlanes(false); setShowChartGrid(false); setShowContours(false);
+      setShowGaussMap(false); setShowPrincipalProjections(false);
+      setShowPrincipalDirections(false); setShowPrincipalNormalPlanes(false);
+      setShowPrincipalLines(false); setShowPrincipalGlyphs(false);
+      setShowCurvatureLines(false); setShowRidges(false); setShowValleys(false);
+      setProbeEnabled(false); setShowProbeNormal(false);
+      setShowProbeTangentPlane(false); setShowProbeTangents(false);
+      setMeshAnalyzeDiagnosticOverlayMode("none");
+      setMeshAnalyzeConstructionOverlaysVisible(false);
+      setCommandPreviewOverlaysVisible(false);
+      setShowInViewportOverlayControls(false);
       setMeshViewerControlsOpen(false);
       setDisplayMode("workspace"); setShowRightPanel(true); setRightPanelTab("inspector");
       setSurfacePreviewFocusMode(false); setCleanScreenshotActive(false); setSurfaceDrawerPanel("left");
@@ -85477,6 +85502,7 @@ case "mobius":
                 {surfaceViewerKind === "mesh" &&
                   surfaceMeshTopologyPickMode === "object" &&
                   !!surfaceMeshData?.positions?.length &&
+                  (!savedMeshModuleActive || !surfaceMeshTopologySelectionCleared) &&
                   !cleanScreenshotSurfaceActive && (
                     <div
                       data-testid="mesh-object-selection-glow"

@@ -7,6 +7,10 @@ test("Catenoid's saved Mesh opens in the normal Mesh workspace", async () => {
   try {
     ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page); await resizeSurfaceAppWindow(ctx, 1600, 1000);
     const page = ctx.page;
+    // Simulate a user whose normal Surface workspace last used the busy
+    // analysis preset. Opening a saved Mesh must still start with a clear view.
+    await page.evaluate(() => localStorage.setItem("math3d.ui.viewportPreset.v1", "analysis"));
+    await page.reload();
     await page.getByTestId("projects-toggle").click();
     await page.getByTestId("project-template-open-catenoid-evidence").click();
     const project = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
@@ -19,7 +23,21 @@ test("Catenoid's saved Mesh opens in the normal Mesh workspace", async () => {
     await expect(page.getByTestId("surface-primary-viewer").getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
     await expect(page.getByTestId("surface-left-panel")).toBeVisible();
     await expect(page.getByTestId("surface-right-panel")).toBeVisible();
+    await expect(page.getByTestId("surface-viewport-panel-hide")).toHaveCount(0);
+    await expect(page.getByText("Whole mesh selected", { exact: true })).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath("catenoid-mesh-native.png") });
+    await page.getByTestId("mesh-viewer-controls-show").click();
+    const controls = page.getByTestId("mesh-viewer-controls-strip");
+    await expect(controls.getByRole("checkbox", { name: "Bounding box" })).not.toBeChecked();
+    await expect(controls.getByRole("checkbox", { name: "Coordinates" })).not.toBeChecked();
+    await expect(controls.getByRole("checkbox", { name: "Wireframe" })).not.toBeChecked();
+    await expect(controls.getByTestId("surface-viewport-panel-toggle")).not.toBeChecked();
+    await expect(controls.getByTestId("mesh-display-command-preview-overlays-toggle")).not.toBeChecked();
+    await controls.getByRole("checkbox", { name: "Bounding box" }).check();
+    await editor.getByTestId("project-source-back-to-surface").click();
+    await page.getByTestId("project-viewer-document").selectOption(mesh.expected.id);
+    await page.getByTestId("mesh-viewer-controls-show").click();
+    await expect(page.getByTestId("mesh-viewer-controls-strip").getByRole("checkbox", { name: "Bounding box" })).not.toBeChecked();
     await editor.getByTestId("project-mesh-study-view").click();
     await expect(page.getByTestId("document-mesh-viewport")).toHaveAttribute("data-document-id", mesh.expected.id);
     await page.getByTestId("project-mesh-module-view").click();
