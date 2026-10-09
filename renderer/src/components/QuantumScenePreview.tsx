@@ -38,8 +38,8 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
   const scene = details.scene;
   const count = (document.geometry.points?.length ?? 0) + (document.geometry.segments?.length ?? 0) +
     (document.geometry.triangles?.length ?? 0);
-  const [view, setView] = useState<"geometry" | "slice" | "surface" | "volume">(scene.fields?.length && count === 0 ? "volume" : "geometry");
-  useEffect(() => { setView(scene.fields?.length && count === 0 ? "volume" : "geometry"); }, [opened.reference.sceneFingerprint]);
+  const [view, setView] = useState<"geometry" | "slice" | "surface" | "volume">(scene.fields?.length && count === 0 ? "slice" : "geometry");
+  useEffect(() => { setView(scene.fields?.length && count === 0 ? "slice" : "geometry"); }, [opened.reference.sceneFingerprint]);
   const [locateStatus, setLocateStatus] = useState("");
   const [locating, setLocating] = useState(false);
   const [openingRun, setOpeningRun] = useState(false);
@@ -234,8 +234,8 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
             </li>)}</ul>
             <div><b>Rendered objects:</b> {opened.mappedObjectIds.length}</div>
             <div><b>Deferred objects:</b> {opened.deferredObjectIds.length}</div>
-            <div><b>Native field documents deferred:</b> {opened.deferredFieldIds.length}</div>
-            {scene.fields?.length ? <p>Field slices and bounded density surfaces are read-only views derived from verified amplitudes. Native Volume admission, phase-colored lobes, and editable 3D field documents remain deferred.</p> : null}
+            <div><b>Editable Project field documents deferred:</b> {opened.deferredFieldIds.length}</div>
+            {scene.fields?.length ? <p>Field slices, bounded density surfaces, and the source-backed Volume view are read-only derivatives of verified grids. Editable Project Volume admission remains deferred.</p> : null}
             {scene.annotations?.length ? <><h3>Source annotations</h3>{scene.annotations.map(annotation =>
               <p key={annotation.id}>{annotation.text}</p>)}</> : null}
             {(opened.deferredObjectIds.length > 0 || opened.deferredFieldIds.length > 0) &&

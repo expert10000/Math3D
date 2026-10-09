@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Status:** M3D-Q01 complete — strict verified import plus compact, read-only native Project document; bounded read-only M3D-Q02 complete for supplied quantum-scene/v1 content; later milestones open
+**Status:** M3D-Q01 and bounded read-only M3D-Q02 complete; M3D-Q03 adds a source-backed Volume adapter for verified scalar/complex grids, cancellable conversion and source-revision refusal. M3D-Q04–Q10 remain open.
 
 **Type:** interoperability and scientific-visualization program
 
@@ -90,9 +90,23 @@ refused by Lab; Math3D never reads Lab's private store or calls its worker.
 This requires the matching run in the selected Lab profile and starts a Lab
 process rather than focusing an existing window. The scene hash identifies a
 claimed source result, not the publisher's identity or proof that every scene
-value was derived from that run. The renderer does not infer element species,
-bond order, or orbital quantum numbers absent from source metadata. The
-remaining M3D-Q03–Q10 work remains open.
+value was derived from that run. M3D-Q03 additionally converts verified scalar
+and complex `f64le` field components to Math3D's x-fastest float32 Volume grid,
+with explicit axes, position and value units, source dataset hashes, and a
+compact read-only Volume source document. The Volume viewer supplies slices and
+threshold isosurfaces for non-phase quantities. Density and phase are derived from the supplied
+real/imaginary components; near-zero phase nodes carry a separate mask and a
+labelled zero display placeholder, not a measured phase. Phase is slice-only:
+an isosurface through the undefined-node placeholder or the ±π wrap would be
+misleading. Conversion can be
+cancelled. Field, quantity, slice and threshold changes request a fresh source
+verification; Electron re-reads and hashes the bundle before and after derivation
+and refuses a changed or superseded source. Voxel values and derived surfaces
+remain transient, not command-history entries or editable Project Volume
+resources. The current scene schema admits planar separate real and imaginary
+`f64le` components; no other complex encoding is silently assumed. The
+renderer does not infer element species, bond order, or orbital quantum numbers
+absent from source metadata. M3D-Q04–Q10 work remains open.
 
 Quantum Lab must not call MATH3D internals, and MATH3D must not reproduce Quantum
 Lab's physics engines. Both applications meet at the portable, versioned scene
@@ -345,6 +359,16 @@ camera framing. Missing optional annotations do not prevent scientific geometry
 from loading.
 
 ### M3D-Q03 — `feat(math3d-quantum): add scalar and complex quantum field rendering`
+
+**Implemented (read-only scope).** Verified planar real/imaginary `f64le` grids
+feed a compact Math3D Volume source and a transient x-fastest float32 dataset.
+The Volume viewer supports scalar, real, imaginary, and density slices and
+non-phase threshold isosurfaces; phase uses an explicit near-node mask and is
+slice-only. Async grid conversion is cancellable, and source bytes are
+re-verified before and after conversion. The five pinned hydrogenic orbital
+bundles, synthetic scalar/complex conversion, tampering, cancellation, and
+desktop Volume viewing are covered by acceptance tests. Editable Project
+Volume admission and other complex encodings remain separate future work.
 
 **Scope.** Adapt scalar and complex grids to Volume infrastructure. Support supplied
 `psi(r)`, `|psi(r)|^2`, phase, real, and imaginary components; slices; thresholds;

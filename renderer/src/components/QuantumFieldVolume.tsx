@@ -11,20 +11,23 @@ export function QuantumFieldVolume({ fingerprint, fields }: { fingerprint: strin
   const [artifact, setArtifact] = useState<VolumeArtifact | null>(null);
   const [error, setError] = useState("");
   const [axis, setAxis] = useState<"x" | "y" | "z">("z");
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(() => Math.floor((fields[0]?.grid.shape[2] ?? 1) / 2));
   const [mode, setMode] = useState<"slice" | "isosurface">("slice");
   const [level, setLevel] = useState(0.1);
   const generation = useRef(0);
+  const maximumIndex = field ? field.grid.shape[{ x: 0, y: 1, z: 2 }[axis]] - 1 : 0;
+  const safeIndex = Math.min(index, maximumIndex);
+  const safeMode = safeQuantity === "phase" ? "slice" : mode;
   useEffect(() => {
     const current = ++generation.current;
-    setArtifact(null); setError(""); setMode("slice");
+    setArtifact(null); setError("");
     if (!field) return;
     const request = { fingerprint, fieldId: field.id, quantity: safeQuantity, requestId: crypto.randomUUID() };
     void window.quantumScenes!.fieldVolume(request).then(result => {
-      if (current === generation.current) { setArtifact(result); setIndex(Math.floor(result.shape[2] / 2)); }
+      if (current === generation.current) setArtifact(result);
     }).catch(cause => { if (current === generation.current) setError(String((cause as Error)?.message ?? cause)); });
     return () => { generation.current++; void window.quantumScenes?.cancelFieldVolume(request.requestId); };
-  }, [fingerprint, field?.id, safeQuantity]);
+  }, [fingerprint, field?.id, safeQuantity, axis, safeIndex, safeMode, level]);
   const adapted = useMemo(() => artifact ? adaptQuantumFieldVolume(artifact) : null, [artifact]);
   const range = useMemo(() => {
     if (!artifact) return [0, 0] as const;
@@ -32,22 +35,23 @@ export function QuantumFieldVolume({ fingerprint, fields }: { fingerprint: strin
     for (const value of artifact.values) { min = Math.min(min, value); max = Math.max(max, value); }
     return [min, max] as const;
   }, [artifact]);
-  const maximumIndex = artifact ? artifact.shape[{ x: 0, y: 1, z: 2 }[axis]] - 1 : 0;
-  const safeIndex = Math.min(index, maximumIndex);
   const isoValue = range[0] + level * (range[1] - range[0]);
   if (!field) return <p>No verified grid is available.</p>;
   return <section data-testid="quantum-field-volume" style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
     <div style={{ padding: 8, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
       <label>Field <select aria-label="Volume field" value={field.id} onChange={event => {
         const next = fields.find(candidate => candidate.id === event.target.value)!;
-        setFieldId(next.id); setQuantity(next.kind === "scalar-field" ? "real" : "density");
+        setFieldId(next.id); setQuantity(next.kind === "scalar-field" ? "real" : "density"); setMode("slice");
+        setIndex(Math.floor(next.grid.shape[{ x: 0, y: 1, z: 2 }[axis]] / 2));
       }}>{fields.map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}</select></label>
-      <label>Quantity <select aria-label="Volume quantity" value={safeQuantity} onChange={event => setQuantity(event.target.value as VolumeArtifact["quantity"])}>
+      <label>Quantity <select aria-label="Volume quantity" value={safeQuantity} onChange={event => {
+        setQuantity(event.target.value as VolumeArtifact["quantity"]); setMode("slice");
+      }}>
         {(field.kind === "scalar-field" ? ["real"] : ["density", "real", "imaginary", "phase"]).map(candidate =>
           <option key={candidate} value={candidate}>{candidate === "density" ? "|ψ|²" : candidate}</option>)}</select></label>
-      <label>View <select aria-label="Volume view" value={mode} onChange={event => setMode(event.target.value as typeof mode)}>
-        <option value="slice">Slice</option><option value="isosurface">Isosurface</option></select></label>
-      {mode === "slice" ? <>
+      <label>View <select aria-label="Volume view" value={safeMode} onChange={event => setMode(event.target.value as typeof mode)}>
+        <option value="slice">Slice</option>{safeQuantity !== "phase" && <option value="isosurface">Isosurface</option>}</select></label>
+      {safeMode === "slice" ? <>
         <label>Normal <select aria-label="Volume normal" value={axis} onChange={event => {
           const next = event.target.value as typeof axis; setAxis(next); setIndex(Math.floor((artifact?.shape[{ x: 0, y: 1, z: 2 }[next]] ?? 1) / 2));
         }}><option>x</option><option>y</option><option>z</option></select></label>
@@ -59,14 +63,14 @@ export function QuantumFieldVolume({ fingerprint, fields }: { fingerprint: strin
       </select></label>}
     </div>
     <div style={{ minHeight: 0, flex: 1 }}>{adapted ? <VolumeViewer key={adapted.document.identity.id} dataset={adapted.dataset}
-      axis={axis} index={safeIndex} opacity={0.9} renderMode={mode} showIsosurface={mode === "isosurface"}
-      isoValue={isoValue} showPrimarySlice={mode === "slice"} /> : <p role="status" style={{ padding: 16 }}>
+      axis={axis} index={safeIndex} opacity={0.9} renderMode={safeMode} showIsosurface={safeMode === "isosurface"}
+      isoValue={isoValue} showPrimarySlice={safeMode === "slice"} /> : <p role="status" style={{ padding: 16 }}>
       {error || "Converting verified grid for Math3D Volume…"}</p>}</div>
     {artifact && <div data-testid="quantum-volume-source" style={{ padding: 8, fontSize: 12 }}>
       Read-only Volume source {adapted?.document.identity.id} · {artifact.shape.join(" × ")} point grid · {artifact.layout} · {artifact.valueUnit}
-      {mode === "isosurface" ? ` · threshold ${isoValue.toPrecision(5)} ${artifact.valueUnit}` : ""}<br />
+      {safeMode === "isosurface" ? ` · threshold ${isoValue.toPrecision(5)} ${artifact.valueUnit}` : ""}<br />
       Coordinates {artifact.axes.map((name, i) => `${name}: ${artifact.coordinateUnits[i]}`).join(", ")} · source encoding {artifact.encoding}.
-      {artifact.quantity === "phase" && <> {artifact.undefinedNodeCount} near-zero nodes have undefined phase; the Volume grid uses a zero display placeholder and a separate node mask. Do not interpret those zeros as measured phase.</>}
+      {artifact.quantity === "phase" && <> {artifact.undefinedNodeCount} near-zero nodes have undefined phase; the Volume slice uses a zero display placeholder and a separate node mask. Phase is not offered as an isosurface because that placeholder and the ±π wrap would produce misleading geometry.</>}
       <br />Derived float32 samples are transient; the compact source document records the verified dataset hashes, not grid samples.
     </div>}
   </section>;

@@ -11,6 +11,7 @@ const { rememberQuantumScene, reopenRecentQuantumScene, reopenQuantumSceneRefere
 const { quantumSceneLaunchDirectory } = require("../dist/main/ipc/quantumSceneIpc.js");
 const { renderVerifiedFieldSlice, inspectVerifiedFieldSample } = require("../dist/main/quantumScene/fieldSlice.js");
 const { deriveVerifiedFieldSurface } = require("../dist/main/quantumScene/fieldSurface.js");
+const { deriveVerifiedFieldVolume } = require("../dist/main/quantumScene/fieldVolume.js");
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const root = await mkdtemp(join(tmpdir(), "m3d-q01-"));
 try {
@@ -177,6 +178,28 @@ try {
   const scalar = { ...orbital, source: { ...orbital.source, fields: [{ ...orbital.source.fields[0], kind: "scalar-field", imaginary: undefined }] } };
   assert.equal(renderVerifiedFieldSlice(scalar, { ...request, quantity: "real" }).unit, "a0^-3/2");
   assert.throws(() => renderVerifiedFieldSlice(scalar, request), /Unsupported field quantity/);
+  const volumeRequest = { fingerprint: sceneFingerprint(orbital), fieldId: "wavefunction", quantity: "real", requestId: "q03-test" };
+  const realVolume = await deriveVerifiedFieldVolume(orbital, volumeRequest);
+  assert.deepEqual([realVolume.encoding, realVolume.layout, realVolume.valueUnit, realVolume.values.length],
+    ["f64le-planar-real-imaginary", "xyz-x-fastest", "a0^-3/2", 27]);
+  assert.deepEqual(realVolume.coordinateUnits, ["a0", "a0", "a0"]);
+  assert.deepEqual(realVolume.shape, [3, 3, 3]);
+  assert.deepEqual(realVolume.origin, [-1, -1, -1]);
+  assert.equal(realVolume.values[1], 0, "QVIS z-fastest to Volume x-fastest conversion was lost");
+  assert.equal(realVolume.values[2], 1);
+  assert.equal(realVolume.sourceHashes[0], hash(realBytes));
+  const densityVolume = await deriveVerifiedFieldVolume(orbital, { ...volumeRequest, quantity: "density" });
+  assert.equal(densityVolume.valueUnit, "a0^-3");
+  assert.equal(densityVolume.values[13], 0);
+  const phaseVolume = await deriveVerifiedFieldVolume(orbital, { ...volumeRequest, quantity: "phase" });
+  assert.equal(phaseVolume.valueUnit, "rad");
+  assert.equal(phaseVolume.phaseZeroPolicy, "zero-placeholder-masked");
+  assert.equal(phaseVolume.undefinedMask[13], 1);
+  assert.equal(phaseVolume.values[13], 0);
+  assert.equal(phaseVolume.undefinedNodeCount, 3);
+  assert.equal((await deriveVerifiedFieldVolume(scalar, volumeRequest)).kind, "scalar-field");
+  await assert.rejects(deriveVerifiedFieldVolume(scalar, { ...volumeRequest, quantity: "density" }), /Unsupported field quantity/);
+  await assert.rejects(deriveVerifiedFieldVolume(orbital, volumeRequest, () => true), /cancelled/);
   const brokenField = Buffer.from(realBytes); brokenField[0] ^= 1;
   await writeFile(join(fieldDirectory, "real.f64"), brokenField);
   await assert.rejects(importQuantumSceneBundle(fieldDirectory), /integrity/);
@@ -245,6 +268,13 @@ try {
     const center = inspectVerifiedFieldSample(real, { ...request, u: 10, v: 10 });
     assert.deepEqual(center.position, [0, 0, 0]);
     const surface = deriveVerifiedFieldSurface(real, { fingerprint: sceneFingerprint(real), fieldId: "wavefunction", level });
+    const grid = await deriveVerifiedFieldVolume(real, { fingerprint: sceneFingerprint(real), fieldId: "wavefunction",
+      quantity: "density", requestId: `orbital-${name}` });
+    assert.deepEqual(grid.shape, [21, 21, 21]);
+    assert.deepEqual(grid.coordinateUnits, ["a0", "a0", "a0"]);
+    assert.equal(grid.valueUnit, "a0^-3");
+    assert.equal(grid.sourceHashes.length, 2);
+    assert.ok(grid.values.every(Number.isFinite));
     assert.ok(surface.triangleCount > 0 && surface.triangleCount <= 20_000);
     assert.equal(surface.indices.length, surface.triangleCount * 3);
     assert.equal(surface.positions.length, surface.normals.length);
@@ -280,6 +310,9 @@ try {
   damagedOrbital[0] ^= 1;
   await writeFile(join(orbitalTamper, "psi-real.f64"), damagedOrbital);
   await assert.rejects(importQuantumSceneBundle(orbitalTamper), /integrity/);
+  await assert.rejects(reopenQuantumSceneReference({ directory: orbitalTamper,
+    sceneFingerprint: sceneFingerprint(await importQuantumSceneBundle(join(orbitalRoot, "orbital-3d.qscene"))) }), /integrity/);
+  console.log("M3D-Q03 scalar/complex Volume conversion, five orbitals, cancellation and tamper refusal passed");
 
   const copied = join(root, "real-lab-tamper.qscene");
   await cp(join(fixtureRoot, fixtureNames[0]), copied, { recursive: true });

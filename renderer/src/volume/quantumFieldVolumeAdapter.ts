@@ -14,8 +14,11 @@ export type QuantumFieldVolume = {
 /** Compact source document + ephemeral Volume dataset. Samples are never persisted in commands. */
 export function adaptQuantumFieldVolume(volume: QuantumFieldVolume): { document: VolumeDocument; dataset: VolumeDataset } {
   const { shape, values, undefinedMask } = volume;
-  if (volume.layout !== "xyz-x-fastest" || values.length !== shape[0] * shape[1] * shape[2] ||
+  if (volume.layout !== "xyz-x-fastest" || !/^[a-f0-9]{64}$/.test(volume.fingerprint) ||
+      values.length !== shape[0] * shape[1] * shape[2] ||
       undefinedMask.length !== values.length || !values.every(Number.isFinite) ||
+      undefinedMask.reduce((sum, value) => sum + (value === 1 ? 1 : 0), 0) !== volume.undefinedNodeCount ||
+      !undefinedMask.every(value => value === 0 || value === 1) ||
       !volume.sourceHashes.every(hash => /^[a-f0-9]{64}$/.test(hash)))
     throw new TypeError("Invalid verified Volume artifact");
   const handle = `quantum-scene:${volume.fingerprint}:${volume.fieldId}:${volume.quantity}`;

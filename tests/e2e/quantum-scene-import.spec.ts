@@ -89,6 +89,34 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await fieldCanvas.click({position:{x:fieldBounds.width*.83,y:fieldBounds.height*.5}});
     await expect(page.getByTestId("quantum-field-sample")).toContainText("Grid [2, 1, 1]");
     await expect(page.getByTestId("quantum-field-sample")).toContainText("density = 1.000000");
+    await page.getByTestId("quantum-scene-geometry").getByRole("button", { name: "Volume", exact: true }).click();
+    await expect(page.getByTestId("quantum-volume-source")).toContainText("a0^-3");
+    await expect(page.getByTestId("quantum-volume-source")).toContainText("f64le-planar-real-imaginary");
+    await page.getByLabel("Volume quantity").selectOption("phase");
+    await expect(page.getByTestId("quantum-volume-source")).toContainText("undefined phase");
+    await expect(page.getByLabel("Volume view").locator("option[value=isosurface]")).toHaveCount(0);
+    await page.getByLabel("Volume quantity").selectOption("density");
+    await expect(page.getByTestId("quantum-volume-source")).toContainText("a0^-3");
+    await page.getByLabel("Volume view").selectOption("isosurface");
+    await expect(page.getByTestId("quantum-volume-source")).toContainText("threshold");
+    await page.getByLabel("Volume view").selectOption("slice");
+    const changedReal = Buffer.from(real); changedReal[0] ^= 1;
+    await writeFile(join(directory, "real.f64"), changedReal);
+    await page.getByLabel("Volume quantity").selectOption("imaginary");
+    await expect(page.getByTestId("quantum-field-volume").getByRole("status")).toContainText("integrity");
+    await writeFile(join(directory, "real.f64"), real);
+    await page.getByLabel("Volume quantity").selectOption("density");
+    await expect(page.getByTestId("quantum-volume-source")).toContainText("a0^-3");
+    const cancellation = await page.evaluate(async fingerprint => {
+      const api = (window as any).quantumScenes;
+      const requestId = crypto.randomUUID();
+      const pending = api.fieldVolume({ fingerprint, fieldId: "wavefunction", quantity: "density", requestId })
+        .then(() => "published", (error: unknown) => String(error));
+      const canceled = await api.cancelFieldVolume(requestId);
+      return { canceled, result: await pending };
+    }, (opened as { ok: true; reference: { sceneFingerprint: string } }).reference.sceneFingerprint);
+    expect(cancellation.canceled).toBe(true);
+    expect(cancellation.result).toMatch(/cancelled/);
     await page.getByTestId("quantum-scene-geometry").getByRole("button",{name:"Geometry",exact:true}).click();
     await expect(page.getByTestId("quantum-field-slice")).toHaveCount(0);
     const wrongField=await page.evaluate(async()=>{
