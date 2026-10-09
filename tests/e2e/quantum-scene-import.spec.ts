@@ -99,6 +99,21 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     expect(wrongReveal).toMatchObject({ok:false});
     await page.getByTestId("quantum-scene-close").click();
     await expect(page.getByTestId("quantum-scene-preview")).toBeHidden();
+    await page.getByTestId("projects-toggle").click();
+    const projects = page.getByTestId("project-explorer-panel");
+    await expect(projects.getByTestId("project-quantum-scenes")).toBeVisible();
+    await projects.getByTestId("project-attach-quantum-scene").click();
+    await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
+    await page.getByTestId("quantum-scene-close").click();
+    await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("staged");
+    await projects.getByTestId("project-save").click();
+    await expect(projects.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
+    const projectScene = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).quantumScenes[0]);
+    expect(projectScene).toMatchObject({ format: "quantum-scene/v1", directory, sceneFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    await projects.getByTestId(`project-open-quantum-scene-${projectScene.sceneFingerprint}`).click();
+    await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
+    await page.getByTestId("quantum-scene-close").click();
+    await projects.getByRole("button", { name: "Close project explorer" }).click();
     const workspacePath = join(root, "quantum-workspace.math3d");
     await page.evaluate(() => {
       const capture = window as any;
@@ -146,6 +161,11 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     const referenceRefused=await page.evaluate(ref=>(window as any).quantumScenes.openReference(ref),workspace.payload.quantumScene);
     expect(referenceRefused).toMatchObject({ok:false,canceled:false});
     if(!referenceRefused.ok&&!referenceRefused.canceled)expect(referenceRefused.error).toMatch(/integrity/);
+    await page.getByTestId("projects-toggle").click();
+    await page.getByTestId(`project-open-quantum-scene-${projectScene.sceneFingerprint}`).click();
+    await expect(page.getByTestId("project-quantum-scene-message")).toContainText(/Scene unavailable:.*integrity/);
+    await expect(page.getByTestId("quantum-scene-preview")).toBeHidden();
+    await page.getByRole("button", { name: "Close project explorer" }).click();
     await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},directory);
     const refused=await page.evaluate(()=>(window as any).quantumScenes.open());
     expect(refused).toMatchObject({ok:false,canceled:false});
@@ -280,6 +300,11 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     const reopenedAfterRestart = await restartedPage.evaluate(()=>(window as any).quantumScenes.reopenRecent());
     expect(reopenedAfterRestart).toMatchObject({ok:true,remembered:true});
     if(reopenedAfterRestart.ok)expect(reopenedAfterRestart.document.metadata.sourceModel).toBe("qwz");
+    await restartedPage.getByTestId("projects-toggle").click();
+    await expect(restartedPage.getByTestId(`project-open-quantum-scene-${projectScene.sceneFingerprint}`)).toBeVisible();
+    await restartedPage.getByTestId(`project-open-quantum-scene-${projectScene.sceneFingerprint}`).click();
+    await expect(restartedPage.getByTestId("project-quantum-scene-message")).toContainText(/Scene unavailable:.*integrity/);
+    await expect(restartedPage.getByTestId("quantum-scene-preview")).toBeHidden();
     await app.close();
     app = await launch([".", "--quantum-scene", realBundle]);
     const launchedPage = await app.firstWindow();
