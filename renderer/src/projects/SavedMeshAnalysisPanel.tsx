@@ -52,7 +52,9 @@ export const SavedMeshAnalysisPanel = ({ renderWorkspace, meshes, onCreate, onOp
   const inspected = inspection?.key === meshKey ? inspection.index : undefined;
   const setInspected = (index: number | undefined) => setInspection(index === undefined ? null : { key: meshKey, index });
   useEffect(() => { setPickTarget(null); setEndpointsChosen(false); setStart("0"); setEnd(""); setInspected(undefined); }, [mesh?.id, mesh?.revision, mesh?.structuralHash]);
-  const viewData = useMemo(() => mesh && readMesh ? readMesh(mesh.id) : null, [mesh?.id, mesh?.revision, mesh?.structuralHash, readMesh]);
+  // A collapsed study must not decode and verify a large Mesh during Surface
+  // navigation. The saved buffer is opened only when the study is expanded.
+  const viewData = useMemo(() => viewOpen && mesh && readMesh ? readMesh(mesh.id) : null, [viewOpen, mesh?.id, mesh?.revision, mesh?.structuralHash, readMesh]);
   const savedPath = mesh?.results.filter(result => result.provenance.operation.type === "mesh.saved.edge-path" && result.provenance.source.revision === mesh.revision && result.provenance.source.structuralHash === mesh.structuralHash).at(-1)?.summary as { vertexIndices?: number[] } | undefined;
   const curvature = useMemo(() => {
     try { return { report: viewData && viewOpen ? savedMeshCurvatureReport(viewData) : null, error: "" }; }
@@ -141,8 +143,9 @@ export const SavedMeshAnalysisPanel = ({ renderWorkspace, meshes, onCreate, onOp
         <button data-testid="project-study-open-source" disabled={!mesh.surfaceGeneration || sourceInfo === null || sourceInfo !== undefined && !sourceInfo.document} onClick={() => run(() => onOpenSource(mesh.id))}>Open source Surface</button>
         <small> {mesh.surfaceGeneration ? `Snapshot from Surface r${mesh.surfaceGeneration.revision}. ` : "This Mesh has no retained Surface lineage. "}{sourceInfo?.document && !sourceInfo.current ? `Opens the current source r${sourceInfo.document.identity.revision}; the Mesh retains its historical snapshot. ` : ""}{!mesh.surfaceGeneration ? "Its sampling comes from the saved buffer; no source Surface resolution control is available." : sourceInfo !== undefined && !sourceInfo?.document ? "The source Surface is unavailable in this project. The saved snapshot and measurements remain retained." : !onCreate ? "Analysis resolution is set on the source Surface. Create a new Mesh there; the saved Mesh keeps its existing sampling." : "Return here to set analysis resolution and create a new snapshot."}</small>
       </div>}
-      {viewData && <details className="saved-mesh-visual-study" data-testid="project-study-visuals" open={viewOpen} onToggle={event => setViewOpen(event.currentTarget.open)} style={{ marginBottom: 10, maxWidth: 760 }}>
+      {readMesh && <details className="saved-mesh-visual-study" data-testid="project-study-visuals" open={viewOpen} onToggle={event => setViewOpen(event.currentTarget.open)} style={{ marginBottom: 10, maxWidth: 760 }}>
         <summary>Saved Mesh visual study</summary>
+        {viewData && <>
         <div>{mesh.title} · Mesh r{mesh.revision} · {mesh.current ? "current source" : "historical source"}</div>
         <label>Colour map <select data-testid="project-curvature-map" value={mapField} onChange={event => setMapField(event.target.value as CurvatureMapField | "none")}><option value="none">Solid</option><option value="K">Gaussian K</option><option value="H">Mean H</option></select></label>
         {colourMap.map && <div data-testid="project-curvature-legend" data-source-id={mesh.id} data-source-revision={mesh.revision} data-source-hash={mesh.structuralHash} data-field={mapField}>
@@ -175,6 +178,7 @@ export const SavedMeshAnalysisPanel = ({ renderWorkspace, meshes, onCreate, onOp
         {viewOpen && !renderWorkspace && <SavedMeshStudyView mesh={viewData} colors={colourMap.map?.colors} inspected={inspected} onInspect={setInspected} picking={!!pickTarget} onCancelPick={() => setPickTarget(null)}
           start={endpointsChosen ? Number(start) : undefined} end={endpointsChosen && end ? Number(end) : endpointsChosen ? mesh.vertexCount - 1 : undefined} path={savedPath?.vertexIndices}
           onPick={index => { if (pickTarget === "start") { setStart(String(index)); setPickTarget("end"); } else if (pickTarget === "end") { setEnd(String(index)); setPickTarget(null); } setEndpointsChosen(true); setError(""); }} />}
+        </>}
       </details>}
       {readMesh && meshes.length > 1 && <SavedMeshComparison key={`${mesh.id}:${mesh.revision}:${mesh.structuralHash}`} choices={meshes} initialLeft={mesh.id} readMesh={readMesh} />}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>

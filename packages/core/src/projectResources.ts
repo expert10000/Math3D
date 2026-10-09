@@ -184,8 +184,10 @@ export class VerifiedProjectResources {
       total += source.bytes.length;
       if (total > MAX_PROJECT_RESOURCE_BYTES) throw new TypeError("Project source resources exceed 64 MiB.");
       const bytes = Uint8Array.from(source.bytes);
-      if (source.checksum !== sha256Checksum(bytes)) throw new TypeError("Resource checksum does not match its bytes.");
-      verifyProjectResourceBytes(item, bytes);
+      const checksum = sha256Checksum(bytes);
+      if (source.checksum !== checksum || item.checksum !== null && item.checksum !== checksum) throw new TypeError("Resource checksum does not match its bytes.");
+      // The same detached bytes were just checked against both descriptors.
+      verifyProjectResourceBytes({ ...item, checksum: null }, bytes);
       const { bytes: _sourceBytes, ...descriptor } = source;
       this.#bytes.set(key(source), bytes);
       this.#descriptors.push(JSON.parse(JSON.stringify(descriptor)));

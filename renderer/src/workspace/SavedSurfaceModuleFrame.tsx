@@ -41,10 +41,10 @@ export function SavedSurfaceModuleSource({ session, onChange }: { session: Addit
   </div>;
 }
 
-export function SurfaceProjectDock({ placement }: { placement: "left" | "right" }) {
+export function SurfaceProjectDock({ placement, controlsLabel = "Surface controls" }: { placement: "left" | "right"; controlsLabel?: string }) {
   const open = (show: boolean) => window.dispatchEvent(new CustomEvent(show ? "math3d:open-project-dock" : "math3d:hide-project-dock", { detail: placement }));
   return <><nav className="surface-project-dock-controls" aria-label={`Surface ${placement} dock`}>
     <button onClick={() => open(true)}>Project</button>
-    <button onClick={() => open(false)}>{placement === "left" ? "Surface controls" : "Inspector"}</button>
+    <button onClick={() => open(false)}>{placement === "left" ? controlsLabel : "Inspector"}</button>
   </nav><div className="document-project-slot" data-placement={placement} /></>;
 }

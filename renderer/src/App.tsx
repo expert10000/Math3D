@@ -24,6 +24,7 @@ import { savedSurfaceDefinition } from "./workspace/savedSurfaceDefinition";
 import { documentPresentationKey, readDocumentPresentation, saveDocumentPresentation } from "./workspace/documentPresentation";
 import { SavedDocumentWorkbench } from "./workspace/SavedDocumentWorkbench";
 import { SavedSurfaceModuleFrame, SavedSurfaceModuleSource, SurfaceProjectDock } from "./workspace/SavedSurfaceModuleFrame";
+import { SavedMeshModuleFrame } from "./workspace/SavedMeshModuleFrame";
 import { DocumentWorkspaceHost } from "./workspace/DocumentWorkspaceHost";
 import { MeshDocumentViewport } from "./workspace/MeshDocumentViewport";
 import { ProjectNavigation } from "./workspace/projectNavigation";
@@ -11391,6 +11392,7 @@ const App: React.FC = () => {
   }, []);
   const [additionalVersion, setAdditionalVersion] = useState(0);
   const [savedSurfaceCustomView, setSavedSurfaceCustomView] = useState(false);
+  const [savedMeshModuleView, setSavedMeshModuleView] = useState(true);
   const derivedProjectSurfaceRef = useRef<string | null>(null);
   const restoreNormalSurfacePresentationRef = useRef<(() => void) | null>(null);
   const restoredProjectRef = useRef<{ graphs: Map<string, Graph2DCommandAdapter>; additional: Map<string, AdditionalProjectSession>; workspace: MixedWorkspaceDocument; curves: Map<string, CurveDocumentAdapter>; surfaces: Map<string, SurfaceDocumentAdapter>; geometries: Map<string, GeometryDocumentAdapter>; topologies: Map<string, TopologyDiagramCommandAdapter>; complexes: Map<string, ComplexAnalysisCommandAdapter>; volumes: Map<string, VolumeDocumentAdapter>; meshes: Map<string, MeshDocumentAdapter>; resources?: VerifiedProjectResources; context: () => import("./projects/additionalProjectRepresentations").RepresentationContext } | null>(null);
@@ -49893,7 +49895,12 @@ case "mobius":
     workbookVectorFields,
   ]);
 
-  const sampleNeighbors = useMemo(() => buildSampleNeighbors(surfaceSampleSet), [surfaceSampleSet]);
+  // Adjacency is only needed by explicit calculus actions. Building it while a
+  // saved Catenoid opens can block the first frame for a large sampled mesh.
+  const getSampleNeighbors = useMemo(() => {
+    let cached: ReturnType<typeof buildSampleNeighbors> | undefined;
+    return () => cached ??= buildSampleNeighbors(surfaceSampleSet);
+  }, [surfaceSampleSet]);
 
   const surfaceScalarFields = useMemo(() => {
     const map = new Map<string, SurfaceScalarField>();
@@ -50826,24 +50833,9 @@ case "mobius":
       positions: surfaceDerivedMeshCandidate!.positions,
       indices: surfaceDerivedMeshCandidate!.indices,
     });
-    const sourceDocument = (restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom" ? restoredSurfaceAdapter : surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId))?.document();
-    if (sourceDocument) {
-      try {
-        const handoff = surfaceMeshKernelHandoff.publish({
-          record: compactDerivedSurfaceMesh(payload, `${activeCanonicalSurfaceDefinition.identity.label} live tessellation`),
-          payload,
-          geometry: { positions: surfaceDerivedMeshCandidate!.positions, indices: surfaceDerivedMeshCandidate!.indices },
-          sources: [sourceDocument],
-        });
-        setSurfaceAnalysisWorkspaceDocument((document) => ({
-          ...document,
-          kernelHandoffs: [...document.kernelHandoffs.filter((entry) => entry.meshId !== handoff.meshId), handoff].slice(-64),
-        }));
-      } catch (error) {
-        setSurfaceDerivedMeshStatus(`Kernel handoff unavailable: ${String((error as Error).message ?? error)}`);
-        return;
-      }
-    }
+    // Keep the geometry and correspondence ready, but publish the verified
+    // binary artifact only when a user opens or promotes this live Mesh.
+    // Hashing it at every Surface navigation blocks the viewer unnecessarily.
     publishDerivedSurfaceMeshPayload(payload);
     setSurfaceAnalysisWorkspaceDocument((document) => {
       let changed = false;
@@ -50859,7 +50851,7 @@ case "mobius":
       return changed ? { ...document, derivedMeshes: records.slice(-64) } : document;
     });
     setSurfaceDerivedMeshSelectedId(payload.meshId);
-  }, [activeCanonicalSurfaceDefinition, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedCandidateKey, surfaceDerivedMeshCandidate, surfaceMeshAnalysisHandoff, surfaceDocumentAdapters, surfaceMeshKernelHandoff]);
+  }, [activeCanonicalSurfaceDefinition, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedCandidateKey, surfaceDerivedMeshCandidate, surfaceMeshAnalysisHandoff]);
   const activeDerivedSurfaceMeshPayload = activeDerivedSurfaceMeshResult?.state === "ready" && activeDerivedSurfaceMeshResult.payload?.data.kind === "derived-mesh"
     ? activeDerivedSurfaceMeshResult.payload.data
     : null;
@@ -50994,6 +50986,22 @@ case "mobius":
       setSurfaceDerivedMeshStatus("This saved record contains compact provenance only. Regenerate the live tessellation before opening its geometry.");
       return;
     }
+    if (record.identity.state === "live-current" && !surfaceMeshKernelHandoff.record(record.identity.meshId)) {
+      const sourceDocument = activeSavedSurfaceSession?.document() ??
+        (restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom"
+          ? restoredSurfaceAdapter.document()
+          : surfaceDocumentAdapters.get(record.identity.source.surfaceId)?.document());
+      if (sourceDocument?.format !== "math3d.surface-document") return;
+      try {
+        const handoff = surfaceMeshKernelHandoff.publish({ record, payload, geometry, sources: [sourceDocument] });
+        setSurfaceAnalysisWorkspaceDocument(document => ({ ...document,
+          kernelHandoffs: [...document.kernelHandoffs.filter(entry => entry.meshId !== handoff.meshId), handoff].slice(-64),
+        }));
+      } catch (error) {
+        setSurfaceDerivedMeshStatus(`Kernel handoff unavailable: ${String((error as Error).message ?? error)}`);
+        return;
+      }
+    }
     const sourceIndices = selectionMask?.selected
       ? Uint32Array.from(Array.from(selectionMask.selected, (selected, index) => selected ? index : -1).filter((index) => index >= 0))
       : inspectIdx != null ? Uint32Array.of(inspectIdx) : new Uint32Array();
@@ -51045,7 +51053,7 @@ case "mobius":
       setCameraOverrideToken((token) => token + 1);
     }
     setSurfaceDerivedMeshStatus(`${analysis ? "Opened in Mesh Analysis" : "Showing live Mesh"}: ${record.label} · ${record.identity.state} · ${mapping.state} selection mapping · ${camera ? "camera framing transferred" : "mesh fitted"}.`);
-  }, [activeCanonicalSurfaceDefinition.units, activeSavedSurfaceBinding, cameraOverride, cameraSync, compareEnabled, compareParamId, compareSurfaceId, inspectIdx, selectionMask?.selected, setMeshDataset, surfaceMeshKernelHandoff, surfaceViewerKind]);
+  }, [activeCanonicalSurfaceDefinition.units, activeSavedSurfaceBinding, activeSavedSurfaceSession, cameraOverride, cameraSync, compareEnabled, compareParamId, compareSurfaceId, inspectIdx, paramSurfaceId, restoredSurfaceAdapter, selectionMask?.selected, setMeshDataset, surfaceDocumentAdapters, surfaceMeshKernelHandoff, surfaceViewerKind]);
 
   const handleShowLiveSurfaceMesh = useCallback(() => {
     const live = activeSourceDerivedMeshRecords.find((record) => record.identity.state === "live-current");
@@ -67393,6 +67401,7 @@ case "mobius":
       setCalculusStatus(null);
       return;
     }
+    const sampleNeighbors = getSampleNeighbors();
     if (!sampleNeighbors) {
       setCalculusError("Surface adjacency not ready.");
       setCalculusStatus(null);
@@ -67430,7 +67439,7 @@ case "mobius":
     registerCalculusVectorField,
     resolveCalculusScalarSource,
     runCanonicalMeshFieldCalculus,
-    sampleNeighbors,
+    getSampleNeighbors,
     surfaceSampleSet,
   ]);
 
@@ -67440,6 +67449,7 @@ case "mobius":
       setCalculusStatus(null);
       return;
     }
+    const sampleNeighbors = getSampleNeighbors();
     if (!sampleNeighbors) {
       setCalculusError("Surface adjacency not ready.");
       setCalculusStatus(null);
@@ -67484,7 +67494,7 @@ case "mobius":
     registerCalculusScalarField,
     resolveCalculusVectorSource,
     runCanonicalMeshFieldCalculus,
-    sampleNeighbors,
+    getSampleNeighbors,
     surfaceSampleSet,
   ]);
 
@@ -67494,6 +67504,7 @@ case "mobius":
       setCalculusStatus(null);
       return;
     }
+    const sampleNeighbors = getSampleNeighbors();
     if (!sampleNeighbors) {
       setCalculusError("Surface adjacency not ready.");
       setCalculusStatus(null);
@@ -67538,11 +67549,12 @@ case "mobius":
     registerCalculusScalarField,
     resolveCalculusVectorSource,
     runCanonicalMeshFieldCalculus,
-    sampleNeighbors,
+    getSampleNeighbors,
     surfaceSampleSet,
   ]);
 
   const runCalculusLaplacian = useCallback(() => {
+    const sampleNeighbors = getSampleNeighbors();
     if (!surfaceSampleSet?.samples?.length || !sampleNeighbors) {
       setCalculusError("Surface samples or adjacency are not ready.");
       setCalculusStatus(null);
@@ -67583,7 +67595,7 @@ case "mobius":
     registerCalculusScalarField,
     resolveCalculusScalarSource,
     runCanonicalMeshFieldCalculus,
-    sampleNeighbors,
+    getSampleNeighbors,
     surfaceSampleSet,
   ]);
 
@@ -68045,6 +68057,7 @@ case "mobius":
       if (!surfaceSampleSet?.samples?.length) {
         return { status: "stale", summary: "Surface samples not ready." };
       }
+      const sampleNeighbors = getSampleNeighbors();
       if (!sampleNeighbors) {
         return { status: "stale", summary: "Surface adjacency not ready." };
       }
@@ -68090,7 +68103,7 @@ case "mobius":
       resolveScalarFieldInput,
       meshFieldCalculusPrepared,
       runCanonicalMeshFieldCalculus,
-      sampleNeighbors,
+      getSampleNeighbors,
       surfaceSampleSet,
     ]
   );
@@ -68100,6 +68113,7 @@ case "mobius":
       if (!surfaceSampleSet?.samples?.length) {
         return { status: "stale", summary: "Surface samples not ready." };
       }
+      const sampleNeighbors = getSampleNeighbors();
       if (!sampleNeighbors) {
         return { status: "stale", summary: "Surface adjacency not ready." };
       }
@@ -68141,7 +68155,7 @@ case "mobius":
       resolveVectorFieldInput,
       meshFieldCalculusPrepared,
       runCanonicalMeshFieldCalculus,
-      sampleNeighbors,
+      getSampleNeighbors,
       surfaceSampleSet,
       setWorkbookHeatmapEnabled,
       setWorkbookHeatmapValues,
@@ -68153,6 +68167,7 @@ case "mobius":
       if (!surfaceSampleSet?.samples?.length) {
         return { status: "stale", summary: "Surface samples not ready." };
       }
+      const sampleNeighbors = getSampleNeighbors();
       if (!sampleNeighbors) {
         return { status: "stale", summary: "Surface adjacency not ready." };
       }
@@ -68194,7 +68209,7 @@ case "mobius":
       resolveVectorFieldInput,
       meshFieldCalculusPrepared,
       runCanonicalMeshFieldCalculus,
-      sampleNeighbors,
+      getSampleNeighbors,
       surfaceSampleSet,
       setWorkbookHeatmapEnabled,
       setWorkbookHeatmapValues,
@@ -68206,6 +68221,7 @@ case "mobius":
       if (!surfaceSampleSet?.samples?.length) {
         return { status: "stale", summary: "Surface samples not ready." };
       }
+      const sampleNeighbors = getSampleNeighbors();
       if (!sampleNeighbors) {
         return { status: "stale", summary: "Surface adjacency not ready." };
       }
@@ -68250,7 +68266,7 @@ case "mobius":
       resolveScalarFieldInput,
       meshFieldCalculusPrepared,
       runCanonicalMeshFieldCalculus,
-      sampleNeighbors,
+      getSampleNeighbors,
       surfaceSampleSet,
       setWorkbookHeatmapEnabled,
       setWorkbookHeatmapValues,
@@ -78332,11 +78348,15 @@ case "mobius":
     const topology = restored?.topologies.get(id), complex = restored?.complexes.get(id);
     const mesh = restored?.meshes.get(id);
     if (mesh) {
+      setSavedMeshModuleView(true);
       meshDocumentAdapterRef.current = mesh; setMeshKernelDocument(mesh.document());
       clearSurfaceMeshTopologySessionState();
       nativeMeshSelectionKeysRef.current = ""; setMeshMultiSelectionSet(createUnifiedSelectionSet([]));
       setMeshDataset(mesh.mesh(), "project-restore");
       setMeshViewerControlsOpen(false);
+      setDisplayMode("workspace"); setShowRightPanel(true); setRightPanelTab("inspector");
+      setSurfacePreviewFocusMode(false); setCleanScreenshotActive(false); setSurfaceDrawerPanel("left");
+      setWorkspaceDockLayouts(layouts => ({ ...layouts, mesh: { ...(layouts.mesh ?? recommendedWorkspaceDockLayout("mesh")), leftCollapsed: false, rightCollapsed: false, viewerMaximized: false } }));
       setActiveGraph2DTargetId(null); setMode("surfaces"); setDatasetKind("mesh"); setSurfaceViewerKind("mesh");
       setSurfacesPanelState("work"); setSurfacesLeftTab("object"); return true;
     }
@@ -78559,7 +78579,8 @@ case "mobius":
   };
 
   const savedMeshActive = activeKernelModule === "mesh" && !additionalActiveId && Boolean(activeProjectDocumentId && meshDocumentAdapterRef.current && activeProjectDocumentId === meshDocumentAdapterRef.current.document().identity.id && restoredProjectRef.current?.meshes.has(activeProjectDocumentId));
-  const hasSavedDocumentViewport = (Boolean(additionalActiveId) && !savedSurfaceModuleActive) || savedMeshActive;
+  const savedMeshModuleActive = savedMeshActive && savedMeshModuleView;
+  const hasSavedDocumentViewport = (Boolean(additionalActiveId) && !savedSurfaceModuleActive) || (savedMeshActive && !savedMeshModuleView);
   const workspaceHeaderContext = activeProjectDocumentId
     ? `${activeNotebookProjectRef.current?.metadata.title ?? "Project"} / ${savedMeshActive ? "Mesh" : restoredProjectRef.current?.additional.get(additionalActiveId!)?.original.module ?? "Document"} / ${activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId ?? ""]?.title ?? (savedMeshActive ? meshDocumentAdapterRef.current?.document().metadata.label : "Saved document")}`
     : headerContextLabel;
@@ -81237,8 +81258,8 @@ case "mobius":
       }}>
         {additionalSurface?.format === "math3d.surface-document" && <SavedMeshAnalysisPanel key={additionalSurface.identity.id} resolutionSupported={supportsSavedSurfaceResolution(additionalSurface)} readMesh={readSavedStudyMesh} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface} meshes={savedSurfaceMeshChoices} onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis} />}
       </SavedDocumentWorkbench>}
-      {savedMeshActive && meshDocumentAdapterRef.current && restoredProjectRef.current && <SavedMeshAnalysisPanel key={`analysis:${meshDocumentAdapterRef.current.document().identity.id}`} renderWorkspace={(controls, view) => <DocumentWorkspaceHost documentId={meshDocumentAdapterRef.current!.document().identity.id} sourceHash={meshDocumentAdapterRef.current!.document().identity.structuralHash} module="mesh"
-        toolbar={<><button onClick={() => setProjectsOpen(true)}>Project overview</button><strong data-testid="document-breadcrumb">{activeNotebookProjectRef.current?.metadata.title ?? "Project"} → Mesh → {meshDocumentAdapterRef.current!.document().metadata.label}</strong><span>Revision {meshDocumentAdapterRef.current!.document().identity.revision}</span>{savedMeshParent?.document && <button data-testid="project-source-back-to-surface" disabled={!!activeNotebookProjectRef.current?.metadata.documents?.[savedMeshParent.generation.documentId]?.archived} onClick={() => openSavedStudySurface(meshDocumentAdapterRef.current!.document().identity.id)}>Back to {activeNotebookProjectRef.current?.metadata.documents?.[savedMeshParent.generation.documentId]?.title ?? savedMeshParent.document.metadata.title}</button>}<button data-testid="project-source-back-to-module" onClick={openNormalSurfacesWorkspace}>Exit project view</button></>}
+      {savedMeshActive && !savedMeshModuleView && meshDocumentAdapterRef.current && restoredProjectRef.current && <SavedMeshAnalysisPanel key={`analysis:${meshDocumentAdapterRef.current.document().identity.id}`} renderWorkspace={(controls, view) => <DocumentWorkspaceHost documentId={meshDocumentAdapterRef.current!.document().identity.id} sourceHash={meshDocumentAdapterRef.current!.document().identity.structuralHash} module="mesh"
+        toolbar={<><button onClick={() => setProjectsOpen(true)}>Project overview</button><strong data-testid="document-breadcrumb">{activeNotebookProjectRef.current?.metadata.title ?? "Project"} → Mesh → {meshDocumentAdapterRef.current!.document().metadata.label}</strong><span>Revision {meshDocumentAdapterRef.current!.document().identity.revision}</span><button data-testid="project-mesh-module-view" onClick={() => setSavedMeshModuleView(true)}>Mesh module</button>{savedMeshParent?.document && <button data-testid="project-source-back-to-surface" disabled={!!activeNotebookProjectRef.current?.metadata.documents?.[savedMeshParent.generation.documentId]?.archived} onClick={() => openSavedStudySurface(meshDocumentAdapterRef.current!.document().identity.id)}>Back to {activeNotebookProjectRef.current?.metadata.documents?.[savedMeshParent.generation.documentId]?.title ?? savedMeshParent.document.metadata.title}</button>}<button data-testid="project-source-back-to-module" onClick={openNormalSurfacesWorkspace}>Exit project view</button></>}
         source={<MeshProjectEditor adapter={meshDocumentAdapterRef.current!} onRestore={() => navigateRestoredDocument(meshDocumentAdapterRef.current!.document().identity.id, "mesh")} />}
         tools={<p>Mesh tools and studies are available in Inspector.</p>}
         viewport={view ? <MeshDocumentViewport projectId={activeNotebookProjectRef.current?.identity.id} documentId={meshDocumentAdapterRef.current!.document().identity.id} revision={meshDocumentAdapterRef.current!.document().identity.revision} hash={meshDocumentAdapterRef.current!.document().identity.structuralHash} view={view} /> : <div role="alert">Saved Mesh buffer unavailable.</div>}
@@ -81585,7 +81606,8 @@ case "mobius":
         onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis}
         creationHint="Uses saved formulas and ranges at the selected analysis resolution, independent of display resolution. Earlier Meshes and results remain available. Projects → Save project keeps them."
       />}
-      {!hasSavedDocumentViewport && (<SavedSurfaceModuleFrame projectTitle={activeNotebookProjectRef.current?.metadata.title} onProject={() => setProjectsOpen(true)} session={savedSurfaceModuleActive ? activeSavedSurfaceSession ?? null : null} title={activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId ?? ""]?.title ?? "Saved Surface"} related={savedSurfaceModuleActive ? relatedDocuments(restoredProjectRef.current?.workspace, additionalActiveId!, restoredProjectRef.current?.context().documents) : undefined} onOpenRelated={navigateRestoredDocument} onChange={() => setAdditionalVersion(value => value + 1)} onCustom={() => setSavedSurfaceCustomView(true)} onClose={openNormalSurfacesWorkspace}><div
+      {!hasSavedDocumentViewport && (<SavedMeshModuleFrame document={savedMeshModuleActive ? meshDocumentAdapterRef.current?.document() ?? null : null} projectTitle={activeNotebookProjectRef.current?.metadata.title} onProject={() => setProjectsOpen(true)} onStudy={() => setSavedMeshModuleView(false)} onSurface={savedMeshParent?.document && !activeNotebookProjectRef.current?.metadata.documents?.[savedMeshParent.generation.documentId]?.archived ? () => openSavedStudySurface(meshDocumentAdapterRef.current!.document().identity.id) : undefined} onClose={openNormalSurfacesWorkspace}>
+        <SavedSurfaceModuleFrame projectTitle={activeNotebookProjectRef.current?.metadata.title} onProject={() => setProjectsOpen(true)} session={savedSurfaceModuleActive ? activeSavedSurfaceSession ?? null : null} title={activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId ?? ""]?.title ?? "Saved Surface"} related={savedSurfaceModuleActive ? relatedDocuments(restoredProjectRef.current?.workspace, additionalActiveId!, restoredProjectRef.current?.context().documents) : undefined} onOpenRelated={navigateRestoredDocument} onChange={() => setAdditionalVersion(value => value + 1)} onCustom={() => setSavedSurfaceCustomView(true)} onClose={openNormalSurfacesWorkspace}><div
         data-testid="module-workspace"
         style={{
           ...styles.wrap,
@@ -81690,7 +81712,7 @@ case "mobius":
             {/* LEFT */}
             <div
               data-testid="surface-left-panel"
-              className={savedSurfaceModuleActive ? "native-module-panel" : undefined}
+              className={savedSurfaceModuleActive || savedMeshModuleActive ? "native-module-panel" : undefined}
               style={{
                 ...styles.panelLeft,
                 width: isSurfaceStackedLayout ? "100%" : surfaceLeftPanelWidth,
@@ -81704,7 +81726,7 @@ case "mobius":
                 ...surfaceLeftDrawerStyle,
               }}
             >
-              {savedSurfaceModuleActive && <SurfaceProjectDock placement="left" />}
+              {(savedSurfaceModuleActive || savedMeshModuleActive) && <SurfaceProjectDock placement="left" controlsLabel={savedMeshModuleActive ? "Mesh controls" : "Surface controls"} />}
               <div className="native-module-panel-content">
               {surfacePanelsAsDrawers && (
                 <div style={responsiveDrawerHeaderStyle}>
@@ -86889,6 +86911,8 @@ case "mobius":
                     >
                       <div
                         data-testid="surface-primary-viewer"
+                        data-document-id={savedMeshModuleActive ? activeProjectDocumentId ?? undefined : undefined}
+                        data-saved-mesh={savedMeshModuleActive || undefined}
                         onContextMenu={handleOpenMeshViewportContextMenu}
                         style={{
                           borderRadius: 10,
@@ -86904,7 +86928,7 @@ case "mobius":
                           height: largeSurfaceMeshFullPreviewJob ? undefined : "100%",
                         }}
                       >
-                        {savedSurfaceModuleActive && <><div className="document-project-slot document-project-expanded" data-placement="middle" /><div className="document-project-slot document-project-expanded" data-placement="all" /></>}
+                        {(savedSurfaceModuleActive || savedMeshModuleActive) && <><div className="document-project-slot document-project-expanded" data-placement="middle" /><div className="document-project-slot document-project-expanded" data-placement="all" /></>}
                         {openedCurveConstruction && surfaceMeshData?.source.kind === "derivedSurface" &&
                           surfaceMeshData.source.sourceSurfaceId === openedCurveConstruction.record.target.identity.id && (
                           <div data-testid="curve-construction-surface-lineage" style={{ position: "absolute", right: 10, top: 10, zIndex: 25, padding: 7, borderRadius: 7, background: "#eff6ff", border: "1px solid #93c5fd", fontSize: 11 }}>
@@ -89073,7 +89097,7 @@ case "mobius":
             {showSurfacesRightPanel && (
             <div
               data-testid="surface-right-panel"
-              className={savedSurfaceModuleActive ? "native-module-panel" : undefined}
+              className={savedSurfaceModuleActive || savedMeshModuleActive ? "native-module-panel" : undefined}
               style={{
                 ...styles.panelLeft,
                 width: isSurfaceStackedLayout ? "100%" : surfaceRightPanelWidth,
@@ -89092,7 +89116,7 @@ case "mobius":
                   </button>
                 </div>
               )}
-              {savedSurfaceModuleActive && <SurfaceProjectDock placement="right" />}
+              {(savedSurfaceModuleActive || savedMeshModuleActive) && <SurfaceProjectDock placement="right" />}
               <div className="native-module-panel-content">
               {isPresentDisplayMode ? (
                 <div style={{ display: "grid", gap: 8 }}>
@@ -109873,7 +109897,7 @@ case "mobius":
             </div>
           </>
         )}
-      </div></SavedSurfaceModuleFrame>)}
+      </div></SavedSurfaceModuleFrame></SavedMeshModuleFrame>)}
       {quantumScenePreview && <QuantumScenePreview opened={quantumScenePreview} onClose={() => setQuantumScenePreview(null)} />}
       {workflowActionOverlayModel && !cleanScreenshotSurfaceActive && (
         <WorkflowActionOverlayDialog

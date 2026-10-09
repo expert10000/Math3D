@@ -1,6 +1,35 @@
 import { expect, test } from "@playwright/test";
 import { openLastSavedProject, closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
+test("Catenoid's saved Mesh opens in the normal Mesh workspace", async () => {
+  test.setTimeout(90_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page); await resizeSurfaceAppWindow(ctx, 1600, 1000);
+    const page = ctx.page;
+    await page.getByTestId("projects-toggle").click();
+    await page.getByTestId("project-template-open-catenoid-evidence").click();
+    const project = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const mesh = project.workspace.entries.find((entry: any) => entry.module === "mesh");
+    await page.getByTestId("project-viewer-document").selectOption(mesh.expected.id);
+    const editor = page.getByTestId("project-source-editor");
+    await expect(editor).toHaveAttribute("data-document-id", mesh.expected.id);
+    await expect(page.getByTestId("module-workspace")).toBeVisible();
+    await expect(page.getByTestId("surface-primary-viewer")).toHaveAttribute("data-document-id", mesh.expected.id);
+    await expect(page.getByTestId("surface-primary-viewer").getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
+    await expect(page.getByTestId("surface-left-panel")).toBeVisible();
+    await expect(page.getByTestId("surface-right-panel")).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("catenoid-mesh-native.png") });
+    await editor.getByTestId("project-mesh-study-view").click();
+    await expect(page.getByTestId("document-mesh-viewport")).toHaveAttribute("data-document-id", mesh.expected.id);
+    await page.getByTestId("project-mesh-module-view").click();
+    await expect(page.getByTestId("module-workspace")).toBeVisible();
+    await editor.getByTestId("project-source-back-to-surface").click();
+    await expect(page.getByTestId("project-source-editor")).toHaveAttribute("data-document-module", "surface");
+    await expect(page.getByTestId("document-viewport")).toHaveAttribute("data-view", "surface");
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("native Surface and sampled views retain ownership, draft, camera and Mesh evidence", async () => {
   test.setTimeout(180_000);
   let ctx: LaunchedSurfaceApp | null = null;
@@ -32,12 +61,18 @@ test("native Surface and sampled views retain ownership, draft, camera and Mesh 
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     const mesh = saved.workspace.entries.find((entry: any) => entry.module === "mesh");
     await panel.getByTestId("project-viewer-document").selectOption(mesh.expected.id);
+    await expect(page.getByTestId("project-source-editor")).toHaveAttribute("data-document-module", "mesh");
+    await expect(page.getByTestId("module-workspace")).toBeVisible();
+    await expect(page.getByTestId("surface-primary-viewer")).toHaveAttribute("data-document-id", mesh.expected.id);
+    await expect(page.getByTestId("surface-left-panel")).toBeVisible();
+    await expect(page.getByTestId("surface-right-panel")).toBeVisible();
+    await page.getByTestId("project-mesh-study-view").click();
     await expect(page.getByTestId("document-mesh-viewport")).toHaveAttribute("data-document-id", mesh.expected.id);
     await expect(page.getByTestId("document-mesh-viewport")).toHaveAttribute("data-field-colours", "true");
     await expect(page.getByTestId("project-curvature-legend")).toHaveAttribute("data-source-id", mesh.expected.id);
     await expect(page.getByTestId("project-curvature-legend")).toHaveAttribute("data-source-revision", String(mesh.expected.revision));
     await panel.getByTestId("project-navigation-back").click(); await expect(viewport).toHaveAttribute("data-workbench", "module");
-    await panel.getByTestId("project-navigation-forward").click(); await expect(page.getByTestId("document-mesh-viewport")).toBeVisible();
+    await panel.getByTestId("project-navigation-forward").click(); await expect(page.getByTestId("module-workspace")).toBeVisible();
     await panel.getByTestId("project-navigation-back").click();
     await page.getByTestId("document-custom-view").click();
     await expect(viewport).toHaveAttribute("data-view", "sampled");
@@ -54,8 +89,10 @@ test("native Surface and sampled views retain ownership, draft, camera and Mesh 
     await page.getByTestId("document-view-choice").selectOption("surface");
     await page.screenshot({ path: test.info().outputPath("native-catenoid-cold-restart.png") });
     await page.getByTestId("project-viewer-document").selectOption(mesh.expected.id);
+    await page.getByTestId("project-mesh-study-view").click();
     await page.getByTestId("project-source-editor").getByRole("tab", { name: "Inspector", exact: true }).click();
     await page.getByTestId("project-curvature-map").selectOption("H"); await page.reload(); await openLastSavedProject(page);
+    await page.getByTestId("project-mesh-study-view").click();
     await expect(page.getByTestId("document-mesh-viewport")).toHaveAttribute("data-document-id", mesh.expected.id);
     await expect(page.getByTestId("project-curvature-map")).toHaveValue("H");
     await expect(page.getByTestId("project-curvature-legend")).toHaveAttribute("data-field", "H");
