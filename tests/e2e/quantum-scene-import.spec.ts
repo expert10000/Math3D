@@ -8,6 +8,7 @@ import { launchRepoElectron } from "./helpers/electronLauncher";
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 
 test("desktop picker imports only a verified quantum scene and refuses tampering", async () => {
+  test.setTimeout(300_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-qscene-ipc-"));
   const directory = join(root, "sample.qscene");
   await mkdir(directory);
@@ -110,6 +111,22 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await expect(projects.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
     const projectScene = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).quantumScenes[0]);
     expect(projectScene).toMatchObject({ format: "quantum-scene/v1", directory, sceneFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    await projects.getByTestId(`project-admit-quantum-scene-${projectScene.sceneFingerprint}`).click();
+    await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("Project contents");
+    await expect(projects.getByTestId("project-group-quantum")).toContainText("IPC verified path");
+    await projects.getByTestId("project-save").click();
+    await expect(projects.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).workspace.entries.some((item: any) => item.module === "quantum")),
+      { timeout: 60_000 }).toBe(true);
+    const savedQuantum = await page.evaluate(() => {
+      const project = JSON.parse(localStorage.getItem("math3d.project.v1")!);
+      return { projectId: project.identity.id, entry: project.workspace.entries.find((item: any) => item.module === "quantum") };
+    });
+    expect(savedQuantum.entry).toMatchObject({ module: "quantum", replay: null,
+      checkpoint: { format: "math3d.quantum-scene-document", source: { sceneSchema: "quantum-scene/v1", sceneFingerprint: projectScene.sceneFingerprint,
+        provenance: { runId: "run-ipc", resultSha256: "a".repeat(64) }, datasets: expect.arrayContaining([{ id: "vertices", sha256: hash(data), bytes: 48, count: 2, components: 3, unit: "dimensionless" }]) },
+        location: { directory } } });
+    expect(JSON.stringify(savedQuantum.entry)).not.toContain("vertices.f64");
     const relocated = join(root, "relocated.qscene");
     await cp(directory, relocated, { recursive: true });
     const savedBeforeRelink = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
@@ -135,8 +152,31 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(savedBeforeRelink);
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).quantumScenes[0]?.directory),
+      { timeout: 60_000 }).toBe(relocated);
     const relocatedProjectScene = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).quantumScenes[0]);
     expect(relocatedProjectScene).toMatchObject({ directory: relocated, sceneFingerprint: projectScene.sceneFingerprint });
+    const portableProject = Buffer.from(await page.evaluate(() => localStorage.getItem("math3d.project.v1")!));
+    const relinkedQuantum = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).workspace.entries.find((item: any) => item.module === "quantum"));
+    expect(relinkedQuantum.expected).toEqual(savedQuantum.entry.expected);
+    expect(relinkedQuantum.checkpoint.location.directory).toBe(relocated);
+    await projects.getByTestId(`project-open-saved-${savedQuantum.projectId}`).click();
+    await expect(projects.getByTestId("project-message")).toContainText("Opened supported project", { timeout: 60_000 });
+    await projects.getByRole("button", { name: "Project details" }).click();
+    await expect(projects.getByTestId(`project-view-${savedQuantum.entry.expected.id}`)).toBeEnabled();
+    await projects.getByTestId(`project-view-${savedQuantum.entry.expected.id}`).click();
+    await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
+    await expect(page.getByTestId("quantum-scene-preview")).toContainText("run-ipc");
+    await page.getByTestId("quantum-scene-close").click();
+    await projects.getByRole("button", { name: "Project details" }).click();
+    await projects.getByTestId("project-import-file").setInputFiles({ name: "quantum-project.json", mimeType: "application/json", buffer: portableProject });
+    await expect(projects.getByTestId("project-import-open")).toBeEnabled();
+    await projects.getByTestId("project-import-open").click();
+    await expect(projects.getByTestId("project-message")).toContainText("Opened supported project", { timeout: 60_000 });
+    await page.getByTestId("quantum-scene-preview").waitFor({ state: "visible", timeout: 2000 }).catch(() => {});
+    if (await page.getByTestId("quantum-scene-preview").isVisible()) await page.getByTestId("quantum-scene-close").click();
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).workspace.entries.find((item: any) => item.module === "quantum")?.expected.id))
+      .toBe(savedQuantum.entry.expected.id);
     await projects.getByTestId(`project-open-quantum-scene-${projectScene.sceneFingerprint}`).click();
     await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
     await page.getByTestId("quantum-scene-close").click();
@@ -193,6 +233,10 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await page.getByTestId(`project-open-quantum-scene-${projectScene.sceneFingerprint}`).click();
     await expect(page.getByTestId("project-quantum-scene-message")).toContainText(/Scene unavailable:.*integrity/);
     await expect(page.getByTestId("quantum-scene-preview")).toBeHidden();
+    const activeBeforeRefusal = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
+    await page.getByTestId(`project-open-saved-${savedQuantum.projectId}`).click();
+    await expect(page.getByTestId("project-message")).toContainText(/Project import failed:.*integrity/);
+    expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(activeBeforeRefusal);
     await page.getByRole("button", { name: "Close project explorer" }).click();
     await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},directory);
     const refused=await page.evaluate(()=>(window as any).quantumScenes.open());
@@ -334,6 +378,21 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await restartedPage.getByTestId(`project-open-quantum-scene-${projectScene.sceneFingerprint}`).click();
     await expect(restartedPage.getByTestId("project-quantum-scene-message")).toContainText(/Scene unavailable:.*integrity/);
     await expect(restartedPage.getByTestId("quantum-scene-preview")).toBeHidden();
+    const recovered = join(root, "recovered.qscene");
+    await cp(relocated, recovered, { recursive: true });
+    await writeFile(join(recovered, "vertices.f64"), data);
+    const activeBeforeRecovery = await restartedPage.evaluate(() => localStorage.getItem("math3d.project.v1"));
+    await restartedPage.getByTestId(`project-preview-${savedQuantum.projectId}`).click();
+    const previewRelink = restartedPage.getByTestId(`project-relink-quantum-scene-${projectScene.sceneFingerprint}`);
+    await expect(previewRelink).toBeEnabled();
+    await app.evaluate(({dialog}, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, recovered);
+    await previewRelink.click();
+    await expect(restartedPage.getByTestId("project-quantum-scene-message")).toContainText("saved Project");
+    expect(await restartedPage.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(activeBeforeRecovery);
+    expect(await restartedPage.evaluate(id => JSON.parse(localStorage.getItem(`math3d.project.v1.payload.${id}`)!).quantumScenes[0].directory, savedQuantum.projectId)).toBe(recovered);
+    await restartedPage.getByTestId(`project-open-saved-${savedQuantum.projectId}`).click();
+    await expect(restartedPage.getByTestId("project-message")).toContainText("Opened supported project", { timeout: 60_000 });
+    expect(await restartedPage.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).workspace.entries.find((item: any) => item.module === "quantum").checkpoint.location.directory)).toBe(recovered);
     await app.close();
     app = await launch([".", "--quantum-scene", realBundle]);
     const launchedPage = await app.firstWindow();

@@ -1,7 +1,8 @@
 # M3D-Q01 quantum-scene import boundary
 
-Status: implemented as a read-only Math3D import adapter. Desktop navigation
-and direct Theory Lab opening belong to later integration work.
+Status: complete as a strict read-only importer and native Project-document
+lifecycle. Direct Theory Lab opening is supported through a verified handoff;
+editable Geometry/Volume conversion remains outside M3D-Q01.
 
 `src/main/quantumScene` pins Theory Lab's `quantum-scene/v1` schema at commit
 `fde58fd` (source JSON SHA-256
@@ -49,3 +50,14 @@ The read-only preview can reveal its exported `.qscene` folder in the system
 file manager. That action reopens and hashes the source bundle first, accepts
 only the active scene fingerprint from the renderer, and refuses changed or
 missing sources. It does not infer a path to the original Theory Lab run.
+
+Projects may retain the scene as a link or explicitly admit a compact
+`math3d.quantum-scene-document`. The latter stores versioned source descriptors,
+run and result provenance, units, dataset hashes and the scene fingerprint; it
+does not copy field arrays. The Project save/open path re-verifies the complete
+external bundle. Portable JSON import retains the document but requires that
+same verified folder to activate it. Relinking changes only the local location
+in the Project link and checkpoint, not the scientific document identity.
+Navigation uses the existing scene preview and inspectors, never an editable
+Geometry/Volume editor or a physics worker. The desktop acceptance checks
+admission, save, portable import, restart, tamper refusal and rollback.

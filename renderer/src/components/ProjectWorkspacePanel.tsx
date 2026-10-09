@@ -34,6 +34,7 @@ import { bindProjectNoteDrafts, createProjectNoteDraft, type NoteCaptureKind, ty
 import { createProjectNoteSelectionAnchor, type NoteSelectionDescriptor } from "../projects/projectNoteTargets";
 import { resolveProjectNoteValues } from "../projects/projectNoteValues";
 import { projectAnalysisAvailability, type ProjectAnalysisRoute } from "../projects/projectAnalysisAvailability";
+import { verifyProjectQuantumSceneDocuments } from "../projects/quantumSceneAdmission";
 import type { NoteValuePatch } from "./ProjectNoteLiveValues";
 import { PROJECT_RESUME_KEY, PROJECT_UI_KEY, projectUiPreferences, rememberProjectUi, selectProjectDocument, rememberProjectDocument } from "../projects/projectResume";
 
@@ -150,7 +151,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [managed, setManaged] = useState<ProjectCommandAdapter | null>(null);
   const [managedBytes, setManagedBytes] = useState<string | undefined>();
   const relinkQuantumScene = async (item: ProjectQuantumSceneReference) => {
-    if (busy || preview || managed || !project || !onRelinkQuantumScene) return;
+    if (busy || managed || !project || !onRelinkQuantumScene) return;
     const before = serializeMath3DProject(project);
     setBusy(true); setQuantumSceneMessage("Choose the relocated copy of this exact scene…");
     try {
@@ -161,6 +162,17 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         throw new TypeError("Project changed while the picker was open; relink it again.");
       const next = relinkMath3DProjectQuantumScene(current, item.sceneFingerprint, directory);
       if (next === current) { setQuantumSceneMessage("This verified source is already linked at that location."); return; }
+      if (preview) {
+        const saved = loadLibraryProject(localStorage, current.identity.id);
+        if (serializeMath3DProject(saved) !== before) throw new TypeError("Saved Project changed; reopen it before relinking.");
+        const resources = await loadProjectResources(saved);
+        setLibrary(await commitProjectResources(next, resources, () => saveLibraryProject(localStorage, next, Date.now(), undefined,
+          { activate: false, expectedBytes: before })));
+        resourceSession.current = resources; resourceSessionId.current = next.identity.id;
+        setProject(next); setExplorer(buildProjectExplorer(next, verifyMixedWorkspaceReplay(next.workspace)));
+        setQuantumSceneMessage("Exact source relinked in the saved Project. Open it to activate the verified document.");
+        return;
+      }
       setProject(next);
       setQuantumSceneMessage("Exact scene verified at the new location. Save project to retain the relink.");
     } catch (error) { setQuantumSceneMessage(`Relink refused: ${String((error as Error).message)}`); }
@@ -443,6 +455,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       let next = updateMath3DProjectMetadata(managed?.project() ?? liveProject(capturedWorkspace), { ...(managed?.project() ?? project)?.metadata,
         title: title.trim(), description, tags: [...new Set(tags.split(",").map((tag) => tag.trim()).filter(Boolean))] });
       if (!managed && noteDrafts.length) next = bindProjectNoteDrafts(next, noteDrafts);
+      await verifyProjectQuantumSceneDocuments(next, onVerifyQuantumSceneDocument);
       if (managed && serializeMath3DProject(next) !== serializeMath3DProject(managed.project())) next = managed.commit(next);
       const tree = buildProjectExplorer(next, verifyMixedWorkspaceReplay(next.workspace));
       const previousResources = managed ? await loadProjectResources(loadLibraryProject(localStorage, next.identity.id)) : resourceSessionId.current === next.identity.id ? resourceSession.current : project ? await loadProjectResources(project) : undefined;
@@ -734,17 +747,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const prepared = inspectProjectCompatibility(candidate.project, transferOptions(candidate.resources));
       measurePhase("compatibility");
       if (openWorkspace && (!onRestoreWorkspace || !prepared.canOpenWorkspace)) throw new Error("This project is preview-only on this host.");
-      if (openWorkspace) for (const entry of prepared.project.workspace.entries.filter((item) => item.module === "quantum")) {
-        const checkpoint = entry.checkpoint;
-        if (!onVerifyQuantumSceneDocument || checkpoint.format !== "math3d.quantum-scene-document")
-          throw new Error("The quantum-scene verifier is unavailable on this host.");
-        const reference = prepared.project.quantumScenes?.find((item) => item.sceneFingerprint === checkpoint.source.sceneFingerprint);
-        if (!reference) throw new Error("The quantum-scene source link is missing.");
-        const verified = await onVerifyQuantumSceneDocument(reference);
-        if (canonicalJsonStringify(verified.source) !== canonicalJsonStringify(checkpoint.source) ||
-          verified.location.directory !== checkpoint.location.directory)
-          throw new Error("The quantum-scene document no longer matches its verified source.");
-      }
+      if (openWorkspace) await verifyProjectQuantumSceneDocuments(prepared.project, onVerifyQuantumSceneDocument);
       previous = openWorkspace ? currentCapture.current() : null;
       measurePhase("capture");
       if (openWorkspace) await backupStaging.current;
@@ -760,6 +763,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (inputToken !== workspaceInputSequence.current || previous && canonicalJsonStringify(currentCapture.current()) !== canonicalJsonStringify(previous)) throw new Error("The workspace changed while preparing its backup. Retry opening the Project.");
       // Preview-only JSON may deliberately lack resources. Preserve that explicit state.
       const resources = candidate.resources ?? await loadProjectResources(prepared.project);
+      if (openWorkspace) await verifyProjectQuantumSceneDocuments(prepared.project, onVerifyQuantumSceneDocument);
+      if (activationToken !== importSequence.current || inputToken !== workspaceInputSequence.current ||
+        previous && canonicalJsonStringify(currentCapture.current()) !== canonicalJsonStringify(previous))
+        throw new Error("The workspace changed during source verification. Retry opening the Project.");
       const choice = openWorkspace ? selectProjectDocument(prepared.project, localStorage.getItem(PROJECT_RESUME_KEY)) : null;
       const rollback = () => { rollbackTables?.(); if (hostRestored && previous && onRestoreWorkspace) onRestoreWorkspace(previous, previousResources, previousOwner ?? undefined); };
       const commitStart = performance.now();
@@ -1089,7 +1096,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                 <button type="button" data-testid={`project-admit-quantum-scene-${item.sceneFingerprint}`}
                   disabled={busy || preview || !!managed || !onVerifyQuantumSceneDocument || project.workspace.entries.some((entry) => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document" && entry.checkpoint.source.sceneFingerprint === item.sceneFingerprint)}
                   onClick={() => { void admitQuantumScene(item); }}>Add read-only Project document</button>
-                <button type="button" data-testid={`project-relink-quantum-scene-${item.sceneFingerprint}`} disabled={busy || preview || !!managed || !onRelinkQuantumScene}
+                <button type="button" data-testid={`project-relink-quantum-scene-${item.sceneFingerprint}`} disabled={busy || !!managed || !onRelinkQuantumScene}
                   onClick={() => { void relinkQuantumScene(item); }}>Relink source</button>
               </article>)}
               {quantumSceneMessage && <p role="status" data-testid="project-quantum-scene-message">{quantumSceneMessage}</p>}

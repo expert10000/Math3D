@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createEmptyGraph2DDocument, createGraph2DWorkspaceProject, createMath3DProject, createMixedWorkspaceDocument, createQuantumSceneDocument,
+import { adoptMixedWorkspaceProject, createEmptyGraph2DDocument, createGraph2DWorkspaceProject, createMath3DProject, createMixedWorkspaceDocument, createQuantumSceneDocument,
   normalizeMath3DProject, parseMath3DProject, replaceMath3DProjectWorkspace, serializeMath3DProject,
   relinkMath3DProjectQuantumScene, upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference } from "@math3d/core";
 import { loadLibraryProject, projectPayloadKey, PROJECT_LIBRARY_KEY, PROJECT_STORAGE_KEY, saveLibraryProject } from "./projectLibrary";
-import { inspectProjectCompatibility, mergeProjectLiveWorkspace } from "./projectTransfer";
+import { inspectProjectCompatibility, mergeProjectLiveWorkspace, previewProjectImport } from "./projectTransfer";
+import { verifyProjectQuantumSceneDocuments } from "./quantumSceneAdmission";
 
 const reference: ProjectQuantumSceneReference = {
   format: "quantum-scene/v1", title: "Hydrogen 2p", directory: "C:\\scenes\\hydrogen.qscene", sceneFingerprint: "a".repeat(64),
@@ -36,6 +37,9 @@ describe("read-only Project quantum-scene links", () => {
         revision: 1, replayVerified: true }]) });
     expect(parseMath3DProject(serializeMath3DProject(project))).toEqual(project);
     expect(mergeProjectLiveWorkspace(project.workspace, fixture().workspace).entries.find((entry) => entry.module === "quantum")?.checkpoint).toEqual(document);
+    const backup = adoptMixedWorkspaceProject(project.workspace, "Before project open");
+    expect(backup.quantumScenes).toEqual([reference]);
+    expect(backup.workspace.entries.find((entry) => entry.module === "quantum")?.checkpoint).toEqual(document);
   });
 
   it("relinks the native document without changing its scientific identity and refuses diverging locations", () => {
@@ -46,6 +50,20 @@ describe("read-only Project quantum-scene links", () => {
     expect(movedDocument).toMatchObject({ location: { directory: "D:\\moved.qscene" } });
     expect(normalizeMath3DProject({ ...moved, workspace: project.workspace }).ok).toBe(false);
     expect(mergeProjectLiveWorkspace(moved.workspace, project.workspace).entries.find((entry) => entry.module === "quantum")?.checkpoint).toEqual(movedDocument);
+  });
+
+  it("preflights portable Project imports against the exact source descriptors before activation", async () => {
+    const { document, project } = admitted();
+    const imported = previewProjectImport(serializeMath3DProject(project));
+    expect(imported.canOpenWorkspace).toBe(true);
+    expect(imported.documents.find((item) => item.module === "quantum")).toMatchObject({ readOnly: true, editable: false });
+    await expect(verifyProjectQuantumSceneDocuments(imported.project, async () => document)).resolves.toBeUndefined();
+    await expect(verifyProjectQuantumSceneDocuments(imported.project, undefined)).rejects.toThrow("verifier is unavailable");
+    const changed = createQuantumSceneDocument({ ...document.source, sceneId: "changed" }, reference.directory, reference.title);
+    await expect(verifyProjectQuantumSceneDocuments(imported.project, async () => changed)).rejects.toThrow("no longer matches");
+    await expect(verifyProjectQuantumSceneDocuments(imported.project, async () => { throw new Error("Dataset integrity failed"); }))
+      .rejects.toThrow("Dataset integrity failed");
+    expect(serializeMath3DProject(project)).toBe(serializeMath3DProject(imported.project));
   });
   it("seals a versioned external reference without embedding source arrays or changing workspace identity", () => {
     const original = fixture(), linked = upsertMath3DProjectQuantumScene(original, reference);

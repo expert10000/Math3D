@@ -174,6 +174,11 @@ export const parseMath3DProject = (raw: string): Math3DProject => {
 export const adoptMixedWorkspaceProject = (workspace: MixedWorkspaceDocument, title = "Recovered workspace"): Math3DProject => {
   const normalized = normalizeMixedWorkspaceDocument(workspace);
   if (!normalized.ok) throw new TypeError(normalized.errors.join(" "));
-  return createMath3DProject(normalized.value, { title,
-    stableKey: { importedFormat: MIXED_WORKSPACE_FORMAT, documentIds: normalized.value.entries.map((entry) => entry.expected.id).sort() } });
+  const quantumScenes: ProjectQuantumSceneReference[] = normalized.value.entries.flatMap((entry) => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document"
+    ? [{ format: "quantum-scene/v1" as const, title: entry.checkpoint.metadata.title, directory: entry.checkpoint.location.directory,
+      sceneFingerprint: entry.checkpoint.source.sceneFingerprint }] : []).sort((a, b) => a.sceneFingerprint.localeCompare(b.sceneFingerprint));
+  const stableKey = { importedFormat: MIXED_WORKSPACE_FORMAT, documentIds: normalized.value.entries.map((entry) => entry.expected.id).sort() };
+  return requireProject({ format: MATH3D_PROJECT_FORMAT, schemaVersion: MATH3D_PROJECT_SCHEMA_VERSION,
+    identity: createDocumentIdentity(createStableDocumentId("project", stableKey), projectContent(normalized.value, undefined, undefined, quantumScenes)),
+    metadata: { title }, workspace: normalized.value, ...(quantumScenes.length ? { quantumScenes } : {}) });
 };

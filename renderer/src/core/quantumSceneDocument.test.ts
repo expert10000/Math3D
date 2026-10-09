@@ -30,5 +30,7 @@ describe("compact quantum scene Project document", () => {
     expect(moved.identity).toEqual(document.identity);
     expect(normalizeQuantumSceneDocument({ ...moved, source: { ...source, sceneId: "forged" } }).ok).toBe(false);
     expect(normalizeQuantumSceneDocument({ ...moved, source: { ...source, datasets: [{ ...source.datasets[0], bytes: -1 }] } }).ok).toBe(false);
+    expect(normalizeQuantumSceneDocument({ ...moved, source: { ...source, datasets: [{ ...source.datasets[0], count: 3 }] } }).ok).toBe(false);
+    expect(normalizeQuantumSceneDocument({ ...moved, source: { ...source, provenance: { ...source.provenance, adapter: "other" } } }).ok).toBe(false);
   });
 });

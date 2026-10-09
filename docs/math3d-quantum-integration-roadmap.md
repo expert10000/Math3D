@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Status:** in progress — M3D-Q01 verified reader, desktop preview, recent-scene reopen, and read-only saved-Project references
+**Status:** M3D-Q01 complete — strict verified import plus compact, read-only native Project document; M3D-Q02 partial, later milestones open
 
 **Type:** interoperability and scientific-visualization program
 
@@ -53,14 +53,19 @@ workspace retains the verified scene's absolute folder and source fingerprint.
 Opening that workspace checks the complete `.qscene` again and displays the
 read-only preview only if the source still matches. The workspace holds a
 reference, so moving or changing the source requires reopening it explicitly.
-Named Math3D Projects can also retain a hashed, read-only external reference
-to a verified scene. Project contents re-verify the bundle when viewing it;
-missing or changed source bytes leave the Project intact. This is a Project
-link, not a native quantum document in the mixed-workspace graph or an editable
-Volume. Project contents now offer explicit source relinking through a native
-folder picker: the replacement must verify against the identical fingerprint
-before its new location can be saved. Cancellation, mismatch, or corruption
-leave the saved Project unchanged. Native quantum-document admission remains open.
+Named Math3D Projects can retain a hashed, read-only external reference to a
+verified scene. The link can be admitted explicitly as a compact native
+`math3d.quantum-scene-document` in the mixed-workspace graph. Its scientific
+identity covers the source scene ID, schema, producer, run/result provenance,
+coordinate conventions, dataset descriptors, object list and fingerprint; its
+local folder is a separate location. Neither the Project nor this document
+embeds binary arrays or becomes an editable Geometry/Volume. Project contents
+open the document through the existing verified scene viewer; saving and opening
+the Project re-verify the complete external bundle. Missing, changed, or
+descriptor-mismatched sources refuse Project activation before workspace commit.
+Relinking requires an exact fingerprint match and changes the link and document
+location together while retaining scientific document identity. Cancellation,
+mismatch, corruption, or save failure leaves the saved Project unchanged.
 On desktop, **File → Open workspace** uses a native file picker for the saved
 `.math3d` file. **File → Open verified quantum scene** selects a `.qscene` folder.
 The preview is not yet an editable Math3D document. A bounded first M3D-Q02
@@ -73,8 +78,8 @@ and checked for stored quantum numbers, central density/node, and units. A
 read-only density isosurface preview now derives bounded triangles from verified
 amplitudes in Electron main, without transferring the full grid. The 1s, 2s,
 2p, 3p and 3d fixtures verify phase and real-component sign bins on those
-surfaces. This is not a full M3D-Q02 delivery. M3D-Q01 native lifecycle
-admission and the remaining M3D-Q02–Q10 work remain open.
+surfaces. This is not a full M3D-Q02 delivery; the remaining M3D-Q02–Q10 work
+remains open.
 
 Quantum Lab must not call MATH3D internals, and MATH3D must not reproduce Quantum
 Lab's physics engines. Both applications meet at the portable, versioned scene
@@ -260,6 +265,16 @@ cross-language fixtures, and artifact rules.
 ## Executable commit ledger
 
 ### M3D-Q01 — `arch(math3d-quantum): define quantum scene importer`
+
+**Status: Complete.** Strict bundle validation, pinned fixture parity, compact
+read-only Project document, exact-source re-verification on save/open/navigation,
+relink with stable scientific identity, portable JSON import, restart, tamper
+refusal and rollback are covered by unit and desktop acceptance. The source
+bundle remains external; portability requires that same verified `.qscene`
+folder or an explicit exact-fingerprint relink. This read-only path admits
+artifact *descriptors* to the Project graph and verifies the external binary
+artifacts before activation; it does not copy them into Math3D's editable
+Geometry/Volume resource registry.
 
 **Scope.** Add the external `quantum-scene/v1` TypeScript representation, strict
 runtime validation, normalization, compatibility fixtures, import diagnostics, and
