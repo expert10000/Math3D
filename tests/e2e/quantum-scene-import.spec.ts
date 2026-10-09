@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
@@ -110,6 +110,33 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await expect(projects.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
     const projectScene = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).quantumScenes[0]);
     expect(projectScene).toMatchObject({ format: "quantum-scene/v1", directory, sceneFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    const relocated = join(root, "relocated.qscene");
+    await cp(directory, relocated, { recursive: true });
+    const savedBeforeRelink = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
+    const relink = projects.getByTestId(`project-relink-quantum-scene-${projectScene.sceneFingerprint}`);
+    await app.evaluate(({dialog}) => { dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] }); });
+    await relink.click();
+    await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("Relink canceled; Project unchanged");
+    expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(savedBeforeRelink);
+    const otherBundle = resolve(__dirname, "..", "fixtures", "quantum-scene-orbitals", "orbital-2p.qscene");
+    await app.evaluate(({dialog}, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, otherBundle);
+    await relink.click();
+    await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("does not match the saved scene fingerprint");
+    expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(savedBeforeRelink);
+    const damagedCandidate = Buffer.from(data); damagedCandidate[0] = 1;
+    await writeFile(join(relocated, "vertices.f64"), damagedCandidate);
+    await app.evaluate(({dialog}, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, relocated);
+    await relink.click();
+    await expect(projects.getByTestId("project-quantum-scene-message")).toContainText(/Relink refused:.*integrity/);
+    expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(savedBeforeRelink);
+    await writeFile(join(relocated, "vertices.f64"), data);
+    await relink.click();
+    await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("Save project to retain the relink");
+    expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(savedBeforeRelink);
+    await projects.getByTestId("project-save").click();
+    await expect(projects.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
+    const relocatedProjectScene = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).quantumScenes[0]);
+    expect(relocatedProjectScene).toMatchObject({ directory: relocated, sceneFingerprint: projectScene.sceneFingerprint });
     await projects.getByTestId(`project-open-quantum-scene-${projectScene.sceneFingerprint}`).click();
     await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
     await page.getByTestId("quantum-scene-close").click();
@@ -131,7 +158,7 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await expect.poll(()=>page.evaluate(()=>(window as any).__savedWorkspaceName)).toMatch(/\.math3d$/);
     await writeFile(workspacePath, await page.evaluate(async () => (window as any).__savedWorkspaceBlob.text()));
     const workspace = JSON.parse(await readFile(workspacePath,"utf8"));
-    expect(workspace.payload.quantumScene).toMatchObject({directory,sceneFingerprint:expect.stringMatching(/^[a-f0-9]{64}$/)});
+    expect(workspace.payload.quantumScene).toMatchObject({directory:relocated,sceneFingerprint:expect.stringMatching(/^[a-f0-9]{64}$/)});
     await app.evaluate(({BrowserWindow})=>{
       BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command",{command:"file:new-workspace"});
     });
@@ -153,6 +180,7 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await expect(page.getByTestId("quantum-field-legend")).toContainText("a0^-3");
     await page.getByTestId("quantum-scene-close").click();
     const damaged=Buffer.from(data);damaged[0]=1;await writeFile(join(directory,"vertices.f64"),damaged);
+    await writeFile(join(relocated,"vertices.f64"),damaged);
     await app.evaluate(({BrowserWindow})=>{
       BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command",{command:"file:open-workspace"});
     });
@@ -175,7 +203,7 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     if(!recentRefused.ok&&!recentRefused.canceled)expect(recentRefused.error).toMatch(/integrity/);
     const damagedReveal=await page.evaluate(ref=>(window as any).quantumScenes.revealSource(ref.sceneFingerprint),workspace.payload.quantumScene);
     expect(damagedReveal).toMatchObject({ok:false,error:expect.stringMatching(/integrity/)});
-    expect(await app.evaluate(()=> (globalThis as any).__revealedQuantumSource)).toBe(directory);
+    expect(await app.evaluate(()=> (globalThis as any).__revealedQuantumSource)).toBe(relocated);
     expect(await app.evaluate(()=> (globalThis as any).__quantumRevealCount)).toBe(2);
     await app.evaluate(({shell})=>{
       const state=globalThis as any;
@@ -302,6 +330,7 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     if(reopenedAfterRestart.ok)expect(reopenedAfterRestart.document.metadata.sourceModel).toBe("qwz");
     await restartedPage.getByTestId("projects-toggle").click();
     await expect(restartedPage.getByTestId(`project-open-quantum-scene-${projectScene.sceneFingerprint}`)).toBeVisible();
+    expect(await restartedPage.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).quantumScenes[0].directory)).toBe(relocated);
     await restartedPage.getByTestId(`project-open-quantum-scene-${projectScene.sceneFingerprint}`).click();
     await expect(restartedPage.getByTestId("project-quantum-scene-message")).toContainText(/Scene unavailable:.*integrity/);
     await expect(restartedPage.getByTestId("quantum-scene-preview")).toBeHidden();

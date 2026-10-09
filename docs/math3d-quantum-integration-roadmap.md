@@ -57,7 +57,10 @@ Named Math3D Projects can also retain a hashed, read-only external reference
 to a verified scene. Project contents re-verify the bundle when viewing it;
 missing or changed source bytes leave the Project intact. This is a Project
 link, not a native quantum document in the mixed-workspace graph or an editable
-Volume. An explicit, verified relocation workflow is the next bounded step.
+Volume. Project contents now offer explicit source relinking through a native
+folder picker: the replacement must verify against the identical fingerprint
+before its new location can be saved. Cancellation, mismatch, or corruption
+leave the saved Project unchanged. Native quantum-document admission remains open.
 On desktop, **File → Open workspace** uses a native file picker for the saved
 `.math3d` file. **File → Open verified quantum scene** selects a `.qscene` folder.
 The preview is not yet an editable Math3D document. A bounded first M3D-Q02

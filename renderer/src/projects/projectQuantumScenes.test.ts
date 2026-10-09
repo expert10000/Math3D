@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createEmptyGraph2DDocument, createGraph2DWorkspaceProject, createMath3DProject,
   normalizeMath3DProject, parseMath3DProject, replaceMath3DProjectWorkspace, serializeMath3DProject,
   relinkMath3DProjectQuantumScene, upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference } from "@math3d/core";
-import { loadLibraryProject, saveLibraryProject } from "./projectLibrary";
+import { loadLibraryProject, projectPayloadKey, PROJECT_LIBRARY_KEY, PROJECT_STORAGE_KEY, saveLibraryProject } from "./projectLibrary";
 
 const reference: ProjectQuantumSceneReference = {
   format: "quantum-scene/v1", title: "Hydrogen 2p", directory: "C:\\scenes\\hydrogen.qscene", sceneFingerprint: "a".repeat(64),
@@ -65,5 +65,22 @@ describe("read-only Project quantum-scene links", () => {
     const before = [...storage.values];
     expect(() => saveLibraryProject(storage, { ...linked, quantumScenes: [{ ...reference, sceneFingerprint: "bad" }] } as typeof linked, 200)).toThrow();
     expect([...storage.values]).toEqual(before);
+  });
+
+  it("rolls back a storage failure after staging an exact-source location update", () => {
+    const linked = upsertMath3DProjectQuantumScene(fixture(), reference), storage = store();
+    saveLibraryProject(storage, linked, 100);
+    const before = [...storage.values];
+    const moved = relinkMath3DProjectQuantumScene(linked, reference.sceneFingerprint, "D:\\moved\\hydrogen.qscene");
+    const originalIndex = storage.getItem(PROJECT_LIBRARY_KEY);
+    const failing = { ...storage, setItem: (key: string, value: string) => {
+      if (key === PROJECT_LIBRARY_KEY && value !== originalIndex) throw new Error("Storage full");
+      storage.setItem(key, value);
+    } };
+    expect(() => saveLibraryProject(failing, moved, 200)).toThrow("Storage full");
+    expect([...storage.values]).toEqual(before);
+    expect(loadLibraryProject(storage, linked.identity.id)).toEqual(linked);
+    expect(storage.getItem(projectPayloadKey(linked.identity.id))).toBe(serializeMath3DProject(linked));
+    expect(storage.getItem(PROJECT_STORAGE_KEY)).toBe(serializeMath3DProject(linked));
   });
 });
