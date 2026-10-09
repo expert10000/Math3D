@@ -46,7 +46,8 @@ try {
   const imported = await importQuantumSceneBundle(directory);
   assert.equal(imported.document.metadata.sourceResultSha256,scene.provenance.resultSha256);
   assert.deepEqual(imported.document.geometry.segments?.map(segment=>segment.b),
-    [{x:1,y:0,z:0},{x:1,y:1,z:0}]);
+    [{x:1,y:0,z:0,id:"path:link:0:b",label:"Source path"},
+      {x:1,y:1,z:0,id:"path:link:1:b",label:"Source path"}]);
   assert.deepEqual(imported.document.cameras?.[0].position,{x:3,y:2,z:2});
   assert.deepEqual(imported.source.coordinates.units,scene.coordinates.units);
   assert.deepEqual(imported.mappedObjectIds,["path"]);
@@ -85,6 +86,49 @@ try {
   await writeScene({...scene,datasets:[{...scene.datasets[0],path:"../escape.f64"}]});
   await assert.rejects(importQuantumSceneBundle(directory),/Invalid quantum-scene\/v1/);
   console.log("M3D-Q01 synthetic bundle, mapping and tamper refusal passed");
+
+  const siteDirectory = join(root, "sites-and-links.qscene");
+  await mkdir(siteDirectory);
+  const siteValues = [0,0,0, 2,0,0], linkValues = [0,0,0, 2,0,0];
+  const f64 = values => {
+    const bytes = Buffer.alloc(values.length * 8);
+    values.forEach((value, index) => bytes.writeDoubleLE(value, index * 8));
+    return bytes;
+  };
+  const siteBytes = f64(siteValues), linkBytes = f64(linkValues);
+  const siteScene = { ...scene, id: "verified-sites-links", title: "Supplied sites and links",
+    coordinates: { ...scene.coordinates, units: ["a0", "a0", "a0"] },
+    datasets: [["sites", siteBytes], ["links", linkBytes]].map(([id, bytes]) => ({
+      id, path: `${id}.f64`, format: "f64le", count: 2, components: 3, unit: "a0",
+      bytes: bytes.length, sha256: hash(bytes),
+    })),
+    objects: [
+      { id: "supplied-sites", label: "Supplied sites", kind: "point-cloud", positions: "sites", visible: true,
+        style: { color: "#22aaff", opacity: 1, size: 1 } },
+      { id: "supplied-links", label: "Supplied links", kind: "segments", positions: "links", visible: true,
+        style: { color: "#ff8800", opacity: 0.8, size: 1 } },
+    ] };
+  const writeSiteScene = async () => {
+    const bytes = Buffer.from(JSON.stringify(siteScene, null, 2) + "\n");
+    await writeFile(join(siteDirectory, "scene.json"), bytes);
+    await writeFile(join(siteDirectory, "bundle.json"), JSON.stringify({ schema: "quantum-scene-bundle/v1",
+      scene: { path: "scene.json", bytes: bytes.length, sha256: hash(bytes) } }, null, 2) + "\n");
+  };
+  await writeFile(join(siteDirectory, "sites.f64"), siteBytes);
+  await writeFile(join(siteDirectory, "links.f64"), linkBytes);
+  await writeSiteScene();
+  const sites = await importQuantumSceneBundle(siteDirectory);
+  assert.deepEqual(sites.mappedObjectIds, ["supplied-sites", "supplied-links"]);
+  assert.deepEqual(sites.document.geometry.points?.map(point => point.id),
+    ["supplied-sites:site:0", "supplied-sites:site:1"]);
+  assert.deepEqual(sites.document.geometry.segments?.map(segment => [segment.a.id, segment.b.id]),
+    [["supplied-links:link:0:a", "supplied-links:link:0:b"]]);
+  const sitesReference = { directory: siteDirectory, sceneFingerprint: sceneFingerprint(sites) };
+  assert.deepEqual((await reopenQuantumSceneReference(sitesReference)).imported.document.geometry, sites.document.geometry);
+  const alteredSites = Buffer.from(siteBytes); alteredSites[0] ^= 1;
+  await writeFile(join(siteDirectory, "sites.f64"), alteredSites);
+  await assert.rejects(reopenQuantumSceneReference(sitesReference), /integrity/);
+  await writeFile(join(siteDirectory, "sites.f64"), siteBytes);
 
   const fieldDirectory = join(root, "orbital.qscene");
   await mkdir(fieldDirectory);

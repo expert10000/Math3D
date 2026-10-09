@@ -50,12 +50,18 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
     const mapped = geometry.points!.length + geometry.segments!.length + geometry.triangles!.length;
     if (mapped + proposed > MAX_MAPPED_PRIMITIVES) { deferredObjectIds.push(object.id); continue; }
     if (object.kind === "point-cloud") {
-      for (let i = 0; i < count; i++) geometry.points!.push({ ...point(positions, i), id: `${object.id}-${i}`, label: object.label,
+      for (let i = 0; i < count; i++) geometry.points!.push({ ...point(positions, i), id: `${object.id}:site:${i}`, label: object.label,
         color, size: object.style.size, opacity: object.style.opacity });
     } else if (object.kind === "polyline" || object.kind === "segments") {
       const step = object.kind === "segments" ? 2 : 1;
-      for (let i = 0; i + 1 < count; i += step)
-        geometry.segments!.push({ a: point(positions, i), b: point(positions, i + 1), color, opacity: object.style.opacity });
+      for (let i = 0; i + 1 < count; i += step) {
+        const segment = i / step;
+        geometry.segments!.push({
+          a: { ...point(positions, i), id: `${object.id}:link:${segment}:a`, label: object.label },
+          b: { ...point(positions, i + 1), id: `${object.id}:link:${segment}:b`, label: object.label },
+          color, opacity: object.style.opacity,
+        });
+      }
     } else if (object.kind === "mesh") {
       const indices = arrays.get(object.indices!)!;
       for (let i = 0; i < indices.length; i += 3)
