@@ -13,6 +13,8 @@ export interface ImportedQuantumScene {
   deferredFieldIds: string[];
 }
 
+export type VerifiedLatticeSample = { sampleIndex: number; cell: [number, number, number]; basisIndex: number };
+
 // Structural subset of @math3d/core's SceneDocument. The Node build cannot
 // import package source outside its rootDir; parity is checked in acceptance.
 type Point3 = { x: number; y: number; z: number; id?: string; label?: string; color?: number; size?: number; opacity?: number };
@@ -79,6 +81,14 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
     mappedObjectIds.push(object.id);
   }
   const importedAt = Date.now();
+  const lattice = scene.lattice;
+  const latticeSamples: VerifiedLatticeSample[] = lattice ? (() => {
+    const cells = arrays.get(lattice.cells)!, basis = arrays.get(lattice.basisIndices)!;
+    return Array.from({ length: basis.length }, (_, sampleIndex) => ({ sampleIndex,
+      cell: [cells[3 * sampleIndex], cells[3 * sampleIndex + 1], cells[3 * sampleIndex + 2]] as [number, number, number],
+      basisIndex: basis[sampleIndex],
+    }));
+  })() : [];
   const document: Math3DQuantumDocument = {
     id: `quantum-${scene.id}`,
     title: scene.title,
@@ -101,6 +111,7 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
         mappedObjectIds,
         deferredObjectIds,
         deferredFieldIds: (scene.fields ?? []).map(field => field.id),
+        latticeSamples,
         selectionTransferred: false,
       },
     },

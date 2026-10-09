@@ -13,7 +13,10 @@ type SceneSource = {
     kind?: "geometry-fixture" | "numerical-result"; parameters?: Record<string, number | string> };
   coordinates: { axes: [string, string, string]; units: [string, string, string]; handedness: string };
   datasets: { id: string; count: number; components: number; unit: string }[];
-  objects: { id: string; label: string; kind: string; indices?: string; style: { color: string; opacity: number; size: number } }[];
+  objects: { id: string; label: string; kind: string; positions: string; indices?: string; style: { color: string; opacity: number; size: number } }[];
+  lattice?: { dimensions: 2 | 3; basis: { label: string; position: [number, number, number] }[];
+    translations: [number, number, number][]; repeats: [number, number, number]; boundary: "open";
+    sites: string; cells: string; basisIndices: string };
   fields?: QuantumField[];
   annotations: { id: string; text: string; position: [number, number, number] }[];
   bands?: { objects: string[]; labels: string[]; energyUnit: string; bulkGap: number };
@@ -31,10 +34,11 @@ export type QuantumSceneOpenResponse =
 type OpenedScene = Extract<QuantumSceneOpenResponse, { ok: true }>;
 type SceneTriangle = NonNullable<GeometryScene["triangles"]>[number];
 type PickedBandSample = { objectId: string; label: string; sampleId: string; point: Vector3 };
+type LatticeSample = { sampleIndex: number; cell: [number, number, number]; basisIndex: number };
 
 export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; onClose: () => void }) {
   const document = opened.document;
-  const details = document.extensions["quantum-scene/v1"] as { scene: SceneSource; selectionTransferred: false };
+  const details = document.extensions["quantum-scene/v1"] as { scene: SceneSource; selectionTransferred: false; latticeSamples?: LatticeSample[] };
   const scene = details.scene;
   const count = (document.geometry.points?.length ?? 0) + (document.geometry.segments?.length ?? 0) +
     (document.geometry.triangles?.length ?? 0);
@@ -77,6 +81,10 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
   const camera = document.cameras[0];
   const [pickedBandSample, setPickedBandSample] = useState<PickedBandSample | null>(null);
   const [pickedPrimitive, setPickedPrimitive] = useState<QuantumPrimitive | null>(null);
+  const latticeSiteObjects = useMemo(() => new Set(scene.objects.filter(object => object.positions === scene.lattice?.sites).map(object => object.id)),
+    [scene.objects, scene.lattice?.sites]);
+  const pickedLatticeSample = pickedPrimitive?.kind === "site" && latticeSiteObjects.has(pickedPrimitive.objectId) ?
+    details.latticeSamples?.[pickedPrimitive.index] : undefined;
   useEffect(() => { setPickedBandSample(null); setPickedPrimitive(null); }, [opened.reference.sceneFingerprint]);
   const primitiveMeshes = useMemo(() => buildQuantumPrimitiveMeshes(document.geometry, scene.objects, opened.mappedObjectIds),
     [document.geometry, scene.objects, opened.mappedObjectIds]);
@@ -104,13 +112,18 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
   }, [document.geometry.triangles, opened.mappedObjectIds, scene.datasets, scene.objects]);
   const viewerScene = useMemo(() => {
     const primitiveIds = new Set(primitiveMeshes.map(mesh => mesh.id));
+    const translations = scene.lattice?.translations.map((vector, axis) => ({
+      a: { x: 0, y: 0, z: 0, id: `lattice:translation:${axis}:origin` },
+      b: { x: vector[0], y: vector[1], z: vector[2], id: `lattice:translation:${axis}:tip` },
+      color: 0xf2b36f, opacity: 1,
+    })) ?? [];
     return { ...document.geometry,
       triangles: meshObjects.length ? [] : document.geometry.triangles,
       points: document.geometry.points?.filter(point => !primitiveMeshes.length ||
         ![...primitiveIds].some(id => point.id?.startsWith(`${id}:site:`))),
-      segments: document.geometry.segments?.filter(segment => !primitiveMeshes.length ||
-        ![...primitiveIds].some(id => segment.a.id?.startsWith(`${id}:link:`))) };
-  }, [document.geometry, meshObjects, primitiveMeshes]);
+      segments: [...(document.geometry.segments?.filter(segment => !primitiveMeshes.length ||
+        ![...primitiveIds].some(id => segment.a.id?.startsWith(`${id}:link:`))) ?? []), ...translations] };
+  }, [document.geometry, meshObjects, primitiveMeshes, scene.lattice]);
   const visibleLabels = useMemo(() => {
     const supplied = scene.annotations.filter(annotation => annotation.text.length <= 64).map(annotation => ({
       text: annotation.text, position: { x: annotation.position[0], y: annotation.position[1], z: annotation.position[2] },
@@ -208,8 +221,22 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
                   pickedPrimitive.position[["x", "y", "z"][index] as keyof Vector3].toPrecision(6)} {scene.coordinates.units[index]}<br /></React.Fragment>)}
                 {pickedPrimitive.endpoints && <div>Endpoints: {pickedPrimitive.endpoints.map(endpoint =>
                   `(${endpoint.x.toPrecision(5)}, ${endpoint.y.toPrecision(5)}, ${endpoint.z.toPrecision(5)})`).join(" → ")}</div>}
+                {pickedLatticeSample && scene.lattice && <div data-testid="quantum-lattice-site-selection">
+                  <b>Verified lattice site:</b> cell [{pickedLatticeSample.cell.join(", ")}] · basis {pickedLatticeSample.basisIndex}
+                  {" "}({scene.lattice.basis[pickedLatticeSample.basisIndex]?.label}) · source sample {pickedLatticeSample.sampleIndex}.
+                </div>}
               </div>}
             </>}
+            {scene.lattice && <section data-testid="quantum-lattice-inspector">
+              <h3>Supplied lattice geometry</h3>
+              <div>{scene.lattice.dimensions}D · {scene.lattice.repeats.join(" × ")} cells · {scene.lattice.boundary} boundary</div>
+              <div>Basis: {scene.lattice.basis.map((site, index) => `${index} ${site.label} (${site.position.join(", ")})`).join("; ")}</div>
+              <div>Translations: {scene.lattice.translations.map((vector, index) =>
+                `a${index + 1}=(${vector.map(value => value.toPrecision(5)).join(", ")})`).join("; ")}</div>
+              <div>Position units: {scene.coordinates.units.join(", ")}</div>
+              <div>Verified site identities: {details.latticeSamples?.length ?? 0}; click a site marker to inspect its cell and basis.</div>
+              <p>Amber guides show supplied primitive translations. Supplied segments remain geometric guides; no atom species, bond order, or hopping is inferred. Periodic-wrap bonds are unavailable because this scene declares open boundaries.</p>
+            </section>}
             {scene.bands && <>
               <h3>Bands</h3>
               <div data-testid="quantum-band-legend">{scene.bands.objects.map((id, index) => {
