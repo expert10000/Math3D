@@ -13,6 +13,7 @@ test("Catenoid's saved Mesh opens in the normal Mesh workspace", async () => {
     await page.reload();
     await page.getByTestId("projects-toggle").click();
     await page.getByTestId("project-template-open-catenoid-evidence").click();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("math3d.project.v1"))).not.toBeNull();
     const project = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     const mesh = project.workspace.entries.find((entry: any) => entry.module === "mesh");
     await page.getByTestId("project-viewer-document").selectOption(mesh.expected.id);
