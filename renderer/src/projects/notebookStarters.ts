@@ -1,4 +1,4 @@
-import { createProjectNote, instantiateMath3DProjectTemplate, replaceMath3DProjectWorkspace, structuralHash, updateMath3DProjectMetadata, updateProjectNote, upsertMath3DProjectNote, upsertMath3DProjectWorkbook, viewerSourceFromDocument } from "@math3d/core";
+import { createDocumentRelation, createGeometryDocument, createGraph2DDocument, createGraph2DWorkspaceProject, createMath3DProject, createMixedWorkspaceDocument, createProjectNote, extrudeGraph2DProfile, instantiateMath3DProjectTemplate, parseGraph2DExpression, replaceMath3DProjectWorkspace, structuralHash, updateMath3DProjectMetadata, updateProjectNote, upsertMath3DProjectNote, upsertMath3DProjectWorkbook, viewerSourceFromDocument } from "@math3d/core";
 import { bindWorkbookNamedParameter, createDefaultWorkbook, createNotebookReference } from "@math3d/workbook";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { createSavedSurfaceMesh } from "./savedSurfaceMesh";
@@ -11,8 +11,52 @@ export const NOTEBOOK_STARTERS = [
   { id: "edge-path-evidence", title: "Edge Path Evidence Notebook", description: "A computed Mesh edge path with exact citations, a length check and a bound Workbook grid parameter." },
   { id: "graph-derivative-notebook", title: "Graph Derivative Investigation", description: "Compare a parabola, its Curve snapshot and a recorded numerical derivative in a Project Workbook." },
   { id: "curve-construction-notebook", title: "Curve Construction Investigation", description: "Follow a measured Curve into revolution and extrusion Surfaces with exact source references." },
+  { id: "ripple-wave-study", title: "Ripple Wave Study", description: "A Graph wave profile, its native Surface, a saved Mesh snapshot and editable Geometry sample markers." },
 ] as const;
 export type NotebookStarterId = typeof NOTEBOOK_STARTERS[number]["id"];
+
+const waveHeight = (x: number) => Math.sin(2 * x) / (1 + 0.1 * x * x);
+
+const instantiateRippleWaveStarter = (token: string) => {
+  const id = "ripple-wave-study", recipe = NOTEBOOK_STARTERS.find(item => item.id === id)!;
+  const expression = "sin(2*x)/(1+0.1*x^2)", parsed = parseGraph2DExpression(expression);
+  if (!parsed.ok) throw new TypeError("Built-in Ripple Wave profile is invalid.");
+  const graph = createGraph2DDocument({ stableKey: [id, token, "graph"], title: "wave-profile",
+    source: { objects: [{ id: "wave", label: "Wave profile", kind: "explicit-cartesian",
+      expression: { source: expression, variable: "x", ast: parsed.ast },
+      domain: { min: -3, max: 3, includeMin: true, includeMax: true } }], variables: [], assumptions: [] } });
+  const surface = extrudeGraph2DProfile(graph, "wave", { direction: [0, 0, 1], length: 3, caps: "none" });
+  const graphWorkspace = createGraph2DWorkspaceProject(graph);
+  const sourceWorkspace = createMixedWorkspaceDocument({ ...graphWorkspace,
+    entries: [...graphWorkspace.entries, { module: "surface", checkpoint: surface.document, expected: surface.document.identity, replay: null }],
+    activeDocumentIds: [...graphWorkspace.activeDocumentIds, surface.document.identity.id],
+    relations: [...graphWorkspace.relations, surface.relation] });
+  const made = createSavedSurfaceMesh(sourceWorkspace, surface.document, { documents: verifyMixedWorkspaceReplay(sourceWorkspace) }, 33, "Ripple Wave Mesh");
+  const sampleX = [-2.25, -0.75, 0.75, 2.25];
+  const geometry = createGeometryDocument({ stableKey: [id, token, "geometry"], metadata: { title: "Wave sample markers" },
+    source: { geometry: null,
+      objects: sampleX.map((x, index) => ({ id: `marker-${index + 1}`, type: "sphere" as const, params: { radius: 0.32 },
+        transform: { position: { x, y: waveHeight(x), z: 1.5 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } })),
+      surfaces: [], constructions: [], relationships: [], parameters: { sampleX, sampleDepth: 1.5 }, extensions: {} },
+    display: { objects: Object.fromEntries(sampleX.map((x, index) => [`marker-${index + 1}`, {
+      name: `${waveHeight(x) >= 0 ? "Crest" : "Trough"} at x=${x}`, visible: true,
+      material: { color: waveHeight(x) >= 0 ? 0x2776ce : 0xd27d35, opacity: 1 },
+    }])) } });
+  const geometryRelation = createDocumentRelation({ kind: "derived-from", sources: [viewerSourceFromDocument(surface.document)], sourceOrder: "ordered",
+    target: { type: "document", generation: viewerSourceFromDocument(geometry) }, operation: "project-template.wave-sample-markers",
+    parameters: { sampleX, sampleDepth: 1.5, sampleFunction: expression } });
+  const workspace = createMixedWorkspaceDocument({ ...made.workspace,
+    entries: [...made.workspace.entries, { module: "geometry", checkpoint: geometry, expected: geometry.identity, replay: null }],
+    activeDocumentIds: [...made.workspace.activeDocumentIds, geometry.identity.id],
+    relations: [...made.workspace.relations, geometryRelation] });
+  let project = createMath3DProject(workspace, { stableKey: [id, token], title: recipe.title });
+  project = updateMath3DProjectMetadata(project, { ...project.metadata, description: recipe.description,
+    tags: ["starter", id, "graph", "surface", "mesh", "geometry"],
+    documents: { [graph.identity.id]: { title: "Wave profile" }, [surface.document.identity.id]: { title: "Ripple Wave Surface" },
+      [made.adapter.document().identity.id]: { title: "Ripple Wave Mesh" }, [geometry.identity.id]: { title: "Wave sample markers" } } });
+  const resources = captureProjectResources(project, item => item.kind === "mesh-buffers" ? made.adapter.resources.bytes(made.adapter.document().source.resource) : null);
+  return { project, resources };
+};
 
 const instantiateDocumentNotebookStarter = (id: "graph-derivative-notebook" | "curve-construction-notebook", token: string) => {
   const graph = id === "graph-derivative-notebook";
@@ -71,6 +115,7 @@ export function instantiateNotebookStarter(id: NotebookStarterId, token: string)
   };
   const recipe = NOTEBOOK_STARTERS.find(item => item.id === id);
   if (!recipe) throw new TypeError("Unknown Notebook starter.");
+  if (id === "ripple-wave-study") return instantiateRippleWaveStarter(token);
   if (id === "graph-derivative-notebook" || id === "curve-construction-notebook") return instantiateDocumentNotebookStarter(id, token);
   let project = instantiateMath3DProjectTemplate("catenary-study", token);
   measurePhase("template");

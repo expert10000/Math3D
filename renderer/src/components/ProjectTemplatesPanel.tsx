@@ -4,7 +4,8 @@ import { MATH3D_PROJECT_TEMPLATES, type Math3DProjectTemplateId } from "@math3d/
 import { NOTEBOOK_STARTERS, type NotebookStarterId } from "../projects/notebookStarters";
 import type { ProjectLibraryEntry } from "../projects/projectLibrary";
 export type ProjectStarterId = Math3DProjectTemplateId | NotebookStarterId;
-const starters = [...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS.map(item => ({ ...item, steps: ["Find its Workbook and Notes in Projects → Contents."] }))];
+const starters = [...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS.map(item => ({ ...item,
+  steps: [item.id === "ripple-wave-study" ? "Open Surface first, then choose Graph, Mesh or Geometry from the Project tree." : "Find its Workbook and Notes in Projects → Contents."] }))];
 
 export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]> = {
   "catenary-study": ["Graph", "Curve", "Surface", "Notes"],
@@ -17,6 +18,7 @@ export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]
   "edge-path-evidence": ["Mesh", "Analysis", "Workbook", "Notes"],
   "graph-derivative-notebook": ["Graph", "Curve", "Analysis", "Workbook", "Notes"],
   "curve-construction-notebook": ["Curve", "Surface", "Workbook", "Notes"],
+  "ripple-wave-study": ["Graph", "Surface", "Mesh", "Geometry"],
 };
 
 export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <svg viewBox="0 0 320 152" aria-hidden="true" focusable="false">
@@ -30,6 +32,10 @@ export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <s
     <path d="M63 90H248M81 60H258M156 30L109 120M212 30L174 120M45 120L156 30M109 120L212 30M174 120L268 30" fill="none" stroke="#93b5dc" strokeWidth="1.5" />
     <path d="M45 120L126 90L175 60L268 30" fill="none" stroke="#d97706" strokeWidth="5" strokeLinejoin="round" />
     {[ [45,120], [126,90], [175,60], [268,30] ].map(([x,y]) => <circle key={`${x}-${y}`} cx={x} cy={y} r="6" fill="#d97706" stroke="#fff" strokeWidth="2" />)}</>}
+  {id === "ripple-wave-study" && <><path d="M25 76C50 25 74 25 99 76S148 127 173 76S222 25 247 76S271 127 296 76V112C271 163 247 163 222 112S173 61 148 112S99 163 74 112S50 61 25 112Z" fill="#dbeafe" stroke="#80abd9" strokeWidth="2" />
+    <path d="M25 76C50 25 74 25 99 76S148 127 173 76S222 25 247 76S271 127 296 76M25 112C50 61 74 61 99 112S148 163 173 112S222 61 247 112S271 163 296 112" fill="none" stroke="#2563eb" strokeWidth="3" />
+    <path d="M65 54V90M135 94V130M209 54V90M278 94V130" stroke="#70a5d7" strokeWidth="2" strokeDasharray="4 4" />
+    {[ [65,54], [135,94], [209,54], [278,94] ].map(([x,y]) => <circle key={`${x}-${y}`} cx={x} cy={y} r="5" fill="#d97706" stroke="#fff" strokeWidth="2" />)}</>}
   {(id === "derivative-study" || id === "graph-derivative-notebook") && <><path d="M20 20 Q160 185 300 20" fill="none" stroke="#2563eb" strokeWidth="5" /><path d="M38 143L280 39" stroke="#db2777" strokeWidth="3" strokeDasharray="8 5" /><circle cx="210" cy="78" r="6" fill="#db2777" /></>}
   {id === "spline-surface-lab" && <><path d="M30 116 C88 12 148 137 205 42 S268 50 294 100" fill="none" stroke="#2563eb" strokeWidth="5" /><path d="M38 60Q150 0 280 60M38 91Q150 31 280 91M38 122Q150 62 280 122M86 35Q116 85 86 130M160 27Q190 82 160 122M234 35Q264 85 234 130" fill="none" stroke="#70a5d7" strokeWidth="2" /></>}
   {(id === "curve-construction-study" || id === "curve-construction-notebook") && <><path d="M48 120L82 78L115 103L151 40" fill="none" stroke="#2563eb" strokeWidth="5" /><path d="M151 40C194 20 248 32 264 72C247 119 194 130 151 104" fill="#dbeafe" stroke="#3984c9" strokeWidth="2" /><path d="M151 40C176 81 176 83 151 104M190 31C216 73 216 96 190 119M230 42C255 76 255 91 230 107" fill="none" stroke="#70a5d7" strokeWidth="2" /></>}

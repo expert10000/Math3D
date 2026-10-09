@@ -32,6 +32,17 @@ click still waits for worker preparation; reducing the commit/restore phase
 remains further work. Saved-copy Open and the Catenoid Surface → Mesh → Surface
 → save → restart flow passed.
 
+**Ripple Wave four-document starter — October 9:** the Gallery now offers a
+separate Ripple Wave Study with an editable Graph profile, its constructed
+Surface, a retained Mesh snapshot and editable Geometry sample markers. The
+Graph → Surface → Mesh and Surface → Geometry links retain source generations.
+Surface opens first; the four native workspaces and selected-document
+restoration passed in an isolated Electron save/restart run.
+The older Geometry Notes and Pins starter still fails its default compact-window
+viewer-visibility check at 1358 × 859 because the Geometry toolbar uses the
+available vertical space. Ripple Wave's wider Project layout is scoped to that
+starter and does not change the older starter's compact presentation.
+
 **Startup contract — October 9:** autosave is the only startup recovery flow.
 Restoring it restores the workspace; it does not also open the last saved Project.
 Saved Projects open explicitly from Projects. The former automatic Project

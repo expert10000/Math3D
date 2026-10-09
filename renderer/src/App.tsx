@@ -11400,7 +11400,8 @@ const App: React.FC = () => {
   const [savedMeshModuleView, setSavedMeshModuleView] = useState(true);
   const derivedProjectSurfaceRef = useRef<string | null>(null);
   const restoreNormalSurfacePresentationRef = useRef<(() => void) | null>(null);
-  const restoredProjectRef = useRef<{ graphs: Map<string, Graph2DCommandAdapter>; additional: Map<string, AdditionalProjectSession>; workspace: MixedWorkspaceDocument; curves: Map<string, CurveDocumentAdapter>; surfaces: Map<string, SurfaceDocumentAdapter>; geometries: Map<string, GeometryDocumentAdapter>; topologies: Map<string, TopologyDiagramCommandAdapter>; complexes: Map<string, ComplexAnalysisCommandAdapter>; volumes: Map<string, VolumeDocumentAdapter>; meshes: Map<string, MeshDocumentAdapter>; resources?: VerifiedProjectResources; context: () => import("./projects/additionalProjectRepresentations").RepresentationContext } | null>(null);
+  const restoredProjectRef = useRef<{ graphs: Map<string, Graph2DCommandAdapter>; additional: Map<string, AdditionalProjectSession>; workspace: MixedWorkspaceDocument; curves: Map<string, CurveDocumentAdapter>; surfaces: Map<string, SurfaceDocumentAdapter>; geometries: Map<string, GeometryDocumentAdapter>; topologies: Map<string, TopologyDiagramCommandAdapter>; complexes: Map<string, ComplexAnalysisCommandAdapter>; volumes: Map<string, VolumeDocumentAdapter>; meshes: Map<string, MeshDocumentAdapter>; resources?: VerifiedProjectResources; projectTags: readonly string[]; context: () => import("./projects/additionalProjectRepresentations").RepresentationContext } | null>(null);
+  const geometryProjectLayoutBeforeRef = useRef<{ controlsOpen: boolean; layout: WorkspaceDockLayout } | null>(null);
   const activeSavedSurfaceSession = additionalActiveId ? restoredProjectRef.current?.additional.get(additionalActiveId) : null;
   const activeSavedSurfaceDocument = useMemo(() => activeSavedSurfaceSession?.document(), [activeSavedSurfaceSession, additionalVersion]);
   const activeSavedSurfaceBinding = useMemo(() => activeSavedSurfaceDocument?.format === "math3d.surface-document"
@@ -12263,7 +12264,8 @@ const App: React.FC = () => {
   }, [geometryMode]);
   useEffect(() => {
     if (typeof window === "undefined" || IS_REPLAY_MODE) return;
-    window.localStorage.setItem(UI_GEOMETRY_VIEWER_CONTROLS_KEY, geometryViewerControlsOpen ? "1" : "0");
+    window.localStorage.setItem(UI_GEOMETRY_VIEWER_CONTROLS_KEY,
+      (geometryProjectLayoutBeforeRef.current?.controlsOpen ?? geometryViewerControlsOpen) ? "1" : "0");
   }, [geometryViewerControlsOpen]);
   useEffect(() => {
     if (typeof window === "undefined" || IS_REPLAY_MODE) return;
@@ -32827,6 +32829,17 @@ const App: React.FC = () => {
         pushById(meta.id);
       }
 
+      if (mode === "scene" && geometryMode === "procedural") {
+        for (const object of [...geometryObjects, ...geometryDatasetMeshObjects]) {
+          if (!object.visible) continue;
+          const resolved = resolveGeometrySceneMeshById(object.id);
+          const bounds = resolved ? boundsFromPositions(resolved.mesh.positions) : null;
+          if (!bounds) continue;
+          points.push({ x: bounds.min[0], y: bounds.min[1], z: bounds.min[2] },
+            { x: bounds.max[0], y: bounds.max[1], z: bounds.max[2] });
+        }
+      }
+
       if (geometryIncludeHelpersInFit) points.push(...geometryHelperFitPoints);
 
       if (!points.length) {
@@ -32872,6 +32885,10 @@ const App: React.FC = () => {
       geometryActiveStageNumber,
       geometryIncludeHelpersInFit,
       geometryHelperFitPoints,
+      geometryMode,
+      geometryObjects,
+      geometryDatasetMeshObjects,
+      resolveGeometrySceneMeshById,
       finitePoint3,
     ]
   );
@@ -44487,7 +44504,9 @@ const App: React.FC = () => {
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
     try {
-      localStorage.setItem(WORKSPACE_DOCKS_STORAGE_KEY, JSON.stringify(workspaceDockLayouts));
+      const previous = geometryProjectLayoutBeforeRef.current;
+      localStorage.setItem(WORKSPACE_DOCKS_STORAGE_KEY, JSON.stringify(previous
+        ? { ...workspaceDockLayouts, geometry: previous.layout } : workspaceDockLayouts));
     } catch {
       // A live session remains usable when storage is unavailable.
     }
@@ -76435,6 +76454,13 @@ case "mobius":
     SURFACE_MESH_PRESETS[1]?.id ??
     meshNewPresetId;
   const [projectsOpen, setProjectsOpen] = useState(false);
+  useEffect(() => {
+    if (projectsOpen || !geometryProjectLayoutBeforeRef.current) return;
+    const previous = geometryProjectLayoutBeforeRef.current;
+    geometryProjectLayoutBeforeRef.current = null;
+    setGeometryViewerControlsOpen(previous.controlsOpen);
+    setWorkspaceDockLayouts(layouts => ({ ...layouts, geometry: previous.layout }));
+  }, [projectsOpen]);
   const [projectNoteRequest, setProjectNoteRequest] = useState<{ id: string; token: number } | null>(null);
   const activeNotebookProjectRef = useRef<Math3DProject | null>(null);
   const [notebookProjectVersion, setNotebookProjectVersion] = useState(0);
@@ -78462,6 +78488,9 @@ case "mobius":
     }
     if (geometry) {
       const document = geometry.document(), seed = restoredGeometryEditorSeed(document);
+      const roomyProjectGeometry = projectsOpen && restored?.projectTags.includes("ripple-wave-study") && window.innerWidth >= 1500;
+      if (roomyProjectGeometry) geometryProjectLayoutBeforeRef.current ??= { controlsOpen: geometryViewerControlsOpen,
+        layout: workspaceDockLayouts.geometry ?? recommendedWorkspaceDockLayout("geometry") };
       geometryKernelAdapterRef.current = geometry;
       setGeometryObjects(seed.objects); setGeometryDatasetMeshObjects([]); setGeometryLockedObjectIds(new Set());
       setGeometryDerivedConstructions(normalizeGeometryDerivedConstructionsForRestore(seed.constructions));
@@ -78470,7 +78499,14 @@ case "mobius":
       setGeometryObjectRevisionById({}); setGeometryObjectParamDrafts({}); setGeometryProceduralPick(null); setGeometryProceduralHoverPick(null);
       setGeometryScratchSceneSeed(normalizeConstructionLabSeed(restored?.workspace.constructions.find((entry) => entry.kind === "scratch")?.source));
       setGeometryWorkbookSceneSeeds(normalizeConstructionLabSeedRecord(restored?.workspace.constructions.find((entry) => entry.kind === "workbook")?.source));
-      setActiveGraph2DTargetId(null); setGeometryMode("procedural"); setGeometryProceduralPanelTab("object"); setMode("geometry"); return true;
+      setActiveGraph2DTargetId(null); setGeometryMode("procedural"); setGeometryProceduralPanelTab("object"); setMode("geometry");
+      if (roomyProjectGeometry) {
+        setGeometryViewerControlsOpen(false);
+        setWorkspaceDockLayouts(layouts => ({ ...layouts, geometry: { ...(layouts.geometry ?? recommendedWorkspaceDockLayout("geometry")),
+          leftCollapsed: true, rightCollapsed: false, viewerMaximized: false } }));
+        window.setTimeout(() => geometryFocusAfterAddRef.current?.(), 0);
+      }
+      return true;
     }
     if (curve) {
       const seed = curveEditorSeed(curve.document());
@@ -78544,7 +78580,8 @@ case "mobius":
     const checkpoint = createMixedWorkspaceDocument({ ...workspace, entries: workspace.entries.map((entry) => ({ ...entry, checkpoint: resolved.get(entry.expected.id)!, replay: null })) });
     projectNavigationRef.current = new ProjectNavigation();
     reopenGraphWorkspace(checkpoint); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null);
-    restoredProjectRef.current = { workspace, graphs, curves, surfaces, geometries, topologies, complexes, volumes, meshes, resources, additional, context };
+    restoredProjectRef.current = { workspace, graphs, curves, surfaces, geometries, topologies, complexes, volumes, meshes, resources,
+      projectTags: owner?.metadata.tags ?? [], additional, context };
     if (owner) activeNotebookProjectRef.current = owner;
     const firstGraph = graphs.values().next().value;
     if (firstGraph) { graph2dAdapterRef.current = firstGraph; setGraph2dDocument(firstGraph.document()); }
