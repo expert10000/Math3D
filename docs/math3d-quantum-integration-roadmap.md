@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Status:** M3D-Q01 and bounded read-only M3D-Q02 complete; M3D-Q03 adds a source-backed Volume adapter for verified scalar/complex grids, cancellable conversion and source-revision refusal. M3D-Q04–Q10 remain open.
+**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; the periodic/1D lattice-metadata acceptance gate remains open under the frozen v1 contract. M3D-Q05–Q10 remain open.
 
 **Type:** interoperability and scientific-visualization program
 
@@ -106,7 +106,16 @@ remain transient, not command-history entries or editable Project Volume
 resources. The current scene schema admits planar separate real and imaginary
 `f64le` components; no other complex encoding is silently assumed. The
 renderer does not infer element species, bond order, or orbital quantum numbers
-absent from source metadata. M3D-Q04–Q10 work remains open.
+absent from source metadata. M3D-Q04 now adds verified site-to-cell/basis
+inspection, declared translation guides, and a bounded, re-verified supercell
+preview containing basis-mapped sites and primitive-cell edges only. Source
+bonds are not expanded. A 1D chain and SSH remain supplied Geometry views,
+without invented lattice metadata; 2D square/honeycomb and 3D simple-cubic
+open fixtures exercise the lattice adapter. The v1 lattice contract permits
+only dimensions 2 or 3 and `boundary: "open"`; it has no periodic-wrap bond
+identity. Math3D therefore labels periodic wraps unavailable rather than
+deriving them. Full Q04 periodic and 1D metadata acceptance needs a separately
+versioned producer contract. M3D-Q05–Q10 work remains open.
 
 Quantum Lab must not call MATH3D internals, and MATH3D must not reproduce Quantum
 Lab's physics engines. Both applications meet at the portable, versioned scene
@@ -381,6 +390,17 @@ import; phase handles the configured zero-magnitude policy; isosurface/slice job
 are cancellable and stale results cannot publish after the source changes.
 
 ### M3D-Q04 — `feat(math3d-quantum): add lattice and crystal visualization`
+
+**Implemented (bounded open-lattice scope).** Verified site samples retain exact
+cell and basis indices in the source inspector; declared translations appear as
+Geometry guides. A separately labelled supercell view deterministically
+expands at most 512 sites and 2500 primitive-cell edges, links each instance to
+its basis and to an original source sample where one exists, and re-verifies
+the bundle before expansion. It does not extend supplied bond topology. A 1D
+chain and SSH use supplied Geometry only. The frozen `quantum-scene/v1` lattice
+block accepts only 2D/3D open boundaries, so 1D basis metadata and periodic
+wrap-bond identity cannot be shown without a new producer contract. This is a
+remaining acceptance gap, not an inferred Math3D feature.
 
 **Scope.** Import sites, bonds, basis sites, unit cells, translation vectors,
 supercells, and periodic-boundary metadata. Reuse Geometry/Viewer inspection and

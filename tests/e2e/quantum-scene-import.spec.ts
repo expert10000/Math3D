@@ -4,6 +4,7 @@ import { cp, mkdtemp, mkdir, readFile, rm, stat, symlink, unlink, writeFile } fr
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
+import { writeLatticeFixture, writeOneDimensionalChainFixture } from "../../scripts/quantum-lattice-fixtures.mjs";
 
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 
@@ -433,6 +434,82 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     if (!safeRoot.startsWith(resolve(tmpdir()) + sep) || !safeRoot.includes("m3d-qscene-ipc-"))
       throw new Error("Unsafe quantum-scene E2E cleanup path");
     await rm(safeRoot,{recursive:true,force:true});
+  }
+});
+
+test("open lattice fixtures inspect basis and bounded supercells without inventing periodic bonds", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-q04-lattice-"));
+  const folders = new Map<string, string>();
+  for (const family of ["square", "honeycomb", "simple_cubic"]) {
+    const directory = join(root, `${family}.qscene`);
+    await writeLatticeFixture(directory, family);
+    folders.set(family, directory);
+  }
+  const chainDirectory = join(root, "chain-1d.qscene");
+  await writeOneDimensionalChainFixture(chainDirectory);
+  const app = await launchRepoElectron({ args: ["."], cwd: resolve(__dirname, "..", ".."),
+    env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: join(root, "profile") } });
+  try {
+    const page = await app.firstWindow();
+    await page.waitForLoadState("domcontentloaded");
+    await expect.poll(() => page.evaluate(() => typeof (window as any).quantumScenes?.open)).toBe("function");
+    for (const family of ["square", "honeycomb", "simple_cubic"]) {
+      const directory = folders.get(family)!;
+      await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, directory);
+      await app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command", { command: "file:open-quantum-scene" });
+      });
+      const preview = page.getByTestId("quantum-scene-preview");
+      await expect(preview).toBeVisible();
+      const inspector = page.getByTestId("quantum-lattice-inspector");
+      await expect(inspector).toContainText(family === "simple_cubic" ? "3D" : "2D");
+      await expect(inspector).toContainText("open boundary");
+      await expect(inspector).toContainText("schematic spacing");
+      await expect(inspector).toContainText("Translations");
+      await page.getByRole("button", { name: "Inspect first sample of lattice-sites-object" }).click();
+      await expect(page.getByTestId("quantum-lattice-site-selection")).toContainText("cell [0, 0, 0]");
+      await expect(page.getByTestId("quantum-lattice-site-selection")).toContainText("basis 0 (A)");
+      if (family === "honeycomb") await expect(inspector).toContainText("1 B");
+      await page.getByLabel("Supercell repeat 0").fill("3");
+      await page.getByTestId("quantum-preview-supercell").click();
+      await expect(page.getByTestId("quantum-supercell-status")).toContainText("periodic-wrap bonds: unavailable");
+      await expect(page.getByTestId("quantum-supercell-status")).toContainText("Supplied bonds were not expanded");
+      await expect(page.getByTestId("quantum-scene-geometry").getByTestId("surface-viewer-canvas-host"))
+        .toHaveAttribute("data-rendered-mesh-count", "1");
+      await page.getByRole("button", { name: "Inspect last sample of derived-lattice-supercell-sites" }).click();
+      await expect(page.getByTestId("quantum-lattice-site-selection")).toContainText("outside supplied cells");
+      await expect(page.getByTestId("quantum-lattice-site-selection")).toContainText("dataset: lattice-sites");
+      if (family === "square") {
+        const cells = Buffer.from(await readFile(join(directory, "site-cells.f64")));
+        const altered = Buffer.from(cells); altered[0] ^= 1;
+        await writeFile(join(directory, "site-cells.f64"), altered);
+        await page.getByTestId("quantum-preview-supercell").click();
+        await expect(inspector.getByRole("alert")).toContainText("integrity");
+        await expect(page.getByTestId("quantum-supercell-status")).toHaveCount(0);
+        await writeFile(join(directory, "site-cells.f64"), cells);
+        await page.getByTestId("quantum-preview-supercell").click();
+        await expect(page.getByTestId("quantum-supercell-status")).toContainText("Derived 6 basis-mapped sites");
+      }
+      await page.getByTestId("quantum-source-lattice").click();
+      await expect(page.getByTestId("quantum-supercell-status")).toHaveCount(0);
+      await page.getByTestId("quantum-scene-close").click();
+    }
+    await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, chainDirectory);
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command", { command: "file:open-quantum-scene" });
+    });
+    await expect(page.getByTestId("quantum-scene-preview")).toContainText("one_dimensional_chain");
+    await expect(page.getByTestId("quantum-primitive-objects")).toContainText("chain-sites-object");
+    await expect(page.getByTestId("quantum-lattice-inspector")).toHaveCount(0);
+    await expect(page.getByTestId("quantum-scene-preview")).toContainText("no lattice basis or periodic bonds");
+    await page.getByTestId("quantum-scene-close").click();
+  } finally {
+    await app.close();
+    const safeRoot = resolve(root);
+    if (!safeRoot.startsWith(resolve(tmpdir()) + sep) || !safeRoot.includes("m3d-q04-lattice-"))
+      throw new Error("Unsafe lattice E2E cleanup path");
+    await rm(safeRoot, { recursive: true, force: true });
   }
 });
 

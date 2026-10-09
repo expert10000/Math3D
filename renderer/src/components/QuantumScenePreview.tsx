@@ -83,7 +83,13 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
   const [repeatDraft, setRepeatDraft] = useState<[number, number, number]>(scene.lattice?.repeats ?? [1, 1, 1]);
   const [supercell, setSupercell] = useState<LatticeSupercell | null>(null);
   const [supercellError, setSupercellError] = useState("");
-  useEffect(() => { setRepeatDraft(scene.lattice?.repeats ?? [1, 1, 1]); setSupercell(null); setSupercellError(""); }, [opened.reference.sceneFingerprint]);
+  const [verifyingSupercell, setVerifyingSupercell] = useState(false);
+  const supercellGeneration = useRef(0);
+  useEffect(() => {
+    supercellGeneration.current++; setRepeatDraft(scene.lattice?.repeats ?? [1, 1, 1]);
+    setSupercell(null); setSupercellError(""); setVerifyingSupercell(false);
+    return () => { supercellGeneration.current++; };
+  }, [opened.reference.sceneFingerprint]);
   const latticeSiteObjects = useMemo(() => new Set(scene.objects.filter(object => object.positions === scene.lattice?.sites).map(object => object.id)),
     [scene.objects, scene.lattice?.sites]);
   const pickedDerivedInstance = pickedPrimitive?.kind === "site" && supercell &&
@@ -220,7 +226,9 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
                   new Set(mesh.primitivesByFace.map(primitive => primitive.sampleId)).size} samples{" "}
                   <button type="button" aria-label={`Inspect first sample of ${mesh.id}`} onClick={() => {
                     setPickedPrimitive(mesh.primitivesByFace[0]); setPickedBandSample(null);
-                  }}>Inspect first</button>
+                  }}>Inspect first</button>{supercell && <button type="button" aria-label={`Inspect last sample of ${mesh.id}`} onClick={() => {
+                    setPickedPrimitive(mesh.primitivesByFace.at(-1) ?? null); setPickedBandSample(null);
+                  }}>Inspect last</button>}
                 </li>)}
               </ul>
               {pickedPrimitive && <div data-testid="quantum-primitive-selection">
@@ -249,16 +257,22 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
               <h4>Derived supercell preview</h4>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{scene.lattice.repeats.map((_, axis) =>
                 <label key={axis}>{scene.coordinates.axes[axis]} cells <input aria-label={`Supercell repeat ${axis}`} type="number" min={1} max={axis === 2 && scene.lattice!.dimensions === 2 ? 1 : 8}
-                  value={repeatDraft[axis]} onChange={event => setRepeatDraft(previous => previous.map((value, index) =>
+                  value={repeatDraft[axis]} disabled={verifyingSupercell} onChange={event => setRepeatDraft(previous => previous.map((value, index) =>
                     index === axis ? Number(event.target.value) : value) as [number, number, number])} style={{ width: 45 }} /></label>)}</div>
-              <button type="button" data-testid="quantum-preview-supercell" onClick={() => {
-                try {
+              <button type="button" data-testid="quantum-preview-supercell" disabled={verifyingSupercell} onClick={() => {
+                const current = ++supercellGeneration.current;
+                setVerifyingSupercell(true); setSupercell(null); setSupercellError("");
+                void window.quantumScenes!.verifyActive(opened.reference.sceneFingerprint).then(() => {
+                  if (current !== supercellGeneration.current) return;
                   const sourceObjectId = [...latticeSiteObjects][0] ?? null;
                   setSupercell(buildQuantumLatticeSupercell(scene.lattice!, repeatDraft, details.latticeSamples ?? [], sourceObjectId));
-                  setPickedPrimitive(null); setPickedBandSample(null); setSupercellError(""); setView("geometry");
-                } catch (error) { setSupercellError(String((error as Error)?.message ?? error)); }
-              }}>Preview expanded cells</button>
+                  setPickedPrimitive(null); setPickedBandSample(null); setView("geometry");
+                }).catch(error => {
+                  if (current === supercellGeneration.current) setSupercellError(String((error as Error)?.message ?? error));
+                }).finally(() => { if (current === supercellGeneration.current) setVerifyingSupercell(false); });
+              }}>{verifyingSupercell ? "Verifying source…" : "Preview expanded cells"}</button>
               {supercell && <button type="button" data-testid="quantum-source-lattice" onClick={() => {
+                supercellGeneration.current++; setVerifyingSupercell(false);
                 setSupercell(null); setPickedPrimitive(null); setSupercellError("");
               }}>Return to supplied geometry</button>}
               {supercellError && <p role="alert">{supercellError}</p>}

@@ -4,6 +4,7 @@ import { cp, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { createRequire } from "node:module";
+import { writeLatticeFixture, writeOneDimensionalChainFixture } from "./quantum-lattice-fixtures.mjs";
 
 const require = createRequire(import.meta.url);
 const { importQuantumSceneBundle } = require("../dist/main/quantumScene/importer.js");
@@ -227,6 +228,10 @@ try {
     assert.ok(real.mappedObjectIds.length || real.deferredObjectIds.length || real.deferredFieldIds.length);
     const key = `${source.provenance.model}/${source.bands ? "bands" : "standard"}`;
     assert.deepEqual({ axes: source.coordinates.axes, units: source.coordinates.units }, expectedCoordinates[key]);
+    if (source.provenance.model === "ssh") {
+      assert.equal(source.lattice, undefined, "1D SSH is supplied Geometry, not a fictitious 2D/3D lattice");
+      assert.ok(real.mappedObjectIds.length > 0);
+    }
     if (source.bands) {
       assert.equal(source.bands.objects.length, 2);
       const meshColors = source.bands.objects.map(id => source.objects.find(object => object.id === id)?.style.color);
@@ -313,6 +318,41 @@ try {
   await assert.rejects(reopenQuantumSceneReference({ directory: orbitalTamper,
     sceneFingerprint: sceneFingerprint(await importQuantumSceneBundle(join(orbitalRoot, "orbital-3d.qscene"))) }), /integrity/);
   console.log("M3D-Q03 scalar/complex Volume conversion, five orbitals, cancellation and tamper refusal passed");
+
+  const oneDimensionalDirectory = join(root, "one-dimensional-chain.qscene");
+  await writeOneDimensionalChainFixture(oneDimensionalDirectory);
+  const oneDimensional = await importQuantumSceneBundle(oneDimensionalDirectory);
+  assert.equal(oneDimensional.source.lattice, undefined);
+  assert.deepEqual(oneDimensional.mappedObjectIds, ["chain-sites-object", "chain-links-object"]);
+  assert.equal(oneDimensional.document.geometry.points.length, 4);
+  assert.equal(oneDimensional.document.geometry.segments.length, 3);
+
+  for (const family of ["square", "honeycomb", "simple_cubic"]) {
+    const latticeDirectory = join(root, `lattice-${family}.qscene`);
+    const fixture = await writeLatticeFixture(latticeDirectory, family);
+    const verified = await importQuantumSceneBundle(latticeDirectory);
+    const lattice = verified.source.lattice;
+    assert.ok(lattice && lattice.boundary === "open");
+    assert.equal(lattice.dimensions, family === "simple_cubic" ? 3 : 2);
+    assert.deepEqual(lattice.repeats, fixture.scene.lattice.repeats);
+    const samples = verified.document.extensions["quantum-scene/v1"].latticeSamples;
+    assert.equal(samples.length, fixture.arrays.basisIndices.length);
+    assert.deepEqual(samples[0], { sampleIndex: 0, cell: [0, 0, 0], basisIndex: 0 });
+    assert.deepEqual(verified.document.geometry.points[0], {
+      x: fixture.arrays.sites[0], y: fixture.arrays.sites[1], z: fixture.arrays.sites[2],
+      id: "lattice-sites-object:site:0", label: "Supplied basis sites", color: 0x79d9c1, size: 0.15, opacity: 1,
+    });
+    assert.deepEqual(verified.source.coordinates.units, ["schematic spacing", "schematic spacing", "schematic spacing"]);
+    assert.deepEqual((await reopenQuantumSceneReference({ directory: latticeDirectory,
+      sceneFingerprint: sceneFingerprint(verified) })).imported.document.extensions["quantum-scene/v1"].latticeSamples, samples);
+  }
+  const latticeTamper = join(root, "lattice-tamper.qscene");
+  await writeLatticeFixture(latticeTamper, "honeycomb");
+  const alteredCell = Buffer.from(await readFile(join(latticeTamper, "site-cells.f64")));
+  alteredCell[0] ^= 1;
+  await writeFile(join(latticeTamper, "site-cells.f64"), alteredCell);
+  await assert.rejects(importQuantumSceneBundle(latticeTamper), /integrity/);
+  console.log("M3D-Q04 open square/honeycomb/cubic lattice identity, 1D chain/SSH Geometry and tamper refusal passed");
 
   const copied = join(root, "real-lab-tamper.qscene");
   await cp(join(fixtureRoot, fixtureNames[0]), copied, { recursive: true });

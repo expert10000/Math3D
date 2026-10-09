@@ -108,6 +108,13 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
       return openedFor(event, directory, imported, false);
     } catch (error) { return failed(error); }
   });
+  ipcMain.handle("quantumScenes:verifyActive", async (event, ...args: unknown[]) => {
+    if (args.length !== 1 || typeof args[0] !== "string") throw new TypeError("Active scene verification requires one fingerprint");
+    const active = activeField(event, { fingerprint: args[0] });
+    await reopenQuantumSceneReference({ directory: active.directory, sceneFingerprint: active.fingerprint });
+    if (verifiedBySender.get(event.sender) !== active) throw new Error("Quantum scene changed during verification");
+    return true;
+  });
   ipcMain.handle("quantumScenes:pickMatchingReference", async (event, ...args: unknown[]): Promise<QuantumSceneRelinkResponse> => {
     if (args.length !== 1 || typeof args[0] !== "string" || !/^[a-f0-9]{64}$/.test(args[0]))
       return { ok: false, canceled: false, error: "Relink requires one saved scene fingerprint" };
