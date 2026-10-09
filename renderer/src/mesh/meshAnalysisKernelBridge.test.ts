@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMeshAnalysisMeshIdentity, createMeshAnalysisResultStore } from "./analysisResultStore";
 import { MeshAnalysisKernelBridge, decodeMeshAnalysisPayload, encodeMeshAnalysisPayload } from "./meshAnalysisKernelBridge";
 import { MeshDocumentAdapter } from "./meshDocumentAdapter";
@@ -21,12 +21,15 @@ describe("GK09 Mesh analysis artifact bridge", () => {
     const identity = createMeshAnalysisMeshIdentity(triangle());
     const payload = { gaussianCurvature: new Float64Array([0, 1, 2]), validMask: new Uint8Array([1, 1, 1]) };
     const store = bridge.upsert(createMeshAnalysisResultStore(), { kind: "curvature", variant: "test-v1", mesh: identity, state: "ready", parameters: { method: "test" }, payload });
+    const resolve = vi.spyOn(bridge.artifactRegistry(), "resolve");
     expect(JSON.stringify(store)).not.toContain("gaussianCurvature");
     expect(JSON.stringify(store)).not.toContain("Float64Array");
     expect(bridge.getForParameters(store, identity, "curvature", { method: "test" }, "test-v1")?.payload).toEqual(payload);
+    expect(resolve).not.toHaveBeenCalled();
     const result = bridge.results()[0]!;
     expect(result.provenance.source).toEqual(adapter.sourceGeneration());
     expect(result.artifacts).toHaveLength(1);
+    expect(result.summary.checksum).toBe(bridge.artifactRegistry().listMetadata()[0]?.checksum);
     expect(bridge.artifactRegistry().resolve(result.artifacts[0]!, result.provenance.source).ok).toBe(true);
     const edited = triangle(); edited.positions[5] = 0.5;
     adapter.replaceMesh(edited);

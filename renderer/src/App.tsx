@@ -78317,6 +78317,7 @@ case "mobius":
           };
 
   const projectNavigationRef = useRef(new ProjectNavigation());
+  const restoredMeshDatasetRef = useRef<{ documentId: string; sourceHash: string; mesh: SurfaceMeshData } | null>(null);
   const navigateRestoredDocument = (id: string, module: KernelWorkspaceModule): boolean => {
     const restored = restoredProjectRef.current;
     if (restored?.workspace.entries.some(entry => entry.expected.id === id && entry.module === module)) {
@@ -78364,7 +78365,16 @@ case "mobius":
       setSurfaceMeshTopologySelectionCleared(true);
       setSurfaceMeshHoverPick(null);
       clearInspect();
-      setMeshDataset(mesh.mesh(), "project-restore");
+      // Reopening the same saved Mesh should preserve its decoded buffers and
+      // analysis identity. Decoding and republishing 12k faces on every visit
+      // stalls Project document switching even when the source is unchanged.
+      const sourceHash = mesh.document().identity.structuralHash;
+      const cached = restoredMeshDatasetRef.current;
+      if (!cached || cached.documentId !== id || cached.sourceHash !== sourceHash || surfaceMeshData !== cached.mesh) {
+        const restoredMesh = mesh.mesh();
+        restoredMeshDatasetRef.current = { documentId: id, sourceHash, mesh: restoredMesh };
+        setMeshDataset(restoredMesh, "project-restore");
+      }
       // Saved Meshes open as a clear object. Viewer overlays are still
       // available through Mesh controls, but stale Surface/analysis settings
       // must not cover the Mesh on first view or when revisiting it.

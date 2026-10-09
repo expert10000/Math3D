@@ -1,5 +1,5 @@
 import {
-  createAnalysisResultEnvelope, matchesScientificSourceGeneration, sha256Checksum, structuralHash,
+  createAnalysisResultEnvelope, matchesScientificSourceGeneration, structuralHash,
   type AnalysisResultEnvelope, type CanonicalJsonValue, type ScientificSourceGeneration,
 } from "@math3d/core";
 import { createInMemoryArtifactRegistry } from "@math3d/kernel";
@@ -103,6 +103,14 @@ export class MeshAnalysisKernelBridge {
   result(resultId: string): AnalysisResultEnvelope | null { return this.#results.get(resultId) ?? null; }
   results(): readonly AnalysisResultEnvelope[] { return [...this.#results.values()]; }
 
+  #hasCurrentArtifact(artifactId: string, role: string, source: ScientificSourceGeneration): boolean {
+    const current = this.source();
+    return !!current && matchesScientificSourceGeneration(current, source) &&
+      this.#artifacts.listMetadata(source.documentId).some(metadata =>
+        metadata.handle.artifactId === artifactId && metadata.handle.kind === "binary" && metadata.handle.role === role &&
+        matchesScientificSourceGeneration(metadata.source, source) && metadata.status === "clean" && metadata.availability === "available");
+  }
+
   invalidateCurrentSource(): void {
     const source = this.source();
     if (source) this.#artifacts.invalidateDocumentSource(source);
@@ -129,7 +137,7 @@ export class MeshAnalysisKernelBridge {
     const source = this.source();
     const existingId = source ? this.#artifactId(source, options.kind, options.variant ?? "default", options.parameters ?? {}) : null;
     const artifactId = existingId && this.#payloadCache.get(existingId) === options.payload &&
-      this.#artifacts.resolve({ artifactId: existingId, kind: "binary", role: `${options.kind}-field` }, source!).ok
+      this.#hasCurrentArtifact(existingId, `${options.kind}-field`, source!)
       ? existingId : this.publishDense(options);
     return localUpsert(store, { ...options, payload: { [MARKER]: artifactId } as TPayload });
   };
@@ -162,7 +170,7 @@ export class MeshAnalysisKernelBridge {
     const handle = { artifactId, kind: "binary" as const, role: `${options.kind}-field` };
     this.#artifacts.declare({ handle, source, ownerId: OWNER, encoding: ENCODING });
     this.#artifacts.beginComputation(artifactId, OWNER, source);
-    this.#artifacts.publish({ artifactId, ownerId: OWNER, source, bytes });
+    const published = this.#artifacts.publish({ artifactId, ownerId: OWNER, source, bytes });
     this.#payloadCache.set(artifactId, options.payload);
     const status = options.kind === "quality" || options.kind === "diagnostics" ? "heuristic" : "numerical";
     const parameters = (options.parameters ?? {}) as Record<string, CanonicalJsonValue>;
@@ -176,7 +184,7 @@ export class MeshAnalysisKernelBridge {
         engine: { name: options.backend ?? "Math3D Mesh Analyze", version: "1" },
         elapsedMs: options.computeTimeMs ?? 0,
       },
-      summary: { kind: options.kind, variant: options.variant ?? "default", vertexCount: options.mesh.vertexCount, faceCount: options.mesh.faceCount, byteLength: bytes.byteLength, checksum: sha256Checksum(bytes) },
+      summary: { kind: options.kind, variant: options.variant ?? "default", vertexCount: options.mesh.vertexCount, faceCount: options.mesh.faceCount, byteLength: bytes.byteLength, checksum: published.checksum },
       warnings: [], diagnostics: [], artifacts: [handle],
     });
     this.#results.set(resultId, result);
@@ -200,6 +208,8 @@ export class MeshAnalysisKernelBridge {
     const envelope = [...this.#results.values()].find((entry) => entry.artifacts.some((handle) => handle.artifactId === artifactId));
     const handle = envelope?.artifacts[0];
     if (!handle) return null;
+    const cached = this.#payloadCache.get(artifactId);
+    if (cached !== undefined && this.#hasCurrentArtifact(artifactId, handle.role, source)) return cached;
     const resolved = this.#artifacts.resolve(handle, source);
     if (!resolved.ok) return null;
     let payload = this.#payloadCache.get(artifactId);
@@ -224,6 +234,10 @@ export class MeshAnalysisKernelBridge {
     const source = envelope?.provenance.source;
     if (!source) return { ...result, state: "stale", payload: null } as MeshAnalysisResult<TPayload>;
     const handle = envelope.artifacts[0]!;
+    const cached = this.#payloadCache.get(artifactId);
+    if (cached !== undefined && this.#hasCurrentArtifact(artifactId, handle.role, source)) {
+      return { ...result, payload: cached as TPayload };
+    }
     const resolved = this.#artifacts.resolve(handle, source);
     if (!resolved.ok) return { ...result, state: "stale", payload: null } as MeshAnalysisResult<TPayload>;
     let payload = this.#payloadCache.get(artifactId);
