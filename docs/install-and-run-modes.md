@@ -17,7 +17,7 @@ These commands only clone the repo and install Node dependencies. They do not st
 
 Quick start after install (pick one):
 
-- Desktop from source: `npm run build` (or `npm run dev`)
+- Desktop from source: `npm run build:core` once, then `npm start` for fast launches; use `npm run dev` for hot reload.
 - Browser local: `npm run dev:web`
 - Browser + Docker: `docker compose -f docker-compose.web.yml up --build`
 - Android internal tester APK: follow the [mobile Android build and install guide](mobile-android-build-and-install.md)
@@ -121,8 +121,10 @@ Notes:
 
 ```bash
 npm run build:core
-npm run build
+npm start
 ```
+
+Rebuild with `npm run build:core` after source changes. Dev mode retains its caches between launches; use `npm run dev:reset-cache` only when a cache needs clearing. Set `MATH3D_OPEN_DEVTOOLS=1` to open DevTools automatically in dev mode.
 
 For packaged installers (Windows NSIS `.exe`):
 

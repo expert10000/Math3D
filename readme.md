@@ -58,7 +58,7 @@ npm install
 These commands only clone the repo and install Node dependencies. They do not start the app.
 
 Quick start after install (pick one):
-- Desktop from source: `npm run build` (or `npm run dev`)
+- Desktop from source: `npm run build:core` once, then `npm start` for fast launches; use `npm run dev` for hot reload.
 - Browser local: `npm run dev:web`
 - Browser + Docker: `docker compose -f docker-compose.web.yml up --build`
 
@@ -71,6 +71,8 @@ Start desktop + renderer hot-reload together:
 ```bash
 npm run dev
 ```
+
+Dev startup retains the Vite and Electron caches between launches. If a cache becomes stale, run `npm run dev:reset-cache` once before restarting. Set `MATH3D_OPEN_DEVTOOLS=1` to open DevTools automatically; it otherwise stays closed at startup.
 
 What this does:
 - starts Vite renderer on `http://127.0.0.1:5174` (strict port)
@@ -149,8 +151,10 @@ Notes:
 
 ```bash
 npm run build:core
-npm run build
+npm start
 ```
+
+Run `npm run build:core` again after source changes. `npm start` launches the compiled app without rebuilding it.
 
 For packaged installers:
 

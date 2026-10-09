@@ -807,7 +807,7 @@ function createWindow(options: MainWindowOptions = {}) {
       devUrl.searchParams.set("skipAutosaveRecovery", "1");
     }
     win.loadURL(devUrl.toString());
-    win.webContents.openDevTools();
+    if (process.env.MATH3D_OPEN_DEVTOOLS === "1") win.webContents.openDevTools();
   } else {
     const indexPath = path.join(__dirname, "..", "renderer", "dist", "index.html");
     if (isGeometrySmoke || options.memoryGuardRecovery || shouldSkipAutosaveRecovery) {
