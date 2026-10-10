@@ -13,6 +13,7 @@
 .saved-surface-module > .document-toolbar { font:13px system-ui; }
 .saved-surface-module .surface-project-dock-controls { display:flex;gap:6px;margin-bottom:8px; }
 .saved-surface-module .native-module-panel:has(> .document-project-slot:not(:empty)) > .native-module-panel-content { display:none; }
+.saved-surface-module .native-module-panel:has(> .document-project-slot[data-placement="left"]:not(:empty)) { width:360px!important;min-width:360px;flex:0 0 360px; }
 .saved-surface-module .document-project-slot .project-embedded-panel { position:static;inset:auto;transform:none;width:100%;height:auto;max-height:none;box-sizing:border-box;border:0;border-radius:0;box-shadow:none;overflow:visible; }
 .geometry-project-left:has(> .document-project-slot:not(:empty)) { width:360px!important;min-width:360px!important;flex:0 0 360px!important;padding:0!important;overflow:auto; }
 .geometry-project-left:has(> .document-project-slot:not(:empty)) > :not(.document-project-slot) { display:none!important; }
