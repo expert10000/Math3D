@@ -25,6 +25,9 @@ test("Ripple Wave opens Graph, Surface, Mesh and Geometry and restores the selec
       await expect(page.getByTestId(`workspace-nav-${nav}`)).toHaveAttribute("aria-pressed", "true");
       await expect(page.getByTestId("project-viewer-document")).toHaveValue(byModule[module]);
       if (module === "geometry") {
+        const geometryLeft = page.getByTestId("geometry-left-panel");
+        await expect(geometryLeft.locator(':scope > .document-project-slot[data-placement="left"] #project-explorer-panel')).toBeVisible();
+        await expect(geometryLeft.locator(":scope > section")).toBeHidden();
         await expect(page.getByTestId("geometry-viewer-panel").getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
         expect(await page.evaluate(() => localStorage.getItem("math3d.ui.geometryViewerControls.v1"))).toBe("1");
         await page.waitForTimeout(500);
@@ -40,6 +43,7 @@ test("Ripple Wave opens Graph, Surface, Mesh and Geometry and restores the selec
     page = ctx.page;
     await openLastSavedProject(page);
     await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", byModule.geometry);
+    await expect(page.getByTestId("geometry-left-panel").locator(':scope > .document-project-slot[data-placement="left"] #project-explorer-panel')).toBeVisible();
     await page.getByTestId("project-viewer-document").selectOption(byModule.surface);
     await expect(page.getByTestId("project-source-editor")).toHaveAttribute("data-document-id", byModule.surface);
   } finally { await closeSurfaceApp(ctx); }

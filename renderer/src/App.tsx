@@ -78503,7 +78503,7 @@ case "mobius":
       if (roomyProjectGeometry) {
         setGeometryViewerControlsOpen(false);
         setWorkspaceDockLayouts(layouts => ({ ...layouts, geometry: { ...(layouts.geometry ?? recommendedWorkspaceDockLayout("geometry")),
-          leftCollapsed: true, rightCollapsed: false, viewerMaximized: false } }));
+          leftCollapsed: false, rightCollapsed: false, viewerMaximized: false } }));
         window.setTimeout(() => geometryFocusAfterAddRef.current?.(), 0);
       }
       return true;
@@ -91292,6 +91292,7 @@ case "mobius":
             {/* LEFT */}
             <div
               data-testid="geometry-left-panel"
+              className="geometry-project-left"
               data-compact-geometry-panel={compactGeometryPanel ? "true" : "false"}
               style={{
                 ...styles.panelLeft,
@@ -91306,6 +91307,7 @@ case "mobius":
                 ...geometryLeftDrawerStyle,
               }}
             >
+              <div className="document-project-slot" data-placement="left" />
               {geometryPanelsAsDrawers && (
                 <div style={responsiveDrawerHeaderStyle}>
                   <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>Tools</div>
