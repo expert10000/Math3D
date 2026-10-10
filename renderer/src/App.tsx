@@ -80552,7 +80552,7 @@ case "mobius":
                   )}
                 </>
               )}
-              <div style={{ ...topNavContextLabelStyle, display: isPhoneLandscapeLayout ? "none" : undefined }}>
+              <div data-testid="workspace-context-label" style={{ ...topNavContextLabelStyle, display: isPhoneLandscapeLayout ? "none" : undefined }}>
                 {workspaceHeaderContext}
               </div>
             </>

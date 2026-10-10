@@ -17,6 +17,12 @@ test("Ripple Wave opens Graph, Surface, Mesh and Geometry and restores the selec
     await expect(page.getByTestId("project-source-editor")).toHaveAttribute("data-document-id", byModule.surface);
     await expect(page.getByTestId("project-source-editor").getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
     await page.waitForTimeout(500);
+    const surfaceProjectBounds = await page.getByTestId("project-explorer-panel").boundingBox();
+    const surfaceActionsBounds = await page.getByTestId("surface-module-actions").boundingBox();
+    const surfaceToolbarBounds = await page.getByTestId("document-surface-view").boundingBox();
+    expect(Math.abs(surfaceProjectBounds!.y - surfaceActionsBounds!.y)).toBeLessThanOrEqual(3);
+    expect(surfaceActionsBounds!.x).toBeGreaterThanOrEqual(surfaceProjectBounds!.x + surfaceProjectBounds!.width);
+    expect(surfaceToolbarBounds!.x).toBeGreaterThanOrEqual(surfaceProjectBounds!.x + surfaceProjectBounds!.width);
     await page.screenshot({ path: test.info().outputPath("ripple-wave-surface.png") });
 
     for (const [module, nav] of [["graph2d", "graphs"], ["mesh", "mesh"], ["geometry", "geometry"]] as const) {
@@ -28,6 +34,9 @@ test("Ripple Wave opens Graph, Surface, Mesh and Geometry and restores the selec
         const geometryLeft = page.getByTestId("geometry-left-panel");
         await expect(geometryLeft.locator(':scope > .document-project-slot[data-placement="left"] #project-explorer-panel')).toBeVisible();
         await expect(geometryLeft.locator(":scope > section")).toBeHidden();
+        const projectBounds = await page.getByTestId("project-explorer-panel").boundingBox();
+        const editorBounds = await page.getByTestId("project-geometry-editor").boundingBox();
+        expect(editorBounds!.x).toBeGreaterThanOrEqual(projectBounds!.x + projectBounds!.width);
         await expect(page.getByTestId("geometry-viewer-panel").getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
         expect(await page.evaluate(() => localStorage.getItem("math3d.ui.geometryViewerControls.v1"))).toBe("1");
         await page.waitForTimeout(500);
