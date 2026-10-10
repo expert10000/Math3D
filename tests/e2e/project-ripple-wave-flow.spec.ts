@@ -40,11 +40,25 @@ test("Ripple Wave opens Graph, Surface, Mesh and Geometry and restores the selec
     const profile = ctx.profileDir;
     await ctx.app.close();
     ctx = await launchSurfaceApp({}, profile);
+    await resizeSurfaceAppWindow(ctx, 1600, 1000);
     page = ctx.page;
     await openLastSavedProject(page);
     await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", byModule.geometry);
     await expect(page.getByTestId("geometry-left-panel").locator(':scope > .document-project-slot[data-placement="left"] #project-explorer-panel')).toBeVisible();
     await page.getByTestId("project-viewer-document").selectOption(byModule.surface);
     await expect(page.getByTestId("project-source-editor")).toHaveAttribute("data-document-id", byModule.surface);
+    await page.getByTestId("workspace-nav-surfaces").click();
+    const floatingProject = page.getByTestId("project-explorer-panel");
+    await expect(floatingProject).toHaveClass(/project-viewer-panel/);
+    await expect(floatingProject).not.toHaveClass(/project-embedded-panel/);
+    const projectBounds = await floatingProject.boundingBox();
+    const actionsBounds = await page.getByTestId("surface-module-actions").boundingBox();
+    expect(projectBounds).not.toBeNull();
+    expect(actionsBounds).not.toBeNull();
+    expect(actionsBounds!.x).toBeGreaterThanOrEqual(projectBounds!.x + projectBounds!.width);
+    await resizeSurfaceAppWindow(ctx, 1358, 859);
+    const compactProjectBounds = await floatingProject.boundingBox();
+    const compactActionsBounds = await page.getByTestId("surface-module-actions").boundingBox();
+    expect(compactActionsBounds!.x).toBeGreaterThanOrEqual(compactProjectBounds!.x + compactProjectBounds!.width);
   } finally { await closeSurfaceApp(ctx); }
 });

@@ -197,6 +197,9 @@ body:has(.project-viewer-panel) [data-testid="notes-toggle"],body:has(.project-v
 .project-viewer-panel:is([data-project-placement="middle"],[data-project-placement="all"]) :is(#project-details-section,#project-transfer-section) { display:block; }
 .project-viewer-panel:is([data-project-placement="middle"],[data-project-placement="all"]) .project-workspace-children { grid-template-columns:repeat(2,minmax(0,1fr)); }
 body:has(.project-viewer-panel:not(.project-embedded-panel)[data-project-placement="all"]) .math3d-app > :is([data-testid="module-workspace"],[data-testid="project-source-editor"]) { display:none!important; }
+@media(min-width:1200px) {
+  body:has(.project-viewer-panel:not(.project-embedded-panel)[data-project-placement="left"]) .math3d-app :is([data-testid="surface-module-actions"],[data-testid="curves-professional-shell"],[data-testid="geometry-professional-shell"],[data-testid="geometry-professional-expanded-group"]) { margin-left:380px!important;width:calc(100% - 380px)!important;box-sizing:border-box; }
+}
 @media(min-width:1440px) {
   body:has(.project-viewer-panel:not(.project-embedded-panel)[data-project-placement="left"]) .math3d-app > :is([data-testid="module-workspace"],[data-testid="project-source-editor"],[data-testid="project-saved-mesh-workflow"],[data-testid="project-mesh-editor"]) { margin-left:380px!important;width:calc(100% - 380px)!important; }
   body:has(.project-viewer-panel:not(.project-embedded-panel)[data-project-placement="right"]) .math3d-app > :is([data-testid="module-workspace"],[data-testid="project-source-editor"],[data-testid="project-saved-mesh-workflow"],[data-testid="project-mesh-editor"]) { margin-right:380px!important;width:calc(100% - 380px)!important; }
