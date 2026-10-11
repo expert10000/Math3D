@@ -39,4 +39,15 @@ describe("verified quantum scene primitive picking", () => {
     expect(link.primitivesByFace).toHaveLength(8);
     expect([...link.positions].every(Number.isFinite)).toBe(true);
   });
+
+  it("makes supplied polyline path segments pickable by stable source segment index", () => {
+    const geometry = { segments: [
+      { a: { x: 0, y: 0, z: 0, id: "k-path:link:0:a" }, b: { x: 1, y: 0, z: 0, id: "k-path:link:0:b" } },
+      { a: { x: 1, y: 0, z: 0, id: "k-path:link:1:a" }, b: { x: 1, y: 1, z: 0, id: "k-path:link:1:b" } },
+    ] };
+    const [path] = buildQuantumPrimitiveMeshes(geometry,
+      [{ id: "k-path", label: "Γ → X → M", kind: "polyline", style: { color: "#f2b36f", opacity: 1, size: 1 } }], ["k-path"]);
+    expect(path.primitivesByFace[0]).toMatchObject({ objectId: "k-path", index: 0, kind: "link" });
+    expect(path.primitivesByFace[12]).toMatchObject({ objectId: "k-path", index: 1, kind: "link" });
+  });
 });
