@@ -14,6 +14,14 @@ test("Project Details dashboard uses stored document relations and opens a docum
     await page.getByTestId("project-gallery-layout-toggle").click();
     const dashboard = page.getByTestId("project-dashboard");
     await expect(dashboard).toBeVisible();
+    const header = page.getByTestId("project-explorer-header");
+    await expect(header.getByTestId("project-viewer-return")).toHaveText("Open current document");
+    await expect(header.getByTestId("project-detail-toggle")).toHaveText("Browse projects");
+    await expect(header.getByText("More", { exact: true })).toBeVisible();
+    await expect(header.locator(".project-placement-controls")).toHaveCount(0);
+    await header.getByText("More", { exact: true }).click();
+    await expect(header.getByRole("button", { name: "Project settings" })).toBeVisible();
+    await expect(page.getByTestId("project-overview").getByTestId("project-navigation-back")).toBeVisible();
     const project = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     await expect(dashboard.getByRole("region", { name: "Project documents overview" }).getByRole("listitem")).toHaveCount(4);
     await expect(dashboard.getByRole("complementary", { name: "Project summary" })).toContainText(String(project.workspace.relations.length));

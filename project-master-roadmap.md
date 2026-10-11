@@ -47,8 +47,8 @@ and scene canvas visible. Catenoid and Ripple Wave document switching, plus the
 Ripple Wave save/restart flow, passed after this layout change. PC01 composition
 remains a later phase.
 
-**Project Details dashboard — next delivery, October 11:** the full Project
-Details workspace becomes a responsive overview, while the open left companion
+**Project Details P0 — delivered October 11:** the full Project
+Details workspace is a responsive overview, while the open left companion
 remains a compact Project Navigator. The left panel owns project identity and
 document selection; the center owns the selected document. Preserve the native
 Surface/Mesh/Graph/Geometry viewers and the tested switch/restart flows. Keep
@@ -65,11 +65,14 @@ PC01 document composition for a later phase.
 | P2 | `feat(project): add project activity timeline` | Present recorded revisions, derivations and saves without inventing events absent from project history. |
 | P2 | `feat(project): integrate workbooks and notes` | Connect research entries to the exact documents, results and blocks they reference. |
 
-Dashboard status: the first responsive overview now shows all open Project
-documents, direct document links, recorded source labels and summary counts in
-the full Project Details workspace. The left companion remains the compact
-Project Navigator. The Ripple dashboard and existing Workbook/Note detail
-journey passed in Electron. Full-page navigation cleanup is the next P0 slice.
+Dashboard and navigation status: the responsive overview shows all open Project
+documents, direct document links, recorded source labels and summary counts.
+The full-page header now has Open current document, Browse projects and More;
+save/refresh and saved-copy review sit in Project management below the dashboard.
+History controls remain in Project overview, and the full page uses the global
+workspace layout controls. The compact Project Navigator retains its own controls.
+The Ripple dashboard, Workbook/Note detail journey and eight Gallery navigation
+checks passed in Electron after this P0 slice.
 The relationship view and freshness indicators follow the stored relation
 schema; they do not change ownership or regenerate documents merely to
 populate the UI.

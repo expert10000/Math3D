@@ -18,6 +18,11 @@ body:has(#project-gallery-host:not(:empty)) :is([data-testid="projects-quick-tog
 .project-gallery-header h2 { font:700 28px/1.3 Georgia,serif;margin:0;color:#12385d; }
 .project-gallery-header .project-gallery-heading { display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap; }
 .project-gallery-header .project-gallery-heading p { margin:0;font-size:11px;letter-spacing:.12em;color:#64748b; }
+.project-header-more { position:relative; }
+.project-header-more summary { display:block;list-style:none;cursor:pointer;min-height:38px;padding:8px 12px;border:1px solid #cbd5e1;border-radius:8px;color:#183a5c;background:#fff;font:600 13px/1.35 system-ui,sans-serif; }
+.project-header-more summary::-webkit-details-marker { display:none; }
+.project-header-more > div { position:absolute;right:0;top:calc(100% + 5px);z-index:5;display:grid;gap:5px;min-width:170px;padding:8px;border:1px solid #cbd5e1;border-radius:9px;background:#fff;box-shadow:0 10px 24px #0f172a24; }
+.project-header-more > div button { text-align:left; }
 .project-gallery-statusline { display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px; }
 .project-gallery-statusline p { flex:1;margin:0;padding:7px 10px;border-radius:7px;background:#eff6ff;color:#214363; }
 .project-gallery-saved-badge { display:inline-block;margin-left:10px;padding:2px 8px;border-radius:100px;background:#dcfce7;color:#166534;font-size:11px; }
@@ -106,6 +111,8 @@ body:has(#project-gallery-host:not(:empty)) :is([data-testid="projects-quick-tog
 .project-workspace-summary .project-workspace-description { font-size:14px;color:#334155; }
 .project-gallery-page .project-gallery-layout-detail .project-workspace-summary > :is(h3,.project-workspace-counts,.project-workspace-guidance) { display:none; }
 .project-workspace-primary-actions { display:grid;gap:7px;margin-top:12px; }
+.project-gallery-page .project-gallery-layout-detail .project-management-area { margin-top:18px;padding-top:12px;border-top:1px solid #d5e3f4; }
+.project-management-area h4 { margin:0;font:700 14px/1.3 system-ui,sans-serif;color:#45617d; }
 .project-dashboard-grid { display:grid;grid-template-columns:minmax(0,1.65fr) minmax(270px,.85fr);gap:16px;margin-top:18px; }
 .project-dashboard-card { min-width:0;padding:16px;border:1px solid #d5e3f4;border-radius:11px;background:#fff; }
 .project-dashboard-card-heading { display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px; }
