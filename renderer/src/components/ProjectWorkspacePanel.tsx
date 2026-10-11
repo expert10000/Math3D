@@ -996,6 +996,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     setQuick(true);
   };
   const viewerDocuments = explorer?.groups.flatMap(group => group.documents).filter(document => !document.archived && canNavigateDocument?.(document.id, document.module)) ?? [];
+  const dashboardDocuments = explorer?.groups.flatMap(group => group.documents).filter(document => !document.archived) ?? [];
+  const savedProjectEntry = project ? library.entries.find(entry => entry.id === project.identity.id) : undefined;
   const projectNotesView = open && notesOpen && notesPlacement === "project";
   const placeProject = (placement: ProjectPlacement) => {
     setProjectPlacement(placement);
@@ -1111,7 +1113,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         <div className="project-workspace-summary">
           <p className="project-workspace-eyebrow">{managed ? "EDITING SAVED COPY" : preview ? "SAVED COPY · PREVIEW" : "CURRENT WORKSPACE"}</p>
           <h3>{project?.metadata.title ?? "Untitled project"}</h3>
-          <p>{project?.workspace.entries.length ?? 0} {project?.workspace.entries.length === 1 ? "document" : "documents"} · {project?.workbooks?.length ?? 0} {project?.workbooks?.length === 1 ? "workbook" : "workbooks"} · {project?.notes?.length ?? 0} {project?.notes?.length === 1 ? "note" : "notes"}</p>
+          <p className="project-workspace-counts">{project?.workspace.entries.length ?? 0} {project?.workspace.entries.length === 1 ? "document" : "documents"} · {project?.workbooks?.length ?? 0} {project?.workbooks?.length === 1 ? "workbook" : "workbooks"} · {project?.notes?.length ?? 0} {project?.notes?.length === 1 ? "note" : "notes"}</p>
           <p className="project-workspace-guidance">{managed ? "Edits apply to this saved copy. Save changes to keep them." : preview ? "This is a saved snapshot. Open it to work with its documents, or edit its saved details." : "Save keeps the current workspace and its documents in your library."}</p>
           {!!project?.metadata.description && <p className="project-workspace-description">{project.metadata.description}</p>}
           <div className="project-workspace-primary-actions">
@@ -1120,6 +1122,33 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               : <button type="button" className="project-gallery-primary" data-testid="project-save" disabled={busy || !project || !title.trim()} onClick={save}>{busy ? "Working…" : managed ? "Save changes" : "Save project"}</button>}
             <button type="button" data-testid="project-current" disabled={busy} onClick={refresh}>{preview || managed ? "Back to current workspace" : "Refresh workspace"}</button>
           </div>
+          {!quick && detailView && project && <div className="project-dashboard-grid" data-testid="project-dashboard">
+            <section className="project-dashboard-card project-dashboard-documents" aria-label="Project documents overview">
+              <div className="project-dashboard-card-heading"><h4>Documents</h4><span>{dashboardDocuments.length}</span></div>
+              <ul>{dashboardDocuments.map(document => {
+                const incoming = project.workspace.relations.filter(relation => relation.target.type === "document" && relation.target.generation.documentId === document.id);
+                const sourceNames = [...new Set(incoming.flatMap(relation => relation.sources.map(source => source.documentId)))].map(id => documentTitles.get(id) ?? "Unavailable source");
+                return <li key={document.id}>
+                  <button type="button" data-testid={`project-dashboard-document-${document.id}`} disabled={preview || !canNavigateDocument?.(document.id, document.module)} onClick={() => viewBesideProject(document.id, document.module)}>
+                    <span><strong>{document.title}</strong><small>{document.module === "graph2d" ? "Graph" : document.module[0]?.toUpperCase() + document.module.slice(1)} · {sourceNames.length ? `From ${sourceNames.join(", ")}` : "No recorded source"}</small></span>
+                    <span aria-hidden="true">›</span>
+                  </button>
+                </li>;
+              })}</ul>
+              {!dashboardDocuments.length && <p>No documents in this Project yet.</p>}
+            </section>
+            <aside className="project-dashboard-card project-dashboard-facts" aria-label="Project summary">
+              <div className="project-dashboard-card-heading"><h4>Project summary</h4></div>
+              <dl>
+                <div><dt>Documents</dt><dd>{dashboardDocuments.length}</dd></div>
+                <div><dt>Relationships</dt><dd>{project.workspace.relations.length}</dd></div>
+                <div><dt>Saved results</dt><dd>{project.workspace.results.length}</dd></div>
+                <div><dt>Workbooks</dt><dd>{project.workbooks?.length ?? 0}</dd></div>
+              </dl>
+              <p>Revision {project.identity.revision} · {preview ? "Saved preview" : savedProjectEntry ? "Saved in your library" : "Current workspace"}</p>
+              {savedProjectEntry && <p>Saved {new Date(savedProjectEntry.savedAt).toLocaleString()}</p>}
+            </aside>
+          </div>}
           {hasOpenProject && !preview && !managed && <div data-testid="project-overview" className="project-navigation-overview">
             <h4>Project overview</h4>
             <p>{project?.workspace.results.length ?? 0} saved results · {project?.workspace.relations.length ?? 0} relations</p>

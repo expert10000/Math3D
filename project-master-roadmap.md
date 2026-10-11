@@ -65,9 +65,14 @@ PC01 document composition for a later phase.
 | P2 | `feat(project): add project activity timeline` | Present recorded revisions, derivations and saves without inventing events absent from project history. |
 | P2 | `feat(project): integrate workbooks and notes` | Connect research entries to the exact documents, results and blocks they reference. |
 
-The first implementation slice is the dashboard and navigation cleanup. The
-relationship view and freshness indicators follow the stored relation schema;
-they do not change ownership or regenerate documents merely to populate the UI.
+Dashboard status: the first responsive overview now shows all open Project
+documents, direct document links, recorded source labels and summary counts in
+the full Project Details workspace. The left companion remains the compact
+Project Navigator. The Ripple dashboard and existing Workbook/Note detail
+journey passed in Electron. Full-page navigation cleanup is the next P0 slice.
+The relationship view and freshness indicators follow the stored relation
+schema; they do not change ownership or regenerate documents merely to
+populate the UI.
 
 **Startup contract — October 9:** autosave is the only startup recovery flow.
 Restoring it restores the workspace; it does not also open the last saved Project.
