@@ -21,6 +21,7 @@ import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnaly
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
 import { ProjectResultsBrowser } from "./ProjectResultsBrowser";
+import { ProjectActivityTimeline } from "./ProjectActivityTimeline";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint, type ProjectCompatibility } from "../projects/projectTransfer";
 import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
 import { captureProjectResources, captureProjectResourcesAsync, exportProjectPackage, projectResourceInventory, MAX_PROJECT_PACKAGE_BYTES, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
@@ -1268,10 +1269,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         </section>}
         {fullDetails && <section className="project-detail-history project-workspace-section" data-testid="project-detail-history" aria-label="Project history">
           <h3>History</h3>
-          <p>Project revision {project?.identity.revision ?? 0}{savedProjectEntry ? ` · Saved ${new Date(savedProjectEntry.savedAt).toLocaleString()}` : " · Current workspace"}</p>
-          <h4>Document revisions</h4>
-          <ul>{project?.workspace.entries.map(entry => <li key={entry.expected.id}>{documentTitles.get(entry.expected.id) ?? entry.expected.id} · revision {entry.expected.revision}</li>)}</ul>
-          {!project?.workspace.entries.length && <p>No document revisions recorded yet.</p>}
+          {project && <ProjectActivityTimeline project={project} savedAt={savedProjectEntry?.savedAt} titles={documentTitles}
+            canOpen={(id, module) => !preview && !!canNavigateDocument?.(id, module)} onOpen={viewBesideProject} />}
         </section>}
         <section id="project-details-section" ref={detailsSection} tabIndex={-1} className="project-workspace-section" data-testid="project-sidebar-details" aria-label="Project details">
           <h3>Project details</h3>

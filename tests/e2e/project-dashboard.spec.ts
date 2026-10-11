@@ -26,6 +26,14 @@ test("Project Details dashboard uses stored document relations and opens a docum
     await expect(page.getByTestId("project-detail-results")).toBeVisible();
     await tabs.getByTestId("project-detail-tab-history").click();
     await expect(page.getByTestId("project-detail-history")).toBeVisible();
+    const history = page.getByTestId("project-activity-timeline");
+    const recorded = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    await expect(history.getByTestId("project-activity-project-revision")).toContainText(`revision ${recorded.identity.revision}`);
+    await expect(history.getByRole("region", { name: "Recorded revisions" }).getByRole("listitem")).toHaveCount(recorded.workspace.entries.length + 1);
+    await expect(history.getByRole("region", { name: "Recorded derivations" }).getByRole("listitem")).toHaveCount(recorded.workspace.relations.length);
+    const recordedRelation = recorded.workspace.relations[0];
+    await expect(history.getByTestId(`project-activity-relation-${recordedRelation.relationId}`)).toContainText(`generation ${recordedRelation.sources[0].generation}`);
+    await expect(history).toContainText("Dates and order unavailable");
     await tabs.getByTestId("project-detail-tab-overview").click();
     const header = page.getByTestId("project-explorer-header");
     await expect(header.getByTestId("project-viewer-return")).toHaveText("Open current document");
@@ -58,7 +66,6 @@ test("Project Details dashboard uses stored document relations and opens a docum
     await expect(detail).toContainText(`Target: ${project.metadata.documents[surface.expected.id].title}`);
     await map.screenshot({ path: test.info().outputPath("project-relationship-map.png"), animations: "disabled" });
     await detail.getByRole("button", { name: "Close relationship details" }).click();
-    await page.screenshot({ path: test.info().outputPath("project-dashboard-desktop.png"), animations: "disabled" });
     await resizeSurfaceAppWindow(ctx, 820, 859);
     await expect(dashboard).toBeVisible();
     const columns = await dashboard.evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length);

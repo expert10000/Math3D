@@ -105,6 +105,14 @@ come from the saved manifest and verified resource state; an unmanifested
 result handle remains visible as unavailable. On narrow windows, selecting an
 output brings its details into view. This browser does not recompute analyses
 or invent artifact provenance.
+The second P2 slice turns History into a recorded activity view. It shows the
+latest library save with its actual timestamp, the current Project and document
+revisions, and each stored derivation with its captured source and target
+generations. Document links open native workspaces where available. Revisions
+and derivations are explicitly undated because the Project format does not
+store event timestamps or a chronological save/edit log. This view neither
+manufactures earlier revisions nor treats recent navigation as scientific
+activity.
 
 **Startup contract — October 9:** autosave is the only startup recovery flow.
 Restoring it restores the workspace; it does not also open the last saved Project.
