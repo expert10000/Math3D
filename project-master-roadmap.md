@@ -47,6 +47,28 @@ and scene canvas visible. Catenoid and Ripple Wave document switching, plus the
 Ripple Wave save/restart flow, passed after this layout change. PC01 composition
 remains a later phase.
 
+**Project Details dashboard — next delivery, October 11:** the full Project
+Details workspace becomes a responsive overview, while the open left companion
+remains a compact Project Navigator. The left panel owns project identity and
+document selection; the center owns the selected document. Preserve the native
+Surface/Mesh/Graph/Geometry viewers and the tested switch/restart flows. Keep
+PC01 document composition for a later phase.
+
+| Priority | Commit slice | Required result |
+| --- | --- | --- |
+| P0 | `feat(project): redesign project dashboard` | Use the full Project Details width for a responsive two-column overview: document list with module and source/derived context, plus a concise summary of documents, relations, results, workbooks, revision and saved state. Open a document directly from its row. One column on compact windows. |
+| P0 | `refactor(project): simplify detail page navigation` | Show Open current document, Browse projects and More in the full-page header. Put save/refresh and metadata under clearly named management controls. Keep Project history navigation in its own area and use the global workspace layout controls rather than repeating Left/Middle/Right/All on the full page. Preserve a direct exit path and the compact left navigator. |
+| P1 | `feat(project): add document relationship visualization` | Draw only the directed edges in `workspace.relations`, including Graph → Surface → Mesh where recorded. Open a document from a node; selecting an edge explains its recorded operation, source generation and target. Never infer a Geometry edge from proximity or title. |
+| P1 | `feat(project): track derived artifact freshness` | Compare each recorded source generation with its current document identity. Show Up to date, Stale, Computing or Failed only when supported by real revision/hash and worker state; distinguish missing and historical references. Refresh remains an explicit operation and never overwrites an older source snapshot silently. |
+| P1 | `feat(project): introduce project detail tabs` | Overview, Documents, Relations, Results and History. Keep the default Overview concise; preserve deep links and focus when opening the full page from the navigator. |
+| P2 | `feat(project): add results and artifacts browser` | List retained analyses and artifacts with provenance, source generation and availability. |
+| P2 | `feat(project): add project activity timeline` | Present recorded revisions, derivations and saves without inventing events absent from project history. |
+| P2 | `feat(project): integrate workbooks and notes` | Connect research entries to the exact documents, results and blocks they reference. |
+
+The first implementation slice is the dashboard and navigation cleanup. The
+relationship view and freshness indicators follow the stored relation schema;
+they do not change ownership or regenerate documents merely to populate the UI.
+
 **Startup contract — October 9:** autosave is the only startup recovery flow.
 Restoring it restores the workspace; it does not also open the last saved Project.
 Saved Projects open explicitly from Projects. The former automatic Project
