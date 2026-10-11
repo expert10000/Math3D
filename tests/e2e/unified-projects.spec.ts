@@ -646,6 +646,18 @@ test("PRJ05 inspects stale lineage, provenance and missing artifacts without ope
     await inspector.screenshot({ path: test.info().outputPath("project-dependencies-desktop.png") });
     await page.setViewportSize({ width: 390, height: 844 });
     await inspector.screenshot({ path: test.info().outputPath("project-dependencies-phone.png") });
+    await panel.getByTestId("project-detail-toggle").click();
+    await panel.getByTestId("project-detail-tab-results").click();
+    const browser = panel.getByTestId("project-results-browser");
+    await expect(browser.getByTestId(`project-result-select-${result.resultId}`)).toBeVisible();
+    await expect(browser.getByTestId("project-result-detail")).toContainText("Unavailable");
+    await browser.getByTestId(`project-artifact-select-${handle.artifactId}`).click();
+    await expect(browser.getByTestId("project-result-detail")).toContainText("100 bytes");
+    await expect(browser.getByTestId("project-result-detail")).toContainText(core.structuralHash("missing"));
+    await expect(browser.getByTestId("project-result-detail")).toContainText(result.provenance.operation.type);
+    await expect(browser.getByTestId("project-result-detail")).toBeInViewport();
+    await expect(browser.getByTestId("project-result-detail")).toBeFocused();
+    await browser.getByTestId("project-result-detail").screenshot({ path: test.info().outputPath("project-results-phone.png") });
   } finally { await closeSurfaceApp(ctx); }
 });
 

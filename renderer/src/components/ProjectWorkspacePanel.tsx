@@ -20,6 +20,7 @@ import { presentProjectFreshness, presentProjectRelationFreshness } from "../pro
 import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnalysisRefreshOptions, recomputeProjectAnalysis } from "../projects/projectDependencyRefresh";
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
+import { ProjectResultsBrowser } from "./ProjectResultsBrowser";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint, type ProjectCompatibility } from "../projects/projectTransfer";
 import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
 import { captureProjectResources, captureProjectResourcesAsync, exportProjectPackage, projectResourceInventory, MAX_PROJECT_PACKAGE_BYTES, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
@@ -1261,21 +1262,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         <p data-testid="project-message" className="project-workspace-message" role="status">{message}</p>
         {fullDetails && <section className="project-detail-results project-workspace-section" data-testid="project-detail-results" aria-label="Project results and artifacts">
           <h3>Results and artifacts</h3>
-          <p className="project-workspace-section-hint">Saved calculations and their captured resources.</p>
-          <div className="project-detail-result-grid">
-            <section><h4>Results ({dashboardDependencies?.results.length ?? 0})</h4>
-              {dashboardDependencies?.results.map(result => { const status = presentProjectFreshness(result.freshness); return <div className="project-detail-result-row" key={result.id}>
-                <strong>{result.operation}</strong><span className="project-freshness-badge" data-tone={status.tone} title={status.detail}>{status.label}</span>
-              </div>; })}
-              {!dashboardDependencies?.results.length && <p>No saved results yet.</p>}
-            </section>
-            <section><h4>Artifacts ({dashboardDependencies?.artifacts.length ?? 0})</h4>
-              {dashboardDependencies?.artifacts.map(artifact => <div className="project-detail-result-row" key={artifact.id}>
-                <strong>{artifact.role} · {artifact.kind}</strong><span className="project-freshness-badge" data-tone={artifact.available ? "current" : "unavailable"}>{artifact.available ? "Available" : "Unavailable"}</span>
-              </div>)}
-              {!dashboardDependencies?.artifacts.length && <p>No saved artifacts yet.</p>}
-            </section>
-          </div>
+          <p className="project-workspace-section-hint">Inspect recorded analyses, provenance and captured resources.</p>
+          {project && <ProjectResultsBrowser key={project.identity.id} project={project} inspection={dashboardDependencies} titles={documentTitles}
+            canOpen={(id, module) => !preview && !!canNavigateDocument?.(id, module)} onOpen={viewBesideProject} />}
         </section>}
         {fullDetails && <section className="project-detail-history project-workspace-section" data-testid="project-detail-history" aria-label="Project history">
           <h3>History</h3>

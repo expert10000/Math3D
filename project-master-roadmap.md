@@ -97,6 +97,14 @@ Navigator keeps its document tree and controls. This is navigation over recorded
 data, not a new derivation or activity timeline. The Ripple dashboard, Catenoid
 freshness, Workbook/Notes save/reopen/export, and Gallery navigation journeys
 passed in Electron after this slice.
+The first P2 Results browser replaces the summary-only output list. It lets
+the reader search and select retained analyses and artifacts, inspect the
+recorded source generation, method, engine, summary and diagnostics, and follow
+result/artifact references. Artifact availability, checksum and byte length
+come from the saved manifest and verified resource state; an unmanifested
+result handle remains visible as unavailable. On narrow windows, selecting an
+output brings its details into view. This browser does not recompute analyses
+or invent artifact provenance.
 
 **Startup contract — October 9:** autosave is the only startup recovery flow.
 Restoring it restores the workspace; it does not also open the last saved Project.

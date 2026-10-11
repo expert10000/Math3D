@@ -88,5 +88,15 @@ test("Catenoid Project Details shows freshness for its saved Mesh analysis", asy
     const result = project.workspace.results[0];
     await expect(page.getByTestId(`project-result-freshness-${result.resultId}`)).toHaveText("Up to date");
     await expect(page.getByTestId("project-relationship-map").getByRole("listitem")).toHaveCount(project.workspace.relations.length);
+    await page.getByTestId("project-detail-tab-results").click();
+    const browser = page.getByTestId("project-results-browser"), detail = browser.getByTestId("project-result-detail");
+    await expect(browser.getByTestId(`project-result-select-${result.resultId}`)).toBeVisible();
+    await expect(detail).toContainText(result.provenance.operation.algorithm);
+    await expect(detail).toContainText(`Revision ${result.provenance.source.revision} · generation ${result.provenance.source.generation}`);
+    await browser.getByRole("searchbox", { name: "Search saved outputs" }).fill("no such output");
+    await expect(browser.getByText("No matching results.")).toBeVisible();
+    await browser.getByRole("searchbox", { name: "Search saved outputs" }).fill("");
+    await detail.getByRole("button", { name: project.metadata.documents[result.provenance.source.documentId].title }).click();
+    await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", result.provenance.source.documentId);
   } finally { await closeSurfaceApp(ctx); }
 });
