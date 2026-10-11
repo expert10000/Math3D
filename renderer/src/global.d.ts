@@ -604,6 +604,17 @@ declare global {
         coordinateDatasetId: string; energyDatasetId: string; k: [number, number, number]; kUnit: string;
         energy: number; energyUnit: string; bulkGap: number; runId: string; resultSha256: string; fingerprint: string;
       }>;
+      topologySample: (request: { fingerprint: string; quantityId: string; sampleIndex: number }) => Promise<
+        { quantityId: string; quantityLabel: string; kind: string; objectId: string; sampleIndex: number; sampleId: string;
+          position: [number, number, number]; positionDatasetId: string; coordinateAxes: [string, string, string];
+          coordinateUnits: [string, string, string]; value: number; valueUnit: string; valueDatasetId: string;
+          convention: string; runId: string; resultSha256: string; fingerprint: string }>;
+      vectorSample: (request: { fingerprint: string; objectId: string; sampleIndex: number }) => Promise<
+        { objectId: string; objectLabel: string; sampleIndex: number; sampleId: string;
+          position: [number, number, number]; positionDatasetId: string; positionUnit: string;
+          value: [number, number, number]; valueDatasetId: string; valueUnit: string;
+          quantityId: string | null; quantityKind: string | null; convention: string | null;
+          runId: string; resultSha256: string; fingerprint: string }>;
       pickMatchingReference: (fingerprint: string) => Promise<
         { ok: true; canceled: false; reference: { directory: string; sceneFingerprint: string } } |
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;

@@ -16,6 +16,8 @@ const { renderVerifiedFieldSlice, inspectVerifiedFieldSample } = require("../dis
 const { deriveVerifiedFieldSurface } = require("../dist/main/quantumScene/fieldSurface.js");
 const { deriveVerifiedFieldVolume } = require("../dist/main/quantumScene/fieldVolume.js");
 const { inspectVerifiedBandSample } = require("../dist/main/quantumScene/bandSelection.js");
+const { glyphSampleIndices, inspectVerifiedTopologySample, inspectVerifiedVectorSample } =
+  require("../dist/main/quantumScene/topologyDisplay.js");
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const root = await mkdtemp(join(tmpdir(), "m3d-q01-"));
 try {
@@ -271,6 +273,82 @@ try {
     acceptedViews.add(key);
   }
   assert.deepEqual(acceptedViews, new Set(["ssh/standard", "ssh/bands", "qwz/standard", "qwz/bands"]));
+  const qwzDirectory = join(fixtureRoot, "run-97a132d1d712414bb62bb8c9212f517e.qscene");
+  const qwz = await importQuantumSceneBundle(qwzDirectory);
+  const display = qwz.document.extensions[qwz.source.schema].topologyDisplay;
+  assert.deepEqual(qwz.mappedObjectIds.filter(id => id.startsWith("reciprocal-b")), ["reciprocal-b1", "reciprocal-b2"]);
+  assert.equal(display.scalars[0].quantityId, "lower-curvature");
+  assert.equal(display.scalars[0].faceBins.length, 800);
+  assert.ok(display.scalars[0].minimum < 0 && display.scalars[0].maximum > 0);
+  assert.ok(display.scalars[0].faceBins.some(bin => bin < 3));
+  assert.ok(display.scalars[0].faceBins.some(bin => bin > 3));
+  assert.deepEqual(glyphSampleIndices(961), glyphSampleIndices(961));
+  assert.deepEqual([glyphSampleIndices(961)[0], glyphSampleIndices(961).at(-1)], [0, 960]);
+  assert.equal(new Set(glyphSampleIndices(961)).size, 128);
+  for (const sampleIndex of [0, 220, 440]) {
+    const sample = inspectVerifiedTopologySample(qwz, { fingerprint: sceneFingerprint(qwz),
+      quantityId: "lower-curvature", sampleIndex });
+    assert.equal(sample.value, qwz.arrays.get("curvature")[sampleIndex]);
+    assert.deepEqual(sample.position, Array.from(qwz.arrays.get("curvature-grid").slice(3 * sampleIndex, 3 * sampleIndex + 3)));
+    assert.equal(sample.valueUnit, "dimensionless (a=1)");
+    assert.equal(sample.runId, qwz.source.provenance.runId);
+  }
+  for (const [objectId, expected] of [["reciprocal-b1", [2 * Math.PI, 0, 0]],
+    ["reciprocal-b2", [0, 2 * Math.PI, 0]]]) {
+    const sample = inspectVerifiedVectorSample(qwz, { fingerprint: sceneFingerprint(qwz), objectId, sampleIndex: 0 });
+    assert.deepEqual(sample.value, expected);
+    assert.equal(sample.valueUnit, "rad / lattice constant");
+    assert.deepEqual(display.vectors.find(item => item.objectId === objectId).glyphs[0].direction,
+      expected.map(value => value / (2 * Math.PI)));
+  }
+  assert.throws(() => inspectVerifiedTopologySample(qwz, { fingerprint: sceneFingerprint(qwz),
+    quantityId: "lower-curvature", sampleIndex: 441 }), /outside/);
+  assert.throws(() => inspectVerifiedVectorSample(qwz, { fingerprint: sceneFingerprint(qwz),
+    objectId: "berry-curvature", sampleIndex: 0 }), /not mapped/);
+  const qwzTamper = join(root, "qwz-topology-tamper.qscene");
+  await cp(qwzDirectory, qwzTamper, { recursive: true });
+  const damagedCurvature = Buffer.from(await readFile(join(qwzTamper, "curvature.f64")));
+  damagedCurvature[0] ^= 1;
+  await writeFile(join(qwzTamper, "curvature.f64"), damagedCurvature);
+  await assert.rejects(importQuantumSceneBundle(qwzTamper), /integrity/);
+  const syntheticVectors = join(root, "synthetic-pseudospin.qscene");
+  await cp(qwzDirectory, syntheticVectors, { recursive: true });
+  const syntheticScene = JSON.parse(await readFile(join(syntheticVectors, "scene.json"), "utf8"));
+  const pseudospin = Buffer.alloc(441 * 3 * 8);
+  for (let index = 0; index < 441; index++) {
+    const vector = index === 0 ? [0, 0, 0] : index % 2 ? [0, 1, 0] : [1, 0, 0];
+    vector.forEach((component, axis) => pseudospin.writeDoubleLE(component, 8 * (3 * index + axis)));
+  }
+  syntheticScene.datasets.push({ id: "synthetic-pseudospin-values", path: "synthetic-pseudospin.f64",
+    format: "f64le", count: 441, components: 3, unit: "dimensionless", bytes: pseudospin.length,
+    sha256: hash(pseudospin) });
+  syntheticScene.objects.push({ id: "synthetic-pseudospin", label: "Synthetic pseudospin test field",
+    kind: "vectors", positions: "curvature-grid", values: "synthetic-pseudospin-values", visible: true,
+    style: { color: "#26a0ff", opacity: 1, size: 1 } });
+  syntheticScene.topology.quantities.push({ id: "synthetic-pseudospin-quantity", label: "Synthetic pseudospin",
+    kind: "pseudospin", object: "synthetic-pseudospin", dataset: "synthetic-pseudospin-values",
+    convention: "Synthetic fixture in declared source axes; not a physical QWZ result" });
+  const syntheticMetadata = Buffer.from(JSON.stringify(syntheticScene, null, 2) + "\n");
+  await writeFile(join(syntheticVectors, "synthetic-pseudospin.f64"), pseudospin);
+  await writeFile(join(syntheticVectors, "scene.json"), syntheticMetadata);
+  await writeFile(join(syntheticVectors, "bundle.json"), JSON.stringify({ schema: "quantum-scene-bundle/v1",
+    scene: { path: "scene.json", bytes: syntheticMetadata.length, sha256: hash(syntheticMetadata) } }, null, 2) + "\n");
+  const synthetic = await importQuantumSceneBundle(syntheticVectors);
+  const syntheticDisplay = synthetic.document.extensions[synthetic.source.schema].topologyDisplay.vectors
+    .find(item => item.objectId === "synthetic-pseudospin");
+  assert.equal(syntheticDisplay.count, 441);
+  assert.equal(syntheticDisplay.zeroCount, 1);
+  assert.equal(syntheticDisplay.glyphs.length, 127);
+  assert.equal(syntheticDisplay.glyphs.at(-1).sampleIndex, 440);
+  assert.deepEqual(syntheticDisplay.glyphs.at(-1).direction, [1, 0, 0]);
+  assert.deepEqual(inspectVerifiedVectorSample(synthetic, { fingerprint: sceneFingerprint(synthetic),
+    objectId: "synthetic-pseudospin", sampleIndex: 1 }).value, [0, 1, 0]);
+  const damagedPseudospin = Buffer.from(pseudospin);
+  damagedPseudospin[8] ^= 1;
+  await writeFile(join(syntheticVectors, "synthetic-pseudospin.f64"), damagedPseudospin);
+  await assert.rejects(reopenQuantumSceneReference({ directory: syntheticVectors,
+    sceneFingerprint: sceneFingerprint(synthetic) }), /integrity/);
+  console.log("M3D-Q07 QWZ scalar sign, vector orientation, exact samples, density IDs and tamper refusal passed");
   const largeBands = await writeLargeBandFixture(
     join(fixtureRoot, "run-97a132d1d712414bb62bb8c9212f517e-bands.qscene"),
     join(root, "large-bands.qscene"));

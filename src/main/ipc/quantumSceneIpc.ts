@@ -8,6 +8,8 @@ import { rememberQuantumScene, reopenRecentQuantumScene, reopenQuantumSceneRefer
 import { isAbsolute, resolve } from "node:path";
 import { chooseTheoryLabTarget, launchTheoryLab } from "../quantumScene/theoryLabLaunch";
 import { inspectVerifiedBandSample, type BandSampleRequest } from "../quantumScene/bandSelection";
+import { inspectVerifiedTopologySample, inspectVerifiedVectorSample,
+  type TopologySampleRequest, type VectorSampleRequest } from "../quantumScene/topologyDisplay";
 
 export function quantumSceneLaunchDirectory(argv: readonly string[]): string | null {
   const flags = argv.flatMap((arg, index) => arg === "--quantum-scene" ? [index] : []);
@@ -123,6 +125,20 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
     const reopened = await reopenQuantumSceneReference({ directory: active.directory, sceneFingerprint: active.fingerprint });
     if (verifiedBySender.get(event.sender) !== active) throw new Error("Quantum scene changed during band selection");
     return inspectVerifiedBandSample(reopened.imported, request);
+  });
+  ipcMain.handle("quantumScenes:topologySample", async (event, ...args: unknown[]) => {
+    if (args.length !== 1) throw new TypeError("Topology selection requires one request");
+    const active = activeField(event, args[0]);
+    const reopened = await reopenQuantumSceneReference({ directory: active.directory, sceneFingerprint: active.fingerprint });
+    if (verifiedBySender.get(event.sender) !== active) throw new Error("Quantum scene changed during topology selection");
+    return inspectVerifiedTopologySample(reopened.imported, args[0] as TopologySampleRequest);
+  });
+  ipcMain.handle("quantumScenes:vectorSample", async (event, ...args: unknown[]) => {
+    if (args.length !== 1) throw new TypeError("Vector selection requires one request");
+    const active = activeField(event, args[0]);
+    const reopened = await reopenQuantumSceneReference({ directory: active.directory, sceneFingerprint: active.fingerprint });
+    if (verifiedBySender.get(event.sender) !== active) throw new Error("Quantum scene changed during vector selection");
+    return inspectVerifiedVectorSample(reopened.imported, args[0] as VectorSampleRequest);
   });
   ipcMain.handle("quantumScenes:pickMatchingReference", async (event, ...args: unknown[]): Promise<QuantumSceneRelinkResponse> => {
     if (args.length !== 1 || typeof args[0] !== "string" || !/^[a-f0-9]{64}$/.test(args[0]))

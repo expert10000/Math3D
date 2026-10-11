@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06 is complete for verified SSH/QWZ band selection and bounded 2D display LOD. M3D-Q07–Q10 remain open.
+**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06 is complete for verified SSH/QWZ band selection and bounded 2D display LOD. M3D-Q07 is complete for verified QWZ curvature and contract-declared vector objects. M3D-Q08–Q10 remain open.
 
 For the exact Theory Lab export and Math3D inspection workflow, see the
 [M3D-Q04 lattice usage guide](quantum-lattice-usage.md).
@@ -130,7 +130,7 @@ no zone construction, physics calculation or coordinate conversion. Square,
 honeycomb and simple-cubic fixtures plus real QWZ handoffs are checked. The
 frozen v1 reciprocal block is 2D/3D only, so a native 1D reciprocal fixture
 and its full acceptance remain gated on a separately versioned producer
-contract. M3D-Q06 is complete for the bounded supplied-band path; M3D-Q07–Q10 remain open.
+contract. M3D-Q06 is complete for the bounded supplied-band path; M3D-Q07 is complete for the bounded supplied-curvature/vector path. M3D-Q08–Q10 remain open.
 
 Quantum Lab must not call MATH3D internals, and MATH3D must not reproduce Quantum
 Lab's physics engines. Both applications meet at the portable, versioned scene
@@ -475,6 +475,20 @@ band, k coordinate, energy, source generation, and status. Large surfaces use
 bounded artifacts and level of detail rather than JSON expansion.
 
 ### M3D-Q07 — `feat(math3d-quantum): add Berry curvature and quantum vector fields`
+
+**Status: Complete for the verified read-only scene-contract path.** Supplied QWZ
+curvature is colored by a signed, zero-centered seven-step palette whose display
+bins preserve sign even for asymmetric ranges. A clicked triangle resolves its
+nearest source vertex to an exact `f64le` curvature sample through re-verified
+IPC. Declared vector objects, including QWZ reciprocal basis vectors and any
+contract-valid Berry connection or pseudospin objects, render as bounded arrows
+with uniform display-only length and 16/64/128 glyph density choices. Every
+arrow retains its original dataset index. The inspector reports source axes,
+position and value units, conventions, dataset IDs, run/hash, and supplied
+invariant status. No curvature, connection, pseudospin, or invariant is computed
+in Math3D. The current scene contract has no per-sample undefined/singularity
+mask: the UI says so instead of inventing a diagnosis. QWZ, unit, orientation,
+sign, restart, Project, picking, and tamper tests cover this scope.
 
 **Scope.** Render supplied Berry curvature, Berry connection where meaningful,
 spin textures, pseudospin textures, and other quantum vector fields. Provide scalar

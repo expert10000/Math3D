@@ -1,6 +1,7 @@
 import { readQuantumSceneBundle } from "./bundle";
 import { type QuantumScene, type ScenePayload, verifyScenePayload } from "./index";
 import { createHash } from "node:crypto";
+import { buildTopologyDisplay } from "./topologyDisplay";
 
 export interface ImportedQuantumScene {
   /** A regular Math3D SceneDocument; no worker or executable expression is added. */
@@ -35,6 +36,7 @@ export type Math3DQuantumDocument = {
 const digest = async (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const point = (values: Float64Array, i: number): Point3 => ({ x: values[i * 3], y: values[i * 3 + 1], z: values[i * 3 + 2] });
 const MAX_MAPPED_PRIMITIVES = 20_000;
+const MAX_VECTOR_GLYPHS_TOTAL = 512;
 
 /** Preserve source coordinates exactly; never treat scalar, phase or vector units as positions. */
 export async function adaptQuantumScene(payload: ScenePayload): Promise<ImportedQuantumScene> {
@@ -42,6 +44,7 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
   const scene = payload.scene;
   const geometry: GeometryScene = { points: [], segments: [], triangles: [] };
   const mappedObjectIds: string[] = [], deferredObjectIds: string[] = [];
+  let mappedVectorGlyphs = 0;
   const mappedTriangleCounts: Record<string, number> = {};
   const bandGrid = scene.bands?.kind === "surface" ? scene.bands.grid : undefined;
   const bandLodStride = bandGrid && bandGrid[0] * bandGrid[1] > 441 ?
@@ -73,6 +76,9 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
       object.kind === "segments" ? count / 2 : object.kind === "mesh" ? (displayIndices?.length ?? arrays.get(object.indices!)!.length) / 3 : 0;
     const mapped = geometry.points!.length + geometry.segments!.length + geometry.triangles!.length;
     if (mapped + proposed > MAX_MAPPED_PRIMITIVES) { deferredObjectIds.push(object.id); continue; }
+    if (object.kind === "vectors" && mappedVectorGlyphs + Math.min(count, 128) > MAX_VECTOR_GLYPHS_TOTAL) {
+      deferredObjectIds.push(object.id); continue;
+    }
     if (object.kind === "point-cloud") {
       for (let i = 0; i < count; i++) geometry.points!.push({ ...point(positions, i), id: `${object.id}:site:${i}`, label: object.label,
         color, size: object.style.size, opacity: object.style.opacity });
@@ -96,15 +102,16 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
           color, opacity: object.style.opacity,
         });
       mappedTriangleCounts[object.id] = indices.length / 3;
-    } else {
-      // Vectors require an explicit value-to-coordinate scale and are not silently converted.
-      deferredObjectIds.push(object.id);
-      continue;
+    } else if (object.kind === "vectors") {
+      // Keep source vectors separate from positions. A bounded, explicitly scaled
+      // display glyph is derived below; raw values are never treated as coordinates.
+      mappedVectorGlyphs += Math.min(count, 128);
     }
     mappedObjectIds.push(object.id);
   }
   const importedAt = Date.now();
   const lattice = scene.lattice;
+  const topologyDisplay = buildTopologyDisplay(scene, arrays, mappedObjectIds, mappedTriangleCounts);
   const latticeSamples: VerifiedLatticeSample[] = lattice ? (() => {
     const cells = arrays.get(lattice.cells)!, basis = arrays.get(lattice.basisIndices)!;
     return Array.from({ length: basis.length }, (_, sampleIndex) => ({ sampleIndex,
@@ -137,6 +144,7 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
         latticeSamples,
         mappedTriangleCounts,
         bandLodStride,
+        topologyDisplay,
         selectionTransferred: false,
       },
     },
