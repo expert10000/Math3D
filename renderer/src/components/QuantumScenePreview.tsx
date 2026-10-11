@@ -8,6 +8,8 @@ import { QuantumFieldVolume } from "./QuantumFieldVolume";
 import { buildQuantumPrimitiveMeshes, type QuantumPrimitive } from "./quantumPrimitiveMeshes";
 import { buildQuantumLatticeSupercell, SUPERCELL_SITE_OBJECT_ID,
   type LatticeGeometryDefinition, type LatticeSampleIdentity, type LatticeSupercell } from "./quantumLatticeOverlay";
+import { buildQuantumReciprocalView, reciprocalPathFromPrimitive, reciprocalPointFromPrimitive,
+  type ReciprocalDefinition } from "./quantumReciprocalView";
 
 type Vector3 = { x: number; y: number; z: number };
 type SceneSource = {
@@ -17,6 +19,7 @@ type SceneSource = {
   datasets: { id: string; count: number; components: number; unit: string }[];
   objects: { id: string; label: string; kind: string; positions: string; indices?: string; style: { color: string; opacity: number; size: number } }[];
   lattice?: LatticeGeometryDefinition;
+  reciprocal?: ReciprocalDefinition;
   fields?: QuantumField[];
   annotations: { id: string; text: string; position: [number, number, number] }[];
   bands?: { objects: string[]; labels: string[]; energyUnit: string; bulkGap: number };
@@ -80,6 +83,10 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
   const camera = document.cameras[0];
   const [pickedBandSample, setPickedBandSample] = useState<PickedBandSample | null>(null);
   const [pickedPrimitive, setPickedPrimitive] = useState<QuantumPrimitive | null>(null);
+  const [geometrySpace, setGeometrySpace] = useState<"source" | "reciprocal">("source");
+  const [reciprocalError, setReciprocalError] = useState("");
+  const [verifyingReciprocal, setVerifyingReciprocal] = useState(false);
+  const reciprocalGeneration = useRef(0);
   const [repeatDraft, setRepeatDraft] = useState<[number, number, number]>(scene.lattice?.repeats ?? [1, 1, 1]);
   const [supercell, setSupercell] = useState<LatticeSupercell | null>(null);
   const [supercellError, setSupercellError] = useState("");
@@ -89,6 +96,11 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
     supercellGeneration.current++; setRepeatDraft(scene.lattice?.repeats ?? [1, 1, 1]);
     setSupercell(null); setSupercellError(""); setVerifyingSupercell(false);
     return () => { supercellGeneration.current++; };
+  }, [opened.reference.sceneFingerprint]);
+  useEffect(() => {
+    reciprocalGeneration.current++; setGeometrySpace("source"); setReciprocalError("");
+    setVerifyingReciprocal(false);
+    return () => { reciprocalGeneration.current++; };
   }, [opened.reference.sceneFingerprint]);
   const latticeSiteObjects = useMemo(() => new Set(scene.objects.filter(object => object.positions === scene.lattice?.sites).map(object => object.id)),
     [scene.objects, scene.lattice?.sites]);
@@ -100,9 +112,29 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
   useEffect(() => { setPickedBandSample(null); setPickedPrimitive(null); }, [opened.reference.sceneFingerprint]);
   const primitiveMeshes = useMemo(() => buildQuantumPrimitiveMeshes(document.geometry, scene.objects, opened.mappedObjectIds),
     [document.geometry, scene.objects, opened.mappedObjectIds]);
+  const reciprocalView = useMemo(() => scene.reciprocal ? buildQuantumReciprocalView(document.geometry,
+    scene.reciprocal, scene.objects, opened.mappedObjectIds) : null,
+    [document.geometry, scene.reciprocal, scene.objects, opened.mappedObjectIds]);
+  const reciprocalMeshes = useMemo(() => reciprocalView ? buildQuantumPrimitiveMeshes(reciprocalView.geometry,
+    reciprocalView.objects, reciprocalView.mappedObjectIds) : [], [reciprocalView]);
   const supercellMeshes = useMemo(() => supercell ? buildQuantumPrimitiveMeshes(supercell.geometry,
     [supercell.siteObject], [SUPERCELL_SITE_OBJECT_ID]) : [], [supercell]);
-  const activePrimitiveMeshes = supercell ? supercellMeshes : primitiveMeshes;
+  const activePrimitiveMeshes = supercell ? supercellMeshes : geometrySpace === "reciprocal" ? reciprocalMeshes : primitiveMeshes;
+  const pickedReciprocalPoint = scene.reciprocal && geometrySpace === "reciprocal" ?
+    reciprocalPointFromPrimitive(scene.reciprocal, pickedPrimitive) : null;
+  const pickedReciprocalPath = scene.reciprocal && geometrySpace === "reciprocal" ?
+    reciprocalPathFromPrimitive(scene.reciprocal, pickedPrimitive) : null;
+  const selectReciprocalPrimitive = (primitive: QuantumPrimitive | null) => {
+    const current = ++reciprocalGeneration.current;
+    setVerifyingReciprocal(true); setReciprocalError(""); setPickedPrimitive(null);
+    void window.quantumScenes!.verifyActive(opened.reference.sceneFingerprint).then(() => {
+      if (current !== reciprocalGeneration.current) return;
+      setPickedPrimitive(primitive); setPickedBandSample(null);
+    }).catch(error => {
+      if (current === reciprocalGeneration.current)
+        setReciprocalError(`Reciprocal selection refused: ${String((error as Error)?.message ?? error)}`);
+    }).finally(() => { if (current === reciprocalGeneration.current) setVerifyingReciprocal(false); });
+  };
   const meshObjects = useMemo(() => {
     const mapped = new Set(opened.mappedObjectIds);
     const triangles = document.geometry.triangles ?? [];
@@ -127,32 +159,40 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
   }, [document.geometry.triangles, opened.mappedObjectIds, scene.datasets, scene.objects]);
   const viewerScene = useMemo(() => {
     if (supercell) return { ...supercell.geometry, points: [] };
-    const primitiveIds = new Set(primitiveMeshes.map(mesh => mesh.id));
-    const translations = scene.lattice?.translations.map((vector, axis) => ({
+    const sourceGeometry = geometrySpace === "reciprocal" && reciprocalView ? reciprocalView.geometry : document.geometry;
+    const sourceMeshes = geometrySpace === "reciprocal" ? reciprocalMeshes : primitiveMeshes;
+    const primitiveIds = new Set(sourceMeshes.map(mesh => mesh.id));
+    const translations = geometrySpace === "source" ? scene.lattice?.translations.map((vector, axis) => ({
       a: { x: 0, y: 0, z: 0, id: `lattice:translation:${axis}:origin` },
       b: { x: vector[0], y: vector[1], z: vector[2], id: `lattice:translation:${axis}:tip` },
       color: 0xf2b36f, opacity: 1,
-    })) ?? [];
-    return { ...document.geometry,
-      triangles: meshObjects.length ? [] : document.geometry.triangles,
-      points: document.geometry.points?.filter(point => !primitiveMeshes.length ||
+    })) ?? [] : [];
+    return { ...sourceGeometry,
+      triangles: geometrySpace === "reciprocal" || meshObjects.length ? [] : sourceGeometry.triangles,
+      points: sourceGeometry.points?.filter(point => !sourceMeshes.length ||
         ![...primitiveIds].some(id => point.id?.startsWith(`${id}:site:`))),
-      segments: [...(document.geometry.segments?.filter(segment => !primitiveMeshes.length ||
+      segments: [...(sourceGeometry.segments?.filter(segment => !sourceMeshes.length ||
         ![...primitiveIds].some(id => segment.a.id?.startsWith(`${id}:link:`))) ?? []), ...translations] };
-  }, [document.geometry, meshObjects, primitiveMeshes, scene.lattice, supercell]);
+  }, [document.geometry, geometrySpace, meshObjects, primitiveMeshes, reciprocalMeshes, reciprocalView, scene.lattice, supercell]);
   const visibleLabels = useMemo(() => {
-    const supplied = (supercell ? [] : scene.annotations).filter(annotation => annotation.text.length <= 64).map(annotation => ({
+    const annotations = geometrySpace === "reciprocal" ? [] : supercell ? [] : scene.annotations;
+    const supplied = annotations.filter(annotation => annotation.text.length <= 64).map(annotation => ({
       text: annotation.text, position: { x: annotation.position[0], y: annotation.position[1], z: annotation.position[2] },
     }));
+    if (geometrySpace === "reciprocal" && reciprocalView) supplied.push(...reciprocalView.labels);
     if (pickedPrimitive) supplied.push({ text: `${pickedPrimitive.objectLabel} · ${pickedPrimitive.index}`,
       position: pickedPrimitive.position });
     return supplied.length ? [{ labels: supplied, color: 0xe2e8f0, backgroundColor: 0x172033 }] : [];
-  }, [scene.annotations, pickedPrimitive, supercell]);
+  }, [geometrySpace, reciprocalView, scene.annotations, pickedPrimitive, supercell]);
   const pickScene = (info: { meshKey?: string; faceIndex?: number; point: Vector3 }) => {
     const primitive = activePrimitiveMeshes.find(entry => entry.id === info.meshKey)?.primitivesByFace[info.faceIndex ?? -1];
-    if (primitive) { setPickedPrimitive(primitive); setPickedBandSample(null); return; }
+    if (primitive) {
+      if (geometrySpace === "reciprocal") selectReciprocalPrimitive(primitive);
+      else { setPickedPrimitive(primitive); setPickedBandSample(null); }
+      return;
+    }
     setPickedPrimitive(null);
-    const mesh = supercell ? undefined : meshObjects.find((entry) => entry.id === info.meshKey);
+    const mesh = supercell || geometrySpace === "reciprocal" ? undefined : meshObjects.find((entry) => entry.id === info.meshKey);
     const face: SceneTriangle | undefined = mesh?.faces[info.faceIndex ?? -1];
     if (!mesh || !face) { setPickedBandSample(null); return; }
     const nearest = [face.a, face.b, face.c].reduce((best, candidate) =>
@@ -171,6 +211,16 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
         </header>
         <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)" }}>
           <div style={{ minHeight: 0, position: "relative", display: "flex", flexDirection: "column" }} data-testid="quantum-scene-geometry">
+            {scene.reciprocal && <div data-testid="quantum-space-controls" style={{ padding: 8, display: "flex", gap: 8 }}>
+              <button type="button" aria-pressed={geometrySpace === "source"} onClick={() => {
+                reciprocalGeneration.current++; setVerifyingReciprocal(false); setReciprocalError("");
+                setGeometrySpace("source"); setPickedPrimitive(null); setPickedBandSample(null); setView("geometry");
+              }}>Supplied geometry</button>
+              <button type="button" aria-pressed={geometrySpace === "reciprocal"} onClick={() => {
+                reciprocalGeneration.current++; setVerifyingReciprocal(false); setReciprocalError("");
+                setSupercell(null); setGeometrySpace("reciprocal"); setPickedPrimitive(null); setPickedBandSample(null); setView("geometry");
+              }}>Reciprocal space</button>
+            </div>}
             {Boolean(scene.fields?.length) && <div style={{ padding: 8, display: "flex", gap: 8 }}>
               {count > 0 && <button type="button" onClick={() => setView("geometry")} aria-pressed={view === "geometry"}>Geometry</button>}
               <button type="button" onClick={() => setView("slice")} aria-pressed={view === "slice"}>Field slice</button>
@@ -184,12 +234,13 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
               fields={scene.fields} axes={scene.coordinates.axes} units={scene.coordinates.units} /> :
               view === "surface" && scene.fields?.length ? <QuantumFieldSurface fingerprint={opened.reference.sceneFingerprint}
                 resultSha256={scene.provenance.resultSha256} fields={scene.fields} camera={camera} /> :
-              count > 0 || scene.lattice || supercell ? <GeometryViewer scene={viewerScene} meshOverrides={supercell ? supercellMeshes : [...meshObjects, ...primitiveMeshes]}
+              count > 0 || scene.lattice || supercell || reciprocalView ? <GeometryViewer scene={viewerScene} meshOverrides={supercell ? supercellMeshes : geometrySpace === "reciprocal" ? reciprocalMeshes : [...meshObjects, ...primitiveMeshes]}
               overlayLabelSets={visibleLabels} showPlanes={false}
-              pickEnabled={(supercell ? supercellMeshes.length : meshObjects.length + primitiveMeshes.length) > 0} onPick={pickScene}
-              onPickMiss={() => { setPickedBandSample(null); setPickedPrimitive(null); }}
+              pickEnabled={(supercell ? supercellMeshes.length : geometrySpace === "reciprocal" ? reciprocalMeshes.length : meshObjects.length + primitiveMeshes.length) > 0} onPick={pickScene}
+              onPickMiss={() => { reciprocalGeneration.current++; setVerifyingReciprocal(false);
+                setPickedBandSample(null); setPickedPrimitive(null); }}
               inspectSelectionMeshKey={pickedPrimitive?.objectId ?? pickedBandSample?.objectId}
-              cameraOverride={!supercell && camera ? { position: camera.position, target: camera.target, up: camera.up } : null} />
+              cameraOverride={!supercell && geometrySpace === "source" && camera ? { position: camera.position, target: camera.target, up: camera.up } : null} />
               : <p style={{ padding: 20 }}>This scene has no mapped geometry. Its field datasets are listed in the inspector.</p>}
             </div>
           </div>
@@ -216,16 +267,49 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
                 <dt style={{ minWidth: 55 }}>{key}</dt><dd style={{ margin: 0 }}>{String(value)}</dd>
               </div>)}
             </dl></>}
-            <div><b>Axes:</b> {scene.coordinates.axes.join(", ")} ({scene.coordinates.handedness}-handed)</div>
-            <div><b>Coordinate units:</b> {scene.coordinates.units.join(", ")}</div>
+            <div><b>Source axes:</b> {scene.coordinates.axes.join(", ")} ({scene.coordinates.handedness}-handed)</div>
+            <div><b>Source coordinate units:</b> {scene.coordinates.units.join(", ")}</div>
+            {scene.reciprocal && <section data-testid="quantum-reciprocal-inspector">
+              <h3>Supplied reciprocal geometry</h3>
+              <div>Reciprocal coordinates: kx, ky, kz · {scene.reciprocal.reciprocalUnit}</div>
+              <div>Direct basis: {scene.reciprocal.directBasis.map((a, i) =>
+                `a${i + 1}=(${a.map(value => value.toPrecision(5)).join(", ")})`).join("; ")} · {scene.reciprocal.directUnit}</div>
+              <div>Reciprocal basis: {scene.reciprocal.basis.map((b, i) =>
+                `b${i + 1}=(${b.map(value => value.toPrecision(5)).join(", ")})`).join("; ")} · aᵢ·bⱼ = 2πδᵢⱼ</div>
+              <div>Boundaries: {scene.reciprocal.boundaryObjects.join(", ")}; supplied paths: {scene.reciprocal.paths.map(path => path.label).join("; ")}</div>
+              <p>These are source-declared primitive-zone guides. No zone construction or k-state calculation runs in Math3D.</p>
+              {geometrySpace === "reciprocal" && <>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {scene.reciprocal.points.map((point, index) => <button key={point.id} type="button"
+                    aria-label={`Select k-point ${point.label} (${point.id})`}
+                    aria-pressed={pickedReciprocalPoint?.id === point.id} disabled={verifyingReciprocal}
+                    onClick={() => selectReciprocalPrimitive(reciprocalMeshes.find(mesh => mesh.id === scene.reciprocal!.pointObject)
+                      ?.primitivesByFace.find(primitive => primitive.kind === "site" && primitive.index === index) ?? null)}>
+                    {point.label}</button>)}
+                </div>
+                {verifyingReciprocal && <p role="status">Verifying source before selection…</p>}
+                {reciprocalError && <p role="alert">{reciprocalError}</p>}
+                {pickedReciprocalPoint && <div data-testid="quantum-k-selection">
+                  <b>Selected supplied k-point:</b> {pickedReciprocalPoint.label} ({pickedReciprocalPoint.id})<br />
+                  Source object: {pickedReciprocalPoint.sourceObjectId} · dataset sample: {pickedReciprocalPoint.sourceSampleIndex}<br />
+                  {pickedReciprocalPoint.position.map((value, axis) =>
+                    <React.Fragment key={axis}>{["kx", "ky", "kz"][axis]}: {value.toPrecision(6)} {scene.reciprocal!.reciprocalUnit}<br /></React.Fragment>)}
+                </div>}
+                {pickedReciprocalPath && <div data-testid="quantum-k-path-selection">
+                  <b>Selected supplied path segment:</b> {pickedReciprocalPath.fromId} → {pickedReciprocalPath.toId}<br />
+                  Source object: {pickedReciprocalPath.objectId} · segment: {pickedReciprocalPath.segmentIndex} · {scene.reciprocal.reciprocalUnit}
+                </div>}
+              </>}
+            </section>}
             {activePrimitiveMeshes.length > 0 && <>
               <h3>Supplied sites and links</h3>
               <p>Click a rendered marker or link. The object ID is portable; the sample index identifies a position within its verified dataset. No chemical species or bond order is inferred.</p>
               <ul data-testid="quantum-primitive-objects" style={{ paddingLeft: 18 }}>
                 {activePrimitiveMeshes.map(mesh => <li key={mesh.id}>{mesh.label} · <code>{mesh.id}</code> · {
                   new Set(mesh.primitivesByFace.map(primitive => primitive.sampleId)).size} samples{" "}
-                  <button type="button" aria-label={`Inspect first sample of ${mesh.id}`} onClick={() => {
-                    setPickedPrimitive(mesh.primitivesByFace[0]); setPickedBandSample(null);
+                  <button type="button" aria-label={`Inspect first sample of ${mesh.id}`} disabled={verifyingReciprocal} onClick={() => {
+                    if (geometrySpace === "reciprocal") selectReciprocalPrimitive(mesh.primitivesByFace[0]);
+                    else { setPickedPrimitive(mesh.primitivesByFace[0]); setPickedBandSample(null); }
                   }}>Inspect first</button>{supercell && <button type="button" aria-label={`Inspect last sample of ${mesh.id}`} onClick={() => {
                     setPickedPrimitive(mesh.primitivesByFace.at(-1) ?? null); setPickedBandSample(null);
                   }}>Inspect last</button>}
@@ -234,9 +318,9 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
               {pickedPrimitive && <div data-testid="quantum-primitive-selection">
                 <b>{pickedPrimitive.kind === "site" ? "Selected site" : "Selected link"}:</b> {pickedPrimitive.objectLabel}<br />
                 <b>{supercell ? "Derived view object ID" : "Portable object ID"}:</b> <code>{pickedPrimitive.objectId}</code><br />
-                <b>Dataset sample:</b> {pickedPrimitive.index}<br />
-                {scene.coordinates.axes.map((axis, index) => <React.Fragment key={axis}>{axis}: {
-                  pickedPrimitive.position[["x", "y", "z"][index] as keyof Vector3].toPrecision(6)} {scene.coordinates.units[index]}<br /></React.Fragment>)}
+                <b>{pickedPrimitive.kind === "site" ? "Dataset sample" : "Source segment"}:</b> {pickedPrimitive.index}<br />
+                {(geometrySpace === "reciprocal" ? ["kx", "ky", "kz"] : scene.coordinates.axes).map((axis, index) => <React.Fragment key={axis}>{axis}: {
+                  pickedPrimitive.position[["x", "y", "z"][index] as keyof Vector3].toPrecision(6)} {geometrySpace === "reciprocal" ? scene.reciprocal?.reciprocalUnit : scene.coordinates.units[index]}<br /></React.Fragment>)}
                 {pickedPrimitive.endpoints && <div>Endpoints: {pickedPrimitive.endpoints.map(endpoint =>
                   `(${endpoint.x.toPrecision(5)}, ${endpoint.y.toPrecision(5)}, ${endpoint.z.toPrecision(5)})`).join(" → ")}</div>}
                 {pickedLatticeSample && scene.lattice && <div data-testid="quantum-lattice-site-selection">
@@ -246,7 +330,7 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
                 </div>}
               </div>}
             </>}
-            {scene.lattice && <section data-testid="quantum-lattice-inspector">
+            {scene.lattice && geometrySpace === "source" && <section data-testid="quantum-lattice-inspector">
               <h3>Supplied lattice geometry</h3>
               <div>{scene.lattice.dimensions}D · {scene.lattice.repeats.join(" × ")} cells · {scene.lattice.boundary} boundary</div>
               <div>Basis: {scene.lattice.basis.map((site, index) => `${index} ${site.label} (${site.position.join(", ")})`).join("; ")}</div>
