@@ -42,7 +42,9 @@ type PickedBandSample = Awaited<ReturnType<NonNullable<Window["quantumScenes"]>[
 
 export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; onClose: () => void }) {
   const document = opened.document;
-  const details = (document.extensions["quantum-scene/v2"] ?? document.extensions["quantum-scene/v1"]) as { scene: SceneSource; selectionTransferred: false; latticeSamples?: LatticeSampleIdentity[] };
+  const details = (document.extensions["quantum-scene/v2"] ?? document.extensions["quantum-scene/v1"]) as {
+    scene: SceneSource; selectionTransferred: false; latticeSamples?: LatticeSampleIdentity[];
+    mappedTriangleCounts?: Record<string, number>; bandLodStride?: number };
   const scene = details.scene;
   const count = (document.geometry.points?.length ?? 0) + (document.geometry.segments?.length ?? 0) +
     (document.geometry.triangles?.length ?? 0);
@@ -161,7 +163,7 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
     const triangles = document.geometry.triangles ?? [];
     let offset = 0;
     return scene.objects.filter((object) => object.kind === "mesh" && mapped.has(object.id)).map((object) => {
-      const count = scene.datasets.find((dataset) => dataset.id === object.indices)?.count ?? 0;
+      const count = details.mappedTriangleCounts?.[object.id] ?? scene.datasets.find((dataset) => dataset.id === object.indices)?.count ?? 0;
       const faces = triangles.slice(offset, offset + count);
       offset += count;
       const positions = new Float32Array(faces.length * 9);
@@ -177,7 +179,7 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
         source: { kind: "polyhedronPreset" as const, label: object.label },
         color: Number.parseInt(object.style.color.slice(1), 16), opacity: object.style.opacity };
     });
-  }, [document.geometry.triangles, opened.mappedObjectIds, scene.datasets, scene.objects]);
+  }, [document.geometry.triangles, opened.mappedObjectIds, scene.datasets, scene.objects, details.mappedTriangleCounts]);
   const viewerScene = useMemo(() => {
     if (supercell) return { ...supercell.geometry, points: [] };
     const sourceGeometry = geometrySpace === "reciprocal" && reciprocalView ? reciprocalView.geometry : document.geometry;
@@ -409,6 +411,9 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
                 </div>;
               })}</div>
               <div><b>Supplied bulk gap:</b> {scene.bands.bulkGap} {scene.bands.energyUnit}</div>
+              {details.bandLodStride && details.bandLodStride > 1 && <p data-testid="quantum-band-lod">
+                Display-only {details.bandLodStride}× grid LOD; original verified sample IDs and binary datasets are unchanged.
+              </p>}
               {verifyingBand && <p role="status">Verifying exact band sample…</p>}
               {bandSelectionError && <p role="alert">{bandSelectionError}</p>}
               {pickedBandSample ? <div data-testid="quantum-band-selection" style={{ marginTop: 8 }}>

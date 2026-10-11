@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06–Q10 remain open.
+**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06 is complete for verified SSH/QWZ band selection and bounded 2D display LOD. M3D-Q07–Q10 remain open.
 
 For the exact Theory Lab export and Math3D inspection workflow, see the
 [M3D-Q04 lattice usage guide](quantum-lattice-usage.md).
@@ -43,9 +43,12 @@ The current desktop slice opens a regular `.qscene` folder through **File → Op
 verified quantum scene** or the command palette. Electron verifies the manifest,
 schema and every binary dataset before a bounded preview appears. Point clouds,
 polylines, segments and meshes use Math3D's GeometryViewer. Mesh objects retain their
-supplied colors; band surfaces can be picked to inspect the nearest supplied vertex,
-its stable source ID, and the declared coordinates and units. Vectors and fields are
-reported as deferred. Four real Theory Lab SSH/QWZ standard and band handoffs are
+supplied colors; band lines and surfaces can be picked to inspect an exact verified
+`bands.coordinates` and energy dataset sample, stable band/sample IDs, k and energy
+units, bulk gap and source run. The 31×31 display uses deterministic LOD without
+changing binary source arrays or source sample IDs. Crossing markers and eigenstates
+are not inferred. Supported field slices, density surfaces and Volume views remain
+read-only; unsupported vector objects are deferred. Four real Theory Lab SSH/QWZ standard and band handoffs are
 pinned in `tests/fixtures/quantum-scene` and checked by
 `npm run test:quantum-scene:import`. **File → Reopen recent quantum scene** remembers
 the last verified folder across app restarts and checks the complete bundle and
@@ -127,7 +130,7 @@ no zone construction, physics calculation or coordinate conversion. Square,
 honeycomb and simple-cubic fixtures plus real QWZ handoffs are checked. The
 frozen v1 reciprocal block is 2D/3D only, so a native 1D reciprocal fixture
 and its full acceptance remain gated on a separately versioned producer
-contract. M3D-Q06–Q10 work remains open.
+contract. M3D-Q06 is complete for the bounded supplied-band path; M3D-Q07–Q10 remain open.
 
 Quantum Lab must not call MATH3D internals, and MATH3D must not reproduce Quantum
 Lab's physics engines. Both applications meet at the portable, versioned scene
@@ -449,6 +452,17 @@ honeycomb/hexagonal, and simple-cubic fixtures; high-symmetry labels retain sour
 IDs; k-point selection updates inspection without rewriting scientific data.
 
 ### M3D-Q06 — `feat(math3d-quantum): add band surfaces`
+
+**Status: Complete for the verified read-only SSH/QWZ band consumer.** The
+inspector resolves each picked line endpoint or surface vertex against the original
+verified `bands.coordinates` and per-band energy artifact, not rounded display
+geometry. The scene fingerprint, source run/result hash, dataset IDs, and
+stable band/sample IDs accompany each selection. Project and recent-scene reopen
+reverify the bundle; changed source bytes refuse selection. The scene contract does
+not currently supply crossing markers or eigenstates, so neither is fabricated.
+The 31×31 acceptance fixture retains all 961 binary samples per band while mapping
+900 display triangles rather than all 3,600, with original sample indices kept for
+picking. This LOD is a visual derivative only.
 
 **Scope.** Visualize supplied `E_n(k)` along 1D paths and as bounded 2D surfaces.
 Provide band selection, surface inspection, energy/unit readouts, k-point picking,

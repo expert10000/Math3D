@@ -42,13 +42,35 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
   const scene = payload.scene;
   const geometry: GeometryScene = { points: [], segments: [], triangles: [] };
   const mappedObjectIds: string[] = [], deferredObjectIds: string[] = [];
+  const mappedTriangleCounts: Record<string, number> = {};
+  const bandGrid = scene.bands?.kind === "surface" ? scene.bands.grid : undefined;
+  const bandLodStride = bandGrid && bandGrid[0] * bandGrid[1] > 441 ?
+    Math.ceil(Math.sqrt(bandGrid[0] * bandGrid[1] / 441)) : 1;
+  const bandTriangles = (indices: Float64Array): number[] => {
+    if (!bandGrid || bandLodStride === 1) return Array.from(indices);
+    const axis = (length: number) => {
+      const values: number[] = [];
+      for (let i = 0; i < length - 1; i += bandLodStride) values.push(i);
+      values.push(length - 1);
+      return values;
+    };
+    const xs = axis(bandGrid[0]), ys = axis(bandGrid[1]), result: number[] = [];
+    for (let x = 0; x < xs.length - 1; x++) for (let y = 0; y < ys.length - 1; y++) {
+      const a = xs[x] * bandGrid[1] + ys[y], b = xs[x + 1] * bandGrid[1] + ys[y];
+      const c = xs[x] * bandGrid[1] + ys[y + 1], d = xs[x + 1] * bandGrid[1] + ys[y + 1];
+      result.push(a, b, c, b, d, c);
+    }
+    return result;
+  };
   for (const object of scene.objects) {
     if (!object.visible) { deferredObjectIds.push(object.id); continue; }
     const positions = arrays.get(object.positions)!;
     const count = positions.length / 3;
     const color = parseInt(object.style.color.slice(1), 16);
+    const displayIndices = object.kind === "mesh" && bandLodStride > 1 && scene.bands?.objects.includes(object.id) ?
+      bandTriangles(arrays.get(object.indices!)!) : null;
     const proposed = object.kind === "point-cloud" ? count : object.kind === "polyline" ? count - 1 :
-      object.kind === "segments" ? count / 2 : object.kind === "mesh" ? arrays.get(object.indices!)!.length / 3 : 0;
+      object.kind === "segments" ? count / 2 : object.kind === "mesh" ? (displayIndices?.length ?? arrays.get(object.indices!)!.length) / 3 : 0;
     const mapped = geometry.points!.length + geometry.segments!.length + geometry.triangles!.length;
     if (mapped + proposed > MAX_MAPPED_PRIMITIVES) { deferredObjectIds.push(object.id); continue; }
     if (object.kind === "point-cloud") {
@@ -65,7 +87,7 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
         });
       }
     } else if (object.kind === "mesh") {
-      const indices = arrays.get(object.indices!)!;
+      const indices = displayIndices ?? arrays.get(object.indices!)!;
       for (let i = 0; i < indices.length; i += 3)
         geometry.triangles!.push({
           a: { ...point(positions, indices[i]), id: `${object.id}:${indices[i]}` },
@@ -73,6 +95,7 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
           c: { ...point(positions, indices[i + 2]), id: `${object.id}:${indices[i + 2]}` },
           color, opacity: object.style.opacity,
         });
+      mappedTriangleCounts[object.id] = indices.length / 3;
     } else {
       // Vectors require an explicit value-to-coordinate scale and are not silently converted.
       deferredObjectIds.push(object.id);
@@ -112,6 +135,8 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
         deferredObjectIds,
         deferredFieldIds: (scene.fields ?? []).map(field => field.id),
         latticeSamples,
+        mappedTriangleCounts,
+        bandLodStride,
         selectionTransferred: false,
       },
     },

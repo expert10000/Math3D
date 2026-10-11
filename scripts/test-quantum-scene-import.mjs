@@ -6,6 +6,7 @@ import { join, resolve, sep } from "node:path";
 import { createRequire } from "node:module";
 import { writeLatticeFixture, writeOneDimensionalChainFixture } from "./quantum-lattice-fixtures.mjs";
 import { writeReciprocalFixture } from "./quantum-reciprocal-fixtures.mjs";
+import { writeLargeBandFixture } from "./quantum-band-fixtures.mjs";
 
 const require = createRequire(import.meta.url);
 const { importQuantumSceneBundle } = require("../dist/main/quantumScene/importer.js");
@@ -270,6 +271,21 @@ try {
     acceptedViews.add(key);
   }
   assert.deepEqual(acceptedViews, new Set(["ssh/standard", "ssh/bands", "qwz/standard", "qwz/bands"]));
+  const largeBands = await writeLargeBandFixture(
+    join(fixtureRoot, "run-97a132d1d712414bb62bb8c9212f517e-bands.qscene"),
+    join(root, "large-bands.qscene"));
+  const large = await importQuantumSceneBundle(largeBands);
+  assert.deepEqual(large.source.bands.grid, [31, 31]);
+  assert.equal(large.arrays.get(large.source.bands.coordinates).length / 3, 961);
+  assert.equal(large.document.geometry.triangles.length, 900);
+  assert.equal(large.document.extensions[large.source.schema].bandLodStride, 2);
+  assert.deepEqual(large.document.extensions[large.source.schema].mappedTriangleCounts,
+    { "band-0": 450, "band-1": 450 });
+  assert.deepEqual(large.mappedObjectIds.filter(id => id.startsWith("band-")), ["band-0", "band-1"]);
+  const last = inspectVerifiedBandSample(large, { fingerprint: sceneFingerprint(large), objectId: "band-1", sampleIndex: 960 });
+  assert.equal(last.sampleId, "band-1:sample:960");
+  assert.equal(last.energyDatasetId, "band-energy-1");
+  assert.throws(() => inspectVerifiedBandSample(large, { fingerprint: sceneFingerprint(large), objectId: "band-1", sampleIndex: 961 }), /outside/);
 
   const orbitalRoot = resolve("tests/fixtures/quantum-scene-orbitals");
   const orbitals = [
