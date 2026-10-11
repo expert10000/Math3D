@@ -34,6 +34,8 @@ test("Project Details dashboard uses stored document relations and opens a docum
     const graphToSurface = project.workspace.relations.find((relation: any) => relation.target.type === "document" &&
       relation.target.generation.documentId === surface.expected.id && relation.sources.some((source: any) => source.documentId === graph.expected.id));
     expect(graphToSurface).toBeTruthy();
+    await expect(map.getByTestId(`project-relation-freshness-${graphToSurface.relationId}`)).toHaveText("Up to date");
+    await expect(dashboard.getByTestId(`project-document-freshness-${surface.expected.id}`)).toHaveText("Up to date");
     await map.getByTestId(`project-relation-edge-${graphToSurface.relationId}`).click();
     const detail = map.getByTestId("project-relation-detail");
     await expect(detail).toContainText(graphToSurface.operation);
@@ -52,5 +54,24 @@ test("Project Details dashboard uses stored document relations and opens a docum
     await page.getByTestId("project-gallery-layout-toggle").click();
     await map.getByTestId(`project-relation-node-${graphToSurface.relationId}-source-0`).click();
     await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", graph.expected.id);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("Catenoid Project Details shows freshness for its saved Mesh analysis", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp();
+    await resetSurfaceAppState(ctx.page);
+    const page = ctx.page;
+    await page.getByTestId("projects-toggle").click();
+    await page.getByTestId("project-template-open-catenoid-evidence").click();
+    await expect(page.getByTestId("project-source-editor")).toBeVisible();
+    await page.getByTestId("project-gallery-layout-toggle").click();
+    const project = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(project.workspace.results.length).toBeGreaterThan(0);
+    const result = project.workspace.results[0];
+    await expect(page.getByTestId(`project-result-freshness-${result.resultId}`)).toHaveText("Up to date");
+    await expect(page.getByTestId("project-relationship-map").getByRole("listitem")).toHaveCount(project.workspace.relations.length);
   } finally { await closeSurfaceApp(ctx); }
 });

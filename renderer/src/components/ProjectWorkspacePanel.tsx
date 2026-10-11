@@ -16,6 +16,7 @@ import { ProjectGalleryFrame, type ProjectPlacement } from "./ProjectGalleryFram
 import { ProjectTemplatesPanel, StarterArtwork } from "./ProjectTemplatesPanel";
 import { ProjectDocumentActions, type ProjectDocumentAction } from "./ProjectDocumentActions";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
+import { presentProjectFreshness, presentProjectRelationFreshness } from "../projects/projectFreshnessPresentation";
 import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnalysisRefreshOptions, recomputeProjectAnalysis } from "../projects/projectDependencyRefresh";
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
@@ -230,6 +231,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     card?.focus({ preventScroll: true });
   }, [highlightedSavedId]);
   const dependencies = useMemo(() => project && inspectionOpen ? inspectProjectDependencies(project, artifactAvailable) : null, [project, artifactAvailable, inspectionOpen]);
+  const dashboardDependencies = useMemo(() => {
+    if (!project || quick || !detailView) return null;
+    try { return inspectProjectDependencies(project, artifactAvailable); }
+    catch { return null; }
+  }, [project, quick, detailView, artifactAvailable]);
   // The explorer describes its captured Project snapshot; Refresh captures new bytes and generations.
   const analyses = useMemo(() => {
     if (!project) return new Map();
@@ -1134,9 +1140,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               <ul>{dashboardDocuments.map(document => {
                 const incoming = project.workspace.relations.filter(relation => relation.target.type === "document" && relation.target.generation.documentId === document.id);
                 const sourceNames = [...new Set(incoming.flatMap(relation => relation.sources.map(source => source.documentId)))].map(id => documentTitles.get(id) ?? "Unavailable source");
+                const documentStatus = dashboardDependencies?.documents.find(item => item.id === document.id);
+                const freshness = incoming.length && documentStatus ? incoming.length === 1
+                  ? presentProjectRelationFreshness(project, incoming[0]!, documentStatus.freshness)
+                  : presentProjectFreshness(documentStatus.freshness) : null;
                 return <li key={document.id}>
                   <button type="button" data-testid={`project-dashboard-document-${document.id}`} disabled={preview || !canNavigateDocument?.(document.id, document.module)} onClick={() => viewBesideProject(document.id, document.module)}>
                     <span><strong>{document.title}</strong><small>{document.module === "graph2d" ? "Graph" : document.module[0]?.toUpperCase() + document.module.slice(1)} · {sourceNames.length ? `From ${sourceNames.join(", ")}` : "No recorded source"}</small></span>
+                    {freshness && <span className="project-freshness-badge" data-tone={freshness.tone} data-testid={`project-document-freshness-${document.id}`} title={freshness.detail}>{freshness.label}</span>}
                     <span aria-hidden="true">›</span>
                   </button>
                 </li>;
@@ -1153,10 +1164,20 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               </dl>
               <p>Revision {project.identity.revision} · {preview ? "Saved preview" : savedProjectEntry ? "Saved in your library" : "Current workspace"}</p>
               {savedProjectEntry && <p>Saved {new Date(savedProjectEntry.savedAt).toLocaleString()}</p>}
+              {dashboardDependencies && (dashboardDependencies.results.length > 0 || dashboardDependencies.artifacts.length > 0) && <div className="project-dashboard-outputs" aria-label="Saved output freshness">
+                <h5>Saved outputs</h5>
+                {dashboardDependencies.results.map(result => { const status = presentProjectFreshness(result.freshness); return <div key={result.id}>
+                  <span>{result.operation}</span><span className="project-freshness-badge" data-tone={status.tone} data-testid={`project-result-freshness-${result.id}`} title={status.detail}>{status.label}</span>
+                </div>; })}
+                {dashboardDependencies.artifacts.map(artifact => <div key={artifact.id}>
+                  <span>{artifact.role} · {artifact.kind}</span><span className="project-freshness-badge" data-tone={artifact.available ? "current" : "unavailable"}
+                    data-testid={`project-artifact-freshness-${artifact.id}`}>{artifact.available ? "Available" : "Unavailable"}</span>
+                </div>)}
+              </div>}
             </aside>
           </div>}
           {!quick && detailView && project && <ProjectRelationshipMap project={project} titles={documentTitles}
-            preview={preview} canOpen={(id, module) => !!canNavigateDocument?.(id, module)} onOpen={viewBesideProject} />}
+            preview={preview} inspection={dashboardDependencies} canOpen={(id, module) => !!canNavigateDocument?.(id, module)} onOpen={viewBesideProject} />}
           <div className="project-management-area" aria-label="Project management">
             {fullDetails && <h4>Project management</h4>}
             <div className="project-workspace-primary-actions">

@@ -5,6 +5,7 @@ import { analyzeGraph2DDerivative, createDocumentRelation, createEmptyGraph2DDoc
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { inspectProjectDependencies } from "./projectDependencies";
+import { presentProjectFreshness, presentProjectRelationFreshness } from "./projectFreshnessPresentation";
 
 const fixture = () => {
   const graph = instantiateGraph2DPreset(getGraph2DPresetCatalog().get("parabola-tangent")!, "dependencies").document;
@@ -33,6 +34,8 @@ describe("PRJ05 project dependency inspection", () => {
     expect(inspection.relations.find((relation) => relation.relationId === curve.relation.relationId)!.freshness).toBe("stale");
     expect(inspection.relations.find((relation) => relation.relationId === regenerated.relation.relationId)!.freshness).toBe("current");
     expect(inspection.documents.find((document) => document.id === curve.document.identity.id)!.freshness).toBe("current");
+    expect(presentProjectRelationFreshness(current, curve.relation, "stale").label).toBe("Historical target");
+    expect(presentProjectRelationFreshness(current, regenerated.relation, "current").label).toBe("Up to date");
   });
   it("marks edited-source descendants stale while qualifying independent snapshots and leaving unrelated documents current", () => {
     const { graph, curve, project } = fixture(), copied = duplicateProjectDocument(project, curve.document.identity.id, "snapshot", verifyMixedWorkspaceReplay(project.workspace));
@@ -46,6 +49,7 @@ describe("PRJ05 project dependency inspection", () => {
     expect(inspection.documents.find((document) => document.id === copied.workspace.entries.at(-1)!.expected.id)).toMatchObject({ freshness: "stale", snapshot: true });
     expect(inspection.documents.find((document) => document.id === unrelated.identity.id)!.freshness).toBe("current");
     expect(inspection.results[0]).toMatchObject({ authority: project.workspace.results[0]!.status, freshness: "stale" });
+    expect(presentProjectRelationFreshness(current, curve.relation, "stale").label).toBe("Stale source");
     expect(JSON.stringify(current)).toBe(bytes);
   });
   it("never shows unresolved source, document, result or artifact links as current", () => {
@@ -58,6 +62,7 @@ describe("PRJ05 project dependency inspection", () => {
     ];
     const inspection = inspectProjectDependencies(createMath3DProject(createMixedWorkspaceDocument({ ...project.workspace, relations }), { stableKey: "missing" }));
     expect(inspection.relations.map((relation) => relation.freshness)).toEqual(["unavailable", "unavailable", "unavailable", "unavailable"]);
+    expect(presentProjectFreshness("unavailable").label).toBe("Unavailable");
   });
   it("keeps mathematical authority separate from checksum-backed artifact availability", () => {
     const { project, result } = fixture(), handle = { artifactId: "external-result", kind: "table" as const, role: "samples" }, checksum = structuralHash("samples");

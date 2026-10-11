@@ -76,9 +76,16 @@ checks passed in Electron after this P0 slice.
 The first P1 relationship map now draws only the Project's recorded relations
 as source → operation → target paths. Document nodes open their native workspace;
 selecting an arrow shows the stored operation and exact source/target generations.
-The Ripple Wave map and node navigation passed in Electron. Artifact freshness
-indicators are the next P1 slice; the map does not infer links or regenerate
-documents merely to populate the UI.
+The Ripple Wave map and node navigation passed in Electron. The second P1 slice,
+delivered October 12, adds freshness labels to derived documents, relation
+arrows, saved results and artifacts using the existing dependency inspection.
+It distinguishes current,
+stale source, historical target/snapshot, and unavailable or broken references.
+Computing and failed labels remain absent without a live worker state. Refresh
+workspace remains explicit; the map does not infer links or regenerate documents.
+The Catenoid Surface → Mesh → Surface → restart, middle flip, Ripple dashboard
+and Ripple four-document restore checks passed after this slice. The retained
+Catenoid Mesh analysis shows Up to date in Project Details.
 
 **Startup contract — October 9:** autosave is the only startup recovery flow.
 Restoring it restores the workspace; it does not also open the last saved Project.
