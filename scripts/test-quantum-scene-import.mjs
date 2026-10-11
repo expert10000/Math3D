@@ -14,6 +14,7 @@ const { quantumSceneLaunchDirectory } = require("../dist/main/ipc/quantumSceneIp
 const { renderVerifiedFieldSlice, inspectVerifiedFieldSample } = require("../dist/main/quantumScene/fieldSlice.js");
 const { deriveVerifiedFieldSurface } = require("../dist/main/quantumScene/fieldSurface.js");
 const { deriveVerifiedFieldVolume } = require("../dist/main/quantumScene/fieldVolume.js");
+const { inspectVerifiedBandSample } = require("../dist/main/quantumScene/bandSelection.js");
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const root = await mkdtemp(join(tmpdir(), "m3d-q01-"));
 try {
@@ -241,6 +242,22 @@ try {
       assert.ok(real.mappedObjectIds.includes(source.reciprocal.pointObject));
     }
     if (source.bands) {
+      for (const [bandIndex, objectId] of source.bands.objects.entries()) {
+        for (const sampleIndex of [0, Math.floor(real.arrays.get(source.bands.coordinates).length / 6),
+          real.arrays.get(source.bands.coordinates).length / 3 - 1]) {
+          const sample = inspectVerifiedBandSample(real, { fingerprint: sceneFingerprint(real), objectId, sampleIndex });
+          const k = real.arrays.get(source.bands.coordinates);
+          assert.deepEqual(sample.k, Array.from(k.slice(sampleIndex * 3, sampleIndex * 3 + 3)));
+          assert.equal(sample.energy, real.arrays.get(source.bands.energies[bandIndex])[sampleIndex]);
+          assert.equal(sample.energyDatasetId, source.bands.energies[bandIndex]);
+          assert.equal(sample.coordinateDatasetId, source.bands.coordinates);
+          assert.equal(sample.sampleId, `${objectId}:sample:${sampleIndex}`);
+          assert.equal(sample.runId, source.provenance.runId);
+          assert.equal(sample.energyUnit, source.bands.energyUnit);
+        }
+      }
+      assert.throws(() => inspectVerifiedBandSample(real, { fingerprint: sceneFingerprint(real), objectId: source.bands.objects[0], sampleIndex: 961 }), /outside/);
+      assert.throws(() => inspectVerifiedBandSample(real, { fingerprint: sceneFingerprint(real), objectId: "unrelated", sampleIndex: 0 }), /not mapped/);
       assert.equal(source.bands.objects.length, 2);
       const meshColors = source.bands.objects.map(id => source.objects.find(object => object.id === id)?.style.color);
       assert.equal(new Set(meshColors).size, 2, "Band surfaces need distinct supplied colors");

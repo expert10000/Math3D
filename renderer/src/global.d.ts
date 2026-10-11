@@ -599,6 +599,11 @@ declare global {
       consumeLaunch: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
       openReference: (reference: unknown) => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
       verifyActive: (fingerprint: string) => Promise<boolean>;
+      bandSample: (request: { fingerprint: string; objectId: string; sampleIndex: number }) => Promise<{
+        objectId: string; bandIndex: number; bandId: string; bandLabel: string; sampleIndex: number; sampleId: string;
+        coordinateDatasetId: string; energyDatasetId: string; k: [number, number, number]; kUnit: string;
+        energy: number; energyUnit: string; bulkGap: number; runId: string; resultSha256: string; fingerprint: string;
+      }>;
       pickMatchingReference: (fingerprint: string) => Promise<
         { ok: true; canceled: false; reference: { directory: string; sceneFingerprint: string } } |
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
