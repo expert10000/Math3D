@@ -38,10 +38,14 @@ Surface, a retained Mesh snapshot and editable Geometry sample markers. The
 Graph → Surface → Mesh and Surface → Geometry links retain source generations.
 Surface opens first; the four native workspaces and selected-document
 restoration passed in an isolated Electron save/restart run.
-The older Geometry Notes and Pins starter still fails its default compact-window
-viewer-visibility check at 1358 × 859 because the Geometry toolbar uses the
-available vertical space. Ripple Wave's wider Project layout is scoped to that
-starter and does not change the older starter's compact presentation.
+**Compact Geometry Project layout — October 11:** the older Geometry Notes and
+Pins starter now keeps its viewer visible at 1358 × 859. The Geometry navigation,
+mode, workflow, tools, saved-document editor and contextual controls stay in
+single scrollable rows beside an open Project; all controls remain reachable.
+The isolated Electron check measured a 309 px viewer, with the Notes pins control
+and scene canvas visible. Catenoid and Ripple Wave document switching, plus the
+Ripple Wave save/restart flow, passed after this layout change. PC01 composition
+remains a later phase.
 
 **Startup contract — October 9:** autosave is the only startup recovery flow.
 Restoring it restores the workspace; it does not also open the last saved Project.

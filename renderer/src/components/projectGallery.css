@@ -205,6 +205,25 @@ body:has(.project-viewer-panel:not(.project-embedded-panel)[data-project-placeme
   body:has(.project-viewer-panel.project-embedded-panel[data-project-placement="left"]) [data-testid="project-source-editor"] > .document-toolbar { margin-left:380px!important;width:calc(100% - 380px)!important;box-sizing:border-box; }
   body:has(.project-viewer-panel.project-embedded-panel[data-project-placement="left"]) .saved-surface-toolbar { width:100%;min-width:0;flex-wrap:wrap; }
 }
+@media(min-width:1200px) and (max-width:1500px) {
+  body:has(.project-viewer-panel[data-project-placement="left"]) [data-testid="geometry-professional-shell"] {
+    width:calc(100vw - 420px)!important;max-width:calc(100vw - 420px)!important;min-width:0!important;
+  }
+  body:has(.project-viewer-panel[data-project-placement="left"]) [data-testid="geometry-professional-shell"] > div {
+    width:100%;min-width:0;flex-wrap:nowrap!important;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;
+  }
+  body:has(.project-viewer-panel[data-project-placement="left"]) [data-testid="geometry-professional-shell"] > div > div { flex:0 0 auto;flex-wrap:nowrap!important; }
+  body:has(.project-viewer-panel[data-project-placement="left"]) :is([data-testid="geometry-mode-strip"],[data-testid="geometry-workflow-strip"],[data-testid="geometry-tools-strip"]) {
+    min-width:0!important;flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;white-space:nowrap;
+    scrollbar-width:thin;
+  }
+  body:has(.project-viewer-panel[data-project-placement="left"]) :is([data-testid="geometry-mode-strip"],[data-testid="geometry-workflow-strip"],[data-testid="geometry-tools-strip"]) > * { flex:0 0 auto; }
+  body:has(.project-viewer-panel[data-project-placement="left"]) [data-testid="project-geometry-editor"],
+  body:has(.project-viewer-panel[data-project-placement="left"]) [data-testid="geometry-context-toolbar"] {
+    flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;white-space:nowrap;
+    scrollbar-width:thin;
+  }
+}
 @media(min-width:1440px) {
   body:has(.project-viewer-panel:not(.project-embedded-panel)[data-project-placement="left"]) .math3d-app > :is([data-testid="module-workspace"],[data-testid="project-source-editor"],[data-testid="project-saved-mesh-workflow"],[data-testid="project-mesh-editor"]) { margin-left:380px!important;width:calc(100% - 380px)!important; }
   body:has(.project-viewer-panel:not(.project-embedded-panel)[data-project-placement="right"]) .math3d-app > :is([data-testid="module-workspace"],[data-testid="project-source-editor"],[data-testid="project-saved-mesh-workflow"],[data-testid="project-mesh-editor"]) { margin-right:380px!important;width:calc(100% - 380px)!important; }

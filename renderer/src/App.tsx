@@ -81050,6 +81050,7 @@ case "mobius":
           ) : mode === "geometry" ? (
             <>
               <div
+                data-testid="geometry-mode-strip"
                 style={{
                   ...styles.group,
                   ...styles.groupWide,
@@ -81123,6 +81124,7 @@ case "mobius":
               </div>
               {showGeometryWorkflowStrip && !isPhoneViewerPriorityLayout && (
                 <div
+                  data-testid="geometry-workflow-strip"
                   style={{
                     ...styles.group,
                     ...styles.groupWide,
@@ -81169,6 +81171,7 @@ case "mobius":
               )}
               {showGeometryWorkflowStrip && !isPhonePortraitViewerPriorityLayout && (
                 <div
+                  data-testid="geometry-tools-strip"
                   style={{
                     ...styles.group,
                     ...styles.groupWide,
