@@ -162,6 +162,7 @@ body:has(.project-viewer-panel) [data-testid="notes-toggle"],body:has(.project-v
 .project-viewer-panel .project-gallery-header { padding:12px 14px; }
 .project-viewer-panel .project-gallery-heading { align-items:flex-start; }
 .project-viewer-panel .project-gallery-heading h2 { font-size:19px; }
+.project-viewer-panel .project-context-breadcrumb { min-height:54px; }
 .project-viewer-panel .project-gallery-statusline { display:none; }
 .project-viewer-panel .project-gallery-layout { padding:12px 14px; }
 .project-viewer-switcher { position:sticky;top:0;z-index:2;padding:0 0 10px;background:#fff; }

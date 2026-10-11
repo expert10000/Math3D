@@ -19,8 +19,10 @@ export const ProjectGalleryFrame = ({ quick, viewerCompanion = false, placement 
     const header = document.querySelector(".math3d-app > header");
     if (!header) return;
     const update = () => {
-      const anchor = header.querySelector('[data-testid="surface-module-actions"], [data-testid="curves-professional-shell"], [data-testid="geometry-professional-shell"], [data-testid="workspace-context-label"]');
-      setCompanionTop(Math.round((anchor ?? header).getBoundingClientRect()[anchor ? "top" : "bottom"]));
+      // Keep the Project sidebar at one level while module toolbars change height.
+      const nav = header.querySelector('[data-testid="workspace-nav-surfaces"]');
+      const navBottom = nav?.getBoundingClientRect().bottom ?? header.getBoundingClientRect().top;
+      setCompanionTop(Math.round(Math.max(128, navBottom + 84)));
     };
     update();
     const resize = new ResizeObserver(update), mutation = new MutationObserver(update);
