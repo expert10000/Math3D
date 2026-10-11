@@ -67,6 +67,29 @@ has no v1 cell/basis inspector or supercell controls. Periodic-wrap identities
 and native 1D lattice metadata need a separately versioned producer contract;
 M3D-Q04's full acceptance gate remains open.
 
+## Reciprocal space (M3D-Q05)
+
+In Theory Lab **Scenes → Bounded lattice examples**, choose **Geometry view →
+Primitive reciprocal zone**, then Square, Honeycomb or Simple cubic and
+**Preview geometry example**. Export the displayed regular `.qscene` folder and
+open it in Math3D through **File → Open verified quantum scene**. Compatible
+saved QWZ standard/band scenes also contain supplied reciprocal guides.
+
+Choose **Reciprocal space** in the Math3D scene preview to isolate the supplied
+primitive-zone boundary, named high-symmetry k-points, path and labelled
+reciprocal basis guides. Select a point from the inspector or click its marker
+to see the exact source ID, dataset sample, k coordinates and reciprocal unit.
+Picking a path segment shows its two source point IDs without claiming an
+intermediate computed k-state. **Supplied geometry** returns to the original
+view. Direct-basis spacing and reciprocal `rad / spacing` are kept distinct;
+Math3D neither calculates the Brillouin zone nor folds supercell repeats.
+Selection re-verifies the complete bundle and refuses modified bytes.
+
+The frozen v1 `reciprocal` block admits 2D/3D bases only. A supplied SSH/1D
+band scene remains available as Geometry, but it does not acquire a fabricated
+1D reciprocal basis or Brillouin-zone inspector. Full 1D Q05 acceptance needs
+a separately versioned producer contract.
+
 Hashes establish byte integrity relative to the bundle, not producer identity
 or scientific correctness. Use only scenes from sources you trust. For the
 contract and project-link behavior, see the [integration roadmap](math3d-quantum-integration-roadmap.md)

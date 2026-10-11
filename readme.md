@@ -58,6 +58,11 @@ and can preview a bounded derived open supercell. It does not infer chemistry,
 expand supplied bonds, or create periodic-wrap bonds. Native 1D and periodic
 lattice metadata remain outside the frozen v1 contract.
 
+M3D-Q05 adds a separate **Reciprocal space** view for supplied square,
+honeycomb, cubic and QWZ primitive-zone guides. Verified k-point and path
+selection reports source IDs and reciprocal units; native 1D reciprocal
+metadata remains a contract gap.
+
 Follow [the Lab-to-Math3D lattice walkthrough](docs/quantum-lattice-usage.md)
 for exact steps, build requirements, saved-run distinctions and verification.
 

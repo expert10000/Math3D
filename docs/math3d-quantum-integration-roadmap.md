@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; the periodic/1D lattice-metadata acceptance gate remains open under the frozen v1 contract. M3D-Q05–Q10 remain open.
+**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; the periodic/1D lattice-metadata acceptance gate remains open under the frozen v1 contract. M3D-Q05 has a verified 2D/3D reciprocal view and source-ID selections; its 1D acceptance gate remains open. M3D-Q06–Q10 remain open.
 
 For the exact Theory Lab export and Math3D inspection workflow, see the
 [M3D-Q04 lattice usage guide](quantum-lattice-usage.md).
@@ -118,7 +118,16 @@ open fixtures exercise the lattice adapter. The v1 lattice contract permits
 only dimensions 2 or 3 and `boundary: "open"`; it has no periodic-wrap bond
 identity. Math3D therefore labels periodic wraps unavailable rather than
 deriving them. Full Q04 periodic and 1D metadata acceptance needs a separately
-versioned producer contract. M3D-Q05–Q10 work remains open.
+versioned producer contract. M3D-Q05 adds a separate reciprocal-space Geometry
+view for supplied primitive-zone boundaries, high-symmetry points/paths and
+basis vectors. Clicks and inspector buttons select exact verified point IDs or
+path segments; selection re-verifies the active bundle and refuses changed
+bytes. Direct and reciprocal units are shown separately, and Math3D performs
+no zone construction, physics calculation or coordinate conversion. Square,
+honeycomb and simple-cubic fixtures plus real QWZ handoffs are checked. The
+frozen v1 reciprocal block is 2D/3D only, so a native 1D reciprocal fixture
+and its full acceptance remain gated on a separately versioned producer
+contract. M3D-Q06–Q10 work remains open.
 
 Quantum Lab must not call MATH3D internals, and MATH3D must not reproduce Quantum
 Lab's physics engines. Both applications meet at the portable, versioned scene
@@ -416,6 +425,14 @@ its basis site and source object; periodic wrap bonds are visually and semantica
 distinguishable.
 
 ### M3D-Q05 — `feat(math3d-quantum): add reciprocal lattice and Brillouin zones`
+
+**Implemented (bounded 2D/3D scope).** A source-backed reciprocal view isolates
+verified point, path and zone-boundary objects from other scene geometry;
+declared basis vectors are drawn as labelled guides. Point and path picking
+uses stable source IDs and sample/segment indices, retains reciprocal units,
+and re-verifies the bundle before selection. Square, honeycomb, cubic and real
+QWZ cases have import and UI acceptance. No 1D `reciprocal` block is allowed by
+the frozen v1 schema, so the planned canonical 1D acceptance remains open.
 
 **Scope.** Render reciprocal basis vectors, Brillouin-zone geometry,
 high-symmetry points and paths, k-points, and the selected k-state. Keep real-space

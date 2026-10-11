@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { createRequire } from "node:module";
 import { writeLatticeFixture, writeOneDimensionalChainFixture } from "./quantum-lattice-fixtures.mjs";
+import { writeReciprocalFixture } from "./quantum-reciprocal-fixtures.mjs";
 
 const require = createRequire(import.meta.url);
 const { importQuantumSceneBundle } = require("../dist/main/quantumScene/importer.js");
@@ -232,6 +233,13 @@ try {
       assert.equal(source.lattice, undefined, "1D SSH is supplied Geometry, not a fictitious 2D/3D lattice");
       assert.ok(real.mappedObjectIds.length > 0);
     }
+    if (source.provenance.model === "qwz") {
+      assert.ok(source.reciprocal, "QWZ handoff includes supplied primitive-zone guides");
+      assert.equal(source.reciprocal.pointObject, "symmetry-points");
+      assert.equal(source.reciprocal.basis.length, 2);
+      assert.equal(source.reciprocal.reciprocalUnit, "rad / lattice constant");
+      assert.ok(real.mappedObjectIds.includes(source.reciprocal.pointObject));
+    }
     if (source.bands) {
       assert.equal(source.bands.objects.length, 2);
       const meshColors = source.bands.objects.map(id => source.objects.find(object => object.id === id)?.style.color);
@@ -353,6 +361,27 @@ try {
   await writeFile(join(latticeTamper, "site-cells.f64"), alteredCell);
   await assert.rejects(importQuantumSceneBundle(latticeTamper), /integrity/);
   console.log("M3D-Q04 open square/honeycomb/cubic lattice identity, 1D chain/SSH Geometry and tamper refusal passed");
+
+  for (const family of ["square", "honeycomb", "simple_cubic"]) {
+    const reciprocalDirectory = join(root, `reciprocal-${family}.qscene`);
+    const { scene: reciprocalFixture } = await writeReciprocalFixture(reciprocalDirectory, family);
+    const verified = await importQuantumSceneBundle(reciprocalDirectory);
+    assert.deepEqual(verified.source.reciprocal, reciprocalFixture.reciprocal);
+    assert.equal(verified.source.reciprocal.directBasis.length, family === "simple_cubic" ? 3 : 2);
+    assert.equal(verified.source.reciprocal.reciprocalUnit, "rad / schematic primitive spacing");
+    assert.ok(verified.mappedObjectIds.includes("symmetry-points"));
+    assert.ok(verified.mappedObjectIds.includes("primitive-bz"));
+    assert.equal(verified.document.geometry.points.length, reciprocalFixture.reciprocal.points.length);
+    assert.deepEqual((await reopenQuantumSceneReference({ directory: reciprocalDirectory,
+      sceneFingerprint: sceneFingerprint(verified) })).imported.source.reciprocal, verified.source.reciprocal);
+  }
+  const reciprocalTamper = join(root, "reciprocal-tamper.qscene");
+  await writeReciprocalFixture(reciprocalTamper, "honeycomb");
+  const kBytes = Buffer.from(await readFile(join(reciprocalTamper, "symmetry-points.f64")));
+  kBytes[0] ^= 1;
+  await writeFile(join(reciprocalTamper, "symmetry-points.f64"), kBytes);
+  await assert.rejects(importQuantumSceneBundle(reciprocalTamper), /integrity/);
+  console.log("M3D-Q05 supplied square/honeycomb/cubic reciprocal guides, units, restart and tamper refusal passed");
 
   const copied = join(root, "real-lab-tamper.qscene");
   await cp(join(fixtureRoot, fixtureNames[0]), copied, { recursive: true });

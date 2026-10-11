@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
 import { writeLatticeFixture, writeOneDimensionalChainFixture } from "../../scripts/quantum-lattice-fixtures.mjs";
+import { writeReciprocalFixture } from "../../scripts/quantum-reciprocal-fixtures.mjs";
 
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 
@@ -191,13 +192,13 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     expect(relinkedQuantum.checkpoint.location.directory).toBe(relocated);
     await projects.getByTestId(`project-open-saved-${savedQuantum.projectId}`).click();
     await expect(projects.getByTestId("project-message")).toContainText("Opened supported project", { timeout: 60_000 });
-    await projects.getByRole("button", { name: "Project details" }).click();
+    await projects.getByTestId("project-gallery-layout-toggle").click();
     await expect(projects.getByTestId(`project-view-${savedQuantum.entry.expected.id}`)).toBeEnabled();
     await projects.getByTestId(`project-view-${savedQuantum.entry.expected.id}`).click();
     await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
     await expect(page.getByTestId("quantum-scene-preview")).toContainText("run-ipc");
     await page.getByTestId("quantum-scene-close").click();
-    await projects.getByRole("button", { name: "Project details" }).click();
+    await projects.getByTestId("project-gallery-layout-toggle").click();
     await projects.getByTestId("project-import-file").setInputFiles({ name: "quantum-project.json", mimeType: "application/json", buffer: portableProject });
     await expect(projects.getByTestId("project-import-open")).toBeEnabled();
     await projects.getByTestId("project-import-open").click();
@@ -206,7 +207,10 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     if (await page.getByTestId("quantum-scene-preview").isVisible()) await page.getByTestId("quantum-scene-close").click();
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).workspace.entries.find((item: any) => item.module === "quantum")?.expected.id))
       .toBe(savedQuantum.entry.expected.id);
-    await projects.getByTestId(`project-open-quantum-scene-${projectScene.sceneFingerprint}`).click();
+    const projectOpenScene = projects.getByTestId(`project-open-quantum-scene-${projectScene.sceneFingerprint}`);
+    // The compact Project header can overlap this off-screen article after import.
+    // Invoke the actual button handler without a pointer event intercepted by that header.
+    await projectOpenScene.evaluate((button: HTMLButtonElement) => button.click());
     await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
     await page.getByTestId("quantum-scene-close").click();
     await projects.getByRole("button", { name: "Close project explorer" }).click();
@@ -509,6 +513,92 @@ test("open lattice fixtures inspect basis and bounded supercells without inventi
     const safeRoot = resolve(root);
     if (!safeRoot.startsWith(resolve(tmpdir()) + sep) || !safeRoot.includes("m3d-q04-lattice-"))
       throw new Error("Unsafe lattice E2E cleanup path");
+    await rm(safeRoot, { recursive: true, force: true });
+  }
+});
+
+test("verified reciprocal fixtures keep k-space IDs, units and selection across restart", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-q05-reciprocal-"));
+  const folders = new Map<string, string>();
+  for (const family of ["square", "honeycomb", "simple_cubic"]) {
+    const directory = join(root, `${family}.qscene`);
+    await writeReciprocalFixture(directory, family);
+    folders.set(family, directory);
+  }
+  const launch = () => launchRepoElectron({ args: ["."], cwd: resolve(__dirname, "..", ".."),
+    env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: join(root, "profile") } });
+  let app = await launch();
+  try {
+    let page = await app.firstWindow();
+    await page.waitForLoadState("domcontentloaded");
+    await expect.poll(() => page.evaluate(() => typeof (window as any).quantumScenes?.open)).toBe("function");
+    for (const family of ["square", "honeycomb", "simple_cubic"]) {
+      const directory = folders.get(family)!;
+      await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, directory);
+      await app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command", { command: "file:open-quantum-scene" });
+      });
+      await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
+      await page.getByRole("button", { name: "Reciprocal space" }).click();
+      const inspector = page.getByTestId("quantum-reciprocal-inspector");
+      await expect(inspector).toContainText("rad / schematic primitive spacing");
+      await expect(inspector).toContainText("aᵢ·bⱼ = 2πδᵢⱼ");
+      await expect(inspector).toContainText("primitive-bz");
+      await expect(page.getByTestId("quantum-primitive-objects")).toContainText("symmetry-points");
+      await expect(page.getByTestId("quantum-scene-geometry").getByTestId("surface-viewer-canvas-host"))
+        .toHaveAttribute("data-rendered-mesh-count", "3");
+      const target = family === "honeycomb" ? "K" : family === "simple_cubic" ? "R" : "X";
+      await page.getByRole("button", { name: `Select k-point ${target} (${target})` }).click();
+      await expect(page.getByTestId("quantum-k-selection")).toContainText(`(${target})`);
+      await expect(page.getByTestId("quantum-k-selection")).toContainText("Source object: symmetry-points");
+      await expect(page.getByTestId("quantum-k-selection")).toContainText("kx:");
+      await page.getByRole("button", { name: "Inspect first sample of symmetry-path" }).click();
+      await expect(page.getByTestId("quantum-k-path-selection")).toContainText("Gamma →");
+      await expect(page.getByTestId("quantum-k-selection")).toHaveCount(0);
+      if (family === "square") {
+        const original = Buffer.from(await readFile(join(directory, "symmetry-points.f64")));
+        const altered = Buffer.from(original); altered[0] ^= 1;
+        await writeFile(join(directory, "symmetry-points.f64"), altered);
+        await page.getByRole("button", { name: "Select k-point X (X)" }).click();
+        await expect(inspector.getByRole("alert")).toContainText("integrity");
+        await expect(page.getByTestId("quantum-k-selection")).toHaveCount(0);
+        await writeFile(join(directory, "symmetry-points.f64"), original);
+        await page.getByRole("button", { name: "Select k-point X (X)" }).click();
+        await expect(page.getByTestId("quantum-k-selection")).toContainText("(X)");
+      }
+      await page.getByTestId("quantum-scene-close").click();
+    }
+    await app.close();
+    app = await launch();
+    page = await app.firstWindow();
+    await page.waitForLoadState("domcontentloaded");
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command", { command: "file:reopen-quantum-scene" });
+    });
+    await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
+    await page.getByRole("button", { name: "Reciprocal space" }).click();
+    await expect(page.getByTestId("quantum-reciprocal-inspector")).toContainText("b3=");
+    await page.getByRole("button", { name: "Select k-point R (R)" }).click();
+    await expect(page.getByTestId("quantum-k-selection")).toContainText("(R)");
+    await page.getByTestId("quantum-scene-close").click();
+    const qwz = resolve(__dirname, "..", "fixtures", "quantum-scene",
+      "run-97a132d1d712414bb62bb8c9212f517e-bands.qscene");
+    await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, qwz);
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command", { command: "file:open-quantum-scene" });
+    });
+    await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
+    await page.getByRole("button", { name: "Reciprocal space" }).click();
+    await expect(page.getByTestId("quantum-scene-preview")).toContainText("Source axes: kx, ky, energy");
+    await expect(page.getByTestId("quantum-reciprocal-inspector")).toContainText("rad / lattice constant");
+    await page.getByRole("button", { name: "Select k-point M (M)" }).click();
+    await expect(page.getByTestId("quantum-k-selection")).toContainText("kz: 0.00000 rad / lattice constant");
+  } finally {
+    await app.close();
+    const safeRoot = resolve(root);
+    if (!safeRoot.startsWith(resolve(tmpdir()) + sep) || !safeRoot.includes("m3d-q05-reciprocal-"))
+      throw new Error("Unsafe reciprocal E2E cleanup path");
     await rm(safeRoot, { recursive: true, force: true });
   }
 });
