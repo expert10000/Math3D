@@ -25,8 +25,10 @@ test("Ripple Wave opens Graph, Surface, Mesh and Geometry and restores the selec
       const groups = Array.from(element.children, child => child.getBoundingClientRect());
       return { strip: { x: strip.x, right: strip.right }, groups: groups.map(group => ({ x: group.x, right: group.right })) };
     });
+    const surfaceViewerBounds = await page.getByTestId("main-viewer").boundingBox();
     expect(surfaceViewerControls.strip.x).toBeGreaterThanOrEqual(surfaceProjectBounds!.x + surfaceProjectBounds!.width + 8);
     expect(surfaceViewerControls.groups.every(group => group.x >= surfaceProjectBounds!.x + surfaceProjectBounds!.width + 8)).toBe(true);
+    expect(surfaceViewerBounds!.x - surfaceProjectBounds!.x - surfaceProjectBounds!.width).toBeLessThanOrEqual(12);
     expect(Math.abs(surfaceProjectBounds!.y - surfaceActionsBounds!.y)).toBeLessThanOrEqual(3);
     expect(surfaceActionsBounds!.x).toBeGreaterThanOrEqual(surfaceProjectBounds!.x + surfaceProjectBounds!.width);
     expect(surfaceToolbarBounds!.x).toBeGreaterThanOrEqual(surfaceProjectBounds!.x + surfaceProjectBounds!.width);
