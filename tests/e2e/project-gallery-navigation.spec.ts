@@ -191,7 +191,8 @@ test("Project documents and Notes can stay beside the live viewer", async () => 
     await page.screenshot({ path: test.info().outputPath("project-beside-viewer.png") });
     const retainedCanvas = page.getByTestId("project-source-editor").locator("canvas").first();
     await retainedCanvas.evaluate(element => element.setAttribute("data-workbook-return", "same-canvas"));
-    await expect(projects.getByTestId("project-breadcrumb")).toContainText("Catenoid Evidence Notebook");
+    await expect(projects.getByTestId("project-explorer-header").locator("h2")).toHaveText("Catenoid Evidence Notebook");
+    await expect(projects.getByTestId("project-breadcrumb")).toContainText("catenoid");
     await projects.getByTestId("project-view-detail-middle").click();
     await expect(page.getByTestId("project-middle-detail")).toBeVisible();
     await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", surface.expected.id);

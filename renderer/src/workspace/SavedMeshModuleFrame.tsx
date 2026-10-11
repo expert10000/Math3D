@@ -3,7 +3,7 @@ import type { MeshDocument } from "@math3d/core";
 import "./documentWorkspace.css";
 
 /** Keep the saved Mesh identity visible while its buffer uses the normal Mesh workspace. */
-export function SavedMeshModuleFrame({ document, projectTitle, sourceSurfaceTitle, onProject, onStudy, onSurface, onClose, children }: {
+export function SavedMeshModuleFrame({ document, sourceSurfaceTitle, onProject, onStudy, onSurface, onClose, children }: {
   document: MeshDocument | null;
   projectTitle?: string;
   sourceSurfaceTitle?: string;
@@ -17,7 +17,7 @@ export function SavedMeshModuleFrame({ document, projectTitle, sourceSurfaceTitl
   return <section className="saved-surface-module" data-testid="project-source-editor" data-document-id={document.identity.id} data-source-hash={document.identity.structuralHash} data-document-module="mesh">
     <div className="document-toolbar" data-testid="saved-mesh-toolbar">
       <button type="button" onClick={onProject}>Project</button>
-      <strong data-testid="document-breadcrumb">{projectTitle ?? "Project"} → Mesh → {document.metadata.label}</strong>
+      <strong data-testid="document-breadcrumb">Mesh · {document.metadata.label}</strong>
       <span>Revision {document.identity.revision}</span>
       <button type="button" data-testid="project-mesh-module-view" aria-pressed="true">Mesh module</button>
       <button type="button" data-testid="project-mesh-study-view" onClick={onStudy}>Saved studies</button>

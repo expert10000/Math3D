@@ -4,7 +4,7 @@ import type { AdditionalProjectSession } from "../projects/additionalProjectSess
 import type { relatedDocuments } from "./relatedDocuments";
 
 /** Keep document navigation in the same position in native and Custom views. */
-export function SavedSurfaceToolbar({ session, title, projectTitle, custom, onSelectView, onUndo, onRedo, onProject, onClose, related, onOpenRelated, onPresentation, error }: {
+export function SavedSurfaceToolbar({ session, title, custom, onSelectView, onUndo, onRedo, onProject, onClose, related, onOpenRelated, onPresentation, error }: {
   session: AdditionalProjectSession; title?: string; projectTitle?: string; custom: boolean;
   onSelectView: (view: "surface" | "custom") => void; onUndo: () => void; onRedo: () => void; onProject: () => void; onClose: () => void;
   related?: ReturnType<typeof relatedDocuments>; onOpenRelated?: (id: string, module: KernelWorkspaceModule) => void;
@@ -17,7 +17,7 @@ export function SavedSurfaceToolbar({ session, title, projectTitle, custom, onSe
       <button data-testid="document-custom-view" aria-pressed={custom} onClick={() => onSelectView("custom")}>Custom</button>
     </div>
     <button data-testid="document-project-open" onClick={onProject}>Project overview</button>
-    <strong data-testid="document-breadcrumb" title={`${projectTitle ?? "Project"} → Surface → ${title ?? "Surface"}`}>{projectTitle ?? "Project"} → Surface → {title ?? "Surface"}</strong>
+    <strong data-testid="document-breadcrumb" title={`Surface · ${title ?? "Surface"}`}>Surface · {title ?? "Surface"}</strong>
     <span data-testid="project-source-revision">Revision {session.document().identity.revision}</span>
     <button data-testid="project-source-undo" disabled={!history.undoDepth} onClick={onUndo}>Undo document</button>
     <button data-testid="project-source-redo" disabled={!history.redoDepth} onClick={onRedo}>Redo document</button>

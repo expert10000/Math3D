@@ -69,7 +69,7 @@ export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, p
     integratedInspector={!!nativeInspector}
     toolbar={moduleView ? <SavedSurfaceToolbar session={session} title={documentTitle} projectTitle={projectTitle} custom={customView} onSelectView={view => onSelectView?.(view)} onUndo={() => action(() => session.undo())} onRedo={() => action(() => session.redo())} onProject={onOpenProject} onClose={onClose} related={related} onOpenRelated={onOpenRelated} onPresentation={view => { session.presentation = view; setPresentation(view); setProbe(false); setProbeResult(null); changed(); }} error={error} /> : <>
       <button data-testid="document-project-open" onClick={onOpenProject}>Project overview</button>
-      <strong data-testid="document-breadcrumb">{projectTitle ?? "Project"} → {session.original.module === "surface" ? "Surface" : session.original.module} → {documentTitle ?? ("metadata" in document ? document.metadata.title : session.original.module)}</strong>
+      <strong data-testid="document-breadcrumb">{session.original.module === "surface" ? "Surface" : session.original.module} · {documentTitle ?? ("metadata" in document ? document.metadata.title : session.original.module)}</strong>
       <span data-testid="project-source-revision">Revision {document.identity.revision}</span>
       <button data-testid="project-source-undo" disabled={!history.undoDepth} onClick={() => action(() => session.undo())}>Undo document</button>
       <button data-testid="project-source-redo" disabled={!history.redoDepth} onClick={() => action(() => session.redo())}>Redo document</button>

@@ -163,9 +163,25 @@ body:has(.project-viewer-panel) [data-testid="notes-toggle"],body:has(.project-v
 .project-viewer-panel .project-gallery-heading { align-items:flex-start; }
 .project-viewer-panel .project-gallery-heading h2 { font-size:19px; }
 .project-viewer-panel .project-context-breadcrumb { min-height:54px; }
+.project-viewer-panel .project-companion-header { position:static;padding:9px 14px 7px; }
+.project-companion-header .project-gallery-heading { flex-wrap:nowrap;align-items:center;min-width:0; }
+.project-companion-header .project-gallery-heading > div:first-child { min-width:0;flex:1; }
+.project-companion-header .project-gallery-heading h2 { display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;line-height:1.2; }
+.project-companion-header .project-gallery-heading-actions { flex:0 0 auto;gap:4px!important; }
+.project-companion-header .project-gallery-heading-actions button { min-width:25px;min-height:24px;padding:2px 6px; }
+.project-viewer-panel .project-companion-header .project-context-breadcrumb { min-height:24px;height:24px;flex-wrap:nowrap;overflow:hidden;padding:2px 0; }
+.project-companion-header .project-context-breadcrumb strong { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.project-companion-header .project-breadcrumb-module { text-transform:capitalize;flex:0 0 auto; }
+.project-companion-header .project-history-controls { display:flex;gap:4px;margin:2px 0; }
+.project-companion-header .project-history-controls button { min-width:25px;min-height:22px;padding:1px 6px;font:600 18px/1 Georgia,serif; }
+.project-companion-header .project-placement-controls { margin-top:5px;gap:4px;align-items:center; }
+.project-companion-header .project-placement-controls button { padding:2px 7px; }
+.project-placement-label { margin-right:4px;color:#64748b;font:700 10px/1 system-ui,sans-serif;text-transform:uppercase;letter-spacing:.08em; }
 .project-viewer-panel .project-gallery-statusline { display:none; }
 .project-viewer-panel .project-gallery-layout { padding:12px 14px; }
-.project-viewer-switcher { position:sticky;top:0;z-index:2;padding:0 0 10px;background:#fff; }
+.project-viewer-panel[data-project-placement="left"] .project-gallery-layout { display:block;flex:none;min-height:0; }
+.project-viewer-panel[data-project-placement="left"] .project-gallery-workspace { height:auto;overflow:visible; }
+.project-viewer-switcher { position:static;padding:0 0 10px;background:#fff; }
 .project-viewer-switcher label { display:grid;gap:4px;font-size:12px;font-weight:700;color:#45617d; }
 .project-viewer-switcher select { width:100%; }
 .project-document-tree { padding:0 0 10px;margin:0 0 10px;border-bottom:1px solid #e2e8f0; }
@@ -200,6 +216,7 @@ body:has(.project-viewer-panel) [data-testid="notes-toggle"],body:has(.project-v
 body:has(.project-viewer-panel:not(.project-embedded-panel)[data-project-placement="all"]) .math3d-app > :is([data-testid="module-workspace"],[data-testid="project-source-editor"]) { display:none!important; }
 @media(min-width:1200px) {
   .project-viewer-panel[data-project-placement="left"] { position:fixed!important;top:var(--project-companion-top,142px)!important;bottom:14px!important;left:14px!important;width:360px!important;height:auto!important;max-height:none!important;z-index:2501;border:1px solid #cbd5e1;border-radius:12px;box-shadow:0 12px 32px #0f172a20;overflow:auto; }
+  .project-viewer-panel.project-embedded-panel[data-project-placement="left"] { overflow-y:auto!important;overflow-x:hidden!important; }
   body:has(.project-viewer-panel[data-project-placement="left"]) .math3d-app :is([data-testid="surface-module-actions"],[data-testid="curves-professional-shell"],[data-testid="geometry-professional-shell"],[data-testid="geometry-professional-expanded-group"],[data-testid="workspace-context-label"],[data-testid="global-module-controls"]) { margin-left:380px!important;width:calc(100% - 380px)!important;box-sizing:border-box; }
   body:has(.project-viewer-panel[data-project-placement="left"]) .math3d-app > :is([data-testid="project-geometry-editor"],[data-testid="project-topology-editor"],[data-testid="project-editor-history"],[data-testid="project-volume-editor"],[data-testid="project-scientific-editor"],[data-testid="project-mesh-editor"]) { margin-left:380px!important;width:calc(100% - 380px)!important;box-sizing:border-box; }
   body:has(.project-viewer-panel.project-embedded-panel[data-project-placement="left"]) [data-testid="project-source-editor"] > .document-toolbar { margin-left:380px!important;width:calc(100% - 380px)!important;box-sizing:border-box; }
