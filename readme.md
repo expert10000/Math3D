@@ -49,7 +49,7 @@ Documentation:
 
 ## Verified quantum scenes from Theory Lab
 
-Math3D desktop can open a `quantum-scene/v1` `.qscene` folder with
+Math3D desktop can open a verified `quantum-scene/v1` or `quantum-scene/v2` `.qscene` folder with
 **File → Open verified quantum scene**. Theory Lab's **Scenes** page can export bounded
 square, honeycomb, and simple-cubic geometry examples; saved numerical scenes
 also support a direct **Open in Math3D** checkout handoff. The read-only viewer
@@ -58,10 +58,11 @@ and can preview a bounded derived open supercell. It does not infer chemistry,
 expand supplied bonds, or create periodic-wrap bonds. Native 1D and periodic
 lattice metadata remain outside the frozen v1 contract.
 
-M3D-Q05 adds a separate **Reciprocal space** view for supplied square,
-honeycomb, cubic and QWZ primitive-zone guides. Verified k-point and path
-selection reports source IDs and reciprocal units; native 1D reciprocal
-metadata remains a contract gap.
+M3D-Q05 adds a separate **Reciprocal space** view for supplied SSH 1D,
+square, honeycomb, cubic and QWZ primitive-zone guides. Verified k-point and
+path selection reports source IDs and reciprocal units. SSH uses a narrow v2
+scene extension; v1 remains strict. Native 1D lattice metadata remains a
+separate M3D-Q04 gap.
 
 Follow [the Lab-to-Math3D lattice walkthrough](docs/quantum-lattice-usage.md)
 for exact steps, build requirements, saved-run distinctions and verification.

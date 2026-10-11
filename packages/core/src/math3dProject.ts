@@ -17,7 +17,7 @@ export type ProjectWorkbookReference = Readonly<{
 }>;
 /** External, immutable quantum-scene source. The bundle is never embedded or edited by Math3D. */
 export type ProjectQuantumSceneReference = Readonly<{
-  format: "quantum-scene/v1";
+  format: "quantum-scene/v1" | "quantum-scene/v2";
   title: string;
   directory: string;
   sceneFingerprint: string;
@@ -42,7 +42,7 @@ const projectContent = (workspace: MixedWorkspaceDocument, workbooks?: readonly 
   workbooks?.length || notes?.length || quantumScenes?.length ? { workspace, ...(workbooks?.length ? { workbooks } : {}), ...(notes?.length ? { notes } : {}), ...(quantumScenes?.length ? { quantumScenes } : {}) } : workspace;
 const validQuantumSceneReference = (value: unknown): value is ProjectQuantumSceneReference =>
   record(value) && exact(value, ["format", "title", "directory", "sceneFingerprint"]) &&
-  value.format === "quantum-scene/v1" && validTitle(value.title) &&
+  ["quantum-scene/v1", "quantum-scene/v2"].includes(String(value.format)) && validTitle(value.title) &&
   typeof value.directory === "string" && value.directory.length >= 1 && value.directory.length <= 2048 &&
   value.directory.trim() === value.directory && !/[\x00-\x1f]/.test(value.directory) &&
   typeof value.sceneFingerprint === "string" && /^[a-f0-9]{64}$/.test(value.sceneFingerprint);
@@ -86,7 +86,7 @@ export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DP
       if (entry.replay !== null || checkpoint.format !== "math3d.quantum-scene-document")
         return { ok: false, errors: ["Quantum-scene documents must be compact, read-only checkpoints."] };
       const linked = (value.quantumScenes as ProjectQuantumSceneReference[] | undefined)?.find((item) => item.sceneFingerprint === checkpoint.source.sceneFingerprint);
-      if (!linked || linked.directory !== checkpoint.location.directory)
+      if (!linked || linked.directory !== checkpoint.location.directory || linked.format !== checkpoint.source.sceneSchema)
         return { ok: false, errors: ["Quantum-scene document requires its matching external Project reference."] };
     }
     if (canonicalJsonByteLength(value.metadata) > 32 * 1024) return { ok: false, errors: ["Project metadata exceeds 32 KiB."] };
@@ -175,7 +175,7 @@ export const adoptMixedWorkspaceProject = (workspace: MixedWorkspaceDocument, ti
   const normalized = normalizeMixedWorkspaceDocument(workspace);
   if (!normalized.ok) throw new TypeError(normalized.errors.join(" "));
   const quantumScenes: ProjectQuantumSceneReference[] = normalized.value.entries.flatMap((entry) => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document"
-    ? [{ format: "quantum-scene/v1" as const, title: entry.checkpoint.metadata.title, directory: entry.checkpoint.location.directory,
+    ? [{ format: entry.checkpoint.source.sceneSchema, title: entry.checkpoint.metadata.title, directory: entry.checkpoint.location.directory,
       sceneFingerprint: entry.checkpoint.source.sceneFingerprint }] : []).sort((a, b) => a.sceneFingerprint.localeCompare(b.sceneFingerprint));
   const stableKey = { importedFormat: MIXED_WORKSPACE_FORMAT, documentIds: normalized.value.entries.map((entry) => entry.expected.id).sort() };
   return requireProject({ format: MATH3D_PROJECT_FORMAT, schemaVersion: MATH3D_PROJECT_SCHEMA_VERSION,

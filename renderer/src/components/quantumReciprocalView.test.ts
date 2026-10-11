@@ -49,4 +49,19 @@ describe("source-backed reciprocal geometry", () => {
     expect(reciprocalPointFromPrimitive(reciprocal, path)).toBeNull();
     expect(reciprocalPathFromPrimitive(reciprocal, site)).toBeNull();
   });
+  it("keeps 1D zone endpoints pickable and the supplied single basis visible", () => {
+    const oneD: ReciprocalDefinition={...reciprocal,directBasis:[[1,0,0]],basis:[[2*Math.PI,0,0]],
+      points:[{id:"Xminus",label:"−π",position:[-Math.PI,0,0]},{id:"Gamma",label:"Γ",position:[0,0,0]},
+        {id:"Xplus",label:"+π",position:[Math.PI,0,0]}],
+      paths:[{object:"k-path",label:"−π → Γ → +π",points:["Xminus","Gamma","Xplus"]}]};
+    const oneDGeometry={points:[...oneD.points.map((point,index)=>({x:point.position[0],y:0,z:0,
+      id:`k-points:site:${index}`})),{x:-Math.PI,y:0,z:0,id:"bz:site:0"},
+      {x:Math.PI,y:0,z:0,id:"bz:site:1"}],segments:geometry.segments};
+    const view=buildQuantumReciprocalView(oneDGeometry,oneD,objects,objects.map(object=>object.id));
+    expect(view.geometry.points).toHaveLength(5);
+    expect(view.labels.map(label=>label.text)).toEqual(["−π","Γ","+π","b1"]);
+    const meshes=buildQuantumPrimitiveMeshes(view.geometry,view.objects,view.mappedObjectIds);
+    const point=meshes.find(mesh=>mesh.id==="k-points")!.primitivesByFace[8];
+    expect(reciprocalPointFromPrimitive(oneD,point)?.id).toBe("Gamma");
+  });
 });

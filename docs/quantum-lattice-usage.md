@@ -85,10 +85,15 @@ view. Direct-basis spacing and reciprocal `rad / spacing` are kept distinct;
 Math3D neither calculates the Brillouin zone nor folds supercell repeats.
 Selection re-verifies the complete bundle and refuses modified bytes.
 
-The frozen v1 `reciprocal` block admits 2D/3D bases only. A supplied SSH/1D
-band scene remains available as Geometry, but it does not acquire a fabricated
-1D reciprocal basis or Brillouin-zone inspector. Full 1D Q05 acceptance needs
-a separately versioned producer contract.
+For SSH, first save a topology run in Theory Lab and select its **Bands** scene
+view. That export uses `quantum-scene/v2`: the worker's verified `[-π, π]`
+samples and the model's unit-cell convention back a one-vector reciprocal basis,
+two zone endpoints and the −π → Γ → +π path. Open the bundle in Math3D and
+choose **Reciprocal space**. The inspector shows only `k` in
+`rad / cell spacing`; no saved Bloch eigenvector or interpolated k-state is
+available. Existing `quantum-scene/v1` fixtures keep their 2D/3D semantics.
+The outer `.qscene` bundle format remains v1. M3D-Q04's separate native 1D
+lattice/periodic-bond metadata is still open.
 
 Hashes establish byte integrity relative to the bundle, not producer identity
 or scientific correctness. Use only scenes from sources you trust. For the

@@ -1215,7 +1215,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                     void onOpenQuantumScene(reference).then(() => { setProject(current => current?.identity.id === expectedProjectId ? upsertMath3DProjectQuantumScene(current, reference) : current); setQuantumSceneMessage("Verified source staged. Save project to retain the link."); })
                       .catch(error => setQuantumSceneMessage(`Attachment refused: ${String((error as Error).message)}`));
                   }}>Attach open verified scene</button></div>
-              <p>External quantum-scene/v1 bundles stay read-only. Opening a link re-verifies its fingerprint and source files; Project JSON does not embed the arrays.</p>
+              <p>External quantum-scene/v1 and v2 bundles stay read-only. Opening a link re-verifies its fingerprint and source files; Project JSON does not embed the arrays.</p>
               {!project?.quantumScenes?.length && <small>Open a verified quantum scene from File, then attach it here.</small>}
               {project?.quantumScenes?.map(item => <article key={item.sceneFingerprint} className="project-workspace-workbook">
                 <strong>{item.title}</strong><small style={{ overflowWrap: "anywhere" }}> · SHA-256 {item.sceneFingerprint}</small>

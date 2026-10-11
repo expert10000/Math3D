@@ -33183,7 +33183,11 @@ const App: React.FC = () => {
   const quantumSceneNavigationSequence = useRef(0);
   const [quantumSceneReference, setQuantumSceneReference] = useState<QuantumSceneWorkspaceReference | null>(null);
   const [verifiedQuantumSceneTitle, setVerifiedQuantumSceneTitle] = useState<string | null>(null);
-  useEffect(() => { if (quantumScenePreview) setVerifiedQuantumSceneTitle(quantumScenePreview.document.title); }, [quantumScenePreview]);
+  const [verifiedQuantumSceneFormat, setVerifiedQuantumSceneFormat] = useState<"quantum-scene/v1" | "quantum-scene/v2">("quantum-scene/v1");
+  useEffect(() => { if (quantumScenePreview) {
+    setVerifiedQuantumSceneTitle(quantumScenePreview.document.title);
+    setVerifiedQuantumSceneFormat(quantumScenePreview.document.extensions["quantum-scene/v2"] ? "quantum-scene/v2" : "quantum-scene/v1");
+  } }, [quantumScenePreview]);
   const [activeWorkbookId, setActiveWorkbookId] = useState<string | null>(() => {
     if (REPLAY_PAYLOAD?.activeWorkbookId) return REPLAY_PAYLOAD.activeWorkbookId;
     return localStorage.getItem(WORKBOOK_ACTIVE_KEY);
@@ -79297,7 +79301,7 @@ case "mobius":
         onProjectsOpenChange={setProjectsOpen}
         noteRequest={projectNoteRequest}
         onCurrentProjectChange={(project) => { activeNotebookProjectRef.current = project; setNotebookProjectVersion((version) => version + 1); }}
-        verifiedQuantumScene={verifiedQuantumSceneTitle && quantumSceneReference ? { format: "quantum-scene/v1", title: verifiedQuantumSceneTitle, ...quantumSceneReference } : null}
+        verifiedQuantumScene={verifiedQuantumSceneTitle && quantumSceneReference ? { format: verifiedQuantumSceneFormat, title: verifiedQuantumSceneTitle, ...quantumSceneReference } : null}
         onOpenQuantumScene={async (reference) => {
           if (!window.quantumScenes?.openReference) throw new TypeError("Verified quantum scenes are available only in the desktop app.");
           const opened = await window.quantumScenes.openReference({ directory: reference.directory, sceneFingerprint: reference.sceneFingerprint });

@@ -521,7 +521,7 @@ test("verified reciprocal fixtures keep k-space IDs, units and selection across 
   test.setTimeout(180_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-q05-reciprocal-"));
   const folders = new Map<string, string>();
-  for (const family of ["square", "honeycomb", "simple_cubic"]) {
+  for (const family of ["ssh", "square", "honeycomb", "simple_cubic"]) {
     const directory = join(root, `${family}.qscene`);
     await writeReciprocalFixture(directory, family);
     folders.set(family, directory);
@@ -533,7 +533,7 @@ test("verified reciprocal fixtures keep k-space IDs, units and selection across 
     let page = await app.firstWindow();
     await page.waitForLoadState("domcontentloaded");
     await expect.poll(() => page.evaluate(() => typeof (window as any).quantumScenes?.open)).toBe("function");
-    for (const family of ["square", "honeycomb", "simple_cubic"]) {
+    for (const family of ["ssh", "square", "honeycomb", "simple_cubic"]) {
       const directory = folders.get(family)!;
       await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, directory);
       await app.evaluate(({ BrowserWindow }) => {
@@ -542,30 +542,34 @@ test("verified reciprocal fixtures keep k-space IDs, units and selection across 
       await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
       await page.getByRole("button", { name: "Reciprocal space" }).click();
       const inspector = page.getByTestId("quantum-reciprocal-inspector");
-      await expect(inspector).toContainText("rad / schematic primitive spacing");
+      await expect(inspector).toContainText(family === "ssh" ? "rad / cell spacing" : "rad / schematic primitive spacing");
       await expect(inspector).toContainText("aᵢ·bⱼ = 2πδᵢⱼ");
       await expect(inspector).toContainText("primitive-bz");
       await expect(page.getByTestId("quantum-primitive-objects")).toContainText("symmetry-points");
       await expect(page.getByTestId("quantum-scene-geometry").getByTestId("surface-viewer-canvas-host"))
         .toHaveAttribute("data-rendered-mesh-count", "3");
-      const target = family === "honeycomb" ? "K" : family === "simple_cubic" ? "R" : "X";
-      await page.getByRole("button", { name: `Select k-point ${target} (${target})` }).click();
+      const target = family === "honeycomb" ? "K" : family === "simple_cubic" ? "R" : family === "ssh" ? "Gamma" : "X";
+      await page.getByRole("button", { name: family === "ssh" ? "Select k-point Γ (Gamma)" : `Select k-point ${target} (${target})` }).click();
       await expect(page.getByTestId("quantum-k-selection")).toContainText(`(${target})`);
       await expect(page.getByTestId("quantum-k-selection")).toContainText("Source object: symmetry-points");
-      await expect(page.getByTestId("quantum-k-selection")).toContainText("kx:");
+      await expect(page.getByTestId("quantum-k-selection")).toContainText(family === "ssh" ? "k:" : "kx:");
+      if (family === "ssh") {
+        await expect(page.getByTestId("quantum-k-selection")).not.toContainText("ky:");
+        await expect(page.getByTestId("quantum-scene-preview")).toContainText("Verified quantum-scene/v2");
+      }
       await page.getByRole("button", { name: "Inspect first sample of symmetry-path" }).click();
-      await expect(page.getByTestId("quantum-k-path-selection")).toContainText("Gamma →");
+      await expect(page.getByTestId("quantum-k-path-selection")).toContainText(family === "ssh" ? "Xminus →" : "Gamma →");
       await expect(page.getByTestId("quantum-k-selection")).toHaveCount(0);
-      if (family === "square") {
+      if (family === "square" || family === "ssh") {
         const original = Buffer.from(await readFile(join(directory, "symmetry-points.f64")));
         const altered = Buffer.from(original); altered[0] ^= 1;
         await writeFile(join(directory, "symmetry-points.f64"), altered);
-        await page.getByRole("button", { name: "Select k-point X (X)" }).click();
+        await page.getByRole("button", { name: family === "ssh" ? "Select k-point Γ (Gamma)" : "Select k-point X (X)" }).click();
         await expect(inspector.getByRole("alert")).toContainText("integrity");
         await expect(page.getByTestId("quantum-k-selection")).toHaveCount(0);
         await writeFile(join(directory, "symmetry-points.f64"), original);
-        await page.getByRole("button", { name: "Select k-point X (X)" }).click();
-        await expect(page.getByTestId("quantum-k-selection")).toContainText("(X)");
+        await page.getByRole("button", { name: family === "ssh" ? "Select k-point Γ (Gamma)" : "Select k-point X (X)" }).click();
+        await expect(page.getByTestId("quantum-k-selection")).toContainText(family === "ssh" ? "(Gamma)" : "(X)");
       }
       await page.getByTestId("quantum-scene-close").click();
     }
@@ -593,7 +597,8 @@ test("verified reciprocal fixtures keep k-space IDs, units and selection across 
     await expect(page.getByTestId("quantum-scene-preview")).toContainText("Source axes: kx, ky, energy");
     await expect(page.getByTestId("quantum-reciprocal-inspector")).toContainText("rad / lattice constant");
     await page.getByRole("button", { name: "Select k-point M (M)" }).click();
-    await expect(page.getByTestId("quantum-k-selection")).toContainText("kz: 0.00000 rad / lattice constant");
+    await expect(page.getByTestId("quantum-k-selection")).toContainText("ky: 3.14159 rad / lattice constant");
+    await expect(page.getByTestId("quantum-k-selection")).not.toContainText("kz:");
   } finally {
     await app.close();
     const safeRoot = resolve(root);

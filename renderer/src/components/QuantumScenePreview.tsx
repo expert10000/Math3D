@@ -13,6 +13,7 @@ import { buildQuantumReciprocalView, reciprocalPathFromPrimitive, reciprocalPoin
 
 type Vector3 = { x: number; y: number; z: number };
 type SceneSource = {
+  schema: "quantum-scene/v1" | "quantum-scene/v2";
   provenance: { runId: string; model: string; resultSha256: string; engine: string; engineVersion: string;
     kind?: "geometry-fixture" | "numerical-result"; parameters?: Record<string, number | string> };
   coordinates: { axes: [string, string, string]; units: [string, string, string]; handedness: string };
@@ -40,7 +41,7 @@ type PickedBandSample = { objectId: string; label: string; sampleId: string; poi
 
 export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; onClose: () => void }) {
   const document = opened.document;
-  const details = document.extensions["quantum-scene/v1"] as { scene: SceneSource; selectionTransferred: false; latticeSamples?: LatticeSampleIdentity[] };
+  const details = (document.extensions["quantum-scene/v2"] ?? document.extensions["quantum-scene/v1"]) as { scene: SceneSource; selectionTransferred: false; latticeSamples?: LatticeSampleIdentity[] };
   const scene = details.scene;
   const count = (document.geometry.points?.length ?? 0) + (document.geometry.segments?.length ?? 0) +
     (document.geometry.triangles?.length ?? 0);
@@ -206,7 +207,7 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
       <div style={{ width: "min(1200px, 96vw)", height: "min(790px, 94vh)", minHeight: 360, background: "var(--panel-strong, #fff)",
         color: "var(--text, #172033)", borderRadius: 12, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", overflow: "hidden" }}>
         <header style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, borderBottom: "1px solid var(--border, #cbd5e1)" }}>
-          <div><strong>{document.title}</strong><div style={{ fontSize: 12 }}>Verified quantum-scene/v1 · {scene.provenance.model} · Save a workspace or attach it to a Project to retain this source</div></div>
+          <div><strong>{document.title}</strong><div style={{ fontSize: 12 }}>Verified {scene.schema} · {scene.provenance.model} · Save a workspace or attach it to a Project to retain this source</div></div>
           <button type="button" onClick={onClose} data-testid="quantum-scene-close">Close</button>
         </header>
         <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)" }}>
@@ -271,13 +272,14 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
             <div><b>Source coordinate units:</b> {scene.coordinates.units.join(", ")}</div>
             {scene.reciprocal && <section data-testid="quantum-reciprocal-inspector">
               <h3>Supplied reciprocal geometry</h3>
-              <div>Reciprocal coordinates: kx, ky, kz · {scene.reciprocal.reciprocalUnit}</div>
+              <div>Reciprocal coordinates: {(scene.reciprocal.basis.length===1 ? ["k"] : ["kx", "ky", "kz"].slice(0, scene.reciprocal.basis.length)).join(", ")} · {scene.reciprocal.reciprocalUnit}</div>
               <div>Direct basis: {scene.reciprocal.directBasis.map((a, i) =>
                 `a${i + 1}=(${a.map(value => value.toPrecision(5)).join(", ")})`).join("; ")} · {scene.reciprocal.directUnit}</div>
               <div>Reciprocal basis: {scene.reciprocal.basis.map((b, i) =>
                 `b${i + 1}=(${b.map(value => value.toPrecision(5)).join(", ")})`).join("; ")} · aᵢ·bⱼ = 2πδᵢⱼ</div>
               <div>Boundaries: {scene.reciprocal.boundaryObjects.join(", ")}; supplied paths: {scene.reciprocal.paths.map(path => path.label).join("; ")}</div>
               <p>These are source-declared primitive-zone guides. No zone construction or k-state calculation runs in Math3D.</p>
+              <p>Selected k-state amplitudes: unavailable in this scene. Point and path selection reports stored geometry only.</p>
               {geometrySpace === "reciprocal" && <>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {scene.reciprocal.points.map((point, index) => <button key={point.id} type="button"
@@ -292,8 +294,8 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
                 {pickedReciprocalPoint && <div data-testid="quantum-k-selection">
                   <b>Selected supplied k-point:</b> {pickedReciprocalPoint.label} ({pickedReciprocalPoint.id})<br />
                   Source object: {pickedReciprocalPoint.sourceObjectId} · dataset sample: {pickedReciprocalPoint.sourceSampleIndex}<br />
-                  {pickedReciprocalPoint.position.map((value, axis) =>
-                    <React.Fragment key={axis}>{["kx", "ky", "kz"][axis]}: {value.toPrecision(6)} {scene.reciprocal!.reciprocalUnit}<br /></React.Fragment>)}
+                  {pickedReciprocalPoint.position.slice(0, scene.reciprocal.basis.length).map((value, axis) =>
+                    <React.Fragment key={axis}>{scene.reciprocal!.basis.length===1 ? "k" : ["kx", "ky", "kz"][axis]}: {value.toPrecision(6)} {scene.reciprocal!.reciprocalUnit}<br /></React.Fragment>)}
                 </div>}
                 {pickedReciprocalPath && <div data-testid="quantum-k-path-selection">
                   <b>Selected supplied path segment:</b> {pickedReciprocalPath.fromId} → {pickedReciprocalPath.toId}<br />

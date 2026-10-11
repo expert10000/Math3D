@@ -1,4 +1,5 @@
 import schema from "./schema";
+import schemaV2 from "./schemaV2";
 
 export type Vec3 = [number, number, number];
 export interface SceneDataset {
@@ -17,7 +18,7 @@ export interface SceneField {
   grid: { shape: [number, number, number]; origin: Vec3; spacing: Vec3; order: "xyz-z-fastest" };
 }
 export interface QuantumScene {
-  schema: "quantum-scene/v1"; id: string; title: string;
+  schema: "quantum-scene/v1" | "quantum-scene/v2"; id: string; title: string;
   provenance: { runId: string; jobId: string; model: string; engine: string; engineVersion: string;
     computedAt: string; resultSha256: string; adapter: "qvis/1";
     kind?: "geometry-fixture" | "numerical-result";
@@ -63,11 +64,11 @@ export const MAX_SCENE_BYTES = 16 * 1024 * 1024;
 
 // Interpret only the vocabulary used by this fixed schema. No eval/code generation,
 // Node imports, URLs or file reads: this boundary also works under the browser CSP.
-function check(rule: any, value: any, path: string): void {
-  if (rule.$ref) return check((schema.definitions as any)[rule.$ref.split("/").pop()], value, path);
-  const fail = () => { throw new Error(`Invalid quantum-scene/v1 at ${path}`); };
+function check(rule: any, value: any, path: string, selected: any): void {
+  if (rule.$ref) return check(selected.definitions[rule.$ref.split("/").pop()], value, path, selected);
+  const fail = () => { throw new Error(`Invalid ${selected.$id} at ${path}`); };
   if (rule.anyOf) {
-    for (const candidate of rule.anyOf) { try { check(candidate, value, path); return; } catch { /* Try the next declared variant. */ } }
+    for (const candidate of rule.anyOf) { try { check(candidate, value, path, selected); return; } catch { /* Try the next declared variant. */ } }
     fail();
   }
   if ("const" in rule && value !== rule.const) fail();
@@ -79,22 +80,25 @@ function check(rule: any, value: any, path: string): void {
   } else if (rule.type === "boolean") { if (typeof value !== "boolean") fail(); }
   else if (rule.type === "array") {
     if (!Array.isArray(value) || value.length < (rule.minItems ?? 0) || value.length > (rule.maxItems ?? Infinity)) fail();
-    for (let i = 0; i < value.length; i++) check(rule.items, value[i], `${path}[${i}]`);
+    for (let i = 0; i < value.length; i++) check(rule.items, value[i], `${path}[${i}]`, selected);
   } else if (rule.type === "object") {
     if (!value || typeof value !== "object" || Array.isArray(value)) fail();
     if (Object.keys(value).length < (rule.minProperties ?? 0) || Object.keys(value).length > (rule.maxProperties ?? Infinity)) fail();
     for (const key of rule.required ?? []) if (!Object.prototype.hasOwnProperty.call(value, key)) fail();
     for (const key of Object.keys(value)) {
-      if (rule.propertyNames) check(rule.propertyNames, key, `${path}.key`);
-      if (Object.prototype.hasOwnProperty.call(rule.properties ?? {}, key)) check(rule.properties[key], value[key], `${path}.${key}`);
-      else if (rule.additionalProperties && typeof rule.additionalProperties === "object") check(rule.additionalProperties, value[key], `${path}.${key}`);
+      if (rule.propertyNames) check(rule.propertyNames, key, `${path}.key`, selected);
+      if (Object.prototype.hasOwnProperty.call(rule.properties ?? {}, key)) check(rule.properties[key], value[key], `${path}.${key}`, selected);
+      else if (rule.additionalProperties && typeof rule.additionalProperties === "object") check(rule.additionalProperties, value[key], `${path}.${key}`, selected);
       else fail();
     }
   }
 }
 
 export function assertScene(value: unknown): asserts value is QuantumScene {
-  check(schema, value, "scene");
+  const version=(value as {schema?:unknown}|null)?.schema;
+  const selected=version==="quantum-scene/v1"?schema:version==="quantum-scene/v2"?schemaV2:null;
+  if (!selected) throw new Error("Unsupported quantum-scene version");
+  check(selected, value, "scene", selected);
   const scene = value as QuantumScene;
   if (!scene.objects.length && !scene.fields?.length) throw new Error("Scene has no objects or fields");
   const unique = (ids: string[]) => { if (new Set(ids).size !== ids.length) throw new Error("Duplicate scene identity"); };
@@ -143,6 +147,12 @@ export function assertScene(value: unknown): asserts value is QuantumScene {
     const r=scene.reciprocal, objects=new Map(scene.objects.map(o=>[o.id,o]));
     unique(r.points.map(p=>p.id));unique(r.paths.map(p=>p.object));unique(r.boundaryObjects);
     if(r.directBasis.length!==r.basis.length) throw new Error("Reciprocal dimension mismatch");
+    if(scene.schema==="quantum-scene/v2"&&r.basis.length===1) {
+      if(r.boundaryObjects.length!==1||r.directBasis[0].slice(1).some(v=>Math.abs(v)>1e-9)||
+        r.basis[0].slice(1).some(v=>Math.abs(v)>1e-9)||
+        r.points.some(p=>p.position.slice(1).some(v=>Math.abs(v)>1e-9)))
+        throw new Error("1D reciprocal geometry must lie on the declared k axis");
+    }
     r.directBasis.forEach((a,i)=>r.basis.forEach((b,j)=>{if(Math.abs(a.reduce((n,v,k)=>n+v*b[k],0)-(i===j?2*Math.PI:0))>1e-9) throw new Error("Reciprocal basis is not dual (2pi convention)");}));
     const points=objects.get(r.pointObject);
     if(!points||points.kind!=="point-cloud"||datasets.get(points.positions)!.count!==r.points.length) throw new Error("Reciprocal point object mismatch");
@@ -150,7 +160,11 @@ export function assertScene(value: unknown): asserts value is QuantumScene {
       const o=objects.get(path.object);
       if(!o||o.kind!=="polyline"||datasets.get(o.positions)!.count!==path.points.length||path.points.some(id=>!r.points.some(p=>p.id===id))) throw new Error("Reciprocal path mismatch");
     }
-    for(const id of r.boundaryObjects) if(!["polyline","segments"].includes(objects.get(id)?.kind??"")) throw new Error("Reciprocal boundary mismatch");
+    for(const id of r.boundaryObjects) {
+      const boundary=objects.get(id), oneD=scene.schema==="quantum-scene/v2"&&r.basis.length===1;
+      if(!boundary || !(oneD ? boundary.kind==="point-cloud" && datasets.get(boundary.positions)?.count===2
+        : ["polyline","segments"].includes(boundary.kind))) throw new Error("Reciprocal boundary mismatch");
+    }
   }
   if(scene.bands) {
     const b=scene.bands, k=datasets.get(b.coordinates);
@@ -224,6 +238,25 @@ export async function verifyScenePayload(payload: ScenePayload, digest: (bytes: 
     };
     checkPoints(r.pointObject,r.points.map(p=>p.position));
     for(const path of r.paths) checkPoints(path.object,path.points.map(id=>r.points.find(p=>p.id===id)!.position));
+    if(payload.scene.schema==="quantum-scene/v2"&&r.basis.length===1) {
+      const b=r.basis[0], boundary=arrays.get(objects.get(r.boundaryObjects[0])!.positions)!;
+      for(const id of [r.pointObject,...r.paths.map(p=>p.object),...r.boundaryObjects]) {
+        const d=payload.scene.datasets.find(d=>d.id===objects.get(id)!.positions)!;
+        if(d.unit!==r.reciprocalUnit) throw new Error("1D reciprocal object unit mismatch");
+      }
+      if(payload.scene.bands) {
+        const d=payload.scene.datasets.find(d=>d.id===payload.scene.bands!.coordinates)!;
+        if(d.unit!==r.reciprocalUnit) throw new Error("1D band k-unit mismatch");
+      }
+      for(let axis=0;axis<3;axis++)
+        if(Math.abs(boundary[axis]+b[axis]/2)>1e-9||Math.abs(boundary[axis+3]-b[axis]/2)>1e-9)
+          throw new Error("1D reciprocal boundary disagrees with supplied basis");
+      if(payload.scene.bands?.kind==="path") {
+        const k=arrays.get(payload.scene.bands.coordinates)!;
+        if(Math.abs(k[0]-boundary[0])>1e-9||Math.abs(k[k.length-3]-boundary[3])>1e-9)
+          throw new Error("1D band grid disagrees with reciprocal boundary");
+      }
+    }
   }
   const bands=payload.scene.bands;
   if(bands) {

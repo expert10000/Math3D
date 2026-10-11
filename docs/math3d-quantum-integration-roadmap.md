@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; the periodic/1D lattice-metadata acceptance gate remains open under the frozen v1 contract. M3D-Q05 has a verified 2D/3D reciprocal view and source-ID selections; its 1D acceptance gate remains open. M3D-Q06–Q10 remain open.
+**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06–Q10 remain open.
 
 For the exact Theory Lab export and Math3D inspection workflow, see the
 [M3D-Q04 lattice usage guide](quantum-lattice-usage.md).
@@ -11,7 +11,7 @@ For the exact Theory Lab export and Math3D inspection workflow, see the
 
 **Executable sequence:** `M3D-Q01` through `M3D-Q10`
 
-**Upstream dependency:** portable `quantum-scene/v1` contract from the Quantum
+**Upstream dependency:** portable `quantum-scene/v1` and `quantum-scene/v2` contracts from the Quantum
 Visualization (`QVIS`) program
 
 This roadmap defines how MATH3D becomes an advanced geometry and field viewer for
@@ -426,13 +426,18 @@ distinguishable.
 
 ### M3D-Q05 — `feat(math3d-quantum): add reciprocal lattice and Brillouin zones`
 
-**Implemented (bounded 2D/3D scope).** A source-backed reciprocal view isolates
+**Implemented (canonical supplied-geometry scope).** A source-backed reciprocal view isolates
 verified point, path and zone-boundary objects from other scene geometry;
 declared basis vectors are drawn as labelled guides. Point and path picking
 uses stable source IDs and sample/segment indices, retains reciprocal units,
 and re-verifies the bundle before selection. Square, honeycomb, cubic and real
-QWZ cases have import and UI acceptance. No 1D `reciprocal` block is allowed by
-the frozen v1 schema, so the planned canonical 1D acceptance remains open.
+QWZ v1 scenes remain accepted. Theory Lab now exports saved SSH bands with a
+`quantum-scene/v2` 1D basis, ±π zone endpoints and named path; Math3D verifies
+and inspects those objects without loosening the v1 minimum of two dimensions.
+The bundle container remains `quantum-scene-bundle/v1`. Project links, compact
+documents, restart and source fingerprints preserve the scene version. No
+eigenvector or k-state is claimed: current SSH band results save energies, not
+Bloch eigenstates. Selection shows the supplied k-point or path segment only.
 
 **Scope.** Render reciprocal basis vectors, Brillouin-zone geometry,
 high-symmetry points and paths, k-points, and the selected k-state. Keep real-space

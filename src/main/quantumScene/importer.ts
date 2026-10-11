@@ -101,12 +101,12 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
       up: point(Float64Array.from(scene.camera.up), 0) }],
     activeCameraId: "quantum-source-camera",
     metadata: {
-      sourceFormat: "quantum-scene/v1", sourceRunId: scene.provenance.runId,
+      sourceFormat: scene.schema, sourceRunId: scene.provenance.runId,
       sourceResultSha256: scene.provenance.resultSha256, sourceModel: scene.provenance.model,
       sourceEngine: scene.provenance.engine, sourceComputedAt: scene.provenance.computedAt,
     },
     extensions: {
-      "quantum-scene/v1": {
+      [scene.schema]: {
         scene,
         mappedObjectIds,
         deferredObjectIds,

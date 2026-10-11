@@ -80,8 +80,8 @@ try {
   await writeScene(scene);
   await writeFile(join(directory,"scene.json"),"{}\n");
   await assert.rejects(importQuantumSceneBundle(directory),/size|integrity/);
-  await writeScene({...scene,schema:"quantum-scene/v2"});
-  await assert.rejects(importQuantumSceneBundle(directory),/Invalid quantum-scene\/v1/);
+  await writeScene({...scene,schema:"quantum-scene/v3"});
+  await assert.rejects(importQuantumSceneBundle(directory),/Unsupported quantum-scene version/);
   await writeScene(scene);
   await writeFile(join(directory,"unexpected.txt"),"not part of bundle");
   await assert.rejects(importQuantumSceneBundle(directory),/unexpected or linked/);
@@ -381,7 +381,27 @@ try {
   kBytes[0] ^= 1;
   await writeFile(join(reciprocalTamper, "symmetry-points.f64"), kBytes);
   await assert.rejects(importQuantumSceneBundle(reciprocalTamper), /integrity/);
-  console.log("M3D-Q05 supplied square/honeycomb/cubic reciprocal guides, units, restart and tamper refusal passed");
+  const sshDirectory=join(root,"reciprocal-ssh.qscene");
+  const {scene:sshFixture}=await writeReciprocalFixture(sshDirectory,"ssh");
+  const ssh=await importQuantumSceneBundle(sshDirectory);
+  assert.equal(ssh.source.schema,"quantum-scene/v2");
+  assert.deepEqual(ssh.source.reciprocal,sshFixture.reciprocal);
+  assert.deepEqual(ssh.source.reciprocal.basis,[[2*Math.PI,0,0]]);
+  assert.equal(ssh.document.metadata.sourceFormat,"quantum-scene/v2");
+  assert.ok(ssh.document.extensions["quantum-scene/v2"]);
+  assert.deepEqual((await reopenQuantumSceneReference({directory:sshDirectory,
+    sceneFingerprint:sceneFingerprint(ssh)})).imported.source.reciprocal,ssh.source.reciprocal);
+  const legacySsh=structuredClone(sshFixture);legacySsh.schema="quantum-scene/v1";
+  const {assertScene}=require("../dist/main/quantumScene/index.js");
+  assert.throws(()=>assertScene(legacySsh),/directBasis/);
+  const offAxis=structuredClone(sshFixture);offAxis.reciprocal.points[0].position[1]=.1;
+  assert.throws(()=>assertScene(offAxis),/declared k axis/);
+  const sshTamper=join(root,"reciprocal-ssh-tamper.qscene");
+  await cp(sshDirectory,sshTamper,{recursive:true});
+  const sshBytes=Buffer.from(await readFile(join(sshTamper,"primitive-bz.f64")));sshBytes[0]^=1;
+  await writeFile(join(sshTamper,"primitive-bz.f64"),sshBytes);
+  await assert.rejects(importQuantumSceneBundle(sshTamper),/integrity/);
+  console.log("M3D-Q05 supplied 1D SSH, square/honeycomb/cubic reciprocal guides, units, restart and tamper refusal passed");
 
   const copied = join(root, "real-lab-tamper.qscene");
   await cp(join(fixtureRoot, fixtureNames[0]), copied, { recursive: true });
@@ -395,7 +415,7 @@ try {
 
   if (process.argv[2]) {
     const real = await importQuantumSceneBundle(process.argv[2]);
-    assert.equal(real.source.schema,"quantum-scene/v1");
+    assert.ok(["quantum-scene/v1","quantum-scene/v2"].includes(real.source.schema));
     assert.equal(real.document.metadata.sourceResultSha256,real.source.provenance.resultSha256);
     assert.ok(real.mappedObjectIds.length || real.deferredObjectIds.length || real.deferredFieldIds.length);
     console.log(`M3D-Q01 Theory Lab bundle passed: ${real.source.provenance.runId}`);

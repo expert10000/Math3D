@@ -7,6 +7,12 @@ const encode = values => { const bytes = Buffer.alloc(values.length * 8);
   values.forEach((value, index) => bytes.writeDoubleLE(value, index * 8)); return bytes; };
 const pi = Math.PI;
 const definitions = {
+  ssh: { direct: [[1, 0, 0]], basis: [[2 * pi, 0, 0]],
+    points: [{ id: "Xminus", label: "−π", position: [-pi, 0, 0] },
+      { id: "Gamma", label: "Γ", position: [0, 0, 0] },
+      { id: "Xplus", label: "+π", position: [pi, 0, 0] }],
+    path: ["Xminus", "Gamma", "Xplus"],
+    boundary: [-pi, 0, 0, pi, 0, 0], kind: "point-cloud" },
   square: { direct: [[1, 0, 0], [0, 1, 0]], basis: [[2 * pi, 0, 0], [0, 2 * pi, 0]],
     points: [{ id: "Gamma", label: "Γ", position: [0, 0, 0] },
       { id: "X", label: "X", position: [pi, 0, 0] }, { id: "M", label: "M", position: [pi, pi, 0] }],
@@ -37,15 +43,15 @@ export async function writeReciprocalFixture(directory, family) {
   const definition = definitions[family];
   if (!definition) throw new TypeError("Unsupported reciprocal fixture family");
   const descriptor = Buffer.from(`math3d-q05-reciprocal:${family}`), id = `fixture-${hash(descriptor).slice(0, 24)}`;
-  const unit = "rad / schematic primitive spacing";
-  const scene = { schema: "quantum-scene/v1", id, title: `${family} primitive reciprocal fixture`,
+  const unit = family === "ssh" ? "rad / cell spacing" : "rad / schematic primitive spacing";
+  const scene = { schema: family === "ssh" ? "quantum-scene/v2" : "quantum-scene/v1", id, title: `${family} primitive reciprocal fixture`,
     provenance: { kind: "geometry-fixture", runId: id, jobId: id, model: family, engine: "geometry",
       engineVersion: "qvis/1", computedAt: "not applicable (no calculation)", resultSha256: hash(descriptor), adapter: "qvis/1" },
     coordinates: { handedness: "right", axes: ["kx", "ky", "kz"], units: [unit, unit, unit] },
     camera: { position: [12, -10, 10], target: [0, 0, 0], up: [0, 0, 1] },
     datasets: [], objects: [], annotations: [],
     reciprocal: { directBasis: definition.direct, basis: definition.basis,
-      directUnit: "schematic primitive spacing", reciprocalUnit: unit,
+      directUnit: family === "ssh" ? "cell spacing a=1" : "schematic primitive spacing", reciprocalUnit: unit,
       pointObject: "symmetry-points", points: definition.points,
       paths: [{ object: "symmetry-path", label: definition.path.map(id =>
         definition.points.find(point => point.id === id).label).join(" → "), points: definition.path }],
