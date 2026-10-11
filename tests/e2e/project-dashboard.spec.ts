@@ -29,6 +29,18 @@ test("Project Details dashboard uses stored document relations and opens a docum
     const graph = project.workspace.entries.find((entry: { module: string }) => entry.module === "graph2d");
     const graphTitle = project.metadata.documents[graph.expected.id].title;
     await expect(dashboard.getByTestId(`project-dashboard-document-${surface.expected.id}`)).toContainText(`From ${graphTitle}`);
+    const map = page.getByTestId("project-relationship-map");
+    await expect(map.getByRole("listitem")).toHaveCount(project.workspace.relations.length);
+    const graphToSurface = project.workspace.relations.find((relation: any) => relation.target.type === "document" &&
+      relation.target.generation.documentId === surface.expected.id && relation.sources.some((source: any) => source.documentId === graph.expected.id));
+    expect(graphToSurface).toBeTruthy();
+    await map.getByTestId(`project-relation-edge-${graphToSurface.relationId}`).click();
+    const detail = map.getByTestId("project-relation-detail");
+    await expect(detail).toContainText(graphToSurface.operation);
+    await expect(detail).toContainText(`Revision ${graphToSurface.sources[0].revision} · generation ${graphToSurface.sources[0].generation}`);
+    await expect(detail).toContainText(`Target: ${project.metadata.documents[surface.expected.id].title}`);
+    await map.screenshot({ path: test.info().outputPath("project-relationship-map.png"), animations: "disabled" });
+    await detail.getByRole("button", { name: "Close relationship details" }).click();
     await page.screenshot({ path: test.info().outputPath("project-dashboard-desktop.png"), animations: "disabled" });
     await resizeSurfaceAppWindow(ctx, 820, 859);
     await expect(dashboard).toBeVisible();
@@ -37,5 +49,8 @@ test("Project Details dashboard uses stored document relations and opens a docum
     await dashboard.getByTestId(`project-dashboard-document-${surface.expected.id}`).click();
     await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", surface.expected.id);
     await expect(page.getByTestId("project-explorer-panel")).toHaveClass(/project-viewer-panel/);
+    await page.getByTestId("project-gallery-layout-toggle").click();
+    await map.getByTestId(`project-relation-node-${graphToSurface.relationId}-source-0`).click();
+    await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", graph.expected.id);
   } finally { await closeSurfaceApp(ctx); }
 });

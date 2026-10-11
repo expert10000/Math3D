@@ -18,6 +18,7 @@ import { ProjectDocumentActions, type ProjectDocumentAction } from "./ProjectDoc
 import { inspectProjectDependencies } from "../projects/projectDependencies";
 import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnalysisRefreshOptions, recomputeProjectAnalysis } from "../projects/projectDependencyRefresh";
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
+import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint, type ProjectCompatibility } from "../projects/projectTransfer";
 import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
 import { captureProjectResources, captureProjectResourcesAsync, exportProjectPackage, projectResourceInventory, MAX_PROJECT_PACKAGE_BYTES, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
@@ -1154,6 +1155,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               {savedProjectEntry && <p>Saved {new Date(savedProjectEntry.savedAt).toLocaleString()}</p>}
             </aside>
           </div>}
+          {!quick && detailView && project && <ProjectRelationshipMap project={project} titles={documentTitles}
+            preview={preview} canOpen={(id, module) => !!canNavigateDocument?.(id, module)} onOpen={viewBesideProject} />}
           <div className="project-management-area" aria-label="Project management">
             {fullDetails && <h4>Project management</h4>}
             <div className="project-workspace-primary-actions">

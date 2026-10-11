@@ -73,9 +73,12 @@ History controls remain in Project overview, and the full page uses the global
 workspace layout controls. The compact Project Navigator retains its own controls.
 The Ripple dashboard, Workbook/Note detail journey and eight Gallery navigation
 checks passed in Electron after this P0 slice.
-The relationship view and freshness indicators follow the stored relation
-schema; they do not change ownership or regenerate documents merely to
-populate the UI.
+The first P1 relationship map now draws only the Project's recorded relations
+as source → operation → target paths. Document nodes open their native workspace;
+selecting an arrow shows the stored operation and exact source/target generations.
+The Ripple Wave map and node navigation passed in Electron. Artifact freshness
+indicators are the next P1 slice; the map does not infer links or regenerate
+documents merely to populate the UI.
 
 **Startup contract — October 9:** autosave is the only startup recovery flow.
 Restoring it restores the workspace; it does not also open the last saved Project.
