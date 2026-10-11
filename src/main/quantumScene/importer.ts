@@ -1,6 +1,7 @@
 import { readQuantumSceneBundle } from "./bundle";
 import { type QuantumScene, type ScenePayload, verifyScenePayload } from "./index";
 import { createHash } from "node:crypto";
+import { buildTopologyDisplay } from "./topologyDisplay";
 
 export interface ImportedQuantumScene {
   /** A regular Math3D SceneDocument; no worker or executable expression is added. */
@@ -35,6 +36,7 @@ export type Math3DQuantumDocument = {
 const digest = async (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const point = (values: Float64Array, i: number): Point3 => ({ x: values[i * 3], y: values[i * 3 + 1], z: values[i * 3 + 2] });
 const MAX_MAPPED_PRIMITIVES = 20_000;
+const MAX_VECTOR_GLYPHS_TOTAL = 512;
 
 /** Preserve source coordinates exactly; never treat scalar, phase or vector units as positions. */
 export async function adaptQuantumScene(payload: ScenePayload): Promise<ImportedQuantumScene> {
@@ -42,15 +44,41 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
   const scene = payload.scene;
   const geometry: GeometryScene = { points: [], segments: [], triangles: [] };
   const mappedObjectIds: string[] = [], deferredObjectIds: string[] = [];
+  let mappedVectorGlyphs = 0;
+  const mappedTriangleCounts: Record<string, number> = {};
+  const bandGrid = scene.bands?.kind === "surface" ? scene.bands.grid : undefined;
+  const bandLodStride = bandGrid && bandGrid[0] * bandGrid[1] > 441 ?
+    Math.ceil(Math.sqrt(bandGrid[0] * bandGrid[1] / 441)) : 1;
+  const bandTriangles = (indices: Float64Array): number[] => {
+    if (!bandGrid || bandLodStride === 1) return Array.from(indices);
+    const axis = (length: number) => {
+      const values: number[] = [];
+      for (let i = 0; i < length - 1; i += bandLodStride) values.push(i);
+      values.push(length - 1);
+      return values;
+    };
+    const xs = axis(bandGrid[0]), ys = axis(bandGrid[1]), result: number[] = [];
+    for (let x = 0; x < xs.length - 1; x++) for (let y = 0; y < ys.length - 1; y++) {
+      const a = xs[x] * bandGrid[1] + ys[y], b = xs[x + 1] * bandGrid[1] + ys[y];
+      const c = xs[x] * bandGrid[1] + ys[y + 1], d = xs[x + 1] * bandGrid[1] + ys[y + 1];
+      result.push(a, b, c, b, d, c);
+    }
+    return result;
+  };
   for (const object of scene.objects) {
     if (!object.visible) { deferredObjectIds.push(object.id); continue; }
     const positions = arrays.get(object.positions)!;
     const count = positions.length / 3;
     const color = parseInt(object.style.color.slice(1), 16);
+    const displayIndices = object.kind === "mesh" && bandLodStride > 1 && scene.bands?.objects.includes(object.id) ?
+      bandTriangles(arrays.get(object.indices!)!) : null;
     const proposed = object.kind === "point-cloud" ? count : object.kind === "polyline" ? count - 1 :
-      object.kind === "segments" ? count / 2 : object.kind === "mesh" ? arrays.get(object.indices!)!.length / 3 : 0;
+      object.kind === "segments" ? count / 2 : object.kind === "mesh" ? (displayIndices?.length ?? arrays.get(object.indices!)!.length) / 3 : 0;
     const mapped = geometry.points!.length + geometry.segments!.length + geometry.triangles!.length;
     if (mapped + proposed > MAX_MAPPED_PRIMITIVES) { deferredObjectIds.push(object.id); continue; }
+    if (object.kind === "vectors" && mappedVectorGlyphs + Math.min(count, 128) > MAX_VECTOR_GLYPHS_TOTAL) {
+      deferredObjectIds.push(object.id); continue;
+    }
     if (object.kind === "point-cloud") {
       for (let i = 0; i < count; i++) geometry.points!.push({ ...point(positions, i), id: `${object.id}:site:${i}`, label: object.label,
         color, size: object.style.size, opacity: object.style.opacity });
@@ -65,7 +93,7 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
         });
       }
     } else if (object.kind === "mesh") {
-      const indices = arrays.get(object.indices!)!;
+      const indices = displayIndices ?? arrays.get(object.indices!)!;
       for (let i = 0; i < indices.length; i += 3)
         geometry.triangles!.push({
           a: { ...point(positions, indices[i]), id: `${object.id}:${indices[i]}` },
@@ -73,15 +101,17 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
           c: { ...point(positions, indices[i + 2]), id: `${object.id}:${indices[i + 2]}` },
           color, opacity: object.style.opacity,
         });
-    } else {
-      // Vectors require an explicit value-to-coordinate scale and are not silently converted.
-      deferredObjectIds.push(object.id);
-      continue;
+      mappedTriangleCounts[object.id] = indices.length / 3;
+    } else if (object.kind === "vectors") {
+      // Keep source vectors separate from positions. A bounded, explicitly scaled
+      // display glyph is derived below; raw values are never treated as coordinates.
+      mappedVectorGlyphs += Math.min(count, 128);
     }
     mappedObjectIds.push(object.id);
   }
   const importedAt = Date.now();
   const lattice = scene.lattice;
+  const topologyDisplay = buildTopologyDisplay(scene, arrays, mappedObjectIds, mappedTriangleCounts);
   const latticeSamples: VerifiedLatticeSample[] = lattice ? (() => {
     const cells = arrays.get(lattice.cells)!, basis = arrays.get(lattice.basisIndices)!;
     return Array.from({ length: basis.length }, (_, sampleIndex) => ({ sampleIndex,
@@ -101,17 +131,20 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
       up: point(Float64Array.from(scene.camera.up), 0) }],
     activeCameraId: "quantum-source-camera",
     metadata: {
-      sourceFormat: "quantum-scene/v1", sourceRunId: scene.provenance.runId,
+      sourceFormat: scene.schema, sourceRunId: scene.provenance.runId,
       sourceResultSha256: scene.provenance.resultSha256, sourceModel: scene.provenance.model,
       sourceEngine: scene.provenance.engine, sourceComputedAt: scene.provenance.computedAt,
     },
     extensions: {
-      "quantum-scene/v1": {
+      [scene.schema]: {
         scene,
         mappedObjectIds,
         deferredObjectIds,
         deferredFieldIds: (scene.fields ?? []).map(field => field.id),
         latticeSamples,
+        mappedTriangleCounts,
+        bandLodStride,
+        topologyDisplay,
         selectionTransferred: false,
       },
     },

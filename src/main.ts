@@ -1383,6 +1383,7 @@ function buildAppMenu(win: BrowserWindow) {
         { type: "separator" },
         action("Import mesh", "file:import-mesh"),
         action("Open verified quantum scene...", "file:open-quantum-scene"),
+        action("Verified quantum examples...", "file:quantum-examples"),
         action("Reopen recent quantum scene", "file:reopen-quantum-scene"),
         action("Export mesh", "file:export-mesh"),
         action("Export screenshot", "file:export-screenshot", "CmdOrCtrl+Shift+E"),

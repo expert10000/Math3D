@@ -67,6 +67,34 @@ has no v1 cell/basis inspector or supercell controls. Periodic-wrap identities
 and native 1D lattice metadata need a separately versioned producer contract;
 M3D-Q04's full acceptance gate remains open.
 
+## Reciprocal space (M3D-Q05)
+
+In Theory Lab **Scenes → Bounded lattice examples**, choose **Geometry view →
+Primitive reciprocal zone**, then Square, Honeycomb or Simple cubic and
+**Preview geometry example**. Export the displayed regular `.qscene` folder and
+open it in Math3D through **File → Open verified quantum scene**. Compatible
+saved QWZ standard/band scenes also contain supplied reciprocal guides.
+
+Choose **Reciprocal space** in the Math3D scene preview to isolate the supplied
+primitive-zone boundary, named high-symmetry k-points, path and labelled
+reciprocal basis guides. Select a point from the inspector or click its marker
+to see the exact source ID, dataset sample, k coordinates and reciprocal unit.
+Picking a path segment shows its two source point IDs without claiming an
+intermediate computed k-state. **Supplied geometry** returns to the original
+view. Direct-basis spacing and reciprocal `rad / spacing` are kept distinct;
+Math3D neither calculates the Brillouin zone nor folds supercell repeats.
+Selection re-verifies the complete bundle and refuses modified bytes.
+
+For SSH, first save a topology run in Theory Lab and select its **Bands** scene
+view. That export uses `quantum-scene/v2`: the worker's verified `[-π, π]`
+samples and the model's unit-cell convention back a one-vector reciprocal basis,
+two zone endpoints and the −π → Γ → +π path. Open the bundle in Math3D and
+choose **Reciprocal space**. The inspector shows only `k` in
+`rad / cell spacing`; no saved Bloch eigenvector or interpolated k-state is
+available. Existing `quantum-scene/v1` fixtures keep their 2D/3D semantics.
+The outer `.qscene` bundle format remains v1. M3D-Q04's separate native 1D
+lattice/periodic-bond metadata is still open.
+
 Hashes establish byte integrity relative to the bundle, not producer identity
 or scientific correctness. Use only scenes from sources you trust. For the
 contract and project-link behavior, see the [integration roadmap](math3d-quantum-integration-roadmap.md)

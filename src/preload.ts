@@ -3,6 +3,9 @@ import type { QuantumSceneOpenResponse, QuantumSceneRelinkResponse } from "./mai
 import type { FieldSample, FieldSampleRequest, FieldSlice, FieldSliceRequest } from "./main/quantumScene/fieldSlice";
 import type { FieldSurface, FieldSurfaceRequest } from "./main/quantumScene/fieldSurface";
 import type { FieldVolume, FieldVolumeRequest } from "./main/quantumScene/fieldVolume";
+import type { BandSample, BandSampleRequest } from "./main/quantumScene/bandSelection";
+import type { QuantumSceneExampleSummary } from "./main/quantumScene/examples";
+import type { TopologySample, TopologySampleRequest, VectorSample, VectorSampleRequest } from "./main/quantumScene/topologyDisplay";
 import type { WorkspaceFileOpenResponse } from "./main/ipc/workspaceFileIpc";
 
 export type PresetKind = "graph" | "implicit" | "param";
@@ -520,10 +523,15 @@ contextBridge.exposeInMainWorld("topologyDocuments", {
 
 contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
   open: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:open"),
+  examples: (): Promise<QuantumSceneExampleSummary[]> => ipcRenderer.invoke("quantumScenes:examples"),
+  openExample: (id: string): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:openExample", id),
   reopenRecent: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:reopenRecent"),
   consumeLaunch: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:consumeLaunch"),
   openReference: (reference: unknown): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:openReference", reference),
   verifyActive: (fingerprint: string): Promise<boolean> => ipcRenderer.invoke("quantumScenes:verifyActive", fingerprint),
+  bandSample: (request: BandSampleRequest): Promise<BandSample> => ipcRenderer.invoke("quantumScenes:bandSample", request),
+  topologySample: (request: TopologySampleRequest): Promise<TopologySample> => ipcRenderer.invoke("quantumScenes:topologySample", request),
+  vectorSample: (request: VectorSampleRequest): Promise<VectorSample> => ipcRenderer.invoke("quantumScenes:vectorSample", request),
   pickMatchingReference: (fingerprint: string): Promise<QuantumSceneRelinkResponse> => ipcRenderer.invoke("quantumScenes:pickMatchingReference", fingerprint),
   fieldSlice: (request: FieldSliceRequest): Promise<FieldSlice> => ipcRenderer.invoke("quantumScenes:fieldSlice", request),
   fieldSample: (request: FieldSampleRequest): Promise<FieldSample> => ipcRenderer.invoke("quantumScenes:fieldSample", request),

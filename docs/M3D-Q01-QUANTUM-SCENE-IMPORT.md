@@ -18,9 +18,11 @@ point clouds, polylines, endpoint segments and indexed meshes map to existing
 Math3D geometry without coordinate conversion; a 20,000-primitive cap defers
 oversized objects rather than truncating them. The source camera, axes,
 units, provenance, dataset descriptors, source object IDs and annotations
-remain in the returned validated scene/extension. Vector objects, native scalar
-or complex field documents and hidden objects are marked deferred, because full
-project admission or unit interpretation needs a dedicated later adapter. A
+remain in the returned validated scene/extension. At the original Q01 boundary,
+vector objects, native scalar or complex field documents and hidden objects were
+marked deferred. Q07 now displays bounded source-declared vectors as read-only
+glyphs, without treating their values as coordinates; editable Project admission
+remains separate. A
 bounded field-slice inspector covers supplied scalar/complex grids: main retains
 verified arrays and the renderer receives a small RGBA plane or bounded derived
 surface plus exact selected samples. Verified numerical

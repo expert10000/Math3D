@@ -33,4 +33,20 @@ describe("compact quantum scene Project document", () => {
     expect(normalizeQuantumSceneDocument({ ...moved, source: { ...source, datasets: [{ ...source.datasets[0], count: 3 }] } }).ok).toBe(false);
     expect(normalizeQuantumSceneDocument({ ...moved, source: { ...source, provenance: { ...source.provenance, adapter: "other" } } }).ok).toBe(false);
   });
+  it("round-trips a v2 1D source and rejects a Project reference with the wrong scene version", () => {
+    const v2: QuantumSceneDocumentSource = { ...source, sceneSchema: "quantum-scene/v2", sceneId: "ssh-reciprocal" };
+    const document=createQuantumSceneDocument(v2,"C:\\ssh.qscene","SSH reciprocal");
+    const workspace=createMixedWorkspaceDocument({entries:[{module:"quantum",checkpoint:document,expected:document.identity,replay:null}],
+      activeDocumentIds:[document.identity.id],results:[],artifacts:[],relations:[],committedSelection:null,constructions:[]});
+    const base=createMath3DProject(createMixedWorkspaceDocument({...workspace,entries:[],activeDocumentIds:[]}),
+      {stableKey:"ssh-v2",title:"SSH"});
+    const correct=upsertMath3DProjectQuantumScene(base,{format:"quantum-scene/v2",title:"SSH reciprocal",
+      directory:document.location.directory,sceneFingerprint:v2.sceneFingerprint});
+    const project=parseMath3DProject(serializeMath3DProject(replaceMath3DProjectWorkspace(correct,workspace)));
+    expect(project.quantumScenes?.[0].format).toBe("quantum-scene/v2");
+    expect(replayMixedWorkspaceDocument(project.workspace).get(document.identity.id)).toEqual(document);
+    const wrong=upsertMath3DProjectQuantumScene(base,{format:"quantum-scene/v1",title:"SSH reciprocal",
+      directory:document.location.directory,sceneFingerprint:v2.sceneFingerprint});
+    expect(()=>replaceMath3DProjectWorkspace(wrong,workspace)).toThrow();
+  });
 });

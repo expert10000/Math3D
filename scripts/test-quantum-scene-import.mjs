@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { createRequire } from "node:module";
 import { writeLatticeFixture, writeOneDimensionalChainFixture } from "./quantum-lattice-fixtures.mjs";
+import { writeReciprocalFixture } from "./quantum-reciprocal-fixtures.mjs";
+import { writeLargeBandFixture } from "./quantum-band-fixtures.mjs";
 
 const require = createRequire(import.meta.url);
 const { importQuantumSceneBundle } = require("../dist/main/quantumScene/importer.js");
@@ -13,6 +15,11 @@ const { quantumSceneLaunchDirectory } = require("../dist/main/ipc/quantumSceneIp
 const { renderVerifiedFieldSlice, inspectVerifiedFieldSample } = require("../dist/main/quantumScene/fieldSlice.js");
 const { deriveVerifiedFieldSurface } = require("../dist/main/quantumScene/fieldSurface.js");
 const { deriveVerifiedFieldVolume } = require("../dist/main/quantumScene/fieldVolume.js");
+const { inspectVerifiedBandSample } = require("../dist/main/quantumScene/bandSelection.js");
+const { BUNDLED_QUANTUM_SCENE_EXAMPLES, bundledQuantumSceneExample,
+  bundledQuantumSceneDirectory, listBundledQuantumSceneExamples } = require("../dist/main/quantumScene/examples.js");
+const { glyphSampleIndices, inspectVerifiedTopologySample, inspectVerifiedVectorSample } =
+  require("../dist/main/quantumScene/topologyDisplay.js");
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const root = await mkdtemp(join(tmpdir(), "m3d-q01-"));
 try {
@@ -79,8 +86,8 @@ try {
   await writeScene(scene);
   await writeFile(join(directory,"scene.json"),"{}\n");
   await assert.rejects(importQuantumSceneBundle(directory),/size|integrity/);
-  await writeScene({...scene,schema:"quantum-scene/v2"});
-  await assert.rejects(importQuantumSceneBundle(directory),/Invalid quantum-scene\/v1/);
+  await writeScene({...scene,schema:"quantum-scene/v3"});
+  await assert.rejects(importQuantumSceneBundle(directory),/Unsupported quantum-scene version/);
   await writeScene(scene);
   await writeFile(join(directory,"unexpected.txt"),"not part of bundle");
   await assert.rejects(importQuantumSceneBundle(directory),/unexpected or linked/);
@@ -207,6 +214,17 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
+  assert.equal(listBundledQuantumSceneExamples().length, 9);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 9);
+  assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
+  for (const example of BUNDLED_QUANTUM_SCENE_EXAMPLES) {
+    const directory = bundledQuantumSceneDirectory(example, resolve(), "C:\\Math3D-resources", false);
+    assert.equal(directory, resolve("tests", "fixtures", example.fixtureGroup, example.folder));
+    assert.equal(bundledQuantumSceneDirectory(example, resolve(), "C:\\Math3D-resources", true),
+      join("C:\\Math3D-resources", "quantum-scenes", example.fixtureGroup, example.folder));
+    const pinned = await importQuantumSceneBundle(directory);
+    assert.equal(sceneFingerprint(pinned), example.fingerprint, `Bundled ${example.id} no longer matches its pinned source`);
+  }
   const fixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
@@ -232,7 +250,30 @@ try {
       assert.equal(source.lattice, undefined, "1D SSH is supplied Geometry, not a fictitious 2D/3D lattice");
       assert.ok(real.mappedObjectIds.length > 0);
     }
+    if (source.provenance.model === "qwz") {
+      assert.ok(source.reciprocal, "QWZ handoff includes supplied primitive-zone guides");
+      assert.equal(source.reciprocal.pointObject, "symmetry-points");
+      assert.equal(source.reciprocal.basis.length, 2);
+      assert.equal(source.reciprocal.reciprocalUnit, "rad / lattice constant");
+      assert.ok(real.mappedObjectIds.includes(source.reciprocal.pointObject));
+    }
     if (source.bands) {
+      for (const [bandIndex, objectId] of source.bands.objects.entries()) {
+        for (const sampleIndex of [0, Math.floor(real.arrays.get(source.bands.coordinates).length / 6),
+          real.arrays.get(source.bands.coordinates).length / 3 - 1]) {
+          const sample = inspectVerifiedBandSample(real, { fingerprint: sceneFingerprint(real), objectId, sampleIndex });
+          const k = real.arrays.get(source.bands.coordinates);
+          assert.deepEqual(sample.k, Array.from(k.slice(sampleIndex * 3, sampleIndex * 3 + 3)));
+          assert.equal(sample.energy, real.arrays.get(source.bands.energies[bandIndex])[sampleIndex]);
+          assert.equal(sample.energyDatasetId, source.bands.energies[bandIndex]);
+          assert.equal(sample.coordinateDatasetId, source.bands.coordinates);
+          assert.equal(sample.sampleId, `${objectId}:sample:${sampleIndex}`);
+          assert.equal(sample.runId, source.provenance.runId);
+          assert.equal(sample.energyUnit, source.bands.energyUnit);
+        }
+      }
+      assert.throws(() => inspectVerifiedBandSample(real, { fingerprint: sceneFingerprint(real), objectId: source.bands.objects[0], sampleIndex: 961 }), /outside/);
+      assert.throws(() => inspectVerifiedBandSample(real, { fingerprint: sceneFingerprint(real), objectId: "unrelated", sampleIndex: 0 }), /not mapped/);
       assert.equal(source.bands.objects.length, 2);
       const meshColors = source.bands.objects.map(id => source.objects.find(object => object.id === id)?.style.color);
       assert.equal(new Set(meshColors).size, 2, "Band surfaces need distinct supplied colors");
@@ -245,6 +286,97 @@ try {
     acceptedViews.add(key);
   }
   assert.deepEqual(acceptedViews, new Set(["ssh/standard", "ssh/bands", "qwz/standard", "qwz/bands"]));
+  const qwzDirectory = join(fixtureRoot, "run-97a132d1d712414bb62bb8c9212f517e.qscene");
+  const qwz = await importQuantumSceneBundle(qwzDirectory);
+  const display = qwz.document.extensions[qwz.source.schema].topologyDisplay;
+  assert.deepEqual(qwz.mappedObjectIds.filter(id => id.startsWith("reciprocal-b")), ["reciprocal-b1", "reciprocal-b2"]);
+  assert.equal(display.scalars[0].quantityId, "lower-curvature");
+  assert.equal(display.scalars[0].faceBins.length, 800);
+  assert.ok(display.scalars[0].minimum < 0 && display.scalars[0].maximum > 0);
+  assert.ok(display.scalars[0].faceBins.some(bin => bin < 3));
+  assert.ok(display.scalars[0].faceBins.some(bin => bin > 3));
+  assert.deepEqual(glyphSampleIndices(961), glyphSampleIndices(961));
+  assert.deepEqual([glyphSampleIndices(961)[0], glyphSampleIndices(961).at(-1)], [0, 960]);
+  assert.equal(new Set(glyphSampleIndices(961)).size, 128);
+  for (const sampleIndex of [0, 220, 440]) {
+    const sample = inspectVerifiedTopologySample(qwz, { fingerprint: sceneFingerprint(qwz),
+      quantityId: "lower-curvature", sampleIndex });
+    assert.equal(sample.value, qwz.arrays.get("curvature")[sampleIndex]);
+    assert.deepEqual(sample.position, Array.from(qwz.arrays.get("curvature-grid").slice(3 * sampleIndex, 3 * sampleIndex + 3)));
+    assert.equal(sample.valueUnit, "dimensionless (a=1)");
+    assert.equal(sample.runId, qwz.source.provenance.runId);
+  }
+  for (const [objectId, expected] of [["reciprocal-b1", [2 * Math.PI, 0, 0]],
+    ["reciprocal-b2", [0, 2 * Math.PI, 0]]]) {
+    const sample = inspectVerifiedVectorSample(qwz, { fingerprint: sceneFingerprint(qwz), objectId, sampleIndex: 0 });
+    assert.deepEqual(sample.value, expected);
+    assert.equal(sample.valueUnit, "rad / lattice constant");
+    assert.deepEqual(display.vectors.find(item => item.objectId === objectId).glyphs[0].direction,
+      expected.map(value => value / (2 * Math.PI)));
+  }
+  assert.throws(() => inspectVerifiedTopologySample(qwz, { fingerprint: sceneFingerprint(qwz),
+    quantityId: "lower-curvature", sampleIndex: 441 }), /outside/);
+  assert.throws(() => inspectVerifiedVectorSample(qwz, { fingerprint: sceneFingerprint(qwz),
+    objectId: "berry-curvature", sampleIndex: 0 }), /not mapped/);
+  const qwzTamper = join(root, "qwz-topology-tamper.qscene");
+  await cp(qwzDirectory, qwzTamper, { recursive: true });
+  const damagedCurvature = Buffer.from(await readFile(join(qwzTamper, "curvature.f64")));
+  damagedCurvature[0] ^= 1;
+  await writeFile(join(qwzTamper, "curvature.f64"), damagedCurvature);
+  await assert.rejects(importQuantumSceneBundle(qwzTamper), /integrity/);
+  const syntheticVectors = join(root, "synthetic-pseudospin.qscene");
+  await cp(qwzDirectory, syntheticVectors, { recursive: true });
+  const syntheticScene = JSON.parse(await readFile(join(syntheticVectors, "scene.json"), "utf8"));
+  const pseudospin = Buffer.alloc(441 * 3 * 8);
+  for (let index = 0; index < 441; index++) {
+    const vector = index === 0 ? [0, 0, 0] : index % 2 ? [0, 1, 0] : [1, 0, 0];
+    vector.forEach((component, axis) => pseudospin.writeDoubleLE(component, 8 * (3 * index + axis)));
+  }
+  syntheticScene.datasets.push({ id: "synthetic-pseudospin-values", path: "synthetic-pseudospin.f64",
+    format: "f64le", count: 441, components: 3, unit: "dimensionless", bytes: pseudospin.length,
+    sha256: hash(pseudospin) });
+  syntheticScene.objects.push({ id: "synthetic-pseudospin", label: "Synthetic pseudospin test field",
+    kind: "vectors", positions: "curvature-grid", values: "synthetic-pseudospin-values", visible: true,
+    style: { color: "#26a0ff", opacity: 1, size: 1 } });
+  syntheticScene.topology.quantities.push({ id: "synthetic-pseudospin-quantity", label: "Synthetic pseudospin",
+    kind: "pseudospin", object: "synthetic-pseudospin", dataset: "synthetic-pseudospin-values",
+    convention: "Synthetic fixture in declared source axes; not a physical QWZ result" });
+  const syntheticMetadata = Buffer.from(JSON.stringify(syntheticScene, null, 2) + "\n");
+  await writeFile(join(syntheticVectors, "synthetic-pseudospin.f64"), pseudospin);
+  await writeFile(join(syntheticVectors, "scene.json"), syntheticMetadata);
+  await writeFile(join(syntheticVectors, "bundle.json"), JSON.stringify({ schema: "quantum-scene-bundle/v1",
+    scene: { path: "scene.json", bytes: syntheticMetadata.length, sha256: hash(syntheticMetadata) } }, null, 2) + "\n");
+  const synthetic = await importQuantumSceneBundle(syntheticVectors);
+  const syntheticDisplay = synthetic.document.extensions[synthetic.source.schema].topologyDisplay.vectors
+    .find(item => item.objectId === "synthetic-pseudospin");
+  assert.equal(syntheticDisplay.count, 441);
+  assert.equal(syntheticDisplay.zeroCount, 1);
+  assert.equal(syntheticDisplay.glyphs.length, 127);
+  assert.equal(syntheticDisplay.glyphs.at(-1).sampleIndex, 440);
+  assert.deepEqual(syntheticDisplay.glyphs.at(-1).direction, [1, 0, 0]);
+  assert.deepEqual(inspectVerifiedVectorSample(synthetic, { fingerprint: sceneFingerprint(synthetic),
+    objectId: "synthetic-pseudospin", sampleIndex: 1 }).value, [0, 1, 0]);
+  const damagedPseudospin = Buffer.from(pseudospin);
+  damagedPseudospin[8] ^= 1;
+  await writeFile(join(syntheticVectors, "synthetic-pseudospin.f64"), damagedPseudospin);
+  await assert.rejects(reopenQuantumSceneReference({ directory: syntheticVectors,
+    sceneFingerprint: sceneFingerprint(synthetic) }), /integrity/);
+  console.log("M3D-Q07 QWZ scalar sign, vector orientation, exact samples, density IDs and tamper refusal passed");
+  const largeBands = await writeLargeBandFixture(
+    join(fixtureRoot, "run-97a132d1d712414bb62bb8c9212f517e-bands.qscene"),
+    join(root, "large-bands.qscene"));
+  const large = await importQuantumSceneBundle(largeBands);
+  assert.deepEqual(large.source.bands.grid, [31, 31]);
+  assert.equal(large.arrays.get(large.source.bands.coordinates).length / 3, 961);
+  assert.equal(large.document.geometry.triangles.length, 900);
+  assert.equal(large.document.extensions[large.source.schema].bandLodStride, 2);
+  assert.deepEqual(large.document.extensions[large.source.schema].mappedTriangleCounts,
+    { "band-0": 450, "band-1": 450 });
+  assert.deepEqual(large.mappedObjectIds.filter(id => id.startsWith("band-")), ["band-0", "band-1"]);
+  const last = inspectVerifiedBandSample(large, { fingerprint: sceneFingerprint(large), objectId: "band-1", sampleIndex: 960 });
+  assert.equal(last.sampleId, "band-1:sample:960");
+  assert.equal(last.energyDatasetId, "band-energy-1");
+  assert.throws(() => inspectVerifiedBandSample(large, { fingerprint: sceneFingerprint(large), objectId: "band-1", sampleIndex: 961 }), /outside/);
 
   const orbitalRoot = resolve("tests/fixtures/quantum-scene-orbitals");
   const orbitals = [
@@ -354,6 +486,47 @@ try {
   await assert.rejects(importQuantumSceneBundle(latticeTamper), /integrity/);
   console.log("M3D-Q04 open square/honeycomb/cubic lattice identity, 1D chain/SSH Geometry and tamper refusal passed");
 
+  for (const family of ["square", "honeycomb", "simple_cubic"]) {
+    const reciprocalDirectory = join(root, `reciprocal-${family}.qscene`);
+    const { scene: reciprocalFixture } = await writeReciprocalFixture(reciprocalDirectory, family);
+    const verified = await importQuantumSceneBundle(reciprocalDirectory);
+    assert.deepEqual(verified.source.reciprocal, reciprocalFixture.reciprocal);
+    assert.equal(verified.source.reciprocal.directBasis.length, family === "simple_cubic" ? 3 : 2);
+    assert.equal(verified.source.reciprocal.reciprocalUnit, "rad / schematic primitive spacing");
+    assert.ok(verified.mappedObjectIds.includes("symmetry-points"));
+    assert.ok(verified.mappedObjectIds.includes("primitive-bz"));
+    assert.equal(verified.document.geometry.points.length, reciprocalFixture.reciprocal.points.length);
+    assert.deepEqual((await reopenQuantumSceneReference({ directory: reciprocalDirectory,
+      sceneFingerprint: sceneFingerprint(verified) })).imported.source.reciprocal, verified.source.reciprocal);
+  }
+  const reciprocalTamper = join(root, "reciprocal-tamper.qscene");
+  await writeReciprocalFixture(reciprocalTamper, "honeycomb");
+  const kBytes = Buffer.from(await readFile(join(reciprocalTamper, "symmetry-points.f64")));
+  kBytes[0] ^= 1;
+  await writeFile(join(reciprocalTamper, "symmetry-points.f64"), kBytes);
+  await assert.rejects(importQuantumSceneBundle(reciprocalTamper), /integrity/);
+  const sshDirectory=join(root,"reciprocal-ssh.qscene");
+  const {scene:sshFixture}=await writeReciprocalFixture(sshDirectory,"ssh");
+  const ssh=await importQuantumSceneBundle(sshDirectory);
+  assert.equal(ssh.source.schema,"quantum-scene/v2");
+  assert.deepEqual(ssh.source.reciprocal,sshFixture.reciprocal);
+  assert.deepEqual(ssh.source.reciprocal.basis,[[2*Math.PI,0,0]]);
+  assert.equal(ssh.document.metadata.sourceFormat,"quantum-scene/v2");
+  assert.ok(ssh.document.extensions["quantum-scene/v2"]);
+  assert.deepEqual((await reopenQuantumSceneReference({directory:sshDirectory,
+    sceneFingerprint:sceneFingerprint(ssh)})).imported.source.reciprocal,ssh.source.reciprocal);
+  const legacySsh=structuredClone(sshFixture);legacySsh.schema="quantum-scene/v1";
+  const {assertScene}=require("../dist/main/quantumScene/index.js");
+  assert.throws(()=>assertScene(legacySsh),/directBasis/);
+  const offAxis=structuredClone(sshFixture);offAxis.reciprocal.points[0].position[1]=.1;
+  assert.throws(()=>assertScene(offAxis),/declared k axis/);
+  const sshTamper=join(root,"reciprocal-ssh-tamper.qscene");
+  await cp(sshDirectory,sshTamper,{recursive:true});
+  const sshBytes=Buffer.from(await readFile(join(sshTamper,"primitive-bz.f64")));sshBytes[0]^=1;
+  await writeFile(join(sshTamper,"primitive-bz.f64"),sshBytes);
+  await assert.rejects(importQuantumSceneBundle(sshTamper),/integrity/);
+  console.log("M3D-Q05 supplied 1D SSH, square/honeycomb/cubic reciprocal guides, units, restart and tamper refusal passed");
+
   const copied = join(root, "real-lab-tamper.qscene");
   await cp(join(fixtureRoot, fixtureNames[0]), copied, { recursive: true });
   const copiedScene = JSON.parse(await readFile(join(copied, "scene.json"), "utf8"));
@@ -366,7 +539,7 @@ try {
 
   if (process.argv[2]) {
     const real = await importQuantumSceneBundle(process.argv[2]);
-    assert.equal(real.source.schema,"quantum-scene/v1");
+    assert.ok(["quantum-scene/v1","quantum-scene/v2"].includes(real.source.schema));
     assert.equal(real.document.metadata.sourceResultSha256,real.source.provenance.resultSha256);
     assert.ok(real.mappedObjectIds.length || real.deferredObjectIds.length || real.deferredFieldIds.length);
     console.log(`M3D-Q01 Theory Lab bundle passed: ${real.source.provenance.runId}`);

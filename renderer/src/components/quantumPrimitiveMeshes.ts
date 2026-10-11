@@ -64,7 +64,7 @@ export function buildQuantumPrimitiveMeshes(
   ) : 1;
   const scale = Math.max(0.05, Math.min(100, extent || 1));
   return objects.flatMap(object => {
-    if (!mapped.has(object.id) || !["point-cloud", "segments"].includes(object.kind)) return [];
+    if (!mapped.has(object.id) || !["point-cloud", "segments", "polyline"].includes(object.kind)) return [];
     const positions: number[] = [], primitivesByFace: QuantumPrimitive[] = [];
     const radius = Math.min(scale * 0.08, Math.max(scale * 0.008, scale * 0.018 * object.style.size));
     if (object.kind === "point-cloud") {

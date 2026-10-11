@@ -50,6 +50,14 @@ const config = {
       from: "apps/web/dist",
       to: "web-app",
     },
+    {
+      from: "tests/fixtures/quantum-scene",
+      to: "quantum-scenes/quantum-scene",
+    },
+    {
+      from: "tests/fixtures/quantum-scene-orbitals",
+      to: "quantum-scenes/quantum-scene-orbitals",
+    },
   ],
   win: {
     target: "nsis",

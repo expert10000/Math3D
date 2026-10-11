@@ -7,6 +7,11 @@ import type { QuantumSceneOpenResponse, QuantumSceneRelinkResponse } from "../qu
 import { rememberQuantumScene, reopenRecentQuantumScene, reopenQuantumSceneReference, sceneFingerprint } from "../quantumScene/recent";
 import { isAbsolute, resolve } from "node:path";
 import { chooseTheoryLabTarget, launchTheoryLab } from "../quantumScene/theoryLabLaunch";
+import { inspectVerifiedBandSample, type BandSampleRequest } from "../quantumScene/bandSelection";
+import { inspectVerifiedTopologySample, inspectVerifiedVectorSample,
+  type TopologySampleRequest, type VectorSampleRequest } from "../quantumScene/topologyDisplay";
+import { bundledQuantumSceneDirectory, bundledQuantumSceneExample,
+  listBundledQuantumSceneExamples } from "../quantumScene/examples";
 
 export function quantumSceneLaunchDirectory(argv: readonly string[]): string | null {
   const flags = argv.flatMap((arg, index) => arg === "--quantum-scene" ? [index] : []);
@@ -89,6 +94,24 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
       return failed(error);
     }
   });
+  ipcMain.handle("quantumScenes:examples", (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length) throw new Error("Invalid bundled quantum scene listing request");
+    return listBundledQuantumSceneExamples();
+  });
+  ipcMain.handle("quantumScenes:openExample", async (event, ...args: unknown[]): Promise<QuantumSceneOpenResponse> => {
+    if (args.length !== 1) return { ok: false, canceled: false, error: "Bundled example requires one ID" };
+    if (!trustedSender(event)) return { ok: false, canceled: false, error: "Untrusted quantum scene IPC sender" };
+    try {
+      const example = bundledQuantumSceneExample(args[0]);
+      const directory = bundledQuantumSceneDirectory(example, app.getAppPath(), process.resourcesPath, app.isPackaged);
+      const imported = await importQuantumSceneBundle(directory);
+      if (sceneFingerprint(imported) !== example.fingerprint)
+        throw new Error("Bundled quantum scene does not match its pinned source fingerprint");
+      const remembered = await rememberQuantumScene(app.getPath("userData"), directory, imported)
+        .then(() => true, () => false);
+      return openedFor(event, directory, imported, remembered);
+    } catch (error) { return failed(error); }
+  });
   ipcMain.handle("quantumScenes:reopenRecent", async (event, ...args: unknown[]): Promise<QuantumSceneOpenResponse> => {
     if (args.length) return { ok: false, canceled: false, error: "Quantum scene reopen accepts no renderer paths" };
     if (!trustedSender(event))
@@ -114,6 +137,28 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
     await reopenQuantumSceneReference({ directory: active.directory, sceneFingerprint: active.fingerprint });
     if (verifiedBySender.get(event.sender) !== active) throw new Error("Quantum scene changed during verification");
     return true;
+  });
+  ipcMain.handle("quantumScenes:bandSample", async (event, ...args: unknown[]) => {
+    if (args.length !== 1) throw new TypeError("Band selection requires one request");
+    const active = activeField(event, args[0]);
+    const request = args[0] as BandSampleRequest;
+    const reopened = await reopenQuantumSceneReference({ directory: active.directory, sceneFingerprint: active.fingerprint });
+    if (verifiedBySender.get(event.sender) !== active) throw new Error("Quantum scene changed during band selection");
+    return inspectVerifiedBandSample(reopened.imported, request);
+  });
+  ipcMain.handle("quantumScenes:topologySample", async (event, ...args: unknown[]) => {
+    if (args.length !== 1) throw new TypeError("Topology selection requires one request");
+    const active = activeField(event, args[0]);
+    const reopened = await reopenQuantumSceneReference({ directory: active.directory, sceneFingerprint: active.fingerprint });
+    if (verifiedBySender.get(event.sender) !== active) throw new Error("Quantum scene changed during topology selection");
+    return inspectVerifiedTopologySample(reopened.imported, args[0] as TopologySampleRequest);
+  });
+  ipcMain.handle("quantumScenes:vectorSample", async (event, ...args: unknown[]) => {
+    if (args.length !== 1) throw new TypeError("Vector selection requires one request");
+    const active = activeField(event, args[0]);
+    const reopened = await reopenQuantumSceneReference({ directory: active.directory, sceneFingerprint: active.fingerprint });
+    if (verifiedBySender.get(event.sender) !== active) throw new Error("Quantum scene changed during vector selection");
+    return inspectVerifiedVectorSample(reopened.imported, args[0] as VectorSampleRequest);
   });
   ipcMain.handle("quantumScenes:pickMatchingReference", async (event, ...args: unknown[]): Promise<QuantumSceneRelinkResponse> => {
     if (args.length !== 1 || typeof args[0] !== "string" || !/^[a-f0-9]{64}$/.test(args[0]))

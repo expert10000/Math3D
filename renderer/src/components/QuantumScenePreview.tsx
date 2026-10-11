@@ -6,20 +6,28 @@ import { QuantumFieldSlice, type QuantumField } from "./QuantumFieldSlice";
 import { QuantumFieldSurface } from "./QuantumFieldSurface";
 import { QuantumFieldVolume } from "./QuantumFieldVolume";
 import { buildQuantumPrimitiveMeshes, type QuantumPrimitive } from "./quantumPrimitiveMeshes";
+import { buildQuantumVectorGlyphMeshes, type VectorGlyphDisplay } from "./quantumVectorGlyphs";
 import { buildQuantumLatticeSupercell, SUPERCELL_SITE_OBJECT_ID,
   type LatticeGeometryDefinition, type LatticeSampleIdentity, type LatticeSupercell } from "./quantumLatticeOverlay";
+import { buildQuantumReciprocalView, reciprocalPathFromPrimitive, reciprocalPointFromPrimitive,
+  type ReciprocalDefinition } from "./quantumReciprocalView";
 
 type Vector3 = { x: number; y: number; z: number };
 type SceneSource = {
+  schema: "quantum-scene/v1" | "quantum-scene/v2";
   provenance: { runId: string; model: string; resultSha256: string; engine: string; engineVersion: string;
     kind?: "geometry-fixture" | "numerical-result"; parameters?: Record<string, number | string> };
   coordinates: { axes: [string, string, string]; units: [string, string, string]; handedness: string };
   datasets: { id: string; count: number; components: number; unit: string }[];
-  objects: { id: string; label: string; kind: string; positions: string; indices?: string; style: { color: string; opacity: number; size: number } }[];
+  objects: { id: string; label: string; kind: string; positions: string; values?: string; indices?: string; style: { color: string; opacity: number; size: number } }[];
   lattice?: LatticeGeometryDefinition;
+  reciprocal?: ReciprocalDefinition;
   fields?: QuantumField[];
   annotations: { id: string; text: string; position: [number, number, number] }[];
-  bands?: { objects: string[]; labels: string[]; energyUnit: string; bulkGap: number };
+  bands?: { kind: "path" | "surface"; coordinates: string; energies: string[];
+    objects: string[]; labels: string[]; energyUnit: string; bulkGap: number; grid?: [number, number] };
+  topology?: { quantities: { id: string; label: string; kind: string; object: string; dataset: string; convention: string }[];
+    invariants: { id: string; label: string; value: number | null; status: string; method: string }[]; limitations: string[] };
 };
 export type QuantumSceneWorkspaceReference = { directory: string; sceneFingerprint: string };
 export type QuantumSceneOpenResponse =
@@ -33,11 +41,18 @@ export type QuantumSceneOpenResponse =
 
 type OpenedScene = Extract<QuantumSceneOpenResponse, { ok: true }>;
 type SceneTriangle = NonNullable<GeometryScene["triangles"]>[number];
-type PickedBandSample = { objectId: string; label: string; sampleId: string; point: Vector3 };
+type PickedBandSample = Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["bandSample"]>>;
+type PickedTopologySample = Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["topologySample"]>>;
+type PickedVectorSample = Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["vectorSample"]>>;
+const CURVATURE_COLORS = [0x174f9c, 0x397ec6, 0x8cbadd, 0xb7bdc6, 0xefbe8b, 0xe7824d, 0xb94038];
 
 export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; onClose: () => void }) {
   const document = opened.document;
-  const details = document.extensions["quantum-scene/v1"] as { scene: SceneSource; selectionTransferred: false; latticeSamples?: LatticeSampleIdentity[] };
+  const details = (document.extensions["quantum-scene/v2"] ?? document.extensions["quantum-scene/v1"]) as {
+    scene: SceneSource; selectionTransferred: false; latticeSamples?: LatticeSampleIdentity[];
+    mappedTriangleCounts?: Record<string, number>; bandLodStride?: number;
+    topologyDisplay?: { scalars: { quantityId: string; objectId: string; minimum: number; maximum: number;
+      unit: string; faceBins: number[] }[]; vectors: VectorGlyphDisplay[] } };
   const scene = details.scene;
   const count = (document.geometry.points?.length ?? 0) + (document.geometry.segments?.length ?? 0) +
     (document.geometry.triangles?.length ?? 0);
@@ -79,7 +94,20 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
   };
   const camera = document.cameras[0];
   const [pickedBandSample, setPickedBandSample] = useState<PickedBandSample | null>(null);
+  const [pickedTopologySample, setPickedTopologySample] = useState<PickedTopologySample | null>(null);
+  const [pickedVectorSample, setPickedVectorSample] = useState<PickedVectorSample | null>(null);
+  const [topologyError, setTopologyError] = useState("");
+  const [verifyingTopology, setVerifyingTopology] = useState(false);
+  const [glyphDensity, setGlyphDensity] = useState<16 | 64 | 128>(64);
+  const topologyGeneration = useRef(0);
+  const [bandSelectionError, setBandSelectionError] = useState("");
+  const [verifyingBand, setVerifyingBand] = useState(false);
+  const bandGeneration = useRef(0);
   const [pickedPrimitive, setPickedPrimitive] = useState<QuantumPrimitive | null>(null);
+  const [geometrySpace, setGeometrySpace] = useState<"source" | "reciprocal">("source");
+  const [reciprocalError, setReciprocalError] = useState("");
+  const [verifyingReciprocal, setVerifyingReciprocal] = useState(false);
+  const reciprocalGeneration = useRef(0);
   const [repeatDraft, setRepeatDraft] = useState<[number, number, number]>(scene.lattice?.repeats ?? [1, 1, 1]);
   const [supercell, setSupercell] = useState<LatticeSupercell | null>(null);
   const [supercellError, setSupercellError] = useState("");
@@ -90,6 +118,11 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
     setSupercell(null); setSupercellError(""); setVerifyingSupercell(false);
     return () => { supercellGeneration.current++; };
   }, [opened.reference.sceneFingerprint]);
+  useEffect(() => {
+    reciprocalGeneration.current++; setGeometrySpace("source"); setReciprocalError("");
+    setVerifyingReciprocal(false);
+    return () => { reciprocalGeneration.current++; };
+  }, [opened.reference.sceneFingerprint]);
   const latticeSiteObjects = useMemo(() => new Set(scene.objects.filter(object => object.positions === scene.lattice?.sites).map(object => object.id)),
     [scene.objects, scene.lattice?.sites]);
   const pickedDerivedInstance = pickedPrimitive?.kind === "site" && supercell &&
@@ -97,68 +130,168 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
   const pickedLatticeSample = pickedPrimitive?.kind === "site" ?
     (pickedDerivedInstance ?? (latticeSiteObjects.has(pickedPrimitive.objectId) ?
       details.latticeSamples?.[pickedPrimitive.index] : undefined)) : undefined;
-  useEffect(() => { setPickedBandSample(null); setPickedPrimitive(null); }, [opened.reference.sceneFingerprint]);
+  useEffect(() => {
+    bandGeneration.current++; setPickedBandSample(null); setPickedPrimitive(null);
+    setBandSelectionError(""); setVerifyingBand(false);
+    return () => { bandGeneration.current++; };
+  }, [opened.reference.sceneFingerprint]);
+  useEffect(() => {
+    topologyGeneration.current++; setPickedTopologySample(null); setPickedVectorSample(null);
+    setTopologyError(""); setVerifyingTopology(false); setGlyphDensity(64);
+    return () => { topologyGeneration.current++; };
+  }, [opened.reference.sceneFingerprint]);
+  const selectTopologySample = (quantityId: string, sampleIndex: number) => {
+    const current = ++topologyGeneration.current;
+    setPickedPrimitive(null); setPickedBandSample(null); setPickedVectorSample(null);
+    setPickedTopologySample(null); setTopologyError(""); setVerifyingTopology(true);
+    void window.quantumScenes!.topologySample({ fingerprint: opened.reference.sceneFingerprint, quantityId, sampleIndex })
+      .then(sample => { if (current === topologyGeneration.current && sample.fingerprint === opened.reference.sceneFingerprint)
+        setPickedTopologySample(sample); })
+      .catch(error => { if (current === topologyGeneration.current)
+        setTopologyError(`Topology selection refused: ${String((error as Error)?.message ?? error)}`); })
+      .finally(() => { if (current === topologyGeneration.current) setVerifyingTopology(false); });
+  };
+  const selectVectorSample = (objectId: string, sampleIndex: number) => {
+    const current = ++topologyGeneration.current;
+    setPickedPrimitive(null); setPickedBandSample(null); setPickedTopologySample(null);
+    setPickedVectorSample(null); setTopologyError(""); setVerifyingTopology(true);
+    void window.quantumScenes!.vectorSample({ fingerprint: opened.reference.sceneFingerprint, objectId, sampleIndex })
+      .then(sample => { if (current === topologyGeneration.current && sample.fingerprint === opened.reference.sceneFingerprint)
+        setPickedVectorSample(sample); })
+      .catch(error => { if (current === topologyGeneration.current)
+        setTopologyError(`Vector selection refused: ${String((error as Error)?.message ?? error)}`); })
+      .finally(() => { if (current === topologyGeneration.current) setVerifyingTopology(false); });
+  };
+  const clearTopologySelection = () => {
+    topologyGeneration.current++; setPickedTopologySample(null); setPickedVectorSample(null);
+    setTopologyError(""); setVerifyingTopology(false);
+  };
+  const selectBandSample = (objectId: string, sampleIndex: number) => {
+    const current = ++bandGeneration.current;
+    topologyGeneration.current++; setPickedTopologySample(null); setPickedVectorSample(null);
+    setPickedPrimitive(null); setPickedBandSample(null); setBandSelectionError(""); setVerifyingBand(true);
+    void window.quantumScenes!.bandSample({ fingerprint: opened.reference.sceneFingerprint, objectId, sampleIndex })
+      .then(sample => {
+        if (bandGeneration.current === current && sample.fingerprint === opened.reference.sceneFingerprint)
+          setPickedBandSample(sample);
+      }).catch(error => {
+        if (bandGeneration.current === current)
+          setBandSelectionError(`Band selection refused: ${String((error as Error)?.message ?? error)}`);
+      }).finally(() => { if (bandGeneration.current === current) setVerifyingBand(false); });
+  };
   const primitiveMeshes = useMemo(() => buildQuantumPrimitiveMeshes(document.geometry, scene.objects, opened.mappedObjectIds),
     [document.geometry, scene.objects, opened.mappedObjectIds]);
+  const vectorMeshes = useMemo(() => buildQuantumVectorGlyphMeshes(document.geometry,
+    details.topologyDisplay?.vectors ?? [], scene.objects, glyphDensity),
+    [document.geometry, details.topologyDisplay, scene.objects, glyphDensity]);
+  const reciprocalView = useMemo(() => scene.reciprocal ? buildQuantumReciprocalView(document.geometry,
+    scene.reciprocal, scene.objects, opened.mappedObjectIds) : null,
+    [document.geometry, scene.reciprocal, scene.objects, opened.mappedObjectIds]);
+  const reciprocalMeshes = useMemo(() => reciprocalView ? buildQuantumPrimitiveMeshes(reciprocalView.geometry,
+    reciprocalView.objects, reciprocalView.mappedObjectIds) : [], [reciprocalView]);
   const supercellMeshes = useMemo(() => supercell ? buildQuantumPrimitiveMeshes(supercell.geometry,
     [supercell.siteObject], [SUPERCELL_SITE_OBJECT_ID]) : [], [supercell]);
-  const activePrimitiveMeshes = supercell ? supercellMeshes : primitiveMeshes;
+  const activePrimitiveMeshes = supercell ? supercellMeshes : geometrySpace === "reciprocal" ? reciprocalMeshes : primitiveMeshes;
+  const pickedReciprocalPoint = scene.reciprocal && geometrySpace === "reciprocal" ?
+    reciprocalPointFromPrimitive(scene.reciprocal, pickedPrimitive) : null;
+  const pickedReciprocalPath = scene.reciprocal && geometrySpace === "reciprocal" ?
+    reciprocalPathFromPrimitive(scene.reciprocal, pickedPrimitive) : null;
+  const selectReciprocalPrimitive = (primitive: QuantumPrimitive | null) => {
+    const current = ++reciprocalGeneration.current;
+    setVerifyingReciprocal(true); setReciprocalError(""); setPickedPrimitive(null);
+    void window.quantumScenes!.verifyActive(opened.reference.sceneFingerprint).then(() => {
+      if (current !== reciprocalGeneration.current) return;
+      clearTopologySelection();
+      setPickedPrimitive(primitive); setPickedBandSample(null);
+    }).catch(error => {
+      if (current === reciprocalGeneration.current)
+        setReciprocalError(`Reciprocal selection refused: ${String((error as Error)?.message ?? error)}`);
+    }).finally(() => { if (current === reciprocalGeneration.current) setVerifyingReciprocal(false); });
+  };
   const meshObjects = useMemo(() => {
     const mapped = new Set(opened.mappedObjectIds);
     const triangles = document.geometry.triangles ?? [];
     let offset = 0;
-    return scene.objects.filter((object) => object.kind === "mesh" && mapped.has(object.id)).map((object) => {
-      const count = scene.datasets.find((dataset) => dataset.id === object.indices)?.count ?? 0;
+    return scene.objects.filter((object) => object.kind === "mesh" && mapped.has(object.id)).flatMap((object) => {
+      const count = details.mappedTriangleCounts?.[object.id] ?? scene.datasets.find((dataset) => dataset.id === object.indices)?.count ?? 0;
       const faces = triangles.slice(offset, offset + count);
       offset += count;
-      const positions = new Float32Array(faces.length * 9);
-      faces.forEach((face, faceIndex) => {
-        [face.a, face.b, face.c].forEach((vertex, vertexIndex) => {
-          const base = faceIndex * 9 + vertexIndex * 3;
-          positions[base] = vertex.x;
-          positions[base + 1] = vertex.y;
-          positions[base + 2] = vertex.z;
+      const scalar = details.topologyDisplay?.scalars.find(item => item.objectId === object.id);
+      const bins = scalar ? CURVATURE_COLORS.map((_, bin) => faces.filter((_, index) => scalar.faceBins[index] === bin)) : [faces];
+      return bins.flatMap((group, bin) => {
+        if (!group.length) return [];
+        const positions = new Float32Array(group.length * 9);
+        group.forEach((face, faceIndex) => {
+          [face.a, face.b, face.c].forEach((vertex, vertexIndex) => {
+            const base = faceIndex * 9 + vertexIndex * 3;
+            positions[base] = vertex.x;
+            positions[base + 1] = vertex.y;
+            positions[base + 2] = vertex.z;
+          });
         });
+        return [{ id: scalar ? `${object.id}:scalar-bin:${bin}` : object.id, sourceObjectId: object.id,
+          quantityId: scalar?.quantityId, label: object.label, positions, indices: null, faces: group,
+          source: { kind: "polyhedronPreset" as const, label: object.label },
+          color: scalar ? CURVATURE_COLORS[bin] : Number.parseInt(object.style.color.slice(1), 16),
+          opacity: object.style.opacity }];
       });
-      return { id: object.id, label: object.label, positions, indices: null, faces,
-        source: { kind: "polyhedronPreset" as const, label: object.label },
-        color: Number.parseInt(object.style.color.slice(1), 16), opacity: object.style.opacity };
     });
-  }, [document.geometry.triangles, opened.mappedObjectIds, scene.datasets, scene.objects]);
+  }, [document.geometry.triangles, opened.mappedObjectIds, scene.datasets, scene.objects, details.mappedTriangleCounts, details.topologyDisplay]);
   const viewerScene = useMemo(() => {
     if (supercell) return { ...supercell.geometry, points: [] };
-    const primitiveIds = new Set(primitiveMeshes.map(mesh => mesh.id));
-    const translations = scene.lattice?.translations.map((vector, axis) => ({
+    const sourceGeometry = geometrySpace === "reciprocal" && reciprocalView ? reciprocalView.geometry : document.geometry;
+    const sourceMeshes = geometrySpace === "reciprocal" ? reciprocalMeshes : primitiveMeshes;
+    const primitiveIds = new Set(sourceMeshes.map(mesh => mesh.id));
+    const translations = geometrySpace === "source" ? scene.lattice?.translations.map((vector, axis) => ({
       a: { x: 0, y: 0, z: 0, id: `lattice:translation:${axis}:origin` },
       b: { x: vector[0], y: vector[1], z: vector[2], id: `lattice:translation:${axis}:tip` },
       color: 0xf2b36f, opacity: 1,
-    })) ?? [];
-    return { ...document.geometry,
-      triangles: meshObjects.length ? [] : document.geometry.triangles,
-      points: document.geometry.points?.filter(point => !primitiveMeshes.length ||
+    })) ?? [] : [];
+    return { ...sourceGeometry,
+      triangles: geometrySpace === "reciprocal" || meshObjects.length ? [] : sourceGeometry.triangles,
+      points: sourceGeometry.points?.filter(point => !sourceMeshes.length ||
         ![...primitiveIds].some(id => point.id?.startsWith(`${id}:site:`))),
-      segments: [...(document.geometry.segments?.filter(segment => !primitiveMeshes.length ||
+      segments: [...(sourceGeometry.segments?.filter(segment => !sourceMeshes.length ||
         ![...primitiveIds].some(id => segment.a.id?.startsWith(`${id}:link:`))) ?? []), ...translations] };
-  }, [document.geometry, meshObjects, primitiveMeshes, scene.lattice, supercell]);
+  }, [document.geometry, geometrySpace, meshObjects, primitiveMeshes, reciprocalMeshes, reciprocalView, scene.lattice, supercell]);
   const visibleLabels = useMemo(() => {
-    const supplied = (supercell ? [] : scene.annotations).filter(annotation => annotation.text.length <= 64).map(annotation => ({
+    const annotations = geometrySpace === "reciprocal" ? [] : supercell ? [] : scene.annotations;
+    const supplied = annotations.filter(annotation => annotation.text.length <= 64).map(annotation => ({
       text: annotation.text, position: { x: annotation.position[0], y: annotation.position[1], z: annotation.position[2] },
     }));
+    if (geometrySpace === "reciprocal" && reciprocalView) supplied.push(...reciprocalView.labels);
     if (pickedPrimitive) supplied.push({ text: `${pickedPrimitive.objectLabel} · ${pickedPrimitive.index}`,
       position: pickedPrimitive.position });
     return supplied.length ? [{ labels: supplied, color: 0xe2e8f0, backgroundColor: 0x172033 }] : [];
-  }, [scene.annotations, pickedPrimitive, supercell]);
+  }, [geometrySpace, reciprocalView, scene.annotations, pickedPrimitive, supercell]);
   const pickScene = (info: { meshKey?: string; faceIndex?: number; point: Vector3 }) => {
+    const vector = geometrySpace === "source" && !supercell ?
+      vectorMeshes.find(entry => entry.id === info.meshKey)?.primitivesByFace[info.faceIndex ?? -1] : undefined;
+    if (vector) { selectVectorSample(vector.objectId, vector.index); return; }
     const primitive = activePrimitiveMeshes.find(entry => entry.id === info.meshKey)?.primitivesByFace[info.faceIndex ?? -1];
-    if (primitive) { setPickedPrimitive(primitive); setPickedBandSample(null); return; }
+    if (primitive) {
+      clearTopologySelection();
+      if (geometrySpace === "reciprocal") selectReciprocalPrimitive(primitive);
+      else if (!supercell && scene.bands?.kind === "path" && scene.bands.objects.includes(primitive.objectId) && primitive.endpoints) {
+        const [a, b] = primitive.endpoints;
+        const distance = (point: Vector3) => Math.hypot(point.x - info.point.x, point.y - info.point.y, point.z - info.point.z);
+        selectBandSample(primitive.objectId, primitive.index + (distance(b) < distance(a) ? 1 : 0));
+      }
+      else { setPickedPrimitive(primitive); setPickedBandSample(null); }
+      return;
+    }
     setPickedPrimitive(null);
-    const mesh = supercell ? undefined : meshObjects.find((entry) => entry.id === info.meshKey);
+    const mesh = supercell || geometrySpace === "reciprocal" ? undefined : meshObjects.find((entry) => entry.id === info.meshKey);
     const face: SceneTriangle | undefined = mesh?.faces[info.faceIndex ?? -1];
     if (!mesh || !face) { setPickedBandSample(null); return; }
     const nearest = [face.a, face.b, face.c].reduce((best, candidate) =>
       Math.hypot(candidate.x - info.point.x, candidate.y - info.point.y, candidate.z - info.point.z) <
       Math.hypot(best.x - info.point.x, best.y - info.point.y, best.z - info.point.z) ? candidate : best);
-    setPickedBandSample({ objectId: mesh.id, label: mesh.label, sampleId: nearest.id ?? "unknown", point: nearest });
+    const prefix = `${mesh.sourceObjectId}:`;
+    const sampleIndex = nearest.id?.startsWith(prefix) ? Number(nearest.id.slice(prefix.length)) : NaN;
+    if (!Number.isSafeInteger(sampleIndex)) { setTopologyError("Mesh vertex has no verified sample identity"); return; }
+    if (mesh.quantityId) selectTopologySample(mesh.quantityId, sampleIndex);
+    else if (scene.bands?.objects.includes(mesh.sourceObjectId)) selectBandSample(mesh.sourceObjectId, sampleIndex);
   };
   return createPortal(
     <div role="dialog" aria-modal="true" aria-label="Verified quantum scene" data-testid="quantum-scene-preview"
@@ -166,11 +299,23 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
       <div style={{ width: "min(1200px, 96vw)", height: "min(790px, 94vh)", minHeight: 360, background: "var(--panel-strong, #fff)",
         color: "var(--text, #172033)", borderRadius: 12, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", overflow: "hidden" }}>
         <header style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, borderBottom: "1px solid var(--border, #cbd5e1)" }}>
-          <div><strong>{document.title}</strong><div style={{ fontSize: 12 }}>Verified quantum-scene/v1 · {scene.provenance.model} · Save a workspace or attach it to a Project to retain this source</div></div>
+          <div><strong>{document.title}</strong><div style={{ fontSize: 12 }}>Verified {scene.schema} · {scene.provenance.model} · Save a workspace or attach it to a Project to retain this source</div></div>
           <button type="button" onClick={onClose} data-testid="quantum-scene-close">Close</button>
         </header>
         <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)" }}>
           <div style={{ minHeight: 0, position: "relative", display: "flex", flexDirection: "column" }} data-testid="quantum-scene-geometry">
+            {scene.reciprocal && <div data-testid="quantum-space-controls" style={{ padding: 8, display: "flex", gap: 8 }}>
+              <button type="button" aria-pressed={geometrySpace === "source"} onClick={() => {
+                reciprocalGeneration.current++; setVerifyingReciprocal(false); setReciprocalError("");
+                clearTopologySelection();
+                setGeometrySpace("source"); setPickedPrimitive(null); setPickedBandSample(null); setView("geometry");
+              }}>Supplied geometry</button>
+              <button type="button" aria-pressed={geometrySpace === "reciprocal"} onClick={() => {
+                reciprocalGeneration.current++; setVerifyingReciprocal(false); setReciprocalError("");
+                clearTopologySelection();
+                setSupercell(null); setGeometrySpace("reciprocal"); setPickedPrimitive(null); setPickedBandSample(null); setView("geometry");
+              }}>Reciprocal space</button>
+            </div>}
             {Boolean(scene.fields?.length) && <div style={{ padding: 8, display: "flex", gap: 8 }}>
               {count > 0 && <button type="button" onClick={() => setView("geometry")} aria-pressed={view === "geometry"}>Geometry</button>}
               <button type="button" onClick={() => setView("slice")} aria-pressed={view === "slice"}>Field slice</button>
@@ -184,12 +329,15 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
               fields={scene.fields} axes={scene.coordinates.axes} units={scene.coordinates.units} /> :
               view === "surface" && scene.fields?.length ? <QuantumFieldSurface fingerprint={opened.reference.sceneFingerprint}
                 resultSha256={scene.provenance.resultSha256} fields={scene.fields} camera={camera} /> :
-              count > 0 || scene.lattice || supercell ? <GeometryViewer scene={viewerScene} meshOverrides={supercell ? supercellMeshes : [...meshObjects, ...primitiveMeshes]}
+              count > 0 || scene.lattice || supercell || reciprocalView || vectorMeshes.length ? <GeometryViewer scene={viewerScene} meshOverrides={supercell ? supercellMeshes : geometrySpace === "reciprocal" ? reciprocalMeshes : [...meshObjects, ...primitiveMeshes, ...vectorMeshes]}
               overlayLabelSets={visibleLabels} showPlanes={false}
-              pickEnabled={(supercell ? supercellMeshes.length : meshObjects.length + primitiveMeshes.length) > 0} onPick={pickScene}
-              onPickMiss={() => { setPickedBandSample(null); setPickedPrimitive(null); }}
-              inspectSelectionMeshKey={pickedPrimitive?.objectId ?? pickedBandSample?.objectId}
-              cameraOverride={!supercell && camera ? { position: camera.position, target: camera.target, up: camera.up } : null} />
+              pickEnabled={(supercell ? supercellMeshes.length : geometrySpace === "reciprocal" ? reciprocalMeshes.length : meshObjects.length + primitiveMeshes.length + vectorMeshes.length) > 0} onPick={pickScene}
+              onPickMiss={() => { reciprocalGeneration.current++; bandGeneration.current++; topologyGeneration.current++;
+                setVerifyingReciprocal(false); setVerifyingBand(false); setBandSelectionError("");
+                setVerifyingTopology(false); setTopologyError(""); setPickedTopologySample(null); setPickedVectorSample(null);
+                setPickedBandSample(null); setPickedPrimitive(null); }}
+              inspectSelectionMeshKey={pickedPrimitive?.objectId ?? pickedBandSample?.objectId ?? pickedVectorSample?.objectId}
+              cameraOverride={!supercell && geometrySpace === "source" && camera ? { position: camera.position, target: camera.target, up: camera.up } : null} />
               : <p style={{ padding: 20 }}>This scene has no mapped geometry. Its field datasets are listed in the inspector.</p>}
             </div>
           </div>
@@ -216,17 +364,53 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
                 <dt style={{ minWidth: 55 }}>{key}</dt><dd style={{ margin: 0 }}>{String(value)}</dd>
               </div>)}
             </dl></>}
-            <div><b>Axes:</b> {scene.coordinates.axes.join(", ")} ({scene.coordinates.handedness}-handed)</div>
-            <div><b>Coordinate units:</b> {scene.coordinates.units.join(", ")}</div>
+            <div><b>Source axes:</b> {scene.coordinates.axes.join(", ")} ({scene.coordinates.handedness}-handed)</div>
+            <div><b>Source coordinate units:</b> {scene.coordinates.units.join(", ")}</div>
+            {scene.reciprocal && <section data-testid="quantum-reciprocal-inspector">
+              <h3>Supplied reciprocal geometry</h3>
+              <div>Reciprocal coordinates: {(scene.reciprocal.basis.length===1 ? ["k"] : ["kx", "ky", "kz"].slice(0, scene.reciprocal.basis.length)).join(", ")} · {scene.reciprocal.reciprocalUnit}</div>
+              <div>Direct basis: {scene.reciprocal.directBasis.map((a, i) =>
+                `a${i + 1}=(${a.map(value => value.toPrecision(5)).join(", ")})`).join("; ")} · {scene.reciprocal.directUnit}</div>
+              <div>Reciprocal basis: {scene.reciprocal.basis.map((b, i) =>
+                `b${i + 1}=(${b.map(value => value.toPrecision(5)).join(", ")})`).join("; ")} · aᵢ·bⱼ = 2πδᵢⱼ</div>
+              <div>Boundaries: {scene.reciprocal.boundaryObjects.join(", ")}; supplied paths: {scene.reciprocal.paths.map(path => path.label).join("; ")}</div>
+              <p>These are source-declared primitive-zone guides. No zone construction or k-state calculation runs in Math3D.</p>
+              <p>Selected k-state amplitudes: unavailable in this scene. Point and path selection reports stored geometry only.</p>
+              {geometrySpace === "reciprocal" && <>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {scene.reciprocal.points.map((point, index) => <button key={point.id} type="button"
+                    aria-label={`Select k-point ${point.label} (${point.id})`}
+                    aria-pressed={pickedReciprocalPoint?.id === point.id} disabled={verifyingReciprocal}
+                    onClick={() => selectReciprocalPrimitive(reciprocalMeshes.find(mesh => mesh.id === scene.reciprocal!.pointObject)
+                      ?.primitivesByFace.find(primitive => primitive.kind === "site" && primitive.index === index) ?? null)}>
+                    {point.label}</button>)}
+                </div>
+                {verifyingReciprocal && <p role="status">Verifying source before selection…</p>}
+                {reciprocalError && <p role="alert">{reciprocalError}</p>}
+                {pickedReciprocalPoint && <div data-testid="quantum-k-selection">
+                  <b>Selected supplied k-point:</b> {pickedReciprocalPoint.label} ({pickedReciprocalPoint.id})<br />
+                  Source object: {pickedReciprocalPoint.sourceObjectId} · dataset sample: {pickedReciprocalPoint.sourceSampleIndex}<br />
+                  {pickedReciprocalPoint.position.slice(0, scene.reciprocal.basis.length).map((value, axis) =>
+                    <React.Fragment key={axis}>{scene.reciprocal!.basis.length===1 ? "k" : ["kx", "ky", "kz"][axis]}: {value.toPrecision(6)} {scene.reciprocal!.reciprocalUnit}<br /></React.Fragment>)}
+                </div>}
+                {pickedReciprocalPath && <div data-testid="quantum-k-path-selection">
+                  <b>Selected supplied path segment:</b> {pickedReciprocalPath.fromId} → {pickedReciprocalPath.toId}<br />
+                  Source object: {pickedReciprocalPath.objectId} · segment: {pickedReciprocalPath.segmentIndex} · {scene.reciprocal.reciprocalUnit}
+                </div>}
+              </>}
+            </section>}
             {activePrimitiveMeshes.length > 0 && <>
               <h3>Supplied sites and links</h3>
               <p>Click a rendered marker or link. The object ID is portable; the sample index identifies a position within its verified dataset. No chemical species or bond order is inferred.</p>
               <ul data-testid="quantum-primitive-objects" style={{ paddingLeft: 18 }}>
                 {activePrimitiveMeshes.map(mesh => <li key={mesh.id}>{mesh.label} · <code>{mesh.id}</code> · {
                   new Set(mesh.primitivesByFace.map(primitive => primitive.sampleId)).size} samples{" "}
-                  <button type="button" aria-label={`Inspect first sample of ${mesh.id}`} onClick={() => {
-                    setPickedPrimitive(mesh.primitivesByFace[0]); setPickedBandSample(null);
+                  <button type="button" aria-label={`Inspect first sample of ${mesh.id}`} disabled={verifyingReciprocal} onClick={() => {
+                    if (geometrySpace === "reciprocal") selectReciprocalPrimitive(mesh.primitivesByFace[0]);
+                    else if (!supercell && scene.bands?.objects.includes(mesh.id)) selectBandSample(mesh.id, 0);
+                    else { clearTopologySelection(); setPickedPrimitive(mesh.primitivesByFace[0]); setPickedBandSample(null); }
                   }}>Inspect first</button>{supercell && <button type="button" aria-label={`Inspect last sample of ${mesh.id}`} onClick={() => {
+                    clearTopologySelection();
                     setPickedPrimitive(mesh.primitivesByFace.at(-1) ?? null); setPickedBandSample(null);
                   }}>Inspect last</button>}
                 </li>)}
@@ -234,9 +418,9 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
               {pickedPrimitive && <div data-testid="quantum-primitive-selection">
                 <b>{pickedPrimitive.kind === "site" ? "Selected site" : "Selected link"}:</b> {pickedPrimitive.objectLabel}<br />
                 <b>{supercell ? "Derived view object ID" : "Portable object ID"}:</b> <code>{pickedPrimitive.objectId}</code><br />
-                <b>Dataset sample:</b> {pickedPrimitive.index}<br />
-                {scene.coordinates.axes.map((axis, index) => <React.Fragment key={axis}>{axis}: {
-                  pickedPrimitive.position[["x", "y", "z"][index] as keyof Vector3].toPrecision(6)} {scene.coordinates.units[index]}<br /></React.Fragment>)}
+                <b>{pickedPrimitive.kind === "site" ? "Dataset sample" : "Source segment"}:</b> {pickedPrimitive.index}<br />
+                {(geometrySpace === "reciprocal" ? ["kx", "ky", "kz"] : scene.coordinates.axes).map((axis, index) => <React.Fragment key={axis}>{axis}: {
+                  pickedPrimitive.position[["x", "y", "z"][index] as keyof Vector3].toPrecision(6)} {geometrySpace === "reciprocal" ? scene.reciprocal?.reciprocalUnit : scene.coordinates.units[index]}<br /></React.Fragment>)}
                 {pickedPrimitive.endpoints && <div>Endpoints: {pickedPrimitive.endpoints.map(endpoint =>
                   `(${endpoint.x.toPrecision(5)}, ${endpoint.y.toPrecision(5)}, ${endpoint.z.toPrecision(5)})`).join(" → ")}</div>}
                 {pickedLatticeSample && scene.lattice && <div data-testid="quantum-lattice-site-selection">
@@ -246,7 +430,7 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
                 </div>}
               </div>}
             </>}
-            {scene.lattice && <section data-testid="quantum-lattice-inspector">
+            {scene.lattice && geometrySpace === "source" && <section data-testid="quantum-lattice-inspector">
               <h3>Supplied lattice geometry</h3>
               <div>{scene.lattice.dimensions}D · {scene.lattice.repeats.join(" × ")} cells · {scene.lattice.boundary} boundary</div>
               <div>Basis: {scene.lattice.basis.map((site, index) => `${index} ${site.label} (${site.position.join(", ")})`).join("; ")}</div>
@@ -266,6 +450,7 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
                   if (current !== supercellGeneration.current) return;
                   const sourceObjectId = [...latticeSiteObjects][0] ?? null;
                   setSupercell(buildQuantumLatticeSupercell(scene.lattice!, repeatDraft, details.latticeSamples ?? [], sourceObjectId));
+                  clearTopologySelection();
                   setPickedPrimitive(null); setPickedBandSample(null); setView("geometry");
                 }).catch(error => {
                   if (current === supercellGeneration.current) setSupercellError(String((error as Error)?.message ?? error));
@@ -273,11 +458,81 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
               }}>{verifyingSupercell ? "Verifying source…" : "Preview expanded cells"}</button>
               {supercell && <button type="button" data-testid="quantum-source-lattice" onClick={() => {
                 supercellGeneration.current++; setVerifyingSupercell(false);
+                clearTopologySelection();
                 setSupercell(null); setPickedPrimitive(null); setSupercellError("");
               }}>Return to supplied geometry</button>}
               {supercellError && <p role="alert">{supercellError}</p>}
               {supercell && <p data-testid="quantum-supercell-status">Derived {supercell.instances.length} basis-mapped sites and {supercell.edgeCount} primitive-cell guides for {supercell.repeats.join(" × ")} cells. Supplied bonds were not expanded; periodic-wrap bonds: unavailable (open source boundary).</p>}
               <p>Amber guides show supplied primitive translations. Supplied segments remain geometric guides; no atom species, bond order, or hopping is inferred. Periodic-wrap bonds are unavailable because this scene declares open boundaries.</p>
+            </section>}
+            {(scene.topology || Boolean(details.topologyDisplay?.vectors.length)) && <section data-testid="quantum-topology-inspector">
+              <h3>Supplied topology and vector data</h3>
+              <p>Read-only source values. Color and arrow size are display encodings, not new physics or saved measurements.</p>
+              {details.topologyDisplay?.scalars.map(display => {
+                const quantity = scene.topology?.quantities.find(item => item.id === display.quantityId);
+                return <div key={display.quantityId} data-testid={`quantum-scalar-${display.quantityId}`}>
+                  <b>{quantity?.label ?? display.quantityId}</b> · supplied {quantity?.kind ?? "scalar"}<br />
+                  Source object: <code>{display.objectId}</code> · dataset: <code>{quantity?.dataset}</code><br />
+                  Range: {display.minimum.toPrecision(6)} to {display.maximum.toPrecision(6)} {display.unit}<br />
+                  <div data-testid="quantum-curvature-legend" style={{ display: "flex", gap: 2, marginTop: 4 }}>
+                    {CURVATURE_COLORS.map((color, bin) => <span key={bin} title={`${bin - 3}: display bin`}
+                      style={{ background: `#${color.toString(16).padStart(6, "0")}`, width: 24, height: 12, display: "inline-block" }} />)}
+                  </div>
+                  <small>Blue: negative · grey: near zero · red: positive. Each rendered triangle uses the mean of its three stored vertex values; picking reports one exact vertex.</small><br />
+                  <small>Convention: {quantity?.convention ?? "not supplied"}</small><br />
+                  <button type="button" aria-label={`Inspect first topology sample ${display.quantityId}`}
+                    disabled={verifyingTopology} onClick={() => selectTopologySample(display.quantityId, 0)}>Inspect first</button>
+                </div>;
+              })}
+              {Boolean(details.topologyDisplay?.vectors.length) && <>
+                <label>Maximum vector glyphs per object <select aria-label="Vector glyph density" value={glyphDensity}
+                  onChange={event => setGlyphDensity(Number(event.target.value) as 16 | 64 | 128)}>
+                  <option value={16}>16</option><option value={64}>64</option><option value={128}>128</option>
+                </select></label>
+                <p>Arrows preserve supplied direction, with uniform display-only length. Magnitudes are available only as exact stored components in the inspector. Deterministic endpoint-preserving sampling never interpolates vectors.</p>
+                {details.topologyDisplay?.vectors.map(display => {
+                  const object = scene.objects.find(item => item.id === display.objectId);
+                  const quantity = scene.topology?.quantities.find(item => item.object === display.objectId);
+                  const visible = vectorMeshes.find(mesh => mesh.id === display.objectId);
+                  const visibleCount = visible ? new Set(visible.primitivesByFace.map(primitive => primitive.sampleId)).size : 0;
+                  return <div key={display.objectId} data-testid={`quantum-vector-${display.objectId}`}>
+                    <b>{quantity?.label ?? object?.label ?? display.objectId}</b> · {quantity?.kind ?? "supplied vector"}<br />
+                    Source object: <code>{display.objectId}</code> · values: <code>{object?.values}</code><br />
+                    {visibleCount} of {display.count} source samples shown; {display.zeroCount} zero-valued vectors have no oriented glyph.<br />
+                    Position unit: {display.positionUnit}; vector component unit: {display.vectorUnit}.<br />
+                    {quantity?.convention && <small>Convention: {quantity.convention}<br /></small>}
+                    <button type="button" aria-label={`Inspect first vector sample ${display.objectId}`}
+                      disabled={verifyingTopology} onClick={() => selectVectorSample(display.objectId, 0)}>Inspect first</button>
+                  </div>;
+                })}
+              </>}
+              {verifyingTopology && <p role="status">Re-verifying exact source sample…</p>}
+              {topologyError && <p role="alert">{topologyError}</p>}
+              {pickedTopologySample && <div data-testid="quantum-topology-selection">
+                <b>Exact supplied scalar:</b> {pickedTopologySample.quantityLabel} ({pickedTopologySample.kind})<br />
+                Sample ID: <code>{pickedTopologySample.sampleId}</code> · dataset index: {pickedTopologySample.sampleIndex}<br />
+                {pickedTopologySample.coordinateAxes.map((axis, index) => <React.Fragment key={index}>
+                  {axis}: {pickedTopologySample.position[index].toPrecision(8)} {pickedTopologySample.coordinateUnits[index]}<br />
+                </React.Fragment>)}
+                Value: {pickedTopologySample.value.toPrecision(10)} {pickedTopologySample.valueUnit}<br />
+                Source datasets: <code>{pickedTopologySample.positionDatasetId}</code> / <code>{pickedTopologySample.valueDatasetId}</code><br />
+                Convention: {pickedTopologySample.convention}<br />
+                Run: <code>{pickedTopologySample.runId}</code> · result SHA-256: <code>{pickedTopologySample.resultSha256}</code>
+              </div>}
+              {pickedVectorSample && <div data-testid="quantum-vector-selection">
+                <b>Exact supplied vector:</b> {pickedVectorSample.objectLabel}<br />
+                Sample ID: <code>{pickedVectorSample.sampleId}</code> · dataset index: {pickedVectorSample.sampleIndex}<br />
+                Position: ({pickedVectorSample.position.map(value => value.toPrecision(8)).join(", ")}) {pickedVectorSample.positionUnit}<br />
+                Components ({scene.coordinates.axes.join(", ")}): ({pickedVectorSample.value.map(value => value.toPrecision(10)).join(", ")}) {pickedVectorSample.valueUnit}<br />
+                Source datasets: <code>{pickedVectorSample.positionDatasetId}</code> / <code>{pickedVectorSample.valueDatasetId}</code><br />
+                Convention: {pickedVectorSample.convention ?? "not supplied"}<br />
+                Run: <code>{pickedVectorSample.runId}</code> · result SHA-256: <code>{pickedVectorSample.resultSha256}</code>
+              </div>}
+              {scene.topology?.invariants.map(invariant => <div key={invariant.id}>
+                <b>{invariant.label}:</b> {invariant.value ?? "unavailable"} · {invariant.status} · {invariant.method}
+              </div>)}
+              {scene.topology?.limitations.map((limitation, index) => <p key={index}>{limitation}</p>)}
+              <p>Per-sample singular/undefined masks are not part of this scene contract; all stored numeric samples were validated as finite. No Berry connection, curvature, or topological invariant is computed here.</p>
             </section>}
             {scene.bands && <>
               <h3>Bands</h3>
@@ -287,15 +542,30 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
                   <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: 3,
                     background: object?.style.color ?? "#64748b", display: "inline-block" }} />
                   {scene.bands!.labels[index] ?? object?.label ?? id}
+                  {opened.mappedObjectIds.includes(id) && <button type="button"
+                    aria-label={`Inspect first band sample ${id}`} disabled={verifyingBand}
+                    onClick={() => selectBandSample(id, 0)}>Inspect first</button>}
                 </div>;
               })}</div>
               <div><b>Supplied bulk gap:</b> {scene.bands.bulkGap} {scene.bands.energyUnit}</div>
+              {details.bandLodStride && details.bandLodStride > 1 && <p data-testid="quantum-band-lod">
+                Display-only {details.bandLodStride}× grid LOD; original verified sample IDs and binary datasets are unchanged.
+              </p>}
+              {verifyingBand && <p role="status">Verifying exact band sample…</p>}
+              {bandSelectionError && <p role="alert">{bandSelectionError}</p>}
               {pickedBandSample ? <div data-testid="quantum-band-selection" style={{ marginTop: 8 }}>
-                <b>Nearest supplied surface sample:</b> {pickedBandSample.label} ({pickedBandSample.sampleId})<br />
-                {scene.coordinates.axes.map((axis, index) => <React.Fragment key={axis}>
-                  {axis}: {pickedBandSample.point[["x", "y", "z"][index] as keyof Vector3].toPrecision(6)} {scene.coordinates.units[index]}<br />
-                </React.Fragment>)}
-              </div> : <p>Click a band surface to inspect its nearest supplied sample.</p>}
+                <b>Selected supplied {scene.bands.kind === "path" ? "line" : "surface"} sample:</b> {pickedBandSample.bandLabel}<br />
+                Band ID: <code>{pickedBandSample.bandId}</code> · band index: {pickedBandSample.bandIndex}<br />
+                Sample ID: <code>{pickedBandSample.sampleId}</code> · dataset index: {pickedBandSample.sampleIndex}<br />
+                {scene.bands.kind === "path" ? "k" : "kx"}: {pickedBandSample.k[0].toPrecision(8)} {pickedBandSample.kUnit}<br />
+                {scene.bands.kind === "surface" && <>ky: {pickedBandSample.k[1].toPrecision(8)} {pickedBandSample.kUnit}<br /></>}
+                Energy: {pickedBandSample.energy.toPrecision(8)} {pickedBandSample.energyUnit}<br />
+                Bulk gap: {pickedBandSample.bulkGap} {pickedBandSample.energyUnit}<br />
+                Stored datasets: <code>{pickedBandSample.coordinateDatasetId}</code> / <code>{pickedBandSample.energyDatasetId}</code><br />
+                Source run: <code>{pickedBandSample.runId}</code> · result SHA-256: <code>{pickedBandSample.resultSha256}</code><br />
+                Scene fingerprint: <code>{pickedBandSample.fingerprint}</code>
+              </div> : <p>Click a band {scene.bands.kind === "path" ? "line" : "surface"} to inspect its nearest verified dataset sample.</p>}
+              <p>Crossing markers: unavailable unless supplied by the scene. Eigenstates and global band identity are not inferred.</p>
             </>}
             <h3>Datasets</h3>
             <ul style={{ paddingLeft: 18 }}>{scene.datasets.map((dataset) => <li key={dataset.id}>

@@ -11,7 +11,7 @@ const record = (value: unknown): value is Record<string, unknown> => !!value && 
 const exact = (value: Record<string, unknown>, keys: readonly string[]) => Object.keys(value).sort().join("|") === [...keys].sort().join("|");
 
 export type QuantumSceneDocumentSource = Readonly<{
-  sceneSchema: "quantum-scene/v1";
+  sceneSchema: "quantum-scene/v1" | "quantum-scene/v2";
   sceneId: string;
   sceneFingerprint: string;
   provenance: Readonly<{ runId: string; model: string; resultSha256: string; engine: string; engineVersion: string; adapter: "qvis/1" }>;
@@ -30,7 +30,7 @@ export type QuantumSceneDocument = Readonly<{
 
 const validSource = (value: unknown): value is QuantumSceneDocumentSource => {
   if (!record(value) || !exact(value, ["sceneSchema", "sceneId", "sceneFingerprint", "provenance", "coordinates", "datasets", "objects"]) ||
-    value.sceneSchema !== "quantum-scene/v1" ||
+    !["quantum-scene/v1", "quantum-scene/v2"].includes(String(value.sceneSchema)) ||
     !text(value.sceneId, 256) || !sha(value.sceneFingerprint) || !record(value.provenance) ||
     !exact(value.provenance, ["runId", "model", "resultSha256", "engine", "engineVersion", "adapter"]) ||
     !text(value.provenance.runId, 256) || !text(value.provenance.model, 128) || !sha(value.provenance.resultSha256) ||

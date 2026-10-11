@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; the periodic/1D lattice-metadata acceptance gate remains open under the frozen v1 contract. M3D-Q05–Q10 remain open.
+**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06 is complete for verified SSH/QWZ band selection and bounded 2D display LOD. M3D-Q07 is complete for verified QWZ curvature and contract-declared vector objects. M3D-Q08–Q10 remain open.
 
 For the exact Theory Lab export and Math3D inspection workflow, see the
 [M3D-Q04 lattice usage guide](quantum-lattice-usage.md).
@@ -11,7 +11,7 @@ For the exact Theory Lab export and Math3D inspection workflow, see the
 
 **Executable sequence:** `M3D-Q01` through `M3D-Q10`
 
-**Upstream dependency:** portable `quantum-scene/v1` contract from the Quantum
+**Upstream dependency:** portable `quantum-scene/v1` and `quantum-scene/v2` contracts from the Quantum
 Visualization (`QVIS`) program
 
 This roadmap defines how MATH3D becomes an advanced geometry and field viewer for
@@ -43,13 +43,19 @@ The current desktop slice opens a regular `.qscene` folder through **File → Op
 verified quantum scene** or the command palette. Electron verifies the manifest,
 schema and every binary dataset before a bounded preview appears. Point clouds,
 polylines, segments and meshes use Math3D's GeometryViewer. Mesh objects retain their
-supplied colors; band surfaces can be picked to inspect the nearest supplied vertex,
-its stable source ID, and the declared coordinates and units. Vectors and fields are
-reported as deferred. Four real Theory Lab SSH/QWZ standard and band handoffs are
+supplied colors; band lines and surfaces can be picked to inspect an exact verified
+`bands.coordinates` and energy dataset sample, stable band/sample IDs, k and energy
+units, bulk gap and source run. The 31×31 display uses deterministic LOD without
+changing binary source arrays or source sample IDs. Crossing markers and eigenstates
+are not inferred. Supported field slices, density surfaces and Volume views remain
+read-only; Q07 maps bounded source-declared vector glyphs with exact inspection,
+while unsupported or over-budget objects are deferred. Four real Theory Lab SSH/QWZ standard and band handoffs are
 pinned in `tests/fixtures/quantum-scene` and checked by
 `npm run test:quantum-scene:import`. **File → Reopen recent quantum scene** remembers
 the last verified folder across app restarts and checks the complete bundle and
-source fingerprint before displaying it again. Theory Lab's **Open in Math3D**
+source fingerprint before displaying it again. **File → Verified quantum examples**
+opens one of nine pinned SSH/QWZ/hydrogenic bundles shipped with the desktop app;
+the same full bundle validation and a catalog fingerprint check apply. Theory Lab's **Open in Math3D**
 action can launch a built local Math3D checkout with a newly verified handoff
 folder; Math3D validates it independently before previewing. Saving a `.math3d`
 workspace retains the verified scene's absolute folder and source fingerprint.
@@ -118,7 +124,16 @@ open fixtures exercise the lattice adapter. The v1 lattice contract permits
 only dimensions 2 or 3 and `boundary: "open"`; it has no periodic-wrap bond
 identity. Math3D therefore labels periodic wraps unavailable rather than
 deriving them. Full Q04 periodic and 1D metadata acceptance needs a separately
-versioned producer contract. M3D-Q05–Q10 work remains open.
+versioned producer contract. M3D-Q05 adds a separate reciprocal-space Geometry
+view for supplied primitive-zone boundaries, high-symmetry points/paths and
+basis vectors. Clicks and inspector buttons select exact verified point IDs or
+path segments; selection re-verifies the active bundle and refuses changed
+bytes. Direct and reciprocal units are shown separately, and Math3D performs
+no zone construction, physics calculation or coordinate conversion. Square,
+honeycomb and simple-cubic fixtures plus real QWZ handoffs are checked. The
+frozen v1 reciprocal block is 2D/3D only, so a native 1D reciprocal fixture
+and its full acceptance remain gated on a separately versioned producer
+contract. M3D-Q06 is complete for the bounded supplied-band path; M3D-Q07 is complete for the bounded supplied-curvature/vector path. M3D-Q08–Q10 remain open.
 
 Quantum Lab must not call MATH3D internals, and MATH3D must not reproduce Quantum
 Lab's physics engines. Both applications meet at the portable, versioned scene
@@ -417,6 +432,19 @@ distinguishable.
 
 ### M3D-Q05 — `feat(math3d-quantum): add reciprocal lattice and Brillouin zones`
 
+**Implemented (canonical supplied-geometry scope).** A source-backed reciprocal view isolates
+verified point, path and zone-boundary objects from other scene geometry;
+declared basis vectors are drawn as labelled guides. Point and path picking
+uses stable source IDs and sample/segment indices, retains reciprocal units,
+and re-verifies the bundle before selection. Square, honeycomb, cubic and real
+QWZ v1 scenes remain accepted. Theory Lab now exports saved SSH bands with a
+`quantum-scene/v2` 1D basis, ±π zone endpoints and named path; Math3D verifies
+and inspects those objects without loosening the v1 minimum of two dimensions.
+The bundle container remains `quantum-scene-bundle/v1`. Project links, compact
+documents, restart and source fingerprints preserve the scene version. No
+eigenvector or k-state is claimed: current SSH band results save energies, not
+Bloch eigenstates. Selection shows the supplied k-point or path segment only.
+
 **Scope.** Render reciprocal basis vectors, Brillouin-zone geometry,
 high-symmetry points and paths, k-points, and the selected k-state. Keep real-space
 and reciprocal-space coordinates and units separate. Synchronize selection only
@@ -427,6 +455,17 @@ honeycomb/hexagonal, and simple-cubic fixtures; high-symmetry labels retain sour
 IDs; k-point selection updates inspection without rewriting scientific data.
 
 ### M3D-Q06 — `feat(math3d-quantum): add band surfaces`
+
+**Status: Complete for the verified read-only SSH/QWZ band consumer.** The
+inspector resolves each picked line endpoint or surface vertex against the original
+verified `bands.coordinates` and per-band energy artifact, not rounded display
+geometry. The scene fingerprint, source run/result hash, dataset IDs, and
+stable band/sample IDs accompany each selection. Project and recent-scene reopen
+reverify the bundle; changed source bytes refuse selection. The scene contract does
+not currently supply crossing markers or eigenstates, so neither is fabricated.
+The 31×31 acceptance fixture retains all 961 binary samples per band while mapping
+900 display triangles rather than all 3,600, with original sample indices kept for
+picking. This LOD is a visual derivative only.
 
 **Scope.** Visualize supplied `E_n(k)` along 1D paths and as bounded 2D surfaces.
 Provide band selection, surface inspection, energy/unit readouts, k-point picking,
@@ -439,6 +478,20 @@ band, k coordinate, energy, source generation, and status. Large surfaces use
 bounded artifacts and level of detail rather than JSON expansion.
 
 ### M3D-Q07 — `feat(math3d-quantum): add Berry curvature and quantum vector fields`
+
+**Status: Complete for the verified read-only scene-contract path.** Supplied QWZ
+curvature is colored by a signed, zero-centered seven-step palette whose display
+bins preserve sign even for asymmetric ranges. A clicked triangle resolves its
+nearest source vertex to an exact `f64le` curvature sample through re-verified
+IPC. Declared vector objects, including QWZ reciprocal basis vectors and any
+contract-valid Berry connection or pseudospin objects, render as bounded arrows
+with uniform display-only length and 16/64/128 glyph density choices. Every
+arrow retains its original dataset index. The inspector reports source axes,
+position and value units, conventions, dataset IDs, run/hash, and supplied
+invariant status. No curvature, connection, pseudospin, or invariant is computed
+in Math3D. The current scene contract has no per-sample undefined/singularity
+mask: the UI says so instead of inventing a diagnosis. QWZ, unit, orientation,
+sign, restart, Project, picking, and tamper tests cover this scope.
 
 **Scope.** Render supplied Berry curvature, Berry connection where meaningful,
 spin textures, pseudospin textures, and other quantum vector fields. Provide scalar
