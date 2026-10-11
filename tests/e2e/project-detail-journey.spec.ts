@@ -21,6 +21,7 @@ test("Project detail keeps Workbooks and Notes together through save, reopen and
     await expect(projects.getByTestId("project-detail-toggle")).toHaveAttribute("aria-pressed", "true");
     await expect(projects.getByRole("heading", { name: "Graph Derivative Investigation", exact: true, level: 2 })).toBeVisible();
     await expect(projects.getByTestId("project-library")).toBeHidden();
+    await projects.getByTestId("project-detail-tab-documents").click();
     await expect(projects.getByTestId(`project-workbook-${workbookId}`)).toBeVisible();
     const saveButtonWidth = await projects.getByTestId("project-save").evaluate((button) => button.getBoundingClientRect().width);
     const summaryWidth = await projects.locator(".project-workspace-summary").evaluate((summary) => summary.getBoundingClientRect().width);
@@ -60,6 +61,8 @@ test("Project detail keeps Workbooks and Notes together through save, reopen and
     await expect(projects.getByTestId(`project-workbook-${workbookId}`).getByTestId(`project-open-note-${linked.identity.id}`)).toBeEnabled();
     const exportPath = resolve(ctx.profileDir, "project-detail-journey.resources.math3d.project.json");
     await ctx.app.evaluate(({ session }, path) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(path)), exportPath);
+    await projects.getByTestId("project-explorer-header").getByText("More", { exact: true }).click();
+    await projects.getByTestId("project-explorer-header").getByRole("button", { name: "Import / export" }).click();
     await projects.getByTestId("project-export-resources").click();
     await expect.poll(() => existsSync(exportPath)).toBe(true);
     const exported = JSON.parse(readFileSync(exportPath, "utf8"));
@@ -101,6 +104,7 @@ test("Project detail keeps Workbooks and Notes together through save, reopen and
     await page.getByTestId("projects-toggle").click();
     projects = page.getByTestId("project-explorer-panel");
     await projects.getByTestId("project-detail-toggle").click();
+    await projects.getByTestId("project-detail-tab-documents").click();
     await expect(projects.getByTestId(`project-workbook-${workbookId}`).getByTestId(`project-open-note-${linked.identity.id}`)).toBeVisible();
     await projects.getByTestId(`project-open-note-${linked.identity.id}`).click();
     await expect(page.getByTestId(`project-note-${linked.identity.id}`)).toContainText("Check the cited Graph generation");

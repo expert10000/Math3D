@@ -94,6 +94,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   }, []);
   const resourceSessionId = useRef<string | null>(null);
   const [quick, setQuick] = useState(false), [detailView, setDetailView] = useState(false), [viewerCompanion, setViewerCompanion] = useState(false), [collection, setCollection] = useState("All projects");
+  const [detailPage, setDetailPage] = useState<"overview" | "documents" | "relations" | "results" | "history" | "settings" | "transfer">("overview");
   const [viewingDocumentId, setViewingDocumentId] = useState<string | null>(null);
   const [preferences, setPreferences] = useState(() => projectUiPreferences(localStorage.getItem(PROJECT_UI_KEY)));
   const [projectPlacement, setProjectPlacement] = useState<ProjectPlacement>(preferences.placement);
@@ -127,12 +128,19 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const workspacePanel = useRef<HTMLElement>(null);
   const detailsSection = useRef<HTMLElement>(null), contentsSection = useRef<HTMLElement>(null), transferSection = useRef<HTMLElement>(null);
   const jumpTo = (section: React.RefObject<HTMLElement | null>) => { section.current?.scrollIntoView({ block: "start" }); section.current?.focus({ preventScroll: true }); };
+  const openDetailPage = (page: typeof detailPage, section?: React.RefObject<HTMLElement | null>) => {
+    setDetailPage(page);
+    if (page === "relations") setInspectionOpen(true);
+    workspacePanel.current?.scrollTo({ top: 0 });
+    if (section) window.requestAnimationFrame(() => window.requestAnimationFrame(() => jumpTo(section)));
+  };
   useEffect(() => { if (!open) { setQuick(false); setDetailView(false); setViewerCompanion(false); setViewingDocumentId(null); } }, [open]);
   const [busy, setBusy] = useState(false);
   const openingStarter = useRef(false);
   const [quantumSceneMessage, setQuantumSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
+  useEffect(() => { setDetailPage("overview"); }, [project?.identity.id]);
   const projectStateRef = useRef(project); projectStateRef.current = project;
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesPlacement, setNotesPlacement] = useState<"floating" | "project">("floating");
@@ -908,7 +916,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     return () => { window.removeEventListener("math3d:open-project-dock", show); window.removeEventListener("math3d:hide-project-dock", hide); };
   }, [hasOpenProject, viewerCompanion, projectPlacement, onOpenChange]);
   useEffect(() => {
-    const showFullDetails = () => { if (!hasOpenProject) return; setQuick(false); setViewerCompanion(false); setDetailView(true); onOpenChange(true); };
+    const showFullDetails = () => { if (!hasOpenProject) return; setDetailPage("overview"); setQuick(false); setViewerCompanion(false); setDetailView(true); onOpenChange(true); };
     window.addEventListener("math3d:project-full-details", showFullDetails);
     return () => window.removeEventListener("math3d:project-full-details", showFullDetails);
   }, [hasOpenProject, onOpenChange]);
@@ -1047,13 +1055,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             {!preview && viewingDocumentId && <button type="button" data-testid="project-viewer-return" onClick={() => { setViewerCompanion(true); setQuick(true); }}>Open current document</button>}
             <button type="button" data-testid="project-detail-toggle" aria-pressed={detailView} onClick={() => { setNotesOpen(false); workspacePanel.current?.scrollTo({ top: 0 }); setDetailView(false); }}>Browse projects</button>
             <details className="project-header-more"><summary>More</summary><div>
-              <button type="button" onClick={() => jumpTo(detailsSection)}>Project settings</button>
-              <button type="button" onClick={() => jumpTo(contentsSection)}>All contents</button>
-              <button type="button" onClick={() => jumpTo(transferSection)}>Import / export</button>
+              <button type="button" onClick={() => openDetailPage("settings", detailsSection)}>Project settings</button>
+              <button type="button" onClick={() => openDetailPage("documents", contentsSection)}>All contents</button>
+              <button type="button" onClick={() => openDetailPage("transfer", transferSection)}>Import / export</button>
             </div></details>
           </> : <>
             {!quick && <button type="button" data-testid="project-detail-toggle" aria-pressed={detailView} onClick={() => { setNotesOpen(false); workspacePanel.current?.scrollTo({ top: 0 }); setDetailView(value => !value); }}>{detailView ? "Browse projects" : "View current project"}</button>}
-            <button data-testid="project-gallery-layout-toggle" aria-label={viewerCompanion && quick ? "Project details" : undefined} title={viewerCompanion && quick ? "Project details" : undefined} onClick={() => { if (!viewerCompanion) setNotesOpen(false); setQuick(value => !value); setViewerCompanion(false); }}>{quick ? viewerCompanion ? "⋯" : "Full gallery" : "Quick panel"}</button>
+            <button data-testid="project-gallery-layout-toggle" aria-label={viewerCompanion && quick ? "Project details" : undefined} title={viewerCompanion && quick ? "Project details" : undefined} onClick={() => { if (!viewerCompanion) setNotesOpen(false); if (viewerCompanion) setDetailPage("overview"); setQuick(value => !value); setViewerCompanion(false); }}>{quick ? viewerCompanion ? "⋯" : "Full gallery" : "Quick panel"}</button>
           </>}
           <button type="button" aria-label="Close project explorer" title="Close Project panel" onClick={() => onOpenChange(false)}>{(viewerCompanion && quick) || fullDetails ? "×" : "Close"}</button></div></div>
         <div className="project-gallery-statusline"><p data-testid="project-view-mode" role="status">{managed ? "Managing saved project" : preview ? "Saved project preview" : "Current workspace"}{!fullDetails && ` · ${project?.metadata.title ?? "Untitled project"}`}{project && library.entries.some((entry) => entry.id === project.identity.id) && <strong className="project-gallery-saved-badge">Saved in Your saved projects</strong>}</p>
@@ -1073,7 +1081,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           aria-pressed={viewerCompanion && quick && projectPlacement === placement} onClick={() => placeProject(placement)}>{placement[0].toUpperCase() + placement.slice(1)}</button>)}
       </div>}
       </header>
-      <div className={`project-gallery-layout${detailView && (!quick || viewerCompanion) ? " project-gallery-layout-detail" : ""}`}>
+      <div className={`project-gallery-layout${detailView && (!quick || viewerCompanion) ? " project-gallery-layout-detail" : ""}`} data-detail-page={fullDetails ? detailPage : undefined}>
 <section data-testid="project-library" className="project-gallery-library">
         <div className="project-gallery-browse-controls">
           <div className="project-gallery-filters" aria-label="Project collection">{["All projects", "Starter projects", "Your saved projects", "Favorites"].map(value => <button type="button" key={value} aria-pressed={collection === value} onClick={() => setCollection(value)}>{value}</button>)}</div>
@@ -1128,6 +1136,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         </nav>}
         {projectNotesView && <div className="project-notes-workspace"><p className="project-workspace-eyebrow">PROJECT / NOTES</p>{renderNotesPanel("page")}</div>}
         <div className="project-workspace-main">
+        {fullDetails && <nav className="project-detail-tabs" aria-label="Project details sections">
+          {(["overview", "documents", "relations", "results", "history"] as const).map(page => <button key={page} type="button" data-testid={`project-detail-tab-${page}`}
+            aria-current={detailPage === page ? "page" : undefined} onClick={() => openDetailPage(page)}>{page[0].toUpperCase() + page.slice(1)}</button>)}
+        </nav>}
         <div className="project-workspace-summary">
           <p className="project-workspace-eyebrow">{managed ? "EDITING SAVED COPY" : preview ? "SAVED COPY · PREVIEW" : "CURRENT WORKSPACE"}</p>
           <h3>{project?.metadata.title ?? "Untitled project"}</h3>
@@ -1242,11 +1254,36 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           </div>}
         </div>
         <nav className="project-workspace-nav" aria-label="Jump to project section">
-          <button type="button" onClick={() => jumpTo(detailsSection)}>Project details</button>
-          <button type="button" onClick={() => jumpTo(contentsSection)}>Contents</button>
-          <button type="button" onClick={() => jumpTo(transferSection)}>Import / export</button>
+          <button type="button" onClick={() => openDetailPage("settings", detailsSection)}>Project details</button>
+          <button type="button" onClick={() => openDetailPage("documents", contentsSection)}>Contents</button>
+          <button type="button" onClick={() => openDetailPage("transfer", transferSection)}>Import / export</button>
         </nav>
         <p data-testid="project-message" className="project-workspace-message" role="status">{message}</p>
+        {fullDetails && <section className="project-detail-results project-workspace-section" data-testid="project-detail-results" aria-label="Project results and artifacts">
+          <h3>Results and artifacts</h3>
+          <p className="project-workspace-section-hint">Saved calculations and their captured resources.</p>
+          <div className="project-detail-result-grid">
+            <section><h4>Results ({dashboardDependencies?.results.length ?? 0})</h4>
+              {dashboardDependencies?.results.map(result => { const status = presentProjectFreshness(result.freshness); return <div className="project-detail-result-row" key={result.id}>
+                <strong>{result.operation}</strong><span className="project-freshness-badge" data-tone={status.tone} title={status.detail}>{status.label}</span>
+              </div>; })}
+              {!dashboardDependencies?.results.length && <p>No saved results yet.</p>}
+            </section>
+            <section><h4>Artifacts ({dashboardDependencies?.artifacts.length ?? 0})</h4>
+              {dashboardDependencies?.artifacts.map(artifact => <div className="project-detail-result-row" key={artifact.id}>
+                <strong>{artifact.role} · {artifact.kind}</strong><span className="project-freshness-badge" data-tone={artifact.available ? "current" : "unavailable"}>{artifact.available ? "Available" : "Unavailable"}</span>
+              </div>)}
+              {!dashboardDependencies?.artifacts.length && <p>No saved artifacts yet.</p>}
+            </section>
+          </div>
+        </section>}
+        {fullDetails && <section className="project-detail-history project-workspace-section" data-testid="project-detail-history" aria-label="Project history">
+          <h3>History</h3>
+          <p>Project revision {project?.identity.revision ?? 0}{savedProjectEntry ? ` · Saved ${new Date(savedProjectEntry.savedAt).toLocaleString()}` : " · Current workspace"}</p>
+          <h4>Document revisions</h4>
+          <ul>{project?.workspace.entries.map(entry => <li key={entry.expected.id}>{documentTitles.get(entry.expected.id) ?? entry.expected.id} · revision {entry.expected.revision}</li>)}</ul>
+          {!project?.workspace.entries.length && <p>No document revisions recorded yet.</p>}
+        </section>}
         <section id="project-details-section" ref={detailsSection} tabIndex={-1} className="project-workspace-section" data-testid="project-sidebar-details" aria-label="Project details">
           <h3>Project details</h3>
       <label style={{ display: "grid", gap: 4, margin: "10px 0" }}>Project name
@@ -1330,10 +1367,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               {!project?.notes?.length && <small>No Notes yet. Create one to record observations in this Project.</small>}
             </section>
           </div>
-          <button type="button" data-testid="project-inspect-relations" disabled={!project} onClick={() => { setInspectedId(null); setInspectionOpen(true); }}>Inspect relations and availability</button>
+          <div className="project-relation-inspection"><button type="button" data-testid="project-inspect-relations" disabled={!project} onClick={() => { setInspectedId(null); setInspectionOpen(true); }}>Inspect relations and availability</button>
       {dependencies && <ProjectDependenciesPanel inspection={dependencies} selectedId={inspectedId} titles={documentTitles} onClose={() => setInspectionOpen(false)} onLocate={(id) => setInspectedId(id)}
         refreshOptions={managed && project ? projectDependencyRefreshOptions(project) : undefined} onRefresh={managed && !busy ? refreshDependency : undefined}
-        analysisRefreshOptions={managed && project ? projectAnalysisRefreshOptions(project) : undefined} onRecompute={managed && !busy ? recomputeAnalysis : undefined} />}
+        analysisRefreshOptions={managed && project ? projectAnalysisRefreshOptions(project) : undefined} onRecompute={managed && !busy ? recomputeAnalysis : undefined} />}</div>
       {explorer && !project?.workspace.entries.length && <p className="project-gallery-empty">No documents yet. Open a starter or create a document in the workspace.</p>}
       {!(viewerCompanion && quick) && explorer?.groups.filter(group => group.documents.length > 0).map((group) => <section key={group.module} data-testid={`project-group-${group.module}`} style={{ marginTop: 12 }}>
         <strong>{group.title} ({group.documents.length})</strong>

@@ -138,6 +138,7 @@ test("Catenoid Project Notes open from the Project detail page", async () => {
     await expect(projects).toHaveClass(/project-viewer-panel/);
     await projects.getByTestId("project-gallery-layout-toggle").click();
     await expect(projects.getByTestId("project-detail-toggle")).toHaveAttribute("aria-pressed", "true");
+    await projects.getByTestId("project-detail-tab-documents").click();
     await projects.getByTestId("project-all-notes").click();
     const notes = page.getByTestId("project-notes-panel");
     await expect(notes).toBeVisible();
@@ -174,6 +175,7 @@ test("Project documents and Notes can stay beside the live viewer", async () => 
     await projects.getByTestId("project-gallery-layout-toggle").click();
     await expect(projects.getByTestId("project-detail-toggle")).toHaveAttribute("aria-pressed", "true");
     await expect(projects.getByTestId("project-message")).toContainText("Opened supported project");
+    await projects.getByTestId("project-detail-tab-documents").click();
     const active = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     const surface = active.workspace.entries.find((entry: { module: string }) => entry.module === "surface");
     expect(surface).toBeTruthy();
@@ -281,6 +283,8 @@ test("starter Open and Preview reuse edited copies; only New copy adds another p
     await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
     await full();
     const first = await active();
+    await panel.getByTestId("project-explorer-header").getByText("More", { exact: true }).click();
+    await panel.getByTestId("project-explorer-header").getByRole("button", { name: "Project settings" }).click();
     await panel.getByTestId("project-title").fill("My edited edge path");
     await panel.getByTestId("project-description").fill("Keep my observations and recorded evidence.");
     await panel.getByTestId("project-save").click();

@@ -86,6 +86,17 @@ workspace remains explicit; the map does not infer links or regenerate documents
 The Catenoid Surface → Mesh → Surface → restart, middle flip, Ripple dashboard
 and Ripple four-document restore checks passed after this slice. The retained
 Catenoid Mesh analysis shows Up to date in Project Details.
+The third P1 slice gives the full Project Details workspace Overview, Documents,
+Relations, Results and History navigation. Overview opens first; Documents holds
+the document, Workbook and Note actions; Relations shows the recorded map and
+dependency inspection; Results lists retained results and artifacts with their
+availability; History shows the recorded Project and document revisions plus
+recent navigation. Project settings and import/export remain in More, and their
+links switch to the requested section and move focus. The compact Project
+Navigator keeps its document tree and controls. This is navigation over recorded
+data, not a new derivation or activity timeline. The Ripple dashboard, Catenoid
+freshness, Workbook/Notes save/reopen/export, and Gallery navigation journeys
+passed in Electron after this slice.
 
 **Startup contract — October 9:** autosave is the only startup recovery flow.
 Restoring it restores the workspace; it does not also open the last saved Project.
