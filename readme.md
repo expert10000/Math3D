@@ -58,6 +58,13 @@ and can preview a bounded derived open supercell. It does not infer chemistry,
 expand supplied bonds, or create periodic-wrap bonds. Native 1D and periodic
 lattice metadata remain outside the frozen v1 contract.
 
+To try the supplied scenes immediately, choose **File → Verified quantum examples**
+(or search that name in the command palette). The desktop app bundles nine pinned
+Theory Lab exports: QWZ Berry curvature and bands, SSH chain and bands, and
+hydrogenic 1s/2s/2p/3p/3d fields. Each example is hash-verified before opening;
+the QWZ curvature scene includes supplied reciprocal vectors. Your own Lab
+exports still use **Open verified quantum scene** or **Open in Math3D**.
+
 M3D-Q05 adds a separate **Reciprocal space** view for supplied SSH 1D,
 square, honeycomb, cubic and QWZ primitive-zone guides. Verified k-point and
 path selection reports source IDs and reciprocal units. SSH uses a narrow v2

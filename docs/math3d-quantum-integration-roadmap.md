@@ -48,11 +48,14 @@ supplied colors; band lines and surfaces can be picked to inspect an exact verif
 units, bulk gap and source run. The 31×31 display uses deterministic LOD without
 changing binary source arrays or source sample IDs. Crossing markers and eigenstates
 are not inferred. Supported field slices, density surfaces and Volume views remain
-read-only; unsupported vector objects are deferred. Four real Theory Lab SSH/QWZ standard and band handoffs are
+read-only; Q07 maps bounded source-declared vector glyphs with exact inspection,
+while unsupported or over-budget objects are deferred. Four real Theory Lab SSH/QWZ standard and band handoffs are
 pinned in `tests/fixtures/quantum-scene` and checked by
 `npm run test:quantum-scene:import`. **File → Reopen recent quantum scene** remembers
 the last verified folder across app restarts and checks the complete bundle and
-source fingerprint before displaying it again. Theory Lab's **Open in Math3D**
+source fingerprint before displaying it again. **File → Verified quantum examples**
+opens one of nine pinned SSH/QWZ/hydrogenic bundles shipped with the desktop app;
+the same full bundle validation and a catalog fingerprint check apply. Theory Lab's **Open in Math3D**
 action can launch a built local Math3D checkout with a newly verified handoff
 folder; Math3D validates it independently before previewing. Saving a `.math3d`
 workspace retains the verified scene's absolute folder and source fingerprint.

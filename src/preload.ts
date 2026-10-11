@@ -4,6 +4,7 @@ import type { FieldSample, FieldSampleRequest, FieldSlice, FieldSliceRequest } f
 import type { FieldSurface, FieldSurfaceRequest } from "./main/quantumScene/fieldSurface";
 import type { FieldVolume, FieldVolumeRequest } from "./main/quantumScene/fieldVolume";
 import type { BandSample, BandSampleRequest } from "./main/quantumScene/bandSelection";
+import type { QuantumSceneExampleSummary } from "./main/quantumScene/examples";
 import type { TopologySample, TopologySampleRequest, VectorSample, VectorSampleRequest } from "./main/quantumScene/topologyDisplay";
 import type { WorkspaceFileOpenResponse } from "./main/ipc/workspaceFileIpc";
 
@@ -522,6 +523,8 @@ contextBridge.exposeInMainWorld("topologyDocuments", {
 
 contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
   open: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:open"),
+  examples: (): Promise<QuantumSceneExampleSummary[]> => ipcRenderer.invoke("quantumScenes:examples"),
+  openExample: (id: string): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:openExample", id),
   reopenRecent: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:reopenRecent"),
   consumeLaunch: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:consumeLaunch"),
   openReference: (reference: unknown): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:openReference", reference),

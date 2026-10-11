@@ -2,6 +2,7 @@ import { type SurfaceViewerKind, type BBox3, type MeshPromotionTraceState, type 
 import { type SurfacesLeftPanelProps, type SurfacesRightPanelProps } from "./surfacePanels";
 import { MeshProjectEditor } from "./projects/MeshProjectEditor";
 import { QuantumScenePreview, type QuantumSceneOpenResponse, type QuantumSceneWorkspaceReference } from "./components/QuantumScenePreview";
+import { QuantumSceneExamples } from "./components/QuantumSceneExamples";
 import { quantumSceneDocumentFromVerifiedOpen } from "./projects/quantumSceneAdmission";
 import { meshDocumentEditable } from "./projects/nativeMeshRestore";
 import { createMeshDocument, canonicalJsonStringify, parseMath3DProject } from "@math3d/core";
@@ -33179,6 +33180,7 @@ const App: React.FC = () => {
 
   const [workbooks, setWorkbooks] = useState<Workbook[]>(() => loadWorkbooks());
   const [quantumScenePreview, setQuantumScenePreview] = useState<Extract<QuantumSceneOpenResponse, { ok: true }> | null>(null);
+  const [showQuantumSceneExamples, setShowQuantumSceneExamples] = useState(false);
   const [quantumSceneNavigationError, setQuantumSceneNavigationError] = useState<string | null>(null);
   const quantumSceneNavigationSequence = useRef(0);
   const [quantumSceneReference, setQuantumSceneReference] = useState<QuantumSceneWorkspaceReference | null>(null);
@@ -70638,6 +70640,10 @@ case "mobius":
           }
           return;
         }
+        case "file:quantum-examples": {
+          setShowQuantumSceneExamples(true);
+          return;
+        }
         case "file:reopen-quantum-scene": {
           if (!window.quantumScenes?.reopenRecent) {
             notify("Verified quantum-scene import is available in the desktop app.");
@@ -71011,6 +71017,7 @@ case "mobius":
       { id: "menu:new-workspace", title: "New workspace", keywords: "file workspace new", shortcut: "Ctrl/Cmd+N", run: () => handleMenuCommand("file:new-workspace") },
       { id: "menu:open-workspace", title: "Open workspace", keywords: "file workspace open", shortcut: "Ctrl/Cmd+O", run: () => handleMenuCommand("file:open-workspace") },
       { id: "menu:open-quantum-scene", title: "Open verified quantum scene", keywords: "file import quantum qscene theory lab", run: () => handleMenuCommand("file:open-quantum-scene") },
+      { id: "menu:quantum-examples", title: "Verified quantum examples", keywords: "file example qwz berry curvature ssh hydrogen orbital scene", run: () => handleMenuCommand("file:quantum-examples") },
       { id: "menu:reopen-quantum-scene", title: "Reopen recent quantum scene", keywords: "file quantum qscene theory lab recent", run: () => handleMenuCommand("file:reopen-quantum-scene") },
       { id: "menu:save-workspace", title: "Save workspace", keywords: "file workspace save", shortcut: "Ctrl/Cmd+S", run: () => handleMenuCommand("file:save-workspace") },
       { id: "menu:save-workspace-as", title: "Save workspace as", keywords: "file workspace save as", shortcut: "Ctrl/Cmd+Shift+S", run: () => handleMenuCommand("file:save-workspace-as") },
@@ -110075,6 +110082,9 @@ case "mobius":
         )}
       </div></SavedSurfaceModuleFrame></SavedMeshModuleFrame>)}
       {quantumScenePreview && <QuantumScenePreview opened={quantumScenePreview} onClose={() => setQuantumScenePreview(null)} />}
+      {showQuantumSceneExamples && <QuantumSceneExamples onOpened={opened => {
+        setQuantumScenePreview(opened); setQuantumSceneReference(opened.reference);
+      }} onClose={() => setShowQuantumSceneExamples(false)} />}
       {quantumSceneNavigationError && <div role="alert" data-testid="quantum-scene-navigation-error" style={{ position: "fixed", bottom: 16, right: 16, zIndex: 2901, padding: 12, background: "#7f1d1d", color: "white", maxWidth: 420 }}>
         {quantumSceneNavigationError} <button type="button" onClick={() => setQuantumSceneNavigationError(null)}>Dismiss</button></div>}
       {workflowActionOverlayModel && !cleanScreenshotSurfaceActive && (

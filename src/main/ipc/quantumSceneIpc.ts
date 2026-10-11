@@ -10,6 +10,8 @@ import { chooseTheoryLabTarget, launchTheoryLab } from "../quantumScene/theoryLa
 import { inspectVerifiedBandSample, type BandSampleRequest } from "../quantumScene/bandSelection";
 import { inspectVerifiedTopologySample, inspectVerifiedVectorSample,
   type TopologySampleRequest, type VectorSampleRequest } from "../quantumScene/topologyDisplay";
+import { bundledQuantumSceneDirectory, bundledQuantumSceneExample,
+  listBundledQuantumSceneExamples } from "../quantumScene/examples";
 
 export function quantumSceneLaunchDirectory(argv: readonly string[]): string | null {
   const flags = argv.flatMap((arg, index) => arg === "--quantum-scene" ? [index] : []);
@@ -91,6 +93,24 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
     } catch (error) {
       return failed(error);
     }
+  });
+  ipcMain.handle("quantumScenes:examples", (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length) throw new Error("Invalid bundled quantum scene listing request");
+    return listBundledQuantumSceneExamples();
+  });
+  ipcMain.handle("quantumScenes:openExample", async (event, ...args: unknown[]): Promise<QuantumSceneOpenResponse> => {
+    if (args.length !== 1) return { ok: false, canceled: false, error: "Bundled example requires one ID" };
+    if (!trustedSender(event)) return { ok: false, canceled: false, error: "Untrusted quantum scene IPC sender" };
+    try {
+      const example = bundledQuantumSceneExample(args[0]);
+      const directory = bundledQuantumSceneDirectory(example, app.getAppPath(), process.resourcesPath, app.isPackaged);
+      const imported = await importQuantumSceneBundle(directory);
+      if (sceneFingerprint(imported) !== example.fingerprint)
+        throw new Error("Bundled quantum scene does not match its pinned source fingerprint");
+      const remembered = await rememberQuantumScene(app.getPath("userData"), directory, imported)
+        .then(() => true, () => false);
+      return openedFor(event, directory, imported, remembered);
+    } catch (error) { return failed(error); }
   });
   ipcMain.handle("quantumScenes:reopenRecent", async (event, ...args: unknown[]): Promise<QuantumSceneOpenResponse> => {
     if (args.length) return { ok: false, canceled: false, error: "Quantum scene reopen accepts no renderer paths" };

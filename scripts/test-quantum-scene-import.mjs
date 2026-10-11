@@ -16,6 +16,8 @@ const { renderVerifiedFieldSlice, inspectVerifiedFieldSample } = require("../dis
 const { deriveVerifiedFieldSurface } = require("../dist/main/quantumScene/fieldSurface.js");
 const { deriveVerifiedFieldVolume } = require("../dist/main/quantumScene/fieldVolume.js");
 const { inspectVerifiedBandSample } = require("../dist/main/quantumScene/bandSelection.js");
+const { BUNDLED_QUANTUM_SCENE_EXAMPLES, bundledQuantumSceneExample,
+  bundledQuantumSceneDirectory, listBundledQuantumSceneExamples } = require("../dist/main/quantumScene/examples.js");
 const { glyphSampleIndices, inspectVerifiedTopologySample, inspectVerifiedVectorSample } =
   require("../dist/main/quantumScene/topologyDisplay.js");
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
@@ -212,6 +214,17 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
+  assert.equal(listBundledQuantumSceneExamples().length, 9);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 9);
+  assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
+  for (const example of BUNDLED_QUANTUM_SCENE_EXAMPLES) {
+    const directory = bundledQuantumSceneDirectory(example, resolve(), "C:\\Math3D-resources", false);
+    assert.equal(directory, resolve("tests", "fixtures", example.fixtureGroup, example.folder));
+    assert.equal(bundledQuantumSceneDirectory(example, resolve(), "C:\\Math3D-resources", true),
+      join("C:\\Math3D-resources", "quantum-scenes", example.fixtureGroup, example.folder));
+    const pinned = await importQuantumSceneBundle(directory);
+    assert.equal(sceneFingerprint(pinned), example.fingerprint, `Bundled ${example.id} no longer matches its pinned source`);
+  }
   const fixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
