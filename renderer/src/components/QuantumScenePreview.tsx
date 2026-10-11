@@ -23,7 +23,8 @@ type SceneSource = {
   reciprocal?: ReciprocalDefinition;
   fields?: QuantumField[];
   annotations: { id: string; text: string; position: [number, number, number] }[];
-  bands?: { objects: string[]; labels: string[]; energyUnit: string; bulkGap: number };
+  bands?: { kind: "path" | "surface"; coordinates: string; energies: string[];
+    objects: string[]; labels: string[]; energyUnit: string; bulkGap: number; grid?: [number, number] };
 };
 export type QuantumSceneWorkspaceReference = { directory: string; sceneFingerprint: string };
 export type QuantumSceneOpenResponse =
@@ -37,7 +38,7 @@ export type QuantumSceneOpenResponse =
 
 type OpenedScene = Extract<QuantumSceneOpenResponse, { ok: true }>;
 type SceneTriangle = NonNullable<GeometryScene["triangles"]>[number];
-type PickedBandSample = { objectId: string; label: string; sampleId: string; point: Vector3 };
+type PickedBandSample = Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["bandSample"]>>;
 
 export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; onClose: () => void }) {
   const document = opened.document;
@@ -83,6 +84,9 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
   };
   const camera = document.cameras[0];
   const [pickedBandSample, setPickedBandSample] = useState<PickedBandSample | null>(null);
+  const [bandSelectionError, setBandSelectionError] = useState("");
+  const [verifyingBand, setVerifyingBand] = useState(false);
+  const bandGeneration = useRef(0);
   const [pickedPrimitive, setPickedPrimitive] = useState<QuantumPrimitive | null>(null);
   const [geometrySpace, setGeometrySpace] = useState<"source" | "reciprocal">("source");
   const [reciprocalError, setReciprocalError] = useState("");
@@ -110,7 +114,23 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
   const pickedLatticeSample = pickedPrimitive?.kind === "site" ?
     (pickedDerivedInstance ?? (latticeSiteObjects.has(pickedPrimitive.objectId) ?
       details.latticeSamples?.[pickedPrimitive.index] : undefined)) : undefined;
-  useEffect(() => { setPickedBandSample(null); setPickedPrimitive(null); }, [opened.reference.sceneFingerprint]);
+  useEffect(() => {
+    bandGeneration.current++; setPickedBandSample(null); setPickedPrimitive(null);
+    setBandSelectionError(""); setVerifyingBand(false);
+    return () => { bandGeneration.current++; };
+  }, [opened.reference.sceneFingerprint]);
+  const selectBandSample = (objectId: string, sampleIndex: number) => {
+    const current = ++bandGeneration.current;
+    setPickedPrimitive(null); setPickedBandSample(null); setBandSelectionError(""); setVerifyingBand(true);
+    void window.quantumScenes!.bandSample({ fingerprint: opened.reference.sceneFingerprint, objectId, sampleIndex })
+      .then(sample => {
+        if (bandGeneration.current === current && sample.fingerprint === opened.reference.sceneFingerprint)
+          setPickedBandSample(sample);
+      }).catch(error => {
+        if (bandGeneration.current === current)
+          setBandSelectionError(`Band selection refused: ${String((error as Error)?.message ?? error)}`);
+      }).finally(() => { if (bandGeneration.current === current) setVerifyingBand(false); });
+  };
   const primitiveMeshes = useMemo(() => buildQuantumPrimitiveMeshes(document.geometry, scene.objects, opened.mappedObjectIds),
     [document.geometry, scene.objects, opened.mappedObjectIds]);
   const reciprocalView = useMemo(() => scene.reciprocal ? buildQuantumReciprocalView(document.geometry,
@@ -189,6 +209,11 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
     const primitive = activePrimitiveMeshes.find(entry => entry.id === info.meshKey)?.primitivesByFace[info.faceIndex ?? -1];
     if (primitive) {
       if (geometrySpace === "reciprocal") selectReciprocalPrimitive(primitive);
+      else if (!supercell && scene.bands?.kind === "path" && scene.bands.objects.includes(primitive.objectId) && primitive.endpoints) {
+        const [a, b] = primitive.endpoints;
+        const distance = (point: Vector3) => Math.hypot(point.x - info.point.x, point.y - info.point.y, point.z - info.point.z);
+        selectBandSample(primitive.objectId, primitive.index + (distance(b) < distance(a) ? 1 : 0));
+      }
       else { setPickedPrimitive(primitive); setPickedBandSample(null); }
       return;
     }
@@ -199,7 +224,10 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
     const nearest = [face.a, face.b, face.c].reduce((best, candidate) =>
       Math.hypot(candidate.x - info.point.x, candidate.y - info.point.y, candidate.z - info.point.z) <
       Math.hypot(best.x - info.point.x, best.y - info.point.y, best.z - info.point.z) ? candidate : best);
-    setPickedBandSample({ objectId: mesh.id, label: mesh.label, sampleId: nearest.id ?? "unknown", point: nearest });
+    const prefix = `${mesh.id}:`;
+    const sampleIndex = nearest.id?.startsWith(prefix) ? Number(nearest.id.slice(prefix.length)) : NaN;
+    if (!Number.isSafeInteger(sampleIndex)) { setBandSelectionError("Band vertex has no verified sample identity"); return; }
+    selectBandSample(mesh.id, sampleIndex);
   };
   return createPortal(
     <div role="dialog" aria-modal="true" aria-label="Verified quantum scene" data-testid="quantum-scene-preview"
@@ -238,7 +266,8 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
               count > 0 || scene.lattice || supercell || reciprocalView ? <GeometryViewer scene={viewerScene} meshOverrides={supercell ? supercellMeshes : geometrySpace === "reciprocal" ? reciprocalMeshes : [...meshObjects, ...primitiveMeshes]}
               overlayLabelSets={visibleLabels} showPlanes={false}
               pickEnabled={(supercell ? supercellMeshes.length : geometrySpace === "reciprocal" ? reciprocalMeshes.length : meshObjects.length + primitiveMeshes.length) > 0} onPick={pickScene}
-              onPickMiss={() => { reciprocalGeneration.current++; setVerifyingReciprocal(false);
+              onPickMiss={() => { reciprocalGeneration.current++; bandGeneration.current++;
+                setVerifyingReciprocal(false); setVerifyingBand(false); setBandSelectionError("");
                 setPickedBandSample(null); setPickedPrimitive(null); }}
               inspectSelectionMeshKey={pickedPrimitive?.objectId ?? pickedBandSample?.objectId}
               cameraOverride={!supercell && geometrySpace === "source" && camera ? { position: camera.position, target: camera.target, up: camera.up } : null} />
@@ -311,6 +340,7 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
                   new Set(mesh.primitivesByFace.map(primitive => primitive.sampleId)).size} samples{" "}
                   <button type="button" aria-label={`Inspect first sample of ${mesh.id}`} disabled={verifyingReciprocal} onClick={() => {
                     if (geometrySpace === "reciprocal") selectReciprocalPrimitive(mesh.primitivesByFace[0]);
+                    else if (!supercell && scene.bands?.objects.includes(mesh.id)) selectBandSample(mesh.id, 0);
                     else { setPickedPrimitive(mesh.primitivesByFace[0]); setPickedBandSample(null); }
                   }}>Inspect first</button>{supercell && <button type="button" aria-label={`Inspect last sample of ${mesh.id}`} onClick={() => {
                     setPickedPrimitive(mesh.primitivesByFace.at(-1) ?? null); setPickedBandSample(null);
@@ -373,15 +403,27 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
                   <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: 3,
                     background: object?.style.color ?? "#64748b", display: "inline-block" }} />
                   {scene.bands!.labels[index] ?? object?.label ?? id}
+                  {opened.mappedObjectIds.includes(id) && <button type="button"
+                    aria-label={`Inspect first band sample ${id}`} disabled={verifyingBand}
+                    onClick={() => selectBandSample(id, 0)}>Inspect first</button>}
                 </div>;
               })}</div>
               <div><b>Supplied bulk gap:</b> {scene.bands.bulkGap} {scene.bands.energyUnit}</div>
+              {verifyingBand && <p role="status">Verifying exact band sample…</p>}
+              {bandSelectionError && <p role="alert">{bandSelectionError}</p>}
               {pickedBandSample ? <div data-testid="quantum-band-selection" style={{ marginTop: 8 }}>
-                <b>Nearest supplied surface sample:</b> {pickedBandSample.label} ({pickedBandSample.sampleId})<br />
-                {scene.coordinates.axes.map((axis, index) => <React.Fragment key={axis}>
-                  {axis}: {pickedBandSample.point[["x", "y", "z"][index] as keyof Vector3].toPrecision(6)} {scene.coordinates.units[index]}<br />
-                </React.Fragment>)}
-              </div> : <p>Click a band surface to inspect its nearest supplied sample.</p>}
+                <b>Selected supplied {scene.bands.kind === "path" ? "line" : "surface"} sample:</b> {pickedBandSample.bandLabel}<br />
+                Band ID: <code>{pickedBandSample.bandId}</code> · band index: {pickedBandSample.bandIndex}<br />
+                Sample ID: <code>{pickedBandSample.sampleId}</code> · dataset index: {pickedBandSample.sampleIndex}<br />
+                {scene.bands.kind === "path" ? "k" : "kx"}: {pickedBandSample.k[0].toPrecision(8)} {pickedBandSample.kUnit}<br />
+                {scene.bands.kind === "surface" && <>ky: {pickedBandSample.k[1].toPrecision(8)} {pickedBandSample.kUnit}<br /></>}
+                Energy: {pickedBandSample.energy.toPrecision(8)} {pickedBandSample.energyUnit}<br />
+                Bulk gap: {pickedBandSample.bulkGap} {pickedBandSample.energyUnit}<br />
+                Stored datasets: <code>{pickedBandSample.coordinateDatasetId}</code> / <code>{pickedBandSample.energyDatasetId}</code><br />
+                Source run: <code>{pickedBandSample.runId}</code> · result SHA-256: <code>{pickedBandSample.resultSha256}</code><br />
+                Scene fingerprint: <code>{pickedBandSample.fingerprint}</code>
+              </div> : <p>Click a band {scene.bands.kind === "path" ? "line" : "surface"} to inspect its nearest verified dataset sample.</p>}
+              <p>Crossing markers: unavailable unless supplied by the scene. Eigenstates and global band identity are not inferred.</p>
             </>}
             <h3>Datasets</h3>
             <ul style={{ paddingLeft: 18 }}>{scene.datasets.map((dataset) => <li key={dataset.id}>
