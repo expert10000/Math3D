@@ -29,7 +29,7 @@ test("Catenoid Surface → retained Mesh → Surface → save → cold restart �
     await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", mesh.expected.id);
     await expect(page.getByTestId("workspace-nav-mesh")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("project-viewer-document")).toHaveValue(mesh.expected.id);
-    await expect(page.getByTestId("project-source-back-to-surface")).toBeVisible();
+    await expect(page.getByTestId("project-source-back-to-surface")).toHaveText("Back to catenoid");
     const meshViewer = page.getByTestId("surface-primary-viewer");
     await expect(meshViewer.getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
     await meshViewer.scrollIntoViewIfNeeded();
@@ -70,7 +70,7 @@ test("Catenoid Surface → retained Mesh → Surface → save → cold restart �
     await ctx.app.close(); ctx = await launchSurfaceApp({}, profile); page = ctx.page;
     await openLastSavedProject(page);
     await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", mesh.expected.id);
-    await expect(page.getByTestId("project-source-back-to-surface")).toBeVisible();
+    await expect(page.getByTestId("project-source-back-to-surface")).toHaveText("Back to catenoid");
   } finally { await closeSurfaceApp(ctx); }
 });
 

@@ -3,9 +3,10 @@ import type { MeshDocument } from "@math3d/core";
 import "./documentWorkspace.css";
 
 /** Keep the saved Mesh identity visible while its buffer uses the normal Mesh workspace. */
-export function SavedMeshModuleFrame({ document, projectTitle, onProject, onStudy, onSurface, onClose, children }: {
+export function SavedMeshModuleFrame({ document, projectTitle, sourceSurfaceTitle, onProject, onStudy, onSurface, onClose, children }: {
   document: MeshDocument | null;
   projectTitle?: string;
+  sourceSurfaceTitle?: string;
   onProject: () => void;
   onStudy: () => void;
   onSurface?: () => void;
@@ -20,7 +21,7 @@ export function SavedMeshModuleFrame({ document, projectTitle, onProject, onStud
       <span>Revision {document.identity.revision}</span>
       <button type="button" data-testid="project-mesh-module-view" aria-pressed="true">Mesh module</button>
       <button type="button" data-testid="project-mesh-study-view" onClick={onStudy}>Saved studies</button>
-      {onSurface && <button type="button" data-testid="project-source-back-to-surface" onClick={onSurface}>Back to source Surface</button>}
+      {onSurface && <button type="button" data-testid="project-source-back-to-surface" onClick={onSurface}>Back to {sourceSurfaceTitle ?? "Surface"}</button>}
       <button type="button" data-testid="project-source-back-to-module" onClick={onClose}>Exit project view</button>
     </div>
     {children}
