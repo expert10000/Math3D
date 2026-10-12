@@ -25,7 +25,8 @@ test("non-quantum scientific fixture opens in the existing viewer and inspects a
     const selection = page.getByTestId("scientific-sample-selection");
     await expect(selection).toContainText("index 144 · grid [8, 8]");
     await expect(selection).toContainText("f = 0.0000000");
-    const fingerprint = await preview.locator("code").last().textContent();
+    await expect(selection).toContainText("Stable sample ID: sincos-grid:f:144");
+    const fingerprint = await preview.locator("code").filter({ hasText: /^[a-f0-9]{64}$/ }).textContent();
     expect(fingerprint).toMatch(/^[a-f0-9]{64}$/);
     const refused = await page.evaluate(async () => {
       try {
@@ -34,6 +35,15 @@ test("non-quantum scientific fixture opens in the existing viewer and inspects a
       } catch { return true; }
     });
     expect(refused).toBe(true);
+    await preview.getByRole("button", { name: "Close" }).click();
+    await expect(preview).toBeHidden();
+    const refusedAfterClose = await page.evaluate(async savedFingerprint => {
+      try {
+        await (window as any).scientificScenes.sample({ fingerprint: savedFingerprint, datasetId: "f", sampleIndex: 0 });
+        return false;
+      } catch { return true; }
+    }, fingerprint);
+    expect(refusedAfterClose).toBe(true);
   } finally {
     await app.close();
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-scientific-scene-"))

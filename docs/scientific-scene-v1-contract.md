@@ -32,4 +32,4 @@ In Math3D desktop, open **File → Verified quantum examples… → Scientific i
 
 Acceptance: `npm run test:scientific-scene` covers both quantum and scalar manifests, exact samples, malformed shape/version, changed metadata and changed binary data. The desktop Playwright test covers opening and selection. The original quantum importer suite remains green. The renderer entry grew by 59 gzip bytes versus the SSR baseline (864,267 → 864,326); all JavaScript chunks grew by 3,377 gzip bytes (2,379,502 → 2,382,879), well below the initial 100 KiB incremental target. These are build measurements, not startup or memory guarantees.
 
-Next: SSR-04 measures loading, idle cost, dataset copies and unload and hardens the bounded view as needed. A general `.sscene` picker, Project link and Python publisher remain separate decisions.
+SSR-04 [measured](scientific-scene-lifecycle-measurements.md) loading, idle cost, bounded dataset copies and unload for both proof fixtures. A general `.sscene` picker, Project link and Python publisher remain separate decisions.

@@ -37,4 +37,12 @@ export function registerScientificSceneIpc(): void {
     if (!source || source.fingerprint !== request.fingerprint) throw new Error("Scientific source is not active");
     return inspectScientificHeightSample(source.directory, source.fingerprint, request.datasetId, request.sampleIndex);
   });
+  ipcMain.handle("scientificScenes:close", (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 1 || typeof args[0] !== "string" ||
+        !/^[a-f0-9]{64}$/.test(args[0])) throw new Error("Invalid scientific scene close request");
+    const source = active.get(event.sender);
+    if (!source || source.fingerprint !== args[0]) return false;
+    active.delete(event.sender);
+    return true;
+  });
 }

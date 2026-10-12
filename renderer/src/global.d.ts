@@ -591,8 +591,9 @@ declare global {
   interface Window {
     scientificScenes?: {
       openExample: () => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;
+      close: (fingerprint: string) => Promise<boolean>;
       sample: (request: { fingerprint: string; datasetId: string; sampleIndex: number }) => Promise<{
-        fingerprint: string; sceneId: string; datasetId: string; sampleIndex: number;
+        fingerprint: string; sceneId: string; datasetId: string; sampleIndex: number; sampleId: string;
         grid: [number, number]; coordinates: [number, number]; coordinateUnits: [string, string];
         value: number; valueUnit: string;
       }>;

@@ -5,7 +5,7 @@ import { buildScientificHeightMesh, type OpenedScientificHeightSurface } from ".
 
 export type ScientificSceneOpenResponse = { ok: true; scene: OpenedScientificHeightSurface } |
   { ok: false; error: string };
-type Sample = { fingerprint: string; sceneId: string; datasetId: string; sampleIndex: number;
+type Sample = { fingerprint: string; sceneId: string; datasetId: string; sampleIndex: number; sampleId: string;
   grid: [number, number]; coordinates: [number, number]; coordinateUnits: [string, string];
   value: number; valueUnit: string };
 
@@ -74,6 +74,7 @@ export function ScientificScenePreview({ opened, onClose }: { opened: OpenedScie
           {error && <p role="alert">{error}</p>}
           {selection && <div data-testid="scientific-sample-selection"><h3>Selected source sample</h3>
             <div>{selection.sceneId}/{selection.datasetId} · index {selection.sampleIndex} · grid [{selection.grid.join(", ")}]</div>
+            <div>Stable sample ID: <code>{selection.sampleId}</code></div>
             <div>{coordinate.axes[0].name} = {selection.coordinates[0].toPrecision(8)} {selection.coordinateUnits[0]}</div>
             <div>{coordinate.axes[1].name} = {selection.coordinates[1].toPrecision(8)} {selection.coordinateUnits[1]}</div>
             <div>{dataset.quantity.symbol ?? dataset.id} = {selection.value.toPrecision(8)} {selection.valueUnit}</div>

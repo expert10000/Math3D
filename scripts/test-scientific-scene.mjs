@@ -7,7 +7,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { readScientificSceneBundle } = require("../dist/main/scientificScene/bundle.js");
-const { openScientificHeightSurface, inspectScientificHeightSample } = require("../dist/main/scientificScene/heightSurface.js");
+const { adaptVerifiedHeightSurface, openScientificHeightSurface, inspectScientificHeightSample } = require("../dist/main/scientificScene/heightSurface.js");
 const { importQuantumFieldScientificManifest } = require("../dist/main/quantumScene/scientificManifest.js");
 const { normalizeScientificSceneManifest } = require("../dist/shared/scientificSceneManifest.js");
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
@@ -25,7 +25,16 @@ assert.deepEqual(picked.coordinates, [Math.PI / 2, 0]);
 assert.deepEqual(picked.coordinateUnits, ["1", "1"]);
 assert.equal(picked.value, 1);
 assert.equal(picked.valueUnit, "1");
+assert.equal(picked.sampleId, `${picked.sceneId}:f:212`);
 await assert.rejects(inspectScientificHeightSample(fixture, scalar.fingerprint, "f", 289), /outside/);
+
+const verified = await readScientificSceneBundle(fixture);
+const overLimit = { ...verified,
+  resources: new Map([[verified.manifest.datasets[0].real, Buffer.alloc(4097 * 8)]]) };
+assert.throws(() => adaptVerifiedHeightSurface(overLimit), /bounded display sample limit/);
+const unsupportedOperation = structuredClone(verified.manifest);
+unsupportedOperation.views[0].operation = "unregistered-derivation";
+assert.throws(() => adaptVerifiedHeightSurface({ ...verified, manifest: unsupportedOperation }), /no supported/);
 
 const quantum = await importQuantumFieldScientificManifest(resolve("tests/fixtures/quantum-scene-orbitals/orbital-2p.qscene"));
 assert.equal(normalizeScientificSceneManifest(quantum.manifest).ok, true);
@@ -68,4 +77,4 @@ try {
   await assert.rejects(readScientificSceneBundle(directory), /unexpected/);
 } finally { await rm(root, { recursive: true, force: true }); }
 
-console.log("SSR-02/03 shared validator, scalar/complex fixtures, exact samples and tamper refusal passed");
+console.log("SSR-02/03/04 shared validator, bounded display, registered view, exact sample IDs and tamper refusal passed");

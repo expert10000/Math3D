@@ -551,6 +551,7 @@ contextBridge.exposeInMainWorld("scientificScenes", Object.freeze({
   openExample: (): Promise<ScientificSceneOpenResponse> => ipcRenderer.invoke("scientificScenes:openExample"),
   sample: (request: { fingerprint: string; datasetId: string; sampleIndex: number }) =>
     ipcRenderer.invoke("scientificScenes:sample", request),
+  close: (fingerprint: string): Promise<boolean> => ipcRenderer.invoke("scientificScenes:close", fingerprint),
 }));
 
 contextBridge.exposeInMainWorld("workspaceFiles", Object.freeze({

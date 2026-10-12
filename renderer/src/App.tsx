@@ -110088,7 +110088,10 @@ case "mobius":
         )}
       </div></SavedSurfaceModuleFrame></SavedMeshModuleFrame>)}
       {quantumScenePreview && <QuantumScenePreview opened={quantumScenePreview} onClose={() => setQuantumScenePreview(null)} />}
-      {scientificScenePreview && <ScientificScenePreview opened={scientificScenePreview} onClose={() => setScientificScenePreview(null)} />}
+      {scientificScenePreview && <ScientificScenePreview opened={scientificScenePreview} onClose={() => {
+        void window.scientificScenes?.close(scientificScenePreview.fingerprint);
+        setScientificScenePreview(null);
+      }} />}
       {showQuantumSceneExamples && <QuantumSceneExamples onOpened={opened => {
         setQuantumScenePreview(opened); setQuantumSceneReference(opened.reference);
       }} onOpenedScientific={scene => setScientificScenePreview(scene)} onClose={() => setShowQuantumSceneExamples(false)} />}
