@@ -7,6 +7,13 @@
 For the exact Theory Lab export and Math3D inspection workflow, see the
 [M3D-Q04 lattice usage guide](quantum-lattice-usage.md).
 
+For a producer-neutral extension beyond quantum scenes, see the additive
+[Scientific Scene Runtime roadmap](scientific-scene-runtime-roadmap.md) and its
+[SSR-00 compatibility map](scientific-scene-compatibility-map.md). SSR-00 is an
+inventory only; it does not alter M3D-Q statuses or the `quantum-scene/v1|v2`
+import boundary. The first generic proof must cover one existing quantum bundle
+and one non-quantum fixture before any Python provider work.
+
 **Type:** interoperability and scientific-visualization program
 
 **Executable sequence:** `M3D-Q01` through `M3D-Q10`
