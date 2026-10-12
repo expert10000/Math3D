@@ -193,6 +193,7 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await projects.getByTestId(`project-open-saved-${savedQuantum.projectId}`).click();
     await expect(projects.getByTestId("project-message")).toContainText("Opened supported project", { timeout: 60_000 });
     await projects.getByTestId("project-gallery-layout-toggle").click();
+    await projects.getByTestId("project-detail-tab-documents").click();
     await expect(projects.getByTestId(`project-view-${savedQuantum.entry.expected.id}`)).toBeEnabled();
     await projects.getByTestId(`project-view-${savedQuantum.entry.expected.id}`).click();
     await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
