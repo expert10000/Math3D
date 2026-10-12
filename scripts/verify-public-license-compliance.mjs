@@ -26,6 +26,11 @@ for (const file of [
   "THIRD_PARTY_NOTICES.md",
   "SOURCE_OFFER.md",
   "compliance/public-source-manifest.json",
+  "compliance/cyclonedx-android.init.gradle",
+  "scripts/generate-release-sbom.mjs",
+  "scripts/generate-android-release-sbom.mjs",
+  "scripts/release-python-sbom-inventory.py",
+  "scripts/test-release-sbom.mjs",
   "docs/licensing-and-distribution-roadmap.md",
   "docs/public-gpl-release-roadmap.md",
   "docs/commercial-private-licensing-roadmap.md",
@@ -42,6 +47,10 @@ requireText("electron-builder.config.cjs", 'from: "THIRD_PARTY_NOTICES.md"');
 requireText("electron-builder.config.cjs", 'from: "SOURCE_OFFER.md"');
 requireText(".github/workflows/release.yml", "npm run verify:license-compliance");
 requireText(".github/workflows/release.yml", "npm run release:source");
+requireText(".github/workflows/release.yml", "Generate Windows release SBOM");
+requireText(".github/workflows/release.yml", "Generate Linux release SBOM");
+requireText(".github/workflows/mobile-android-production-aab.yml", "Generate Android release SBOM");
+requireText(".github/workflows/mobile-android-production-aab.yml", "Math3D-mobile-*-release.cdx.json");
 requireText(".github/workflows/release.yml", "python -m pip install pyinstaller -r python/worker/requirements.freeze.txt");
 requireText(".github/workflows/release.yml", 'MATH3D_REQUIRE_PYGALMESH: "1"');
 requireText(".github/workflows/release.yml", 'MATH3D_REQUIRE_CGAL: "1"');

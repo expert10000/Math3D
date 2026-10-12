@@ -8,6 +8,11 @@ const recipeFiles = [
   "scripts/materialize-release-recipe.cjs",
   "scripts/setup-cgal-python-worker.ps1",
   "scripts/prepare-public-source-bundle.mjs",
+  "scripts/generate-release-sbom.mjs",
+  "scripts/generate-android-release-sbom.mjs",
+  "scripts/release-python-sbom-inventory.py",
+  "scripts/test-release-sbom.mjs",
+  "compliance/cyclonedx-android.init.gradle",
   "compliance/public-source-manifest.json",
 ];
 const sha = process.env.GITHUB_WORKFLOW_SHA;

@@ -145,6 +145,9 @@ jobs:
       - name: Verify public license compliance metadata
         run: npm run verify:license-compliance
 
+      - name: Test release SBOM generators
+        run: node scripts/test-release-sbom.mjs
+
       - name: Resolve native binary cache
         id: native-cache-key
         shell: pwsh
@@ -201,6 +204,9 @@ jobs:
       - name: Verify packaged worker protocol
         run: node scripts/smoke-python-worker.mjs --exe release/win-unpacked/resources/python-worker/worker.exe
 
+      - name: Generate Windows release SBOM
+        run: node scripts/generate-release-sbom.mjs --target windows --app-dir release/win-unpacked --out release-sbom --version "${{ steps.meta.outputs.version }}"
+
       - name: Preserve verified Windows build before source downloads
         uses: actions/upload-artifact@v7
         with:
@@ -213,6 +219,7 @@ jobs:
             release/win-unpacked/**
             site/**
             apps/web/dist/**
+            release-sbom/**
 
       - name: Prepare corresponding source assets
         shell: pwsh
@@ -263,6 +270,10 @@ jobs:
           }
 
           Get-ChildItem -Path "release-source" -File | ForEach-Object {
+            Copy-Item $_.FullName (Join-Path $assetsDir $_.Name) -Force
+          }
+
+          Get-ChildItem -Path "release-sbom" -File | ForEach-Object {
             Copy-Item $_.FullName (Join-Path $assetsDir $_.Name) -Force
           }
 
@@ -407,6 +418,9 @@ jobs:
       - name: Verify public license compliance metadata
         run: npm run verify:license-compliance
 
+      - name: Test release SBOM generators
+        run: node scripts/test-release-sbom.mjs
+
       - name: Ensure Linux Electron binary
         env:
           MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: "600000"
@@ -436,6 +450,9 @@ jobs:
           MATH3D_REQUIRE_CGAL: "1"
         run: npm run dist:linux:ci
 
+      - name: Generate Linux release SBOM
+        run: node scripts/generate-release-sbom.mjs --target linux --app-dir release/linux-unpacked --out release-sbom --version "${{ steps.meta.outputs.version }}"
+
       - name: Preserve built Linux packages before source downloads
         uses: actions/upload-artifact@v7
         with:
@@ -447,6 +464,7 @@ jobs:
             release/*.AppImage
             release/*.deb
             release/*.rpm
+            release-sbom/**
 
       - name: Prepare corresponding source assets
         run: npm run release:source -- --target linux --out release-source --version "${{ steps.meta.outputs.version }}"
@@ -483,6 +501,7 @@ jobs:
           fi
 
           cp release-source/* "$assets_dir/"
+          cp release-sbom/* "$assets_dir/"
 
           (
             cd "$assets_dir"

@@ -106,6 +106,15 @@ jobs:
           (cd artifacts/mobile && sha256sum -c SHA256SUMS)
           npm run mobile:android:release:verify
 
+      - name: Generate Android release SBOM
+        run: |
+          if ! (cd apps/mobile/android && ./gradlew cyclonedxBom --init-script ../../../compliance/cyclonedx-android.init.gradle --no-daemon > ../../../artifacts/mobile/gradle-sbom.log 2>&1); then
+            tail -n 100 artifacts/mobile/gradle-sbom.log
+            exit 1
+          fi
+          echo 'Gradle release dependency inventory generated.'
+          node scripts/generate-android-release-sbom.mjs
+
       - name: Upload signed AAB and verification evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -118,6 +127,8 @@ jobs:
             artifacts/mobile/build-info.json
             artifacts/mobile/SHA256SUMS
             artifacts/mobile/release-verification.json
+            artifacts/mobile/Math3D-mobile-*-release.cdx.json
+            artifacts/mobile/Math3D-mobile-*-release-licenses.md
             output/mobile-device-signoff-gate.json
 
   publish-aab:
@@ -150,4 +161,6 @@ jobs:
             artifacts/mobile/SHA256SUMS \
             artifacts/mobile/build-info.json \
             artifacts/mobile/release-verification.json \
+            artifacts/mobile/Math3D-mobile-*-release.cdx.json \
+            artifacts/mobile/Math3D-mobile-*-release-licenses.md \
             --repo "$GITHUB_REPOSITORY"

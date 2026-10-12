@@ -1,0 +1,20 @@
+// Generate a resolved native dependency graph without changing the Android app.
+// Keep this plugin version fixed with the release recipe.
+import org.cyclonedx.gradle.CyclonedxPlugin
+import org.cyclonedx.gradle.CyclonedxDirectTask
+
+initscript {
+  repositories { gradlePluginPortal() }
+  dependencies { classpath 'org.cyclonedx.bom:org.cyclonedx.bom.gradle.plugin:3.4.1' }
+}
+
+rootProject {
+  apply plugin: CyclonedxPlugin
+  allprojects {
+    tasks.named('cyclonedxDirectBom', CyclonedxDirectTask) {
+      // The published AAB contains the release runtime graph only.
+      includeConfigs = ['releaseRuntimeClasspath']
+      testConfigs = []
+    }
+  }
+}

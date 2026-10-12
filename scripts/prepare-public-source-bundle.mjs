@@ -86,6 +86,9 @@ const releasePatch = run("git", ["diff", "HEAD", "--",
   "package.json", "package-lock.json", ".github/workflows/release.yml",
   "scripts/materialize-release-recipe.cjs", "scripts/setup-cgal-python-worker.ps1",
   "scripts/prepare-public-source-bundle.mjs", "compliance/public-source-manifest.json",
+  "scripts/generate-release-sbom.mjs", "scripts/generate-android-release-sbom.mjs",
+  "scripts/release-python-sbom-inventory.py", "compliance/cyclonedx-android.init.gradle",
+  "scripts/test-release-sbom.mjs",
 ]);
 let releasePatchName = null;
 if (releasePatch) {
