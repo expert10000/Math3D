@@ -1,0 +1,76 @@
+{
+  "schema": "scientific-scene/v1",
+  "sceneId": "sincos-grid",
+  "title": "sin(x) cos(y) · supplied scalar grid",
+  "source": {
+    "producer": "math3d-fixture",
+    "sourceId": "sincos-v1",
+    "sourceSchema": "scientific-fixture/v1",
+    "sha256": "8c3a5fe3e438aa310760e2a4825747103f9f5ae001b779c5d541fd581020f3cd"
+  },
+  "resources": [
+    {
+      "id": "values",
+      "path": "values.f64",
+      "format": "f64le",
+      "count": 289,
+      "bytes": 2312,
+      "sha256": "8c3a5fe3e438aa310760e2a4825747103f9f5ae001b779c5d541fd581020f3cd"
+    }
+  ],
+  "coordinates": [
+    {
+      "id": "xy",
+      "kind": "cartesian",
+      "axes": [
+        {
+          "name": "x",
+          "unit": "1"
+        },
+        {
+          "name": "y",
+          "unit": "1"
+        }
+      ],
+      "origin": [
+        -3.141592653589793,
+        -3.141592653589793
+      ],
+      "spacing": [
+        0.39269908169872414,
+        0.39269908169872414
+      ],
+      "periodic": [
+        false,
+        false
+      ]
+    }
+  ],
+  "datasets": [
+    {
+      "id": "f",
+      "semanticType": "scalar-field",
+      "coordinateSystem": "xy",
+      "shape": [
+        17,
+        17
+      ],
+      "order": "last-axis-fastest",
+      "quantity": {
+        "name": "scalar value",
+        "unit": "1",
+        "symbol": "f"
+      },
+      "real": "values"
+    }
+  ],
+  "views": [
+    {
+      "id": "surface",
+      "label": "f(x,y) height surface",
+      "dataset": "f",
+      "renderer": "height-surface",
+      "operation": "identity"
+    }
+  ]
+}

@@ -1,11 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { QuantumSceneOpenResponse } from "./QuantumScenePreview";
+import type { ScientificSceneOpenResponse } from "./ScientificScenePreview";
 
 type Example = Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["examples"]>>[number];
 type Opened = Extract<QuantumSceneOpenResponse, { ok: true }>;
 
-export function QuantumSceneExamples({ onOpened, onClose }: { onOpened: (scene: Opened) => void; onClose: () => void }) {
+export function QuantumSceneExamples({ onOpened, onOpenedScientific, onClose }: {
+  onOpened: (scene: Opened) => void;
+  onOpenedScientific: (scene: Extract<ScientificSceneOpenResponse, { ok: true }>["scene"]) => void;
+  onClose: () => void;
+}) {
   const [examples, setExamples] = useState<Example[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -24,6 +29,16 @@ export function QuantumSceneExamples({ onOpened, onClose }: { onOpened: (scene: 
       if (result.ok) { onOpened(result); onClose(); }
       else if (!result.canceled) setError(`Example refused: ${result.error}`);
     } catch (reason) { setError(`Example refused: ${String((reason as Error)?.message ?? reason)}`); }
+    finally { setBusy(null); }
+  };
+  const openScientific = async () => {
+    if (!window.scientificScenes?.openExample || busy) { setError("Scientific example requires the desktop app."); return; }
+    setBusy("sincos"); setError("");
+    try {
+      const result = await window.scientificScenes.openExample();
+      if (result.ok) { onOpenedScientific(result.scene); onClose(); }
+      else setError(`Scientific example refused: ${result.error}`);
+    } catch (reason) { setError(`Scientific example refused: ${String((reason as Error)?.message ?? reason)}`); }
     finally { setBusy(null); }
   };
   return createPortal(<div role="dialog" aria-modal="true" aria-label="Verified quantum examples"
@@ -53,6 +68,17 @@ export function QuantumSceneExamples({ onOpened, onClose }: { onOpened: (scene: 
           </div>
         </section> : null;
       })}
+      <section aria-label="Non-quantum scientific example">
+        <h3>Scientific interchange proof</h3>
+        <button type="button" data-testid="scientific-example-sincos" disabled={Boolean(busy)}
+          onClick={() => void openScientific()} style={{ padding: 12, textAlign: "left",
+            border: "1px solid var(--border, #cbd5e1)", borderRadius: 8,
+            background: "var(--panel, #f8fafc)", color: "inherit" }}>
+          <strong>sin(x) cos(y) · scalar surface</strong><br />
+          <small>Non-quantum, source-backed grid through the same scientific-scene/v1 validator.</small>
+          {busy === "sincos" && <span role="status"> · Verifying…</span>}
+        </button>
+      </section>
       <p style={{ fontSize: 12 }}>Bundled scenes retain immutable source hashes. For your own Lab result, use File → Open verified quantum scene or Open in Math3D from Theory Lab.</p>
     </div>
   </div>, document.body);

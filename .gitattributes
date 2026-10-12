@@ -8,3 +8,5 @@ tests/fixtures/quantum-scene/**/*.json -text
 tests/fixtures/quantum-scene/**/*.f64 -text
 tests/fixtures/quantum-scene-orbitals/**/*.json -text
 tests/fixtures/quantum-scene-orbitals/**/*.f64 -text
+tests/fixtures/scientific-scene/**/*.json -text
+tests/fixtures/scientific-scene/**/*.f64 -text

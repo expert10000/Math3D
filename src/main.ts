@@ -10,6 +10,7 @@ import { registerVtkMeshIpc } from "./main/ipc/vtkMeshIpc";
 import { registerSageServiceIpc } from "./main/ipc/sageServiceIpc";
 import { registerComputeEngineManagerIpc } from "./main/ipc/computeEngineManagerIpc";
 import { quantumSceneLaunchDirectory, registerQuantumSceneIpc } from "./main/ipc/quantumSceneIpc";
+import { registerScientificSceneIpc } from "./main/ipc/scientificSceneIpc";
 import { registerWorkspaceFileIpc } from "./main/ipc/workspaceFileIpc";
 import { registerProjectThumbnailIpc } from "./main/ipc/projectThumbnailIpc";
 import { runPythonWorkerStartupCheck, stopPythonWorker } from "./main/python/pythonWorker";
@@ -1013,6 +1014,7 @@ app.whenReady().then(async () => {
   try { launchQuantumScene = quantumSceneLaunchDirectory(process.argv); }
   catch (error) { console.error("Quantum scene launch ignored:", error); }
   registerQuantumSceneIpc(launchQuantumScene);
+  registerScientificSceneIpc();
   registerWorkspaceFileIpc();
   registerProjectThumbnailIpc();
 

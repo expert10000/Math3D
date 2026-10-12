@@ -87,6 +87,7 @@ export type SurfaceMeshSource =
     }
   | { kind: "polyhedronPreset"; id?: string; label?: string }
   | { kind: "quantumSceneField"; fieldId: string; level: number; resultSha256: string }
+  | { kind: "scientificSceneField"; sceneId: string; datasetId: string; fingerprint: string }
   | { kind: "halfspaceIntersection" }
   | { kind: "convexHull" }
   | { kind: "csg" }
@@ -126,6 +127,8 @@ export const formatSurfaceMeshSource = (source: SurfaceMeshSource | string): str
     }
     case "quantumSceneField":
       return `verified quantum field ${source.fieldId} density surface at ${source.level * 100}% of maximum`;
+    case "scientificSceneField":
+      return `verified scientific field ${source.sceneId}/${source.datasetId}`;
     case "halfspaceIntersection":
       return "halfspace intersection";
     case "convexHull":

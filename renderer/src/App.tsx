@@ -2,6 +2,7 @@ import { type SurfaceViewerKind, type BBox3, type MeshPromotionTraceState, type 
 import { type SurfacesLeftPanelProps, type SurfacesRightPanelProps } from "./surfacePanels";
 import { MeshProjectEditor } from "./projects/MeshProjectEditor";
 import { QuantumScenePreview, type QuantumSceneOpenResponse, type QuantumSceneWorkspaceReference } from "./components/QuantumScenePreview";
+import { ScientificScenePreview, type ScientificSceneOpenResponse } from "./components/ScientificScenePreview";
 import { QuantumSceneExamples } from "./components/QuantumSceneExamples";
 import { quantumSceneDocumentFromVerifiedOpen } from "./projects/quantumSceneAdmission";
 import { meshDocumentEditable } from "./projects/nativeMeshRestore";
@@ -33180,6 +33181,7 @@ const App: React.FC = () => {
 
   const [workbooks, setWorkbooks] = useState<Workbook[]>(() => loadWorkbooks());
   const [quantumScenePreview, setQuantumScenePreview] = useState<Extract<QuantumSceneOpenResponse, { ok: true }> | null>(null);
+  const [scientificScenePreview, setScientificScenePreview] = useState<Extract<ScientificSceneOpenResponse, { ok: true }>["scene"] | null>(null);
   const [showQuantumSceneExamples, setShowQuantumSceneExamples] = useState(false);
   const [quantumSceneNavigationError, setQuantumSceneNavigationError] = useState<string | null>(null);
   const quantumSceneNavigationSequence = useRef(0);
@@ -110086,9 +110088,10 @@ case "mobius":
         )}
       </div></SavedSurfaceModuleFrame></SavedMeshModuleFrame>)}
       {quantumScenePreview && <QuantumScenePreview opened={quantumScenePreview} onClose={() => setQuantumScenePreview(null)} />}
+      {scientificScenePreview && <ScientificScenePreview opened={scientificScenePreview} onClose={() => setScientificScenePreview(null)} />}
       {showQuantumSceneExamples && <QuantumSceneExamples onOpened={opened => {
         setQuantumScenePreview(opened); setQuantumSceneReference(opened.reference);
-      }} onClose={() => setShowQuantumSceneExamples(false)} />}
+      }} onOpenedScientific={scene => setScientificScenePreview(scene)} onClose={() => setShowQuantumSceneExamples(false)} />}
       {quantumSceneNavigationError && <div role="alert" data-testid="quantum-scene-navigation-error" style={{ position: "fixed", bottom: 16, right: 16, zIndex: 2901, padding: 12, background: "#7f1d1d", color: "white", maxWidth: 420 }}>
         {quantumSceneNavigationError} <button type="button" onClick={() => setQuantumSceneNavigationError(null)}>Dismiss</button></div>}
       {workflowActionOverlayModel && !cleanScreenshotSurfaceActive && (

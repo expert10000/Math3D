@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "dist/shared",
+    "rootDir": "packages/core/src",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "include": ["packages/core/src/scientificSceneManifest.ts"]
+}

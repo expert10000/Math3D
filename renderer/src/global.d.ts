@@ -589,6 +589,14 @@ declare global {
   };
 
   interface Window {
+    scientificScenes?: {
+      openExample: () => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;
+      sample: (request: { fingerprint: string; datasetId: string; sampleIndex: number }) => Promise<{
+        fingerprint: string; sceneId: string; datasetId: string; sampleIndex: number;
+        grid: [number, number]; coordinates: [number, number]; coordinateUnits: [string, string];
+        value: number; valueUnit: string;
+      }>;
+    };
     workspaceFiles?: {
       open: () => Promise<{ ok: true; canceled: false; content: string } |
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;

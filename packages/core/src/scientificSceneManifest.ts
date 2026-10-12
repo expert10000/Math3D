@@ -1,4 +1,4 @@
-import type { ValidationResult } from "./validation";
+type ValidationResult<T> = { ok: true; value: T } | { ok: false; errors: string[] };
 
 /** Small, platform-neutral metadata contract. Numerical values stay in verified binary resources. */
 export const SCIENTIFIC_SCENE_SCHEMA = "scientific-scene/v1" as const;

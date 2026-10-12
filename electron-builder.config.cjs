@@ -58,6 +58,10 @@ const config = {
       from: "tests/fixtures/quantum-scene-orbitals",
       to: "quantum-scenes/quantum-scene-orbitals",
     },
+    {
+      from: "tests/fixtures/scientific-scene/sincos.sscene",
+      to: "scientific-scenes/sincos.sscene",
+    },
   ],
   win: {
     target: "nsis",
