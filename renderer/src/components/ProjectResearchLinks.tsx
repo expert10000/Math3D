@@ -21,6 +21,8 @@ type Props = {
   onOpenWorkbookBlock: (id: string, stageId: WorkbookStageId, blockId: string) => void;
   onOpenNote: (id: string) => void;
   canOpenNote: boolean;
+  onAddRippleResearch?: () => void;
+  addRippleResearchBusy?: boolean;
 };
 
 const statusText = (status: Status) => ({ current: "Up to date", stale: "Historical", missing: "Unavailable",
@@ -29,7 +31,7 @@ const tone = (status: Status) => status === "current" ? "current" : status === "
 
 /** Reads verified Workbook payloads and the Project's stored Note anchors; prose is never treated as a link. */
 export const ProjectResearchLinks: React.FC<Props> = ({ project, titles, workbookBytes, canOpenDocument, onOpenDocument,
-  onInspectResult, onOpenWorkbookBlock, onOpenNote, canOpenNote }) => {
+  onInspectResult, onOpenWorkbookBlock, onOpenNote, canOpenNote, onAddRippleResearch, addRippleResearchBusy }) => {
   const research = useMemo(() => {
     const workbooks: LoadedWorkbook[] = (project.workbooks ?? []).map(reference => {
       try { const bytes = workbookBytes(reference.id); return { reference, workbook: bytes ? readProjectWorkbook(bytes, reference) : null }; }
@@ -112,6 +114,10 @@ export const ProjectResearchLinks: React.FC<Props> = ({ project, titles, workboo
   return <section className="project-research-links project-workspace-section" data-testid="project-research-links" aria-label="Project research links">
     <h3>Research links</h3>
     <p className="project-workspace-section-hint">Exact Workbook citations and Note anchors from this Project. Historical links retain their captured revision; unavailable payloads reveal no inferred connections.</p>
+    {project.metadata.tags?.includes("ripple-wave-study") && !project.workbooks?.some(item => item.title === "Ripple Wave Research") &&
+      <p><button type="button" data-testid="project-add-ripple-research" disabled={!onAddRippleResearch || addRippleResearchBusy} onClick={onAddRippleResearch}>
+        Add Ripple research Workbook and Notes
+      </button></p>}
     <div className="project-research-grid">
       <section aria-label="Workbook citations"><h4>Workbook citations ({research.citations.length + research.noteUses.length})</h4>
         {research.workbooks.map(({ reference, workbook }) => !workbook && <p key={reference.id} className="project-research-unavailable" data-testid={`project-research-workbook-unavailable-${reference.id}`}>{reference.title}: Workbook payload unavailable. Its citations cannot be inspected.</p>)}

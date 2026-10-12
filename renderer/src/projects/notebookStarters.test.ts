@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { createMath3DProject, updateMath3DProjectMetadata } from "@math3d/core";
 import { assessWorkbookClaim, inspectNotebookReference, updateWorkbookNamedParameter, workbookParameterAffectedBlocks } from "@math3d/workbook";
-import { instantiateNotebookStarter, NOTEBOOK_STARTERS } from "./notebookStarters";
-import { exportProjectPackage, parseProjectPackage } from "./projectResources";
+import { addRippleWaveResearch, instantiateNotebookStarter, NOTEBOOK_STARTERS } from "./notebookStarters";
+import { captureProjectResources, exportProjectPackage, parseProjectPackage } from "./projectResources";
 import { readProjectWorkbook } from "./projectWorkbookBinding";
 import { projectNoteRenderedBody } from "./projectNoteValues";
 import { inspectProjectCompatibility } from "./projectTransfer";
@@ -30,7 +31,32 @@ describe("ready-to-open evidence notebooks", () => {
     expect(selectProjectDocument(reopened.project, null).selected.expected.id).toBe(surface!.expected.id);
     expect(inspectProjectCompatibility(reopened.project, { resources: reopened.resources }).canOpenWorkspace).toBe(true);
     expect(reopened.resources.meshStore(reopened.project)).toBeTruthy();
+    const ref = reopened.project.workbooks![0]!, bytes = reopened.resources.bytes({ kind: "workbook-payload", id: ref.id })!;
+    const book = readProjectWorkbook(bytes, ref);
+    const citations = book.stages.flatMap(stage => stage.blocks).filter(block => block.notebookReference);
+    expect(citations.map(block => block.notebookReference!.targetId)).toEqual(entries.map(entry => entry.expected.id));
+    expect(citations.map(block => inspectNotebookReference(reopened.project, block.notebookReference!).status)).toEqual(["current", "current", "current", "current"]);
+    expect(reopened.project.notes?.map(note => [note.title, note.anchor?.kind]).sort((a, b) => String(a[0]).localeCompare(String(b[0])))).toEqual([
+      ["Saved mesh snapshot", "document"], ["Wave profile source", "document"],
+    ]);
+    expect(addRippleWaveResearch(reopened.project)).toBeNull();
     expect(instantiateNotebookStarter("ripple-wave-study", "other").project.identity.id).not.toBe(made.project.identity.id);
+  });
+
+  it("adds research material to an existing Ripple copy without replacing its documents or Mesh", () => {
+    const made = instantiateNotebookStarter("ripple-wave-study", "legacy-source");
+    const legacy = updateMath3DProjectMetadata(createMath3DProject(made.project.workspace,
+      { stableKey: ["ripple-wave-study", "legacy-copy"], title: "Ripple Wave Study" }), made.project.metadata);
+    const added = addRippleWaveResearch(legacy)!;
+    expect(added.project.workspace).toEqual(legacy.workspace);
+    expect(added.project.identity.id).toBe(legacy.identity.id);
+    const resources = captureProjectResources(added.project, item => item.kind === "workbook-payload" ? added.workbook.bytes : made.resources.bytes(item));
+    const reopened = parseProjectPackage(exportProjectPackage(added.project, resources));
+    expect(reopened.resources.meshStore(reopened.project)).toBeTruthy();
+    const reference = reopened.project.workbooks![0]!, workbook = readProjectWorkbook(reopened.resources.bytes({ kind: "workbook-payload", id: reference.id })!, reference);
+    expect(workbook.stages.flatMap(stage => stage.blocks).filter(block => block.notebookReference)).toHaveLength(4);
+    expect(reopened.project.notes).toHaveLength(2);
+    expect(addRippleWaveResearch(reopened.project)).toBeNull();
   });
 
   for (const recipe of NOTEBOOK_STARTERS.filter(item => item.id === "catenoid-evidence" || item.id === "edge-path-evidence")) it(`${recipe.title} retains real source resources, live Notes, bindings and exact claims`, () => {

@@ -19,6 +19,10 @@ test("Project Details dashboard uses stored document relations and opens a docum
     await expect(page.getByTestId("project-sidebar-contents")).toBeHidden();
     await tabs.getByTestId("project-detail-tab-documents").click();
     await expect(page.getByTestId("project-sidebar-contents")).toBeVisible();
+    const research = page.getByTestId("project-research-links");
+    await expect(research.locator('[data-testid^="project-research-citation-"]')).toHaveCount(4);
+    await expect(research.locator('[data-testid^="project-research-note-"]:not([data-testid^="project-research-note-use-"])')).toHaveCount(2);
+    await expect(research.getByText("Ripple Wave Research", { exact: false }).first()).toBeVisible();
     await tabs.getByTestId("project-detail-tab-relations").click();
     await expect(page.getByTestId("project-relationship-map")).toBeVisible();
     await expect(page.getByTestId("project-dependencies")).toBeVisible();

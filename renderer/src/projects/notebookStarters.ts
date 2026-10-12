@@ -11,11 +11,44 @@ export const NOTEBOOK_STARTERS = [
   { id: "edge-path-evidence", title: "Edge Path Evidence Notebook", description: "A computed Mesh edge path with exact citations, a length check and a bound Workbook grid parameter." },
   { id: "graph-derivative-notebook", title: "Graph Derivative Investigation", description: "Compare a parabola, its Curve snapshot and a recorded numerical derivative in a Project Workbook." },
   { id: "curve-construction-notebook", title: "Curve Construction Investigation", description: "Follow a measured Curve into revolution and extrusion Surfaces with exact source references." },
-  { id: "ripple-wave-study", title: "Ripple Wave Study", description: "A Graph wave profile, its native Surface, a saved Mesh snapshot and editable Geometry sample markers." },
+  { id: "ripple-wave-study", title: "Ripple Wave Study", description: "A Graph wave profile, its native Surface, a saved Mesh snapshot, Geometry sample markers and a research Workbook with exact source links." },
 ] as const;
 export type NotebookStarterId = typeof NOTEBOOK_STARTERS[number]["id"];
 
 const waveHeight = (x: number) => Math.sin(2 * x) / (1 + 0.1 * x * x);
+
+/** Adds exact research references without replacing an existing Ripple Project's documents or Mesh bytes. */
+export const addRippleWaveResearch = (source: ReturnType<typeof createMath3DProject>) => {
+  if (!source.metadata.tags?.includes("ripple-wave-study")) throw new TypeError("This is not a Ripple Wave Study Project.");
+  if (source.workbooks?.some(item => item.title === "Ripple Wave Research")) return null;
+  const entries = (["graph2d", "surface", "mesh", "geometry"] as const).map(module => {
+    const entry = source.workspace.entries.find(item => item.module === module);
+    if (!entry) throw new TypeError(`Ripple Wave ${module} document is unavailable.`);
+    return entry;
+  });
+  let project = source;
+  for (const [index, title, body] of [
+    [0, "Wave profile source", "The Graph records the wave formula and domain used to construct the Surface. A later Graph edit does not automatically update the saved Surface."],
+    [2, "Saved mesh snapshot", "This Mesh captures one generation of the Surface. Inspect Project Relations for freshness before comparing it with an edited Surface; no curvature or accuracy claim is recorded here."],
+  ] as const) {
+    const note = createProjectNote({ projectId: project.identity.id, stableKey: ["ripple-wave-study", project.identity.id, title],
+      kind: "text", title, body, anchor: { kind: "document", source: viewerSourceFromDocument({ identity: entries[index]!.expected }) }, createdAt: 0 });
+    project = upsertMath3DProjectNote(project, note);
+  }
+  let sequence = 0;
+  const workbook = createDefaultWorkbook(() => `ripple-wave-research-${project.identity.id}-${++sequence}`);
+  workbook.title = "Ripple Wave Research";
+  workbook.stages[0]!.blocks[0]!.text = "Follow the saved Graph → Surface → Mesh chain, then inspect the Geometry sample markers. These are exact Project document references; check Relations after editing a source.";
+  workbook.stages[0]!.blocks[1]!.formula = "f(x)=\\frac{\\sin(2x)}{1+0.1x^2}";
+  workbook.stages[1]!.blocks = entries.map((entry, index) => ({ id: `ripple-wave-source-${index}`, type: "reference" as const,
+    title: project.metadata.documents?.[entry.expected.id]?.title ?? entry.module,
+    notebookReference: createNotebookReference(project, "document", entry.expected.id) }));
+  workbook.stages[3]!.blocks = [{ id: "ripple-wave-interpretation", type: "text", title: "Interpret the snapshots",
+    text: "The Surface is derived from the recorded Graph generation. The Mesh and sample markers derive from the recorded Surface generation. Freshness is a provenance check, not a numerical proof about the wave." }];
+  const bound = prepareProjectWorkbook(project, workbook, project.identity.id);
+  project = upsertMath3DProjectWorkbook(project, bound.reference);
+  return { project, workbook: { id: bound.reference.id, bytes: bound.bytes } };
+};
 
 const instantiateRippleWaveStarter = (token: string) => {
   const id = "ripple-wave-study", recipe = NOTEBOOK_STARTERS.find(item => item.id === id)!;
@@ -54,7 +87,11 @@ const instantiateRippleWaveStarter = (token: string) => {
     tags: ["starter", id, "graph", "surface", "mesh", "geometry"],
     documents: { [graph.identity.id]: { title: "Wave profile" }, [surface.document.identity.id]: { title: "Ripple Wave Surface" },
       [made.adapter.document().identity.id]: { title: "Ripple Wave Mesh" }, [geometry.identity.id]: { title: "Wave sample markers" } } });
-  const resources = captureProjectResources(project, item => item.kind === "mesh-buffers" ? made.adapter.resources.bytes(made.adapter.document().source.resource) : null);
+  const research = addRippleWaveResearch(project);
+  if (!research) throw new TypeError("Ripple Wave research content was not created.");
+  project = research.project;
+  const resources = captureProjectResources(project, item => item.kind === "mesh-buffers" ? made.adapter.resources.bytes(made.adapter.document().source.resource)
+    : item.kind === "workbook-payload" && item.id === research.workbook.id ? research.workbook.bytes : null);
   return { project, resources };
 };
 

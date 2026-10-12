@@ -30,7 +30,7 @@ import { canReuseProjectResourceArchive, commitProjectResources, loadProjectReso
 import { canonicalJsonStringify, structuralHash, type ProjectNoteAnchor, type StableDocumentId } from "@math3d/core";
 import { pointTableStore, installPortablePointTables } from "../graph2d/pointTableStore";
 import { prepareProjectExampleCollection, importProjectExamples, SAMSUNG_EXAMPLE_COUNT } from "../projects/projectExampleCollection";
-import { instantiateNotebookStarter, NOTEBOOK_STARTERS, type NotebookStarterId } from "../projects/notebookStarters";
+import { addRippleWaveResearch, instantiateNotebookStarter, NOTEBOOK_STARTERS, type NotebookStarterId } from "../projects/notebookStarters";
 import { prewarmNotebookStarter, takePreparedNotebookStarter } from "../projects/notebookStarterPreparation";
 import type { ProjectStarterId } from "./ProjectTemplatesPanel";
 import { prepareProjectWorkbook, readProjectWorkbook } from "../projects/projectWorkbookBinding";
@@ -671,6 +671,27 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       setMessage(prepared.adopted ? `Added “${prepared.workbook.title}” to this Project. The personal Workbook remains available.` :
         `Saved “${prepared.workbook.title}” in this Project at revision ${prepared.reference.revision}.`);
     } catch (error) { setMessage(`Workbook save failed: ${(error as Error).message}`); }
+    finally { setBusy(false); }
+  };
+  const addRippleResearchToSavedProject = async () => {
+    if (busy || preview || managed || !project) return;
+    setBusy(true);
+    try {
+      const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
+      if (!raw) throw new Error("Save this Project first.");
+      const saved = parseMath3DProject(raw);
+      if (saved.identity.id !== project.identity.id || !library.entries.some(entry => entry.id === saved.identity.id))
+        throw new Error("Open and save this Project first.");
+      const research = addRippleWaveResearch(liveProject());
+      if (!research) throw new Error("Ripple Wave Research is already in this Project.");
+      const previous = await loadProjectResources(saved);
+      const resources = collectResources(research.project, previous, false, research.workbook);
+      setLibrary(await commitProjectResources(research.project, resources, () => saveLibraryProject(localStorage,
+        research.project, Date.now(), undefined, { expectedBytes: serializeMath3DProject(saved) })));
+      resourceSession.current = resources; resourceSessionId.current = research.project.identity.id;
+      display(research.project, false);
+      setMessage("Added Ripple Wave Research with four exact document citations and two anchored Notes.");
+    } catch (error) { setMessage(`Ripple research update failed: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
   const openProjectWorkbook = async (id: string, besideProject = false, stageId?: WorkbookStageId, blockId?: string) => {
@@ -1363,7 +1384,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             workbookBytes={projectWorkbookBytes} canOpenDocument={(id, module) => !preview && !!canNavigateDocument?.(id, module)}
             onOpenDocument={viewBesideProject} onInspectResult={(id) => { setResultFocus(previous => ({ id, token: (previous?.token ?? 0) + 1 })); openDetailPage("results"); }}
             onOpenWorkbookBlock={(id, stageId, blockId) => { void openProjectWorkbook(id, true, stageId, blockId); }}
-            onOpenNote={(id) => openProjectNotes(id)} canOpenNote={!preview && !busy} />}
+            onOpenNote={(id) => openProjectNotes(id)} canOpenNote={!preview && !busy}
+            onAddRippleResearch={!preview && !managed && library.entries.some(entry => entry.id === project.identity.id)
+              ? () => { void addRippleResearchToSavedProject(); } : undefined} addRippleResearchBusy={busy} />}
           <div className="project-relation-inspection"><button type="button" data-testid="project-inspect-relations" disabled={!project} onClick={() => { setInspectedId(null); setInspectionOpen(true); }}>Inspect relations and availability</button>
       {dependencies && <ProjectDependenciesPanel inspection={dependencies} selectedId={inspectedId} titles={documentTitles} onClose={() => setInspectionOpen(false)} onLocate={(id) => setInspectedId(id)}
         refreshOptions={managed && project ? projectDependencyRefreshOptions(project) : undefined} onRefresh={managed && !busy ? refreshDependency : undefined}

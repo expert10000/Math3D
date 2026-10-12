@@ -5,7 +5,7 @@ import { NOTEBOOK_STARTERS, type NotebookStarterId } from "../projects/notebookS
 import type { ProjectLibraryEntry } from "../projects/projectLibrary";
 export type ProjectStarterId = Math3DProjectTemplateId | NotebookStarterId;
 const starters = [...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS.map(item => ({ ...item,
-  steps: [item.id === "ripple-wave-study" ? "Open Surface first, then choose Graph, Mesh or Geometry from the Project tree." : "Find its Workbook and Notes in Projects → Contents."] }))];
+  steps: [item.id === "ripple-wave-study" ? "Open Surface first, then choose Graph, Mesh or Geometry from the Project tree. Find its Workbook citations and Notes in Project details → Documents." : "Find its Workbook and Notes in Projects → Contents."] }))];
 
 export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]> = {
   "catenary-study": ["Graph", "Curve", "Surface", "Notes"],
@@ -18,7 +18,7 @@ export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]
   "edge-path-evidence": ["Mesh", "Analysis", "Workbook", "Notes"],
   "graph-derivative-notebook": ["Graph", "Curve", "Analysis", "Workbook", "Notes"],
   "curve-construction-notebook": ["Curve", "Surface", "Workbook", "Notes"],
-  "ripple-wave-study": ["Graph", "Surface", "Mesh", "Geometry"],
+  "ripple-wave-study": ["Graph", "Surface", "Mesh", "Geometry", "Workbook", "Notes"],
 };
 
 export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <svg viewBox="0 0 320 152" aria-hidden="true" focusable="false">
