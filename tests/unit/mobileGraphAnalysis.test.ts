@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { analyzeGraph2DDerivative, analyzeGraph2DIntegral, analyzeGraph2DArcLength, serializeGraph2DDocument } from "@math3d/core";
+import { analyzeGraph2DDerivative, analyzeGraph2DIntegral, analyzeGraph2DArcLength,
+  analyzeGraph2DPolarMeasurement, applyGraph2DAuthoring, createEmptyGraph2DDocument,
+  createGraph2DDocument, serializeGraph2DDocument } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { createMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
 import { applyMobileGraphAuthoring, mobileGraphAuthoringAction, mobileGraphFunctionDraft } from "../../apps/mobile/src/models/mobileGraphAuthoring";
@@ -13,6 +15,27 @@ const parabola = () => {
   return adapter;
 };
 describe("MOB-G07 shared bounded touch analysis", () => {
+  it("uses the same polar angular measurements and publication provenance as desktop", () => {
+    const empty = createEmptyGraph2DDocument("mobile-polar-measure");
+    const scene = applyGraph2DAuthoring(empty, { type: "create-polar", draft: {
+      label: "circle", rExpression: "2*cos(theta)",
+      domain: { min: 0, max: Math.PI, includeMin: true, includeMax: true },
+      style: { visible: true, color: "#2563eb", lineWidth: 2, lineStyle: "solid" } } });
+    const document = createGraph2DDocument({ stableKey: "mobile-polar-measure", source: scene.source, display: scene.display,
+      selection: { objectId: "polar_1", probe: null } });
+    const draft = mobileGraphAnalysisDraft(document);
+    expect(draft.kind).toBe("polar-area");
+    expect(draft.max).toBe(String(Math.PI));
+    const area = runMobileGraphAnalysis(document, draft);
+    const arc = runMobileGraphAnalysis(document, { ...draft, kind: "polar-arc-length" });
+    expect(area.publications[0]?.summary).toEqual(analyzeGraph2DPolarMeasurement({ document, objectId: "polar_1",
+      kind: "swept-area", interval: { min: 0, max: Math.PI }, tolerance: 1e-5 }).publication.summary);
+    expect(arc.publications[0]?.summary).toEqual(analyzeGraph2DPolarMeasurement({ document, objectId: "polar_1",
+      kind: "arc-length", interval: { min: 0, max: Math.PI }, tolerance: 1e-5 }).publication.summary);
+    expect(area.rows[0]?.label).toContain("3.1415927");
+    expect(arc.rows[0]?.label).toContain("6.2831853");
+    expect(() => runMobileGraphAnalysis(document, { ...draft, min: "-1" })).toThrow();
+  });
   it("matches shared derivative, integral and arc length values and publication provenance", () => {
     const document = parabola().document(), base = { ...mobileGraphAnalysisDraft(document), x: "2", tolerance: "0.00001" };
     const before = serializeGraph2DDocument(document);

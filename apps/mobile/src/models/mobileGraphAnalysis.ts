@@ -1,5 +1,6 @@
 import { analyzeGraph2DDerivative, analyzeGraph2DLocalDifferential, analyzeGraph2DCriticalPoints,
-  analyzeGraph2DIntegral, analyzeGraph2DIntersections, analyzeGraph2DArcLength, evaluateGraph2DExpression,
+  analyzeGraph2DIntegral, analyzeGraph2DIntersections, analyzeGraph2DArcLength, analyzeGraph2DPolarMeasurement,
+  evaluateGraph2DExpression,
   type AnalysisResultEnvelope, type Graph2DDocument, type Graph2DLineOverlay, type Graph2DProbe, type Graph2DAreaFillSegment, structuralHash } from "@math3d/core";
 import { graph2DPublicationAnalysisTables, type Graph2DPublicationTable } from "@math3d/core";
 import { analyzeGraph2DRegression, graph2DRegressionResidualTable, graph2DRegressionCurveTable, type Graph2DRegression, type Graph2DPointRow } from "@math3d/core";
@@ -8,7 +9,8 @@ const publicationProjection = (results: readonly { publication: AnalysisResultEn
   return { publicationTables: analyses, publicationNotes: analysisNotes };
 };
 
-export type MobileGraphAnalysisKind = "derivatives" | "tangent" | "features" | "integral" | "intersections" | "arc-length" | "regression-linear" | "regression-quadratic";
+export type MobileGraphAnalysisKind = "derivatives" | "tangent" | "features" | "integral" | "intersections" | "arc-length" |
+  "polar-area" | "polar-arc-length" | "regression-linear" | "regression-quadratic";
 export type MobileGraphAnalysisDraft = { kind: MobileGraphAnalysisKind; objectId: string; secondId: string;
   x: string; min: string; max: string; tolerance: string; mode: "signed" | "absolute" };
 export type MobileGraphAnalysisRow = { label: string; detail: string; probe?: Graph2DProbe };
@@ -16,9 +18,14 @@ export type MobileGraphAnalysis = { kind: MobileGraphAnalysisKind; inputHash: st
   rows: readonly MobileGraphAnalysisRow[]; overlays: readonly Graph2DLineOverlay[]; areaSegments?: readonly Graph2DAreaFillSegment[];
   publicationTables?: readonly Graph2DPublicationTable[]; publicationNotes?: readonly string[] };
 export type MobileGraphRegressionAnalysis = MobileGraphAnalysis & { regression?: Graph2DRegression };
-export const mobileGraphAnalysisDraft = (document: Graph2DDocument): MobileGraphAnalysisDraft => ({ kind: "derivatives",
-  objectId: document.selection.objectId ?? document.source.objects.find((object) => object.kind === "explicit-cartesian")?.id ?? "",
-  secondId: "", x: String(document.selection.probe?.x ?? 0), min: "-1", max: "1", tolerance: "0.00001", mode: "signed" });
+export const mobileGraphAnalysisDraft = (document: Graph2DDocument): MobileGraphAnalysisDraft => {
+  const selected = document.source.objects.find(object => object.id === document.selection.objectId);
+  return { kind: selected?.kind === "polar" ? "polar-area" : "derivatives",
+    objectId: selected?.id ?? document.source.objects.find(object => object.kind === "explicit-cartesian")?.id ?? "",
+    secondId: "", x: String(document.selection.probe?.x ?? 0),
+    min: String(selected?.kind === "polar" ? selected.domain.min : -1),
+    max: String(selected?.kind === "polar" ? selected.domain.max : 1), tolerance: "0.00001", mode: "signed" };
+};
 const number = (text: string) => {
   if (!text.trim() || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text.trim()) || !Number.isFinite(Number(text)))
     throw new TypeError("Enter finite numeric inputs.");
@@ -41,6 +48,16 @@ export const runMobileGraphAnalysis = (document: Graph2DDocument, draft: MobileG
         { label: "Centered/scaled equation", detail: `z=(x-${fit.center})/${fit.scale}; y=${fit.coefficients.map((c, i) => `${format(c)}${i ? `*z^${i}` : ""}`).join(" + ")}` },
         { label: "95% pointwise limits", detail: "Brown fit; purple dashed mean response; purple dotted new observation. Not simultaneous; no extrapolation. Log axes omit non-positive parts." },
         { label: "Residuals", detail: `${fit.residuals.length} original rows; observed minus fitted. Report/CSV includes first 2,048 rows and all 129 interval samples. Results are transient; fit again after reopening.` }] };
+  }
+  if (draft.kind === "polar-area" || draft.kind === "polar-arc-length") {
+    if (!object || object.kind !== "polar") throw new TypeError("Choose a polar curve to measure.");
+    const tolerance = number(draft.tolerance);
+    const interval = { min: number(draft.min), max: number(draft.max) };
+    const analysis = analyzeGraph2DPolarMeasurement({ document, objectId: object.id,
+      kind: draft.kind === "polar-area" ? "swept-area" : "arc-length", interval, tolerance });
+    return { ...result, ...publicationProjection([analysis]), publications: [analysis.publication],
+      rows: [{ label: `${analysis.kind === "swept-area" ? "Polar swept area" : "Polar arc length"}: ${format(analysis.value)}`,
+        detail: `${analysis.status} · angular interval [${interval.min}, ${interval.max}] radians · ${analysis.method} · tolerance ${analysis.tolerance} · estimated error ${format(analysis.errorEstimate)} · ${analysis.evaluations} evaluations · unresolved cells ${analysis.unresolvedCells} · partial value ${format(analysis.partialValue)}${analysis.kind === "swept-area" ? " · counts repeated traversal" : ""}` }] };
   }
   if (!object || object.kind !== "explicit-cartesian") throw new TypeError("Choose an explicit function to analyze.");
   const tolerance = number(draft.tolerance);

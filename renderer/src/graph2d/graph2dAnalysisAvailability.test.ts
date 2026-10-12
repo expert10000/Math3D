@@ -33,7 +33,7 @@ describe("Graph2D analysis action and scene status", () => {
     for (const operation of ["area", "arc-length"] as const) {
       const reason = graph2DIntervalAnalysisUnavailable(document, objectId, operation);
       if (kind === "explicit-cartesian") expect(reason).toBeNull();
-      else expect(reason).toMatch(kind === "polar" ? /angular interval/ : /explicit y\(x\)/);
+      else expect(reason).toMatch(kind === "polar" ? /Polar measurements panel/ : /explicit y\(x\)/);
     }
   });
 

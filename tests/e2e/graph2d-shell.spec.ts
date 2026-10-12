@@ -484,7 +484,14 @@ test("Graphs renders a signed-radius polar curve and switches grid modes", async
     await expect(app.page.getByTestId("app-status-bar")).toContainText("Polar curve · polar grid");
     await functions.getByRole("button", { name: "Select r" }).click();
     const inspector = app.page.getByLabel("Graph inspector");
-    await expect(inspector.getByLabel("Measurements unavailable")).toContainText("Polar area uses an angular interval");
+    const measurements = inspector.getByLabel("Polar measurements");
+    await expect(measurements.getByRole("button", { name: "Measure swept area" })).toBeVisible();
+    await measurements.getByLabel("Polar angle from").fill("0");
+    await measurements.getByLabel("Polar angle to").fill(String(Math.PI));
+    await measurements.getByRole("button", { name: "Measure swept area" }).click();
+    await expect(measurements.getByTestId("graph2d-polar-area-result")).toContainText("6.28318531");
+    await measurements.getByRole("button", { name: "Measure polar arc length" }).click();
+    await expect(measurements.getByTestId("graph2d-polar-arc-result")).toContainText("6.28318531");
     await expect(inspector.getByTestId("graph2d-area")).toHaveCount(0);
     await expect(inspector.getByTestId("graph2d-arc-length")).toHaveCount(0);
     await expect(inspector.getByTestId("graph2d-intersections")).toHaveCount(0);

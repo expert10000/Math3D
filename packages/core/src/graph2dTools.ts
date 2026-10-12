@@ -18,8 +18,8 @@ export function graph2DIntervalAnalysisUnavailable(document: Graph2DDocument, ob
   const object = document.source.objects.find(entry => entry.id === objectId);
   if (object?.kind === "explicit-cartesian") return null;
   if (object?.kind === "polar") return operation === "area" ?
-    "Polar area uses an angular interval; angular measurements are not available yet." :
-    "Polar arc length uses an angular interval; angular measurements are not available yet.";
+    "Use polar swept area with angular bounds in the Polar measurements panel." :
+    "Use polar arc length with angular bounds in the Polar measurements panel.";
   return operation === "area" ?
     "Interval area currently requires an explicit y(x) function." :
     "Arc length currently requires an explicit y(x) function.";

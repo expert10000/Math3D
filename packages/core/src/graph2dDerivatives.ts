@@ -52,16 +52,16 @@ const mul = (a: Node, b: Node) => binary("*", a, b);
 const div = (a: Node, b: Node) => binary("/", a, b);
 const pow = (a: Node, b: Node) => binary("^", a, b);
 
-const derivativeNode = (node: Node): Node | null => {
+const derivativeNode = (node: Node, variable: "x" | "theta" = "x"): Node | null => {
   switch (node.kind) {
     case "number": return number(0);
-    case "symbol": return number(node.name === "x" ? 1 : 0);
+    case "symbol": return number(node.name === variable ? 1 : 0);
     case "unary": {
-      const operand = derivativeNode(node.operand);
+      const operand = derivativeNode(node.operand, variable);
       return operand ? unary(node.operator, operand) : null;
     }
     case "binary": {
-      const left = derivativeNode(node.left), right = derivativeNode(node.right);
+      const left = derivativeNode(node.left, variable), right = derivativeNode(node.right, variable);
       if (!left || !right) return null;
       switch (node.operator) {
         case "+": return add(left, right);
@@ -75,7 +75,7 @@ const derivativeNode = (node: Node): Node | null => {
       }
     }
     case "call": {
-      const d = derivativeNode(node.argument);
+      const d = derivativeNode(node.argument, variable);
       if (!d) return null;
       const u = node.argument;
       switch (node.functionName) {
@@ -108,11 +108,11 @@ const withinSymbolicBudget = (node: Node): boolean => {
 
 /** A derivative AST is transient and bounded; unsupported or expanded trees request numerical fallback. */
 export const differentiateGraph2DExpression = (
-  ast: Graph2DExpressionAst, order: Graph2DDerivativeOrder,
+  ast: Graph2DExpressionAst, order: Graph2DDerivativeOrder, variable: "x" | "theta" = "x",
 ): Readonly<{ ok: true; ast: Graph2DExpressionAst } | { ok: false; reason: "unsupported-rule" | "symbolic-budget" }> => {
   let root: Node = ast.root;
   for (let index = 0; index < order; index += 1) {
-    const next = derivativeNode(root);
+    const next = derivativeNode(root, variable);
     if (!next) return { ok: false, reason: "unsupported-rule" };
     if (!withinSymbolicBudget(next)) return { ok: false, reason: "symbolic-budget" };
     root = next;

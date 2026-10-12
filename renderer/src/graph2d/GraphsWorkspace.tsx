@@ -2,6 +2,7 @@ import {
   analyzeGraph2DArcLength, analyzeGraph2DCriticalPoints, analyzeGraph2DIntegral, analyzeGraph2DIntervals,
   analyzeGraph2DIntersections,
   analyzeGraph2DLocalDifferential, fitGraph2DViewport,
+  analyzeGraph2DPolarMeasurement, isGraph2DPolarMeasurementCurrent,
   GRAPH2D_DEFAULT_VIEWPORT, GRAPH2D_WORKSPACE_CONTRACT,
   graph2DWorldToScreen, panGraph2DViewport, pickGraph2DProbe,
   isGraph2DCriticalPointCurrent, isGraph2DIntegralCurrent, isGraph2DIntervalAnalysisCurrent,
@@ -10,6 +11,7 @@ import {
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
   type Graph2DIntegralMode,
+  type Graph2DPolarMeasurement,
   type Graph2DAnyPromotion,
   type Graph2DPreset,
   type Graph2DPersonalPresetPreview,
@@ -150,6 +152,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const [areaRequest, setAreaRequest] = useState<{ objectId: string; min: number; max: number;
     mode: Graph2DIntegralMode } | null>(null);
   const [arcRequest, setArcRequest] = useState<{ objectId: string; min: number; max: number } | null>(null);
+  const [polarDraft, setPolarDraft] = useState({ objectId: "", min: "", max: "" });
+  const [polarAreaRequest, setPolarAreaRequest] = useState<{ objectId: string; min: number; max: number } | null>(null);
+  const [polarArcRequest, setPolarArcRequest] = useState<{ objectId: string; min: number; max: number } | null>(null);
   const [intersectionDraft, setIntersectionDraft] = useState({ secondId: "", intervalMode: "visible" as "visible" | "custom",
     min: "-1", max: "1" });
   const [intersectionRequest, setIntersectionRequest] = useState<{ firstId: string; secondId: string;
@@ -317,6 +322,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   };
   const selectedSeries = series.find((item) => item.objectId === document.selection.objectId);
   const selectedObject = document.source.objects.find((item) => item.id === document.selection.objectId);
+  const activePolarDraft = selectedObject?.kind === "polar" && polarDraft.objectId !== selectedObject.id ?
+    { objectId: selectedObject.id, min: String(selectedObject.domain.min), max: String(selectedObject.domain.max) } : polarDraft;
+  const polarMin = activePolarDraft.min.trim() ? Number(activePolarDraft.min) : NaN;
+  const polarMax = activePolarDraft.max.trim() ? Number(activePolarDraft.max) : NaN;
+  const polarValid = selectedObject?.kind === "polar" && Number.isFinite(polarMin) && Number.isFinite(polarMax) &&
+    polarMin < polarMax && polarMin >= selectedObject.domain.min && polarMax <= selectedObject.domain.max;
   const areaUnavailable = graph2DIntervalAnalysisUnavailable(document, document.selection.objectId, "area");
   const arcUnavailable = graph2DIntervalAnalysisUnavailable(document, document.selection.objectId, "arc-length");
   const toolRowsAvailable = selectedObject?.kind !== "point-series" || !!pointTableStore.resolve(selectedObject.table);
@@ -361,6 +372,16 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     analyzeGraph2DArcLength({ document, objectId: arcRequest.objectId,
       interval: { min: arcRequest.min, max: arcRequest.max } }) : null,
   [document, arcRequest, arcUnavailable]);
+  const polarArea = useMemo(() => selectedObject?.kind === "polar" && polarAreaRequest?.objectId === selectedObject.id &&
+    polarAreaRequest.min >= selectedObject.domain.min && polarAreaRequest.max <= selectedObject.domain.max ?
+    analyzeGraph2DPolarMeasurement({ document, objectId: selectedObject.id, kind: "swept-area",
+      interval: { min: polarAreaRequest.min, max: polarAreaRequest.max } }) : null,
+  [document, selectedObject, polarAreaRequest]);
+  const polarArcLength = useMemo(() => selectedObject?.kind === "polar" && polarArcRequest?.objectId === selectedObject.id &&
+    polarArcRequest.min >= selectedObject.domain.min && polarArcRequest.max <= selectedObject.domain.max ?
+    analyzeGraph2DPolarMeasurement({ document, objectId: selectedObject.id, kind: "arc-length",
+      interval: { min: polarArcRequest.min, max: polarArcRequest.max } }) : null,
+  [document, selectedObject, polarArcRequest]);
   const areaMin = areaDraft.min.trim() === "" ? NaN : Number(areaDraft.min);
   const areaMax = areaDraft.max.trim() === "" ? NaN : Number(areaDraft.max);
   const areaValid = Number.isFinite(areaMin) && Number.isFinite(areaMax) && areaMin < areaMax;
@@ -386,7 +407,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const derivatives = differential?.derivatives ?? null;
   const differentialOverlays = differential && isGraph2DLocalDifferentialCurrent(differential, document) ? differential.overlays : [];
   const exportAnalyses = useMemo(() => {
-    const tables = graph2DPublicationAnalysisTables(!exportOpen ? [] : [criticalPoints, intervals, area, arcLength, intersections,
+    const tables = graph2DPublicationAnalysisTables(!exportOpen ? [] : [criticalPoints, intervals, area, arcLength, polarArea, polarArcLength, intersections,
       differential, ...(derivatives ?? [])].filter(result => !!result) as { publication: import("@math3d/core").AnalysisResultEnvelope }[]);
     if (exportOpen && currentRegression) {
       tables.analyses.push(graph2DPublicationAnalysisTable({ publication: currentRegression.publication, summary: currentRegression.publication.summary } as { publication: import("@math3d/core").AnalysisResultEnvelope }),
@@ -394,7 +415,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       if (currentRegression.n > 2048) tables.analysisNotes.push(`Regression residual table includes first 2048 of ${currentRegression.n} rows; full data and model are unchanged.`);
     }
     return tables;
-  }, [exportOpen, criticalPoints, intervals, area, arcLength, intersections, differential, derivatives, currentRegression]);
+  }, [exportOpen, criticalPoints, intervals, area, arcLength, polarArea, polarArcLength, intersections, differential, derivatives, currentRegression]);
   const locateSelected = () => {
     if (!document.selection.probe) return;
     const screen = graph2DWorldToScreen(viewport, size, document.selection.probe);
@@ -530,7 +551,33 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       </tr>)}</tbody></table></div>
       <small>Signs are numerical samples, not proofs. Unknown intervals may contain discontinuities or narrow changes.</small>
     </section>}
-    {areaUnavailable && arcUnavailable ? <section className="graph2d-measurement-unavailable" aria-label="Measurements unavailable">
+    {selectedObject?.kind === "polar" ? <section className="graph2d-polar-measurements" data-testid="graph2d-polar-measurements" aria-label="Polar measurements">
+      <h3>Polar measurements</h3>
+      <p>Angular bounds are in radians. Swept area counts repeated traversal, including loops.</p>
+      <div className="graph2d-area-controls">
+        <label>From θ (radians) <input aria-label="Polar angle from" type="number" value={activePolarDraft.min}
+          onChange={event => { setPolarDraft({ ...activePolarDraft, min: event.target.value }); setPolarAreaRequest(null); setPolarArcRequest(null); }} /></label>
+        <label>To θ (radians) <input aria-label="Polar angle to" type="number" value={activePolarDraft.max}
+          onChange={event => { setPolarDraft({ ...activePolarDraft, max: event.target.value }); setPolarAreaRequest(null); setPolarArcRequest(null); }} /></label>
+      </div>
+      {!polarValid && <p role="status">Choose increasing angles within the authored angular domain.</p>}
+      <div className="graph2d-area-controls">
+        <button type="button" disabled={!polarValid} onClick={() => polarValid && selectedObject.kind === "polar" &&
+          setPolarAreaRequest({ objectId: selectedObject.id, min: polarMin, max: polarMax })}>Measure swept area</button>
+        <button type="button" disabled={!polarValid} onClick={() => polarValid && selectedObject.kind === "polar" &&
+          setPolarArcRequest({ objectId: selectedObject.id, min: polarMin, max: polarMax })}>Measure polar arc length</button>
+      </div>
+      {[polarArea, polarArcLength].filter((result): result is Graph2DPolarMeasurement =>
+        result !== null && isGraph2DPolarMeasurementCurrent(result, document)).map(result =>
+        <div key={result.resultId} data-testid={result.kind === "swept-area" ? "graph2d-polar-area-result" : "graph2d-polar-arc-result"}
+          data-result-id={result.resultId}>
+          <p>{result.kind === "swept-area" ? "Swept area" : "Polar arc length"}: {result.value === null ?
+            "Unavailable over full angular interval" : result.value.toPrecision(9)}</p>
+          <small>{result.method} · tolerance {result.tolerance.toExponential(1)} · estimated error {result.errorEstimate === null ?
+            "unavailable" : result.errorEstimate.toExponential(2)} · {result.evaluations.toLocaleString()} evaluations</small>
+          {result.unresolvedCells > 0 && <p>{result.unresolvedCells} unresolved cells; partial value {result.partialValue.toPrecision(7)}.</p>}
+        </div>)}
+    </section> : areaUnavailable && arcUnavailable ? <section className="graph2d-measurement-unavailable" aria-label="Measurements unavailable">
       <h3>Measurements</h3><p>{areaUnavailable}</p><p>{arcUnavailable}</p>
     </section> : <><section className="graph2d-area" data-testid="graph2d-area" aria-label="Interval area">
       <h3>Interval area</h3>

@@ -18,7 +18,7 @@ describe("Graphs workspace shell", () => {
       .toContain("Invalid source");
   });
 
-  it("shows polar guidance instead of runnable Cartesian interval actions", () => {
+  it("shows angular polar measurements instead of Cartesian interval actions", () => {
     const scene = applyGraph2DAuthoring(document, { type: "create-polar", draft: {
       label: "circle", rExpression: "2*cos(theta)",
       domain: { min: 0, max: Math.PI, includeMin: true, includeMax: true },
@@ -26,7 +26,9 @@ describe("Graphs workspace shell", () => {
     const polar = createGraph2DDocument({ stableKey: "graphs-polar-shell", source: scene.source, display: scene.display,
       selection: { objectId: scene.source.objects[0]!.id, probe: null } });
     const markup = renderToStaticMarkup(<GraphsWorkspace document={polar} dockLayout={dockLayout} />);
-    expect(markup).toContain("Polar area uses an angular interval");
+    expect(markup).toContain('aria-label="Polar measurements"');
+    expect(markup).toContain("Measure swept area");
+    expect(markup).toContain("Measure polar arc length");
     expect(markup).not.toContain('aria-label="Interval area"');
     expect(markup).not.toContain('aria-label="Arc length"');
     expect(markup).not.toContain('aria-label="Pairwise intersections"');

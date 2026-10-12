@@ -45,6 +45,7 @@ export * from "./graph2dIntervals";
 export * from "./graph2dIntegral";
 export * from "./graph2dIntersections";
 export * from "./graph2dArcLength";
+export * from "./graph2dPolarMeasurements";
 export * from "./geometryDocument";
 export * from "./geometryCommands";
 export * from "./math";

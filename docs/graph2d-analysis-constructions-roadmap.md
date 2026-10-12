@@ -2,6 +2,8 @@
 
 **Proposed follow-on, 2026-10-13.** The next Graphs release should make analysis match the selected graph kind, then add a small persistent construction model. Existing roots, intersections, Cartesian tangents, saved probes, parameter animation, regression, and Curve/Surface promotion remain the foundation. The [canonical Graph2D roadmap](math3d-graph2d-desktop-mobile-roadmap.md) owns platform sequencing and release gates; this plan starts after G2D43 and does not change delivered status.
 
+**Implementation update — 2026-10-13:** G2D44 and G2D45 are software implemented on the Graph2D feature branch. G2D45 adds bounded polar swept-area and arc-length results in shared core, desktop Inspector controls, mobile analysis controls, and source-linked publication data. Desktop and mobile model checks pass; the existing physical-device and spoken accessibility gates remain open. G2D46 is the next implementation step.
+
 ## Current baseline and actual gaps
 
 | Area | Current implementation | Follow-on gap |
