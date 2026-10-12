@@ -12,6 +12,19 @@ export const GRAPH2D_TOOLS = [
 ] as const;
 export type Graph2DTool = typeof GRAPH2D_TOOLS[number]["id"];
 
+/** Cartesian interval kernels accept only explicit y(x) sources. */
+export function graph2DIntervalAnalysisUnavailable(document: Graph2DDocument, objectId: string | null,
+  operation: "area" | "arc-length"): string | null {
+  const object = document.source.objects.find(entry => entry.id === objectId);
+  if (object?.kind === "explicit-cartesian") return null;
+  if (object?.kind === "polar") return operation === "area" ?
+    "Polar area uses an angular interval; angular measurements are not available yet." :
+    "Polar arc length uses an angular interval; angular measurements are not available yet.";
+  return operation === "area" ?
+    "Interval area currently requires an explicit y(x) function." :
+    "Arc length currently requires an explicit y(x) function.";
+}
+
 /** Shared route prerequisites. Opening a tool never evaluates or edits source. */
 export function graph2DToolUnavailable(document: Graph2DDocument, tool: Graph2DTool, rowsAvailable = true): string | null {
   const selected = document.source.objects.find(o => o.id === document.selection.objectId);

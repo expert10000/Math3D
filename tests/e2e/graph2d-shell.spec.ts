@@ -118,7 +118,7 @@ test("Graphs opens an empty desktop workspace and participates in normal navigat
     await expect(app.page.getByTestId("workspace-nav-graphs")).toHaveAttribute("aria-pressed", "true");
     await expect(app.page.getByTestId("graphs-workspace")).toBeVisible();
     await expect(app.page.getByTestId("graph2d-plot")).toBeVisible();
-    await expect(app.page.getByLabel("Empty graph scene")).toContainText("0 functions");
+    await expect(app.page.getByLabel("Empty graph scene")).toContainText("0 graph objects");
     await app.page.getByTestId("kernel-workspace-toggle").click();
     await app.page.getByTestId("kernel-workspace-save").click();
     await expect(app.page.getByTestId("kernel-workspace-message")).toContainText("Saved");
@@ -476,11 +476,18 @@ test("Graphs renders a signed-radius polar curve and switches grid modes", async
     await functions.getByLabel("Polar radius expression").fill("-2");
     await functions.getByRole("button", { name: "Save polar" }).click();
     await expect(app.page.locator('[data-graph2d-path="polar_1"]')).toHaveAttribute("d", /[ML]/);
+    await expect(app.page.getByTestId("app-status-bar")).toContainText("Polar curve · Cartesian grid");
+    await expect(app.page.getByLabel("Empty graph scene")).toHaveCount(0);
     await app.page.getByRole("button", { name: "Toggle polar grid" }).click();
     await expect(app.page.getByTestId("graph2d-polar-grid")).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Toggle polar grid" })).toHaveAttribute("aria-pressed", "true");
+    await expect(app.page.getByTestId("app-status-bar")).toContainText("Polar curve · polar grid");
     await functions.getByRole("button", { name: "Select r" }).click();
     const inspector = app.page.getByLabel("Graph inspector");
+    await expect(inspector.getByLabel("Measurements unavailable")).toContainText("Polar area uses an angular interval");
+    await expect(inspector.getByTestId("graph2d-area")).toHaveCount(0);
+    await expect(inspector.getByTestId("graph2d-arc-length")).toHaveCount(0);
+    await expect(inspector.getByTestId("graph2d-intersections")).toHaveCount(0);
     await expect(inspector.getByTestId("graph2d-probe-parameter")).toBeVisible();
     await expect(inspector.getByTestId("graph2d-probe-radius")).toContainText("-2.0000000");
     await expect(inspector.getByTestId("graph2d-probe-coordinates")).toContainText("-2.00000");

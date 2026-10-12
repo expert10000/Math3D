@@ -21,7 +21,7 @@ test("GGL04 desktop browse/preview creates independent editable scenes and resum
     await expect(gallery.getByRole("heading",{name:"Lissajous loops",exact:true})).toBeVisible();
     await gallery.getByRole("button",{name:"Close Graph Gallery"}).click();
     await expect(page.getByRole("button",{name:"Explore Graph Gallery",exact:true})).toBeFocused();
-    await expect(page.getByLabel("Empty graph scene")).toContainText("0 functions");
+    await expect(page.getByLabel("Empty graph scene")).toContainText("0 graph objects");
     await page.getByTestId("graph-gallery-open").click();
     await gallery.getByRole("button",{name:"All scenes",exact:true}).click();
     await expect(gallery.getByRole("status")).toContainText("20 scenes");

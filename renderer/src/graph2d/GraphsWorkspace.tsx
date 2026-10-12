@@ -19,7 +19,7 @@ import {
   type Graph2DRegression, type Graph2DRegressionModel,
   projectGraph2DGrid, projectGraph2DPolarGrid,
   structuralHash,
-  graph2DToolUnavailable, type Graph2DTool,
+  graph2DToolUnavailable, graph2DIntervalAnalysisUnavailable, graph2DSceneStatusLabel, type Graph2DTool,
   editGraph2DProbes, graph2DPinnedProbeState, projectGraph2DProbeMarkers,
   getGraph2DGuidedDocumentGuidance,
 } from "@math3d/core";
@@ -317,6 +317,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   };
   const selectedSeries = series.find((item) => item.objectId === document.selection.objectId);
   const selectedObject = document.source.objects.find((item) => item.id === document.selection.objectId);
+  const areaUnavailable = graph2DIntervalAnalysisUnavailable(document, document.selection.objectId, "area");
+  const arcUnavailable = graph2DIntervalAnalysisUnavailable(document, document.selection.objectId, "arc-length");
   const toolRowsAvailable = selectedObject?.kind !== "point-series" || !!pointTableStore.resolve(selectedObject.table);
   const routeTool = (tool: Graph2DTool) => {
     const reason = graph2DToolUnavailable(document, tool, toolRowsAvailable);
@@ -351,14 +353,14 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const intervals = useMemo(() => criticalPoints ? analyzeGraph2DIntervals({ document,
     objectId: criticalPoints.objectId, interval: criticalPoints.interval, criticalPoints }) : null,
   [document, criticalPoints]);
-  const area = useMemo(() => areaRequest && areaRequest.objectId === document.selection.objectId ?
+  const area = useMemo(() => !areaUnavailable && areaRequest && areaRequest.objectId === document.selection.objectId ?
     analyzeGraph2DIntegral({ document, objectId: areaRequest.objectId,
       interval: { min: areaRequest.min, max: areaRequest.max }, mode: areaRequest.mode }) : null,
-  [document, areaRequest]);
-  const arcLength = useMemo(() => arcRequest && arcRequest.objectId === document.selection.objectId ?
+  [document, areaRequest, areaUnavailable]);
+  const arcLength = useMemo(() => !arcUnavailable && arcRequest && arcRequest.objectId === document.selection.objectId ?
     analyzeGraph2DArcLength({ document, objectId: arcRequest.objectId,
       interval: { min: arcRequest.min, max: arcRequest.max } }) : null,
-  [document, arcRequest]);
+  [document, arcRequest, arcUnavailable]);
   const areaMin = areaDraft.min.trim() === "" ? NaN : Number(areaDraft.min);
   const areaMax = areaDraft.max.trim() === "" ? NaN : Number(areaDraft.max);
   const areaValid = Number.isFinite(areaMin) && Number.isFinite(areaMax) && areaMin < areaMax;
@@ -371,14 +373,15 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const intersectionValid = !!secondId && (intersectionDraft.intervalMode === "visible" ||
     Number.isFinite(intersectionMin) && Number.isFinite(intersectionMax) && intersectionMin < intersectionMax);
   const intersections = useMemo(() => {
-    if (!intersectionRequest || intersectionRequest.firstId !== document.selection.objectId ||
-      !document.source.objects.some((entry) => entry.id === intersectionRequest.secondId)) return null;
+    if (!intersectionRequest || selectedObject?.kind !== "explicit-cartesian" ||
+      intersectionRequest.firstId !== selectedObject.id ||
+      !document.source.objects.some((entry) => entry.id === intersectionRequest.secondId && entry.kind === "explicit-cartesian")) return null;
     const bounds = resolveGraph2DViewport(document.display.viewport, size);
     return analyzeGraph2DIntersections({ document, firstObjectId: intersectionRequest.firstId,
       secondObjectId: intersectionRequest.secondId, interval: intersectionRequest.intervalMode === "visible" ?
         { min: bounds.xMin, max: bounds.xMax } :
         { min: intersectionRequest.min, max: intersectionRequest.max } });
-  }, [document, size, intersectionRequest]);
+  }, [document, size, intersectionRequest, selectedObject]);
   const differential = useMemo(() => analyzeGraph2DLocalDifferential(document), [document]);
   const derivatives = differential?.derivatives ?? null;
   const differentialOverlays = differential && isGraph2DLocalDifferentialCurrent(differential, document) ? differential.overlays : [];
@@ -416,7 +419,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     {onPromotionCreate && onPromotionLocate && onPromotionRegenerate && <Graph2DPromotionPanel document={document}
       promotions={promotions} onCreate={onPromotionCreate} onLocate={onPromotionLocate} onRegenerate={onPromotionRegenerate} />}
     <dl className="graph2d-inspector-details">
-      <dt>Function</dt><dd>{inspected.label}</dd>
+      <dt>Graph object</dt><dd>{inspected.label}</dd>
       <dt>Source</dt><dd><code>{inspected.kind === "explicit-cartesian" ? `y = ${inspected.expression}` : inspected.expression}</code></dd>
       <dt>{inspected.kind === "parametric" ? "Parameter t" : inspected.kind === "polar" ? "Angle θ" : "X domain"}</dt>
       <dd>{inspected.domain.includeMin ? "[" : "("}{inspected.domain.min}, {inspected.domain.max}{inspected.domain.includeMax ? "]" : ")"}</dd>
@@ -527,7 +530,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       </tr>)}</tbody></table></div>
       <small>Signs are numerical samples, not proofs. Unknown intervals may contain discontinuities or narrow changes.</small>
     </section>}
-    <section className="graph2d-area" data-testid="graph2d-area" aria-label="Interval area">
+    {areaUnavailable && arcUnavailable ? <section className="graph2d-measurement-unavailable" aria-label="Measurements unavailable">
+      <h3>Measurements</h3><p>{areaUnavailable}</p><p>{arcUnavailable}</p>
+    </section> : <><section className="graph2d-area" data-testid="graph2d-area" aria-label="Interval area">
       <h3>Interval area</h3>
       <div className="graph2d-area-controls">
         <label>From x <input aria-label="Area from x" type="number" value={areaDraft.min}
@@ -538,7 +543,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           onChange={(event) => { setAreaDraft({ ...areaDraft, mode: event.target.value as Graph2DIntegralMode }); setAreaRequest(null); }}>
           <option value="signed">Signed area</option><option value="absolute">Absolute area</option>
         </select></label>
-        <button type="button" disabled={!areaValid} onClick={() => document.selection.objectId &&
+        <button type="button" disabled={!areaValid || !!areaUnavailable} onClick={() => !areaUnavailable && document.selection.objectId &&
           setAreaRequest({ objectId: document.selection.objectId, min: areaMin, max: areaMax, mode: areaDraft.mode })}>
           Integrate interval</button>
       </div>
@@ -552,7 +557,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     <section className="graph2d-arc-length" data-testid="graph2d-arc-length" aria-label="Arc length">
       <h3>Arc length</h3>
       <p>Measure the selected function over the x interval above.</p>
-      <button type="button" disabled={!areaValid} onClick={() => document.selection.objectId &&
+      <button type="button" disabled={!areaValid || !!arcUnavailable} onClick={() => !arcUnavailable && document.selection.objectId &&
         setArcRequest({ objectId: document.selection.objectId, min: areaMin, max: areaMax })}>
         Measure arc length</button>
       {arcLength && <div data-testid="graph2d-arc-length-result" data-result-id={arcLength.resultId}>
@@ -563,8 +568,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {arcLength.unresolvedCells > 0 && <p>{arcLength.unresolvedCells} unresolved cells; partial length
           {" "}{arcLength.partialValue.toPrecision(7)}.</p>}
       </div>}
-    </section>
-    <section className="graph2d-intersections" data-testid="graph2d-intersections" aria-label="Pairwise intersections">
+    </section></>}
+    {selectedObject?.kind === "explicit-cartesian" && <section className="graph2d-intersections" data-testid="graph2d-intersections" aria-label="Pairwise intersections">
       <h3>Pairwise intersections</h3>
       {otherFunctions.length ? <div className="graph2d-intersection-controls">
         <label>Second function <select aria-label="Intersect with function" value={secondId}
@@ -582,8 +587,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           <label>To x <input aria-label="Intersection to x" type="number" value={intersectionDraft.max}
             onChange={(event) => { setIntersectionDraft({ ...intersectionDraft, max: event.target.value }); setIntersectionRequest(null); }} /></label>
         </>}
-        <button type="button" disabled={!intersectionValid} onClick={() => document.selection.objectId &&
-          setIntersectionRequest({ firstId: document.selection.objectId, secondId,
+        <button type="button" disabled={!intersectionValid} onClick={() => selectedObject.kind === "explicit-cartesian" &&
+          setIntersectionRequest({ firstId: selectedObject.id, secondId,
             intervalMode: intersectionDraft.intervalMode, min: intersectionMin, max: intersectionMax })}>
           Solve intersections</button>
       </div> : <p>Add another function to compare.</p>}
@@ -605,14 +610,14 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             {" "}{intersections.coincidentCells} coincident cells</small>}
         <small>Tangencies are possible candidates; narrow intersections may be missed.</small>
       </div>}
-    </section>
+    </section>}
     <div className="graph2d-inspector-actions">
       <button type="button" disabled={!inspected.probe} onClick={locateSelected}>Locate</button>
-      <button type="button" disabled={!sampling.ready || parameterPreviewActive || !selectedSeries?.artifact.segments.length} onClick={() => selectedSeries && fitSeries([selectedSeries])}>Fit function</button>
+      <button type="button" disabled={!sampling.ready || parameterPreviewActive || !selectedSeries?.artifact.segments.length} onClick={() => selectedSeries && fitSeries([selectedSeries])}>Fit selection</button>
       <button type="button" onClick={() => onSelectionCommit?.({ objectId: null, probe: null })}>Clear selection</button>
     </div>
     {savedProbes}
-  </div> : <div className="graph2d-inspector"><p className="graph2d-muted">Select a function to inspect it.</p>{savedProbes}</div>;
+  </div> : <div className="graph2d-inspector"><p className="graph2d-muted">Select a graph object to inspect it.</p>{savedProbes}</div>;
   return (
     <section data-testid="graphs-workspace" aria-label="Graphs workspace" className="graph2d-workspace"
       data-left={showLeft} data-right={showRight} data-presentation={presentation}
@@ -684,9 +689,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           status === "error" ? <div className="graph2d-viewer-message" role="alert">{errorMessage || "Graph could not be opened."}</div> :
           document.source.objects.length === 0 ? <div className="graph2d-viewer-message" aria-label="Empty graph scene">
             <h2>Graphs</h2>
-            <p>An empty Cartesian graph scene is ready.</p>
+            <p>{graph2DSceneStatusLabel(document)} is ready.</p>
             <button type="button" onClick={event => { galleryOpener.current = event.currentTarget; setGalleryError(null); setGalleryOpen(true); }}>Explore Graph Gallery</button>
-            <small>{document.source.objects.length} functions · {GRAPH2D_WORKSPACE_CONTRACT.initialObjectKind} source</small>
+            <small>{document.source.objects.length} graph objects · {GRAPH2D_WORKSPACE_CONTRACT.initialObjectKind} starter source</small>
           </div> : null}
       </div>
       {showRight && <aside className="graph2d-panel graph2d-right" aria-label="Graph inspector">

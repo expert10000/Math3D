@@ -78,7 +78,7 @@ import { freshGraphGalleryLaunchToken, launchGraphGalleryPreset, resumeGraphGall
 import { pointTableStore } from "./graph2d/pointTableStore";
 import { Graph2DCommandAdapter } from "./graph2d/Graph2DCommandAdapter";
 import { PromotedDocumentWorkspace } from "./graph2d/PromotedDocumentWorkspace";
-import { regenerateGraph2DPromotion, type Graph2DAnyPromotion } from "@math3d/core";
+import { graph2DSceneStatusLabel, regenerateGraph2DPromotion, type Graph2DAnyPromotion } from "@math3d/core";
 
 import MobiusScreen from "./screens/MobiusScreen";
 import { ChebyshevScreen } from "./screens/ChebyshevScreen";
@@ -74229,7 +74229,7 @@ case "mobius":
       return "Surface viewer";
     }
     if (mode === "curves") return "Curve core presets";
-    if (mode === "graphs") return "Empty Cartesian graph scene";
+    if (mode === "graphs") return graph2DSceneStatusLabel(graph2dDocument);
     if (mode === "topology") return "Topology quotient module";
     if (mode === "geometry") return `Geometry viewer (${geometryMode})`;
     if (mode === "mobius") {
@@ -74247,7 +74247,7 @@ case "mobius":
     if (mode === "transform") return "Transform viewer";
     if (mode === "maps") return "Maps viewer";
     return mode;
-  }, [canonicalVolumeObject.identity.label, canonicalVolumeObject.identity.volumeRevision, datasetKind, functionExplorerScene, geometryMode, mode, otherComplexMainViewMode, surfaceViewerKind, volumeViewMode]);
+  }, [canonicalVolumeObject.identity.label, canonicalVolumeObject.identity.volumeRevision, datasetKind, functionExplorerScene, geometryMode, graph2dDocument, mode, otherComplexMainViewMode, surfaceViewerKind, volumeViewMode]);
   const statusMeshLabel = useMemo(() => {
     if (unifiedSelectedSceneMeshStats) {
       return `${unifiedSelectedSceneMeshStats.vertCount.toLocaleString()} vertices / ${unifiedSelectedSceneMeshStats.triCount.toLocaleString()} faces`;
