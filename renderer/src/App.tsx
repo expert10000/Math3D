@@ -76281,7 +76281,10 @@ case "mobius":
     setWorkspaceNavigation((previous) => {
       if (areWorkspaceLocationsEqual(previous.current, currentWorkspaceLocation)) return previous;
       if (workspaceNavigationRestoringRef.current) {
-        return { ...previous, current: currentWorkspaceLocation };
+        // A restore can render intermediate locations before its target is ready.
+        // Keep the history cursor on the requested target so a quick Back/Forward
+        // cannot push one of those intermediate locations onto the opposite stack.
+        return previous;
       }
       const nextBackStack =
         previous.backStack.length >= MAX_WORKSPACE_HISTORY
