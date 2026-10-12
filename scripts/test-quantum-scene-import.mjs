@@ -10,6 +10,7 @@ import { writeLargeBandFixture } from "./quantum-band-fixtures.mjs";
 
 const require = createRequire(import.meta.url);
 const { importQuantumSceneBundle } = require("../dist/main/quantumScene/importer.js");
+const { importQuantumFieldScientificManifest } = require("../dist/main/quantumScene/scientificManifest.js");
 const { rememberQuantumScene, reopenRecentQuantumScene, reopenQuantumSceneReference, sceneFingerprint } = require("../dist/main/quantumScene/recent.js");
 const { quantumSceneLaunchDirectory } = require("../dist/main/ipc/quantumSceneIpc.js");
 const { renderVerifiedFieldSlice, inspectVerifiedFieldSample } = require("../dist/main/quantumScene/fieldSlice.js");
@@ -224,6 +225,13 @@ try {
       join("C:\\Math3D-resources", "quantum-scenes", example.fixtureGroup, example.folder));
     const pinned = await importQuantumSceneBundle(directory);
     assert.equal(sceneFingerprint(pinned), example.fingerprint, `Bundled ${example.id} no longer matches its pinned source`);
+    if (example.id === "hydrogen-2p") {
+      const compatible = await importQuantumFieldScientificManifest(directory);
+      assert.equal(compatible.manifest.source.sha256, example.fingerprint);
+      assert.equal(compatible.manifest.datasets[0].imaginary, "psi-imaginary");
+      assert.deepEqual(compatible.manifest.resources.map(resource => resource.sha256),
+        pinned.source.datasets.map(dataset => dataset.sha256));
+    }
   }
   const fixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
