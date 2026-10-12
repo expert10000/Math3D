@@ -113,6 +113,15 @@ and derivations are explicitly undated because the Project format does not
 store event timestamps or a chronological save/edit log. This view neither
 manufactures earlier revisions nor treats recent navigation as scientific
 activity.
+The third P2 slice connects Project research entries in Documents. Verified
+Workbook payloads expose exact block citations, Project and Note dependencies,
+claim evidence and frozen-view source/result references. Each citation shows its
+captured revision and current, historical or unavailable state, and opens the
+Workbook block or its document/result. Notes show their inspected anchor state
+and link to their exact document, result or Workbook block; result-backed Note
+values link to their verified saved result. Missing Workbook
+payloads and detached anchors are shown without guessing from prose. The
+existing Workbook and Note editing flows remain the owners of those records.
 
 **Startup contract — October 9:** autosave is the only startup recovery flow.
 Restoring it restores the workspace; it does not also open the last saved Project.

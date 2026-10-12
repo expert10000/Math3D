@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { KernelWorkspaceModule, Math3DProject } from "@math3d/core";
 import type { ProjectDependencyInspection } from "../projects/projectDependencies";
 import { presentProjectFreshness } from "../projects/projectFreshnessPresentation";
@@ -10,15 +10,22 @@ type Props = {
   titles: ReadonlyMap<string, string>;
   canOpen: (id: string, module: KernelWorkspaceModule) => boolean;
   onOpen: (id: string, module: KernelWorkspaceModule) => void;
+  focusResult?: { id: string; token: number } | null;
 };
 
 const readable = (value: unknown) => typeof value === "string" ? value : JSON.stringify(value);
 const bytes = (value: number | null) => value === null ? "Size not recorded" : `${value.toLocaleString()} bytes`;
 
-export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, titles, canOpen, onOpen }) => {
+export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, titles, canOpen, onOpen, focusResult }) => {
   const [query, setQuery] = useState("");
   const [selection, setSelection] = useState<Selection | null>(null);
   const detailRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (focusResult && project.workspace.results.some(result => result.resultId === focusResult.id)) {
+      setSelection({ kind: "result", id: focusResult.id });
+      if (window.innerWidth <= 760) window.requestAnimationFrame(() => detailRef.current?.scrollIntoView({ block: "start", behavior: "auto" }));
+    }
+  }, [focusResult?.token, project.identity.id]);
   const select = (next: Selection) => {
     setSelection(next);
     if (window.innerWidth <= 760) window.requestAnimationFrame(() => {

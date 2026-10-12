@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, parseMath3DProject,
   parseMixedWorkspaceDocument, createMixedWorkspaceDocument, updateMath3DProjectMetadata, replaceMath3DProjectWorkspace,
@@ -21,6 +21,7 @@ import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnaly
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
 import { ProjectResultsBrowser } from "./ProjectResultsBrowser";
+import { ProjectResearchLinks } from "./ProjectResearchLinks";
 import { ProjectActivityTimeline } from "./ProjectActivityTimeline";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint, type ProjectCompatibility } from "../projects/projectTransfer";
 import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
@@ -97,6 +98,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const resourceSessionId = useRef<string | null>(null);
   const [quick, setQuick] = useState(false), [detailView, setDetailView] = useState(false), [viewerCompanion, setViewerCompanion] = useState(false), [collection, setCollection] = useState("All projects");
   const [detailPage, setDetailPage] = useState<"overview" | "documents" | "relations" | "results" | "history" | "settings" | "transfer">("overview");
+  const [resultFocus, setResultFocus] = useState<{ id: string; token: number } | null>(null);
   const [viewingDocumentId, setViewingDocumentId] = useState<string | null>(null);
   const [preferences, setPreferences] = useState(() => projectUiPreferences(localStorage.getItem(PROJECT_UI_KEY)));
   const [projectPlacement, setProjectPlacement] = useState<ProjectPlacement>(preferences.placement);
@@ -142,6 +144,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [quantumSceneMessage, setQuantumSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
+  const projectWorkbookBytes = useCallback((id: string) => resourceSessionId.current === project?.identity.id
+    ? resourceSession.current?.bytes({ kind: "workbook-payload", id }) ?? null : null, [project?.identity.id]);
   useEffect(() => { setDetailPage("overview"); }, [project?.identity.id]);
   const projectStateRef = useRef(project); projectStateRef.current = project;
   const [notesOpen, setNotesOpen] = useState(false);
@@ -1265,7 +1269,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           <h3>Results and artifacts</h3>
           <p className="project-workspace-section-hint">Inspect recorded analyses, provenance and captured resources.</p>
           {project && <ProjectResultsBrowser key={project.identity.id} project={project} inspection={dashboardDependencies} titles={documentTitles}
-            canOpen={(id, module) => !preview && !!canNavigateDocument?.(id, module)} onOpen={viewBesideProject} />}
+            canOpen={(id, module) => !preview && !!canNavigateDocument?.(id, module)} onOpen={viewBesideProject} focusResult={resultFocus} />}
         </section>}
         {fullDetails && <section className="project-detail-history project-workspace-section" data-testid="project-detail-history" aria-label="Project history">
           <h3>History</h3>
@@ -1355,6 +1359,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               {!project?.notes?.length && <small>No Notes yet. Create one to record observations in this Project.</small>}
             </section>
           </div>
+          {fullDetails && detailPage === "documents" && project && <ProjectResearchLinks project={project} titles={documentTitles}
+            workbookBytes={projectWorkbookBytes} canOpenDocument={(id, module) => !preview && !!canNavigateDocument?.(id, module)}
+            onOpenDocument={viewBesideProject} onInspectResult={(id) => { setResultFocus(previous => ({ id, token: (previous?.token ?? 0) + 1 })); openDetailPage("results"); }}
+            onOpenWorkbookBlock={(id, stageId, blockId) => { void openProjectWorkbook(id, true, stageId, blockId); }}
+            onOpenNote={(id) => openProjectNotes(id)} canOpenNote={!preview && !busy} />}
           <div className="project-relation-inspection"><button type="button" data-testid="project-inspect-relations" disabled={!project} onClick={() => { setInspectedId(null); setInspectionOpen(true); }}>Inspect relations and availability</button>
       {dependencies && <ProjectDependenciesPanel inspection={dependencies} selectedId={inspectedId} titles={documentTitles} onClose={() => setInspectionOpen(false)} onLocate={(id) => setInspectedId(id)}
         refreshOptions={managed && project ? projectDependencyRefreshOptions(project) : undefined} onRefresh={managed && !busy ? refreshDependency : undefined}

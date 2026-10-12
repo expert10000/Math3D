@@ -50,6 +50,9 @@ test("Project detail keeps Workbooks and Notes together through save, reopen and
     await notes.getByRole("button", { name: "Back to Project" }).click();
     await expect(projects.getByTestId("project-detail-toggle")).toHaveAttribute("aria-pressed", "true");
     await expect(projects.getByTestId(`project-workbook-${workbookId}`).getByTestId(`project-open-note-${linked.identity.id}`)).toBeVisible();
+    const blockLink = projects.getByTestId("project-research-links").getByTestId(`project-research-note-${linked.identity.id}`);
+    await expect(blockLink).toContainText("Up to date");
+    await expect(blockLink.getByRole("button", { name: "Open block" })).toBeEnabled();
     await expect(projects.getByTestId("project-all-notes")).toBeVisible();
     await projects.getByTestId("project-workbooks").scrollIntoViewIfNeeded();
     await page.screenshot({ path: test.info().outputPath("project-detail-desktop.png"), animations: "disabled" });

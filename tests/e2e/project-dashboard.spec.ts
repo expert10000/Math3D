@@ -95,9 +95,21 @@ test("Catenoid Project Details shows freshness for its saved Mesh analysis", asy
     const result = project.workspace.results[0];
     await expect(page.getByTestId(`project-result-freshness-${result.resultId}`)).toHaveText("Up to date");
     await expect(page.getByTestId("project-relationship-map").getByRole("listitem")).toHaveCount(project.workspace.relations.length);
-    await page.getByTestId("project-detail-tab-results").click();
+    await page.getByTestId("project-detail-tab-documents").click();
+    const resultNote = project.notes.find((note: any) => note.anchor?.kind === "result");
+    const links = page.getByTestId("project-research-links");
+    const noteLink = links.getByTestId(`project-research-note-${resultNote.identity.id}`);
+    await expect(noteLink).toContainText("Up to date");
+    const valueNote = project.notes.find((note: any) => note.valueBindings?.some((binding: any) => binding.kind === "result"));
+    const valueBinding = valueNote?.valueBindings.find((binding: any) => binding.kind === "result");
+    expect(valueBinding).toBeTruthy();
+    await expect(links.getByTestId(`project-research-note-value-${valueNote.identity.id}-${valueBinding.id}`)).toContainText("Up to date");
+    await noteLink.locator(".project-research-target").first().getByRole("button", { name: "Inspect result" }).click();
+    await expect(page.getByTestId("project-detail-tab-results")).toHaveAttribute("aria-current", "page");
     const browser = page.getByTestId("project-results-browser"), detail = browser.getByTestId("project-result-detail");
+    await expect(detail).toContainText(resultNote.anchor.resultId);
     await expect(browser.getByTestId(`project-result-select-${result.resultId}`)).toBeVisible();
+    await browser.getByTestId(`project-result-select-${result.resultId}`).click();
     await expect(detail).toContainText(result.provenance.operation.algorithm);
     await expect(detail).toContainText(`Revision ${result.provenance.source.revision} · generation ${result.provenance.source.generation}`);
     await browser.getByRole("searchbox", { name: "Search saved outputs" }).fill("no such output");
@@ -105,5 +117,36 @@ test("Catenoid Project Details shows freshness for its saved Mesh analysis", asy
     await browser.getByRole("searchbox", { name: "Search saved outputs" }).fill("");
     await detail.getByRole("button", { name: project.metadata.documents[result.provenance.source.documentId].title }).click();
     await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", result.provenance.source.documentId);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("Project Documents follows exact Workbook citations and Note anchors", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp();
+    await resetSurfaceAppState(ctx.page);
+    const page = ctx.page;
+    await page.getByTestId("projects-toggle").click();
+    await page.getByTestId("project-template-open-graph-derivative-notebook").click();
+    await page.getByTestId("project-gallery-layout-toggle").click();
+    await page.getByTestId("project-detail-tab-documents").click();
+    const project = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const links = page.getByTestId("project-research-links");
+    await expect(links).toBeVisible();
+    const citations = links.locator('[data-testid^="project-research-citation-"]');
+    await expect(citations).toHaveCount(3);
+    const result = project.workspace.results[0];
+    const resultCitation = citations.filter({ hasText: "Recorded numerical derivative" });
+    await expect(resultCitation).toContainText(`r${result.provenance.source.revision} g${result.provenance.source.generation}`);
+    await resultCitation.getByRole("button", { name: "Inspect result" }).click();
+    await expect(page.getByTestId("project-detail-tab-results")).toHaveAttribute("aria-current", "page");
+    await expect(page.getByTestId("project-result-detail")).toContainText(result.resultId);
+    await page.getByTestId("project-detail-tab-documents").click();
+    const note = project.notes[0];
+    const noteLink = links.getByTestId(`project-research-note-${note.identity.id}`);
+    await expect(noteLink).toContainText("Up to date");
+    await noteLink.getByRole("button", { name: "Open document" }).click();
+    await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", note.anchor.source.documentId);
   } finally { await closeSurfaceApp(ctx); }
 });
