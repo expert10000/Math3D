@@ -1,6 +1,6 @@
 # Scientific Scene Runtime — additive roadmap
 
-**Status (2026-10-12):** SSR-00 compatibility map complete. SSR-01 onward is delivered only when its code and acceptance checks pass. This extends the M3D-Q program; it does not replace or renumber it.
+**Status (2026-10-12):** SSR-00 compatibility map and SSR-01 minimal manifest/footprint baseline complete. SSR-02 onward is planned or deferred as marked below. This extends the M3D-Q program; it does not replace or renumber it.
 
 **Boundary:** `quantum-scene/v1|v2` remains a frozen, Lab-owned interchange format and `.qscene` remains readable. A future producer-neutral `scientific-scene/v1` must be an additional, versioned format and adapter path. Math3D remains the independent consumer; it does not call the Theory Lab worker.
 
@@ -24,7 +24,7 @@ The field-by-field map and evidence are in [the compatibility map](scientific-sc
 
 | Gate | Status | Deliverable | Acceptance |
 | --- | --- | --- | --- |
-| SSR-01 | Planned | Measure baseline footprint; define a small, pure `scientific-scene/v1` manifest and binary dataset-reference contract in shared TypeScript. | No runtime/worker import, executable formula or URL. Strict versions, semantic types, coordinates, units, shape, encoding and hashes; documented entry-bundle baseline and repeatable measurement. |
+| SSR-01 | Complete | Measure baseline footprint; define a small, pure `scientific-scene/v1` manifest and binary dataset-reference contract in shared TypeScript. | [Contract and checks](scientific-scene-v1-contract.md): no runtime/worker import, executable formula or URL; strict versions, semantic types, coordinates, units, shape, encoding and hashes; repeatable footprint measurement. |
 | SSR-02 | Planned | Adapt one pinned **hydrogenic 2p** `.qscene` through the generic manifest while retaining the old importer and exact source bytes. | Both paths verify the same source hashes, complex grid, units and provenance; existing `.qscene` open/restart/tamper tests remain green. |
 | SSR-03 | Planned | Add one deterministic **non-quantum** scalar-field fixture, `f(x,y)=sin(x)cos(y)`, and display it through an adapter to existing Math3D surface/selection infrastructure. | A common generic validator admits both proof fixtures; exact source samples and units inspect correctly. Changed metadata or binary bytes are refused. No Python runtime is involved. |
 | SSR-04 | Planned | Measure loading, idle/startup cost, dataset copies and unload after both proofs. Harden source-backed selection and only the registered display derivations actually used. | No material startup regression; near-zero incremental idle memory before a scene opens; scene-owned CPU/GPU resources release on close. A pick names scene/dataset/sample, not display LOD. |
