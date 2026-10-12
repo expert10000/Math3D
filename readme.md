@@ -6,7 +6,7 @@
 Math3D is an interactive geometry app (Electron + React) with browser mode support.
 
 <p align="center">
-  <img src="docs/assets/screenshots/desktop/math3d-mesh-analysis-torus-knot.png" width="86%" alt="Math3D Mesh Analyze Gaussian curvature on a torus knot" />
+  <img src="docs/assets/screenshots/desktop/math3d-desktop-surface-grid.png" width="86%" alt="Math3D surface with three coordinate grids" />
 </p>
 
 ## Highlights
