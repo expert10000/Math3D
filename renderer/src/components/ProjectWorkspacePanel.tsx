@@ -141,6 +141,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   useEffect(() => { if (!open) { setQuick(false); setDetailView(false); setViewerCompanion(false); setViewingDocumentId(null); } }, [open]);
   const [busy, setBusy] = useState(false);
   const openingStarter = useRef(false);
+  const rippleResearchAttempted = useRef(new Set<string>());
   const [quantumSceneMessage, setQuantumSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
@@ -673,7 +674,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     } catch (error) { setMessage(`Workbook save failed: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
-  const addRippleResearchToSavedProject = async () => {
+  const addRippleResearchToSavedProject = async (useSavedSnapshot = false) => {
     if (busy || preview || managed || !project) return;
     setBusy(true);
     try {
@@ -682,7 +683,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const saved = parseMath3DProject(raw);
       if (saved.identity.id !== project.identity.id || !library.entries.some(entry => entry.id === saved.identity.id))
         throw new Error("Open and save this Project first.");
-      const research = addRippleWaveResearch(liveProject());
+      const research = addRippleWaveResearch(useSavedSnapshot ? saved : liveProject());
       if (!research) throw new Error("Ripple Wave Research is already in this Project.");
       const previous = await loadProjectResources(saved);
       const resources = collectResources(research.project, previous, false, research.workbook);
@@ -1057,6 +1058,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     onDiscardDraft={(id) => setNoteDrafts((current) => current.filter((draft) => draft.id !== id))}
     onSaveDrafts={saveNoteDrafts} onSaveNote={saveEditedNote} onChangeValues={changeNoteValues} onSendToWorkbook={sendNoteToWorkbook} />;
   const fullDetails = !quick && detailView;
+  useEffect(() => {
+    if (!hasOpenProject || busy || preview || managed || !project?.metadata.tags?.includes("ripple-wave-study") ||
+      project.workbooks?.some(item => item.title === "Ripple Wave Research") ||
+      !library.entries.some(entry => entry.id === project.identity.id) || rippleResearchAttempted.current.has(project.identity.id)) return;
+    rippleResearchAttempted.current.add(project.identity.id);
+    void addRippleResearchToSavedProject(true);
+  }, [hasOpenProject, busy, preview, managed, project, library]);
   return <div style={{ position: "fixed", right: 14, top: 90, zIndex: 2501, fontSize: 13 }}>
     <button type="button" data-testid="notes-toggle" aria-label="Open Notes" aria-expanded={notesOpen} onClick={() => {
       if (notesOpen) { setNotesOpen(false); return; }

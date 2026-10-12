@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { resolve } from "node:path";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
 test("Project Details dashboard uses stored document relations and opens a document", async () => {
@@ -152,5 +153,60 @@ test("Project Documents follows exact Workbook citations and Note anchors", asyn
     await expect(noteLink).toContainText("Up to date");
     await noteLink.getByRole("button", { name: "Open document" }).click();
     await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", note.anchor.source.documentId);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("an older saved Ripple copy receives research links when reopened", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp();
+    await resetSurfaceAppState(ctx.page);
+    const page = ctx.page;
+    await page.getByTestId("projects-toggle").click();
+    await page.getByTestId("project-template-open-ripple-wave-study").click();
+    const current = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const core = require(resolve("packages/core/src/index.ts"));
+    const { workbooks: _workbooks, notes: _notes, ...withoutResearch } = current;
+    const legacy = core.parseMath3DProject(JSON.stringify({ ...withoutResearch,
+      identity: core.createDocumentIdentity(current.identity.id, current.workspace, current.identity.revision + 1) }));
+    const bytes = core.serializeMath3DProject(legacy);
+    await page.evaluate(async ({ id, bytes }) => {
+      localStorage.setItem("math3d.project.v1", bytes);
+      localStorage.setItem(`math3d.project.v1.payload.${id}`, bytes);
+      const db = await new Promise<IDBDatabase>((done, fail) => {
+        const request = indexedDB.open("math3d.project-resources.v1", 1);
+        request.onsuccess = () => done(request.result); request.onerror = () => fail(request.error);
+      });
+      await new Promise<void>((done, fail) => {
+        const transaction = db.transaction("projects", "readwrite"), store = transaction.objectStore("projects"), request = store.get(id);
+        request.onsuccess = () => {
+          const record = request.result;
+          if (!record) { transaction.abort(); return; }
+          record.resources = record.resources.filter((item: { kind: string }) => item.kind !== "workbook-payload");
+          store.put(record);
+        };
+        request.onerror = () => fail(request.error);
+        transaction.oncomplete = () => done(); transaction.onabort = () => fail(transaction.error);
+      });
+      db.close();
+    }, { id: legacy.identity.id, bytes });
+    await page.reload();
+    const panel = page.getByTestId("project-explorer-panel");
+    if (!await panel.isVisible()) await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-template-open-ripple-wave-study").click();
+    await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).workbooks?.length ?? 0)).toBe(1);
+    await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).notes?.length ?? 0)).toBe(2);
+    const restored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(restored.identity.id).toBe(legacy.identity.id);
+    await panel.getByTestId("project-gallery-layout-toggle").click();
+    await panel.getByTestId("project-detail-tab-documents").click();
+    await expect(panel.getByTestId("project-research-links").locator('[data-testid^="project-research-citation-"]')).toHaveCount(4);
+    await page.reload();
+    if (!await panel.isVisible()) await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-template-open-ripple-wave-study").click();
+    await panel.getByTestId("project-gallery-layout-toggle").click();
+    await panel.getByTestId("project-detail-tab-documents").click();
+    await expect(panel.getByTestId("project-research-links").locator('[data-testid^="project-research-citation-"]')).toHaveCount(4);
   } finally { await closeSurfaceApp(ctx); }
 });
