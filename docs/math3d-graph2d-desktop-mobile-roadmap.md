@@ -328,6 +328,8 @@ Insert **G2D41 → G2D42 → G2D43 before GGL11**. The reference screenshot moti
 
 Free independent points, arbitrary text, geometric constructions, multi-object transforms and snap-to-grid are separately scoped future work; they require reviewed document/constraint semantics. Existing point-series data must not be rewritten to imitate free points. Real screen-reader and signed physical-device validation remain pending.
 
+The [analysis and constructions follow-on roadmap](graph2d-analysis-constructions-roadmap.md) scopes G2D44–50 after G2D43. It first corrects graph-kind-aware actions and adds polar measurements, then introduces a reviewed persistent construction contract. Existing G2D13–19 analysis, G2D26–29 promotion, G2D38 parameters, G2D39 regression, and G2D42–43 tools/probes remain delivered baselines.
+
 ## 7. Dependency graph and parallel work
 
 ```text
