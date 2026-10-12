@@ -1,6 +1,6 @@
 # Scientific Scene Runtime — additive roadmap
 
-**Status (2026-10-12):** SSR-00–04 complete for the two bounded proof fixtures, with [lifecycle measurements and limitations](scientific-scene-lifecycle-measurements.md). SSR-05 onward remains deferred as marked below. This extends the M3D-Q program; it does not replace or renumber it.
+**Status (2026-10-12):** SSR-00–04 complete for the two bounded proof fixtures, with [lifecycle measurements and limitations](scientific-scene-lifecycle-measurements.md). SSR-05 adds a [standalone Python publisher](../integrations/python/README.md); SSR-06 onward remains deferred as marked below. This extends the M3D-Q program; it does not replace or renumber it.
 
 **Boundary:** `quantum-scene/v1|v2` remains a frozen, Lab-owned interchange format and `.qscene` remains readable. A future producer-neutral `scientific-scene/v1` must be an additional, versioned format and adapter path. Math3D remains the independent consumer; it does not call the Theory Lab worker.
 
@@ -35,7 +35,7 @@ SSR-01–04 are the mandatory first release. They prove one existing quantum bun
 
 | Gate | Status | Deliverable | Condition |
 | --- | --- | --- | --- |
-| SSR-05 | Deferred | Standalone Python **publisher** that writes compatible files outside the Electron bundle. | Only after SSR-02/03; cross-language fixture, integrity and size tests. No embedded interpreter. |
+| SSR-05 | Complete, publisher only | [Standalone Python publisher](../integrations/python/README.md) writes compatible bounded scalar or complex fields outside Electron. | Cross-language scalar/complex fixtures, byte integrity, exact samples, limits, non-overwrite and tamper refusal. No embedded interpreter, app-launched Python or general UI picker is claimed. |
 | SSR-06 | Deferred | Opt-in Python runtime bridge using the existing `ScientificJobService` and an independently managed environment. | Only if a real workflow needs Math3D-initiated compute; explicit trust, supervision, cancellation and resource limits. Zero Python processes while unused. |
 | SSR-07 | Deferred | Dedicated scientific workspace, richer inspector and camera/view presets. | Demonstrated demand after the shared viewer proves useful; existing modal and M3D-Q path remain functional. |
 | SSR-08 | Deferred | New `ScientificSceneDocument`, live streaming, Jupyter or remote providers, large/chunked artifacts. | Each requires an independent use case and budget. Start with lightweight Project artifact references; do not proliferate document types pre-emptively. |
