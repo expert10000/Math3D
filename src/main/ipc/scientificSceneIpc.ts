@@ -11,11 +11,12 @@ export type ScientificSceneOpenResponse =
   | { ok: false; canceled: false; error: string };
 export type PythonPublisherPrepareResponse =
   | { ok: true; sessionId: string; executable: string; script: string; spec: string; output: string;
-      scriptSha256: string; specSha256: string; sourceHash: string }
+      scriptSha256: string; specSha256: string; sourceHash: string; reference: boolean }
   | { ok: false; canceled: true }
   | { ok: false; canceled: false; error: string };
 
 const PINNED_SINCOS_MANIFEST = "6666afe57ad2876575b77c341bb8e8c6959d4a6cee14cc231d33eab39da9dbae";
+const PINNED_REFERENCE_PUBLISHER = "b9da5fbabce579ff4e795495bb8944135eed2e50f5e17d10c6f18bbcc0f7b7da";
 const trustedSender = (event: Electron.IpcMainInvokeEvent) => {
   const window = BrowserWindow.fromWebContents(event.sender);
   return !!window && !window.isDestroyed() && event.senderFrame === event.sender.mainFrame;
@@ -23,30 +24,40 @@ const trustedSender = (event: Electron.IpcMainInvokeEvent) => {
 
 export function registerScientificSceneIpc(): void {
   const active = new WeakMap<Electron.WebContents, { directory: string; fingerprint: string }>();
-  const prepared = new WeakMap<Electron.WebContents, PreparedPythonPublisher>();
+  const prepared = new WeakMap<Electron.WebContents, PreparedPythonPublisher & { reference: boolean }>();
   const running = new WeakMap<Electron.WebContents, { jobId: string; handle: PythonPublisherRun }>();
   ipcMain.handle("scientificScenes:preparePublisher", async (event, ...args: unknown[]): Promise<PythonPublisherPrepareResponse> => {
-    if (!trustedSender(event) || args.length || running.has(event.sender))
+    if (!trustedSender(event) || args.length !== 1 || (args[0] !== "reference" && args[0] !== "custom") ||
+        running.has(event.sender))
       return { ok: false, canceled: false, error: "Invalid Python publisher preparation request" };
     prepared.delete(event.sender);
     try {
       const window = BrowserWindow.fromWebContents(event.sender)!;
-      const choose = async (title: string) => {
-        const result = await dialog.showOpenDialog(window, { title, properties: ["openFile"] });
+      const choose = async (title: string, defaultPath?: string) => {
+        const result = await dialog.showOpenDialog(window, { title, defaultPath, properties: ["openFile"] });
         return result.canceled ? null : result.filePaths[0] ?? null;
       };
       const executable = await choose("Choose an independently managed Python executable");
       if (!executable) return { ok: false, canceled: true };
-      const script = await choose("Choose the trusted scientific-scene publisher .py script");
+      const reference = args[0] === "reference";
+      const script = reference ? (app.isPackaged ? join(process.resourcesPath, "scientific-publisher",
+        "scientific_scene_publisher.py") : join(app.getAppPath(), "integrations", "python",
+        "scientific_scene_publisher.py")) : await choose("Choose the trusted scientific-scene publisher .py script");
       if (!script) return { ok: false, canceled: true };
-      const spec = await choose("Choose the local scientific field specification .json");
+      const exampleSpec = reference ? (app.isPackaged ? join(process.resourcesPath, "scientific-publisher",
+        "examples", "sincos-grid.json") : join(app.getAppPath(), "integrations", "python", "examples",
+        "sincos-grid.json")) : undefined;
+      const spec = await choose("Choose the local scientific field specification .json", exampleSpec);
       if (!spec) return { ok: false, canceled: true };
       const destination = await dialog.showSaveDialog(window, { title: "Choose a new .sscene output directory",
         defaultPath: "python-scene.sscene" });
       if (destination.canceled || !destination.filePath) return { ok: false, canceled: true };
       const session = await preparePythonPublisher(executable, script, spec, destination.filePath);
-      prepared.set(event.sender, session);
-      return { ok: true, ...session };
+      if (reference && session.scriptSha256 !== PINNED_REFERENCE_PUBLISHER)
+        throw new Error("Shipped reference publisher changed; execution refused");
+      const selection = { ...session, reference };
+      prepared.set(event.sender, selection);
+      return { ok: true, ...selection };
     } catch (error) {
       return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
     }
@@ -68,7 +79,7 @@ export function registerScientificSceneIpc(): void {
     if (!window || window.isDestroyed()) return { ok: false, canceled: false, error: "Python publisher window closed" };
     const approval = await dialog.showMessageBox(window, { type: "warning", title: "Run external Python code?",
       message: "This runs a local Python script with your account's permissions.",
-      detail: `Python: ${session.executable}\nScript: ${session.script}\nScript SHA-256: ${session.scriptSha256}\nSpec: ${session.spec}\nOutput: ${session.output}\n\nOnly run code and data you trust. Scene hashes do not authenticate the publisher.`,
+      detail: `Publisher: ${session.reference ? "Math3D reference script" : "user-selected script"}\nPython: ${session.executable}\nScript: ${session.script}\nScript SHA-256: ${session.scriptSha256}\nSpec: ${session.spec}\nOutput: ${session.output}\n\nOnly run code and data you trust. Scene hashes do not authenticate the publisher.`,
       buttons: ["Run Python code", "Cancel"], defaultId: 1, cancelId: 1, noLink: true });
     if (approval.response !== 0 || !trustedSender(event)) return { ok: false, canceled: true };
     const handle = runPythonPublisher(session);

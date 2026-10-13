@@ -62,6 +62,14 @@ const config = {
       from: "tests/fixtures/scientific-scene/sincos.sscene",
       to: "scientific-scenes/sincos.sscene",
     },
+    {
+      from: "integrations/python/scientific_scene_publisher.py",
+      to: "scientific-publisher/scientific_scene_publisher.py",
+    },
+    {
+      from: "integrations/python/examples/sincos-grid.json",
+      to: "scientific-publisher/examples/sincos-grid.json",
+    },
   ],
   win: {
     target: "nsis",

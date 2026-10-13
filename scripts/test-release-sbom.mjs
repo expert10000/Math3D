@@ -29,6 +29,8 @@ try {
   write("resources/python-worker/worker.exe", "worker fixture");
   write("resources/python-worker/_internal/CGAL/gmp.dll", "GMP fixture");
   write("resources/web-app/index.html", "web fixture");
+  write("resources/scientific-publisher/scientific_scene_publisher.py", "publisher fixture");
+  write("resources/scientific-publisher/examples/sincos-grid.json", "{}\n");
   write("resources/LICENSE", "license fixture");
   write("resources/THIRD_PARTY_NOTICES.md", "notice fixture");
   fs.writeFileSync(python, JSON.stringify({ pythonVersion: "3.11.0", packages: [{
@@ -50,6 +52,11 @@ try {
   const gmp = bom.components.find((item) => item["bom-ref"] === "file:resources/python-worker/_internal/CGAL/gmp.dll");
   assert.match(gmp.properties.find((item) => item.name === "math3d:owner").value, /^native:gmp:/);
   assert(bom.components.some((item) => item.purl === "pkg:pypi/fixture-lib@1.0.0"));
+  for (const name of ["scientific_scene_publisher.py", "examples/sincos-grid.json"]) {
+    const item = bom.components.find(component => component["bom-ref"] ===
+      `file:resources/scientific-publisher/${name}`);
+    assert.equal(item.properties.find(property => property.name === "math3d:owner").value, "application:math3d");
+  }
 
   write("resources/unknown.exe", "unexpected binary");
   const unknown = run();

@@ -1,0 +1,22 @@
+{
+  "sceneId": "python-sincos-grid",
+  "title": "Python sin(x) cos(y) reference grid",
+  "producer": "math3d-reference-python",
+  "sourceId": "sincos-grid",
+  "sourceSchema": "python-data/v1",
+  "coordinateKind": "cartesian",
+  "axes": [{ "name": "x", "unit": "rad" }, { "name": "y", "unit": "rad" }],
+  "origin": [-3.141592653589793, -3.141592653589793],
+  "spacing": [1.5707963267948966, 1.5707963267948966],
+  "periodic": [false, false],
+  "shape": [5, 5],
+  "datasetId": "f",
+  "quantity": { "name": "sin(x) cos(y)", "unit": "1", "symbol": "f" },
+  "real": [
+    0, 0, 0, 0, 0,
+    1, 0, -1, 0, 1,
+    0, 0, 0, 0, 0,
+    -1, 0, 1, 0, -1,
+    0, 0, 0, 0, 0
+  ]
+}

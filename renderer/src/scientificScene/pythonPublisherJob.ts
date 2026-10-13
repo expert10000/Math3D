@@ -18,6 +18,7 @@ export class PythonPublisherJob {
   readonly #service;
   #scene: PythonPublisherJobResult["scene"] = null;
   #jobId: string | null = null;
+  #bridgePromise: Promise<Awaited<ReturnType<NonNullable<Window["scientificScenes"]>["runPublisher"]>>> | null = null;
 
   constructor(prepared: PreparedPythonPublisher) {
     this.#prepared = prepared;
@@ -30,8 +31,10 @@ export class PythonPublisherJob {
         context.reserveMemory(48 * 1024 * 1024);
         try {
           if (!window.scientificScenes?.runPublisher) throw new Error("Desktop Python publisher bridge unavailable");
-          const result = await window.scientificScenes.runPublisher({ sessionId: prepared.sessionId,
+          const bridge = window.scientificScenes.runPublisher({ sessionId: prepared.sessionId,
             sourceHash: prepared.sourceHash, jobId: input.jobId });
+          this.#bridgePromise = bridge;
+          const result = await bridge;
           context.checkpoint();
           if (!result.ok) throw new Error(result.canceled ? "Python publication cancelled" : result.error);
           this.#scene = result.scene;
@@ -49,9 +52,11 @@ export class PythonPublisherJob {
       operation: { type: PYTHON_SCENE_OPERATION, payload: { sessionId: this.#prepared.sessionId } },
       limits: { deadlineAt: Date.now() + 60_000, maxInputBytes: 4096, maxOutputBytes: 4096,
         maxMemoryBytes: 48 * 1024 * 1024, maxWorkUnits: 1 } });
-    const promise = this.#service.submit(request).then(outcome => ({
-      outcome, scene: outcome.ok ? this.#scene : null,
-    }));
+    const promise = this.#service.submit(request).then(async outcome => {
+      // The service may resolve cancellation before Electron finishes stopping the child.
+      if (this.#bridgePromise) await this.#bridgePromise.catch(() => null);
+      return { outcome, scene: outcome.ok ? this.#scene : null };
+    });
     const cancel = async () => {
       const stopped = await window.scientificScenes?.cancelPublisher(jobId) ?? false;
       if (stopped) this.#service.cancel(jobId);

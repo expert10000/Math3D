@@ -54,11 +54,11 @@ export function QuantumSceneExamples({ onOpened, onOpenedScientific, onClose }: 
     } catch (reason) { setError(`Scientific bundle refused: ${String((reason as Error)?.message ?? reason)}`); }
     finally { setBusy(null); }
   };
-  const preparePublisher = async () => {
+  const preparePublisher = async (mode: "reference" | "custom") => {
     if (!window.scientificScenes?.preparePublisher || busy) { setError("Python publication requires the desktop app."); return; }
     setPreparedPublisher(null); setBusy("python-prepare"); setError("");
     try {
-      const result = await window.scientificScenes.preparePublisher();
+      const result = await window.scientificScenes.preparePublisher(mode);
       if (result.ok) setPreparedPublisher(result);
       else if (!result.canceled) setError(`Python publication refused: ${result.error}`);
     } catch (reason) { setError(`Python publication refused: ${String((reason as Error)?.message ?? reason)}`); }
@@ -119,11 +119,15 @@ export function QuantumSceneExamples({ onOpened, onOpenedScientific, onClose }: 
           Open external .sscene folder…
         </button></div>
         <p style={{ fontSize: 12 }}>External import currently previews only bounded 2D scalar height surfaces. Files are re-hashed on open and selection; producer claims are not authenticated. No Python process is started.</p>
-        <button type="button" data-testid="scientific-prepare-publisher" disabled={Boolean(busy)}
-          onClick={() => void preparePublisher()}>Publish with external Python…</button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button type="button" data-testid="scientific-prepare-reference-publisher" disabled={Boolean(busy)}
+            onClick={() => void preparePublisher("reference")}>Publish with reference Python script…</button>
+          <button type="button" data-testid="scientific-prepare-publisher" disabled={Boolean(busy)}
+            onClick={() => void preparePublisher("custom")}>Publish with custom Python script…</button>
+        </div>
         {preparedPublisher && <div data-testid="scientific-publisher-confirmation" style={{ marginTop: 12,
           padding: 12, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8, overflowWrap: "anywhere" }}>
-          <strong>Explicit local-code execution</strong>
+          <strong>Explicit local-code execution · {preparedPublisher.reference ? "Math3D reference publisher" : "custom script"}</strong>
           <p>Only click Run if you trust this Python executable and script. The output is verified before Math3D opens it; hashes do not authenticate the code or scientific claims.</p>
           <div>Python: <code>{preparedPublisher.executable}</code></div>
           <div>Script: <code>{preparedPublisher.script}</code> · SHA-256 <code>{preparedPublisher.scriptSha256}</code></div>

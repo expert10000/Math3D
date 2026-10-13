@@ -55,6 +55,22 @@ test("explicit external Python job publishes, verifies, opens, and cancels witho
     await preview.getByRole("button", { name: "Close" }).click();
     await expect(preview).toBeHidden();
 
+    const referenceOutput = join(root, "reference.sscene");
+    await app.evaluate(({ dialog }, choices) => {
+      let index = 0;
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [choices.files[index++]] });
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: choices.output });
+      dialog.showMessageBox = async () => ({ response: 0, checkboxChecked: false });
+    }, { files: [executable, spec], output: referenceOutput });
+    dialog = await chooser();
+    await dialog.getByTestId("scientific-prepare-reference-publisher").click();
+    await expect(dialog.getByTestId("scientific-publisher-confirmation")).toContainText("Math3D reference publisher");
+    await expect(dialog.getByTestId("scientific-publisher-confirmation")).toContainText(script);
+    await dialog.getByTestId("scientific-run-publisher").click();
+    await expect(preview).toContainText("UI Python grid");
+    expect(JSON.parse(await readFile(join(referenceOutput, "manifest.json"), "utf8")).sceneId).toBe("ui-python-grid");
+    await preview.getByRole("button", { name: "Close" }).click();
+
     const slowScript = join(root, "slow.py"), canceledOutput = join(root, "cancelled.sscene");
     await writeFile(slowScript, "import time\ntime.sleep(10)\n");
     await setPickers(slowScript, canceledOutput);

@@ -592,9 +592,9 @@ declare global {
     scientificScenes?: {
       openExample: () => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;
       openDirectory: () => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;
-      preparePublisher: () => Promise<
+      preparePublisher: (mode: "reference" | "custom") => Promise<
         { ok: true; sessionId: string; executable: string; script: string; spec: string; output: string;
-          scriptSha256: string; specSha256: string; sourceHash: string } |
+          scriptSha256: string; specSha256: string; sourceHash: string; reference: boolean } |
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
       runPublisher: (request: { sessionId: string; sourceHash: string; jobId: string }) =>
         Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;

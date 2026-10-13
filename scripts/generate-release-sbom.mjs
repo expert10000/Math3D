@@ -282,7 +282,7 @@ const classify = (name) => {
     errors.push(`Native module has no npm lockfile owner: ${name}`);
     return null;
   }
-  if (name === "resources/app.asar" || name.startsWith("resources/app.asar.unpacked/") || name.startsWith("resources/quantum-scenes/") || name.startsWith("resources/scientific-scenes/") || name.startsWith("resources/LICENSE") || name.startsWith("resources/gallery-images/") || ["resources/THIRD_PARTY_NOTICES.md", "resources/SOURCE_OFFER.md"].includes(name)) return appRef;
+  if (name === "resources/app.asar" || name.startsWith("resources/app.asar.unpacked/") || name.startsWith("resources/quantum-scenes/") || name.startsWith("resources/scientific-scenes/") || name.startsWith("resources/scientific-publisher/") || name.startsWith("resources/LICENSE") || name.startsWith("resources/gallery-images/") || ["resources/THIRD_PARTY_NOTICES.md", "resources/SOURCE_OFFER.md"].includes(name)) return appRef;
   if (name === "resources/electron.asar") return electronRef;
   if (name === "resources/app-update.yml") return appRef;
   if (/^(?:Math3D(?: Dev)?\.exe|math3d(?:-dev)?)$/i.test(name)) return appRef;

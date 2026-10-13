@@ -61,12 +61,28 @@ export function runPythonPublisher(prepared: PreparedPythonPublisher,
   let timedOut = false;
   let committing = false;
   let settled = false;
+  let stopping = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let escalation: ReturnType<typeof setTimeout> | null = null;
   const stop = () => {
-    if (!child || child.exitCode !== null) return;
-    child.kill();
-    if (!escalation) escalation = setTimeout(() => child?.kill("SIGKILL"), 1000);
+    if (!child || child.exitCode !== null || child.signalCode !== null || stopping) return;
+    stopping = true;
+    const pid = child.pid;
+    const systemRoot = process.env.SystemRoot ?? process.env.windir;
+    if (process.platform === "win32" && pid && systemRoot && isAbsolute(systemRoot)) {
+      const killer = spawn(join(systemRoot, "System32", "taskkill.exe"), ["/PID", String(pid), "/T", "/F"],
+        { windowsHide: true, shell: false, stdio: "ignore" });
+      killer.once("error", () => child?.kill("SIGKILL"));
+      killer.once("close", code => { if (code !== 0) child?.kill("SIGKILL"); });
+    } else if (pid) {
+      try { process.kill(-pid, "SIGTERM"); } catch { child.kill(); }
+    } else child.kill();
+    escalation = setTimeout(() => {
+      if (process.platform !== "win32" && pid) {
+        try { process.kill(-pid, "SIGKILL"); } catch { /* group already exited */ }
+      }
+      child?.kill("SIGKILL");
+    }, 1000);
   };
   const cancel = () => {
     if (committing || settled) return false;
@@ -93,7 +109,7 @@ export function runPythonPublisher(prepared: PreparedPythonPublisher,
       const exitCode = await new Promise<number | null>((done, fail) => {
         child = spawn(prepared.executable, ["-I", script, "--spec", spec, "--output", staged],
           { cwd: temporary, env: { ...process.env, PYTHONPATH: "", PYTHONNOUSERSITE: "1" },
-            windowsHide: true, shell: false, stdio: "pipe" });
+            windowsHide: true, shell: false, stdio: "pipe", detached: process.platform !== "win32" });
         const childProcess = child;
         const collect = (chunk: Buffer, stream: "stdout" | "stderr") => {
           const value = stream === "stdout" ? stdout + String(chunk) : stderr + String(chunk);
