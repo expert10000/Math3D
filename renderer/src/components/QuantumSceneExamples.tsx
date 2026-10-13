@@ -123,8 +123,9 @@ export function QuantumSceneExamples({ onOpened, onOpenedScientific, onClose }: 
           <button type="button" data-testid="scientific-prepare-reference-publisher" disabled={Boolean(busy)}
             onClick={() => void preparePublisher("reference")}>Publish with reference Python script…</button>
           <button type="button" data-testid="scientific-prepare-publisher" disabled={Boolean(busy)}
-            onClick={() => void preparePublisher("custom")}>Publish with custom Python script…</button>
+            onClick={() => void preparePublisher("custom")}>Publish with custom Python script (trusted code)…</button>
         </div>
+        <p style={{ fontSize: 12 }}>Reference mode uses the pinned script shipped with Math3D and offers an example JSON spec. Choose an independently installed Python 3.10+ executable. Custom scripts run with your account permissions; neither mode is a sandbox.</p>
         {preparedPublisher && <div data-testid="scientific-publisher-confirmation" style={{ marginTop: 12,
           padding: 12, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8, overflowWrap: "anywhere" }}>
           <strong>Explicit local-code execution · {preparedPublisher.reference ? "Math3D reference publisher" : "custom script"}</strong>

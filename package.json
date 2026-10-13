@@ -159,6 +159,8 @@
     "measure:ssr:lifecycle": "node scripts/measure-scientific-scene-lifecycle.mjs",
     "test:ssr:publisher": "npm run build:main && node scripts/test-scientific-scene-publisher.mjs",
     "test:ssr:python-runtime": "npm run build:main && node scripts/test-scientific-python-runner.mjs",
+    "package:ssr:probe": "electron-builder --win --dir --config scripts/scientific-publisher-package-probe.config.cjs --publish never",
+    "test:ssr:package": "node scripts/test-scientific-publisher-package.mjs",
     "test:curves:v1:acceptance": "npm run test:curves:v1:unit && npm run typecheck:noemit && npm run build:core && npm run test:curves:v1:e2e && npm run test:app:responsive:smoke && npm run verify:curves:v1:backends && npm run profile:curves:v1",
     "test:volume:v1:unit": "npm --prefix renderer test -- src/volume",
     "test:volume:v1:e2e": "playwright test tests/e2e/volume-v1-acceptance.spec.ts tests/e2e/workspace-navigation.spec.ts --grep Volume --reporter=list",

@@ -20,6 +20,7 @@ apps/mobile/.expo/
 /output/ci-*/
 /output/memory-profiles/
 /output/release-checks/
+/output/scientific-publisher-package-probe/
 /site/
 /apps/web/dist/
 /docs/api/

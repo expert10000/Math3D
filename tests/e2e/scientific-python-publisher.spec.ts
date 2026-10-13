@@ -101,3 +101,64 @@ test("explicit external Python job publishes, verifies, opens, and cancels witho
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("reference publication survives restart and refuses tampered source bytes", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-python-restart-e2e-"));
+  const pythonCommand = process.env.PYTHON || (process.platform === "win32" ? "py" : "python3");
+  const executable = execFileSync(pythonCommand, ["-c", "import sys;print(sys.executable)"], { encoding: "utf8" }).trim();
+  const spec = resolve("integrations/python/examples/sincos-grid.json");
+  const output = join(root, "restart.sscene");
+  const options = { args: ["."], cwd: resolve(__dirname, "..", ".."),
+    env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: join(root, "profile") } };
+  let app = await launchRepoElectron(options);
+  const showChooser = async () => {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Palette", exact: true }).click();
+    await page.getByPlaceholder("Type a command (examples: export, screenshot, run stage)...")
+      .fill("Verified quantum examples");
+    await page.getByRole("button", { name: "Verified quantum examples", exact: true }).click();
+    return page.getByTestId("quantum-scene-examples");
+  };
+  try {
+    await app.evaluate(({ dialog }, choices) => {
+      let index = 0;
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [choices.files[index++]] });
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: choices.output });
+      dialog.showMessageBox = async () => ({ response: 0, checkboxChecked: false });
+    }, { files: [executable, spec], output });
+    const chooser = await showChooser();
+    await chooser.getByTestId("scientific-prepare-reference-publisher").click();
+    await expect(chooser.getByTestId("scientific-publisher-confirmation")).toContainText(spec);
+    await chooser.getByTestId("scientific-run-publisher").click();
+    await expect((await app.firstWindow()).getByTestId("scientific-scene-preview"))
+      .toContainText("Python sin(x) cos(y) reference grid");
+    await app.close();
+
+    app = await launchRepoElectron(options);
+    await app.evaluate(({ dialog }, directory) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
+    }, output);
+    const reopened = await showChooser();
+    await reopened.getByTestId("scientific-open-directory").click();
+    const preview = (await app.firstWindow()).getByTestId("scientific-scene-preview");
+    await expect(preview).toContainText("Python sin(x) cos(y) reference grid");
+    await preview.getByRole("button", { name: "Inspect center sample" }).click();
+    await expect(preview.getByTestId("scientific-sample-selection")).toContainText("f = 0.0000000");
+    const manifest = JSON.parse(await readFile(join(output, "manifest.json"), "utf8"));
+    const source = join(output, manifest.resources[0].path);
+    const altered = Buffer.from(await readFile(source)); altered[0] ^= 1;
+    await writeFile(source, altered);
+    await preview.getByRole("button", { name: "Inspect center sample" }).click();
+    await expect(preview.getByRole("alert")).toContainText("resource integrity failed");
+    await preview.getByRole("button", { name: "Close" }).click();
+    const refused = await showChooser();
+    await refused.getByTestId("scientific-open-directory").click();
+    await expect(refused.getByRole("alert")).toContainText("resource integrity failed");
+  } finally {
+    await app.close();
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-python-restart-e2e-"))
+      throw new Error("Unsafe Python publisher restart E2E cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});
