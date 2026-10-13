@@ -140,6 +140,17 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   }); };
   const viewerRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
+  const openInspector = () => {
+    const workspace = viewerRef.current?.closest(".graph2d-workspace");
+    const compact = workspace?.querySelector<HTMLDetailsElement>(".graph2d-compact-panels > details:last-child");
+    if (compact && window.matchMedia("(max-width: 1100px)").matches) {
+      compact.open = true;
+      requestAnimationFrame(() => (compact.querySelector<HTMLElement>(".graph2d-inspector-current") ??
+        compact.querySelector<HTMLElement>("summary"))?.focus());
+      return;
+    }
+    workspace?.querySelector<HTMLElement>(".graph2d-right .graph2d-inspector-current")?.focus();
+  };
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [previewViewport, setPreviewViewport] = useState<Graph2DViewport | null>(null);
   const previewRef = useRef<Graph2DViewport | null>(null);
@@ -435,52 +446,13 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     onViewportCommit?.(panGraph2DViewport(viewport, size, { x: size.width / 2 - screen.x, y: size.height / 2 - screen.y }));
   }} />;
   const inspector = inspected ? <div className="graph2d-inspector">
+    <header className="graph2d-inspector-current" aria-label="Selected graph result" tabIndex={-1}>
+      <strong>{inspected.label}</strong>
+      <span>{inspected.probe ? `Probe (${inspected.probe.x.toPrecision(5)}, ${inspected.probe.y.toPrecision(5)})` :
+        "Select a point or run an analysis below."}</span>
+    </header>
     {selectedObject?.kind === "point-series" && <Graph2DRegressionPanel document={document} model={regressionModel} onModel={setRegressionModel} result={regression} onResult={setRegression} />}
     {parameterPreviewActive && <p role="status">Inspector and analyses refer to the committed source, not the parameter preview.</p>}
-    {onPromotionCreate && onPromotionLocate && onPromotionRegenerate && <Graph2DPromotionPanel document={document}
-      promotions={promotions} onCreate={onPromotionCreate} onLocate={onPromotionLocate} onRegenerate={onPromotionRegenerate} />}
-    <dl className="graph2d-inspector-details">
-      <dt>Graph object</dt><dd>{inspected.label}</dd>
-      <dt>Source</dt><dd><code>{inspected.kind === "explicit-cartesian" ? `y = ${inspected.expression}` : inspected.expression}</code></dd>
-      <dt>{inspected.kind === "parametric" ? "Parameter t" : inspected.kind === "polar" ? "Angle θ" : "X domain"}</dt>
-      <dd>{inspected.domain.includeMin ? "[" : "("}{inspected.domain.min}, {inspected.domain.max}{inspected.domain.includeMax ? "]" : ")"}</dd>
-      {(selectedObject?.kind === "implicit" || selectedObject?.kind === "inequality") && <><dt>Y domain</dt>
-        <dd>{selectedObject.yDomain.min}, {selectedObject.yDomain.max}</dd></>}
-      <dt>Style</dt><dd><span className="graph2d-inspector-swatch" style={{ background: inspected.style.color }} />
-        {inspected.style.lineStyle}, {inspected.style.lineWidth} px · {inspected.style.visible ? "visible" : "hidden"}</dd>
-      <dt>Probe</dt><dd>{inspected.probe ? <span data-testid="graph2d-probe-coordinates">
-        ({inspected.probe.x.toPrecision(6)}, {inspected.probe.y.toPrecision(6)})</span> : "No point selected"}</dd>
-      {inspected.probe?.parameter !== undefined && <><dt>{inspected.kind === "polar" ? "Angle θ" : "Parameter t"}</dt>
-        <dd data-testid="graph2d-probe-parameter">{inspected.probe.parameter.toPrecision(8)}</dd></>}
-      {inspected.signedRadius !== null && <><dt>Signed radius</dt>
-        <dd data-testid="graph2d-probe-radius">{inspected.signedRadius.toPrecision(8)}</dd></>}
-      {inspected.probe?.rowId && <><dt>Row</dt><dd data-testid="graph2d-probe-row">{inspected.probe.rowId}</dd></>}
-      <dt>Probe method</dt><dd>{inspected.probeMethod === "direct-expression-floating-point" ?
-        "Direct expression evaluation (floating point)" : inspected.probeMethod === "sampled-contour" ?
-          "Sampled contour projection" : inspected.probeMethod === "table-row" ? "Table row" : "Unavailable"}</dd>
-      <dt>Sampling</dt><dd className="graph2d-sampling-observation-status" data-testid="graph2d-sampling-status">{!parameterPreviewActive && !sampling.ready ?
-        sampling.retained ? "Updating — previous observation" : "Updating — no observation yet" : `Adaptive bounded polyline · ${inspected.sampling.status}`}</dd>
-      {inspected.regionState && <><dt>Region</dt><dd data-testid="graph2d-region-status">{inspected.regionState}</dd></>}
-      {inspected.pointState && <><dt>Table</dt><dd data-testid="graph2d-table-status">{inspected.pointState}</dd></>}
-      <dt>Budget</dt><dd>{inspected.sampling.policy.maxSamples.toLocaleString()} samples, depth {inspected.sampling.policy.maxDepth},
-        {" "}{inspected.sampling.policy.tolerancePx} px tolerance</dd>
-      <dt>Observed</dt><dd className="graph2d-sampling-observation-count" data-testid="graph2d-observed-sampling">{inspected.sampling.samplesEvaluated === null ? "Unavailable" :
-        `${inspected.sampling.samplesEvaluated.toLocaleString()} evaluations · ${inspected.sampling.segmentCount} segments`}</dd>
-      <dt>Jumps</dt><dd>{inspected.sampling.suspectedJumpCount} suspected · {inspected.sampling.invalidSampleCount} invalid samples</dd>
-    </dl>
-    {inspected.sampling.diagnostics.length > 0 && <details className="graph2d-inspector-more"><summary>Sampling diagnostics</summary>
-      <ul>{inspected.sampling.diagnostics.map((diagnostic) => <li key={diagnostic.code}>{diagnostic.code}: {diagnostic.count}</li>)}</ul>
-    </details>}
-    <details className="graph2d-inspector-more"><summary>Provenance</summary>
-      <dl className="graph2d-inspector-details">
-        <dt>Document</dt><dd>{inspected.provenance.documentId}</dd>
-        <dt>Revision</dt><dd>{inspected.provenance.revision}</dd>
-        <dt>Source hash</dt><dd><code>{inspected.provenance.structuralHash}</code></dd>
-        <dt>Expression AST</dt><dd>{inspected.provenance.expressionAstVersion === null ? "N/A" :
-          `v${inspected.provenance.expressionAstVersion}`}</dd>
-        <dt>Sampler</dt><dd>{inspected.provenance.samplerVersion === null ? "Unavailable" : `v${inspected.provenance.samplerVersion}`}</dd>
-      </dl>
-    </details>
     {differential && <section className="graph2d-local-differential" data-testid="graph2d-local-differential" aria-label="Local differential">
       <h3>Local differential</h3>
       <dl className="graph2d-inspector-details">
@@ -658,6 +630,53 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         <small>Tangencies are possible candidates; narrow intersections may be missed.</small>
       </div>}
     </section>}
+    {onPromotionCreate && onPromotionLocate && onPromotionRegenerate && <Graph2DPromotionPanel document={document}
+      promotions={promotions} onCreate={onPromotionCreate} onLocate={onPromotionLocate} onRegenerate={onPromotionRegenerate} />}
+    <section className="graph2d-inspector-source" aria-label="Source and sampling details">
+      <h3>Source and sampling</h3>
+      <dl className="graph2d-inspector-details">
+        <dt>Graph object</dt><dd>{inspected.label}</dd>
+        <dt>Source</dt><dd><code>{inspected.kind === "explicit-cartesian" ? `y = ${inspected.expression}` : inspected.expression}</code></dd>
+        <dt>{inspected.kind === "parametric" ? "Parameter t" : inspected.kind === "polar" ? "Angle θ" : "X domain"}</dt>
+        <dd>{inspected.domain.includeMin ? "[" : "("}{inspected.domain.min}, {inspected.domain.max}{inspected.domain.includeMax ? "]" : ")"}</dd>
+        {(selectedObject?.kind === "implicit" || selectedObject?.kind === "inequality") && <><dt>Y domain</dt>
+          <dd>{selectedObject.yDomain.min}, {selectedObject.yDomain.max}</dd></>}
+        <dt>Style</dt><dd><span className="graph2d-inspector-swatch" style={{ background: inspected.style.color }} />
+          {inspected.style.lineStyle}, {inspected.style.lineWidth} px · {inspected.style.visible ? "visible" : "hidden"}</dd>
+        <dt>Probe</dt><dd>{inspected.probe ? <span data-testid="graph2d-probe-coordinates">
+          ({inspected.probe.x.toPrecision(6)}, {inspected.probe.y.toPrecision(6)})</span> : "No point selected"}</dd>
+        {inspected.probe?.parameter !== undefined && <><dt>{inspected.kind === "polar" ? "Angle θ" : "Parameter t"}</dt>
+          <dd data-testid="graph2d-probe-parameter">{inspected.probe.parameter.toPrecision(8)}</dd></>}
+        {inspected.signedRadius !== null && <><dt>Signed radius</dt>
+          <dd data-testid="graph2d-probe-radius">{inspected.signedRadius.toPrecision(8)}</dd></>}
+        {inspected.probe?.rowId && <><dt>Row</dt><dd data-testid="graph2d-probe-row">{inspected.probe.rowId}</dd></>}
+        <dt>Probe method</dt><dd>{inspected.probeMethod === "direct-expression-floating-point" ?
+          "Direct expression evaluation (floating point)" : inspected.probeMethod === "sampled-contour" ?
+            "Sampled contour projection" : inspected.probeMethod === "table-row" ? "Table row" : "Unavailable"}</dd>
+        <dt>Sampling</dt><dd className="graph2d-sampling-observation-status" data-testid="graph2d-sampling-status">{!parameterPreviewActive && !sampling.ready ?
+          sampling.retained ? "Updating — previous observation" : "Updating — no observation yet" : `Adaptive bounded polyline · ${inspected.sampling.status}`}</dd>
+        {inspected.regionState && <><dt>Region</dt><dd data-testid="graph2d-region-status">{inspected.regionState}</dd></>}
+        {inspected.pointState && <><dt>Table</dt><dd data-testid="graph2d-table-status">{inspected.pointState}</dd></>}
+        <dt>Budget</dt><dd>{inspected.sampling.policy.maxSamples.toLocaleString()} samples, depth {inspected.sampling.policy.maxDepth},
+          {" "}{inspected.sampling.policy.tolerancePx} px tolerance</dd>
+        <dt>Observed</dt><dd className="graph2d-sampling-observation-count" data-testid="graph2d-observed-sampling">{inspected.sampling.samplesEvaluated === null ? "Unavailable" :
+          `${inspected.sampling.samplesEvaluated.toLocaleString()} evaluations · ${inspected.sampling.segmentCount} segments`}</dd>
+        <dt>Jumps</dt><dd>{inspected.sampling.suspectedJumpCount} suspected · {inspected.sampling.invalidSampleCount} invalid samples</dd>
+      </dl>
+      {inspected.sampling.diagnostics.length > 0 && <details className="graph2d-inspector-more"><summary>Sampling diagnostics</summary>
+        <ul>{inspected.sampling.diagnostics.map((diagnostic) => <li key={diagnostic.code}>{diagnostic.code}: {diagnostic.count}</li>)}</ul>
+      </details>}
+      <details className="graph2d-inspector-more"><summary>Provenance</summary>
+        <dl className="graph2d-inspector-details">
+          <dt>Document</dt><dd>{inspected.provenance.documentId}</dd>
+          <dt>Revision</dt><dd>{inspected.provenance.revision}</dd>
+          <dt>Source hash</dt><dd><code>{inspected.provenance.structuralHash}</code></dd>
+          <dt>Expression AST</dt><dd>{inspected.provenance.expressionAstVersion === null ? "N/A" :
+            `v${inspected.provenance.expressionAstVersion}`}</dd>
+          <dt>Sampler</dt><dd>{inspected.provenance.samplerVersion === null ? "Unavailable" : `v${inspected.provenance.samplerVersion}`}</dd>
+        </dl>
+      </details>
+    </section>
     <div className="graph2d-inspector-actions">
       <button type="button" disabled={!inspected.probe} onClick={locateSelected}>Locate</button>
       <button type="button" disabled={!sampling.ready || parameterPreviewActive || !selectedSeries?.artifact.segments.length} onClick={() => selectedSeries && fitSeries([selectedSeries])}>Fit selection</button>
@@ -684,33 +703,66 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           <button type="button" data-testid="graph2d-presentation-exit" onClick={exitPresentation}>Exit presentation</button>
         </div>}
         <div className="graph2d-toolbar" ref={toolbarRef} onPointerDown={(event) => event.stopPropagation()}>
-          <button type="button" ref={presentationOpener} data-testid="graph2d-presentation-open" onClick={() => {
-            finishWheel(); closeGrid(true, false); cancelParameter(); setParametersOpen(false); setScalesOpen(false); setToolsOpen(false);
-            setParameterCards(false); setPresentation(true);
-            requestAnimationFrame(() => viewerRef.current?.querySelector<HTMLButtonElement>('[data-testid="graph2d-presentation-exit"]')?.focus());
-          }}>Present</button>
-          <button type="button" ref={toolsOpener} aria-expanded={toolsOpen} onClick={() => { finishWheel(); closeGrid(true, false); cancelParameter(); setToolsOpen(!toolsOpen); }}>Tools</button>
-          <button type="button" ref={gridOpener} aria-expanded={gridOpen} disabled={status !== "ready"} onClick={() => { finishWheel(); cancelParameter(); setParametersOpen(false); setScalesOpen(false); if (gridOpen) closeGrid(true); else setGridOpen(true); }}>Grid</button>
-          <button type="button" ref={scalesOpener} onClick={() => { finishWheel(); cancelParameter(); closeGrid(true, false); setParametersOpen(false); setScalesOpen(!scalesOpen); }}>Scales</button>
-          <button type="button" aria-pressed={viewport.continuation ?? false} onClick={() => { finishWheel(); cancelParameter(); onViewportCommit?.({ ...document.display.viewport, continuation: !document.display.viewport.continuation }); }}>Show continuation</button>
-          <button type="button" data-testid="graph-gallery-open" onClick={event => { galleryOpener.current = event.currentTarget; finishWheel(); closeGrid(true, false); setScalesOpen(false); setParametersOpen(false); setParameterPreview(null); setGalleryError(null); setGalleryOpen(true); }}>Gallery</button>
-          <button type="button" data-testid="graph2d-parameters-open" disabled={status !== "ready"} onClick={event => {
-            parametersOpener.current = event.currentTarget; finishWheel(); setParametersOpen(value => !value); setParameterPreview(null);
-            setScalesOpen(false);
-            closeGrid(true, false);
-            if (!parametersOpen) galleryFocusFrame.current = requestAnimationFrame(() => { galleryFocusFrame.current = null;
-              parametersOpener.current?.closest(".graph2d-workspace")?.querySelector<HTMLButtonElement>('[data-testid="graph2d-parameters-close"]')?.focus(); });
-          }}>Parameters</button>
-          <button type="button" aria-pressed={parameterCards} onClick={() => { finishWheel(); cancelParameter(); setParametersOpen(false); setParameterCards(!parameterCards); }}>Parameter cards</button>
-          <button type="button" data-testid="graph2d-export-open" disabled={status !== "ready" || parameterPreviewActive} onClick={event => {
-            exportOpener.current = event.currentTarget; finishWheel(); closeGrid(true, false); dragRef.current = null; setExportOpen(true);
-          }}>Export</button>
-          <button type="button" onClick={() => { finishWheel(); onViewportCommit?.({ ...GRAPH2D_DEFAULT_VIEWPORT }); }}>Reset</button>
-          <button type="button" onClick={() => { finishWheel(); fitVisible(); }}>Fit</button>
-          <button type="button" aria-label="Toggle polar grid" aria-pressed={(document.display.axes.gridMode ?? "cartesian") === "polar"}
-            disabled={graph2DHasLogScale(viewport) || manualGrid} title={graph2DHasLogScale(viewport) ? "Polar grid needs linear axes" : manualGrid ? "Set both grid spacings to Auto before switching to polar" : undefined}
-            onClick={() => onGridModeCommit?.((document.display.axes.gridMode ?? "cartesian") === "polar" ? "cartesian" : "polar")}>
-            {(document.display.axes.gridMode ?? "cartesian") === "polar" ? "Cartesian grid" : "Polar grid"}</button>
+          <div className="graph2d-toolbar-primary" role="group" aria-label="Graph view essentials">
+            <button type="button" onClick={() => { finishWheel(); fitVisible(); }}>Fit</button>
+            <button type="button" aria-label="Zoom in" onClick={() => {
+              const current = previewRef.current ?? document.display.viewport;
+              finishWheel(); onViewportCommit?.(zoomGraph2DViewport(current, size,
+                { x: size.width / 2, y: size.height / 2 }, 1.2));
+            }}>Zoom in</button>
+            <button type="button" aria-label="Zoom out" onClick={() => {
+              const current = previewRef.current ?? document.display.viewport;
+              finishWheel(); onViewportCommit?.(zoomGraph2DViewport(current, size,
+                { x: size.width / 2, y: size.height / 2 }, 1 / 1.2));
+            }}>Zoom out</button>
+            <button type="button" ref={gridOpener} aria-expanded={gridOpen} disabled={status !== "ready"} onClick={() => {
+              finishWheel(); cancelParameter(); setParametersOpen(false); setScalesOpen(false);
+              if (gridOpen) closeGrid(true); else setGridOpen(true);
+            }}>Grid</button>
+          </div>
+          <div className="graph2d-toolbar-secondary">
+            <div className="graph2d-toolbar-group" role="group" aria-label="Authoring">
+              <span aria-hidden="true">Author</span>
+              <button type="button" data-testid="graph-gallery-open" onClick={event => { galleryOpener.current = event.currentTarget; finishWheel(); closeGrid(true, false); setScalesOpen(false); setParametersOpen(false); setParameterPreview(null); setGalleryError(null); setGalleryOpen(true); }}>Gallery</button>
+              <button type="button" data-testid="graph2d-parameters-open" disabled={status !== "ready"} onClick={event => {
+                parametersOpener.current = event.currentTarget; finishWheel(); setParametersOpen(value => !value); setParameterPreview(null);
+                setScalesOpen(false); closeGrid(true, false);
+                if (!parametersOpen) galleryFocusFrame.current = requestAnimationFrame(() => { galleryFocusFrame.current = null;
+                  parametersOpener.current?.closest(".graph2d-workspace")?.querySelector<HTMLButtonElement>('[data-testid="graph2d-parameters-close"]')?.focus(); });
+              }}>Parameters</button>
+              <button type="button" aria-pressed={parameterCards} onClick={() => { finishWheel(); cancelParameter(); setParametersOpen(false); setParameterCards(!parameterCards); }}>Parameter cards</button>
+            </div>
+            <div className="graph2d-toolbar-group" role="group" aria-label="Construction tools">
+              <span aria-hidden="true">Construct</span>
+              <button type="button" ref={toolsOpener} aria-expanded={toolsOpen} onClick={() => { finishWheel(); closeGrid(true, false); cancelParameter(); setToolsOpen(!toolsOpen); }}>Tools</button>
+            </div>
+            <div className="graph2d-toolbar-group" role="group" aria-label="Analysis">
+              <span aria-hidden="true">Analyze</span>
+              <button type="button" disabled={!showRight} title={!showRight ? "Open the Inspector dock to view analysis." : undefined}
+                onClick={() => { finishWheel(); openInspector(); }}>Inspector</button>
+            </div>
+            <div className="graph2d-toolbar-group" role="group" aria-label="View settings">
+              <span aria-hidden="true">View</span>
+              <button type="button" ref={scalesOpener} onClick={() => { finishWheel(); cancelParameter(); closeGrid(true, false); setParametersOpen(false); setScalesOpen(!scalesOpen); }}>Scales</button>
+              <button type="button" aria-pressed={viewport.continuation ?? false} onClick={() => { finishWheel(); cancelParameter(); onViewportCommit?.({ ...document.display.viewport, continuation: !document.display.viewport.continuation }); }}>Show continuation</button>
+              <button type="button" onClick={() => { finishWheel(); onViewportCommit?.({ ...GRAPH2D_DEFAULT_VIEWPORT }); }}>Reset</button>
+              <button type="button" aria-label="Toggle polar grid" aria-pressed={(document.display.axes.gridMode ?? "cartesian") === "polar"}
+                disabled={graph2DHasLogScale(viewport) || manualGrid} title={graph2DHasLogScale(viewport) ? "Polar grid needs linear axes" : manualGrid ? "Set both grid spacings to Auto before switching to polar" : undefined}
+                onClick={() => onGridModeCommit?.((document.display.axes.gridMode ?? "cartesian") === "polar" ? "cartesian" : "polar")}>
+                {(document.display.axes.gridMode ?? "cartesian") === "polar" ? "Cartesian grid" : "Polar grid"}</button>
+            </div>
+            <div className="graph2d-toolbar-group" role="group" aria-label="Export and presentation">
+              <span aria-hidden="true">Export</span>
+              <button type="button" data-testid="graph2d-export-open" disabled={status !== "ready" || parameterPreviewActive} onClick={event => {
+                exportOpener.current = event.currentTarget; finishWheel(); closeGrid(true, false); dragRef.current = null; setExportOpen(true);
+              }}>Export</button>
+              <button type="button" ref={presentationOpener} data-testid="graph2d-presentation-open" onClick={() => {
+                finishWheel(); closeGrid(true, false); cancelParameter(); setParametersOpen(false); setScalesOpen(false); setToolsOpen(false);
+                setParameterCards(false); setPresentation(true);
+                requestAnimationFrame(() => viewerRef.current?.querySelector<HTMLButtonElement>('[data-testid="graph2d-presentation-exit"]')?.focus());
+              }}>Present</button>
+            </div>
+          </div>
         </div>
         {toolHint && <p className="graph2d-tool-hint" role="status">{toolHint}</p>}
         <div className="graph2d-compact-panels">

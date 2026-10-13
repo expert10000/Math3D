@@ -100,6 +100,7 @@ test("Graph promotions preview, create, locate, protect edits, fork, and reopen 
     await app.page.getByTestId("kernel-workspace-save").click();
     await expect(app.page.getByTestId("kernel-workspace-message")).toContainText("Saved");
     await target.getByRole("button", { name: "Locate graph source" }).click();
+    await functions.getByLabel("More actions for f").click();
     await functions.getByRole("button", { name: "Delete f", exact: true }).click();
     await app.page.getByTestId("kernel-workspace-reopen").click();
     await app.page.getByTestId("kernel-workspace-toggle").click();
@@ -235,8 +236,11 @@ test("Graphs authors, validates, styles, reorders, hides, and undoes functions",
     await panel.getByLabel("Line width").fill("4");
     await panel.getByRole("button", { name: "Save function" }).click();
     await expect(app.page.locator('[data-graph2d-path="function_1"]')).toHaveAttribute("stroke-dasharray", "2 4");
+    await panel.getByLabel("More actions for Quadratic").click();
     await panel.getByRole("button", { name: "Duplicate Quadratic" }).click();
+    await expect(panel.getByLabel("More actions for Quadratic", { exact: true })).toBeFocused();
     await expect(panel.locator("li")).toHaveCount(2);
+    await panel.getByLabel("More actions for Quadratic copy").click();
     await panel.getByRole("button", { name: "Move Quadratic copy up" }).click();
     await expect(panel.locator("li").first()).toContainText("Quadratic copy");
     await panel.getByRole("button", { name: "Hide Quadratic copy" }).click();
@@ -244,6 +248,7 @@ test("Graphs authors, validates, styles, reorders, hides, and undoes functions",
     await app.page.getByTestId("main-viewer").focus();
     await app.page.keyboard.press("Control+z");
     await expect(app.page.locator('[data-graph2d-path="function_1_copy"]')).toBeVisible();
+    await panel.getByLabel("More actions for Quadratic copy").click();
     await panel.getByRole("button", { name: "Delete Quadratic copy" }).click();
     await expect(panel.locator("li")).toHaveCount(1);
     await app.page.getByTestId("kernel-workspace-toggle").click();

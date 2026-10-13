@@ -12,6 +12,11 @@ describe("Graphs workspace shell", () => {
     const empty = renderToStaticMarkup(<GraphsWorkspace document={document} dockLayout={dockLayout} />);
     expect(empty).toContain("0 graph objects");
     expect(empty).toContain("No functions in this graph.");
+    expect(empty).toContain('aria-label="Graph view essentials"');
+    expect(empty).toContain('aria-label="Zoom in"');
+    expect(empty).toContain('aria-label="Construction tools"');
+    expect(empty).toContain('aria-label="Analysis"');
+    expect(empty).toContain('aria-label="Export and presentation"');
     expect(renderToStaticMarkup(<GraphsWorkspace document={document} dockLayout={dockLayout} status="loading" />))
       .toContain("Loading graph");
     expect(renderToStaticMarkup(<GraphsWorkspace document={document} dockLayout={dockLayout} status="error" errorMessage="Invalid source" />))
@@ -29,6 +34,9 @@ describe("Graphs workspace shell", () => {
     expect(markup).toContain('aria-label="Polar measurements"');
     expect(markup).toContain("Measure swept area");
     expect(markup).toContain("Measure polar arc length");
+    expect(markup.indexOf('aria-label="Polar measurements"')).toBeLessThan(
+      markup.indexOf('aria-label="Source and sampling details"'));
+    expect(markup).toContain('aria-label="More actions for circle"');
     expect(markup).not.toContain('aria-label="Interval area"');
     expect(markup).not.toContain('aria-label="Arc length"');
     expect(markup).not.toContain('aria-label="Pairwise intersections"');

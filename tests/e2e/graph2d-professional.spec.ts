@@ -35,7 +35,7 @@ test("G2D41 Electron grid settings apply as reversible display-only intent", asy
     await panel.getByLabel("Show minor subdivisions", { exact: true }).uncheck(); await panel.getByRole("button", { name: "Apply grid settings", exact: true }).click();
     await expect(panel.getByRole("alert")).toHaveCount(0); await expect(page.locator(".graph2d-grid-minor")).toHaveCount(0);
     await page.keyboard.press("Escape"); await expect(opener).toBeFocused(); await page.getByTestId("main-viewer").focus(); await page.keyboard.press("Control+z");
-    await expect(inspector.locator(".graph2d-inspector-details").first()).toContainText("Parabola");
+    await expect(inspector.getByRole("region", { name: "Source and sampling details" })).toContainText("Parabola");
     await opener.click(); await expect(panel.getByLabel("X grid spacing", { exact: true })).toHaveValue("");
     await page.screenshot({ path: info.outputPath("grid-electron.png") });
   } finally { await closeSurfaceApp(app); }

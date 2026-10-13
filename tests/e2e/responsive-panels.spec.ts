@@ -1,6 +1,37 @@
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 
+test("Graphs keeps essential view controls and compact card actions keyboard reachable", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    const functions = app.page.getByLabel("Graph functions");
+    await functions.getByRole("button", { name: "Add function", exact: true }).click();
+    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    const more = functions.getByLabel("More actions for f");
+    await more.focus();
+    await app.page.keyboard.press("Enter");
+    await expect(functions.getByRole("button", { name: "Duplicate f" })).toBeVisible();
+    await app.page.keyboard.press("Escape");
+    await expect(more).toBeFocused();
+    await expect(functions.getByRole("button", { name: "Duplicate f" })).not.toBeVisible();
+    await app.page.setViewportSize({ width: 620, height: 500 });
+    const essentials = app.page.getByRole("group", { name: "Graph view essentials" });
+    await expect(essentials.getByRole("button", { name: "Fit" })).toBeVisible();
+    await expect(essentials.getByRole("button", { name: "Zoom in" })).toBeVisible();
+    await expect(essentials.getByRole("button", { name: "Zoom out" })).toBeVisible();
+    await expect(essentials.getByRole("button", { name: "Grid" })).toBeVisible();
+    await essentials.getByRole("button", { name: "Zoom in" }).click();
+    await app.page.getByRole("group", { name: "Construction tools" }).getByRole("button", { name: "Tools" }).click();
+    await expect(app.page.getByTestId("graph2d-tools")).toBeVisible();
+    await app.page.keyboard.press("Escape");
+    await expect(app.page.getByRole("group", { name: "Construction tools" }).getByRole("button", { name: "Tools" })).toBeFocused();
+    await app.page.getByRole("group", { name: "Analysis", exact: true }).getByRole("button", { name: "Inspector" }).click();
+    await expect(app.page.locator(".graph2d-compact-panels > details[open]")).toContainText("Source and sampling");
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("Graphs keeps toolbar and compact Inspector separate at tablet width", async () => {
   const app = await launchSurfaceApp();
   try {
@@ -21,7 +52,7 @@ test("Graphs keeps toolbar and compact Inspector separate at tablet width", asyn
     await inspector.focus();
     await app.page.keyboard.press("Enter");
     const opened = app.page.locator(".graph2d-compact-panels > details[open]");
-    await expect(opened).toContainText("Function");
+    await expect(opened).toContainText("Source and sampling");
     const openedBox = await opened.boundingBox();
     expect(openedBox).not.toBeNull();
     expect(openedBox!.y).toBeGreaterThanOrEqual(toolbarBox!.y + toolbarBox!.height + 7);

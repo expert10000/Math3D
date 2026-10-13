@@ -197,13 +197,29 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
             <button type="button" aria-label={"Edit " + object.label} onClick={() => beginEdit(object.id)}>Edit</button>
             <button type="button" aria-label={(style.visible ? "Hide " : "Show ") + object.label}
               onClick={() => commit({ type: "visibility", objectId: object.id })}>{style.visible ? "Hide" : "Show"}</button>
-            <button type="button" aria-label={"Duplicate " + object.label} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}
-              onClick={() => commit({ type: "duplicate", objectId: object.id })}>Duplicate</button>
-            <button type="button" aria-label={"Move " + object.label + " up"} disabled={index === 0}
-              onClick={() => commit({ type: "reorder", objectId: object.id, toIndex: index - 1 })}>↑</button>
-            <button type="button" aria-label={"Move " + object.label + " down"} disabled={index === document.source.objects.length - 1}
-              onClick={() => commit({ type: "reorder", objectId: object.id, toIndex: index + 1 })}>↓</button>
-            <button type="button" aria-label={"Delete " + object.label} onClick={() => commit({ type: "delete", objectId: object.id })}>Delete</button>
+            <details className="graph2d-function-more" onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              event.preventDefault(); event.stopPropagation(); event.currentTarget.open = false;
+              event.currentTarget.querySelector("summary")?.focus();
+            }}>
+              <summary aria-label={`More actions for ${object.label}`}>More</summary>
+              <div className="graph2d-function-more-actions" onClick={(event) => {
+                if (!(event.target as HTMLElement).closest("button")) return;
+                const details = event.currentTarget.closest("details");
+                const list = event.currentTarget.closest(".graph2d-function-list");
+                if (details) details.open = false;
+                requestAnimationFrame(() => (details?.isConnected ? details.querySelector<HTMLElement>("summary") :
+                  list?.querySelector<HTMLElement>("button"))?.focus());
+              }}>
+                <button type="button" aria-label={"Duplicate " + object.label} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}
+                  onClick={() => commit({ type: "duplicate", objectId: object.id })}>Duplicate</button>
+                <button type="button" aria-label={"Move " + object.label + " up"} disabled={index === 0}
+                  onClick={() => commit({ type: "reorder", objectId: object.id, toIndex: index - 1 })}>Move up</button>
+                <button type="button" aria-label={"Move " + object.label + " down"} disabled={index === document.source.objects.length - 1}
+                  onClick={() => commit({ type: "reorder", objectId: object.id, toIndex: index + 1 })}>Move down</button>
+                <button type="button" aria-label={"Delete " + object.label} onClick={() => commit({ type: "delete", objectId: object.id })}>Delete</button>
+              </div>
+            </details>
           </div>
         </li>;
       })}

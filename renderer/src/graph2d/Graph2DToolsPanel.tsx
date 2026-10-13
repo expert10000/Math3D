@@ -14,12 +14,18 @@ export function Graph2DToolsPanel({ document, rowsAvailable, onTool, onClose }: 
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); }
   }}>
     <header><h2>Tools</h2><button type="button" aria-label="Close graph tools" onClick={onClose}>Close</button></header>
-    <div className="graph2d-tools-grid">{GRAPH2D_TOOLS.map((tool, i) => {
-      const reason = graph2DToolUnavailable(document, tool.id, rowsAvailable);
-      return <div key={tool.id}><button type="button" data-tool={tool.id} aria-label={tool.label} disabled={!!reason}
-        title={reason ?? tool.hint} onClick={() => onTool(tool.id)}>
-        <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d={artwork[i]} fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>{tool.label}</button>
-        <small>{reason ?? tool.hint}</small></div>;
-    })}</div>
+    {([{ label: "Explore and construct", tools: GRAPH2D_TOOLS.slice(0, 3) },
+      { label: "Analyze", tools: GRAPH2D_TOOLS.slice(3) }] as const).map(group =>
+      <section className="graph2d-tools-group" key={group.label} aria-label={group.label}>
+        <h3>{group.label}</h3>
+        <div className="graph2d-tools-grid">{group.tools.map(tool => {
+          const reason = graph2DToolUnavailable(document, tool.id, rowsAvailable);
+          const artworkIndex = GRAPH2D_TOOLS.findIndex(entry => entry.id === tool.id);
+          return <div key={tool.id}><button type="button" data-tool={tool.id} aria-label={tool.label} disabled={!!reason}
+            title={reason ?? tool.hint} onClick={() => onTool(tool.id)}>
+            <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d={artwork[artworkIndex]} fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>{tool.label}</button>
+            <small>{reason ?? tool.hint}</small></div>;
+        })}</div>
+      </section>)}
   </section>;
 }
