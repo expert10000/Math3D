@@ -539,17 +539,20 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     {selectedObject?.kind === "polar" ? <section className="graph2d-polar-measurements" data-testid="graph2d-polar-measurements" aria-label="Polar measurements">
       <h3>Polar measurements</h3>
       <p>Angular bounds are in radians. Swept area counts repeated traversal, including loops.</p>
-      <div className="graph2d-area-controls">
+      <div className="graph2d-area-controls graph2d-polar-controls">
         <label>From θ (radians) <input aria-label="Polar angle from" type="number" value={activePolarDraft.min}
           onChange={event => { setPolarDraft({ ...activePolarDraft, min: event.target.value }); setPolarAreaRequest(null); setPolarArcRequest(null); }} /></label>
         <label>To θ (radians) <input aria-label="Polar angle to" type="number" value={activePolarDraft.max}
           onChange={event => { setPolarDraft({ ...activePolarDraft, max: event.target.value }); setPolarAreaRequest(null); setPolarArcRequest(null); }} /></label>
       </div>
-      {!polarValid && <p role="status">Choose increasing angles within the authored angular domain.</p>}
+      {!polarValid && <div role="status"><p>Choose increasing angles within the authored angular domain.</p>
+        <button type="button" onClick={() => { setPolarDraft({ objectId: selectedObject.id,
+          min: String(selectedObject.domain.min), max: String(selectedObject.domain.max) });
+          setPolarAreaRequest(null); setPolarArcRequest(null); }}>Use source angle range</button></div>}
       <div className="graph2d-area-controls">
-        <button type="button" disabled={!polarValid} onClick={() => polarValid && selectedObject.kind === "polar" &&
+        <button type="button" disabled={!polarValid} title={!polarValid ? "Choose increasing angles within the authored angular domain." : undefined} onClick={() => polarValid && selectedObject.kind === "polar" &&
           setPolarAreaRequest({ objectId: selectedObject.id, min: polarMin, max: polarMax })}>Measure swept area</button>
-        <button type="button" disabled={!polarValid} onClick={() => polarValid && selectedObject.kind === "polar" &&
+        <button type="button" disabled={!polarValid} title={!polarValid ? "Choose increasing angles within the authored angular domain." : undefined} onClick={() => polarValid && selectedObject.kind === "polar" &&
           setPolarArcRequest({ objectId: selectedObject.id, min: polarMin, max: polarMax })}>Measure polar arc length</button>
       </div>
       {[polarArea, polarArcLength].filter((result): result is Graph2DPolarMeasurement =>
@@ -796,11 +799,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           intervals={!parameterPreviewActive && intervals && isGraph2DIntervalAnalysisCurrent(intervals, document) ? intervals : null}
           area={!parameterPreviewActive && area && isGraph2DIntegralCurrent(area, document) ? area : null}
           intersections={!parameterPreviewActive && intersections && isGraph2DIntersectionCurrent(intersections, document) ? intersections : null} />}
-        {sampling.error && <div role="alert" className="graph2d-viewer-message">{sampling.error}</div>}
-        {(gridWarnings.length > 0 || viewport.continuation || graph2DHasLogScale(viewport) || parameterPreviewActive || !sampling.ready && document.source.objects.length > 0) && <div role="status" className="graph2d-update-status" data-testid="graph2d-update-status">
+        {sampling.error && <div role="alert" className="graph2d-viewer-message"><p>{sampling.error}</p>
+          <button type="button" onClick={sampling.retry}>Retry sampling</button></div>}
+        {(gridWarnings.length > 0 || viewport.continuation || graph2DHasLogScale(viewport) || parameterPreviewActive || !sampling.ready && !sampling.error && document.source.objects.length > 0) && <div role="status" className="graph2d-update-status" data-testid="graph2d-update-status">
           {gridWarnings.join(" ")}
           {parameterPreviewActive ? "Parameter preview — not saved. Apply or Cancel; committed analyses are hidden on the plot." : ""}
-          {!sampling.ready ? sampling.retained ? " Updating graph… previous preview/same-source samples remain visible." : " Sampling graph…" : ""}
+          {!sampling.ready && !sampling.error ? sampling.retained ? " Updating graph… previous preview/same-source samples remain visible." : " Sampling graph…" : ""}
           {viewport.continuation ? " Light dotted continuation: outside authored range; visual only, not analysed/exported. Bounded preview may be incomplete." : ""}
           {graph2DHasLogScale(viewport) ? " Log axes: non-positive coordinates omitted; analysis uses world units, tangent/area/interval overlays hidden." : ""}
         </div>}

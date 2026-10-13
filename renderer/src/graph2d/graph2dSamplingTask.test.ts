@@ -37,4 +37,15 @@ describe("real sampling worker lifecycle", () => {
       expect(vi.getTimerCount()).toBe(0);
     } finally { vi.useRealTimers(); }
   });
+  it("hands a worker runtime failure to bounded host recovery once", () => {
+    const failed = worker(), publish = vi.fn(), recover = vi.fn();
+    startGraph2DSamplingTask(failed, "recover", request, publish, 5000, recover);
+    const lateError = failed.onerror!;
+    lateError({ message: "module load failed" } as ErrorEvent);
+    lateError({ message: "module load failed" } as ErrorEvent);
+    expect(failed.terminate).toHaveBeenCalledTimes(1);
+    expect(recover).toHaveBeenCalledOnce();
+    expect(recover).toHaveBeenCalledWith("module load failed");
+    expect(publish).not.toHaveBeenCalled();
+  });
 });

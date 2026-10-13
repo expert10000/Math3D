@@ -38,11 +38,12 @@ export function analyzeGraph2DPolarMeasurement(input: Readonly<{
   signal?: AbortSignal;
 }>): Graph2DPolarMeasurement {
   const object = input.document.source.objects.find(entry => entry.id === input.objectId);
-  if (!object || object.kind !== "polar" || !["swept-area", "arc-length"].includes(input.kind) ||
-    !Number.isFinite(input.interval.min) || !Number.isFinite(input.interval.max) ||
+  if (!object || object.kind !== "polar" || !["swept-area", "arc-length"].includes(input.kind))
+    throw new TypeError("Invalid Graph2D polar measurement request.");
+  if (!Number.isFinite(input.interval.min) || !Number.isFinite(input.interval.max) ||
     input.interval.min >= input.interval.max || input.interval.min < object.domain.min ||
     input.interval.max > object.domain.max || input.interval.max - input.interval.min > 1e6)
-    throw new TypeError("Invalid Graph2D polar measurement request.");
+    throw new TypeError("Choose increasing angles within the authored angular domain.");
   const tolerance = input.tolerance ?? 1e-6;
   if (!Number.isFinite(tolerance) || tolerance <= 0 || tolerance > 0.1)
     throw new TypeError("Invalid Graph2D polar measurement tolerance.");

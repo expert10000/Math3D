@@ -144,6 +144,9 @@
 .graph2d-area-controls label { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .graph2d-area-controls input, .graph2d-area-controls select { width: 105px; min-width: 0; }
 .graph2d-area-controls button { justify-self: start; }
+.graph2d-polar-controls label { display: grid; justify-content: stretch; gap: 4px; }
+.graph2d-polar-controls input { box-sizing: border-box; width: 100%; }
+.graph2d-polar-measurements button:disabled { opacity: .45; cursor: default; }
 .graph2d-area p { margin: 7px 0; }
 .graph2d-area-overlay { pointer-events: none; fill: #3b82f6; opacity: .25; }
 .graph2d-area-absolute { fill: #16a34a; }

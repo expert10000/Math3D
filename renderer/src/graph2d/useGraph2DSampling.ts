@@ -13,6 +13,7 @@ export function useGraph2DSampling(request: Graph2DSceneSamplingRequest, preview
   const context = graph2DSamplingPresentationContext(request, previewBase);
   const latest = useRef(key); latest.current = key;
   const previous = useRef<{ context: string; series: readonly Graph2DSampledSeries[] } | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<{ key: string; context: string; series: readonly Graph2DSampledSeries[];
     constructions?: Graph2DConstructionArtifact; error?: string } | null>(null);
   useEffect(() => {
@@ -29,8 +30,21 @@ export function useGraph2DSampling(request: Graph2DSceneSamplingRequest, preview
     if (typeof Worker !== "undefined") {
       try {
         const worker = new Worker(new URL("./graph2dSamplingWorker.ts", import.meta.url), { type: "module" });
-        dispose = startGraph2DSamplingTask(worker as unknown as Graph2DSamplingWorker, handle.jobId, request, publish);
-      } catch (error) { publish([], (error as Error).message); }
+        dispose = startGraph2DSamplingTask(worker as unknown as Graph2DSamplingWorker, handle.jobId, request, publish,
+          5000, (workerMessage) => {
+            // A failed worker script or runtime can leave a usable previous curve on screen.
+            // Try the same bounded sampler once on the host before reporting failure.
+            timer = setTimeout(() => {
+              try { publish(sampleGraph2DScene(request), undefined, resolveGraph2DConstructions(request.document)); }
+              catch (error) { publish([], `Graph sampling failed after worker error (${workerMessage}): ${(error as Error).message}`); }
+            }, 0);
+          });
+      } catch (error) {
+        timer = setTimeout(() => {
+          try { publish(sampleGraph2DScene(request), undefined, resolveGraph2DConstructions(request.document)); }
+          catch (fallbackError) { publish([], `Graph sampling failed: ${(fallbackError as Error).message || (error as Error).message}`); }
+        }, 0);
+      }
     } else {
       timer = setTimeout(() => {
         try { publish(sampleGraph2DScene(request), undefined, resolveGraph2DConstructions(request.document)); }
@@ -42,8 +56,9 @@ export function useGraph2DSampling(request: Graph2DSceneSamplingRequest, preview
       controller.current.cancel(handle.jobId); controller.current.settle(handle, key);
     };
     // Selection/metadata-only changes share the sampling key and do not restart work.
-  }, [key, context]);
+  }, [key, context, attempt]);
   return { key, ...presentGraph2DSampling(context, key, result, previous.current),
+    retry: () => { setResult(null); setAttempt(value => value + 1); },
     constructions: result?.key === key && !result.error && result.constructions &&
       isGraph2DConstructionArtifactCurrent(result.constructions, request.document) ? result.constructions : null };
 }
