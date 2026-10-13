@@ -37,8 +37,18 @@ export function QuantumSceneExamples({ onOpened, onOpenedScientific, onClose }: 
     try {
       const result = await window.scientificScenes.openExample();
       if (result.ok) { onOpenedScientific(result.scene); onClose(); }
-      else setError(`Scientific example refused: ${result.error}`);
+      else if (!result.canceled) setError(`Scientific example refused: ${result.error}`);
     } catch (reason) { setError(`Scientific example refused: ${String((reason as Error)?.message ?? reason)}`); }
+    finally { setBusy(null); }
+  };
+  const openScientificDirectory = async () => {
+    if (!window.scientificScenes?.openDirectory || busy) { setError("Scientific bundle import requires the desktop app."); return; }
+    setBusy("external-scientific"); setError("");
+    try {
+      const result = await window.scientificScenes.openDirectory();
+      if (result.ok) { onOpenedScientific(result.scene); onClose(); }
+      else if (!result.canceled) setError(`Scientific bundle refused: ${result.error}`);
+    } catch (reason) { setError(`Scientific bundle refused: ${String((reason as Error)?.message ?? reason)}`); }
     finally { setBusy(null); }
   };
   return createPortal(<div role="dialog" aria-modal="true" aria-label="Verified quantum examples"
@@ -78,6 +88,11 @@ export function QuantumSceneExamples({ onOpened, onOpenedScientific, onClose }: 
           <small>Non-quantum, source-backed grid through the same scientific-scene/v1 validator.</small>
           {busy === "sincos" && <span role="status"> · Verifying…</span>}
         </button>
+        <div style={{ marginTop: 10 }}><button type="button" data-testid="scientific-open-directory"
+          disabled={Boolean(busy)} onClick={() => void openScientificDirectory()}>
+          Open external .sscene folder…
+        </button></div>
+        <p style={{ fontSize: 12 }}>External import currently previews only bounded 2D scalar height surfaces. Files are re-hashed on open and selection; producer claims are not authenticated. No Python process is started.</p>
       </section>
       <p style={{ fontSize: 12 }}>Bundled scenes retain immutable source hashes. For your own Lab result, use File → Open verified quantum scene or Open in Math3D from Theory Lab.</p>
     </div>

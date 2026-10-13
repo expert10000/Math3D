@@ -4,7 +4,7 @@ import { GeometryViewer } from "./GeometryViewer";
 import { buildScientificHeightMesh, type OpenedScientificHeightSurface } from "../scientificScene/heightSurface";
 
 export type ScientificSceneOpenResponse = { ok: true; scene: OpenedScientificHeightSurface } |
-  { ok: false; error: string };
+  { ok: false; canceled: true } | { ok: false; canceled: false; error: string };
 type Sample = { fingerprint: string; sceneId: string; datasetId: string; sampleIndex: number; sampleId: string;
   grid: [number, number]; coordinates: [number, number]; coordinateUnits: [string, string];
   value: number; valueUnit: string };
@@ -49,7 +49,7 @@ export function ScientificScenePreview({ opened, onClose }: { opened: OpenedScie
       color: "var(--text, #172033)", borderRadius: 12, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", overflow: "hidden" }}>
       <header style={{ padding: "10px 16px", display: "flex", justifyContent: "space-between", gap: 12,
         borderBottom: "1px solid var(--border, #cbd5e1)" }}>
-        <div><strong>{opened.manifest.title}</strong><div style={{ fontSize: 12 }}>Verified scientific-scene/v1 · non-quantum fixture · read-only</div></div>
+        <div><strong>{opened.manifest.title}</strong><div style={{ fontSize: 12 }}>Verified scientific-scene/v1 bytes · {opened.sourceKind === "bundled" ? "bundled example" : "external producer (untrusted)"} · read-only</div></div>
         <button type="button" onClick={onClose}>Close</button>
       </header>
       <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)" }}>
@@ -66,6 +66,7 @@ export function ScientificScenePreview({ opened, onClose }: { opened: OpenedScie
           <div>Axes: {coordinate.axes.map(axis => `${axis.name} (${axis.unit})`).join(", ")}</div>
           <div>Encoding: f64le · {dataset.order}</div>
           <div>Manifest SHA-256: <code style={{ overflowWrap: "anywhere" }}>{opened.fingerprint}</code></div>
+          <p>Hashes verify the selected bytes, not producer identity or scientific validity.</p>
           <p>The surface is a display mesh from supplied samples; no formula is executed in Math3D.</p>
           <button type="button" disabled={busy} onClick={() => void select(Math.floor(dataset.shape[0] / 2) * dataset.shape[1] + Math.floor(dataset.shape[1] / 2))}>
             Inspect center sample</button>

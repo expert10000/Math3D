@@ -12,7 +12,8 @@ describe("SSR-03 existing SurfaceViewer display adapter", () => {
     const bundle = JSON.parse(await readFile(join(directory, "bundle.json"), "utf8"));
     const bytes = await readFile(join(directory, "values.f64"));
     const values = Array.from({ length: bytes.length / 8 }, (_, index) => bytes.readDoubleLE(index * 8));
-    const mesh = buildScientificHeightMesh({ manifest, fingerprint: bundle.manifest.sha256, datasetId: "f", values });
+    const mesh = buildScientificHeightMesh({ manifest, fingerprint: bundle.manifest.sha256, datasetId: "f", values,
+      sourceKind: "bundled" });
     expect(mesh.id).toBe("f");
     expect(mesh.source).toMatchObject({ kind: "scientificSceneField", sceneId: "sincos-grid", datasetId: "f" });
     expect(mesh.positions.length).toBe(289 * 3);
@@ -26,7 +27,8 @@ describe("SSR-03 existing SurfaceViewer display adapter", () => {
   it("refuses a forged dataset, non-finite sample or unbounded display", async () => {
     const manifest = JSON.parse(await readFile(join(directory, "manifest.json"), "utf8"));
     const values = Array(289).fill(0);
-    const source = { manifest, fingerprint: "a".repeat(64), datasetId: "f", values };
+    const source = { manifest, fingerprint: "a".repeat(64), datasetId: "f", values,
+      sourceKind: "bundled" as const };
     expect(() => buildScientificHeightMesh({ ...source, datasetId: "missing" })).toThrow(/Unsupported/);
     const bad = [...values]; bad[0] = Number.NaN;
     expect(() => buildScientificHeightMesh({ ...source, values: bad })).toThrow(/Invalid bounded/);

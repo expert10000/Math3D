@@ -6,6 +6,7 @@ export type OpenedScientificHeightSurface = {
   fingerprint: string;
   datasetId: string;
   values: number[];
+  sourceKind: "bundled" | "external";
 };
 
 /** Display-only adapter into the existing GeometryViewer/SurfaceViewer mesh path. */

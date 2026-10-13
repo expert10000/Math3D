@@ -1,6 +1,6 @@
 # Scientific Scene Runtime — additive roadmap
 
-**Status (2026-10-12):** SSR-00–04 complete for the two bounded proof fixtures, with [lifecycle measurements and limitations](scientific-scene-lifecycle-measurements.md). SSR-05 adds a [standalone Python publisher](../integrations/python/README.md); SSR-06 onward remains deferred as marked below. This extends the M3D-Q program; it does not replace or renumber it.
+**Status (2026-10-13):** SSR-00–04 complete for the two bounded proof fixtures, with [lifecycle measurements and limitations](scientific-scene-lifecycle-measurements.md). SSR-05 adds a [standalone Python publisher](../integrations/python/README.md), and SSR-05A adds explicit external import for bounded 2D scalar scenes. SSR-06 onward remains deferred as marked below. This extends the M3D-Q program; it does not replace or renumber it.
 
 **Boundary:** `quantum-scene/v1|v2` remains a frozen, Lab-owned interchange format and `.qscene` remains readable. A future producer-neutral `scientific-scene/v1` must be an additional, versioned format and adapter path. Math3D remains the independent consumer; it does not call the Theory Lab worker.
 
@@ -36,6 +36,7 @@ SSR-01–04 are the mandatory first release. They prove one existing quantum bun
 | Gate | Status | Deliverable | Condition |
 | --- | --- | --- | --- |
 | SSR-05 | Complete, publisher only | [Standalone Python publisher](../integrations/python/README.md) writes compatible bounded scalar or complex fields outside Electron. | Cross-language scalar/complex fixtures, byte integrity, exact samples, limits, non-overwrite and tamper refusal. No embedded interpreter, app-launched Python or general UI picker is claimed. |
+| SSR-05A | Complete, bounded importer | Explicitly choose an external `.sscene` directory in the desktop examples chooser and preview its supported 2D scalar height surface. | Electron chooses the folder; the main process applies the same version, metadata, size, link and byte-hash checks as the bundled proof. Source selection re-verifies bytes; cancel and tampering fail closed. Producer identity is marked untrusted. No Python process, general complex/3D renderer, Project persistence or automatic reopen is claimed. |
 | SSR-06 | Deferred | Opt-in Python runtime bridge using the existing `ScientificJobService` and an independently managed environment. | Only if a real workflow needs Math3D-initiated compute; explicit trust, supervision, cancellation and resource limits. Zero Python processes while unused. |
 | SSR-07 | Deferred | Dedicated scientific workspace, richer inspector and camera/view presets. | Demonstrated demand after the shared viewer proves useful; existing modal and M3D-Q path remain functional. |
 | SSR-08 | Deferred | New `ScientificSceneDocument`, live streaming, Jupyter or remote providers, large/chunked artifacts. | Each requires an independent use case and budget. Start with lightweight Project artifact references; do not proliferate document types pre-emptively. |
@@ -45,6 +46,8 @@ QWZ, SSH, vector/tensor fields, Jupyter, remote compute, VTK/CGAL publication an
 ## Footprint targets (measure, then enforce)
 
 These are engineering targets, not present guarantees: under 100 KiB compressed incremental initial JavaScript, no scientific process while idle, no CGAL/VTK in frontend code, no avoidable full-array copies into React state, and release of scene-owned CPU/GPU buffers on close. The [pre-contract baseline](scientific-scene-footprint-baseline.md) records reproducible build and idle measurements. Compare the same build target and machine; define CI thresholds from measured noise rather than claiming literally zero memory or zero startup time.
+
+After syncing unrelated `main` changes and adding SSR-05A (2026-10-13), the local build measured 865,085 B gzip for the renderer entry and 2,389,580 B gzip across all JavaScript chunks; three-run idle medians were 1,064 ms shell-ready, 570,372 KiB process working set and ~42.1 MB reported renderer heap. These are aggregate build measurements, **not** an isolated SSR-05A delta or a startup guarantee.
 
 ## Contract rules to freeze before implementation
 

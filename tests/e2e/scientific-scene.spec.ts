@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
@@ -48,6 +48,64 @@ test("non-quantum scientific fixture opens in the existing viewer and inspects a
     await app.close();
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-scientific-scene-"))
       throw new Error("Unsafe scientific scene cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("explicit external .sscene picker keeps source verification and refuses changed bytes", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-scientific-external-"));
+  const directory = join(root, "external.sscene");
+  await cp(resolve("tests/fixtures/scientific-scene/sincos.sscene"), directory, { recursive: true });
+  const app = await launchRepoElectron({ args: ["."], cwd: resolve(__dirname, "..", ".."),
+    env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: join(root, "profile") } });
+  try {
+    const page = await app.firstWindow();
+    const showChooser = async () => {
+      await page.getByRole("button", { name: "Palette", exact: true }).click();
+      await page.getByPlaceholder("Type a command (examples: export, screenshot, run stage)...")
+        .fill("Verified quantum examples");
+      await page.getByRole("button", { name: "Verified quantum examples", exact: true }).click();
+      return page.getByTestId("quantum-scene-examples");
+    };
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, directory);
+    let chooser = await showChooser();
+    await chooser.getByTestId("scientific-open-directory").click();
+    const preview = page.getByTestId("scientific-scene-preview");
+    await expect(preview).toBeVisible();
+    await expect(preview).toContainText("external producer (untrusted)");
+    await expect(preview).toContainText("Hashes verify the selected bytes");
+    const dataPath = join(directory, "values.f64");
+    const original = await readFile(dataPath);
+    const changed = Buffer.from(original); changed[0] ^= 1;
+    await writeFile(dataPath, changed);
+    await preview.getByRole("button", { name: "Inspect center sample" }).click();
+    await expect(preview.getByRole("alert")).toContainText("resource integrity failed");
+    await preview.getByRole("button", { name: "Close" }).click();
+    await expect(preview).toBeHidden();
+    chooser = await showChooser();
+    await chooser.getByTestId("scientific-open-directory").click();
+    await expect(chooser.getByRole("alert")).toContainText("resource integrity failed");
+    await writeFile(dataPath, original);
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, root);
+    await chooser.getByTestId("scientific-open-directory").click();
+    await expect(chooser.getByRole("alert")).toContainText("Choose a .sscene directory");
+    const rendererPathRefused = await page.evaluate(async () => {
+      const result = await (window as any).scientificScenes.openDirectory("C:\\renderer-chosen.sscene");
+      return result.ok === false && result.canceled === false;
+    });
+    expect(rendererPathRefused).toBe(true);
+    await app.evaluate(({ dialog }) => { dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] }); });
+    await chooser.getByTestId("scientific-open-directory").click();
+    await expect(chooser.getByRole("alert")).toHaveCount(0);
+  } finally {
+    await app.close();
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-scientific-external-"))
+      throw new Error("Unsafe external scientific scene cleanup path");
     await rm(root, { recursive: true, force: true });
   }
 });
