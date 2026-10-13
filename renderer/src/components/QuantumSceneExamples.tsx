@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { QuantumSceneOpenResponse } from "./QuantumScenePreview";
 import type { ScientificSceneOpenResponse } from "./ScientificScenePreview";
+import { PythonPublisherJob, type PreparedPythonPublisher } from "../scientificScene/pythonPublisherJob";
 
 type Example = Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["examples"]>>[number];
 type Opened = Extract<QuantumSceneOpenResponse, { ok: true }>;
@@ -14,6 +15,8 @@ export function QuantumSceneExamples({ onOpened, onOpenedScientific, onClose }: 
   const [examples, setExamples] = useState<Example[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [preparedPublisher, setPreparedPublisher] = useState<PreparedPythonPublisher | null>(null);
+  const runningPublisher = useRef<ReturnType<PythonPublisherJob["submit"]> | null>(null);
   useEffect(() => {
     let active = true;
     if (!window.quantumScenes?.examples) { setError("Bundled quantum examples require the Math3D desktop app."); return; }
@@ -50,6 +53,29 @@ export function QuantumSceneExamples({ onOpened, onOpenedScientific, onClose }: 
       else if (!result.canceled) setError(`Scientific bundle refused: ${result.error}`);
     } catch (reason) { setError(`Scientific bundle refused: ${String((reason as Error)?.message ?? reason)}`); }
     finally { setBusy(null); }
+  };
+  const preparePublisher = async () => {
+    if (!window.scientificScenes?.preparePublisher || busy) { setError("Python publication requires the desktop app."); return; }
+    setPreparedPublisher(null); setBusy("python-prepare"); setError("");
+    try {
+      const result = await window.scientificScenes.preparePublisher();
+      if (result.ok) setPreparedPublisher(result);
+      else if (!result.canceled) setError(`Python publication refused: ${result.error}`);
+    } catch (reason) { setError(`Python publication refused: ${String((reason as Error)?.message ?? reason)}`); }
+    finally { setBusy(null); }
+  };
+  const runPublisher = async () => {
+    if (!preparedPublisher || busy) return;
+    setBusy("python-run"); setError("");
+    try {
+      const job = new PythonPublisherJob(preparedPublisher);
+      const handle = job.submit();
+      runningPublisher.current = handle;
+      const result = await handle.promise;
+      if (result.outcome.ok && result.scene) { onOpenedScientific(result.scene); onClose(); }
+      else if (!result.outcome.ok) setError(`Python publication ${result.outcome.code}: ${result.outcome.message}`);
+    } catch (reason) { setError(`Python publication failed: ${String((reason as Error)?.message ?? reason)}`); }
+    finally { runningPublisher.current = null; setBusy(null); setPreparedPublisher(null); }
   };
   return createPortal(<div role="dialog" aria-modal="true" aria-label="Verified quantum examples"
     data-testid="quantum-scene-examples"
@@ -93,6 +119,25 @@ export function QuantumSceneExamples({ onOpened, onOpenedScientific, onClose }: 
           Open external .sscene folder…
         </button></div>
         <p style={{ fontSize: 12 }}>External import currently previews only bounded 2D scalar height surfaces. Files are re-hashed on open and selection; producer claims are not authenticated. No Python process is started.</p>
+        <button type="button" data-testid="scientific-prepare-publisher" disabled={Boolean(busy)}
+          onClick={() => void preparePublisher()}>Publish with external Python…</button>
+        {preparedPublisher && <div data-testid="scientific-publisher-confirmation" style={{ marginTop: 12,
+          padding: 12, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8, overflowWrap: "anywhere" }}>
+          <strong>Explicit local-code execution</strong>
+          <p>Only click Run if you trust this Python executable and script. The output is verified before Math3D opens it; hashes do not authenticate the code or scientific claims.</p>
+          <div>Python: <code>{preparedPublisher.executable}</code></div>
+          <div>Script: <code>{preparedPublisher.script}</code> · SHA-256 <code>{preparedPublisher.scriptSha256}</code></div>
+          <div>Spec: <code>{preparedPublisher.spec}</code> · SHA-256 <code>{preparedPublisher.specSha256}</code></div>
+          <div>New output: <code>{preparedPublisher.output}</code></div>
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button type="button" data-testid="scientific-run-publisher" disabled={Boolean(busy)}
+              onClick={() => void runPublisher()}>Run trusted Python publisher</button>
+            {busy === "python-run" && <button type="button" data-testid="scientific-cancel-publisher"
+              onClick={() => void runningPublisher.current?.cancel()}>Cancel job</button>}
+            {!busy && <button type="button" onClick={() => setPreparedPublisher(null)}>Discard preparation</button>}
+          </div>
+        </div>}
+        {busy === "python-run" && <p role="status">External Python publisher running; deadline 60 seconds…</p>}
       </section>
       <p style={{ fontSize: 12 }}>Bundled scenes retain immutable source hashes. For your own Lab result, use File → Open verified quantum scene or Open in Math3D from Theory Lab.</p>
     </div>

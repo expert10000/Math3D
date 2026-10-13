@@ -5,7 +5,7 @@ import type { FieldSurface, FieldSurfaceRequest } from "./main/quantumScene/fiel
 import type { FieldVolume, FieldVolumeRequest } from "./main/quantumScene/fieldVolume";
 import type { BandSample, BandSampleRequest } from "./main/quantumScene/bandSelection";
 import type { QuantumSceneExampleSummary } from "./main/quantumScene/examples";
-import type { ScientificSceneOpenResponse } from "./main/ipc/scientificSceneIpc";
+import type { ScientificSceneOpenResponse, PythonPublisherPrepareResponse } from "./main/ipc/scientificSceneIpc";
 import type { TopologySample, TopologySampleRequest, VectorSample, VectorSampleRequest } from "./main/quantumScene/topologyDisplay";
 import type { WorkspaceFileOpenResponse } from "./main/ipc/workspaceFileIpc";
 
@@ -550,6 +550,10 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
 contextBridge.exposeInMainWorld("scientificScenes", Object.freeze({
   openExample: (): Promise<ScientificSceneOpenResponse> => ipcRenderer.invoke("scientificScenes:openExample"),
   openDirectory: (): Promise<ScientificSceneOpenResponse> => ipcRenderer.invoke("scientificScenes:openDirectory"),
+  preparePublisher: (): Promise<PythonPublisherPrepareResponse> => ipcRenderer.invoke("scientificScenes:preparePublisher"),
+  runPublisher: (request: { sessionId: string; sourceHash: string; jobId: string }): Promise<ScientificSceneOpenResponse> =>
+    ipcRenderer.invoke("scientificScenes:runPublisher", request),
+  cancelPublisher: (jobId: string): Promise<boolean> => ipcRenderer.invoke("scientificScenes:cancelPublisher", jobId),
   sample: (request: { fingerprint: string; datasetId: string; sampleIndex: number }) =>
     ipcRenderer.invoke("scientificScenes:sample", request),
   close: (fingerprint: string): Promise<boolean> => ipcRenderer.invoke("scientificScenes:close", fingerprint),

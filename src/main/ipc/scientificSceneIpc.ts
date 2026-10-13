@@ -2,9 +2,16 @@ import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { isAbsolute, join } from "node:path";
 import { inspectScientificHeightSample, openScientificHeightSurface,
   type ScientificHeightSurface } from "../scientificScene/heightSurface";
+import { preparePythonPublisher, runPythonPublisher, type PreparedPythonPublisher,
+  type PythonPublisherRun } from "../scientificScene/pythonPublisher";
 
 export type ScientificSceneOpenResponse =
   | { ok: true; scene: ScientificHeightSurface & { sourceKind: "bundled" | "external" } }
+  | { ok: false; canceled: true }
+  | { ok: false; canceled: false; error: string };
+export type PythonPublisherPrepareResponse =
+  | { ok: true; sessionId: string; executable: string; script: string; spec: string; output: string;
+      scriptSha256: string; specSha256: string; sourceHash: string }
   | { ok: false; canceled: true }
   | { ok: false; canceled: false; error: string };
 
@@ -16,6 +23,75 @@ const trustedSender = (event: Electron.IpcMainInvokeEvent) => {
 
 export function registerScientificSceneIpc(): void {
   const active = new WeakMap<Electron.WebContents, { directory: string; fingerprint: string }>();
+  const prepared = new WeakMap<Electron.WebContents, PreparedPythonPublisher>();
+  const running = new WeakMap<Electron.WebContents, { jobId: string; handle: PythonPublisherRun }>();
+  ipcMain.handle("scientificScenes:preparePublisher", async (event, ...args: unknown[]): Promise<PythonPublisherPrepareResponse> => {
+    if (!trustedSender(event) || args.length || running.has(event.sender))
+      return { ok: false, canceled: false, error: "Invalid Python publisher preparation request" };
+    prepared.delete(event.sender);
+    try {
+      const window = BrowserWindow.fromWebContents(event.sender)!;
+      const choose = async (title: string) => {
+        const result = await dialog.showOpenDialog(window, { title, properties: ["openFile"] });
+        return result.canceled ? null : result.filePaths[0] ?? null;
+      };
+      const executable = await choose("Choose an independently managed Python executable");
+      if (!executable) return { ok: false, canceled: true };
+      const script = await choose("Choose the trusted scientific-scene publisher .py script");
+      if (!script) return { ok: false, canceled: true };
+      const spec = await choose("Choose the local scientific field specification .json");
+      if (!spec) return { ok: false, canceled: true };
+      const destination = await dialog.showSaveDialog(window, { title: "Choose a new .sscene output directory",
+        defaultPath: "python-scene.sscene" });
+      if (destination.canceled || !destination.filePath) return { ok: false, canceled: true };
+      const session = await preparePythonPublisher(executable, script, spec, destination.filePath);
+      prepared.set(event.sender, session);
+      return { ok: true, ...session };
+    } catch (error) {
+      return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle("scientificScenes:runPublisher", async (event, ...args: unknown[]): Promise<ScientificSceneOpenResponse> => {
+    if (!trustedSender(event) || args.length !== 1 || !args[0] || typeof args[0] !== "object" || Array.isArray(args[0]))
+      return { ok: false, canceled: false, error: "Invalid Python publisher run request" };
+    const request = args[0] as Record<string, unknown>;
+    if (Object.keys(request).sort().join(",") !== "jobId,sessionId,sourceHash" ||
+        typeof request.jobId !== "string" || !/^[a-f0-9-]{36}$/.test(request.jobId) ||
+        typeof request.sessionId !== "string" || typeof request.sourceHash !== "string")
+      return { ok: false, canceled: false, error: "Invalid Python publisher run request" };
+    const session = prepared.get(event.sender);
+    if (!session || running.has(event.sender) || session.sessionId !== request.sessionId ||
+        session.sourceHash !== request.sourceHash)
+      return { ok: false, canceled: false, error: "Python publisher session is not active" };
+    prepared.delete(event.sender);
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window || window.isDestroyed()) return { ok: false, canceled: false, error: "Python publisher window closed" };
+    const approval = await dialog.showMessageBox(window, { type: "warning", title: "Run external Python code?",
+      message: "This runs a local Python script with your account's permissions.",
+      detail: `Python: ${session.executable}\nScript: ${session.script}\nScript SHA-256: ${session.scriptSha256}\nSpec: ${session.spec}\nOutput: ${session.output}\n\nOnly run code and data you trust. Scene hashes do not authenticate the publisher.`,
+      buttons: ["Run Python code", "Cancel"], defaultId: 1, cancelId: 1, noLink: true });
+    if (approval.response !== 0 || !trustedSender(event)) return { ok: false, canceled: true };
+    const handle = runPythonPublisher(session);
+    running.set(event.sender, { jobId: request.jobId, handle });
+    const onDestroyed = () => handle.cancel();
+    event.sender.once("destroyed", onDestroyed);
+    try {
+      const scene = await handle.promise;
+      active.set(event.sender, { directory: session.output, fingerprint: scene.fingerprint });
+      return { ok: true, scene: { ...scene, sourceKind: "external" } };
+    } catch (error) {
+      return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
+    } finally {
+      event.sender.removeListener("destroyed", onDestroyed);
+      running.delete(event.sender);
+    }
+  });
+  ipcMain.handle("scientificScenes:cancelPublisher", (event, ...args: unknown[]): boolean => {
+    if (!trustedSender(event) || args.length !== 1 || typeof args[0] !== "string") return false;
+    const job = running.get(event.sender);
+    if (!job || job.jobId !== args[0]) return false;
+    return job.handle.cancel();
+  });
   ipcMain.handle("scientificScenes:openExample", async (event, ...args: unknown[]): Promise<ScientificSceneOpenResponse> => {
     if (!trustedSender(event) || args.length) return { ok: false, canceled: false, error: "Invalid scientific example request" };
     try {
