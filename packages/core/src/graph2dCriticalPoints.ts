@@ -47,6 +47,7 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
   document: Graph2DDocument;
   objectId: string;
   interval?: Readonly<{ min: number; max: number }>;
+  maxEvaluations?: number;
 }>): Graph2DCriticalPointAnalysis => {
   const object = input.document.source.objects.find((entry) => entry.id === input.objectId);
   if (!object || object.kind !== "explicit-cartesian") throw new TypeError("Graph2D explicit function does not exist.");
@@ -67,10 +68,12 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
   const symbolicSecond = differentiateGraph2DExpression(object.expression.ast, 2);
   const derivativeAst = [null, symbolicFirst.ok ? symbolicFirst.ast : null,
     symbolicSecond.ok ? symbolicSecond.ast : null] as const;
+  const maxEvaluations = Math.min(GRAPH2D_CRITICAL_POINT_MAX_EVALUATIONS,
+    Math.max(1, Math.floor(input.maxEvaluations ?? GRAPH2D_CRITICAL_POINT_MAX_EVALUATIONS)));
   let evaluations = 0;
   let incomplete = false;
   const evaluate = (ast: Graph2DExpressionAst, x: number): number | null => {
-    if (evaluations >= GRAPH2D_CRITICAL_POINT_MAX_EVALUATIONS) { incomplete = true; return null; }
+    if (evaluations >= maxEvaluations) { incomplete = true; return null; }
     evaluations += 1;
     const result = evaluateGraph2DExpression(ast, { ...variables, x });
     return result.ok ? result.value : null;

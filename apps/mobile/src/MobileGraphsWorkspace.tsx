@@ -285,6 +285,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
           onRun={() => { cancel(); try { const object = document.source.objects.find(o => o.id === analysisDraft.objectId);
             setAnalysis(runMobileGraphAnalysis(document, analysisDraft, object?.kind === "point-series" ? tableStore.resolve(object.table) : null)); setError(""); }
             catch (caught) { setError((caught as Error).message); } }}
+          onSaveCandidate={(object) => commit(() => adapter.commitConstruction({ type: "create", object }))}
           onLocate={(point) => commit(() => {
             if (!analysis || !isMobileGraphAnalysisCurrent(analysis, document, analysisDraft)) throw new TypeError("Result is stale; run analysis again.");
             return adapter.commitSelection({ objectId: point.objectId, probe: mobileGraphAnalysisProbe(document, point) });

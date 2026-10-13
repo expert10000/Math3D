@@ -1,6 +1,8 @@
 import type { Graph2DGraphObject, Graph2DSource } from "./graph2dDocument";
+import type { ScientificSourceGeneration } from "./scientificJobs";
 
 export const GRAPH2D_CONSTRUCTIONS_CAPABILITY = "graph2d.constructions.v1" as const;
+export const GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY = "graph2d.constructions.candidates.v1" as const;
 export const GRAPH2D_CONSTRUCTION_VERSION = 1 as const;
 export const GRAPH2D_MAX_CONSTRUCTIONS = 32;
 export const GRAPH2D_MAX_CONSTRUCTION_DEPTH = 16;
@@ -12,15 +14,29 @@ export type Graph2DConstructionStyle = Readonly<{ visible: boolean; color: strin
 export type Graph2DConstructionSourceInput = Readonly<{ kind: "source"; objectId: string }>;
 export type Graph2DConstructionObjectInput = Readonly<{ kind: "construction"; objectId: string }>;
 export type Graph2DConstructionAnchor = Readonly<{ parameter: "x" | "t" | "theta"; value: number }>;
-type ConstructionBase = Readonly<{ id: string; label: string; style: Graph2DConstructionStyle;
-  requiredCapability: typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY }>;
+type ConstructionBase = Readonly<{ id: string; label: string; style: Graph2DConstructionStyle }>;
 export type Graph2DPointOnCurveConstruction = ConstructionBase & Readonly<{
   kind: "point-on-curve"; inputs: readonly Graph2DConstructionSourceInput[]; anchor: Graph2DConstructionAnchor;
+  requiredCapability: typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY;
 }>;
 export type Graph2DDerivedLineConstruction = ConstructionBase & Readonly<{
   kind: "tangent" | "normal"; inputs: readonly Graph2DConstructionObjectInput[]; anchor: null;
+  requiredCapability: typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY;
 }>;
-export type Graph2DConstructionObject = Graph2DPointOnCurveConstruction | Graph2DDerivedLineConstruction;
+export type Graph2DCandidateAnchor = Readonly<{
+  interval: Readonly<{ min: number; max: number }>;
+  seedX: number; matchRadius: number; candidateId: string;
+  method: "sample" | "bracket-bisection" | "minimum-absolute-residual";
+  residual: number; confidence: "numerical" | "heuristic";
+  classification: "crossing" | "tangent-possible" | null;
+  sourceGeneration: ScientificSourceGeneration;
+}>;
+export type Graph2DCandidateConstruction = ConstructionBase & Readonly<{
+  kind: "root" | "minimum" | "maximum" | "intersection";
+  inputs: readonly Graph2DConstructionSourceInput[]; anchor: Graph2DCandidateAnchor;
+  requiredCapability: typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY;
+}>;
+export type Graph2DConstructionObject = Graph2DPointOnCurveConstruction | Graph2DDerivedLineConstruction | Graph2DCandidateConstruction;
 export type Graph2DConstructionSet = Readonly<{ version: typeof GRAPH2D_CONSTRUCTION_VERSION;
   objects: readonly Graph2DConstructionObject[] }>;
 export type Graph2DConstructionAction =
@@ -44,6 +60,28 @@ const validInput = (value: unknown): value is Graph2DConstructionSourceInput | G
   (value.kind === "source" || value.kind === "construction") && typeof value.objectId === "string";
 const sourceParameter = (source: Graph2DGraphObject): Graph2DConstructionAnchor["parameter"] | null =>
   source.kind === "explicit-cartesian" ? "x" : source.kind === "parametric" ? "t" : source.kind === "polar" ? "theta" : null;
+const validCandidateAnchor = (value: unknown): value is Graph2DCandidateAnchor => {
+  if (!record(value) || !exact(value, ["interval", "seedX", "matchRadius", "candidateId", "method", "residual", "confidence", "classification", "sourceGeneration"]) ||
+      !record(value.interval) || !exact(value.interval, ["min", "max"]) ||
+      typeof value.interval.min !== "number" || typeof value.interval.max !== "number" ||
+      !Number.isFinite(value.interval.min) || !Number.isFinite(value.interval.max) ||
+      value.interval.min >= value.interval.max || value.interval.max - value.interval.min > 1e6 ||
+      typeof value.seedX !== "number" || !Number.isFinite(value.seedX) ||
+      value.seedX < value.interval.min || value.seedX > value.interval.max ||
+      typeof value.matchRadius !== "number" || !Number.isFinite(value.matchRadius) ||
+      value.matchRadius <= 0 || value.matchRadius > (value.interval.max - value.interval.min) / 4 ||
+      typeof value.candidateId !== "string" || value.candidateId.length < 8 || value.candidateId.length > 160 ||
+      !["sample", "bracket-bisection", "minimum-absolute-residual"].includes(String(value.method)) ||
+      typeof value.residual !== "number" || !Number.isFinite(value.residual) || value.residual < 0 ||
+      !["numerical", "heuristic"].includes(String(value.confidence)) ||
+      ![null, "crossing", "tangent-possible"].includes(value.classification as null) ||
+      !record(value.sourceGeneration) || !exact(value.sourceGeneration, ["documentId", "revision", "structuralHash", "generation"])) return false;
+  const generation = value.sourceGeneration;
+  return typeof generation.documentId === "string" && generation.documentId.length > 0 && generation.documentId.length <= 160 &&
+    typeof generation.structuralHash === "string" && generation.structuralHash.length > 0 && generation.structuralHash.length <= 160 &&
+    Number.isSafeInteger(generation.revision) && Number(generation.revision) >= 0 &&
+    Number.isSafeInteger(generation.generation) && Number(generation.generation) >= 0;
+};
 
 /** Validates only persisted intent. A source edit may leave an anchor outside its new domain; resolution marks it unavailable. */
 export function validateGraph2DConstructionSet(value: unknown, sources: readonly Graph2DGraphObject[]): string[] {
@@ -57,9 +95,11 @@ export function validateGraph2DConstructionSet(value: unknown, sources: readonly
   for (const [index, item] of objects.entries()) {
     if (!record(item) || !exact(item, ["id", "kind", "label", "inputs", "anchor", "style", "requiredCapability"]) ||
         !validId(item.id) || !validLabel(item.label) || !validStyle(item.style) ||
-        item.requiredCapability !== GRAPH2D_CONSTRUCTIONS_CAPABILITY ||
-        !["point-on-curve", "tangent", "normal"].includes(String(item.kind)) ||
-        !Array.isArray(item.inputs) || item.inputs.length !== 1 || !validInput(item.inputs[0])) {
+        !["point-on-curve", "tangent", "normal", "root", "minimum", "maximum", "intersection"].includes(String(item.kind)) ||
+        item.requiredCapability !== (["root", "minimum", "maximum", "intersection"].includes(String(item.kind)) ?
+          GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY : GRAPH2D_CONSTRUCTIONS_CAPABILITY) ||
+        !Array.isArray(item.inputs) || item.inputs.length !== (item.kind === "intersection" ? 2 : 1) ||
+        !item.inputs.every(validInput)) {
       errors.push(`Invalid Graph construction at index ${index}.`); continue;
     }
     if (indexById.has(item.id) || sourceById.has(item.id)) errors.push(`Duplicate Graph construction ID ${item.id}.`);
@@ -73,6 +113,14 @@ export function validateGraph2DConstructionSet(value: unknown, sources: readonly
           typeof item.anchor.value !== "number" || !Number.isFinite(item.anchor.value) ||
           Math.abs(item.anchor.value) > 1e12)
         errors.push(`Point construction ${item.id} has an invalid parameter anchor.`);
+    } else if (["root", "minimum", "maximum", "intersection"].includes(String(item.kind))) {
+      const sourcesForCandidate = item.inputs as Graph2DConstructionSourceInput[];
+      if (sourcesForCandidate.some(input => input.kind !== "source" || sourceById.get(input.objectId)?.kind !== "explicit-cartesian") ||
+          new Set(sourcesForCandidate.map(input => input.objectId)).size !== sourcesForCandidate.length)
+        errors.push(`Candidate construction ${item.id} needs distinct local explicit sources.`);
+      if (!validCandidateAnchor(item.anchor) ||
+          (item.kind === "intersection") !== (record(item.anchor) && item.anchor.classification !== null))
+        errors.push(`Candidate construction ${item.id} has invalid matching provenance.`);
     } else {
       const dependency = input.kind === "construction" ? objects[indexById.get(input.objectId) ?? -1] : undefined;
       // Forward references are checked below after the full ID table is known.

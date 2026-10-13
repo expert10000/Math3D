@@ -9,7 +9,9 @@ import { createMobileGraph, importMobileGraph, readMobileGraph, readMobileGraphW
 import { serializeMobileProjectHandoff } from "../../apps/mobile/src/models/mobileProjectTransfer";
 import { mobileGraphAuthoringAction, mobileGraphFunctionDraft, applyMobileGraphAuthoring } from "../../apps/mobile/src/models/mobileGraphAuthoring";
 import { editMobileGraphProbes } from "../../apps/mobile/src/models/mobileGraphProbes";
-import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, resolveGraph2DConstructions } from "@math3d/core";
+import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY,
+  graph2DConstructionFromCandidate, resolveGraph2DConstructions } from "@math3d/core";
+import { runMobileGraphAnalysis } from "../../apps/mobile/src/models/mobileGraphAnalysis";
 
 const producer = { platform: "desktop", name: "Math3D Desktop", version: "1.5.0" } as const;
 const desktop = () => {
@@ -127,5 +129,31 @@ describe("G2D47 construction handoff", () => {
     expect(reopened.requiredCapabilities).toContain(GRAPH2D_CONSTRUCTIONS_CAPABILITY);
     expect(resolveGraph2DConstructions(reopened).objects.map(item => item.state)).toEqual(["ready", "ready"]);
     expect(readMobileGraphWorkspace(stored)!.entries[0]?.checkpoint).toEqual(reopened);
+  });
+});
+
+describe("G2D49 mobile candidate handoff", () => {
+  it("saves a mobile analysis root and reopens its intent and resolved point on desktop", () => {
+    const commands = new Graph2DCommandAdapter(desktop().document);
+    commands.commitScene(applyGraph2DAuthoring(commands.document(), { type: "edit", objectId: "function_1", draft: {
+      label: "f", expression: "x^2-1", domain: { min: -5, max: 5, includeMin: true, includeMax: false },
+      style: { color: "#2563eb", lineWidth: 2, lineStyle: "solid", visible: true },
+    } }), "edit");
+    const outbound = createWorkspaceProjectHandoff(createGraph2DWorkspaceProject(commands.document()), { producer });
+    let stored = importMobileGraph(serializeWorkspaceProjectHandoff(outbound), [], "candidate.handoff.json", 1, "desktop");
+    const mobile = new Graph2DCommandAdapter(readMobileGraph(stored));
+    const analysis = runMobileGraphAnalysis(mobile.document(), { kind: "features", objectId: "function_1",
+      secondId: "", x: "0", min: "-3", max: "3", tolerance: "0.00001", mode: "signed" });
+    const row = analysis.rows.find(item => item.candidate && "kind" in item.candidate &&
+      item.candidate.kind === "zero" && item.candidate.x < 0);
+    expect(row?.candidate).toBeDefined();
+    mobile.commitConstruction({ type: "create", object: graph2DConstructionFromCandidate(mobile.document(),
+      analysis.candidateAnalysis!, row!.candidate!) });
+    stored = updateStoredMobileGraph(stored, mobile.document(), 2);
+    const returned = parseWorkspaceProjectHandoff(serializeMobileProjectHandoff(stored));
+    const reopened = returned.project.entries.find(entry => entry.module === "graph2d")!.checkpoint as Graph2DDocument;
+    expect(reopened.requiredCapabilities).toContain(GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY);
+    expect(reopened.source.constructions).toEqual(mobile.document().source.constructions);
+    expect(resolveGraph2DConstructions(reopened).objects[0]?.point?.x).toBeCloseTo(-1, 5);
   });
 });

@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import type { Graph2DDocument, Graph2DProbe } from "@math3d/core";
+import { graph2DConstructionFromCandidate, GRAPH2D_MAX_CONSTRUCTIONS,
+  type Graph2DConstructionObject, type Graph2DDocument, type Graph2DProbe } from "@math3d/core";
 import { isMobileGraphAnalysisCurrent, type MobileGraphRegressionAnalysis, type MobileGraphAnalysisDraft, type MobileGraphAnalysisKind } from "./models/mobileGraphAnalysis";
 
 const kinds: readonly [MobileGraphAnalysisKind, string][] = [["derivatives", "Derivatives"], ["tangent", "Tangent"],
   ["features", "Zeros, extrema, inflections"], ["integral", "Integral"], ["intersections", "Intersections"], ["arc-length", "Arc length"],
   ["polar-area", "Polar swept area"], ["polar-arc-length", "Polar arc length"],
   ["regression-linear", "Linear regression"], ["regression-quadratic", "Quadratic regression"]];
-export const MobileGraphAnalysisPanel = ({ document, draft, result, onDraft, onRun, onLocate }: {
+export const MobileGraphAnalysisPanel = ({ document, draft, result, onDraft, onRun, onLocate, onSaveCandidate }: {
   document: Graph2DDocument; draft: MobileGraphAnalysisDraft; result: MobileGraphRegressionAnalysis | null;
-  onDraft: (draft: MobileGraphAnalysisDraft) => void; onRun: () => void; onLocate: (probe: Graph2DProbe) => void }) => {
+  onDraft: (draft: MobileGraphAnalysisDraft) => void; onRun: () => void; onLocate: (probe: Graph2DProbe) => void;
+  onSaveCandidate: (object: Graph2DConstructionObject) => void }) => {
   const current = result ? isMobileGraphAnalysisCurrent(result, document, draft) : false;
   const [offset, setOffset] = useState(0);
   useEffect(() => setOffset(0), [result?.regression?.resultId]);
@@ -54,7 +56,11 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, onDraft, onR
     {result && <View style={s.card} testID="mobile-graph-analysis-results"><Text accessibilityLiveRegion="polite" style={s.title}>
       {current ? "Current result" : "Stale result — inputs or source changed; run again"}</Text>
       {result.rows.map((row, index) => <View key={index} style={s.card}><Text>{row.label}</Text><Text>{row.detail}</Text>
-        {row.probe && button(`Locate ${row.label}`, () => onLocate(row.probe!), !current)}</View>)}
+        {row.probe && button(`Locate ${row.label}`, () => onLocate(row.probe!), !current)}
+        {row.candidate && (!("kind" in row.candidate) || row.candidate.kind !== "inflection") && result.candidateAnalysis &&
+          button(`Save ${row.label} as construction`, () => onSaveCandidate(graph2DConstructionFromCandidate(
+            document, result.candidateAnalysis!, row.candidate!)), !current || result.candidateAnalysis.status !== "complete" ||
+            (document.source.constructions?.objects.length ?? 0) >= GRAPH2D_MAX_CONSTRUCTIONS)}</View>)}
       {result.regression && <View><Text>Residual rows {offset + 1}–{Math.min(offset + 40, result.regression.n)}</Text>
         {result.regression.residuals.slice(offset, offset + 40).map(row => <Text key={row.rowId}>{row.rowId}: x={row.x.toPrecision(5)}, y={row.observed.toPrecision(5)}, fit={row.fitted.toPrecision(5)}, residual={row.residual.toPrecision(5)}</Text>)}
         {button("Previous residuals", () => setOffset(Math.max(0, offset - 40)), !offset)}{button("Next residuals", () => setOffset(offset + 40), offset + 40 >= result.regression.n)}</View>}

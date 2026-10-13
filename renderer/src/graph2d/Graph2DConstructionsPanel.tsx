@@ -57,6 +57,7 @@ export function Graph2DConstructionsPanel({ document, artifact, onAction }: { do
         reason={artifact?.objects.find(item => item.id === object.id)?.reason} onAction={act} /> :
       <li key={object.id} className="graph2d-construction-card" data-construction-id={object.id}>
         <strong>{object.label}</strong> <small>{object.kind} · {artifact?.objects.find(item => item.id === object.id)?.state ?? "pending"} · {artifact?.objects.find(item => item.id === object.id)?.confidence ?? "pending"}</small>
+        {object.anchor && "interval" in object.anchor && <small>Original x {object.anchor.seedX.toPrecision(7)} · match ±{object.anchor.matchRadius.toPrecision(3)} · scan [{object.anchor.interval.min.toPrecision(5)}, {object.anchor.interval.max.toPrecision(5)}] · {object.anchor.method} · residual {object.anchor.residual.toExponential(2)} · saved {object.anchor.confidence}</small>}
         {artifact?.objects.find(item => item.id === object.id)?.reason && <p>{artifact.objects.find(item => item.id === object.id)?.reason}</p>}
         <button type="button" onClick={() => act({ type: "delete", objectId: object.id })}>Delete {object.label}</button>
       </li>)}</ol>

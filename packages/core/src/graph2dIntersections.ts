@@ -47,6 +47,7 @@ export const analyzeGraph2DIntersections = (input: Readonly<{
   firstObjectId: string;
   secondObjectId: string;
   interval?: Readonly<{ min: number; max: number }>;
+  maxEvaluations?: number;
 }>): Graph2DIntersectionAnalysis => {
   const first = input.document.source.objects.find((entry) => entry.id === input.firstObjectId);
   const second = input.document.source.objects.find((entry) => entry.id === input.secondObjectId);
@@ -64,10 +65,12 @@ export const analyzeGraph2DIntersections = (input: Readonly<{
     secondObjectId: second.id, interval, algorithmVersion: GRAPH2D_INTERSECTION_ALGORITHM_VERSION }).slice(7);
   const started = Date.now();
   const variables = Object.fromEntries(input.document.source.variables.map((entry) => [entry.name, entry.value]));
+  const maxEvaluations = Math.min(GRAPH2D_INTERSECTION_MAX_EVALUATIONS,
+    Math.max(1, Math.floor(input.maxEvaluations ?? GRAPH2D_INTERSECTION_MAX_EVALUATIONS)));
   let evaluations = 0, incomplete = false, invalidCells = 0, unresolvedBrackets = 0, coincidentCells = 0;
   const value = (object: Graph2DExplicitObject, x: number): number | null => {
     if (!allowed(object, x)) return null;
-    if (evaluations >= GRAPH2D_INTERSECTION_MAX_EVALUATIONS) { incomplete = true; return null; }
+    if (evaluations >= maxEvaluations) { incomplete = true; return null; }
     evaluations += 1;
     const result = evaluateGraph2DExpression(object.expression.ast, { ...variables, x });
     return result.ok ? result.value : null;

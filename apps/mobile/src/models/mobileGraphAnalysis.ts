@@ -1,7 +1,9 @@
 import { analyzeGraph2DDerivative, analyzeGraph2DLocalDifferential, analyzeGraph2DCriticalPoints,
   analyzeGraph2DIntegral, analyzeGraph2DIntersections, analyzeGraph2DArcLength, analyzeGraph2DPolarMeasurement,
   evaluateGraph2DExpression,
-  type AnalysisResultEnvelope, type Graph2DDocument, type Graph2DLineOverlay, type Graph2DProbe, type Graph2DAreaFillSegment, structuralHash } from "@math3d/core";
+  type AnalysisResultEnvelope, type Graph2DDocument, type Graph2DLineOverlay, type Graph2DProbe, type Graph2DAreaFillSegment,
+  type Graph2DCriticalPoint, type Graph2DCriticalPointAnalysis, type Graph2DIntersectionCandidate,
+  type Graph2DIntersectionAnalysis, structuralHash } from "@math3d/core";
 import { graph2DPublicationAnalysisTables, type Graph2DPublicationTable } from "@math3d/core";
 import { analyzeGraph2DRegression, graph2DRegressionResidualTable, graph2DRegressionCurveTable, type Graph2DRegression, type Graph2DPointRow } from "@math3d/core";
 const publicationProjection = (results: readonly { publication: AnalysisResultEnvelope }[]) => {
@@ -13,9 +15,11 @@ export type MobileGraphAnalysisKind = "derivatives" | "tangent" | "features" | "
   "polar-area" | "polar-arc-length" | "regression-linear" | "regression-quadratic";
 export type MobileGraphAnalysisDraft = { kind: MobileGraphAnalysisKind; objectId: string; secondId: string;
   x: string; min: string; max: string; tolerance: string; mode: "signed" | "absolute" };
-export type MobileGraphAnalysisRow = { label: string; detail: string; probe?: Graph2DProbe };
+export type MobileGraphAnalysisRow = { label: string; detail: string; probe?: Graph2DProbe;
+  candidate?: Graph2DCriticalPoint | Graph2DIntersectionCandidate };
 export type MobileGraphAnalysis = { kind: MobileGraphAnalysisKind; inputHash: string; publications: readonly AnalysisResultEnvelope[];
   rows: readonly MobileGraphAnalysisRow[]; overlays: readonly Graph2DLineOverlay[]; areaSegments?: readonly Graph2DAreaFillSegment[];
+  candidateAnalysis?: Graph2DCriticalPointAnalysis | Graph2DIntersectionAnalysis;
   publicationTables?: readonly Graph2DPublicationTable[]; publicationNotes?: readonly string[] };
 export type MobileGraphRegressionAnalysis = MobileGraphAnalysis & { regression?: Graph2DRegression };
 export const mobileGraphAnalysisDraft = (document: Graph2DDocument): MobileGraphAnalysisDraft => {
@@ -83,19 +87,19 @@ export const runMobileGraphAnalysis = (document: Graph2DDocument, draft: MobileG
   if (interval.min >= interval.max || interval.max - interval.min > 1e6) throw new TypeError("Choose an increasing interval no wider than 1,000,000.");
   if (draft.kind === "features") {
     const analysis = analyzeGraph2DCriticalPoints({ document, objectId: object.id, interval });
-    return { ...result, ...publicationProjection([analysis]), publications: [analysis.publication], rows: [{ label: `Feature scan: ${analysis.status}`, detail:
+    return { ...result, ...publicationProjection([analysis]), publications: [analysis.publication], candidateAnalysis: analysis, rows: [{ label: `Feature scan: ${analysis.status}`, detail:
       `${analysis.evaluations} evaluations · ${analysis.candidates.length} candidates · narrow features may be missed; no proof of absence` },
       ...analysis.candidates.map((candidate) => ({ label: `${candidate.kind}: (${format(candidate.x)}, ${format(candidate.y)})`,
         detail: `${candidate.confidence} · ${candidate.method} · residual ${candidate.residual} · multiplicity ${candidate.multiplicity}`,
-        probe: { objectId: object.id, x: candidate.x, y: candidate.y } }))] };
+        probe: { objectId: object.id, x: candidate.x, y: candidate.y }, candidate }))] };
   }
   if (draft.kind === "intersections") {
     const analysis = analyzeGraph2DIntersections({ document, firstObjectId: object.id, secondObjectId: draft.secondId, interval });
-    return { ...result, ...publicationProjection([analysis]), publications: [analysis.publication], rows: [{ label: `Intersections: ${analysis.status}`, detail:
+    return { ...result, ...publicationProjection([analysis]), publications: [analysis.publication], candidateAnalysis: analysis, rows: [{ label: `Intersections: ${analysis.status}`, detail:
       `${analysis.evaluations} evaluations · invalid cells ${analysis.invalidCells} · unresolved brackets ${analysis.unresolvedBrackets} · coincident cells ${analysis.coincidentCells} · pair-only scan, not a proof` },
       ...analysis.candidates.map((candidate) => ({ label: `Intersection: (${format(candidate.x)}, ${format(candidate.y)})`,
         detail: `${candidate.confidence} · ${candidate.classification} · ${candidate.method} · residual ${candidate.residual}`,
-        probe: { objectId: candidate.firstObjectId, x: candidate.x, y: candidate.y } }))] };
+        probe: { objectId: candidate.firstObjectId, x: candidate.x, y: candidate.y }, candidate }))] };
   }
   if (draft.kind === "integral") {
     const analysis = analyzeGraph2DIntegral({ document, objectId: object.id, interval, mode: draft.mode, tolerance });

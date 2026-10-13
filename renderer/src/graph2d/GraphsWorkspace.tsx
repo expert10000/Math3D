@@ -11,6 +11,7 @@ import {
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
   type Graph2DConstructionAction,
+  graph2DConstructionFromCandidate, GRAPH2D_MAX_CONSTRUCTIONS,
   type Graph2DIntegralMode,
   type Graph2DPolarMeasurement,
   type Graph2DAnyPromotion,
@@ -509,6 +510,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           </button>
           <small>{candidate.confidence} · {candidate.method} · residual {candidate.residual.toExponential(2)}
             {candidate.multiplicity === "even-possible" ? " · even multiplicity possible" : " · multiplicity unknown"}</small>
+          {candidate.kind !== "inflection" && <button type="button" aria-label={`Save ${candidate.kind} at x ${candidate.x.toPrecision(7)} as construction`}
+            title={criticalPoints.status !== "complete" ? "Complete bounded scan required before saving." : undefined}
+            disabled={!onConstructionCommit || criticalPoints.status !== "complete" || !isGraph2DCriticalPointCurrent(candidate, document) ||
+              (document.source.constructions?.objects.length ?? 0) >= GRAPH2D_MAX_CONSTRUCTIONS}
+            onClick={() => onConstructionCommit?.({ type: "create", object: graph2DConstructionFromCandidate(document, criticalPoints, candidate) })}>
+            Save {candidate.kind} as construction</button>}
         </li>)}
       </ol> : <p>No candidates found in the scanned interval.</p>}
       <small>Candidate locations and multiplicities are not certified; narrow features may be missed.</small>
@@ -628,6 +635,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                 probe: { objectId: candidate.firstObjectId, x: candidate.x, y: candidate.y } })}>
               ({candidate.x.toPrecision(7)}, {candidate.y.toPrecision(7)})</button>
             <small>{candidate.classification} · {candidate.confidence} · {candidate.method} · residual {candidate.residual.toExponential(2)}</small>
+            <button type="button" aria-label={`Save intersection at x ${candidate.x.toPrecision(7)} as construction`}
+              title={intersections.status !== "complete" ? "Complete bounded scan required before saving." : undefined}
+              disabled={!onConstructionCommit || intersections.status !== "complete" || !isGraph2DIntersectionCurrent(intersections, document) ||
+                (document.source.constructions?.objects.length ?? 0) >= GRAPH2D_MAX_CONSTRUCTIONS}
+              onClick={() => onConstructionCommit?.({ type: "create", object: graph2DConstructionFromCandidate(document, intersections, candidate) })}>
+              Save intersection as construction</button>
           </li>)}
         </ol> : <p>No isolated candidates found.</p>}
         {(intersections.invalidCells > 0 || intersections.unresolvedBrackets > 0 || intersections.coincidentCells > 0) &&

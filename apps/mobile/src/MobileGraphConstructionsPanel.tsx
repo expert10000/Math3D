@@ -58,6 +58,7 @@ export const MobileGraphConstructionsPanel = ({ document, artifact, onAction }: 
         reason={artifact?.objects.find(item => item.id === object.id)?.reason} onAction={onAction} /> :
       <View key={object.id} style={{ borderTopWidth: 1, borderColor: "#cbd5e1", paddingVertical: 8 }}>
         <Text>{object.label}: {object.kind} · {artifact?.objects.find(item => item.id === object.id)?.state ?? "pending"} · {artifact?.objects.find(item => item.id === object.id)?.confidence ?? "pending"}</Text>
+        {object.anchor && "interval" in object.anchor && <Text>Original x {object.anchor.seedX.toPrecision(7)} · match ±{object.anchor.matchRadius.toPrecision(3)} · scan [{object.anchor.interval.min.toPrecision(5)}, {object.anchor.interval.max.toPrecision(5)}] · {object.anchor.method} · residual {object.anchor.residual.toExponential(2)} · saved {object.anchor.confidence}</Text>}
         {artifact?.objects.find(item => item.id === object.id)?.reason && <Text>{artifact.objects.find(item => item.id === object.id)?.reason}</Text>}
         <Button label={`Delete ${object.label}`} onPress={() => onAction({ type: "delete", objectId: object.id })} />
       </View>)}

@@ -1,8 +1,12 @@
 import { structuralHash } from "./documentIdentity";
 import type { Graph2DDocument, Graph2DGraphObject, Graph2DProbe } from "./graph2dDocument";
-import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_MAX_CONSTRUCTION_ARTIFACT_BYTES,
+import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_MAX_CONSTRUCTION_ARTIFACT_BYTES,
   GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS, nextGraph2DConstructionId,
-  type Graph2DConstructionObject, type Graph2DPointOnCurveConstruction } from "./graph2dConstructions";
+  type Graph2DConstructionObject, type Graph2DPointOnCurveConstruction, type Graph2DCandidateConstruction } from "./graph2dConstructions";
+import { analyzeGraph2DCriticalPoints, isGraph2DCriticalPointCurrent,
+  type Graph2DCriticalPoint, type Graph2DCriticalPointAnalysis } from "./graph2dCriticalPoints";
+import { analyzeGraph2DIntersections, isGraph2DIntersectionCurrent,
+  type Graph2DIntersectionAnalysis, type Graph2DIntersectionCandidate } from "./graph2dIntersections";
 import { evaluateGraph2DExpression } from "./graph2dExpression";
 import { evaluateGraph2DParametric } from "./graph2dParametric";
 import { evaluateGraph2DPolar } from "./graph2dPolar";
@@ -60,6 +64,40 @@ export function graph2DDerivedConstructionFromPoint(document: Graph2DDocument, p
     requiredCapability: GRAPH2D_CONSTRUCTIONS_CAPABILITY };
 }
 
+/** Capture a bounded numerical candidate and a local, unique matching window. */
+export function graph2DConstructionFromCandidate(document: Graph2DDocument,
+  analysis: Graph2DCriticalPointAnalysis | Graph2DIntersectionAnalysis,
+  candidate: Graph2DCriticalPoint | Graph2DIntersectionCandidate): Graph2DCandidateConstruction {
+  const intersection = "firstObjectId" in candidate;
+  if (!intersection && candidate.kind === "inflection") throw new TypeError("Only roots and extrema can be saved as candidate constructions.");
+  if (intersection !== ("firstObjectId" in analysis) ||
+      analysis.status !== "complete" ||
+      !(intersection ? isGraph2DIntersectionCurrent(analysis as Graph2DIntersectionAnalysis, document) :
+        isGraph2DCriticalPointCurrent(candidate as Graph2DCriticalPoint, document)) ||
+      !analysis.candidates.some(item => item.candidateId === candidate.candidateId))
+    throw new TypeError("Candidate is stale or does not belong to this analysis.");
+  const interval = analysis.interval;
+  const width = interval.max - interval.min;
+  if (!(width > 0) || candidate.x < interval.min || candidate.x > interval.max)
+    throw new TypeError("Candidate interval is unavailable.");
+  const nearest = Math.min(...analysis.candidates.filter(item => item.candidateId !== candidate.candidateId &&
+    (intersection ? "classification" in item && "classification" in candidate && item.classification === candidate.classification :
+      "kind" in item && "kind" in candidate && item.kind === candidate.kind))
+    .map(item => Math.abs(item.x - candidate.x)), Infinity);
+  const matchRadius = Math.min(width / 16, nearest / 3);
+  if (!(matchRadius > 0)) throw new TypeError("Candidate cannot be matched uniquely.");
+  const ids = intersection ? [candidate.firstObjectId, candidate.secondObjectId] : [candidate.objectId];
+  return { id: nextGraph2DConstructionId(document.source),
+    kind: intersection ? "intersection" : candidate.kind === "zero" ? "root" : candidate.kind as "minimum" | "maximum",
+    label: intersection ? "Intersection" : candidate.kind === "zero" ? "Root" : candidate.kind === "minimum" ? "Minimum" : "Maximum",
+    inputs: ids.map(objectId => ({ kind: "source" as const, objectId })),
+    anchor: { interval, seedX: candidate.x, matchRadius, candidateId: candidate.candidateId,
+      method: candidate.method, residual: candidate.residual, confidence: candidate.confidence,
+      classification: intersection ? candidate.classification : null, sourceGeneration: candidate.source },
+    style: { visible: true, color: document.display.objects.find(item => item.objectId === ids[0])?.color ?? "#2563eb",
+      lineWidth: 2, lineStyle: "solid" }, requiredCapability: GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY };
+}
+
 /** Resolves the ordered graph against exact source expressions, never sampler polylines. */
 export function resolveGraph2DConstructions(document: Graph2DDocument): Graph2DConstructionArtifact {
   const source = sourceGeneration(document), generationKey = graph2DConstructionGenerationKey(document);
@@ -67,6 +105,8 @@ export function resolveGraph2DConstructions(document: Graph2DDocument): Graph2DC
   const variables = Object.fromEntries(document.source.variables.map(item => [item.name, item.value]));
   const resolved = new Map<string, Graph2DResolvedConstruction>();
   const objects: Graph2DResolvedConstruction[] = [];
+  const criticalCache = new Map<string, Graph2DCriticalPointAnalysis>();
+  const intersectionCache = new Map<string, Graph2DIntersectionAnalysis>();
   let evaluations = 0, bytes = 0, truncated = false;
   const evaluate = (object: Graph2DGraphObject, parameter: number): Point | null => {
     if (evaluations >= GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS) { truncated = true; return null; }
@@ -121,6 +161,45 @@ export function resolveGraph2DConstructions(document: Graph2DDocument): Graph2DC
       item = { id: definition.id, kind: definition.kind, label: definition.label, style: definition.style,
         state: point ? "ready" : "unavailable", reason: point ? null : "Point is outside the domain or undefined at this parameter.",
         confidence: point ? "source-defined" : "unavailable",
+        sourceObjectId, point, direction: null };
+    } else if (definition.kind === "root" || definition.kind === "minimum" || definition.kind === "maximum" ||
+        definition.kind === "intersection") {
+      const sourceObjectId = definition.inputs[0]?.objectId ?? "";
+      const anchor = definition.anchor;
+      const secondId = definition.kind === "intersection" ? definition.inputs[1]?.objectId ?? "" : "";
+      const key = structuralHash({ sourceObjectId, secondId, interval: anchor.interval });
+      let candidates: readonly (Graph2DCriticalPoint | Graph2DIntersectionCandidate)[] = [];
+      let analysisAvailable = false;
+      try {
+        if (definition.kind === "intersection") {
+          let analysis = intersectionCache.get(key);
+          if (!analysis && evaluations < GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS) {
+            analysis = analyzeGraph2DIntersections({ document, firstObjectId: sourceObjectId,
+              secondObjectId: secondId, interval: anchor.interval,
+              maxEvaluations: GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS - evaluations });
+            evaluations += analysis.evaluations; intersectionCache.set(key, analysis);
+          }
+          if (analysis) { candidates = analysis.candidates; analysisAvailable = analysis.status === "complete"; }
+        } else {
+          let analysis = criticalCache.get(key);
+          if (!analysis && evaluations < GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS) {
+            analysis = analyzeGraph2DCriticalPoints({ document, objectId: sourceObjectId, interval: anchor.interval,
+              maxEvaluations: GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS - evaluations });
+            evaluations += analysis.evaluations; criticalCache.set(key, analysis);
+          }
+          if (analysis) { candidates = analysis.candidates; analysisAvailable = analysis.status === "complete"; }
+        }
+      } catch { /* Deleted or incompatible source: persisted intent stays unavailable. */ }
+      if (evaluations >= GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS) truncated = true;
+      const near = candidates.filter(candidate => Math.abs(candidate.x - anchor.seedX) <= anchor.matchRadius &&
+        (definition.kind === "intersection" ? "classification" in candidate && candidate.classification === anchor.classification :
+          "kind" in candidate && (candidate.kind === "zero" ? "root" : candidate.kind) === definition.kind));
+      const match = near.length === 1 ? near[0] : null;
+      const point = analysisAvailable && match ? { x: match.x, y: match.y } : null;
+      item = { id: definition.id, kind: definition.kind, label: definition.label, style: definition.style,
+        state: point ? "ready" : "unavailable", confidence: point ? "approximate" : "unavailable",
+        reason: point ? null : !analysisAvailable ? "Source or bounded analysis is unavailable." :
+          near.length > 1 ? "Matching window contains multiple candidates." : "Original candidate no longer has a unique local match.",
         sourceObjectId, point, direction: null };
     } else {
       const parent = resolved.get(definition.inputs[0]?.objectId ?? "");
