@@ -29,11 +29,13 @@ If you do not have a working Theory Lab run yet, **File → Verified quantum exa
 ## B. Publish and inspect the Python reference scene
 
 1. In Math3D choose **File → Verified quantum examples**. Under **Scientific interchange proof**, click **Publish with reference Python script…**.
-2. In the native pickers choose your installed `python.exe` and the offered `sincos-grid.json` example. Choose a **new** destination ending in `.sscene` inside your persistent test parent folder.
-3. In the review dialog check the executable, pinned script, spec and their displayed SHA-256 hashes. No Python process has started yet. Click **Run trusted Python publisher**, then approve **Run external Python code?**. The reference script is pinned, but it still runs with your account permissions; this is not a sandbox.
+2. In the native pickers choose your installed `python.exe` and the offered `sincos-grid.json` example. The **Choose a new .sscene output directory** Save dialog may open in the spec's `integrations/python/examples` folder. Navigate to your persistent test parent folder **before** saving. Type a fresh name such as `python-sincos.sscene` in **File name** and click **Save**; do not first create a folder with that name. The publisher exclusively creates it and refuses an existing destination.
+3. Back in the scrollable **Verified quantum examples** dialog, look below the Publish buttons for **Explicit local-code execution**. Check the executable, pinned script, spec, **New output** path and displayed SHA-256 hashes. Saving the path alone has not launched Python or created the `.sscene`. Click **Run trusted Python publisher**, then approve **Run external Python code?**. The reference script is pinned, but it still runs with your account permissions; this is not a sandbox. If the review box is absent, check the top of the dialog for a **Python publication refused** message.
 4. The `sin(x)cos(y)` scalar-height preview should appear after verification. Click the surface or **Inspect center sample**. Check the exact grid index, coordinates, value and units. Close the preview.
 5. To exercise independent reopening, use **File → Verified quantum examples → Open external .sscene folder…**, select the whole published `.sscene` directory, and inspect it again. This import does not start Python.
 6. Close the preview, then choose **Projects → Contents → Scientific scenes → Attach open verified scene** and **Save project**. The link retains the source directory and manifest fingerprint, not the field array in Project JSON.
+
+After a successful run, the chosen `.sscene` is a **directory**, not a single file. It contains `bundle.json`, `manifest.json` and a `real.f64` dataset. If it is not in your intended test parent folder, check the **New output** path from the review dialog: saving from the spec's examples folder places the generated scene there. Keep generated scenes out of a source checkout when possible, and attach only the final persistent location to your Project.
 
 Use **Publish with custom Python script…** only for code you independently trust. It is outside this bounded reference-publisher test.
 

@@ -21,8 +21,8 @@ The pinned publisher source is checked out with LF line endings on every platfor
 
 1. Open **File → Verified quantum examples** and choose **Publish with reference Python script…** under **Scientific interchange proof**.
 2. Pick your installed `python.exe` (Python 3.10 or newer). In the JSON picker, use the offered `sincos-grid.json` example for a first run, or choose your own bounded scientific field specification.
-3. Choose a **new** destination ending in `.sscene`. Review the script/spec paths and SHA-256 hashes in the dialog. No process has started yet.
-4. Click **Run trusted Python publisher**, then approve the native **Run external Python code?** confirmation. Cancel is available while the job is active.
+3. In the **Choose a new .sscene output directory** Save dialog, navigate away from the spec's examples folder if needed. Enter a fresh `.sscene` name in **File name**; do not create the output directory first, because an existing destination is refused. The destination's parent must already exist.
+4. Back in the scrollable examples dialog, review the script/spec paths, SHA-256 hashes and **New output** path in **Explicit local-code execution** below the Publish buttons. Save only prepares this review; it does not create the output or start Python. Click **Run trusted Python publisher**, then approve the native **Run external Python code?** confirmation. Cancel is available while the job is active.
 5. Math3D verifies and previews the 2D scalar scene. Inspect a sample; later, reopen the saved directory with **Open external .sscene folder…**. This also works after restart. Changed source bytes are refused.
 6. To keep the source in a Math3D Project, close the preview and open **Projects → Contents → Scientific scenes → Attach open verified scene**. Save the Project. Its link stores only the directory and manifest fingerprint, not samples. **Verify and view scene** re-checks the source on every open; if the directory moves, use **Relink source** with an exact verified copy. The Project itself remains usable when the external source is missing or changed.
 
