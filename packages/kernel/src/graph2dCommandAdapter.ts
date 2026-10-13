@@ -1,4 +1,5 @@
 import { createCommandEnvelope, graph2dCommandDefinitions, GRAPH2D_COMMAND_TYPES, normalizeGraph2DDocument,
+  applyGraph2DConstructionAction, type Graph2DConstructionAction,
   type Graph2DCommandState, type Graph2DDocument, type Graph2DViewport, type Graph2DSelection,
   projectCommandTransaction, structuralHash,
   type CommandEnvelope, type StructuralHash,
@@ -60,6 +61,14 @@ export class Graph2DCommandAdapter {
     const before = this.document();
     return this.#commit(GRAPH2D_COMMAND_TYPES.replaceScene, { ...candidate, operation } as CanonicalJsonValue,
       { source: before.source, display: before.display, selection: before.selection, operation: "restore" } as CanonicalJsonValue);
+  }
+  commitConstruction(action: Graph2DConstructionAction): Graph2DDocument {
+    const before = this.document();
+    const next = applyGraph2DConstructionAction(before.source, action);
+    if (structuralHash(next) === before.identity.structuralHash) return before;
+    return this.#commit(GRAPH2D_COMMAND_TYPES.setConstructions,
+      { constructions: next.constructions ?? null } as CanonicalJsonValue,
+      { constructions: before.source.constructions ?? null } as CanonicalJsonValue);
   }
   commitGridMode(mode: "cartesian" | "polar"): Graph2DDocument {
     const before = this.document();

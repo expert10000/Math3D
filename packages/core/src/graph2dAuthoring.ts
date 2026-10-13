@@ -354,6 +354,9 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
     displays.splice(index + 1, 0, { ...displays[index]!, objectId: id });
     selection = { objectId: id, probe: null };
   } else if (action.type === "delete") {
+    if (document.source.constructions?.objects.some(construction => construction.inputs.some(input =>
+      input.kind === "source" && input.objectId === action.objectId)))
+      throw new TypeError("Remove constructions depending on this graph source before deleting it.");
     objects.splice(index, 1); displays.splice(index, 1);
     if (selection.objectId === action.objectId) selection = { objectId: null, probe: null };
   } else if (action.type === "visibility") {

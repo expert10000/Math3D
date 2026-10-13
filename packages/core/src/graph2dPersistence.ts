@@ -13,6 +13,7 @@ import {
 import { parseGraph2DExpression } from "./graph2dExpression";
 import { GRAPH2D_PARAMETERS_CAPABILITY } from "./graph2dParameterTypes";
 import { GRAPH2D_GRID_CAPABILITY } from "./graph2dGridOptions";
+import { GRAPH2D_CONSTRUCTIONS_CAPABILITY } from "./graph2dConstructions";
 import { createMixedWorkspaceDocument, type MixedWorkspaceDocument } from "./mixedWorkspace";
 import type { ValidationResult } from "./validation";
 
@@ -40,7 +41,7 @@ export const inspectGraph2DCompatibility = (value: unknown): Graph2DCompatibilit
   const required = Array.isArray(value.requiredCapabilities) ? value.requiredCapabilities : [];
   const supported = [GRAPH2D_EXPLICIT_CAPABILITY, GRAPH2D_PARAMETRIC_CAPABILITY,
     GRAPH2D_POLAR_CAPABILITY, GRAPH2D_IMPLICIT_CAPABILITY, GRAPH2D_INEQUALITY_CAPABILITY,
-    GRAPH2D_POINT_SERIES_CAPABILITY, GRAPH2D_PIECEWISE_CAPABILITY, GRAPH2D_PROBES_CAPABILITY, GRAPH2D_PROBE_VISIBILITY_CAPABILITY, GRAPH2D_PARAMETERS_CAPABILITY, GRAPH2D_SCALES_CAPABILITY, GRAPH2D_GRID_CAPABILITY];
+    GRAPH2D_POINT_SERIES_CAPABILITY, GRAPH2D_PIECEWISE_CAPABILITY, GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_PROBES_CAPABILITY, GRAPH2D_PROBE_VISIBILITY_CAPABILITY, GRAPH2D_PARAMETERS_CAPABILITY, GRAPH2D_SCALES_CAPABILITY, GRAPH2D_GRID_CAPABILITY];
   const unsupportedCapabilities = required.filter((capability): capability is string => typeof capability === "string" && !supported.includes(capability as typeof supported[number]));
   if (unsupportedCapabilities.length)
     return { status: "unsupported", schemaVersion: version, title, unsupportedCapabilities, reason: "Graph2D capabilities are unavailable." };

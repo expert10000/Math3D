@@ -8,6 +8,8 @@ import { parseGraph2DExpression, type Graph2DExpressionAst } from "./graph2dExpr
 import { GRAPH2D_PARAMETERS_CAPABILITY, isGraph2DParameter, type Graph2DParameter } from "./graph2dParameterTypes";
 import { isGraph2DViewport } from "./graph2dViewport";
 import { GRAPH2D_GRID_CAPABILITY, isGraph2DGridOptions, type Graph2DGridOptions } from "./graph2dGridOptions";
+import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, validateGraph2DConstructionSet,
+  type Graph2DConstructionSet } from "./graph2dConstructions";
 export const GRAPH2D_SCALES_CAPABILITY = "graph2d.scales.v1" as const;
 
 export const GRAPH2D_DOCUMENT_FORMAT = "math3d.graph2d-document" as const;
@@ -108,6 +110,7 @@ export type Graph2DSource = Readonly<{
   objects: readonly Graph2DGraphObject[];
   variables: readonly Graph2DParameter[];
   assumptions: readonly string[];
+  constructions?: Graph2DConstructionSet;
 }>;
 export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pick<Graph2DDisplay, "pinnedProbes"> & Partial<Pick<Graph2DDisplay, "viewport" | "axes">>): Graph2DDocument["requiredCapabilities"] =>
   [GRAPH2D_EXPLICIT_CAPABILITY,
@@ -117,6 +120,7 @@ export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pic
     ...(source.objects.some((object) => object.kind === "inequality") ? [GRAPH2D_INEQUALITY_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "point-series") ? [GRAPH2D_POINT_SERIES_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "piecewise") ? [GRAPH2D_PIECEWISE_CAPABILITY] : []),
+    ...(source.constructions !== undefined ? [GRAPH2D_CONSTRUCTIONS_CAPABILITY] : []),
     ...(display?.pinnedProbes !== undefined ? [GRAPH2D_PROBES_CAPABILITY] : []),
     ...(display?.pinnedProbes?.some(p => p.visible !== undefined) ? [GRAPH2D_PROBE_VISIBILITY_CAPABILITY] : []),
     ...(source.variables.some(variable => variable.control !== undefined) ? [GRAPH2D_PARAMETERS_CAPABILITY] : []),
@@ -147,7 +151,7 @@ export type Graph2DDocument = Readonly<{
   requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
     typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY |
     typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY |
-    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
+    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
   source: Graph2DSource;
   display: Graph2DDisplay;
   selection: Graph2DSelection;
@@ -232,7 +236,7 @@ const validPiecewiseObject = (value: unknown, variables: readonly string[]): val
   return true;
 };
 const validSource = (value: unknown): value is Graph2DSource => {
-  if (!record(value) || !exact(value, ["objects", "variables", "assumptions"]) || !Array.isArray(value.objects) ||
+  if (!record(value) || !exact(value, ["objects", "variables", "assumptions", ...(value.constructions !== undefined ? ["constructions"] : [])]) || !Array.isArray(value.objects) ||
       value.objects.length > GRAPH2D_MAX_OBJECTS ||
       !Array.isArray(value.variables) || value.variables.length > 16 ||
       !value.variables.every(isGraph2DParameter) ||
@@ -248,7 +252,8 @@ const validSource = (value: unknown): value is Graph2DSource => {
     validParametricObject(entry, ["t", ...names]) || validPolarObject(entry, ["theta", ...names]) ||
     validImplicitObject(entry, ["x", "y", ...names]) || validInequalityObject(entry, ["x", "y", ...names]) ||
     validPointSeriesObject(entry) || validPiecewiseObject(entry, ["x", ...names])) &&
-    new Set(value.objects.map((entry: Graph2DGraphObject) => entry.id)).size === value.objects.length;
+    new Set(value.objects.map((entry: Graph2DGraphObject) => entry.id)).size === value.objects.length &&
+    (value.constructions === undefined || validateGraph2DConstructionSet(value.constructions, value.objects).length === 0);
 };
 const validDisplay = (value: unknown, source: Graph2DSource): value is Graph2DDisplay => {
   if (!record(value) || !exact(value, ["viewport", "axes", "objects", "sampling", ...(value.pinnedProbes !== undefined ? ["pinnedProbes"] : [])]) ||

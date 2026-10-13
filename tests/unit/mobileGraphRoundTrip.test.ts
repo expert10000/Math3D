@@ -9,6 +9,7 @@ import { createMobileGraph, importMobileGraph, readMobileGraph, readMobileGraphW
 import { serializeMobileProjectHandoff } from "../../apps/mobile/src/models/mobileProjectTransfer";
 import { mobileGraphAuthoringAction, mobileGraphFunctionDraft, applyMobileGraphAuthoring } from "../../apps/mobile/src/models/mobileGraphAuthoring";
 import { editMobileGraphProbes } from "../../apps/mobile/src/models/mobileGraphProbes";
+import { GRAPH2D_CONSTRUCTIONS_CAPABILITY } from "@math3d/core";
 
 const producer = { platform: "desktop", name: "Math3D Desktop", version: "1.5.0" } as const;
 const desktop = () => {
@@ -97,5 +98,33 @@ describe("G2D33 desktop → mobile → desktop checkpoint and ancestry", () => {
     expect(merged.entries[0]!.checkpoint).toEqual(commands.document());
     expect(merged.entries.slice(1)).toEqual(full.entries.slice(1)); expect(merged.results).toEqual(full.results);
     expect(merged.relations).toEqual(full.relations);
+  });
+});
+
+describe("G2D47 construction handoff", () => {
+  it("preserves construction intent across desktop, mobile storage, and desktop reopen", () => {
+    const initial = desktop().document;
+    const commands = new Graph2DCommandAdapter(initial);
+    commands.commitConstruction({ type: "create", object: { id: "construction_1", kind: "point-on-curve",
+      label: "P", inputs: [{ kind: "source", objectId: "function_1" }], anchor: { parameter: "x", value: 2 },
+      style: { visible: true, color: "#2563eb", lineWidth: 2, lineStyle: "solid" },
+      requiredCapability: GRAPH2D_CONSTRUCTIONS_CAPABILITY } });
+    const outbound = commands.document();
+    const handoff = createWorkspaceProjectHandoff(createGraph2DWorkspaceProject(outbound), { producer });
+    let stored = importMobileGraph(serializeWorkspaceProjectHandoff(handoff), [], "constructions.handoff.json", 1, "desktop");
+    expect(readMobileGraph(stored).source.constructions).toEqual(outbound.source.constructions);
+    const mobile = new Graph2DCommandAdapter(readMobileGraph(stored));
+    mobile.commitConstruction({ type: "create", object: { id: "construction_2", kind: "tangent", label: "T",
+      inputs: [{ kind: "construction", objectId: "construction_1" }], anchor: null,
+      style: { visible: true, color: "#e11d48", lineWidth: 2, lineStyle: "solid" },
+      requiredCapability: GRAPH2D_CONSTRUCTIONS_CAPABILITY } });
+    stored = updateStoredMobileGraph(stored, mobile.document(), 2);
+    const returned = parseWorkspaceProjectHandoff(serializeMobileProjectHandoff(stored));
+    const reopened = returned.project.entries.find((entry) => entry.module === "graph2d")!.checkpoint as Graph2DDocument;
+    expect(reopened.source.constructions?.objects).toHaveLength(2);
+    expect(reopened.source.constructions).toEqual(mobile.document().source.constructions);
+    expect(reopened.identity.structuralHash).toBe(structuralHash(reopened.source));
+    expect(reopened.requiredCapabilities).toContain(GRAPH2D_CONSTRUCTIONS_CAPABILITY);
+    expect(readMobileGraphWorkspace(stored)!.entries[0]?.checkpoint).toEqual(reopened);
   });
 });

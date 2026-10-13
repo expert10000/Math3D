@@ -1,10 +1,12 @@
 import { advanceDocumentIdentity, structuralHash, type CanonicalJsonValue } from "./documentIdentity";
 import { type CommandDefinition } from "./commands";
 import { graph2DRequiredCapabilities, normalizeGraph2DDocument, type Graph2DDocument,
-  type Graph2DSelection } from "./graph2dDocument";
+  type Graph2DSelection, type Graph2DSource } from "./graph2dDocument";
+import type { Graph2DConstructionSet } from "./graph2dConstructions";
 import { isGraph2DViewport, type Graph2DViewport } from "./graph2dViewport";
 
-export const GRAPH2D_COMMAND_TYPES = { setViewport: "graph2d.viewport.set", replaceScene: "graph2d.scene.replace", setSelection: "graph2d.selection.set" } as const;
+export const GRAPH2D_COMMAND_TYPES = { setViewport: "graph2d.viewport.set", replaceScene: "graph2d.scene.replace",
+  setSelection: "graph2d.selection.set", setConstructions: "graph2d.constructions.set" } as const;
 export const GRAPH2D_SCENE_OPERATIONS = ["create", "edit", "create-parametric", "edit-parametric",
   "create-polar", "edit-polar", "create-implicit", "edit-implicit",
   "create-inequality", "edit-inequality", "create-point-series", "edit-point-series",
@@ -44,6 +46,27 @@ export const graph2dCommandDefinitions: readonly CommandDefinition<Graph2DComman
     const candidate = { ...current, source: scene.source, display: scene.display, selection: scene.selection,
       requiredCapabilities: graph2DRequiredCapabilities(scene.source, scene.display),
       identity: changed ? advanceDocumentIdentity(current.identity, scene.source) : current.identity };
+    const normalized = normalizeGraph2DDocument(candidate);
+    if (!normalized.ok) throw new TypeError(normalized.errors.join(" "));
+    return { document: normalized.value };
+  },
+}, {
+  type: GRAPH2D_COMMAND_TYPES.setConstructions,
+  validate: (payload: CanonicalJsonValue) =>
+    payload && typeof payload === "object" && !Array.isArray(payload) &&
+    Object.keys(payload).length === 1 && "constructions" in payload &&
+    (payload.constructions === null || typeof payload.constructions === "object" && !Array.isArray(payload.constructions))
+      ? { ok: true, value: payload }
+      : { ok: false, errors: ["Graph2D construction command requires a typed construction set or null."] },
+  project: (state, payload) => {
+    const next = (payload as { constructions: Graph2DConstructionSet | null }).constructions;
+    const source: Graph2DSource & { constructions?: Graph2DConstructionSet } = { ...state.document.source };
+    if (next === null) delete source.constructions;
+    else source.constructions = next;
+    const current = state.document;
+    const changed = structuralHash(source) !== current.identity.structuralHash;
+    const candidate = { ...current, source, requiredCapabilities: graph2DRequiredCapabilities(source, current.display),
+      identity: changed ? advanceDocumentIdentity(current.identity, source) : current.identity };
     const normalized = normalizeGraph2DDocument(candidate);
     if (!normalized.ok) throw new TypeError(normalized.errors.join(" "));
     return { document: normalized.value };
