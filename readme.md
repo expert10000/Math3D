@@ -67,6 +67,8 @@ exports still use **Open verified quantum scene** or **Open in Math3D**.
 
 For producer-neutral `scientific-scene/v1`, use **File → Verified quantum examples → Publish with reference Python script…** with an independently installed Python 3.10+ executable and the offered `sincos-grid.json` sample. Approve the explicit run, inspect the verified 2D surface, and reopen its `.sscene` folder later. **Projects → Contents → Scientific scenes** can attach the open verified source as a compact link; save the Project to retain it. No arrays are copied into Project JSON, and reopening a link re-verifies the external source. See the [Python publication workflow](docs/scientific-scene-python-job-workflow.md).
 
+For a hands-on test of **both** a Theory Lab `.qscene` and a Python `.sscene` in the installed desktop app, follow the [scene walkthrough](docs/theory-lab-python-scene-walkthrough.md). It includes Project restart, exact-source relink and a reversible missing-source check.
+
 M3D-Q05 adds a separate **Reciprocal space** view for supplied SSH 1D,
 square, honeycomb, cubic and QWZ primitive-zone guides. Verified k-point and
 path selection reports source IDs and reciprocal units. SSH uses a narrow v2

@@ -18,6 +18,7 @@ nav:
       - Graph2D Architecture and Parity: graph2d-architecture-schema-algorithms-parity.md
       - VTK + CGAL + three.js Pipeline: vtk-cgal-threejs-pipeline.md
   - Guides:
+      - Theory Lab and Python Scene Walkthrough: theory-lab-python-scene-walkthrough.md
       - Traceability Scenarios: scenarios.md
       - Playwright E2E Tests: playwright-e2e-tests.md
       - Release Smoke Tests: release-smoke-tests.md
