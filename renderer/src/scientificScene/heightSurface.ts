@@ -1,4 +1,4 @@
-import { normalizeScientificSceneManifest, type ScientificSceneManifest } from "@math3d/core";
+import { normalizeScientificSceneManifest, type ProjectScientificSceneReference, type ScientificSceneManifest } from "@math3d/core";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 
 export type OpenedScientificHeightSurface = {
@@ -7,6 +7,7 @@ export type OpenedScientificHeightSurface = {
   datasetId: string;
   values: number[];
   sourceKind: "bundled" | "external";
+  reference: ProjectScientificSceneReference;
 };
 
 /** Display-only adapter into the existing GeometryViewer/SurfaceViewer mesh path. */

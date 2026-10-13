@@ -22,6 +22,13 @@ export type ProjectQuantumSceneReference = Readonly<{
   directory: string;
   sceneFingerprint: string;
 }>;
+/** External scientific-scene source; only its location and verified manifest fingerprint enter a Project. */
+export type ProjectScientificSceneReference = Readonly<{
+  format: "scientific-scene/v1";
+  title: string;
+  directory: string;
+  sceneFingerprint: string;
+}>;
 
 /** Named container for the mixed workspace, saved Workbooks, and Project Notes. */
 export type Math3DProject = Readonly<{
@@ -34,15 +41,22 @@ export type Math3DProject = Readonly<{
   workbooks?: readonly ProjectWorkbookReference[];
   notes?: readonly ProjectNote[];
   quantumScenes?: readonly ProjectQuantumSceneReference[];
+  scientificScenes?: readonly ProjectScientificSceneReference[];
 }>;
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 const exact = (value: Record<string, unknown>, keys: readonly string[]) => Object.keys(value).sort().join("|") === [...keys].sort().join("|");
 const validTitle = (value: unknown): value is string => typeof value === "string" && value.trim() === value && value.length >= 1 && value.length <= 160;
-const projectContent = (workspace: MixedWorkspaceDocument, workbooks?: readonly ProjectWorkbookReference[], notes?: readonly ProjectNote[], quantumScenes?: readonly ProjectQuantumSceneReference[]) =>
-  workbooks?.length || notes?.length || quantumScenes?.length ? { workspace, ...(workbooks?.length ? { workbooks } : {}), ...(notes?.length ? { notes } : {}), ...(quantumScenes?.length ? { quantumScenes } : {}) } : workspace;
+const projectContent = (workspace: MixedWorkspaceDocument, workbooks?: readonly ProjectWorkbookReference[], notes?: readonly ProjectNote[], quantumScenes?: readonly ProjectQuantumSceneReference[], scientificScenes?: readonly ProjectScientificSceneReference[]) =>
+  workbooks?.length || notes?.length || quantumScenes?.length || scientificScenes?.length ? { workspace, ...(workbooks?.length ? { workbooks } : {}), ...(notes?.length ? { notes } : {}), ...(quantumScenes?.length ? { quantumScenes } : {}), ...(scientificScenes?.length ? { scientificScenes } : {}) } : workspace;
 const validQuantumSceneReference = (value: unknown): value is ProjectQuantumSceneReference =>
   record(value) && exact(value, ["format", "title", "directory", "sceneFingerprint"]) &&
   ["quantum-scene/v1", "quantum-scene/v2"].includes(String(value.format)) && validTitle(value.title) &&
+  typeof value.directory === "string" && value.directory.length >= 1 && value.directory.length <= 2048 &&
+  value.directory.trim() === value.directory && !/[\x00-\x1f]/.test(value.directory) &&
+  typeof value.sceneFingerprint === "string" && /^[a-f0-9]{64}$/.test(value.sceneFingerprint);
+const validScientificSceneReference = (value: unknown): value is ProjectScientificSceneReference =>
+  record(value) && exact(value, ["format", "title", "directory", "sceneFingerprint"]) &&
+  value.format === "scientific-scene/v1" && validTitle(value.title) &&
   typeof value.directory === "string" && value.directory.length >= 1 && value.directory.length <= 2048 &&
   value.directory.trim() === value.directory && !/[\x00-\x1f]/.test(value.directory) &&
   typeof value.sceneFingerprint === "string" && /^[a-f0-9]{64}$/.test(value.sceneFingerprint);
@@ -55,7 +69,7 @@ const validWorkbookReference = (value: unknown): value is ProjectWorkbookReferen
 export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DProject> => {
   try {
     if (canonicalJsonByteLength(value) > MAX_MATH3D_PROJECT_BYTES) return { ok: false, errors: ["Project exceeds its size limit."] };
-    if (!record(value) || !exact(value, ["format", "schemaVersion", "identity", "metadata", "workspace", ...(value.workbooks === undefined ? [] : ["workbooks"]), ...(value.notes === undefined ? [] : ["notes"]), ...(value.quantumScenes === undefined ? [] : ["quantumScenes"])]) ||
+    if (!record(value) || !exact(value, ["format", "schemaVersion", "identity", "metadata", "workspace", ...(value.workbooks === undefined ? [] : ["workbooks"]), ...(value.notes === undefined ? [] : ["notes"]), ...(value.quantumScenes === undefined ? [] : ["quantumScenes"]), ...(value.scientificScenes === undefined ? [] : ["scientificScenes"])]) ||
       value.format !== MATH3D_PROJECT_FORMAT || value.schemaVersion !== MATH3D_PROJECT_SCHEMA_VERSION) {
       return { ok: false, errors: ["Invalid or unsupported Math3D project envelope."] };
     }
@@ -81,6 +95,10 @@ export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DP
       !value.quantumScenes.every(validQuantumSceneReference) ||
       new Set(value.quantumScenes.map((item: ProjectQuantumSceneReference) => item.sceneFingerprint)).size !== value.quantumScenes.length))
       return { ok: false, errors: ["Invalid Project quantum-scene references."] };
+    if (value.scientificScenes !== undefined && (!Array.isArray(value.scientificScenes) || value.scientificScenes.length < 1 || value.scientificScenes.length > 16 ||
+      !value.scientificScenes.every(validScientificSceneReference) ||
+      new Set(value.scientificScenes.map((item: ProjectScientificSceneReference) => item.sceneFingerprint)).size !== value.scientificScenes.length))
+      return { ok: false, errors: ["Invalid Project scientific-scene references."] };
     for (const entry of workspace.value.entries.filter((item) => item.module === "quantum")) {
       const checkpoint = entry.checkpoint;
       if (entry.replay !== null || checkpoint.format !== "math3d.quantum-scene-document")
@@ -98,8 +116,8 @@ export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DP
         return { ok: false, errors: ["Invalid project document titles or archive flags."] };
       }
     }
-    if (structuralHash(projectContent(workspace.value, value.workbooks as ProjectWorkbookReference[] | undefined, value.notes as ProjectNote[] | undefined, value.quantumScenes as ProjectQuantumSceneReference[] | undefined)) !== value.identity.structuralHash)
-      return { ok: false, errors: ["Project content hash does not match its workspace, Workbooks, Notes and quantum scenes."] };
+    if (structuralHash(projectContent(workspace.value, value.workbooks as ProjectWorkbookReference[] | undefined, value.notes as ProjectNote[] | undefined, value.quantumScenes as ProjectQuantumSceneReference[] | undefined, value.scientificScenes as ProjectScientificSceneReference[] | undefined)) !== value.identity.structuralHash)
+      return { ok: false, errors: ["Project content hash does not match its workspace and external references."] };
     return { ok: true, value: JSON.parse(canonicalJsonStringify({ ...value, workspace: workspace.value })) as Math3DProject };
   } catch (error) { return { ok: false, errors: [String((error as Error).message ?? error)] }; }
 };
@@ -117,7 +135,7 @@ export const createMath3DProject = (workspace: MixedWorkspaceDocument, options: 
 /** Project revision describes all persisted workspace content, not a domain source generation. */
 export const replaceMath3DProjectWorkspace = (project: Math3DProject, workspace: MixedWorkspaceDocument): Math3DProject => {
   const current = requireProject(project);
-  return requireProject({ ...current, identity: advanceDocumentIdentity(current.identity, projectContent(workspace, current.workbooks, current.notes, current.quantumScenes)), workspace });
+  return requireProject({ ...current, identity: advanceDocumentIdentity(current.identity, projectContent(workspace, current.workbooks, current.notes, current.quantumScenes, current.scientificScenes)), workspace });
 };
 export const upsertMath3DProjectWorkbook = (project: Math3DProject, reference: ProjectWorkbookReference): Math3DProject => {
   const current = requireProject(project);
@@ -125,7 +143,7 @@ export const upsertMath3DProjectWorkbook = (project: Math3DProject, reference: P
   const workbooks = [...(current.workbooks ?? []).filter((item) => item.id !== reference.id), reference].sort((a, b) => a.id.localeCompare(b.id));
   if (canonicalJsonStringify(workbooks) === canonicalJsonStringify(current.workbooks ?? [])) return current;
   return requireProject({ ...current, workbooks,
-    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, workbooks, current.notes, current.quantumScenes)) });
+    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, workbooks, current.notes, current.quantumScenes, current.scientificScenes)) });
 };
 export const upsertMath3DProjectNote = (project: Math3DProject, note: ProjectNote): Math3DProject => {
   const current = requireProject(project), checked = normalizeProjectNote(note);
@@ -134,7 +152,7 @@ export const upsertMath3DProjectNote = (project: Math3DProject, note: ProjectNot
     .sort((a, b) => a.identity.id.localeCompare(b.identity.id));
   if (canonicalJsonStringify(notes) === canonicalJsonStringify(current.notes ?? [])) return current;
   return requireProject({ ...current, notes,
-    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, notes, current.quantumScenes)) });
+    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, notes, current.quantumScenes, current.scientificScenes)) });
 };
 export const upsertMath3DProjectQuantumScene = (project: Math3DProject, reference: ProjectQuantumSceneReference): Math3DProject => {
   const current = requireProject(project);
@@ -143,7 +161,7 @@ export const upsertMath3DProjectQuantumScene = (project: Math3DProject, referenc
     .sort((a, b) => a.sceneFingerprint.localeCompare(b.sceneFingerprint));
   if (canonicalJsonStringify(quantumScenes) === canonicalJsonStringify(current.quantumScenes ?? [])) return current;
   return requireProject({ ...current, quantumScenes,
-    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, current.notes, quantumScenes)) });
+    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, current.notes, quantumScenes, current.scientificScenes)) });
 };
 /** Replace only the location of an already linked scene. Callers must independently verify the picked bundle. */
 export const relinkMath3DProjectQuantumScene = (project: Math3DProject, fingerprint: string, directory: string): Math3DProject => {
@@ -158,7 +176,28 @@ export const relinkMath3DProjectQuantumScene = (project: Math3DProject, fingerpr
     ? { ...current.workspace, entries: current.workspace.entries.map((entry) => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document" && entry.checkpoint.source.sceneFingerprint === fingerprint
       ? { ...entry, checkpoint: relocateQuantumSceneDocument(entry.checkpoint, directory) } : entry) } : current.workspace;
   return requireProject({ ...current, workspace, quantumScenes,
-    identity: advanceDocumentIdentity(current.identity, projectContent(workspace, current.workbooks, current.notes, quantumScenes)) });
+    identity: advanceDocumentIdentity(current.identity, projectContent(workspace, current.workbooks, current.notes, quantumScenes, current.scientificScenes)) });
+};
+export const upsertMath3DProjectScientificScene = (project: Math3DProject, reference: ProjectScientificSceneReference): Math3DProject => {
+  const current = requireProject(project);
+  if (!validScientificSceneReference(reference)) throw new TypeError("Invalid Project scientific-scene reference.");
+  const scientificScenes = [...(current.scientificScenes ?? []).filter((item) => item.sceneFingerprint !== reference.sceneFingerprint), reference]
+    .sort((a, b) => a.sceneFingerprint.localeCompare(b.sceneFingerprint));
+  if (canonicalJsonStringify(scientificScenes) === canonicalJsonStringify(current.scientificScenes ?? [])) return current;
+  return requireProject({ ...current, scientificScenes,
+    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, current.notes, current.quantumScenes, scientificScenes)) });
+};
+/** The caller verifies the replacement bundle before changing the saved location. */
+export const relinkMath3DProjectScientificScene = (project: Math3DProject, fingerprint: string, directory: string): Math3DProject => {
+  const current = requireProject(project);
+  const linked = current.scientificScenes?.find((item) => item.sceneFingerprint === fingerprint);
+  if (!linked) throw new TypeError("Scientific scene is not linked to this Project.");
+  const replacement: ProjectScientificSceneReference = { ...linked, directory };
+  if (!validScientificSceneReference(replacement)) throw new TypeError("Invalid replacement scientific-scene location.");
+  if (linked.directory === directory) return current;
+  const scientificScenes = current.scientificScenes!.map((item) => item.sceneFingerprint === fingerprint ? replacement : item);
+  return requireProject({ ...current, scientificScenes,
+    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, current.notes, current.quantumScenes, scientificScenes)) });
 };
 export const updateMath3DProjectMetadata = (project: Math3DProject, metadata: Math3DProject["metadata"]): Math3DProject =>
   requireProject({ ...requireProject(project), metadata });

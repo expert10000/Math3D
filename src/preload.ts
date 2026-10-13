@@ -550,6 +550,9 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
 contextBridge.exposeInMainWorld("scientificScenes", Object.freeze({
   openExample: (): Promise<ScientificSceneOpenResponse> => ipcRenderer.invoke("scientificScenes:openExample"),
   openDirectory: (): Promise<ScientificSceneOpenResponse> => ipcRenderer.invoke("scientificScenes:openDirectory"),
+  openReference: (reference: { directory: string; sceneFingerprint: string }): Promise<ScientificSceneOpenResponse> =>
+    ipcRenderer.invoke("scientificScenes:openReference", reference),
+  pickMatchingReference: (fingerprint: string) => ipcRenderer.invoke("scientificScenes:pickMatchingReference", fingerprint),
   preparePublisher: (mode: "reference" | "custom"): Promise<PythonPublisherPrepareResponse> =>
     ipcRenderer.invoke("scientificScenes:preparePublisher", mode),
   runPublisher: (request: { sessionId: string; sourceHash: string; jobId: string }): Promise<ScientificSceneOpenResponse> =>

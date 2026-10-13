@@ -592,6 +592,10 @@ declare global {
     scientificScenes?: {
       openExample: () => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;
       openDirectory: () => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;
+        openReference: (reference: { directory: string; sceneFingerprint: string }) => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;
+        pickMatchingReference: (fingerprint: string) => Promise<
+          { ok: true; reference: import("@math3d/core").ProjectScientificSceneReference } |
+          { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
       preparePublisher: (mode: "reference" | "custom") => Promise<
         { ok: true; sessionId: string; executable: string; script: string; spec: string; output: string;
           scriptSha256: string; specSha256: string; sourceHash: string; reference: boolean } |

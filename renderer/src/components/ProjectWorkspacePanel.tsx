@@ -6,6 +6,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   instantiateMath3DProjectTemplate, MATH3D_PROJECT_TEMPLATES, type Math3DProjectTemplateId,
   upsertMath3DProjectWorkbook, upsertMath3DProjectNote, updateProjectNote,
   relinkMath3DProjectQuantumScene, upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference,
+  relinkMath3DProjectScientificScene, upsertMath3DProjectScientificScene, type ProjectScientificSceneReference,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
@@ -61,6 +62,9 @@ type Props = {
   onOpenQuantumScene?: (reference: ProjectQuantumSceneReference) => Promise<void>;
   onVerifyQuantumSceneDocument?: (reference: ProjectQuantumSceneReference) => Promise<QuantumSceneDocument>;
   onRelinkQuantumScene?: (reference: ProjectQuantumSceneReference) => Promise<string | null>;
+  verifiedScientificScene?: ProjectScientificSceneReference | null;
+  onOpenScientificScene?: (reference: ProjectScientificSceneReference) => Promise<void>;
+  onRelinkScientificScene?: (reference: ProjectScientificSceneReference) => Promise<string | null>;
   captureActiveWorkbook?: () => Workbook | null;
   onOpenWorkbook?: (workbook: Workbook, stageId?: WorkbookStageId, blockId?: string) => void;
   onViewProjectWorkbook?: (workbook: Workbook, stageId?: WorkbookStageId, blockId?: string) => void;
@@ -79,7 +83,7 @@ type Props = {
   activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
@@ -143,6 +147,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const openingStarter = useRef(false);
   const rippleResearchAttempted = useRef(new Set<string>());
   const [quantumSceneMessage, setQuantumSceneMessage] = useState("");
+  const [scientificSceneMessage, setScientificSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
   const projectWorkbookBytes = useCallback((id: string) => resourceSessionId.current === project?.identity.id
@@ -210,6 +215,46 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       setProject(next);
       setQuantumSceneMessage("Exact scene verified at the new location. Save project to retain the relink.");
     } catch (error) { setQuantumSceneMessage(`Relink refused: ${String((error as Error).message)}`); }
+    finally { setBusy(false); }
+  };
+  const attachScientificScene = async () => {
+    if (busy || preview || managed || !project || !verifiedScientificScene || !onOpenScientificScene) return;
+    const before = serializeMath3DProject(project), reference = verifiedScientificScene;
+    setBusy(true); setScientificSceneMessage("Re-verifying scientific source before attachment…");
+    try {
+      await onOpenScientificScene(reference);
+      const current = projectStateRef.current;
+      if (!current || serializeMath3DProject(current) !== before) throw new TypeError("Project changed during verification. Retry attachment.");
+      setProject(upsertMath3DProjectScientificScene(current, reference));
+      setScientificSceneMessage("Verified scientific source staged. Save project to retain the link.");
+    } catch (error) { setScientificSceneMessage(`Attachment refused: ${String((error as Error).message)}`); }
+    finally { setBusy(false); }
+  };
+  const relinkScientificScene = async (item: ProjectScientificSceneReference) => {
+    if (busy || managed || !project || !onRelinkScientificScene) return;
+    const before = serializeMath3DProject(project);
+    setBusy(true); setScientificSceneMessage("Choose a relocated copy of this exact scientific scene…");
+    try {
+      const directory = await onRelinkScientificScene(item);
+      if (directory === null) { setScientificSceneMessage("Relink canceled; Project unchanged."); return; }
+      const current = projectStateRef.current;
+      if (!current || serializeMath3DProject(current) !== before) throw new TypeError("Project changed while the picker was open; relink again.");
+      const next = relinkMath3DProjectScientificScene(current, item.sceneFingerprint, directory);
+      if (next === current) { setScientificSceneMessage("This source is already linked at that location."); return; }
+      if (preview) {
+        const saved = loadLibraryProject(localStorage, current.identity.id);
+        if (serializeMath3DProject(saved) !== before) throw new TypeError("Saved Project changed; reopen it before relinking.");
+        const resources = await loadProjectResources(saved);
+        setLibrary(await commitProjectResources(next, resources, () => saveLibraryProject(localStorage, next, Date.now(), undefined,
+          { activate: false, expectedBytes: before })));
+        resourceSession.current = resources; resourceSessionId.current = next.identity.id;
+        setProject(next); setExplorer(buildProjectExplorer(next, verifyMixedWorkspaceReplay(next.workspace)));
+        setScientificSceneMessage("Exact source relinked in saved Project.");
+        return;
+      }
+      setProject(next);
+      setScientificSceneMessage("Exact source verified at the new location. Save project to retain the relink.");
+    } catch (error) { setScientificSceneMessage(`Relink refused: ${String((error as Error).message)}`); }
     finally { setBusy(false); }
   };
   const admitQuantumScene = async (item: ProjectQuantumSceneReference) => {
@@ -1359,6 +1404,24 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                   onClick={() => { void relinkQuantumScene(item); }}>Relink source</button>
               </article>)}
               {quantumSceneMessage && <p role="status" data-testid="project-quantum-scene-message">{quantumSceneMessage}</p>}
+            </section>
+            <section data-testid="project-scientific-scenes" className="project-workspace-child-group" aria-label="Read-only scientific scenes">
+              <div className="project-workspace-child-heading"><div><span>EXTERNAL VERIFIED SOURCE</span><h4>Scientific scenes ({project?.scientificScenes?.length ?? 0})</h4></div>
+                <button type="button" data-testid="project-attach-scientific-scene"
+                  disabled={busy || preview || !!managed || !project || !verifiedScientificScene || !onOpenScientificScene || project.scientificScenes?.some(item => item.sceneFingerprint === verifiedScientificScene.sceneFingerprint)}
+                  onClick={() => { void attachScientificScene(); }}>Attach open verified scene</button></div>
+              <p>Links retain only the location and manifest fingerprint. Opening re-verifies source bytes; no scientific arrays enter Project JSON. Missing or changed bundles remain unavailable until an exact copy is relinked.</p>
+              {!project?.scientificScenes?.length && <small>Open or publish a verified .sscene from File, then attach it here.</small>}
+              {project?.scientificScenes?.map(item => <article key={item.sceneFingerprint} className="project-workspace-workbook">
+                <strong>{item.title}</strong><small style={{ overflowWrap: "anywhere" }}> · SHA-256 {item.sceneFingerprint}</small>
+                <button type="button" data-testid={`project-open-scientific-scene-${item.sceneFingerprint}`} disabled={busy || !onOpenScientificScene}
+                  onClick={() => { if (!onOpenScientificScene) return; setScientificSceneMessage("Verifying external scene…");
+                    void onOpenScientificScene(item).then(() => setScientificSceneMessage("Verified read-only scene opened."))
+                      .catch(error => setScientificSceneMessage(`Scene unavailable: ${String((error as Error).message)}`)); }}>Verify and view scene</button>
+                <button type="button" data-testid={`project-relink-scientific-scene-${item.sceneFingerprint}`}
+                  disabled={busy || !!managed || !onRelinkScientificScene} onClick={() => { void relinkScientificScene(item); }}>Relink source</button>
+              </article>)}
+              {scientificSceneMessage && <p role="status" data-testid="project-scientific-scene-message">{scientificSceneMessage}</p>}
             </section>
             <section data-testid="project-workbooks" className="project-workspace-child-group" aria-label="Project Workbooks">
               <div className="project-workspace-child-heading"><div><span>01 · PROJECT CONTENT</span><h4>Workbooks ({project?.workbooks?.length ?? 0})</h4></div>

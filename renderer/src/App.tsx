@@ -6,7 +6,7 @@ import { ScientificScenePreview, type ScientificSceneOpenResponse } from "./comp
 import { QuantumSceneExamples } from "./components/QuantumSceneExamples";
 import { quantumSceneDocumentFromVerifiedOpen } from "./projects/quantumSceneAdmission";
 import { meshDocumentEditable } from "./projects/nativeMeshRestore";
-import { createMeshDocument, canonicalJsonStringify, parseMath3DProject } from "@math3d/core";
+import { createMeshDocument, canonicalJsonStringify, parseMath3DProject, type ProjectScientificSceneReference } from "@math3d/core";
 import { VerifiedProjectResources, type ProjectResourceRequirement } from "./projects/projectResources";
 import type { MeshReplayBundle } from "./mesh/meshReplay";
 import { geometryEditorSeed as restoredGeometryEditorSeed, geometryDocumentEditable, geometrySourceFromEditor, geometryDisplayFromEditor, retainConstructionSource } from "./projects/nativeGeometryRestore";
@@ -33182,6 +33182,7 @@ const App: React.FC = () => {
   const [workbooks, setWorkbooks] = useState<Workbook[]>(() => loadWorkbooks());
   const [quantumScenePreview, setQuantumScenePreview] = useState<Extract<QuantumSceneOpenResponse, { ok: true }> | null>(null);
   const [scientificScenePreview, setScientificScenePreview] = useState<Extract<ScientificSceneOpenResponse, { ok: true }>["scene"] | null>(null);
+  const [scientificSceneReference, setScientificSceneReference] = useState<ProjectScientificSceneReference | null>(null);
   const [showQuantumSceneExamples, setShowQuantumSceneExamples] = useState(false);
   const [quantumSceneNavigationError, setQuantumSceneNavigationError] = useState<string | null>(null);
   const quantumSceneNavigationSequence = useRef(0);
@@ -79341,6 +79342,26 @@ case "mobius":
           if (picked.reference.sceneFingerprint !== reference.sceneFingerprint) throw new TypeError("Verified scene fingerprint changed.");
           return picked.reference.directory;
         }}
+        verifiedScientificScene={scientificSceneReference}
+        onOpenScientificScene={async (reference) => {
+          if (!window.scientificScenes?.openReference) throw new TypeError("Verified scientific scenes are available only in the desktop app.");
+          const opened = await window.scientificScenes.openReference({ directory: reference.directory, sceneFingerprint: reference.sceneFingerprint });
+          if (!opened.ok) throw new TypeError(opened.canceled ? "Scene opening was cancelled." : opened.error);
+          if (opened.scene.reference.sceneFingerprint !== reference.sceneFingerprint || opened.scene.reference.directory !== reference.directory)
+            throw new TypeError("Verified scientific scene reference changed.");
+          setScientificScenePreview(opened.scene);
+          setScientificSceneReference(opened.scene.reference);
+        }}
+        onRelinkScientificScene={async (reference) => {
+          if (!window.scientificScenes?.pickMatchingReference) throw new TypeError("Scientific source relinking is available only in the desktop app.");
+          const picked = await window.scientificScenes.pickMatchingReference(reference.sceneFingerprint);
+          if (!picked.ok) {
+            if (picked.canceled) return null;
+            throw new TypeError(picked.error);
+          }
+          if (picked.reference.sceneFingerprint !== reference.sceneFingerprint) throw new TypeError("Verified scientific scene fingerprint changed.");
+          return picked.reference.directory;
+        }}
         captureActiveWorkbook={() => workbooks.find((workbook) => workbook.id === activeWorkbookId) ?? null}
         captureNoteSelection={() => {
           const documentId = activeKernelDocument?.identity.id;
@@ -110097,7 +110118,7 @@ case "mobius":
       }} />}
       {showQuantumSceneExamples && <QuantumSceneExamples onOpened={opened => {
         setQuantumScenePreview(opened); setQuantumSceneReference(opened.reference);
-      }} onOpenedScientific={scene => setScientificScenePreview(scene)} onClose={() => setShowQuantumSceneExamples(false)} />}
+      }} onOpenedScientific={scene => { setScientificScenePreview(scene); setScientificSceneReference(scene.reference); }} onClose={() => setShowQuantumSceneExamples(false)} />}
       {quantumSceneNavigationError && <div role="alert" data-testid="quantum-scene-navigation-error" style={{ position: "fixed", bottom: 16, right: 16, zIndex: 2901, padding: 12, background: "#7f1d1d", color: "white", maxWidth: 420 }}>
         {quantumSceneNavigationError} <button type="button" onClick={() => setQuantumSceneNavigationError(null)}>Dismiss</button></div>}
       {workflowActionOverlayModel && !cleanScreenshotSurfaceActive && (

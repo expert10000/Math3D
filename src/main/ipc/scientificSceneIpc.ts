@@ -1,12 +1,13 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { inspectScientificHeightSample, openScientificHeightSurface,
   type ScientificHeightSurface } from "../scientificScene/heightSurface";
 import { preparePythonPublisher, runPythonPublisher, type PreparedPythonPublisher,
   type PythonPublisherRun } from "../scientificScene/pythonPublisher";
 
 export type ScientificSceneOpenResponse =
-  | { ok: true; scene: ScientificHeightSurface & { sourceKind: "bundled" | "external" } }
+  | { ok: true; scene: ScientificHeightSurface & { sourceKind: "bundled" | "external";
+      reference: { format: "scientific-scene/v1"; title: string; directory: string; sceneFingerprint: string } } }
   | { ok: false; canceled: true }
   | { ok: false; canceled: false; error: string };
 export type PythonPublisherPrepareResponse =
@@ -17,9 +18,25 @@ export type PythonPublisherPrepareResponse =
 
 const PINNED_SINCOS_MANIFEST = "6666afe57ad2876575b77c341bb8e8c6959d4a6cee14cc231d33eab39da9dbae";
 const PINNED_REFERENCE_PUBLISHER = "b9da5fbabce579ff4e795495bb8944135eed2e50f5e17d10c6f18bbcc0f7b7da";
+const bundledExampleDirectory = () => app.isPackaged ? join(process.resourcesPath, "scientific-scenes", "sincos.sscene") :
+  join(app.getAppPath(), "tests", "fixtures", "scientific-scene", "sincos.sscene");
 const trustedSender = (event: Electron.IpcMainInvokeEvent) => {
   const window = BrowserWindow.fromWebContents(event.sender);
   return !!window && !window.isDestroyed() && event.senderFrame === event.sender.mainFrame;
+};
+const referenceFor = (scene: ScientificHeightSurface, directory: string) => ({
+  format: "scientific-scene/v1" as const, title: scene.manifest.title, directory,
+  sceneFingerprint: scene.fingerprint,
+});
+const referenceRequest = (value: unknown): { directory: string; sceneFingerprint: string } => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new TypeError("Invalid scientific reference request");
+  const request = value as Record<string, unknown>;
+  if (Object.keys(request).sort().join(",") !== "directory,sceneFingerprint" ||
+      typeof request.directory !== "string" || !isAbsolute(request.directory) ||
+      !request.directory.toLowerCase().endsWith(".sscene") ||
+      typeof request.sceneFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(request.sceneFingerprint))
+    throw new TypeError("Invalid scientific reference request");
+  return { directory: request.directory, sceneFingerprint: request.sceneFingerprint };
 };
 
 export function registerScientificSceneIpc(): void {
@@ -89,7 +106,7 @@ export function registerScientificSceneIpc(): void {
     try {
       const scene = await handle.promise;
       active.set(event.sender, { directory: session.output, fingerprint: scene.fingerprint });
-      return { ok: true, scene: { ...scene, sourceKind: "external" } };
+      return { ok: true, scene: { ...scene, sourceKind: "external", reference: referenceFor(scene, session.output) } };
     } catch (error) {
       return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
     } finally {
@@ -106,12 +123,11 @@ export function registerScientificSceneIpc(): void {
   ipcMain.handle("scientificScenes:openExample", async (event, ...args: unknown[]): Promise<ScientificSceneOpenResponse> => {
     if (!trustedSender(event) || args.length) return { ok: false, canceled: false, error: "Invalid scientific example request" };
     try {
-      const directory = app.isPackaged ? join(process.resourcesPath, "scientific-scenes", "sincos.sscene") :
-        join(app.getAppPath(), "tests", "fixtures", "scientific-scene", "sincos.sscene");
+      const directory = bundledExampleDirectory();
       const scene = await openScientificHeightSurface(directory);
       if (scene.fingerprint !== PINNED_SINCOS_MANIFEST) throw new Error("Bundled scientific example changed");
       active.set(event.sender, { directory, fingerprint: scene.fingerprint });
-      return { ok: true, scene: { ...scene, sourceKind: "bundled" } };
+      return { ok: true, scene: { ...scene, sourceKind: "bundled", reference: referenceFor(scene, directory) } };
     } catch (error) { return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) }; }
   });
   ipcMain.handle("scientificScenes:openDirectory", async (event, ...args: unknown[]): Promise<ScientificSceneOpenResponse> => {
@@ -127,7 +143,39 @@ export function registerScientificSceneIpc(): void {
         throw new TypeError("Choose a .sscene directory");
       const scene = await openScientificHeightSurface(directory);
       active.set(event.sender, { directory, fingerprint: scene.fingerprint });
-      return { ok: true, scene: { ...scene, sourceKind: "external" } };
+      return { ok: true, scene: { ...scene, sourceKind: "external", reference: referenceFor(scene, directory) } };
+    } catch (error) {
+      return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle("scientificScenes:openReference", async (event, ...args: unknown[]): Promise<ScientificSceneOpenResponse> => {
+    if (!trustedSender(event) || args.length !== 1)
+      return { ok: false, canceled: false, error: "Invalid scientific reference request" };
+    try {
+      const reference = referenceRequest(args[0]);
+      const scene = await openScientificHeightSurface(reference.directory);
+      if (scene.fingerprint !== reference.sceneFingerprint) throw new Error("Scientific source fingerprint changed");
+      const bundled = resolve(reference.directory) === resolve(bundledExampleDirectory());
+      if (bundled && scene.fingerprint !== PINNED_SINCOS_MANIFEST) throw new Error("Bundled scientific example changed");
+      active.set(event.sender, { directory: reference.directory, fingerprint: scene.fingerprint });
+      return { ok: true, scene: { ...scene, sourceKind: bundled ? "bundled" : "external", reference: referenceFor(scene, reference.directory) } };
+    } catch (error) {
+      return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle("scientificScenes:pickMatchingReference", async (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 1 || typeof args[0] !== "string" || !/^[a-f0-9]{64}$/.test(args[0]))
+      return { ok: false, canceled: false, error: "Invalid scientific relink request" };
+    try {
+      const window = BrowserWindow.fromWebContents(event.sender)!;
+      const picked = await dialog.showOpenDialog(window, { title: "Relink exact scientific-scene/v1 bundle",
+        properties: ["openDirectory"] });
+      if (picked.canceled || !picked.filePaths[0]) return { ok: false, canceled: true };
+      const directory = picked.filePaths[0];
+      if (!isAbsolute(directory) || !directory.toLowerCase().endsWith(".sscene")) throw new TypeError("Choose a .sscene directory");
+      const scene = await openScientificHeightSurface(directory);
+      if (scene.fingerprint !== args[0]) throw new Error("Selected scientific scene fingerprint does not match the saved Project link");
+      return { ok: true, reference: referenceFor(scene, directory) };
     } catch (error) {
       return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
     }
