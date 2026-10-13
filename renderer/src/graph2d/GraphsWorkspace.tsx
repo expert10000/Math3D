@@ -10,6 +10,7 @@ import {
   isGraph2DLocalDifferentialCurrent, queryGraph2DInspector,
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
+  type Graph2DConstructionAction,
   type Graph2DIntegralMode,
   type Graph2DPolarMeasurement,
   type Graph2DAnyPromotion,
@@ -41,6 +42,7 @@ import { Graph2DGridPanel } from "./Graph2DGridPanel";
 import { Graph2DRegressionPanel } from "./Graph2DRegressionPanel";
 import { Graph2DToolsPanel } from "./Graph2DToolsPanel";
 import { Graph2DProbesPanel } from "./Graph2DProbesPanel";
+import { Graph2DConstructionsPanel } from "./Graph2DConstructionsPanel";
 import "./graphsWorkspace.css";
 
 const GRAPH2D_LEFT_PALETTE_KEY = "math3d.graphs.leftPalette.v1";
@@ -65,6 +67,7 @@ type Props = {
   onAxesCommit?: (axes: Graph2DDocument["display"]["axes"]) => void;
   onProbesCommit?: (probes: NonNullable<Graph2DDocument["display"]["pinnedProbes"]>) => void;
   onAuthoringCommit?: (action: Graph2DAuthoringAction) => void;
+  onConstructionCommit?: (action: Graph2DConstructionAction) => void;
   onSelectionCommit?: (selection: Graph2DSelection) => void;
   onUndo?: () => void;
   onRedo?: () => void;
@@ -83,7 +86,7 @@ type Props = {
 
 /** Desktop/web projection of shared Graph2D source and persistent display state. */
 export function GraphsWorkspace({ dockLayout, document, analysisRequest, status = "ready", errorMessage, onViewportCommit,
-  onGridModeCommit, onAxesCommit, onProbesCommit, onAuthoringCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
+  onGridModeCommit, onAxesCommit, onProbesCommit, onAuthoringCommit, onConstructionCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onOpenPreset, onResumeCheckpoint, onCopyProject,
   onExportPersonalProject, onCopyGraphDefinition, onPreviewPersonalImport, onImportPersonalProject }: Props) {
   const [galleryOpen, setGalleryOpen] = useState(false);
@@ -445,12 +448,15 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     const screen = graph2DWorldToScreen(viewport, size, p);
     onViewportCommit?.(panGraph2DViewport(viewport, size, { x: size.width / 2 - screen.x, y: size.height / 2 - screen.y }));
   }} />;
+  const constructions = <Graph2DConstructionsPanel document={document}
+    artifact={parameterPreviewActive ? null : sampling.constructions} onAction={onConstructionCommit} />;
   const inspector = inspected ? <div className="graph2d-inspector">
     <header className="graph2d-inspector-current" aria-label="Selected graph result" tabIndex={-1}>
       <strong>{inspected.label}</strong>
       <span>{inspected.probe ? `Probe (${inspected.probe.x.toPrecision(5)}, ${inspected.probe.y.toPrecision(5)})` :
         "Select a point or run an analysis below."}</span>
     </header>
+    {constructions}
     {selectedObject?.kind === "point-series" && <Graph2DRegressionPanel document={document} model={regressionModel} onModel={setRegressionModel} result={regression} onResult={setRegression} />}
     {parameterPreviewActive && <p role="status">Inspector and analyses refer to the committed source, not the parameter preview.</p>}
     {differential && <section className="graph2d-local-differential" data-testid="graph2d-local-differential" aria-label="Local differential">
@@ -683,7 +689,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       <button type="button" onClick={() => onSelectionCommit?.({ objectId: null, probe: null })}>Clear selection</button>
     </div>
     {savedProbes}
-  </div> : <div className="graph2d-inspector"><p className="graph2d-muted">Select a graph object to inspect it.</p>{savedProbes}</div>;
+  </div> : <div className="graph2d-inspector"><p className="graph2d-muted">Select a graph object to inspect it.</p>{constructions}{savedProbes}</div>;
   return (
     <section data-testid="graphs-workspace" aria-label="Graphs workspace" className="graph2d-workspace"
       data-left={showLeft} data-right={showRight} data-presentation={presentation}
@@ -770,6 +776,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           {showRight && <details><summary>Inspector</summary>{inspector}</details>}
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={series}
+          constructions={parameterPreviewActive ? null : sampling.constructions}
           probeMarkers={parameterPreviewActive ? [] : projectGraph2DProbeMarkers({ ...document, display: renderedDisplay }, size)}
           regression={!parameterPreviewActive && document.display.objects.find(s => s.objectId === currentRegression?.objectId)?.visible ? currentRegression : null}
           selectedProbe={parameterPreviewActive ? null : document.selection.probe} hoverProbe={parameterPreviewActive ? null : hoverSelection?.probe} overlays={parameterPreviewActive ? [] : differentialOverlays}

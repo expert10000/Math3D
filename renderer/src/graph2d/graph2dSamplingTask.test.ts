@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createEmptyGraph2DDocument, type Graph2DSceneSamplingRequest } from "@math3d/core";
+import { createEmptyGraph2DDocument, resolveGraph2DConstructions, type Graph2DSceneSamplingRequest } from "@math3d/core";
 import { startGraph2DSamplingTask, type Graph2DSamplingWorker } from "./graph2dSamplingTask";
 
 const request: Graph2DSceneSamplingRequest = { document: createEmptyGraph2DDocument("job-test"),
@@ -20,8 +20,10 @@ describe("real sampling worker lifecycle", () => {
     startGraph2DSamplingTask(current, "current", request, publish);
     current.onmessage!({ data: { jobId: "stale", series: [] } } as MessageEvent);
     expect(publish).not.toHaveBeenCalled();
-    current.onmessage!({ data: { jobId: "current", series: [] } } as MessageEvent);
+    const constructions = resolveGraph2DConstructions(request.document);
+    current.onmessage!({ data: { jobId: "current", series: [], constructions } } as MessageEvent);
     expect(publish).toHaveBeenCalledTimes(1); expect(current.terminate).toHaveBeenCalledTimes(1);
+    expect(publish.mock.calls[0]?.[2]).toEqual(constructions);
   });
   it("enforces timeout and cleans worker errors", () => {
     vi.useFakeTimers();

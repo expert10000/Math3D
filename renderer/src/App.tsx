@@ -23217,6 +23217,9 @@ const App: React.FC = () => {
     const adapter = graph2dAdapterRef.current!;
     setGraph2dDocument(adapter.commitScene(applyGraph2DAuthoring(adapter.document(), action), action.type));
   }, []);
+  const commitGraph2DConstruction = useCallback((action: import("@math3d/core").Graph2DConstructionAction) => {
+    setGraph2dDocument(graph2dAdapterRef.current!.commitConstruction(action));
+  }, []);
   const commitGraph2DSelection = useCallback((selection: Graph2DSelection) => {
     setGraph2dDocument(graph2dAdapterRef.current!.commitSelection(selection));
   }, []);
@@ -89651,6 +89654,7 @@ case "mobius":
             onProbesCommit={pinnedProbes => { const adapter = graph2dAdapterRef.current!, document = adapter.document();
               setGraph2dDocument(adapter.commitScene({ source: document.source, selection: document.selection, display: { ...document.display, pinnedProbes } }, "pinned-probes")); }}
             onAuthoringCommit={commitGraph2DAuthoring}
+            onConstructionCommit={commitGraph2DConstruction}
             onSelectionCommit={commitGraph2DSelection}
             onUndo={undoGraph2DViewport} onRedo={redoGraph2DViewport} />
         ) : mode === "curves" ? (

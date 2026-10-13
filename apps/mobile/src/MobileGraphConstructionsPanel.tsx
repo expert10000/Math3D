@@ -1,0 +1,65 @@
+import { useEffect, useState } from "react";
+import { Pressable, Text, TextInput, View } from "react-native";
+import { graph2DDerivedConstructionFromPoint, graph2DPointConstructionFromProbe, GRAPH2D_MAX_CONSTRUCTIONS,
+  type Graph2DConstructionAction, type Graph2DConstructionArtifact, type Graph2DDocument,
+  type Graph2DPointOnCurveConstruction } from "@math3d/core";
+
+const Button = ({ label, disabled, onPress }: { label: string; disabled?: boolean; onPress: () => void }) =>
+  <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }}
+    disabled={disabled} onPress={onPress} style={{ minHeight: 44, minWidth: 44, padding: 10 }}><Text>{label}</Text></Pressable>;
+
+function PointCard({ document, object, state, confidence, reason, onAction }: { document: Graph2DDocument; object: Graph2DPointOnCurveConstruction;
+  state: string; confidence?: string; reason?: string | null; onAction: (action: Graph2DConstructionAction) => void }) {
+  const [draft, setDraft] = useState(String(object.anchor.value));
+  useEffect(() => setDraft(String(object.anchor.value)), [object.anchor.value]);
+  const [error, setError] = useState("");
+  const hasDependents = !!document.source.constructions?.objects.some(item => item.inputs.some(input =>
+    input.kind === "construction" && input.objectId === object.id));
+  const full = (document.source.constructions?.objects.length ?? 0) >= GRAPH2D_MAX_CONSTRUCTIONS;
+  return <View style={{ borderTopWidth: 1, borderColor: "#cbd5e1", paddingVertical: 8 }}>
+    <Text>{object.label}: {object.anchor.parameter}={object.anchor.value.toPrecision(6)} · {state}{confidence ? ` · ${confidence}` : ""}</Text>
+    {reason && <Text>{reason}</Text>}
+    <TextInput accessibilityLabel={`${object.anchor.parameter} for ${object.label}`} keyboardType="numeric" value={draft}
+      onChangeText={setDraft} style={{ minHeight: 44, borderWidth: 1, borderColor: "#94a3b8", padding: 8 }} />
+    <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+      <Button label={`Move ${object.label}`} onPress={() => {
+        const value = Number(draft);
+        if (!draft.trim() || !Number.isFinite(value)) { setError("Enter a finite parameter."); return; }
+        setError("");
+        onAction({ type: "update", object: { ...object, anchor: { ...object.anchor, value } } });
+      }} />
+      <Button label="Add tangent" disabled={full} onPress={() => onAction({ type: "create", object: graph2DDerivedConstructionFromPoint(document, object.id, "tangent") })} />
+      <Button label="Add normal" disabled={full} onPress={() => onAction({ type: "create", object: graph2DDerivedConstructionFromPoint(document, object.id, "normal") })} />
+      <Button label={`Delete ${object.label}`} disabled={hasDependents} onPress={() => onAction({ type: "delete", objectId: object.id })} />
+    </View>
+    {error && <Text accessibilityLiveRegion="polite">{error}</Text>}
+    {hasDependents && <Text>Remove dependent lines before deleting this point.</Text>}
+  </View>;
+}
+
+export const MobileGraphConstructionsPanel = ({ document, artifact, onAction }: { document: Graph2DDocument;
+  artifact: Graph2DConstructionArtifact | null; onAction: (action: Graph2DConstructionAction) => void }) => {
+  const objects = document.source.constructions?.objects ?? [];
+  const probe = document.selection.probe;
+  const canPromote = !!probe && !!document.source.objects.find(item => item.id === probe.objectId &&
+    ["explicit-cartesian", "parametric", "polar"].includes(item.kind));
+  return <View testID="mobile-graph-constructions" accessibilityLabel="Constructions">
+    <Text accessibilityRole="header">Constructions ({objects.length}/{GRAPH2D_MAX_CONSTRUCTIONS})</Text>
+    <Button label="Save probe as point" disabled={!canPromote || !artifact || objects.length >= GRAPH2D_MAX_CONSTRUCTIONS}
+      onPress={() => onAction({ type: "create", object: graph2DPointConstructionFromProbe(document,
+        `Point ${objects.filter(item => item.kind === "point-on-curve").length + 1}`) })} />
+    {objects.length > 0 && <Text accessibilityLiveRegion="polite">{artifact ? artifact.truncated ? "Construction output limit reached." :
+      `${artifact.objects.filter(item => item.state === "ready").length} ready, ${artifact.objects.filter(item => item.state === "unavailable").length} unavailable` :
+      "Recomputing constructions…"}</Text>}
+    {objects.map(object => object.kind === "point-on-curve" ?
+      <PointCard key={object.id} document={document} object={object}
+        state={artifact?.objects.find(item => item.id === object.id)?.state ?? "pending"}
+        confidence={artifact?.objects.find(item => item.id === object.id)?.confidence}
+        reason={artifact?.objects.find(item => item.id === object.id)?.reason} onAction={onAction} /> :
+      <View key={object.id} style={{ borderTopWidth: 1, borderColor: "#cbd5e1", paddingVertical: 8 }}>
+        <Text>{object.label}: {object.kind} · {artifact?.objects.find(item => item.id === object.id)?.state ?? "pending"} · {artifact?.objects.find(item => item.id === object.id)?.confidence ?? "pending"}</Text>
+        {artifact?.objects.find(item => item.id === object.id)?.reason && <Text>{artifact.objects.find(item => item.id === object.id)?.reason}</Text>}
+        <Button label={`Delete ${object.label}`} onPress={() => onAction({ type: "delete", objectId: object.id })} />
+      </View>)}
+  </View>;
+};

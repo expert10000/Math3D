@@ -9,7 +9,7 @@ import { createMobileGraph, importMobileGraph, readMobileGraph, readMobileGraphW
 import { serializeMobileProjectHandoff } from "../../apps/mobile/src/models/mobileProjectTransfer";
 import { mobileGraphAuthoringAction, mobileGraphFunctionDraft, applyMobileGraphAuthoring } from "../../apps/mobile/src/models/mobileGraphAuthoring";
 import { editMobileGraphProbes } from "../../apps/mobile/src/models/mobileGraphProbes";
-import { GRAPH2D_CONSTRUCTIONS_CAPABILITY } from "@math3d/core";
+import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, resolveGraph2DConstructions } from "@math3d/core";
 
 const producer = { platform: "desktop", name: "Math3D Desktop", version: "1.5.0" } as const;
 const desktop = () => {
@@ -125,6 +125,7 @@ describe("G2D47 construction handoff", () => {
     expect(reopened.source.constructions).toEqual(mobile.document().source.constructions);
     expect(reopened.identity.structuralHash).toBe(structuralHash(reopened.source));
     expect(reopened.requiredCapabilities).toContain(GRAPH2D_CONSTRUCTIONS_CAPABILITY);
+    expect(resolveGraph2DConstructions(reopened).objects.map(item => item.state)).toEqual(["ready", "ready"]);
     expect(readMobileGraphWorkspace(stored)!.entries[0]?.checkpoint).toEqual(reopened);
   });
 });

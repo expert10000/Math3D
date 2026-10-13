@@ -254,6 +254,15 @@
 .graph2d-probes-panel input { width: 100%; }
 .graph2d-probes-panel button { min-height: 44px; margin: 3px; }
 .graph2d-probe-card { border-top: 1px solid var(--border); padding: 8px 0; }
+.graph2d-constructions-panel { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px; }
+.graph2d-constructions-panel h3 { margin: 0 0 8px; }
+.graph2d-constructions-panel ol { padding-left: 20px; }
+.graph2d-construction-card { border-top: 1px solid var(--border); padding: 8px 0; }
+.graph2d-construction-card small { display: block; margin: 3px 0 8px; }
+.graph2d-construction-card label { display: block; }
+.graph2d-construction-card input { width: 100%; min-height: 40px; }
+.graph2d-construction-card button, .graph2d-constructions-panel > button { min-height: 44px; margin: 3px; }
+.graph2d-construction-actions { display: flex; flex-wrap: wrap; }
 @media (forced-colors: active) { .graph2d-saved-probes circle { fill: Highlight; stroke: Canvas; } .graph2d-saved-probes rect { fill: Canvas; stroke: CanvasText; } .graph2d-saved-probes text { fill: CanvasText; } }
 .graph2d-parameter-cards { position: absolute; right: calc(var(--graph2d-right-width, 0px) + 20px); top: 100px; z-index: 5; box-sizing: border-box; width: min(324px, calc(100% - var(--graph2d-left-width, 0px) - var(--graph2d-right-width, 0px) - 48px)); max-height: calc(100% - 116px); padding: 12px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-strong); }
 .graph2d-parameter-cards header { display: flex; align-items: center; justify-content: space-between; gap: 8px; position: sticky; top: -12px; padding: 8px 0; background: var(--panel-strong); z-index: 1; }

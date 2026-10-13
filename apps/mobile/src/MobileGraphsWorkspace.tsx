@@ -17,6 +17,7 @@ import { getGraph2DGuidedDocumentGuidance } from "@math3d/core";
 import { mobileGraphAreaRects } from "./viewer/mobileGraphOverlays";
 import { editMobileGraphProbes } from "./models/mobileGraphProbes";
 import { MobileGraphProbesPanel } from "./MobileGraphProbesPanel";
+import { MobileGraphConstructionsPanel } from "./MobileGraphConstructionsPanel";
 import { MobileGraphFunctionsPanel } from "./MobileGraphFunctionsPanel";
 import { applyMobileGraphAuthoring, type MobileGraphEditor } from "./models/mobileGraphAuthoring";
 import { mobileGraphKindAction, type MobileGraphAdvancedEditor } from "./models/mobileGraphAdvancedAuthoring";
@@ -91,6 +92,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   }, []);
   const sampling = useMobileGraphSampling(sampledDocument, viewport, size, !!preview, () => { setAnalysis(null); setParameterPreview(null); }, parameterPreviewActive ? document.identity : undefined, tableStore);
   const { series, budget } = sampling;
+  const constructions = parameterPreviewActive ? null : sampling.constructions;
   const geometry = useMemo(() => mobileGraphAdvancedGeometry(series, viewport, size, budget), [series, viewport, size, budget.fills, budget.markers]);
   const lines = useMemo(() => projectMobileGraphLines(geometry.boundaries, viewport, size, document.selection.objectId, budget.lines), [geometry, viewport, size, document.selection.objectId, budget.lines]);
   const continuationLines = useMemo(() => viewport.continuation ? projectMobileGraphLines(series.filter(item => item.continuation).map(item => ({ ...item,
@@ -189,6 +191,20 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         })}
         <View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: .35 }]}>{continuationLines.map((line, index) => <Line key={`continuation${index}`} {...line} />)}</View>
         {lines.map((line, index) => <Line key={index} {...line} />)}
+        {constructions?.objects.filter(item => item.state === "ready" && item.style.visible && item.point).map(item => {
+          if (item.direction) {
+            if (graph2DHasLogScale(viewport)) return null;
+            const clipped = clipGraph2DLineOverlay({ artifactId: item.id, kind: item.kind === "normal" ? "normal" : "tangent",
+              source: constructions.source, probeGeneration: constructions.generationKey, objectId: item.sourceObjectId,
+              anchor: item.point!, direction: item.direction }, viewport, size);
+            return clipped ? <Line key={item.id} a={graph2DWorldToScreen(viewport, size, clipped[0])}
+              b={graph2DWorldToScreen(viewport, size, clipped[1])} color={item.style.color} width={item.style.lineWidth} /> : null;
+          }
+          const screen = graph2DWorldToScreen(viewport, size, item.point!);
+          return Number.isFinite(screen.x) && Number.isFinite(screen.y) ? <View key={item.id} testID={`mobile-graph-construction-${item.id}`}
+            style={{ position: "absolute", left: screen.x - 6, top: screen.y - 6, width: 12, height: 12,
+              borderRadius: 6, borderWidth: item.style.lineWidth, borderColor: item.style.color, backgroundColor: "white" }} /> : null;
+        })}
         {regressionLines.map((line, index) => <Line key={`regression${index}`} {...line} />)}
         {geometry.points.map((point, index) => <View key={`data${index}`} style={{ position: "absolute", left: point.x - 3, top: point.y - 3,
           width: 6, height: 6, borderRadius: 3, borderWidth: point.open ? 1 : 0, borderColor: point.color, backgroundColor: point.open ? "white" : point.color }} />)}
@@ -284,6 +300,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
                 { x: size.width / 2 - screen.x, y: size.height / 2 - screen.y }) },
               selection: { objectId: pinned.objectId, probe: { objectId: pinned.objectId, x: pinned.x, y: pinned.y } } }, "restore");
           })} />
+        <MobileGraphConstructionsPanel document={document} artifact={constructions}
+          onAction={(action) => { commit(() => adapter.commitConstruction(action)); }} />
       </>}
     </ScrollView>}
     </View>

@@ -9,6 +9,7 @@ import {
   type Graph2DRegionArtifact,
   type Graph2DPointSeriesArtifact,
   type Graph2DPiecewiseArtifact,
+  type Graph2DConstructionArtifact,
   graph2DRegressionOverlaySeries, graph2DGridAppearance, projectGraph2DPolarGrid, type Graph2DRegression,
   type projectGraph2DProbeMarkers,
 } from "@math3d/core";
@@ -24,12 +25,13 @@ export type Graph2DPlotSeries = Readonly<{
   continuation?: Graph2DSamplingArtifact;
 }>;
 type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonly Graph2DPlotSeries[]; regression?: Graph2DRegression | null;
+  constructions?: Graph2DConstructionArtifact | null;
   probeMarkers?: ReturnType<typeof projectGraph2DProbeMarkers>;
   selectedProbe?: Graph2DProbe | null; hoverProbe?: Graph2DProbe | null;
   overlays?: readonly Graph2DLineOverlay[]; intervals?: Graph2DIntervalAnalysis | null;
   area?: Graph2DIntegralAnalysis | null; intersections?: Graph2DIntersectionAnalysis | null };
 
-export function Graph2DPlot({ display, size, series, regression, selectedProbe, hoverProbe, overlays = [], intervals, area, intersections, probeMarkers = [] }: Props) {
+export function Graph2DPlot({ display, size, series, regression, constructions, selectedProbe, hoverProbe, overlays = [], intervals, area, intersections, probeMarkers = [] }: Props) {
   if (graph2DHasLogScale(display.viewport)) { overlays = []; area = null; intervals = null; }
   const clipId = useId();
   const grid = projectGraph2DGrid(display.viewport, size, display.axes.gridOptions);
@@ -183,6 +185,24 @@ export function Graph2DPlot({ display, size, series, regression, selectedProbe, 
           return <line key={overlay.artifactId} data-graph2d-overlay={overlay.kind}
             className={"graph2d-differential-overlay graph2d-differential-" + overlay.kind}
             x1={a.x} y1={a.y} x2={b.x} y2={b.y} />;
+        })}
+        {constructions?.objects.filter(item => item.state === "ready" && item.style.visible && item.point).map(item => {
+          if (item.direction) {
+            if (graph2DHasLogScale(display.viewport)) return null;
+            const clipped = clipGraph2DLineOverlay({ artifactId: item.id, kind: item.kind === "normal" ? "normal" : "tangent",
+              source: constructions.source, probeGeneration: constructions.generationKey,
+              objectId: item.sourceObjectId, anchor: item.point!, direction: item.direction }, display.viewport, size);
+            if (!clipped) return null;
+            const a = graph2DWorldToScreen(display.viewport, size, clipped[0]);
+            const b = graph2DWorldToScreen(display.viewport, size, clipped[1]);
+            return <line key={item.id} data-graph2d-construction={item.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+              stroke={item.style.color} strokeWidth={item.style.lineWidth}
+              strokeDasharray={item.style.lineStyle === "dashed" ? "8 5" : item.style.lineStyle === "dotted" ? "2 4" : undefined} />;
+          }
+          const screen = graph2DWorldToScreen(display.viewport, size, item.point!);
+          if (!Number.isFinite(screen.x) || !Number.isFinite(screen.y)) return null;
+          return <circle key={item.id} data-graph2d-construction={item.id} cx={screen.x} cy={screen.y} r={6}
+            fill="white" stroke={item.style.color} strokeWidth={item.style.lineWidth} />;
         })}
       </g>
       {intervals && <g data-testid="graph2d-interval-overlays" data-result-id={intervals.resultId} aria-hidden="true">
