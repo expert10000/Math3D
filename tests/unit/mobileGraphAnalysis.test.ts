@@ -7,6 +7,7 @@ import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { createMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
 import { applyMobileGraphAuthoring, mobileGraphAuthoringAction, mobileGraphFunctionDraft } from "../../apps/mobile/src/models/mobileGraphAuthoring";
 import { runMobileGraphAnalysis, mobileGraphAnalysisDraft, isMobileGraphAnalysisCurrent, mobileGraphAnalysisProbe } from "../../apps/mobile/src/models/mobileGraphAnalysis";
+import { mobileGraphToolUnavailable, mobileGraphTangentDraft } from "../../apps/mobile/src/models/mobileGraphTools";
 
 const parabola = () => {
   const adapter = new Graph2DCommandAdapter(createMobileGraph("Analysis", true, "analysis"));
@@ -26,6 +27,11 @@ describe("MOB-G07 shared bounded touch analysis", () => {
       display: scene.display, selection: { objectId: "parametric_1", probe: null } });
     const draft = { ...mobileGraphAnalysisDraft(document), x: String(Math.PI / 2) };
     expect(draft.kind).toBe("parametric-tangent");
+    expect(mobileGraphToolUnavailable(document, "tangent")).toBeNull();
+    expect(mobileGraphTangentDraft(document, draft)).toMatchObject({ kind: "parametric-tangent", objectId: "parametric_1", x: "0" });
+    expect(mobileGraphTangentDraft({ ...document, selection: { objectId: "parametric_1",
+      probe: { objectId: "parametric_1", x: 0, y: 1, parameter: Math.PI / 2 } } }, draft).x).toBe(String(Math.PI / 2));
+    expect(mobileGraphToolUnavailable({ ...document, selection: { objectId: null, probe: null } }, "tangent")).toContain("Select");
     const result = runMobileGraphAnalysis(document, draft);
     const probe = result.rows[0]!.probe!;
     const shared = analyzeGraph2DParametricLocalDifferential({ ...document,
@@ -46,6 +52,8 @@ describe("MOB-G07 shared bounded touch analysis", () => {
       selection: { objectId: "polar_1", probe: null } });
     const draft = mobileGraphAnalysisDraft(document);
     expect(draft.kind).toBe("polar-area");
+    expect(mobileGraphToolUnavailable(document, "tangent")).toBeNull();
+    expect(mobileGraphTangentDraft(document, draft)).toMatchObject({ kind: "polar-tangent", objectId: "polar_1", x: "0" });
     expect(draft.max).toBe(String(Math.PI));
     const area = runMobileGraphAnalysis(document, draft);
     const arc = runMobileGraphAnalysis(document, { ...draft, kind: "polar-arc-length" });
@@ -82,6 +90,8 @@ describe("MOB-G07 shared bounded touch analysis", () => {
   });
   it("publishes tangent overlays and source-linked finite feature/intersection navigation", () => {
     const adapter = parabola(), document = adapter.document(), base = { ...mobileGraphAnalysisDraft(document), x: "1" };
+    expect(mobileGraphToolUnavailable(document, "tangent")).toBeNull();
+    expect(mobileGraphTangentDraft(document, base)).toMatchObject({ kind: "tangent", objectId: "function_1", x: "0" });
     const tangent = runMobileGraphAnalysis(document, { ...base, kind: "tangent" });
     expect(tangent.overlays).toHaveLength(1); expect(tangent.overlays[0]?.direction.y).toBe(2);
     expect(tangent.rows.find(row => row.label.startsWith("Signed curvature:"))?.label).toContain("0.17888544");

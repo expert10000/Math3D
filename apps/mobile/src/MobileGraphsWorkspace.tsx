@@ -12,7 +12,7 @@ import { MobileGraphDisplayPanel } from "./MobileGraphDisplayPanel";
 import { MobileGraphExportPanel } from "./MobileGraphExportPanel";
 import { MobileGraphParametersPanel } from "./MobileGraphParametersPanel";
 import { MobileGraphToolsPanel } from "./MobileGraphToolsPanel";
-import { graph2DToolUnavailable, projectGraph2DProbeMarkers, graph2DPinnedProbeState, type Graph2DTool } from "@math3d/core";
+import { projectGraph2DProbeMarkers, graph2DPinnedProbeState, type Graph2DTool } from "@math3d/core";
 import { getGraph2DGuidedDocumentGuidance } from "@math3d/core";
 import { mobileGraphAreaRects } from "./viewer/mobileGraphOverlays";
 import { editMobileGraphProbes } from "./models/mobileGraphProbes";
@@ -28,6 +28,7 @@ import { mobileGraphLayout, mobileGraphPanelDestination, type MobileGraphDestina
 import { MobileGraphAnalysisPanel } from "./MobileGraphAnalysisPanel";
 import { mobileGraphAnalysisDraft, runMobileGraphAnalysis, isMobileGraphAnalysisCurrent, mobileGraphAnalysisProbe,
   type MobileGraphRegressionAnalysis } from "./models/mobileGraphAnalysis";
+import { mobileGraphToolUnavailable, mobileGraphTangentDraft } from "./models/mobileGraphTools";
 import { clipMobileGraphLine, projectMobileGraphGrid, projectMobileGraphLines, type MobileGraphLine } from "./viewer/mobileGraphProjection";
 
 const touches = (event: GestureResponderEvent): GraphTouch[] => event.nativeEvent.touches.map((touch) =>
@@ -63,11 +64,18 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   useEffect(() => () => onPresentationChange?.(false), [onPresentationChange]);
   const routeTool = (tool: Graph2DTool) => {
     const selected = document.source.objects.find(o => o.id === document.selection.objectId);
-    const reason = graph2DToolUnavailable(document, tool, selected?.kind !== "point-series" || !!tableStore.resolve(selected.table));
+    const reason = mobileGraphToolUnavailable(document, tool, selected?.kind !== "point-series" || !!tableStore.resolve(selected.table));
     if (reason) { setError(reason); return; }
     cancel(); cancelParameter();
     if (tool === "move" || tool === "probe") { setDestination("Graph"); setError(tool === "probe" ? "Tap a curve to commit a probe." : "Drag to move; tap a curve to select."); return; }
     if (tool === "slider") { setDestination("Parameters"); return; }
+    if (tool === "tangent") {
+      const draft = mobileGraphTangentDraft(document, analysisDraft);
+      setAnalysisDraft(draft); setDestination("Analyze"); setOverlays(current => ({ ...current, tangent: true }));
+      try { setAnalysis(runMobileGraphAnalysis(document, draft)); setError(""); }
+      catch (caught) { setAnalysis(null); setError((caught as Error).message); }
+      return;
+    }
     setAnalysisDraft({ ...analysisDraft, kind: tool === "roots" || tool === "extrema" ? "features" : tool === "regression" ? "regression-linear" : tool,
       objectId: selected!.id, x: String(document.selection.probe?.x ?? 0), secondId: document.source.objects.find(o => o.kind === "explicit-cartesian" && o.id !== selected!.id)?.id ?? "" });
     setDestination("Analyze"); setError("");
@@ -232,6 +240,10 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     </View>
     {!presentation && <Text accessibilityLiveRegion="polite" style={s.readout} numberOfLines={2} testID="mobile-graph-probe">{probe ?
       `${document.source.objects.find((object) => object.id === probe.objectId)?.label}: x=${probe.x.toPrecision(6)}, y=${probe.y.toPrecision(6)}${probe.parameter !== undefined ? `, parameter=${probe.parameter.toPrecision(6)}` : ""}${probe.rowId ? `, ${probe.rowId}` : ""}` : "Tap a curve to probe. Tap overlaps again to cycle."}</Text>}
+    {!presentation && analysisCurrent && analysis && (analysis.kind === "tangent" || analysis.kind === "polar-tangent" || analysis.kind === "parametric-tangent") &&
+      <Text accessibilityLiveRegion="polite" style={s.readout} numberOfLines={2} testID="mobile-graph-tangent-result">
+        {analysis.rows[0]?.label} · {analysis.rows[2]?.label}
+      </Text>}
     {/* Fixed status height prevents ready/incomplete changes from resizing and resampling the plot in a loop. */}
     {!presentation && <Text style={[s.readout, { height: 36 * Math.max(1, window.fontScale) }]} numberOfLines={2}>{[
       parameterPreviewActive ? "Parameter preview — not saved. Apply or Cancel; committed analysis overlays hidden." : "",

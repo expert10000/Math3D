@@ -7,7 +7,7 @@ export const GRAPH2D_TOOLS = [
   { id: "roots", label: "Roots", hint: "Inspect bounded numerical zero candidates." },
   { id: "extrema", label: "Extrema", hint: "Inspect bounded numerical minimum and maximum candidates." },
   { id: "intersections", label: "Intersections", hint: "Choose a pair and interval, then request a scan." },
-  { id: "tangent", label: "Tangent", hint: "Inspect the tangent at the committed explicit-function probe." },
+  { id: "tangent", label: "Tangent", hint: "Inspect tangent, normal, and curvature for the selected curve." },
   { id: "regression", label: "Regression", hint: "Fit original checked point rows; choose a model and run." },
 ] as const;
 export type Graph2DTool = typeof GRAPH2D_TOOLS[number]["id"];
@@ -31,8 +31,12 @@ export function graph2DToolUnavailable(document: Graph2DDocument, tool: Graph2DT
   if (tool === "move" || tool === "probe" || tool === "slider") return null;
   if (tool === "regression") return selected?.kind !== "point-series" ? "Select a point series with original data." :
     rowsAvailable ? null : "Import the original checked data sidecar first.";
+  if (tool === "tangent") {
+    if (selected?.kind !== "explicit-cartesian" && selected?.kind !== "polar" && selected?.kind !== "parametric")
+      return "Select an explicit, polar, or parametric curve.";
+    return document.selection.probe?.objectId === selected.id ? null : "Commit a probe on the selected curve first.";
+  }
   if (selected?.kind !== "explicit-cartesian") return "Select an explicit y(x) function.";
-  if (tool === "tangent" && document.selection.probe?.objectId !== selected.id) return "Commit a probe on the selected function first.";
   if (tool === "intersections" && !document.source.objects.some(o => o.kind === "explicit-cartesian" && o.id !== selected.id))
     return "Add a second explicit function.";
   return null;
