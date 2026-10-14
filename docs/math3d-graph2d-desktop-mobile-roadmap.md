@@ -332,6 +332,8 @@ The [analysis and constructions follow-on roadmap](graph2d-analysis-construction
 
 [G2D51](graph2d-g2d51-curvature.md) begins the next bounded Graphs slice with source-linked signed curvature at an explicit committed probe. It reuses the existing derivative service and leaves persistent curvature geometry and other graph kinds for a separate contract review.
 
+[G2D52](graph2d-g2d52-polar-differential.md) extends transient local differential results to polar probes, with source-linked tangent/normal overlays and signed curvature following increasing angle. The desktop Inspector and mobile Analyze share the core result; persistent geometry and physical-device signoff remain separate gates.
+
 ## 7. Dependency graph and parallel work
 
 ```text

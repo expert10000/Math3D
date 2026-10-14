@@ -2,6 +2,7 @@ import {
   analyzeGraph2DArcLength, analyzeGraph2DCriticalPoints, analyzeGraph2DIntegral, analyzeGraph2DIntervals,
   analyzeGraph2DIntersections,
   analyzeGraph2DLocalDifferential, fitGraph2DViewport,
+  analyzeGraph2DPolarLocalDifferential, isGraph2DPolarLocalDifferentialCurrent,
   analyzeGraph2DPolarMeasurement, isGraph2DPolarMeasurementCurrent,
   GRAPH2D_DEFAULT_VIEWPORT, GRAPH2D_WORKSPACE_CONTRACT,
   graph2DWorldToScreen, panGraph2DViewport, pickGraph2DProbe,
@@ -419,18 +420,22 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         { min: intersectionRequest.min, max: intersectionRequest.max } });
   }, [document, size, intersectionRequest, selectedObject]);
   const differential = useMemo(() => analyzeGraph2DLocalDifferential(document), [document]);
+  const polarDifferential = useMemo(() => analyzeGraph2DPolarLocalDifferential(document), [document]);
   const derivatives = differential?.derivatives ?? null;
-  const differentialOverlays = differential && isGraph2DLocalDifferentialCurrent(differential, document) ? differential.overlays : [];
+  const differentialOverlays = [
+    ...(differential && isGraph2DLocalDifferentialCurrent(differential, document) ? differential.overlays : []),
+    ...(polarDifferential && isGraph2DPolarLocalDifferentialCurrent(polarDifferential, document) ? polarDifferential.overlays : []),
+  ];
   const exportAnalyses = useMemo(() => {
     const tables = graph2DPublicationAnalysisTables(!exportOpen ? [] : [criticalPoints, intervals, area, arcLength, polarArea, polarArcLength, intersections,
-      differential, ...(derivatives ?? [])].filter(result => !!result) as { publication: import("@math3d/core").AnalysisResultEnvelope }[]);
+      differential, polarDifferential, ...(derivatives ?? [])].filter(result => !!result) as { publication: import("@math3d/core").AnalysisResultEnvelope }[]);
     if (exportOpen && currentRegression) {
       tables.analyses.push(graph2DPublicationAnalysisTable({ publication: currentRegression.publication, summary: currentRegression.publication.summary } as { publication: import("@math3d/core").AnalysisResultEnvelope }),
         graph2DRegressionResidualTable(currentRegression), graph2DRegressionCurveTable(currentRegression));
       if (currentRegression.n > 2048) tables.analysisNotes.push(`Regression residual table includes first 2048 of ${currentRegression.n} rows; full data and model are unchanged.`);
     }
     return tables;
-  }, [exportOpen, criticalPoints, intervals, area, arcLength, polarArea, polarArcLength, intersections, differential, derivatives, currentRegression]);
+  }, [exportOpen, criticalPoints, intervals, area, arcLength, polarArea, polarArcLength, intersections, differential, polarDifferential, derivatives, currentRegression]);
   const locateSelected = () => {
     if (!document.selection.probe) return;
     const screen = graph2DWorldToScreen(viewport, size, document.selection.probe);
@@ -477,6 +482,24 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       </dl>
       {differential.diagnostics.length > 0 && <ul className="graph2d-derivative-diagnostics">
         {differential.diagnostics.map((diagnostic) => <li key={diagnostic.code}>{diagnostic.message}</li>)}
+      </ul>}
+    </section>}
+    {polarDifferential && <section className="graph2d-local-differential" data-testid="graph2d-local-differential" aria-label="Local differential">
+      <h3>Local differential</h3>
+      <p>Polar tangent and normal follow increasing θ. Signed curvature is (r² + 2r′² − rr″)/(r² + r′²)^(3/2); positive turns counterclockwise. Values have no certified error bound.</p>
+      <dl className="graph2d-inspector-details">
+        <dt>State</dt><dd data-testid="graph2d-differentiability">{polarDifferential.state}</dd>
+        <dt>Angle θ (radians)</dt><dd>{polarDifferential.theta.toPrecision(8)}</dd>
+        <dt>Signed radius</dt><dd>{polarDifferential.signedRadius === null ? "Unavailable" : polarDifferential.signedRadius.toPrecision(8)}</dd>
+        <dt>Point</dt><dd>{polarDifferential.point ? `(${polarDifferential.point.x.toPrecision(6)}, ${polarDifferential.point.y.toPrecision(6)})` : "Unavailable"}</dd>
+        <dt>Signed curvature κ</dt><dd data-testid="graph2d-signed-curvature">{polarDifferential.curvature === null ? "Unavailable" : polarDifferential.curvature.toPrecision(8)}</dd>
+        <dt>Curvature method</dt><dd>{polarDifferential.curvatureMethod === "symbolic-rules" ? "Symbolic rules; floating point value" :
+          polarDifferential.curvatureMethod === "finite-difference" ? "Finite difference; no certified error bound" : "Unavailable"}</dd>
+        <dt>Tangent</dt><dd data-testid="graph2d-tangent-equation">{polarDifferential.tangent ?? "Unavailable"}</dd>
+        <dt>Normal</dt><dd data-testid="graph2d-normal-equation">{polarDifferential.normal ?? "Unavailable"}</dd>
+      </dl>
+      {polarDifferential.diagnostics.length > 0 && <ul className="graph2d-derivative-diagnostics">
+        {polarDifferential.diagnostics.map((diagnostic) => <li key={diagnostic.code}>{diagnostic.message}</li>)}
       </ul>}
     </section>}
     {derivatives && <section className="graph2d-derivatives" data-testid="graph2d-derivatives" aria-label="Derivatives">

@@ -14,4 +14,4 @@ Acceptance: `y=x²` at `x=0` gives `κ=2`; at `x=2` it gives `2/17^(3/2)`. `y=�
 
 The MOB-G13 `curvature-probe` case is pending on every physical device. Test `x²` and `−x²` at `x=0`, then `abs(x)` at `x=0`; record the displayed numerical values or unavailable reason, source-edit invalidation, large-text layout, and actual spoken screen-reader output. The committed evidence template remains pending.
 
-A persistent curvature construction or parametric/polar curvature needs a separate reviewed contract for derivative singularities, numerical uncertainty, save/replay, and geometric display.
+Polar local curvature is now delivered as transient analysis in [G2D52](graph2d-g2d52-polar-differential.md). A persistent curvature construction or parametric curvature needs a separate reviewed contract for derivative singularities, numerical uncertainty, save/replay, and geometric display.

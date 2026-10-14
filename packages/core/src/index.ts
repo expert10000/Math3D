@@ -42,6 +42,7 @@ export * from "./graph2dPicking";
 export * from "./graph2dInspector";
 export * from "./graph2dDerivatives";
 export * from "./graph2dDifferential";
+export * from "./graph2dPolarDifferential";
 export * from "./graph2dCriticalPoints";
 export * from "./graph2dIntervals";
 export * from "./graph2dIntegral";

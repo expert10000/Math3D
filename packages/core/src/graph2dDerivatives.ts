@@ -120,9 +120,11 @@ export const differentiateGraph2DExpression = (
   return { ok: true, ast: { version: ast.version, root } };
 };
 
-type NumericResult = Readonly<{ value: number; step: number; error: number } | { diagnostic: Graph2DDerivativeDiagnostic }>;
-const numericalDerivative = (ast: Graph2DExpressionAst, variables: Readonly<Record<string, number>>,
-  domain: Graph2DDomain, x: number, order: Graph2DDerivativeOrder, tolerance: number): NumericResult => {
+export type Graph2DNumericDerivativeResult = Readonly<{ value: number; step: number; error: number } | { diagnostic: Graph2DDerivativeDiagnostic }>;
+/** Domain-aware fallback shared by Cartesian and polar scalar expressions. */
+export const numericalGraph2DDerivative = (ast: Graph2DExpressionAst, variables: Readonly<Record<string, number>>,
+  domain: Graph2DDomain, x: number, order: Graph2DDerivativeOrder, tolerance: number,
+  variable: "x" | "theta" = "x"): Graph2DNumericDerivativeResult => {
   const scale = Math.max(1, Math.abs(x));
   let step = Math.pow(Number.EPSILON, 1 / (order + 2)) * scale;
   step = Math.min(step, (domain.max - domain.min) / 16);
@@ -133,7 +135,7 @@ const numericalDerivative = (ast: Graph2DExpressionAst, variables: Readonly<Reco
   const sample = (offset: number): number | null => {
     const at = x + offset;
     if (at < domain.min || at > domain.max || (at === domain.min && !domain.includeMin) || (at === domain.max && !domain.includeMax)) return null;
-    const evaluated = evaluateGraph2DExpression(ast, { ...variables, x: at });
+    const evaluated = evaluateGraph2DExpression(ast, { ...variables, [variable]: at });
     return evaluated.ok ? evaluated.value : null;
   };
   const f0 = sample(0);
@@ -207,7 +209,7 @@ export const analyzeGraph2DDerivative = (input: Readonly<{
       } else diagnostics.push({ code: "symbolic-evaluation", message: evaluated.diagnostic.message });
     } else diagnostics.push({ code: symbolic.reason, message: "Symbolic differentiation is unavailable for this expression; using bounded finite differences." });
     if (value === null) {
-      const numerical = numericalDerivative(object.expression.ast, variables, object.domain, input.x, input.order, tolerance);
+      const numerical = numericalGraph2DDerivative(object.expression.ast, variables, object.domain, input.x, input.order, tolerance);
       if ("diagnostic" in numerical) diagnostics.push(numerical.diagnostic);
       else { method = "finite-difference"; value = numerical.value; step = numerical.step; errorEstimate = numerical.error; }
     }

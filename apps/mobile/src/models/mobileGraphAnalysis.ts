@@ -1,6 +1,6 @@
 import { analyzeGraph2DDerivative, analyzeGraph2DLocalDifferential, analyzeGraph2DCriticalPoints,
   analyzeGraph2DIntegral, analyzeGraph2DIntersections, analyzeGraph2DArcLength, analyzeGraph2DPolarMeasurement,
-  evaluateGraph2DExpression,
+  analyzeGraph2DPolarLocalDifferential, evaluateGraph2DPolar, evaluateGraph2DExpression,
   type AnalysisResultEnvelope, type Graph2DDocument, type Graph2DLineOverlay, type Graph2DProbe, type Graph2DAreaFillSegment,
   type Graph2DCriticalPoint, type Graph2DCriticalPointAnalysis, type Graph2DIntersectionCandidate,
   type Graph2DIntersectionAnalysis, structuralHash } from "@math3d/core";
@@ -12,7 +12,7 @@ const publicationProjection = (results: readonly { publication: AnalysisResultEn
 };
 
 export type MobileGraphAnalysisKind = "derivatives" | "tangent" | "features" | "integral" | "intersections" | "arc-length" |
-  "polar-area" | "polar-arc-length" | "regression-linear" | "regression-quadratic";
+  "polar-area" | "polar-arc-length" | "polar-tangent" | "regression-linear" | "regression-quadratic";
 export type MobileGraphAnalysisDraft = { kind: MobileGraphAnalysisKind; objectId: string; secondId: string;
   x: string; min: string; max: string; tolerance: string; mode: "signed" | "absolute" };
 export type MobileGraphAnalysisRow = { label: string; detail: string; probe?: Graph2DProbe;
@@ -62,6 +62,23 @@ export const runMobileGraphAnalysis = (document: Graph2DDocument, draft: MobileG
     return { ...result, ...publicationProjection([analysis]), publications: [analysis.publication],
       rows: [{ label: `${analysis.kind === "swept-area" ? "Polar swept area" : "Polar arc length"}: ${format(analysis.value)}`,
         detail: `${analysis.status} · angular interval [${interval.min}, ${interval.max}] radians · ${analysis.method} · tolerance ${analysis.tolerance} · estimated error ${format(analysis.errorEstimate)} · ${analysis.evaluations} evaluations · unresolved cells ${analysis.unresolvedCells} · partial value ${format(analysis.partialValue)}${analysis.kind === "swept-area" ? " · counts repeated traversal" : ""}` }] };
+  }
+  if (draft.kind === "polar-tangent") {
+    if (!object || object.kind !== "polar") throw new TypeError("Choose a polar curve to analyze.");
+    const theta = number(draft.x);
+    const variables = Object.fromEntries(document.source.variables.map(variable => [variable.name, variable.value]));
+    const point = evaluateGraph2DPolar(object, variables, theta);
+    if (!point) throw new TypeError("Angle is outside the polar source domain or the radius is undefined.");
+    const probe = { objectId: object.id, x: point.x, y: point.y, parameter: theta };
+    const differential = analyzeGraph2DPolarLocalDifferential({ ...document, selection: { objectId: object.id, probe } });
+    if (!differential) throw new TypeError("Polar local differential is unavailable.");
+    return { ...result, ...publicationProjection([differential]), publications: [differential.publication], overlays: differential.overlays,
+      rows: [{ label: `Polar tangent: ${differential.tangent ?? "unavailable"}`,
+        detail: `${differential.state} · θ=${format(theta)} radians · ${differential.tangentMethod}`, probe },
+        { label: `Polar normal: ${differential.normal ?? "unavailable"}`, detail: "Perpendicular to the tangent for increasing θ" },
+        { label: `Signed curvature: ${format(differential.curvature)}`,
+          detail: differential.curvature === null ? "Needs a regular tangent and finite second radius derivative." :
+            `${differential.curvatureMethod} · (r² + 2r′² − rr″)/(r² + r′²)^(3/2) · positive turns counterclockwise · no certified error bound` }] };
   }
   if (!object || object.kind !== "explicit-cartesian") throw new TypeError("Choose an explicit function to analyze.");
   const tolerance = number(draft.tolerance);
@@ -122,6 +139,11 @@ export const isMobileGraphAnalysisCurrent = (result: MobileGraphAnalysis, docume
   });
 export const mobileGraphAnalysisProbe = (document: Graph2DDocument, probe: Graph2DProbe): Graph2DProbe => {
   const object = document.source.objects.find((entry) => entry.id === probe.objectId);
+  if (object?.kind === "polar" && probe.parameter !== undefined) {
+    const point = evaluateGraph2DPolar(object, Object.fromEntries(document.source.variables.map(entry => [entry.name, entry.value])), probe.parameter);
+    if (!point) throw new TypeError("Result angle is outside the source domain or undefined.");
+    return { objectId: object.id, x: point.x, y: point.y, parameter: probe.parameter };
+  }
   if (!object || object.kind !== "explicit-cartesian" || probe.x < object.domain.min || probe.x > object.domain.max ||
     probe.x === object.domain.min && !object.domain.includeMin || probe.x === object.domain.max && !object.domain.includeMax)
     throw new TypeError("Result point is outside the source domain.");

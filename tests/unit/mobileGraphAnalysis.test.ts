@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { analyzeGraph2DDerivative, analyzeGraph2DIntegral, analyzeGraph2DArcLength,
-  analyzeGraph2DPolarMeasurement, applyGraph2DAuthoring, createEmptyGraph2DDocument,
+  analyzeGraph2DPolarMeasurement, analyzeGraph2DPolarLocalDifferential, applyGraph2DAuthoring, createEmptyGraph2DDocument,
   createGraph2DDocument, serializeGraph2DDocument } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { createMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
@@ -35,6 +35,15 @@ describe("MOB-G07 shared bounded touch analysis", () => {
     expect(area.rows[0]?.label).toContain("3.1415927");
     expect(arc.rows[0]?.label).toContain("6.2831853");
     expect(() => runMobileGraphAnalysis(document, { ...draft, min: "-1" })).toThrow();
+    const local = runMobileGraphAnalysis(document, { ...draft, kind: "polar-tangent", x: String(Math.PI / 2) });
+    const probe = local.rows[0]!.probe!;
+    const shared = analyzeGraph2DPolarLocalDifferential({ ...document,
+      selection: { objectId: "polar_1", probe } })!;
+    expect(local.publications[0]?.summary).toEqual(shared.publication.summary);
+    expect(local.rows[2]?.label).toContain("1.0000000");
+    expect(local.overlays).toHaveLength(2);
+    expect(mobileGraphAnalysisProbe(document, probe).parameter).toBe(Math.PI / 2);
+    expect(() => runMobileGraphAnalysis(document, { ...draft, kind: "polar-tangent", x: "-1" })).toThrow();
   });
   it("matches shared derivative, integral and arc length values and publication provenance", () => {
     const document = parabola().document(), base = { ...mobileGraphAnalysisDraft(document), x: "2", tolerance: "0.00001" };
