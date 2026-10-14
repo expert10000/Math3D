@@ -13,6 +13,7 @@ import { MobileGraphExportPanel } from "./MobileGraphExportPanel";
 import { MobileGraphParametersPanel } from "./MobileGraphParametersPanel";
 import { MobileGraphToolsPanel } from "./MobileGraphToolsPanel";
 import { projectGraph2DProbeMarkers, graph2DPinnedProbeState, type Graph2DTool } from "@math3d/core";
+import { graph2DLineConstructionActionsFromProbe } from "@math3d/core";
 import { getGraph2DGuidedDocumentGuidance } from "@math3d/core";
 import { mobileGraphAreaRects } from "./viewer/mobileGraphOverlays";
 import { editMobileGraphProbes } from "./models/mobileGraphProbes";
@@ -294,6 +295,11 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
             setAnalysis(runMobileGraphAnalysis(document, analysisDraft, object?.kind === "point-series" ? tableStore.resolve(object.table) : null)); setError(""); }
             catch (caught) { setError((caught as Error).message); } }}
           onSaveCandidate={(object) => commit(() => adapter.commitConstruction({ type: "create", object }))}
+          onSaveTangent={(point) => commit(() => {
+            if (!analysis || !isMobileGraphAnalysisCurrent(analysis, document, analysisDraft) || !analysis.overlays.length)
+              throw new TypeError("Tangent result is unavailable or stale; run analysis again.");
+            return adapter.commitConstructions(graph2DLineConstructionActionsFromProbe(document, point, "tangent"));
+          })}
           onLocate={(point) => commit(() => {
             if (!analysis || !isMobileGraphAnalysisCurrent(analysis, document, analysisDraft)) throw new TypeError("Result is stale; run analysis again.");
             return adapter.commitSelection({ objectId: point.objectId, probe: mobileGraphAnalysisProbe(document, point) });

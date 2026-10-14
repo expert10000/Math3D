@@ -2,6 +2,7 @@ import { structuralHash } from "./documentIdentity";
 import type { Graph2DDocument, Graph2DGraphObject, Graph2DProbe } from "./graph2dDocument";
 import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_MAX_CONSTRUCTION_ARTIFACT_BYTES,
   GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS, nextGraph2DConstructionId,
+  applyGraph2DConstructionAction, type Graph2DConstructionAction,
   type Graph2DConstructionObject, type Graph2DPointOnCurveConstruction, type Graph2DCandidateConstruction } from "./graph2dConstructions";
 import { analyzeGraph2DCriticalPoints, isGraph2DCriticalPointCurrent,
   type Graph2DCriticalPoint, type Graph2DCriticalPointAnalysis } from "./graph2dCriticalPoints";
@@ -62,6 +63,18 @@ export function graph2DDerivedConstructionFromPoint(document: Graph2DDocument, p
   return { id: nextGraph2DConstructionId(document.source), kind, label: kind === "tangent" ? "Tangent" : "Normal",
     inputs: [{ kind: "construction", objectId: pointId }], anchor: null, style: { ...point.style },
     requiredCapability: GRAPH2D_CONSTRUCTIONS_CAPABILITY };
+}
+
+/** Build a dependent line from a result probe without changing the current selection. */
+export function graph2DLineConstructionActionsFromProbe(document: Graph2DDocument, probe: Graph2DProbe,
+  kind: "tangent" | "normal"): readonly [Graph2DConstructionAction, Graph2DConstructionAction] {
+  const selected = { ...document, selection: { objectId: probe.objectId, probe } };
+  const point = graph2DPointConstructionFromProbe(selected, `Point ${(document.source.constructions?.objects.filter(item => item.kind === "point-on-curve").length ?? 0) + 1}`);
+  const withPoint = { ...selected, source: applyGraph2DConstructionAction(document.source, { type: "create", object: point }) };
+  const line = graph2DDerivedConstructionFromPoint(withPoint, point.id, kind);
+  // Validate the complete pair before returning it to a command adapter.
+  applyGraph2DConstructionAction(withPoint.source, { type: "create", object: line });
+  return [{ type: "create", object: point }, { type: "create", object: line }];
 }
 
 /** Capture a bounded numerical candidate and a local, unique matching window. */

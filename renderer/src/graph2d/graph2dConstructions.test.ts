@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocument,
   GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_MAX_CONSTRUCTIONS, inspectGraph2DCompatibility,
   nextGraph2DConstructionId, normalizeGraph2DDocument, parseGraph2DDocument,
+  graph2DLineConstructionActionsFromProbe, resolveGraph2DConstructions,
   serializeGraph2DDocument, structuralHash, validateGraph2DConstructionSet,
   type Graph2DConstructionObject, type Graph2DDocument } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
@@ -31,6 +32,24 @@ const fixture = () => {
 };
 
 describe("G2D47 Graph construction document and commands", () => {
+  it("saves a probed tangent and its point in one reversible transaction", () => {
+    const commands = fixture();
+    const before = commands.document();
+    const actions = graph2DLineConstructionActionsFromProbe(before,
+      { objectId: "parametric_1", x: 1, y: 1, parameter: 1 }, "tangent");
+    const saved = commands.commitConstructions(actions);
+    expect(saved.source.constructions?.objects.map(object => object.kind)).toEqual(["point-on-curve", "tangent"]);
+    expect(saved.source.constructions?.objects[0]).toMatchObject({ anchor: { parameter: "t", value: 1 } });
+    expect(saved.identity.revision).toBe(before.identity.revision + 1);
+    expect(resolveGraph2DConstructions(saved).objects.map(object => object.state)).toEqual(["ready", "ready"]);
+    expect(parseGraph2DDocument(serializeGraph2DDocument(saved))).toEqual(saved);
+    expect(commands.undo()?.source).toEqual(before.source);
+    expect(commands.redo()?.source.constructions).toEqual(saved.source.constructions);
+    const restored = commands.document();
+    expect(() => commands.commitConstructions([{ type: "create", object: point("construction_3", "function_1", "x") },
+      { type: "create", object: line("construction_3", "construction_3", "tangent") }])).toThrow();
+    expect(commands.document()).toEqual(restored);
+  });
   it("stores source parameter intent, capabilities and source revision through save/reopen", () => {
     const commands = fixture();
     const before = commands.document();

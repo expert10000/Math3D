@@ -62,14 +62,16 @@ export class Graph2DCommandAdapter {
     return this.#commit(GRAPH2D_COMMAND_TYPES.replaceScene, { ...candidate, operation } as CanonicalJsonValue,
       { source: before.source, display: before.display, selection: before.selection, operation: "restore" } as CanonicalJsonValue);
   }
-  commitConstruction(action: Graph2DConstructionAction): Graph2DDocument {
+  commitConstructions(actions: readonly Graph2DConstructionAction[]): Graph2DDocument {
     const before = this.document();
-    const next = applyGraph2DConstructionAction(before.source, action);
+    if (!actions.length) return before;
+    const next = actions.reduce((source, action) => applyGraph2DConstructionAction(source, action), before.source);
     if (structuralHash(next) === before.identity.structuralHash) return before;
     return this.#commit(GRAPH2D_COMMAND_TYPES.setConstructions,
       { constructions: next.constructions ?? null } as CanonicalJsonValue,
       { constructions: before.source.constructions ?? null } as CanonicalJsonValue);
   }
+  commitConstruction(action: Graph2DConstructionAction): Graph2DDocument { return this.commitConstructions([action]); }
   commitGridMode(mode: "cartesian" | "polar"): Graph2DDocument {
     const before = this.document();
     if ((before.display.axes.gridMode ?? "cartesian") === mode) return before;

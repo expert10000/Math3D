@@ -13,10 +13,11 @@ const firstPolarAngle = (source: Extract<Graph2DDocument["source"]["objects"][nu
   source.domain.includeMin ? source.domain.min : (source.domain.min + source.domain.max) / 2;
 const firstParametricParameter = (source: Extract<Graph2DDocument["source"]["objects"][number], { kind: "parametric" }>) =>
   source.domain.includeMin ? source.domain.min : (source.domain.min + source.domain.max) / 2;
-export const MobileGraphAnalysisPanel = ({ document, draft, result, onDraft, onRun, onLocate, onSaveCandidate }: {
+export const MobileGraphAnalysisPanel = ({ document, draft, result, onDraft, onRun, onLocate, onSaveCandidate, onSaveTangent }: {
   document: Graph2DDocument; draft: MobileGraphAnalysisDraft; result: MobileGraphRegressionAnalysis | null;
   onDraft: (draft: MobileGraphAnalysisDraft) => void; onRun: () => void; onLocate: (probe: Graph2DProbe) => void;
-  onSaveCandidate: (object: Graph2DConstructionObject) => void }) => {
+  onSaveCandidate: (object: Graph2DConstructionObject) => void;
+  onSaveTangent: (probe: Graph2DProbe) => void }) => {
   const current = result ? isMobileGraphAnalysisCurrent(result, document, draft) : false;
   const tangentResult = current && result && (result.kind === "tangent" || result.kind === "polar-tangent" || result.kind === "parametric-tangent");
   const [offset, setOffset] = useState(0);
@@ -51,6 +52,10 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, onDraft, onR
       <Text style={s.title}>{result.rows[0]?.label}</Text>
       <Text>{result.rows[1]?.label}</Text>
       <Text>{result.rows[2]?.label}</Text>
+      {button("Save tangent as construction", () => onSaveTangent(result.rows[0]!.probe!),
+        !result.rows[0]?.probe || !result.overlays.length ||
+        (document.source.constructions?.objects.length ?? 0) > GRAPH2D_MAX_CONSTRUCTIONS - 2)}
+      <Text>Saved tangent and point recompute from the source; line direction is approximate.</Text>
     </View>}
     <View style={s.row}>{kinds.map(([kind, label]) => <Pressable key={kind} accessibilityRole="radio" accessibilityLabel={label}
       accessibilityState={{ checked: draft.kind === kind }} style={s.button} onPress={() => chooseKind(kind)}><Text>{label}</Text></Pressable>)}</View>

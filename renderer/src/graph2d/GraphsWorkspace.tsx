@@ -13,7 +13,7 @@ import {
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
   type Graph2DConstructionAction,
-  graph2DConstructionFromCandidate, GRAPH2D_MAX_CONSTRUCTIONS,
+  graph2DConstructionFromCandidate, graph2DLineConstructionActionsFromProbe, GRAPH2D_MAX_CONSTRUCTIONS,
   type Graph2DIntegralMode,
   type Graph2DPolarMeasurement,
   type Graph2DAnyPromotion,
@@ -71,6 +71,7 @@ type Props = {
   onProbesCommit?: (probes: NonNullable<Graph2DDocument["display"]["pinnedProbes"]>) => void;
   onAuthoringCommit?: (action: Graph2DAuthoringAction) => void;
   onConstructionCommit?: (action: Graph2DConstructionAction) => void;
+  onConstructionBatchCommit?: (actions: readonly Graph2DConstructionAction[]) => void;
   onSelectionCommit?: (selection: Graph2DSelection) => void;
   onUndo?: () => void;
   onRedo?: () => void;
@@ -89,7 +90,7 @@ type Props = {
 
 /** Desktop/web projection of shared Graph2D source and persistent display state. */
 export function GraphsWorkspace({ dockLayout, document, analysisRequest, status = "ready", errorMessage, onViewportCommit,
-  onGridModeCommit, onAxesCommit, onProbesCommit, onAuthoringCommit, onConstructionCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
+  onGridModeCommit, onAxesCommit, onProbesCommit, onAuthoringCommit, onConstructionCommit, onConstructionBatchCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onOpenPreset, onResumeCheckpoint, onCopyProject,
   onExportPersonalProject, onCopyGraphDefinition, onPreviewPersonalImport, onImportPersonalProject }: Props) {
   const [galleryOpen, setGalleryOpen] = useState(false);
@@ -459,6 +460,15 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   }} />;
   const constructions = <Graph2DConstructionsPanel document={document}
     artifact={parameterPreviewActive ? null : sampling.constructions} onAction={onConstructionCommit} />;
+  const saveTangentButton = (available: boolean) => <button type="button"
+    disabled={!available || !document.selection.probe || !onConstructionBatchCommit ||
+      (document.source.constructions?.objects.length ?? 0) > GRAPH2D_MAX_CONSTRUCTIONS - 2}
+    onClick={() => { try {
+      if (!document.selection.probe || !onConstructionBatchCommit) return;
+      onConstructionBatchCommit(graph2DLineConstructionActionsFromProbe(document, document.selection.probe, "tangent"));
+      setToolHint("Saved point and tangent as dependent constructions. The line recomputes from source and is approximate.");
+    } catch (caught) { setToolHint((caught as Error).message); } }}>
+    Save tangent as construction</button>;
   const inspector = inspected ? <div className="graph2d-inspector">
     <header className="graph2d-inspector-current" aria-label="Selected graph result" tabIndex={-1}>
       <strong>{inspected.label}</strong>
@@ -483,6 +493,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         <dt>Tangent</dt><dd data-testid="graph2d-tangent-equation">{differential.tangent?.equation ?? "Unavailable"}</dd>
         <dt>Normal</dt><dd data-testid="graph2d-normal-equation">{differential.normal?.equation ?? "Unavailable"}</dd>
       </dl>
+      {saveTangentButton(!!differential.tangent)}
       {differential.diagnostics.length > 0 && <ul className="graph2d-derivative-diagnostics">
         {differential.diagnostics.map((diagnostic) => <li key={diagnostic.code}>{diagnostic.message}</li>)}
       </ul>}
@@ -501,6 +512,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         <dt>Tangent</dt><dd data-testid="graph2d-tangent-equation">{polarDifferential.tangent ?? "Unavailable"}</dd>
         <dt>Normal</dt><dd data-testid="graph2d-normal-equation">{polarDifferential.normal ?? "Unavailable"}</dd>
       </dl>
+      {saveTangentButton(!!polarDifferential.tangent)}
       {polarDifferential.diagnostics.length > 0 && <ul className="graph2d-derivative-diagnostics">
         {polarDifferential.diagnostics.map((diagnostic) => <li key={diagnostic.code}>{diagnostic.message}</li>)}
       </ul>}
@@ -519,6 +531,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         <dt>Tangent</dt><dd data-testid="graph2d-tangent-equation">{parametricDifferential.tangent ?? "Unavailable"}</dd>
         <dt>Normal</dt><dd data-testid="graph2d-normal-equation">{parametricDifferential.normal ?? "Unavailable"}</dd>
       </dl>
+      {saveTangentButton(!!parametricDifferential.tangent)}
       {parametricDifferential.diagnostics.length > 0 && <ul className="graph2d-derivative-diagnostics">
         {parametricDifferential.diagnostics.map((diagnostic) => <li key={diagnostic.code}>{diagnostic.message}</li>)}
       </ul>}

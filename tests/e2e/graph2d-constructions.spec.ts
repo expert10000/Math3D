@@ -45,6 +45,29 @@ test("G2D48 promotes a probe, recomputes a dependent tangent, and undoes source 
   } finally { await closeSurfaceApp(app); }
 });
 
+test("G2D55 saves a tangent result and its point with one undo", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.getByTestId("graph-gallery-open").click();
+    await page.getByRole("button", { name: "Open A tangent at x = 1", exact: true }).click();
+    const functions = page.getByLabel("Graph functions", { exact: true });
+    await functions.getByRole("button", { name: "Select Parabola", exact: true }).click();
+    const inspector = page.getByLabel("Graph inspector", { exact: true });
+    const local = inspector.getByTestId("graph2d-local-differential");
+    await local.getByRole("button", { name: "Save tangent as construction" }).click();
+    await expect(page.locator("[data-graph2d-construction]")).toHaveCount(2);
+    await page.getByTestId("main-viewer").focus();
+    await page.keyboard.press("Control+z");
+    await expect(page.locator("[data-graph2d-construction]")).toHaveCount(0);
+    await page.keyboard.press("Control+Shift+z");
+    await expect(page.locator("[data-graph2d-construction]")).toHaveCount(2);
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("G2D49 saves a root candidate and keeps its local identity across source edits", async () => {
   const app = await launchSurfaceApp();
   try {

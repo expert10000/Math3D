@@ -336,6 +336,8 @@ The [analysis and constructions follow-on roadmap](graph2d-analysis-construction
 
 [G2D53](graph2d-g2d53-parametric-differential.md) completes the transient local differential readout for authored parametric paths `x(t), y(t)`, including signed curvature, zero-speed limits, source-linked overlays, and mobile Analyze parity. Persistent curvature constructions remain a separate contract decision.
 
+[G2D55](graph2d-g2d55-save-tangent.md) lets a current tangent result create its source-linked point and dependent line in one reversible action on desktop or mobile. Curvature remains a transient measurement.
+
 ## 7. Dependency graph and parallel work
 
 ```text
