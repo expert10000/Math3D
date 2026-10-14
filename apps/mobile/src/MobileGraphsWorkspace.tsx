@@ -200,7 +200,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         })}
         <View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: .35 }]}>{continuationLines.map((line, index) => <Line key={`continuation${index}`} {...line} />)}</View>
         {lines.map((line, index) => <Line key={index} {...line} />)}
-        {constructions?.objects.filter(item => item.state === "ready" && item.style.visible && item.point).map(item => {
+        {constructions?.objects.filter(item => item.kind !== "curvature" && item.state === "ready" && item.style.visible && item.point).map(item => {
           if (item.direction) {
             if (graph2DHasLogScale(viewport)) return null;
             const clipped = clipGraph2DLineOverlay({ artifactId: item.id, kind: item.kind === "normal" ? "normal" : "tangent",

@@ -186,7 +186,7 @@ export function Graph2DPlot({ display, size, series, regression, constructions, 
             className={"graph2d-differential-overlay graph2d-differential-" + overlay.kind}
             x1={a.x} y1={a.y} x2={b.x} y2={b.y} />;
         })}
-        {constructions?.objects.filter(item => item.state === "ready" && item.style.visible && item.point).map(item => {
+        {constructions?.objects.filter(item => item.kind !== "curvature" && item.state === "ready" && item.style.visible && item.point).map(item => {
           if (item.direction) {
             if (graph2DHasLogScale(display.viewport)) return null;
             const clipped = clipGraph2DLineOverlay({ artifactId: item.id, kind: item.kind === "normal" ? "normal" : "tangent",

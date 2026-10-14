@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { graph2DDerivedConstructionFromPoint, graph2DPointConstructionFromProbe,
+import { graph2DDerivedConstructionFromPoint, graph2DCurvatureConstructionFromPoint, graph2DPointConstructionFromProbe,
   GRAPH2D_MAX_CONSTRUCTIONS, type Graph2DConstructionAction, type Graph2DConstructionArtifact,
   type Graph2DDocument, type Graph2DPointOnCurveConstruction } from "@math3d/core";
 
@@ -28,6 +28,8 @@ function PointCard({ document, object, state, confidence, reason, onAction }: { 
         onClick={() => act({ type: "create", object: graph2DDerivedConstructionFromPoint(document, object.id, "tangent") })}>Add tangent</button>
       <button type="button" disabled={(document.source.constructions?.objects.length ?? 0) >= GRAPH2D_MAX_CONSTRUCTIONS}
         onClick={() => act({ type: "create", object: graph2DDerivedConstructionFromPoint(document, object.id, "normal") })}>Add normal</button>
+      <button type="button" disabled={(document.source.constructions?.objects.length ?? 0) >= GRAPH2D_MAX_CONSTRUCTIONS}
+        onClick={() => act({ type: "create", object: graph2DCurvatureConstructionFromPoint(document, object.id) })}>Add curvature</button>
       <button type="button" disabled={dependents.length > 0} title={dependents.length ? "Remove dependent lines first." : undefined}
         onClick={() => act({ type: "delete", objectId: object.id })}>Delete {object.label}</button>
     </div>{error && <p role="alert">{error}</p>}
@@ -57,6 +59,8 @@ export function Graph2DConstructionsPanel({ document, artifact, onAction }: { do
         reason={artifact?.objects.find(item => item.id === object.id)?.reason} onAction={act} /> :
       <li key={object.id} className="graph2d-construction-card" data-construction-id={object.id}>
         <strong>{object.label}</strong> <small>{object.kind} · {artifact?.objects.find(item => item.id === object.id)?.state ?? "pending"} · {artifact?.objects.find(item => item.id === object.id)?.confidence ?? "pending"}</small>
+        {object.kind === "curvature" && artifact?.objects.find(item => item.id === object.id)?.measurement &&
+          <p data-testid="graph2d-saved-curvature">κ = {artifact.objects.find(item => item.id === object.id)!.measurement!.value.toPrecision(8)} · {artifact.objects.find(item => item.id === object.id)!.measurement!.method} · {artifact.objects.find(item => item.id === object.id)!.measurement!.convention} · no certified error bound</p>}
         {object.anchor && "interval" in object.anchor && <small>Original x {object.anchor.seedX.toPrecision(7)} · match ±{object.anchor.matchRadius.toPrecision(3)} · scan [{object.anchor.interval.min.toPrecision(5)}, {object.anchor.interval.max.toPrecision(5)}] · {object.anchor.method} · residual {object.anchor.residual.toExponential(2)} · saved {object.anchor.confidence}</small>}
         {artifact?.objects.find(item => item.id === object.id)?.reason && <p>{artifact.objects.find(item => item.id === object.id)?.reason}</p>}
         <button type="button" onClick={() => act({ type: "delete", objectId: object.id })}>Delete {object.label}</button>

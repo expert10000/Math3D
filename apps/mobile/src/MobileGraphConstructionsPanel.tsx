@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
-import { graph2DDerivedConstructionFromPoint, graph2DPointConstructionFromProbe, GRAPH2D_MAX_CONSTRUCTIONS,
+import { graph2DDerivedConstructionFromPoint, graph2DCurvatureConstructionFromPoint, graph2DPointConstructionFromProbe, GRAPH2D_MAX_CONSTRUCTIONS,
   type Graph2DConstructionAction, type Graph2DConstructionArtifact, type Graph2DDocument,
   type Graph2DPointOnCurveConstruction } from "@math3d/core";
 
@@ -30,6 +30,7 @@ function PointCard({ document, object, state, confidence, reason, onAction }: { 
       }} />
       <Button label="Add tangent" disabled={full} onPress={() => onAction({ type: "create", object: graph2DDerivedConstructionFromPoint(document, object.id, "tangent") })} />
       <Button label="Add normal" disabled={full} onPress={() => onAction({ type: "create", object: graph2DDerivedConstructionFromPoint(document, object.id, "normal") })} />
+      <Button label="Add curvature" disabled={full} onPress={() => onAction({ type: "create", object: graph2DCurvatureConstructionFromPoint(document, object.id) })} />
       <Button label={`Delete ${object.label}`} disabled={hasDependents} onPress={() => onAction({ type: "delete", objectId: object.id })} />
     </View>
     {error && <Text accessibilityLiveRegion="polite">{error}</Text>}
@@ -58,6 +59,8 @@ export const MobileGraphConstructionsPanel = ({ document, artifact, onAction }: 
         reason={artifact?.objects.find(item => item.id === object.id)?.reason} onAction={onAction} /> :
       <View key={object.id} style={{ borderTopWidth: 1, borderColor: "#cbd5e1", paddingVertical: 8 }}>
         <Text>{object.label}: {object.kind} · {artifact?.objects.find(item => item.id === object.id)?.state ?? "pending"} · {artifact?.objects.find(item => item.id === object.id)?.confidence ?? "pending"}</Text>
+        {object.kind === "curvature" && artifact?.objects.find(item => item.id === object.id)?.measurement &&
+          <Text testID="mobile-graph-saved-curvature">κ = {artifact.objects.find(item => item.id === object.id)!.measurement!.value.toPrecision(8)} · {artifact.objects.find(item => item.id === object.id)!.measurement!.method} · {artifact.objects.find(item => item.id === object.id)!.measurement!.convention} · no certified error bound</Text>}
         {object.anchor && "interval" in object.anchor && <Text>Original x {object.anchor.seedX.toPrecision(7)} · match ±{object.anchor.matchRadius.toPrecision(3)} · scan [{object.anchor.interval.min.toPrecision(5)}, {object.anchor.interval.max.toPrecision(5)}] · {object.anchor.method} · residual {object.anchor.residual.toExponential(2)} · saved {object.anchor.confidence}</Text>}
         {artifact?.objects.find(item => item.id === object.id)?.reason && <Text>{artifact.objects.find(item => item.id === object.id)?.reason}</Text>}
         <Button label={`Delete ${object.label}`} onPress={() => onAction({ type: "delete", objectId: object.id })} />

@@ -1,6 +1,7 @@
 import { structuralHash } from "./documentIdentity";
 import type { Graph2DDocument, Graph2DGraphObject, Graph2DProbe } from "./graph2dDocument";
-import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_MAX_CONSTRUCTION_ARTIFACT_BYTES,
+import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY,
+  GRAPH2D_MAX_CONSTRUCTION_ARTIFACT_BYTES,
   GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS, nextGraph2DConstructionId,
   applyGraph2DConstructionAction, type Graph2DConstructionAction,
   type Graph2DConstructionObject, type Graph2DPointOnCurveConstruction, type Graph2DCandidateConstruction } from "./graph2dConstructions";
@@ -11,6 +12,10 @@ import { analyzeGraph2DIntersections, isGraph2DIntersectionCurrent,
 import { evaluateGraph2DExpression } from "./graph2dExpression";
 import { evaluateGraph2DParametric } from "./graph2dParametric";
 import { evaluateGraph2DPolar } from "./graph2dPolar";
+import { analyzeGraph2DLocalDifferential } from "./graph2dDifferential";
+import { analyzeGraph2DPolarLocalDifferential } from "./graph2dPolarDifferential";
+import { analyzeGraph2DParametricLocalDifferential } from "./graph2dParametricDifferential";
+import type { Graph2DDerivativeMethod } from "./graph2dDerivatives";
 import type { ScientificSourceGeneration } from "./scientificJobs";
 
 export type Graph2DResolvedConstruction = Readonly<{
@@ -19,6 +24,8 @@ export type Graph2DResolvedConstruction = Readonly<{
   confidence: "source-defined" | "approximate" | "unavailable";
   sourceObjectId: string; point: Readonly<{ x: number; y: number }> | null;
   direction: Readonly<{ x: number; y: number }> | null;
+  measurement?: Readonly<{ quantity: "signed-curvature"; value: number; method: Graph2DDerivativeMethod;
+    convention: "increasing-x" | "increasing-t" | "increasing-theta"; certifiedErrorBound: null }> | null;
   style: Graph2DConstructionObject["style"];
 }>;
 export type Graph2DConstructionArtifact = Readonly<{
@@ -63,6 +70,14 @@ export function graph2DDerivedConstructionFromPoint(document: Graph2DDocument, p
   return { id: nextGraph2DConstructionId(document.source), kind, label: kind === "tangent" ? "Tangent" : "Normal",
     inputs: [{ kind: "construction", objectId: pointId }], anchor: null, style: { ...point.style },
     requiredCapability: GRAPH2D_CONSTRUCTIONS_CAPABILITY };
+}
+
+export function graph2DCurvatureConstructionFromPoint(document: Graph2DDocument, pointId: string): Graph2DConstructionObject {
+  const point = document.source.constructions?.objects.find(item => item.id === pointId);
+  if (point?.kind !== "point-on-curve") throw new TypeError("Select a saved point construction first.");
+  return { id: nextGraph2DConstructionId(document.source), kind: "curvature", label: "Signed curvature κ",
+    inputs: [{ kind: "construction", objectId: pointId }], anchor: null, style: { ...point.style },
+    requiredCapability: GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY };
 }
 
 /** Build a dependent line from a result probe without changing the current selection. */
@@ -214,6 +229,36 @@ export function resolveGraph2DConstructions(document: Graph2DDocument): Graph2DC
         reason: point ? null : !analysisAvailable ? "Source or bounded analysis is unavailable." :
           near.length > 1 ? "Matching window contains multiple candidates." : "Original candidate no longer has a unique local match.",
         sourceObjectId, point, direction: null };
+    } else if (definition.kind === "curvature") {
+      const parent = resolved.get(definition.inputs[0]?.objectId ?? "");
+      const pointDef = definitions.find(entry => entry.id === parent?.id);
+      const curve = document.source.objects.find(entry => entry.id === parent?.sourceObjectId);
+      let measurement: Graph2DResolvedConstruction["measurement"] = null;
+      let reason = parent?.state !== "ready" ? "Input point is unavailable." : "Curvature is singular or unresolved at this point.";
+      if (parent?.point && pointDef?.kind === "point-on-curve" && curve &&
+          (curve.kind === "explicit-cartesian" || curve.kind === "polar" || curve.kind === "parametric")) {
+        // Differential routines are bounded internally. Reserve their worst-case work against the shared artifact budget.
+        const reserve = 256;
+        if (evaluations + reserve <= GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS) {
+          evaluations += reserve;
+          const probe: Graph2DProbe = { objectId: curve.id, ...parent.point,
+            ...(curve.kind === "explicit-cartesian" ? {} : { parameter: pointDef.anchor.value }) };
+          const selected = { ...document, selection: { objectId: curve.id, probe } };
+          const analysis = curve.kind === "explicit-cartesian" ? analyzeGraph2DLocalDifferential(selected) :
+            curve.kind === "polar" ? analyzeGraph2DPolarLocalDifferential(selected) :
+              analyzeGraph2DParametricLocalDifferential(selected);
+          if (analysis?.curvature !== null && analysis?.curvature !== undefined) {
+            measurement = { quantity: "signed-curvature", value: analysis.curvature,
+              method: analysis.curvatureMethod,
+              convention: curve.kind === "explicit-cartesian" ? "increasing-x" :
+                curve.kind === "polar" ? "increasing-theta" : "increasing-t", certifiedErrorBound: null };
+          }
+        } else { truncated = true; reason = "Construction evaluation budget reached."; }
+      }
+      item = { id: definition.id, kind: definition.kind, label: definition.label, style: definition.style,
+        state: measurement ? "ready" : "unavailable", confidence: measurement ? "approximate" : "unavailable",
+        reason: measurement ? null : reason, sourceObjectId: parent?.sourceObjectId ?? "",
+        point: parent?.point ?? null, direction: null, measurement };
     } else {
       const parent = resolved.get(definition.inputs[0]?.objectId ?? "");
       const pointDef = definitions.find(entry => entry.id === parent?.id);

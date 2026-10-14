@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { applyGraph2DAuthoring, createEmptyGraph2DDocument, graph2DDerivedConstructionFromPoint,
-  graph2DPointConstructionFromProbe, isGraph2DConstructionArtifactCurrent, resolveGraph2DConstructions,
+  graph2DCurvatureConstructionFromPoint, graph2DPointConstructionFromProbe,
+  GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY, isGraph2DConstructionArtifactCurrent, resolveGraph2DConstructions,
+  inspectGraph2DCompatibility, normalizeGraph2DDocument, parseGraph2DDocument, serializeGraph2DDocument,
   type Graph2DDocument } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { Graph2DPlot } from "./Graph2DPlot";
@@ -89,5 +91,58 @@ describe("G2D48 source-derived Graph constructions", () => {
       label: "f", expression: "x", domain: { min: -4, max: 1, includeMin: true, includeMax: true }, style,
     } }), "edit");
     expect(ready(undefinedPoint.document())[0]?.reason).toMatch(/outside the domain/);
+  });
+});
+
+describe("G2D56 saved signed curvature", () => {
+  it("recomputes the three curve conventions from source and survives save/reopen", () => {
+    for (const [kind, expression, expected, convention] of [
+      ["explicit", "x^2", 2 / 17 ** 1.5, "increasing-x"],
+      ["parametric", "t^2", 2 / 17 ** 1.5, "increasing-t"],
+      ["polar", "-2", 0.5, "increasing-theta"],
+    ] as const) {
+      const adapter = scene(kind, expression);
+      adapter.commitConstruction({ type: "create", object: graph2DCurvatureConstructionFromPoint(adapter.document(), "construction_1") });
+      const saved = adapter.document(), artifact = resolveGraph2DConstructions(saved);
+      expect(saved.requiredCapabilities).toContain(GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY);
+      expect(normalizeGraph2DDocument({ ...saved, requiredCapabilities: saved.requiredCapabilities.filter(capability =>
+        capability !== GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY) }).ok).toBe(false);
+      expect(inspectGraph2DCompatibility(saved).status).toBe("current");
+      expect(artifact.objects[3]?.measurement).toMatchObject({ quantity: "signed-curvature", convention, certifiedErrorBound: null });
+      expect(artifact.objects[3]?.measurement?.value).toBeCloseTo(expected, 6);
+      expect(artifact.objects[3]?.confidence).toBe("approximate");
+      expect(artifact.evaluations).toBeLessThanOrEqual(12000);
+      expect(parseGraph2DDocument(serializeGraph2DDocument(saved))).toEqual(saved);
+      const svg = renderToStaticMarkup(<Graph2DPlot display={saved.display} size={{ width: 600, height: 400 }}
+        series={[]} constructions={artifact} />);
+      expect(svg).not.toContain('data-graph2d-construction="construction_4"');
+    }
+  });
+
+  it("updates after source and anchor edits, with one-step undo and unavailable singular states", () => {
+    const adapter = scene("explicit", "x^2");
+    adapter.commitConstruction({ type: "create", object: graph2DCurvatureConstructionFromPoint(adapter.document(), "construction_1") });
+    const first = resolveGraph2DConstructions(adapter.document());
+    adapter.commitScene(applyGraph2DAuthoring(adapter.document(), { type: "edit", objectId: "function_1", draft: {
+      label: "f", expression: "-x^2", domain, style,
+    } }), "edit");
+    expect(isGraph2DConstructionArtifactCurrent(first, adapter.document())).toBe(false);
+    expect(ready(adapter.document())[3]?.measurement?.value).toBeCloseTo(-2 / 17 ** 1.5, 6);
+    const point = adapter.document().source.constructions?.objects[0];
+    if (point?.kind !== "point-on-curve") throw new Error("Missing point fixture.");
+    adapter.commitConstruction({ type: "update", object: { ...point, anchor: { parameter: "x", value: 0 } } });
+    expect(ready(adapter.document())[3]?.measurement?.value).toBeCloseTo(-2, 6);
+    expect(adapter.undo()?.source.constructions?.objects[0]).toEqual(point);
+    expect(ready(adapter.document())[3]?.measurement?.value).toBeCloseTo(-2 / 17 ** 1.5, 6);
+    adapter.commitConstruction({ type: "delete", objectId: "construction_4" });
+    expect(adapter.document().requiredCapabilities).not.toContain(GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY);
+    expect(adapter.undo()?.source.constructions?.objects.some(object => object.kind === "curvature")).toBe(true);
+
+    const cusp = scene("explicit", "abs(x-2)");
+    cusp.commitConstruction({ type: "create", object: graph2DCurvatureConstructionFromPoint(cusp.document(), "construction_1") });
+    expect(ready(cusp.document())[3]).toMatchObject({ state: "unavailable", measurement: null });
+    const polarZero = scene("polar", "0");
+    polarZero.commitConstruction({ type: "create", object: graph2DCurvatureConstructionFromPoint(polarZero.document(), "construction_1") });
+    expect(ready(polarZero.document())[3]).toMatchObject({ state: "unavailable", measurement: null });
   });
 });

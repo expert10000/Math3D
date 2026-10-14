@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocument,
-  GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_MAX_CONSTRUCTIONS, inspectGraph2DCompatibility,
+  GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY,
+  GRAPH2D_MAX_CONSTRUCTIONS, inspectGraph2DCompatibility,
   nextGraph2DConstructionId, normalizeGraph2DDocument, parseGraph2DDocument,
   graph2DLineConstructionActionsFromProbe, resolveGraph2DConstructions,
   serializeGraph2DDocument, structuralHash, validateGraph2DConstructionSet,
@@ -16,6 +17,10 @@ const point = (id: string, objectId: string, parameter: "x" | "t" | "theta", val
 const line = (id: string, objectId: string, kind: "tangent" | "normal"): Graph2DConstructionObject => ({
   id, kind, label: id, inputs: [{ kind: "construction", objectId }], anchor: null,
   style, requiredCapability: GRAPH2D_CONSTRUCTIONS_CAPABILITY,
+});
+const curvature = (id: string, objectId: string): Graph2DConstructionObject => ({
+  id, kind: "curvature", label: id, inputs: [{ kind: "construction", objectId }], anchor: null,
+  style, requiredCapability: GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY,
 });
 const fixture = () => {
   const commands = new Graph2DCommandAdapter(createEmptyGraph2DDocument("g2d47-constructions"));
@@ -90,6 +95,9 @@ describe("G2D47 Graph construction document and commands", () => {
       { version: 1, objects: [line("construction_2", "construction_1", "tangent"), good] },
       { version: 1, objects: [line("construction_1", "construction_1", "tangent")] },
       { version: 1, objects: [line("construction_1", "missing", "tangent")] },
+      { version: 1, objects: [curvature("construction_1", "missing")] },
+      { version: 1, objects: [good, { ...curvature("construction_2", "construction_1"), requiredCapability: GRAPH2D_CONSTRUCTIONS_CAPABILITY }] },
+      { version: 1, objects: [good, line("construction_2", "construction_1", "tangent"), curvature("construction_3", "construction_2")] },
       { version: 1, objects: [point("construction_1", "function_1", "x"),
         { ...line("construction_2", "construction_1", "normal"), inputs: [{ kind: "source", objectId: "function_1" }] }] },
       { version: 1, objects: Array.from({ length: GRAPH2D_MAX_CONSTRUCTIONS + 1 }, (_, index) =>

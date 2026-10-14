@@ -338,6 +338,8 @@ The [analysis and constructions follow-on roadmap](graph2d-analysis-construction
 
 [G2D55](graph2d-g2d55-save-tangent.md) lets a current tangent result create its source-linked point and dependent line in one reversible action on desktop or mobile. Curvature remains a transient measurement.
 
+[G2D56](graph2d-g2d56-persistent-curvature.md) adds a saved signed-curvature measurement depending on a point construction, with explicit `x`, polar `theta`, and parametric `t` conventions. The value recomputes from source expressions and is withheld at singular or unresolved points.
+
 ## 7. Dependency graph and parallel work
 
 ```text

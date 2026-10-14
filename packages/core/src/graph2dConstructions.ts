@@ -3,6 +3,7 @@ import type { ScientificSourceGeneration } from "./scientificJobs";
 
 export const GRAPH2D_CONSTRUCTIONS_CAPABILITY = "graph2d.constructions.v1" as const;
 export const GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY = "graph2d.constructions.candidates.v1" as const;
+export const GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY = "graph2d.constructions.curvature.v1" as const;
 export const GRAPH2D_CONSTRUCTION_VERSION = 1 as const;
 export const GRAPH2D_MAX_CONSTRUCTIONS = 32;
 export const GRAPH2D_MAX_CONSTRUCTION_DEPTH = 16;
@@ -23,6 +24,10 @@ export type Graph2DDerivedLineConstruction = ConstructionBase & Readonly<{
   kind: "tangent" | "normal"; inputs: readonly Graph2DConstructionObjectInput[]; anchor: null;
   requiredCapability: typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY;
 }>;
+export type Graph2DCurvatureConstruction = ConstructionBase & Readonly<{
+  kind: "curvature"; inputs: readonly Graph2DConstructionObjectInput[]; anchor: null;
+  requiredCapability: typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY;
+}>;
 export type Graph2DCandidateAnchor = Readonly<{
   interval: Readonly<{ min: number; max: number }>;
   seedX: number; matchRadius: number; candidateId: string;
@@ -36,7 +41,8 @@ export type Graph2DCandidateConstruction = ConstructionBase & Readonly<{
   inputs: readonly Graph2DConstructionSourceInput[]; anchor: Graph2DCandidateAnchor;
   requiredCapability: typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY;
 }>;
-export type Graph2DConstructionObject = Graph2DPointOnCurveConstruction | Graph2DDerivedLineConstruction | Graph2DCandidateConstruction;
+export type Graph2DConstructionObject = Graph2DPointOnCurveConstruction | Graph2DDerivedLineConstruction |
+  Graph2DCurvatureConstruction | Graph2DCandidateConstruction;
 export type Graph2DConstructionSet = Readonly<{ version: typeof GRAPH2D_CONSTRUCTION_VERSION;
   objects: readonly Graph2DConstructionObject[] }>;
 export type Graph2DConstructionAction =
@@ -95,9 +101,10 @@ export function validateGraph2DConstructionSet(value: unknown, sources: readonly
   for (const [index, item] of objects.entries()) {
     if (!record(item) || !exact(item, ["id", "kind", "label", "inputs", "anchor", "style", "requiredCapability"]) ||
         !validId(item.id) || !validLabel(item.label) || !validStyle(item.style) ||
-        !["point-on-curve", "tangent", "normal", "root", "minimum", "maximum", "intersection"].includes(String(item.kind)) ||
+        !["point-on-curve", "tangent", "normal", "curvature", "root", "minimum", "maximum", "intersection"].includes(String(item.kind)) ||
         item.requiredCapability !== (["root", "minimum", "maximum", "intersection"].includes(String(item.kind)) ?
-          GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY : GRAPH2D_CONSTRUCTIONS_CAPABILITY) ||
+          GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY : item.kind === "curvature" ?
+            GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY : GRAPH2D_CONSTRUCTIONS_CAPABILITY) ||
         !Array.isArray(item.inputs) || item.inputs.length !== (item.kind === "intersection" ? 2 : 1) ||
         !item.inputs.every(validInput)) {
       errors.push(`Invalid Graph construction at index ${index}.`); continue;
@@ -125,9 +132,9 @@ export function validateGraph2DConstructionSet(value: unknown, sources: readonly
       const dependency = input.kind === "construction" ? objects[indexById.get(input.objectId) ?? -1] : undefined;
       // Forward references are checked below after the full ID table is known.
       if (input.kind !== "construction" || item.anchor !== null)
-        errors.push(`Line construction ${item.id} needs a point construction input and no anchor.`);
+        errors.push(`Dependent construction ${item.id} needs a point construction input and no anchor.`);
       if (dependency && record(dependency) && dependency.kind !== "point-on-curve")
-        errors.push(`Line construction ${item.id} must depend on a point construction.`);
+        errors.push(`Dependent construction ${item.id} must depend on a point construction.`);
     }
   }
   const dependencies = new Map<string, string[]>();
@@ -142,7 +149,7 @@ export function validateGraph2DConstructionSet(value: unknown, sources: readonly
         errors.push(`Construction ${item.id} is not ordered after its dependency.`);
       const dependency = objects[indexById.get(input.objectId)!];
       if (item.kind !== "point-on-curve" && record(dependency) && dependency.kind !== "point-on-curve")
-        errors.push(`Line construction ${item.id} must depend on a point construction.`);
+        errors.push(`Dependent construction ${item.id} must depend on a point construction.`);
     }
   }
   const visiting = new Set<string>(), depths = new Map<string, number>();
