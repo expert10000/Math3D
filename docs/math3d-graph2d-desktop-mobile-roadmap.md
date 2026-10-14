@@ -334,6 +334,8 @@ The [analysis and constructions follow-on roadmap](graph2d-analysis-construction
 
 [G2D52](graph2d-g2d52-polar-differential.md) extends transient local differential results to polar probes, with source-linked tangent/normal overlays and signed curvature following increasing angle. The desktop Inspector and mobile Analyze share the core result; persistent geometry and physical-device signoff remain separate gates.
 
+[G2D53](graph2d-g2d53-parametric-differential.md) completes the transient local differential readout for authored parametric paths `x(t), y(t)`, including signed curvature, zero-speed limits, source-linked overlays, and mobile Analyze parity. Persistent curvature constructions remain a separate contract decision.
+
 ## 7. Dependency graph and parallel work
 
 ```text

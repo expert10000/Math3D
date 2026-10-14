@@ -7,8 +7,11 @@ import { isMobileGraphAnalysisCurrent, type MobileGraphRegressionAnalysis, type 
 const kinds: readonly [MobileGraphAnalysisKind, string][] = [["derivatives", "Derivatives"], ["tangent", "Tangent & curvature"],
   ["features", "Zeros, extrema, inflections"], ["integral", "Integral"], ["intersections", "Intersections"], ["arc-length", "Arc length"],
   ["polar-area", "Polar swept area"], ["polar-arc-length", "Polar arc length"], ["polar-tangent", "Polar tangent & curvature"],
+  ["parametric-tangent", "Parametric tangent & curvature"],
   ["regression-linear", "Linear regression"], ["regression-quadratic", "Quadratic regression"]];
 const firstPolarAngle = (source: Extract<Graph2DDocument["source"]["objects"][number], { kind: "polar" }>) =>
+  source.domain.includeMin ? source.domain.min : (source.domain.min + source.domain.max) / 2;
+const firstParametricParameter = (source: Extract<Graph2DDocument["source"]["objects"][number], { kind: "parametric" }>) =>
   source.domain.includeMin ? source.domain.min : (source.domain.min + source.domain.max) / 2;
 export const MobileGraphAnalysisPanel = ({ document, draft, result, onDraft, onRun, onLocate, onSaveCandidate }: {
   document: Graph2DDocument; draft: MobileGraphAnalysisDraft; result: MobileGraphRegressionAnalysis | null;
@@ -19,16 +22,21 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, onDraft, onR
   useEffect(() => setOffset(0), [result?.regression?.resultId]);
   const regression = draft.kind.startsWith("regression-");
   const polarOperation = draft.kind.startsWith("polar-");
-  const pointOperation = draft.kind === "derivatives" || draft.kind === "tangent" || draft.kind === "polar-tangent";
-  const sources = document.source.objects.filter((object) => object.kind === (regression ? "point-series" : polarOperation ? "polar" : "explicit-cartesian"));
+  const pointOperation = draft.kind === "derivatives" || draft.kind === "tangent" || draft.kind === "polar-tangent" || draft.kind === "parametric-tangent";
+  const sources = document.source.objects.filter((object) => object.kind === (regression ? "point-series" : polarOperation ? "polar" :
+    draft.kind === "parametric-tangent" ? "parametric" : "explicit-cartesian"));
   const chooseKind = (kind: MobileGraphAnalysisKind) => {
-    const targetKind = kind.startsWith("regression-") ? "point-series" : kind.startsWith("polar-") ? "polar" : "explicit-cartesian";
+    const targetKind = kind.startsWith("regression-") ? "point-series" : kind.startsWith("polar-") ? "polar" :
+      kind === "parametric-tangent" ? "parametric" : "explicit-cartesian";
     const source = document.source.objects.find(object => object.id === draft.objectId && object.kind === targetKind) ??
       document.source.objects.find(object => object.kind === targetKind);
     onDraft({ ...draft, kind, objectId: source?.id ?? "",
       x: kind === "polar-tangent" ? String(document.selection.probe?.objectId === source?.id ?
         document.selection.probe?.parameter ?? (source?.kind === "polar" ? firstPolarAngle(source) : 0) :
-        source?.kind === "polar" ? firstPolarAngle(source) : 0) : draft.x,
+        source?.kind === "polar" ? firstPolarAngle(source) : 0) :
+        kind === "parametric-tangent" ? String(document.selection.probe?.objectId === source?.id ?
+          document.selection.probe?.parameter ?? (source?.kind === "parametric" ? firstParametricParameter(source) : 0) :
+          source?.kind === "parametric" ? firstParametricParameter(source) : 0) : draft.x,
       min: source?.kind === "polar" ? String(source.domain.min) : draft.min,
       max: source?.kind === "polar" ? String(source.domain.max) : draft.max });
   };
@@ -40,17 +48,18 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, onDraft, onR
   return <View testID="mobile-graph-analysis-panel"><Text style={s.title}>Analyze</Text>
     <View style={s.row}>{kinds.map(([kind, label]) => <Pressable key={kind} accessibilityRole="radio" accessibilityLabel={label}
       accessibilityState={{ checked: draft.kind === kind }} style={s.button} onPress={() => chooseKind(kind)}><Text>{label}</Text></Pressable>)}</View>
-    <Text>{polarOperation ? "Polar curve" : regression ? "Point series" : "Source function"}</Text><View style={s.row}>{sources.map((object) => <Pressable key={object.id} accessibilityRole="radio"
+    <Text>{polarOperation ? "Polar curve" : draft.kind === "parametric-tangent" ? "Parametric curve" : regression ? "Point series" : "Source function"}</Text><View style={s.row}>{sources.map((object) => <Pressable key={object.id} accessibilityRole="radio"
       accessibilityState={{ checked: draft.objectId === object.id }} accessibilityLabel={`Analyze ${object.label}`} style={s.button}
       onPress={() => onDraft({ ...draft, objectId: object.id,
         x: draft.kind === "polar-tangent" && object.kind === "polar" ? String(firstPolarAngle(object)) : draft.x,
+        ...(draft.kind === "parametric-tangent" && object.kind === "parametric" ? { x: String(firstParametricParameter(object)) } : {}),
         min: object.kind === "polar" ? String(object.domain.min) : draft.min,
         max: object.kind === "polar" ? String(object.domain.max) : draft.max })}><Text>{object.label}</Text></Pressable>)}</View>
     {draft.kind === "intersections" && <><Text>Second function (one pair only)</Text><View style={s.row}>{sources.filter((object) => object.id !== draft.objectId).map((object) =>
       button(`Intersect with ${object.label}${draft.secondId === object.id ? " (selected)" : ""}`, () => onDraft({ ...draft, secondId: object.id })))}</View></>}
-    {regression ? <Text>Fits original checked rows within the authored domain, not the viewport. No missing-value imputation.</Text> : pointOperation ? <>{field(draft.kind === "polar-tangent" ? "Angle θ (radians)" : "Analysis x", "x")}{button(draft.kind === "polar-tangent" ? "Use current probe angle" : "Use current probe x", () => onDraft({ ...draft,
-      objectId: document.selection.probe!.objectId, x: String(draft.kind === "polar-tangent" ? document.selection.probe!.parameter : document.selection.probe!.x) }), !document.selection.probe ||
-      draft.kind === "polar-tangent" && document.selection.probe.parameter === undefined ||
+    {regression ? <Text>Fits original checked rows within the authored domain, not the viewport. No missing-value imputation.</Text> : pointOperation ? <>{field(draft.kind === "polar-tangent" ? "Angle θ (radians)" : draft.kind === "parametric-tangent" ? "Parameter t" : "Analysis x", "x")}{button(draft.kind === "polar-tangent" ? "Use current probe angle" : draft.kind === "parametric-tangent" ? "Use current probe parameter" : "Use current probe x", () => onDraft({ ...draft,
+      objectId: document.selection.probe!.objectId, x: String(draft.kind === "polar-tangent" || draft.kind === "parametric-tangent" ? document.selection.probe!.parameter : document.selection.probe!.x) }), !document.selection.probe ||
+      (draft.kind === "polar-tangent" || draft.kind === "parametric-tangent") && document.selection.probe.parameter === undefined ||
       !sources.some(object => object.id === document.selection.probe?.objectId))}</> :
       <>{field(polarOperation ? "Angle from θ (radians)" : "Analysis from x", "min")}
         {field(polarOperation ? "Angle to θ (radians)" : "Analysis to x", "max")}</>}

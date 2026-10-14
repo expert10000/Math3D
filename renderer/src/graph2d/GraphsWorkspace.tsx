@@ -3,6 +3,7 @@ import {
   analyzeGraph2DIntersections,
   analyzeGraph2DLocalDifferential, fitGraph2DViewport,
   analyzeGraph2DPolarLocalDifferential, isGraph2DPolarLocalDifferentialCurrent,
+  analyzeGraph2DParametricLocalDifferential, isGraph2DParametricLocalDifferentialCurrent,
   analyzeGraph2DPolarMeasurement, isGraph2DPolarMeasurementCurrent,
   GRAPH2D_DEFAULT_VIEWPORT, GRAPH2D_WORKSPACE_CONTRACT,
   graph2DWorldToScreen, panGraph2DViewport, pickGraph2DProbe,
@@ -421,21 +422,23 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   }, [document, size, intersectionRequest, selectedObject]);
   const differential = useMemo(() => analyzeGraph2DLocalDifferential(document), [document]);
   const polarDifferential = useMemo(() => analyzeGraph2DPolarLocalDifferential(document), [document]);
+  const parametricDifferential = useMemo(() => analyzeGraph2DParametricLocalDifferential(document), [document]);
   const derivatives = differential?.derivatives ?? null;
   const differentialOverlays = [
     ...(differential && isGraph2DLocalDifferentialCurrent(differential, document) ? differential.overlays : []),
     ...(polarDifferential && isGraph2DPolarLocalDifferentialCurrent(polarDifferential, document) ? polarDifferential.overlays : []),
+    ...(parametricDifferential && isGraph2DParametricLocalDifferentialCurrent(parametricDifferential, document) ? parametricDifferential.overlays : []),
   ];
   const exportAnalyses = useMemo(() => {
     const tables = graph2DPublicationAnalysisTables(!exportOpen ? [] : [criticalPoints, intervals, area, arcLength, polarArea, polarArcLength, intersections,
-      differential, polarDifferential, ...(derivatives ?? [])].filter(result => !!result) as { publication: import("@math3d/core").AnalysisResultEnvelope }[]);
+      differential, polarDifferential, parametricDifferential, ...(derivatives ?? [])].filter(result => !!result) as { publication: import("@math3d/core").AnalysisResultEnvelope }[]);
     if (exportOpen && currentRegression) {
       tables.analyses.push(graph2DPublicationAnalysisTable({ publication: currentRegression.publication, summary: currentRegression.publication.summary } as { publication: import("@math3d/core").AnalysisResultEnvelope }),
         graph2DRegressionResidualTable(currentRegression), graph2DRegressionCurveTable(currentRegression));
       if (currentRegression.n > 2048) tables.analysisNotes.push(`Regression residual table includes first 2048 of ${currentRegression.n} rows; full data and model are unchanged.`);
     }
     return tables;
-  }, [exportOpen, criticalPoints, intervals, area, arcLength, polarArea, polarArcLength, intersections, differential, polarDifferential, derivatives, currentRegression]);
+  }, [exportOpen, criticalPoints, intervals, area, arcLength, polarArea, polarArcLength, intersections, differential, polarDifferential, parametricDifferential, derivatives, currentRegression]);
   const locateSelected = () => {
     if (!document.selection.probe) return;
     const screen = graph2DWorldToScreen(viewport, size, document.selection.probe);
@@ -500,6 +503,24 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       </dl>
       {polarDifferential.diagnostics.length > 0 && <ul className="graph2d-derivative-diagnostics">
         {polarDifferential.diagnostics.map((diagnostic) => <li key={diagnostic.code}>{diagnostic.message}</li>)}
+      </ul>}
+    </section>}
+    {parametricDifferential && <section className="graph2d-local-differential" data-testid="graph2d-local-differential" aria-label="Local differential">
+      <h3>Local differential</h3>
+      <p>Parametric tangent and normal follow increasing t. Signed curvature is (x′y″ − y′x″)/(x′² + y′²)^(3/2); positive turns counterclockwise. Values have no certified error bound.</p>
+      <dl className="graph2d-inspector-details">
+        <dt>State</dt><dd data-testid="graph2d-differentiability">{parametricDifferential.state}</dd>
+        <dt>Parameter t</dt><dd>{parametricDifferential.parameter.toPrecision(8)}</dd>
+        <dt>Point</dt><dd>{parametricDifferential.point ? `(${parametricDifferential.point.x.toPrecision(6)}, ${parametricDifferential.point.y.toPrecision(6)})` : "Unavailable"}</dd>
+        <dt>Speed</dt><dd>{parametricDifferential.speed === null ? "Unavailable" : parametricDifferential.speed.toPrecision(8)}</dd>
+        <dt>Signed curvature κ</dt><dd data-testid="graph2d-signed-curvature">{parametricDifferential.curvature === null ? "Unavailable" : parametricDifferential.curvature.toPrecision(8)}</dd>
+        <dt>Curvature method</dt><dd>{parametricDifferential.curvatureMethod === "symbolic-rules" ? "Symbolic rules; floating point value" :
+          parametricDifferential.curvatureMethod === "finite-difference" ? "Finite difference; no certified error bound" : "Unavailable"}</dd>
+        <dt>Tangent</dt><dd data-testid="graph2d-tangent-equation">{parametricDifferential.tangent ?? "Unavailable"}</dd>
+        <dt>Normal</dt><dd data-testid="graph2d-normal-equation">{parametricDifferential.normal ?? "Unavailable"}</dd>
+      </dl>
+      {parametricDifferential.diagnostics.length > 0 && <ul className="graph2d-derivative-diagnostics">
+        {parametricDifferential.diagnostics.map((diagnostic) => <li key={diagnostic.code}>{diagnostic.message}</li>)}
       </ul>}
     </section>}
     {derivatives && <section className="graph2d-derivatives" data-testid="graph2d-derivatives" aria-label="Derivatives">

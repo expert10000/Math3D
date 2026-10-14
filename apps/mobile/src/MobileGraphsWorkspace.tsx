@@ -269,7 +269,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         }).catch((caught: Error) => setError(caught.message)); }}
         onApply={(action) => commit(() => adapter.commitScene(applyMobileGraphAuthoring(document, action), action.type))}
         onSelect={(id) => commit(() => adapter.commitSelection(selectionForGraph2DObject(document, series, id)))} /> : <><Text style={s.readout}>{mobileGraphCapabilities(document)}</Text>
-        <Text style={s.readout}>Probes: evaluated explicit/parametric/polar, interpolated contours, nearest data row. Calculus/pins require explicit y(x); regression uses original point data. Sampling is approximate.</Text>
+        <Text style={s.readout}>Probes: evaluated explicit/parametric/polar, interpolated contours, nearest data row. Explicit calculus, polar measurements, and parametric/polar local differentials use source expressions; regression uses original point data. Sampling is approximate.</Text>
         {guided && <View accessibilityLabel={`Guide ${guided.concept.title}`} testID="mobile-graph-guided-panel">
           <Text accessibilityRole="header" style={s.title}>Guide: {guided.concept.title} · {guided.state}</Text>
           {guided.state === "stale" && <Text accessibilityLiveRegion="polite">Source or marker changed. These steps describe the original example; request fresh analysis.</Text>}

@@ -52,7 +52,7 @@ const mul = (a: Node, b: Node) => binary("*", a, b);
 const div = (a: Node, b: Node) => binary("/", a, b);
 const pow = (a: Node, b: Node) => binary("^", a, b);
 
-const derivativeNode = (node: Node, variable: "x" | "theta" = "x"): Node | null => {
+const derivativeNode = (node: Node, variable: "x" | "theta" | "t" = "x"): Node | null => {
   switch (node.kind) {
     case "number": return number(0);
     case "symbol": return number(node.name === variable ? 1 : 0);
@@ -108,7 +108,7 @@ const withinSymbolicBudget = (node: Node): boolean => {
 
 /** A derivative AST is transient and bounded; unsupported or expanded trees request numerical fallback. */
 export const differentiateGraph2DExpression = (
-  ast: Graph2DExpressionAst, order: Graph2DDerivativeOrder, variable: "x" | "theta" = "x",
+  ast: Graph2DExpressionAst, order: Graph2DDerivativeOrder, variable: "x" | "theta" | "t" = "x",
 ): Readonly<{ ok: true; ast: Graph2DExpressionAst } | { ok: false; reason: "unsupported-rule" | "symbolic-budget" }> => {
   let root: Node = ast.root;
   for (let index = 0; index < order; index += 1) {
@@ -124,7 +124,7 @@ export type Graph2DNumericDerivativeResult = Readonly<{ value: number; step: num
 /** Domain-aware fallback shared by Cartesian and polar scalar expressions. */
 export const numericalGraph2DDerivative = (ast: Graph2DExpressionAst, variables: Readonly<Record<string, number>>,
   domain: Graph2DDomain, x: number, order: Graph2DDerivativeOrder, tolerance: number,
-  variable: "x" | "theta" = "x"): Graph2DNumericDerivativeResult => {
+  variable: "x" | "theta" | "t" = "x"): Graph2DNumericDerivativeResult => {
   const scale = Math.max(1, Math.abs(x));
   let step = Math.pow(Number.EPSILON, 1 / (order + 2)) * scale;
   step = Math.min(step, (domain.max - domain.min) / 16);

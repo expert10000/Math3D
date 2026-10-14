@@ -1,6 +1,7 @@
 import { analyzeGraph2DDerivative, analyzeGraph2DLocalDifferential, analyzeGraph2DCriticalPoints,
   analyzeGraph2DIntegral, analyzeGraph2DIntersections, analyzeGraph2DArcLength, analyzeGraph2DPolarMeasurement,
-  analyzeGraph2DPolarLocalDifferential, evaluateGraph2DPolar, evaluateGraph2DExpression,
+  analyzeGraph2DPolarLocalDifferential, analyzeGraph2DParametricLocalDifferential,
+  evaluateGraph2DPolar, evaluateGraph2DParametric, evaluateGraph2DExpression,
   type AnalysisResultEnvelope, type Graph2DDocument, type Graph2DLineOverlay, type Graph2DProbe, type Graph2DAreaFillSegment,
   type Graph2DCriticalPoint, type Graph2DCriticalPointAnalysis, type Graph2DIntersectionCandidate,
   type Graph2DIntersectionAnalysis, structuralHash } from "@math3d/core";
@@ -12,7 +13,7 @@ const publicationProjection = (results: readonly { publication: AnalysisResultEn
 };
 
 export type MobileGraphAnalysisKind = "derivatives" | "tangent" | "features" | "integral" | "intersections" | "arc-length" |
-  "polar-area" | "polar-arc-length" | "polar-tangent" | "regression-linear" | "regression-quadratic";
+  "polar-area" | "polar-arc-length" | "polar-tangent" | "parametric-tangent" | "regression-linear" | "regression-quadratic";
 export type MobileGraphAnalysisDraft = { kind: MobileGraphAnalysisKind; objectId: string; secondId: string;
   x: string; min: string; max: string; tolerance: string; mode: "signed" | "absolute" };
 export type MobileGraphAnalysisRow = { label: string; detail: string; probe?: Graph2DProbe;
@@ -24,9 +25,11 @@ export type MobileGraphAnalysis = { kind: MobileGraphAnalysisKind; inputHash: st
 export type MobileGraphRegressionAnalysis = MobileGraphAnalysis & { regression?: Graph2DRegression };
 export const mobileGraphAnalysisDraft = (document: Graph2DDocument): MobileGraphAnalysisDraft => {
   const selected = document.source.objects.find(object => object.id === document.selection.objectId);
-  return { kind: selected?.kind === "polar" ? "polar-area" : "derivatives",
+  const parametricDefault = selected?.kind === "parametric" ?
+    selected.domain.includeMin ? selected.domain.min : (selected.domain.min + selected.domain.max) / 2 : 0;
+  return { kind: selected?.kind === "polar" ? "polar-area" : selected?.kind === "parametric" ? "parametric-tangent" : "derivatives",
     objectId: selected?.id ?? document.source.objects.find(object => object.kind === "explicit-cartesian")?.id ?? "",
-    secondId: "", x: String(document.selection.probe?.x ?? 0),
+    secondId: "", x: String(selected?.kind === "parametric" ? document.selection.probe?.parameter ?? parametricDefault : document.selection.probe?.x ?? 0),
     min: String(selected?.kind === "polar" ? selected.domain.min : -1),
     max: String(selected?.kind === "polar" ? selected.domain.max : 1), tolerance: "0.00001", mode: "signed" };
 };
@@ -79,6 +82,23 @@ export const runMobileGraphAnalysis = (document: Graph2DDocument, draft: MobileG
         { label: `Signed curvature: ${format(differential.curvature)}`,
           detail: differential.curvature === null ? "Needs a regular tangent and finite second radius derivative." :
             `${differential.curvatureMethod} · (r² + 2r′² − rr″)/(r² + r′²)^(3/2) · positive turns counterclockwise · no certified error bound` }] };
+  }
+  if (draft.kind === "parametric-tangent") {
+    if (!object || object.kind !== "parametric") throw new TypeError("Choose a parametric curve to analyze.");
+    const parameter = number(draft.x);
+    const variables = Object.fromEntries(document.source.variables.map(variable => [variable.name, variable.value]));
+    const point = evaluateGraph2DParametric(object, variables, parameter);
+    if (!point) throw new TypeError("Parameter is outside the source domain or a coordinate is undefined.");
+    const probe = { objectId: object.id, x: point.x, y: point.y, parameter };
+    const differential = analyzeGraph2DParametricLocalDifferential({ ...document, selection: { objectId: object.id, probe } });
+    if (!differential) throw new TypeError("Parametric local differential is unavailable.");
+    return { ...result, ...publicationProjection([differential]), publications: [differential.publication], overlays: differential.overlays,
+      rows: [{ label: `Parametric tangent: ${differential.tangent ?? "unavailable"}`,
+        detail: `${differential.state} · t=${format(parameter)} · ${differential.tangentMethod}`, probe },
+        { label: `Parametric normal: ${differential.normal ?? "unavailable"}`, detail: "Perpendicular to the tangent for increasing t" },
+        { label: `Signed curvature: ${format(differential.curvature)}`,
+          detail: differential.curvature === null ? "Needs a regular tangent and finite second coordinate derivatives." :
+            `${differential.curvatureMethod} · (x′y″ − y′x″)/(x′² + y′²)^(3/2) · positive turns counterclockwise · no certified error bound` }] };
   }
   if (!object || object.kind !== "explicit-cartesian") throw new TypeError("Choose an explicit function to analyze.");
   const tolerance = number(draft.tolerance);
@@ -142,6 +162,11 @@ export const mobileGraphAnalysisProbe = (document: Graph2DDocument, probe: Graph
   if (object?.kind === "polar" && probe.parameter !== undefined) {
     const point = evaluateGraph2DPolar(object, Object.fromEntries(document.source.variables.map(entry => [entry.name, entry.value])), probe.parameter);
     if (!point) throw new TypeError("Result angle is outside the source domain or undefined.");
+    return { objectId: object.id, x: point.x, y: point.y, parameter: probe.parameter };
+  }
+  if (object?.kind === "parametric" && probe.parameter !== undefined) {
+    const point = evaluateGraph2DParametric(object, Object.fromEntries(document.source.variables.map(entry => [entry.name, entry.value])), probe.parameter);
+    if (!point) throw new TypeError("Result parameter is outside the source domain or undefined.");
     return { objectId: object.id, x: point.x, y: point.y, parameter: probe.parameter };
   }
   if (!object || object.kind !== "explicit-cartesian" || probe.x < object.domain.min || probe.x > object.domain.max ||

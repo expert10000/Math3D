@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { analyzeGraph2DDerivative, analyzeGraph2DIntegral, analyzeGraph2DArcLength,
-  analyzeGraph2DPolarMeasurement, analyzeGraph2DPolarLocalDifferential, applyGraph2DAuthoring, createEmptyGraph2DDocument,
+  analyzeGraph2DPolarMeasurement, analyzeGraph2DPolarLocalDifferential,
+  analyzeGraph2DParametricLocalDifferential, applyGraph2DAuthoring, createEmptyGraph2DDocument,
   createGraph2DDocument, serializeGraph2DDocument } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { createMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
@@ -15,6 +16,26 @@ const parabola = () => {
   return adapter;
 };
 describe("MOB-G07 shared bounded touch analysis", () => {
+  it("publishes the same parametric curvature as desktop and locates the parameter", () => {
+    const empty = createEmptyGraph2DDocument("mobile-parametric-differential");
+    const scene = applyGraph2DAuthoring(empty, { type: "create-parametric", draft: {
+      label: "unit circle", xExpression: "cos(t)", yExpression: "sin(t)",
+      domain: { min: 0, max: 2 * Math.PI, includeMin: true, includeMax: true },
+      style: { visible: true, color: "#e11d48", lineWidth: 2, lineStyle: "solid" } } });
+    const document = createGraph2DDocument({ stableKey: "mobile-parametric-differential", source: scene.source,
+      display: scene.display, selection: { objectId: "parametric_1", probe: null } });
+    const draft = { ...mobileGraphAnalysisDraft(document), x: String(Math.PI / 2) };
+    expect(draft.kind).toBe("parametric-tangent");
+    const result = runMobileGraphAnalysis(document, draft);
+    const probe = result.rows[0]!.probe!;
+    const shared = analyzeGraph2DParametricLocalDifferential({ ...document,
+      selection: { objectId: "parametric_1", probe } })!;
+    expect(result.publications[0]?.summary).toEqual(shared.publication.summary);
+    expect(result.rows[2]?.label).toContain("1.0000000");
+    expect(result.overlays).toHaveLength(2);
+    expect(mobileGraphAnalysisProbe(document, probe).parameter).toBe(Math.PI / 2);
+    expect(() => runMobileGraphAnalysis(document, { ...draft, x: "-1" })).toThrow();
+  });
   it("uses the same polar angular measurements and publication provenance as desktop", () => {
     const empty = createEmptyGraph2DDocument("mobile-polar-measure");
     const scene = applyGraph2DAuthoring(empty, { type: "create-polar", draft: {
