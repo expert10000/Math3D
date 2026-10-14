@@ -6,7 +6,7 @@ import { evaluateGraph2DExpression } from "./graph2dExpression";
 import { resolveGraph2DViewport, type Graph2DScreenSize, type Graph2DViewport } from "./graph2dViewport";
 import type { ScientificSourceGeneration } from "./scientificJobs";
 
-export const GRAPH2D_DIFFERENTIAL_ALGORITHM_VERSION = "1" as const;
+export const GRAPH2D_DIFFERENTIAL_ALGORITHM_VERSION = "2" as const;
 export type Graph2DLineOverlay = Readonly<{
   artifactId: string;
   kind: "tangent" | "normal";
@@ -26,6 +26,9 @@ export type Graph2DLocalDifferential = Readonly<{
   point: Readonly<{ x: number; y: number }> | null;
   slope: number | null;
   slopeMethod: Graph2DDerivativeEstimate["method"];
+  /** Signed curvature for increasing x: f''(x)/(1+f'(x)^2)^(3/2). */
+  curvature: number | null;
+  curvatureMethod: Graph2DDerivativeEstimate["method"];
   tangent: Graph2DLineEquation | null;
   normal: Graph2DLineEquation | null;
   overlays: readonly Graph2DLineOverlay[];
@@ -69,6 +72,15 @@ export const analyzeGraph2DLocalDifferential = (document: Graph2DDocument): Grap
   else diagnostics.push({ code: "derivative-unresolved", message: "A finite first derivative could not be established at this probe." });
   const point = inDomain && evaluated.ok ? { x: probe.x, y: evaluated.value } : null;
   const slope = state === "differentiable" ? derivatives[0].value : null;
+  const second = derivatives[1].status === "numerical" ? derivatives[1].value : null;
+  const denominator = slope === null ? NaN : Math.hypot(1, slope) ** 3;
+  const estimatedCurvature = slope !== null && second !== null && Number.isFinite(denominator) && denominator > 0 ?
+    second / denominator : NaN;
+  const curvature = Number.isFinite(estimatedCurvature) ? estimatedCurvature : null;
+  const curvatureMethod = curvature === null ? "unavailable" :
+    derivatives.every(entry => entry.method === "symbolic-rules") ? "symbolic-rules" : "finite-difference";
+  if (state === "differentiable" && curvature === null)
+    diagnostics.push({ code: "curvature-unresolved", message: "A finite second derivative or stable curvature could not be established at this probe." });
   const tangent: Graph2DLineEquation | null = point && slope !== null ? {
     equation: `y - (${formatted(point.y)}) = ${formatted(slope)}(x - (${formatted(point.x)}))`, slope,
   } : null;
@@ -88,22 +100,28 @@ export const analyzeGraph2DLocalDifferential = (document: Graph2DDocument): Grap
       source, probeGeneration, objectId: object.id, anchor: point, direction: { x: -slope, y: 1 } },
   ] : [];
   const publication = createAnalysisResultEnvelope({
-    resultId: `graph2d.local-differential.${probeGeneration.slice(7)}`,
+    resultId: `graph2d.local-differential.v${GRAPH2D_DIFFERENTIAL_ALGORITHM_VERSION}.${probeGeneration.slice(7)}`,
     status: state === "differentiable" ? "numerical" : "unsupported",
-    provenance: { source, operation: { type: "graph2d.local-differential", algorithm: "local-derivative-and-perpendicular",
+    provenance: { source, operation: { type: "graph2d.local-differential", algorithm: "local-derivative-perpendicular-curvature",
       algorithmVersion: GRAPH2D_DIFFERENTIAL_ALGORITHM_VERSION,
       parameters: { objectId: object.id, x: probe.x, y: probe.y, probeGeneration } },
       numericContext: { precision: { binaryBits: 53 }, tolerance: { absolute: derivatives[0].tolerance } },
       engine: { name: "math3d-core", version: GRAPH2D_DIFFERENTIAL_ALGORITHM_VERSION }, elapsedMs: Math.max(0, Date.now() - started) },
     summary: { state, x: probe.x, y: point?.y ?? null, slope, slopeMethod: derivatives[0].method,
+      curvature, curvatureMethod, curvatureConvention: "signed-for-increasing-x",
       tangent: tangent?.equation ?? null, normal: normal?.equation ?? null, probeGeneration },
-    warnings: state === "differentiable" && derivatives[0].method === "finite-difference" ?
-      ["The slope comes from finite differences and has an estimated, uncertified error."] : [],
+    warnings: [
+      ...(state === "differentiable" && derivatives[0].method === "finite-difference" ?
+        ["The slope comes from finite differences and has an estimated, uncertified error."] : []),
+      ...(curvature !== null && curvatureMethod === "finite-difference" ?
+        ["Curvature uses finite differences and has no certified error bound."] : []),
+    ],
     diagnostics: diagnostics.map((entry) => ({ code: entry.code, severity: "warning" as const, message: entry.message })),
     artifacts: [],
   });
   return { objectId: object.id, probe, source, probeGeneration, state, point, slope,
-    slopeMethod: derivatives[0].method, tangent, normal, overlays, derivatives, diagnostics, publication };
+    slopeMethod: derivatives[0].method, curvature, curvatureMethod,
+    tangent, normal, overlays, derivatives, diagnostics, publication };
 };
 
 export const isGraph2DLocalDifferentialCurrent = (analysis: Graph2DLocalDifferential, document: Graph2DDocument): boolean => {

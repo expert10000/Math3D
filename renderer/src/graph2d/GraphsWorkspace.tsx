@@ -462,11 +462,15 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     {parameterPreviewActive && <p role="status">Inspector and analyses refer to the committed source, not the parameter preview.</p>}
     {differential && <section className="graph2d-local-differential" data-testid="graph2d-local-differential" aria-label="Local differential">
       <h3>Local differential</h3>
+      <p>Signed curvature is f''(x)/(1+f'(x)²)^(3/2); positive bends upward as x increases. Values have no certified error bound.</p>
       <dl className="graph2d-inspector-details">
         <dt>State</dt><dd data-testid="graph2d-differentiability">{differential.state}</dd>
         <dt>Point</dt><dd>{differential.point ? `(${differential.point.x.toPrecision(6)}, ${differential.point.y.toPrecision(6)})` : "Unavailable"}</dd>
         <dt>Slope</dt><dd>{differential.slope === null ? "Unavailable" : differential.slope.toPrecision(8)}</dd>
-        <dt>Method</dt><dd>{differential.slopeMethod === "symbolic-rules" ? "Symbolic rules; floating point value" :
+        <dt>Signed curvature κ</dt><dd data-testid="graph2d-signed-curvature">{differential.curvature === null ? "Unavailable" : differential.curvature.toPrecision(8)}</dd>
+        <dt>Curvature method</dt><dd>{differential.curvatureMethod === "symbolic-rules" ? "Symbolic rules; floating point value" :
+          differential.curvatureMethod === "finite-difference" ? "Finite difference; no certified error bound" : "Unavailable"}</dd>
+        <dt>Slope method</dt><dd>{differential.slopeMethod === "symbolic-rules" ? "Symbolic rules; floating point value" :
           differential.slopeMethod === "finite-difference" ? "Richardson finite difference" : "Unavailable"}</dd>
         <dt>Tangent</dt><dd data-testid="graph2d-tangent-equation">{differential.tangent?.equation ?? "Unavailable"}</dd>
         <dt>Normal</dt><dd data-testid="graph2d-normal-equation">{differential.normal?.equation ?? "Unavailable"}</dd>

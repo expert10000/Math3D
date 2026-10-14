@@ -7,8 +7,14 @@ import { notebookRerunSupported, rerunNotebookAnalysis } from "./notebookRerun";
 import { instantiateNotebookStarter } from "../projects/notebookStarters";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
 
-const fixture = () => {
+const fixture = (legacyDerivative = false) => {
   let project = instantiateMath3DProjectTemplate("derivative-study", "rerun");
+  if (legacyDerivative) {
+    const current = project.workspace.results[0]!;
+    const historical = { ...current, resultId: current.resultId.replace("graph2d.derivative.v2.", "graph2d.derivative."),
+      provenance: { ...current.provenance, operation: { ...current.provenance.operation, algorithmVersion: "1" } } };
+    project = replaceMath3DProjectWorkspace(project, createMixedWorkspaceDocument({ ...project.workspace, results: [historical] }));
+  }
   const previous = project.workspace.results[0]!, reference = createNotebookReference(project, "result", previous.resultId);
   const entry = project.workspace.entries.find(item => item.module === "graph2d")!;
   if (entry.checkpoint.format !== "math3d.graph2d-document") throw new Error("Graph missing");
@@ -28,6 +34,13 @@ describe("NOTE05 guarded reruns", () => {
     expect(inspectNotebookReference(f.read().project, next).status).toBe("current");
     expect(inspectNotebookReference(f.read().project, f.reference).status).toBe("stale");
     expect(f.read().project.workspace.results).toContainEqual(f.previous);
+  });
+  it("reruns a historical version-1 derivative into a new version-2 result", async () => {
+    const f = fixture(true), next = await rerunNotebookAnalysis(f.reference, new AbortController().signal,
+      f.read, () => undefined, f.publish);
+    expect(next.targetId).not.toBe(f.reference.targetId);
+    expect(f.read().project.workspace.results).toContainEqual(f.previous);
+    expect(f.read().project.workspace.results.find(item => item.resultId === next.targetId)?.provenance.operation.algorithmVersion).toBe("2");
   });
   it("cancellation and source changes do not publish or overwrite prior evidence", async () => {
     for (const mode of ["cancel", "change"]) {
@@ -60,7 +73,10 @@ describe("NOTE05 guarded reruns", () => {
     expect(published).toBe(false); expect(project.workspace.results).toEqual(made.project.workspace.results);
   });
   it("rejects unsupported methods and saved previews", async () => {
-    const f = fixture(); expect(notebookRerunSupported({ ...f.previous, provenance: { ...f.previous.provenance, operation: { ...f.previous.provenance.operation, algorithmVersion: "unknown" } } })).toBe(false);
+    const f = fixture();
+    expect(notebookRerunSupported(f.previous)).toBe(true);
+    expect(notebookRerunSupported({ ...f.previous, provenance: { ...f.previous.provenance, operation: { ...f.previous.provenance.operation, algorithmVersion: "1" } } })).toBe(true);
+    expect(notebookRerunSupported({ ...f.previous, provenance: { ...f.previous.provenance, operation: { ...f.previous.provenance.operation, algorithmVersion: "unknown" } } })).toBe(false);
     await expect(rerunNotebookAnalysis(f.reference, new AbortController().signal, () => ({ ...f.read(), live: false }), () => undefined, f.publish)).rejects.toThrow(/supported stale/);
   });
 });

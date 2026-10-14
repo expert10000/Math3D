@@ -18,6 +18,10 @@ describe("Graph2D local differentials", () => {
     const analysis = analyzeGraph2DLocalDifferential(document)!;
     expect(analysis.state).toBe("differentiable");
     expect(analysis.slope).toBeCloseTo(4);
+    expect(analysis.curvature).toBeCloseTo(2 / Math.pow(17, 1.5), 10);
+    expect(analysis.curvatureMethod).toBe("symbolic-rules");
+    expect(analysis.publication.summary.curvature).toBeCloseTo(analysis.curvature!, 10);
+    expect(analysis.publication.provenance.operation.algorithmVersion).toBe("2");
     expect(analysis.tangent?.equation).toContain("4(x - (2))");
     expect(analysis.normal?.slope).toBeCloseTo(-0.25);
     expect(analysis.publication.status).toBe("numerical");
@@ -48,6 +52,7 @@ describe("Graph2D local differentials", () => {
     const document = documentFor("x^2", 0, 0);
     const analysis = analyzeGraph2DLocalDifferential(document)!;
     expect(analysis.slope).toBe(0);
+    expect(analysis.curvature).toBe(2);
     expect(analysis.normal?.equation).toBe("x = 0");
     const normal = analysis.overlays.find((entry) => entry.kind === "normal")!;
     const segment = clipGraph2DLineOverlay(normal, document.display.viewport, { width: 800, height: 600 });
@@ -58,12 +63,15 @@ describe("Graph2D local differentials", () => {
   it("withholds overlays at cusps, undefined points, and stale probes", () => {
     const cusp = analyzeGraph2DLocalDifferential(documentFor("abs(x)", 0, 0))!;
     expect(cusp.state).toBe("nondifferentiable");
+    expect(cusp.curvature).toBeNull();
     expect(cusp.overlays).toHaveLength(0);
     const undefinedPoint = analyzeGraph2DLocalDifferential(documentFor("sqrt(x)", -1, 0))!;
     expect(undefinedPoint.state).toBe("undefined");
+    expect(undefinedPoint.curvature).toBeNull();
     expect(undefinedPoint.overlays).toHaveLength(0);
     const stale = analyzeGraph2DLocalDifferential(documentFor("x^2", 2, 5))!;
     expect(stale.state).toBe("unresolved");
+    expect(stale.curvature).toBeNull();
     expect(stale.diagnostics[0]?.code).toBe("stale-probe");
     expect(stale.overlays).toHaveLength(0);
     const visible = documentFor("x^2", 2, 4);
@@ -72,5 +80,24 @@ describe("Graph2D local differentials", () => {
     const hiddenAnalysis = analyzeGraph2DLocalDifferential(hidden)!;
     expect(hiddenAnalysis.state).toBe("differentiable");
     expect(hiddenAnalysis.overlays).toHaveLength(0);
+  });
+  it("preserves the sign of bending under reflection", () => {
+    const upward = analyzeGraph2DLocalDifferential(documentFor("x^2", 0, 0))!;
+    const downward = analyzeGraph2DLocalDifferential(documentFor("-x^2", 0, 0))!;
+    expect(upward.curvature).toBe(2);
+    expect(downward.curvature).toBe(-2);
+  });
+  it("labels a finite-difference curvature as uncertified", () => {
+    const analysis = analyzeGraph2DLocalDifferential(documentFor("abs(x)", 2, 2))!;
+    expect(analysis.curvature).toBeCloseTo(0, 4);
+    expect(analysis.curvatureMethod).toBe("finite-difference");
+    expect(analysis.publication.warnings.join(" ")).toMatch(/no certified error bound/i);
+  });
+  it("keeps the tangent but withholds curvature at a second-derivative jump", () => {
+    const analysis = analyzeGraph2DLocalDifferential(documentFor("x*abs(x)", 0, 0))!;
+    expect(analysis.state).toBe("differentiable");
+    expect(analysis.tangent).not.toBeNull();
+    expect(analysis.curvature).toBeNull();
+    expect(analysis.diagnostics.some(entry => entry.code === "curvature-unresolved")).toBe(true);
   });
 });

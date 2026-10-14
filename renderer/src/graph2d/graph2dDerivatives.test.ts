@@ -60,4 +60,11 @@ describe("Graph2D derivatives", () => {
     expect(outside.status).toBe("unavailable");
     expect(outside.diagnostics[0]?.code).toBe("outside-domain");
   });
+  it("does not publish a cancelled symmetric second derivative across a curvature jump", () => {
+    const document = documentFor("x*abs(x)");
+    const [first, second] = analyzeGraph2DDerivatives(document, "function_1", 0);
+    expect(first.value).toBeCloseTo(0, 4);
+    expect(second.value).toBeNull();
+    expect(second.diagnostics.some(entry => entry.code === "second-derivative-disagreement")).toBe(true);
+  });
 });

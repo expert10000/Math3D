@@ -54,6 +54,8 @@ describe("MOB-G07 shared bounded touch analysis", () => {
     const adapter = parabola(), document = adapter.document(), base = { ...mobileGraphAnalysisDraft(document), x: "1" };
     const tangent = runMobileGraphAnalysis(document, { ...base, kind: "tangent" });
     expect(tangent.overlays).toHaveLength(1); expect(tangent.overlays[0]?.direction.y).toBe(2);
+    expect(tangent.rows.find(row => row.label.startsWith("Signed curvature:"))?.label).toContain("0.17888544");
+    expect(tangent.publications[0]?.summary.curvature).toBeCloseTo(2 / Math.pow(5, 1.5), 7);
     const features = runMobileGraphAnalysis(document, { ...base, kind: "features" });
     const zero = features.rows.find((row) => row.probe && row.label.startsWith("zero:")); expect(zero).toBeTruthy();
     expect(mobileGraphAnalysisProbe(document, zero!.probe!).y).toBeCloseTo(0, 7);

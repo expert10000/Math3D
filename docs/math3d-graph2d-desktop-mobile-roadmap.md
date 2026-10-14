@@ -330,6 +330,8 @@ Free independent points, arbitrary text, geometric constructions, multi-object t
 
 The [analysis and constructions follow-on roadmap](graph2d-analysis-constructions-roadmap.md) scopes G2D44–50 after G2D43. It corrects graph-kind-aware actions, adds polar measurements, and introduces a reviewed persistent construction contract. The [G2D50 automated acceptance record](graph2d-g2d50-acceptance.md) covers numerical, interaction, browser, Electron, and mobile-model checks; physical-device and spoken accessibility signoff remain open. Existing G2D13–19 analysis, G2D26–29 promotion, G2D38 parameters, G2D39 regression, and G2D42–43 tools/probes remain delivered baselines.
 
+[G2D51](graph2d-g2d51-curvature.md) begins the next bounded Graphs slice with source-linked signed curvature at an explicit committed probe. It reuses the existing derivative service and leaves persistent curvature geometry and other graph kinds for a separate contract review.
+
 ## 7. Dependency graph and parallel work
 
 ```text

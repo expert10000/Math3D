@@ -4,7 +4,7 @@ import { graph2DConstructionFromCandidate, GRAPH2D_MAX_CONSTRUCTIONS,
   type Graph2DConstructionObject, type Graph2DDocument, type Graph2DProbe } from "@math3d/core";
 import { isMobileGraphAnalysisCurrent, type MobileGraphRegressionAnalysis, type MobileGraphAnalysisDraft, type MobileGraphAnalysisKind } from "./models/mobileGraphAnalysis";
 
-const kinds: readonly [MobileGraphAnalysisKind, string][] = [["derivatives", "Derivatives"], ["tangent", "Tangent"],
+const kinds: readonly [MobileGraphAnalysisKind, string][] = [["derivatives", "Derivatives"], ["tangent", "Tangent & curvature"],
   ["features", "Zeros, extrema, inflections"], ["integral", "Integral"], ["intersections", "Intersections"], ["arc-length", "Arc length"],
   ["polar-area", "Polar swept area"], ["polar-arc-length", "Polar arc length"],
   ["regression-linear", "Linear regression"], ["regression-quadratic", "Quadratic regression"]];

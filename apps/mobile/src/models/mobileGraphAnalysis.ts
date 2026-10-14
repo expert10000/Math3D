@@ -81,7 +81,10 @@ export const runMobileGraphAnalysis = (document: Graph2DDocument, draft: MobileG
     if (!differential) throw new TypeError("Tangent is unavailable.");
     return { ...result, ...publicationProjection([differential]), publications: [differential.publication], overlays: differential.overlays.filter((overlay) => overlay.kind === "tangent"),
       rows: [{ label: `Tangent: ${differential.tangent?.equation ?? "unavailable"}`, detail: `${differential.state} · ${differential.slopeMethod}`, probe },
-        { label: `Normal: ${differential.normal?.equation ?? "unavailable"}`, detail: "Perpendicular to a resolved tangent" }] };
+        { label: `Normal: ${differential.normal?.equation ?? "unavailable"}`, detail: "Perpendicular to a resolved tangent" },
+        { label: `Signed curvature: ${format(differential.curvature)}`,
+          detail: differential.curvature === null ? "Needs a finite first and second derivative at this point." :
+            `${differential.curvatureMethod} · f''(x)/(1+f'(x)²)^(3/2) · positive bends upward as x increases · no certified error bound` }] };
   }
   const interval = { min: number(draft.min), max: number(draft.max) };
   if (interval.min >= interval.max || interval.max - interval.min > 1e6) throw new TypeError("Choose an increasing interval no wider than 1,000,000.");

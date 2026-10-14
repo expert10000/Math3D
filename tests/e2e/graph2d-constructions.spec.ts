@@ -12,7 +12,10 @@ test("G2D48 promotes a probe, recomputes a dependent tangent, and undoes source 
     await page.getByRole("button", { name: "Open A tangent at x = 1", exact: true }).click();
     const functions = page.getByLabel("Graph functions", { exact: true });
     await functions.getByRole("button", { name: "Select Parabola", exact: true }).click();
-    const panel = page.getByLabel("Graph inspector", { exact: true }).getByTestId("graph2d-constructions");
+    const inspector = page.getByLabel("Graph inspector", { exact: true });
+    await expect(inspector.getByLabel("Selected graph result")).toContainText("Probe (0.50000, 0.25000)");
+    await expect(inspector.getByTestId("graph2d-signed-curvature")).toContainText("0.70710678");
+    const panel = inspector.getByTestId("graph2d-constructions");
     const save = panel.getByRole("button", { name: "Save probe as point" });
     await expect(save).toBeEnabled();
     await save.click();

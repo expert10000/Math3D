@@ -4,7 +4,7 @@ import type { Graph2DDocument, Graph2DDomain } from "./graph2dDocument";
 import { evaluateGraph2DExpression, formatGraph2DExpressionAst,
   type Graph2DExpressionAst, type Graph2DExpressionNode } from "./graph2dExpression";
 
-export const GRAPH2D_DERIVATIVE_ALGORITHM_VERSION = "1" as const;
+export const GRAPH2D_DERIVATIVE_ALGORITHM_VERSION = "2" as const;
 export const GRAPH2D_DERIVATIVE_TOLERANCE = 1e-5;
 export type Graph2DDerivativeOrder = 1 | 2;
 export type Graph2DDerivativeMethod = "symbolic-rules" | "finite-difference" | "unavailable";
@@ -155,6 +155,23 @@ const numericalDerivative = (ast: Graph2DExpressionAst, variables: Readonly<Reco
         Math.max(0.02, 10 * Math.sqrt(step / scale) * Math.max(1, Math.abs(coarse.value))))
       return { diagnostic: { code: "nondifferentiable", message: "Left and right slopes disagree at the probe." } };
   }
+  if (direction === 0 && order === 2) {
+    // A symmetric stencil can cancel a jump in f'' (for example x*abs(x) at 0).
+    // Compare second-order one-sided stencils before accepting the central value.
+    const h = step / 2;
+    const side = (sign: -1 | 1): number | null => {
+      const a = sample(sign * h), b = sample(sign * 2 * h), c = sample(sign * 3 * h);
+      if (a === null || b === null || c === null) return null;
+      const value = (2 * f0 - 5 * a + 4 * b - c) / (h * h);
+      return Number.isFinite(value) ? value : null;
+    };
+    const left = side(-1), right = side(1);
+    if (left === null || right === null)
+      return { diagnostic: { code: "invalid-neighborhood", message: "Second-derivative samples cross an undefined or excluded interval." } };
+    const roundoff = 64 * Number.EPSILON * Math.max(1, fine.magnitude) / (h * h);
+    if (Math.abs(left - right) > Math.max(10 * tolerance * Math.max(1, Math.abs(coarse.value)), roundoff))
+      return { diagnostic: { code: "second-derivative-disagreement", message: "Left and right second derivatives disagree at the probe." } };
+  }
   const value = (4 * fine.value - coarse.value) / 3;
   const roundoff = 16 * Number.EPSILON * Math.max(1, fine.magnitude) / Math.pow(step / 2, order);
   const error = Math.abs(value - fine.value) + roundoff;
@@ -195,7 +212,7 @@ export const analyzeGraph2DDerivative = (input: Readonly<{
       else { method = "finite-difference"; value = numerical.value; step = numerical.step; errorEstimate = numerical.error; }
     }
   }
-  const resultId = "graph2d.derivative." + structuralHash({ documentId: input.document.identity.id,
+  const resultId = `graph2d.derivative.v${GRAPH2D_DERIVATIVE_ALGORITHM_VERSION}.` + structuralHash({ documentId: input.document.identity.id,
     revision: input.document.identity.revision, objectId: input.objectId, x: input.x, order: input.order, tolerance }).slice(7);
   const publication = createAnalysisResultEnvelope({ resultId, status: value === null ? "unsupported" : "numerical",
     provenance: { source: { documentId: input.document.identity.id, revision: input.document.identity.revision,
