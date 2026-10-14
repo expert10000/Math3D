@@ -340,6 +340,8 @@ The [analysis and constructions follow-on roadmap](graph2d-analysis-construction
 
 [G2D56](graph2d-g2d56-persistent-curvature.md) adds a saved signed-curvature measurement depending on a point construction, with explicit `x`, polar `theta`, and parametric `t` conventions. The value recomputes from source expressions and is withheld at singular or unresolved points.
 
+[G2D57](graph2d-g2d57-osculating-circle.md) adds an osculating circle depending on a saved point. Its center and radius derive from the current tangent and signed curvature, while the saved document keeps only source-linked intent. Desktop and mobile show the finite circle and report unavailable geometry at flat or singular points.
+
 ## 7. Dependency graph and parallel work
 
 ```text

@@ -96,6 +96,35 @@ test("G2D56 saves curvature at a point and recomputes after source edits", async
   } finally { await closeSurfaceApp(app); }
 });
 
+test("G2D57 saves an osculating circle and updates its geometry after source edits", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.getByTestId("graph-gallery-open").click();
+    await page.getByRole("button", { name: "Open A tangent at x = 1", exact: true }).click();
+    const functions = page.getByLabel("Graph functions", { exact: true });
+    await functions.getByRole("button", { name: "Select Parabola", exact: true }).click();
+    const inspector = page.getByLabel("Graph inspector", { exact: true });
+    const panel = inspector.getByTestId("graph2d-constructions");
+    await panel.getByRole("button", { name: "Save probe as point" }).click();
+    await panel.getByRole("button", { name: "Add osculating circle" }).click();
+    const saved = panel.getByTestId("graph2d-saved-osculating-circle");
+    await expect(saved).toContainText("radius");
+    await expect(page.locator('[data-graph2d-construction="construction_2"]')).toHaveCount(1);
+    const before = await saved.textContent();
+    await functions.getByRole("button", { name: "Edit Parabola", exact: true }).click();
+    await functions.getByLabel("Function expression").fill("-x^2");
+    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    await expect(saved).not.toHaveText(before ?? "");
+    await page.getByTestId("main-viewer").focus();
+    await page.keyboard.press("Control+z");
+    await expect(saved).toHaveText(before ?? "");
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("G2D49 saves a root candidate and keeps its local identity across source edits", async () => {
   const app = await launchSurfaceApp();
   try {

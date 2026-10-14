@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { applyGraph2DAuthoring, createEmptyGraph2DDocument, graph2DDerivedConstructionFromPoint,
-  graph2DCurvatureConstructionFromPoint, graph2DPointConstructionFromProbe,
-  GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY, isGraph2DConstructionArtifactCurrent, resolveGraph2DConstructions,
+  graph2DCurvatureConstructionFromPoint, graph2DOsculatingCircleConstructionFromPoint, graph2DPointConstructionFromProbe,
+  GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY,
+  isGraph2DConstructionArtifactCurrent, resolveGraph2DConstructions,
   inspectGraph2DCompatibility, normalizeGraph2DDocument, parseGraph2DDocument, serializeGraph2DDocument,
   type Graph2DDocument } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
@@ -91,6 +92,50 @@ describe("G2D48 source-derived Graph constructions", () => {
       label: "f", expression: "x", domain: { min: -4, max: 1, includeMin: true, includeMax: true }, style,
     } }), "edit");
     expect(ready(undefinedPoint.document())[0]?.reason).toMatch(/outside the domain/);
+  });
+});
+
+describe("G2D57 saved osculating circle", () => {
+  it("derives finite geometry for explicit, parametric, and negative-radius polar curves", () => {
+    for (const [kind, expression] of [["explicit", "x^2"], ["parametric", "t^2"], ["polar", "-2"]] as const) {
+      const adapter = scene(kind, expression);
+      adapter.commitConstruction({ type: "create", object: graph2DOsculatingCircleConstructionFromPoint(adapter.document(), "construction_1") });
+      const saved = adapter.document(), artifact = resolveGraph2DConstructions(saved);
+      const circle = artifact.objects[3]?.circle;
+      expect(saved.requiredCapabilities).toContain(GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY);
+      expect(normalizeGraph2DDocument({ ...saved, requiredCapabilities: saved.requiredCapabilities.filter(capability =>
+        capability !== GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY) }).ok).toBe(false);
+      expect(circle).toBeTruthy();
+      expect(circle!.radius).toBeGreaterThan(0);
+      expect(Math.abs(Math.hypot(artifact.objects[0]!.point!.x - circle!.center.x,
+        artifact.objects[0]!.point!.y - circle!.center.y) - circle!.radius)).toBeLessThan(1e-8);
+      if (kind === "polar") { expect(circle!.center.x).toBeCloseTo(0, 6); expect(circle!.radius).toBeCloseTo(2, 6); }
+      expect(parseGraph2DDocument(serializeGraph2DDocument(saved))).toEqual(saved);
+      expect(artifact.evaluations).toBeLessThanOrEqual(12000);
+      const svg = renderToStaticMarkup(<Graph2DPlot display={saved.display} size={{ width: 600, height: 400 }}
+        series={[]} constructions={artifact} />);
+      expect(svg).toContain('data-graph2d-construction="construction_4"');
+    }
+  });
+
+  it("recomputes after source edits and withholds flat or singular geometry", () => {
+    const adapter = scene("explicit", "x^2");
+    adapter.commitConstruction({ type: "create", object: graph2DOsculatingCircleConstructionFromPoint(adapter.document(), "construction_1") });
+    const original = resolveGraph2DConstructions(adapter.document());
+    adapter.commitScene(applyGraph2DAuthoring(adapter.document(), { type: "edit", objectId: "function_1",
+      draft: { label: "f", expression: "-x^2", domain, style } }), "edit");
+    expect(isGraph2DConstructionArtifactCurrent(original, adapter.document())).toBe(false);
+    expect(ready(adapter.document())[3]?.circle?.center.y).not.toBeCloseTo(original.objects[3]!.circle!.center.y);
+    adapter.undo();
+    expect(ready(adapter.document())[3]?.circle).toEqual(original.objects[3]?.circle);
+    adapter.commitConstruction({ type: "delete", objectId: "construction_4" });
+    expect(adapter.document().requiredCapabilities).not.toContain(GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY);
+
+    for (const [kind, expression] of [["explicit", "x"], ["explicit", "abs(x-2)"], ["polar", "0"]] as const) {
+      const singular = scene(kind, expression);
+      singular.commitConstruction({ type: "create", object: graph2DOsculatingCircleConstructionFromPoint(singular.document(), "construction_1") });
+      expect(ready(singular.document())[3]).toMatchObject({ state: "unavailable", circle: null });
+    }
   });
 });
 

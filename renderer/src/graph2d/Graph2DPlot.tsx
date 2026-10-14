@@ -187,6 +187,17 @@ export function Graph2DPlot({ display, size, series, regression, constructions, 
             x1={a.x} y1={a.y} x2={b.x} y2={b.y} />;
         })}
         {constructions?.objects.filter(item => item.kind !== "curvature" && item.state === "ready" && item.style.visible && item.point).map(item => {
+          if (item.circle) {
+            if (graph2DHasLogScale(display.viewport)) return null;
+            const center = graph2DWorldToScreen(display.viewport, size, item.circle.center);
+            const xEdge = graph2DWorldToScreen(display.viewport, size, { x: item.circle.center.x + item.circle.radius, y: item.circle.center.y });
+            const yEdge = graph2DWorldToScreen(display.viewport, size, { x: item.circle.center.x, y: item.circle.center.y + item.circle.radius });
+            const rx = Math.abs(xEdge.x - center.x), ry = Math.abs(yEdge.y - center.y);
+            if (![center.x, center.y, rx, ry].every(Number.isFinite) || rx <= 0 || ry <= 0) return null;
+            return <ellipse key={item.id} data-graph2d-construction={item.id} cx={center.x} cy={center.y} rx={rx} ry={ry}
+              fill="none" stroke={item.style.color} strokeWidth={item.style.lineWidth}
+              strokeDasharray={item.style.lineStyle === "dashed" ? "8 5" : item.style.lineStyle === "dotted" ? "2 4" : undefined} />;
+          }
           if (item.direction) {
             if (graph2DHasLogScale(display.viewport)) return null;
             const clipped = clipGraph2DLineOverlay({ artifactId: item.id, kind: item.kind === "normal" ? "normal" : "tangent",

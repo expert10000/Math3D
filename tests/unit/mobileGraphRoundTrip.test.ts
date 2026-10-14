@@ -11,6 +11,7 @@ import { mobileGraphAuthoringAction, mobileGraphFunctionDraft, applyMobileGraphA
 import { editMobileGraphProbes } from "../../apps/mobile/src/models/mobileGraphProbes";
 import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY,
   GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY, graph2DCurvatureConstructionFromPoint,
+  GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY, graph2DOsculatingCircleConstructionFromPoint,
   graph2DConstructionFromCandidate, resolveGraph2DConstructions } from "@math3d/core";
 import { runMobileGraphAnalysis } from "../../apps/mobile/src/models/mobileGraphAnalysis";
 
@@ -122,16 +123,19 @@ describe("G2D47 construction handoff", () => {
       style: { visible: true, color: "#e11d48", lineWidth: 2, lineStyle: "solid" },
       requiredCapability: GRAPH2D_CONSTRUCTIONS_CAPABILITY } });
     mobile.commitConstruction({ type: "create", object: graph2DCurvatureConstructionFromPoint(mobile.document(), "construction_1") });
+    mobile.commitConstruction({ type: "create", object: graph2DOsculatingCircleConstructionFromPoint(mobile.document(), "construction_1") });
     stored = updateStoredMobileGraph(stored, mobile.document(), 2);
     const returned = parseWorkspaceProjectHandoff(serializeMobileProjectHandoff(stored));
     const reopened = returned.project.entries.find((entry) => entry.module === "graph2d")!.checkpoint as Graph2DDocument;
-    expect(reopened.source.constructions?.objects).toHaveLength(3);
+    expect(reopened.source.constructions?.objects).toHaveLength(4);
     expect(reopened.source.constructions).toEqual(mobile.document().source.constructions);
     expect(reopened.identity.structuralHash).toBe(structuralHash(reopened.source));
     expect(reopened.requiredCapabilities).toContain(GRAPH2D_CONSTRUCTIONS_CAPABILITY);
     expect(reopened.requiredCapabilities).toContain(GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY);
-    expect(resolveGraph2DConstructions(reopened).objects.map(item => item.state)).toEqual(["ready", "ready", "ready"]);
+    expect(reopened.requiredCapabilities).toContain(GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY);
+    expect(resolveGraph2DConstructions(reopened).objects.map(item => item.state)).toEqual(["ready", "ready", "ready", "ready"]);
     expect(resolveGraph2DConstructions(reopened).objects[2]?.measurement?.value).toBeCloseTo(2 / 17 ** 1.5, 6);
+    expect(resolveGraph2DConstructions(reopened).objects[3]?.circle?.radius).toBeGreaterThan(0);
     expect(readMobileGraphWorkspace(stored)!.entries[0]?.checkpoint).toEqual(reopened);
   });
 });

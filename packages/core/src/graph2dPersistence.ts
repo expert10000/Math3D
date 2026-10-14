@@ -14,7 +14,7 @@ import { parseGraph2DExpression } from "./graph2dExpression";
 import { GRAPH2D_PARAMETERS_CAPABILITY } from "./graph2dParameterTypes";
 import { GRAPH2D_GRID_CAPABILITY } from "./graph2dGridOptions";
 import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY,
-  GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY } from "./graph2dConstructions";
+  GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY } from "./graph2dConstructions";
 import { createMixedWorkspaceDocument, type MixedWorkspaceDocument } from "./mixedWorkspace";
 import type { ValidationResult } from "./validation";
 
@@ -44,6 +44,7 @@ export const inspectGraph2DCompatibility = (value: unknown): Graph2DCompatibilit
     GRAPH2D_POLAR_CAPABILITY, GRAPH2D_IMPLICIT_CAPABILITY, GRAPH2D_INEQUALITY_CAPABILITY,
     GRAPH2D_POINT_SERIES_CAPABILITY, GRAPH2D_PIECEWISE_CAPABILITY, GRAPH2D_CONSTRUCTIONS_CAPABILITY,
     GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY,
+    GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY,
     GRAPH2D_PROBES_CAPABILITY, GRAPH2D_PROBE_VISIBILITY_CAPABILITY,
     GRAPH2D_PARAMETERS_CAPABILITY, GRAPH2D_SCALES_CAPABILITY, GRAPH2D_GRID_CAPABILITY];
   const unsupportedCapabilities = required.filter((capability): capability is string => typeof capability === "string" && !supported.includes(capability as typeof supported[number]));

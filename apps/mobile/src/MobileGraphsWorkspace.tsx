@@ -201,6 +201,23 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         <View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: .35 }]}>{continuationLines.map((line, index) => <Line key={`continuation${index}`} {...line} />)}</View>
         {lines.map((line, index) => <Line key={index} {...line} />)}
         {constructions?.objects.filter(item => item.kind !== "curvature" && item.state === "ready" && item.style.visible && item.point).map(item => {
+          if (item.circle) {
+            if (graph2DHasLogScale(viewport)) return null;
+            const center = graph2DWorldToScreen(viewport, size, item.circle.center);
+            const xEdge = graph2DWorldToScreen(viewport, size, { x: item.circle.center.x + item.circle.radius, y: item.circle.center.y });
+            const yEdge = graph2DWorldToScreen(viewport, size, { x: item.circle.center.x, y: item.circle.center.y + item.circle.radius });
+            const rx = Math.abs(xEdge.x - center.x), ry = Math.abs(yEdge.y - center.y);
+            if (![center.x, center.y, rx, ry].every(Number.isFinite) || rx <= 0 || ry <= 0 ||
+                center.x + rx < 0 || center.x - rx > size.width || center.y + ry < 0 || center.y - ry > size.height) return null;
+            const segments = [];
+            for (let index = 0; index < 96; index++) {
+              const a = { x: center.x + rx * Math.cos(index * Math.PI / 48), y: center.y + ry * Math.sin(index * Math.PI / 48) };
+              const b = { x: center.x + rx * Math.cos((index + 1) * Math.PI / 48), y: center.y + ry * Math.sin((index + 1) * Math.PI / 48) };
+              const clipped = clipMobileGraphLine(a, b, size);
+              if (clipped) segments.push(<Line key={index} {...clipped} color={item.style.color} width={item.style.lineWidth} />);
+            }
+            return <React.Fragment key={item.id}>{segments}</React.Fragment>;
+          }
           if (item.direction) {
             if (graph2DHasLogScale(viewport)) return null;
             const clipped = clipGraph2DLineOverlay({ artifactId: item.id, kind: item.kind === "normal" ? "normal" : "tangent",

@@ -4,6 +4,7 @@ import type { ScientificSourceGeneration } from "./scientificJobs";
 export const GRAPH2D_CONSTRUCTIONS_CAPABILITY = "graph2d.constructions.v1" as const;
 export const GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY = "graph2d.constructions.candidates.v1" as const;
 export const GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY = "graph2d.constructions.curvature.v1" as const;
+export const GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY = "graph2d.constructions.osculating-circle.v1" as const;
 export const GRAPH2D_CONSTRUCTION_VERSION = 1 as const;
 export const GRAPH2D_MAX_CONSTRUCTIONS = 32;
 export const GRAPH2D_MAX_CONSTRUCTION_DEPTH = 16;
@@ -28,6 +29,10 @@ export type Graph2DCurvatureConstruction = ConstructionBase & Readonly<{
   kind: "curvature"; inputs: readonly Graph2DConstructionObjectInput[]; anchor: null;
   requiredCapability: typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY;
 }>;
+export type Graph2DOsculatingCircleConstruction = ConstructionBase & Readonly<{
+  kind: "osculating-circle"; inputs: readonly Graph2DConstructionObjectInput[]; anchor: null;
+  requiredCapability: typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY;
+}>;
 export type Graph2DCandidateAnchor = Readonly<{
   interval: Readonly<{ min: number; max: number }>;
   seedX: number; matchRadius: number; candidateId: string;
@@ -42,7 +47,7 @@ export type Graph2DCandidateConstruction = ConstructionBase & Readonly<{
   requiredCapability: typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY;
 }>;
 export type Graph2DConstructionObject = Graph2DPointOnCurveConstruction | Graph2DDerivedLineConstruction |
-  Graph2DCurvatureConstruction | Graph2DCandidateConstruction;
+  Graph2DCurvatureConstruction | Graph2DOsculatingCircleConstruction | Graph2DCandidateConstruction;
 export type Graph2DConstructionSet = Readonly<{ version: typeof GRAPH2D_CONSTRUCTION_VERSION;
   objects: readonly Graph2DConstructionObject[] }>;
 export type Graph2DConstructionAction =
@@ -101,10 +106,11 @@ export function validateGraph2DConstructionSet(value: unknown, sources: readonly
   for (const [index, item] of objects.entries()) {
     if (!record(item) || !exact(item, ["id", "kind", "label", "inputs", "anchor", "style", "requiredCapability"]) ||
         !validId(item.id) || !validLabel(item.label) || !validStyle(item.style) ||
-        !["point-on-curve", "tangent", "normal", "curvature", "root", "minimum", "maximum", "intersection"].includes(String(item.kind)) ||
+        !["point-on-curve", "tangent", "normal", "curvature", "osculating-circle", "root", "minimum", "maximum", "intersection"].includes(String(item.kind)) ||
         item.requiredCapability !== (["root", "minimum", "maximum", "intersection"].includes(String(item.kind)) ?
           GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY : item.kind === "curvature" ?
-            GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY : GRAPH2D_CONSTRUCTIONS_CAPABILITY) ||
+            GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY : item.kind === "osculating-circle" ?
+              GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY : GRAPH2D_CONSTRUCTIONS_CAPABILITY) ||
         !Array.isArray(item.inputs) || item.inputs.length !== (item.kind === "intersection" ? 2 : 1) ||
         !item.inputs.every(validInput)) {
       errors.push(`Invalid Graph construction at index ${index}.`); continue;
