@@ -55,4 +55,11 @@ describe("MOB-G13 physical Graph companion acceptance gate", () => {
       expect(report.ok).toBe(false); expect(report.failures.join(" ")).toContain(name);
     }
   });
+  it("requires G2D44–50 polar and construction walkthroughs on every physical device", () => {
+    for (const name of ["polar-measurements", "source-linked-constructions"]) {
+      const evidence = complete(); evidence.devices[2]!.cases[name].status = "pending";
+      const report = evaluateGraphDeviceEvidence(evidence, expected, now);
+      expect(report.ok).toBe(false); expect(report.failures.join(" ")).toContain(name);
+    }
+  });
 });

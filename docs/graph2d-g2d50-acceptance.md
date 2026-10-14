@@ -2,6 +2,8 @@
 
 **Status — 2026-10-13:** Automated software acceptance for G2D44–49 is frozen by the cases below. The exact-build physical device and spoken screen-reader gates remain open under MOB-G13/G2D40; these automated results do not count as physical signoff.
 
+The [physical-device addendum](graph2d-g2d50-device-checklist.md) specifies the G2D44–50 cases now required by the MOB-G13 evidence validator on each device. Its pending state does not alter this software acceptance result.
+
 ## Shared numerical and lifecycle corpus
 
 | Case | Expected result | Evidence |
