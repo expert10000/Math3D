@@ -18,6 +18,7 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, onDraft, onR
   onDraft: (draft: MobileGraphAnalysisDraft) => void; onRun: () => void; onLocate: (probe: Graph2DProbe) => void;
   onSaveCandidate: (object: Graph2DConstructionObject) => void }) => {
   const current = result ? isMobileGraphAnalysisCurrent(result, document, draft) : false;
+  const tangentResult = current && result && (result.kind === "tangent" || result.kind === "polar-tangent" || result.kind === "parametric-tangent");
   const [offset, setOffset] = useState(0);
   useEffect(() => setOffset(0), [result?.regression?.resultId]);
   const regression = draft.kind.startsWith("regression-");
@@ -46,6 +47,11 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, onDraft, onR
     <TextInput accessibilityLabel={label} value={draft[key]} maxLength={40} autoCapitalize="none" autoCorrect={false} style={s.input}
       onChangeText={(value) => onDraft({ ...draft, [key]: value })} /></View>;
   return <View testID="mobile-graph-analysis-panel"><Text style={s.title}>Analyze</Text>
+    {tangentResult && <View style={s.card} testID="mobile-graph-tangent-summary" accessibilityLiveRegion="polite">
+      <Text style={s.title}>{result.rows[0]?.label}</Text>
+      <Text>{result.rows[1]?.label}</Text>
+      <Text>{result.rows[2]?.label}</Text>
+    </View>}
     <View style={s.row}>{kinds.map(([kind, label]) => <Pressable key={kind} accessibilityRole="radio" accessibilityLabel={label}
       accessibilityState={{ checked: draft.kind === kind }} style={s.button} onPress={() => chooseKind(kind)}><Text>{label}</Text></Pressable>)}</View>
     <Text>{polarOperation ? "Polar curve" : draft.kind === "parametric-tangent" ? "Parametric curve" : regression ? "Point series" : "Source function"}</Text><View style={s.row}>{sources.map((object) => <Pressable key={object.id} accessibilityRole="radio"

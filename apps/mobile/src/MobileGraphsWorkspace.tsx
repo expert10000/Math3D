@@ -240,10 +240,6 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     </View>
     {!presentation && <Text accessibilityLiveRegion="polite" style={s.readout} numberOfLines={2} testID="mobile-graph-probe">{probe ?
       `${document.source.objects.find((object) => object.id === probe.objectId)?.label}: x=${probe.x.toPrecision(6)}, y=${probe.y.toPrecision(6)}${probe.parameter !== undefined ? `, parameter=${probe.parameter.toPrecision(6)}` : ""}${probe.rowId ? `, ${probe.rowId}` : ""}` : "Tap a curve to probe. Tap overlaps again to cycle."}</Text>}
-    {!presentation && analysisCurrent && analysis && (analysis.kind === "tangent" || analysis.kind === "polar-tangent" || analysis.kind === "parametric-tangent") &&
-      <Text accessibilityLiveRegion="polite" style={s.readout} numberOfLines={2} testID="mobile-graph-tangent-result">
-        {analysis.rows[0]?.label} · {analysis.rows[2]?.label}
-      </Text>}
     {/* Fixed status height prevents ready/incomplete changes from resizing and resampling the plot in a loop. */}
     {!presentation && <Text style={[s.readout, { height: 36 * Math.max(1, window.fontScale) }]} numberOfLines={2}>{[
       parameterPreviewActive ? "Parameter preview — not saved. Apply or Cancel; committed analysis overlays hidden." : "",
