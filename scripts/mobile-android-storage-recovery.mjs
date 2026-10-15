@@ -35,6 +35,11 @@ const scroll = down => {
   const upper = String(Math.round(height * 0.26)), lower = String(Math.round(height * 0.79));
   run("shell", "input", "swipe", x, down ? lower : upper, x, down ? upper : lower, "350");
 };
+const scrollTowardResult = () => {
+  const [width, height] = size;
+  const x = String(Math.round(width * 0.46));
+  run("shell", "input", "swipe", x, String(Math.round(height * 0.7)), x, String(Math.round(height * 0.56)), "300");
+};
 const snapshot = () => {
   run("shell", "uiautomator", "dump", "/sdcard/math3d-recovery-ui.xml");
   const xml = run("exec-out", "cat", "/sdcard/math3d-recovery-ui.xml");
@@ -62,11 +67,16 @@ const tap = (id) => {
   throw new Error(`Missing recovery control: ${id}`);
 };
 const expect = text => {
-  for (let attempt = 0; attempt < 16; attempt++) {
-    const found = snapshot().find(node => node.text.startsWith(text));
+  for (let attempt = 0; attempt < 32; attempt++) {
+    const nodes = snapshot();
+    const found = nodes.find(node => node.text.startsWith(text));
     if (found) return found.text;
-    // The result sits below the controls and can enter the viewport only after the check finishes.
-    scroll(true);
+    const result = nodes.find(node => node.id === "mobile-storage-recovery-result");
+    if (result?.text && result.text !== "Checking recovery…") {
+      throw new Error(`Unexpected recovery result: ${result.text}`);
+    }
+    // Keep the result beside the controls in view while the asynchronous check runs.
+    if (!result) scrollTowardResult();
     pause(500);
   }
   run("shell", "screencap", "-p", "/sdcard/math3d-recovery-missing-result.png");
