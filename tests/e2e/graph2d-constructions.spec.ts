@@ -21,6 +21,8 @@ test("G2D48 promotes a probe, recomputes a dependent tangent, and undoes source 
     await save.click();
     const point = page.locator('[data-graph2d-construction="construction_1"]');
     await expect(point).toBeVisible();
+    const authoredPath = page.locator('[data-graph2d-path="function_1"]');
+    const authoredBefore = await authoredPath.getAttribute("d");
     await panel.getByRole("button", { name: "Add tangent" }).click();
     const tangent = page.locator('[data-graph2d-construction="construction_2"]');
     await expect(tangent).toBeVisible();
@@ -36,6 +38,7 @@ test("G2D48 promotes a probe, recomputes a dependent tangent, and undoes source 
     await panel.getByLabel("x for Point 1").fill("1");
     await panel.getByRole("button", { name: "Move Point 1" }).click();
     await expect.poll(() => point.getAttribute("cy")).not.toBe(before);
+    await expect.poll(() => authoredPath.getAttribute("d")).toBe(authoredBefore);
     await page.getByTestId("main-viewer").focus();
     await page.keyboard.press("Control+z");
     await expect.poll(() => point.getAttribute("cy")).toBe(before);
@@ -122,6 +125,16 @@ test("G2D57 saves an osculating circle and updates its geometry after source edi
     await page.getByTestId("main-viewer").focus();
     await page.keyboard.press("Control+z");
     await expect(saved).toHaveText(before ?? "");
+    const authored = page.locator('[data-graph2d-path="function_1"]');
+    const authoredPath = await authored.getAttribute("d");
+    await panel.getByRole("button", { name: "Clear all constructions" }).click();
+    await expect(panel).toContainText("Constructions (0/32)");
+    await expect(page.locator("[data-graph2d-construction]")).toHaveCount(0);
+    await expect.poll(() => authored.getAttribute("d")).toBe(authoredPath);
+    await page.getByTestId("main-viewer").focus();
+    await page.keyboard.press("Control+z");
+    await expect(panel).toContainText("Constructions (2/32)");
+    await expect(page.locator('[data-graph2d-construction="construction_2"]')).toHaveCount(1);
   } finally { await closeSurfaceApp(app); }
 });
 

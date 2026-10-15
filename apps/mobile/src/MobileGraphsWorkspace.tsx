@@ -333,7 +333,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
               selection: { objectId: pinned.objectId, probe: { objectId: pinned.objectId, x: pinned.x, y: pinned.y } } }, "restore");
           })} />
         <MobileGraphConstructionsPanel document={document} artifact={constructions}
-          onAction={(action) => { commit(() => adapter.commitConstruction(action)); }} />
+          onAction={(action) => { commit(() => adapter.commitConstruction(action)); }}
+          onBatchAction={(actions) => { commit(() => adapter.commitConstructions(actions)); }} />
       </>}
     </ScrollView>}
     </View>

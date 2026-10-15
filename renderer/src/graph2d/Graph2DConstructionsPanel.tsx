@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { graph2DDerivedConstructionFromPoint, graph2DCurvatureConstructionFromPoint, graph2DOsculatingCircleConstructionFromPoint, graph2DPointConstructionFromProbe,
+import { graph2DClearConstructionActions, graph2DDerivedConstructionFromPoint, graph2DCurvatureConstructionFromPoint, graph2DOsculatingCircleConstructionFromPoint, graph2DPointConstructionFromProbe,
   GRAPH2D_MAX_CONSTRUCTIONS, type Graph2DConstructionAction, type Graph2DConstructionArtifact,
   type Graph2DDocument, type Graph2DPointOnCurveConstruction } from "@math3d/core";
 
@@ -11,11 +11,13 @@ function PointCard({ document, object, state, confidence, reason, onAction }: { 
   const [error, setError] = useState("");
   const dependents = document.source.constructions?.objects.filter(item => item.inputs.some(input =>
     input.kind === "construction" && input.objectId === object.id)) ?? [];
+  const sourceLabel = document.source.objects.find(item => item.id === object.inputs[0]?.objectId)?.label ?? object.inputs[0]?.objectId;
   const act = (action: Graph2DConstructionAction) => { try { onAction(action); setError(""); }
     catch (caught) { setError((caught as Error).message); } };
   return <li className="graph2d-construction-card" data-construction-id={object.id}>
-    <strong>{object.label}</strong> <small>{object.anchor.parameter} = {object.anchor.value.toPrecision(6)} · {state}{confidence ? ` · ${confidence}` : ""}</small>
+    <strong>{object.label}</strong> <small>on {sourceLabel} · {object.anchor.parameter} = {object.anchor.value.toPrecision(6)} · {state}{confidence ? ` · ${confidence}` : ""}</small>
     {reason && <p>{reason}</p>}
+    <small>Moving this saved point updates its dependent constructions; the source graph stays in place.</small>
     <form onSubmit={event => { event.preventDefault(); const value = Number(draft);
       if (!Number.isFinite(value) || draft.trim() === "") { setError("Enter a finite parameter."); return; }
       act({ type: "update", object: { ...object, anchor: { ...object.anchor, value } } }); }}>
@@ -38,20 +40,25 @@ function PointCard({ document, object, state, confidence, reason, onAction }: { 
   </li>;
 }
 
-export function Graph2DConstructionsPanel({ document, artifact, onAction }: { document: Graph2DDocument;
-  artifact: Graph2DConstructionArtifact | null; onAction?: (action: Graph2DConstructionAction) => void }) {
+export function Graph2DConstructionsPanel({ document, artifact, onAction, onBatchAction }: { document: Graph2DDocument;
+  artifact: Graph2DConstructionArtifact | null; onAction?: (action: Graph2DConstructionAction) => void;
+  onBatchAction?: (actions: readonly Graph2DConstructionAction[]) => void }) {
   const [error, setError] = useState("");
   const objects = document.source.constructions?.objects ?? [];
   const available = !!document.selection.probe && !!document.source.objects.find(item =>
     item.id === document.selection.probe?.objectId && ["explicit-cartesian", "parametric", "polar"].includes(item.kind));
   const act = (action: Graph2DConstructionAction) => { try { if (!onAction) throw new Error("Construction editing is unavailable.");
     onAction(action); setError(""); } catch (caught) { setError((caught as Error).message); } };
+  const clear = () => { try { if (!onBatchAction) throw new Error("Construction editing is unavailable.");
+    onBatchAction(graph2DClearConstructionActions(document)); setError(""); }
+    catch (caught) { setError((caught as Error).message); } };
   return <section className="graph2d-constructions-panel" data-testid="graph2d-constructions" aria-label="Constructions">
     <h3>Constructions ({objects.length}/{GRAPH2D_MAX_CONSTRUCTIONS})</h3>
     <button type="button" disabled={!available || !artifact || !onAction || objects.length >= GRAPH2D_MAX_CONSTRUCTIONS}
       title={!available ? "Select a committed curve probe first." : !artifact ? "Wait for the graph to update." : undefined}
       onClick={() => act({ type: "create", object: graph2DPointConstructionFromProbe(document, `Point ${objects.filter(item => item.kind === "point-on-curve").length + 1}`) })}>
       Save probe as point</button>
+    {objects.length > 0 && <button type="button" disabled={!onBatchAction} onClick={clear}>Clear all constructions</button>}
     {objects.length > 0 && <p role="status">{artifact ? artifact.truncated ? "Construction output limit reached." :
       `${artifact.objects.filter(item => item.state === "ready").length} ready · ${artifact.objects.filter(item => item.state === "unavailable").length} unavailable` : "Recomputing constructions…"}</p>}
     <ol>{objects.map(object => object.kind === "point-on-curve" ?

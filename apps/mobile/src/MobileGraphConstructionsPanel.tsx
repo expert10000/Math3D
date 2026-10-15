@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
-import { graph2DDerivedConstructionFromPoint, graph2DCurvatureConstructionFromPoint, graph2DOsculatingCircleConstructionFromPoint, graph2DPointConstructionFromProbe, GRAPH2D_MAX_CONSTRUCTIONS,
+import { graph2DClearConstructionActions, graph2DDerivedConstructionFromPoint, graph2DCurvatureConstructionFromPoint, graph2DOsculatingCircleConstructionFromPoint, graph2DPointConstructionFromProbe, GRAPH2D_MAX_CONSTRUCTIONS,
   type Graph2DConstructionAction, type Graph2DConstructionArtifact, type Graph2DDocument,
   type Graph2DPointOnCurveConstruction } from "@math3d/core";
 
@@ -15,10 +15,12 @@ function PointCard({ document, object, state, confidence, reason, onAction }: { 
   const [error, setError] = useState("");
   const hasDependents = !!document.source.constructions?.objects.some(item => item.inputs.some(input =>
     input.kind === "construction" && input.objectId === object.id));
+  const sourceLabel = document.source.objects.find(item => item.id === object.inputs[0]?.objectId)?.label ?? object.inputs[0]?.objectId;
   const full = (document.source.constructions?.objects.length ?? 0) >= GRAPH2D_MAX_CONSTRUCTIONS;
   return <View style={{ borderTopWidth: 1, borderColor: "#cbd5e1", paddingVertical: 8 }}>
-    <Text>{object.label}: {object.anchor.parameter}={object.anchor.value.toPrecision(6)} · {state}{confidence ? ` · ${confidence}` : ""}</Text>
+    <Text>{object.label} on {sourceLabel}: {object.anchor.parameter}={object.anchor.value.toPrecision(6)} · {state}{confidence ? ` · ${confidence}` : ""}</Text>
     {reason && <Text>{reason}</Text>}
+    <Text>Moving this saved point updates its dependent constructions; the source graph stays in place.</Text>
     <TextInput accessibilityLabel={`${object.anchor.parameter} for ${object.label}`} keyboardType="numeric" value={draft}
       onChangeText={setDraft} style={{ minHeight: 44, borderWidth: 1, borderColor: "#94a3b8", padding: 8 }} />
     <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
@@ -39,8 +41,9 @@ function PointCard({ document, object, state, confidence, reason, onAction }: { 
   </View>;
 }
 
-export const MobileGraphConstructionsPanel = ({ document, artifact, onAction }: { document: Graph2DDocument;
-  artifact: Graph2DConstructionArtifact | null; onAction: (action: Graph2DConstructionAction) => void }) => {
+export const MobileGraphConstructionsPanel = ({ document, artifact, onAction, onBatchAction }: { document: Graph2DDocument;
+  artifact: Graph2DConstructionArtifact | null; onAction: (action: Graph2DConstructionAction) => void;
+  onBatchAction: (actions: readonly Graph2DConstructionAction[]) => void }) => {
   const objects = document.source.constructions?.objects ?? [];
   const probe = document.selection.probe;
   const canPromote = !!probe && !!document.source.objects.find(item => item.id === probe.objectId &&
@@ -50,6 +53,7 @@ export const MobileGraphConstructionsPanel = ({ document, artifact, onAction }: 
     <Button label="Save probe as point" disabled={!canPromote || !artifact || objects.length >= GRAPH2D_MAX_CONSTRUCTIONS}
       onPress={() => onAction({ type: "create", object: graph2DPointConstructionFromProbe(document,
         `Point ${objects.filter(item => item.kind === "point-on-curve").length + 1}`) })} />
+    {objects.length > 0 && <Button label="Clear all constructions" onPress={() => onBatchAction(graph2DClearConstructionActions(document))} />}
     {objects.length > 0 && <Text accessibilityLiveRegion="polite">{artifact ? artifact.truncated ? "Construction output limit reached." :
       `${artifact.objects.filter(item => item.state === "ready").length} ready, ${artifact.objects.filter(item => item.state === "unavailable").length} unavailable` :
       "Recomputing constructions…"}</Text>}

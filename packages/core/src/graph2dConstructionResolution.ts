@@ -90,6 +90,10 @@ export function graph2DOsculatingCircleConstructionFromPoint(document: Graph2DDo
     requiredCapability: GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY };
 }
 
+/** Dependencies are stored before consumers, so reverse order deletes all constructions safely in one transaction. */
+export const graph2DClearConstructionActions = (document: Graph2DDocument): readonly Graph2DConstructionAction[] =>
+  [...(document.source.constructions?.objects ?? [])].reverse().map(object => ({ type: "delete", objectId: object.id }));
+
 /** Build a dependent line from a result probe without changing the current selection. */
 export function graph2DLineConstructionActionsFromProbe(document: Graph2DDocument, probe: Graph2DProbe,
   kind: "tangent" | "normal"): readonly [Graph2DConstructionAction, Graph2DConstructionAction] {

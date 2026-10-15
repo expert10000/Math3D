@@ -342,6 +342,8 @@ The [analysis and constructions follow-on roadmap](graph2d-analysis-construction
 
 [G2D57](graph2d-g2d57-osculating-circle.md) adds an osculating circle depending on a saved point. Its center and radius derive from the current tangent and signed curvature, while the saved document keeps only source-linked intent. Desktop and mobile show the finite circle and report unavailable geometry at flat or singular points.
 
+[G2D58](graph2d-g2d58-clear-constructions.md) adds one-step **Clear all constructions** on desktop and mobile, preserving source graphs and viewport while removing every saved construction. Saved-point cards identify their source and explain why dependent geometry moves when an anchor changes.
+
 ## 7. Dependency graph and parallel work
 
 ```text

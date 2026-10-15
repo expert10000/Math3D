@@ -12,6 +12,7 @@ import { editMobileGraphProbes } from "../../apps/mobile/src/models/mobileGraphP
 import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY,
   GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY, graph2DCurvatureConstructionFromPoint,
   GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY, graph2DOsculatingCircleConstructionFromPoint,
+  graph2DClearConstructionActions,
   graph2DConstructionFromCandidate, resolveGraph2DConstructions } from "@math3d/core";
 import { runMobileGraphAnalysis } from "../../apps/mobile/src/models/mobileGraphAnalysis";
 
@@ -137,6 +138,14 @@ describe("G2D47 construction handoff", () => {
     expect(resolveGraph2DConstructions(reopened).objects[2]?.measurement?.value).toBeCloseTo(2 / 17 ** 1.5, 6);
     expect(resolveGraph2DConstructions(reopened).objects[3]?.circle?.radius).toBeGreaterThan(0);
     expect(readMobileGraphWorkspace(stored)!.entries[0]?.checkpoint).toEqual(reopened);
+    const cleanup = new Graph2DCommandAdapter(reopened);
+    cleanup.commitConstructions(graph2DClearConstructionActions(cleanup.document()));
+    const cleared = cleanup.document();
+    expect(cleared.source.objects).toEqual(reopened.source.objects);
+    expect(cleared.display).toEqual(reopened.display);
+    expect(cleared.source.constructions).toBeUndefined();
+    expect(readMobileGraph(updateStoredMobileGraph(stored, cleared, 3))).toEqual(cleared);
+    expect(cleanup.undo()?.source.constructions).toEqual(reopened.source.constructions);
   });
 });
 

@@ -459,7 +459,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     onViewportCommit?.(panGraph2DViewport(viewport, size, { x: size.width / 2 - screen.x, y: size.height / 2 - screen.y }));
   }} />;
   const constructions = <Graph2DConstructionsPanel document={document}
-    artifact={parameterPreviewActive ? null : sampling.constructions} onAction={onConstructionCommit} />;
+    artifact={parameterPreviewActive ? null : sampling.constructions}
+    onAction={onConstructionCommit} onBatchAction={onConstructionBatchCommit} />;
   const saveTangentButton = (available: boolean) => <button type="button"
     disabled={!available || !document.selection.probe || !onConstructionBatchCommit ||
       (document.source.constructions?.objects.length ?? 0) > GRAPH2D_MAX_CONSTRUCTIONS - 2}

@@ -3,7 +3,7 @@ import { applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocumen
   GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY,
   GRAPH2D_MAX_CONSTRUCTIONS, inspectGraph2DCompatibility,
   nextGraph2DConstructionId, normalizeGraph2DDocument, parseGraph2DDocument,
-  graph2DLineConstructionActionsFromProbe, resolveGraph2DConstructions,
+  graph2DClearConstructionActions, graph2DLineConstructionActionsFromProbe, graph2DOsculatingCircleConstructionFromPoint, resolveGraph2DConstructions,
   serializeGraph2DDocument, structuralHash, validateGraph2DConstructionSet,
   type Graph2DConstructionObject, type Graph2DDocument } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
@@ -37,6 +37,29 @@ const fixture = () => {
 };
 
 describe("G2D47 Graph construction document and commands", () => {
+  it("moves only a saved anchor and clears all dependent constructions in one reversible step", () => {
+    const commands = fixture();
+    commands.commitConstruction({ type: "create", object: point("construction_1", "function_1", "x", 1) });
+    commands.commitConstruction({ type: "create", object: line("construction_2", "construction_1", "tangent") });
+    commands.commitConstruction({ type: "create", object: graph2DOsculatingCircleConstructionFromPoint(commands.document(), "construction_1") });
+    const beforeMove = commands.document();
+    const savedPoint = beforeMove.source.constructions!.objects[0] as Extract<Graph2DConstructionObject, { kind: "point-on-curve" }>;
+    const moved = commands.commitConstruction({ type: "update", object: { ...savedPoint, anchor: { parameter: "x", value: 2 } } });
+    expect(moved.source.objects).toEqual(beforeMove.source.objects);
+    expect(moved.source.variables).toEqual(beforeMove.source.variables);
+    expect(moved.display.viewport).toEqual(beforeMove.display.viewport);
+    expect(resolveGraph2DConstructions(moved).objects[0]?.point).toEqual({ x: 2, y: 4 });
+    const actions = graph2DClearConstructionActions(moved);
+    expect(actions.map(action => action.type)).toEqual(["delete", "delete", "delete"]);
+    const cleared = commands.commitConstructions(actions);
+    expect(cleared.source.constructions).toBeUndefined();
+    expect(cleared.source.objects).toEqual(moved.source.objects);
+    expect(cleared.display).toEqual(moved.display);
+    expect(cleared.selection).toEqual(moved.selection);
+    expect(commands.undo()?.source).toEqual(moved.source);
+    expect(commands.redo()?.source).toEqual(cleared.source);
+    expect(graph2DClearConstructionActions(commands.document())).toEqual([]);
+  });
   it("saves a probed tangent and its point in one reversible transaction", () => {
     const commands = fixture();
     const before = commands.document();
