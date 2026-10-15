@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { applyGraph2DAuthoring, createEmptyGraph2DDocument, graph2DDerivedConstructionFromPoint,
   graph2DCurvatureConstructionFromPoint, graph2DOsculatingCircleConstructionFromPoint, graph2DPointConstructionFromProbe,
   GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY,
-  isGraph2DConstructionArtifactCurrent, resolveGraph2DConstructions,
+  isGraph2DConstructionArtifactCurrent, resolveGraph2DConstructions, evaluateGraph2DParametric,
   inspectGraph2DCompatibility, normalizeGraph2DDocument, parseGraph2DDocument, serializeGraph2DDocument,
   type Graph2DDocument } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
@@ -96,6 +96,61 @@ describe("G2D48 source-derived Graph constructions", () => {
 });
 
 describe("G2D57 saved osculating circle", () => {
+  it("keeps the exact unit-circle geometry synchronized when its saved point moves", () => {
+    const adapter = new Graph2DCommandAdapter(createEmptyGraph2DDocument("unit-circle-constructions"));
+    adapter.commitScene(applyGraph2DAuthoring(adapter.document(), { type: "create-parametric", draft: {
+      label: "unit circle", xExpression: "cos(t)", yExpression: "sin(t)",
+      domain: { min: 0, max: 2 * Math.PI, includeMin: true, includeMax: true }, style,
+    } }), "create-parametric");
+    const source = adapter.document().source.objects;
+    const curve = source[0];
+    if (curve?.kind !== "parametric") throw new Error("Missing unit-circle source.");
+    const initialParameter = 2.202629;
+    const initialPoint = evaluateGraph2DParametric(curve, {}, initialParameter)!;
+    adapter.commitSelection({ objectId: curve.id, probe: { objectId: curve.id,
+      x: initialPoint.x, y: initialPoint.y, parameter: initialParameter } });
+    adapter.commitConstruction({ type: "create", object: graph2DPointConstructionFromProbe(adapter.document()) });
+    adapter.commitConstruction({ type: "create", object: graph2DDerivedConstructionFromPoint(adapter.document(), "construction_1", "tangent") });
+    adapter.commitConstruction({ type: "create", object: graph2DDerivedConstructionFromPoint(adapter.document(), "construction_1", "normal") });
+    adapter.commitConstruction({ type: "create", object: graph2DCurvatureConstructionFromPoint(adapter.document(), "construction_1") });
+    adapter.commitConstruction({ type: "create", object: graph2DOsculatingCircleConstructionFromPoint(adapter.document(), "construction_1") });
+
+    const assertCircleAt = (parameter: number) => {
+      const [point, tangent, normal, curvature, osculating] = ready(adapter.document());
+      expect([point, tangent, normal, curvature, osculating].map(item => item?.state)).toEqual(Array(5).fill("ready"));
+      expect(point?.point?.x).toBeCloseTo(Math.cos(parameter), 10);
+      expect(point?.point?.y).toBeCloseTo(Math.sin(parameter), 10);
+      expect(tangent?.point).toEqual(point?.point);
+      expect(normal?.point).toEqual(point?.point);
+      expect(tangent?.direction?.x).toBeCloseTo(-Math.sin(parameter), 9);
+      expect(tangent?.direction?.y).toBeCloseTo(Math.cos(parameter), 9);
+      expect(tangent!.direction!.x * normal!.direction!.x + tangent!.direction!.y * normal!.direction!.y).toBeCloseTo(0, 10);
+      expect(curvature?.measurement?.value).toBeCloseTo(1, 10);
+      expect(osculating?.circle?.center.x).toBeCloseTo(0, 10);
+      expect(osculating?.circle?.center.y).toBeCloseTo(0, 10);
+      expect(osculating?.circle?.radius).toBeCloseTo(1, 10);
+      return resolveGraph2DConstructions(adapter.document());
+    };
+
+    const original = assertCircleAt(initialParameter);
+    expect(original.objects[0]?.point?.x).toBeCloseTo(-0.591, 2);
+    expect(original.objects[0]?.point?.y).toBeCloseTo(0.807, 2);
+    const savedPoint = adapter.document().source.constructions?.objects[0];
+    if (savedPoint?.kind !== "point-on-curve") throw new Error("Missing saved point.");
+    const movedParameter = Math.PI / 3;
+    adapter.commitConstruction({ type: "update", object: { ...savedPoint, anchor: { parameter: "t", value: movedParameter } } });
+    expect(adapter.document().source.objects).toEqual(source);
+    expect(isGraph2DConstructionArtifactCurrent(original, adapter.document())).toBe(false);
+    const moved = assertCircleAt(movedParameter);
+    expect(moved.objects[0]?.point).not.toEqual(original.objects[0]?.point);
+    expect(moved.objects[1]?.direction).not.toEqual(original.objects[1]?.direction);
+    const reopened = parseGraph2DDocument(serializeGraph2DDocument(adapter.document()));
+    expect(reopened).toEqual(adapter.document());
+    expect(resolveGraph2DConstructions(reopened).objects).toEqual(moved.objects);
+    adapter.undo();
+    expect(adapter.document().source.objects).toEqual(source);
+    assertCircleAt(initialParameter);
+  });
   it("derives finite geometry for explicit, parametric, and negative-radius polar curves", () => {
     for (const [kind, expression] of [["explicit", "x^2"], ["parametric", "t^2"], ["polar", "-2"]] as const) {
       const adapter = scene(kind, expression);

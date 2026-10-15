@@ -17,6 +17,24 @@ const documentFor = (xExpression: string, yExpression: string, parameter: number
 };
 
 describe("parametric local differential", () => {
+  it("matches the exact unit-circle differential at the selected parameter", () => {
+    const parameter = 2.202629;
+    const result = analyzeGraph2DParametricLocalDifferential(documentFor("cos(t)", "sin(t)", parameter))!;
+    const x = Math.cos(parameter), y = Math.sin(parameter);
+    expect(result.state).toBe("regular");
+    expect(result.point?.x).toBeCloseTo(x, 12);
+    expect(result.point?.y).toBeCloseTo(y, 12);
+    expect(result.xFirst).toBeCloseTo(-y, 12);
+    expect(result.yFirst).toBeCloseTo(x, 12);
+    expect(result.xSecond).toBeCloseTo(-x, 12);
+    expect(result.ySecond).toBeCloseTo(-y, 12);
+    expect(result.speed).toBeCloseTo(1, 12);
+    expect(result.curvature).toBeCloseTo(1, 12);
+    expect(result.tangentMethod).toBe("symbolic-rules");
+    expect(result.curvatureMethod).toBe("symbolic-rules");
+    const [tangent, normal] = result.overlays;
+    expect(tangent!.direction.x * normal!.direction.x + tangent!.direction.y * normal!.direction.y).toBeCloseTo(0, 12);
+  });
   it("reports orientation and perpendicular overlays for regular circles", () => {
     for (const [yExpression, sign] of [["sin(t)", 1], ["-sin(t)", -1]] as const) {
       for (const parameter of [0, Math.PI / 2, Math.PI]) {
