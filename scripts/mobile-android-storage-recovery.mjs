@@ -62,11 +62,15 @@ const tap = (id) => {
   throw new Error(`Missing recovery control: ${id}`);
 };
 const expect = text => {
-  for (let attempt = 0; attempt < 10; attempt++) {
+  for (let attempt = 0; attempt < 16; attempt++) {
     const found = snapshot().find(node => node.text.startsWith(text));
     if (found) return found.text;
+    // The result sits below the controls and can enter the viewport only after the check finishes.
+    scroll(true);
     pause(500);
   }
+  run("shell", "screencap", "-p", "/sdcard/math3d-recovery-missing-result.png");
+  run("pull", "/sdcard/math3d-recovery-missing-result.png", resolve(output, "missing-result.png"));
   throw new Error(`Missing recovery result: ${text}`);
 };
 const launchSettings = () => {

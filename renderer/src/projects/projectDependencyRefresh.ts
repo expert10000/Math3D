@@ -85,7 +85,10 @@ const analysisOperations = new Map([
   ["graph2d.intersections", "Recompute intersections"],
 ]);
 const analysisPlan = (previous: AnalysisResultEnvelope, graph: KernelWorkspaceDocument | undefined): (() => AnalysisResultEnvelope) => {
-  if (graph?.format !== "math3d.graph2d-document" || !analysisOperations.has(previous.provenance.operation.type) || previous.provenance.operation.algorithmVersion !== "1")
+  const version = previous.provenance.operation.algorithmVersion;
+  // Derivative v2 retains the recorded request fields; other analysis adapters still require v1.
+  const supportedVersion = version === "1" || previous.provenance.operation.type === "graph2d.derivative" && version === "2";
+  if (graph?.format !== "math3d.graph2d-document" || !analysisOperations.has(previous.provenance.operation.type) || !supportedVersion)
     throw new TypeError("This recorded analysis has no qualified local refresh adapter.");
   const value = previous.provenance.operation.parameters;
   const p = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
