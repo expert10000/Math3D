@@ -21,8 +21,8 @@ The original priority list also names **adaptive discontinuity detection** (G2D0
 
 ## Next reviewable slices
 
-1. Finish current Graphs usability and release evidence: distinguish an osculating circle that coincides with its source, keep its center visible, and complete the pending MOB-G13/G2D40 physical, spoken accessibility and iOS artifact matrix. Emulator and unsigned iOS simulator evidence stay labelled as partial.
-2. Scope GRA-10 as a **verified dataset adapter**. Define one immutable scientific-scene-to-Graph point-table contract with units, coordinates, hash/provenance, bounds and an explicit import action. Add a tampered/missing-data corpus before UI. Keep Python outside the viewer.
+1. Scope GRA-10 as a **verified dataset adapter**. Define one immutable scientific-scene-to-Graph point-table contract with units, coordinates, hash/provenance, bounds and an explicit import action. Add a tampered/missing-data corpus before UI. Keep Python outside the viewer. The exact unit-circle differential and saved-construction regression now checks speed, curvature, center, radius, orthogonality, moved-point dependency updates, undo and save/reopen at `t = 2.202629`.
+2. Continue Android physical and spoken accessibility evidence with the connected Samsung. The coincident osculating circle and its center/radius indicator are visible on device; the complete MOB-G13/G2D40 device matrix is still open. iOS device/signing checks are deferred by the user and remain a release gate, not a blocker for the next Graphs implementation slice. Emulator and unsigned iOS simulator evidence stay labelled as partial.
 3. Extend fitting only against concrete dataset/error models. Preserve the existing linear/quadratic results; specify numerical conditioning, uncertainty semantics and bounded cancellation for each new model.
 4. Give differential equations, Fourier analysis and complex mappings separate problem statements and acceptance corpora. They are not inferred from existing Graphs or Complex Analysis controls.
 
