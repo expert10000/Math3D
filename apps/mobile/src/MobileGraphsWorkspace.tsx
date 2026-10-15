@@ -211,12 +211,21 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
                 center.x + rx < 0 || center.x - rx > size.width || center.y + ry < 0 || center.y - ry > size.height) return null;
             const segments = [];
             for (let index = 0; index < 96; index++) {
+              if ((item.style.lineStyle === "dashed" && index % 8 >= 5) ||
+                  (item.style.lineStyle === "dotted" && index % 6 >= 2)) continue;
               const a = { x: center.x + rx * Math.cos(index * Math.PI / 48), y: center.y + ry * Math.sin(index * Math.PI / 48) };
               const b = { x: center.x + rx * Math.cos((index + 1) * Math.PI / 48), y: center.y + ry * Math.sin((index + 1) * Math.PI / 48) };
               const clipped = clipMobileGraphLine(a, b, size);
               if (clipped) segments.push(<Line key={index} {...clipped} color={item.style.color} width={item.style.lineWidth} />);
             }
-            return <React.Fragment key={item.id}>{segments}</React.Fragment>;
+            const anchor = graph2DWorldToScreen(viewport, size, item.point!);
+            const radiusLine = clipMobileGraphLine(center, anchor, size);
+            return <React.Fragment key={item.id}>{segments}
+              {radiusLine && <Line {...radiusLine} color={item.style.color} width={1.5} />}
+              <View pointerEvents="none" testID={`mobile-graph-construction-center-${item.id}`}
+                style={{ position: "absolute", left: center.x - 5, top: center.y - 5, width: 10, height: 10,
+                  borderRadius: 5, borderWidth: 2, borderColor: item.style.color, backgroundColor: "white" }} />
+            </React.Fragment>;
           }
           if (item.direction) {
             if (graph2DHasLogScale(viewport)) return null;

@@ -43,6 +43,7 @@ describe("G2D47 Graph construction document and commands", () => {
     commands.commitConstruction({ type: "create", object: line("construction_2", "construction_1", "tangent") });
     commands.commitConstruction({ type: "create", object: graph2DOsculatingCircleConstructionFromPoint(commands.document(), "construction_1") });
     const beforeMove = commands.document();
+    expect(beforeMove.source.constructions!.objects[2]!.style).toMatchObject({ color: "#0f766e", lineStyle: "dashed" });
     const savedPoint = beforeMove.source.constructions!.objects[0] as Extract<Graph2DConstructionObject, { kind: "point-on-curve" }>;
     const moved = commands.commitConstruction({ type: "update", object: { ...savedPoint, anchor: { parameter: "x", value: 2 } } });
     expect(moved.source.objects).toEqual(beforeMove.source.objects);

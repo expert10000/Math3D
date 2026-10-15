@@ -86,7 +86,8 @@ export function graph2DOsculatingCircleConstructionFromPoint(document: Graph2DDo
   const point = document.source.constructions?.objects.find(item => item.id === pointId);
   if (point?.kind !== "point-on-curve") throw new TypeError("Select a saved point construction first.");
   return { id: nextGraph2DConstructionId(document.source), kind: "osculating-circle", label: "Osculating circle",
-    inputs: [{ kind: "construction", objectId: pointId }], anchor: null, style: { ...point.style },
+    inputs: [{ kind: "construction", objectId: pointId }], anchor: null,
+    style: { visible: true, color: "#0f766e", lineWidth: 2.5, lineStyle: "dashed" },
     requiredCapability: GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY };
 }
 

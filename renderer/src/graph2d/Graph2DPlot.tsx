@@ -192,11 +192,19 @@ export function Graph2DPlot({ display, size, series, regression, constructions, 
             const center = graph2DWorldToScreen(display.viewport, size, item.circle.center);
             const xEdge = graph2DWorldToScreen(display.viewport, size, { x: item.circle.center.x + item.circle.radius, y: item.circle.center.y });
             const yEdge = graph2DWorldToScreen(display.viewport, size, { x: item.circle.center.x, y: item.circle.center.y + item.circle.radius });
+            const anchor = graph2DWorldToScreen(display.viewport, size, item.point!);
             const rx = Math.abs(xEdge.x - center.x), ry = Math.abs(yEdge.y - center.y);
-            if (![center.x, center.y, rx, ry].every(Number.isFinite) || rx <= 0 || ry <= 0) return null;
-            return <ellipse key={item.id} data-graph2d-construction={item.id} cx={center.x} cy={center.y} rx={rx} ry={ry}
-              fill="none" stroke={item.style.color} strokeWidth={item.style.lineWidth}
-              strokeDasharray={item.style.lineStyle === "dashed" ? "8 5" : item.style.lineStyle === "dotted" ? "2 4" : undefined} />;
+            if (![center.x, center.y, rx, ry, anchor.x, anchor.y].every(Number.isFinite) || rx <= 0 || ry <= 0) return null;
+            return <g key={item.id}>
+              <ellipse data-graph2d-construction={item.id} cx={center.x} cy={center.y} rx={rx} ry={ry}
+                fill="none" stroke={item.style.color} strokeWidth={item.style.lineWidth}
+                strokeDasharray={item.style.lineStyle === "dashed" ? "8 5" : item.style.lineStyle === "dotted" ? "2 4" : undefined} />
+              <line data-graph2d-construction-radius={item.id} x1={center.x} y1={center.y}
+                x2={anchor.x} y2={anchor.y}
+                stroke={item.style.color} strokeWidth={1.5} strokeDasharray="3 4" />
+              <circle data-graph2d-construction-center={item.id} cx={center.x} cy={center.y} r={4.5}
+                fill="white" stroke={item.style.color} strokeWidth={2} />
+            </g>;
           }
           if (item.direction) {
             if (graph2DHasLogScale(display.viewport)) return null;

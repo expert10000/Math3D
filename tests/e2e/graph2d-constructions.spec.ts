@@ -117,6 +117,9 @@ test("G2D57 saves an osculating circle and updates its geometry after source edi
     const saved = panel.getByTestId("graph2d-saved-osculating-circle");
     await expect(saved).toContainText("radius");
     await expect(page.locator('[data-graph2d-construction="construction_2"]')).toHaveCount(1);
+    await expect(page.locator('[data-graph2d-construction="construction_2"]')).toHaveAttribute("stroke-dasharray", "8 5");
+    await expect(page.locator('[data-graph2d-construction-center="construction_2"]')).toHaveCount(1);
+    await expect(page.locator('[data-graph2d-construction-radius="construction_2"]')).toHaveCount(1);
     const before = await saved.textContent();
     await functions.getByRole("button", { name: "Edit Parabola", exact: true }).click();
     await functions.getByLabel("Function expression").fill("-x^2");
