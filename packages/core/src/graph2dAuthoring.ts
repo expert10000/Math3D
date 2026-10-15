@@ -1,6 +1,6 @@
-import { GRAPH2D_MAX_OBJECTS, validPointTableReference,
+import { GRAPH2D_MAX_OBJECTS, validPointTableReference, validGraph2DScientificDatasetOrigin,
   type Graph2DDocument, type Graph2DDomain, type Graph2DObjectDisplay,
-  type Graph2DPointTableReference } from "./graph2dDocument";
+  type Graph2DPointTableReference, type Graph2DScientificDatasetOrigin } from "./graph2dDocument";
 import { parseGraph2DExpression } from "./graph2dExpression";
 import { inspectGraph2DPiecewiseDomains } from "./graph2dPiecewise";
 import { applyGraph2DParameterAction, isGraph2DParameterAction, type Graph2DParameterAction } from "./graph2dParameters";
@@ -45,6 +45,7 @@ export type Graph2DPointSeriesDraft = Readonly<{
   table: Graph2DPointTableReference;
   mode: "points" | "line";
   domain: Graph2DDomain;
+  origin?: Graph2DScientificDatasetOrigin;
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
 }>;
 export type Graph2DPiecewiseDraft = Readonly<{
@@ -160,6 +161,7 @@ export const validateGraph2DPointSeriesDraft = (draft: Graph2DPointSeriesDraft):
   const errors = [...validateGraph2DFunctionDraft({ ...draft, expression: "x" })];
   if (!validPointTableReference(draft.table)) errors.push("Point table reference is invalid.");
   if (!["points", "line"].includes(draft.mode)) errors.push("Choose points or connected line mode.");
+  if (draft.origin !== undefined && !validGraph2DScientificDatasetOrigin(draft.origin)) errors.push("Scientific dataset provenance is invalid.");
   return errors;
 };
 export const validateGraph2DPiecewiseDraft = (draft: Graph2DPiecewiseDraft,
@@ -339,7 +341,8 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       while (objects.some((entry) => entry.id === id)) id = "series_" + ++serial;
     }
     const object = { id, kind: "point-series" as const, label: action.draft.label,
-      table: action.draft.table, mode: action.draft.mode, missing: "gap" as const, domain: action.draft.domain };
+      table: action.draft.table, mode: action.draft.mode, missing: "gap" as const, domain: action.draft.domain,
+      ...(action.draft.origin ? { origin: action.draft.origin } : {}) };
     const display = { objectId: id, ...action.draft.style };
     if (action.type === "create-point-series") { objects.push(object); displays.push(display); }
     else { objects[index] = object; displays[index] = display; }

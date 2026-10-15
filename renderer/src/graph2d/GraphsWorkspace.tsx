@@ -3,6 +3,7 @@ import {
   analyzeGraph2DIntersections,
   analyzeGraph2DLocalDifferential, fitGraph2DViewport,
   graph2DSceneFitBounds, graph2DConstructionFitBounds,
+  previewGraph2DScientificDataset,
   analyzeGraph2DPolarLocalDifferential, isGraph2DPolarLocalDifferentialCurrent,
   analyzeGraph2DParametricLocalDifferential, isGraph2DParametricLocalDifferentialCurrent,
   analyzeGraph2DPolarMeasurement, isGraph2DPolarMeasurementCurrent,
@@ -110,6 +111,40 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     }
   }, [analysisRequest, document.identity.id]);
   const [toolHint, setToolHint] = useState("");
+  const [scientificImport, setScientificImport] = useState<{
+    manifestJson: string; fingerprint: string; datasets: { datasetId: string; values: number[] }[] } | null>(null);
+  const [scientificDatasetId, setScientificDatasetId] = useState("");
+  const [scientificImportBusy, setScientificImportBusy] = useState(false);
+  const [scientificImportError, setScientificImportError] = useState("");
+  const scientificImportAvailable = typeof window !== "undefined" && !!window.scientificScenes?.openGraphDataset;
+  const scientificPreview = useMemo(() => {
+    if (!scientificImport) return null;
+    const selected = scientificImport.datasets.find(item => item.datasetId === scientificDatasetId);
+    if (!selected) return null;
+    try { return previewGraph2DScientificDataset(scientificImport.manifestJson,
+      scientificImport.fingerprint, selected.datasetId, selected.values); }
+    catch { return null; }
+  }, [scientificImport, scientificDatasetId]);
+  const openScientificDataset = async () => {
+    if (!window.scientificScenes?.openGraphDataset) return;
+    setScientificImportBusy(true); setScientificImportError("");
+    try {
+      const opened = await window.scientificScenes.openGraphDataset();
+      if (opened.ok) { setScientificImport(opened.source); setScientificDatasetId(opened.source.datasets[0]?.datasetId ?? ""); }
+      else if (!opened.canceled) setScientificImportError(opened.error);
+    } catch (error) { setScientificImportError((error as Error).message); }
+    finally { setScientificImportBusy(false); }
+  };
+  const commitScientificDataset = () => {
+    if (!scientificPreview || !onAuthoringCommit) return;
+    try {
+      const table = pointTableStore.publish(scientificPreview.rows);
+      onAuthoringCommit({ type: "create-point-series", draft: { label: scientificPreview.label,
+        table, mode: "line", domain: scientificPreview.domain, origin: scientificPreview.origin,
+        style: { color: "#2563eb", lineWidth: 2, lineStyle: "solid", visible: true } } });
+      setScientificImport(null); setScientificImportError("");
+    } catch (error) { setScientificImportError((error as Error).message); }
+  };
   const toolsOpener = useRef<HTMLButtonElement>(null);
   const closeTools = () => { setToolsOpen(false); toolsOpener.current?.focus(); };
   const [exportOpen, setExportOpen] = useState(false);
@@ -716,6 +751,13 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       <dl className="graph2d-inspector-details">
         <dt>Graph object</dt><dd>{inspected.label}</dd>
         <dt>Source</dt><dd><code>{inspected.kind === "explicit-cartesian" ? `y = ${inspected.expression}` : inspected.expression}</code></dd>
+        {selectedObject?.kind === "point-series" && selectedObject.origin && <>
+          <dt>Scientific source</dt><dd>{selectedObject.origin.sourceProducer}/{selectedObject.origin.sourceId} ·
+            {" "}{selectedObject.origin.sceneId}/{selectedObject.origin.datasetId}</dd>
+          <dt>Units</dt><dd>{selectedObject.origin.xName} ({selectedObject.origin.xUnit}) →
+            {" "}{selectedObject.origin.yName} ({selectedObject.origin.yUnit})</dd>
+          <dt>Source hashes</dt><dd><code>manifest {selectedObject.origin.sceneFingerprint}<br />resource {selectedObject.origin.resourceSha256}</code></dd>
+        </>}
         <dt>{inspected.kind === "parametric" ? "Parameter t" : inspected.kind === "polar" ? "Angle θ" : "X domain"}</dt>
         <dd>{inspected.domain.includeMin ? "[" : "("}{inspected.domain.min}, {inspected.domain.max}{inspected.domain.includeMax ? "]" : ")"}</dd>
         {(selectedObject?.kind === "implicit" || selectedObject?.kind === "inequality") && <><dt>Y domain</dt>
@@ -811,6 +853,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             <details className="graph2d-toolbar-menu"><summary>More</summary><div className="graph2d-toolbar-menu-content">
               <div className="graph2d-toolbar-group" role="group" aria-label="Authoring">
                 <span>Author</span>
+                <button type="button" disabled={!scientificImportAvailable || !onAuthoringCommit || scientificImportBusy}
+                  title={!scientificImportAvailable ? "Available in the desktop app" : undefined}
+                  onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open"); void openScientificDataset(); }}>Import scientific dataset</button>
                 <button type="button" data-testid="graph2d-parameters-open" disabled={status !== "ready"} onClick={event => {
                   parametersOpener.current = event.currentTarget; finishWheel(); setParametersOpen(value => !value); setParameterPreview(null);
                   setScalesOpen(false); closeGrid(true, false);
@@ -846,6 +891,25 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             </div></details>
           </div>
         </div>
+        {scientificImportBusy && <p className="graph2d-tool-hint" role="status">Verifying scientific dataset…</p>}
+        {scientificImportError && !scientificImport && <p className="graph2d-tool-hint" role="alert">{scientificImportError}</p>}
+        {scientificImport && <div className="graph2d-scientific-import" role="dialog" aria-label="Import verified scientific dataset"
+          onPointerDown={event => event.stopPropagation()}>
+          <h3>Import verified scientific dataset</h3>
+          <label>Dataset <select value={scientificDatasetId} onChange={event => setScientificDatasetId(event.target.value)}>
+            {scientificImport.datasets.map(item => <option key={item.datasetId} value={item.datasetId}>{item.datasetId}</option>)}
+          </select></label>
+          {scientificPreview ? <>
+            <p>{scientificPreview.rows.length} checked samples · {scientificPreview.origin.xName} ({scientificPreview.origin.xUnit}) →
+              {" "}{scientificPreview.origin.yName} ({scientificPreview.origin.yUnit})</p>
+            <p>Source {scientificPreview.origin.sourceProducer}/{scientificPreview.origin.sourceId} · scene {scientificPreview.origin.sceneId}</p>
+            <small>Manifest {scientificPreview.origin.sceneFingerprint} · resource {scientificPreview.origin.resourceSha256}</small>
+            <p>A new point series copies the verified values. It remains data, not an editable expression.</p>
+          </> : <p role="alert">Dataset verification failed.</p>}
+          {scientificImportError && <p role="alert">{scientificImportError}</p>}
+          <div><button type="button" disabled={!scientificPreview} onClick={commitScientificDataset}>Import as point series</button>
+            <button type="button" onClick={() => { setScientificImport(null); setScientificImportError(""); }}>Cancel</button></div>
+        </div>}
         {toolHint && <p className="graph2d-tool-hint" role="status">{toolHint}</p>}
         <div className="graph2d-compact-panels">
           {showLeft && <details><summary>Functions ({document.source.objects.length})</summary>{functionList}</details>}

@@ -182,6 +182,12 @@
 .graph2d-toolbar-menu-content .graph2d-toolbar-group > span { width: 100%; }
 .graph2d-toolbar button { white-space: nowrap; }
 .graph2d-toolbar button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.graph2d-scientific-import { position: absolute; z-index: 7; top: 50%; left: 50%; transform: translate(-50%, -50%); box-sizing: border-box; width: min(520px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow: auto; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-strong); box-shadow: 0 8px 28px #0004; overflow-wrap: anywhere; }
+.graph2d-scientific-import h3 { margin: 0 0 10px; }
+.graph2d-scientific-import label { display: grid; gap: 4px; font-weight: 700; }
+.graph2d-scientific-import select { min-height: 36px; }
+.graph2d-scientific-import small { display: block; font-size: 11px; }
+.graph2d-scientific-import button { min-height: 36px; margin-right: 8px; }
 .graph2d-plot { position: absolute; inset: 0; width: 100%; height: 100%; }
 .graph2d-plot-background { fill: var(--panel-strong); }
 .graph2d-grid-minor { stroke: var(--grid-minor-color, var(--border)); stroke-width: .55; opacity: var(--grid-minor-opacity, .45); }

@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { isAbsolute, join, resolve } from "node:path";
 import { inspectScientificHeightSample, openScientificHeightSurface,
   type ScientificHeightSurface } from "../scientificScene/heightSurface";
+import { openScientificGraphDatasets, type ScientificGraphDatasetSource } from "../scientificScene/graphDataset";
 import { preparePythonPublisher, runPythonPublisher, type PreparedPythonPublisher,
   type PythonPublisherRun } from "../scientificScene/pythonPublisher";
 
@@ -10,6 +11,8 @@ export type ScientificSceneOpenResponse =
       reference: { format: "scientific-scene/v1"; title: string; directory: string; sceneFingerprint: string } } }
   | { ok: false; canceled: true }
   | { ok: false; canceled: false; error: string };
+export type ScientificGraphDatasetOpenResponse = { ok: true; source: ScientificGraphDatasetSource } |
+  { ok: false; canceled: true } | { ok: false; canceled: false; error: string };
 export type PythonPublisherPrepareResponse =
   | { ok: true; sessionId: string; executable: string; script: string; spec: string; output: string;
       scriptSha256: string; specSha256: string; sourceHash: string; reference: boolean }
@@ -43,6 +46,19 @@ export function registerScientificSceneIpc(): void {
   const active = new WeakMap<Electron.WebContents, { directory: string; fingerprint: string }>();
   const prepared = new WeakMap<Electron.WebContents, PreparedPythonPublisher & { reference: boolean }>();
   const running = new WeakMap<Electron.WebContents, { jobId: string; handle: PythonPublisherRun }>();
+  ipcMain.handle("scientificScenes:openGraphDataset", async (event, ...args: unknown[]): Promise<ScientificGraphDatasetOpenResponse> => {
+    if (!trustedSender(event) || args.length) return { ok: false, canceled: false, error: "Invalid Graph dataset request" };
+    try {
+      const window = BrowserWindow.fromWebContents(event.sender)!;
+      const picked = await dialog.showOpenDialog(window, { title: "Import verified 1D scientific dataset into Graphs",
+        properties: ["openDirectory"] });
+      if (picked.canceled || !picked.filePaths[0]) return { ok: false, canceled: true };
+      const directory = picked.filePaths[0];
+      if (!isAbsolute(directory) || !directory.toLowerCase().endsWith(".sscene"))
+        throw new TypeError("Choose a .sscene directory");
+      return { ok: true, source: await openScientificGraphDatasets(directory) };
+    } catch (error) { return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) }; }
+  });
   ipcMain.handle("scientificScenes:preparePublisher", async (event, ...args: unknown[]): Promise<PythonPublisherPrepareResponse> => {
     if (!trustedSender(event) || args.length !== 1 || (args[0] !== "reference" && args[0] !== "custom") ||
         running.has(event.sender))

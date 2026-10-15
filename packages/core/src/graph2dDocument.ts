@@ -25,6 +25,7 @@ export const GRAPH2D_POLAR_CAPABILITY = "graph2d.polar.v1" as const;
 export const GRAPH2D_IMPLICIT_CAPABILITY = "graph2d.implicit.v1" as const;
 export const GRAPH2D_INEQUALITY_CAPABILITY = "graph2d.inequality.v1" as const;
 export const GRAPH2D_POINT_SERIES_CAPABILITY = "graph2d.point-series.v1" as const;
+export const GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY = "graph2d.scientific-dataset.v1" as const;
 export const GRAPH2D_PIECEWISE_CAPABILITY = "graph2d.piecewise.v1" as const;
 export const GRAPH2D_OBJECT_KINDS = ["explicit-cartesian", "parametric", "polar", "implicit", "inequality", "point-series", "piecewise"] as const;
 export type Graph2DObjectKind = (typeof GRAPH2D_OBJECT_KINDS)[number];
@@ -85,6 +86,12 @@ export type Graph2DPointTableReference = Readonly<{
   rowCount: number;
   encoding: "math3d.graph2d-point-table.v1";
 }>;
+export type Graph2DScientificDatasetOrigin = Readonly<{
+  schema: "scientific-scene/v1"; sceneId: string; datasetId: string;
+  sceneFingerprint: string; resourceSha256: string;
+  sourceProducer: string; sourceId: string; sourceSchema: string; sourceSha256: string;
+  xName: string; xUnit: string; yName: string; yUnit: string;
+}>;
 export type Graph2DPointSeriesObject = Readonly<{
   id: string;
   kind: "point-series";
@@ -93,6 +100,7 @@ export type Graph2DPointSeriesObject = Readonly<{
   mode: "points" | "line";
   missing: "gap";
   domain: Graph2DDomain;
+  origin?: Graph2DScientificDatasetOrigin;
 }>;
 export type Graph2DPiece = Readonly<{
   expression: Readonly<{ source: string; variable: "x"; ast: Graph2DExpressionAst }>;
@@ -119,6 +127,7 @@ export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pic
     ...(source.objects.some((object) => object.kind === "implicit") ? [GRAPH2D_IMPLICIT_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "inequality") ? [GRAPH2D_INEQUALITY_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "point-series") ? [GRAPH2D_POINT_SERIES_CAPABILITY] : []),
+    ...(source.objects.some((object) => object.kind === "point-series" && object.origin) ? [GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "piecewise") ? [GRAPH2D_PIECEWISE_CAPABILITY] : []),
     ...(source.constructions !== undefined ? [GRAPH2D_CONSTRUCTIONS_CAPABILITY] : []),
     ...(source.constructions?.objects.some(object => ["root", "minimum", "maximum", "intersection"].includes(object.kind)) ?
@@ -157,7 +166,7 @@ export type Graph2DDocument = Readonly<{
   requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
     typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY |
     typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY |
-    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
+    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
   source: Graph2DSource;
   display: Graph2DDisplay;
   selection: Graph2DSelection;
@@ -224,10 +233,22 @@ export const validPointTableReference = (value: unknown): value is Graph2DPointT
   typeof value.checksum === "string" && /^sha256:[0-9a-f]{64}$/.test(value.checksum) &&
   integerWithin(value.rowCount, 1, 10000) && value.encoding === "math3d.graph2d-point-table.v1" &&
   value.id === `graph2d-table:${value.checksum.slice(7, 39)}`;
+export const validGraph2DScientificDatasetOrigin = (value: unknown): value is Graph2DScientificDatasetOrigin => record(value) &&
+  exact(value, ["schema", "sceneId", "datasetId", "sceneFingerprint", "resourceSha256", "sourceProducer", "sourceId",
+    "sourceSchema", "sourceSha256", "xName", "xUnit", "yName", "yUnit"]) &&
+  value.schema === "scientific-scene/v1" &&
+  [value.sceneId, value.datasetId, value.sourceProducer, value.sourceId].every(item =>
+    typeof item === "string" && /^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(item)) &&
+  typeof value.sourceSchema === "string" && /^[A-Za-z][A-Za-z0-9._-]*\/v[1-9][0-9]*$/.test(value.sourceSchema) &&
+  [value.sceneFingerprint, value.resourceSha256, value.sourceSha256].every(item =>
+    typeof item === "string" && /^[a-f0-9]{64}$/.test(item)) &&
+  [value.xName, value.yName].every(item => bounded(item, 160)) &&
+  [value.xUnit, value.yUnit].every(item => bounded(item, 80));
 const validPointSeriesObject = (value: unknown): value is Graph2DPointSeriesObject => record(value) &&
-  exact(value, ["id", "kind", "label", "table", "mode", "missing", "domain"]) && objectId(value.id) &&
+  exact(value, ["id", "kind", "label", "table", "mode", "missing", "domain", ...(value.origin === undefined ? [] : ["origin"])]) && objectId(value.id) &&
   value.kind === "point-series" && bounded(value.label, 160) && validPointTableReference(value.table) &&
-  ["points", "line"].includes(String(value.mode)) && value.missing === "gap" && validDomain(value.domain);
+  ["points", "line"].includes(String(value.mode)) && value.missing === "gap" && validDomain(value.domain) &&
+  (value.origin === undefined || validGraph2DScientificDatasetOrigin(value.origin));
 const validPiecewiseObject = (value: unknown, variables: readonly string[]): value is Graph2DPiecewiseObject => {
   if (!record(value) || !exact(value, ["id", "kind", "label", "pieces"]) || !objectId(value.id) ||
       value.kind !== "piecewise" || !bounded(value.label, 160) || !Array.isArray(value.pieces) ||

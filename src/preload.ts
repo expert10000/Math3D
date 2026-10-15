@@ -5,7 +5,7 @@ import type { FieldSurface, FieldSurfaceRequest } from "./main/quantumScene/fiel
 import type { FieldVolume, FieldVolumeRequest } from "./main/quantumScene/fieldVolume";
 import type { BandSample, BandSampleRequest } from "./main/quantumScene/bandSelection";
 import type { QuantumSceneExampleSummary } from "./main/quantumScene/examples";
-import type { ScientificSceneOpenResponse, PythonPublisherPrepareResponse } from "./main/ipc/scientificSceneIpc";
+import type { ScientificSceneOpenResponse, ScientificGraphDatasetOpenResponse, PythonPublisherPrepareResponse } from "./main/ipc/scientificSceneIpc";
 import type { TopologySample, TopologySampleRequest, VectorSample, VectorSampleRequest } from "./main/quantumScene/topologyDisplay";
 import type { WorkspaceFileOpenResponse } from "./main/ipc/workspaceFileIpc";
 
@@ -548,6 +548,7 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
 }));
 
 contextBridge.exposeInMainWorld("scientificScenes", Object.freeze({
+  openGraphDataset: (): Promise<ScientificGraphDatasetOpenResponse> => ipcRenderer.invoke("scientificScenes:openGraphDataset"),
   openExample: (): Promise<ScientificSceneOpenResponse> => ipcRenderer.invoke("scientificScenes:openExample"),
   openDirectory: (): Promise<ScientificSceneOpenResponse> => ipcRenderer.invoke("scientificScenes:openDirectory"),
   openReference: (reference: { directory: string; sceneFingerprint: string }): Promise<ScientificSceneOpenResponse> =>

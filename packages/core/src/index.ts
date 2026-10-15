@@ -28,6 +28,7 @@ export * from "./graph2dPolar";
 export * from "./graph2dImplicit";
 export * from "./graph2dInequality";
 export * from "./graph2dPointSeries";
+export * from "./graph2dScientificDataset";
 export * from "./graph2dPiecewise";
 export * from "./graph2dInterop";
 export * from "./graph2dPromotionGeometry";

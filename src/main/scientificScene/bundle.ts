@@ -46,6 +46,7 @@ async function boundedRead(path: string, limit: number, expected?: number): Prom
 
 export type VerifiedScientificSceneBundle = {
   manifest: Manifest;
+  manifestJson: string;
   /** Raw verified resources remain outside React; adapters choose bounded display data. */
   resources: Map<string, Buffer>;
   /** SHA-256 of the exact manifest bytes, not a source-authenticity claim. */
@@ -88,5 +89,5 @@ export async function readScientificSceneBundle(directory: string): Promise<Veri
       if (!Number.isFinite(data.readDoubleLE(offset))) throw new Error(`Scientific resource contains non-finite value: ${resource.id}`);
     resources.set(resource.id, data);
   }
-  return { manifest, resources, fingerprint: descriptor.sha256 };
+  return { manifest, manifestJson: bytes.toString("utf8"), resources, fingerprint: descriptor.sha256 };
 }
