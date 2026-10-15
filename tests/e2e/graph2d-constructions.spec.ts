@@ -42,7 +42,9 @@ test("G2D48 promotes a probe, recomputes a dependent tangent, and undoes source 
     await page.getByTestId("main-viewer").focus();
     await page.keyboard.press("Control+z");
     await expect.poll(() => point.getAttribute("cy")).toBe(before);
+    await panel.locator('[data-construction-id="construction_2"] summary').click();
     await panel.getByRole("button", { name: "Delete Tangent" }).click();
+    await panel.locator('[data-construction-id="construction_1"] summary').click();
     await panel.getByRole("button", { name: "Delete Point 1" }).click();
     await expect(page.locator("[data-graph2d-construction]")).toHaveCount(0);
   } finally { await closeSurfaceApp(app); }
@@ -130,6 +132,7 @@ test("G2D57 saves an osculating circle and updates its geometry after source edi
     await expect(saved).toHaveText(before ?? "");
     const authored = page.locator('[data-graph2d-path="function_1"]');
     const authoredPath = await authored.getAttribute("d");
+    await panel.locator(".graph2d-construction-global-more summary").click();
     await panel.getByRole("button", { name: "Clear all constructions" }).click();
     await expect(panel).toContainText("Constructions (0/32)");
     await expect(page.locator("[data-graph2d-construction]")).toHaveCount(0);

@@ -35,6 +35,13 @@ export type Graph2DConstructionArtifact = Readonly<{
   objects: readonly Graph2DResolvedConstruction[];
   evaluations: number; bytes: number; truncated: boolean;
 }>;
+export type Graph2DPointDifferentialReadout = Readonly<{
+  point: Readonly<{ x: number; y: number }>;
+  derivative: Readonly<{ x: number; y: number }> | null;
+  speed: number | null;
+  curvature: number | null;
+  method: Graph2DDerivativeMethod;
+}>;
 type Point = Readonly<{ x: number; y: number }>;
 const sourceGeneration = (document: Graph2DDocument): ScientificSourceGeneration => ({
   documentId: document.identity.id, revision: document.identity.revision,
@@ -47,6 +54,34 @@ export const isGraph2DConstructionArtifactCurrent = (artifact: Graph2DConstructi
   artifact.generationKey === graph2DConstructionGenerationKey(document) &&
   artifact.source.documentId === document.identity.id && artifact.source.revision === document.identity.revision &&
   artifact.source.structuralHash === document.identity.structuralHash;
+
+/** A source-linked saved point's current numerical readout, independent of stored plot samples. */
+export function graph2DPointDifferentialReadout(document: Graph2DDocument, pointDefinition: Graph2DPointOnCurveConstruction,
+  resolved: Graph2DResolvedConstruction | undefined): Graph2DPointDifferentialReadout | null {
+  if (!resolved?.point || resolved.state !== "ready") return null;
+  const source = document.source.objects.find(item => item.id === resolved.sourceObjectId);
+  if (!source || !["explicit-cartesian", "parametric", "polar"].includes(source.kind)) return null;
+  const selected = { ...document, selection: { objectId: source.id, probe: { objectId: source.id, ...resolved.point,
+    ...(source.kind === "explicit-cartesian" ? {} : { parameter: pointDefinition.anchor.value }) } } };
+  if (source.kind === "explicit-cartesian") {
+    const analysis = analyzeGraph2DLocalDifferential(selected);
+    return analysis ? { point: resolved.point, derivative: analysis.slope === null ? null : { x: 1, y: analysis.slope },
+      speed: analysis.slope === null ? null : Math.hypot(1, analysis.slope), curvature: analysis.curvature,
+      method: analysis.curvatureMethod } : null;
+  }
+  if (source.kind === "parametric") {
+    const analysis = analyzeGraph2DParametricLocalDifferential(selected);
+    return analysis ? { point: resolved.point,
+      derivative: analysis.xFirst === null || analysis.yFirst === null ? null : { x: analysis.xFirst, y: analysis.yFirst },
+      speed: analysis.speed, curvature: analysis.curvature, method: analysis.curvatureMethod } : null;
+  }
+  const analysis = analyzeGraph2DPolarLocalDifferential(selected);
+  const radius = analysis?.signedRadius, first = analysis?.radiusFirst, theta = pointDefinition.anchor.value;
+  return analysis ? { point: resolved.point,
+    derivative: radius === null || radius === undefined || first === null || first === undefined ? null :
+      { x: first * Math.cos(theta) - radius * Math.sin(theta), y: first * Math.sin(theta) + radius * Math.cos(theta) },
+    speed: analysis.speed, curvature: analysis.curvature, method: analysis.curvatureMethod } : null;
+}
 
 const parameterOf = (source: Graph2DGraphObject) => source.kind === "explicit-cartesian" ? "x" as const :
   source.kind === "parametric" ? "t" as const : source.kind === "polar" ? "theta" as const : null;

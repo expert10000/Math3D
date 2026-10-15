@@ -1,48 +1,59 @@
 import { useEffect, useState } from "react";
 import { graph2DClearConstructionActions, graph2DDerivedConstructionFromPoint, graph2DCurvatureConstructionFromPoint, graph2DOsculatingCircleConstructionFromPoint, graph2DPointConstructionFromProbe,
-  GRAPH2D_MAX_CONSTRUCTIONS, type Graph2DConstructionAction, type Graph2DConstructionArtifact,
+  graph2DPointDifferentialReadout, GRAPH2D_MAX_CONSTRUCTIONS, type Graph2DConstructionAction, type Graph2DConstructionArtifact,
+  type Graph2DResolvedConstruction,
   type Graph2DDocument, type Graph2DPointOnCurveConstruction } from "@math3d/core";
 
-function PointCard({ document, object, state, confidence, reason, onAction }: { document: Graph2DDocument;
-  object: Graph2DPointOnCurveConstruction; state: string; confidence?: string; reason?: string | null;
-  onAction: (action: Graph2DConstructionAction) => void }) {
+function PointCard({ document, object, resolved, onAction, onFitConstruction }: { document: Graph2DDocument;
+  object: Graph2DPointOnCurveConstruction; resolved?: Graph2DResolvedConstruction;
+  onAction: (action: Graph2DConstructionAction) => void; onFitConstruction?: (id: string) => void }) {
   const [draft, setDraft] = useState(String(object.anchor.value));
   useEffect(() => setDraft(String(object.anchor.value)), [object.anchor.value]);
   const [error, setError] = useState("");
   const dependents = document.source.constructions?.objects.filter(item => item.inputs.some(input =>
     input.kind === "construction" && input.objectId === object.id)) ?? [];
   const sourceLabel = document.source.objects.find(item => item.id === object.inputs[0]?.objectId)?.label ?? object.inputs[0]?.objectId;
+  const readout = graph2DPointDifferentialReadout(document, object, resolved);
+  const full = (document.source.constructions?.objects.length ?? 0) >= GRAPH2D_MAX_CONSTRUCTIONS;
   const act = (action: Graph2DConstructionAction) => { try { onAction(action); setError(""); }
     catch (caught) { setError((caught as Error).message); } };
   return <li className="graph2d-construction-card" data-construction-id={object.id}>
-    <strong>{object.label}</strong> <small>on {sourceLabel} · {object.anchor.parameter} = {object.anchor.value.toPrecision(6)} · {state}{confidence ? ` · ${confidence}` : ""}</small>
-    {reason && <p>{reason}</p>}
-    <small>Moving this saved point updates its dependent constructions; the source graph stays in place.</small>
-    <form onSubmit={event => { event.preventDefault(); const value = Number(draft);
+    <header><strong>{object.label}</strong><small>on {sourceLabel} · {resolved?.state ?? "pending"} · {resolved?.confidence ?? "pending"}</small></header>
+    {resolved?.reason && <p>{resolved.reason}</p>}
+    {readout && <dl className="graph2d-construction-readout">
+      <dt>Point</dt><dd>({readout.point.x.toPrecision(7)}, {readout.point.y.toPrecision(7)})</dd>
+      <dt>Derivative</dt><dd>{readout.derivative ? `(${readout.derivative.x.toPrecision(7)}, ${readout.derivative.y.toPrecision(7)})` : "Unavailable"}</dd>
+      <dt>Speed</dt><dd>{readout.speed?.toPrecision(7) ?? "Unavailable"}</dd>
+      <dt>Curvature κ</dt><dd>{readout.curvature?.toPrecision(7) ?? "Unavailable"}</dd>
+      <dt>Method</dt><dd>{readout.method} · approximate, no certified error bound</dd>
+    </dl>}
+    <form className="graph2d-construction-parameter" onSubmit={event => { event.preventDefault(); const value = Number(draft);
       if (!Number.isFinite(value) || draft.trim() === "") { setError("Enter a finite parameter."); return; }
       act({ type: "update", object: { ...object, anchor: { ...object.anchor, value } } }); }}>
       <label>{object.anchor.parameter} for {object.label}<input type="number" step="any" value={draft}
         onChange={event => setDraft(event.target.value)} /></label>
-      <button type="submit">Move {object.label}</button>
+      <button type="submit" aria-label={`Move ${object.label}`}>Move</button>
     </form>
     <div className="graph2d-construction-actions">
-      <button type="button" disabled={(document.source.constructions?.objects.length ?? 0) >= GRAPH2D_MAX_CONSTRUCTIONS}
-        onClick={() => act({ type: "create", object: graph2DDerivedConstructionFromPoint(document, object.id, "tangent") })}>Add tangent</button>
-      <button type="button" disabled={(document.source.constructions?.objects.length ?? 0) >= GRAPH2D_MAX_CONSTRUCTIONS}
-        onClick={() => act({ type: "create", object: graph2DDerivedConstructionFromPoint(document, object.id, "normal") })}>Add normal</button>
-      <button type="button" disabled={(document.source.constructions?.objects.length ?? 0) >= GRAPH2D_MAX_CONSTRUCTIONS}
-        onClick={() => act({ type: "create", object: graph2DCurvatureConstructionFromPoint(document, object.id) })}>Add curvature</button>
-      <button type="button" disabled={(document.source.constructions?.objects.length ?? 0) >= GRAPH2D_MAX_CONSTRUCTIONS}
-        onClick={() => act({ type: "create", object: graph2DOsculatingCircleConstructionFromPoint(document, object.id) })}>Add osculating circle</button>
-      <button type="button" disabled={dependents.length > 0} title={dependents.length ? "Remove dependent constructions first." : undefined}
-        onClick={() => act({ type: "delete", objectId: object.id })}>Delete {object.label}</button>
+      <button type="button" aria-label="Add tangent" disabled={full} onClick={() => act({ type: "create", object: graph2DDerivedConstructionFromPoint(document, object.id, "tangent") })}>Tangent</button>
+      <button type="button" aria-label="Add normal" disabled={full} onClick={() => act({ type: "create", object: graph2DDerivedConstructionFromPoint(document, object.id, "normal") })}>Normal</button>
+      <button type="button" aria-label="Add curvature" disabled={full} onClick={() => act({ type: "create", object: graph2DCurvatureConstructionFromPoint(document, object.id) })}>Curvature</button>
+      <button type="button" aria-label="Add osculating circle" disabled={full}
+        onClick={() => act({ type: "create", object: graph2DOsculatingCircleConstructionFromPoint(document, object.id) })}>Osculating circle</button>
     </div>{error && <p role="alert">{error}</p>}
+    <div className="graph2d-construction-footer">
+      <button type="button" disabled={!onFitConstruction || resolved?.state !== "ready"} onClick={() => onFitConstruction?.(object.id)}>Fit point</button>
+      <details><summary>More</summary><button type="button" disabled={dependents.length > 0} title={dependents.length ? "Remove dependent constructions first." : undefined}
+        onClick={() => act({ type: "delete", objectId: object.id })}>Delete {object.label}</button>
+        {dependents.length > 0 && <small>Remove dependent constructions before deleting this point.</small>}
+      </details>
+    </div>
   </li>;
 }
 
-export function Graph2DConstructionsPanel({ document, artifact, onAction, onBatchAction }: { document: Graph2DDocument;
+export function Graph2DConstructionsPanel({ document, artifact, onAction, onBatchAction, onFitConstruction }: { document: Graph2DDocument;
   artifact: Graph2DConstructionArtifact | null; onAction?: (action: Graph2DConstructionAction) => void;
-  onBatchAction?: (actions: readonly Graph2DConstructionAction[]) => void }) {
+  onBatchAction?: (actions: readonly Graph2DConstructionAction[]) => void; onFitConstruction?: (id: string) => void }) {
   const [error, setError] = useState("");
   const objects = document.source.constructions?.objects ?? [];
   const available = !!document.selection.probe && !!document.source.objects.find(item =>
@@ -58,14 +69,13 @@ export function Graph2DConstructionsPanel({ document, artifact, onAction, onBatc
       title={!available ? "Select a committed curve probe first." : !artifact ? "Wait for the graph to update." : undefined}
       onClick={() => act({ type: "create", object: graph2DPointConstructionFromProbe(document, `Point ${objects.filter(item => item.kind === "point-on-curve").length + 1}`) })}>
       Save probe as point</button>
-    {objects.length > 0 && <button type="button" disabled={!onBatchAction} onClick={clear}>Clear all constructions</button>}
+    {objects.length > 0 && <details className="graph2d-construction-global-more"><summary>More</summary>
+      <button type="button" disabled={!onBatchAction} onClick={clear}>Clear all constructions</button></details>}
     {objects.length > 0 && <p role="status">{artifact ? artifact.truncated ? "Construction output limit reached." :
       `${artifact.objects.filter(item => item.state === "ready").length} ready · ${artifact.objects.filter(item => item.state === "unavailable").length} unavailable` : "Recomputing constructions…"}</p>}
     <ol>{objects.map(object => object.kind === "point-on-curve" ?
       <PointCard key={object.id} document={document} object={object}
-        state={artifact?.objects.find(item => item.id === object.id)?.state ?? "pending"}
-        confidence={artifact?.objects.find(item => item.id === object.id)?.confidence}
-        reason={artifact?.objects.find(item => item.id === object.id)?.reason} onAction={act} /> :
+        resolved={artifact?.objects.find(item => item.id === object.id)} onAction={act} onFitConstruction={onFitConstruction} /> :
       <li key={object.id} className="graph2d-construction-card" data-construction-id={object.id}>
         <strong>{object.label}</strong> <small>{object.kind} · {artifact?.objects.find(item => item.id === object.id)?.state ?? "pending"} · {artifact?.objects.find(item => item.id === object.id)?.confidence ?? "pending"}</small>
         {object.kind === "curvature" && artifact?.objects.find(item => item.id === object.id)?.measurement &&
@@ -74,7 +84,9 @@ export function Graph2DConstructionsPanel({ document, artifact, onAction, onBatc
           <p data-testid="graph2d-saved-osculating-circle">Center ({artifact.objects.find(item => item.id === object.id)!.circle!.center.x.toPrecision(8)}, {artifact.objects.find(item => item.id === object.id)!.circle!.center.y.toPrecision(8)}) · radius {artifact.objects.find(item => item.id === object.id)!.circle!.radius.toPrecision(8)} · approximate · no certified error bound. The dashed circle and center marker may overlap the source curve; use Fit to inspect them.</p>}
         {object.anchor && "interval" in object.anchor && <small>Original x {object.anchor.seedX.toPrecision(7)} · match ±{object.anchor.matchRadius.toPrecision(3)} · scan [{object.anchor.interval.min.toPrecision(5)}, {object.anchor.interval.max.toPrecision(5)}] · {object.anchor.method} · residual {object.anchor.residual.toExponential(2)} · saved {object.anchor.confidence}</small>}
         {artifact?.objects.find(item => item.id === object.id)?.reason && <p>{artifact.objects.find(item => item.id === object.id)?.reason}</p>}
-        <button type="button" onClick={() => act({ type: "delete", objectId: object.id })}>Delete {object.label}</button>
+        <div className="graph2d-construction-footer"><button type="button" disabled={!onFitConstruction || !artifact?.objects.find(item => item.id === object.id)?.point}
+          onClick={() => onFitConstruction?.(object.id)}>Fit construction</button>
+          <details><summary>More</summary><button type="button" onClick={() => act({ type: "delete", objectId: object.id })}>Delete {object.label}</button></details></div>
       </li>)}</ol>
     {error && <p role="alert">{error}</p>}
   </section>;

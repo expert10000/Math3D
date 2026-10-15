@@ -18,6 +18,7 @@ export * from "./graph2dWorkspace";
 export * from "./graph2dDocument";
 export * from "./graph2dConstructions";
 export * from "./graph2dConstructionResolution";
+export * from "./graph2dFitBounds";
 export * from "./graph2dExpression";
 export * from "./graph2dSampling";
 export * from "./graph2dSamplingJobs";

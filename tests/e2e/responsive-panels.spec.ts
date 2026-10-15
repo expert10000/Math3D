@@ -18,10 +18,15 @@ test("Graphs keeps essential view controls and compact card actions keyboard rea
     await expect(functions.getByRole("button", { name: "Duplicate f" })).not.toBeVisible();
     await app.page.setViewportSize({ width: 620, height: 500 });
     const essentials = app.page.getByRole("group", { name: "Graph view essentials" });
-    await expect(essentials.getByRole("button", { name: "Fit" })).toBeVisible();
+    await expect(essentials.getByRole("button", { name: "Fit selection" })).toBeVisible();
+    await expect(essentials.getByRole("button", { name: "Fit all" })).toBeVisible();
+    await expect(essentials.getByRole("button", { name: "Reset view" })).toBeVisible();
     await expect(essentials.getByRole("button", { name: "Zoom in" })).toBeVisible();
     await expect(essentials.getByRole("button", { name: "Zoom out" })).toBeVisible();
-    await expect(essentials.getByRole("button", { name: "Grid" })).toBeVisible();
+    await app.page.locator(".graph2d-toolbar-menu > summary").click();
+    await expect(app.page.getByRole("group", { name: "View settings" }).getByRole("button", { name: "Grid", exact: true })).toBeVisible();
+    expect(await app.page.locator(".graph2d-toolbar-secondary").evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await app.page.locator(".graph2d-toolbar-menu > summary").click();
     await essentials.getByRole("button", { name: "Zoom in" }).click();
     await app.page.getByRole("group", { name: "Construction tools" }).getByRole("button", { name: "Tools" }).click();
     await expect(app.page.getByTestId("graph2d-tools")).toBeVisible();

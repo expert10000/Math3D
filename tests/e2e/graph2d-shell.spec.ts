@@ -1,6 +1,32 @@
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 
+test("Fit selection frames the unit circle and Fit all includes the ellipse without toolbar scrolling", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 850 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.getByTestId("graph-gallery-open").click();
+    await page.getByRole("button", { name: "All scenes", exact: true }).click();
+    await page.getByRole("button", { name: "Open Circle and ellipse", exact: true }).click();
+    await page.getByLabel("Graph functions", { exact: true }).getByRole("button", { name: "Select Circle", exact: true }).click();
+    const viewer = page.getByTestId("main-viewer");
+    const circle = viewer.locator('[data-graph2d-path="parametric_1"]');
+    await expect(circle).toHaveAttribute("d", /[ML]/);
+    await viewer.getByRole("button", { name: "Reset view" }).click();
+    await expect.poll(async () => (await circle.boundingBox())?.width ?? 0).toBeLessThan(180);
+    await viewer.getByRole("button", { name: "Fit selection" }).click();
+    await expect.poll(async () => (await circle.boundingBox())?.width ?? 0).toBeGreaterThan(350);
+    const selectedWidth = (await circle.boundingBox())!.width;
+    await viewer.getByRole("button", { name: "Fit all" }).click();
+    await expect.poll(async () => (await circle.boundingBox())?.width ?? 0).toBeLessThan(selectedWidth * .75);
+    expect(await viewer.locator(".graph2d-toolbar-secondary").evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    expect(await viewer.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("Graph worker replacement, settled rendering and unmount leave no live workers", async () => {
   const app = await launchSurfaceApp();
   try {
@@ -207,7 +233,7 @@ test("Graphs pans with one gesture, supports keyboard undo, and resets the viewp
     await expect.poll(async () => Number(await verticalAxis.getAttribute("x1"))).toBeCloseTo(before, 1);
     await app.page.mouse.wheel(0, -240);
     await app.page.waitForTimeout(250);
-    await viewer.getByRole("button", { name: "Reset" }).click();
+    await viewer.getByRole("button", { name: "Reset view" }).click();
     await expect.poll(async () => Number(await verticalAxis.getAttribute("x1"))).toBeCloseTo(before, 1);
   } finally {
     await closeSurfaceApp(app);

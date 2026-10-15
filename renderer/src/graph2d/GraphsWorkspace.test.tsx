@@ -14,6 +14,10 @@ describe("Graphs workspace shell", () => {
     expect(empty).toContain("No functions in this graph.");
     expect(empty).toContain('aria-label="Graph view essentials"');
     expect(empty).toContain('aria-label="Zoom in"');
+    expect(empty).toContain("Fit selection");
+    expect(empty).toContain("Fit all");
+    expect(empty).toContain("Reset view");
+    expect(empty).toContain("<summary>More</summary>");
     expect(empty).toContain('aria-label="Construction tools"');
     expect(empty).toContain('aria-label="Analysis"');
     expect(empty).toContain('aria-label="Export and presentation"');

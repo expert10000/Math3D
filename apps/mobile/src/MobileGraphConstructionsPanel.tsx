@@ -1,49 +1,66 @@
 import { useEffect, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { graph2DClearConstructionActions, graph2DDerivedConstructionFromPoint, graph2DCurvatureConstructionFromPoint, graph2DOsculatingCircleConstructionFromPoint, graph2DPointConstructionFromProbe, GRAPH2D_MAX_CONSTRUCTIONS,
-  type Graph2DConstructionAction, type Graph2DConstructionArtifact, type Graph2DDocument,
+  graph2DPointDifferentialReadout, type Graph2DConstructionAction, type Graph2DConstructionArtifact, type Graph2DDocument,
+  type Graph2DResolvedConstruction,
   type Graph2DPointOnCurveConstruction } from "@math3d/core";
 
-const Button = ({ label, disabled, onPress }: { label: string; disabled?: boolean; onPress: () => void }) =>
+const Button = ({ label, text, disabled, onPress }: { label: string; text?: string; disabled?: boolean; onPress: () => void }) =>
   <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }}
-    disabled={disabled} onPress={onPress} style={{ minHeight: 44, minWidth: 44, padding: 10 }}><Text>{label}</Text></Pressable>;
+    disabled={disabled} onPress={onPress} style={{ minHeight: 44, minWidth: 44, paddingVertical: 8, paddingHorizontal: 7 }}><Text>{text ?? label}</Text></Pressable>;
 
-function PointCard({ document, object, state, confidence, reason, onAction }: { document: Graph2DDocument; object: Graph2DPointOnCurveConstruction;
-  state: string; confidence?: string; reason?: string | null; onAction: (action: Graph2DConstructionAction) => void }) {
+function PointCard({ document, object, resolved, onAction, onFitConstruction }: { document: Graph2DDocument; object: Graph2DPointOnCurveConstruction;
+  resolved?: Graph2DResolvedConstruction; onAction: (action: Graph2DConstructionAction) => void;
+  onFitConstruction?: (id: string) => void }) {
   const [draft, setDraft] = useState(String(object.anchor.value));
   useEffect(() => setDraft(String(object.anchor.value)), [object.anchor.value]);
   const [error, setError] = useState("");
+  const [moreOpen, setMoreOpen] = useState(false);
   const hasDependents = !!document.source.constructions?.objects.some(item => item.inputs.some(input =>
     input.kind === "construction" && input.objectId === object.id));
   const sourceLabel = document.source.objects.find(item => item.id === object.inputs[0]?.objectId)?.label ?? object.inputs[0]?.objectId;
   const full = (document.source.constructions?.objects.length ?? 0) >= GRAPH2D_MAX_CONSTRUCTIONS;
+  const readout = graph2DPointDifferentialReadout(document, object, resolved);
   return <View style={{ borderTopWidth: 1, borderColor: "#cbd5e1", paddingVertical: 8 }}>
-    <Text>{object.label} on {sourceLabel}: {object.anchor.parameter}={object.anchor.value.toPrecision(6)} · {state}{confidence ? ` · ${confidence}` : ""}</Text>
-    {reason && <Text>{reason}</Text>}
-    <Text>Moving this saved point updates its dependent constructions; the source graph stays in place.</Text>
-    <TextInput accessibilityLabel={`${object.anchor.parameter} for ${object.label}`} keyboardType="numeric" value={draft}
-      onChangeText={setDraft} style={{ minHeight: 44, borderWidth: 1, borderColor: "#94a3b8", padding: 8 }} />
+    <Text style={{ fontWeight: "700" }}>{object.label} — on {sourceLabel}</Text>
+    <Text>{resolved?.state ?? "pending"} · {resolved?.confidence ?? "pending"}</Text>
+    {resolved?.reason && <Text>{resolved.reason}</Text>}
+    {readout && <View testID={`mobile-graph-point-readout-${object.id}`} style={{ marginVertical: 6 }}>
+      <Text>Point ({readout.point.x.toPrecision(7)}, {readout.point.y.toPrecision(7)})</Text>
+      <Text>Derivative {readout.derivative ? `(${readout.derivative.x.toPrecision(7)}, ${readout.derivative.y.toPrecision(7)})` : "unavailable"}</Text>
+      <Text>Speed {readout.speed?.toPrecision(7) ?? "unavailable"} · curvature κ {readout.curvature?.toPrecision(7) ?? "unavailable"}</Text>
+      <Text>{readout.method} · approximate, no certified error bound</Text>
+    </View>}
     <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-      <Button label={`Move ${object.label}`} onPress={() => {
+      <TextInput accessibilityLabel={`${object.anchor.parameter} for ${object.label}`} keyboardType="numeric" value={draft}
+        onChangeText={setDraft} style={{ minHeight: 44, minWidth: 100, flex: 1, borderWidth: 1, borderColor: "#94a3b8", padding: 8 }} />
+      <Button label={`Move ${object.label}`} text="Move" onPress={() => {
         const value = Number(draft);
         if (!draft.trim() || !Number.isFinite(value)) { setError("Enter a finite parameter."); return; }
         setError("");
         onAction({ type: "update", object: { ...object, anchor: { ...object.anchor, value } } });
       }} />
-      <Button label="Add tangent" disabled={full} onPress={() => onAction({ type: "create", object: graph2DDerivedConstructionFromPoint(document, object.id, "tangent") })} />
-      <Button label="Add normal" disabled={full} onPress={() => onAction({ type: "create", object: graph2DDerivedConstructionFromPoint(document, object.id, "normal") })} />
-      <Button label="Add curvature" disabled={full} onPress={() => onAction({ type: "create", object: graph2DCurvatureConstructionFromPoint(document, object.id) })} />
-      <Button label="Add osculating circle" disabled={full} onPress={() => onAction({ type: "create", object: graph2DOsculatingCircleConstructionFromPoint(document, object.id) })} />
-      <Button label={`Delete ${object.label}`} disabled={hasDependents} onPress={() => onAction({ type: "delete", objectId: object.id })} />
     </View>
+    <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+      <Button label="Add tangent" text="Tangent" disabled={full} onPress={() => onAction({ type: "create", object: graph2DDerivedConstructionFromPoint(document, object.id, "tangent") })} />
+      <Button label="Add normal" text="Normal" disabled={full} onPress={() => onAction({ type: "create", object: graph2DDerivedConstructionFromPoint(document, object.id, "normal") })} />
+      <Button label="Add curvature" text="Curvature" disabled={full} onPress={() => onAction({ type: "create", object: graph2DCurvatureConstructionFromPoint(document, object.id) })} />
+      <Button label="Add osculating circle" text="Osculating circle" disabled={full} onPress={() => onAction({ type: "create", object: graph2DOsculatingCircleConstructionFromPoint(document, object.id) })} />
+    </View>
+    <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+      <Button label={`Fit ${object.label}`} text="Fit point" disabled={!onFitConstruction || resolved?.state !== "ready"} onPress={() => onFitConstruction?.(object.id)} />
+      <Button label={`More actions for ${object.label}`} text="More" onPress={() => setMoreOpen(value => !value)} />
+    </View>
+    {moreOpen && <Button label={`Delete ${object.label}`} disabled={hasDependents} onPress={() => onAction({ type: "delete", objectId: object.id })} />}
     {error && <Text accessibilityLiveRegion="polite">{error}</Text>}
-    {hasDependents && <Text>Remove dependent constructions before deleting this point.</Text>}
+    {moreOpen && hasDependents && <Text>Remove dependent constructions before deleting this point.</Text>}
   </View>;
 }
 
-export const MobileGraphConstructionsPanel = ({ document, artifact, onAction, onBatchAction }: { document: Graph2DDocument;
+export const MobileGraphConstructionsPanel = ({ document, artifact, onAction, onBatchAction, onFitConstruction }: { document: Graph2DDocument;
   artifact: Graph2DConstructionArtifact | null; onAction: (action: Graph2DConstructionAction) => void;
-  onBatchAction: (actions: readonly Graph2DConstructionAction[]) => void }) => {
+  onBatchAction: (actions: readonly Graph2DConstructionAction[]) => void; onFitConstruction?: (id: string) => void }) => {
+  const [moreOpen, setMoreOpen] = useState(false);
   const objects = document.source.constructions?.objects ?? [];
   const probe = document.selection.probe;
   const canPromote = !!probe && !!document.source.objects.find(item => item.id === probe.objectId &&
@@ -53,15 +70,14 @@ export const MobileGraphConstructionsPanel = ({ document, artifact, onAction, on
     <Button label="Save probe as point" disabled={!canPromote || !artifact || objects.length >= GRAPH2D_MAX_CONSTRUCTIONS}
       onPress={() => onAction({ type: "create", object: graph2DPointConstructionFromProbe(document,
         `Point ${objects.filter(item => item.kind === "point-on-curve").length + 1}`) })} />
-    {objects.length > 0 && <Button label="Clear all constructions" onPress={() => onBatchAction(graph2DClearConstructionActions(document))} />}
+    {objects.length > 0 && <Button label="More construction actions" text="More" onPress={() => setMoreOpen(value => !value)} />}
+    {moreOpen && objects.length > 0 && <Button label="Clear all constructions" onPress={() => onBatchAction(graph2DClearConstructionActions(document))} />}
     {objects.length > 0 && <Text accessibilityLiveRegion="polite">{artifact ? artifact.truncated ? "Construction output limit reached." :
       `${artifact.objects.filter(item => item.state === "ready").length} ready, ${artifact.objects.filter(item => item.state === "unavailable").length} unavailable` :
       "Recomputing constructions…"}</Text>}
     {objects.map(object => object.kind === "point-on-curve" ?
       <PointCard key={object.id} document={document} object={object}
-        state={artifact?.objects.find(item => item.id === object.id)?.state ?? "pending"}
-        confidence={artifact?.objects.find(item => item.id === object.id)?.confidence}
-        reason={artifact?.objects.find(item => item.id === object.id)?.reason} onAction={onAction} /> :
+        resolved={artifact?.objects.find(item => item.id === object.id)} onAction={onAction} onFitConstruction={onFitConstruction} /> :
       <View key={object.id} style={{ borderTopWidth: 1, borderColor: "#cbd5e1", paddingVertical: 8 }}>
         <Text>{object.label}: {object.kind} · {artifact?.objects.find(item => item.id === object.id)?.state ?? "pending"} · {artifact?.objects.find(item => item.id === object.id)?.confidence ?? "pending"}</Text>
         {object.kind === "curvature" && artifact?.objects.find(item => item.id === object.id)?.measurement &&

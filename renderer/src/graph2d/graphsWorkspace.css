@@ -165,17 +165,21 @@
 .graph2d-intersection-list button { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 2px; }
 .graph2d-intersection-list small, .graph2d-intersections small { display: block; margin-top: 4px; opacity: .7; }
 .graph2d-intersection-overlays { fill: #f59e0b; stroke: #1f2937; stroke-width: 1.5; pointer-events: none; }
-.graph2d-viewer { display: grid; place-items: center; position: relative; overflow: auto; }
+.graph2d-viewer { display: grid; place-items: center; position: relative; overflow: hidden; }
 .graph2d-viewer { touch-action: none; cursor: grab; }
 .graph2d-viewer:active { cursor: grabbing; }
 .graph2d-viewer:focus-visible { outline: 2px solid #2563eb; outline-offset: -3px; }
-.graph2d-toolbar { position: absolute; top: 8px; left: 8px; z-index: 2; display: flex; flex-direction: column; align-items: flex-start; width: max-content; max-width: calc(100% - 16px); gap: 4px; }
-.graph2d-toolbar-primary, .graph2d-toolbar-secondary, .graph2d-toolbar-group { display: flex; align-items: center; gap: 4px; }
-.graph2d-toolbar-primary { padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-strong); }
-.graph2d-toolbar-secondary { box-sizing: border-box; max-width: 100%; overflow-x: auto; padding: 2px 0 5px; scrollbar-width: thin; }
-.graph2d-toolbar-group { flex: none; padding: 3px 5px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel-strong); }
-.graph2d-toolbar-group > span { padding: 0 4px; color: var(--muted); font-size: 11px; font-weight: 700; white-space: nowrap; }
-.graph2d-toolbar button { border: 1px solid var(--border); border-radius: 6px; background: var(--panel-strong); padding: 5px 10px; font-weight: 700; cursor: pointer; }
+.graph2d-toolbar { position: absolute; top: 8px; left: 8px; z-index: 2; display: flex; flex-direction: column; align-items: flex-start; max-width: calc(100% - 16px); gap: 4px; }
+.graph2d-toolbar-primary, .graph2d-toolbar-secondary { display: flex; align-items: center; gap: 4px; box-sizing: border-box; max-width: 100%; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-strong); }
+.graph2d-toolbar-group { display: flex; align-items: center; gap: 4px; }
+.graph2d-toolbar-group > span { color: var(--muted); font-size: 11px; font-weight: 700; }
+.graph2d-toolbar button, .graph2d-toolbar summary { border: 1px solid var(--border); border-radius: 6px; background: var(--panel-strong); padding: 5px 8px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.graph2d-toolbar summary { list-style: none; }
+.graph2d-toolbar summary::-webkit-details-marker { display: none; }
+.graph2d-toolbar-menu { position: relative; }
+.graph2d-toolbar-menu-content { position: absolute; top: calc(100% + 5px); right: 0; z-index: 5; box-sizing: border-box; display: grid; gap: 8px; width: max-content; max-width: min(420px, calc(100vw - 40px)); max-height: min(65vh, 440px); overflow-y: auto; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-strong); box-shadow: 0 6px 20px #0003; }
+.graph2d-toolbar-menu-content .graph2d-toolbar-group { display: flex; flex-wrap: wrap; }
+.graph2d-toolbar-menu-content .graph2d-toolbar-group > span { width: 100%; }
 .graph2d-toolbar button { white-space: nowrap; }
 .graph2d-toolbar button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
 .graph2d-plot { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -214,6 +218,7 @@
   .graph2d-workspace[data-left="false"][data-right] { grid-template-columns: minmax(0, 1fr); }
   .graph2d-right { display: none; }
   .graph2d-toolbar { max-width: calc(100% - 132px); }
+  .graph2d-toolbar-menu-content { position: fixed; top: 100px; left: 16px; right: 16px; width: auto; max-width: 420px; }
   .graph2d-compact-panels { display: block; position: absolute; top: 8px; right: 8px; z-index: 1; }
   .graph2d-compact-panels details { max-width: min(340px, 80vw); padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-strong); }
   .graph2d-compact-panels details:first-child { display: none; }
@@ -240,6 +245,8 @@
   .graph2d-compact-panels { left: 8px; right: 8px; display: flex; align-items: flex-start; gap: 6px; }
   .graph2d-compact-panels details:first-child { display: block; }
   .graph2d-toolbar { top: auto; bottom: 8px; max-width: calc(100% - 16px); }
+  .graph2d-toolbar-menu-content { top: auto; bottom: 124px; }
+  .graph2d-toolbar button, .graph2d-toolbar summary { padding: 5px 4px; font-size: 11px; }
   .graph2d-update-status { top: 54px; bottom: auto; font-size: 11px; }
 }
 .graph2d-tools-panel { position: absolute; z-index: 6; top: 58px; left: 16px; width: min(460px, calc(100% - 32px)); max-height: calc(100% - 100px); overflow: auto; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel-strong); color: var(--text); box-shadow: 0 6px 24px #0003; }
@@ -262,10 +269,19 @@
 .graph2d-constructions-panel ol { padding-left: 20px; }
 .graph2d-construction-card { border-top: 1px solid var(--border); padding: 8px 0; }
 .graph2d-construction-card small { display: block; margin: 3px 0 8px; }
-.graph2d-construction-card label { display: block; }
-.graph2d-construction-card input { width: 100%; min-height: 40px; }
-.graph2d-construction-card button, .graph2d-constructions-panel > button { min-height: 44px; margin: 3px; }
-.graph2d-construction-actions { display: flex; flex-wrap: wrap; }
+.graph2d-construction-card header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.graph2d-construction-card header small { margin: 0; }
+.graph2d-construction-readout { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 8px; margin: 8px 0; font-size: 12px; font-variant-numeric: tabular-nums; }
+.graph2d-construction-readout dt { font-weight: 700; }
+.graph2d-construction-readout dd { margin: 0; overflow-wrap: anywhere; }
+.graph2d-construction-parameter { display: flex; align-items: end; gap: 6px; }
+.graph2d-construction-parameter label { flex: 1; min-width: 0; font-size: 12px; font-weight: 700; }
+.graph2d-construction-parameter input { box-sizing: border-box; display: block; width: 100%; min-height: 36px; margin-top: 3px; }
+.graph2d-construction-card button, .graph2d-constructions-panel > button { min-height: 34px; margin: 2px; padding: 4px 7px; }
+.graph2d-construction-actions { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 7px; }
+.graph2d-construction-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 5px; }
+.graph2d-construction-footer summary, .graph2d-construction-global-more summary { cursor: pointer; font-size: 12px; font-weight: 700; }
+.graph2d-construction-footer details[open], .graph2d-construction-global-more[open] { padding: 4px; border: 1px solid var(--border); border-radius: 6px; }
 @media (forced-colors: active) { .graph2d-saved-probes circle { fill: Highlight; stroke: Canvas; } .graph2d-saved-probes rect { fill: Canvas; stroke: CanvasText; } .graph2d-saved-probes text { fill: CanvasText; } }
 .graph2d-parameter-cards { position: absolute; right: calc(var(--graph2d-right-width, 0px) + 20px); top: 100px; z-index: 5; box-sizing: border-box; width: min(324px, calc(100% - var(--graph2d-left-width, 0px) - var(--graph2d-right-width, 0px) - 48px)); max-height: calc(100% - 116px); padding: 12px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-strong); }
 .graph2d-parameter-cards header { display: flex; align-items: center; justify-content: space-between; gap: 8px; position: sticky; top: -12px; padding: 8px 0; background: var(--panel-strong); z-index: 1; }

@@ -8,6 +8,7 @@ import { applyGraph2DAuthoring, createEmptyGraph2DDocument, graph2DDerivedConstr
   type Graph2DDocument } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { Graph2DPlot } from "./Graph2DPlot";
+import { Graph2DConstructionsPanel } from "./Graph2DConstructionsPanel";
 
 const style = { color: "#2563eb", lineWidth: 2, lineStyle: "solid" as const, visible: true };
 const domain = { min: -4, max: 4, includeMin: true, includeMax: true };
@@ -135,6 +136,12 @@ describe("G2D57 saved osculating circle", () => {
     const original = assertCircleAt(initialParameter);
     expect(original.objects[0]?.point?.x).toBeCloseTo(-0.591, 2);
     expect(original.objects[0]?.point?.y).toBeCloseTo(0.807, 2);
+    const inspector = renderToStaticMarkup(<Graph2DConstructionsPanel document={adapter.document()} artifact={original} />);
+    expect(inspector).toContain("Derivative");
+    expect(inspector).toContain("Curvature κ");
+    expect(inspector).toContain("symbolic-rules");
+    expect(inspector).toContain('aria-label="Add osculating circle"');
+    expect(inspector).toContain("<summary>More</summary>");
     const savedPoint = adapter.document().source.constructions?.objects[0];
     if (savedPoint?.kind !== "point-on-curve") throw new Error("Missing saved point.");
     const movedParameter = Math.PI / 3;

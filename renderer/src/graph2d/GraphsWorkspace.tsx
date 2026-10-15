@@ -2,6 +2,7 @@ import {
   analyzeGraph2DArcLength, analyzeGraph2DCriticalPoints, analyzeGraph2DIntegral, analyzeGraph2DIntervals,
   analyzeGraph2DIntersections,
   analyzeGraph2DLocalDifferential, fitGraph2DViewport,
+  graph2DSceneFitBounds, graph2DConstructionFitBounds,
   analyzeGraph2DPolarLocalDifferential, isGraph2DPolarLocalDifferentialCurrent,
   analyzeGraph2DParametricLocalDifferential, isGraph2DParametricLocalDifferentialCurrent,
   analyzeGraph2DPolarMeasurement, isGraph2DPolarMeasurementCurrent,
@@ -32,7 +33,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
 import type { WorkspaceDockLayout } from "../workspaceDocks";
-import { Graph2DPlot, type Graph2DPlotSeries } from "./Graph2DPlot";
+import { Graph2DPlot } from "./Graph2DPlot";
 import { Graph2DAuthoringPanel, type Graph2DLeftPalette } from "./Graph2DAuthoringPanel";
 import { pointTableStore } from "./pointTableStore";
 import { Graph2DPromotionPanel } from "./Graph2DPromotionPanel";
@@ -244,19 +245,13 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     // Use the actual plot rectangle, not its bordered/scrolled container.
     return { x: (event.clientX - rect.left) * size.width / rect.width, y: (event.clientY - rect.top) * size.height / rect.height };
   };
-  const fitSeries = (items: readonly Graph2DPlotSeries[]) => {
-    if (!sampling.ready || parameterPreviewActive) return;
-    let xMin = Number.POSITIVE_INFINITY, xMax = Number.NEGATIVE_INFINITY;
-    let yMin = Number.POSITIVE_INFINITY, yMax = Number.NEGATIVE_INFINITY;
-    for (const item of items) for (const segment of item.artifact.segments) for (const point of segment.points) {
-      if ((viewport.xScale === "log10" && point.x <= 0) || (viewport.yScale === "log10" && point.y <= 0)) continue;
-      xMin = Math.min(xMin, point.x); xMax = Math.max(xMax, point.x);
-      yMin = Math.min(yMin, point.y); yMax = Math.max(yMax, point.y);
-    }
-    if (!Number.isFinite(xMin)) return;
-    onViewportCommit?.(fitGraph2DViewport({ xMin, xMax, yMin, yMax }, size, viewport.aspect, .08, viewport));
+  const fitBounds = (bounds: ReturnType<typeof graph2DSceneFitBounds>) => {
+    if (!sampling.ready || parameterPreviewActive || !bounds) return;
+    onViewportCommit?.(fitGraph2DViewport(bounds, size, viewport.aspect, .12, viewport));
   };
-  const fitVisible = () => fitSeries(series);
+  const fitSelection = () => fitBounds(graph2DSceneFitBounds(series, null, "selection", document.selection.objectId));
+  const fitVisible = () => fitBounds(graph2DSceneFitBounds(series, sampling.constructions, "all", null));
+  const fitConstruction = (id: string) => fitBounds(graph2DConstructionFitBounds(sampling.constructions, id));
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || (event.target as HTMLElement).closest("button,summary,details,input,select,textarea,label,form")) return;
     cancelParameter();
@@ -460,7 +455,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   }} />;
   const constructions = <Graph2DConstructionsPanel document={document}
     artifact={parameterPreviewActive ? null : sampling.constructions}
-    onAction={onConstructionCommit} onBatchAction={onConstructionBatchCommit} />;
+    onAction={onConstructionCommit} onBatchAction={onConstructionBatchCommit} onFitConstruction={fitConstruction} />;
   const saveTangentButton = (available: boolean) => <button type="button"
     disabled={!available || !document.selection.probe || !onConstructionBatchCommit ||
       (document.source.constructions?.objects.length ?? 0) > GRAPH2D_MAX_CONSTRUCTIONS - 2}
@@ -763,7 +758,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     </section>
     <div className="graph2d-inspector-actions">
       <button type="button" disabled={!inspected.probe} onClick={locateSelected}>Locate</button>
-      <button type="button" disabled={!sampling.ready || parameterPreviewActive || !selectedSeries?.artifact.segments.length} onClick={() => selectedSeries && fitSeries([selectedSeries])}>Fit selection</button>
+      <button type="button" disabled={!sampling.ready || parameterPreviewActive || !selectedSeries?.artifact.segments.length} onClick={fitSelection}>Fit selection</button>
       <button type="button" onClick={() => onSelectionCommit?.({ objectId: null, probe: null })}>Clear selection</button>
     </div>
     {savedProbes}
@@ -788,64 +783,67 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         </div>}
         <div className="graph2d-toolbar" ref={toolbarRef} onPointerDown={(event) => event.stopPropagation()}>
           <div className="graph2d-toolbar-primary" role="group" aria-label="Graph view essentials">
-            <button type="button" onClick={() => { finishWheel(); fitVisible(); }}>Fit</button>
+            <button type="button" disabled={!sampling.ready || !selectedSeries?.artifact.segments.length || parameterPreviewActive}
+              onClick={() => { finishWheel(); fitSelection(); }}>Fit selection</button>
+            <button type="button" disabled={!sampling.ready || parameterPreviewActive}
+              onClick={() => { finishWheel(); fitVisible(); }}>Fit all</button>
+            <button type="button" onClick={() => { finishWheel(); onViewportCommit?.({ ...GRAPH2D_DEFAULT_VIEWPORT }); }}>Reset view</button>
             <button type="button" aria-label="Zoom in" onClick={() => {
               const current = previewRef.current ?? document.display.viewport;
               finishWheel(); onViewportCommit?.(zoomGraph2DViewport(current, size,
                 { x: size.width / 2, y: size.height / 2 }, 1.2));
-            }}>Zoom in</button>
+            }}>+</button>
             <button type="button" aria-label="Zoom out" onClick={() => {
               const current = previewRef.current ?? document.display.viewport;
               finishWheel(); onViewportCommit?.(zoomGraph2DViewport(current, size,
                 { x: size.width / 2, y: size.height / 2 }, 1 / 1.2));
-            }}>Zoom out</button>
-            <button type="button" ref={gridOpener} aria-expanded={gridOpen} disabled={status !== "ready"} onClick={() => {
-              finishWheel(); cancelParameter(); setParametersOpen(false); setScalesOpen(false);
-              if (gridOpen) closeGrid(true); else setGridOpen(true);
-            }}>Grid</button>
+            }}>−</button>
           </div>
           <div className="graph2d-toolbar-secondary">
-            <div className="graph2d-toolbar-group" role="group" aria-label="Authoring">
-              <span aria-hidden="true">Author</span>
-              <button type="button" data-testid="graph-gallery-open" onClick={event => { galleryOpener.current = event.currentTarget; finishWheel(); closeGrid(true, false); setScalesOpen(false); setParametersOpen(false); setParameterPreview(null); setGalleryError(null); setGalleryOpen(true); }}>Gallery</button>
-              <button type="button" data-testid="graph2d-parameters-open" disabled={status !== "ready"} onClick={event => {
-                parametersOpener.current = event.currentTarget; finishWheel(); setParametersOpen(value => !value); setParameterPreview(null);
-                setScalesOpen(false); closeGrid(true, false);
-                if (!parametersOpen) galleryFocusFrame.current = requestAnimationFrame(() => { galleryFocusFrame.current = null;
-                  parametersOpener.current?.closest(".graph2d-workspace")?.querySelector<HTMLButtonElement>('[data-testid="graph2d-parameters-close"]')?.focus(); });
-              }}>Parameters</button>
-              <button type="button" aria-pressed={parameterCards} onClick={() => { finishWheel(); cancelParameter(); setParametersOpen(false); setParameterCards(!parameterCards); }}>Parameter cards</button>
-            </div>
+            <button type="button" data-testid="graph-gallery-open" onClick={event => { galleryOpener.current = event.currentTarget; finishWheel(); closeGrid(true, false); setScalesOpen(false); setParametersOpen(false); setParameterPreview(null); setGalleryError(null); setGalleryOpen(true); }}>Gallery</button>
             <div className="graph2d-toolbar-group" role="group" aria-label="Construction tools">
-              <span aria-hidden="true">Construct</span>
               <button type="button" ref={toolsOpener} aria-expanded={toolsOpen} onClick={() => { finishWheel(); closeGrid(true, false); cancelParameter(); setToolsOpen(!toolsOpen); }}>Tools</button>
             </div>
             <div className="graph2d-toolbar-group" role="group" aria-label="Analysis">
-              <span aria-hidden="true">Analyze</span>
               <button type="button" disabled={!showRight} title={!showRight ? "Open the Inspector dock to view analysis." : undefined}
                 onClick={() => { finishWheel(); openInspector(); }}>Inspector</button>
             </div>
-            <div className="graph2d-toolbar-group" role="group" aria-label="View settings">
-              <span aria-hidden="true">View</span>
-              <button type="button" ref={scalesOpener} onClick={() => { finishWheel(); cancelParameter(); closeGrid(true, false); setParametersOpen(false); setScalesOpen(!scalesOpen); }}>Scales</button>
-              <button type="button" aria-pressed={viewport.continuation ?? false} onClick={() => { finishWheel(); cancelParameter(); onViewportCommit?.({ ...document.display.viewport, continuation: !document.display.viewport.continuation }); }}>Show continuation</button>
-              <button type="button" onClick={() => { finishWheel(); onViewportCommit?.({ ...GRAPH2D_DEFAULT_VIEWPORT }); }}>Reset</button>
-              <button type="button" aria-label="Toggle polar grid" aria-pressed={(document.display.axes.gridMode ?? "cartesian") === "polar"}
-                disabled={graph2DHasLogScale(viewport) || manualGrid} title={graph2DHasLogScale(viewport) ? "Polar grid needs linear axes" : manualGrid ? "Set both grid spacings to Auto before switching to polar" : undefined}
-                onClick={() => onGridModeCommit?.((document.display.axes.gridMode ?? "cartesian") === "polar" ? "cartesian" : "polar")}>
-                {(document.display.axes.gridMode ?? "cartesian") === "polar" ? "Cartesian grid" : "Polar grid"}</button>
-            </div>
-            <div className="graph2d-toolbar-group" role="group" aria-label="Export and presentation">
-              <span aria-hidden="true">Export</span>
-              <button type="button" data-testid="graph2d-export-open" disabled={status !== "ready" || parameterPreviewActive} onClick={event => {
-                exportOpener.current = event.currentTarget; finishWheel(); closeGrid(true, false); dragRef.current = null; setExportOpen(true);
-              }}>Export</button>
-              <button type="button" ref={presentationOpener} data-testid="graph2d-presentation-open" onClick={() => {
-                finishWheel(); closeGrid(true, false); cancelParameter(); setParametersOpen(false); setScalesOpen(false); setToolsOpen(false);
-                setParameterCards(false); setPresentation(true);
-                requestAnimationFrame(() => viewerRef.current?.querySelector<HTMLButtonElement>('[data-testid="graph2d-presentation-exit"]')?.focus());
-              }}>Present</button>
-            </div>
+            <details className="graph2d-toolbar-menu"><summary>More</summary><div className="graph2d-toolbar-menu-content">
+              <div className="graph2d-toolbar-group" role="group" aria-label="Authoring">
+                <span>Author</span>
+                <button type="button" data-testid="graph2d-parameters-open" disabled={status !== "ready"} onClick={event => {
+                  parametersOpener.current = event.currentTarget; finishWheel(); setParametersOpen(value => !value); setParameterPreview(null);
+                  setScalesOpen(false); closeGrid(true, false);
+                  if (!parametersOpen) galleryFocusFrame.current = requestAnimationFrame(() => { galleryFocusFrame.current = null;
+                    parametersOpener.current?.closest(".graph2d-workspace")?.querySelector<HTMLButtonElement>('[data-testid="graph2d-parameters-close"]')?.focus(); });
+                }}>Parameters</button>
+                <button type="button" aria-pressed={parameterCards} onClick={() => { finishWheel(); cancelParameter(); setParametersOpen(false); setParameterCards(!parameterCards); }}>Parameter cards</button>
+              </div>
+              <div className="graph2d-toolbar-group" role="group" aria-label="View settings">
+                <span>View</span>
+                <button type="button" ref={gridOpener} aria-expanded={gridOpen} disabled={status !== "ready"} onClick={() => {
+                  finishWheel(); cancelParameter(); setParametersOpen(false); setScalesOpen(false);
+                  if (gridOpen) closeGrid(true); else setGridOpen(true);
+                }}>Grid</button>
+                <button type="button" ref={scalesOpener} onClick={() => { finishWheel(); cancelParameter(); closeGrid(true, false); setParametersOpen(false); setScalesOpen(!scalesOpen); }}>Scales</button>
+                <button type="button" aria-pressed={viewport.continuation ?? false} onClick={() => { finishWheel(); cancelParameter(); onViewportCommit?.({ ...document.display.viewport, continuation: !document.display.viewport.continuation }); }}>Show continuation</button>
+                <button type="button" aria-label="Toggle polar grid" aria-pressed={(document.display.axes.gridMode ?? "cartesian") === "polar"}
+                  disabled={graph2DHasLogScale(viewport) || manualGrid} title={graph2DHasLogScale(viewport) ? "Polar grid needs linear axes" : manualGrid ? "Set both grid spacings to Auto before switching to polar" : undefined}
+                  onClick={() => onGridModeCommit?.((document.display.axes.gridMode ?? "cartesian") === "polar" ? "cartesian" : "polar")}>
+                  {(document.display.axes.gridMode ?? "cartesian") === "polar" ? "Cartesian grid" : "Polar grid"}</button>
+              </div>
+              <div className="graph2d-toolbar-group" role="group" aria-label="Export and presentation">
+                <span>Share</span>
+                <button type="button" data-testid="graph2d-export-open" disabled={status !== "ready" || parameterPreviewActive} onClick={event => {
+                  exportOpener.current = event.currentTarget; finishWheel(); closeGrid(true, false); dragRef.current = null; setExportOpen(true);
+                }}>Export</button>
+                <button type="button" ref={presentationOpener} data-testid="graph2d-presentation-open" onClick={() => {
+                  finishWheel(); closeGrid(true, false); cancelParameter(); setParametersOpen(false); setScalesOpen(false); setToolsOpen(false);
+                  setParameterCards(false); setPresentation(true);
+                  requestAnimationFrame(() => viewerRef.current?.querySelector<HTMLButtonElement>('[data-testid="graph2d-presentation-exit"]')?.focus());
+                }}>Present</button>
+              </div>
+            </div></details>
           </div>
         </div>
         {toolHint && <p className="graph2d-tool-hint" role="status">{toolHint}</p>}

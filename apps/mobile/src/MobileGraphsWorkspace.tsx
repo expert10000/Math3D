@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from "react-native";
 import { fitGraph2DViewport, panGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, graph2DHasLogScale, pickGraph2DProbe,
+  graph2DSceneFitBounds, graph2DConstructionFitBounds,
   resolveGraph2DViewport, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, graph2DParameterSessionKey,
   previewGraph2DParameterValues, graph2DRegressionOverlaySeries, applyGraph2DAuthoring, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
@@ -61,6 +62,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const cancelParameter = () => { setParameterPreview(null); setParameterEpoch(value => value + 1); };
   const [destination, setDestination] = useState<MobileGraphDestination>("Graph");
   const [presentation, setPresentation] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const setPresentationMode = (active: boolean) => { setPresentation(active); onPresentationChange?.(active); };
   useEffect(() => () => onPresentationChange?.(false), [onPresentationChange]);
   const routeTool = (tool: Graph2DTool) => {
@@ -131,22 +133,24 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     if (result.viewport) commit(() => adapter.commitViewport(result.viewport!));
     else if (result.tap) tap(result.tap);
   };
-  const fit = () => {
+  const fit = (mode: "selection" | "all") => {
     if (!sampling.ready || parameterPreviewActive) { setError("Wait for sampling and apply or cancel parameter preview before Fit."); return; }
-    const points = series.flatMap((item) => item.artifact.segments.flatMap((segment) => segment.points)).filter(point =>
-      (viewport.xScale !== "log10" || point.x > 0) && (viewport.yScale !== "log10" || point.y > 0));
-    if (!points.length) { setError("No finite visible points to fit."); return; }
-    commit(() => adapter.commitViewport(fitGraph2DViewport({ xMin: Math.min(...points.map((point) => point.x)),
-      xMax: Math.max(...points.map((point) => point.x)), yMin: Math.min(...points.map((point) => point.y)),
-      yMax: Math.max(...points.map((point) => point.y)) }, size, viewport.aspect, .08, viewport)));
+    const bounds = graph2DSceneFitBounds(series, constructions, mode, document.selection.objectId);
+    if (!bounds) { setError(mode === "selection" ? "Select a curve with finite samples first." : "No finite visible content to fit."); return; }
+    commit(() => adapter.commitViewport(fitGraph2DViewport(bounds, size, viewport.aspect, .12, viewport)));
+  };
+  const fitConstruction = (id: string) => {
+    const bounds = graph2DConstructionFitBounds(constructions, id);
+    if (!bounds) { setError("Construction is unavailable for Fit."); return; }
+    commit(() => adapter.commitViewport(fitGraph2DViewport(bounds, size, viewport.aspect, .12, viewport)));
   };
   const axis = (a: { x: number; y: number }, b: { x: number; y: number }) => {
     const line = clipMobileGraphLine(graph2DWorldToScreen(viewport, size, a), graph2DWorldToScreen(viewport, size, b), size);
     return line ? <Line {...line} color="#64748b" width={1.5} /> : null;
   };
-  const button = (label: string, action: () => void, disabled = false) => <Pressable key={label} accessibilityRole="button"
-    accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={action} style={s.button}>
-    <Text style={{ color: disabled ? "#94a3b8" : "#1d4ed8" }}>{label}</Text></Pressable>;
+  const button = (label: string, action: () => void, disabled = false, compact = false) => <Pressable key={label} accessibilityRole="button"
+    accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={action} style={[s.button, compact && s.toolbarButton]}>
+    <Text style={{ color: disabled ? "#94a3b8" : "#1d4ed8", fontSize: compact ? 12 : 14, textAlign: compact ? "center" : "left" }}>{label}</Text></Pressable>;
   return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={s.root} testID="mobile-graphs-workspace"
     onLayout={(event) => { const { width, height } = event.nativeEvent.layout; if (width > 0 && height > 0)
       setFrame((current) => current.width === width && current.height === height ? current : { width, height }); }}>
@@ -160,15 +164,21 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         onGallery();
       })}
       {button("Display", () => { cancel(); cancelParameter(); setDestination(destination === "Display" ? "Graph" : "Display"); })}</View>}
-    {!presentation && <ScrollView horizontal style={{ flexGrow: 0, maxHeight: 48 }} contentContainerStyle={s.toolbar}>{button("Reset", () => commit(() => adapter.commitViewport(GRAPH2D_DEFAULT_VIEWPORT)))}
-      {button("Present", () => { cancel(); cancelParameter(); if (editor || advanced) { setError("Save or cancel the function edit before presenting."); return; } setDestination("Graph"); setPresentationMode(true); })}
-      {button("Parameters", () => { cancel(); cancelParameter(); setDestination(destination === "Parameters" ? "Graph" : "Parameters"); })}
-      {button("Tools", () => { cancel(); cancelParameter(); setDestination(destination === "Tools" ? "Graph" : "Tools"); })}
-      {button("Parameter cards", () => { cancel(); cancelParameter(); setDestination(destination === "Cards" ? "Graph" : "Cards"); })}
-      {button("Export", () => { cancel(); cancelParameter(); if (editor || advanced) { setError("Save or cancel the function edit before exporting."); return; } setDestination(destination === "Export" ? "Graph" : "Export"); })}
-      {button("Fit", fit)}{button("Undo", () => commit(() => adapter.undo()), history.undoDepth === 0)}
+    {!presentation && <><View style={s.toolbar}>
+      {button("Fit selection", () => fit("selection"), !document.selection.objectId, true)}
+      {button("Fit all", () => fit("all"), false, true)}
+      {button("Reset view", () => commit(() => adapter.commitViewport(GRAPH2D_DEFAULT_VIEWPORT)), false, true)}
+      {button("More", () => setMoreOpen(value => !value), false, true)}
+    </View>{moreOpen && <ScrollView style={{ maxHeight: 140 }} contentContainerStyle={s.moreActions}>
+      {button("Present", () => { cancel(); cancelParameter(); if (editor || advanced) { setError("Save or cancel the function edit before presenting."); return; } setDestination("Graph"); setPresentationMode(true); setMoreOpen(false); })}
+      {button("Parameters", () => { cancel(); cancelParameter(); setDestination(destination === "Parameters" ? "Graph" : "Parameters"); setMoreOpen(false); })}
+      {button("Tools", () => { cancel(); cancelParameter(); setDestination(destination === "Tools" ? "Graph" : "Tools"); setMoreOpen(false); })}
+      {button("Parameter cards", () => { cancel(); cancelParameter(); setDestination(destination === "Cards" ? "Graph" : "Cards"); setMoreOpen(false); })}
+      {button("Export", () => { cancel(); cancelParameter(); if (editor || advanced) { setError("Save or cancel the function edit before exporting."); return; } setDestination(destination === "Export" ? "Graph" : "Export"); setMoreOpen(false); })}
+      {button("Undo", () => commit(() => adapter.undo()), history.undoDepth === 0)}
       {button("Redo", () => commit(() => adapter.redo()), history.redoDepth === 0)}
-      {button(saving ? "Saving…" : "Save", () => { setSaving(true); void onSave().finally(() => setSaving(false)); }, saving)}</ScrollView>}
+      {button(saving ? "Saving…" : "Save", () => { setSaving(true); void onSave().finally(() => setSaving(false)); }, saving)}
+    </ScrollView>}</>}
     <View style={[s.workspace, layout.split && s.split]} testID={layout.split ? "mobile-graph-split-pane" : "mobile-graph-phone-layout"}>
     <View style={[s.graphPane, layout.split && { minWidth: layout.graphMinWidth }]}>
     <View style={s.plot} testID="mobile-graph-plot" accessibilityLabel="Graph plot. Drag to pan, pinch to zoom, tap to probe."
@@ -343,7 +353,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
           })} />
         <MobileGraphConstructionsPanel document={document} artifact={constructions}
           onAction={(action) => { commit(() => adapter.commitConstruction(action)); }}
-          onBatchAction={(actions) => { commit(() => adapter.commitConstructions(actions)); }} />
+          onBatchAction={(actions) => { commit(() => adapter.commitConstructions(actions)); }} onFitConstruction={fitConstruction} />
       </>}
     </ScrollView>}
     </View>
@@ -355,7 +365,9 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
 
 const s = StyleSheet.create({ root: { flex: 1, minHeight: 0, paddingHorizontal: 8 }, title: { fontSize: 18, fontWeight: "600" },
   workspace: { flex: 1, minHeight: 0 }, split: { flexDirection: "row", gap: 12 }, graphPane: { flex: 1, minHeight: 0, minWidth: 0 },
-  toolbar: { flexDirection: "row" }, button: { minWidth: 44, minHeight: 44, padding: 10, justifyContent: "center" },
+  toolbar: { flexDirection: "row", justifyContent: "space-between" }, toolbarButton: { flex: 1, minWidth: 0, paddingHorizontal: 2 },
+  moreActions: { flexDirection: "row", flexWrap: "wrap" },
+  button: { minWidth: 44, minHeight: 44, padding: 8, justifyContent: "center" },
   plot: { flex: 1, minHeight: 48, backgroundColor: "#fff", overflow: "hidden", borderWidth: 1, borderColor: "#cbd5e1" },
   readout: { fontSize: 12, paddingVertical: 3 }, empty: { padding: 20, color: "#64748b" },
   sheet: { position: "absolute", bottom: 0, left: 0, right: 0, maxHeight: "45%", flexGrow: 0,
