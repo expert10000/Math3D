@@ -1,6 +1,50 @@
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 
+test("GRA-N06 drags a saved point on its curve, previews dependents, and undoes one release", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.getByTestId("graph-gallery-open").click();
+    await page.getByRole("button", { name: "Open A tangent at x = 1", exact: true }).click();
+    const functions = page.getByLabel("Graph functions", { exact: true });
+    await functions.getByRole("button", { name: "Select Parabola", exact: true }).click();
+    const panel = page.getByLabel("Graph inspector", { exact: true }).getByTestId("graph2d-constructions");
+    await panel.getByRole("button", { name: "Save probe as point" }).click();
+    await panel.getByRole("button", { name: "Add tangent" }).click();
+    await panel.getByRole("button", { name: "Add normal" }).click();
+    await panel.getByRole("button", { name: "Add osculating circle" }).click();
+    const marker = page.locator('[data-graph2d-draggable-point="construction_1"]');
+    const point = page.locator('[data-graph2d-construction="construction_1"]');
+    const tangent = page.locator('[data-graph2d-construction="construction_2"]');
+    const source = page.locator('[data-graph2d-path="function_1"]');
+    const beforePoint = await point.getAttribute("cx");
+    const beforeTangent = await tangent.getAttribute("x1");
+    const beforeSource = await source.getAttribute("d");
+    const box = await marker.boundingBox();
+    expect(box).not.toBeNull();
+    const x = box!.x + box!.width / 2, y = box!.y + box!.height / 2;
+    expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.outerHTML.slice(0, 300), { x, y })).toContain("data-graph2d-draggable-point");
+    await page.mouse.move(x, y); await page.mouse.down();
+    await page.mouse.move(x + 100, y - 35, { steps: 4 });
+    await expect.poll(() => point.getAttribute("cx")).not.toBe(beforePoint);
+    await expect.poll(() => tangent.getAttribute("x1")).not.toBe(beforeTangent);
+    await expect(source).toHaveAttribute("d", beforeSource!);
+    await page.keyboard.press("Escape"); await page.mouse.up();
+    await expect(point).toHaveAttribute("cx", beforePoint!);
+    await page.mouse.move(x, y); await page.mouse.down();
+    await page.mouse.move(x + 100, y - 35, { steps: 4 }); await page.mouse.up();
+    await expect.poll(() => point.getAttribute("cx")).not.toBe(beforePoint);
+    await expect(source).toHaveAttribute("d", beforeSource!);
+    await page.getByTestId("main-viewer").focus(); await page.keyboard.press("Control+z");
+    await expect(point).toHaveAttribute("cx", beforePoint!);
+    await expect(tangent).toHaveAttribute("x1", beforeTangent!);
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("G2D48 promotes a probe, recomputes a dependent tangent, and undoes source edits", async () => {
   const app = await launchSurfaceApp();
   try {

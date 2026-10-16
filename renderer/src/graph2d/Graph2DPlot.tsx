@@ -196,13 +196,13 @@ export function Graph2DPlot({ display, size, series, regression, constructions, 
             const rx = Math.abs(xEdge.x - center.x), ry = Math.abs(yEdge.y - center.y);
             if (![center.x, center.y, rx, ry, anchor.x, anchor.y].every(Number.isFinite) || rx <= 0 || ry <= 0) return null;
             return <g key={item.id}>
-              <ellipse data-graph2d-construction={item.id} cx={center.x} cy={center.y} rx={rx} ry={ry}
+              <ellipse data-graph2d-construction={item.id} cx={center.x} cy={center.y} rx={rx} ry={ry} pointerEvents="none"
                 fill="none" stroke={item.style.color} strokeWidth={item.style.lineWidth}
                 strokeDasharray={item.style.lineStyle === "dashed" ? "8 5" : item.style.lineStyle === "dotted" ? "2 4" : undefined} />
               <line data-graph2d-construction-radius={item.id} x1={center.x} y1={center.y}
-                x2={anchor.x} y2={anchor.y}
+                x2={anchor.x} y2={anchor.y} pointerEvents="none"
                 stroke={item.style.color} strokeWidth={1.5} strokeDasharray="3 4" />
-              <circle data-graph2d-construction-center={item.id} cx={center.x} cy={center.y} r={4.5}
+              <circle data-graph2d-construction-center={item.id} cx={center.x} cy={center.y} r={4.5} pointerEvents="none"
                 fill="white" stroke={item.style.color} strokeWidth={2} />
             </g>;
           }
@@ -214,14 +214,18 @@ export function Graph2DPlot({ display, size, series, regression, constructions, 
             if (!clipped) return null;
             const a = graph2DWorldToScreen(display.viewport, size, clipped[0]);
             const b = graph2DWorldToScreen(display.viewport, size, clipped[1]);
-            return <line key={item.id} data-graph2d-construction={item.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+            return <line key={item.id} data-graph2d-construction={item.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y} pointerEvents="none"
               stroke={item.style.color} strokeWidth={item.style.lineWidth}
               strokeDasharray={item.style.lineStyle === "dashed" ? "8 5" : item.style.lineStyle === "dotted" ? "2 4" : undefined} />;
           }
           const screen = graph2DWorldToScreen(display.viewport, size, item.point!);
           if (!Number.isFinite(screen.x) || !Number.isFinite(screen.y)) return null;
-          return <circle key={item.id} data-graph2d-construction={item.id} cx={screen.x} cy={screen.y} r={6}
-            fill="white" stroke={item.style.color} strokeWidth={item.style.lineWidth} />;
+          return <g key={item.id}>
+            <circle data-graph2d-construction={item.id} cx={screen.x} cy={screen.y} r={6}
+              fill="white" stroke={item.style.color} strokeWidth={item.style.lineWidth} pointerEvents="none" />
+            {item.kind === "point-on-curve" && <circle data-graph2d-draggable-point={item.id}
+              cx={screen.x} cy={screen.y} r={14} fill="transparent" pointerEvents="all" />}
+          </g>;
         })}
       </g>
       {intervals && <g data-testid="graph2d-interval-overlays" data-result-id={intervals.resultId} aria-hidden="true">

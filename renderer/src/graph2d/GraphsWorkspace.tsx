@@ -32,6 +32,7 @@ import {
   graph2DToolUnavailable, graph2DIntervalAnalysisUnavailable, graph2DSceneStatusLabel, type Graph2DTool,
   editGraph2DProbes, graph2DPinnedProbeState, projectGraph2DProbeMarkers,
   getGraph2DGuidedDocumentGuidance,
+  projectGraph2DConstrainedPoint, previewGraph2DConstrainedPoint, resolveGraph2DConstructions,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
@@ -266,6 +267,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const [previewViewport, setPreviewViewport] = useState<Graph2DViewport | null>(null);
   const previewRef = useRef<Graph2DViewport | null>(null);
   const dragRef = useRef<{ pointerId: number; x: number; y: number; viewport: Graph2DViewport; moved: boolean } | null>(null);
+  const pointDragRef = useRef<{ pointerId: number; id: string; x: number; y: number; start: number;
+    parameter: number; moved: boolean; sourceHash: string; documentId: string } | null>(null);
+  const [pointDragPreview, setPointDragPreview] = useState<{ id: string; parameter: number } | null>(null);
+  const cancelPointDrag = () => { const active = pointDragRef.current; pointDragRef.current = null; setPointDragPreview(null);
+    if (active && viewerRef.current?.hasPointerCapture(active.pointerId)) viewerRef.current.releasePointerCapture(active.pointerId); };
   const wheelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hoverFrameRef = useRef<number | null>(null);
   const wheelHandlerRef = useRef<(event: globalThis.WheelEvent) => void>(() => {});
@@ -340,6 +346,17 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       object.kind === "point-series" ? [[object.table.id, pointTableStore.resolve(object.table)]] : [])),
   }), [sampledDocument, size, viewport, previewViewport]);
   const sampling = useGraph2DSampling(samplingRequest, parameterPreviewActive ? document.identity : undefined);
+  const pointPreviewDocument = useMemo(() => {
+    if (!pointDragPreview || pointDragRef.current?.documentId !== document.identity.id) return null;
+    try { return previewGraph2DConstrainedPoint(document, pointDragPreview.id, pointDragPreview.parameter); }
+    catch { return null; }
+  }, [document, pointDragPreview]);
+  const pointPreviewConstructions = useMemo(() => pointPreviewDocument ? resolveGraph2DConstructions(pointPreviewDocument) : null,
+    [pointPreviewDocument]);
+  const shownConstructions = pointPreviewConstructions ?? sampling.constructions;
+  useEffect(() => { if (pointDragRef.current && (pointDragRef.current.sourceHash !== document.identity.structuralHash ||
+    pointDragRef.current.documentId !== document.identity.id)) cancelPointDrag(); },
+    [document.identity.id, document.identity.structuralHash]);
   const series = sampling.series;
   const pick = (x: number, y: number, previous?: Graph2DSelection) => sampling.ready && !parameterPreviewActive ? pickGraph2DProbe({ document, series,
     viewport, size, screen: { x, y }, previous }).selection : document.selection;
@@ -357,6 +374,19 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const fitConstruction = (id: string) => fitBounds(graph2DConstructionFitBounds(sampling.constructions, id));
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || (event.target as HTMLElement).closest("button,summary,details,input,select,textarea,label,form")) return;
+    const pointId = (event.target as Element).closest("[data-graph2d-draggable-point]")?.getAttribute("data-graph2d-draggable-point");
+    if (pointId && onConstructionCommit && sampling.ready && !parameterPreviewActive) {
+      const definition = document.source.constructions?.objects.find(item => item.id === pointId);
+      const resolved = sampling.constructions?.objects.find(item => item.id === pointId);
+      if (definition?.kind === "point-on-curve" && resolved?.state === "ready" && resolved.style.visible) {
+        finishWheel(); setHoverSelection(null);
+        pointDragRef.current = { pointerId: event.pointerId, id: pointId, x: event.clientX, y: event.clientY,
+          start: definition.anchor.value, parameter: definition.anchor.value, moved: false,
+          sourceHash: document.identity.structuralHash, documentId: document.identity.id };
+        event.currentTarget.setPointerCapture(event.pointerId); event.currentTarget.focus();
+        return;
+      }
+    }
     cancelParameter();
     const startingViewport = previewRef.current ?? document.display.viewport;
     finishWheel();
@@ -366,6 +396,17 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     event.currentTarget.focus();
   };
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const pointDrag = pointDragRef.current;
+    if (pointDrag) {
+      if (pointDrag.pointerId !== event.pointerId) return;
+      if (Math.hypot(event.clientX - pointDrag.x, event.clientY - pointDrag.y) < 3 && !pointDrag.moved) return;
+      pointDrag.moved = true;
+      const projection = projectGraph2DConstrainedPoint(document, pointDrag.id, viewport, size,
+        localPoint(event), pointDrag.parameter);
+      if (projection) { pointDrag.parameter = projection.parameter;
+        setPointDragPreview({ id: pointDrag.id, parameter: projection.parameter }); }
+      return;
+    }
     const drag = dragRef.current;
     if (!drag) {
       const point = localPoint(event);
@@ -383,6 +424,22 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     setPreview(panGraph2DViewport(drag.viewport, size, { x: dx, y: dy }));
   };
   const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    const pointDrag = pointDragRef.current;
+    if (pointDrag && pointDrag.pointerId === event.pointerId) {
+      if (pointDrag.moved) {
+        const projection = projectGraph2DConstrainedPoint(document, pointDrag.id, viewport, size,
+          localPoint(event), pointDrag.parameter);
+        if (projection) pointDrag.parameter = projection.parameter;
+      }
+      const definition = document.source.constructions?.objects.find(item => item.id === pointDrag.id);
+      const canCommit = pointDrag.moved && pointDrag.sourceHash === document.identity.structuralHash &&
+        pointDrag.documentId === document.identity.id &&
+        definition?.kind === "point-on-curve" && Math.abs(pointDrag.parameter - pointDrag.start) > 1e-9;
+      cancelPointDrag();
+      if (canCommit && definition?.kind === "point-on-curve") onConstructionCommit?.({ type: "update",
+        object: { ...definition, anchor: { ...definition.anchor, value: pointDrag.parameter } } });
+      return;
+    }
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     dragRef.current = null;
@@ -404,6 +461,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     wheelTimerRef.current = setTimeout(finishWheel, 180);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape" && pointDragRef.current) { event.preventDefault(); event.stopPropagation(); cancelPointDrag(); return; }
     if (event.key === "Escape" && presentation) { event.preventDefault(); event.stopPropagation(); exitPresentation(); return; }
     if (event.key === "Escape" && toolsOpen) { event.preventDefault(); event.stopPropagation(); closeTools(); return; }
     if (event.key === "Escape" && gridOpen) { event.preventDefault(); event.stopPropagation(); closeGrid(); return; }
@@ -556,8 +614,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     const screen = graph2DWorldToScreen(viewport, size, p);
     onViewportCommit?.(panGraph2DViewport(viewport, size, { x: size.width / 2 - screen.x, y: size.height / 2 - screen.y }));
   }} />;
-  const constructions = <Graph2DConstructionsPanel document={document}
-    artifact={parameterPreviewActive ? null : sampling.constructions}
+  const constructions = <Graph2DConstructionsPanel document={pointPreviewDocument ?? document}
+    artifact={parameterPreviewActive ? null : shownConstructions}
     onAction={onConstructionCommit} onBatchAction={onConstructionBatchCommit} onFitConstruction={fitConstruction} />;
   const saveTangentButton = (available: boolean) => <button type="button"
     disabled={!available || !document.selection.probe || !onConstructionBatchCommit ||
@@ -885,8 +943,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {functionList}
       </aside>}
       <div data-testid="main-viewer" className="graph2d-viewer" aria-label="Graph scene" ref={viewerRef}
+        data-point-dragging={!!pointDragPreview}
         tabIndex={0} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-        onPointerCancel={() => { dragRef.current = null; setPreview(null); setHoverSelection(null); }}
+        onPointerCancel={() => { cancelPointDrag(); dragRef.current = null; setPreview(null); setHoverSelection(null); }}
+        onLostPointerCapture={event => { if (pointDragRef.current?.pointerId === event.pointerId) cancelPointDrag(); }}
         onPointerLeave={() => setHoverSelection(null)} onKeyDown={onKeyDown}>
         {presentation && <div className="graph2d-presentation-controls" onPointerDown={event => event.stopPropagation()}>
           <span>Presentation · {document.metadata.title}</span>
@@ -1039,7 +1099,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           {showRight && <details><summary>Inspector</summary>{inspector}</details>}
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={series}
-          constructions={parameterPreviewActive ? null : sampling.constructions}
+          constructions={parameterPreviewActive ? null : shownConstructions}
           probeMarkers={parameterPreviewActive ? [] : projectGraph2DProbeMarkers({ ...document, display: renderedDisplay }, size)}
           regression={!parameterPreviewActive && document.display.objects.find(s => s.objectId === currentRegression?.objectId)?.visible ? currentRegression : null}
           selectedProbe={parameterPreviewActive ? null : document.selection.probe} hoverProbe={parameterPreviewActive ? null : hoverSelection?.probe} overlays={parameterPreviewActive ? [] : differentialOverlays}
@@ -1048,8 +1108,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           intersections={!parameterPreviewActive && intersections && isGraph2DIntersectionCurrent(intersections, document) ? intersections : null} />}
         {sampling.error && <div role="alert" className="graph2d-viewer-message"><p>{sampling.error}</p>
           <button type="button" onClick={sampling.retry}>Retry sampling</button></div>}
-        {(gridWarnings.length > 0 || viewport.continuation || graph2DHasLogScale(viewport) || parameterPreviewActive || !sampling.ready && !sampling.error && document.source.objects.length > 0) && <div role="status" className="graph2d-update-status" data-testid="graph2d-update-status">
+        {(gridWarnings.length > 0 || viewport.continuation || graph2DHasLogScale(viewport) || parameterPreviewActive || pointDragPreview || !sampling.ready && !sampling.error && document.source.objects.length > 0) && <div role="status" className="graph2d-update-status" data-testid="graph2d-update-status">
           {gridWarnings.join(" ")}
+          {pointDragPreview ? ` Dragging saved point: parameter ${pointDragPreview.parameter.toPrecision(7)}. Release to save; Esc to cancel.` : ""}
           {parameterPreviewActive ? "Parameter preview — not saved. Apply or Cancel; committed analyses are hidden on the plot." : ""}
           {!sampling.ready && !sampling.error ? sampling.retained ? " Updating graph… previous preview/same-source samples remain visible." : " Sampling graph…" : ""}
           {viewport.continuation ? " Light dotted continuation: outside authored range; visual only, not analysed/exported. Bounded preview may be incomplete." : ""}

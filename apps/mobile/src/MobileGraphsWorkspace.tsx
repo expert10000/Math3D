@@ -4,6 +4,7 @@ import { fitGraph2DViewport, panGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph
   graph2DSceneFitBounds, graph2DConstructionFitBounds,
   resolveGraph2DViewport, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, graph2DParameterSessionKey,
   previewGraph2DParameterValues, graph2DRegressionOverlaySeries, applyGraph2DAuthoring, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion } from "@math3d/core";
+import { projectGraph2DConstrainedPoint, previewGraph2DConstrainedPoint, resolveGraph2DConstructions } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { MobileGraphGesture, mobileGraphProbeRadius, type GraphTouch } from "./models/mobileGraphGestures";
 import { mobileGraphCapabilities } from "./models/mobileGraphProject";
@@ -53,6 +54,10 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const gesture = useRef(new MobileGraphGesture());
   const [size, setSize] = useState({ width: 320, height: 320 });
   const [preview, setPreview] = useState<Graph2DViewport | null>(null);
+  const pointDrag = useRef<{ id: string; touchId: string | number; x: number; y: number; start: number;
+    parameter: number; moved: boolean; sourceHash: string; documentId: string } | null>(null);
+  const [pointDragPreview, setPointDragPreview] = useState<{ id: string; parameter: number } | null>(null);
+  const cancelPointDrag = () => { pointDrag.current = null; setPointDragPreview(null); };
   const parameterKey = graph2DParameterSessionKey(document);
   const [parameterPreview, setParameterPreview] = useState<{ key: string; values: Record<string, number> } | null>(null);
   const parameterPreviewActive = parameterPreview?.key === parameterKey;
@@ -96,14 +101,24 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const [analysis, setAnalysis] = useState<MobileGraphRegressionAnalysis | null>(null);
   const viewport = preview ?? document.display.viewport;
   const guided = getGraph2DGuidedDocumentGuidance(document);
-  const cancel = () => { gesture.current.cancel(); setPreview(null); };
+  const cancel = () => { gesture.current.cancel(); setPreview(null); cancelPointDrag(); };
   useEffect(() => {
     const listener = AppState.addEventListener("change", (state) => { if (state !== "active") { cancel(); setParameterPreview(null); } });
     return () => { listener.remove(); gesture.current.cancel(); };
   }, []);
   const sampling = useMobileGraphSampling(sampledDocument, viewport, size, !!preview, () => { setAnalysis(null); setParameterPreview(null); }, parameterPreviewActive ? document.identity : undefined, tableStore);
   const { series, budget } = sampling;
-  const constructions = parameterPreviewActive ? null : sampling.constructions;
+  const pointPreviewDocument = useMemo(() => {
+    if (!pointDragPreview || pointDrag.current?.documentId !== document.identity.id) return null;
+    try { return previewGraph2DConstrainedPoint(document, pointDragPreview.id, pointDragPreview.parameter); }
+    catch { return null; }
+  }, [document, pointDragPreview]);
+  const pointPreviewConstructions = useMemo(() => pointPreviewDocument ? resolveGraph2DConstructions(pointPreviewDocument) : null,
+    [pointPreviewDocument]);
+  const constructions = parameterPreviewActive ? null : pointPreviewConstructions ?? sampling.constructions;
+  useEffect(() => { if (pointDrag.current && (pointDrag.current.sourceHash !== document.identity.structuralHash ||
+    pointDrag.current.documentId !== document.identity.id)) cancelPointDrag(); },
+    [document.identity.id, document.identity.structuralHash]);
   const geometry = useMemo(() => mobileGraphAdvancedGeometry(series, viewport, size, budget), [series, viewport, size, budget.fills, budget.markers]);
   const lines = useMemo(() => projectMobileGraphLines(geometry.boundaries, viewport, size, document.selection.objectId, budget.lines), [geometry, viewport, size, document.selection.objectId, budget.lines]);
   const continuationLines = useMemo(() => viewport.continuation ? projectMobileGraphLines(series.filter(item => item.continuation).map(item => ({ ...item,
@@ -128,10 +143,63 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     if (picked.selection.probe) onHaptic?.();
     return adapter.commitSelection(picked.selection);
   });
-  const finish = () => {
+  const finish = (event: GestureResponderEvent) => {
+    const dragged = pointDrag.current;
+    if (dragged) {
+      const released = event.nativeEvent.changedTouches.find(touch => touch.identifier === dragged.touchId);
+      if (released && (dragged.moved || Math.hypot(released.locationX - dragged.x, released.locationY - dragged.y) >= 4)) {
+        dragged.moved = true;
+        const projection = projectGraph2DConstrainedPoint(document, dragged.id, document.display.viewport, size,
+          { x: released.locationX, y: released.locationY }, dragged.parameter);
+        if (projection) dragged.parameter = projection.parameter;
+      }
+      cancelPointDrag();
+      const definition = document.source.constructions?.objects.find(item => item.id === dragged.id);
+      if (dragged.moved && dragged.sourceHash === document.identity.structuralHash &&
+          dragged.documentId === document.identity.id && definition?.kind === "point-on-curve" &&
+          Math.abs(dragged.parameter - dragged.start) > 1e-9) {
+        commit(() => adapter.commitConstruction({ type: "update", object: { ...definition,
+          anchor: { ...definition.anchor, value: dragged.parameter } } }));
+      }
+      return;
+    }
     const result = gesture.current.finish(); setPreview(null);
     if (result.viewport) commit(() => adapter.commitViewport(result.viewport!));
     else if (result.tap) tap(result.tap);
+  };
+  const beginPointOrPan = (event: GestureResponderEvent) => {
+    cancelParameter();
+    const activeTouches = touches(event);
+    if (activeTouches.length === 1 && sampling.ready && !parameterPreviewActive && sampling.constructions) {
+      const touch = activeTouches[0]!;
+      const nearest = sampling.constructions.objects.filter(item => item.kind === "point-on-curve" &&
+        item.state === "ready" && item.style.visible && item.point).map(item => {
+        const screen = graph2DWorldToScreen(document.display.viewport, size, item.point!);
+        return { item, distance: Math.hypot(screen.x - touch.x, screen.y - touch.y) };
+      }).filter(item => item.distance <= 22).sort((a, b) => a.distance - b.distance)[0];
+      const definition = nearest && document.source.constructions?.objects.find(item => item.id === nearest.item.id);
+      if (definition?.kind === "point-on-curve") {
+        gesture.current.cancel(); setPreview(null);
+        pointDrag.current = { id: definition.id, touchId: touch.id, x: touch.x, y: touch.y,
+          start: definition.anchor.value, parameter: definition.anchor.value, moved: false,
+          sourceHash: document.identity.structuralHash, documentId: document.identity.id };
+        return;
+      }
+    }
+    gesture.current.begin(document.display.viewport, size, activeTouches);
+  };
+  const movePointOrPan = (event: GestureResponderEvent) => {
+    const dragged = pointDrag.current;
+    if (!dragged) { try { setPreview(gesture.current.update(touches(event))); } catch { cancel(); } return; }
+    const activeTouches = touches(event);
+    if (activeTouches.length !== 1 || activeTouches[0]!.id !== dragged.touchId) { cancelPointDrag(); return; }
+    const touch = activeTouches[0]!;
+    if (!dragged.moved && Math.hypot(touch.x - dragged.x, touch.y - dragged.y) < 4) return;
+    dragged.moved = true;
+    const projection = projectGraph2DConstrainedPoint(document, dragged.id, document.display.viewport, size,
+      touch, dragged.parameter);
+    if (projection) { dragged.parameter = projection.parameter;
+      setPointDragPreview({ id: dragged.id, parameter: projection.parameter }); }
   };
   const fit = (mode: "selection" | "all") => {
     if (!sampling.ready || parameterPreviewActive) { setError("Wait for sampling and apply or cancel parameter preview before Fit."); return; }
@@ -181,13 +249,13 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     </ScrollView>}</>}
     <View style={[s.workspace, layout.split && s.split]} testID={layout.split ? "mobile-graph-split-pane" : "mobile-graph-phone-layout"}>
     <View style={[s.graphPane, layout.split && { minWidth: layout.graphMinWidth }]}>
-    <View style={s.plot} testID="mobile-graph-plot" accessibilityLabel="Graph plot. Drag to pan, pinch to zoom, tap to probe."
+    <View style={s.plot} testID="mobile-graph-plot" accessibilityLabel="Graph plot. Drag saved points along curves, drag elsewhere to pan, pinch to zoom, tap to probe."
       onLayout={(event) => { cancel(); const { width, height } = event.nativeEvent.layout; if (width > 0 && height > 0) setSize({ width, height }); }}
       onStartShouldSetResponder={() => true} onMoveShouldSetResponder={() => true}
-      onResponderGrant={(event) => { cancelParameter(); gesture.current.begin(document.display.viewport, size, touches(event)); }}
-      onResponderStart={(event) => setPreview(gesture.current.update(touches(event)))}
-      onResponderMove={(event) => { try { setPreview(gesture.current.update(touches(event))); } catch { cancel(); } }}
-      onResponderEnd={(event) => { if (event.nativeEvent.touches.length) setPreview(gesture.current.update(touches(event))); }}
+      onResponderGrant={beginPointOrPan}
+      onResponderStart={movePointOrPan}
+      onResponderMove={movePointOrPan}
+      onResponderEnd={(event) => { if (event.nativeEvent.touches.length) movePointOrPan(event); }}
       onResponderRelease={finish} onResponderTerminate={cancel} onResponderTerminationRequest={() => true}>
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {geometry.fills.map((rect, index) => <View key={`region${index}`} style={{ position: "absolute", ...rect, backgroundColor: rect.color, opacity: 0.18 }} />)}
@@ -351,7 +419,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
                 { x: size.width / 2 - screen.x, y: size.height / 2 - screen.y }) },
               selection: { objectId: pinned.objectId, probe: { objectId: pinned.objectId, x: pinned.x, y: pinned.y } } }, "restore");
           })} />
-        <MobileGraphConstructionsPanel document={document} artifact={constructions}
+        <MobileGraphConstructionsPanel document={pointPreviewDocument ?? document} artifact={constructions}
           onAction={(action) => { commit(() => adapter.commitConstruction(action)); }}
           onBatchAction={(actions) => { commit(() => adapter.commitConstructions(actions)); }} onFitConstruction={fitConstruction} />
       </>}
