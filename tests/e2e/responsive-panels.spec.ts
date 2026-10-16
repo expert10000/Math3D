@@ -1,6 +1,35 @@
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 
+test("Graphs More menu keeps scientific presets inside the viewer", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 2048, height: 1152 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    await app.page.locator(".graph2d-toolbar-menu > summary").click();
+    const menu = app.page.locator(".graph2d-toolbar-menu-content");
+    const viewer = app.page.getByTestId("main-viewer");
+    for (const width of [2048, 1280]) {
+      await app.page.setViewportSize({ width, height: 900 });
+      const menuBox = await menu.boundingBox(), viewerBox = await viewer.boundingBox();
+      expect(menuBox).not.toBeNull(); expect(viewerBox).not.toBeNull();
+      expect(menuBox!.x).toBeGreaterThanOrEqual(viewerBox!.x);
+      expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(viewerBox!.x + viewerBox!.width);
+      for (const name of ["Import scientific dataset", "Sine–cosine grid preset", "Thermal gradient grid preset"]) {
+        const button = menu.getByRole("button", { name });
+        const box = await button.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.x).toBeGreaterThanOrEqual(menuBox!.x);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(menuBox!.x + menuBox!.width);
+        const hit = await app.page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? "",
+          { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 });
+        expect(hit).toContain(name);
+      }
+    }
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("Graphs keeps essential view controls and compact card actions keyboard reachable", async () => {
   const app = await launchSurfaceApp();
   try {

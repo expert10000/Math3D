@@ -177,9 +177,10 @@
 .graph2d-toolbar summary { list-style: none; }
 .graph2d-toolbar summary::-webkit-details-marker { display: none; }
 .graph2d-toolbar-menu { position: relative; }
-.graph2d-toolbar-menu-content { position: absolute; top: calc(100% + 5px); right: 0; z-index: 5; box-sizing: border-box; display: grid; gap: 8px; width: max-content; max-width: min(420px, calc(100vw - 40px)); max-height: min(65vh, 440px); overflow-y: auto; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-strong); box-shadow: 0 6px 20px #0003; }
-.graph2d-toolbar-menu-content .graph2d-toolbar-group { display: flex; flex-wrap: wrap; }
+.graph2d-toolbar-menu-content { position: absolute; top: calc(100% + 5px); left: 0; z-index: 5; box-sizing: border-box; display: grid; gap: 8px; width: min(320px, calc(100vw - 40px)); max-height: min(65vh, 440px); overflow-y: auto; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-strong); box-shadow: 0 6px 20px #0003; }
+.graph2d-toolbar-menu-content .graph2d-toolbar-group { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
 .graph2d-toolbar-menu-content .graph2d-toolbar-group > span { width: 100%; }
+.graph2d-toolbar-menu-content .graph2d-toolbar-group > button { width: 100%; text-align: left; white-space: normal; }
 .graph2d-toolbar button { white-space: nowrap; }
 .graph2d-toolbar button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
 .graph2d-scientific-import { position: absolute; z-index: 7; top: 50%; left: 50%; transform: translate(-50%, -50%); box-sizing: border-box; width: min(520px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow: auto; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-strong); box-shadow: 0 8px 28px #0004; overflow-wrap: anywhere; }
