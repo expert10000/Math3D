@@ -27,7 +27,7 @@ The original priority list also names **adaptive discontinuity detection** (G2D0
 4. Give differential equations, Fourier analysis and complex mappings separate problem statements and acceptance corpora. They are not inferred from existing Graphs or Complex Analysis controls.
 
 The [canonical roadmap](math3d-graph2d-desktop-mobile-roadmap.md) remains the release authority. The [analysis/constructions roadmap](graph2d-analysis-constructions-roadmap.md) records the delivered G2D44–58 sequence.
-The [GRA-N01–N05 consolidation milestone](graph2d-gra-next-milestone.md) records viewport, numerical and construction-hierarchy acceptance before constrained point dragging.
+The [GRA-N01–N06 consolidation milestone](graph2d-gra-next-milestone.md) records viewport, numerical, construction-hierarchy and constrained-point-dragging work, with a crosswalk to the proposed N01–N10 list.
 
 ## GRA-10 next slice: explicit line from a 2D scalar grid
 

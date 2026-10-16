@@ -330,6 +330,8 @@ Free independent points, arbitrary text, geometric constructions, multi-object t
 
 The [analysis and constructions follow-on roadmap](graph2d-analysis-constructions-roadmap.md) scopes G2D44–50 after G2D43. It corrects graph-kind-aware actions, adds polar measurements, and introduces a reviewed persistent construction contract. The [G2D50 automated acceptance record](graph2d-g2d50-acceptance.md) covers numerical, interaction, browser, Electron, and mobile-model checks; physical-device and spoken accessibility signoff remain open. Existing G2D13–19 analysis, G2D26–29 promotion, G2D38 parameters, G2D39 regression, and G2D42–43 tools/probes remain delivered baselines.
 
+The [GRA-N01–N06 consolidation milestone and proposed N01–N10 crosswalk](graph2d-gra-next-milestone.md) tracks the later Fit, numerical, construction-tree and constrained-dragging work. The proposed N IDs differ from the shipped IDs; expression-driven parameters, direct Graph → Geometry promotion and optional vector-arrow glyphs remain explicit follow-on gaps.
+
 [G2D51](graph2d-g2d51-curvature.md) begins the next bounded Graphs slice with source-linked signed curvature at an explicit committed probe. It reuses the existing derivative service and leaves persistent curvature geometry and other graph kinds for a separate contract review.
 
 [G2D52](graph2d-g2d52-polar-differential.md) extends transient local differential results to polar probes, with source-linked tangent/normal overlays and signed curvature following increasing angle. The desktop Inspector and mobile Analyze share the core result; persistent geometry and physical-device signoff remain separate gates.
