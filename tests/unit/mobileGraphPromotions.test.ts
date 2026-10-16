@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("expo-file-system", () => ({ Paths: { document: "test://documents" } }));
-import { promoteGraph2DToCurve, revolveGraph2DProfile, extrudeGraph2DProfile, graph2DPromotionStatus,
+import { promoteGraph2DToCurve, promoteGraph2DToGeometry, revolveGraph2DProfile, extrudeGraph2DProfile, graph2DPromotionStatus,
   parseMixedWorkspaceDocument, applyGraph2DAuthoring, evaluateGraph2DPromotionGeometry, serializeMixedWorkspaceDocument,
-  createMixedWorkspaceDocument, createGraph2DWorkspaceProject, createSurfaceDocument } from "@math3d/core";
+  createMixedWorkspaceDocument, createGraph2DWorkspaceProject, createSurfaceDocument, createMath3DProject, serializeMath3DProject } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { createMobileGraph, readMobileGraph, storeMobileGraph, readMobileGraphWorkspace, updateStoredMobileGraph, importMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
 import { readMobileGraphPromotions, commitMobileGraphPromotion } from "../../apps/mobile/src/models/mobileGraphPromotions";
@@ -11,6 +11,8 @@ import { renameMobileProject, duplicateMobileProject } from "../../apps/mobile/s
 import { serializeMobileProjectHandoff, createMobileHandoffExportName } from "../../apps/mobile/src/models/mobileProjectTransfer";
 import { snapshotFromMobileProbe } from "../../apps/mobile/src/services/mobilePlatformCapabilities";
 import { projectMobilePromotion } from "../../apps/mobile/src/viewer/mobilePromotionProjection";
+import { mobileProjectRefreshOptions, refreshMobileProjectDependency } from "../../apps/mobile/src/models/mobileProjectRefresh";
+import { importMobileProjectPreview, readMobilePreviewProject } from "../../apps/mobile/src/models/mobileProjectPreview";
 import { parseWorkspaceProjectHandoff } from "@math3d/core";
 
 const platform = snapshotFromMobileProbe({ persistentStorage: true, network: false, touchInput: true });
@@ -18,7 +20,7 @@ describe("MOB-G10 native portable promotions", () => {
   it("previews/cancels without touching Graph history, storage or source", () => {
     const adapter = new Graph2DCommandAdapter(createMobileGraph("Preview", true, "preview-g10")), source = adapter.document();
     const project = storeMobileGraph(source);
-    for (const promotion of [promoteGraph2DToCurve(source, "function_1"), revolveGraph2DProfile(source, "function_1", { axis: "y", orientation: "negative" }),
+    for (const promotion of [promoteGraph2DToCurve(source, "function_1"), promoteGraph2DToGeometry(source, "function_1"), revolveGraph2DProfile(source, "function_1", { axis: "y", orientation: "negative" }),
       extrudeGraph2DProfile(source, "function_1", { direction: [0, 0, 1], length: 3, caps: "none" })]) {
       const geometry = evaluateGraph2DPromotionGeometry(promotion.document);
       expect(geometry.positions.every(Number.isFinite)).toBe(true); expect(geometry.positions.length / 3).toBeLessThanOrEqual(6321);
@@ -30,13 +32,13 @@ describe("MOB-G10 native portable promotions", () => {
     }
     expect(readMobileGraph(project)).toEqual(source); expect(adapter.history().undoDepth).toBe(0); expect(readMobileGraphWorkspace(project)).toBeNull();
   });
-  it("creates all three ordinary target types and keeps exact source lineage across save/export/reopen", () => {
+  it("creates all target operations and keeps exact source lineage across save/export/reopen", () => {
     const source = createMobileGraph("Portable", true, "portable-g10"); let project = storeMobileGraph(source, 1);
-    const created = [promoteGraph2DToCurve(source, "function_1"), revolveGraph2DProfile(source, "function_1", { axis: "x", orientation: "positive" }),
+    const created = [promoteGraph2DToCurve(source, "function_1"), promoteGraph2DToGeometry(source, "function_1"), revolveGraph2DProfile(source, "function_1", { axis: "x", orientation: "positive" }),
       extrudeGraph2DProfile(source, "function_1", { direction: [0, 0, 2], length: 3, caps: "none" })];
     for (const promotion of created) project = commitMobileGraphPromotion(project, source, promotion, platform, 2);
     const workspace = parseWorkspaceProjectHandoff(serializeMobileProjectHandoff(project)).project;
-    expect(workspace.entries.map((e) => e.module)).toEqual(["graph2d", "curve", "surface", "surface"]);
+    expect(workspace.entries.map((e) => e.module)).toEqual(["graph2d", "curve", "geometry", "surface", "surface"]);
     expect(workspace.relations).toEqual(created.map((p) => p.relation));
     expect(readMobileGraph(project).identity).toEqual(source.identity); expect(readMobileGraphPromotions(project)).toEqual(created);
     expect(createMobileHandoffExportName(project)).toMatch(/handoff\.json$/);
@@ -46,6 +48,26 @@ describe("MOB-G10 native portable promotions", () => {
     expect(readMobileGraphWorkspace(project)?.entries.slice(1)).toEqual(workspace.entries.slice(1));
     expect(readMobileGraphPromotions(project).every((p) => graph2DPromotionStatus(p, source) === "current")).toBe(true);
     expect(() => commitMobileGraphPromotion(project, source, created[0]!, platform)).toThrow(/already exists/);
+  });
+  it("refreshes a stale Geometry promotion as a new historical document", () => {
+    const source = createMobileGraph("Geometry refresh", true, "geometry-refresh"), promotion = promoteGraph2DToGeometry(source, "function_1");
+    const stored = commitMobileGraphPromotion(undefined, source, promotion, platform);
+    const adapter = new Graph2DCommandAdapter(source);
+    const action = mobileGraphAuthoringAction({ objectId: "function_1", draft: {
+      ...mobileGraphFunctionDraft(source, "function_1"), expression: "x*x+3",
+    } });
+    adapter.commitScene(applyGraph2DAuthoring(source, action), "edit");
+    const graphRecord = updateStoredMobileGraph(stored, adapter.document());
+    const changed = importMobileProjectPreview(serializeMath3DProject(createMath3DProject(readMobileGraphWorkspace(graphRecord)!, {
+      stableKey: "geometry-refresh-project",
+    })), [], "geometry-refresh.json");
+    const option = mobileProjectRefreshOptions(changed).find((item) => item.kind === "Geometry")!;
+    expect(option.canRefresh).toBe(true);
+    const refreshed = refreshMobileProjectDependency(changed, option.relationId);
+    const project = readMobilePreviewProject(refreshed);
+    expect(project.workspace.entries.at(-1)?.module).toBe("geometry");
+    expect(project.workspace.entries[1]?.checkpoint).toEqual(promotion.document);
+    expect(project.workspace.relations.at(-1)?.operation).toBe("graph2d.promote-geometry");
   });
   it("marks edited sources stale without replacing their targets, and rejects stale preview creation", () => {
     const adapter = new Graph2DCommandAdapter(createMobileGraph("Stale", true, "stale-g10")), source = adapter.document();

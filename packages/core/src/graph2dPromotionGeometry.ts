@@ -1,5 +1,6 @@
 import type { CurveDocument } from "./curveDocument";
 import type { SurfaceDocument } from "./surfaceDocument";
+import type { GeometryDocument } from "./geometryDocument";
 import { evaluateGraph2DExpression, parseGraph2DExpression } from "./graph2dExpression";
 import { validateGraph2DCapProfile } from "./graph2dInterop";
 
@@ -47,8 +48,21 @@ export function createGraph2DSurfacePointEvaluator(document: SurfaceDocument) {
   };
 }
 
-/** Evaluates ordinary Curve/Surface documents; derived geometry never enters their source. */
-export const evaluateGraph2DPromotionGeometry = (document: CurveDocument | SurfaceDocument): PromotionGeometry => {
+/** Evaluates promoted documents for bounded previews; Curve/Surface geometry stays derived. */
+export const evaluateGraph2DPromotionGeometry = (document: CurveDocument | SurfaceDocument | GeometryDocument): PromotionGeometry => {
+  if (document.format === "math3d.geometry-document") {
+    const segments = document.source.geometry?.segments ?? [];
+    if (!segments.length || segments.length > 1024) throw new TypeError("Geometry promotion has no bounded segment profile.");
+    const positions: number[] = [];
+    for (const [index, segment] of segments.entries()) {
+      if (index && (segment.a.x !== segments[index - 1]!.b.x || segment.a.y !== segments[index - 1]!.b.y || segment.a.z !== segments[index - 1]!.b.z))
+        throw new TypeError("Geometry promotion segments are disconnected.");
+      positions.push(segment.a.x, segment.a.y, segment.a.z);
+    }
+    positions.push(segments.at(-1)!.b.x, segments.at(-1)!.b.y, segments.at(-1)!.b.z);
+    if (positions.some((value) => !Number.isFinite(value))) throw new TypeError("Non-finite promoted geometry.");
+    return { positions, indices: [], kind: "curve" };
+  }
   const source = document.source, expressions = source.definition.expressions;
   if (!expressions?.x || !expressions.y) throw new TypeError("This document has no profile expressions.");
   const surface = document.format === "math3d.surface-document" ? document : null;

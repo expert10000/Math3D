@@ -8,7 +8,7 @@ import { resolveMobileProjectWorkspace } from "./mobileProjectReplay";
 import { readMobileProjectResources } from "./mobileProjectResources";
 import { sampleMobileCurve } from "./mobileProjectCurve";
 
-const graphOperations = new Set(["graph2d.promote-curve", "graph2d.revolve-surface", "graph2d.extrude-surface"]);
+const graphOperations = new Set(["graph2d.promote-curve", "graph2d.revolve-surface", "graph2d.extrude-surface", "graph2d.promote-geometry"]);
 const curveOperations = new Set(["curve.construct.extrusion", "curve.extrusion", "curve.construct.revolution", "curve.revolution"]);
 const supported = (operation: string) => graphOperations.has(operation) || curveOperations.has(operation);
 /** Matches desktop's bounded literal Curve extrusion/revolution qualification. */
@@ -56,27 +56,29 @@ const planRefresh = (stored: MobileStoredSceneProject, project: Math3DProject, r
     next = { document, relation: createDocumentRelation({ kind: relation.kind, sources: sourceGenerations, sourceOrder: "ordered",
       target: { type: "document", generation: viewerSourceFromDocument(document) }, operation: relation.operation, parameters: document.source.parameters, tool: relation.tool }) };
   } else {
-    if (parent.format !== "math3d.graph2d-document" || (target.format !== "math3d.curve-document" && target.format !== "math3d.surface-document") ||
-        (relation.operation === "graph2d.promote-curve") !== (target.format === "math3d.curve-document")) throw new TypeError("The original Graph companion is unavailable.");
+    if (parent.format !== "math3d.graph2d-document" || (target.format !== "math3d.curve-document" && target.format !== "math3d.surface-document" && target.format !== "math3d.geometry-document") ||
+        (relation.operation === "graph2d.promote-curve") !== (target.format === "math3d.curve-document") ||
+        (relation.operation === "graph2d.promote-geometry") !== (target.format === "math3d.geometry-document")) throw new TypeError("The original Graph companion is unavailable.");
     if (readMobileProjectResources(stored).inventory.some(item => item.kind === "graph-point-table" && item.owners.includes(parent.identity.id) && !item.available))
       throw new TypeError("Import missing Graph source tables before refreshing.");
     const parameters = relation.parameters as Record<string, unknown>;
     if (!parameters || typeof parameters.sourceObjectId !== "string") throw new TypeError("The saved Graph object is unavailable.");
     const promotion = { document: target, relation, trace: { operation: relation.operation as Graph2DAnyPromotion["trace"]["operation"],
       sourceDocumentId: parent.identity.id, sourceRevision: relation.sources[0]!.revision, sourceObjectId: parameters.sourceObjectId,
-      targetDocumentId: target.identity.id, expressionMap: target.source.definition.expressions ?? {} } } as Graph2DAnyPromotion;
+      targetDocumentId: target.identity.id, expressionMap: target.format === "math3d.geometry-document" ?
+        parameters.expressionMap ?? {} : target.source.definition.expressions ?? {} } } as Graph2DAnyPromotion;
     next = regenerateGraph2DPromotion(promotion, parent, "fork");
     if (next.document.format === "math3d.curve-document") sampleMobileCurve(next.document.source);
     else evaluateGraph2DPromotionGeometry(next.document);
   }
-  const kind = next.document.format === "math3d.curve-document" ? "Curve" : "Surface";
+  const kind = next.document.format === "math3d.curve-document" ? "Curve" : next.document.format === "math3d.geometry-document" ? "Geometry" : "Surface";
   if (project.workspace.entries.some(entry => entry.expected.id === next.document.identity.id)) throw new TypeError(`This refreshed ${kind} already exists for the current source generation.`);
   return { next, originalId: target.identity.id, kind };
 };
 export const mobileProjectRefreshOptions = (stored: MobileStoredSceneProject) => {
   const project = readMobilePreviewProject(stored);
   return project.workspace.relations.filter(relation => supported(relation.operation)).map(relation => {
-    const kind = relation.operation === "graph2d.promote-curve" ? "Curve" : "Surface";
+    const kind = relation.operation === "graph2d.promote-curve" ? "Curve" : relation.operation === "graph2d.promote-geometry" ? "Geometry" : "Surface";
     try { planRefresh(stored, project, relation.relationId); return { relationId: relation.relationId, kind, canRefresh: true, reason: `Creates a new ${kind} from the current source; previous documents and analysis remain historical.` }; }
     catch (error) { return { relationId: relation.relationId, kind, canRefresh: false, reason: (error as Error).message }; }
   });
@@ -85,7 +87,7 @@ export const mobileProjectRefreshOptions = (stored: MobileStoredSceneProject) =>
 export const refreshMobileProjectDependency = (stored: MobileStoredSceneProject, relationId: string, now = Date.now()): MobileStoredSceneProject => {
   const project = readMobilePreviewProject(stored), { next, originalId } = planRefresh(stored, project, relationId);
   const workspace = createMixedWorkspaceDocument({ ...project.workspace,
-    entries: [...project.workspace.entries, { module: next.document.format === "math3d.curve-document" ? "curve" : "surface", checkpoint: next.document, expected: next.document.identity, replay: null }],
+    entries: [...project.workspace.entries, { module: next.document.format === "math3d.curve-document" ? "curve" : next.document.format === "math3d.geometry-document" ? "geometry" : "surface", checkpoint: next.document, expected: next.document.identity, replay: null }],
     relations: [...project.workspace.relations, next.relation] });
   const title = project.metadata.documents?.[originalId]?.title ?? next.document.metadata.title;
   const updated = setProjectDocumentMetadata(replaceMath3DProjectWorkspace(project, workspace), next.document.identity.id,

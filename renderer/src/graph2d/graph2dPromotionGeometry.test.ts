@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createGraph2DDocument, parseGraph2DExpression, promoteGraph2DToCurve,
+import { createGraph2DDocument, parseGraph2DExpression, promoteGraph2DToCurve, promoteGraph2DToGeometry,
   revolveGraph2DProfile, extrudeGraph2DProfile, evaluateGraph2DPromotionGeometry,
   replaceCurveDocumentSource, regenerateGraph2DPromotion, isGraph2DPromotionTargetEdited } from "@math3d/core";
-import { graph2DPromotionStatus, replaceSurfaceDocumentSource, validateGraph2DCapProfile } from "@math3d/core";
+import { graph2DPromotionStatus, replaceSurfaceDocumentSource, replaceGeometryDocumentSource,
+  serializeGeometryDocument, deserializeGeometryDocument, validateGraph2DCapProfile } from "@math3d/core";
 
 const expression = (source: string, variable: "x" | "t") => {
   const parsed = parseGraph2DExpression(source, [variable, "a"]);
@@ -15,6 +16,35 @@ const explicit = (source = "a*x") => createGraph2DDocument({ stableKey: "geometr
     variables: [{ name: "a", value: 2 }], assumptions: [] } });
 
 describe("renderable Graph2D promotions", () => {
+  it("creates a portable Geometry snapshot with exact source metadata and refresh lineage", () => {
+    const graph = explicit();
+    const promotion = promoteGraph2DToGeometry(graph, "f");
+    expect(promotion.document.format).toBe("math3d.geometry-document");
+    expect(promotion.document.source.geometry?.segments).toHaveLength(1024);
+    expect(promotion.document.source.geometry?.segments?.[0]?.a).toEqual({ x: -1, y: -2, z: 0 });
+    expect(promotion.document.source.geometry?.segments?.at(-1)?.b).toEqual({ x: 1, y: 2, z: 0 });
+    expect(promotion.document.source.extensions["math3d.graph2d.profile.v1"]).toMatchObject({
+      expressionMap: { x: "x", y: "a*x" }, variables: { a: 2 }, sampling: { segments: 1024, plane: "z=0" },
+    });
+    expect(promotion.relation.operation).toBe("graph2d.promote-geometry");
+    expect(deserializeGeometryDocument(serializeGeometryDocument(promotion.document))).toEqual({ ok: true, value: promotion.document });
+    expect(evaluateGraph2DPromotionGeometry(promotion.document).positions).toHaveLength(1025 * 3);
+
+    const editedSource = { ...graph.source, objects: [{ ...graph.source.objects[0]!,
+      expression: expression("a*x+1", "x") }] };
+    const current = createGraph2DDocument({ stableKey: "geometry-test", source: editedSource });
+    expect(graph2DPromotionStatus(promotion, current)).toBe("stale");
+    const replacement = regenerateGraph2DPromotion(promotion, current, "replace");
+    expect(replacement.document.identity.id).toBe(promotion.document.identity.id);
+    expect(replacement.document.source.geometry?.segments?.[0]?.a.y).toBe(-1);
+    const edited = { ...promotion, document: replaceGeometryDocumentSource(promotion.document, {
+      ...promotion.document.source, geometry: { segments: promotion.document.source.geometry!.segments!.slice(0, 2) },
+    }) };
+    expect(isGraph2DPromotionTargetEdited(edited)).toBe(true);
+    expect(() => regenerateGraph2DPromotion(edited, current, "replace")).toThrow(/independently edited/);
+    expect(regenerateGraph2DPromotion(edited, current, "fork").document.identity.id).not.toBe(promotion.document.identity.id);
+    expect(() => promoteGraph2DToGeometry(explicit("1/x"), "f")).toThrow(/undefined/);
+  });
   it("captures named variables and evaluates the ordinary Curve and Surface sources", () => {
     const graph = explicit();
     const curve = promoteGraph2DToCurve(graph, "f");

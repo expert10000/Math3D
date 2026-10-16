@@ -8,7 +8,7 @@ import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { inspectProjectDependencies } from "./projectDependencies";
 import { additionalRepresentationView } from "./additionalProjectRepresentations";
 
-const operations = new Set(["graph2d.promote-curve", "graph2d.revolve-surface", "graph2d.extrude-surface"]);
+const operations = new Set(["graph2d.promote-curve", "graph2d.revolve-surface", "graph2d.extrude-surface", "graph2d.promote-geometry"]);
 const constructions = new Set(["extrusion", "revolution", "ruled-surface", "loft", "sweep", "tube-surface"].flatMap(kind => [`curve.construct.${kind}`, `curve.${kind}`]));
 const refreshedConstruction = (relation: DocumentRelation, documents: ReadonlyMap<string, KernelWorkspaceDocument>): SurfaceDocument => {
   const target = relation.target.type === "document" ? documents.get(relation.target.generation.documentId) : null;
@@ -40,7 +40,7 @@ export const projectDependencyRefreshOptions = (project: Math3DProject) => {
       const target = relation.target.type === "document" ? documents.get(relation.target.generation.documentId) : null;
       const parameters = relation.parameters && typeof relation.parameters === "object" && !Array.isArray(relation.parameters) ? relation.parameters as Record<string, unknown> : {};
       const canRefresh = graph?.format === "math3d.graph2d-document" &&
-        (target?.format === "math3d.curve-document" || target?.format === "math3d.surface-document") &&
+        (target?.format === "math3d.curve-document" || target?.format === "math3d.surface-document" || target?.format === "math3d.geometry-document") &&
         typeof parameters.sourceObjectId === "string" && graph.source.objects.some(object => object.id === parameters.sourceObjectId);
       return { relationId: relation.relationId, targetId: target?.identity.id ?? null, canRefresh,
         reason: canRefresh ? "Creates a refreshed copy; existing documents and analysis remain historical." : "The original Graph object or companion is unavailable." };
@@ -64,15 +64,16 @@ export const refreshProjectDependency = (project: Math3DProject, relationId: str
   }
   const graph = documents.get(relation.sources[0]!.documentId)!;
   const target = documents.get(option.targetId!)!;
-  if (graph.format !== "math3d.graph2d-document" || (target.format !== "math3d.curve-document" && target.format !== "math3d.surface-document")) throw new TypeError("Invalid refresh source.");
+  if (graph.format !== "math3d.graph2d-document" || (target.format !== "math3d.curve-document" && target.format !== "math3d.surface-document" && target.format !== "math3d.geometry-document")) throw new TypeError("Invalid refresh source.");
   const parameters = relation.parameters as Record<string, unknown>;
   const promotion = { document: target, relation, trace: { sourceDocumentId: graph.identity.id,
     sourceRevision: relation.sources[0]!.revision, sourceObjectId: String(parameters.sourceObjectId), targetDocumentId: target.identity.id,
-    operation: relation.operation, expressionMap: target.source.definition.expressions ?? {} } } as Graph2DAnyPromotion;
+    operation: relation.operation, expressionMap: target.format === "math3d.geometry-document" ?
+      parameters.expressionMap ?? {} : target.source.definition.expressions ?? {} } } as Graph2DAnyPromotion;
   const next = regenerateGraph2DPromotion(promotion, graph, "fork");
   if (project.workspace.entries.some(entry => entry.expected.id === next.document.identity.id)) throw new TypeError("This refreshed copy already exists for the current source generation.");
   const workspace = createMixedWorkspaceDocument({ ...project.workspace,
-    entries: [...project.workspace.entries, { module: next.document.format === "math3d.curve-document" ? "curve" : "surface", checkpoint: next.document, expected: next.document.identity, replay: null }],
+    entries: [...project.workspace.entries, { module: next.document.format === "math3d.curve-document" ? "curve" : next.document.format === "math3d.geometry-document" ? "geometry" : "surface", checkpoint: next.document, expected: next.document.identity, replay: null }],
     relations: [...project.workspace.relations, next.relation] });
   const title = project.metadata.documents?.[target.identity.id]?.title ?? target.metadata.title;
   return setProjectDocumentMetadata(replaceMath3DProjectWorkspace(project, workspace), next.document.identity.id,

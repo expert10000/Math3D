@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { promoteGraph2DToCurve, revolveGraph2DProfile, extrudeGraph2DProfile,
+import { promoteGraph2DToCurve, promoteGraph2DToGeometry, revolveGraph2DProfile, extrudeGraph2DProfile,
   graph2DPromotionStatus, isGraph2DPromotionTargetEdited, evaluateGraph2DPromotionGeometry,
   type Graph2DDocument, type Graph2DAnyPromotion, type Graph2DExtrudeOptions } from "@math3d/core";
 import { PromotionGeometryView } from "./PromotionGeometryView";
@@ -10,7 +10,7 @@ export function Graph2DPromotionPanel({ document, promotions, onCreate, onLocate
   onLocate: (id: string) => void;
   onRegenerate: (id: string, mode: "replace" | "fork") => void;
 }) {
-  const [operation, setOperation] = useState<"curve" | "revolve" | "extrude">("curve");
+  const [operation, setOperation] = useState<"curve" | "geometry" | "revolve" | "extrude">("curve");
   const [axis, setAxis] = useState<"x" | "y">("x");
   const [orientation, setOrientation] = useState<"positive" | "negative">("positive");
   const [angleMin, setAngleMin] = useState("0"), [angleMax, setAngleMax] = useState(String(Math.PI * 2));
@@ -22,7 +22,8 @@ export function Graph2DPromotionPanel({ document, promotions, onCreate, onLocate
   const createPreview = () => {
     try {
       const id = source!.id;
-      const next = operation === "curve" ? promoteGraph2DToCurve(document, id) : operation === "revolve" ?
+      const next = operation === "curve" ? promoteGraph2DToCurve(document, id) : operation === "geometry" ?
+        promoteGraph2DToGeometry(document, id) : operation === "revolve" ?
         revolveGraph2DProfile(document, id, { axis, orientation, angleMin: Number(angleMin), angleMax: Number(angleMax) }) :
         extrudeGraph2DProfile(document, id, { direction: direction.split(",").map(Number) as [number, number, number], length: Number(length), caps });
       evaluateGraph2DPromotionGeometry(next.document);
@@ -34,11 +35,11 @@ export function Graph2DPromotionPanel({ document, promotions, onCreate, onLocate
     preview.relation.sources[0]!.revision === document.identity.revision ? preview : null;
   const update = (action: () => void) => { action(); setPreview(null); setError(""); };
   return <section aria-label="Graph promotions" data-testid="graph2d-promotions">
-    <h3>Curve and Surface</h3>
+    <h3>Curve, Geometry and Surface</h3>
     {allowed ? <>
       <label>Operation <select aria-label="Promotion operation" value={operation}
         onChange={(event) => update(() => setOperation(event.target.value as typeof operation))}>
-        <option value="curve">Promote to Curve</option><option value="revolve">Revolve to Surface</option><option value="extrude">Extrude to Surface</option>
+        <option value="curve">Promote to Curve</option><option value="geometry">Promote to Geometry</option><option value="revolve">Revolve to Surface</option><option value="extrude">Extrude to Surface</option>
       </select></label>
       {operation === "revolve" && <>
         <label>Axis <select aria-label="Revolution axis" value={axis} onChange={(event) => update(() => setAxis(event.target.value as typeof axis))}>

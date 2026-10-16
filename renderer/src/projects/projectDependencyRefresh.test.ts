@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createMath3DProject, instantiateMath3DProjectTemplate, replaceCurveDocumentSource, createSurfaceDocument, createDocumentRelation,
   viewerSourceFromDocument, analyzeGraph2DIntegral, analyzeGraph2DArcLength, analyzeGraph2DCriticalPoints, analyzeGraph2DIntersections,
-  createGraph2DDocument, createCurveDocument, parseGraph2DExpression, advanceDocumentIdentity } from "@math3d/core";
+  createGraph2DDocument, createCurveDocument, parseGraph2DExpression, advanceDocumentIdentity,
+  promoteGraph2DToGeometry, createGraph2DWorkspaceProject, createMixedWorkspaceDocument } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { ProjectCommandAdapter } from "./projectCommandAdapter";
 import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnalysisRefreshOptions, recomputeProjectAnalysis } from "./projectDependencyRefresh";
@@ -17,6 +18,27 @@ const fixture = () => {
   return createMath3DProject({ ...original.workspace, entries: original.workspace.entries.map(entry => entry.module === "graph2d" ? { ...entry, checkpoint: next, expected: next.identity } : entry) }, { stableKey: "edited-refresh" });
 };
 describe("PRJ20 explicit dependency refresh", () => {
+  it("refreshes a Graph to Geometry snapshot without replacing the historical target", () => {
+    const ast = parseGraph2DExpression("x*x", ["x"]); if (!ast.ok) throw new Error("AST");
+    const original = createGraph2DDocument({ stableKey: "geometry-refresh", source: { objects: [{ id: "f", label: "f",
+      kind: "explicit-cartesian", expression: { source: "x*x", variable: "x", ast: ast.ast },
+      domain: { min: -1, max: 1, includeMin: true, includeMax: true } }], variables: [], assumptions: [] } });
+    const promoted = promoteGraph2DToGeometry(original, "f");
+    const source = { ...original.source, variables: [{ name: "a", value: 1 }] };
+    const current = createGraph2DDocument({ source, identity: advanceDocumentIdentity(original.identity, source) });
+    const base = createGraph2DWorkspaceProject(current);
+    const workspace = createMixedWorkspaceDocument({ ...base, entries: [...base.entries, {
+      module: "geometry", checkpoint: promoted.document, expected: promoted.document.identity, replay: null }],
+      relations: [promoted.relation] });
+    const project = createMath3DProject(workspace, { stableKey: "geometry-refresh" });
+    const option = projectDependencyRefreshOptions(project)[0]!;
+    expect(option.canRefresh).toBe(true);
+    const refreshed = refreshProjectDependency(project, option.relationId);
+    expect(refreshed.workspace.entries.at(-1)?.module).toBe("geometry");
+    expect(refreshed.workspace.entries.at(-1)?.checkpoint.format).toBe("math3d.geometry-document");
+    expect(refreshed.workspace.entries[1]?.checkpoint).toEqual(promoted.document);
+    expect(inspectProjectDependencies(refreshed).relations.at(-1)?.freshness).toBe("current");
+  });
   it.each(["extrusion", "revolution", "sweep", "tube-surface", "ruled-surface", "loft"])("refreshes %s from ordered current Curves, preserves originals and reopens the new numerical construction", kind => {
     const original = instantiateMath3DProjectTemplate("curve-construction-study", `refresh-${kind}`);
     const parent = original.workspace.entries[0]!.checkpoint, old = original.workspace.entries[1]!.checkpoint;

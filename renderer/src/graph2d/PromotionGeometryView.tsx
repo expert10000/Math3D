@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Bounds } from "@react-three/drei";
 import { BufferGeometry, Float32BufferAttribute, DoubleSide, Line, LineBasicMaterial } from "three";
-import { evaluateGraph2DPromotionGeometry, type PromotionGeometry, type CurveDocument, type SurfaceDocument } from "@math3d/core";
+import { evaluateGraph2DPromotionGeometry, type PromotionGeometry, type CurveDocument, type SurfaceDocument, type GeometryDocument } from "@math3d/core";
 
 function Geometry({ evaluated, onRender }: { evaluated: PromotionGeometry; onRender: () => void }) {
   const geometry = useMemo(() => {
@@ -19,7 +19,7 @@ function Geometry({ evaluated, onRender }: { evaluated: PromotionGeometry; onRen
   </Bounds>;
 }
 
-export function PromotionGeometryView({ document }: { document: CurveDocument | SurfaceDocument }) {
+export function PromotionGeometryView({ document }: { document: CurveDocument | SurfaceDocument | GeometryDocument }) {
   const root = useRef<HTMLDivElement>(null);
   const preview = useMemo(() => {
     try { return { geometry: evaluateGraph2DPromotionGeometry(document), error: null }; }

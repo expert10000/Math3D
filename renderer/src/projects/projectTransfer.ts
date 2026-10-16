@@ -21,7 +21,7 @@ export type ProjectCompatibilityOptions = {
   tableAvailable?: (reference: Graph2DPointTableReference) => boolean;
 };
 type Resource = { id: string; kind: string; checksum: string | null; byteLength: number | null; requiredForSource: boolean; available: boolean };
-const promotions = new Set(["graph2d.promote-curve", "graph2d.revolve-surface", "graph2d.extrude-surface"]);
+const promotions = new Set(["graph2d.promote-curve", "graph2d.revolve-surface", "graph2d.extrude-surface", "graph2d.promote-geometry"]);
 
 /** Every module is replay-verified; native editing is qualified by its supported source adapter. */
 export const inspectProjectCompatibility = (project: Math3DProject, options: ProjectCompatibilityOptions = {}) => {

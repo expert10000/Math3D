@@ -6,6 +6,7 @@ import type { Graph2DDocument, Graph2DExplicitObject, Graph2DParametricObject } 
 import { viewerSourceFromDocument } from "./viewerProvenance";
 import { createSurfaceDocument, type SurfaceDocument, type SurfaceDocumentSource } from "./surfaceDocument";
 import { evaluateGraph2DExpression } from "./graph2dExpression";
+import { createGeometryDocument, type GeometryDocument } from "./geometryDocument";
 
 export type Graph2DCurvePromotionSource = Graph2DExplicitObject | Graph2DParametricObject;
 export type Graph2DPromotionTrace = Readonly<{
@@ -13,7 +14,7 @@ export type Graph2DPromotionTrace = Readonly<{
   sourceRevision: number;
   sourceObjectId: string;
   targetDocumentId: StableDocumentId;
-  operation: "graph2d.promote-curve" | "graph2d.revolve-surface" | "graph2d.extrude-surface";
+  operation: "graph2d.promote-curve" | "graph2d.revolve-surface" | "graph2d.extrude-surface" | "graph2d.promote-geometry";
   expressionMap: Readonly<Record<string, string>>;
 }>;
 export type Graph2DCurvePromotion = Readonly<{
@@ -77,6 +78,38 @@ export type Graph2DSurfacePromotion = Readonly<{
   relation: DocumentRelation;
   trace: Graph2DPromotionTrace;
 }>;
+export type Graph2DGeometryPromotion = Readonly<{
+  document: GeometryDocument;
+  relation: DocumentRelation;
+  trace: Graph2DPromotionTrace;
+}>;
+
+/** Captures a bounded 2D profile as editable Geometry scene segments in the z=0 plane. */
+export const promoteGraph2DToGeometry = (source: Graph2DDocument, objectId: string): Graph2DGeometryPromotion => {
+  const object = source.source.objects.find((entry): entry is Graph2DCurvePromotionSource =>
+    entry.id === objectId && (entry.kind === "explicit-cartesian" || entry.kind === "parametric"));
+  if (!object) throw new TypeError("Only explicit or parametric Graph2D objects can be promoted to Geometry.");
+  const samples = validateGraph2DProfile(source, object);
+  const expressionMap = profileExpressions(object);
+  const segments = samples.slice(1).map((point, index) => ({
+    a: { ...samples[index]!, z: 0 }, b: { ...point, z: 0 },
+  }));
+  const document = createGeometryDocument({
+    stableKey: { operation: "graph2d.promote-geometry", sourceDocumentId: source.identity.id, sourceObjectId: object.id },
+    source: { geometry: { segments }, objects: [], surfaces: [], constructions: [], relationships: [], parameters: {},
+      extensions: { "math3d.graph2d.profile.v1": { sourceObjectId: object.id, expressionMap,
+        domain: object.domain, variables: Object.fromEntries(source.source.variables.map((entry) => [entry.name, entry.value])),
+        sampling: { segments: segments.length, plane: "z=0" } } } },
+    metadata: { title: `${object.label} geometry` },
+  });
+  const relation = createDocumentRelation({ kind: "promoted-from", sources: [viewerSourceFromDocument(source)],
+    sourceOrder: "ordered", target: { type: "document", generation: viewerSourceFromDocument(document) },
+    operation: "graph2d.promote-geometry", parameters: { sourceObjectId: object.id, expressionMap,
+      domain: object.domain } as CanonicalJsonValue });
+  return { document, relation, trace: { sourceDocumentId: source.identity.id,
+    sourceRevision: source.identity.revision, sourceObjectId: object.id,
+    targetDocumentId: document.identity.id, operation: "graph2d.promote-geometry", expressionMap } };
+};
 
 const profileExpressions = (object: Graph2DCurvePromotionSource): Readonly<Record<string, string>> =>
   object.kind === "explicit-cartesian" ? { x: "x", y: object.expression.source } :
@@ -171,7 +204,7 @@ export const extrudeGraph2DProfile = (source: Graph2DDocument, objectId: string,
     operation: "graph2d.extrude-surface", expressionMap } };
 };
 
-export type Graph2DAnyPromotion = Graph2DCurvePromotion | Graph2DSurfacePromotion;
+export type Graph2DAnyPromotion = Graph2DCurvePromotion | Graph2DSurfacePromotion | Graph2DGeometryPromotion;
 export type Graph2DPromotionGenerationComparison = Readonly<{
   status: "same" | "changed";
   capturedRevision: number;
@@ -211,6 +244,7 @@ export const regenerateGraph2DPromotion = (promotion: Graph2DAnyPromotion, curre
       orientation: parameters.orientation as "positive" | "negative",
       ...(typeof parameters.angleMin === "number" ? { angleMin: parameters.angleMin } : {}),
       ...(typeof parameters.angleMax === "number" ? { angleMax: parameters.angleMax } : {}) });
+  else if (promotion.trace.operation === "graph2d.promote-geometry") generated = promoteGraph2DToGeometry(currentSource, promotion.trace.sourceObjectId);
   else generated = extrudeGraph2DProfile(currentSource, promotion.trace.sourceObjectId, {
     direction: parameters.direction as unknown as readonly [number, number, number],
     length: parameters.length as number, caps: parameters.capPolicy as Graph2DExtrudeOptions["caps"] });
@@ -221,14 +255,18 @@ export const regenerateGraph2DPromotion = (promotion: Graph2DAnyPromotion, curre
   const document = generated.document.format === "math3d.curve-document" ?
     createCurveDocument({ source: generated.document.source,
       ...(mode === "replace" ? { identity: advanceDocumentIdentity(promotion.document.identity, generated.document.source) } : { stableKey: forkKey }),
-      metadata: generated.document.metadata }) :
+      metadata: generated.document.metadata }) : generated.document.format === "math3d.geometry-document" ?
+    createGeometryDocument({ source: generated.document.source,
+      ...(mode === "replace" ? { identity: advanceDocumentIdentity(promotion.document.identity, generated.document.source) } : { stableKey: forkKey }),
+      metadata: generated.document.metadata, display: generated.document.display }) :
     createSurfaceDocument({ source: generated.document.source,
       ...(mode === "replace" ? { identity: advanceDocumentIdentity(promotion.document.identity, generated.document.source) } : { stableKey: forkKey }),
       metadata: generated.document.metadata });
   const relation = createDocumentRelation({ ...generated.relation,
     target: { type: "document", generation: viewerSourceFromDocument(document) } });
   const trace = { ...generated.trace, targetDocumentId: document.identity.id };
-  return document.format === "math3d.curve-document" ? { document, relation, trace } : { document, relation, trace };
+  return document.format === "math3d.curve-document" ? { document, relation, trace } :
+    document.format === "math3d.geometry-document" ? { document, relation, trace } : { document, relation, trace };
 };
 
 export const isGraph2DPromotionTargetEdited = (promotion: Graph2DAnyPromotion): boolean =>

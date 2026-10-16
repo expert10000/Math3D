@@ -121,6 +121,14 @@ test("Graph promotions preview, create, locate, protect edits, fork, and reopen 
     await expect(target.getByRole("heading")).toContainText("extrusion");
     await expect(target.getByTestId("promotion-geometry").locator("canvas")).toBeVisible();
     await expect(target.getByTestId("promotion-geometry")).toHaveAttribute("data-rendered", "true");
+    await target.getByRole("button", { name: "Locate graph source" }).click();
+    await panel.getByLabel("Promotion operation").selectOption("geometry");
+    await panel.getByRole("button", { name: "Preview promotion" }).click();
+    await expect(panel.getByTestId("promotion-geometry")).toHaveAttribute("data-rendered", "true");
+    await panel.getByRole("button", { name: "Create and open" }).click();
+    await expect(target.getByRole("heading")).toContainText("Geometry");
+    await expect(target).toContainText("1024 segments");
+    await expect(target.getByTestId("promotion-geometry")).toHaveAttribute("data-rendered", "true");
     await app.page.screenshot({ path: "output/graph2d-desktop-promotion.png" });
     await app.page.getByTestId("kernel-workspace-toggle").click();
     await app.page.getByTestId("kernel-workspace-save").click();
@@ -131,7 +139,7 @@ test("Graph promotions preview, create, locate, protect edits, fork, and reopen 
     await app.page.getByTestId("kernel-workspace-reopen").click();
     await app.page.getByTestId("kernel-workspace-toggle").click();
     await expect(functions.getByRole("button", { name: "Select f", exact: true })).toBeVisible();
-    await expect(panel.getByTestId("graph2d-promotion-record")).toHaveCount(4);
+    await expect(panel.getByTestId("graph2d-promotion-record")).toHaveCount(5);
     await panel.getByRole("button", { name: "Locate target" }).first().click();
     await expect(target.getByLabel("Target y expression")).toHaveValue("3*x");
   } finally { await closeSurfaceApp(app); }

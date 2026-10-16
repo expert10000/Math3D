@@ -1,8 +1,8 @@
-import { evaluateGraph2DPromotionGeometry, type CurveDocument, type SurfaceDocument } from "@math3d/core";
+import { evaluateGraph2DPromotionGeometry, type CurveDocument, type SurfaceDocument, type GeometryDocument } from "@math3d/core";
 import { clipMobileGraphLine, type MobileGraphLine } from "./mobileGraphProjection";
 
 /** Portable, bounded orthographic 3D wireframe preview; no browser worker/WebGL contract is assumed. */
-export const projectMobilePromotion = (document: CurveDocument | SurfaceDocument, size: { width: number; height: number }, angle: number): MobileGraphLine[] => {
+export const projectMobilePromotion = (document: CurveDocument | SurfaceDocument | GeometryDocument, size: { width: number; height: number }, angle: number): MobileGraphLine[] => {
   const geometry = evaluateGraph2DPromotionGeometry(document);
   const count = geometry.positions.length / 3;
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];

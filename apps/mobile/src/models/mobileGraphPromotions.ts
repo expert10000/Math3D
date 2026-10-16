@@ -9,16 +9,17 @@ export const readMobileGraphPromotions = (project: MobileStoredSceneProject | un
   const sourceId = workspace.entries.find((entry) => entry.module === "graph2d")?.expected.id;
   return workspace.relations.flatMap((relation): Graph2DAnyPromotion[] => {
     if (relation.kind !== "promoted-from" || relation.sources[0]?.documentId !== sourceId || relation.target.type !== "document" ||
-      !["graph2d.promote-curve", "graph2d.revolve-surface", "graph2d.extrude-surface"].includes(relation.operation)) return [];
+      !["graph2d.promote-curve", "graph2d.revolve-surface", "graph2d.extrude-surface", "graph2d.promote-geometry"].includes(relation.operation)) return [];
     const targetId = relation.target.generation.documentId;
     const entry = workspace.entries.find((candidate) => candidate.expected.id === targetId);
-    if (!entry || (entry.checkpoint.format !== "math3d.curve-document" && entry.checkpoint.format !== "math3d.surface-document")) return [];
+    if (!entry || (entry.checkpoint.format !== "math3d.curve-document" && entry.checkpoint.format !== "math3d.surface-document" && entry.checkpoint.format !== "math3d.geometry-document")) return [];
     const parameters = relation.parameters as Record<string, unknown>;
     if (typeof parameters.sourceObjectId !== "string" || !parameters.expressionMap || typeof parameters.expressionMap !== "object") return [];
     const trace = { sourceDocumentId: relation.sources[0]!.documentId, sourceRevision: relation.sources[0]!.revision,
       sourceObjectId: parameters.sourceObjectId, targetDocumentId: entry.checkpoint.identity.id,
       operation: relation.operation as Graph2DAnyPromotion["trace"]["operation"], expressionMap: parameters.expressionMap as Readonly<Record<string, string>> };
-    return entry.checkpoint.format === "math3d.curve-document" ? [{ document: entry.checkpoint, relation, trace }] : [{ document: entry.checkpoint, relation, trace }];
+    return entry.checkpoint.format === "math3d.curve-document" ? [{ document: entry.checkpoint, relation, trace }] :
+      entry.checkpoint.format === "math3d.geometry-document" ? [{ document: entry.checkpoint, relation, trace }] : [{ document: entry.checkpoint, relation, trace }];
   });
 };
 
@@ -34,7 +35,7 @@ export const commitMobileGraphPromotion = (previous: MobileStoredSceneProject | 
   if (workspace.entries.some((entry) => entry.expected.id === promotion.document.identity.id))
     throw new TypeError("This target already exists. Locate it, or use desktop regeneration/fork; it will not be overwritten.");
   const created = createMixedWorkspaceDocument({ ...workspace, entries: [...workspace.entries, {
-    module: promotion.document.format === "math3d.curve-document" ? "curve" : "surface",
+    module: promotion.document.format === "math3d.curve-document" ? "curve" : promotion.document.format === "math3d.geometry-document" ? "geometry" : "surface",
     checkpoint: promotion.document, expected: promotion.document.identity, replay: null }],
     activeDocumentIds: [...new Set([...workspace.activeDocumentIds, promotion.document.identity.id])],
     relations: [...workspace.relations, promotion.relation] });

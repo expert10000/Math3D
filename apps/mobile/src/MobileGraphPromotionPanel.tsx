@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
-import { promoteGraph2DToCurve, revolveGraph2DProfile, extrudeGraph2DProfile, evaluateGraph2DPromotionGeometry,
+import { promoteGraph2DToCurve, promoteGraph2DToGeometry, revolveGraph2DProfile, extrudeGraph2DProfile, evaluateGraph2DPromotionGeometry,
   graph2DPromotionStatus, isGraph2DPromotionTargetEdited, type Graph2DDocument, type Graph2DAnyPromotion, type Graph2DExtrudeOptions } from "@math3d/core";
 import { projectMobilePromotion } from "./viewer/mobilePromotionProjection";
 
@@ -19,7 +19,7 @@ const Geometry = ({ promotion }: { promotion: Graph2DAnyPromotion }) => {
 
 export const MobileGraphPromotionPanel = ({ document, promotions, onCreate, onLocate }: { document: Graph2DDocument;
   promotions: readonly Graph2DAnyPromotion[]; onCreate: (promotion: Graph2DAnyPromotion) => Promise<boolean>; onLocate: (id: string) => void }) => {
-  const [operation, setOperation] = useState<"curve" | "revolve" | "extrude">("curve");
+  const [operation, setOperation] = useState<"curve" | "geometry" | "revolve" | "extrude">("curve");
   const [axis, setAxis] = useState<"x" | "y">("x"), [orientation, setOrientation] = useState<"positive" | "negative">("positive");
   const [angleMin, setAngleMin] = useState("0"), [angleMax, setAngleMax] = useState(String(2 * Math.PI));
   const [direction, setDirection] = useState("0,0,1"), [length, setLength] = useState("3"), [caps, setCaps] = useState<Graph2DExtrudeOptions["caps"]>("none");
@@ -35,10 +35,10 @@ export const MobileGraphPromotionPanel = ({ document, promotions, onCreate, onLo
     autoCapitalize="none" autoCorrect={false} maxLength={160} onChangeText={(text) => update(() => change(text))} style={{ minHeight: 44, padding: 8, borderWidth: 1, borderColor: "#94a3b8" }} /></View>;
   const number = (raw: string) => /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(raw.trim()) ? Number(raw) : NaN;
   const capModes = ["none", "start", "end", "both"] as const;
-  return <View testID="mobile-graph-promotions"><Text>Curve and Surface promotion</Text>
+  return <View testID="mobile-graph-promotions"><Text>Curve, Geometry and Surface promotion</Text>
     <Text>Local bounded preview and ordinary portable documents. No browser worker or advanced Curve/Surface compute is available here; use desktop for those analyses and regeneration/fork. Create saves the Graph and target together.</Text>
     {allowed ? <><Text>Profile: {source.label} · {source.domain.min} to {source.domain.max}</Text>
-      <View style={{ flexDirection: "row", flexWrap: "wrap" }}>{(["curve", "revolve", "extrude"] as const).map((value) => button(`${value}${value === operation ? " ✓" : ""}`, () => update(() => setOperation(value))))}</View>
+      <View style={{ flexDirection: "row", flexWrap: "wrap" }}>{(["curve", "geometry", "revolve", "extrude"] as const).map((value) => button(`${value}${value === operation ? " ✓" : ""}`, () => update(() => setOperation(value))))}</View>
       {operation === "revolve" && <>{button(`Revolution axis: ${axis}`, () => update(() => setAxis(axis === "x" ? "y" : "x")))}
         {button(`Orientation: ${orientation}`, () => update(() => setOrientation(orientation === "positive" ? "negative" : "positive")))}
         {field("Angle minimum radians", angleMin, setAngleMin)}{field("Angle maximum radians", angleMax, setAngleMax)}</>}
@@ -46,7 +46,7 @@ export const MobileGraphPromotionPanel = ({ document, promotions, onCreate, onLo
         {button(`Caps: ${caps}`, () => update(() => setCaps(capModes[(capModes.indexOf(caps) + 1) % capModes.length]!)))}</>}
       {button("Preview promotion", () => { try {
         const values = direction.split(",").map(number); if (operation === "extrude" && values.length !== 3) throw new TypeError("Enter three direction components.");
-        const next = operation === "curve" ? promoteGraph2DToCurve(document, source.id) : operation === "revolve" ? revolveGraph2DProfile(document, source.id,
+        const next = operation === "curve" ? promoteGraph2DToCurve(document, source.id) : operation === "geometry" ? promoteGraph2DToGeometry(document, source.id) : operation === "revolve" ? revolveGraph2DProfile(document, source.id,
           { axis, orientation, angleMin: number(angleMin), angleMax: number(angleMax) }) : extrudeGraph2DProfile(document, source.id,
           { direction: values as [number, number, number], length: number(length), caps });
         evaluateGraph2DPromotionGeometry(next.document); setPreview(next); setTarget(null); setError("");
