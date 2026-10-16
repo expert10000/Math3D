@@ -291,3 +291,45 @@ test("GRA-10 keeps a verified 256² grid outside the renderer and previews one 2
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("GRA-10 opens bundled 2D grid presets without a folder picker", async () => {
+  test.setTimeout(180_000);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 850 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }) => { dialog.showOpenDialog = async () => { throw new Error("Preset must not open a folder picker"); }; });
+    const openPreset = async (name: string) => {
+      await page.locator(".graph2d-toolbar-menu > summary").click();
+      await page.getByRole("button", { name }).click();
+      return page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    };
+    let dialog = await openPreset("Thermal gradient grid preset");
+    await expect(dialog).toContainText("Thermal gradient · sample scalar grid");
+    await expect(dialog).toContainText("shape [5, 7]");
+    await dialog.getByLabel("Varying axis").selectOption("0");
+    await dialog.getByLabel("Fixed index").selectOption("2");
+    await dialog.getByRole("button", { name: "Preview line" }).click();
+    await expect(dialog).toContainText("first (0, 286)");
+    await expect(dialog).toContainText("last (4, 289)");
+    await dialog.getByRole("button", { name: "Import as point series" }).click();
+    await expect(page.getByLabel("Graph inspector", { exact: true })).toContainText("distance = 4 m");
+    dialog = await openPreset("Sine–cosine grid preset");
+    await expect(dialog).toContainText("shape [17, 17]");
+    await dialog.getByLabel("Varying axis").selectOption("1");
+    await dialog.getByLabel("Fixed index").selectOption("12");
+    await dialog.getByRole("button", { name: "Preview line" }).click();
+    await expect(dialog).toContainText("17 checked samples");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    const invalid = await page.evaluate(async () => {
+      const scenes = (window as unknown as { scientificScenes: { openGraphDatasetPreset: (id: string) => Promise<{
+        ok: boolean; error?: string }> } }).scientificScenes;
+      return scenes.openGraphDatasetPreset("../unknown");
+    });
+    expect(invalid).toMatchObject({ ok: false, error: "Invalid Graph dataset preset" });
+  } finally {
+    await closeSurfaceApp(app);
+  }
+});

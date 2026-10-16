@@ -15,6 +15,7 @@ const packageRoot = resolve("output/scientific-publisher-package-probe/win-unpac
 const executable = join(packageRoot, "Math3D.exe");
 const publisher = join(packageRoot, "resources/scientific-publisher/scientific_scene_publisher.py");
 const spec = join(packageRoot, "resources/scientific-publisher/examples/sincos-grid.json");
+const thermalPreset = join(packageRoot, "resources/scientific-scenes/thermal-gradient.sscene");
 const ipcSource = await readFile(resolve("src/main/ipc/scientificSceneIpc.ts"), "utf8");
 const pinned = ipcSource.match(/const PINNED_REFERENCE_PUBLISHER = "([a-f0-9]{64})";/)?.[1];
 assert(pinned, "desktop reference publisher pin is missing");
@@ -34,6 +35,9 @@ try {
   assert.equal(sha(await readFile(publisher)), pinned);
   assert.equal(await readFile(spec, "utf8"),
     await readFile(resolve("integrations/python/examples/sincos-grid.json"), "utf8"));
+  for (const name of ["bundle.json", "manifest.json", "temperature.f64"])
+    assert.deepEqual(await readFile(join(thermalPreset, name)),
+      await readFile(resolve("tests/fixtures/scientific-scene/thermal-gradient.sscene", name)));
   const pythonCommand = process.env.PYTHON || (process.platform === "win32" ? "py" : "python3");
   const python = execFileSync(pythonCommand, ["-c", "import sys;print(sys.executable)"],
     { encoding: "utf8" }).trim();

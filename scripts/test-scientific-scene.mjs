@@ -7,11 +7,23 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { readScientificSceneBundle } = require("../dist/main/scientificScene/bundle.js");
+const { openScientificGraphDatasets, previewScientificGraphSlice } = require("../dist/main/scientificScene/graphDataset.js");
 const { adaptVerifiedHeightSurface, openScientificHeightSurface, inspectScientificHeightSample } = require("../dist/main/scientificScene/heightSurface.js");
 const { importQuantumFieldScientificManifest } = require("../dist/main/quantumScene/scientificManifest.js");
 const { normalizeScientificSceneManifest } = require("../dist/shared/scientificSceneManifest.js");
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const fixture = resolve("tests/fixtures/scientific-scene/sincos.sscene");
+const thermalFixture = resolve("tests/fixtures/scientific-scene/thermal-gradient.sscene");
+
+const thermalSource = await openScientificGraphDatasets(thermalFixture);
+assert.equal(thermalSource.datasets[0].datasetId, "temperature");
+assert.deepEqual(thermalSource.datasets[0].shape, [5, 7]);
+const acrossTime = await previewScientificGraphSlice(thermalFixture, thermalSource.fingerprint, "temperature", 0, 2);
+assert.deepEqual(acrossTime.values, [286, 286.75, 287.5, 288.25, 289]);
+const acrossDistance = await previewScientificGraphSlice(thermalFixture, thermalSource.fingerprint, "temperature", 1, 3);
+assert.deepEqual(acrossDistance.values, [282.25, 285.25, 288.25, 291.25, 294.25, 297.25, 300.25]);
+await assert.rejects(previewScientificGraphSlice(thermalFixture, "0".repeat(64), "temperature", 0, 2), /fingerprint/);
+await assert.rejects(previewScientificGraphSlice(thermalFixture, thermalSource.fingerprint, "temperature", 0, 7), /valid line/);
 
 const scalar = await openScientificHeightSurface(fixture);
 assert.equal(normalizeScientificSceneManifest(scalar.manifest).ok, true);

@@ -48,7 +48,7 @@
     "build:renderer": "npm --prefix renderer run build",
     "build:main": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.scientific.json && tsc -p tsconfig.node.json",
     "test:quantum-scene:import": "npm run build:main && node scripts/test-quantum-scene-import.mjs",
-    "test:scientific-scene": "node scripts/write-scientific-sincos-fixture.mjs --check && npm run build:main && node scripts/test-scientific-scene.mjs",
+    "test:scientific-scene": "node scripts/write-scientific-sincos-fixture.mjs --check && node scripts/write-scientific-thermal-fixture.mjs --check && npm run build:main && node scripts/test-scientific-scene.mjs",
     "build:python-worker": "node scripts/build-python-worker.mjs",
     "build:python-worker:smoke": "powershell -ExecutionPolicy Bypass -File scripts/build-python-worker.ps1 -SmokeTest",
     "setup:cgal-worker": "powershell -ExecutionPolicy Bypass -File scripts/setup-cgal-python-worker.ps1",

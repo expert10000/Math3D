@@ -20,6 +20,10 @@ export type PythonPublisherPrepareResponse =
   | { ok: false; canceled: false; error: string };
 
 const PINNED_SINCOS_MANIFEST = "6666afe57ad2876575b77c341bb8e8c6959d4a6cee14cc231d33eab39da9dbae";
+const GRAPH_DATASET_PRESETS = {
+  sincos: { directory: "sincos.sscene", fingerprint: PINNED_SINCOS_MANIFEST },
+  thermal: { directory: "thermal-gradient.sscene", fingerprint: "bbcc6be51d2194a5e81498f0ad6bd7556c11a87c9d764d8c84a32be497a7320a" },
+} as const;
 const PINNED_REFERENCE_PUBLISHER = "86b39c33be4551e2ab1a3c12299e7418e16ab1a79866e6881dd703a90952a974";
 const bundledExampleDirectory = () => app.isPackaged ? join(process.resourcesPath, "scientific-scenes", "sincos.sscene") :
   join(app.getAppPath(), "tests", "fixtures", "scientific-scene", "sincos.sscene");
@@ -59,6 +63,21 @@ export function registerScientificSceneIpc(): void {
       if (!isAbsolute(directory) || !directory.toLowerCase().endsWith(".sscene"))
         throw new TypeError("Choose a .sscene directory");
       const source = await openScientificGraphDatasets(directory);
+      graphActive.set(event.sender, { directory, fingerprint: source.fingerprint });
+      return { ok: true, source };
+    } catch (error) { return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) }; }
+  });
+  ipcMain.handle("scientificScenes:openGraphDatasetPreset", async (event, ...args: unknown[]): Promise<ScientificGraphDatasetOpenResponse> => {
+    if (!trustedSender(event) || args.length !== 1 || typeof args[0] !== "string" ||
+        !Object.prototype.hasOwnProperty.call(GRAPH_DATASET_PRESETS, args[0]))
+      return { ok: false, canceled: false, error: "Invalid Graph dataset preset" };
+    graphActive.delete(event.sender);
+    try {
+      const preset = GRAPH_DATASET_PRESETS[args[0] as keyof typeof GRAPH_DATASET_PRESETS];
+      const directory = app.isPackaged ? join(process.resourcesPath, "scientific-scenes", preset.directory) :
+        join(app.getAppPath(), "tests", "fixtures", "scientific-scene", preset.directory);
+      const source = await openScientificGraphDatasets(directory);
+      if (source.fingerprint !== preset.fingerprint) throw new Error("Bundled Graph dataset preset changed");
       graphActive.set(event.sender, { directory, fingerprint: source.fingerprint });
       return { ok: true, source };
     } catch (error) { return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) }; }

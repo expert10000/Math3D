@@ -1,0 +1,75 @@
+{
+  "schema": "scientific-scene/v1",
+  "sceneId": "thermal-gradient",
+  "title": "Thermal gradient · sample scalar grid",
+  "source": {
+    "producer": "math3d-fixture",
+    "sourceId": "thermal-gradient-v1",
+    "sourceSchema": "scientific-fixture/v1",
+    "sha256": "4c92d0c5a9281cd397f7513e654f1bbcc4d749a4fb5f5895bf462e9d76b288c2"
+  },
+  "resources": [
+    {
+      "id": "temperature",
+      "path": "temperature.f64",
+      "format": "f64le",
+      "count": 35,
+      "bytes": 280,
+      "sha256": "4c92d0c5a9281cd397f7513e654f1bbcc4d749a4fb5f5895bf462e9d76b288c2"
+    }
+  ],
+  "coordinates": [
+    {
+      "id": "time-distance",
+      "kind": "cartesian",
+      "axes": [
+        {
+          "name": "time",
+          "unit": "s"
+        },
+        {
+          "name": "distance",
+          "unit": "m"
+        }
+      ],
+      "origin": [
+        0,
+        0
+      ],
+      "spacing": [
+        1,
+        2
+      ],
+      "periodic": [
+        false,
+        false
+      ]
+    }
+  ],
+  "datasets": [
+    {
+      "id": "temperature",
+      "semanticType": "scalar-field",
+      "coordinateSystem": "time-distance",
+      "shape": [
+        5,
+        7
+      ],
+      "order": "last-axis-fastest",
+      "quantity": {
+        "name": "Temperature",
+        "unit": "K"
+      },
+      "real": "temperature"
+    }
+  ],
+  "views": [
+    {
+      "id": "surface",
+      "label": "Temperature height surface",
+      "dataset": "temperature",
+      "renderer": "height-surface",
+      "operation": "identity"
+    }
+  ]
+}

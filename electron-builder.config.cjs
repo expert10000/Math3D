@@ -63,6 +63,10 @@ const config = {
       to: "scientific-scenes/sincos.sscene",
     },
     {
+      from: "tests/fixtures/scientific-scene/thermal-gradient.sscene",
+      to: "scientific-scenes/thermal-gradient.sscene",
+    },
+    {
       from: "integrations/python/scientific_scene_publisher.py",
       to: "scientific-publisher/scientific_scene_publisher.py",
     },

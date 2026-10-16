@@ -549,6 +549,8 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
 
 contextBridge.exposeInMainWorld("scientificScenes", Object.freeze({
   openGraphDataset: (): Promise<ScientificGraphDatasetOpenResponse> => ipcRenderer.invoke("scientificScenes:openGraphDataset"),
+  openGraphDatasetPreset: (id: "sincos" | "thermal"): Promise<ScientificGraphDatasetOpenResponse> =>
+    ipcRenderer.invoke("scientificScenes:openGraphDatasetPreset", id),
   previewGraphSlice: (request: { fingerprint: string; datasetId: string; varyingAxis: 0 | 1; fixedIndex: number }) =>
     ipcRenderer.invoke("scientificScenes:previewGraphSlice", request),
   closeGraphDataset: (fingerprint: string): Promise<boolean> => ipcRenderer.invoke("scientificScenes:closeGraphDataset", fingerprint),

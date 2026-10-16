@@ -154,12 +154,14 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     } catch (error) { if (scientificPreviewEpoch.current === epoch) setScientificImportError((error as Error).message); }
     finally { if (scientificPreviewEpoch.current === epoch) setScientificImportBusy(false); }
   };
-  const openScientificDataset = async () => {
+  const openScientificDataset = async (preset?: "sincos" | "thermal") => {
     if (!window.scientificScenes?.openGraphDataset) return;
     resetScientificSlice();
+    setScientificImport(null);
     setScientificImportBusy(true); setScientificImportError("");
     try {
-      const opened = await window.scientificScenes.openGraphDataset();
+      const opened = preset ? await window.scientificScenes.openGraphDatasetPreset(preset) :
+        await window.scientificScenes.openGraphDataset();
       if (opened.ok) { setScientificImport(opened.source); const first = opened.source.datasets[0];
         setScientificDatasetId(first ? `${first.datasetId}:${first.component}` : ""); }
       else if (!opened.canceled) setScientificImportError(opened.error);
@@ -181,6 +183,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         setScientificImport(null); }
       resetScientificSlice();
       setScientificImportError("");
+      setToolHint(`Imported ${scientificPreview.rows.length} checked samples. Use Fit to view the full line.`);
     } catch (error) { setScientificImportError((error as Error).message); }
   };
   const toolsOpener = useRef<HTMLButtonElement>(null);
@@ -897,6 +900,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                 <button type="button" disabled={!scientificImportAvailable || !onAuthoringCommit || scientificImportBusy}
                   title={!scientificImportAvailable ? "Available in the desktop app" : undefined}
                   onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open"); void openScientificDataset(); }}>Import scientific dataset</button>
+                <button type="button" disabled={!scientificImportAvailable || !onAuthoringCommit || scientificImportBusy}
+                  title={!scientificImportAvailable ? "Available in the desktop app" : undefined}
+                  onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open"); void openScientificDataset("sincos"); }}>Sine–cosine grid preset</button>
+                <button type="button" disabled={!scientificImportAvailable || !onAuthoringCommit || scientificImportBusy}
+                  title={!scientificImportAvailable ? "Available in the desktop app" : undefined}
+                  onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open"); void openScientificDataset("thermal"); }}>Thermal gradient grid preset</button>
                 <button type="button" data-testid="graph2d-parameters-open" disabled={status !== "ready"} onClick={event => {
                   parametersOpener.current = event.currentTarget; finishWheel(); setParametersOpen(value => !value); setParameterPreview(null);
                   setScalesOpen(false); closeGrid(true, false);
@@ -937,6 +946,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {scientificImport && <div className="graph2d-scientific-import" role="dialog" aria-label="Import verified scientific dataset"
           onPointerDown={event => event.stopPropagation()}>
           <h3>Import verified scientific dataset</h3>
+          {scientificManifest?.ok && <p>{scientificManifest.value.title}</p>}
           <label>Dataset component <select value={scientificDatasetId} onChange={event => { setScientificDatasetId(event.target.value); resetScientificSlice(); }}>
             {scientificImport.datasets.map(item => <option key={`${item.datasetId}:${item.component}`}
               value={`${item.datasetId}:${item.component}`}>{item.datasetId} · {item.component}</option>)}
