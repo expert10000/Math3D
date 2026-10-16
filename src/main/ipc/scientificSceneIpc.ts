@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { isAbsolute, join, resolve } from "node:path";
 import { inspectScientificHeightSample, openScientificHeightSurface,
   type ScientificHeightSurface } from "../scientificScene/heightSurface";
-import { openScientificGraphDatasets, type ScientificGraphDatasetSource } from "../scientificScene/graphDataset";
+import { openScientificGraphDatasets, previewScientificGraphSlice, type ScientificGraphDatasetSource } from "../scientificScene/graphDataset";
 import { preparePythonPublisher, runPythonPublisher, type PreparedPythonPublisher,
   type PythonPublisherRun } from "../scientificScene/pythonPublisher";
 
@@ -44,20 +44,47 @@ const referenceRequest = (value: unknown): { directory: string; sceneFingerprint
 
 export function registerScientificSceneIpc(): void {
   const active = new WeakMap<Electron.WebContents, { directory: string; fingerprint: string }>();
+  const graphActive = new WeakMap<Electron.WebContents, { directory: string; fingerprint: string }>();
   const prepared = new WeakMap<Electron.WebContents, PreparedPythonPublisher & { reference: boolean }>();
   const running = new WeakMap<Electron.WebContents, { jobId: string; handle: PythonPublisherRun }>();
   ipcMain.handle("scientificScenes:openGraphDataset", async (event, ...args: unknown[]): Promise<ScientificGraphDatasetOpenResponse> => {
     if (!trustedSender(event) || args.length) return { ok: false, canceled: false, error: "Invalid Graph dataset request" };
+    graphActive.delete(event.sender);
     try {
       const window = BrowserWindow.fromWebContents(event.sender)!;
-      const picked = await dialog.showOpenDialog(window, { title: "Import verified 1D scientific dataset into Graphs",
+      const picked = await dialog.showOpenDialog(window, { title: "Import verified scientific dataset into Graphs",
         properties: ["openDirectory"] });
       if (picked.canceled || !picked.filePaths[0]) return { ok: false, canceled: true };
       const directory = picked.filePaths[0];
       if (!isAbsolute(directory) || !directory.toLowerCase().endsWith(".sscene"))
         throw new TypeError("Choose a .sscene directory");
-      return { ok: true, source: await openScientificGraphDatasets(directory) };
+      const source = await openScientificGraphDatasets(directory);
+      graphActive.set(event.sender, { directory, fingerprint: source.fingerprint });
+      return { ok: true, source };
     } catch (error) { return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) }; }
+  });
+  ipcMain.handle("scientificScenes:previewGraphSlice", async (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 1 || !args[0] || typeof args[0] !== "object" || Array.isArray(args[0]))
+      throw new TypeError("Invalid Graph slice request");
+    const request = args[0] as Record<string, unknown>;
+    if (Object.keys(request).sort().join(",") !== "datasetId,fingerprint,fixedIndex,varyingAxis" ||
+        typeof request.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(request.fingerprint) ||
+        typeof request.datasetId !== "string" || !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(request.datasetId) ||
+        (request.varyingAxis !== 0 && request.varyingAxis !== 1) ||
+        typeof request.fixedIndex !== "number" || !Number.isSafeInteger(request.fixedIndex))
+      throw new TypeError("Invalid Graph slice request");
+    const source = graphActive.get(event.sender);
+    if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
+    return previewScientificGraphSlice(source.directory, source.fingerprint, request.datasetId,
+      request.varyingAxis, request.fixedIndex);
+  });
+  ipcMain.handle("scientificScenes:closeGraphDataset", (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 1 || typeof args[0] !== "string" ||
+        !/^[a-f0-9]{64}$/.test(args[0])) return false;
+    const source = graphActive.get(event.sender);
+    if (!source || source.fingerprint !== args[0]) return false;
+    graphActive.delete(event.sender);
+    return true;
   });
   ipcMain.handle("scientificScenes:preparePublisher", async (event, ...args: unknown[]): Promise<PythonPublisherPrepareResponse> => {
     if (!trustedSender(event) || args.length !== 1 || (args[0] !== "reference" && args[0] !== "custom") ||

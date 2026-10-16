@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocument, Graph2DPointTableStore,
   GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY, normalizeGraph2DDocument, parseGraph2DDocument,
+  GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY,
   inspectGraph2DCompatibility,
-  previewGraph2DScientificDataset, serializeGraph2DDocument, sha256Checksum,
+  previewGraph2DScientificDataset, previewGraph2DScientificSlice, serializeGraph2DDocument, sha256Checksum,
   type ScientificSceneManifest } from "@math3d/core";
 
 const fixture = () => {
@@ -97,5 +98,82 @@ describe("GRA-10 verified scientific dataset adapter", () => {
     const invalidJson = JSON.stringify(invalid), invalidHash = sha256Checksum(new TextEncoder().encode(invalidJson)).slice(7);
     expect(() => previewGraph2DScientificDataset(invalidJson, invalidHash, "velocity", other, "east"))
       .toThrow(/Vector field/);
+  });
+});
+
+const gridFixture = (shape: [number, number] = [3, 4]) => {
+  const values = Array.from({ length: shape[0] * shape[1] }, (_, index) => index);
+  const bytes = new Uint8Array(values.length * 8), view = new DataView(bytes.buffer);
+  values.forEach((value, index) => view.setFloat64(index * 8, value, true));
+  const resourceSha256 = sha256Checksum(bytes).slice(7);
+  const manifest: ScientificSceneManifest = {
+    schema: "scientific-scene/v1", sceneId: "grid", title: "Grid",
+    source: { producer: "theory-lab", sourceId: "grid-run", sourceSchema: "theory-data/v1", sha256: "a".repeat(64) },
+    resources: [{ id: "samples", path: "samples.f64", format: "f64le", count: values.length,
+      bytes: bytes.length, sha256: resourceSha256 }],
+    coordinates: [{ id: "plane", kind: "cartesian", axes: [{ name: "time", unit: "s" }, { name: "distance", unit: "m" }],
+      origin: [2, 10], spacing: [.5, 2], periodic: [false, false] }],
+    datasets: [{ id: "amplitude", semanticType: "scalar-field", coordinateSystem: "plane", shape,
+      order: "last-axis-fastest", quantity: { name: "Amplitude", unit: "V" }, real: "samples" }], views: [],
+  };
+  const json = JSON.stringify(manifest), fingerprint = sha256Checksum(new TextEncoder().encode(json)).slice(7);
+  const line = (varyingAxis: 0 | 1, fixedIndex: number) => {
+    const selected = Array.from({ length: shape[varyingAxis] }, (_, index) =>
+      values[varyingAxis === 0 ? index * shape[1] + fixedIndex : fixedIndex * shape[1] + index]!);
+    const lineBytes = new Uint8Array(selected.length * 8), lineView = new DataView(lineBytes.buffer);
+    selected.forEach((value, index) => lineView.setFloat64(index * 8, value, true));
+    return { fingerprint, datasetId: "amplitude", varyingAxis, fixedIndex, shape, resourceSha256,
+      sliceSha256: sha256Checksum(lineBytes).slice(7), values: selected };
+  };
+  return { json, fingerprint, line };
+};
+
+describe("GRA-10 explicit 2D scalar lines", () => {
+  it("extracts both non-square directions, coordinates and saved slice provenance", () => {
+    const { json, fingerprint, line } = gridFixture();
+    const column = previewGraph2DScientificSlice(json, fingerprint, line(0, 1));
+    expect(column.rows.map(row => [row.x, row.y])).toEqual([[2, 1], [2.5, 5], [3, 9]]);
+    expect(column.origin).toMatchObject({ xName: "time", xUnit: "s", yName: "Amplitude", yUnit: "V",
+      slice: { varyingAxis: 0, fixedIndex: 1, fixedCoordinate: 12, fixedName: "distance", fixedUnit: "m" } });
+    const row = previewGraph2DScientificSlice(json, fingerprint, line(1, 1));
+    expect(row.rows.map(point => [point.x, point.y])).toEqual([[10, 4], [12, 5], [14, 6], [16, 7]]);
+    expect(row.origin.slice).toEqual({ varyingAxis: 1, fixedIndex: 1, fixedCoordinate: 2.5,
+      fixedName: "time", fixedUnit: "s" });
+    expect(previewGraph2DScientificSlice(json, fingerprint, line(0, 0)).rows.map(point => point.y)).toEqual([0, 4, 8]);
+    expect(previewGraph2DScientificSlice(json, fingerprint, line(0, 3)).rows.map(point => point.y)).toEqual([3, 7, 11]);
+    const store = new Graph2DPointTableStore(), table = store.publish(column.rows);
+    const scene = applyGraph2DAuthoring(createEmptyGraph2DDocument("grid-import"), {
+      type: "create-point-series", draft: { label: column.label, table, mode: "line", domain: column.domain,
+        origin: column.origin, style: { color: "#2563eb", lineWidth: 2, lineStyle: "solid", visible: true } },
+    });
+    const document = createGraph2DDocument({ ...scene, stableKey: "grid-import" });
+    expect(document.requiredCapabilities).toContain(GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY);
+    expect(parseGraph2DDocument(serializeGraph2DDocument(document))).toEqual(document);
+    expect(inspectGraph2DCompatibility(document).status).toBe("current");
+  });
+
+  it("rejects wrong fingerprints, selections, hashes, values and singleton varying axes", () => {
+    const { json, fingerprint, line } = gridFixture();
+    expect(() => previewGraph2DScientificSlice(json + " ", fingerprint, line(0, 1))).toThrow(/fingerprint/);
+    expect(() => previewGraph2DScientificSlice(json, fingerprint, { ...line(0, 1), fixedIndex: 4 })).toThrow(/verified line/);
+    expect(() => previewGraph2DScientificSlice(json, fingerprint, { ...line(0, 1), varyingAxis: 2 as 0 })).toThrow(/verified line/);
+    expect(() => previewGraph2DScientificSlice(json, fingerprint, { ...line(0, 1), shape: [4, 3] })).toThrow(/verified line/);
+    expect(() => previewGraph2DScientificSlice(json, fingerprint, { ...line(0, 1), resourceSha256: "b".repeat(64) })).toThrow(/verified line/);
+    expect(() => previewGraph2DScientificSlice(json, fingerprint, { ...line(0, 1), values: [1, 5, 8] })).toThrow(/checksum/);
+    expect(() => previewGraph2DScientificSlice(json, fingerprint, { ...line(0, 1), values: [1, NaN, 9] })).toThrow(/non-finite/);
+    const singleton = gridFixture([1, 4]);
+    expect(() => previewGraph2DScientificSlice(singleton.json, singleton.fingerprint, singleton.line(0, 0)))
+      .toThrow(/verified line/);
+    expect(previewGraph2DScientificSlice(singleton.json, singleton.fingerprint, singleton.line(1, 0)).rows).toHaveLength(4);
+    const malformed = JSON.parse(json);
+    malformed.datasets[0].shape = [3, 5];
+    const malformedJson = JSON.stringify(malformed);
+    expect(() => previewGraph2DScientificSlice(malformedJson,
+      sha256Checksum(new TextEncoder().encode(malformedJson)).slice(7), line(0, 1))).toThrow();
+  });
+
+  it("accepts a 256² verified grid while copying only 256 rows", () => {
+    const { json, fingerprint, line } = gridFixture([256, 256]);
+    expect(previewGraph2DScientificSlice(json, fingerprint, line(0, 255)).rows).toHaveLength(256);
   });
 });

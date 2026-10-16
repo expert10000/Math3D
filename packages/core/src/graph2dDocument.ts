@@ -26,6 +26,7 @@ export const GRAPH2D_IMPLICIT_CAPABILITY = "graph2d.implicit.v1" as const;
 export const GRAPH2D_INEQUALITY_CAPABILITY = "graph2d.inequality.v1" as const;
 export const GRAPH2D_POINT_SERIES_CAPABILITY = "graph2d.point-series.v1" as const;
 export const GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY = "graph2d.scientific-dataset.v1" as const;
+export const GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY = "graph2d.scientific-dataset-slice.v1" as const;
 export const GRAPH2D_PIECEWISE_CAPABILITY = "graph2d.piecewise.v1" as const;
 export const GRAPH2D_OBJECT_KINDS = ["explicit-cartesian", "parametric", "polar", "implicit", "inequality", "point-series", "piecewise"] as const;
 export type Graph2DObjectKind = (typeof GRAPH2D_OBJECT_KINDS)[number];
@@ -89,6 +90,8 @@ export type Graph2DPointTableReference = Readonly<{
 export type Graph2DScientificDatasetOrigin = Readonly<{
   schema: "scientific-scene/v1"; sceneId: string; datasetId: string;
   component?: string;
+  slice?: Readonly<{ varyingAxis: 0 | 1; fixedIndex: number; fixedCoordinate: number;
+    fixedName: string; fixedUnit: string }>;
   sceneFingerprint: string; resourceSha256: string;
   sourceProducer: string; sourceId: string; sourceSchema: string; sourceSha256: string;
   xName: string; xUnit: string; yName: string; yUnit: string;
@@ -129,6 +132,8 @@ export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pic
     ...(source.objects.some((object) => object.kind === "inequality") ? [GRAPH2D_INEQUALITY_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "point-series") ? [GRAPH2D_POINT_SERIES_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "point-series" && object.origin) ? [GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY] : []),
+    ...(source.objects.some((object) => object.kind === "point-series" && object.origin?.slice) ?
+      [GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "piecewise") ? [GRAPH2D_PIECEWISE_CAPABILITY] : []),
     ...(source.constructions !== undefined ? [GRAPH2D_CONSTRUCTIONS_CAPABILITY] : []),
     ...(source.constructions?.objects.some(object => ["root", "minimum", "maximum", "intersection"].includes(object.kind)) ?
@@ -167,7 +172,7 @@ export type Graph2DDocument = Readonly<{
   requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
     typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY |
     typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY |
-    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
+    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
   source: Graph2DSource;
   display: Graph2DDisplay;
   selection: Graph2DSelection;
@@ -237,11 +242,17 @@ export const validPointTableReference = (value: unknown): value is Graph2DPointT
 export const validGraph2DScientificDatasetOrigin = (value: unknown): value is Graph2DScientificDatasetOrigin => record(value) &&
   exact(value, ["schema", "sceneId", "datasetId", "sceneFingerprint", "resourceSha256", "sourceProducer", "sourceId",
     "sourceSchema", "sourceSha256", "xName", "xUnit", "yName", "yUnit",
-    ...(value.component === undefined ? [] : ["component"])]) &&
+    ...(value.component === undefined ? [] : ["component"]), ...(value.slice === undefined ? [] : ["slice"])]) &&
   value.schema === "scientific-scene/v1" &&
   [value.sceneId, value.datasetId, value.sourceProducer, value.sourceId].every(item =>
     typeof item === "string" && /^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(item)) &&
   (value.component === undefined || typeof value.component === "string" && /^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(value.component)) &&
+  (value.slice === undefined || record(value.slice) &&
+    exact(value.slice, ["varyingAxis", "fixedIndex", "fixedCoordinate", "fixedName", "fixedUnit"]) &&
+    (value.slice.varyingAxis === 0 || value.slice.varyingAxis === 1) &&
+    integerWithin(value.slice.fixedIndex, 0, 255) && finite(value.slice.fixedCoordinate) &&
+    Math.abs(value.slice.fixedCoordinate) <= 1e12 && bounded(value.slice.fixedName, 160) &&
+    bounded(value.slice.fixedUnit, 80)) &&
   typeof value.sourceSchema === "string" && /^[A-Za-z][A-Za-z0-9._-]*\/v[1-9][0-9]*$/.test(value.sourceSchema) &&
   [value.sceneFingerprint, value.resourceSha256, value.sourceSha256].every(item =>
     typeof item === "string" && /^[a-f0-9]{64}$/.test(item)) &&

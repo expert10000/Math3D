@@ -4,6 +4,7 @@ import {
   analyzeGraph2DLocalDifferential, fitGraph2DViewport,
   graph2DSceneFitBounds, graph2DConstructionFitBounds,
   previewGraph2DScientificDataset,
+  previewGraph2DScientificSlice, parseScientificSceneManifest,
   analyzeGraph2DPolarLocalDifferential, isGraph2DPolarLocalDifferentialCurrent,
   analyzeGraph2DParametricLocalDifferential, isGraph2DParametricLocalDifferentialCurrent,
   analyzeGraph2DPolarMeasurement, isGraph2DPolarMeasurementCurrent,
@@ -14,6 +15,7 @@ import {
   isGraph2DLocalDifferentialCurrent, queryGraph2DInspector,
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
+  type Graph2DScientificDatasetPreview,
   type Graph2DConstructionAction,
   graph2DConstructionFromCandidate, graph2DLineConstructionActionsFromProbe, GRAPH2D_MAX_CONSTRUCTIONS,
   type Graph2DIntegralMode,
@@ -112,21 +114,49 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   }, [analysisRequest, document.identity.id]);
   const [toolHint, setToolHint] = useState("");
   const [scientificImport, setScientificImport] = useState<{
-    manifestJson: string; fingerprint: string; datasets: { datasetId: string; component: string; values: number[] }[] } | null>(null);
+    manifestJson: string; fingerprint: string; datasets: ({ datasetId: string; component: string; values: number[]; shape?: never } |
+      { datasetId: string; component: "scalar"; shape: [number, number]; values?: never })[] } | null>(null);
   const [scientificDatasetId, setScientificDatasetId] = useState("");
+  const [scientificVaryingAxis, setScientificVaryingAxis] = useState<0 | 1 | null>(null);
+  const [scientificFixedIndex, setScientificFixedIndex] = useState<number | null>(null);
+  const [scientificSlicePreview, setScientificSlicePreview] = useState<{ key: string; preview: Graph2DScientificDatasetPreview } | null>(null);
+  const scientificPreviewEpoch = useRef(0);
   const [scientificImportBusy, setScientificImportBusy] = useState(false);
   const [scientificImportError, setScientificImportError] = useState("");
   const scientificImportAvailable = typeof window !== "undefined" && !!window.scientificScenes?.openGraphDataset;
+  const scientificSelected = scientificImport?.datasets.find(item => `${item.datasetId}:${item.component}` === scientificDatasetId);
+  const scientificManifest = useMemo(() => scientificImport ? parseScientificSceneManifest(scientificImport.manifestJson) : null,
+    [scientificImport]);
+  const scientificDataset = scientificManifest?.ok ? scientificManifest.value.datasets.find(item => item.id === scientificSelected?.datasetId) : null;
+  const scientificCoordinate = scientificManifest?.ok ? scientificManifest.value.coordinates.find(item => item.id === scientificDataset?.coordinateSystem) : null;
+  const scientificSliceKey = scientificImport && scientificSelected?.shape && scientificVaryingAxis !== null && scientificFixedIndex !== null ?
+    `${scientificImport.fingerprint}:${scientificSelected.datasetId}:${scientificVaryingAxis}:${scientificFixedIndex}` : "";
   const scientificPreview = useMemo(() => {
     if (!scientificImport) return null;
     const selected = scientificImport.datasets.find(item => `${item.datasetId}:${item.component}` === scientificDatasetId);
-    if (!selected) return null;
+    if (!selected || !selected.values) return scientificSlicePreview?.key === scientificSliceKey ? scientificSlicePreview.preview : null;
     try { return previewGraph2DScientificDataset(scientificImport.manifestJson,
       scientificImport.fingerprint, selected.datasetId, selected.values, selected.component); }
     catch { return null; }
-  }, [scientificImport, scientificDatasetId]);
+  }, [scientificImport, scientificDatasetId, scientificSlicePreview, scientificSliceKey]);
+  const resetScientificSlice = () => { scientificPreviewEpoch.current += 1; setScientificSlicePreview(null);
+    setScientificVaryingAxis(null); setScientificFixedIndex(null); setScientificImportError(""); };
+  const previewScientificSlice = async () => {
+    if (!scientificImport || !scientificSelected?.shape || scientificVaryingAxis === null || scientificFixedIndex === null ||
+        !window.scientificScenes?.previewGraphSlice) return;
+    const epoch = ++scientificPreviewEpoch.current;
+    setScientificImportBusy(true); setScientificImportError(""); setScientificSlicePreview(null);
+    try {
+      const line = await window.scientificScenes.previewGraphSlice({ fingerprint: scientificImport.fingerprint,
+        datasetId: scientificSelected.datasetId, varyingAxis: scientificVaryingAxis, fixedIndex: scientificFixedIndex });
+      const preview = previewGraph2DScientificSlice(scientificImport.manifestJson, scientificImport.fingerprint, line);
+      if (scientificPreviewEpoch.current === epoch) setScientificSlicePreview({ key: scientificSliceKey, preview });
+    } catch (error) { if (scientificPreviewEpoch.current === epoch) setScientificImportError((error as Error).message); }
+    finally { if (scientificPreviewEpoch.current === epoch) setScientificImportBusy(false); }
+  };
   const openScientificDataset = async () => {
     if (!window.scientificScenes?.openGraphDataset) return;
+    resetScientificSlice();
     setScientificImportBusy(true); setScientificImportError("");
     try {
       const opened = await window.scientificScenes.openGraphDataset();
@@ -147,7 +177,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       if (remaining.length && scientificImport) {
         setScientificImport({ ...scientificImport, datasets: remaining });
         setScientificDatasetId(`${remaining[0]!.datasetId}:${remaining[0]!.component}`);
-      } else setScientificImport(null);
+      } else { if (scientificImport) void window.scientificScenes?.closeGraphDataset(scientificImport.fingerprint);
+        setScientificImport(null); }
+      resetScientificSlice();
       setScientificImportError("");
     } catch (error) { setScientificImportError((error as Error).message); }
   };
@@ -762,6 +794,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             {" "}{selectedObject.origin.sceneId}/{selectedObject.origin.datasetId}</dd>
           <dt>Units</dt><dd>{selectedObject.origin.xName} ({selectedObject.origin.xUnit}) →
             {" "}{selectedObject.origin.yName} ({selectedObject.origin.yUnit})</dd>
+          {selectedObject.origin.slice && <><dt>Grid line</dt><dd>Vary axis {selectedObject.origin.slice.varyingAxis};
+            {" "}{selectedObject.origin.slice.fixedName} = {selectedObject.origin.slice.fixedCoordinate} {selectedObject.origin.slice.fixedUnit}
+            {" "}(index {selectedObject.origin.slice.fixedIndex})</dd></>}
           <dt>Source hashes</dt><dd><code>manifest {selectedObject.origin.sceneFingerprint}<br />resource {selectedObject.origin.resourceSha256}</code></dd>
         </>}
         <dt>{inspected.kind === "parametric" ? "Parameter t" : inspected.kind === "polar" ? "Angle θ" : "X domain"}</dt>
@@ -902,20 +937,53 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {scientificImport && <div className="graph2d-scientific-import" role="dialog" aria-label="Import verified scientific dataset"
           onPointerDown={event => event.stopPropagation()}>
           <h3>Import verified scientific dataset</h3>
-          <label>Dataset component <select value={scientificDatasetId} onChange={event => setScientificDatasetId(event.target.value)}>
+          <label>Dataset component <select value={scientificDatasetId} onChange={event => { setScientificDatasetId(event.target.value); resetScientificSlice(); }}>
             {scientificImport.datasets.map(item => <option key={`${item.datasetId}:${item.component}`}
               value={`${item.datasetId}:${item.component}`}>{item.datasetId} · {item.component}</option>)}
           </select></label>
+          {scientificSelected?.shape && <>
+            <p>2D scalar grid · shape [{scientificSelected.shape.join(", ")}] · last axis varies fastest in the source.</p>
+            {scientificCoordinate?.axes.map((axis, index) => <p key={index}>Axis {index}: {axis.name} ({axis.unit}) ·
+              {" "}{scientificCoordinate.origin[index]} → {scientificCoordinate.origin[index]! +
+                scientificCoordinate.spacing[index]! * (scientificSelected.shape![index]! - 1)}
+            </p>)}
+            <label>Varying axis <select aria-label="Varying axis" value={scientificVaryingAxis ?? ""}
+              onChange={event => { scientificPreviewEpoch.current += 1; setScientificSlicePreview(null);
+                setScientificVaryingAxis(event.target.value === "" ? null : Number(event.target.value) as 0 | 1);
+                setScientificFixedIndex(null); setScientificImportError(""); }}>
+              <option value="">Choose axis</option>
+              {[0, 1].filter(axis => scientificSelected.shape![axis]! >= 2).map(axis =>
+                <option key={axis} value={axis}>Axis {axis} · {scientificCoordinate?.axes[axis]?.name ?? axis}</option>)}
+            </select></label>
+            {scientificVaryingAxis !== null && <label>Fixed index on axis {1 - scientificVaryingAxis}
+              <select aria-label="Fixed index" value={scientificFixedIndex ?? ""}
+                onChange={event => { scientificPreviewEpoch.current += 1; setScientificSlicePreview(null);
+                  setScientificFixedIndex(event.target.value === "" ? null : Number(event.target.value)); setScientificImportError(""); }}>
+                <option value="">Choose index</option>
+                {Array.from({ length: scientificSelected.shape[1 - scientificVaryingAxis]! }, (_, index) =>
+                  <option key={index} value={index}>{index} · {scientificCoordinate?.axes[1 - scientificVaryingAxis]?.name} =
+                    {" "}{scientificCoordinate ? scientificCoordinate.origin[1 - scientificVaryingAxis]! +
+                      scientificCoordinate.spacing[1 - scientificVaryingAxis]! * index : index}</option>)}
+              </select></label>}
+            <button type="button" disabled={scientificVaryingAxis === null || scientificFixedIndex === null || scientificImportBusy}
+              onClick={previewScientificSlice}>Preview line</button>
+          </>}
           {scientificPreview ? <>
             <p>{scientificPreview.rows.length} checked samples · {scientificPreview.origin.xName} ({scientificPreview.origin.xUnit}) →
               {" "}{scientificPreview.origin.yName} ({scientificPreview.origin.yUnit})</p>
             <p>Source {scientificPreview.origin.sourceProducer}/{scientificPreview.origin.sourceId} · scene {scientificPreview.origin.sceneId}</p>
             <small>Manifest {scientificPreview.origin.sceneFingerprint} · resource {scientificPreview.origin.resourceSha256}</small>
+            {scientificPreview.origin.slice && <p>Line at {scientificPreview.origin.slice.fixedName} =
+              {" "}{scientificPreview.origin.slice.fixedCoordinate} {scientificPreview.origin.slice.fixedUnit} ·
+              {" "}first ({scientificPreview.rows[0]?.x}, {scientificPreview.rows[0]?.y}) ·
+              {" "}last ({scientificPreview.rows.at(-1)?.x}, {scientificPreview.rows.at(-1)?.y})</p>}
             <p>A new point series copies this verified component. Select another component to import it separately.</p>
-          </> : <p role="alert">Dataset verification failed.</p>}
+          </> : !scientificSelected?.shape ? <p role="alert">Dataset verification failed.</p> :
+            <p>Choose an axis and fixed index, then preview the verified line.</p>}
           {scientificImportError && <p role="alert">{scientificImportError}</p>}
           <div><button type="button" disabled={!scientificPreview} onClick={commitScientificDataset}>Import as point series</button>
-            <button type="button" onClick={() => { setScientificImport(null); setScientificImportError(""); }}>Cancel</button></div>
+            <button type="button" onClick={() => { resetScientificSlice();
+              void window.scientificScenes?.closeGraphDataset(scientificImport.fingerprint); setScientificImport(null); }}>Cancel</button></div>
         </div>}
         {toolHint && <p className="graph2d-tool-hint" role="status">{toolHint}</p>}
         <div className="graph2d-compact-panels">

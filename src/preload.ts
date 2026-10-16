@@ -549,6 +549,9 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
 
 contextBridge.exposeInMainWorld("scientificScenes", Object.freeze({
   openGraphDataset: (): Promise<ScientificGraphDatasetOpenResponse> => ipcRenderer.invoke("scientificScenes:openGraphDataset"),
+  previewGraphSlice: (request: { fingerprint: string; datasetId: string; varyingAxis: 0 | 1; fixedIndex: number }) =>
+    ipcRenderer.invoke("scientificScenes:previewGraphSlice", request),
+  closeGraphDataset: (fingerprint: string): Promise<boolean> => ipcRenderer.invoke("scientificScenes:closeGraphDataset", fingerprint),
   openExample: (): Promise<ScientificSceneOpenResponse> => ipcRenderer.invoke("scientificScenes:openExample"),
   openDirectory: (): Promise<ScientificSceneOpenResponse> => ipcRenderer.invoke("scientificScenes:openDirectory"),
   openReference: (reference: { directory: string; sceneFingerprint: string }): Promise<ScientificSceneOpenResponse> =>

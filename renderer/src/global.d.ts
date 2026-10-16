@@ -591,8 +591,13 @@ declare global {
   interface Window {
     scientificScenes?: {
       openGraphDataset: () => Promise<{ ok: true; source: { manifestJson: string; fingerprint: string;
-          datasets: { datasetId: string; component: string; values: number[] }[] } } |
+          datasets: ({ datasetId: string; component: string; values: number[]; shape?: never } |
+            { datasetId: string; component: "scalar"; shape: [number, number]; values?: never })[] } } |
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
+      previewGraphSlice: (request: { fingerprint: string; datasetId: string; varyingAxis: 0 | 1; fixedIndex: number }) =>
+        Promise<{ fingerprint: string; datasetId: string; varyingAxis: 0 | 1; fixedIndex: number;
+          shape: [number, number]; resourceSha256: string; sliceSha256: string; values: number[] }>;
+      closeGraphDataset: (fingerprint: string) => Promise<boolean>;
       openExample: () => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;
       openDirectory: () => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;
         openReference: (reference: { directory: string; sceneFingerprint: string }) => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;

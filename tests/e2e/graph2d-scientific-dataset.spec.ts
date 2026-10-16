@@ -167,3 +167,127 @@ test("GRA-10 imports a vector bundle published by the reference Python tool", as
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("GRA-10 previews and imports explicit lines from a verified 2D scalar grid", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-graph-dataset-"));
+  const directory = join(root, "grid.sscene");
+  await mkdir(directory);
+  const values = Buffer.alloc(12 * 8);
+  Array.from({ length: 12 }, (_, index) => values.writeDoubleLE(index, index * 8));
+  const manifest = JSON.stringify({
+    schema: "scientific-scene/v1", sceneId: "grid", title: "Measured grid",
+    source: { producer: "theory-lab", sourceId: "run-2d", sourceSchema: "theory-data/v1", sha256: "a".repeat(64) },
+    resources: [{ id: "samples", path: "samples.f64", format: "f64le", count: 12, bytes: values.length, sha256: hash(values) }],
+    coordinates: [{ id: "plane", kind: "cartesian", axes: [{ name: "time", unit: "s" }, { name: "distance", unit: "m" }],
+      origin: [2, 10], spacing: [.5, 2], periodic: [false, false] }],
+    datasets: [{ id: "amplitude", semanticType: "scalar-field", coordinateSystem: "plane", shape: [3, 4],
+      order: "last-axis-fastest", quantity: { name: "Amplitude", unit: "V" }, real: "samples" }], views: [],
+  });
+  await writeFile(join(directory, "samples.f64"), values);
+  await writeFile(join(directory, "manifest.json"), manifest);
+  await writeFile(join(directory, "bundle.json"), JSON.stringify({ schema: "scientific-scene-bundle/v1",
+    manifest: { path: "manifest.json", bytes: Buffer.byteLength(manifest), sha256: hash(manifest) } }));
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 850 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, directory);
+    const open = async () => {
+      await page.locator(".graph2d-toolbar-menu > summary").click();
+      await page.getByRole("button", { name: "Import scientific dataset" }).click();
+      return page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    };
+    let dialog = await open();
+    await expect(dialog).toContainText("shape [3, 4]");
+    await expect(dialog).toContainText("Axis 0: time (s)");
+    await dialog.getByLabel("Varying axis").selectOption("0");
+    await dialog.getByLabel("Fixed index").selectOption("1");
+    await dialog.getByRole("button", { name: "Preview line" }).click();
+    await expect(dialog).toContainText("first (2, 1)");
+    await expect(dialog).toContainText("last (3, 9)");
+    await dialog.getByRole("button", { name: "Import as point series" }).click();
+    await expect(page.getByLabel("Graph inspector", { exact: true })).toContainText("distance = 12 m");
+    await page.getByTestId("main-viewer").focus();
+    await page.keyboard.press("Control+z");
+    await expect(page.getByLabel("Graph functions", { exact: true })).not.toContainText("Amplitude");
+    await page.keyboard.press("Control+y");
+    await expect(page.getByLabel("Graph inspector", { exact: true })).toContainText("distance = 12 m");
+    await page.getByTestId("kernel-workspace-toggle").click();
+    await page.getByTestId("kernel-workspace-save").click();
+    await expect(page.getByTestId("kernel-workspace-message")).toContainText("Saved");
+    await page.getByTestId("kernel-workspace-reopen").click();
+    await page.getByTestId("kernel-workspace-toggle").click();
+    await expect(page.getByLabel("Graph inspector", { exact: true })).toContainText("distance = 12 m");
+    dialog = await open();
+    await dialog.getByLabel("Varying axis").selectOption("1");
+    await dialog.getByLabel("Fixed index").selectOption("2");
+    await dialog.getByRole("button", { name: "Preview line" }).click();
+    await expect(dialog).toContainText("first (10, 8)");
+    await expect(dialog).toContainText("last (16, 11)");
+    const fingerprint = hash(manifest);
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    const stale = await page.evaluate(async request => {
+      const scenes = (window as unknown as { scientificScenes: { previewGraphSlice: (selection: {
+        fingerprint: string; datasetId: string; varyingAxis: 0 | 1; fixedIndex: number }) => Promise<unknown> } }).scientificScenes;
+      try { await scenes.previewGraphSlice(request); return false; } catch { return true; }
+    }, { fingerprint, datasetId: "amplitude", varyingAxis: 1 as const, fixedIndex: 2 });
+    expect(stale).toBe(true);
+    dialog = await open();
+    const changed = Buffer.from(values); changed[0] ^= 1;
+    await writeFile(join(directory, "samples.f64"), changed);
+    await dialog.getByLabel("Varying axis").selectOption("0");
+    await dialog.getByLabel("Fixed index").selectOption("0");
+    await dialog.getByRole("button", { name: "Preview line" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("resource integrity failed");
+    await expect(dialog.getByRole("button", { name: "Import as point series" })).toBeDisabled();
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-graph-dataset-")) throw new Error("Unsafe scientific fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("GRA-10 keeps a verified 256² grid outside the renderer and previews one 256-row line", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-graph-dataset-"));
+  const directory = join(root, "large-grid.sscene");
+  await mkdir(directory);
+  const values = Buffer.alloc(256 * 256 * 8);
+  for (let index = 0; index < 256 * 256; index += 1) values.writeDoubleLE(index, index * 8);
+  const manifest = JSON.stringify({
+    schema: "scientific-scene/v1", sceneId: "large-grid", title: "Large grid",
+    source: { producer: "theory-lab", sourceId: "large-run", sourceSchema: "theory-data/v1", sha256: "a".repeat(64) },
+    resources: [{ id: "samples", path: "samples.f64", format: "f64le", count: 65536, bytes: values.length, sha256: hash(values) }],
+    coordinates: [{ id: "plane", kind: "cartesian", axes: [{ name: "x", unit: "m" }, { name: "y", unit: "m" }],
+      origin: [0, 0], spacing: [1, 1], periodic: [false, false] }],
+    datasets: [{ id: "height", semanticType: "scalar-field", coordinateSystem: "plane", shape: [256, 256],
+      order: "last-axis-fastest", quantity: { name: "Height", unit: "m" }, real: "samples" }], views: [],
+  });
+  await writeFile(join(directory, "samples.f64"), values);
+  await writeFile(join(directory, "manifest.json"), manifest);
+  await writeFile(join(directory, "bundle.json"), JSON.stringify({ schema: "scientific-scene-bundle/v1",
+    manifest: { path: "manifest.json", bytes: Buffer.byteLength(manifest), sha256: hash(manifest) } }));
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, directory);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    const preview = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    await preview.getByLabel("Varying axis").selectOption("0");
+    await preview.getByLabel("Fixed index").selectOption("255");
+    await preview.getByRole("button", { name: "Preview line" }).click();
+    await expect(preview).toContainText("256 checked samples");
+    await expect(preview).toContainText("first (0, 255)");
+    await expect(preview).toContainText("last (255, 65535)");
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-graph-dataset-")) throw new Error("Unsafe scientific fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});
