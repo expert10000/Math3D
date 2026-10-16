@@ -345,7 +345,7 @@ This is the actionable N01–N10 sequence. Earlier consolidation notes used N03 
 | GRA-N07 | P1 | Add intersections, roots and extrema as persistent constructions | Delivered as bounded source-linked candidates; G2D49. |
 | GRA-N08 | P1 | Drag constrained points along their source curves | Software delivered in `65d51c3e`; physical mobile touch check remains. |
 | GRA-N09 | P1 | Add expression-driven parameters and animation | Software delivered: bounded derived expressions, dependency/cycle validation, recomputation on preview and animation, desktop/mobile controls. Physical mobile visual check remains. |
-| GRA-N10 | P1 | Introduce Graph → Curve / Geometry promotion | **Software delivered:** direct Graph → Geometry uses a bounded sampled Geometry document with source lineage, desktop/mobile preview, persistence and refresh. See [GRA-N10](graph2d-gra-n10-geometry-promotion.md). Physical mobile signoff remains open. |
+| GRA-N10 | P1 | Introduce Graph → Curve / Geometry promotion | **Software delivered:** direct Graph → Geometry uses a bounded sampled Geometry document with source lineage, desktop/mobile preview, persistence and refresh. Opened desktop Curve targets use the Curves viewer; Surface and Geometry targets use the shared 3D viewer. Promoted Geometry opens facing its `z=0` profile with reference grids hidden, with Fit, Grid, orbit and Front view controls. See [GRA-N10](graph2d-gra-n10-geometry-promotion.md). Physical mobile signoff remains open. |
 
 **Next:** complete N06/N08/N09/N10 physical touch and visual checks when the Samsung is attached again; the existing MOB-G13/G2D40 device and accessibility gates still govern release.
 

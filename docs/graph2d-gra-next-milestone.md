@@ -13,7 +13,7 @@
 | GRA-N07 | P1 | Add roots, intersections and extrema as persistent constructions | Delivered in G2D49 as bounded source-linked candidates with unavailable states after ambiguous or invalid recomputation. |
 | GRA-N08 | P1 | Drag constrained points along source curves | Software delivered in `65d51c3e` on desktop and mobile. Live dependent geometry, cancel and one-step undo are tested; physical mobile drag signoff remains open. |
 | GRA-N09 | P1 | Add expression-driven parameters and animation | Software delivered. Derived parameters use the shared bounded expression grammar, dependency ordering and cycle rejection; slider preview, undo and deterministic animation recompute dependents. Desktop/mobile controls and numerical regression checks are in [GRA-N09](graph2d-gra-n09-expression-parameters.md). Physical mobile visual signoff remains open. |
-| GRA-N10 | P1 | Introduce Graph → Curve / Geometry promotion | **Software delivered.** Graph → Curve/Surface remains available; direct Graph → Geometry now creates a bounded, source-linked native Geometry snapshot on desktop and mobile. See [GRA-N10](graph2d-gra-n10-geometry-promotion.md). Physical mobile signoff remains open. |
+| GRA-N10 | P1 | Introduce Graph → Curve / Geometry promotion | **Software delivered.** Graph → Curve/Surface remains available; direct Graph → Geometry creates a bounded, source-linked native Geometry snapshot on desktop and mobile. Opened desktop targets reuse the Curves or shared 3D viewers rather than the promotion preview. Geometry opens front-on to its `z=0` profile with the grids off; Fit, Grid and Front view remain available. See [GRA-N10](graph2d-gra-n10-geometry-promotion.md). Physical mobile signoff remains open. |
 
 ## GRA-N06 acceptance and next implementation
 
