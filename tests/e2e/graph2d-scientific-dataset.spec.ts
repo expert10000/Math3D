@@ -221,6 +221,13 @@ test("GRA-10 previews and imports explicit lines from a verified 2D scalar grid"
     await expect(page.getByLabel("Graph inspector", { exact: true })).toContainText("distance = 12 m");
     await dialog.getByLabel("Varying axis").selectOption("1");
     await dialog.getByLabel("Fixed index").selectOption("2");
+    const changed = Buffer.from(values); changed[0] ^= 1;
+    await writeFile(join(directory, "samples.f64"), changed);
+    await dialog.getByRole("button", { name: "Preview line" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("resource integrity failed");
+    await expect(dialog.getByRole("button", { name: "Import as point series" })).toBeDisabled();
+    await expect(page.getByLabel("Graph functions", { exact: true })).toContainText("Amplitude · distance = 12 m");
+    await writeFile(join(directory, "samples.f64"), values);
     await dialog.getByRole("button", { name: "Preview line" }).click();
     await expect(dialog).toContainText("first (10, 8)");
     await expect(dialog).toContainText("last (16, 11)");
@@ -228,11 +235,20 @@ test("GRA-10 previews and imports explicit lines from a verified 2D scalar grid"
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("2 lines imported from this grid");
     await expect(page.getByLabel("Graph functions", { exact: true })).toContainText("Amplitude · time = 3 s");
+    await expect(dialog.getByLabel("Fixed index")).toHaveValue("0");
+    await dialog.getByRole("button", { name: "Preview line" }).click();
+    await expect(dialog).toContainText("first (10, 0)");
+    await expect(dialog).toContainText("last (16, 3)");
+    await dialog.getByRole("button", { name: "Import as point series" }).click();
+    await expect(dialog).toContainText("3 lines imported from this grid");
+    await expect(page.getByLabel("Graph functions", { exact: true })).toContainText("Amplitude · time = 2 s");
+    const swatches = await page.getByLabel("Graph functions", { exact: true }).locator(".graph2d-function-swatch")
+      .evaluateAll(nodes => nodes.map(node => (node as HTMLElement).style.backgroundColor));
+    expect(new Set(swatches).size).toBe(3);
     await dialog.getByLabel("Fixed index").selectOption("2");
     await dialog.getByRole("button", { name: "Preview line" }).click();
     await expect(dialog).toContainText("This grid line is already imported");
     await expect(dialog.getByRole("button", { name: "Import as point series" })).toBeDisabled();
-    const changed = Buffer.from(values); changed[0] ^= 1;
     await writeFile(join(directory, "samples.f64"), changed);
     await dialog.getByLabel("Varying axis").selectOption("0");
     await dialog.getByLabel("Fixed index").selectOption("0");
@@ -252,9 +268,13 @@ test("GRA-10 previews and imports explicit lines from a verified 2D scalar grid"
     await expect(page.getByTestId("kernel-workspace-message")).toContainText("Saved");
     await page.getByTestId("kernel-workspace-reopen").click();
     await page.getByTestId("kernel-workspace-toggle").click();
-    await expect(page.getByLabel("Graph inspector", { exact: true })).toContainText("time = 3 s");
+    await expect(page.getByLabel("Graph inspector", { exact: true })).toContainText("time = 2 s");
     await expect(page.getByLabel("Graph functions", { exact: true })).toContainText("Amplitude · distance = 12 m");
     await expect(page.getByLabel("Graph functions", { exact: true })).toContainText("Amplitude · time = 3 s");
+    await expect(page.getByLabel("Graph functions", { exact: true })).toContainText("Amplitude · time = 2 s");
+    const reopenedSwatches = await page.getByLabel("Graph functions", { exact: true }).locator(".graph2d-function-swatch")
+      .evaluateAll(nodes => nodes.map(node => (node as HTMLElement).style.backgroundColor));
+    expect(reopenedSwatches).toEqual(swatches);
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-graph-dataset-")) throw new Error("Unsafe scientific fixture cleanup path");
@@ -333,6 +353,13 @@ test("GRA-10 opens bundled 2D grid presets without a folder picker", async () =>
     await dialog.getByRole("button", { name: "Import as point series" }).click();
     await expect(page.getByLabel("Graph inspector", { exact: true })).toContainText("distance = 4 m");
     await expect(dialog).toBeVisible();
+    await dialog.getByLabel("Varying axis").selectOption("1");
+    await dialog.getByLabel("Fixed index").selectOption("3");
+    await dialog.getByRole("button", { name: "Preview line" }).click();
+    await expect(dialog).toContainText("Line at time = 3 s");
+    await dialog.getByRole("button", { name: "Import as point series" }).click();
+    await expect(page.getByLabel("Graph functions", { exact: true })).toContainText("Temperature · distance = 4 m");
+    await expect(page.getByLabel("Graph functions", { exact: true })).toContainText("Temperature · time = 3 s");
     await dialog.getByRole("button", { name: "Cancel" }).click();
     dialog = await openPreset("Sine–cosine grid preset");
     await expect(dialog).toContainText("shape [17, 17]");

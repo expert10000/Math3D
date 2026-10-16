@@ -53,6 +53,7 @@ import { Graph2DConstructionsPanel } from "./Graph2DConstructionsPanel";
 import "./graphsWorkspace.css";
 
 const GRAPH2D_LEFT_PALETTE_KEY = "math3d.graphs.leftPalette.v1";
+const SCIENTIFIC_GRID_LINE_COLORS = ["#2563eb", "#ea580c", "#059669", "#9333ea", "#e11d48", "#0d9488"] as const;
 
 function readGraph2DLeftPalette(): Graph2DLeftPalette {
   if (typeof window === "undefined") return "classic";
@@ -186,7 +187,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       const table = pointTableStore.publish(scientificPreview.rows);
       onAuthoringCommit({ type: "create-point-series", draft: { label: scientificPreview.label,
         table, mode: "line", domain: scientificPreview.domain, origin: scientificPreview.origin,
-        style: { color: "#2563eb", lineWidth: 2, lineStyle: "solid", visible: true } } });
+        style: { color: scientificSelected?.shape ? SCIENTIFIC_GRID_LINE_COLORS[scientificImportedLines.length % SCIENTIFIC_GRID_LINE_COLORS.length] : "#2563eb",
+          lineWidth: 2, lineStyle: "solid", visible: true } } });
       if (scientificSelected?.shape) {
         scientificPreviewEpoch.current += 1;
         setScientificSlicePreview(null);
