@@ -6,6 +6,6 @@ The target is a bounded snapshot of 1,024 connected segments in the `z=0` plane.
 
 Editing the Graph later marks the relation stale without changing the Geometry snapshot. Regeneration replaces an unchanged target generation or forks a new target if the existing Geometry document has been edited. Desktop and mobile project refresh create new historical copies. The target can be serialized, saved with its Graph, reopened, and previewed on both platforms.
 
-The target is sampled geometry, so it does not retain a live symbolic curve inside Geometry. For a symbolic curve and differential analysis, use **Promote to Curve**. The 1,024 segment bound is intentional; larger or adaptive Geometry exports need a separate performance and fidelity design.
+Opening the Geometry target uses the main Geometry viewer component with orbit, Fit geometry, grid and reset controls. The target is sampled geometry, so it does not retain a live symbolic curve inside Geometry. For a symbolic curve and differential analysis, use **Promote to Curve**. The 1,024 segment bound is intentional; larger or adaptive Geometry exports need a separate performance and fidelity design.
 
 Verification: core and desktop build, desktop and mobile TypeScript checks, focused core/persistence/refresh tests, and the desktop promotion Electron flow. Physical mobile touch and visual signoff remains in the Graphs release gate.

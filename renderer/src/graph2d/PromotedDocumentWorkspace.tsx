@@ -1,8 +1,37 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { graph2DPromotionStatus, isGraph2DPromotionTargetEdited, compareGraph2DPromotionGenerations,
   replaceCurveDocumentSource, replaceSurfaceDocumentSource, evaluateGraph2DPromotionGeometry,
   type Graph2DAnyPromotion, type Graph2DDocument } from "@math3d/core";
 import { PromotionGeometryView } from "./PromotionGeometryView";
+import { GeometryViewer } from "../components/GeometryViewer";
+
+function PromotedGeometryMainViewer({ promotion }: { promotion: Extract<Graph2DAnyPromotion["document"], { format: "math3d.geometry-document" }> }) {
+  const [fitToken, setFitToken] = useState(1);
+  const [resetToken, setResetToken] = useState(0);
+  const [showGrid, setShowGrid] = useState(true);
+  const scene = promotion.source.geometry ?? { segments: [] };
+  const bounds = useMemo(() => {
+    const points = scene.segments?.flatMap((segment) => [segment.a, segment.b]) ?? [];
+    if (!points.length) return { center: { x: 0, y: 0, z: 0 }, radius: 2 };
+    const min = { x: Infinity, y: Infinity, z: Infinity }, max = { x: -Infinity, y: -Infinity, z: -Infinity };
+    for (const point of points) for (const axis of ["x", "y", "z"] as const) {
+      min[axis] = Math.min(min[axis], point[axis]); max[axis] = Math.max(max[axis], point[axis]);
+    }
+    return { center: { x: (min.x + max.x) / 2, y: (min.y + max.y) / 2, z: (min.z + max.z) / 2 },
+      radius: Math.max(0.1, Math.hypot(max.x - min.x, max.y - min.y, max.z - min.z) / 2) };
+  }, [scene]);
+  return <div data-testid="graph2d-geometry-main-viewer" style={{ flex: 1, minWidth: 260, minHeight: 320, display: "flex", flexDirection: "column" }}>
+    <div style={{ display: "flex", gap: 8, alignItems: "center", padding: 8, flexWrap: "wrap" }}>
+      <strong>Geometry viewer</strong>
+      <button type="button" onClick={() => setFitToken((value) => value + 1)}>Fit geometry</button>
+      <button type="button" aria-pressed={showGrid} onClick={() => setShowGrid((value) => !value)}>Grid</button>
+      <button type="button" onClick={() => setResetToken((value) => value + 1)}>Reset view</button>
+      <span>Orbit to inspect · profile lies in z=0</span>
+    </div>
+    <div style={{ flex: 1, minHeight: 280 }}><GeometryViewer scene={scene} showPlanes={showGrid}
+      cameraFitCommand={{ token: fitToken, ...bounds, padding: 1.25 }} resetToken={resetToken} pickEnabled={false} /></div>
+  </div>;
+}
 
 export function PromotedDocumentWorkspace({ promotion, source, onEdit, onLocateSource, onRegenerate, onClose }: {
   promotion: Graph2DAnyPromotion; source: Graph2DDocument;
@@ -46,6 +75,7 @@ export function PromotedDocumentWorkspace({ promotion, source, onEdit, onLocateS
       {error && <p role="alert">{error}</p>}
       <button type="button" onClick={onClose}>Return to gallery</button>
     </aside>
-    <div style={{ flex: 1, minWidth: 260, minHeight: 300 }}><PromotionGeometryView document={promotion.document} /></div>
+    {promotion.document.format === "math3d.geometry-document" ? <PromotedGeometryMainViewer promotion={promotion.document} /> :
+      <div style={{ flex: 1, minWidth: 260, minHeight: 300 }}><PromotionGeometryView document={promotion.document} /></div>}
   </section>;
 }
