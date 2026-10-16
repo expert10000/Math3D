@@ -1,7 +1,7 @@
 import { useId } from "react";
 import {
   resolveGraph2DViewport, graph2DHasLogScale, type Graph2DDisplay, type Graph2DSamplingArtifact,
-  graph2DWorldToScreen, clipGraph2DLineOverlay, type Graph2DLineOverlay,
+  graph2DWorldToScreen, clipGraph2DLineOverlay, projectGraph2DConstructionVector, type Graph2DLineOverlay,
   type Graph2DProbe, type Graph2DScreenSize,
   type Graph2DIntervalAnalysis,
   type Graph2DIntegralAnalysis,
@@ -214,9 +214,19 @@ export function Graph2DPlot({ display, size, series, regression, constructions, 
             if (!clipped) return null;
             const a = graph2DWorldToScreen(display.viewport, size, clipped[0]);
             const b = graph2DWorldToScreen(display.viewport, size, clipped[1]);
-            return <line key={item.id} data-graph2d-construction={item.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y} pointerEvents="none"
-              stroke={item.style.color} strokeWidth={item.style.lineWidth}
-              strokeDasharray={item.style.lineStyle === "dashed" ? "8 5" : item.style.lineStyle === "dotted" ? "2 4" : undefined} />;
+            const vector = projectGraph2DConstructionVector(display.viewport, size, item.point!, item.direction);
+            return <g key={item.id} pointerEvents="none">
+              <line data-graph2d-construction={item.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                stroke={item.style.color} strokeWidth={item.style.lineWidth}
+                strokeDasharray={item.style.lineStyle === "dashed" ? "8 5" : item.style.lineStyle === "dotted" ? "2 4" : undefined} />
+              {vector && <g data-graph2d-construction-vector={item.id} aria-label={item.kind === "normal" ? "Normal direction" : "Tangent direction"}
+                fill="none" stroke={item.style.color} strokeWidth={Math.max(2, item.style.lineWidth)} strokeLinecap="round" strokeLinejoin="round">
+                <line x1={vector.start.x} y1={vector.start.y} x2={vector.tip.x} y2={vector.tip.y} />
+                <polyline points={`${vector.left.x},${vector.left.y} ${vector.tip.x},${vector.tip.y} ${vector.right.x},${vector.right.y}`} />
+                <text x={vector.label.x} y={vector.label.y + 4} fill={item.style.color} stroke="none" fontSize="12" fontWeight="700"
+                  textAnchor="middle">{item.kind === "normal" ? "N" : "T"}</text>
+              </g>}
+            </g>;
           }
           const screen = graph2DWorldToScreen(display.viewport, size, item.point!);
           if (!Number.isFinite(screen.x) || !Number.isFinite(screen.y)) return null;

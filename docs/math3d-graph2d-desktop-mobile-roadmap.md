@@ -341,13 +341,13 @@ This is the actionable N01–N10 sequence. Earlier consolidation notes used N03 
 | GRA-N03 | P0 | Eliminate toolbar overflow and improve responsive layout | Delivered. |
 | GRA-N04 | P0 | Compact Construction Inspector and add a construction tree | Delivered on desktop and mobile. |
 | GRA-N05 | P0 | Add exact-reference numerical regression tests | Delivered for unit-circle and saved-construction cases. |
-| GRA-N06 | P1 | Show tangent vectors, normal vectors, curvature and coordinates | **Partial:** values and lines exist; anchored directional arrows remain. **Next implementation.** |
+| GRA-N06 | P1 | Show tangent vectors, normal vectors, curvature and coordinates | Software delivered: numerical values, full lines and labelled directional arrows on desktop/mobile. Physical mobile visual check remains. |
 | GRA-N07 | P1 | Add intersections, roots and extrema as persistent constructions | Delivered as bounded source-linked candidates; G2D49. |
 | GRA-N08 | P1 | Drag constrained points along their source curves | Software delivered in `65d51c3e`; physical mobile touch check remains. |
 | GRA-N09 | P1 | Add expression-driven parameters and animation | **Partial:** G2D38 sliders/animation exist; expression dependencies remain. |
 | GRA-N10 | P1 | Introduce Graph → Curve / Geometry promotion | **Partial:** Curve/Surface promotion exists; direct Geometry handoff needs a contract. |
 
-**Next:** complete N06 with anchored tangent/normal direction arrows on desktop and mobile, checked against the unit circle and live N08 dragging. Then scope expression-driven parameter dependencies (N09). The N08 physical touch check proceeds when an Android device is connected; the existing MOB-G13/G2D40 device and accessibility gates still govern release.
+**Next:** scope and implement expression-driven parameter dependencies (N09), including cycle rejection and deterministic animation. Complete the N06/N08 physical touch and visual check when the Samsung is attached again; the existing MOB-G13/G2D40 device and accessibility gates still govern release.
 
 [G2D51](graph2d-g2d51-curvature.md) begins the next bounded Graphs slice with source-linked signed curvature at an explicit committed probe. It reuses the existing derivative service and leaves persistent curvature geometry and other graph kinds for a separate contract review.
 

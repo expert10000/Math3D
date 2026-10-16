@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from "react-native";
-import { fitGraph2DViewport, panGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, graph2DHasLogScale, pickGraph2DProbe,
+import { fitGraph2DViewport, panGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, graph2DHasLogScale, projectGraph2DConstructionVector, pickGraph2DProbe,
   graph2DSceneFitBounds, graph2DConstructionFitBounds,
   resolveGraph2DViewport, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, graph2DParameterSessionKey,
   previewGraph2DParameterValues, graph2DRegressionOverlaySeries, applyGraph2DAuthoring, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion } from "@math3d/core";
@@ -310,8 +310,22 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
             const clipped = clipGraph2DLineOverlay({ artifactId: item.id, kind: item.kind === "normal" ? "normal" : "tangent",
               source: constructions.source, probeGeneration: constructions.generationKey, objectId: item.sourceObjectId,
               anchor: item.point!, direction: item.direction }, viewport, size);
-            return clipped ? <Line key={item.id} a={graph2DWorldToScreen(viewport, size, clipped[0])}
-              b={graph2DWorldToScreen(viewport, size, clipped[1])} color={item.style.color} width={item.style.lineWidth} /> : null;
+            if (!clipped) return null;
+            const vector = projectGraph2DConstructionVector(viewport, size, item.point!, item.direction);
+            return <React.Fragment key={item.id}>
+              <Line a={graph2DWorldToScreen(viewport, size, clipped[0])}
+                b={graph2DWorldToScreen(viewport, size, clipped[1])} color={item.style.color} width={item.style.lineWidth} />
+              {vector && <React.Fragment>
+                <Line a={vector.start} b={vector.tip} color={item.style.color} width={Math.max(2, item.style.lineWidth)} />
+                <Line a={vector.left} b={vector.tip} color={item.style.color} width={Math.max(2, item.style.lineWidth)} />
+                <Line a={vector.right} b={vector.tip} color={item.style.color} width={Math.max(2, item.style.lineWidth)} />
+                <Text testID={`mobile-graph-construction-vector-${item.id}`}
+                  style={{ position: "absolute", left: vector.label.x - 7, top: vector.label.y - 9, width: 14,
+                    color: item.style.color, fontSize: 12, fontWeight: "700", textAlign: "center" }}>
+                  {item.kind === "normal" ? "N" : "T"}
+                </Text>
+              </React.Fragment>}
+            </React.Fragment>;
           }
           const screen = graph2DWorldToScreen(viewport, size, item.point!);
           return Number.isFinite(screen.x) && Number.isFinite(screen.y) ? <View key={item.id} testID={`mobile-graph-construction-${item.id}`}

@@ -20,9 +20,16 @@ test("GRA-N08 drags a saved point on its curve, previews dependents, and undoes 
     const marker = page.locator('[data-graph2d-draggable-point="construction_1"]');
     const point = page.locator('[data-graph2d-construction="construction_1"]');
     const tangent = page.locator('[data-graph2d-construction="construction_2"]');
+    const tangentVector = page.locator('[data-graph2d-construction-vector="construction_2"]');
+    const normalVector = page.locator('[data-graph2d-construction-vector="construction_3"]');
     const source = page.locator('[data-graph2d-path="function_1"]');
     const beforePoint = await point.getAttribute("cx");
     const beforeTangent = await tangent.getAttribute("x1");
+    await expect(tangentVector).toBeVisible();
+    await expect(normalVector).toBeVisible();
+    await expect(tangentVector).toContainText("T");
+    await expect(normalVector).toContainText("N");
+    const beforeVector = await tangentVector.locator("line").getAttribute("x2");
     const beforeSource = await source.getAttribute("d");
     const box = await marker.boundingBox();
     expect(box).not.toBeNull();
@@ -32,6 +39,7 @@ test("GRA-N08 drags a saved point on its curve, previews dependents, and undoes 
     await page.mouse.move(x + 100, y - 35, { steps: 4 });
     await expect.poll(() => point.getAttribute("cx")).not.toBe(beforePoint);
     await expect.poll(() => tangent.getAttribute("x1")).not.toBe(beforeTangent);
+    await expect.poll(() => tangentVector.locator("line").getAttribute("x2")).not.toBe(beforeVector);
     await expect(source).toHaveAttribute("d", beforeSource!);
     await page.keyboard.press("Escape"); await page.mouse.up();
     await expect(point).toHaveAttribute("cx", beforePoint!);
@@ -42,6 +50,7 @@ test("GRA-N08 drags a saved point on its curve, previews dependents, and undoes 
     await page.getByTestId("main-viewer").focus(); await page.keyboard.press("Control+z");
     await expect(point).toHaveAttribute("cx", beforePoint!);
     await expect(tangent).toHaveAttribute("x1", beforeTangent!);
+    await expect(tangentVector.locator("line")).toHaveAttribute("x2", beforeVector!);
   } finally { await closeSurfaceApp(app); }
 });
 

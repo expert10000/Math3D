@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyGraph2DAuthoring, createEmptyGraph2DDocument, evaluateGraph2DParametric,
   graph2DPointConstructionFromProbe, graph2DDerivedConstructionFromPoint,
   graph2DCurvatureConstructionFromPoint, graph2DOsculatingCircleConstructionFromPoint,
-  graph2DWorldToScreen, previewGraph2DConstrainedPoint, projectGraph2DConstrainedPoint,
+  graph2DWorldToScreen, projectGraph2DConstructionVector, previewGraph2DConstrainedPoint, projectGraph2DConstrainedPoint,
   resolveGraph2DConstructions, type Graph2DDocument } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 
@@ -49,6 +49,25 @@ describe("constrained point dragging", () => {
     expect(osculating?.circle?.center.x).toBeCloseTo(0, 8);
     expect(osculating?.circle?.center.y).toBeCloseTo(0, 8);
     expect(osculating?.circle?.radius).toBeCloseTo(1, 8);
+    const tangentArrow = projectGraph2DConstructionVector(viewport, size, point!.point!, tangent!.direction!)!;
+    const normalArrow = projectGraph2DConstructionVector(viewport, size, point!.point!, normal!.direction!)!;
+    const tangentDelta = { x: tangentArrow.tip.x - tangentArrow.start.x, y: tangentArrow.tip.y - tangentArrow.start.y };
+    const normalDelta = { x: normalArrow.tip.x - normalArrow.start.x, y: normalArrow.tip.y - normalArrow.start.y };
+    expect(tangentDelta.x * normalDelta.x + tangentDelta.y * normalDelta.y).toBeCloseTo(0, 7);
+    const center = graph2DWorldToScreen(viewport, size, { x: 0, y: 0 });
+    expect(normalDelta.x * (center.x - normalArrow.start.x) + normalDelta.y * (center.y - normalArrow.start.y)).toBeGreaterThan(0);
+  });
+
+  it("projects mathematical direction through unequal screen scales and suppresses unrepresentable arrows", () => {
+    const stretched = { xMin: -2, xMax: 2, yMin: -1, yMax: 1, aspect: "free" as const };
+    const vector = projectGraph2DConstructionVector(stretched, { width: 400, height: 400 },
+      { x: 0, y: 0 }, { x: 1, y: 1 })!;
+    expect(vector.tip.x - vector.start.x).toBeCloseTo((vector.start.y - vector.tip.y) / 2, 8);
+    expect(projectGraph2DConstructionVector(stretched, size, { x: 0, y: 0 }, { x: 0, y: 0 })).toBeNull();
+    expect(projectGraph2DConstructionVector({ ...stretched, xMin: .1, xMax: 10, xScale: "log10" }, size,
+      { x: 1, y: 0 }, { x: 1, y: 0 })).toBeNull();
+    expect(projectGraph2DConstructionVector(stretched, { width: 400, height: 400 },
+      { x: 1.99, y: 0 }, { x: 1, y: 0 })).toBeNull();
   });
 
   it("keeps the previous loop at coincident points and clamps to an authored endpoint", () => {
