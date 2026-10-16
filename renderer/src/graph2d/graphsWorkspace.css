@@ -275,6 +275,11 @@
 .graph2d-constructions-panel { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px; }
 .graph2d-constructions-panel h3 { margin: 0 0 8px; }
 .graph2d-constructions-panel ol { padding-left: 20px; }
+.graph2d-construction-tree { margin: 10px 0; }
+.graph2d-construction-source { border-top: 1px solid var(--border); padding: 8px 0 2px; }
+.graph2d-construction-source > strong { font-size: 13px; }
+.graph2d-construction-source > small { display: block; color: var(--muted); margin-top: 2px; }
+.graph2d-construction-source > ol, .graph2d-construction-children { border-left: 1px solid var(--border); margin: 6px 0 0 6px; padding-left: 18px; }
 .graph2d-construction-card { border-top: 1px solid var(--border); padding: 8px 0; }
 .graph2d-construction-card small { display: block; margin: 3px 0 8px; }
 .graph2d-construction-card header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }

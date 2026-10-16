@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { applyGraph2DAuthoring, createEmptyGraph2DDocument, graph2DDerivedConstructionFromPoint,
+  graph2DConstructionHierarchy,
   graph2DCurvatureConstructionFromPoint, graph2DOsculatingCircleConstructionFromPoint, graph2DPointConstructionFromProbe,
   GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY,
   isGraph2DConstructionArtifactCurrent, resolveGraph2DConstructions, evaluateGraph2DParametric,
@@ -28,6 +29,33 @@ const scene = (kind: "explicit" | "parametric" | "polar", expression: string) =>
   return adapter;
 };
 const ready = (document: Graph2DDocument) => resolveGraph2DConstructions(document).objects;
+
+describe("GRA-N04 construction hierarchy", () => {
+  it("groups saved points and their derived objects under each source curve", () => {
+    const adapter = new Graph2DCommandAdapter(createEmptyGraph2DDocument("hierarchy-two-curves"));
+    for (const label of ["P", "Q"]) adapter.commitScene(applyGraph2DAuthoring(adapter.document(), {
+      type: "create-parametric", draft: { label, xExpression: "cos(t)", yExpression: "sin(t)",
+        domain: { min: 0, max: 2 * Math.PI, includeMin: true, includeMax: true }, style },
+    }), "create-parametric");
+    const [p, q] = adapter.document().source.objects;
+    if (p?.kind !== "parametric" || q?.kind !== "parametric") throw new Error("Expected two parametric curves.");
+    for (const [curve, value, label] of [[p, 1, "Point 1"], [q, 2, "Point 2"]] as const) {
+      adapter.commitSelection({ objectId: curve.id, probe: { objectId: curve.id,
+        x: Math.cos(value), y: Math.sin(value), parameter: value } });
+      adapter.commitConstruction({ type: "create", object: graph2DPointConstructionFromProbe(adapter.document(), label) });
+      const pointId = adapter.document().source.constructions!.objects.at(-1)!.id;
+      adapter.commitConstruction({ type: "create", object: graph2DDerivedConstructionFromPoint(adapter.document(), pointId, "tangent") });
+    }
+    const hierarchy = graph2DConstructionHierarchy(adapter.document().source);
+    expect(hierarchy.map(group => [group.source.label, group.roots[0]?.object.label,
+      group.roots[0]?.children[0]?.object.kind])).toEqual([["P", "Point 1", "tangent"], ["Q", "Point 2", "tangent"]]);
+    const html = renderToStaticMarkup(<Graph2DConstructionsPanel document={adapter.document()}
+      artifact={resolveGraph2DConstructions(adapter.document())} />);
+    expect(html.indexOf("Point 1")).toBeLessThan(html.indexOf("Point 2"));
+    expect(html.match(/class="graph2d-construction-children"/g)).toHaveLength(2);
+    expect(html).toContain("Constructions (4)");
+  });
+});
 
 describe("G2D48 source-derived Graph constructions", () => {
   it("resolves explicit point, tangent, normal and projects clipped geometry", () => {

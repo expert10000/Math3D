@@ -117,6 +117,8 @@ test("G2D57 saves an osculating circle and updates its geometry after source edi
     await panel.getByRole("button", { name: "Save probe as point" }).click();
     await panel.getByRole("button", { name: "Add osculating circle" }).click();
     const saved = panel.getByTestId("graph2d-saved-osculating-circle");
+    await expect(panel.locator(".graph2d-construction-source")).toContainText("Parabola");
+    await expect(panel.locator(".graph2d-construction-children")).toContainText("Osculating circle");
     await expect(saved).toContainText("radius");
     await expect(page.locator('[data-graph2d-construction="construction_2"]')).toHaveCount(1);
     await expect(page.locator('[data-graph2d-construction="construction_2"]')).toHaveAttribute("stroke-dasharray", "8 5");
@@ -134,12 +136,12 @@ test("G2D57 saves an osculating circle and updates its geometry after source edi
     const authoredPath = await authored.getAttribute("d");
     await panel.locator(".graph2d-construction-global-more summary").click();
     await panel.getByRole("button", { name: "Clear all constructions" }).click();
-    await expect(panel).toContainText("Constructions (0/32)");
+    await expect(panel).toContainText("Constructions (0)");
     await expect(page.locator("[data-graph2d-construction]")).toHaveCount(0);
     await expect.poll(() => authored.getAttribute("d")).toBe(authoredPath);
     await page.getByTestId("main-viewer").focus();
     await page.keyboard.press("Control+z");
-    await expect(panel).toContainText("Constructions (2/32)");
+    await expect(panel).toContainText("Constructions (2)");
     await expect(page.locator('[data-graph2d-construction="construction_2"]')).toHaveCount(1);
   } finally { await closeSurfaceApp(app); }
 });
