@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppState, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { createGraph2DAnimationPlan, graph2DAnimationFrame, Graph2DAnimationPlayer, Graph2DAnimationExportBuilder,
-  graph2DParameterDraftFromFields, graph2DParameterFields, graph2DParameterNumber, getGraph2DInteractivePresetGuidance, graph2DPublicationTableAllowance, quantizeGraph2DParameterValue,
+  graph2DParameterDraftFromFields, graph2DParameterFields, graph2DParameterNumber, getGraph2DInteractivePresetGuidance, graph2DPublicationTableAllowance, quantizeGraph2DParameterValue, previewGraph2DParameterValues,
   type Graph2DDocument, type Graph2DParameterAction, type Graph2DParameterFields, type Graph2DParameterControl } from "@math3d/core";
 import { mobileGraphPointTables } from "./services/mobileGraphPointTables";
 import { saveMobileGraphPublication, shareMobileGraphPublication } from "./services/mobileGraphPublicationService";
@@ -31,7 +31,10 @@ export function MobileGraphParametersPanel({ document, onPreview, onCommit, sett
     from: String(guidance?.animation.from ?? configured[0]?.control?.min ?? -5), to: String(guidance?.animation.to ?? configured[0]?.control?.max ?? 5),
     frames: String(guidance?.animation.frames ?? 21), fps: String(guidance?.animation.fps ?? 10) });
   const [edit, setEdit] = useState<{ name?: string; fields: Graph2DParameterFields } | null>(null);
+  const [expressionEdit, setExpressionEdit] = useState<{ original?: string; name: string; expression: string } | null>(null);
   const [preview, setPreview] = useState<{ name: string; text: string; value?: number } | null>(null);
+  const shown = preview?.value === undefined ? document.source.variables :
+    previewGraph2DParameterValues(document, { [preview.name]: preview.value }).source.variables;
   const [animation, setAnimation] = useState(recommendedAnimation);
   const [index, setIndex] = useState<number | null>(null), [running, setRunning] = useState(false), [message, setMessage] = useState(""), [busy, setBusy] = useState(false);
   const player = useRef(new Graph2DAnimationPlayer(setTimeout, h => clearTimeout(h as ReturnType<typeof setTimeout>)));
@@ -93,6 +96,7 @@ export function MobileGraphParametersPanel({ document, onPreview, onCommit, sett
   if (compact) return <View style={s.panel} testID="mobile-graph-parameter-cards"><Text accessibilityRole="header">Parameter preview</Text>
     {configured.map(p => <View key={p.name}><Text>{p.name} = {preview?.name === p.name ? preview.text : p.value} {p.control!.unit}</Text>
       <ParameterSlider name={p.name} control={p.control!} value={preview?.name === p.name && preview.value !== undefined ? preview.value : p.value} disabled={running || busy} onChange={v => scrub(p.name, String(v))} /></View>)}
+    {shown.filter(p => p.expression).map(p => <Text key={p.name}>{p.name} = {p.value} · {p.expression}</Text>)}
     {!configured.length && <Text>Configure a parameter to add a slider.</Text>}
     <View style={s.row}>{button("Play animation", play, !configured.length || running || busy)}{button("Stop animation", stop, !running)}
       {button("Apply preview value", () => safely(() => { if (preview?.value !== undefined) onCommit({ type: "parameter-value", name: preview.name, value: preview.value }); }), running || busy || preview?.value === undefined)}
@@ -102,21 +106,41 @@ export function MobileGraphParametersPanel({ document, onPreview, onCommit, sett
     <Text accessibilityLiveRegion="polite">{message || (index === null ? "Preview is not saved. Apply commits one value." : `Frame ${index + 1} / ${animation.frames}`)}</Text>
   </View>;
   return <View style={s.panel} testID="mobile-graph-parameters"><Text accessibilityRole="header" style={s.title}>Parameters</Text>
-    <Text>Sliders and animation preview only. Apply commits one value; Cancel restores source. Units are labels, not conversions.</Text>
+    <Text>Sliders and animation preview only. Derived expressions update with inputs. Apply commits the input and its derived results; Cancel restores source. Units are labels, not conversions.</Text>
     {guidance && <View accessibilityLabel="Interactive recipe guidance"><Text>Matches {guidance.title}</Text><Text>{guidance.description}</Text>
       <Text>Suggestions match current source, not stored origin. Editing expressions, domains or controls removes hints.</Text></View>}
     {!configured.length && <Text>Configure an existing variable or add a parameter; use its name in a function, for example a*x.</Text>}
-    {document.source.variables.map(p => <View key={p.name}><Text>{p.name} = {p.value} {p.control?.unit}</Text>
+    {document.source.variables.map(p => <View key={p.name}><Text>{p.name} = {shown.find(value => value.name === p.name)?.value} {p.control?.unit}</Text>
+      {p.expression && <Text>Derived from: {p.expression}</Text>}
       {guidance?.parameters.filter(hint => hint.name === p.name).map(hint => <View key={hint.name}><Text>{hint.hint} Default {hint.defaultValue}.</Text>
         {button(`Preview default ${p.name}`, () => scrub(p.name, String(hint.defaultValue)), running || busy)}</View>)}
       {p.control && <><ParameterSlider name={p.name} control={p.control} value={preview?.name === p.name && preview.value !== undefined ? preview.value : p.value}
         disabled={running || busy} onChange={value => scrub(p.name, String(value))} />
         <Text>{p.name} preview value · range {p.control.min}…{p.control.max}, step {p.control.step}</Text>
         <TextInput accessibilityLabel={`${p.name} preview value`} style={s.input} value={preview?.name === p.name ? preview.text : String(p.value)} editable={!running && !busy} onChangeText={text => scrub(p.name, text)} /></>}
-      <View style={s.row}>{button(`Configure ${p.name}`, () => setEdit({ name: p.name, fields: graph2DParameterFields(p) }), running || busy)}
+      <View style={s.row}>{p.expression ? <>
+        {button(`Edit expression ${p.name}`, () => setExpressionEdit({ original: p.name, name: p.name, expression: p.expression! }), running || busy)}
+        {button(`Convert ${p.name} to slider`, () => setEdit({ name: p.name, fields: graph2DParameterFields(p) }), running || busy)}
+      </> : <>
+        {button(`Configure ${p.name}`, () => setEdit({ name: p.name, fields: graph2DParameterFields(p) }), running || busy)}
+        {button(`Make ${p.name} derived`, () => setExpressionEdit({ original: p.name, name: p.name, expression: "" }), running || busy)}
+      </>}
         {button(`Delete ${p.name}`, () => safely(() => onCommit({ type: "parameter-delete", name: p.name })), running || busy)}</View>
     </View>)}
     {button("Add parameter", () => setEdit({ fields: graph2DParameterFields() }), document.source.variables.length >= 16 || running || busy)}
+    {button("Add expression parameter", () => setExpressionEdit({ name: "", expression: "" }), document.source.variables.length >= 16 || running || busy)}
+    {expressionEdit && <View><Text>Expression parameter</Text>
+      <TextInput accessibilityLabel="Expression parameter name" autoCapitalize="none" style={s.input} value={expressionEdit.name}
+        maxLength={32} editable={!expressionEdit.original} onChangeText={name => setExpressionEdit({ ...expressionEdit, name })} />
+      <TextInput accessibilityLabel="Parameter expression" autoCapitalize="none" style={s.input} value={expressionEdit.expression}
+        maxLength={512} placeholder="2*a + sin(b)" onChangeText={expression => setExpressionEdit({ ...expressionEdit, expression })} />
+      <Text>Use existing parameter names, numbers, constants and Graphs functions. Cycles and undefined results are rejected.</Text>
+      <View style={s.row}>{button("Save expression", () => safely(() => {
+        onCommit(expressionEdit.original ? { type: "parameter-expression-configure", name: expressionEdit.original, expression: expressionEdit.expression } :
+          { type: "parameter-expression-create", name: expressionEdit.name, expression: expressionEdit.expression });
+        setExpressionEdit(null);
+      }), running || busy)}{button("Cancel expression", () => setExpressionEdit(null))}</View>
+    </View>}
     {edit && <View>{(Object.keys(edit.fields) as (keyof Graph2DParameterFields)[]).map(key => <View key={key}><Text>Parameter {key}</Text>
       <TextInput accessibilityLabel={`Parameter ${key}`} autoCapitalize="none" style={s.input} value={edit.fields[key]} maxLength={key === "name" ? 32 : 64}
         editable={key !== "name" || !edit.name} onChangeText={text => setEdit({ ...edit, fields: { ...edit.fields, [key]: text } })} /></View>)}

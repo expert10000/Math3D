@@ -10,6 +10,25 @@ import { serializeMobileProjectHandoff } from "../../apps/mobile/src/models/mobi
 import { mobileGraphPanelDestination } from "../../apps/mobile/src/models/mobileGraphLayout";
 
 describe("G2D38 native parameter ownership and deterministic desktop return", () => {
+  it("GRA-N09 resolves derived parameters through native authoring, preview, playback and handoff", () => {
+    const adapter = new Graph2DCommandAdapter(createEmptyGraph2DDocument("native-derived"));
+    adapter.commitScene(applyMobileGraphAuthoring(adapter.document(), {
+      type: "parameter-create", draft: { name: "a", value: 1, min: 0, max: 3, step: 1, unit: "" },
+    }), "parameter-create");
+    const document = adapter.commitScene(applyMobileGraphAuthoring(adapter.document(), {
+      type: "parameter-expression-create", name: "b", expression: "2*a+1",
+    }), "parameter-expression-create");
+    expect(document.source.variables.map(p => p.value)).toEqual([1, 3]);
+    expect(previewGraph2DParameterValues(document, { a: 2 }).source.variables.map(p => p.value)).toEqual([2, 5]);
+    const plan = createGraph2DAnimationPlan(document, { parameter: "a", from: 0, to: 3, frames: 4, fps: 5 });
+    expect(graph2DAnimationFrame(document, plan, 3).document.source.variables.map(p => p.value)).toEqual([3, 7]);
+    const handoff = createWorkspaceProjectHandoff(createGraph2DWorkspaceProject(document), {
+      producer: { platform: "desktop", name: "Math3D", version: "1.5.0" },
+    });
+    const stored = importMobileGraph(serializeWorkspaceProjectHandoff(handoff), [], "derived.handoff.json", 1, "desktop");
+    expect(readMobileGraph(stored).source.variables).toEqual(document.source.variables);
+    expect(adapter.undo()?.source.variables.map(p => p.value)).toEqual([1]);
+  });
   it("commits controls through the shared adapter and retains ranges/units through real import/save/export", () => {
     const initial = instantiateGraph2DPreset(getGraph2DPresetCatalog().get("line-comparison")!, "parameter-return").document;
     const handoff = createWorkspaceProjectHandoff(createGraph2DWorkspaceProject(initial), { producer: { platform: "desktop", name: "Math3D", version: "1.5.0" } });

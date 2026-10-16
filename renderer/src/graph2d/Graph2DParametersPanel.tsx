@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createGraph2DAnimationPlan, graph2DAnimationFrame, Graph2DAnimationPlayer, graph2DParameterDraftFromFields, graph2DParameterFields,
   graph2DParameterNumber, getGraph2DInteractivePresetGuidance, graph2DPublicationTableAllowance, quantizeGraph2DParameterValue, type Graph2DDocument, type Graph2DParameterAction,
+  previewGraph2DParameterValues,
   type Graph2DAnimationPlan, type Graph2DParameterFields, type Graph2DPublicationArtifact } from "@math3d/core";
 import { pointTableStore } from "./pointTableStore";
 
@@ -10,8 +11,11 @@ export function Graph2DParametersPanel({ document, onPreview, onCommit, settled,
   compact?: boolean; onExpand?: () => void;
 }) {
   const [edit, setEdit] = useState<{ name?: string; fields: Graph2DParameterFields } | null>(null);
+  const [expressionEdit, setExpressionEdit] = useState<{ original?: string; name: string; expression: string } | null>(null);
   const [preview, setPreview] = useState<{ name: string; text: string; value?: number } | null>(null);
   const configured = document.source.variables.filter(p => p.control);
+  const shown = preview?.value === undefined ? document.source.variables :
+    previewGraph2DParameterValues(document, { [preview.name]: preview.value }).source.variables;
   const guidance = getGraph2DInteractivePresetGuidance(document);
   const recommendedAnimation = () => ({ parameter: guidance?.animation.parameter ?? configured[0]?.name ?? "",
     from: String(guidance?.animation.from ?? configured[0]?.control?.min ?? -5), to: String(guidance?.animation.to ?? configured[0]?.control?.max ?? 5),
@@ -67,6 +71,7 @@ export function Graph2DParametersPanel({ document, onPreview, onCommit, settled,
       <input aria-label={`${p.name} card slider`} type="range" min={p.control!.min} max={p.control!.max} step={p.control!.step}
         disabled={running || exporting} value={preview?.name === p.name && preview.value !== undefined ? preview.value : p.value}
         onChange={e => scrub(p.name, e.target.value, true)} /></label>)}
+    {shown.filter(p => p.expression).map(p => <p key={p.name}>{p.name} = {p.value} · {p.expression}</p>)}
     <div><button disabled={!configured.length || running || exporting} onClick={play}>Play animation</button><button disabled={!running} onClick={stop}>Stop animation</button>
       <button disabled={running || exporting || preview?.value === undefined} onClick={() => safely(() => { if (preview?.value !== undefined) onCommit({ type: "parameter-value", name: preview.name, value: preview.value }); })}>Apply preview value</button>
       <button onClick={() => { stop(); setPreview(null); setIndex(null); onPreview(null); }}>Cancel preview</button>
@@ -77,12 +82,13 @@ export function Graph2DParametersPanel({ document, onPreview, onCommit, settled,
   return <aside className="graph2d-parameters-panel" aria-label="Graph parameters" data-testid="graph2d-parameters"
     onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }}>
     <header><h2>Parameters</h2><button data-testid="graph2d-parameters-close" onClick={onClose}>Close parameters</button></header>
-    <p>Sliders and animation are previews. Apply commits one value; Cancel restores the saved source. Units are labels, not conversions.</p>
+    <p>Sliders and animation are previews. Derived expressions update with their inputs. Apply commits one value and its derived results; Cancel restores the saved source. Units are labels, not conversions.</p>
     {guidance && <section aria-label="Interactive recipe guidance"><strong>Matches {guidance.title}</strong><p>{guidance.description}</p>
       <small>Suggestions are matched to the current recipe, not stored origin. Editing its expressions, domains or controls removes these hints.</small></section>}
     {!configured.length && <p>Configure an existing named variable or add a parameter, then use its name in a function (for example a*x).</p>}
     {document.source.variables.map(p => <section key={p.name} aria-label={`Parameter ${p.name}`}>
-      <strong>{p.name} = {p.value} {p.control?.unit}</strong>
+      <strong>{p.name} = {shown.find(value => value.name === p.name)?.value} {p.control?.unit}</strong>
+      {p.expression && <p>Derived from: <code>{p.expression}</code></p>}
       {guidance?.parameters.filter(hint => hint.name === p.name).map(hint => <div key={hint.name}><p>{hint.hint} Default {hint.defaultValue}.</p>
         <button disabled={running || exporting} onClick={() => scrub(p.name, String(hint.defaultValue))}>Preview default {p.name}</button></div>)}
       {p.control && <><label>{p.name} slider<input type="range" min={p.control.min} max={p.control.max} step="any" disabled={running || exporting}
@@ -96,10 +102,27 @@ export function Graph2DParametersPanel({ document, onPreview, onCommit, settled,
         <label>{p.name} preview value<input value={preview?.name === p.name ? preview.text : String(p.value)} disabled={running || exporting}
           onChange={e => scrub(p.name, e.target.value)} /></label>
         <small>Range {p.control.min}…{p.control.max}; step {p.control.step}</small></>}
-      <button disabled={running || exporting} onClick={() => setEdit({ name: p.name, fields: graph2DParameterFields(p) })}>Configure {p.name}</button>
+      {p.expression ? <><button disabled={running || exporting} onClick={() => setExpressionEdit({ original: p.name, name: p.name, expression: p.expression! })}>Edit expression {p.name}</button>
+        <button disabled={running || exporting} onClick={() => setEdit({ name: p.name, fields: graph2DParameterFields(p) })}>Convert {p.name} to slider</button></> :
+        <><button disabled={running || exporting} onClick={() => setEdit({ name: p.name, fields: graph2DParameterFields(p) })}>Configure {p.name}</button>
+          <button disabled={running || exporting} onClick={() => setExpressionEdit({ original: p.name, name: p.name, expression: "" })}>Make {p.name} derived</button></>}
       <button disabled={running || exporting} onClick={() => safely(() => onCommit({ type: "parameter-delete", name: p.name }))}>Delete {p.name}</button>
     </section>)}
     <button disabled={document.source.variables.length >= 16 || running || exporting} onClick={() => setEdit({ fields: graph2DParameterFields() })}>Add parameter</button>
+    <button disabled={document.source.variables.length >= 16 || running || exporting}
+      onClick={() => setExpressionEdit({ name: "", expression: "" })}>Add expression parameter</button>
+    {expressionEdit && <form aria-label="Expression parameter" onSubmit={e => { e.preventDefault(); safely(() => {
+      onCommit(expressionEdit.original ? { type: "parameter-expression-configure", name: expressionEdit.original, expression: expressionEdit.expression } :
+        { type: "parameter-expression-create", name: expressionEdit.name, expression: expressionEdit.expression });
+      setExpressionEdit(null);
+    }); }}>
+      <label>Expression parameter name<input value={expressionEdit.name} maxLength={32} disabled={!!expressionEdit.original}
+        onChange={e => setExpressionEdit({ ...expressionEdit, name: e.target.value })} /></label>
+      <label>Parameter expression<input value={expressionEdit.expression} maxLength={512}
+        onChange={e => setExpressionEdit({ ...expressionEdit, expression: e.target.value })} placeholder="2*a + sin(b)" /></label>
+      <small>Use existing parameter names, numbers, constants and Graphs functions. Cycles and undefined results are rejected.</small>
+      <button>Save expression</button><button type="button" onClick={() => setExpressionEdit(null)}>Cancel expression</button>
+    </form>}
     {edit && <form onSubmit={e => { e.preventDefault(); safely(() => { const draft = graph2DParameterDraftFromFields(edit.fields);
       onCommit(edit.name ? { type: "parameter-configure", name: edit.name, draft } : { type: "parameter-create", draft }); }); }}>
       {(Object.keys(edit.fields) as (keyof Graph2DParameterFields)[]).map(key => <label key={key}>Parameter {key}<input value={edit.fields[key]} maxLength={key === "name" ? 32 : 64}

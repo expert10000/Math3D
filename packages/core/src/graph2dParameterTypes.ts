@@ -1,9 +1,10 @@
 import { GRAPH2D_FUNCTIONS } from "./graph2dExpression";
 
 export const GRAPH2D_PARAMETERS_CAPABILITY = "graph2d.parameters.v1" as const;
+export const GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY = "graph2d.parameter-expressions.v1" as const;
 export const GRAPH2D_PARAMETER_LIMITS = Object.freeze({ count: 16, magnitude: 1e9, steps: 100000, unitLength: 64 });
 export type Graph2DParameterControl = Readonly<{ min: number; max: number; step: number; unit: string }>;
-export type Graph2DParameter = Readonly<{ name: string; value: number; control?: Graph2DParameterControl }>;
+export type Graph2DParameter = Readonly<{ name: string; value: number; control?: Graph2DParameterControl; expression?: string }>;
 export type Graph2DParameterDraft = Readonly<{ name: string; value: number } & Graph2DParameterControl>;
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 const exact = (value: Record<string, unknown>, keys: string[]) => Object.keys(value).sort().join("|") === keys.sort().join("|");
@@ -16,7 +17,10 @@ export const isGraph2DParameterControl = (value: unknown): value is Graph2DParam
   value.min + value.step > value.min && value.max - value.step < value.max && typeof value.unit === "string" && value.unit.length <= GRAPH2D_PARAMETER_LIMITS.unitLength &&
   value.unit.trim() === value.unit && !/[\u0000-\u001f\u007f]/.test(value.unit);
 export const isGraph2DParameter = (value: unknown): value is Graph2DParameter => record(value) &&
-  exact(value, ["name", "value", ...(value.control !== undefined ? ["control"] : [])]) && typeof value.name === "string" && /^[a-z][a-z0-9_]{0,31}$/.test(value.name) && value.name !== "x" && finite(value.value) &&
+  exact(value, ["name", "value", ...(value.control !== undefined ? ["control"] : []), ...(value.expression !== undefined ? ["expression"] : [])]) &&
+  typeof value.name === "string" && /^[a-z][a-z0-9_]{0,31}$/.test(value.name) && value.name !== "x" && finite(value.value) &&
+  (value.expression === undefined || isGraph2DParameterName(value.name) && value.control === undefined &&
+    typeof value.expression === "string" && value.expression.length > 0 && value.expression.length <= 512 && value.expression.trim() === value.expression) &&
   (value.control === undefined || isGraph2DParameterName(value.name) && isGraph2DParameterControl(value.control) && value.value >= value.control.min && value.value <= value.control.max);
 export const validateGraph2DParameterDraft = (draft: Graph2DParameterDraft): readonly string[] => {
   const errors: string[] = [];

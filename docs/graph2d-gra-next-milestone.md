@@ -12,13 +12,13 @@
 | GRA-N06 | P1 | Show tangent vectors, normal vectors, curvature and coordinates | Software delivered. Both viewers draw labelled, fixed-screen-length T/N arrows from the resolved derivative direction alongside full construction lines and Inspector values. Core unit-circle, unequal-scale and singular cases plus desktop drag/undo are checked; physical mobile visual signoff remains open. |
 | GRA-N07 | P1 | Add roots, intersections and extrema as persistent constructions | Delivered in G2D49 as bounded source-linked candidates with unavailable states after ambiguous or invalid recomputation. |
 | GRA-N08 | P1 | Drag constrained points along source curves | Software delivered in `65d51c3e` on desktop and mobile. Live dependent geometry, cancel and one-step undo are tested; physical mobile drag signoff remains open. |
-| GRA-N09 | P1 | Add expression-driven parameters and animation | **Partial.** G2D38 delivered sliders and deterministic animation. Parameter expressions, dependency ordering, cycles and invalidation remain open. |
+| GRA-N09 | P1 | Add expression-driven parameters and animation | Software delivered. Derived parameters use the shared bounded expression grammar, dependency ordering and cycle rejection; slider preview, undo and deterministic animation recompute dependents. Desktop/mobile controls and numerical regression checks are in [GRA-N09](graph2d-gra-n09-expression-parameters.md). Physical mobile visual signoff remains open. |
 | GRA-N10 | P1 | Introduce Graph → Curve / Geometry promotion | **Partial.** G2D26–29 delivered Graph → Curve and Graph → Surface. Direct Graph → Geometry document promotion needs a destination contract. |
 
 ## GRA-N06 acceptance and next implementation
 
 The shared vector projection uses the resolved derivative and normal directions. Arrows are normalized display cues, so their screen length does not claim derivative magnitude. The full lines and numerical Inspector readout remain. Projection accounts for unequal axis scales, labels T/N, and suppresses arrows when the differential is unavailable, the display uses log axes, or the arrow would clip at the plot edge. The unit circle at `t = 2.202629` checks tangent/normal orthogonality and inward normal direction. Saved-parameter preview updates arrows, curvature and osculating circle together. Physical device signoff stays in the release gate.
 
-**Next: GRA-N09.** Specify expression grammar, dependency graph, cycle rejection and playback semantics, then implement parameter expressions without breaking existing sliders and deterministic animation. N10 follows a reviewed Geometry document handoff contract. The N06/N08 physical check can proceed when the Samsung is attached again.
+**Next: GRA-N10.** Review the Geometry destination document contract, then add direct Graph → Geometry promotion. N06/N08/N09 physical checks can proceed when the Samsung is attached again.
 
 The 32-construction cap protects current document size, evaluation work and artifact output. Raising it requires measured performance, cancellation and mobile memory evidence.

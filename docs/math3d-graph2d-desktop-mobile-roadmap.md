@@ -344,10 +344,10 @@ This is the actionable N01–N10 sequence. Earlier consolidation notes used N03 
 | GRA-N06 | P1 | Show tangent vectors, normal vectors, curvature and coordinates | Software delivered: numerical values, full lines and labelled directional arrows on desktop/mobile. Physical mobile visual check remains. |
 | GRA-N07 | P1 | Add intersections, roots and extrema as persistent constructions | Delivered as bounded source-linked candidates; G2D49. |
 | GRA-N08 | P1 | Drag constrained points along their source curves | Software delivered in `65d51c3e`; physical mobile touch check remains. |
-| GRA-N09 | P1 | Add expression-driven parameters and animation | **Partial:** G2D38 sliders/animation exist; expression dependencies remain. |
+| GRA-N09 | P1 | Add expression-driven parameters and animation | Software delivered: bounded derived expressions, dependency/cycle validation, recomputation on preview and animation, desktop/mobile controls. Physical mobile visual check remains. |
 | GRA-N10 | P1 | Introduce Graph → Curve / Geometry promotion | **Partial:** Curve/Surface promotion exists; direct Geometry handoff needs a contract. |
 
-**Next:** scope and implement expression-driven parameter dependencies (N09), including cycle rejection and deterministic animation. Complete the N06/N08 physical touch and visual check when the Samsung is attached again; the existing MOB-G13/G2D40 device and accessibility gates still govern release.
+**Next:** review and implement the direct Graph → Geometry document handoff (N10). Complete the N06/N08/N09 physical touch and visual checks when the Samsung is attached again; the existing MOB-G13/G2D40 device and accessibility gates still govern release.
 
 [G2D51](graph2d-g2d51-curvature.md) begins the next bounded Graphs slice with source-linked signed curvature at an explicit committed probe. It reuses the existing derivative service and leaves persistent curvature geometry and other graph kinds for a separate contract review.
 

@@ -13,7 +13,7 @@ import {
   GRAPH2D_MAX_DOCUMENT_BYTES, normalizeGraph2DDocument, type Graph2DDocument,
 } from "./graph2dDocument";
 import { parseGraph2DExpression } from "./graph2dExpression";
-import { GRAPH2D_PARAMETERS_CAPABILITY } from "./graph2dParameterTypes";
+import { GRAPH2D_PARAMETERS_CAPABILITY, GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY } from "./graph2dParameterTypes";
 import { GRAPH2D_GRID_CAPABILITY } from "./graph2dGridOptions";
 import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY,
   GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY } from "./graph2dConstructions";
@@ -49,7 +49,7 @@ export const inspectGraph2DCompatibility = (value: unknown): Graph2DCompatibilit
     GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY,
     GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY,
     GRAPH2D_PROBES_CAPABILITY, GRAPH2D_PROBE_VISIBILITY_CAPABILITY,
-    GRAPH2D_PARAMETERS_CAPABILITY, GRAPH2D_SCALES_CAPABILITY, GRAPH2D_GRID_CAPABILITY];
+    GRAPH2D_PARAMETERS_CAPABILITY, GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY, GRAPH2D_SCALES_CAPABILITY, GRAPH2D_GRID_CAPABILITY];
   const unsupportedCapabilities = required.filter((capability): capability is string => typeof capability === "string" && !supported.includes(capability as typeof supported[number]));
   if (unsupportedCapabilities.length)
     return { status: "unsupported", schemaVersion: version, title, unsupportedCapabilities, reason: "Graph2D capabilities are unavailable." };

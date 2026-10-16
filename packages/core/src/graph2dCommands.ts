@@ -11,7 +11,7 @@ export const GRAPH2D_SCENE_OPERATIONS = ["create", "edit", "create-parametric", 
   "create-polar", "edit-polar", "create-implicit", "edit-implicit",
   "create-inequality", "edit-inequality", "create-point-series", "edit-point-series",
   "create-piecewise", "edit-piecewise",
-  "parameter-create", "parameter-configure", "parameter-value", "parameter-delete",
+  "parameter-create", "parameter-configure", "parameter-expression-create", "parameter-expression-configure", "parameter-value", "parameter-delete",
   "grid-mode", "pinned-probes", "duplicate", "reorder", "visibility", "style", "delete", "restore"] as const;
 export type Graph2DSceneOperation = (typeof GRAPH2D_SCENE_OPERATIONS)[number];
 export type Graph2DCommandState = Readonly<{ document: Graph2DDocument }>;

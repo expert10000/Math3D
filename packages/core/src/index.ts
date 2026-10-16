@@ -90,6 +90,7 @@ export * from "./graph2dPublicationPNG";
 export * from "./graph2dPublicationArtifact";
 export * from "./graph2dSamplingPresentation";
 export * from "./graph2dParameterTypes";
+export * from "./graph2dParameterExpressions";
 export * from "./graph2dParameters";
 export * from "./graph2dAnimation";
 export * from "./graph2dParameterEditor";

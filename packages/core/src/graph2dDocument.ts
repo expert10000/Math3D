@@ -5,7 +5,8 @@ import {
 } from "./documentIdentity";
 import type { ValidationResult } from "./validation";
 import { parseGraph2DExpression, type Graph2DExpressionAst } from "./graph2dExpression";
-import { GRAPH2D_PARAMETERS_CAPABILITY, isGraph2DParameter, type Graph2DParameter } from "./graph2dParameterTypes";
+import { GRAPH2D_PARAMETERS_CAPABILITY, GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY, isGraph2DParameter, type Graph2DParameter } from "./graph2dParameterTypes";
+import { graph2DParameterExpressionsCurrent } from "./graph2dParameterExpressions";
 import { isGraph2DViewport } from "./graph2dViewport";
 import { GRAPH2D_GRID_CAPABILITY, isGraph2DGridOptions, type Graph2DGridOptions } from "./graph2dGridOptions";
 import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY, validateGraph2DConstructionSet,
@@ -144,7 +145,8 @@ export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pic
       [GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY] : []),
     ...(display?.pinnedProbes !== undefined ? [GRAPH2D_PROBES_CAPABILITY] : []),
     ...(display?.pinnedProbes?.some(p => p.visible !== undefined) ? [GRAPH2D_PROBE_VISIBILITY_CAPABILITY] : []),
-    ...(source.variables.some(variable => variable.control !== undefined) ? [GRAPH2D_PARAMETERS_CAPABILITY] : []),
+    ...(source.variables.some(variable => variable.control !== undefined || variable.expression !== undefined) ? [GRAPH2D_PARAMETERS_CAPABILITY] : []),
+    ...(source.variables.some(variable => variable.expression !== undefined) ? [GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY] : []),
     ...(display?.viewport && ["xScale", "yScale", "continuation"].some(key => key in display.viewport!) ? [GRAPH2D_SCALES_CAPABILITY] : []),
     ...(display?.axes?.gridOptions !== undefined ? [GRAPH2D_GRID_CAPABILITY] : [])];
 export type Graph2DObjectDisplay = Readonly<{
@@ -172,7 +174,7 @@ export type Graph2DDocument = Readonly<{
   requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
     typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY |
     typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY |
-    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
+    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
   source: Graph2DSource;
   display: Graph2DDisplay;
   selection: Graph2DSelection;
@@ -282,6 +284,7 @@ const validSource = (value: unknown): value is Graph2DSource => {
       !Array.isArray(value.variables) || value.variables.length > 16 ||
       !value.variables.every(isGraph2DParameter) ||
       new Set(value.variables.map((entry: { name: string }) => entry.name)).size !== value.variables.length ||
+      !graph2DParameterExpressionsCurrent(value.variables) ||
       !Array.isArray(value.assumptions) || value.assumptions.length > 32 ||
       !value.assumptions.every((entry: unknown) => bounded(entry, 160))) return false;
   const names = value.variables.map((entry: { name: string }) => entry.name);

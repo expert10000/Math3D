@@ -11,21 +11,31 @@ export const GRAPH2D_ANIMATION_LIMITS = Object.freeze({ frames: 60, fps: 30 });
 export type Graph2DAnimationDraft = Readonly<{ parameter: string; from: number; to: number; frames: number; fps: number }>;
 export type Graph2DAnimationPlan = Readonly<Graph2DAnimationDraft & { format: "math3d.graph2d-animation.v1"; base: DocumentIdentity; displayHash: string }>;
 export const graph2DParameterSessionKey = (document: Graph2DDocument) => structuralHash({ identity: document.identity, display: document.display });
-export const createGraph2DAnimationPlan = (document: Graph2DDocument, draft: Graph2DAnimationDraft): Graph2DAnimationPlan => {
+const animationControl = (document: Graph2DDocument, draft: Graph2DAnimationDraft) => {
   const parameter = document.source.variables.find(p => p.name === draft.parameter), control = parameter?.control;
   if (!control || ![draft.from, draft.to].every(v => Number.isFinite(v) && v >= control.min && v <= control.max) ||
     !Number.isSafeInteger(draft.frames) || draft.frames < 2 || draft.frames > GRAPH2D_ANIMATION_LIMITS.frames ||
     !Number.isSafeInteger(draft.fps) || draft.fps < 1 || draft.fps > GRAPH2D_ANIMATION_LIMITS.fps)
     throw new TypeError("Choose a configured parameter, in-range endpoints, 2–60 frames and 1–30 fps.");
+  return control;
+};
+export const createGraph2DAnimationPlan = (document: Graph2DDocument, draft: Graph2DAnimationDraft): Graph2DAnimationPlan => {
+  const control = animationControl(document, draft);
+  if (document.source.variables.some(variable => variable.expression)) for (let index = 0; index < draft.frames; index++) {
+    const value = quantizeGraph2DParameterValue(control, index === draft.frames - 1 ? draft.to :
+      draft.from + (draft.to - draft.from) * index / (draft.frames - 1));
+    try { previewGraph2DParameterValues(document, { [draft.parameter]: value }); }
+    catch (error) { throw new TypeError(`Animation frame ${index + 1}: ${(error as Error).message}`); }
+  }
   return Object.freeze({ format: "math3d.graph2d-animation.v1", parameter: draft.parameter, from: draft.from, to: draft.to,
     frames: draft.frames, fps: draft.fps, base: Object.freeze({ ...document.identity }), displayHash: structuralHash(document.display) });
 };
 export const graph2DAnimationFrame = (document: Graph2DDocument, plan: Graph2DAnimationPlan, index: number) => {
-  const checked = createGraph2DAnimationPlan(document, plan);
-  if (plan.format !== checked.format || structuralHash(plan.base) !== structuralHash(checked.base) || plan.displayHash !== checked.displayHash)
+  const control = animationControl(document, plan);
+  if (plan.format !== "math3d.graph2d-animation.v1" || structuralHash(plan.base) !== structuralHash(document.identity) ||
+    plan.displayHash !== structuralHash(document.display))
     throw new TypeError("Animation source or view changed; create a new plan.");
   if (!Number.isSafeInteger(index) || index < 0 || index >= plan.frames) throw new TypeError("Invalid animation frame index.");
-  const control = document.source.variables.find(p => p.name === plan.parameter)!.control!;
   const value = quantizeGraph2DParameterValue(control, index === plan.frames - 1 ? plan.to : plan.from + (plan.to - plan.from) * index / (plan.frames - 1));
   return { index, time: index / plan.fps, value, document: previewGraph2DParameterValues(document, { [plan.parameter]: value }) };
 };
@@ -72,6 +82,9 @@ export class Graph2DAnimationExportBuilder {
     this.request = JSON.parse(serialized);
     this.snapshotId = structuralHash(this.request);
     parseGraph2DDocument(JSON.stringify(this.request.publication.document));
+    const checked = createGraph2DAnimationPlan(this.request.publication.document, this.request.plan);
+    if (structuralHash(checked) !== structuralHash(this.request.plan))
+      throw new TypeError("Animation plan changed; create a new plan.");
     graph2DAnimationFrame(this.request.publication.document, this.request.plan, 0);
     if (request.publication.viewport && structuralHash(request.publication.viewport) !== structuralHash(request.publication.document.display.viewport))
       throw new TypeError("Animation export uses the committed viewport.");
