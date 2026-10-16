@@ -344,7 +344,7 @@ The [analysis and constructions follow-on roadmap](graph2d-analysis-construction
 
 [G2D58](graph2d-g2d58-clear-constructions.md) adds one-step **Clear all constructions** on desktop and mobile, preserving source graphs and viewport while removing every saved construction. Saved-point cards identify their source and explain why dependent geometry moves when an anchor changes.
 
-The broader GRA-01–12 proposal has a [coverage audit and follow-on sequence](graph2d-gra-coverage-and-next-slices.md). The delivered construction slice does not include Python/Theory Lab dataset import into Graphs, higher-order/nonlinear/spline fitting, differential equations, Fourier analysis or Graphs-to-Complex-Analysis mapping.
+The broader GRA-01–12 proposal has a [coverage audit and follow-on sequence](graph2d-gra-coverage-and-next-slices.md). A separate bounded Graphs import now covers verified 1D scalar, complex and vector components; the proposed 2D scalar line contract remains to be implemented. Higher-order/nonlinear/spline fitting, differential equations, Fourier analysis and Graphs-to-Complex-Analysis mapping remain open.
 
 ## 7. Dependency graph and parallel work
 
