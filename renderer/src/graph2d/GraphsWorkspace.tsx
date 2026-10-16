@@ -112,17 +112,17 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   }, [analysisRequest, document.identity.id]);
   const [toolHint, setToolHint] = useState("");
   const [scientificImport, setScientificImport] = useState<{
-    manifestJson: string; fingerprint: string; datasets: { datasetId: string; values: number[] }[] } | null>(null);
+    manifestJson: string; fingerprint: string; datasets: { datasetId: string; component: string; values: number[] }[] } | null>(null);
   const [scientificDatasetId, setScientificDatasetId] = useState("");
   const [scientificImportBusy, setScientificImportBusy] = useState(false);
   const [scientificImportError, setScientificImportError] = useState("");
   const scientificImportAvailable = typeof window !== "undefined" && !!window.scientificScenes?.openGraphDataset;
   const scientificPreview = useMemo(() => {
     if (!scientificImport) return null;
-    const selected = scientificImport.datasets.find(item => item.datasetId === scientificDatasetId);
+    const selected = scientificImport.datasets.find(item => `${item.datasetId}:${item.component}` === scientificDatasetId);
     if (!selected) return null;
     try { return previewGraph2DScientificDataset(scientificImport.manifestJson,
-      scientificImport.fingerprint, selected.datasetId, selected.values); }
+      scientificImport.fingerprint, selected.datasetId, selected.values, selected.component); }
     catch { return null; }
   }, [scientificImport, scientificDatasetId]);
   const openScientificDataset = async () => {
@@ -130,7 +130,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     setScientificImportBusy(true); setScientificImportError("");
     try {
       const opened = await window.scientificScenes.openGraphDataset();
-      if (opened.ok) { setScientificImport(opened.source); setScientificDatasetId(opened.source.datasets[0]?.datasetId ?? ""); }
+      if (opened.ok) { setScientificImport(opened.source); const first = opened.source.datasets[0];
+        setScientificDatasetId(first ? `${first.datasetId}:${first.component}` : ""); }
       else if (!opened.canceled) setScientificImportError(opened.error);
     } catch (error) { setScientificImportError((error as Error).message); }
     finally { setScientificImportBusy(false); }
@@ -142,7 +143,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       onAuthoringCommit({ type: "create-point-series", draft: { label: scientificPreview.label,
         table, mode: "line", domain: scientificPreview.domain, origin: scientificPreview.origin,
         style: { color: "#2563eb", lineWidth: 2, lineStyle: "solid", visible: true } } });
-      setScientificImport(null); setScientificImportError("");
+      const remaining = scientificImport?.datasets.filter(item => `${item.datasetId}:${item.component}` !== scientificDatasetId) ?? [];
+      if (remaining.length && scientificImport) {
+        setScientificImport({ ...scientificImport, datasets: remaining });
+        setScientificDatasetId(`${remaining[0]!.datasetId}:${remaining[0]!.component}`);
+      } else setScientificImport(null);
+      setScientificImportError("");
     } catch (error) { setScientificImportError((error as Error).message); }
   };
   const toolsOpener = useRef<HTMLButtonElement>(null);
@@ -896,15 +902,16 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {scientificImport && <div className="graph2d-scientific-import" role="dialog" aria-label="Import verified scientific dataset"
           onPointerDown={event => event.stopPropagation()}>
           <h3>Import verified scientific dataset</h3>
-          <label>Dataset <select value={scientificDatasetId} onChange={event => setScientificDatasetId(event.target.value)}>
-            {scientificImport.datasets.map(item => <option key={item.datasetId} value={item.datasetId}>{item.datasetId}</option>)}
+          <label>Dataset component <select value={scientificDatasetId} onChange={event => setScientificDatasetId(event.target.value)}>
+            {scientificImport.datasets.map(item => <option key={`${item.datasetId}:${item.component}`}
+              value={`${item.datasetId}:${item.component}`}>{item.datasetId} · {item.component}</option>)}
           </select></label>
           {scientificPreview ? <>
             <p>{scientificPreview.rows.length} checked samples · {scientificPreview.origin.xName} ({scientificPreview.origin.xUnit}) →
               {" "}{scientificPreview.origin.yName} ({scientificPreview.origin.yUnit})</p>
             <p>Source {scientificPreview.origin.sourceProducer}/{scientificPreview.origin.sourceId} · scene {scientificPreview.origin.sceneId}</p>
             <small>Manifest {scientificPreview.origin.sceneFingerprint} · resource {scientificPreview.origin.resourceSha256}</small>
-            <p>A new point series copies the verified values. It remains data, not an editable expression.</p>
+            <p>A new point series copies this verified component. Select another component to import it separately.</p>
           </> : <p role="alert">Dataset verification failed.</p>}
           {scientificImportError && <p role="alert">{scientificImportError}</p>}
           <div><button type="button" disabled={!scientificPreview} onClick={commitScientificDataset}>Import as point series</button>

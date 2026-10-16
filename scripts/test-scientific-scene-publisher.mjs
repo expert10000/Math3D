@@ -7,6 +7,7 @@ import { join, resolve, sep } from "node:path";
 
 const { readScientificSceneBundle } = await import("../dist/main/scientificScene/bundle.js");
 const { inspectScientificHeightSample } = await import("../dist/main/scientificScene/heightSurface.js");
+const { openScientificGraphDatasets } = await import("../dist/main/scientificScene/graphDataset.js");
 const { normalizeScientificSceneManifest } = await import("../dist/shared/scientificSceneManifest.js");
 const root = resolve(".");
 const publisher = join(root, "integrations", "python", "scientific_scene_publisher.py");
@@ -74,6 +75,71 @@ try {
   assert.equal(verifiedComplex.manifest.source.sha256,
     sha(Buffer.concat([verifiedComplex.resources.get("real"), verifiedComplex.resources.get("imaginary")])));
 
+  const graphBase = { ...base, sceneId: "python-graph", axes: [{ name: "time", unit: "s" }],
+    origin: [2], spacing: [0.25], periodic: [false], shape: [4],
+    quantity: { name: "amplitude", unit: "V" }, real: [0, 1, 0, -1] };
+  const graphScalarSpec = join(rootTemp, "graph-scalar.json");
+  const graphScalarPath = join(rootTemp, "python-graph-scalar.sscene");
+  await writeFile(graphScalarSpec, JSON.stringify(graphBase));
+  runPublisher(graphScalarSpec, graphScalarPath);
+  const graphScalar = await openScientificGraphDatasets(graphScalarPath);
+  assert.deepEqual(graphScalar.datasets, [{ datasetId: "temperature", component: "scalar", values: [0, 1, 0, -1] }]);
+
+  const graphComplexSpec = join(rootTemp, "graph-complex.json");
+  const graphComplexPath = join(rootTemp, "python-graph-complex.sscene");
+  await writeFile(graphComplexSpec, JSON.stringify({ ...graphBase, sceneId: "python-graph-complex",
+    imaginary: [1, 0, -1, 0] }));
+  runPublisher(graphComplexSpec, graphComplexPath);
+  const graphComplex = await openScientificGraphDatasets(graphComplexPath);
+  const complexBundle = await readScientificSceneBundle(graphComplexPath);
+  assert.equal(normalizeScientificSceneManifest(complexBundle.manifest).ok, true);
+  assert.deepEqual(complexBundle.manifest.views, []);
+  assert.deepEqual(graphComplex.datasets, [
+    { datasetId: "temperature", component: "real", values: [0, 1, 0, -1] },
+    { datasetId: "temperature", component: "imaginary", values: [1, 0, -1, 0] },
+  ]);
+  assert.equal(complexBundle.manifest.source.sha256,
+    sha(Buffer.concat([complexBundle.resources.get("real"), complexBundle.resources.get("imaginary")])));
+
+  const graphVectorSpec = join(rootTemp, "graph-vector.json");
+  const graphVectorPath = join(rootTemp, "python-graph-vector.sscene");
+  const vectorBase = { ...graphBase, sceneId: "python-graph-vector", datasetId: "velocity",
+    quantity: { name: "velocity", unit: "m/s" } };
+  delete vectorBase.real;
+  const vectorSpec = { ...vectorBase, components: [
+    { name: "east", values: [2, 3, 4, 5] }, { name: "north", values: [5, 4, 3, 2] },
+  ] };
+  await writeFile(graphVectorSpec, JSON.stringify(vectorSpec));
+  runPublisher(graphVectorSpec, graphVectorPath);
+  const graphVector = await openScientificGraphDatasets(graphVectorPath);
+  const vectorBundle = await readScientificSceneBundle(graphVectorPath);
+  assert.equal(normalizeScientificSceneManifest(vectorBundle.manifest).ok, true);
+  assert.deepEqual(vectorBundle.manifest.datasets[0].components, [
+    { name: "east", resource: "east" }, { name: "north", resource: "north" },
+  ]);
+  assert.deepEqual(graphVector.datasets, [
+    { datasetId: "velocity", component: "east", values: [2, 3, 4, 5] },
+    { datasetId: "velocity", component: "north", values: [5, 4, 3, 2] },
+  ]);
+  assert.equal(vectorBundle.manifest.source.sha256,
+    sha(Buffer.concat([vectorBundle.resources.get("east"), vectorBundle.resources.get("north")])));
+
+  const invalidVectorSpec = join(rootTemp, "invalid-vector.json");
+  const invalidVectorPath = join(rootTemp, "invalid-vector.sscene");
+  await writeFile(invalidVectorSpec, JSON.stringify({ ...vectorSpec, components: [
+    { name: "east", values: [2, 3, 4, 5] }, { name: "East", values: [5, 4, 3, 2] },
+  ] }));
+  const duplicate = spawnSync(python, [publisher, "--spec", invalidVectorSpec, "--output", invalidVectorPath], { encoding: "utf8" });
+  assert.notEqual(duplicate.status, 0);
+  assert.match(duplicate.stderr, /Duplicate vector component/);
+  await writeFile(invalidVectorSpec, JSON.stringify({ ...vectorSpec, components: [
+    { name: "east", values: [2, 3, 4, 5] }, { name: "north", values: [5, 4, null, 2] },
+  ] }));
+  const badValue = spawnSync(python, [publisher, "--spec", invalidVectorSpec, "--output", invalidVectorPath], { encoding: "utf8" });
+  assert.notEqual(badValue.status, 0);
+  assert.match(badValue.stderr, /Invalid north\[2\]/);
+  await assert.rejects(readScientificSceneBundle(invalidVectorPath));
+
   const malformedSpec = join(rootTemp, "malformed.json");
   const malformedOutput = join(rootTemp, "malformed.sscene");
   await writeFile(malformedSpec, JSON.stringify({ ...base, shape: [256, 256, 16] }));
@@ -105,7 +171,7 @@ try {
   const damagedManifest = Buffer.from(originalManifest); damagedManifest[0] ^= 1;
   await writeFile(manifest, damagedManifest);
   await assert.rejects(readScientificSceneBundle(scalarPath), /manifest integrity/);
-  console.log("SSR-05 Python publisher 2D/3D scalar and complex, exact samples, bounds, non-overwrite and tamper tests passed");
+  console.log("SSR-05 Python publisher 1D Graph scalar/complex/vector and 2D/3D field compatibility, bounds, non-overwrite and tamper tests passed");
 } finally {
   if (!rootTemp.startsWith(resolve(tmpdir()) + sep) || !rootTemp.includes("math3d-ssr05-"))
     throw new Error("Unsafe scientific publisher test cleanup path");

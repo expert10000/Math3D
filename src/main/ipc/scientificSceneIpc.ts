@@ -20,7 +20,7 @@ export type PythonPublisherPrepareResponse =
   | { ok: false; canceled: false; error: string };
 
 const PINNED_SINCOS_MANIFEST = "6666afe57ad2876575b77c341bb8e8c6959d4a6cee14cc231d33eab39da9dbae";
-const PINNED_REFERENCE_PUBLISHER = "b9da5fbabce579ff4e795495bb8944135eed2e50f5e17d10c6f18bbcc0f7b7da";
+const PINNED_REFERENCE_PUBLISHER = "86b39c33be4551e2ab1a3c12299e7418e16ab1a79866e6881dd703a90952a974";
 const bundledExampleDirectory = () => app.isPackaged ? join(process.resourcesPath, "scientific-scenes", "sincos.sscene") :
   join(app.getAppPath(), "tests", "fixtures", "scientific-scene", "sincos.sscene");
 const trustedSender = (event: Electron.IpcMainInvokeEvent) => {

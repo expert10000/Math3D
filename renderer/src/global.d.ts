@@ -591,7 +591,7 @@ declare global {
   interface Window {
     scientificScenes?: {
       openGraphDataset: () => Promise<{ ok: true; source: { manifestJson: string; fingerprint: string;
-        datasets: { datasetId: string; values: number[] }[] } } |
+          datasets: { datasetId: string; component: string; values: number[] }[] } } |
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
       openExample: () => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;
       openDirectory: () => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;

@@ -59,4 +59,43 @@ describe("GRA-10 verified scientific dataset adapter", () => {
     const otherJson = JSON.stringify(unsupported), otherHash = sha256Checksum(new TextEncoder().encode(otherJson)).slice(7);
     expect(() => previewGraph2DScientificDataset(otherJson, otherHash, "amplitude", values)).toThrow(/one-dimensional/);
   });
+
+  it("imports each complex and vector component with its own checked resource and provenance", () => {
+    const { json, values } = fixture();
+    const base = JSON.parse(json) as ScientificSceneManifest;
+    const other = [2, 3, 4, 5];
+    const bytes = new Uint8Array(other.length * 8), view = new DataView(bytes.buffer);
+    other.forEach((value, index) => view.setFloat64(index * 8, value, true));
+    const extra = { id: "other", path: "other.f64", format: "f64le" as const, count: other.length,
+      bytes: bytes.length, sha256: sha256Checksum(bytes).slice(7) };
+    const complex = { ...base, resources: [...base.resources, extra], datasets: [{ ...base.datasets[0]!,
+      semanticType: "complex-scalar-field" as const, imaginary: extra.id }] };
+    const complexJson = JSON.stringify(complex), complexHash = sha256Checksum(new TextEncoder().encode(complexJson)).slice(7);
+    const imaginary = previewGraph2DScientificDataset(complexJson, complexHash, "amplitude", other, "imaginary");
+    expect(imaginary.rows.map(row => row.y)).toEqual(other);
+    expect(imaginary.origin).toMatchObject({ component: "imaginary", resourceSha256: extra.sha256,
+      yName: "Amplitude imaginary" });
+    expect(previewGraph2DScientificDataset(complexJson, complexHash, "amplitude", values, "real").origin)
+      .toMatchObject({ component: "real", resourceSha256: base.resources[0]!.sha256 });
+    expect(() => previewGraph2DScientificDataset(complexJson, complexHash, "amplitude", values, "imaginary"))
+      .toThrow(/hash/);
+
+    const vector = { ...base, resources: [...base.resources, extra], datasets: [{
+      id: "velocity", semanticType: "vector-field" as const, coordinateSystem: "time", shape: [4],
+      order: "last-axis-fastest" as const, quantity: { name: "Velocity", unit: "m/s" },
+      components: [{ name: "east", resource: "samples" }, { name: "north", resource: "other" }],
+    }] };
+    const vectorJson = JSON.stringify(vector), vectorHash = sha256Checksum(new TextEncoder().encode(vectorJson)).slice(7);
+    expect(previewGraph2DScientificDataset(vectorJson, vectorHash, "velocity", other, "north").origin)
+      .toMatchObject({ component: "north", resourceSha256: extra.sha256, yName: "Velocity north", yUnit: "m/s" });
+    expect(() => previewGraph2DScientificDataset(vectorJson, vectorHash, "velocity", other, "east"))
+      .toThrow(/hash/);
+    expect(() => previewGraph2DScientificDataset(vectorJson, vectorHash, "velocity", other, "missing"))
+      .toThrow(/one-dimensional/);
+    const invalid = { ...vector, datasets: [{ ...vector.datasets[0]!, components: [
+      { name: "east", resource: "samples" }, { name: "east", resource: "other" }] }] };
+    const invalidJson = JSON.stringify(invalid), invalidHash = sha256Checksum(new TextEncoder().encode(invalidJson)).slice(7);
+    expect(() => previewGraph2DScientificDataset(invalidJson, invalidHash, "velocity", other, "east"))
+      .toThrow(/Vector field/);
+  });
 });

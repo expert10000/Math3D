@@ -11,7 +11,8 @@ type Manifest = {
   coordinates: { id: string; kind: string; axes: { name: string; unit: string }[];
     origin: number[]; spacing: number[]; periodic: boolean[] }[];
   datasets: { id: string; semanticType: string; coordinateSystem: string; shape: number[];
-    order: string; quantity: { name: string; unit: string; symbol?: string }; real: string; imaginary?: string }[];
+    order: string; quantity: { name: string; unit: string; symbol?: string }; real?: string; imaginary?: string;
+    components?: { name: string; resource: string }[] }[];
   views: { id: string; label: string; dataset: string; renderer: string; operation: string; axis?: number }[];
 };
 const { normalizeScientificSceneManifest } = require("../../shared/scientificSceneManifest.js") as {

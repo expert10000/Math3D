@@ -18,7 +18,7 @@ function verifiedHeightField(bundle: VerifiedScientificSceneBundle) {
   if (!view || !dataset || !coordinate || dataset.semanticType !== "scalar-field" ||
       dataset.shape.length !== 2 || coordinate.axes.length !== 2 || dataset.imaginary)
     throw new TypeError("Scientific scene has no supported two-dimensional scalar height surface");
-  const buffer = resources.get(dataset.real);
+  const buffer = dataset.real ? resources.get(dataset.real) : undefined;
   if (!buffer) throw new TypeError("Verified scientific scalar data unavailable");
   if (buffer.length / 8 > MAX_HEIGHT_SAMPLES)
     throw new RangeError("Scientific height surface exceeds the bounded display sample limit");

@@ -68,9 +68,12 @@ def publish_scene(spec: dict[str, Any], output: str | Path) -> dict[str, Any]:
     """
     _require(isinstance(spec, dict), "Scientific scene spec must be an object")
     required = {"sceneId", "title", "producer", "sourceId", "sourceSchema", "coordinateKind",
-                "axes", "origin", "spacing", "periodic", "shape", "datasetId", "quantity", "real"}
-    optional = {"imaginary", "view"}
+                "axes", "origin", "spacing", "periodic", "shape", "datasetId", "quantity"}
+    optional = {"real", "imaginary", "components", "view"}
     _require(required <= spec.keys() and spec.keys() <= required | optional, "Unknown or missing scientific scene spec field")
+    vector_field = "components" in spec
+    _require(vector_field != ("real" in spec) and (not vector_field or "imaginary" not in spec),
+             "Supply real values or vector components, but not both")
     scene_id = _id(spec["sceneId"], "scene ID")
     title = _text(spec["title"], "title")
     producer = _id(spec["producer"], "producer")
@@ -79,10 +82,11 @@ def publish_scene(spec: dict[str, Any], output: str | Path) -> dict[str, Any]:
     _require(isinstance(source_schema, str) and SCHEMA.fullmatch(source_schema) is not None, "Invalid source schema")
     _require(spec["coordinateKind"] in ("cartesian", "reciprocal", "index"), "Invalid coordinate kind")
     shape = spec["shape"]
-    _require(isinstance(shape, list) and len(shape) in (2, 3) and
+    _require(isinstance(shape, list) and len(shape) in (1, 2, 3) and
              all(type(size) is int and 1 <= size <= 256 for size in shape), "Invalid field shape")
     count = math.prod(shape)
     _require(1 <= count <= 1_000_000, "Field sample limit exceeded")
+    _require(len(shape) != 1 or count >= 2, "Graph datasets require at least two samples")
     axes, origin, spacing, periodic = (spec[key] for key in ("axes", "origin", "spacing", "periodic"))
     _require(all(isinstance(value, list) and len(value) == len(shape)
                  for value in (axes, origin, spacing, periodic)), "Coordinate rank mismatch")
@@ -107,49 +111,73 @@ def publish_scene(spec: dict[str, Any], output: str | Path) -> dict[str, Any]:
     if "symbol" in quantity:
         checked_quantity["symbol"] = _text(quantity["symbol"], "quantity symbol", 32)
     complex_field = "imaginary" in spec
-    _require(not complex_field or len(shape) == 3, "Complex publisher requires a 3D field")
-    _require(count * 8 * (2 if complex_field else 1) <= MAX_BINARY_BYTES, "Binary resource budget exceeded")
-    real = _binary(spec["real"], count, "real")
-    imaginary = _binary(spec["imaginary"], count, "imaginary") if complex_field else None
+    _require(not complex_field or len(shape) in (1, 3), "Complex publisher requires a 1D or 3D field")
+    _require(not vector_field or len(shape) == 1, "Vector publisher requires a 1D field")
+    payloads = []
+    dataset = {"id": dataset_id, "semanticType": "vector-field" if vector_field else
+               ("complex-scalar-field" if complex_field else "scalar-field"),
+               "coordinateSystem": "space", "shape": shape, "order": "last-axis-fastest",
+               "quantity": checked_quantity}
+    if vector_field:
+        components = spec["components"]
+        _require(isinstance(components, list) and 2 <= len(components) <= 3,
+                 "Vector field requires two or three components")
+        checked_components = []
+        for component in components:
+            _require(isinstance(component, dict) and set(component) == {"name", "values"},
+                     "Invalid vector component")
+            name = _id(component["name"], "component name")
+            _require(".." not in name and
+                     re.fullmatch(r"(?i:con|prn|aux|nul|com[1-9]|lpt[1-9])", name) is None,
+                     "Invalid component resource path")
+            _require(name.casefold() not in {item["name"].casefold() for item in checked_components},
+                     "Duplicate vector component")
+            payloads.append((name, f"{name}.f64", _binary(component["values"], count, name)))
+            checked_components.append({"name": name, "resource": name})
+        dataset["components"] = checked_components
+    else:
+        payloads.append(("real", "real.f64", _binary(spec["real"], count, "real")))
+        dataset["real"] = "real"
+        if complex_field:
+            payloads.append(("imaginary", "imaginary.f64", _binary(spec["imaginary"], count, "imaginary")))
+            dataset["imaginary"] = "imaginary"
+    _require(sum(len(data) for _, _, data in payloads) <= MAX_BINARY_BYTES, "Binary resource budget exceeded")
     resources = []
-    payloads = [("real", "real.f64", real)]
-    if imaginary is not None:
-        payloads.append(("imaginary", "imaginary.f64", imaginary))
     for resource_id, name, data in payloads:
         resources.append({"id": resource_id, "path": name, "format": "f64le", "count": count,
                           "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()})
     view = spec.get("view")
-    if view is None:
-        view = {"id": "default", "label": "Density slice" if complex_field else
-                ("Height surface" if len(shape) == 2 else "Scalar slice"),
-                "renderer": "height-surface" if len(shape) == 2 else "slice",
-                "operation": "complex-density/v1" if complex_field else "identity"}
-        if len(shape) == 3:
-            view["axis"] = 2
-    _require(isinstance(view, dict) and {"id", "label", "renderer", "operation"} <= view.keys() and
-             view.keys() <= {"id", "label", "renderer", "operation", "axis"}, "Invalid view")
-    checked_view = {"id": _id(view["id"], "view ID"), "label": _text(view["label"], "view label"),
-                    "dataset": dataset_id, "renderer": view["renderer"], "operation": view["operation"]}
-    if len(shape) == 2:
-        _require(view["renderer"] == "height-surface" and "axis" not in view and
-                 view["operation"] == "identity", "Unsupported two-dimensional view")
+    checked_views = []
+    if len(shape) == 1:
+        _require(view is None, "One-dimensional datasets do not accept a surface or slice view")
     else:
-        _require(view["renderer"] == "slice" and type(view.get("axis")) is int and
-                 0 <= view["axis"] <= 2 and view["operation"] ==
-                 ("complex-density/v1" if complex_field else "identity"), "Unsupported three-dimensional view")
-        checked_view["axis"] = view["axis"]
-    dataset = {"id": dataset_id, "semanticType": "complex-scalar-field" if complex_field else "scalar-field",
-               "coordinateSystem": "space", "shape": shape, "order": "last-axis-fastest",
-               "quantity": checked_quantity, "real": "real"}
-    if complex_field:
-        dataset["imaginary"] = "imaginary"
+        if view is None:
+            view = {"id": "default", "label": "Density slice" if complex_field else
+                    ("Height surface" if len(shape) == 2 else "Scalar slice"),
+                    "renderer": "height-surface" if len(shape) == 2 else "slice",
+                    "operation": "complex-density/v1" if complex_field else "identity"}
+            if len(shape) == 3:
+                view["axis"] = 2
+        _require(isinstance(view, dict) and {"id", "label", "renderer", "operation"} <= view.keys() and
+                 view.keys() <= {"id", "label", "renderer", "operation", "axis"}, "Invalid view")
+        checked_view = {"id": _id(view["id"], "view ID"), "label": _text(view["label"], "view label"),
+                        "dataset": dataset_id, "renderer": view["renderer"], "operation": view["operation"]}
+        if len(shape) == 2:
+            _require(view["renderer"] == "height-surface" and "axis" not in view and
+                     view["operation"] == "identity", "Unsupported two-dimensional view")
+        else:
+            _require(view["renderer"] == "slice" and type(view.get("axis")) is int and
+                     0 <= view["axis"] <= 2 and view["operation"] ==
+                     ("complex-density/v1" if complex_field else "identity"), "Unsupported three-dimensional view")
+            checked_view["axis"] = view["axis"]
+        checked_views.append(checked_view)
     manifest = {"schema": "scientific-scene/v1", "sceneId": scene_id, "title": title,
                 "source": {"producer": producer, "sourceId": source_id, "sourceSchema": source_schema,
-                           "sha256": hashlib.sha256(real + (imaginary or b"")).hexdigest()},
+                           "sha256": hashlib.sha256(b"".join(data for _, _, data in payloads)).hexdigest()},
                 "resources": resources,
                 "coordinates": [{"id": "space", "kind": spec["coordinateKind"], "axes": checked_axes,
                                  "origin": checked_origin, "spacing": checked_spacing, "periodic": periodic}],
-                "datasets": [dataset], "views": [checked_view]}
+                "datasets": [dataset], "views": checked_views}
     manifest_bytes = _json_bytes(manifest)
     _require(len(manifest_bytes) <= MAX_MANIFEST_BYTES, "Manifest budget exceeded")
     envelope = {"schema": "scientific-scene-bundle/v1",

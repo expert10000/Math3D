@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -12,6 +13,10 @@ const { readScientificSceneBundle } = require("../dist/main/scientificScene/bund
 const pythonCommand = process.env.PYTHON || (process.platform === "win32" ? "py" : "python3");
 const python = execFileSync(pythonCommand, ["-c", "import sys;print(sys.executable)"], { encoding: "utf8" }).trim();
 const publisher = resolve("integrations/python/scientific_scene_publisher.py");
+const ipcSource = await readFile(resolve("src/main/ipc/scientificSceneIpc.ts"), "utf8");
+const pinnedPublisher = ipcSource.match(/const PINNED_REFERENCE_PUBLISHER = "([a-f0-9]{64})";/)?.[1];
+assert.equal(pinnedPublisher, createHash("sha256").update(await readFile(publisher)).digest("hex"),
+  "desktop reference publisher pin must match the shipped script bytes");
 const packaging = require("../electron-builder.config.cjs");
 assert.ok(packaging.extraResources.some(resource => resource.from === "integrations/python/scientific_scene_publisher.py" &&
   resource.to === "scientific-publisher/scientific_scene_publisher.py"),

@@ -25,13 +25,14 @@ export type ScientificCoordinateSystem = Readonly<{
 
 export type ScientificSceneDataset = Readonly<{
   id: string;
-  semanticType: "scalar-field" | "complex-scalar-field";
+  semanticType: "scalar-field" | "complex-scalar-field" | "vector-field";
   coordinateSystem: string;
   shape: readonly number[];
   order: "last-axis-fastest";
   quantity: Readonly<{ name: string; unit: string; symbol?: string }>;
-  real: string;
+  real?: string;
   imaginary?: string;
+  components?: readonly Readonly<{ name: string; resource: string }>[];
 }>;
 
 export type ScientificSceneView = Readonly<{
@@ -137,28 +138,41 @@ export function normalizeScientificSceneManifest(value: unknown): ValidationResu
   const coordinateById = new Map(coordinates.map(coordinate => [coordinate.id, coordinate]));
   const usedResources = new Set<string>();
   for (const dataset of datasets) {
-    if (!record(dataset) || !exact(dataset, ["id", "semanticType", "coordinateSystem", "shape", "order", "quantity", "real"], ["imaginary"]) ||
-      !id(dataset.id) || !["scalar-field", "complex-scalar-field"].includes(String(dataset.semanticType)) ||
+    if (!record(dataset) || !exact(dataset, ["id", "semanticType", "coordinateSystem", "shape", "order", "quantity",
+      ...(dataset.semanticType === "vector-field" ? ["components"] : ["real"])],
+      dataset.semanticType === "complex-scalar-field" ? ["imaginary"] : []) ||
+      !id(dataset.id) || !["scalar-field", "complex-scalar-field", "vector-field"].includes(String(dataset.semanticType)) ||
       !id(dataset.coordinateSystem) || !coordinateById.has(dataset.coordinateSystem) ||
       !Array.isArray(dataset.shape) || dataset.shape.length !== coordinateById.get(dataset.coordinateSystem)!.axes.length ||
       !dataset.shape.every((count: unknown) => positiveInteger(count, 256)) ||
       dataset.order !== "last-axis-fastest" || !record(dataset.quantity) ||
       !exact(dataset.quantity, ["name", "unit"], ["symbol"]) ||
       !cleanText(dataset.quantity.name) || !cleanText(dataset.quantity.unit, 80) ||
-      (dataset.quantity.symbol !== undefined && !cleanText(dataset.quantity.symbol, 32)) ||
-      !id(dataset.real) || !resourceById.has(dataset.real)) return fail("Invalid scientific dataset.");
+      (dataset.quantity.symbol !== undefined && !cleanText(dataset.quantity.symbol, 32))) return fail("Invalid scientific dataset.");
     const count = dataset.shape.reduce((product: number, size: number) => product * size, 1);
-    if (count !== resourceById.get(dataset.real)!.count) return fail("Dataset shape does not match its binary resource.");
+    if (dataset.semanticType === "vector-field") {
+      if (dataset.shape.length !== 1 || !Array.isArray(dataset.components) ||
+          dataset.components.length < 2 || dataset.components.length > 3 ||
+          !dataset.components.every((part: unknown) => record(part) && exact(part, ["name", "resource"]) &&
+            id(part.name) && id(part.resource) && resourceById.get(part.resource)?.count === count) ||
+          !unique(dataset.components.map((part: { name: string }) => part.name)) ||
+          !unique(dataset.components.map((part: { resource: string }) => part.resource)))
+        return fail("Vector field requires two or three distinct matching components on a one-dimensional coordinate.");
+      for (const part of dataset.components) usedResources.add(part.resource);
+    } else {
+      if (!id(dataset.real) || resourceById.get(dataset.real)?.count !== count)
+        return fail("Dataset shape does not match its binary resource.");
+      usedResources.add(dataset.real);
+      if (dataset.semanticType === "complex-scalar-field") {
+        if (!id(dataset.imaginary) || dataset.imaginary === dataset.real || resourceById.get(dataset.imaginary)?.count !== count)
+          return fail("Complex field requires matching real and imaginary resources.");
+        usedResources.add(dataset.imaginary);
+      }
+    }
     const coordinate = coordinateById.get(dataset.coordinateSystem)!;
     if (dataset.shape.some((size: number, axis: number) =>
       Math.abs(coordinate.origin[axis] + coordinate.spacing[axis] * (size - 1)) > 1_000_000))
       return fail("Dataset coordinate extent exceeds the bounded scene domain.");
-    usedResources.add(dataset.real);
-    if (dataset.semanticType === "complex-scalar-field") {
-      if (!id(dataset.imaginary) || dataset.imaginary === dataset.real || resourceById.get(dataset.imaginary)?.count !== count)
-        return fail("Complex field requires matching real and imaginary resources.");
-      usedResources.add(dataset.imaginary);
-    } else if (Object.hasOwn(dataset, "imaginary")) return fail("Scalar field cannot declare imaginary values.");
   }
   if (usedResources.size !== resources.length) return fail("Unreferenced binary resource.");
 

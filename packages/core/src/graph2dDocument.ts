@@ -88,6 +88,7 @@ export type Graph2DPointTableReference = Readonly<{
 }>;
 export type Graph2DScientificDatasetOrigin = Readonly<{
   schema: "scientific-scene/v1"; sceneId: string; datasetId: string;
+  component?: string;
   sceneFingerprint: string; resourceSha256: string;
   sourceProducer: string; sourceId: string; sourceSchema: string; sourceSha256: string;
   xName: string; xUnit: string; yName: string; yUnit: string;
@@ -235,10 +236,12 @@ export const validPointTableReference = (value: unknown): value is Graph2DPointT
   value.id === `graph2d-table:${value.checksum.slice(7, 39)}`;
 export const validGraph2DScientificDatasetOrigin = (value: unknown): value is Graph2DScientificDatasetOrigin => record(value) &&
   exact(value, ["schema", "sceneId", "datasetId", "sceneFingerprint", "resourceSha256", "sourceProducer", "sourceId",
-    "sourceSchema", "sourceSha256", "xName", "xUnit", "yName", "yUnit"]) &&
+    "sourceSchema", "sourceSha256", "xName", "xUnit", "yName", "yUnit",
+    ...(value.component === undefined ? [] : ["component"])]) &&
   value.schema === "scientific-scene/v1" &&
   [value.sceneId, value.datasetId, value.sourceProducer, value.sourceId].every(item =>
     typeof item === "string" && /^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(item)) &&
+  (value.component === undefined || typeof value.component === "string" && /^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(value.component)) &&
   typeof value.sourceSchema === "string" && /^[A-Za-z][A-Za-z0-9._-]*\/v[1-9][0-9]*$/.test(value.sourceSchema) &&
   [value.sceneFingerprint, value.resourceSha256, value.sourceSha256].every(item =>
     typeof item === "string" && /^[a-f0-9]{64}$/.test(item)) &&
