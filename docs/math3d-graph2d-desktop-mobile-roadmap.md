@@ -330,7 +330,24 @@ Free independent points, arbitrary text, geometric constructions, multi-object t
 
 The [analysis and constructions follow-on roadmap](graph2d-analysis-constructions-roadmap.md) scopes G2D44–50 after G2D43. It corrects graph-kind-aware actions, adds polar measurements, and introduces a reviewed persistent construction contract. The [G2D50 automated acceptance record](graph2d-g2d50-acceptance.md) covers numerical, interaction, browser, Electron, and mobile-model checks; physical-device and spoken accessibility signoff remain open. Existing G2D13–19 analysis, G2D26–29 promotion, G2D38 parameters, G2D39 regression, and G2D42–43 tools/probes remain delivered baselines.
 
-The [GRA-N01–N06 consolidation milestone and proposed N01–N10 crosswalk](graph2d-gra-next-milestone.md) tracks the later Fit, numerical, construction-tree and constrained-dragging work. The proposed N IDs differ from the shipped IDs; expression-driven parameters, direct Graph → Geometry promotion and optional vector-arrow glyphs remain explicit follow-on gaps.
+### GRA-N01–N10 Graphs analysis workspace plan
+
+This is the actionable N01–N10 sequence. Earlier consolidation notes used N03 for exact tests and N06 for dragging; those completed changes are tracked as N05 and N08 below. The historical drag commit `65d51c3e` retains its original message. [Implementation details and acceptance](graph2d-gra-next-milestone.md) carry the precise remaining scope.
+
+| ID | Priority | Task | Current state |
+| --- | --- | --- | --- |
+| GRA-N01 | P0 | Audit construction capabilities and dependencies | Delivered for reviewed kinds; G2D47–49. |
+| GRA-N02 | P0 | Correct Fit selection, Fit all and aspect ratio | Delivered. |
+| GRA-N03 | P0 | Eliminate toolbar overflow and improve responsive layout | Delivered. |
+| GRA-N04 | P0 | Compact Construction Inspector and add a construction tree | Delivered on desktop and mobile. |
+| GRA-N05 | P0 | Add exact-reference numerical regression tests | Delivered for unit-circle and saved-construction cases. |
+| GRA-N06 | P1 | Show tangent vectors, normal vectors, curvature and coordinates | **Partial:** values and lines exist; anchored directional arrows remain. **Next implementation.** |
+| GRA-N07 | P1 | Add intersections, roots and extrema as persistent constructions | Delivered as bounded source-linked candidates; G2D49. |
+| GRA-N08 | P1 | Drag constrained points along their source curves | Software delivered in `65d51c3e`; physical mobile touch check remains. |
+| GRA-N09 | P1 | Add expression-driven parameters and animation | **Partial:** G2D38 sliders/animation exist; expression dependencies remain. |
+| GRA-N10 | P1 | Introduce Graph → Curve / Geometry promotion | **Partial:** Curve/Surface promotion exists; direct Geometry handoff needs a contract. |
+
+**Next:** complete N06 with anchored tangent/normal direction arrows on desktop and mobile, checked against the unit circle and live N08 dragging. Then scope expression-driven parameter dependencies (N09). The N08 physical touch check proceeds when an Android device is connected; the existing MOB-G13/G2D40 device and accessibility gates still govern release.
 
 [G2D51](graph2d-g2d51-curvature.md) begins the next bounded Graphs slice with source-linked signed curvature at an explicit committed probe. It reuses the existing derivative service and leaves persistent curvature geometry and other graph kinds for a separate contract review.
 
@@ -346,7 +363,7 @@ The [GRA-N01–N06 consolidation milestone and proposed N01–N10 crosswalk](gra
 
 [G2D58](graph2d-g2d58-clear-constructions.md) adds one-step **Clear all constructions** on desktop and mobile, preserving source graphs and viewport while removing every saved construction. Saved-point cards identify their source and explain why dependent geometry moves when an anchor changes.
 
-The broader GRA-01–12 proposal has a [coverage audit and follow-on sequence](graph2d-gra-coverage-and-next-slices.md). As of 2026-10-16, the bounded desktop GRA-10 import covers verified 1D scalar, complex and vector components and [multiple explicit axis-aligned lines from one verified 2D scalar grid](graph2d-gra-coverage-and-next-slices.md#gra-103-compare-lines-from-one-grid), with fixed-coordinate labels and a six-color plot palette. Graphs → More → Author offers pinned sine–cosine and thermal-gradient grid presets. The next software decision is to define a concrete dataset, error model and numerical acceptance corpus before extending GRA-12 fitting; no further fit is claimed. This does not replace the MOB-G13/G2D40 physical-device and spoken-accessibility release gate. Other multi-dimensional imports, higher-order/nonlinear/spline fitting, differential equations, Fourier analysis and Graphs-to-Complex-Analysis mapping remain open.
+The broader GRA-01–12 proposal has a [coverage audit and follow-on sequence](graph2d-gra-coverage-and-next-slices.md). As of 2026-10-16, the bounded desktop GRA-10 import covers verified 1D scalar, complex and vector components and [multiple explicit axis-aligned lines from one verified 2D scalar grid](graph2d-gra-coverage-and-next-slices.md#gra-103-compare-lines-from-one-grid), with fixed-coordinate labels and a six-color plot palette. Graphs → More → Author offers pinned sine–cosine and thermal-gradient grid presets. A later GRA-12 fitting extension needs a concrete dataset, error model and numerical acceptance corpus; no further fit is claimed. This does not replace the MOB-G13/G2D40 physical-device and spoken-accessibility release gate. Other multi-dimensional imports, higher-order/nonlinear/spline fitting, differential equations, Fourier analysis and Graphs-to-Complex-Analysis mapping remain open.
 
 ## 7. Dependency graph and parallel work
 

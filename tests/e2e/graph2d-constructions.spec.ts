@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 
-test("GRA-N06 drags a saved point on its curve, previews dependents, and undoes one release", async () => {
+test("GRA-N08 drags a saved point on its curve, previews dependents, and undoes one release", async () => {
   const app = await launchSurfaceApp();
   try {
     const page = app.page;
