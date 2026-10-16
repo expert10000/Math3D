@@ -71,8 +71,8 @@ function PromotedSurfaceMainViewer({ document }: { document: SurfaceDocument }) 
 
 function PromotedGeometryMainViewer({ promotion }: { promotion: Extract<Graph2DAnyPromotion["document"], { format: "math3d.geometry-document" }> }) {
   const [fitToken, setFitToken] = useState(1);
-  const [resetToken, setResetToken] = useState(0);
-  const [showGrid, setShowGrid] = useState(true);
+  const [frontViewToken, setFrontViewToken] = useState(1);
+  const [showGrid, setShowGrid] = useState(false);
   const scene = promotion.source.geometry ?? { segments: [] };
   const bounds = useMemo(() => {
     const points = scene.segments?.flatMap((segment) => [segment.a, segment.b]) ?? [];
@@ -84,16 +84,23 @@ function PromotedGeometryMainViewer({ promotion }: { promotion: Extract<Graph2DA
     return { center: { x: (min.x + max.x) / 2, y: (min.y + max.y) / 2, z: (min.z + max.z) / 2 },
       radius: Math.max(0.1, Math.hypot(max.x - min.x, max.y - min.y, max.z - min.z) / 2) };
   }, [scene]);
+  const frontView = useMemo(() => ({
+    position: { x: bounds.center.x, y: bounds.center.y, z: bounds.center.z + Math.max(1, bounds.radius * 4) },
+    target: bounds.center,
+    up: { x: 0, y: 1, z: 0 },
+  }), [bounds]);
+  const resetView = () => { setFrontViewToken((value) => value + 1); setFitToken((value) => value + 1); };
   return <div data-testid="graph2d-geometry-main-viewer" style={{ flex: 1, minWidth: 260, minHeight: 320, display: "flex", flexDirection: "column" }}>
     <div style={{ display: "flex", gap: 8, alignItems: "center", padding: 8, flexWrap: "wrap" }}>
       <strong>Geometry viewer</strong>
       <button type="button" onClick={() => setFitToken((value) => value + 1)}>Fit geometry</button>
       <button type="button" aria-pressed={showGrid} onClick={() => setShowGrid((value) => !value)}>Grid</button>
-      <button type="button" onClick={() => setResetToken((value) => value + 1)}>Reset view</button>
-      <span>Orbit to inspect · profile lies in z=0</span>
+      <button type="button" onClick={resetView}>Front view</button>
+      <span>Profile lies in z=0 · orbit to inspect</span>
     </div>
     <div style={{ flex: 1, minHeight: 280 }}><GeometryViewer scene={scene} showPlanes={showGrid}
-      cameraFitCommand={{ token: fitToken, ...bounds, padding: 1.25 }} resetToken={resetToken} pickEnabled={false} /></div>
+      cameraOverride={frontView} cameraOverrideToken={frontViewToken}
+      cameraFitCommand={{ token: fitToken, ...bounds, padding: 1.25 }} pickEnabled={false} /></div>
   </div>;
 }
 

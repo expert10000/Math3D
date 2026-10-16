@@ -137,9 +137,12 @@ test("Graph promotions preview, create, locate, protect edits, fork, and reopen 
     await expect(target).toContainText("1024 segments");
     const geometryViewer = target.getByTestId("graph2d-geometry-main-viewer");
     await expect(geometryViewer.getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
+    await expect(geometryViewer.getByRole("button", { name: "Grid" })).toHaveAttribute("aria-pressed", "false");
     await geometryViewer.getByRole("button", { name: "Fit geometry" }).click();
     await geometryViewer.getByRole("button", { name: "Grid" }).click();
-    await expect(geometryViewer.getByRole("button", { name: "Grid" })).toHaveAttribute("aria-pressed", "false");
+    await expect(geometryViewer.getByRole("button", { name: "Grid" })).toHaveAttribute("aria-pressed", "true");
+    await geometryViewer.getByRole("button", { name: "Front view" }).click();
+    await geometryViewer.getByRole("button", { name: "Grid" }).click();
     await app.page.screenshot({ path: "output/graph2d-desktop-promotion.png" });
     await app.page.getByTestId("kernel-workspace-toggle").click();
     await app.page.getByTestId("kernel-workspace-save").click();
