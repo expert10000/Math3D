@@ -189,6 +189,7 @@
 .graph2d-scientific-import select { min-height: 36px; }
 .graph2d-scientific-import small { display: block; font-size: 11px; }
 .graph2d-scientific-import button { min-height: 36px; margin-right: 8px; }
+.graph2d-scientific-import button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 .graph2d-plot { position: absolute; inset: 0; width: 100%; height: 100%; }
 .graph2d-plot-background { fill: var(--panel-strong); }
 .graph2d-grid-minor { stroke: var(--grid-minor-color, var(--border)); stroke-width: .55; opacity: var(--grid-minor-opacity, .45); }

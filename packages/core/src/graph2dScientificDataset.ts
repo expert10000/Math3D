@@ -92,14 +92,18 @@ export function previewGraph2DScientificSlice(manifestJson: string, fingerprint:
   const rows = line.values.map((value, index) => ({ id: `row_${index + 1}`,
     x: coordinate.origin[line.varyingAxis]! + coordinate.spacing[line.varyingAxis]! * index, y: value }));
   if (rows.some(row => !Number.isFinite(row.x))) throw new TypeError("Scientific line coordinate is not finite.");
+  const slice = { varyingAxis: line.varyingAxis, fixedIndex: line.fixedIndex, fixedCoordinate,
+    fixedName: coordinate.axes[fixedAxis]!.name, fixedUnit: coordinate.axes[fixedAxis]!.unit };
   const origin: Graph2DScientificDatasetOrigin = {
     schema: "scientific-scene/v1", sceneId: manifest.sceneId, datasetId: dataset.id,
     sceneFingerprint: fingerprint, resourceSha256: resource.sha256,
     sourceProducer: manifest.source.producer, sourceId: manifest.source.sourceId,
     sourceSchema: manifest.source.sourceSchema, sourceSha256: manifest.source.sha256,
     xName: axis.name, xUnit: axis.unit, yName: dataset.quantity.name, yUnit: dataset.quantity.unit,
-    slice: { varyingAxis: line.varyingAxis, fixedIndex: line.fixedIndex, fixedCoordinate,
-      fixedName: coordinate.axes[fixedAxis]!.name, fixedUnit: coordinate.axes[fixedAxis]!.unit },
+    slice,
   };
-  return { label: origin.yName, rows, domain: graph2DPointDomain(rows), origin };
+  const suffix = ` = ${fixedCoordinate} ${slice.fixedUnit}`.trimEnd();
+  const fixedName = slice.fixedName.slice(0, Math.max(1, 160 - suffix.length - 3 - Math.min(origin.yName.length, 40)));
+  const label = `${origin.yName.slice(0, Math.max(1, 160 - fixedName.length - suffix.length - 3))} · ${fixedName}${suffix}`;
+  return { label, rows, domain: graph2DPointDomain(rows), origin };
 }

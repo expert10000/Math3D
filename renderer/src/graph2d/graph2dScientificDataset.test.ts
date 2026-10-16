@@ -132,10 +132,12 @@ describe("GRA-10 explicit 2D scalar lines", () => {
   it("extracts both non-square directions, coordinates and saved slice provenance", () => {
     const { json, fingerprint, line } = gridFixture();
     const column = previewGraph2DScientificSlice(json, fingerprint, line(0, 1));
+    expect(column.label).toBe("Amplitude · distance = 12 m");
     expect(column.rows.map(row => [row.x, row.y])).toEqual([[2, 1], [2.5, 5], [3, 9]]);
     expect(column.origin).toMatchObject({ xName: "time", xUnit: "s", yName: "Amplitude", yUnit: "V",
       slice: { varyingAxis: 0, fixedIndex: 1, fixedCoordinate: 12, fixedName: "distance", fixedUnit: "m" } });
     const row = previewGraph2DScientificSlice(json, fingerprint, line(1, 1));
+    expect(row.label).toBe("Amplitude · time = 2.5 s");
     expect(row.rows.map(point => [point.x, point.y])).toEqual([[10, 4], [12, 5], [14, 6], [16, 7]]);
     expect(row.origin.slice).toEqual({ varyingAxis: 1, fixedIndex: 1, fixedCoordinate: 2.5,
       fixedName: "time", fixedUnit: "s" });

@@ -139,6 +139,17 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       scientificImport.fingerprint, selected.datasetId, selected.values, selected.component); }
     catch { return null; }
   }, [scientificImport, scientificDatasetId, scientificSlicePreview, scientificSliceKey]);
+  const scientificImportedLines = scientificImport && scientificSelected?.shape ? document.source.objects.filter(item =>
+    item.kind === "point-series" && item.origin?.sceneFingerprint === scientificImport.fingerprint &&
+    item.origin.datasetId === scientificSelected.datasetId && item.origin.slice) : [];
+  const scientificLineAlreadyImported = !!scientificPreview?.origin.slice && scientificImportedLines.some(item =>
+    item.kind === "point-series" && item.origin?.slice?.varyingAxis === scientificPreview.origin.slice?.varyingAxis &&
+    item.origin?.slice?.fixedIndex === scientificPreview.origin.slice?.fixedIndex);
+  const selectDefaultScientificSlice = (shape?: readonly number[]) => {
+    const axis = shape?.[0] && shape[0] >= 2 ? 0 : shape?.[1] && shape[1] >= 2 ? 1 : null;
+    setScientificVaryingAxis(axis);
+    setScientificFixedIndex(axis === null ? null : Math.floor(shape![1 - axis]! / 2));
+  };
   const resetScientificSlice = () => { scientificPreviewEpoch.current += 1; setScientificSlicePreview(null);
     setScientificVaryingAxis(null); setScientificFixedIndex(null); setScientificImportError(""); };
   const previewScientificSlice = async () => {
@@ -163,25 +174,39 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       const opened = preset ? await window.scientificScenes.openGraphDatasetPreset(preset) :
         await window.scientificScenes.openGraphDataset();
       if (opened.ok) { setScientificImport(opened.source); const first = opened.source.datasets[0];
-        setScientificDatasetId(first ? `${first.datasetId}:${first.component}` : ""); }
+        setScientificDatasetId(first ? `${first.datasetId}:${first.component}` : "");
+        selectDefaultScientificSlice(first?.shape); }
       else if (!opened.canceled) setScientificImportError(opened.error);
     } catch (error) { setScientificImportError((error as Error).message); }
     finally { setScientificImportBusy(false); }
   };
   const commitScientificDataset = () => {
-    if (!scientificPreview || !onAuthoringCommit) return;
+    if (!scientificPreview || !onAuthoringCommit || scientificLineAlreadyImported) return;
     try {
       const table = pointTableStore.publish(scientificPreview.rows);
       onAuthoringCommit({ type: "create-point-series", draft: { label: scientificPreview.label,
         table, mode: "line", domain: scientificPreview.domain, origin: scientificPreview.origin,
         style: { color: "#2563eb", lineWidth: 2, lineStyle: "solid", visible: true } } });
-      const remaining = scientificImport?.datasets.filter(item => `${item.datasetId}:${item.component}` !== scientificDatasetId) ?? [];
-      if (remaining.length && scientificImport) {
-        setScientificImport({ ...scientificImport, datasets: remaining });
-        setScientificDatasetId(`${remaining[0]!.datasetId}:${remaining[0]!.component}`);
-      } else { if (scientificImport) void window.scientificScenes?.closeGraphDataset(scientificImport.fingerprint);
-        setScientificImport(null); }
-      resetScientificSlice();
+      if (scientificSelected?.shape) {
+        scientificPreviewEpoch.current += 1;
+        setScientificSlicePreview(null);
+        const fixedAxis = 1 - scientificPreview.origin.slice!.varyingAxis;
+        const count = scientificSelected.shape[fixedAxis]!;
+        const nextIndex = Array.from({ length: count }, (_, offset) => (scientificPreview.origin.slice!.fixedIndex + offset + 1) % count)
+          .find(index => index !== scientificPreview.origin.slice!.fixedIndex &&
+            !scientificImportedLines.some(item => item.kind === "point-series" &&
+            item.origin?.slice?.varyingAxis === scientificPreview.origin.slice!.varyingAxis &&
+            item.origin?.slice?.fixedIndex === index));
+        setScientificFixedIndex(nextIndex ?? null);
+      } else {
+        const remaining = scientificImport?.datasets.filter(item => `${item.datasetId}:${item.component}` !== scientificDatasetId) ?? [];
+        if (remaining.length && scientificImport) {
+          setScientificImport({ ...scientificImport, datasets: remaining });
+          setScientificDatasetId(`${remaining[0]!.datasetId}:${remaining[0]!.component}`);
+        } else { if (scientificImport) void window.scientificScenes?.closeGraphDataset(scientificImport.fingerprint);
+          setScientificImport(null); }
+        resetScientificSlice();
+      }
       setScientificImportError("");
       setToolHint(`Imported ${scientificPreview.rows.length} checked samples. Use Fit to view the full line.`);
     } catch (error) { setScientificImportError((error as Error).message); }
@@ -947,20 +972,27 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           onPointerDown={event => event.stopPropagation()}>
           <h3>Import verified scientific dataset</h3>
           {scientificManifest?.ok && <p>{scientificManifest.value.title}</p>}
-          <label>Dataset component <select value={scientificDatasetId} onChange={event => { setScientificDatasetId(event.target.value); resetScientificSlice(); }}>
+          <label>Dataset component <select value={scientificDatasetId} onChange={event => {
+            setScientificDatasetId(event.target.value); resetScientificSlice();
+            selectDefaultScientificSlice(scientificImport.datasets.find(item => `${item.datasetId}:${item.component}` === event.target.value)?.shape);
+          }}>
             {scientificImport.datasets.map(item => <option key={`${item.datasetId}:${item.component}`}
               value={`${item.datasetId}:${item.component}`}>{item.datasetId} · {item.component}</option>)}
           </select></label>
           {scientificSelected?.shape && <>
             <p>2D scalar grid · shape [{scientificSelected.shape.join(", ")}] · last axis varies fastest in the source.</p>
+            <p>{scientificImportedLines.length} line{scientificImportedLines.length === 1 ? "" : "s"} imported from this grid.
+              {scientificImportedLines.length ? " Choose another fixed coordinate and preview again." : ""} Each preview re-verifies the source.</p>
             {scientificCoordinate?.axes.map((axis, index) => <p key={index}>Axis {index}: {axis.name} ({axis.unit}) ·
               {" "}{scientificCoordinate.origin[index]} → {scientificCoordinate.origin[index]! +
                 scientificCoordinate.spacing[index]! * (scientificSelected.shape![index]! - 1)}
             </p>)}
             <label>Varying axis <select aria-label="Varying axis" value={scientificVaryingAxis ?? ""}
               onChange={event => { scientificPreviewEpoch.current += 1; setScientificSlicePreview(null);
-                setScientificVaryingAxis(event.target.value === "" ? null : Number(event.target.value) as 0 | 1);
-                setScientificFixedIndex(null); setScientificImportError(""); }}>
+                const axis = event.target.value === "" ? null : Number(event.target.value) as 0 | 1;
+                setScientificVaryingAxis(axis);
+                setScientificFixedIndex(axis === null ? null : Math.floor(scientificSelected.shape![1 - axis]! / 2));
+                setScientificImportError(""); }}>
               <option value="">Choose axis</option>
               {[0, 1].filter(axis => scientificSelected.shape![axis]! >= 2).map(axis =>
                 <option key={axis} value={axis}>Axis {axis} · {scientificCoordinate?.axes[axis]?.name ?? axis}</option>)}
@@ -975,6 +1007,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                     {" "}{scientificCoordinate ? scientificCoordinate.origin[1 - scientificVaryingAxis]! +
                       scientificCoordinate.spacing[1 - scientificVaryingAxis]! * index : index}</option>)}
               </select></label>}
+            <p>Use the selected fixed coordinate or choose another, then click Preview line to verify it before importing.</p>
             <button type="button" disabled={scientificVaryingAxis === null || scientificFixedIndex === null || scientificImportBusy}
               onClick={previewScientificSlice}>Preview line</button>
           </>}
@@ -987,11 +1020,14 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               {" "}{scientificPreview.origin.slice.fixedCoordinate} {scientificPreview.origin.slice.fixedUnit} ·
               {" "}first ({scientificPreview.rows[0]?.x}, {scientificPreview.rows[0]?.y}) ·
               {" "}last ({scientificPreview.rows.at(-1)?.x}, {scientificPreview.rows.at(-1)?.y})</p>}
-            <p>A new point series copies this verified component. Select another component to import it separately.</p>
+            <p>A new point series copies this verified component. {scientificPreview.origin.slice ?
+              "After importing, choose another fixed coordinate and preview it separately." :
+              "Select another component to import it separately."}</p>
           </> : !scientificSelected?.shape ? <p role="alert">Dataset verification failed.</p> :
-            <p>Choose an axis and fixed index, then preview the verified line.</p>}
+            <p role="status">No verified line is ready yet. Click Preview line; then Import as point series becomes available.</p>}
+          {scientificLineAlreadyImported && <p role="status">This grid line is already imported. Choose a different fixed coordinate.</p>}
           {scientificImportError && <p role="alert">{scientificImportError}</p>}
-          <div><button type="button" disabled={!scientificPreview} onClick={commitScientificDataset}>Import as point series</button>
+          <div><button type="button" disabled={!scientificPreview || scientificLineAlreadyImported || scientificImportBusy} onClick={commitScientificDataset}>Import as point series</button>
             <button type="button" onClick={() => { resetScientificSlice();
               void window.scientificScenes?.closeGraphDataset(scientificImport.fingerprint); setScientificImport(null); }}>Cancel</button></div>
         </div>}
