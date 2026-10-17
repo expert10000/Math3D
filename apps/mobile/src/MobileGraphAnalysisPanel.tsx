@@ -9,7 +9,8 @@ const kinds: readonly [MobileGraphAnalysisKind, string][] = [["derivatives", "De
   ["polar-area", "Polar swept area"], ["polar-arc-length", "Polar arc length"], ["polar-tangent", "Polar tangent & curvature"],
   ["parametric-tangent", "Parametric tangent & curvature"],
   ["regression-linear", "Linear regression"], ["regression-quadratic", "Quadratic regression"],
-  ["regression-cubic", "Cubic regression"], ["regression-quartic", "Quartic regression"]];
+  ["regression-cubic", "Cubic regression"], ["regression-quartic", "Quartic regression"],
+  ["regression-spline", "Cubic smoothing spline"]];
 const firstPolarAngle = (source: Extract<Graph2DDocument["source"]["objects"][number], { kind: "polar" }>) =>
   source.domain.includeMin ? source.domain.min : (source.domain.min + source.domain.max) / 2;
 const firstParametricParameter = (source: Extract<Graph2DDocument["source"]["objects"][number], { kind: "parametric" }>) =>
@@ -45,8 +46,8 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, onDraft, onR
   };
   const button = (label: string, onPress: () => void, disabled = false) => <Pressable key={label} accessibilityRole="button"
     accessibilityLabel={label} disabled={disabled} accessibilityState={{ disabled }} onPress={onPress} style={s.button}><Text style={{ color: disabled ? "#94a3b8" : "#1d4ed8" }}>{label}</Text></Pressable>;
-  const field = (label: string, key: "x" | "min" | "max" | "tolerance") => <View key={key}><Text>{label}</Text>
-    <TextInput accessibilityLabel={label} value={draft[key]} maxLength={40} autoCapitalize="none" autoCorrect={false} style={s.input}
+  const field = (label: string, key: "x" | "min" | "max" | "tolerance" | "smoothing") => <View key={key}><Text>{label}</Text>
+    <TextInput accessibilityLabel={label} value={draft[key] ?? "0.001"} maxLength={40} autoCapitalize="none" autoCorrect={false} style={s.input}
       onChangeText={(value) => onDraft({ ...draft, [key]: value })} /></View>;
   return <View testID="mobile-graph-analysis-panel"><Text style={s.title}>Analyze</Text>
     {tangentResult && <View style={s.card} testID="mobile-graph-tangent-summary" accessibilityLiveRegion="polite">
@@ -69,13 +70,16 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, onDraft, onR
         max: object.kind === "polar" ? String(object.domain.max) : draft.max })}><Text>{object.label}</Text></Pressable>)}</View>
     {draft.kind === "intersections" && <><Text>Second function (one pair only)</Text><View style={s.row}>{sources.filter((object) => object.id !== draft.objectId).map((object) =>
       button(`Intersect with ${object.label}${draft.secondId === object.id ? " (selected)" : ""}`, () => onDraft({ ...draft, secondId: object.id })))}</View></>}
-    {regression ? <Text>Fits original checked rows within the authored domain, not the viewport. No missing-value imputation.</Text> : pointOperation ? <>{field(draft.kind === "polar-tangent" ? "Angle θ (radians)" : draft.kind === "parametric-tangent" ? "Parameter t" : "Analysis x", "x")}{button(draft.kind === "polar-tangent" ? "Use current probe angle" : draft.kind === "parametric-tangent" ? "Use current probe parameter" : "Use current probe x", () => onDraft({ ...draft,
+    {regression ? <><Text>Fits original checked rows within the authored domain, not the viewport. No missing-value imputation.</Text>
+      {draft.kind === "regression-spline" && field("Spline smoothness λ (0–1)", "smoothing")}</> : pointOperation ? <>{field(draft.kind === "polar-tangent" ? "Angle θ (radians)" : draft.kind === "parametric-tangent" ? "Parameter t" : "Analysis x", "x")}{button(draft.kind === "polar-tangent" ? "Use current probe angle" : draft.kind === "parametric-tangent" ? "Use current probe parameter" : "Use current probe x", () => onDraft({ ...draft,
       objectId: document.selection.probe!.objectId, x: String(draft.kind === "polar-tangent" || draft.kind === "parametric-tangent" ? document.selection.probe!.parameter : document.selection.probe!.x) }), !document.selection.probe ||
       (draft.kind === "polar-tangent" || draft.kind === "parametric-tangent") && document.selection.probe.parameter === undefined ||
       !sources.some(object => object.id === document.selection.probe?.objectId))}</> :
       <>{field(polarOperation ? "Angle from θ (radians)" : "Analysis from x", "min")}
         {field(polarOperation ? "Angle to θ (radians)" : "Analysis to x", "max")}</>}
     {(["derivatives", "integral", "arc-length", "polar-area", "polar-arc-length"] as string[]).includes(draft.kind) ? field("Analysis tolerance", "tolerance") :
+      regression ? <Text>{draft.kind === "regression-spline" ? "λ controls the fixed spline penalty. No confidence or prediction intervals." :
+        "Polynomial fit uses shared core uncertainty rules."}</Text> :
       <Text>Uses shared core per-operation tolerances, shown below.</Text>}
     {draft.kind === "integral" && <View style={s.row}>{(["signed", "absolute"] as const).map((mode) => button(`${mode} area${draft.mode === mode ? " (selected)" : ""}`, () => onDraft({ ...draft, mode })))}</View>}
     {polarOperation && <Text>Angles are in radians. Swept area counts repeated traversal.</Text>}

@@ -1,6 +1,6 @@
 import { analyzeGraph2DRegression, type Graph2DDocument, type Graph2DPointRow, type Graph2DRegressionModel } from "@math3d/core";
 
-type Request = { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null; model: Graph2DRegressionModel };
+type Request = { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null; model: Graph2DRegressionModel; smoothing?: number };
 self.onmessage = (event: MessageEvent<Request>) => {
   try {
     const result = analyzeGraph2DRegression(event.data);

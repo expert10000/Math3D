@@ -31,3 +31,18 @@ it("G2D39 native missing sidecars fail explicitly; no fit of downsampled points"
   const { document, objectId } = dataset(), draft = { ...mobileGraphAnalysisDraft(document), objectId, kind: "regression-linear" as const };
   expect(() => runMobileGraphAnalysis(document, draft)).toThrow(/original checked/);
 });
+it("native spline uses the shared checked source, respects λ, and publishes fitted samples without intervals", () => {
+  const rows = Array.from({ length: 80 }, (_, i) => ({ id: `row_${i + 1}`, x: i / 79, y: Math.sin(i / 79 * 4) }));
+  const tables = new Graph2DPointTableStore(), table = tables.publish(rows);
+  const source = applyGraph2DAuthoring(createEmptyGraph2DDocument("native-spline"), { type: "create-point-series",
+    draft: { label: "Sine data", table, domain: graph2DPointDomain(rows), mode: "points",
+      style: { visible: true, color: "#2563eb", lineWidth: 2, lineStyle: "solid" } } });
+  const document = createGraph2DDocument({ ...source, stableKey: "native-spline" }), objectId = document.source.objects[0]!.id;
+  const draft = { ...mobileGraphAnalysisDraft(document), objectId, kind: "regression-spline" as const, smoothing: "0.01" };
+  const result = runMobileGraphAnalysis(document, draft, rows), fit = result.regression!;
+  expect(fit.model).toBe("spline"); expect(fit.curve).toHaveLength(129);
+  expect(result.rows.some(row => row.detail.includes("No confidence or prediction intervals"))).toBe(true);
+  expect(result.publicationTables?.at(-1)?.columns).toEqual(["x", "Fitted y"]);
+  expect(isMobileGraphAnalysisCurrent(result, document, { ...draft, smoothing: "0.02" })).toBe(false);
+  expect(() => runMobileGraphAnalysis(document, { ...draft, smoothing: "2" }, rows)).toThrow(/between 0 and 1/);
+});

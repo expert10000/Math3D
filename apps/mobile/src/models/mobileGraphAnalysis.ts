@@ -13,9 +13,9 @@ const publicationProjection = (results: readonly { publication: AnalysisResultEn
 };
 
 export type MobileGraphAnalysisKind = "derivatives" | "tangent" | "features" | "integral" | "intersections" | "arc-length" |
-  "polar-area" | "polar-arc-length" | "polar-tangent" | "parametric-tangent" | "regression-linear" | "regression-quadratic" | "regression-cubic" | "regression-quartic";
+  "polar-area" | "polar-arc-length" | "polar-tangent" | "parametric-tangent" | "regression-linear" | "regression-quadratic" | "regression-cubic" | "regression-quartic" | "regression-spline";
 export type MobileGraphAnalysisDraft = { kind: MobileGraphAnalysisKind; objectId: string; secondId: string;
-  x: string; min: string; max: string; tolerance: string; mode: "signed" | "absolute" };
+  x: string; min: string; max: string; tolerance: string; smoothing?: string; mode: "signed" | "absolute" };
 export type MobileGraphAnalysisRow = { label: string; detail: string; probe?: Graph2DProbe;
   candidate?: Graph2DCriticalPoint | Graph2DIntersectionCandidate };
 export type MobileGraphAnalysis = { kind: MobileGraphAnalysisKind; inputHash: string; publications: readonly AnalysisResultEnvelope[];
@@ -31,7 +31,7 @@ export const mobileGraphAnalysisDraft = (document: Graph2DDocument): MobileGraph
     objectId: selected?.id ?? document.source.objects.find(object => object.kind === "explicit-cartesian")?.id ?? "",
     secondId: "", x: String(selected?.kind === "parametric" ? document.selection.probe?.parameter ?? parametricDefault : document.selection.probe?.x ?? 0),
     min: String(selected?.kind === "polar" ? selected.domain.min : -1),
-    max: String(selected?.kind === "polar" ? selected.domain.max : 1), tolerance: "0.00001", mode: "signed" };
+    max: String(selected?.kind === "polar" ? selected.domain.max : 1), tolerance: "0.00001", smoothing: "0.001", mode: "signed" };
 };
 const number = (text: string) => {
   if (!text.trim() || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text.trim()) || !Number.isFinite(Number(text)))
@@ -45,18 +45,24 @@ export const mobileGraphAnalysisInputHash = (draft: MobileGraphAnalysisDraft) =>
 export const runMobileGraphAnalysis = (document: Graph2DDocument, draft: MobileGraphAnalysisDraft, regressionRows: readonly Graph2DPointRow[] | null = null): MobileGraphRegressionAnalysis => {
   const object = document.source.objects.find((object) => object.id === draft.objectId);
   const result: MobileGraphAnalysis = { kind: draft.kind, inputHash: mobileGraphAnalysisInputHash(draft), publications: [], rows: [], overlays: [] };
-  if (draft.kind === "regression-linear" || draft.kind === "regression-quadratic" || draft.kind === "regression-cubic" || draft.kind === "regression-quartic") {
+  if (draft.kind === "regression-linear" || draft.kind === "regression-quadratic" || draft.kind === "regression-cubic" || draft.kind === "regression-quartic" || draft.kind === "regression-spline") {
     const fit = analyzeGraph2DRegression({ document, objectId: draft.objectId, rows: regressionRows,
       model: draft.kind === "regression-linear" ? "linear" : draft.kind === "regression-quadratic" ? "quadratic" :
-        draft.kind === "regression-cubic" ? "cubic" : "quartic" });
+        draft.kind === "regression-cubic" ? "cubic" : draft.kind === "regression-quartic" ? "quartic" : "spline",
+      smoothing: draft.kind === "regression-spline" ? number(draft.smoothing ?? "0.001") : undefined });
     const projection = publicationProjection([{ publication: fit.publication, summary: fit.publication.summary } as { publication: AnalysisResultEnvelope }]);
     return { ...result, regression: fit, ...projection, publications: [fit.publication],
       publicationTables: [...projection.publicationTables, graph2DRegressionResidualTable(fit), graph2DRegressionCurveTable(fit)],
       publicationNotes: fit.n > 2048 ? [`Regression residual table includes first 2048 of ${fit.n} original rows.`] : [],
-      rows: [{ label: `${fit.model} regression · n=${fit.n} · excluded=${fit.excluded}`, detail: `df=${fit.degreesOfFreedom} · residual SD=${format(fit.residualSD)} · R²=${format(fit.rSquared)}` },
-        { label: "Centered/scaled equation", detail: `z=(x-${fit.center})/${fit.scale}; y=${fit.coefficients.map((c, i) => `${format(c)}${i ? `*z^${i}` : ""}`).join(" + ")}` },
-        { label: "95% pointwise limits", detail: "Brown fit; purple dashed mean response; purple dotted new observation. Not simultaneous; no extrapolation. Log axes omit non-positive parts." },
-        { label: "Residuals", detail: `${fit.residuals.length} original rows; observed minus fitted. Report/CSV includes first 2,048 rows and all 129 interval samples. Results are transient; fit again after reopening.` }] };
+      rows: [{ label: `${fit.model} regression · n=${fit.n} · excluded=${fit.excluded}`, detail: `${fit.model === "spline" ? "descriptive RMSE" : `df=${fit.degreesOfFreedom} · residual SD`}=${format(fit.residualSD)} · R²=${format(fit.rSquared)}` },
+        ...(fit.model === "spline" ? [
+          { label: "Cubic smoothing spline", detail: `${fit.spline.controlPoints} control points · λ=${fit.spline.lambda} · no extrapolation` },
+          { label: "Uncertainty", detail: "No confidence or prediction intervals are provided for this regularized model." },
+        ] : [
+          { label: "Centered/scaled equation", detail: `z=(x-${fit.center})/${fit.scale}; y=${fit.coefficients.map((c, i) => `${format(c)}${i ? `*z^${i}` : ""}`).join(" + ")}` },
+          { label: "95% pointwise limits", detail: "Brown fit; purple dashed mean response; purple dotted new observation. Not simultaneous; no extrapolation. Log axes omit non-positive parts." },
+        ]),
+        { label: "Residuals", detail: `${fit.residuals.length} original rows; observed minus fitted. Report/CSV includes first 2,048 rows and all 129 fitted samples${fit.model === "spline" ? "." : " with intervals."} Results are transient; fit again after reopening.` }] };
   }
   if (draft.kind === "polar-area" || draft.kind === "polar-arc-length") {
     if (!object || object.kind !== "polar") throw new TypeError("Choose a polar curve to measure.");

@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { analyzeGraph2DRegression, graph2DStudentTCritical95, createEmptyGraph2DDocument, applyGraph2DAuthoring, createGraph2DDocument,
+import { analyzeGraph2DRegression, graph2DRegressionCurveTable, graph2DRegressionOverlaySeries, graph2DStudentTCritical95, createEmptyGraph2DDocument, applyGraph2DAuthoring, createGraph2DDocument,
   Graph2DPointTableStore, graph2DVerifiedPointTableReference, graph2DPointDomain, isGraph2DRegressionCurrent, createGraph2DPublication, graph2DRegressionResidualTable,
   graph2DPublicationAnalysisTable, renderGraph2DPublicationArtifact, type Graph2DPointRow } from "@math3d/core";
 const dataset = (ys: (number | null)[], xs = ys.map((_, i) => i)) => {
@@ -8,6 +8,43 @@ const dataset = (ys: (number | null)[], xs = ys.map((_, i) => i)) => {
     draft: { label: "Measured", table, domain: graph2DPointDomain(rows), mode: "points", style: { color: "#2255cc", lineStyle: "solid", lineWidth: 2, visible: true } } });
   return { rows, document: createGraph2DDocument({ ...edit, stableKey: "fit-test" }), store };
 };
+it("fits an exact cubic with unpenalized B-splines and reports no unsupported intervals", () => {
+  const xs = Array.from({ length: 80 }, (_, i) => 1e9 + i / 10);
+  const ys = xs.map(x => { const z = (x - 1e9) / 8; return 2 + z - 3 * z ** 2 + .5 * z ** 3; });
+  const { document, rows } = dataset(ys, xs), objectId = document.source.objects[0]!.id;
+  const fit = analyzeGraph2DRegression({ document, objectId, rows, model: "spline", smoothing: 0 });
+  expect(fit.sse).toBeLessThan(1e-15);
+  expect(fit.curve).toHaveLength(129);
+  expect(fit.curve[0]!.y).toBeCloseTo(ys[0]!, 10);
+  expect(fit.curve.at(-1)!.y).toBeCloseTo(ys.at(-1)!, 10);
+  expect(graph2DRegressionCurveTable(fit).columns).toEqual(["x", "Fitted y"]);
+  expect(graph2DRegressionOverlaySeries(fit)).toHaveLength(1);
+  expect(fit.publication.summary.intervalSemantics).toBe("none");
+});
+it("bounds spline smoothness, source integrity, and fitted extent", () => {
+  const xs = Array.from({ length: 120 }, (_, i) => i / 119);
+  const ys = xs.map((x, i) => Math.sin(6 * x) + (i % 2 ? .04 : -.04));
+  const { document, rows } = dataset(ys, xs), objectId = document.source.objects[0]!.id;
+  const unpenalized = analyzeGraph2DRegression({ document, objectId, rows, model: "spline", smoothing: 0 });
+  const smooth = analyzeGraph2DRegression({ document, objectId, rows, model: "spline", smoothing: .01 });
+  const roughness = (values: readonly number[]) => values.slice(0, -2)
+    .reduce((total, value, i) => total + (value - 2 * values[i + 1]! + values[i + 2]!) ** 2, 0);
+  expect(roughness(smooth.coefficients)).toBeLessThan(roughness(unpenalized.coefficients));
+  expect(smooth.sse).toBeGreaterThanOrEqual(unpenalized.sse - 1e-10);
+  expect(smooth.curve[0]!.x).toBe(xs[0]); expect(smooth.curve.at(-1)!.x).toBe(xs.at(-1));
+  expect(() => analyzeGraph2DRegression({ document, objectId, rows, model: "spline", smoothing: 1.01 })).toThrow(/between 0 and 1/);
+  expect(() => analyzeGraph2DRegression({ document, objectId, rows: rows.map((r, i) => i ? r : { ...r, y: 99 }),
+    model: "spline", smoothing: .01 })).toThrow(/checksum/);
+});
+it("keeps spline fitting finite at the bounded 10,000-row source limit", () => {
+  const xs = Array.from({ length: 10000 }, (_, i) => i / 9999);
+  const { document, rows } = dataset(xs.map(x => Math.sin(4 * x)), xs);
+  const fit = analyzeGraph2DRegression({ document, objectId: document.source.objects[0]!.id, rows,
+    model: "spline", smoothing: .001 });
+  expect(fit.n).toBe(10000); expect(fit.residuals).toHaveLength(10000);
+  expect(fit.curve).toHaveLength(129); expect(fit.curve.every(point => Number.isFinite(point.y))).toBe(true);
+  expect(graph2DRegressionResidualTable(fit).rows).toHaveLength(2048);
+});
 it.each([[1, 12.7062047364], [2, 4.3026527299], [5, 2.5705818356], [10, 2.2281388520], [30, 2.0422724563], [1000, 1.9623390808], [9997, 1.960201]] as const)("Student-t .975 quantile df=%s matches reference", (df, expected) => {
   expect(graph2DStudentTCritical95(df)).toBeCloseTo(expected, df === 9997 ? 5 : 8);
 });
