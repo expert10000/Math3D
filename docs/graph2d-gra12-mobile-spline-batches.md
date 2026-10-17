@@ -1,0 +1,9 @@
+# GRA-12.6 — measured spline batches and mobile cancellation
+
+**Software scope, 2026-10-17.** The shared cubic B-spline solver now has a bounded row-batch job. Desktop/web continue to call it synchronously inside their existing cancellable worker. Mobile Analyze runs the job in 128-row batches with an event-loop yield between batches, progress updates, and **Cancel fit**. A cancelled job cannot publish a result. Editing the input, changing its source, leaving Analyze, or backgrounding the app cancels the pending job. The previous completed result remains subject to the existing source/input staleness check.
+
+The batch path performs the same matrix and residual operations in the same row order as the synchronous path. Exact coefficient and residual parity and cancellation are tested. A 10,000-row local Vitest run measured **207 ms** for the synchronous solver and **134 ms** of computation for 128-row batches (158 steps); the combined 341 ms passed the conservative 5,000 ms test guard. These figures exclude timer scheduling, React rendering, Android startup, and device variability. This is a core computation budget, not a mobile latency promise.
+
+The new internal Android build completed a 10,000-row spline fit on the EnterpriseAnalytics_Pixel emulator and displayed `n=10000`, residual RMSE `0.0030402932`, and `R²=0.99998011` without an Android runtime crash. The cancellation invariant is covered by the bounded-job test; that quick emulator run did not establish a human reaction-time cancellation window.
+
+The mobile cancellation control currently applies to the spline fit. Linear through quartic mobile fits still use the synchronous shared-core call and need a separate cancellable batching or worker path. Physical Samsung latency and the wider accessibility/device matrix remain pending.

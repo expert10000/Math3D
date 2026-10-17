@@ -15,9 +15,10 @@ const firstPolarAngle = (source: Extract<Graph2DDocument["source"]["objects"][nu
   source.domain.includeMin ? source.domain.min : (source.domain.min + source.domain.max) / 2;
 const firstParametricParameter = (source: Extract<Graph2DDocument["source"]["objects"][number], { kind: "parametric" }>) =>
   source.domain.includeMin ? source.domain.min : (source.domain.min + source.domain.max) / 2;
-export const MobileGraphAnalysisPanel = ({ document, draft, result, onDraft, onRun, onLocate, onSaveCandidate, onSaveTangent }: {
+export const MobileGraphAnalysisPanel = ({ document, draft, result, pending, onDraft, onRun, onCancel, onLocate, onSaveCandidate, onSaveTangent }: {
   document: Graph2DDocument; draft: MobileGraphAnalysisDraft; result: MobileGraphRegressionAnalysis | null;
-  onDraft: (draft: MobileGraphAnalysisDraft) => void; onRun: () => void; onLocate: (probe: Graph2DProbe) => void;
+  pending?: number | null; onDraft: (draft: MobileGraphAnalysisDraft) => void; onRun: () => void; onCancel?: () => void;
+  onLocate: (probe: Graph2DProbe) => void;
   onSaveCandidate: (object: Graph2DConstructionObject) => void;
   onSaveTangent: (probe: Graph2DProbe) => void }) => {
   const current = result ? isMobileGraphAnalysisCurrent(result, document, draft) : false;
@@ -83,7 +84,9 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, onDraft, onR
       <Text>Uses shared core per-operation tolerances, shown below.</Text>}
     {draft.kind === "integral" && <View style={s.row}>{(["signed", "absolute"] as const).map((mode) => button(`${mode} area${draft.mode === mode ? " (selected)" : ""}`, () => onDraft({ ...draft, mode })))}</View>}
     {polarOperation && <Text>Angles are in radians. Swept area counts repeated traversal.</Text>}
-    {button("Run analysis", onRun, !sources.some((object) => object.id === draft.objectId))}
+    <View style={s.row}>{button("Run analysis", onRun, pending !== null && pending !== undefined || !sources.some((object) => object.id === draft.objectId))}
+      {pending !== null && pending !== undefined && button("Cancel fit", () => onCancel?.())}</View>
+    {pending !== null && pending !== undefined && <Text accessibilityLiveRegion="polite">Fitting checked point series… {Math.round(pending * 100)}%</Text>}
     <Text>Approximate, bounded calculations. Error estimates are not certified. No automatic all-function calculations.</Text>
     {result && <View style={s.card} testID="mobile-graph-analysis-results"><Text accessibilityLiveRegion="polite" style={s.title}>
       {current ? "Current result" : "Stale result — inputs or source changed; run again"}</Text>

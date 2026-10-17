@@ -4,6 +4,7 @@ import { fitGraph2DViewport, panGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph
   graph2DSceneFitBounds, graph2DConstructionFitBounds,
   resolveGraph2DViewport, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, graph2DParameterSessionKey,
   previewGraph2DParameterValues, graph2DRegressionOverlaySeries, applyGraph2DAuthoring, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion } from "@math3d/core";
+import { createGraph2DSplineRegressionJob, type Graph2DSplineRegressionJob } from "@math3d/core";
 import { projectGraph2DConstrainedPoint, previewGraph2DConstrainedPoint, resolveGraph2DConstructions } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { MobileGraphGesture, mobileGraphProbeRadius, type GraphTouch } from "./models/mobileGraphGestures";
@@ -29,7 +30,8 @@ import { mobileGraphAdvancedGeometry } from "./viewer/mobileGraphAdvancedProject
 import { MobileGraphPromotionPanel } from "./MobileGraphPromotionPanel";
 import { mobileGraphLayout, mobileGraphPanelDestination, type MobileGraphDestination } from "./models/mobileGraphLayout";
 import { MobileGraphAnalysisPanel } from "./MobileGraphAnalysisPanel";
-import { mobileGraphAnalysisDraft, runMobileGraphAnalysis, isMobileGraphAnalysisCurrent, mobileGraphAnalysisProbe,
+import { mobileGraphAnalysisDraft, mobileGraphAnalysisInputHash, mobileGraphRegressionResult, mobileGraphSplineSmoothness,
+  runMobileGraphAnalysis, isMobileGraphAnalysisCurrent, mobileGraphAnalysisProbe,
   type MobileGraphRegressionAnalysis } from "./models/mobileGraphAnalysis";
 import { mobileGraphToolUnavailable, mobileGraphTangentDraft } from "./models/mobileGraphTools";
 import { clipMobileGraphLine, projectMobileGraphGrid, projectMobileGraphLines, type MobileGraphLine } from "./viewer/mobileGraphProjection";
@@ -99,13 +101,67 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const [advanced, setAdvanced] = useState<MobileGraphAdvancedEditor | null>(null);
   const [analysisDraft, setAnalysisDraft] = useState(() => mobileGraphAnalysisDraft(document));
   const [analysis, setAnalysis] = useState<MobileGraphRegressionAnalysis | null>(null);
+  const [analysisPending, setAnalysisPending] = useState<number | null>(null);
+  const analysisGeneration = useRef(0);
+  const activeSpline = useRef<{ token: number; timer: ReturnType<typeof setTimeout> | null; job: Graph2DSplineRegressionJob;
+    sourceKey: string; draftHash: string; progressBucket: number } | null>(null);
+  const sourceKey = `${document.identity.id}|${document.identity.revision}|${document.identity.structuralHash}`;
+  const sourceKeyRef = useRef(sourceKey); sourceKeyRef.current = sourceKey;
+  const draftHash = mobileGraphAnalysisInputHash(analysisDraft);
+  const draftHashRef = useRef(draftHash); draftHashRef.current = draftHash;
+  const cancelSplineFit = (announce = false) => {
+    const active = activeSpline.current;
+    if (!active) return;
+    analysisGeneration.current++;
+    if (active.timer) clearTimeout(active.timer);
+    active.job.cancel(); activeSpline.current = null; setAnalysisPending(null);
+    if (announce) setError("Spline fit cancelled. No new result was published.");
+  };
+  const runAnalysis = () => {
+    cancel(); cancelSplineFit(false);
+    try {
+      const object = document.source.objects.find(o => o.id === analysisDraft.objectId);
+      const rows = object?.kind === "point-series" ? tableStore.resolve(object.table) : null;
+      if (analysisDraft.kind !== "regression-spline") {
+        setAnalysis(runMobileGraphAnalysis(document, analysisDraft, rows)); setError(""); return;
+      }
+      const job = createGraph2DSplineRegressionJob({ document, objectId: analysisDraft.objectId, rows,
+        smoothing: mobileGraphSplineSmoothness(analysisDraft) });
+      const token = ++analysisGeneration.current, sourceAtStart = sourceKey, draftAtStart = draftHash, draft = analysisDraft;
+      const active = { token, timer: null as ReturnType<typeof setTimeout> | null, job,
+        sourceKey: sourceAtStart, draftHash: draftAtStart, progressBucket: 0 };
+      activeSpline.current = active; setAnalysisPending(0); setError("");
+      const advance = () => {
+        active.timer = null;
+        if (activeSpline.current !== active) return;
+        if (sourceKeyRef.current !== sourceAtStart || draftHashRef.current !== draftAtStart) { cancelSplineFit(false); return; }
+        try {
+          if (job.advance(128)) {
+            const result = mobileGraphRegressionResult(draft, job.result());
+            activeSpline.current = null; setAnalysisPending(null); setAnalysis(result); setError("");
+          } else {
+            const bucket = Math.floor(job.progress * 20);
+            if (bucket !== active.progressBucket) { active.progressBucket = bucket; setAnalysisPending(job.progress); }
+            active.timer = setTimeout(advance, 0);
+          }
+        } catch (caught) {
+          activeSpline.current = null; setAnalysisPending(null); setError((caught as Error).message);
+        }
+      };
+      active.timer = setTimeout(advance, 50);
+    } catch (caught) { setError((caught as Error).message); }
+  };
   const viewport = preview ?? document.display.viewport;
   const guided = getGraph2DGuidedDocumentGuidance(document);
   const cancel = () => { gesture.current.cancel(); setPreview(null); cancelPointDrag(); };
   useEffect(() => {
-    const listener = AppState.addEventListener("change", (state) => { if (state !== "active") { cancel(); setParameterPreview(null); } });
-    return () => { listener.remove(); gesture.current.cancel(); };
+    const listener = AppState.addEventListener("change", (state) => { if (state !== "active") { cancel(); cancelSplineFit(false); setParameterPreview(null); } });
+    return () => { listener.remove(); gesture.current.cancel(); const active = activeSpline.current;
+      if (active) { if (active.timer) clearTimeout(active.timer); active.job.cancel(); activeSpline.current = null; } };
   }, []);
+  useEffect(() => { const active = activeSpline.current;
+    if (active && (active.sourceKey !== sourceKey || active.draftHash !== draftHash || destination !== "Analyze")) cancelSplineFit(false);
+  }, [sourceKey, draftHash, destination]);
   const sampling = useMobileGraphSampling(sampledDocument, viewport, size, !!preview, () => { setAnalysis(null); setParameterPreview(null); }, parameterPreviewActive ? document.identity : undefined, tableStore);
   const { series, budget } = sampling;
   const pointPreviewDocument = useMemo(() => {
@@ -415,10 +471,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         {series.some((item) => !item.artifact.converged) && <Text style={s.readout}>Sampling budget reached; unresolved regions are not a proof of absence.</Text>}
         {button("Clear probe", () => commit(() => adapter.commitSelection({ objectId: null, probe: null })))}
         {probe && button("Cycle overlap", () => tap(graph2DWorldToScreen(document.display.viewport, size, probe)))}
-        <MobileGraphAnalysisPanel document={document} draft={analysisDraft} result={analysis} onDraft={setAnalysisDraft}
-          onRun={() => { cancel(); try { const object = document.source.objects.find(o => o.id === analysisDraft.objectId);
-            setAnalysis(runMobileGraphAnalysis(document, analysisDraft, object?.kind === "point-series" ? tableStore.resolve(object.table) : null)); setError(""); }
-            catch (caught) { setError((caught as Error).message); } }}
+        <MobileGraphAnalysisPanel document={document} draft={analysisDraft} result={analysis} pending={analysisPending}
+          onDraft={(draft) => { cancelSplineFit(false); setAnalysisDraft(draft); }} onRun={runAnalysis} onCancel={() => cancelSplineFit(true)}
           onSaveCandidate={(object) => commit(() => adapter.commitConstruction({ type: "create", object }))}
           onSaveTangent={(point) => commit(() => {
             if (!analysis || !isMobileGraphAnalysisCurrent(analysis, document, analysisDraft) || !analysis.overlays.length)

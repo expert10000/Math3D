@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { analyzeGraph2DRegression, graph2DRegressionCurveTable, graph2DRegressionOverlaySeries, graph2DStudentTCritical95, createEmptyGraph2DDocument, applyGraph2DAuthoring, createGraph2DDocument,
+import { analyzeGraph2DRegression, createGraph2DSplineRegressionJob, graph2DRegressionCurveTable, graph2DRegressionOverlaySeries, graph2DStudentTCritical95, createEmptyGraph2DDocument, applyGraph2DAuthoring, createGraph2DDocument,
   Graph2DPointTableStore, graph2DVerifiedPointTableReference, graph2DPointDomain, isGraph2DRegressionCurrent, createGraph2DPublication, graph2DRegressionResidualTable,
   graph2DPublicationAnalysisTable, renderGraph2DPublicationArtifact, type Graph2DPointRow } from "@math3d/core";
 const dataset = (ys: (number | null)[], xs = ys.map((_, i) => i)) => {
@@ -20,6 +20,26 @@ it("fits an exact cubic with unpenalized B-splines and reports no unsupported in
   expect(graph2DRegressionCurveTable(fit).columns).toEqual(["x", "Fitted y"]);
   expect(graph2DRegressionOverlaySeries(fit)).toHaveLength(1);
   expect(fit.publication.summary.intervalSemantics).toBe("none");
+});
+it("spline batches match the synchronous fit and cancellation prevents publication", () => {
+  const xs = Array.from({ length: 80 }, (_, i) => i / 79);
+  const { document, rows } = dataset(xs.map(x => Math.sin(5 * x)), xs);
+  const input = { document, objectId: document.source.objects[0]!.id, rows, smoothing: .002 };
+  const reference = analyzeGraph2DRegression({ ...input, model: "spline" });
+  const job = createGraph2DSplineRegressionJob(input);
+  expect(job.progress).toBe(0); expect(job.advance(7)).toBe(false);
+  expect(job.progress).toBeGreaterThan(0);
+  expect(() => job.result()).toThrow(/not completed/);
+  while (!job.advance(7)) { /* advance one bounded batch */ }
+  expect(job.progress).toBe(1); expect(job.complete).toBe(true);
+  expect(job.result().coefficients).toEqual(reference.coefficients);
+  expect(job.result().residuals).toEqual(reference.residuals);
+  expect(job.result().resultId).toBe(reference.resultId);
+  const cancelled = createGraph2DSplineRegressionJob(input);
+  cancelled.advance(7); cancelled.cancel();
+  expect(cancelled.cancelled).toBe(true);
+  expect(() => cancelled.advance(7)).toThrow(/cancelled/);
+  expect(() => cancelled.result()).toThrow(/not completed/);
 });
 it("bounds spline smoothness, source integrity, and fitted extent", () => {
   const xs = Array.from({ length: 120 }, (_, i) => i / 119);

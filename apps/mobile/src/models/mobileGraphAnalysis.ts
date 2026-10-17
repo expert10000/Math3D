@@ -38,8 +38,27 @@ const number = (text: string) => {
     throw new TypeError("Enter finite numeric inputs.");
   return Number(text);
 };
+export const mobileGraphSplineSmoothness = (draft: MobileGraphAnalysisDraft) => number(draft.smoothing ?? "0.001");
 const format = (value: number | null) => value === null ? "unavailable" : value.toPrecision(8);
 export const mobileGraphAnalysisInputHash = (draft: MobileGraphAnalysisDraft) => structuralHash(draft);
+
+/** A finished shared-core fit is published only after its input hash is still current. */
+export const mobileGraphRegressionResult = (draft: MobileGraphAnalysisDraft, fit: Graph2DRegression): MobileGraphRegressionAnalysis => {
+  const projection = publicationProjection([{ publication: fit.publication, summary: fit.publication.summary } as { publication: AnalysisResultEnvelope }]);
+  return { kind: draft.kind, inputHash: mobileGraphAnalysisInputHash(draft), regression: fit, overlays: [],
+    ...projection, publications: [fit.publication],
+    publicationTables: [...projection.publicationTables, graph2DRegressionResidualTable(fit), graph2DRegressionCurveTable(fit)],
+    publicationNotes: fit.n > 2048 ? [`Regression residual table includes first 2048 of ${fit.n} original rows.`] : [],
+    rows: [{ label: `${fit.model} regression · n=${fit.n} · excluded=${fit.excluded}`, detail: `${fit.model === "spline" ? "descriptive RMSE" : `df=${fit.degreesOfFreedom} · residual SD`}=${format(fit.residualSD)} · R²=${format(fit.rSquared)}` },
+      ...(fit.model === "spline" ? [
+        { label: "Cubic smoothing spline", detail: `${fit.spline.controlPoints} control points · λ=${fit.spline.lambda} · no extrapolation` },
+        { label: "Uncertainty", detail: "No confidence or prediction intervals are provided for this regularized model." },
+      ] : [
+        { label: "Centered/scaled equation", detail: `z=(x-${fit.center})/${fit.scale}; y=${fit.coefficients.map((c, i) => `${format(c)}${i ? `*z^${i}` : ""}`).join(" + ")}` },
+        { label: "95% pointwise limits", detail: "Brown fit; purple dashed mean response; purple dotted new observation. Not simultaneous; no extrapolation. Log axes omit non-positive parts." },
+      ]),
+      { label: "Residuals", detail: `${fit.residuals.length} original rows; observed minus fitted. Report/CSV includes first 2,048 rows and all 129 fitted samples${fit.model === "spline" ? "." : " with intervals."} Results are transient; fit again after reopening.` }] };
+};
 
 /** One requested bounded shared-core operation, never automatic all-function work. */
 export const runMobileGraphAnalysis = (document: Graph2DDocument, draft: MobileGraphAnalysisDraft, regressionRows: readonly Graph2DPointRow[] | null = null): MobileGraphRegressionAnalysis => {
@@ -49,20 +68,8 @@ export const runMobileGraphAnalysis = (document: Graph2DDocument, draft: MobileG
     const fit = analyzeGraph2DRegression({ document, objectId: draft.objectId, rows: regressionRows,
       model: draft.kind === "regression-linear" ? "linear" : draft.kind === "regression-quadratic" ? "quadratic" :
         draft.kind === "regression-cubic" ? "cubic" : draft.kind === "regression-quartic" ? "quartic" : "spline",
-      smoothing: draft.kind === "regression-spline" ? number(draft.smoothing ?? "0.001") : undefined });
-    const projection = publicationProjection([{ publication: fit.publication, summary: fit.publication.summary } as { publication: AnalysisResultEnvelope }]);
-    return { ...result, regression: fit, ...projection, publications: [fit.publication],
-      publicationTables: [...projection.publicationTables, graph2DRegressionResidualTable(fit), graph2DRegressionCurveTable(fit)],
-      publicationNotes: fit.n > 2048 ? [`Regression residual table includes first 2048 of ${fit.n} original rows.`] : [],
-      rows: [{ label: `${fit.model} regression · n=${fit.n} · excluded=${fit.excluded}`, detail: `${fit.model === "spline" ? "descriptive RMSE" : `df=${fit.degreesOfFreedom} · residual SD`}=${format(fit.residualSD)} · R²=${format(fit.rSquared)}` },
-        ...(fit.model === "spline" ? [
-          { label: "Cubic smoothing spline", detail: `${fit.spline.controlPoints} control points · λ=${fit.spline.lambda} · no extrapolation` },
-          { label: "Uncertainty", detail: "No confidence or prediction intervals are provided for this regularized model." },
-        ] : [
-          { label: "Centered/scaled equation", detail: `z=(x-${fit.center})/${fit.scale}; y=${fit.coefficients.map((c, i) => `${format(c)}${i ? `*z^${i}` : ""}`).join(" + ")}` },
-          { label: "95% pointwise limits", detail: "Brown fit; purple dashed mean response; purple dotted new observation. Not simultaneous; no extrapolation. Log axes omit non-positive parts." },
-        ]),
-        { label: "Residuals", detail: `${fit.residuals.length} original rows; observed minus fitted. Report/CSV includes first 2,048 rows and all 129 fitted samples${fit.model === "spline" ? "." : " with intervals."} Results are transient; fit again after reopening.` }] };
+      smoothing: draft.kind === "regression-spline" ? mobileGraphSplineSmoothness(draft) : undefined });
+    return mobileGraphRegressionResult(draft, fit);
   }
   if (draft.kind === "polar-area" || draft.kind === "polar-arc-length") {
     if (!object || object.kind !== "polar") throw new TypeError("Choose a polar curve to measure.");

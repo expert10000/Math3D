@@ -6,4 +6,4 @@ The model uses 12 control points in an open uniform cubic B-spline basis over th
 
 **Uncertainty contract.** The spline does not publish confidence or prediction intervals. The polynomial fit intervals rely on a separate ordinary least-squares model and cannot be reused for a regularized spline. Fit warnings and publication metadata identify the basis, λ, row count, checksum, excluded rows, and absent interval semantics. Results are transient and become stale when their source or input changes.
 
-This is a fixed-size smoothing model, not automatic knot selection, cross-validation, or a general interpolation package. Physical-device latency and mobile mid-fit cancellation remain separate validation work.
+This is a fixed-size smoothing model, not automatic knot selection, cross-validation, or a general interpolation package. [GRA-12.6](graph2d-gra12-mobile-spline-batches.md) adds mobile spline cancellation and a 10,000-row core performance check. Physical-device latency remains separate validation work.

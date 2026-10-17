@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeGraph2DCriticalPoints, analyzeGraph2DIntegral, analyzeGraph2DRegression, createEmptyGraph2DDocument,
+import { analyzeGraph2DCriticalPoints, analyzeGraph2DIntegral, analyzeGraph2DRegression, createGraph2DSplineRegressionJob, createEmptyGraph2DDocument,
   applyGraph2DAuthoring, Graph2DPointTableStore, graph2DPointDomain, createGraph2DDocument, createGraph2DRegressionPresetRows,
   Graph2DSamplingJobController, parseGraph2DExpression, sampleGraph2DExplicit,
   sampleGraph2DImplicit, sampleGraph2DInequality, type Graph2DExplicitObject,
@@ -7,6 +7,7 @@ import { analyzeGraph2DCriticalPoints, analyzeGraph2DIntegral, analyzeGraph2DReg
 
 export const GRAPH2D_REVIEWED_PERFORMANCE_BUDGETS_MS = Object.freeze({
   explicitSuite: 1500, contourAndFill: 2500, analysisSuite: 2500, lifecycle5000: 250, regression10000: 5000,
+  spline10000: 5000,
 });
 const viewport = { xMin: -10, xMax: 10, yMin: -10, yMax: 10, aspect: "equal" as const };
 const domain = { min: -10, max: 10, includeMin: true, includeMax: true };
@@ -86,5 +87,26 @@ describe("Graph2D reviewed performance budgets", () => {
     const total = Object.values(timings).reduce((sum, time) => sum + time, 0);
     console.info(`GRA-12.2 regression 10k ms: ${JSON.stringify(timings)} total=${total.toFixed(1)}`);
     expect(total).toBeLessThan(GRAPH2D_REVIEWED_PERFORMANCE_BUDGETS_MS.regression10000);
+  });
+  it("bounds synchronous and mobile-sized spline batches at 10,000 rows", () => {
+    const rows = createGraph2DRegressionPresetRows();
+    const table = new Graph2DPointTableStore().publish(rows);
+    const base = createEmptyGraph2DDocument("spline-performance", "Spline performance");
+    const document = createGraph2DDocument({ ...applyGraph2DAuthoring(base, { type: "create-point-series", draft: { label: "Data", table,
+      domain: graph2DPointDomain(rows), mode: "points", style: { color: "#2255cc", lineStyle: "solid", lineWidth: 2, visible: true } } }),
+      stableKey: "spline-performance" });
+    const input = { document, objectId: document.source.objects[0]!.id, rows, smoothing: .001 };
+    const start = performance.now();
+    const direct = analyzeGraph2DRegression({ ...input, model: "spline" });
+    const directMs = performance.now() - start;
+    const job = createGraph2DSplineRegressionJob(input);
+    const batchStart = performance.now(); let steps = 0;
+    do { steps++; } while (!job.advance(128));
+    const batchMs = performance.now() - batchStart;
+    expect(job.result().coefficients).toEqual(direct.coefficients);
+    expect(job.result().residuals).toEqual(direct.residuals);
+    expect(job.result().n).toBe(10000); expect(steps).toBeGreaterThan(100);
+    console.info(`GRA-12.6 spline 10k ms: direct=${directMs.toFixed(1)} batched=${batchMs.toFixed(1)} steps=${steps}`);
+    expect(directMs + batchMs).toBeLessThan(GRAPH2D_REVIEWED_PERFORMANCE_BUDGETS_MS.spline10000);
   });
 });
