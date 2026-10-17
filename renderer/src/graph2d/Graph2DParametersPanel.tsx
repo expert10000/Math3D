@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createGraph2DAnimationPlan, graph2DAnimationFrame, Graph2DAnimationPlayer, graph2DParameterDraftFromFields, graph2DParameterFields,
-  graph2DParameterNumber, getGraph2DInteractivePresetGuidance, graph2DPublicationTableAllowance, quantizeGraph2DParameterValue, type Graph2DDocument, type Graph2DParameterAction,
+  graph2DParameterNumber, getGraph2DInteractivePresetGuidance, quantizeGraph2DParameterValue, type Graph2DDocument, type Graph2DParameterAction,
   previewGraph2DParameterValues,
   type Graph2DAnimationPlan, type Graph2DParameterFields, type Graph2DPublicationArtifact } from "@math3d/core";
 import { pointTableStore } from "./pointTableStore";
@@ -58,7 +58,7 @@ export function Graph2DParametersPanel({ document, onPreview, onCommit, settled,
     task.onmessageerror = () => { if (generation.current === token) { finish(); setMessage("Animation export response could not be read."); } };
     deadline.current = setTimeout(() => { if (generation.current === token) { finish(); setMessage("Frame export exceeded 45 seconds. Reduce frames or visible objects."); } }, 45000);
     task.postMessage({ plan: recipe, publication: { document, size: { width: 640, height: 480 }, pointTables: Object.fromEntries(document.source.objects.flatMap(o =>
-      o.kind === "point-series" && o.table.rowCount <= graph2DPublicationTableAllowance(document) && document.display.objects.some(s => s.objectId === o.id && s.visible)
+      o.kind === "point-series" && document.display.objects.some(s => s.objectId === o.id && s.visible)
         ? [[o.table.id, pointTableStore.resolve(o.table)]] : [])) } });
   });
   const download = (artifact: Graph2DPublicationArtifact) => { const url = URL.createObjectURL(new Blob([artifact.bytes.slice().buffer as ArrayBuffer], { type: artifact.mimeType }));

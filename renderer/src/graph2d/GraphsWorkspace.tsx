@@ -581,11 +581,14 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const polarDifferential = useMemo(() => analyzeGraph2DPolarLocalDifferential(document), [document]);
   const parametricDifferential = useMemo(() => analyzeGraph2DParametricLocalDifferential(document), [document]);
   const derivatives = differential?.derivatives ?? null;
-  const differentialOverlays = [
+  const differentialOverlays = useMemo(() => [
     ...(differential && isGraph2DLocalDifferentialCurrent(differential, document) ? differential.overlays : []),
     ...(polarDifferential && isGraph2DPolarLocalDifferentialCurrent(polarDifferential, document) ? polarDifferential.overlays : []),
     ...(parametricDifferential && isGraph2DParametricLocalDifferentialCurrent(parametricDifferential, document) ? parametricDifferential.overlays : []),
-  ];
+  ], [differential, polarDifferential, parametricDifferential, document]);
+  const probeMarkers = useMemo(() => parameterPreviewActive ? [] :
+    projectGraph2DProbeMarkers({ ...document, display: renderedDisplay }, size),
+  [document, renderedDisplay, size, parameterPreviewActive]);
   const exportAnalyses = useMemo(() => {
     const tables = graph2DPublicationAnalysisTables(!exportOpen ? [] : [criticalPoints, intervals, area, arcLength, polarArea, polarArcLength, intersections,
       differential, polarDifferential, parametricDifferential, ...(derivatives ?? [])].filter(result => !!result) as { publication: import("@math3d/core").AnalysisResultEnvelope }[]);
@@ -1100,7 +1103,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={series}
           constructions={parameterPreviewActive ? null : shownConstructions}
-          probeMarkers={parameterPreviewActive ? [] : projectGraph2DProbeMarkers({ ...document, display: renderedDisplay }, size)}
+          probeMarkers={probeMarkers}
           regression={!parameterPreviewActive && document.display.objects.find(s => s.objectId === currentRegression?.objectId)?.visible ? currentRegression : null}
           selectedProbe={parameterPreviewActive ? null : document.selection.probe} hoverProbe={parameterPreviewActive ? null : hoverSelection?.probe} overlays={parameterPreviewActive ? [] : differentialOverlays}
           intervals={!parameterPreviewActive && intervals && isGraph2DIntervalAnalysisCurrent(intervals, document) ? intervals : null}

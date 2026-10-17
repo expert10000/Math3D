@@ -46,6 +46,11 @@ describe("G2D36 portable publication recipe", () => {
     expect(p.series).toEqual(expected); expect(p.metadata.canonicalSource).toEqual(document.source);
     expect(p.metadata.source).toEqual(document.identity); expect(p.metadata.units).toEqual({ x: "unspecified", y: "unspecified" });
     expect(p.series.reduce((n, s) => n + s.artifact.samplesEvaluated, 0)).toBeLessThanOrEqual(4096);
+    if (preset.id === "regression-10000") {
+      expect(p.series[0]?.artifact).toMatchObject({ state: "downsampled" });
+      expect(p.series[0]?.artifact.segments[0]?.points.length).toBeGreaterThan(0);
+      expect(p.series[0]?.artifact.segments[0]?.points.length).toBeLessThanOrEqual(1024);
+    }
     expect(p.geometry.primitives.length).toBeLessThanOrEqual(16384);
     for (const primitive of p.geometry.primitives) if (primitive.kind === "line") for (const [value, max] of [[primitive.x1, 320], [primitive.x2, 320], [primitive.y1, 240], [primitive.y2, 240]]) {
       expect(value).toBeGreaterThanOrEqual(-1e-8); expect(value).toBeLessThanOrEqual(max + 1e-8);

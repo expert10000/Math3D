@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { memo, useId } from "react";
 import {
   resolveGraph2DViewport, graph2DHasLogScale, type Graph2DDisplay, type Graph2DSamplingArtifact,
   graph2DWorldToScreen, clipGraph2DLineOverlay, projectGraph2DConstructionVector, type Graph2DLineOverlay,
@@ -31,7 +31,7 @@ type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonl
   overlays?: readonly Graph2DLineOverlay[]; intervals?: Graph2DIntervalAnalysis | null;
   area?: Graph2DIntegralAnalysis | null; intersections?: Graph2DIntersectionAnalysis | null };
 
-export function Graph2DPlot({ display, size, series, regression, constructions, selectedProbe, hoverProbe, overlays = [], intervals, area, intersections, probeMarkers = [] }: Props) {
+export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, regression, constructions, selectedProbe, hoverProbe, overlays = [], intervals, area, intersections, probeMarkers = [] }: Props) {
   if (graph2DHasLogScale(display.viewport)) { overlays = []; area = null; intervals = null; }
   const clipId = useId();
   const grid = projectGraph2DGrid(display.viewport, size, display.axes.gridOptions);
@@ -116,13 +116,11 @@ export function Graph2DPlot({ display, size, series, regression, constructions, 
         {grid.horizontalMajor.filter((tick) => tick.value !== 0).map((tick) => <text key={`yl-${tick.value}`} x={Math.min(size.width - 32, Math.max(5, (grid.yAxis ?? 0) + 5))} y={tick.pixel - 3}>{tick.label}</text>)}
       </g>}
       <g clipPath={`url(#${clipId})`}>
-        {regression && <g data-testid="graph2d-regression-overlay" aria-hidden="true">
-          {regression.model !== "spline" && regression.curve.slice(1).map((p, i) => {
+        {regression?.model !== "spline" && regression && <g aria-hidden="true">
+          {regression.curve.slice(1).map((p, i) => {
             const a = regression.curve[i], corners = [{ x: a.x, y: a.meanLow }, { x: p.x, y: p.meanLow }, { x: p.x, y: p.meanHigh }, { x: a.x, y: a.meanHigh }].map(point => graph2DWorldToScreen(display.viewport, size, point));
             return corners.every(point => Number.isFinite(point.x) && Number.isFinite(point.y)) ? <polygon key={i} points={corners.map(point => `${point.x},${point.y}`).join(" ")} fill="#7c3aed" fillOpacity={.12} /> : null;
           })}
-          {graph2DRegressionOverlaySeries(regression).map(item => <path key={item.objectId} d={pathFor(item.artifact)} fill="none" stroke={item.style.color}
-            strokeWidth={item.style.lineWidth} strokeDasharray={item.style.lineStyle === "solid" ? undefined : item.style.lineStyle === "dashed" ? "8 5" : "2 4"} />)}
         </g>}
         {display.viewport.continuation && series.filter(item => item.style.visible && item.continuation).map(item =>
           <path key={`continuation-${item.objectId}`} data-graph2d-continuation={item.objectId} d={pathFor(item.continuation!)}
@@ -177,6 +175,14 @@ export function Graph2DPlot({ display, size, series, regression, constructions, 
             })}
           </g>;
         })}
+        {regression && <g data-testid="graph2d-regression-overlay" aria-hidden="true" pointerEvents="none">
+          {graph2DRegressionOverlaySeries(regression).map(item => <g key={item.objectId}>
+            {item.style.lineStyle === "solid" && <path d={pathFor(item.artifact)} fill="none" stroke="white" strokeWidth={5} strokeOpacity={0.9} />}
+            <path d={pathFor(item.artifact)} fill="none" stroke={item.style.color}
+              strokeWidth={item.style.lineStyle === "solid" ? 3 : item.style.lineWidth}
+              strokeDasharray={item.style.lineStyle === "solid" ? undefined : item.style.lineStyle === "dashed" ? "8 5" : "2 4"} />
+          </g>)}
+        </g>}
         {overlays.map((overlay) => {
           const segment = clipGraph2DLineOverlay(overlay, display.viewport, size);
           if (!segment) return null;
@@ -270,4 +276,4 @@ export function Graph2DPlot({ display, size, series, regression, constructions, 
       {marker(selectedProbe, "selected")}
     </svg>
   );
-}
+});

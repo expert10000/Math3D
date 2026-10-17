@@ -54,6 +54,8 @@ const recipes: readonly Recipe[] = [
     expressions: { 0: ["x^2+y^2-r^2"] }, animate: "r", from: .5, to: 1.25 },
 ];
 const cache = new Map<string, { preset: Graph2DPreset; guidance: Graph2DInteractivePresetGuidance; signature: string }>();
+/** A card hint only; opening the variant still checks the catalog digest. */
+export const hasGraph2DInteractivePreset = (id: string) => recipes.some(recipe => recipe.id === id);
 const signature = (document: Graph2DDocument) => canonicalJsonStringify({ ...document.source,
   variables: document.source.variables.map(parameter => ({ ...parameter, value: 0 })) });
 

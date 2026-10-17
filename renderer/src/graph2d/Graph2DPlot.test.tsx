@@ -41,9 +41,16 @@ describe("Graph2D render projection", () => {
       domain: graph2DPointDomain(rows), mode: "points", style: { color: "#2563eb", lineStyle: "solid", lineWidth: 2, visible: true } } }),
       stableKey: "spline-plot" });
     const regression = analyzeGraph2DRegression({ document, objectId: document.source.objects[0]!.id, rows, model: "spline", smoothing: .001 });
-    const svg = renderToStaticMarkup(<Graph2DPlot display={document.display} size={{ width: 640, height: 480 }} series={[]} regression={regression} />);
+    const data = { kind: "point-series" as const, mode: "line" as const, state: "ready" as const,
+      points: rows.map(row => ({ x: row.x, y: row.y, rowId: row.id })),
+      segments: [{ points: rows.map(row => ({ x: row.x, y: row.y })), openStart: false, openEnd: false }],
+      samplerVersion: 1 as const, converged: true, samplesEvaluated: rows.length, diagnostics: [] };
+    const svg = renderToStaticMarkup(<Graph2DPlot display={document.display} size={{ width: 640, height: 480 }}
+      series={[{ objectId: document.source.objects[0]!.id, artifact: data, style: document.display.objects[0]! }]} regression={regression} />);
     expect(svg).toContain('data-testid="graph2d-regression-overlay"');
     expect(svg).toContain('<path');
     expect(svg).not.toContain('<polygon');
+    expect(svg.indexOf('data-testid="graph2d-regression-overlay"')).toBeGreaterThan(svg.indexOf('data-graph2d-series-markers='));
+    expect(svg).toContain('stroke="#b45309" stroke-width="3"');
   });
 });

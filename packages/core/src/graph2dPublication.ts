@@ -73,8 +73,9 @@ export const createGraph2DPublication = (request: Graph2DPublicationRequest) => 
   const savedSampling = document.display.sampling;
   const sampling = { ...savedSampling, maxSamples: Math.min(savedSampling.maxSamples, GRAPH2D_PUBLICATION_LIMITS.maxSamples), maxDepth: Math.min(savedSampling.maxDepth, 16) };
   const pointTables: Record<string, readonly Graph2DPointRow[] | null> = {}, checkedTables = new Graph2DPointTableStore();
-  const allowance = graph2DPublicationTableAllowance(document);
-  for (const object of document.source.objects) if (object.kind === "point-series" && document.display.objects.some((s) => s.objectId === object.id && s.visible) && object.table.rowCount <= allowance) {
+  // The output sampler is bounded by maxSamples. A large checked sidecar is
+  // still needed as input; omitting it makes a 10,000-point export blank.
+  for (const object of document.source.objects) if (object.kind === "point-series" && document.display.objects.some((s) => s.objectId === object.id && s.visible)) {
     const rows = request.pointTables?.[object.table.id] ?? null;
     if (rows) {
       const reference = checkedTables.publish(rows);

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { createGraph2DCaptureRecipe, graph2DPublicationTableAllowance, GRAPH2D_PUBLICATION_FORMATS, structuralHash,
+import { createGraph2DCaptureRecipe, GRAPH2D_PUBLICATION_FORMATS, structuralHash,
   type Graph2DDocument, type Graph2DPublication, type Graph2DPublicationArtifact, type Graph2DPublicationTable,
   type Graph2DPublicationFormat } from "@math3d/core";
 import { pointTableStore } from "./pointTableStore";
@@ -33,9 +33,9 @@ export function Graph2DExportDialog({ document, analyses, analysisNotes, onClose
         worker.onmessage = event => finish(event.data.error ? { error: event.data.error } : { result: event.data });
         worker.onerror = event => { event.preventDefault(); finish({ error: event.message || "Export worker failed." }); };
         worker.onmessageerror = () => finish({ error: "Export worker response could not be read." });
-        const [width, height] = resolution.split("x").map(Number), allowance = graph2DPublicationTableAllowance(document);
+        const [width, height] = resolution.split("x").map(Number);
         const pointTables = Object.fromEntries(document.source.objects.flatMap(object => object.kind === "point-series" &&
-          object.table.rowCount <= allowance && document.display.objects.some(s => s.objectId === object.id && s.visible)
+          document.display.objects.some(s => s.objectId === object.id && s.visible)
           ? [[object.table.id, pointTableStore.resolve(object.table)]] : []));
         worker.postMessage({ request: { document, size: { width, height }, units, pointTables, analyses, analysisNotes } });
       } catch (error) { worker?.terminate(); clearTimeout(deadline); if (!stopped && latestKey.current === inputKey) setState({ key: inputKey, error: (error as Error).message }); }

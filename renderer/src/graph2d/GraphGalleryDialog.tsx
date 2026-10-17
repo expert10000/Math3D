@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { getGraph2DPresetCatalog, getGraph2DInteractivePreset, getGraph2DGuidedConcepts, getGraph2DGuidedPreset,
+import { getGraph2DInteractivePreset, hasGraph2DInteractivePreset, getGraph2DGuidedConcepts, getGraph2DGuidedPreset,
   GRAPH2D_PRESET_CATEGORIES, graph2DPresetPreviewKey, type Graph2DGuidedConcept,
   type Graph2DPreset, type Graph2DPresetCategory } from "@math3d/core";
 import { Graph2DPointTableStore, renderGraph2DDocumentPreview, type Graph2DPersonalPresetPreview } from "@math3d/core";
@@ -7,6 +7,7 @@ import { parseGraph2DProjectFavorites, emptyGraph2DProjectFavorites, toggleGraph
 import manifest from "../../../packages/core/fixtures/graph2d/gallery-previews.json";
 import { listGraphGalleryCheckpoints, listGraphGalleryPresetCopies, listPersonalGraphProjects } from "./graph2dGallerySession";
 import { GRAPH_GALLERY_PREFERENCES_KEY,emptyGraphGalleryPreferences,parseGraphGalleryPreferences,toggleGraphGalleryFavorite } from "./graph2dGalleryPreferences";
+import { loadGraph2DPresetCatalog, type GalleryCatalog } from "./loadGraph2DPresetCatalog";
 import "./graphGallery.css";
 
 const assets=import.meta.glob("../../../packages/core/assets/graph2d-gallery/*.svg",{query:"?url",import:"default",eager:true}) as Record<string,string>;
@@ -20,7 +21,9 @@ type Props={onClose:()=>void;onOpen:(preset:Graph2DPreset)=>void;onResume:(id:st
   onCopyDefinition?:(id:string)=>string;onPreviewImport?:(raw:string)=>Graph2DPersonalPresetPreview;
   onImportProject?:(preview:Graph2DPersonalPresetPreview)=>void;error:string|null;activeId:string;activeTitle:string};
 export function GraphGalleryDialog({onClose,onOpen,onResume,onCopy,onExportProject,onCopyDefinition,onPreviewImport,onImportProject,error,activeId,activeTitle}:Props) {
-  const ref=useRef<HTMLDialogElement>(null),titleId=useId(),catalog=useMemo(getGraph2DPresetCatalog,[]);
+  const ref=useRef<HTMLDialogElement>(null),titleId=useId();
+  const [catalog,setCatalog]=useState<GalleryCatalog|null>(null);
+  const [catalogError,setCatalogError]=useState("");
   const searchRef=useRef<HTMLInputElement>(null);
   const [query,setQuery]=useState(""),[category,setCategory]=useState<Graph2DPresetCategory|"All">("All"),[collection,setCollection]=useState("Featured");
   const [preferences,setPreferences]=useState(()=>{try{return {value:parseGraphGalleryPreferences(localStorage.getItem(GRAPH_GALLERY_PREFERENCES_KEY)),error:null as string|null};}
@@ -63,9 +66,14 @@ export function GraphGalleryDialog({onClose,onOpen,onResume,onCopy,onExportProje
   const existing=(preset:Graph2DPreset)=>copies.find(copy=>copy.presetId===preset.id&&copy.version===preset.version);
   const open=(preset:Graph2DPreset)=>{const copy=existing(preset);if(copy?.active)onClose();else if(copy)onResume(copy.id);else onOpen(preset);};
   useEffect(()=>{const dialog=ref.current!;dialog.showModal();searchRef.current?.focus();return()=>dialog.close();},[]);
-  const items=catalog.filter(query,category).filter(item=>featured?item.featuredOrder!==null:collection==="Favorites"?preferences.value.favorites.includes(item.id):collection==="Recent"?preferences.value.recent.includes(item.id):true)
+  useEffect(()=>{
+    let active=true;
+    void loadGraph2DPresetCatalog().then(value=>{if(active)setCatalog(value);},error=>{if(active)setCatalogError((error as Error).message);});
+    return()=>{active=false;};
+  },[]);
+  const items=(catalog?.filter(query,category)??[]).filter(item=>featured?item.featuredOrder!==null:collection==="Favorites"?preferences.value.favorites.includes(item.id):collection==="Recent"?preferences.value.recent.includes(item.id):true)
     .sort((a,b)=>featured?(a.featuredOrder??0)-(b.featuredOrder??0):collection==="Recent"?preferences.value.recent.indexOf(a.id)-preferences.value.recent.indexOf(b.id):0);
-  const unavailable=(collection==="Favorites"?preferences.value.favorites:collection==="Recent"?preferences.value.recent:[]).filter(id=>!catalog.get(id));
+  const unavailable=(collection==="Favorites"?preferences.value.favorites:collection==="Recent"?preferences.value.recent:[]).filter(id=>catalog&&!catalog.get(id));
   const image=(preset:Graph2DPreset)=>{const src=previewURL(preset);return src?<img src={src} alt={`${preset.title} graph preview`} width={320} height={180}/>:<div className="graph-gallery-image-fallback">Preview unavailable. The editable scene can still be opened.</div>;};
   const interactive=(preset:Graph2DPreset)=>{
     const variant=getGraph2DInteractivePreset(preset);if(!variant)return null;
@@ -159,15 +167,15 @@ export function GraphGalleryDialog({onClose,onOpen,onResume,onCopy,onExportProje
       {existing(selected)&&<button type="button" onClick={()=>onOpen(selected)}>Open fresh copy of {selected.title}</button>}
       {interactive(selected)}
       <button type="button" aria-label={`Favorite ${selected.title}`} aria-pressed={preferences.value.favorites.includes(selected.id)} onClick={()=>favorite(selected.id)}>{preferences.value.favorites.includes(selected.id)?"Remove favorite":"Favorite"}</button>
-    </section>:<><p role="status" className="graph-gallery-count">{items.length} {items.length===1?"scene":"scenes"}{featured?" · hand-picked starting points":" · editable, offline"}</p>
+    </section>:<><p role="status" className="graph-gallery-count">{catalogError?`Gallery scenes unavailable: ${catalogError}`:catalog?`${items.length} ${items.length===1?"scene":"scenes"}${featured?" · hand-picked starting points":" · editable, offline"}`:"Loading graph scenes…"}</p>
       <div className="graph-gallery-grid">{items.map(preset=><article key={preset.id} className="graph-gallery-card" data-testid={`graph-gallery-card-${preset.id}`}>
         {image(preset)}<div className="graph-gallery-card-body"><div className="graph-gallery-card-meta">{preset.category} · {preset.difficulty}</div><h3>{preset.title}</h3><p>{preset.description}</p>
-          <small>{[...new Set(preset.template.source.objects.map(o=>o.kind))].join(" · ")}{getGraph2DInteractivePreset(preset)?" · interactive copy in Preview":""}</small>
+          <small>{[...new Set(preset.template.source.objects.map(o=>o.kind))].join(" · ")}{hasGraph2DInteractivePreset(preset.id)?" · interactive copy in Preview":""}</small>
           {existing(preset)&&<small>{existing(preset)!.active?"Current edited copy":"Saved edited copy available"} · Open resumes it; Preview offers a fresh copy.</small>}
           <div className="graph-gallery-card-actions"><button type="button" className="graph-gallery-open" aria-label={`Open ${preset.title}`} onClick={()=>open(preset)}>Open</button>
             <button type="button" aria-label={`Preview ${preset.title}`} onClick={()=>setSelected(preset)}>Preview</button>
             <button type="button" className="graph-gallery-favorite" aria-label={`Favorite ${preset.title}`} aria-pressed={preferences.value.favorites.includes(preset.id)} onClick={()=>favorite(preset.id)}><span aria-hidden="true">{preferences.value.favorites.includes(preset.id)?"★":"☆"}</span></button></div></div>
-      </article>)}</div>{!items.length&&<p>{collection==="Favorites"?"No matching favorites. Bookmark a scene with its star button.":collection==="Recent"?"No matching recent scenes. Open a graph from the gallery to start.":"No scenes match these filters. Try another search or category."}</p>}
+      </article>)}</div>{catalog&&!items.length&&<p>{collection==="Favorites"?"No matching favorites. Bookmark a scene with its star button.":collection==="Recent"?"No matching recent scenes. Open a graph from the gallery to start.":"No scenes match these filters. Try another search or category."}</p>}
       {unavailable.length>0&&<section aria-label="Unavailable gallery entries"><p>These examples are unavailable in this catalog version. Your saved projects remain available.</p>{unavailable.map(id=><div key={id}>{id}{collection==="Favorites"&&<button type="button" onClick={()=>favorite(id)}>Remove favorite {id}</button>}</div>)}</section>}</>}
     {checkpoints.length>0&&<details className="graph-gallery-preserved"><summary>Preserved projects ({checkpoints.length})</summary>
       <p>Resume a previous Graph workspace. The current one is preserved before switching.</p>

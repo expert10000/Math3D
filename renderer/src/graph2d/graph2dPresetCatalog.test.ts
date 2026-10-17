@@ -5,6 +5,7 @@ import { getGraph2DPresetCatalog, GRAPH2D_OBJECT_KINDS, instantiateGraph2DPreset
 import { mobileGraphBudget } from "../../../apps/mobile/src/models/mobileGraphPerformance";
 import { mobileGraphAdvancedGeometry } from "../../../apps/mobile/src/viewer/mobileGraphAdvancedProjection";
 import { projectMobileGraphLines } from "../../../apps/mobile/src/viewer/mobileGraphProjection";
+import bundledCatalog from "../../../packages/core/fixtures/graph2d/preset-catalog.json";
 
 const functions: Record<string, ((x: number) => number)[]> = {
   "line-comparison": [x => x, x => 2*x+1], "translated-quadratic": [x => x*x, x => (x-1)**2-1],
@@ -15,6 +16,9 @@ const functions: Record<string, ((x: number) => number)[]> = {
   "sine-derivative": [Math.sin, Math.cos], "parabola-tangent": [x => x*x, x => 2*x-1],
 };
 describe("curated seven-kind catalog", () => {
+  it("keeps the fast Gallery bundle identical to the checked authored catalog", () => {
+    expect(bundledCatalog).toEqual(getGraph2DPresetCatalog().entries);
+  });
   it("provides 21 scenes, six Featured entries and multi-object comparisons", () => {
     const catalog = getGraph2DPresetCatalog();
     expect(catalog.entries).toHaveLength(21);

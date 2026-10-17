@@ -10,7 +10,9 @@ import { graph2DSceneSamplingKey } from "./graph2dSamplingKey";
 export function useGraph2DSampling(request: Graph2DSceneSamplingRequest, previewBase?: DocumentIdentity) {
   const controller = useRef(new Graph2DSamplingJobController());
   const key = useMemo(() => graph2DSceneSamplingKey(request), [request]);
-  const context = graph2DSamplingPresentationContext(request, previewBase);
+  // Point-table rows are part of the continuity hash. Hash them only when the
+  // sampling request changes, not for every Inspector or Gallery state update.
+  const context = useMemo(() => graph2DSamplingPresentationContext(request, previewBase), [request, previewBase]);
   const latest = useRef(key); latest.current = key;
   const previous = useRef<{ context: string; series: readonly Graph2DSampledSeries[] } | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -57,7 +59,8 @@ export function useGraph2DSampling(request: Graph2DSceneSamplingRequest, preview
     };
     // Selection/metadata-only changes share the sampling key and do not restart work.
   }, [key, context, attempt]);
-  return { key, ...presentGraph2DSampling(context, key, result, previous.current),
+  const presentation = useMemo(() => presentGraph2DSampling(context, key, result, previous.current), [context, key, result]);
+  return { key, ...presentation,
     retry: () => { setResult(null); setAttempt(value => value + 1); },
     constructions: result?.key === key && !result.error && result.constructions &&
       isGraph2DConstructionArtifactCurrent(result.constructions, request.document) ? result.constructions : null };

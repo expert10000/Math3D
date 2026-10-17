@@ -27,6 +27,7 @@ test("G2D41 Electron grid settings apply as reversible display-only intent", asy
     const inspector = page.getByLabel("Graph inspector", { exact: true });
     await expect(inspector.getByTestId("graph2d-sampling-status")).toContainText("converged");
     const gridCount = await page.locator(".graph2d-grid-major").count();
+    await page.locator(".graph2d-toolbar-menu summary").click();
     const opener = page.getByRole("button", { name: "Grid", exact: true }); await opener.focus(); await page.keyboard.press("Enter");
     const panel = page.getByTestId("graph2d-grid-settings"); await expect(panel.getByRole("checkbox", { name: "Show grid", exact: true })).toBeFocused();
     await panel.getByLabel("Grid density", { exact: true }).selectOption("dense");
@@ -47,10 +48,14 @@ test("G2D40 Electron professional scales, checked regression and frozen local pu
     const page = app.page; await resetSurfaceAppState(page); await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByTestId("workspace-nav-graphs").click(); await page.getByTestId("graph-gallery-open").click();
     await page.getByRole("button", { name: "Open A tangent at x = 1", exact: true }).click();
+    const more = page.locator(".graph2d-toolbar-menu");
+    const openMore = async () => { if (await more.getAttribute("open") === null) await more.locator("summary").click(); };
+    await openMore();
     const scales = page.getByRole("button", { name: "Scales", exact: true }); await scales.focus(); await page.keyboard.press("Enter");
     await expect(page.getByTestId("graph2d-scales").getByLabel("X scale", { exact: true })).toBeFocused();
     await page.keyboard.press("Escape"); await expect(scales).toBeFocused();
     await page.getByTestId("main-viewer").focus(); for (let i = 0; i < 4; i++) await page.keyboard.press("-");
+    await openMore();
     await page.getByRole("button", { name: "Show continuation", exact: true }).click();
     await expect.poll(() => page.locator("[data-graph2d-continuation]").first().getAttribute("d")).not.toBe("");
     const functions = page.getByLabel("Graph functions"); await functions.getByRole("button", { name: "Add data series", exact: true }).click();
@@ -62,6 +67,7 @@ test("G2D40 Electron professional scales, checked regression and frozen local pu
     await panel.getByRole("button", { name: "Fit dataset", exact: true }).click(); await expect(panel.getByRole("status")).toHaveText("Current regression");
     await expect(page.getByTestId("graph2d-regression-overlay")).toHaveCount(1);
     const before = await page.evaluate(() => localStorage.getItem("math3d.mixed-workspace.v1"));
+    await openMore();
     await page.getByTestId("graph2d-export-open").click(); const dialog = page.getByTestId("graph2d-export");
     await dialog.getByLabel("Image size").selectOption("640x480");
     const outputs: Buffer[] = [];
