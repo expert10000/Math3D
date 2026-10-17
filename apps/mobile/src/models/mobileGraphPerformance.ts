@@ -1,4 +1,4 @@
-import { type Graph2DDocument, type Graph2DSampledSeries } from "@math3d/core";
+import { GRAPH2D_POINT_TABLE_MAX_ROWS, type Graph2DDocument, type Graph2DSampledSeries } from "@math3d/core";
 
 export type MobileGraphDeviceTier = "low" | "mid" | "high";
 export type MobileGraphSamplingPhase = "interaction" | "preview" | "refine" | "paused";
@@ -62,3 +62,7 @@ export const boundMobileGraphArtifacts = (series: readonly Graph2DSampledSeries[
 };
 export const mobileGraphTableRowAllowance = (document: Graph2DDocument, samples: number): number =>
   Math.max(32, Math.floor(samples / Math.max(1, document.display.objects.filter((style) => style.visible).length)));
+/** Large connected tables may be read because their display is bounded by sample count; point markers remain all-or-nothing. */
+export const mobileGraphCanReadPointTable = (object: Extract<Graph2DDocument["source"]["objects"][number], { kind: "point-series" }>,
+  allowance: number, maxSamples: number): boolean => object.table.rowCount <= allowance ||
+  object.mode === "line" && maxSamples >= 32 && object.table.rowCount <= GRAPH2D_POINT_TABLE_MAX_ROWS;

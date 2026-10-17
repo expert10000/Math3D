@@ -24,6 +24,11 @@ const freeze = <T>(v: T): T => {
   if (v && typeof v === "object") { Object.values(v).forEach(freeze); Object.freeze(v); }
   return v;
 };
+// Only objects returned by this parser are trusted. They are deeply frozen, so
+// repeated catalog lookups and launches can reuse the completed digest/sidecar check.
+const validatedPresets = new WeakSet<Graph2DPreset>();
+const verifiedPreset = (preset: Graph2DPreset): Graph2DPreset =>
+  validatedPresets.has(preset) ? preset : parseGraph2DPreset(canonicalJsonStringify(preset));
 const digest = (v: Omit<Graph2DPreset, "digest"> | Graph2DPreset) => {
   const { digest: _ignored, ...payload } = v as Graph2DPreset;
   return structuralHash(payload);
@@ -67,14 +72,16 @@ export const parseGraph2DPreset = (raw: string): Graph2DPreset => {
   if (referenced.size !== tableIds.size) throw new TypeError("Unreferenced preset sidecar.");
   if (bytes({ ...v, sidecars: [] }) > 128 * 1024) throw new TypeError("Preset manifest exceeds 128 KiB.");
   if (v.digest !== digest(v as unknown as Graph2DPreset)) throw new TypeError("Preset digest mismatch.");
-  return freeze({ ...v, template } as Graph2DPreset);
+  const preset = freeze({ ...v, template } as Graph2DPreset);
+  validatedPresets.add(preset);
+  return preset;
 };
 export const createGraph2DPreset = (input: Graph2DPresetInput): Graph2DPreset => {
   const payload = { ...input, format: GRAPH2D_PRESET_FORMAT, schemaVersion: 1 as const,
     requiredCapabilities: input.template.requiredCapabilities };
   return parseGraph2DPreset(canonicalJsonStringify({ ...payload, digest: digest(payload) }));
 };
-export const serializeGraph2DPreset = (preset: Graph2DPreset): string => canonicalJsonStringify(parseGraph2DPreset(canonicalJsonStringify(preset)));
+export const serializeGraph2DPreset = (preset: Graph2DPreset): string => canonicalJsonStringify(verifiedPreset(preset));
 
 /** Host supplies a fresh launch token; catalog IDs never become user project identities. */
 export const instantiateGraph2DPreset = (preset: Graph2DPreset, instanceKey: string): Readonly<{
@@ -82,7 +89,7 @@ export const instantiateGraph2DPreset = (preset: Graph2DPreset, instanceKey: str
   origin: Readonly<{ presetId: string; version: number; digest: string }>;
 }> => {
   if (!text(instanceKey, 160)) throw new TypeError("A fresh preset launch token is required.");
-  const verified = parseGraph2DPreset(serializeGraph2DPreset(preset));
+  const verified = verifiedPreset(preset);
   const document = createGraph2DDocument({ stableKey: ["gallery-launch", verified.id, verified.version, instanceKey],
     source: verified.template.source, display: verified.template.display, selection: verified.template.selection, title: verified.title });
   return { document, sidecars: verified.sidecars, origin: { presetId: verified.id, version: verified.version, digest: verified.digest } };
@@ -90,7 +97,7 @@ export const instantiateGraph2DPreset = (preset: Graph2DPreset, instanceKey: str
 
 export const createGraph2DPresetRegistry = (items: readonly Graph2DPreset[]) => {
   if (items.length > 128) throw new TypeError("Catalog exceeds 128 entries.");
-  const entries = freeze(items.map((item) => parseGraph2DPreset(serializeGraph2DPreset(item))));
+  const entries = Object.freeze(items.map(verifiedPreset));
   if (new Set(entries.map((item) => item.id)).size !== entries.length) throw new TypeError("Duplicate preset ID.");
   if (new Set(entries.filter((item) => item.featuredOrder !== null).map((item) => item.featuredOrder)).size !==
     entries.filter((item) => item.featuredOrder !== null).length) throw new TypeError("Duplicate featured order.");

@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { Graph2DPointTableStore, sampleGraph2DScene } from "@math3d/core";
+import { Graph2DPointTableStore, getGraph2DPresetCatalog, sampleGraph2DScene } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { createMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
 import { INITIAL_MOBILE_GRAPH_PERFORMANCE, MOBILE_GRAPH_DEVICE_PROFILES, MobileGraphSamplingEpoch,
-  boundMobileGraphArtifacts, measureMobileGraphPerformance, mobileGraphBudget, pressureMobileGraphPerformance } from "../../apps/mobile/src/models/mobileGraphPerformance";
+  boundMobileGraphArtifacts, measureMobileGraphPerformance, mobileGraphBudget, mobileGraphCanReadPointTable,
+  mobileGraphTableRowAllowance, pressureMobileGraphPerformance } from "../../apps/mobile/src/models/mobileGraphPerformance";
 import { MobileGraphSamplingJobs } from "../../apps/mobile/src/models/mobileGraphSamplingJobs";
 import { projectMobileGraphLines } from "../../apps/mobile/src/viewer/mobileGraphProjection";
 import { mobileGraphKindEditor, mobileGraphKindAction } from "../../apps/mobile/src/models/mobileGraphAdvancedAuthoring";
@@ -95,6 +96,17 @@ describe("MOB-G12 measured native workload policies", () => {
     disk.set(a.id, "partial"); store.clearCache(); expect(store.resolve(a)).toBeNull();
     const uncached = new Graph2DPointTableStore(backing, 0); expect(uncached.resolve(b)).not.toBeNull(); expect(uncached.cachedBytes).toBe(0);
     expect(() => new Graph2DPointTableStore(backing, -1)).toThrow(/budget/);
+  });
+  it("reads the 10,000-row line preset for a bounded mobile plot without enabling 10,000 point markers", () => {
+    const preset = getGraph2DPresetCatalog().get("regression-10000")!;
+    const object = preset.template.source.objects[0]!;
+    if (object.kind !== "point-series") throw new Error("Expected point series.");
+    const budget = mobileGraphBudget(preset.template, "mid", "preview");
+    const allowance = mobileGraphTableRowAllowance(preset.template, budget.sampling.maxSamples);
+    expect(allowance).toBeLessThan(object.table.rowCount);
+    expect(mobileGraphCanReadPointTable(object, allowance, budget.sampling.maxSamples)).toBe(true);
+    expect(mobileGraphCanReadPointTable({ ...object, mode: "points" }, allowance, budget.sampling.maxSamples)).toBe(false);
+    expect(mobileGraphCanReadPointTable(object, allowance, 16)).toBe(false);
   });
   it("reports over-budget tables as complexity-limited without unnecessary sidecar IO", () => {
     const empty = createMobileGraph("Rows", false, "rows-g12"), adapter = new Graph2DCommandAdapter(empty);

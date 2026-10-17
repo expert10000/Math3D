@@ -49,6 +49,21 @@ describe("Graph2D point series", () => {
     expect(sampleGraph2DPointSeries(denseObject, store.resolve(denseRef), 6000).points).toHaveLength(5000);
   });
 
+  it("keeps verified cached rows immutable and rechecks backing after cache release", () => {
+    const backing = new Map<string, string>(); let reads = 0;
+    const writer = new Graph2DPointTableStore({ read: id => backing.get(id) ?? null,
+      write: (id, content) => { backing.set(id, content); } });
+    const reference = writer.publish([{ id: "row_1", x: 2, y: 3 }]);
+    const reader = new Graph2DPointTableStore({ read: id => { reads++; return backing.get(id) ?? null; }, write: () => {} });
+    const first = reader.resolve(reference);
+    expect(first?.[0]?.y).toBe(3); expect(Object.isFrozen(first)).toBe(true); expect(Object.isFrozen(first?.[0])).toBe(true);
+    expect(reader.resolve(reference)).toBe(first); expect(reads).toBe(1);
+    expect(reader.resolve({ ...reference, checksum: `sha256:${"0".repeat(64)}` })).toBeNull();
+    backing.set(reference.id, "[]");
+    expect(reader.resolve(reference)).toBe(first);
+    reader.clearCache(); expect(reader.resolve(reference)).toBeNull(); expect(reads).toBe(2);
+  });
+
   it("plots points, splits connected lines at gaps, and probes stable row IDs", () => {
     const rows = previewGraph2DPointImport("x,y\n0,0\n1,1\n2,NA\n3,4").rows;
     const table = new Graph2DPointTableStore().publish(rows);

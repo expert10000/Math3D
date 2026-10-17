@@ -365,8 +365,15 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
       viewport.continuation ? "Light dotted continuation is visual only; not analysed/exported." : "",
       graph2DHasLogScale(viewport) ? "Log axes omit non-positive values. Analysis uses world units; area/tangent overlays hidden." : "",
       !sampling.ready ? sampling.active ? sampling.retained ? "Graph updating; previous samples visible." : "Graph updating…" : "Graph sampling paused in background." : "",
+      series.some((item) => item.artifact.diagnostics.some((diagnostic) => diagnostic.code === "missing-table"))
+        ? "Point table missing or corrupt. Import its CSV/TSV sidecar to display and analyse it." :
       geometry.truncated || sampling.truncated || lines.length >= budget.lines || series.some((item) => !item.artifact.converged)
-        ? "Approximate/incomplete display. Check Display diagnostics; missing data requires its CSV/TSV sidecar." : "",
+        ? series.length > 0 && series.every((item) => item.artifact.segments.length > 0 &&
+            item.artifact.diagnostics.length > 0 && item.artifact.diagnostics.every((diagnostic) => diagnostic.code === "sample-limit") &&
+            document.source.objects.some((object) => object.id === item.objectId && object.kind === "point-series" && object.mode === "line" &&
+              object.table.rowCount > item.artifact.samplesEvaluated))
+          ? "Plot downsampled for display. Regression uses all original checked rows."
+          : "Approximate/incomplete display. Check Display diagnostics." : "",
     ].filter(Boolean).join(" ")}</Text>}
     {!presentation && (error || sampling.error || message ? <Text accessibilityLiveRegion="polite" numberOfLines={2} style={s.readout}>{error || sampling.error || message}</Text> : null)}
     {!presentation && ticks.warnings.length > 0 && <Text accessibilityLiveRegion="polite" style={s.readout}>{ticks.warnings.join(" ")}</Text>}

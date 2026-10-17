@@ -72,7 +72,7 @@ export function MobileGraphGallery({ onClose, onOpen, busy = false, message = ""
     onClose();
   }}
     onShow={() => { setShown(true); const handle = findNodeHandle(heading.current); if (handle) AccessibilityInfo.setAccessibilityFocus(handle); }}>
-    <SafeAreaProvider><KeyboardAvoidingView style={s.root} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+    <SafeAreaProvider><KeyboardAvoidingView style={s.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
     <GallerySafeArea>
       <View style={s.header}><Text ref={heading} accessibilityRole="header" style={s.heading}>Graph Gallery</Text>{button("Close Graph Gallery", onClose, false, busy, "Close")}</View>
       {shown && <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={s.content}

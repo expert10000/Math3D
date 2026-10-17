@@ -2,9 +2,17 @@ import { describe, expect, it } from "vitest";
 import { applyGraph2DAuthoring, createGraph2DDocument, getGraph2DPresetCatalog,
   getGraph2DGuidedConcepts, getGraph2DGuidedPreset, getGraph2DGuidedDocumentGuidance, graph2DPinnedProbeState,
   instantiateGraph2DPreset, parseGraph2DDocument, serializeGraph2DDocument,
-  parseGraph2DPreset, serializeGraph2DPreset, type Graph2DDocument } from "@math3d/core";
+  parseGraph2DPreset, serializeGraph2DPreset, createGraph2DPresetRegistry, type Graph2DDocument } from "@math3d/core";
 
 describe("GGL13 guided concepts", () => {
+  it("reuses internally verified immutable presets but rejects changed external copies", () => {
+    const preset = getGraph2DPresetCatalog().get("regression-10000")!;
+    expect(createGraph2DPresetRegistry([preset]).get(preset.id)).toBe(preset);
+    expect(instantiateGraph2DPreset(preset, "verified-fast-path").sidecars).toBe(preset.sidecars);
+    const changed = Object.freeze({ ...preset, title: "Changed without a new digest" });
+    expect(() => instantiateGraph2DPreset(changed, "invalid-copy")).toThrow(/digest/);
+    expect(() => createGraph2DPresetRegistry([changed])).toThrow(/digest/);
+  });
   it("keeps frozen v1 scenes unchanged and produces four bounded, independently editable guides", () => {
     const catalog = getGraph2DPresetCatalog(), before = catalog.entries.map(serializeGraph2DPreset);
     const concepts = getGraph2DGuidedConcepts();

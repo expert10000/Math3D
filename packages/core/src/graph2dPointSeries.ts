@@ -16,6 +16,11 @@ export type Graph2DPointTableBacking = Readonly<{
   read: (id: string) => string | null;
   write: (id: string, content: string) => void;
 }>;
+// A store only certifies its own frozen copy after checking the complete table.
+// Consumers can reuse that proof without hashing 10,000 rows for every analysis.
+const verifiedRows = new WeakMap<readonly Graph2DPointRow[], Graph2DPointTableReference>();
+export const graph2DVerifiedPointTableReference = (rows: readonly Graph2DPointRow[]): Graph2DPointTableReference | null =>
+  verifiedRows.get(rows) ?? null;
 
 const validRows = (rows: readonly Graph2DPointRow[]): boolean => rows.length >= 1 &&
   rows.length <= GRAPH2D_POINT_TABLE_MAX_ROWS && rows.every((row, index) =>
@@ -72,21 +77,22 @@ export const previewGraph2DPointImport = (text: string): Graph2DPointImportPrevi
 export class Graph2DPointTableStore {
   readonly #tables = new Map<string, readonly Graph2DPointRow[]>();
   readonly #sizes = new Map<string, number>();
+  readonly #checksums = new Map<string, string>();
   readonly backing?: Graph2DPointTableBacking;
   readonly maxCacheBytes: number;
   constructor(backing?: Graph2DPointTableBacking, maxCacheBytes = Infinity) {
     if (maxCacheBytes !== Infinity && (!Number.isSafeInteger(maxCacheBytes) || maxCacheBytes < 0)) throw new TypeError("Invalid point table cache budget.");
     this.backing = backing; this.maxCacheBytes = maxCacheBytes;
   }
-  clearCache() { this.#tables.clear(); this.#sizes.clear(); }
+  clearCache() { this.#tables.clear(); this.#sizes.clear(); this.#checksums.clear(); }
   get cachedBytes() { return [...this.#sizes.values()].reduce((sum, bytes) => sum + bytes, 0); }
-  #remember(id: string, rows: readonly Graph2DPointRow[], bytes: number) {
-    this.#tables.delete(id); this.#sizes.delete(id);
+  #remember(id: string, rows: readonly Graph2DPointRow[], bytes: number, checksum: string) {
+    this.#tables.delete(id); this.#sizes.delete(id); this.#checksums.delete(id);
     if (bytes > this.maxCacheBytes) return;
     while (this.cachedBytes + bytes > this.maxCacheBytes && this.#tables.size) {
-      const oldest = this.#tables.keys().next().value!; this.#tables.delete(oldest); this.#sizes.delete(oldest);
+      const oldest = this.#tables.keys().next().value!; this.#tables.delete(oldest); this.#sizes.delete(oldest); this.#checksums.delete(oldest);
     }
-    this.#tables.set(id, rows); this.#sizes.set(id, bytes);
+    this.#tables.set(id, rows); this.#sizes.set(id, bytes); this.#checksums.set(id, checksum);
   }
 
   publish(rows: readonly Graph2DPointRow[]): Graph2DPointTableReference {
@@ -98,25 +104,31 @@ export class Graph2DPointTableStore {
     const reference: Graph2DPointTableReference = { id: `graph2d-table:${checksum.slice(7, 39)}`,
       checksum, rowCount: rows.length, encoding: "math3d.graph2d-point-table.v1" };
     this.backing?.write(reference.id, content);
-    this.#remember(reference.id, JSON.parse(content) as Graph2DPointRow[], bytes.length);
+    const stored = JSON.parse(content) as Graph2DPointRow[];
+    stored.forEach(Object.freeze); Object.freeze(stored);
+    verifiedRows.set(stored, Object.freeze({ ...reference }));
+    this.#remember(reference.id, stored, bytes.length, checksum);
     return reference;
   }
 
   resolve(reference: Graph2DPointTableReference): readonly Graph2DPointRow[] | null {
     let rows = this.#tables.get(reference.id);
+    if (rows) return rows.length === reference.rowCount && this.#checksums.get(reference.id) === reference.checksum ? rows : null;
     if (!rows) {
       const content = this.backing?.read(reference.id);
       if (content === null || content === undefined) return null;
       try {
         const parsed = JSON.parse(content) as Graph2DPointRow[];
         if (!Array.isArray(parsed) || !validRows(parsed) ||
-          sha256Checksum(new TextEncoder().encode(canonicalJsonStringify(parsed))) !== reference.checksum) return null;
+          sha256Checksum(new TextEncoder().encode(canonicalJsonStringify(parsed))) !== reference.checksum ||
+          parsed.length !== reference.rowCount) return null;
+        parsed.forEach(Object.freeze); Object.freeze(parsed);
         rows = parsed;
-        this.#remember(reference.id, rows, new TextEncoder().encode(content).length);
+        verifiedRows.set(rows, Object.freeze({ ...reference }));
+        this.#remember(reference.id, rows, new TextEncoder().encode(content).length, reference.checksum);
       } catch { return null; }
     }
-    return rows.length === reference.rowCount &&
-      sha256Checksum(new TextEncoder().encode(canonicalJsonStringify(rows))) === reference.checksum ? rows : null;
+    return rows;
   }
 }
 

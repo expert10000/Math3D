@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { analyzeGraph2DRegression, graph2DStudentTCritical95, createEmptyGraph2DDocument, applyGraph2DAuthoring, createGraph2DDocument,
-  Graph2DPointTableStore, graph2DPointDomain, isGraph2DRegressionCurrent, createGraph2DPublication, graph2DRegressionResidualTable,
+  Graph2DPointTableStore, graph2DVerifiedPointTableReference, graph2DPointDomain, isGraph2DRegressionCurrent, createGraph2DPublication, graph2DRegressionResidualTable,
   graph2DPublicationAnalysisTable, renderGraph2DPublicationArtifact, type Graph2DPointRow } from "@math3d/core";
 const dataset = (ys: (number | null)[], xs = ys.map((_, i) => i)) => {
   const rows = ys.map((y, i) => ({ id: `row_${i + 1}`, x: xs[i], y })), store = new Graph2DPointTableStore(), table = store.publish(rows);
@@ -22,6 +22,18 @@ it("linear fit matches independent centered sums, residual orthogonality and dis
   expect(p.meanHigh - p.y).toBeCloseTo(fit.tCritical * se, 10);
   expect(p.predictionHigh - p.y).toBeGreaterThan(p.meanHigh - p.y);
   expect(Object.isFrozen(fit)).toBe(true); expect(Object.isFrozen(fit.residuals)).toBe(true);
+});
+it("reuses a verified immutable table for fitting and rejects an altered copy", () => {
+  const { document, rows, store } = dataset([1, 3, 5, 7, 9, 11]);
+  const table = document.source.objects[0]!;
+  if (table.kind !== "point-series") throw new Error("Expected point series.");
+  const verified = store.resolve(table.table)!;
+  expect(graph2DVerifiedPointTableReference(verified)).toEqual(table.table);
+  expect(graph2DVerifiedPointTableReference(rows)).toBeNull();
+  const fit = analyzeGraph2DRegression({ document, objectId: table.id, rows: verified, model: "linear" });
+  expect(fit.n).toBe(6);
+  expect(() => analyzeGraph2DRegression({ document, objectId: table.id,
+    rows: verified.map((row, index) => index === 0 ? { ...row, y: 99 } : row), model: "linear" })).toThrow(/checksum/);
 });
 it("quadratic exact recovery is stable with large x offsets", () => {
   const xs = [-3, -2, -1, 0, 1, 2, 3].map(x => 1e12 + x), { document, rows } = dataset(xs.map(x => 5 + 2 * (x - 1e12) + .5 * (x - 1e12) ** 2), xs);

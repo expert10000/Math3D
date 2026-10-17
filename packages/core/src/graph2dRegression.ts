@@ -1,7 +1,7 @@
 import { createAnalysisResultEnvelope, type AnalysisResultEnvelope } from "./analysisResults";
 import { structuralHash } from "./documentIdentity";
 import type { Graph2DDocument, Graph2DPointTableReference } from "./graph2dDocument";
-import { Graph2DPointTableStore, type Graph2DPointRow } from "./graph2dPointSeries";
+import { Graph2DPointTableStore, graph2DVerifiedPointTableReference, type Graph2DPointRow } from "./graph2dPointSeries";
 import type { ScientificSourceGeneration } from "./scientificJobs";
 import type { Graph2DPublicationTable } from "./graph2dPublication";
 export type Graph2DRegressionModel = "linear" | "quadratic" | "cubic" | "quartic";
@@ -57,9 +57,10 @@ export function analyzeGraph2DRegression(input: { document: Graph2DDocument; obj
   const object = document.source.objects.find(o => o.id === objectId);
   if (object?.kind !== "point-series" || !["linear", "quadratic", "cubic", "quartic"].includes(model)) throw new TypeError("Select a point series and a reviewed linear, quadratic, cubic or quartic model.");
   if (!input.rows) throw new TypeError("Regression needs the original checked point-table sidecar; sampled/displayed points are not data.");
-  const checked = new Graph2DPointTableStore(), ref = checked.publish(input.rows);
+  const certified = graph2DVerifiedPointTableReference(input.rows);
+  const checked = certified ? null : new Graph2DPointTableStore(), ref = certified ?? checked!.publish(input.rows);
   if (ref.checksum !== object.table.checksum || ref.id !== object.table.id || ref.rowCount !== object.table.rowCount) throw new TypeError("Regression sidecar checksum does not match the dataset.");
-  const rows = checked.resolve(ref)!.filter(row => row.y !== null && row.x >= object.domain.min && row.x <= object.domain.max &&
+  const rows = (certified ? input.rows : checked!.resolve(ref)!).filter(row => row.y !== null && row.x >= object.domain.min && row.x <= object.domain.max &&
     (object.domain.includeMin || row.x !== object.domain.min) && (object.domain.includeMax || row.x !== object.domain.max));
   const count = model === "linear" ? 2 : model === "quadratic" ? 3 : model === "cubic" ? 4 : 5;
   const n = rows.length, degreesOfFreedom = n - count;

@@ -7,7 +7,7 @@ import { sampleGraph2DScene, resolveGraph2DConstructions, isGraph2DConstructionA
 import { mobileGraphPointTables } from "./services/mobileGraphPointTables";
 import { MobileGraphSamplingJobs } from "./models/mobileGraphSamplingJobs";
 import { INITIAL_MOBILE_GRAPH_PERFORMANCE, MobileGraphSamplingEpoch, boundMobileGraphArtifacts, measureMobileGraphPerformance,
-  mobileGraphBudget, mobileGraphTableRowAllowance, pressureMobileGraphPerformance, type MobileGraphSamplingPhase } from "./models/mobileGraphPerformance";
+  mobileGraphBudget, mobileGraphTableRowAllowance, mobileGraphCanReadPointTable, pressureMobileGraphPerformance, type MobileGraphSamplingPhase } from "./models/mobileGraphPerformance";
 
 const now = () => performance.now();
 const EMPTY: readonly Graph2DSampledSeries[] = [];
@@ -56,7 +56,8 @@ export const useMobileGraphSampling = (document: Graph2DDocument, viewport: Grap
         const allowance = mobileGraphTableRowAllowance(document, budget.sampling.maxSamples);
         const visible = new Set(document.display.objects.filter((style) => style.visible).map((style) => style.objectId));
         const pointTables = Object.fromEntries(document.source.objects.flatMap((object) =>
-          object.kind === "point-series" && visible.has(object.id) && object.table.rowCount <= allowance
+          object.kind === "point-series" && visible.has(object.id) &&
+          mobileGraphCanReadPointTable(object, allowance, budget.sampling.maxSamples)
             ? [[object.table.id, tableStore.resolve(object.table)]] : []));
         // Native JS work is cooperative, not preemptive: samplers check their shared deadline.
         const sampled = sampleGraph2DScene({ document: { ...document, display: { ...document.display, sampling: budget.sampling } },
