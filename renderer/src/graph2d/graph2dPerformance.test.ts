@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { analyzeGraph2DCriticalPoints, analyzeGraph2DIntegral, createGraph2DDocument,
+import { analyzeGraph2DCriticalPoints, analyzeGraph2DIntegral, analyzeGraph2DRegression, createEmptyGraph2DDocument,
+  applyGraph2DAuthoring, Graph2DPointTableStore, graph2DPointDomain, createGraph2DDocument,
   Graph2DSamplingJobController, parseGraph2DExpression, sampleGraph2DExplicit,
   sampleGraph2DImplicit, sampleGraph2DInequality, type Graph2DExplicitObject,
   type Graph2DImplicitObject, type Graph2DInequalityObject } from "@math3d/core";
 
 export const GRAPH2D_REVIEWED_PERFORMANCE_BUDGETS_MS = Object.freeze({
-  explicitSuite: 1500, contourAndFill: 2500, analysisSuite: 2500, lifecycle5000: 250,
+  explicitSuite: 1500, contourAndFill: 2500, analysisSuite: 2500, lifecycle5000: 250, regression10000: 5000,
 });
 const viewport = { xMin: -10, xMax: 10, yMin: -10, yMax: 10, aspect: "equal" as const };
 const domain = { min: -10, max: 10, includeMin: true, includeMax: true };
@@ -66,5 +67,25 @@ describe("Graph2D reviewed performance budgets", () => {
     expect(cancelled).toBe(5000); expect(accepted).toBe(2500);
     expect(controller.activeCount).toBe(0);
     expect(performance.now() - started).toBeLessThan(GRAPH2D_REVIEWED_PERFORMANCE_BUDGETS_MS.lifecycle5000);
+  });
+
+  it("bounds checked linear, quadratic and cubic fits at 10,000 rows", () => {
+    const rows = Array.from({ length: 10000 }, (_, index) => { const x = -1 + 2 * index / 9999;
+      return { id: `row_${index + 1}`, x, y: 2 + x - .5 * x * x + .25 * x ** 3 + (index % 7 - 3) * .001 }; });
+    const table = new Graph2DPointTableStore().publish(rows);
+    const base = createEmptyGraph2DDocument("regression-performance", "Regression performance");
+    const document = createGraph2DDocument({ ...applyGraph2DAuthoring(base, { type: "create-point-series", draft: { label: "Data", table,
+      domain: graph2DPointDomain(rows), mode: "points", style: { color: "#2255cc", lineStyle: "solid", lineWidth: 2, visible: true } } }),
+      stableKey: "regression-performance" });
+    const objectId = document.source.objects[0].id, timings: Record<string, number> = {};
+    for (const model of ["linear", "quadratic", "cubic"] as const) {
+      const started = performance.now(), fit = analyzeGraph2DRegression({ document, objectId, rows, model });
+      timings[model] = performance.now() - started;
+      expect(fit.n).toBe(10000); expect(fit.curve).toHaveLength(129);
+      expect(fit.residuals).toHaveLength(10000);
+    }
+    const total = Object.values(timings).reduce((sum, time) => sum + time, 0);
+    console.info(`GRA-12.2 regression 10k ms: ${JSON.stringify(timings)} total=${total.toFixed(1)}`);
+    expect(total).toBeLessThan(GRAPH2D_REVIEWED_PERFORMANCE_BUDGETS_MS.regression10000);
   });
 });

@@ -11,6 +11,42 @@ const save = async (page: Page) => { await page.getByTestId("kernel-workspace-to
   await expect(page.getByTestId("kernel-workspace-message")).toContainText("Saved"); await page.getByTestId("kernel-workspace-toggle").click(); };
 const checkpoint = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.mixed-workspace.v1")!).entries.find((e: { module: string }) => e.module === "graph2d").checkpoint);
 
+test("Graphs follows Projects and precedes Curves and Surfaces in desktop navigation", async ({ page }) => {
+  await page.goto("/");
+  const labels = await page.getByTestId("projects-toggle").locator("xpath=..").locator("button").allTextContents();
+  expect(labels.map(label => label.trim()).slice(0, 4)).toEqual(["Projects", "Graphs", "Curves", "Surfaces"]);
+});
+
+test("GRA-12.2 cancels an in-flight regression worker and permits a fresh fit", async ({ page }) => {
+  await start(page); const functions = page.getByLabel("Graph functions");
+  await functions.getByRole("button", { name: "Add data series", exact: true }).click();
+  await functions.getByLabel("Data series name").fill("Measurements");
+  await functions.getByLabel("Data series import").fill("x,y\n0,1\n1,3\n2,4\n3,7\n4,8\n5,12");
+  await functions.getByRole("button", { name: "Save data series", exact: true }).click();
+  await functions.getByRole("button", { name: "Select Measurements", exact: true }).click();
+  const panel = page.getByRole("region", { name: "Regression fitting", exact: true });
+  await page.evaluate(() => { const original = window.Worker;
+    (window as unknown as { __regressionWorkerOriginal: typeof Worker }).__regressionWorkerOriginal = original;
+    window.Worker = class extends original { constructor(url: string | URL, options?: WorkerOptions) { super(url, options);
+      if (String(url).includes("graph2dRegressionWorker")) { this.postMessage = () => {};
+        this.terminate = () => { document.documentElement.dataset.regressionWorkerTerminated = String(Number(document.documentElement.dataset.regressionWorkerTerminated ?? 0) + 1);
+          original.prototype.terminate.call(this); }; }
+    } };
+  });
+  await panel.getByRole("button", { name: "Fit dataset", exact: true }).click();
+  await expect(panel.getByRole("button", { name: "Cancel fit", exact: true })).toBeVisible();
+  await panel.getByRole("button", { name: "Cancel fit", exact: true }).click();
+  await expect.poll(() => page.locator("html").getAttribute("data-regression-worker-terminated")).toBe("1");
+  await expect(panel).toContainText("Fit cancelled");
+  await panel.getByRole("button", { name: "Fit dataset", exact: true }).click();
+  await panel.getByLabel("Regression model", { exact: true }).selectOption("quadratic");
+  await expect.poll(() => page.locator("html").getAttribute("data-regression-worker-terminated")).toBe("2");
+  await expect(panel.getByRole("button", { name: "Cancel fit", exact: true })).toHaveCount(0);
+  await page.evaluate(() => { window.Worker = (window as unknown as { __regressionWorkerOriginal: typeof Worker }).__regressionWorkerOriginal; });
+  await panel.getByRole("button", { name: "Fit dataset", exact: true }).click();
+  await expect(panel.getByRole("status")).toHaveText("Current regression");
+});
+
 test("G2D41 Dense previews immediately, Close keeps settings and the selected inspector", async ({ page }) => {
   await start(page); await page.getByLabel("Graph functions", { exact: true }).getByRole("button", { name: "Select Parabola", exact: true }).click();
   const inspector = page.getByLabel("Graph inspector", { exact: true }); await expect(inspector.locator(".graph2d-inspector-details").first()).toContainText("Parabola");

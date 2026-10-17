@@ -76496,6 +76496,18 @@ case "mobius":
   }> = [
     { id: "projects", label: "Projects", active: projectsOpen, onSelect: () => setProjectsOpen(true) },
     {
+      id: "graphs",
+      label: "Graphs",
+      active: mode === "graphs",
+      onSelect: () => setMode("graphs"),
+    },
+    {
+      id: "curves",
+      label: "Curves",
+      active: mode === "curves",
+      onSelect: () => setMode("curves"),
+    },
+    {
       id: "surfaces",
       label: "Surfaces",
       active:
@@ -76540,18 +76552,6 @@ case "mobius":
         setSurfacesLeftTab("scene");
         setSurfacesWorkGalleryOpen(false);
       },
-    },
-    {
-      id: "curves",
-      label: "Curves",
-      active: mode === "curves",
-      onSelect: () => setMode("curves"),
-    },
-    {
-      id: "graphs",
-      label: "Graphs",
-      active: mode === "graphs",
-      onSelect: () => setMode("graphs"),
     },
     {
       id: "topology",
