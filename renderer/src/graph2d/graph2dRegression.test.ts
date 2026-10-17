@@ -29,6 +29,29 @@ it("quadratic exact recovery is stable with large x offsets", () => {
   expect(fit.center).toBe(1e12); expect(fit.coefficients[0]).toBeCloseTo(5, 10); expect(fit.coefficients[1] / fit.scale).toBeCloseTo(2, 10);
   expect(fit.coefficients[2] / fit.scale ** 2).toBeCloseTo(.5, 10); expect(fit.sse).toBeLessThan(1e-20); expect(fit.rSquared).toBeCloseTo(1);
 });
+it("cubic exact recovery and pointwise limits stay stable with a large x offset", () => {
+  const xs = [-4, -3, -2, -1, 0, 1, 2, 3, 4].map(x => 1e12 + x);
+  const ys = xs.map(x => { const u = x - 1e12; return 4 - 3 * u + .75 * u ** 2 - .125 * u ** 3; });
+  const { document, rows } = dataset(ys, xs);
+  const fit = analyzeGraph2DRegression({ document, objectId: document.source.objects[0].id, rows, model: "cubic" });
+  expect(fit.center).toBe(1e12);
+  expect(fit.coefficients.map((coefficient, degree) => coefficient / fit.scale ** degree))
+    .toEqual([expect.closeTo(4, 10), expect.closeTo(-3, 10), expect.closeTo(.75, 10), expect.closeTo(-.125, 10)]);
+  expect(fit.degreesOfFreedom).toBe(5);
+  expect(fit.sse).toBeLessThan(1e-20);
+  expect(fit.residuals.reduce((total, row) => total + row.residual * (row.x - fit.center) ** 3, 0)).toBeCloseTo(0, 9);
+  expect(fit.curve).toHaveLength(129);
+  expect(fit.curve.every(point => point.predictionLow <= point.meanLow && point.predictionHigh >= point.meanHigh)).toBe(true);
+  expect(fit.publication.summary.basis).toContain("c3*z^3");
+});
+it("cubic rejects insufficient and rank-deficient datasets", () => {
+  const insufficient = dataset([1, 2, 3, 4]);
+  expect(() => analyzeGraph2DRegression({ ...insufficient, objectId: insufficient.document.source.objects[0].id,
+    model: "cubic" })).toThrow(/at least 5/);
+  const repeated = dataset([1, 2, 3, 4, 5], [0, 1, 2, 0, 1]);
+  expect(() => analyzeGraph2DRegression({ ...repeated, objectId: repeated.document.source.objects[0].id,
+    model: "cubic" })).toThrow(/Singular or ill-conditioned/);
+});
 it("missing rows are excluded, never imputed; constants have undefined R²; source checksum is retained", () => {
   const { document, rows } = dataset([7, null, 7, 7, 7]);
   const fit = analyzeGraph2DRegression({ document, objectId: document.source.objects[0].id, rows, model: "linear" });
@@ -61,5 +84,14 @@ it("handles the bounded 10,000-row limit with deterministic coefficients", () =>
   const fit = analyzeGraph2DRegression({ document, objectId: document.source.objects[0].id, rows, model: "linear" });
   expect(fit.n).toBe(10000); expect(fit.degreesOfFreedom).toBe(9998); expect(fit.curve).toHaveLength(129);
   expect(fit.coefficients[1] / fit.scale).toBeCloseTo(.25, 10); expect(fit.residuals).toHaveLength(10000);
+  expect(graph2DRegressionResidualTable(fit).rows).toHaveLength(2048);
+});
+it("keeps the cubic fit finite at the bounded 10,000-row limit", () => {
+  const xs = Array.from({ length: 10000 }, (_, index) => -1 + 2 * index / 9999);
+  const { document, rows } = dataset(xs.map(x => 2 + x - .5 * x * x + .25 * x * x * x), xs);
+  const fit = analyzeGraph2DRegression({ document, objectId: document.source.objects[0].id, rows, model: "cubic" });
+  expect(fit.coefficients).toEqual([expect.closeTo(2, 8), expect.closeTo(1, 8), expect.closeTo(-.5, 8), expect.closeTo(.25, 8)]);
+  expect(fit.degreesOfFreedom).toBe(9996);
+  expect(fit.curve).toHaveLength(129);
   expect(graph2DRegressionResidualTable(fit).rows).toHaveLength(2048);
 });

@@ -12,7 +12,7 @@ const dataset = () => {
   const document = createGraph2DDocument({ ...source, stableKey: "native-fit" });
   return { document, rows, tables, objectId: document.source.objects[0].id };
 };
-it.each(["linear", "quadratic"] as const)("G2D39 native %s fit matches shared results, keeps original source, renders bounded intervals and publishes checked residuals", model => {
+it.each(["linear", "quadratic", "cubic"] as const)("native %s fit matches shared results, keeps original source, renders bounded intervals and publishes checked residuals", model => {
   const { document, rows, tables, objectId } = dataset(), draft = { ...mobileGraphAnalysisDraft(document), objectId, kind: `regression-${model}` as const };
   const before = serializeGraph2DDocument(document), result = runMobileGraphAnalysis(document, draft, rows), fit = result.regression!;
   expect(fit.coefficients).toEqual(analyzeGraph2DRegression({ document, objectId, rows, model }).coefficients);

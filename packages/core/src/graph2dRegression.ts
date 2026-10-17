@@ -4,7 +4,7 @@ import type { Graph2DDocument, Graph2DPointTableReference } from "./graph2dDocum
 import { Graph2DPointTableStore, type Graph2DPointRow } from "./graph2dPointSeries";
 import type { ScientificSourceGeneration } from "./scientificJobs";
 import type { Graph2DPublicationTable } from "./graph2dPublication";
-export type Graph2DRegressionModel = "linear" | "quadratic";
+export type Graph2DRegressionModel = "linear" | "quadratic" | "cubic";
 export const GRAPH2D_REGRESSION_ASSUMPTIONS = Object.freeze([
   "Unweighted ordinary least squares in original world coordinates; x is treated as fixed and measured without error.",
   "Intervals assume independent, normally distributed, constant-variance errors and a correctly specified model; these assumptions are not tested automatically.",
@@ -55,18 +55,18 @@ const freeze = <T>(value: T): T => { if (value && typeof value === "object" && !
 export function analyzeGraph2DRegression(input: { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null; model: Graph2DRegressionModel }): Graph2DRegression {
   const started = Date.now(), { document, objectId, model } = input;
   const object = document.source.objects.find(o => o.id === objectId);
-  if (object?.kind !== "point-series" || !["linear", "quadratic"].includes(model)) throw new TypeError("Select a point series and a reviewed linear/quadratic model.");
+  if (object?.kind !== "point-series" || !["linear", "quadratic", "cubic"].includes(model)) throw new TypeError("Select a point series and a reviewed linear, quadratic or cubic model.");
   if (!input.rows) throw new TypeError("Regression needs the original checked point-table sidecar; sampled/displayed points are not data.");
   const checked = new Graph2DPointTableStore(), ref = checked.publish(input.rows);
   if (ref.checksum !== object.table.checksum || ref.id !== object.table.id || ref.rowCount !== object.table.rowCount) throw new TypeError("Regression sidecar checksum does not match the dataset.");
   const rows = checked.resolve(ref)!.filter(row => row.y !== null && row.x >= object.domain.min && row.x <= object.domain.max &&
     (object.domain.includeMin || row.x !== object.domain.min) && (object.domain.includeMax || row.x !== object.domain.max));
-  const count = model === "linear" ? 2 : 3, n = rows.length, degreesOfFreedom = n - count;
+  const count = model === "linear" ? 2 : model === "quadratic" ? 3 : 4, n = rows.length, degreesOfFreedom = n - count;
   if (degreesOfFreedom < 1) throw new TypeError(`Need at least ${count + 1} non-missing in-domain observations for this model and its uncertainty.`);
   const min = Math.min(...rows.map(row => row.x)), max = Math.max(...rows.map(row => row.x));
   const center = min + (max - min) / 2, scale = (max - min) / 2;
   if (!(scale > 0) || !Number.isFinite(center) || !Number.isFinite(scale)) throw new TypeError("Singular or numerically unsupported x range.");
-  const basis = (x: number) => { const z = (x - center) / scale; return count === 2 ? [1, z] : [1, z, z * z]; };
+  const basis = (x: number) => { const z = (x - center) / scale; return count === 2 ? [1, z] : count === 3 ? [1, z, z * z] : [1, z, z * z, z * z * z]; };
   const columns = Array.from({ length: count }, (_, j) => rows.map(row => basis(row.x)[j]));
   const q: number[][] = [], r: number[][] = Array.from({ length: count }, () => Array(count).fill(0));
   for (let j = 0; j < count; j++) {
@@ -98,7 +98,7 @@ export function analyzeGraph2DRegression(input: { document: Graph2DDocument; obj
   });
   const source = { documentId: document.identity.id, revision: document.identity.revision, structuralHash: document.identity.structuralHash, generation: document.identity.revision };
   const resultId = "graph2d.regression." + structuralHash({ source, objectId, model, checksum: ref.checksum, algorithm: "centered-scaled-qr-v1", confidence: .95 }).slice(7);
-  const summary = { model, coefficients, basis: "z=(x-center)/scale; y=c0+c1*z+c2*z^2 (c2 only for quadratic)", center, scale, n, excluded: input.rows.length - n,
+  const summary = { model, coefficients, basis: `z=(x-center)/scale; y=${coefficients.map((_, index) => `c${index}${index ? `*z^${index}` : ""}`).join("+")}`, center, scale, n, excluded: input.rows.length - n,
     degreesOfFreedom, sse, residualSD, rSquared, tCritical, confidence: .95, intervalSemantics: "pointwise-mean-response-and-new-observation", extent: { min, max }, datasetChecksum: ref.checksum };
   const publication = createAnalysisResultEnvelope({ resultId, status: "numerical", provenance: { source,
     operation: { type: "graph2d.regression", algorithm: "centered-scaled-reorthogonalized-qr", algorithmVersion: "1",

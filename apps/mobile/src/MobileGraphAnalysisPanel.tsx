@@ -8,7 +8,7 @@ const kinds: readonly [MobileGraphAnalysisKind, string][] = [["derivatives", "De
   ["features", "Zeros, extrema, inflections"], ["integral", "Integral"], ["intersections", "Intersections"], ["arc-length", "Arc length"],
   ["polar-area", "Polar swept area"], ["polar-arc-length", "Polar arc length"], ["polar-tangent", "Polar tangent & curvature"],
   ["parametric-tangent", "Parametric tangent & curvature"],
-  ["regression-linear", "Linear regression"], ["regression-quadratic", "Quadratic regression"]];
+  ["regression-linear", "Linear regression"], ["regression-quadratic", "Quadratic regression"], ["regression-cubic", "Cubic regression"]];
 const firstPolarAngle = (source: Extract<Graph2DDocument["source"]["objects"][number], { kind: "polar" }>) =>
   source.domain.includeMin ? source.domain.min : (source.domain.min + source.domain.max) / 2;
 const firstParametricParameter = (source: Extract<Graph2DDocument["source"]["objects"][number], { kind: "parametric" }>) =>

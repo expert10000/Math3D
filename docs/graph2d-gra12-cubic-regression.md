@@ -1,0 +1,9 @@
+# GRA-12.1 — bounded cubic point-series regression
+
+**Software scope, 2026-10-17.** Graphs adds an explicit cubic ordinary least-squares choice beside the existing linear and quadratic fits on desktop and mobile. It reads the original checksum-verified point table, excludes missing and out-of-domain observations, and never changes the source series. A fit is transient and must be requested again after reopening or after the source/model changes.
+
+The numerical model is `y=c0+c1*z+c2*z²+c3*z³`, with `z=(x-center)/scale` and the center/scale reported beside the coefficients. The existing two-pass reorthogonalized QR solver handles all three reviewed degrees; cubic requires at least five usable rows and rejects rank-deficient or ill-conditioned x coordinates. The authored table limit remains 10,000 rows. The fitted curve contains 129 points only within the observed x extent; the published residual table contains at most 2,048 original row IDs.
+
+Pointwise 95% mean-response and new-observation prediction limits reuse the existing Student-t and QR-leverage calculation. They assume fixed error-free x and independent, approximately normal, constant-variance errors around a correctly specified cubic mean. These assumptions are displayed, not tested automatically. The fit is unweighted; it is neither a spline nor a general nonlinear optimizer, and its intervals are not simultaneous bands.
+
+Verification covers exact cubic recovery near `x=10¹²`, residual orthogonality, interval ordering, insufficient and rank-deficient data, the 10,000-row bound, shared mobile results, and the desktop fit/export flow. Higher-degree polynomial selection, nonlinear and spline fitting, cancellation/performance calibration beyond the current bounded table, and physical device signoff remain separate GRA-12 work.
