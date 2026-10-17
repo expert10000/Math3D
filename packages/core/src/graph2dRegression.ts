@@ -67,6 +67,18 @@ export function analyzeGraph2DRegression(input: { document: Graph2DDocument; obj
 }
 function analyzePolynomialGraph2DRegression(input: { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null;
   model: Exclude<Graph2DRegressionModel, "spline"> }): Graph2DPolynomialRegression {
+  const job = createGraph2DPolynomialRegressionJob(input);
+  while (!job.advance(10000)) { /* shared bounded stages, without yielding */ }
+  return job.result();
+}
+export type Graph2DPolynomialRegressionInput = { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null;
+  model: Exclude<Graph2DRegressionModel, "spline"> };
+export type Graph2DPolynomialRegressionJob = Readonly<{
+  progress: number; complete: boolean; cancelled: boolean;
+  advance: (maxRows?: number) => boolean; cancel: () => void; result: () => Graph2DPolynomialRegression;
+}>;
+/** Reorthogonalized QR with the same row order and compensated sums for direct and batched callers. */
+export function createGraph2DPolynomialRegressionJob(input: Graph2DPolynomialRegressionInput): Graph2DPolynomialRegressionJob {
   const started = Date.now(), { document, objectId, model } = input;
   const object = document.source.objects.find(o => o.id === objectId);
   if (object?.kind !== "point-series" || !["linear", "quadratic", "cubic", "quartic"].includes(model)) throw new TypeError("Select a point series and a reviewed linear, quadratic, cubic or quartic model.");
@@ -87,44 +99,85 @@ function analyzePolynomialGraph2DRegression(input: { document: Graph2DDocument; 
     return values; };
   const columns = Array.from({ length: count }, (_, j) => rows.map(row => basis(row.x)[j]));
   const q: number[][] = [], r: number[][] = Array.from({ length: count }, () => Array(count).fill(0));
-  for (let j = 0; j < count; j++) {
-    const v = [...columns[j]];
-    for (let pass = 0; pass < 2; pass++) for (let i = 0; i < j; i++) {
-      const projection = sum(v.map((value, k) => value * q[i][k])); r[i][j] += projection;
-      for (let k = 0; k < n; k++) v[k] -= projection * q[i][k];
+  const totalWork = n * (2 * count * (count - 1) + 3 * count + 1);
+  let processed = 0, batchRows = 128, fitted: Graph2DPolynomialRegression | null = null, cancelled = false;
+  function* eachRow(length: number, visit: (index: number) => void): Generator<void, void> {
+    for (let index = 0; index < length;) {
+      const end = Math.min(length, index + batchRows);
+      for (; index < end; index++) { visit(index); processed++; }
+      yield;
     }
-    r[j][j] = Math.sqrt(sum(v.map(v => v * v)));
-    if (r[j][j] < 1e-10 * Math.sqrt(n)) throw new TypeError("Singular or ill-conditioned design: need distinct, sufficiently separated x values.");
-    q.push(v.map(v => v / r[j][j]));
   }
-  const yCenter = sum(rows.map(row => row.y! / n));
-  const rhs = q.map(column => sum(column.map((value, i) => value * (rows[i].y! - yCenter))));
-  const solve = (b: number[]) => { const answer = Array(count).fill(0); for (let i = count - 1; i >= 0; i--) answer[i] = (b[i] - sum(answer.map((value, j) => j > i ? r[i][j] * value : 0))) / r[i][i]; return answer; };
-  const coefficients = solve(rhs); coefficients[0] += yCenter;
-  const evaluate = (x: number) => sum(basis(x).map((v, i) => v * coefficients[i]));
-  const residuals = rows.map(row => { const fitted = evaluate(row.x); return { rowId: row.id, x: row.x, observed: row.y!, fitted, residual: row.y! - fitted }; });
-  const sse = sum(residuals.map(row => row.residual ** 2)), sst = sum(rows.map(row => (row.y! - yCenter) ** 2)), variance = sse / degreesOfFreedom;
-  if (![...coefficients, yCenter, sse, sst, variance].every(Number.isFinite)) throw new TypeError("Regression exceeds finite floating-point range; rescale the source data explicitly.");
-  const residualSD = Math.sqrt(variance), rSquared = sst > 0 ? Math.max(0, Math.min(1, 1 - sse / sst)) : null, tCritical = graph2DStudentTCritical95(degreesOfFreedom);
-  const inverseColumns = Array.from({ length: count }, (_, j) => solve(Array.from({ length: count }, (_, i) => i === j ? 1 : 0)));
-  const curve = Array.from({ length: 129 }, (_, i) => {
-    const x = i === 128 ? max : min + (max - min) * i / 128, vector = basis(x), y = evaluate(x);
-    const leverage = sum(inverseColumns.map(column => sum(column.map((v, j) => v * vector[j])) ** 2));
-    const mean = tCritical * residualSD * Math.sqrt(leverage), prediction = tCritical * residualSD * Math.sqrt(1 + leverage);
-    if (![x, y, y - mean, y + mean, y - prediction, y + prediction].every(Number.isFinite)) throw new TypeError("Uncertainty exceeds finite range.");
-    return { x, y, meanLow: y - mean, meanHigh: y + mean, predictionLow: y - prediction, predictionHigh: y + prediction };
-  });
-  const source = { documentId: document.identity.id, revision: document.identity.revision, structuralHash: document.identity.structuralHash, generation: document.identity.revision };
-  const resultId = "graph2d.regression." + structuralHash({ source, objectId, model, checksum: ref.checksum, algorithm: "centered-scaled-qr-v1", confidence: .95 }).slice(7);
-  const summary = { model, coefficients, basis: `z=(x-center)/scale; y=${coefficients.map((_, index) => `c${index}${index ? `*z^${index}` : ""}`).join("+")}`, center, scale, n, excluded: input.rows.length - n,
-    degreesOfFreedom, sse, residualSD, rSquared, tCritical, confidence: .95, intervalSemantics: "pointwise-mean-response-and-new-observation", extent: { min, max }, datasetChecksum: ref.checksum };
-  const publication = createAnalysisResultEnvelope({ resultId, status: "numerical", provenance: { source,
-    operation: { type: "graph2d.regression", algorithm: "centered-scaled-reorthogonalized-qr", algorithmVersion: "1",
-      parameters: { objectId, model, table: { ...ref }, confidence: .95, maxRows: 10000, curveSamples: 129 } },
-    numericContext: { precision: { binaryBits: 53 } }, engine: { name: "math3d-core", version: "1" }, elapsedMs: Math.max(0, Date.now() - started) },
-    summary, warnings: [...GRAPH2D_REGRESSION_ASSUMPTIONS, ...(sst === 0 ? ["Constant response: R² is undefined."] : [])], diagnostics: [], artifacts: [] });
-  return freeze({ resultId, objectId, model, source, table: { ...ref }, coefficients, center, scale, n, excluded: input.rows.length - n,
-    degreesOfFreedom, sse, residualSD, rSquared, tCritical, extent: { min, max }, residuals, curve, publication });
+  function* compensated(length: number, term: (index: number) => number): Generator<void, number> {
+    let total = 0, correction = 0;
+    yield* eachRow(length, index => {
+      const adjusted = term(index) - correction, next = total + adjusted;
+      correction = (next - total) - adjusted; total = next;
+    });
+    return total;
+  }
+  function* compute(): Generator<void, Graph2DPolynomialRegression> {
+    for (let j = 0; j < count; j++) {
+      const v = [...columns[j]];
+      for (let pass = 0; pass < 2; pass++) for (let i = 0; i < j; i++) {
+        const projection = yield* compensated(n, k => v[k]! * q[i]![k]!); r[i]![j]! += projection;
+        yield* eachRow(n, k => { v[k]! -= projection * q[i]![k]!; });
+      }
+      r[j]![j] = Math.sqrt(yield* compensated(n, k => v[k]! * v[k]!));
+      if (r[j]![j]! < 1e-10 * Math.sqrt(n)) throw new TypeError("Singular or ill-conditioned design: need distinct, sufficiently separated x values.");
+      const column = Array<number>(n);
+      yield* eachRow(n, k => { column[k] = v[k]! / r[j]![j]!; });
+      q.push(column);
+    }
+    const yCenter = sum(rows.map(row => row.y! / n));
+    const rhs: number[] = [];
+    for (const column of q) rhs.push(yield* compensated(n, i => column[i]! * (rows[i]!.y! - yCenter)));
+    const solve = (b: number[]) => { const answer = Array(count).fill(0); for (let i = count - 1; i >= 0; i--) answer[i] = (b[i] - sum(answer.map((value, j) => j > i ? r[i][j] * value : 0))) / r[i][i]; return answer; };
+    const coefficients = solve(rhs); coefficients[0] += yCenter;
+    const evaluate = (x: number) => sum(basis(x).map((v, i) => v * coefficients[i]));
+    const residuals: { rowId: string; x: number; observed: number; fitted: number; residual: number }[] = [];
+    yield* eachRow(n, i => { const row = rows[i]!, fit = evaluate(row.x);
+      residuals.push({ rowId: row.id, x: row.x, observed: row.y!, fitted: fit, residual: row.y! - fit }); });
+    const sse = sum(residuals.map(row => row.residual ** 2)), sst = sum(rows.map(row => (row.y! - yCenter) ** 2)), variance = sse / degreesOfFreedom;
+    if (![...coefficients, yCenter, sse, sst, variance].every(Number.isFinite)) throw new TypeError("Regression exceeds finite floating-point range; rescale the source data explicitly.");
+    const residualSD = Math.sqrt(variance), rSquared = sst > 0 ? Math.max(0, Math.min(1, 1 - sse / sst)) : null, tCritical = graph2DStudentTCritical95(degreesOfFreedom);
+    const inverseColumns = Array.from({ length: count }, (_, j) => solve(Array.from({ length: count }, (_, i) => i === j ? 1 : 0)));
+    const curve = Array.from({ length: 129 }, (_, i) => {
+      const x = i === 128 ? max : min + (max - min) * i / 128, vector = basis(x), y = evaluate(x);
+      const leverage = sum(inverseColumns.map(column => sum(column.map((v, j) => v * vector[j])) ** 2));
+      const mean = tCritical * residualSD * Math.sqrt(leverage), prediction = tCritical * residualSD * Math.sqrt(1 + leverage);
+      if (![x, y, y - mean, y + mean, y - prediction, y + prediction].every(Number.isFinite)) throw new TypeError("Uncertainty exceeds finite range.");
+      return { x, y, meanLow: y - mean, meanHigh: y + mean, predictionLow: y - prediction, predictionHigh: y + prediction };
+    });
+    const source = { documentId: document.identity.id, revision: document.identity.revision, structuralHash: document.identity.structuralHash, generation: document.identity.revision };
+    const resultId = "graph2d.regression." + structuralHash({ source, objectId, model, checksum: ref.checksum, algorithm: "centered-scaled-qr-v1", confidence: .95 }).slice(7);
+    const summary = { model, coefficients, basis: `z=(x-center)/scale; y=${coefficients.map((_, index) => `c${index}${index ? `*z^${index}` : ""}`).join("+")}`, center, scale, n, excluded: input.rows!.length - n,
+      degreesOfFreedom, sse, residualSD, rSquared, tCritical, confidence: .95, intervalSemantics: "pointwise-mean-response-and-new-observation", extent: { min, max }, datasetChecksum: ref.checksum };
+    const publication = createAnalysisResultEnvelope({ resultId, status: "numerical", provenance: { source,
+      operation: { type: "graph2d.regression", algorithm: "centered-scaled-reorthogonalized-qr", algorithmVersion: "1",
+        parameters: { objectId, model, table: { ...ref }, confidence: .95, maxRows: 10000, curveSamples: 129 } },
+      numericContext: { precision: { binaryBits: 53 } }, engine: { name: "math3d-core", version: "1" }, elapsedMs: Math.max(0, Date.now() - started) },
+      summary, warnings: [...GRAPH2D_REGRESSION_ASSUMPTIONS, ...(sst === 0 ? ["Constant response: R² is undefined."] : [])], diagnostics: [], artifacts: [] });
+    return freeze({ resultId, objectId, model, source, table: { ...ref }, coefficients, center, scale, n, excluded: input.rows!.length - n,
+      degreesOfFreedom, sse, residualSD, rSquared, tCritical, extent: { min, max }, residuals, curve, publication });
+  }
+  let work: Generator<void, Graph2DPolynomialRegression> | null = compute();
+  return {
+    get progress() { return fitted ? 1 : Math.min(1, processed / totalWork); },
+    get complete() { return fitted !== null; },
+    get cancelled() { return cancelled; },
+    cancel() { cancelled = true; work = null; },
+    result() { if (!fitted || cancelled) throw new TypeError("Polynomial fit has not completed."); return fitted; },
+    advance(maxRows = 128) {
+      if (cancelled) throw new TypeError("Polynomial fit was cancelled.");
+      if (!Number.isSafeInteger(maxRows) || maxRows < 1 || maxRows > 10000) throw new TypeError("Invalid polynomial batch size.");
+      if (fitted) return true;
+      batchRows = maxRows;
+      const next = work!.next();
+      if (next.done) { fitted = next.value; work = null; }
+      return fitted !== null;
+    },
+  };
 }
 export const isGraph2DRegressionCurrent = (result: Graph2DRegression, document: Graph2DDocument) =>
   result.source.documentId === document.identity.id && result.source.revision === document.identity.revision && result.source.structuralHash === document.identity.structuralHash &&

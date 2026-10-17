@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeGraph2DCriticalPoints, analyzeGraph2DIntegral, analyzeGraph2DRegression, createGraph2DSplineRegressionJob, createEmptyGraph2DDocument,
+import { analyzeGraph2DCriticalPoints, analyzeGraph2DIntegral, analyzeGraph2DRegression, createGraph2DSplineRegressionJob, createGraph2DPolynomialRegressionJob, createEmptyGraph2DDocument,
   applyGraph2DAuthoring, Graph2DPointTableStore, graph2DPointDomain, createGraph2DDocument, createGraph2DRegressionPresetRows,
   Graph2DSamplingJobController, parseGraph2DExpression, sampleGraph2DExplicit,
   sampleGraph2DImplicit, sampleGraph2DInequality, type Graph2DExplicitObject,
@@ -87,6 +87,20 @@ describe("Graph2D reviewed performance budgets", () => {
     const total = Object.values(timings).reduce((sum, time) => sum + time, 0);
     console.info(`GRA-12.2 regression 10k ms: ${JSON.stringify(timings)} total=${total.toFixed(1)}`);
     expect(total).toBeLessThan(GRAPH2D_REVIEWED_PERFORMANCE_BUDGETS_MS.regression10000);
+  });
+  it("bounds mobile-sized quartic batches at 10,000 rows", () => {
+    const rows = createGraph2DRegressionPresetRows(), table = new Graph2DPointTableStore().publish(rows);
+    const base = createEmptyGraph2DDocument("quartic-batch-performance", "Quartic batch performance");
+    const document = createGraph2DDocument({ ...applyGraph2DAuthoring(base, { type: "create-point-series", draft: { label: "Data", table,
+      domain: graph2DPointDomain(rows), mode: "points", style: { color: "#2255cc", lineStyle: "solid", lineWidth: 2, visible: true } } }),
+      stableKey: "quartic-batch-performance" });
+    const job = createGraph2DPolynomialRegressionJob({ document, objectId: document.source.objects[0]!.id, rows, model: "quartic" });
+    const started = performance.now(); let steps = 0;
+    do { steps++; } while (!job.advance(2048));
+    const elapsed = performance.now() - started;
+    expect(job.result().n).toBe(10000); expect(steps).toBeGreaterThan(100);
+    console.info(`GRA-12.7 quartic 10k batched ms=${elapsed.toFixed(1)} steps=${steps}`);
+    expect(elapsed).toBeLessThan(GRAPH2D_REVIEWED_PERFORMANCE_BUDGETS_MS.regression10000);
   });
   it("bounds synchronous and mobile-sized spline batches at 10,000 rows", () => {
     const rows = createGraph2DRegressionPresetRows();

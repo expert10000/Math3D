@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { analyzeGraph2DRegression, createGraph2DSplineRegressionJob, graph2DRegressionCurveTable, graph2DRegressionOverlaySeries, graph2DStudentTCritical95, createEmptyGraph2DDocument, applyGraph2DAuthoring, createGraph2DDocument,
+import { analyzeGraph2DRegression, createGraph2DSplineRegressionJob, createGraph2DPolynomialRegressionJob, graph2DRegressionCurveTable, graph2DRegressionOverlaySeries, graph2DStudentTCritical95, createEmptyGraph2DDocument, applyGraph2DAuthoring, createGraph2DDocument,
   Graph2DPointTableStore, graph2DVerifiedPointTableReference, graph2DPointDomain, isGraph2DRegressionCurrent, createGraph2DPublication, graph2DRegressionResidualTable,
   graph2DPublicationAnalysisTable, renderGraph2DPublicationArtifact, type Graph2DPointRow } from "@math3d/core";
 const dataset = (ys: (number | null)[], xs = ys.map((_, i) => i)) => {
@@ -36,6 +36,27 @@ it("spline batches match the synchronous fit and cancellation prevents publicati
   expect(job.result().residuals).toEqual(reference.residuals);
   expect(job.result().resultId).toBe(reference.resultId);
   const cancelled = createGraph2DSplineRegressionJob(input);
+  cancelled.advance(7); cancelled.cancel();
+  expect(cancelled.cancelled).toBe(true);
+  expect(() => cancelled.advance(7)).toThrow(/cancelled/);
+  expect(() => cancelled.result()).toThrow(/not completed/);
+});
+it.each(["linear", "quadratic", "cubic", "quartic"] as const)("%s batches preserve fit and intervals; cancellation prevents publication", model => {
+  const xs = Array.from({ length: 80 }, (_, i) => -2 + i / 20);
+  const { document, rows } = dataset(xs.map((x, i) => 2 - x + .3 * x ** 2 - .04 * x ** 3 + .01 * x ** 4 + (i % 3) / 100), xs);
+  const input = { document, objectId: document.source.objects[0]!.id, rows, model };
+  const reference = analyzeGraph2DRegression(input);
+  const job = createGraph2DPolynomialRegressionJob(input);
+  expect(job.progress).toBe(0); expect(job.advance(7)).toBe(false);
+  expect(job.progress).toBeGreaterThan(0);
+  expect(() => job.result()).toThrow(/not completed/);
+  while (!job.advance(7)) { /* preserve row order across many batches */ }
+  expect(job.complete).toBe(true); expect(job.progress).toBe(1);
+  expect(job.result().coefficients).toEqual(reference.coefficients);
+  expect(job.result().residuals).toEqual(reference.residuals);
+  expect(job.result().curve).toEqual(reference.curve);
+  expect(job.result().resultId).toBe(reference.resultId);
+  const cancelled = createGraph2DPolynomialRegressionJob(input);
   cancelled.advance(7); cancelled.cancel();
   expect(cancelled.cancelled).toBe(true);
   expect(() => cancelled.advance(7)).toThrow(/cancelled/);

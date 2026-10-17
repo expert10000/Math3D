@@ -4,7 +4,8 @@ import { fitGraph2DViewport, panGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph
   graph2DSceneFitBounds, graph2DConstructionFitBounds,
   resolveGraph2DViewport, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, graph2DParameterSessionKey,
   previewGraph2DParameterValues, graph2DRegressionOverlaySeries, applyGraph2DAuthoring, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion } from "@math3d/core";
-import { createGraph2DSplineRegressionJob, type Graph2DSplineRegressionJob } from "@math3d/core";
+import { createGraph2DSplineRegressionJob, createGraph2DPolynomialRegressionJob,
+  type Graph2DSplineRegressionJob, type Graph2DPolynomialRegressionJob } from "@math3d/core";
 import { projectGraph2DConstrainedPoint, previewGraph2DConstrainedPoint, resolveGraph2DConstructions } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { MobileGraphGesture, mobileGraphProbeRadius, type GraphTouch } from "./models/mobileGraphGestures";
@@ -103,49 +104,53 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const [analysis, setAnalysis] = useState<MobileGraphRegressionAnalysis | null>(null);
   const [analysisPending, setAnalysisPending] = useState<number | null>(null);
   const analysisGeneration = useRef(0);
-  const activeSpline = useRef<{ token: number; timer: ReturnType<typeof setTimeout> | null; job: Graph2DSplineRegressionJob;
+  const activeFit = useRef<{ token: number; timer: ReturnType<typeof setTimeout> | null; job: Graph2DSplineRegressionJob | Graph2DPolynomialRegressionJob;
     sourceKey: string; draftHash: string; progressBucket: number } | null>(null);
   const sourceKey = `${document.identity.id}|${document.identity.revision}|${document.identity.structuralHash}`;
   const sourceKeyRef = useRef(sourceKey); sourceKeyRef.current = sourceKey;
   const draftHash = mobileGraphAnalysisInputHash(analysisDraft);
   const draftHashRef = useRef(draftHash); draftHashRef.current = draftHash;
-  const cancelSplineFit = (announce = false) => {
-    const active = activeSpline.current;
+  const cancelFit = (announce = false) => {
+    const active = activeFit.current;
     if (!active) return;
     analysisGeneration.current++;
     if (active.timer) clearTimeout(active.timer);
-    active.job.cancel(); activeSpline.current = null; setAnalysisPending(null);
-    if (announce) setError("Spline fit cancelled. No new result was published.");
+    active.job.cancel(); activeFit.current = null; setAnalysisPending(null);
+    if (announce) setError("Fit cancelled. No new result was published.");
   };
   const runAnalysis = () => {
-    cancel(); cancelSplineFit(false);
+    cancel(); cancelFit(false);
     try {
       const object = document.source.objects.find(o => o.id === analysisDraft.objectId);
       const rows = object?.kind === "point-series" ? tableStore.resolve(object.table) : null;
-      if (analysisDraft.kind !== "regression-spline") {
+      if (!analysisDraft.kind.startsWith("regression-")) {
         setAnalysis(runMobileGraphAnalysis(document, analysisDraft, rows)); setError(""); return;
       }
-      const job = createGraph2DSplineRegressionJob({ document, objectId: analysisDraft.objectId, rows,
-        smoothing: mobileGraphSplineSmoothness(analysisDraft) });
+      const job = analysisDraft.kind === "regression-spline" ?
+        createGraph2DSplineRegressionJob({ document, objectId: analysisDraft.objectId, rows,
+          smoothing: mobileGraphSplineSmoothness(analysisDraft) }) :
+        createGraph2DPolynomialRegressionJob({ document, objectId: analysisDraft.objectId, rows,
+          model: analysisDraft.kind === "regression-linear" ? "linear" : analysisDraft.kind === "regression-quadratic" ? "quadratic" :
+            analysisDraft.kind === "regression-cubic" ? "cubic" : "quartic" });
       const token = ++analysisGeneration.current, sourceAtStart = sourceKey, draftAtStart = draftHash, draft = analysisDraft;
       const active = { token, timer: null as ReturnType<typeof setTimeout> | null, job,
         sourceKey: sourceAtStart, draftHash: draftAtStart, progressBucket: 0 };
-      activeSpline.current = active; setAnalysisPending(0); setError("");
+      activeFit.current = active; setAnalysisPending(0); setError("");
       const advance = () => {
         active.timer = null;
-        if (activeSpline.current !== active) return;
-        if (sourceKeyRef.current !== sourceAtStart || draftHashRef.current !== draftAtStart) { cancelSplineFit(false); return; }
+        if (activeFit.current !== active) return;
+        if (sourceKeyRef.current !== sourceAtStart || draftHashRef.current !== draftAtStart) { cancelFit(false); return; }
         try {
-          if (job.advance(128)) {
+          if (job.advance(draft.kind === "regression-spline" ? 128 : 2048)) {
             const result = mobileGraphRegressionResult(draft, job.result());
-            activeSpline.current = null; setAnalysisPending(null); setAnalysis(result); setError("");
+            activeFit.current = null; setAnalysisPending(null); setAnalysis(result); setError("");
           } else {
             const bucket = Math.floor(job.progress * 20);
             if (bucket !== active.progressBucket) { active.progressBucket = bucket; setAnalysisPending(job.progress); }
             active.timer = setTimeout(advance, 0);
           }
         } catch (caught) {
-          activeSpline.current = null; setAnalysisPending(null); setError((caught as Error).message);
+          activeFit.current = null; setAnalysisPending(null); setError((caught as Error).message);
         }
       };
       active.timer = setTimeout(advance, 50);
@@ -155,12 +160,12 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const guided = getGraph2DGuidedDocumentGuidance(document);
   const cancel = () => { gesture.current.cancel(); setPreview(null); cancelPointDrag(); };
   useEffect(() => {
-    const listener = AppState.addEventListener("change", (state) => { if (state !== "active") { cancel(); cancelSplineFit(false); setParameterPreview(null); } });
-    return () => { listener.remove(); gesture.current.cancel(); const active = activeSpline.current;
-      if (active) { if (active.timer) clearTimeout(active.timer); active.job.cancel(); activeSpline.current = null; } };
+    const listener = AppState.addEventListener("change", (state) => { if (state !== "active") { cancel(); cancelFit(false); setParameterPreview(null); } });
+    return () => { listener.remove(); gesture.current.cancel(); const active = activeFit.current;
+      if (active) { if (active.timer) clearTimeout(active.timer); active.job.cancel(); activeFit.current = null; } };
   }, []);
-  useEffect(() => { const active = activeSpline.current;
-    if (active && (active.sourceKey !== sourceKey || active.draftHash !== draftHash || destination !== "Analyze")) cancelSplineFit(false);
+  useEffect(() => { const active = activeFit.current;
+    if (active && (active.sourceKey !== sourceKey || active.draftHash !== draftHash || destination !== "Analyze")) cancelFit(false);
   }, [sourceKey, draftHash, destination]);
   const sampling = useMobileGraphSampling(sampledDocument, viewport, size, !!preview, () => { setAnalysis(null); setParameterPreview(null); }, parameterPreviewActive ? document.identity : undefined, tableStore);
   const { series, budget } = sampling;
@@ -472,7 +477,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         {button("Clear probe", () => commit(() => adapter.commitSelection({ objectId: null, probe: null })))}
         {probe && button("Cycle overlap", () => tap(graph2DWorldToScreen(document.display.viewport, size, probe)))}
         <MobileGraphAnalysisPanel document={document} draft={analysisDraft} result={analysis} pending={analysisPending}
-          onDraft={(draft) => { cancelSplineFit(false); setAnalysisDraft(draft); }} onRun={runAnalysis} onCancel={() => cancelSplineFit(true)}
+          onDraft={(draft) => { cancelFit(false); setAnalysisDraft(draft); }} onRun={runAnalysis} onCancel={() => cancelFit(true)}
           onSaveCandidate={(object) => commit(() => adapter.commitConstruction({ type: "create", object }))}
           onSaveTangent={(point) => commit(() => {
             if (!analysis || !isMobileGraphAnalysisCurrent(analysis, document, analysisDraft) || !analysis.overlays.length)

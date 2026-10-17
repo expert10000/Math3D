@@ -117,7 +117,7 @@ export function Graph2DPlot({ display, size, series, regression, constructions, 
       </g>}
       <g clipPath={`url(#${clipId})`}>
         {regression && <g data-testid="graph2d-regression-overlay" aria-hidden="true">
-          {regression.curve.slice(1).map((p, i) => {
+          {regression.model !== "spline" && regression.curve.slice(1).map((p, i) => {
             const a = regression.curve[i], corners = [{ x: a.x, y: a.meanLow }, { x: p.x, y: p.meanLow }, { x: p.x, y: p.meanHigh }, { x: a.x, y: a.meanHigh }].map(point => graph2DWorldToScreen(display.viewport, size, point));
             return corners.every(point => Number.isFinite(point.x) && Number.isFinite(point.y)) ? <polygon key={i} points={corners.map(point => `${point.x},${point.y}`).join(" ")} fill="#7c3aed" fillOpacity={.12} /> : null;
           })}

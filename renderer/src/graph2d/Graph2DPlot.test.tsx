@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { createGraph2DDocument, parseGraph2DExpression, sampleGraph2DExplicit } from "@math3d/core";
+import { createGraph2DDocument, createEmptyGraph2DDocument, applyGraph2DAuthoring, Graph2DPointTableStore,
+  graph2DPointDomain, analyzeGraph2DRegression, parseGraph2DExpression, sampleGraph2DExplicit } from "@math3d/core";
 import { formatGraph2DTick, projectGraph2DGrid } from "./gridProjection";
 import { Graph2DPlot } from "./Graph2DPlot";
 
@@ -31,5 +32,18 @@ describe("Graph2D render projection", () => {
     expect(svg).toContain('M200.00,500.00');
     expect(svg).toContain('600.00,100.00');
     expect(svg).toContain('clipPath');
+  });
+  it("renders a smoothing spline without requesting polynomial confidence-band coordinates", () => {
+    const rows = Array.from({ length: 40 }, (_, i) => ({ id: `row_${i + 1}`, x: i / 39, y: Math.sin(i / 39) }));
+    const table = new Graph2DPointTableStore().publish(rows);
+    const base = createEmptyGraph2DDocument("spline-plot");
+    const document = createGraph2DDocument({ ...applyGraph2DAuthoring(base, { type: "create-point-series", draft: { label: "Data", table,
+      domain: graph2DPointDomain(rows), mode: "points", style: { color: "#2563eb", lineStyle: "solid", lineWidth: 2, visible: true } } }),
+      stableKey: "spline-plot" });
+    const regression = analyzeGraph2DRegression({ document, objectId: document.source.objects[0]!.id, rows, model: "spline", smoothing: .001 });
+    const svg = renderToStaticMarkup(<Graph2DPlot display={document.display} size={{ width: 640, height: 480 }} series={[]} regression={regression} />);
+    expect(svg).toContain('data-testid="graph2d-regression-overlay"');
+    expect(svg).toContain('<path');
+    expect(svg).not.toContain('<polygon');
   });
 });
