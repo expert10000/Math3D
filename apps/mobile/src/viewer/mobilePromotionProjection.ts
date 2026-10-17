@@ -20,7 +20,13 @@ export const projectMobilePromotion = (document: CurveDocument | SurfaceDocument
   const lines: MobileGraphLine[] = [];
   const add = (a: number, b: number) => { const clipped = clipMobileGraphLine(points[a]!, points[b]!, size);
     if (clipped && lines.length < 768) lines.push({ ...clipped, color: "#2563eb", width: 1.2 }); };
-  if (geometry.kind === "curve") for (let i = 1; i < count; i++) add(i - 1, i);
+  if (geometry.kind === "curve") {
+    // Keep both endpoints when a captured Geometry profile exceeds the native
+    // line budget. Taking only the first 768 segments leaves closed curves open.
+    const segments = count - 1, visible = Math.min(768, segments);
+    for (let i = 0; i < visible; i++)
+      add(Math.round(i * segments / visible), Math.round((i + 1) * segments / visible));
+  }
   else if (geometry.grid) {
     // Sample parameter-grid curves, not a stride of triangles: triangle strides can
     // alias an extrusion into disconnected rings and hide its entire sweep direction.

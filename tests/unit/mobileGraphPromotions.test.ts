@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("expo-file-system", () => ({ Paths: { document: "test://documents" } }));
 import { promoteGraph2DToCurve, promoteGraph2DToGeometry, revolveGraph2DProfile, extrudeGraph2DProfile, graph2DPromotionStatus,
+  getGraph2DPresetCatalog, instantiateGraph2DPreset,
   parseMixedWorkspaceDocument, applyGraph2DAuthoring, evaluateGraph2DPromotionGeometry, serializeMixedWorkspaceDocument,
   createMixedWorkspaceDocument, createGraph2DWorkspaceProject, createSurfaceDocument, createMath3DProject, serializeMath3DProject } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
@@ -17,6 +18,14 @@ import { parseWorkspaceProjectHandoff } from "@math3d/core";
 
 const platform = snapshotFromMobileProbe({ persistentStorage: true, network: false, touchInput: true });
 describe("MOB-G10 native portable promotions", () => {
+  it("shows the complete closed circle within the native preview line budget", () => {
+    const source = instantiateGraph2DPreset(getGraph2DPresetCatalog().get("circle-ellipse")!, "native-circle-preview").document;
+    const circle = source.source.objects.find(object => object.label === "Circle")!;
+    const target = promoteGraph2DToGeometry(source, circle.id);
+    const lines = projectMobilePromotion(target.document, { width: 320, height: 180 }, Math.PI / 4);
+    expect(lines).toHaveLength(768);
+    expect(Math.hypot(lines[0]!.a.x - lines.at(-1)!.b.x, lines[0]!.a.y - lines.at(-1)!.b.y)).toBeLessThan(0.01);
+  });
   it("previews/cancels without touching Graph history, storage or source", () => {
     const adapter = new Graph2DCommandAdapter(createMobileGraph("Preview", true, "preview-g10")), source = adapter.document();
     const project = storeMobileGraph(source);
