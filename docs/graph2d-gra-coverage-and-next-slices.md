@@ -1,6 +1,6 @@
 # Graphs analysis proposal: coverage and remaining work
 
-**Audit — updated 2026-10-16.** The GRA-01–12 list is broader than the completed G2D44–58 construction slice. "Graphs implemented" describes that slice, not every proposed analysis domain or the pending physical release gate.
+**Audit — updated 2026-10-17.** The GRA-01–12 list is broader than the completed G2D44–58 construction slice. "Graphs implemented" describes that slice, not every proposed analysis domain or the pending physical release gate.
 
 | Proposal | Current status | Existing delivery or remaining boundary |
 | --- | --- | --- |
@@ -23,7 +23,7 @@ The original priority list also names **adaptive discontinuity detection** (G2D0
 
 1. Keep [GRA-10.3](#gra-103-compare-lines-from-one-grid) as the delivered, tested desktop boundary. A later rank/type extension needs its own source and document contract. Resource and manifest hashes establish byte integrity against the bundle declarations; they do not certify the producer's scientific result.
 2. Continue Android physical and spoken accessibility evidence with the connected Samsung. The coincident osculating circle and its center/radius indicator are visible on device; the complete MOB-G13/G2D40 device matrix is still open. iOS device/signing checks are deferred by the user and remain a release gate, not a blocker for the next Graphs implementation slice. Emulator and unsigned iOS simulator evidence stay labelled as partial.
-3. [GRA-N10](graph2d-gra-n10-geometry-promotion.md) direct Graph → Geometry promotion is software delivered. Complete mobile physical signoff with the N06/N08/N09 checks. [GRA-12.1](graph2d-gra12-cubic-regression.md) is the next bounded software slice: cubic checked-data fitting with the existing error model, centered/scaled QR, pointwise uncertainty and 10,000-row ceiling. A broader fitting program still needs separate performance/cancellation and numerical acceptance decisions.
+3. [GRA-N10](graph2d-gra-n10-geometry-promotion.md) direct Graph → Geometry promotion and [GRA-12.1](graph2d-gra12-cubic-regression.md) cubic checked-data fitting are software delivered. Complete mobile physical signoff with the N06/N08/N09/N10 checks. The next bounded software proposal is GRA-12.2: measure regression latency and cancellation on the existing 10,000-row ceiling before adding another fit family. Set hardware-specific acceptance budgets from those measurements.
 4. Give differential equations, Fourier analysis and complex mappings separate problem statements and acceptance corpora. They are not inferred from existing Graphs or Complex Analysis controls.
 
 The [canonical roadmap](math3d-graph2d-desktop-mobile-roadmap.md) remains the release authority. The [analysis/constructions roadmap](graph2d-analysis-constructions-roadmap.md) records the delivered G2D44–58 sequence.
