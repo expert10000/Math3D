@@ -14,7 +14,7 @@ export type Graph2DInspectorSummary = Readonly<{
   probe: Graph2DProbe | null;
   signedRadius: number | null;
   regionState: "resolved" | "unresolved" | "complexity-limit" | null;
-  pointState: "ready" | "missing-table" | "complexity-limit" | null;
+  pointState: "ready" | "downsampled" | "missing-table" | "complexity-limit" | null;
   probeMethod: "direct-expression-floating-point" | "sampled-contour" | "table-row" | "unavailable";
   sampling: Readonly<{
     status: "converged" | "incomplete" | "unavailable";

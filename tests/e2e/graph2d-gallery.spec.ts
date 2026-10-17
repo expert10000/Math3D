@@ -24,7 +24,7 @@ test("GGL04 desktop browse/preview creates independent editable scenes and resum
     await expect(page.getByLabel("Empty graph scene")).toContainText("0 graph objects");
     await page.getByTestId("graph-gallery-open").click();
     await gallery.getByRole("button",{name:"All scenes",exact:true}).click();
-    await expect(gallery.getByRole("status")).toContainText("20 scenes");
+    await expect(gallery.getByRole("status")).toContainText("21 scenes");
     await gallery.getByLabel("Search graphs").fill("slope");
     await gallery.getByRole("button",{name:"Open Two slopes",exact:true}).click();
     await expect(gallery).not.toBeVisible();

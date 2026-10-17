@@ -18,11 +18,20 @@ const viewport = (xMin: number, xMax: number, yMin: number, yMax: number, aspect
   ({ xMin, xMax, yMin, yMax, aspect });
 type Recipe = { id: string; title: string; category: Graph2DPresetCategory; description: string; goal: string;
   actions: Graph2DAuthoringAction[]; view: Graph2DViewport; featured?: number; tags?: string[];
-  variables?: { name: string; value: number }[]; sidecars?: { id: string; rows: Graph2DPointRow[] }[] };
+  variables?: { name: string; value: number }[]; sidecars?: { id: string; rows: Graph2DPointRow[] }[];
+  costClass?: "starter" | "complex"; difficulty?: "basic" | "intermediate" | "advanced" };
+
+/** The catalog example and GRA-12.2 performance corpus use identical original rows. */
+export const createGraph2DRegressionPresetRows = (): Graph2DPointRow[] => Array.from({ length: 10000 }, (_, i) => {
+  const x = -1 + 2 * i / 9999;
+  return { id: `row_${i + 1}`, x, y: 2 + x - .5 * x * x + .25 * x ** 3 + (i % 7 - 3) * .001 };
+});
 
 const recipes = (): Recipe[] => {
   const rows = [-2, -1, 0, 1, 2].map((x, i) => ({ id: `row_${i + 1}`, x, y: x === 0 ? null : x / 2 }));
   const table = new Graph2DPointTableStore().publish(rows);
+  const regressionRows = createGraph2DRegressionPresetRows();
+  const regressionTable = new Graph2DPointTableStore().publish(regressionRows);
   return [
     { id: "line-comparison", title: "Two slopes", category: "Algebra", description: "Compare y = x and y = a*x+b, with a = 2 and b = 1. Named values are editable source; slider controls arrive later.", goal: "Edit an expression and compare slope and intercept.",
       actions: [explicit("Unit slope", "x"), explicit("Steeper line", "a*x+b")], variables: [{ name: "a", value: 2 }, { name: "b", value: 1 }], view: viewport(-3, 3, -4, 6), tags: ["linear", "beginner"] },
@@ -65,6 +74,12 @@ const recipes = (): Recipe[] => {
     { id: "piecewise-data-gaps", title: "Endpoints and missing data", category: "Piecewise and data", description: "Two constant pieces jump at zero, with an open left endpoint. A small measured series has a missing row at zero: neither line bridges that gap.", goal: "Inspect open endpoints and edit a piece without fabricating missing values.",
       actions: [{ type: "create-piecewise", draft: { label: "Jump", pieces: [{ expression: "-1", domain: { ...domain(-2, 0), includeMax: false } }, { expression: "1", domain: domain(0, 2) }], style } },
         { type: "create-point-series", draft: { label: "Measured series", table, mode: "line", domain: domain(-2, 2), style } }], sidecars: [{ id: table.id, rows }], view: viewport(-2.5, 2.5, -1.5, 1.5), tags: ["piecewise", "data", "gaps"] },
+    { id: "regression-10000", title: "10,000-point regression", category: "Piecewise and data",
+      description: "A full-size deterministic measured series with cubic trend and small patterned noise. The plot is sampled for display; regression uses all 10,000 original checked rows. Select the series, choose a model in Inspector, and fit it.",
+      goal: "Compare linear, quadratic and cubic fits at the point-table limit, then cancel and repeat a fit.",
+      actions: [{ type: "create-point-series", draft: { label: "10,000 measurements", table: regressionTable, mode: "line", domain: domain(-1, 1), style } }],
+      sidecars: [{ id: regressionTable.id, rows: regressionRows }], view: viewport(-1.2, 1.2, 0, 3),
+      tags: ["regression", "10000", "performance", "data"], costClass: "complex", difficulty: "advanced" },
   ];
 };
 let catalog: ReturnType<typeof createGraph2DPresetRegistry> | undefined;
@@ -78,9 +93,9 @@ export const getGraph2DPresetCatalog = () => catalog ??= createGraph2DPresetRegi
     display: { ...document.display, viewport: recipe.view,
       axes: { x: true, y: true, labels: true, grid: true, gridMode: recipe.category === "Polar" ? "polar" : "cartesian" },
       objects: document.display.objects.map((item, i) => ({ ...item, color: colors[i % colors.length]!, lineStyle: i ? "dashed" : "solid" })),
-      sampling: { maxSamples: 4000, maxDepth: 12, tolerancePx: 0.75 } } });
+      sampling: { maxSamples: recipe.costClass === "complex" ? 1024 : 4000, maxDepth: 12, tolerancePx: 0.75 } } });
   return createGraph2DPreset({ id: recipe.id, version: 1, title: recipe.title, description: recipe.description,
-    category: recipe.category, tags: recipe.tags ?? [recipe.category.toLowerCase()], difficulty: recipe.category === "Algebra" ? "basic" : "intermediate",
-    learningGoals: [recipe.goal], featuredOrder: recipe.featured ?? null, costClass: "starter", template: document, sidecars: recipe.sidecars ?? [],
+    category: recipe.category, tags: recipe.tags ?? [recipe.category.toLowerCase()], difficulty: recipe.difficulty ?? (recipe.category === "Algebra" ? "basic" : "intermediate"),
+    learningGoals: [recipe.goal], featuredOrder: recipe.featured ?? null, costClass: recipe.costClass ?? "starter", template: document, sidecars: recipe.sidecars ?? [],
     attribution: { author: "Math3D", source: "Original curated mathematical example", license: "GPL-3.0-or-later" } });
 }));

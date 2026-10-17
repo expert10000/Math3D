@@ -7,7 +7,7 @@ import { getGraph2DPresetCatalog, renderGraph2DPresetPreview, graph2DPresetPrevi
 import manifest from "../../../packages/core/fixtures/graph2d/gallery-previews.json";
 describe("reproducible static gallery previews", () => {
   it("matches every digest/asset and fits the shared budgets without executing content", () => {
-    expect(manifest.entries).toHaveLength(20); expect(manifest.compressedBytes).toBeLessThan(2*1024*1024);
+    expect(manifest.entries).toHaveLength(21); expect(manifest.compressedBytes).toBeLessThan(2*1024*1024);
     for (const preset of getGraph2DPresetCatalog().entries) {
       const preview = renderGraph2DPresetPreview(preset), entry = manifest.entries.find(e => e.id===preset.id)!;
       expect(preview.key).toBe(entry.key); expect(entry.presetDigest).toBe(preset.digest);

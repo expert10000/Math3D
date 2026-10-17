@@ -69,4 +69,20 @@ describe("Graph2D point series", () => {
     expect(picked.probe?.rowId).toBe("row_2");
     expect(selectionForGraph2DObject(document, [{ objectId: object.id, artifact }], object.id).probe?.rowId).toBeTypeOf("string");
   });
+
+  it("decimates large connected displays without bridging a missing row or changing table identity", () => {
+    const rows = Array.from({ length: 1000 }, (_, i) => ({ id: `row_${i + 1}`, x: i, y: i === 500 ? null : i }));
+    const table = new Graph2DPointTableStore().publish(rows);
+    const scene = applyGraph2DAuthoring(createEmptyGraph2DDocument("large-line"), { type: "create-point-series",
+      draft: { label: "Large line", table, mode: "line", domain: graph2DPointDomain(rows), style } });
+    const object = scene.source.objects[0]!;
+    if (object.kind !== "point-series") throw new Error("Expected a point series.");
+    const artifact = sampleGraph2DPointSeries(object, rows, 64);
+    expect(artifact.state).toBe("downsampled"); expect(artifact.converged).toBe(false);
+    expect(artifact.samplesEvaluated).toBe(64);
+    expect(artifact.points[0]?.rowId).toBe("row_1"); expect(artifact.points.at(-1)?.rowId).toBe("row_1000");
+    expect(artifact.segments).toHaveLength(2);
+    expect(artifact.segments.every(segment => segment.points.every(point => point.x < 500) || segment.points.every(point => point.x > 500))).toBe(true);
+    expect(table.rowCount).toBe(1000);
+  });
 });

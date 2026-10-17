@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { analyzeGraph2DCriticalPoints, analyzeGraph2DIntegral, analyzeGraph2DRegression, createEmptyGraph2DDocument,
-  applyGraph2DAuthoring, Graph2DPointTableStore, graph2DPointDomain, createGraph2DDocument,
+  applyGraph2DAuthoring, Graph2DPointTableStore, graph2DPointDomain, createGraph2DDocument, createGraph2DRegressionPresetRows,
   Graph2DSamplingJobController, parseGraph2DExpression, sampleGraph2DExplicit,
   sampleGraph2DImplicit, sampleGraph2DInequality, type Graph2DExplicitObject,
   type Graph2DImplicitObject, type Graph2DInequalityObject } from "@math3d/core";
@@ -70,8 +70,7 @@ describe("Graph2D reviewed performance budgets", () => {
   });
 
   it("bounds checked linear, quadratic and cubic fits at 10,000 rows", () => {
-    const rows = Array.from({ length: 10000 }, (_, index) => { const x = -1 + 2 * index / 9999;
-      return { id: `row_${index + 1}`, x, y: 2 + x - .5 * x * x + .25 * x ** 3 + (index % 7 - 3) * .001 }; });
+    const rows = createGraph2DRegressionPresetRows();
     const table = new Graph2DPointTableStore().publish(rows);
     const base = createEmptyGraph2DDocument("regression-performance", "Regression performance");
     const document = createGraph2DDocument({ ...applyGraph2DAuthoring(base, { type: "create-point-series", draft: { label: "Data", table,

@@ -131,7 +131,7 @@ export const graph2DPointDomain = (rows: readonly Graph2DPointRow[]): Graph2DDom
 export type Graph2DPointSeriesArtifact = Graph2DSamplingArtifact & Readonly<{
   kind: "point-series";
   mode: "points" | "line";
-  state: "ready" | "missing-table" | "complexity-limit";
+  state: "ready" | "downsampled" | "missing-table" | "complexity-limit";
   points: readonly Graph2DSamplePoint[];
 }>;
 
@@ -142,8 +142,28 @@ export const sampleGraph2DPointSeries = (object: Graph2DPointSeriesObject,
     samplesEvaluated: 0, converged: state === "ready",
     diagnostics: state === "ready" ? [] : [{ code: state === "missing-table" ? "missing-table" : "sample-limit", count: 1 }],
   });
-  if (!Number.isSafeInteger(maxSamples) || maxSamples < object.table.rowCount) return empty("complexity-limit");
+  const downsampled = Number.isSafeInteger(maxSamples) && maxSamples >= 32 && object.mode === "line" &&
+    object.table.rowCount > 128 && maxSamples < object.table.rowCount;
+  if (!Number.isSafeInteger(maxSamples) || maxSamples < object.table.rowCount && !downsampled) return empty("complexity-limit");
   if (!rows || !validRows(rows) || rows.length !== object.table.rowCount) return empty("missing-table");
+  if (downsampled) {
+    const missingPrefix = new Uint32Array(rows.length + 1);
+    for (let i = 0; i < rows.length; i++) missingPrefix[i + 1] = missingPrefix[i]! + (rows[i]!.y === null ? 1 : 0);
+    const points: Graph2DSamplePoint[] = [], segments: Graph2DSampleSegment[] = [];
+    let chain: Graph2DSamplePoint[] = [], previous = -1;
+    const flush = () => { if (chain.length >= 2) segments.push({ points: chain, openStart: false, openEnd: false }); chain = []; };
+    for (let sample = 0; sample < maxSamples; sample++) {
+      const index = Math.round(sample * (rows.length - 1) / (maxSamples - 1)), row = rows[index]!;
+      if (row.y === null) { flush(); previous = index; continue; }
+      if (previous >= 0 && missingPrefix[index]! > missingPrefix[previous + 1]!) flush();
+      const point = { x: row.x, y: row.y, rowId: row.id };
+      points.push(point); chain.push(point); previous = index;
+    }
+    flush();
+    return { kind: "point-series", mode: object.mode, state: "downsampled", points, segments,
+      samplerVersion: GRAPH2D_SAMPLER_VERSION, samplesEvaluated: maxSamples, converged: false,
+      diagnostics: [{ code: "sample-limit", count: 1 }] };
+  }
   const points = rows.filter((row) => row.y !== null).map((row) => ({ x: row.x, y: row.y!, rowId: row.id }));
   const segments: Graph2DSampleSegment[] = [];
   if (object.mode === "points") for (const point of points)

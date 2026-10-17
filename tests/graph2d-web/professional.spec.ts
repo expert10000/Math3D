@@ -47,6 +47,24 @@ test("GRA-12.2 cancels an in-flight regression worker and permits a fresh fit", 
   await expect(panel.getByRole("status")).toHaveText("Current regression");
 });
 
+test("10,000-point gallery preset opens with a bounded plot and fits its original rows", async ({ page }) => {
+  await start(page);
+  await page.getByTestId("graph-gallery-open").click();
+  const gallery = page.getByTestId("graph-gallery");
+  await gallery.getByRole("button", { name: "All scenes", exact: true }).click();
+  await gallery.getByLabel("Search graphs").fill("regression");
+  await gallery.getByRole("button", { name: "Open 10,000-point regression", exact: true }).click();
+  const functions = page.getByLabel("Graph functions");
+  await functions.getByRole("button", { name: "Select 10,000 measurements", exact: true }).click();
+  const inspector = page.getByRole("complementary", { name: "Graph inspector" });
+  await expect(inspector.getByTestId("graph2d-table-status")).toHaveText("downsampled");
+  const panel = inspector.getByRole("region", { name: "Regression fitting", exact: true });
+  await panel.getByLabel("Regression model", { exact: true }).selectOption("cubic");
+  await panel.getByRole("button", { name: "Fit dataset", exact: true }).click();
+  await expect(panel.getByRole("status")).toHaveText("Current regression");
+  await expect(panel).toContainText("n=10000 · excluded=0 · df=9996");
+});
+
 test("G2D41 Dense previews immediately, Close keeps settings and the selected inspector", async ({ page }) => {
   await start(page); await page.getByLabel("Graph functions", { exact: true }).getByRole("button", { name: "Select Parabola", exact: true }).click();
   const inspector = page.getByLabel("Graph inspector", { exact: true }); await expect(inspector.locator(".graph2d-inspector-details").first()).toContainText("Parabola");

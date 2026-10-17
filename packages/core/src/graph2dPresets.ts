@@ -1,6 +1,6 @@
 import { canonicalJsonStringify, structuralHash } from "./documentIdentity";
 import { createGraph2DDocument, parseGraph2DDocument, type Graph2DDocument } from "./graph2dDocument";
-import { Graph2DPointTableStore, type Graph2DPointRow } from "./graph2dPointSeries";
+import { GRAPH2D_POINT_TABLE_MAX_ROWS, Graph2DPointTableStore, type Graph2DPointRow } from "./graph2dPointSeries";
 
 export const GRAPH2D_PRESET_FORMAT = "math3d.graph2d-preset" as const;
 export const GRAPH2D_PRESET_CATEGORIES = ["Algebra", "Trigonometry", "Calculus", "Parametric", "Polar", "Implicit and regions", "Piecewise and data"] as const;
@@ -50,7 +50,8 @@ export const parseGraph2DPreset = (raw: string): Graph2DPreset => {
   if (!Array.isArray(v.sidecars) || v.sidecars.length > 6) throw new TypeError("Invalid preset sidecars.");
   const store = new Graph2DPointTableStore(), tableIds = new Set<string>();
   for (const sidecar of v.sidecars) {
-    if (!record(sidecar) || !exact(sidecar, ["id", "rows"]) || !Array.isArray(sidecar.rows) || sidecar.rows.length > 128)
+    const maxRows = v.costClass === "complex" ? GRAPH2D_POINT_TABLE_MAX_ROWS : 128;
+    if (!record(sidecar) || !exact(sidecar, ["id", "rows"]) || !Array.isArray(sidecar.rows) || sidecar.rows.length > maxRows)
       throw new TypeError("Invalid preset point table.");
     // Explicit row keys stop arbitrary metadata sneaking into otherwise valid tables.
     if (!sidecar.rows.every((row) => record(row) && exact(row, ["id", "x", "y"]))) throw new TypeError("Invalid preset point rows.");

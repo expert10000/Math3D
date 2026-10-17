@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getGraph2DPresetCatalog, GRAPH2D_OBJECT_KINDS, instantiateGraph2DPreset, sampleGraph2DScene,
-  parseGraph2DDocument, serializeGraph2DDocument, applyGraph2DAuthoring, createGraph2DDocument,
+  parseGraph2DDocument, serializeGraph2DDocument, applyGraph2DAuthoring, createGraph2DDocument, analyzeGraph2DRegression,
   type Graph2DRegionArtifact, type Graph2DPiecewiseArtifact } from "@math3d/core";
 import { mobileGraphBudget } from "../../../apps/mobile/src/models/mobileGraphPerformance";
 import { mobileGraphAdvancedGeometry } from "../../../apps/mobile/src/viewer/mobileGraphAdvancedProjection";
@@ -15,12 +15,27 @@ const functions: Record<string, ((x: number) => number)[]> = {
   "sine-derivative": [Math.sin, Math.cos], "parabola-tangent": [x => x*x, x => 2*x-1],
 };
 describe("curated seven-kind catalog", () => {
-  it("provides 20 scenes, six Featured entries and multi-object comparisons", () => {
+  it("provides 21 scenes, six Featured entries and multi-object comparisons", () => {
     const catalog = getGraph2DPresetCatalog();
-    expect(catalog.entries).toHaveLength(20);
+    expect(catalog.entries).toHaveLength(21);
     expect(catalog.entries.filter(p => p.featuredOrder !== null)).toHaveLength(6);
     expect(catalog.entries.filter(p => p.template.source.objects.length > 1).length).toBeGreaterThanOrEqual(6);
     expect([...new Set(catalog.entries.flatMap(p => p.template.source.objects.map(o => o.kind)))].sort()).toEqual([...GRAPH2D_OBJECT_KINDS].sort());
+  });
+  it("opens the 10,000-row regression preset with the full checked table and a bounded display", () => {
+    const preset = getGraph2DPresetCatalog().get("regression-10000")!;
+    const { document, sidecars } = instantiateGraph2DPreset(preset, "regression-preset-test");
+    const object = document.source.objects[0]!;
+    if (object.kind !== "point-series") throw new Error("Expected point-series source.");
+    expect(preset.costClass).toBe("complex"); expect(sidecars[0]?.rows).toHaveLength(10000);
+    expect(sidecars[0]?.rows.at(-1)?.id).toBe("row_10000"); expect(object.table.rowCount).toBe(10000);
+    const sampled = sampleGraph2DScene({ document, viewport: document.display.viewport, width: 960, height: 600,
+      pointTables: { [object.table.id]: sidecars[0]!.rows } });
+    expect(sampled[0]?.artifact.samplesEvaluated).toBeLessThanOrEqual(1024);
+    expect(sampled[0]?.artifact.segments[0]?.points.length).toBeGreaterThan(100);
+    const fit = analyzeGraph2DRegression({ document, objectId: object.id, rows: sidecars[0]!.rows, model: "cubic" });
+    expect(fit.n).toBe(10000); expect(fit.table.checksum).toBe(object.table.checksum);
+    expect(fit.coefficients[0]).toBeCloseTo(2, 1); expect(fit.rSquared).toBeGreaterThan(.95);
   });
   for (const preset of getGraph2DPresetCatalog().entries) it(`${preset.id}: reference math, bounded low profile, editable portable copy`, () => {
     const { document, sidecars } = instantiateGraph2DPreset(preset, "catalog-oracle");
