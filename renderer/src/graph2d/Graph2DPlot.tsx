@@ -166,9 +166,13 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
           }))}
         {series.filter((item) => item.style.visible && isPointSeries(item.artifact)).map((item) => {
           const artifact = item.artifact as Graph2DPointSeriesArtifact;
+          const visible = artifact.points.filter((point) => point.x >= bounds.xMin && point.x <= bounds.xMax &&
+            point.y >= bounds.yMin && point.y <= bounds.yMax);
+          // The line path retains the sampled geometry and probing uses the full
+          // artifact. Dense line series need only a bounded set of SVG markers.
+          const stride = artifact.mode === "line" ? Math.max(1, Math.ceil(visible.length / 512)) : 1;
           return <g key={`markers-${item.objectId}`} data-graph2d-series-markers={item.objectId}>
-            {artifact.points.filter((point) => point.x >= bounds.xMin && point.x <= bounds.xMax &&
-              point.y >= bounds.yMin && point.y <= bounds.yMax).map((point) => {
+            {visible.filter((_, index) => index % stride === 0 || index === visible.length - 1).map((point) => {
               const screen = graph2DWorldToScreen(display.viewport, size, point);
               return <circle key={point.rowId} data-row-id={point.rowId} cx={screen.x} cy={screen.y}
                 r={Math.max(2.5, item.style.lineWidth + 1.5)} fill={item.style.color} />;

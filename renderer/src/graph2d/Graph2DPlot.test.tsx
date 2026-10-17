@@ -53,4 +53,19 @@ describe("Graph2D render projection", () => {
     expect(svg.indexOf('data-testid="graph2d-regression-overlay"')).toBeGreaterThan(svg.indexOf('data-graph2d-series-markers='));
     expect(svg).toContain('stroke="#b45309" stroke-width="3"');
   });
+  it("bounds marker DOM for a dense line without removing its sampled path", () => {
+    const points = Array.from({ length: 1025 }, (_, index) => ({ x: index / 1024, y: index / 1024,
+      rowId: `row_${index + 1}` }));
+    const artifact = { kind: "point-series" as const, mode: "line" as const, state: "ready" as const,
+      points, segments: [{ points, openStart: false, openEnd: false }], samplerVersion: 1 as const,
+      converged: true, samplesEvaluated: points.length, diagnostics: [] };
+    const display = createEmptyGraph2DDocument("dense-markers").display;
+    const style = { objectId: "dense", visible: true, color: "#2563eb", lineWidth: 2, lineStyle: "solid" as const };
+    const svg = renderToStaticMarkup(<Graph2DPlot display={display} size={{ width: 640, height: 480 }}
+      series={[{ objectId: "dense", artifact, style }]} />);
+    expect(svg.match(/data-row-id=/g)?.length).toBeLessThanOrEqual(513);
+    expect(svg).toContain('data-row-id="row_1"');
+    expect(svg).toContain('data-row-id="row_1025"');
+    expect(svg).toContain('data-graph2d-path="dense"');
+  });
 });

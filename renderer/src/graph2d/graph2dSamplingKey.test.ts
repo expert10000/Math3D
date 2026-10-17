@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
-import { instantiateGraph2DPreset, getGraph2DPresetCatalog, graph2DGridFields, graph2DAxesFromGridFields } from "@math3d/core";
+import { instantiateGraph2DPreset, getGraph2DPresetCatalog, graph2DGridFields, graph2DAxesFromGridFields,
+  Graph2DPointTableStore, graph2DPointTableSamplingInputs, graph2DSamplingPresentationContext } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { graph2DSceneSamplingKey } from "./graph2dSamplingKey";
 const scene = () => instantiateGraph2DPreset(getGraph2DPresetCatalog().get("translated-quadratic")!, "grid-key").document;
@@ -19,4 +20,18 @@ it("viewport, style, source ownership, quality and bounded execution changes sti
     { ...request, document: { ...document, display: { ...document.display, sampling: { ...document.display.sampling, maxSamples: 512 } } } },
     { ...request, document: { ...document, display: { ...document.display, objects: document.display.objects.map(s => ({ ...s, visible: false })) } } }])
     expect(graph2DSceneSamplingKey(next)).not.toBe(key);
+});
+it("uses certified table content for zoom keys while detecting changed rows", () => {
+  const document = scene(), store = new Graph2DPointTableStore();
+  const reference = store.publish([{ id: "row_1", x: 0, y: 1 }, { id: "row_2", x: 1, y: 2 }]);
+  const rows = store.resolve(reference)!;
+  const request = { document, viewport: document.display.viewport, width: 800, height: 600,
+    interaction: false, pointTables: { [reference.id]: rows } };
+  const same = { ...request, pointTables: { [reference.id]: rows } };
+  const changed = { ...request, pointTables: { [reference.id]: [{ ...rows[0]! }, { ...rows[1]!, y: 3 }] } };
+  expect(graph2DPointTableSamplingInputs(request.pointTables)[reference.id]).toEqual(reference);
+  expect(graph2DSceneSamplingKey(same)).toBe(graph2DSceneSamplingKey(request));
+  expect(graph2DSamplingPresentationContext(same)).toBe(graph2DSamplingPresentationContext(request));
+  expect(graph2DSceneSamplingKey(changed)).not.toBe(graph2DSceneSamplingKey(request));
+  expect(graph2DSamplingPresentationContext(changed)).not.toBe(graph2DSamplingPresentationContext(request));
 });

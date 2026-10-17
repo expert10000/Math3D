@@ -22,6 +22,10 @@ const verifiedRows = new WeakMap<readonly Graph2DPointRow[], Graph2DPointTableRe
 export const graph2DVerifiedPointTableReference = (rows: readonly Graph2DPointRow[]): Graph2DPointTableReference | null =>
   verifiedRows.get(rows) ?? null;
 
+/** A certified frozen table can use its content checksum in sampling keys. */
+export const graph2DPointTableSamplingInputs = (tables: Readonly<Record<string, readonly Graph2DPointRow[] | null>>) =>
+  Object.fromEntries(Object.entries(tables).map(([id, rows]) => [id, rows ? graph2DVerifiedPointTableReference(rows) ?? rows : null]));
+
 const validRows = (rows: readonly Graph2DPointRow[]): boolean => rows.length >= 1 &&
   rows.length <= GRAPH2D_POINT_TABLE_MAX_ROWS && rows.every((row, index) =>
     row.id === `row_${index + 1}` && Number.isFinite(row.x) &&
