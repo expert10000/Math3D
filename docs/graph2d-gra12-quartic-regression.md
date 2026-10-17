@@ -1,0 +1,9 @@
+# GRA-12.3 — bounded quartic point-series regression
+
+**Software scope, 2026-10-17.** Graphs offers quartic ordinary least squares beside linear, quadratic and cubic on desktop, web and mobile. It uses the original checksum-verified point table, excludes missing and out-of-domain rows, and leaves the authored series unchanged. The fitted curve and pointwise 95% mean-response and new-observation limits stay within the observed x extent. A result is transient and source-linked.
+
+The model is `y=c0+c1*z+c2*z²+c3*z³+c4*z⁴`, where `z=(x-center)/scale`. The same two-pass reorthogonalized QR solver handles all five columns; quartic requires at least six usable rows and rejects rank-deficient or ill-conditioned x coordinates. The existing 10,000-row limit, 129 curve samples and 2,048-row exported residual table remain. The desktop/web worker retains cancellation and the 15-second deadline. Mobile runs the bounded core synchronously.
+
+The numerical reference corpus includes an exactly known quartic at x around `10¹²`, a seven-row case with a known nonzero orthogonal residual and SSE `0.0924`, interval ordering, insufficient and repeated-x rejection, and the 10,000-row performance case. Shared mobile and browser tests check model selection and publication. This is a global polynomial fit; it does not provide local spline behavior, nonlinear parameter estimation, or simultaneous uncertainty bands. Its pointwise intervals retain the ordinary least-squares assumptions described in [GRA-12.1](graph2d-gra12-cubic-regression.md).
+
+**Next gate:** run the 10,000-point Gallery preset and the quartic fit on the Samsung to record load, fit and touch responsiveness. ADB reported no connected device during this implementation. A spline or nonlinear family needs a separate mathematical and uncertainty contract.

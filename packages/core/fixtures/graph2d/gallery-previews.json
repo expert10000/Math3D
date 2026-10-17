@@ -234,8 +234,8 @@
     },
     {
       "id": "regression-10000",
-      "presetDigest": "sha256:c0d701505ef10197472e3af9ae8ef0c7b0f0958d6d471a5a377ef04e060befd4",
-      "key": "sha256:cca23b884ac280d91e05fe7737d6e37bff5e13b1ed5b15baf0d3e706a184c149",
+      "presetDigest": "sha256:1221f6b15676f5785413f08eacbbf71f2e2161c4fa803b20019fcb6d01d23969",
+      "key": "sha256:d244bcf4fb71f5e9d01f1d90b113551619c6b9660823447034e068c540fa9ac6",
       "svg": "regression-10000.svg",
       "png": "regression-10000.png",
       "svgHash": "sha256:6bd8060c76bd60d65b357e754c0ed9fcf0f7d4062fc3ea878828d30ba73b0fff",

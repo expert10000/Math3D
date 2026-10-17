@@ -63,6 +63,10 @@ test("10,000-point gallery preset opens with a bounded plot and fits its origina
   await panel.getByRole("button", { name: "Fit dataset", exact: true }).click();
   await expect(panel.getByRole("status")).toHaveText("Current regression");
   await expect(panel).toContainText("n=10000 · excluded=0 · df=9996");
+  await panel.getByLabel("Regression model", { exact: true }).selectOption("quartic");
+  await panel.getByRole("button", { name: "Fit dataset", exact: true }).click();
+  await expect(panel.getByRole("status")).toHaveText("Current regression");
+  await expect(panel).toContainText("n=10000 · excluded=0 · df=9995");
 });
 
 test("G2D41 Dense previews immediately, Close keeps settings and the selected inspector", async ({ page }) => {

@@ -13,7 +13,7 @@ const publicationProjection = (results: readonly { publication: AnalysisResultEn
 };
 
 export type MobileGraphAnalysisKind = "derivatives" | "tangent" | "features" | "integral" | "intersections" | "arc-length" |
-  "polar-area" | "polar-arc-length" | "polar-tangent" | "parametric-tangent" | "regression-linear" | "regression-quadratic" | "regression-cubic";
+  "polar-area" | "polar-arc-length" | "polar-tangent" | "parametric-tangent" | "regression-linear" | "regression-quadratic" | "regression-cubic" | "regression-quartic";
 export type MobileGraphAnalysisDraft = { kind: MobileGraphAnalysisKind; objectId: string; secondId: string;
   x: string; min: string; max: string; tolerance: string; mode: "signed" | "absolute" };
 export type MobileGraphAnalysisRow = { label: string; detail: string; probe?: Graph2DProbe;
@@ -45,9 +45,10 @@ export const mobileGraphAnalysisInputHash = (draft: MobileGraphAnalysisDraft) =>
 export const runMobileGraphAnalysis = (document: Graph2DDocument, draft: MobileGraphAnalysisDraft, regressionRows: readonly Graph2DPointRow[] | null = null): MobileGraphRegressionAnalysis => {
   const object = document.source.objects.find((object) => object.id === draft.objectId);
   const result: MobileGraphAnalysis = { kind: draft.kind, inputHash: mobileGraphAnalysisInputHash(draft), publications: [], rows: [], overlays: [] };
-  if (draft.kind === "regression-linear" || draft.kind === "regression-quadratic" || draft.kind === "regression-cubic") {
+  if (draft.kind === "regression-linear" || draft.kind === "regression-quadratic" || draft.kind === "regression-cubic" || draft.kind === "regression-quartic") {
     const fit = analyzeGraph2DRegression({ document, objectId: draft.objectId, rows: regressionRows,
-      model: draft.kind === "regression-linear" ? "linear" : draft.kind === "regression-quadratic" ? "quadratic" : "cubic" });
+      model: draft.kind === "regression-linear" ? "linear" : draft.kind === "regression-quadratic" ? "quadratic" :
+        draft.kind === "regression-cubic" ? "cubic" : "quartic" });
     const projection = publicationProjection([{ publication: fit.publication, summary: fit.publication.summary } as { publication: AnalysisResultEnvelope }]);
     return { ...result, regression: fit, ...projection, publications: [fit.publication],
       publicationTables: [...projection.publicationTables, graph2DRegressionResidualTable(fit), graph2DRegressionCurveTable(fit)],

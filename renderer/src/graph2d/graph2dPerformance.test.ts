@@ -69,7 +69,7 @@ describe("Graph2D reviewed performance budgets", () => {
     expect(performance.now() - started).toBeLessThan(GRAPH2D_REVIEWED_PERFORMANCE_BUDGETS_MS.lifecycle5000);
   });
 
-  it("bounds checked linear, quadratic and cubic fits at 10,000 rows", () => {
+  it("bounds checked linear through quartic fits at 10,000 rows", () => {
     const rows = createGraph2DRegressionPresetRows();
     const table = new Graph2DPointTableStore().publish(rows);
     const base = createEmptyGraph2DDocument("regression-performance", "Regression performance");
@@ -77,7 +77,7 @@ describe("Graph2D reviewed performance budgets", () => {
       domain: graph2DPointDomain(rows), mode: "points", style: { color: "#2255cc", lineStyle: "solid", lineWidth: 2, visible: true } } }),
       stableKey: "regression-performance" });
     const objectId = document.source.objects[0].id, timings: Record<string, number> = {};
-    for (const model of ["linear", "quadratic", "cubic"] as const) {
+    for (const model of ["linear", "quadratic", "cubic", "quartic"] as const) {
       const started = performance.now(), fit = analyzeGraph2DRegression({ document, objectId, rows, model });
       timings[model] = performance.now() - started;
       expect(fit.n).toBe(10000); expect(fit.curve).toHaveLength(129);

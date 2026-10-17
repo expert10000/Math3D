@@ -76,7 +76,7 @@ const recipes = (): Recipe[] => {
         { type: "create-point-series", draft: { label: "Measured series", table, mode: "line", domain: domain(-2, 2), style } }], sidecars: [{ id: table.id, rows }], view: viewport(-2.5, 2.5, -1.5, 1.5), tags: ["piecewise", "data", "gaps"] },
     { id: "regression-10000", title: "10,000-point regression", category: "Piecewise and data",
       description: "A full-size deterministic measured series with cubic trend and small patterned noise. The plot is sampled for display; regression uses all 10,000 original checked rows. Select the series, choose a model in Inspector, and fit it.",
-      goal: "Compare linear, quadratic and cubic fits at the point-table limit, then cancel and repeat a fit.",
+      goal: "Compare linear, quadratic, cubic and quartic fits at the point-table limit, then cancel and repeat a fit.",
       actions: [{ type: "create-point-series", draft: { label: "10,000 measurements", table: regressionTable, mode: "line", domain: domain(-1, 1), style } }],
       sidecars: [{ id: regressionTable.id, rows: regressionRows }], view: viewport(-1.2, 1.2, 0, 3),
       tags: ["regression", "10000", "performance", "data"], costClass: "complex", difficulty: "advanced" },

@@ -38,14 +38,14 @@ export function Graph2DRegressionPanel({ document, model, onModel, result, onRes
   };
   return <section aria-label="Regression fitting" data-testid="graph2d-regression"><h3>Regression and uncertainty</h3>
     <label>Regression model<select aria-label="Regression model" value={model} onChange={e => { onModel(e.target.value as Graph2DRegressionModel); setOffset(0); }}>
-      <option value="linear">Linear least squares</option><option value="quadratic">Quadratic least squares</option><option value="cubic">Cubic least squares</option></select></label>
+      <option value="linear">Linear least squares</option><option value="quadratic">Quadratic least squares</option><option value="cubic">Cubic least squares</option><option value="quartic">Quartic least squares</option></select></label>
     <p>Uses original checksum-verified data, not displayed samples. Unweighted fit in world units; no extrapolation.</p>
     <button disabled={object?.kind !== "point-series" || pending} onClick={fit}>Fit dataset</button>
     {pending && <><button onClick={() => cancel()}>Cancel fit</button><p aria-live="polite">Fitting checked point series…</p></>}
     {error && <p role="alert">{error}</p>}
     {result && <><p role="status">{current ? "Current regression" : "Stale regression — source/model changed; fit again"}</p>
       <p>n={result.n} · excluded={result.excluded} · df={result.degreesOfFreedom} · residual SD={result.residualSD.toPrecision(6)} · R²={result.rSquared?.toPrecision(6) ?? "undefined"}</p>
-      <p>z=(x−{result.center.toPrecision(8)})/{result.scale.toPrecision(8)}; y={result.coefficients.map((v, i) => `${v.toPrecision(8)}${i ? `·z${i === 1 ? "" : i === 2 ? "²" : "³"}` : ""}`).join(" + ")}</p>
+      <p>z=(x−{result.center.toPrecision(8)})/{result.scale.toPrecision(8)}; y={result.coefficients.map((v, i) => `${v.toPrecision(8)}${i ? `·z${["", "", "²", "³", "⁴"][i]}` : ""}`).join(" + ")}</p>
       <p>Brown: fitted curve. Purple dashed: 95% mean-response limits. Purple dotted: 95% prediction limits. Pointwise, not simultaneous; log axes omit non-positive parts.</p>
       <details><summary>Assumptions and dataset provenance</summary><ul>{result.publication.warnings.map(w => <li key={w}>{w}</li>)}</ul><code>{result.table.checksum}</code></details>
       <details><summary>Residuals ({result.residuals.length})</summary><div style={{ overflowX: "auto" }}><table><caption>Observed minus fitted, original row IDs; rows {offset + 1}–{Math.min(offset + 50, result.n)}</caption>

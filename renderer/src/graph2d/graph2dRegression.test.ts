@@ -52,6 +52,40 @@ it("cubic rejects insufficient and rank-deficient datasets", () => {
   expect(() => analyzeGraph2DRegression({ ...repeated, objectId: repeated.document.source.objects[0].id,
     model: "cubic" })).toThrow(/Singular or ill-conditioned/);
 });
+it("quartic recovers an exact reference polynomial near a large x offset", () => {
+  const xs = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5].map(u => 1e12 + u);
+  const expected = [1.5, -2, .75, -.125, .0625];
+  const ys = xs.map(x => { const u = x - 1e12; return expected.reduce((total, coefficient, degree) => total + coefficient * u ** degree, 0); });
+  const { document, rows } = dataset(ys, xs);
+  const fit = analyzeGraph2DRegression({ document, objectId: document.source.objects[0].id, rows, model: "quartic" });
+  expect(fit.center).toBe(1e12); expect(fit.degreesOfFreedom).toBe(6);
+  expected.forEach((coefficient, degree) => expect(fit.coefficients[degree]! / fit.scale ** degree).toBeCloseTo(coefficient, 9));
+  expect(fit.sse).toBeLessThan(1e-18); expect(fit.curve).toHaveLength(129);
+  expect(fit.curve.every(point => point.predictionLow <= point.meanLow && point.predictionHigh >= point.meanHigh)).toBe(true);
+  for (let degree = 0; degree <= 4; degree++)
+    expect(fit.residuals.reduce((total, row) => total + row.residual * ((row.x - fit.center) / fit.scale) ** degree, 0)).toBeCloseTo(0, 8);
+  expect(fit.publication.summary.basis).toContain("c4*z^4");
+});
+it("quartic preserves a known nonzero orthogonal residual and its uncertainty", () => {
+  const xs = [-3, -2, -1, 0, 1, 2, 3], noise = [1, -6, 15, -20, 15, -6, 1].map(value => value / 100);
+  const expected = [2, -1, .5, -.125, .03125];
+  const ys = xs.map((x, i) => expected.reduce((total, coefficient, degree) => total + coefficient * x ** degree, noise[i]!));
+  const { document, rows } = dataset(ys, xs);
+  const fit = analyzeGraph2DRegression({ document, objectId: document.source.objects[0].id, rows, model: "quartic" });
+  expected.forEach((coefficient, degree) => expect(fit.coefficients[degree]! / fit.scale ** degree).toBeCloseTo(coefficient, 10));
+  expect(fit.residuals.map(row => row.residual)).toEqual(noise.map(value => expect.closeTo(value, 10)));
+  expect(fit.sse).toBeCloseTo(.0924, 10); expect(fit.degreesOfFreedom).toBe(2);
+  expect(fit.residualSD).toBeCloseTo(Math.sqrt(.0462), 10);
+  expect(fit.curve[64]!.predictionHigh - fit.curve[64]!.y).toBeGreaterThan(fit.curve[64]!.meanHigh - fit.curve[64]!.y);
+});
+it("quartic rejects insufficient and rank-deficient observations", () => {
+  const insufficient = dataset([1, 2, 3, 4, 5]);
+  expect(() => analyzeGraph2DRegression({ ...insufficient, objectId: insufficient.document.source.objects[0].id,
+    model: "quartic" })).toThrow(/at least 6/);
+  const repeated = dataset([1, 2, 3, 4, 5, 6, 7], [0, 1, 2, 3, 0, 1, 2]);
+  expect(() => analyzeGraph2DRegression({ ...repeated, objectId: repeated.document.source.objects[0].id,
+    model: "quartic" })).toThrow(/Singular or ill-conditioned/);
+});
 it("missing rows are excluded, never imputed; constants have undefined R²; source checksum is retained", () => {
   const { document, rows } = dataset([7, null, 7, 7, 7]);
   const fit = analyzeGraph2DRegression({ document, objectId: document.source.objects[0].id, rows, model: "linear" });
