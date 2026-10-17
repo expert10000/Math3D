@@ -53,13 +53,13 @@ export const MobileGraphPromotionPanel = ({ document, promotions, onCreate, onLo
       } catch (caught) { setPreview(null); setError((caught as Error).message); } }, saving)}
     </> : <Text>Select an explicit or parametric graph profile to promote. Other kinds are not supported by the shared promotion contract.</Text>}
     {preview && !current && <Text>Preview is stale or another profile is selected. Preview again.</Text>}
-    {current && <><Geometry promotion={current} />{button(saving ? "Creating…" : "Create and open target", () => {
+    {current && <><Geometry promotion={current} />{button(saving ? "Creating…" : "Create target and show preview", () => {
       setSaving(true); void onCreate(current).then((saved) => { if (saved) { setPreview(null); setTarget(current.document.identity.id); } })
         .catch((caught: Error) => setError(caught.message)).finally(() => setSaving(false));
     }, saving)}{button("Cancel promotion preview", () => setPreview(null), saving)}</>}
     {error && <Text accessibilityRole="alert">{error}</Text>}
     {promotions.map((promotion) => <View key={promotion.document.identity.id}><Text>{promotion.document.metadata.title} · {graph2DPromotionStatus(promotion, document)}{isGraph2DPromotionTargetEdited(promotion) ? " · target edited" : ""}</Text>
-      {button(`Locate target ${promotion.document.metadata.title}`, () => { setPreview(null); setTarget(promotion.document.identity.id); })}
+      {button(`Show target preview ${promotion.document.metadata.title}`, () => { setPreview(null); setTarget(promotion.document.identity.id); })}
       {button(`Locate source ${promotion.document.metadata.title}`, () => onLocate(promotion.trace.sourceObjectId))}
       {target === promotion.document.identity.id && <Geometry promotion={promotion} />}
     </View>)}
