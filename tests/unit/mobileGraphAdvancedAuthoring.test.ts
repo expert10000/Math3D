@@ -9,6 +9,34 @@ import { mobileGraphAdvancedGeometry } from "../../apps/mobile/src/viewer/mobile
 import { projectMobileGraphLines } from "../../apps/mobile/src/viewer/mobileGraphProjection";
 
 describe("MOB-G09 native kind flows", () => {
+  it("authors and edits a linked initial-value trajectory with one undo step per commit", () => {
+    const adapter = new Graph2DCommandAdapter(createMobileGraph("ODE", false, "mobile-trajectory"));
+    const tables = new Graph2DPointTableStore();
+    const fieldEditor = mobileGraphKindEditor(adapter.document(), "slope-field");
+    fieldEditor.draft.expression = "x";
+    const fieldAction = mobileGraphKindAction(fieldEditor, tables);
+    adapter.commitScene(applyMobileGraphAuthoring(adapter.document(), fieldAction), fieldAction.type);
+    const trajectoryEditor = mobileGraphKindEditor(adapter.document(), "trajectory", null, "slope_field_1");
+    trajectoryEditor.draft.initialX = "0"; trajectoryEditor.draft.initialY = "1";
+    const createAction = mobileGraphKindAction(trajectoryEditor, tables);
+    adapter.commitScene(applyMobileGraphAuthoring(adapter.document(), createAction), createAction.type);
+    const created = adapter.document();
+    expect(created.source.objects[1]?.kind).toBe("trajectory");
+    const edit = mobileGraphKindEditor(created, "trajectory", "trajectory_1");
+    edit.draft.initialY = "2";
+    const editAction = mobileGraphKindAction(edit, tables);
+    adapter.commitScene(applyMobileGraphAuthoring(created, editAction), editAction.type);
+    expect(adapter.undo()?.source).toEqual(created.source);
+    adapter.redo();
+    const restored = parseGraph2DDocument(serializeGraph2DDocument(adapter.document()));
+    const size = { width: 320, height: 320 };
+    const series = sampleGraph2DScene({ document: restored, viewport: restored.display.viewport, ...size,
+      interaction: false });
+    expect(series[1]!.artifact.segments[0]!.points.length).toBeGreaterThan(2);
+    const geometry = mobileGraphAdvancedGeometry(series, restored.display.viewport, size);
+    expect(geometry.points.length).toBeGreaterThan(0); // Initial-value seed marker.
+    expect(projectMobileGraphLines(geometry.boundaries, restored.display.viewport, size).length).toBeGreaterThan(0);
+  });
   for (const kind of MOBILE_GRAPH_KINDS.filter((k) => k !== "explicit-cartesian")) it(`authors, edits, undoes, samples and round-trips ${kind}`, () => {
     const adapter = new Graph2DCommandAdapter(createMobileGraph(kind, false, kind));
     const tables = new Graph2DPointTableStore();

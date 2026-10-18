@@ -9,6 +9,7 @@ const sourceName: Record<Graph2DObjectKind, string> = {
   "point-series": "Point series",
   piecewise: "Piecewise function",
   "slope-field": "Slope field",
+  trajectory: "Solution trajectory",
 };
 
 /** Describes source objects and display coordinates without relying on the active module's default scene. */

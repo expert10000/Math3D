@@ -30,7 +30,8 @@ export const GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY = "graph2d.scientific-dataset
 export const GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY = "graph2d.scientific-dataset-slice.v1" as const;
 export const GRAPH2D_PIECEWISE_CAPABILITY = "graph2d.piecewise.v1" as const;
 export const GRAPH2D_SLOPE_FIELD_CAPABILITY = "graph2d.slope-field.v1" as const;
-export const GRAPH2D_OBJECT_KINDS = ["explicit-cartesian", "parametric", "polar", "implicit", "inequality", "point-series", "piecewise", "slope-field"] as const;
+export const GRAPH2D_TRAJECTORY_CAPABILITY = "graph2d.trajectory.v1" as const;
+export const GRAPH2D_OBJECT_KINDS = ["explicit-cartesian", "parametric", "polar", "implicit", "inequality", "point-series", "piecewise", "slope-field", "trajectory"] as const;
 export type Graph2DObjectKind = (typeof GRAPH2D_OBJECT_KINDS)[number];
 export const GRAPH2D_RESERVED_OBJECT_KINDS = GRAPH2D_OBJECT_KINDS.slice(1);
 export const GRAPH2D_MAX_DOCUMENT_BYTES = 256 * 1024;
@@ -126,8 +127,15 @@ export type Graph2DSlopeFieldObject = Readonly<{
   domain: Graph2DDomain;
   yDomain: Graph2DDomain;
 }>;
+export type Graph2DTrajectoryObject = Readonly<{
+  id: string;
+  kind: "trajectory";
+  label: string;
+  sourceFieldId: string;
+  seed: Readonly<{ x: number; y: number }>;
+}>;
 export type Graph2DGraphObject = Graph2DExplicitObject | Graph2DParametricObject | Graph2DPolarObject |
-  Graph2DImplicitObject | Graph2DInequalityObject | Graph2DPointSeriesObject | Graph2DPiecewiseObject | Graph2DSlopeFieldObject;
+  Graph2DImplicitObject | Graph2DInequalityObject | Graph2DPointSeriesObject | Graph2DPiecewiseObject | Graph2DSlopeFieldObject | Graph2DTrajectoryObject;
 export type Graph2DSource = Readonly<{
   objects: readonly Graph2DGraphObject[];
   variables: readonly Graph2DParameter[];
@@ -146,6 +154,7 @@ export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pic
       [GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "piecewise") ? [GRAPH2D_PIECEWISE_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "slope-field") ? [GRAPH2D_SLOPE_FIELD_CAPABILITY] : []),
+    ...(source.objects.some((object) => object.kind === "trajectory") ? [GRAPH2D_TRAJECTORY_CAPABILITY] : []),
     ...(source.constructions !== undefined ? [GRAPH2D_CONSTRUCTIONS_CAPABILITY] : []),
     ...(source.constructions?.objects.some(object => ["root", "minimum", "maximum", "intersection"].includes(object.kind)) ?
       [GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY] : []),
@@ -184,7 +193,7 @@ export type Graph2DDocument = Readonly<{
   requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
     typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY |
     typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY |
-    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_SLOPE_FIELD_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
+    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_SLOPE_FIELD_CAPABILITY | typeof GRAPH2D_TRAJECTORY_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
   source: Graph2DSource;
   display: Graph2DDisplay;
   selection: Graph2DSelection;
@@ -240,6 +249,10 @@ const validSlopeFieldObject = (value: unknown, variables: readonly string[]): va
   exact(value, ["id", "kind", "label", "expression", "domain", "yDomain"]) && objectId(value.id) &&
   value.kind === "slope-field" && bounded(value.label, 160) &&
   validExpression(value.expression, variables, "xy") && validDomain(value.domain) && validDomain(value.yDomain);
+const validTrajectoryObject = (value: unknown): value is Graph2DTrajectoryObject => record(value) &&
+  exact(value, ["id", "kind", "label", "sourceFieldId", "seed"]) && objectId(value.id) &&
+  value.kind === "trajectory" && bounded(value.label, 160) && objectId(value.sourceFieldId) &&
+  record(value.seed) && exact(value.seed, ["x", "y"]) && finite(value.seed.x) && finite(value.seed.y);
 const validInequalityObject = (value: unknown, variables: readonly string[]): value is Graph2DInequalityObject => record(value) &&
   exact(value, ["id", "kind", "label", "clauses", "operator", "domain", "yDomain"]) && objectId(value.id) &&
   value.kind === "inequality" && bounded(value.label, 160) && ["all", "any"].includes(String(value.operator)) &&
@@ -310,8 +323,12 @@ const validSource = (value: unknown): value is Graph2DSource => {
     validParametricObject(entry, ["t", ...names]) || validPolarObject(entry, ["theta", ...names]) ||
     validImplicitObject(entry, ["x", "y", ...names]) || validInequalityObject(entry, ["x", "y", ...names]) ||
     validPointSeriesObject(entry) || validPiecewiseObject(entry, ["x", ...names]) ||
-    validSlopeFieldObject(entry, ["x", "y", ...names])) &&
+    validSlopeFieldObject(entry, ["x", "y", ...names]) || validTrajectoryObject(entry)) &&
     new Set(value.objects.map((entry: Graph2DGraphObject) => entry.id)).size === value.objects.length &&
+    (value.objects as Graph2DGraphObject[]).every((entry) => entry.kind !== "trajectory" ||
+      (value.objects as Graph2DGraphObject[]).some((source) => source.kind === "slope-field" &&
+        source.id === entry.sourceFieldId && entry.seed.x >= source.domain.min && entry.seed.x <= source.domain.max &&
+        entry.seed.y >= source.yDomain.min && entry.seed.y <= source.yDomain.max)) &&
     (value.constructions === undefined || validateGraph2DConstructionSet(value.constructions, value.objects).length === 0);
 };
 const validDisplay = (value: unknown, source: Graph2DSource): value is Graph2DDisplay => {
@@ -350,7 +367,7 @@ const validSelection = (value: unknown, source: Graph2DSource): value is Graph2D
   if (!record(value.probe) || ![3, 4].includes(Object.keys(value.probe).length) ||
     !["objectId", "x", "y"].every((key) => Object.prototype.hasOwnProperty.call(value.probe, key))) return false;
   const selected = source.objects.find((entry) => entry.id === value.objectId);
-  if (selected?.kind === "slope-field") return false;
+  if (selected?.kind === "slope-field" || selected?.kind === "trajectory") return false;
   const needsParameter = selected?.kind === "parametric" || selected?.kind === "polar";
   if (needsParameter !== Object.prototype.hasOwnProperty.call(value.probe, "parameter")) return false;
   const needsRow = selected?.kind === "point-series";

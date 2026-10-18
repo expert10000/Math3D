@@ -16,6 +16,7 @@ import {
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
   type Graph2DScientificDatasetPreview,
+  type Graph2DTrajectoryArtifact,
   type Graph2DConstructionAction,
   graph2DConstructionFromCandidate, graph2DLineConstructionActionsFromProbe, GRAPH2D_MAX_CONSTRUCTIONS,
   type Graph2DIntegralMode,
@@ -894,6 +895,16 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         <dd>{inspected.domain.includeMin ? "[" : "("}{inspected.domain.min}, {inspected.domain.max}{inspected.domain.includeMax ? "]" : ")"}</dd>
         {(selectedObject?.kind === "implicit" || selectedObject?.kind === "inequality" || selectedObject?.kind === "slope-field") && <><dt>Y domain</dt>
           <dd>{selectedObject.yDomain.min}, {selectedObject.yDomain.max}</dd></>}
+        {selectedObject?.kind === "trajectory" && <>
+          <dt>Linked field</dt><dd>{document.source.objects.find(object => object.id === selectedObject.sourceFieldId)?.label ?? selectedObject.sourceFieldId}</dd>
+          <dt>Initial value</dt><dd>y({selectedObject.seed.x}) = {selectedObject.seed.y}</dd>
+          {selectedSeries?.artifact && "kind" in selectedSeries.artifact && selectedSeries.artifact.kind === "trajectory" && <>
+            <dt>Integration</dt><dd data-testid="graph2d-trajectory-stops">Backward: {(selectedSeries.artifact as Graph2DTrajectoryArtifact).stops.backward};
+              {" "}forward: {(selectedSeries.artifact as Graph2DTrajectoryArtifact).stops.forward}</dd>
+            <dt>Steps</dt><dd>{(selectedSeries.artifact as Graph2DTrajectoryArtifact).acceptedSteps} accepted,
+              {" "}{(selectedSeries.artifact as Graph2DTrajectoryArtifact).rejectedSteps} rejected · local tolerance 10⁻⁶</dd>
+          </>}
+        </>}
         <dt>Style</dt><dd><span className="graph2d-inspector-swatch" style={{ background: inspected.style.color }} />
           {inspected.style.lineStyle}, {inspected.style.lineWidth} px · {inspected.style.visible ? "visible" : "hidden"}</dd>
         <dt>Probe</dt><dd>{inspected.probe ? <span data-testid="graph2d-probe-coordinates">
@@ -908,7 +919,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             "Sampled contour projection" : inspected.probeMethod === "table-row" ? "Table row" : "Unavailable"}</dd>
         <dt>Sampling</dt><dd className="graph2d-sampling-observation-status" data-testid="graph2d-sampling-status">{!parameterPreviewActive && !sampling.ready ?
           sampling.retained ? "Updating — previous observation" : "Updating — no observation yet" :
-            `${inspected.sampling.method === "bounded-direction-grid" ? "Bounded direction grid" : "Adaptive bounded polyline"} · ${inspected.sampling.status}`}</dd>
+            `${inspected.sampling.method === "bounded-direction-grid" ? "Bounded direction grid" :
+              inspected.sampling.method === "adaptive-initial-value-trajectory" ? "Adaptive initial-value trajectory" :
+                "Adaptive bounded polyline"} · ${inspected.sampling.status}`}</dd>
         {inspected.regionState && <><dt>Region</dt><dd data-testid="graph2d-region-status">{inspected.regionState}</dd></>}
         {inspected.pointState && <><dt>Table</dt><dd data-testid="graph2d-table-status">{inspected.pointState}</dd></>}
         <dt>Budget</dt><dd>{inspected.sampling.policy.maxSamples.toLocaleString()} samples, depth {inspected.sampling.policy.maxDepth},

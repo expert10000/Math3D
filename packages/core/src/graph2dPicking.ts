@@ -31,7 +31,7 @@ export const pickGraph2DProbe = (input: Readonly<{
     distancePx: number; order: number }[] = [];
   input.document.source.objects.forEach((object, order) => {
     if (!input.document.display.objects[order]?.visible) return;
-    if (object.kind === "slope-field") return; // Glyphs represent directions, not points on a solution.
+    if (object.kind === "slope-field" || object.kind === "trajectory") return; // Trajectory samples are approximate, not exact solution probes.
     const artifact = artifacts.get(object.id);
     if (!artifact) return;
     if (object.kind === "point-series") {
@@ -154,7 +154,8 @@ export const pickGraph2DProbe = (input: Readonly<{
           entry.parameter !== undefined && input.previous!.probe?.parameter !== undefined &&
           Math.abs(entry.parameter - input.previous!.probe!.parameter!) <=
             (() => { const found = input.document.source.objects.find((object) => object.id === entry.objectId)!;
-              const domain = found.kind === "piecewise" ? { min: found.pieces[0]!.domain.min, max: found.pieces.at(-1)!.domain.max } : found.domain;
+              const domain = found.kind === "piecewise" ? { min: found.pieces[0]!.domain.min, max: found.pieces.at(-1)!.domain.max } :
+                found.kind === "trajectory" ? { min: found.seed.x - 1, max: found.seed.x + 1 } : found.domain;
               return (domain.max - domain.min) / 128; })()));
       if (previousIndex >= 0) winner = overlapping[(previousIndex + 1) % overlapping.length]!;
     }
@@ -171,7 +172,7 @@ export const selectionForGraph2DObject = (
 ): Graph2DSelection => {
   const object = document.source.objects.find((entry) => entry.id === objectId);
   if (!object) return empty;
-  if (object.kind === "slope-field") return { objectId, probe: null };
+  if (object.kind === "slope-field" || object.kind === "trajectory") return { objectId, probe: null };
   const artifact = series.find((entry) => entry.objectId === objectId)?.artifact;
   const segments = artifact?.segments.filter((entry) => entry.points.length > 0) ?? [];
   if (!segments.length) return { objectId, probe: null };

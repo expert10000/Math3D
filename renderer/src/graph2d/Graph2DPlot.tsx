@@ -9,6 +9,7 @@ import {
   type Graph2DRegionArtifact,
   type Graph2DPointSeriesArtifact,
   type Graph2DPiecewiseArtifact,
+  type Graph2DTrajectoryArtifact,
   type Graph2DConstructionArtifact,
   graph2DRegressionOverlaySeries, graph2DGridAppearance, projectGraph2DPolarGrid, type Graph2DRegression,
   type projectGraph2DProbeMarkers,
@@ -164,6 +165,15 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
               r={Math.max(3.5, item.style.lineWidth + 2)} fill={endpoint.open ? "var(--panel-bg, #fff)" : item.style.color}
               stroke={item.style.color} strokeWidth={Math.max(1.5, item.style.lineWidth)} />;
           }))}
+        {series.filter(item => item.style.visible && "kind" in item.artifact && item.artifact.kind === "trajectory")
+          .map(item => {
+            const seed = (item.artifact as Graph2DTrajectoryArtifact).seed;
+            if (seed.x < bounds.xMin || seed.x > bounds.xMax || seed.y < bounds.yMin || seed.y > bounds.yMax) return null;
+            const screen = graph2DWorldToScreen(display.viewport, size, seed);
+            if (!Number.isFinite(screen.x) || !Number.isFinite(screen.y)) return null;
+            return <circle key={`seed-${item.objectId}`} data-graph2d-trajectory-seed={item.objectId}
+              cx={screen.x} cy={screen.y} r={5} fill="white" stroke={item.style.color} strokeWidth={2} pointerEvents="none" />;
+          })}
         {series.filter((item) => item.style.visible && isPointSeries(item.artifact)).map((item) => {
           const artifact = item.artifact as Graph2DPointSeriesArtifact;
           const visible = artifact.points.filter((point) => point.x >= bounds.xMin && point.x <= bounds.xMax &&

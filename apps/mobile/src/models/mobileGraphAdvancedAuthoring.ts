@@ -2,13 +2,15 @@ import { GRAPH2D_OBJECT_KINDS, Graph2DPointTableStore, graph2DPointDomain, previ
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DObjectKind, type Graph2DPointTableReference } from "@math3d/core";
 import { mobileGraphFunctionDraft, type MobileGraphFunctionDraft } from "./mobileGraphAuthoring";
 
-export const MOBILE_GRAPH_KINDS = GRAPH2D_OBJECT_KINDS;
+export const MOBILE_GRAPH_KINDS = GRAPH2D_OBJECT_KINDS.filter(kind => kind !== "trajectory");
 type Piece = { expression: string; min: string; max: string; includeMin: boolean; includeMax: boolean };
 type Clause = { expression: string; comparator: "<" | "<=" | ">" | ">=" };
 export type MobileGraphAdvancedEditor = { objectId: string | null; kind: Graph2DObjectKind;
   draft: MobileGraphFunctionDraft & { second: string; yMin: string; yMax: string; operator: "all" | "any";
-    clauses: Clause[]; pieces: Piece[]; data: string; table?: Graph2DPointTableReference; mode: "points" | "line" } };
-export const mobileGraphKindEditor = (document: Graph2DDocument, kind: Graph2DObjectKind, objectId: string | null = null): MobileGraphAdvancedEditor => {
+    clauses: Clause[]; pieces: Piece[]; data: string; table?: Graph2DPointTableReference; mode: "points" | "line";
+    sourceFieldId: string; initialX: string; initialY: string } };
+export const mobileGraphKindEditor = (document: Graph2DDocument, kind: Graph2DObjectKind, objectId: string | null = null,
+  sourceFieldId = ""): MobileGraphAdvancedEditor => {
   const object = document.source.objects.find((entry) => entry.id === objectId);
   const style = document.display.objects.find((entry) => entry.objectId === objectId);
   if (objectId && (!object || object.kind !== kind || !style)) throw new TypeError("Unsupported graph editor.");
@@ -18,7 +20,7 @@ export const mobileGraphKindEditor = (document: Graph2DDocument, kind: Graph2DOb
     yMin: "-10", yMax: "10", operator: "all", clauses: [{ expression: "x^2+y^2-4", comparator: "<=" }],
     pieces: [{ expression: "-x", min: "-10", max: "0", includeMin: true, includeMax: false },
       { expression: "x", min: "0", max: "10", includeMin: true, includeMax: true }],
-    data: "x,y\n-2,4\n-1,1\n0,0\n1,1\n2,4", mode: "points" };
+    data: "x,y\n-2,4\n-1,1\n0,0\n1,1\n2,4", mode: "points", sourceFieldId, initialX: "0", initialY: "0" };
   if (kind === "parametric" || kind === "polar") { draft.min = "0"; draft.max = String(2 * Math.PI); }
   if (object && style) {
     Object.assign(draft, { label: object.label, color: style.color, width: String(style.lineWidth), lineStyle: style.lineStyle, visible: style.visible });
@@ -30,6 +32,8 @@ export const mobileGraphKindEditor = (document: Graph2DDocument, kind: Graph2DOb
     if (object.kind === "inequality") { draft.operator = object.operator; draft.clauses = object.clauses.map((clause) => ({ expression: clause.source, comparator: clause.comparator })); }
     if (object.kind === "piecewise") draft.pieces = object.pieces.map((piece) => ({ expression: piece.expression.source, min: String(piece.domain.min), max: String(piece.domain.max), includeMin: piece.domain.includeMin, includeMax: piece.domain.includeMax }));
     if (object.kind === "point-series") { draft.data = ""; draft.table = object.table; draft.mode = object.mode; }
+    if (object.kind === "trajectory") { draft.sourceFieldId = object.sourceFieldId;
+      draft.initialX = String(object.seed.x); draft.initialY = String(object.seed.y); }
   }
   return { objectId, kind, draft };
 };
@@ -45,6 +49,8 @@ export const mobileGraphKindAction = (editor: MobileGraphAdvancedEditor, tables:
     case "polar": return action("-polar", { ...base, rExpression: d.expression.trim() });
     case "implicit": return action("-implicit", { ...base, expression: d.expression.trim(), yDomain: { min: number(d.yMin), max: number(d.yMax), includeMin: true, includeMax: true } });
     case "slope-field": return action("-slope-field", { ...base, expression: d.expression.trim(), yDomain: { min: number(d.yMin), max: number(d.yMax), includeMin: true, includeMax: true } });
+    case "trajectory": return action("-trajectory", { label: d.label.trim(), sourceFieldId: d.sourceFieldId,
+      seed: { x: number(d.initialX), y: number(d.initialY) }, style: base.style });
     case "inequality": return action("-inequality", { ...base, operator: d.operator, clauses: d.clauses.map((c) => ({ ...c, expression: c.expression.trim() })), yDomain: { min: number(d.yMin), max: number(d.yMax), includeMin: true, includeMax: true } });
     case "piecewise": return action("-piecewise", { ...base, pieces: d.pieces.map((p) => ({ expression: p.expression.trim(), domain: { min: number(p.min), max: number(p.max), includeMin: p.includeMin, includeMax: p.includeMax } })) });
     case "point-series": {

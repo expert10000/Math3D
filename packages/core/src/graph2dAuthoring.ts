@@ -33,6 +33,10 @@ export type Graph2DImplicitDraft = Readonly<{
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
 }>;
 export type Graph2DSlopeFieldDraft = Graph2DImplicitDraft;
+export type Graph2DTrajectoryDraft = Readonly<{
+  label: string; sourceFieldId: string; seed: Readonly<{ x: number; y: number }>;
+  style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
+}>;
 export type Graph2DInequalityDraft = Readonly<{
   label: string;
   clauses: readonly Readonly<{ expression: string; comparator: "<" | "<=" | ">" | ">=" }>[];
@@ -66,6 +70,8 @@ export type Graph2DAuthoringAction =
   | Readonly<{ type: "edit-implicit"; objectId: string; draft: Graph2DImplicitDraft }>
   | Readonly<{ type: "create-slope-field"; draft: Graph2DSlopeFieldDraft }>
   | Readonly<{ type: "edit-slope-field"; objectId: string; draft: Graph2DSlopeFieldDraft }>
+  | Readonly<{ type: "create-trajectory"; draft: Graph2DTrajectoryDraft }>
+  | Readonly<{ type: "edit-trajectory"; objectId: string; draft: Graph2DTrajectoryDraft }>
   | Readonly<{ type: "create-inequality"; draft: Graph2DInequalityDraft }>
   | Readonly<{ type: "edit-inequality"; objectId: string; draft: Graph2DInequalityDraft }>
   | Readonly<{ type: "create-point-series"; draft: Graph2DPointSeriesDraft }>
@@ -145,6 +151,17 @@ export const validateGraph2DImplicitDraft = (draft: Graph2DImplicitDraft,
   return errors;
 };
 export const validateGraph2DSlopeFieldDraft = validateGraph2DImplicitDraft;
+export const validateGraph2DTrajectoryDraft = (draft: Graph2DTrajectoryDraft, document: Graph2DDocument): readonly string[] => {
+  const field = document.source.objects.find(entry => entry.id === draft.sourceFieldId);
+  const errors = [...validateGraph2DFunctionDraft({ ...draft, expression: "x",
+    domain: { min: -1, max: 1, includeMin: true, includeMax: true } })];
+  if (!field || field.kind !== "slope-field") errors.push("Choose an existing slope field.");
+  if (!Number.isFinite(draft.seed.x) || !Number.isFinite(draft.seed.y) ||
+      field?.kind === "slope-field" && (draft.seed.x < field.domain.min || draft.seed.x > field.domain.max ||
+      draft.seed.y < field.yDomain.min || draft.seed.y > field.yDomain.max))
+    errors.push("Initial point must be finite and inside the slope field bounds.");
+  return errors;
+};
 export const validateGraph2DInequalityDraft = (draft: Graph2DInequalityDraft,
   variables: readonly string[] = ["x", "y"]): readonly string[] => {
   const errors = [...validateGraph2DImplicitDraft({ ...draft, expression: draft.clauses[0]?.expression ?? "" }, variables)];
@@ -292,6 +309,11 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
     const names = ["x", "y", ...document.source.variables.map(entry => entry.name)];
     const errors = validateGraph2DSlopeFieldDraft(action.draft, names);
     if (errors.length) throw new TypeError(errors.join(" "));
+    if (action.type === "edit-slope-field" && objects.some(entry => entry.kind === "trajectory" &&
+      entry.sourceFieldId === action.objectId && (entry.seed.x < action.draft.domain.min ||
+        entry.seed.x > action.draft.domain.max || entry.seed.y < action.draft.yDomain.min ||
+        entry.seed.y > action.draft.yDomain.max)))
+      throw new TypeError("Move linked trajectory seeds inside the new field bounds before saving.");
     const parsed = parseGraph2DExpression(action.draft.expression, names);
     if (!parsed.ok) throw new TypeError("Slope expression is invalid.");
     if (action.type === "create-slope-field" && objects.length >= GRAPH2D_MAX_OBJECTS)
@@ -306,6 +328,24 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       domain: action.draft.domain, yDomain: action.draft.yDomain };
     const display = { objectId: id, ...action.draft.style };
     if (action.type === "create-slope-field") { objects.push(object); displays.push(display); }
+    else { objects[index] = object; displays[index] = display; }
+    selection = { objectId: id, probe: null };
+  } else if (action.type === "create-trajectory" || action.type === "edit-trajectory") {
+    if (action.type === "edit-trajectory" && objects[index]?.kind !== "trajectory")
+      throw new TypeError("Selected object is not a trajectory.");
+    const errors = validateGraph2DTrajectoryDraft(action.draft, document);
+    if (errors.length) throw new TypeError(errors.join(" "));
+    if (action.type === "create-trajectory" && objects.length >= GRAPH2D_MAX_OBJECTS)
+      throw new TypeError("Function limit reached.");
+    let id = action.type === "edit-trajectory" ? action.objectId : "trajectory_1";
+    if (action.type === "create-trajectory") {
+      let serial = 1;
+      while (objects.some(entry => entry.id === id)) id = "trajectory_" + ++serial;
+    }
+    const object = { id, kind: "trajectory" as const, label: action.draft.label,
+      sourceFieldId: action.draft.sourceFieldId, seed: action.draft.seed };
+    const display = { objectId: id, ...action.draft.style };
+    if (action.type === "create-trajectory") { objects.push(object); displays.push(display); }
     else { objects[index] = object; displays[index] = display; }
     selection = { objectId: id, probe: null };
   } else if (action.type === "create-inequality" || action.type === "edit-inequality") {
@@ -385,6 +425,8 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
     displays.splice(index + 1, 0, { ...displays[index]!, objectId: id });
     selection = { objectId: id, probe: null };
   } else if (action.type === "delete") {
+    if (objects.some(entry => entry.kind === "trajectory" && entry.sourceFieldId === action.objectId))
+      throw new TypeError("Remove trajectories depending on this slope field before deleting it.");
     if (document.source.constructions?.objects.some(construction => construction.inputs.some(input =>
       input.kind === "source" && input.objectId === action.objectId)))
       throw new TypeError("Remove constructions depending on this graph source before deleting it.");

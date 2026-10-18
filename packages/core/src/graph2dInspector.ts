@@ -18,7 +18,7 @@ export type Graph2DInspectorSummary = Readonly<{
   probeMethod: "direct-expression-floating-point" | "sampled-contour" | "table-row" | "unavailable";
   sampling: Readonly<{
     status: "converged" | "incomplete" | "unavailable";
-    method: "adaptive-bounded-polyline" | "bounded-direction-grid";
+    method: "adaptive-bounded-polyline" | "bounded-direction-grid" | "adaptive-initial-value-trajectory";
     samplesEvaluated: number | null;
     segmentCount: number | null;
     policy: Graph2DDocument["display"]["sampling"];
@@ -46,6 +46,7 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
   const diagnostics = visibleArtifact?.diagnostics ?? [];
   const variables = Object.fromEntries(document.source.variables.map((entry) => [entry.name, entry.value]));
   const selectedProbe = document.selection.probe?.objectId === object.id ? document.selection.probe : null;
+  const trajectoryField = object.kind === "trajectory" ? document.source.objects.find(entry => entry.id === object.sourceFieldId) : null;
   const signedRadius = object.kind === "polar" && selectedProbe?.parameter !== undefined ?
     evaluateGraph2DPolar(object, variables, selectedProbe.parameter)?.radius ?? null : null;
   return {
@@ -55,11 +56,14 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
       object.kind === "polar" ? `r(θ) = ${object.rExpression.source}` :
         object.kind === "implicit" ? `F(x,y) = ${object.expression.source} = 0` :
           object.kind === "slope-field" ? `dy/dx = ${object.expression.source}` :
+          object.kind === "trajectory" ? `Trajectory from ${object.sourceFieldId}, y(${object.seed.x}) = ${object.seed.y}` :
           object.kind === "inequality" ? object.clauses.map((clause) =>
             `${clause.source} ${clause.comparator} 0`).join(object.operator === "all" ? " AND " : " OR ") :
             object.kind === "point-series" ? `${object.table.rowCount} rows · ${object.mode} · missing y: gap` :
               object.kind === "piecewise" ? object.pieces.map((piece) => `${piece.expression.source} on ${piece.domain.includeMin ? "[" : "("}${piece.domain.min}, ${piece.domain.max}${piece.domain.includeMax ? "]" : ")"}`).join("; ") : "",
-    domain: object.kind === "piecewise" ? { min: object.pieces[0]!.domain.min,
+    domain: object.kind === "trajectory" ? (trajectoryField?.kind === "slope-field" ? trajectoryField.domain : undefined) ??
+      { min: object.seed.x - 1, max: object.seed.x + 1, includeMin: true, includeMax: true } :
+      object.kind === "piecewise" ? { min: object.pieces[0]!.domain.min,
       max: object.pieces.at(-1)!.domain.max, includeMin: object.pieces[0]!.domain.includeMin,
       includeMax: object.pieces.at(-1)!.domain.includeMax } : object.domain, style,
     probe: selectedProbe, signedRadius,
@@ -72,7 +76,8 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
         object.kind === "point-series" ? "table-row" : "direct-expression-floating-point" : "unavailable",
     sampling: {
       status: !visibleArtifact ? "unavailable" : visibleArtifact.converged ? "converged" : "incomplete",
-      method: object.kind === "slope-field" ? "bounded-direction-grid" : "adaptive-bounded-polyline",
+      method: object.kind === "slope-field" ? "bounded-direction-grid" :
+        object.kind === "trajectory" ? "adaptive-initial-value-trajectory" : "adaptive-bounded-polyline",
       samplesEvaluated: visibleArtifact?.samplesEvaluated ?? null,
       segmentCount: visibleArtifact?.segments.length ?? null, policy: document.display.sampling, diagnostics,
       suspectedJumpCount: diagnostics.find((entry) => entry.code === "suspected-jump")?.count ?? 0,

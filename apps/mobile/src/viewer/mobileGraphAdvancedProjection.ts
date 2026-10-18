@@ -1,5 +1,5 @@
 import { graph2DWorldToScreen, type Graph2DRegionArtifact, type Graph2DPointSeriesArtifact,
-  type Graph2DSampledSeries, type Graph2DViewport, type Graph2DScreenSize } from "@math3d/core";
+  type Graph2DSampledSeries, type Graph2DTrajectoryArtifact, type Graph2DViewport, type Graph2DScreenSize } from "@math3d/core";
 import { mobileGraphFillRect, type MobileGraphRect } from "./mobileGraphOverlays";
 
 export const mobileGraphAdvancedGeometry = (series: readonly Graph2DSampledSeries[], viewport: Graph2DViewport, size: Graph2DScreenSize,
@@ -18,6 +18,13 @@ export const mobileGraphAdvancedGeometry = (series: readonly Graph2DSampledSerie
       for (const boundary of artifact.boundaries) boundaries.push({ ...item, style: { ...item.style, lineStyle: boundary.strict ? "dashed" : "solid" }, artifact: { ...artifact, segments: boundary.segments } });
     } else {
       boundaries.push(item);
+      if ("kind" in item.artifact && item.artifact.kind === "trajectory") {
+        const seed = (item.artifact as Graph2DTrajectoryArtifact).seed;
+        const pixel = graph2DWorldToScreen(viewport, size, seed);
+        if (pixel.x >= 0 && pixel.x <= size.width && pixel.y >= 0 && pixel.y <= size.height) {
+          pointsSeen++; if (points.length < markerLimit) points.push({ ...pixel, color: item.style.color });
+        }
+      }
       for (const segment of item.artifact.segments) for (const [point, open] of [[segment.points[0], segment.openStart], [segment.points.at(-1), segment.openEnd]] as const) {
         if (!point || !open) continue;
         const pixel = graph2DWorldToScreen(viewport, size, point);
