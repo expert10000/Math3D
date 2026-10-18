@@ -25,6 +25,12 @@ const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const root = await mkdtemp(join(tmpdir(), "m3d-q01-"));
 try {
   const directory = join(root, "sample.qscene");
+  const scientificDirectory = join(root, "sample.sscene");
+  await mkdir(scientificDirectory);
+  await writeFile(join(scientificDirectory, "bundle.json"), JSON.stringify({
+    schema: "scientific-scene-bundle/v1", manifest: { path: "manifest.json", bytes: 1, sha256: "a".repeat(64) },
+  }));
+  await assert.rejects(importQuantumSceneBundle(scientificDirectory), /scientific \.sscene bundle.*Open external \.sscene folder/);
   assert.equal(quantumSceneLaunchDirectory(["electron", ".", "--quantum-scene", directory]), directory);
   assert.equal(quantumSceneLaunchDirectory(["electron", "."]), null);
   assert.throws(() => quantumSceneLaunchDirectory(["electron", ".", "--quantum-scene", "relative.qscene"]), /Invalid quantum scene launch folder/);

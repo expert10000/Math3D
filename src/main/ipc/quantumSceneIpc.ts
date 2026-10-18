@@ -81,7 +81,7 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
     try {
       const win = BrowserWindow.fromWebContents(event.sender)!;
       const picked = await dialog.showOpenDialog(win, {
-        title: "Open verified quantum-scene/v1 bundle",
+        title: "Choose a Theory Lab .qscene folder (not .sscene)",
         properties: ["openDirectory"],
       });
       if (picked.canceled || !picked.filePaths[0]) return { ok: false, canceled: true };

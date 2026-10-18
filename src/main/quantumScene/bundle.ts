@@ -38,6 +38,8 @@ export async function readQuantumSceneBundle(directory: string): Promise<ScenePa
   const manifest: unknown = JSON.parse((await boundedRead(join(directory, "bundle.json"))).toString("utf8"));
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("Invalid scene bundle manifest");
   const m = manifest as Record<string, unknown>;
+  if (m.schema === "scientific-scene-bundle/v1")
+    throw new Error("This is a scientific .sscene bundle. Open it from File → Verified quantum examples → Open external .sscene folder. For a Theory Lab result, choose its .qscene folder instead.");
   const sceneRef = m.scene as Record<string, unknown> | undefined;
   if (m.schema !== "quantum-scene-bundle/v1" || Object.keys(m).sort().join(",") !== "scene,schema" ||
       !sceneRef || typeof sceneRef !== "object" || Array.isArray(sceneRef) ||
