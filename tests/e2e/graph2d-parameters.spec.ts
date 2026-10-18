@@ -56,6 +56,7 @@ test("G2D38 Electron parameter preview, command history, deterministic playback 
     const page = app.page; await resetSurfaceAppState(page); await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByTestId("workspace-nav-graphs").click(); await page.getByTestId("graph-gallery-open").click();
     await page.getByLabel("Search graphs").fill("Two slopes"); await page.getByRole("button", { name: "Open Two slopes", exact: true }).click();
+    await page.locator("details.graph2d-toolbar-menu summary").click();
     await page.getByTestId("graph2d-parameters-open").click(); const panel = page.getByTestId("graph2d-parameters");
     await panel.getByRole("button", { name: "Configure a", exact: true }).click(); await panel.getByLabel("Parameter unit", { exact: true }).fill("ratio");
     await panel.getByRole("button", { name: "Save parameter", exact: true }).click();
@@ -65,6 +66,10 @@ test("G2D38 Electron parameter preview, command history, deterministic playback 
     await panel.getByRole("button", { name: "Apply preview value", exact: true }).click(); await expect(value).toHaveValue("3");
     await page.getByTestId("main-viewer").focus(); await page.keyboard.press("Control+z"); await expect(value).toHaveValue("2");
     await page.keyboard.press("Control+y"); await expect(value).toHaveValue("3");
+    await panel.getByRole("button", { name: "Make b derived", exact: true }).click();
+    await panel.getByLabel("Parameter expression", { exact: true }).fill("2*a+1");
+    await panel.getByRole("button", { name: "Save expression", exact: true }).click();
+    await expect(panel.getByLabel("Parameter b", { exact: true })).toContainText("b = 7");
     await panel.getByLabel("Animation from", { exact: true }).fill("-1"); await panel.getByLabel("Animation to", { exact: true }).fill("1");
     await panel.getByLabel("Animation frames", { exact: true }).fill("3");
     await panel.getByRole("button", { name: "Play animation", exact: true }).click(); await expect(panel).toContainText("Frame 3 / 3");
@@ -75,7 +80,7 @@ test("G2D38 Electron parameter preview, command history, deterministic playback 
       await app.app.evaluate(({ session }, path) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(path)), path);
       await panel.getByRole("button", { name: format === "html" ? "Download frame report" : "Download frame manifest", exact: true }).click();
       await expect.poll(() => existsSync(path) && readFileSync(path).length > 0).toBe(true);
-      const text = readFileSync(path, "utf8"); expect(text).toContain("ratio");
+      const text = readFileSync(path, "utf8"); expect(text).toContain("ratio"); expect(text).toContain("2*a+1");
       if (format === "html") expect(text.match(/<svg /g)).toHaveLength(3); else expect(text).toContain('"2","0.2","a","1"');
     }
     await panel.getByRole("button", { name: "Cancel preview", exact: true }).click(); await expect(value).toHaveValue("3");

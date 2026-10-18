@@ -12,8 +12,13 @@ const open = async (page: Page) => {
 const value = (page: Page) => page.getByTestId("graph2d-parameters").getByLabel("a preview value", { exact: true });
 const save = async (page: Page) => { await page.getByTestId("kernel-workspace-toggle").click(); await page.getByTestId("kernel-workspace-save").click();
   await expect(page.getByTestId("kernel-workspace-message")).toContainText("Saved"); await page.getByTestId("kernel-workspace-toggle").click(); };
+const openParameters = async (page: Page) => {
+  const button = page.getByTestId("graph2d-parameters-open");
+  if (!await button.isVisible()) await page.locator("details.graph2d-toolbar-menu summary").click();
+  await button.click();
+};
 const configure = async (page: Page) => {
-  await page.getByTestId("graph2d-parameters-open").click(); const panel = page.getByTestId("graph2d-parameters");
+  await openParameters(page); const panel = page.getByTestId("graph2d-parameters");
   await panel.getByRole("button", { name: "Configure a", exact: true }).click();
   await panel.getByLabel("Parameter min", { exact: true }).fill("-3"); await panel.getByLabel("Parameter max", { exact: true }).fill("3");
   await panel.getByLabel("Parameter step", { exact: true }).fill("0.5"); await panel.getByLabel("Parameter unit", { exact: true }).fill("ratio");
@@ -56,7 +61,7 @@ test("G2D38 parameter previews apply once, undo/redo, persist, animate and expor
   await panel.getByRole("button", { name: "Cancel preview", exact: true }).click(); await panel.getByRole("button", { name: "Close parameters", exact: true }).click();
   await expect(page.getByTestId("graph2d-parameters-open")).toBeFocused(); await page.reload();
   await page.getByTestId("kernel-workspace-toggle").click(); await page.getByTestId("kernel-workspace-reopen").click(); await page.getByTestId("kernel-workspace-toggle").click();
-  await page.getByTestId("graph2d-parameters-open").click();
+  await openParameters(page);
   await expect(value(page)).toHaveValue("1.5"); await expect(panel).toContainText("ratio");
   await page.setViewportSize({ width: 360, height: 640 }); expect(await panel.evaluate(e => e.scrollWidth <= e.clientWidth)).toBe(true);
   const box = (await panel.boundingBox())!; expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(360);
@@ -103,8 +108,8 @@ test("G2D38 cancels frame workers on close/view replacement and recovers from ex
   const set = (value: { hold?: boolean; fail?: boolean }) => page.evaluate(v => Object.assign((window as unknown as { animationWorkers: object }).animationWorkers, v), value);
   await set({ hold: true }); await panel.getByRole("button", { name: "Prepare frame export", exact: true }).click(); await expect.poll(active).toBe(1);
   await panel.getByRole("button", { name: "Close parameters", exact: true }).click(); await expect.poll(active).toBe(0);
-  await page.getByTestId("graph2d-parameters-open").click(); await panel.getByRole("button", { name: "Prepare frame export", exact: true }).click(); await expect.poll(active).toBe(1);
-  await page.getByRole("button", { name: "Reset", exact: true }).click(); await expect.poll(active).toBe(0);
+  await openParameters(page); await panel.getByRole("button", { name: "Prepare frame export", exact: true }).click(); await expect.poll(active).toBe(1);
+  await page.getByRole("button", { name: "Reset view", exact: true }).click(); await expect.poll(active).toBe(0);
   await set({ hold: false, fail: true }); await panel.getByRole("button", { name: "Prepare frame export", exact: true }).click(); await expect(panel).toContainText("Injected animation export failure"); await expect.poll(active).toBe(0);
   await set({ fail: false }); await panel.getByLabel("Animation frames", { exact: true }).fill("2");
   await panel.getByRole("button", { name: "Prepare frame export", exact: true }).click(); await expect(panel.getByRole("button", { name: "Download frame report", exact: true })).toBeEnabled(); await expect.poll(active).toBe(0);

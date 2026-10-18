@@ -30,10 +30,19 @@ beforeEach(() => { state.files.clear(); state.share.mockClear(); state.available
 describe("native publication file boundary", () => {
   for (const format of ["html", "csv"] as const) it(`G2D38 ${format}: saves and shares verified frame sequence bytes with a safe native filename`, async () => {
     const original = instantiateGraph2DPreset(getGraph2DPresetCatalog().get("line-comparison")!, "frame-service").document;
-    const document = createGraph2DDocument({ ...applyGraph2DAuthoring(original, { type: "parameter-configure", name: "a", draft: defaultGraph2DParameterDraft(original.source.variables[0]) }), stableKey: "frame-service" });
-    const plan = createGraph2DAnimationPlan(document, { parameter: "a", from: 0, to: 1, frames: 2, fps: 10 });
+    const configured = createGraph2DDocument({ ...applyGraph2DAuthoring(original, { type: "parameter-configure", name: "a", draft: defaultGraph2DParameterDraft(original.source.variables[0]) }), stableKey: "frame-service" });
+    const document = createGraph2DDocument({ ...applyGraph2DAuthoring(configured, { type: "parameter-expression-configure", name: "b", expression: "2*a+1" }), stableKey: "frame-service" });
+    const plan = createGraph2DAnimationPlan(document, { parameter: "a", from: 0, to: 2, frames: 3, fps: 10 });
     const builder = new Graph2DAnimationExportBuilder({ plan, publication: { document, size: { width: 128, height: 128 } } });
-    while (!builder.complete) builder.appendNext(); const artifact = builder.finish().find(o => o.format === format)!;
+    const resolved: number[] = [], frameHashes: string[] = [];
+    while (!builder.complete) { const frame = builder.appendNext(); resolved.push(frame.document.source.variables.find(p => p.name === "b")!.value);
+      frameHashes.push(frame.document.identity.structuralHash); }
+    expect(resolved).toEqual([1, 3, 5]);
+    const artifact = builder.finish().find(o => o.format === format)!;
+    const text = new TextDecoder().decode(artifact.bytes);
+    for (const hash of frameHashes) expect(text).toContain(hash);
+    if (format === "html") { expect(text.match(/<svg /g)).toHaveLength(3); expect(text).toContain("2*a+1"); }
+    else { expect(text.trimEnd().split("\r\n")).toHaveLength(4); expect(text).toContain('"2","0.2","a","2"'); }
     expect(artifact.fileName).toMatch(/^[a-zA-Z0-9_-]+\.(html|csv)$/);
     const saved = await saveMobileGraphPublication(artifact, () => true); expect(saved.status).toBe("saved");
     if (saved.status === "saved") expect(state.files.get(`documents/${saved.fileName}`)).toEqual(artifact.bytes);
