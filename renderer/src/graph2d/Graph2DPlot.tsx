@@ -156,6 +156,17 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
                 markerEnd={`url(#${clipId}-phase-arrow)`} />;
             })}
           </g>)}
+        {series.filter(item => item.style.visible && "kind" in item.artifact && item.artifact.kind === "phase-portrait")
+          .map(item => {
+            const phase = item.artifact as Graph2DPhasePortraitArtifact;
+            return <g key={`nullclines-${item.objectId}`} data-graph2d-nullclines={item.objectId} fill="none"
+              clipPath={`url(#${clipId})`} pointerEvents="none" strokeWidth={1.8}>
+              <path data-nullcline="x" d={pathFor({ ...phase, segments: phase.nullclines.x })}
+                stroke="#ea580c" strokeDasharray="7 4" />
+              <path data-nullcline="y" d={pathFor({ ...phase, segments: phase.nullclines.y })}
+                stroke="#0891b2" strokeDasharray="3 4" />
+            </g>;
+          })}
         {series.filter((item) => item.style.visible).flatMap((item) => isRegion(item.artifact) ?
           item.artifact.boundaries.map((boundary, index) => <path key={`${item.objectId}-${index}`}
             data-graph2d-path={item.objectId} data-boundary-strict={boundary.strict}
@@ -186,6 +197,16 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
             return <circle key={`phase-seed-${item.objectId}-${orbit.seedIndex}`}
               data-graph2d-phase-seed={`${item.objectId}-${orbit.seedIndex}`}
               cx={screen.x} cy={screen.y} r={5} fill="white" stroke={item.style.color} strokeWidth={2} pointerEvents="none" />;
+          }))}
+        {series.filter(item => item.style.visible && "kind" in item.artifact && item.artifact.kind === "phase-portrait")
+          .flatMap(item => (item.artifact as Graph2DPhasePortraitArtifact).equilibria.map((point, index) => {
+            const screen = graph2DWorldToScreen(display.viewport, size, point);
+            return <g key={`equilibrium-${item.objectId}-${index}`} data-graph2d-equilibrium={item.objectId}
+              transform={`translate(${screen.x} ${screen.y})`} pointerEvents="none">
+              <title>{`Approximate equilibrium (${point.x.toPrecision(6)}, ${point.y.toPrecision(6)}); residual ${point.residual.toExponential(2)}`}</title>
+              <circle r="7" fill="white" stroke="#111827" strokeWidth="2" />
+              <circle r="2" fill="#111827" />
+            </g>;
           }))}
         {series.filter(item => item.style.visible && "kind" in item.artifact && item.artifact.kind === "trajectory")
           .map(item => {

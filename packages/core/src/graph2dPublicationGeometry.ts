@@ -95,6 +95,15 @@ export const projectGraph2DPublicationGeometry = (document: Graph2DDocument, ser
         for (const offset of [-0.55, 0.55]) line({ x: end.x - 6 * Math.cos(angle + offset),
           y: end.y - 6 * Math.sin(angle + offset) }, end, item.style.color, Math.min(1.5, item.style.lineWidth));
       }
+      for (const [segments, color, dash] of [[phase.nullclines.x, "#ea580c", "dashed"],
+        [phase.nullclines.y, "#0891b2", "dotted"]] as const)
+        for (const segment of segments) for (let index = 1; index < segment.points.length; index += 1)
+          line(screen(segment.points[index - 1]!), screen(segment.points[index]!), color, 1.8, dash);
+      for (const equilibrium of phase.equilibria) {
+        const point = screen(equilibrium);
+        if (point.x >= 0 && point.x <= size.width && point.y >= 0 && point.y <= size.height)
+          push({ kind: "circle", ...point, radius: 6, color: "#111827", open: true });
+      }
     }
     const groups = region ? region.boundaries.map((b) => ({ segments: b.segments, dash: b.strict ? "dashed" as const : item.style.lineStyle })) :
       [{ segments: "kind" in a && a.kind === "point-series" && (a as Graph2DPointSeriesArtifact).mode === "points" ? [] : a.segments, dash: item.style.lineStyle }];

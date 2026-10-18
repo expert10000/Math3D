@@ -25,6 +25,12 @@ describe("GRA-11.3 planar phase portraits", () => {
   it("returns to the unit circle for x′=y, y′=-x in both time directions", () => {
     const result = solve();
     expect(result.fieldSegments.length).toBeGreaterThan(50);
+    expect(result.nullclines.x.length).toBeGreaterThan(0);
+    expect(result.nullclines.y.length).toBeGreaterThan(0);
+    expect(result.analysis.status).toBe("complete");
+    expect(result.equilibria).toHaveLength(1);
+    expect(Math.hypot(result.equilibria[0]!.x, result.equilibria[0]!.y)).toBeLessThan(1e-6);
+    expect(result.equilibria[0]!.residual).toBeLessThan(1e-7);
     expect(result.orbits[0]).toMatchObject({ backward: "time-horizon", forward: "time-horizon" });
     expect(result.converged).toBe(true);
     const points = result.segments[0]!.points;
@@ -40,6 +46,18 @@ describe("GRA-11.3 planar phase portraits", () => {
     expect(saddle.orbits[1]).toMatchObject({ backward: "equilibrium", forward: "equilibrium" });
     expect(saddle.segments[0]!.points.some(point => Math.abs(point.x * point.y - 1) < 1e-4)).toBe(true);
     expect(saddle.orbits).toHaveLength(2);
+  });
+
+  it("resolves three isolated equilibria in a cubic bistable system", () => {
+    const result = solve(create({ ...draft("x-x^3", "-y"), timeSpan: 2,
+      seeds: [{ x: 0.5, y: 1 }] }));
+    expect(result.analysis.status).toBe("complete");
+    expect(result.equilibria).toHaveLength(3);
+    const xs = result.equilibria.map(point => point.x).sort((a, b) => a - b);
+    expect(xs[0]).toBeCloseTo(-1, 5);
+    expect(xs[1]).toBeCloseTo(0, 5);
+    expect(xs[2]).toBeCloseTo(1, 5);
+    expect(result.equilibria.every(point => Math.abs(point.y) < 1e-6 && point.residual < 1e-7)).toBe(true);
   });
 
   it("labels a singular initial field and refuses logarithmic axes", () => {
@@ -71,7 +89,7 @@ describe("GRA-11.3 planar phase portraits", () => {
       .toEqual({ objectId: "phase_portrait_1", probe: null });
   });
 
-  it("publishes orbit curves, arrowheads, and saved initial-point markers", () => {
+  it("publishes orbit curves, arrowheads, nullclines and equilibrium markers", () => {
     const document = create();
     const size = { width: 640, height: 640 };
     const series = sampleGraph2DScene({ document, viewport, ...size, interaction: false });
@@ -79,6 +97,9 @@ describe("GRA-11.3 planar phase portraits", () => {
     const colored = geometry.primitives.filter(item => "color" in item && item.color === style.color);
     expect(colored.filter(item => item.kind === "line").length).toBeGreaterThan(50);
     expect(colored.filter(item => item.kind === "circle").length).toBe(1);
+    expect(geometry.primitives.some(item => item.kind === "line" && item.color === "#ea580c")).toBe(true);
+    expect(geometry.primitives.some(item => item.kind === "line" && item.color === "#0891b2")).toBe(true);
+    expect(geometry.primitives.some(item => item.kind === "circle" && item.color === "#111827")).toBe(true);
     expect(geometry.omitted).toBe(0);
   });
 });

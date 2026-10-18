@@ -15,7 +15,7 @@ test("10,000-point Gallery and regression controls stay responsive; spline is dr
     const gallery = page.getByTestId("graph-gallery");
     await expect(gallery).toBeVisible();
     const galleryMs = Date.now() - galleryStart;
-    await expect(gallery.getByRole("status")).toContainText("6 scenes");
+    await expect(gallery.getByRole("status")).toContainText("7 scenes");
     const cardsMs = Date.now() - galleryStart;
     await gallery.getByRole("button", { name: "All scenes", exact: true }).click();
     const openStart = Date.now();

@@ -102,6 +102,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onOpenPreset, onResumeCheckpoint, onCopyProject,
   onExportPersonalProject, onCopyGraphDefinition, onPreviewPersonalImport, onImportPersonalProject }: Props) {
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryStartCategory, setGalleryStartCategory] = useState<"All" | "Differential equations">("All");
   const [leftPalette, setLeftPalette] = useState<Graph2DLeftPalette>(readGraph2DLeftPalette);
   const changeLeftPalette = (palette: Graph2DLeftPalette) => {
     setLeftPalette(palette);
@@ -608,6 +609,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   };
   const functionList = <Graph2DAuthoringPanel document={document} onCommit={onAuthoringCommit}
     palette={leftPalette} onPaletteChange={changeLeftPalette}
+    onBrowsePhasePortraits={opener => { galleryOpener.current = opener; setGalleryStartCategory("Differential equations"); setGalleryError(null); setGalleryOpen(true); }}
     onSelect={(objectId) => onSelectionCommit?.(parameterPreviewActive || !sampling.ready ? { objectId, probe: null } : selectionForGraph2DObject(document, series, objectId, document.selection.probe?.x))} />;
   const savedProbes = <Graph2DProbesPanel document={document} onAction={action => {
     if (!onProbesCommit) throw new Error("Probe storage unavailable.");
@@ -904,6 +906,18 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             <dt>Orbits</dt><dd data-testid="graph2d-phase-orbits">{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).orbits.map((orbit, index) =>
               <span key={index}>{index + 1}: backward {orbit.backward}, forward {orbit.forward}; {orbit.acceptedSteps} accepted, {orbit.rejectedSteps} rejected<br /></span>)}</dd>
             <dt>Field</dt><dd>{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).fieldSegments.length} direction arrows · adaptive RK4, local tolerance 10⁻⁶</dd>
+            <dt>Nullclines</dt><dd data-testid="graph2d-phase-nullclines">x′=0 orange dashed;
+              {" "}y′=0 cyan dotted · {(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.status}</dd>
+            <dt>Equilibria</dt><dd data-testid="graph2d-phase-equilibria">
+              {(selectedSeries.artifact as Graph2DPhasePortraitArtifact).equilibria.length ?
+                (selectedSeries.artifact as Graph2DPhasePortraitArtifact).equilibria.map((point, index) =>
+                  <span key={index}>({point.x.toPrecision(6)}, {point.y.toPrecision(6)}) · residual {point.residual.toExponential(2)}<br /></span>) :
+                "None resolved at sampled grid resolution"}</dd>
+            <dt>Method</dt><dd>Marching squares contour crossings, then up to five Newton steps.
+              {" "}{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.candidates} candidates;
+              {" "}{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.unresolved} unresolved.
+              {" "}Grid scale ≈ {(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.gridScale?.toPrecision(3) ?? "unavailable"} world units.
+              {" "}Residual tolerance 10⁻⁷(1+|position|); no certified error bound.</dd>
           </>}
         </>}
         {selectedObject?.kind === "trajectory" && <>
@@ -1002,7 +1016,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             }}>−</button>
           </div>
           <div className="graph2d-toolbar-secondary">
-            <button type="button" data-testid="graph-gallery-open" onClick={event => { galleryOpener.current = event.currentTarget; finishWheel(); closeGrid(true, false); setScalesOpen(false); setParametersOpen(false); setParameterPreview(null); setGalleryError(null); setGalleryOpen(true); }}>Gallery</button>
+            <button type="button" data-testid="graph-gallery-open" onClick={event => { galleryOpener.current = event.currentTarget; setGalleryStartCategory("All"); finishWheel(); closeGrid(true, false); setScalesOpen(false); setParametersOpen(false); setParameterPreview(null); setGalleryError(null); setGalleryOpen(true); }}>Gallery</button>
             <div className="graph2d-toolbar-group" role="group" aria-label="Construction tools">
               <button type="button" ref={toolsOpener} aria-expanded={toolsOpen} onClick={() => { finishWheel(); closeGrid(true, false); cancelParameter(); setToolsOpen(!toolsOpen); }}>Tools</button>
             </div>
@@ -1152,7 +1166,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           document.source.objects.length === 0 ? <div className="graph2d-viewer-message" aria-label="Empty graph scene">
             <h2>Graphs</h2>
             <p>{graph2DSceneStatusLabel(document)} is ready.</p>
-            <button type="button" onClick={event => { galleryOpener.current = event.currentTarget; setGalleryError(null); setGalleryOpen(true); }}>Explore Graph Gallery</button>
+            <button type="button" onClick={event => { galleryOpener.current = event.currentTarget; setGalleryStartCategory("All"); setGalleryError(null); setGalleryOpen(true); }}>Explore Graph Gallery</button>
             <small>{document.source.objects.length} graph objects · {GRAPH2D_WORKSPACE_CONTRACT.initialObjectKind} starter source</small>
           </div> : null}
       </div>
@@ -1165,7 +1179,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           <small>Markers are saved probes. Numerical results are computed only when requested, with their stated limits.</small>
         </details>}{inspector}
       </aside>}
-      {galleryOpen && <GraphGalleryDialog activeId={document.identity.id} activeTitle={document.metadata.title} error={galleryError} onClose={closeGallery}
+      {galleryOpen && <GraphGalleryDialog activeId={document.identity.id} activeTitle={document.metadata.title} error={galleryError} onClose={closeGallery} initialCategory={galleryStartCategory}
         onExportProject={onExportPersonalProject} onCopyDefinition={onCopyGraphDefinition} onPreviewImport={onPreviewPersonalImport}
         onImportProject={preview => { try { if (!onImportPersonalProject) throw new Error("Project import is unavailable.");
           onImportPersonalProject(preview); setGalleryOpen(false); } catch (e) { setGalleryError((e as Error).message); } }}

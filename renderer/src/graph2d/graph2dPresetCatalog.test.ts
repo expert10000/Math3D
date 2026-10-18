@@ -15,18 +15,19 @@ const functions: Record<string, ((x: number) => number)[]> = {
   "wave-beats": [x => Math.sin(4*x)+Math.sin(4.5*x), x => 2*Math.cos(.25*x)],
   "sine-derivative": [Math.sin, Math.cos], "parabola-tangent": [x => x*x, x => 2*x-1],
 };
-describe("curated seven-kind catalog", () => {
+describe("curated Graphs catalog", () => {
   it("keeps the fast Gallery bundle identical to the checked authored catalog", () => {
     expect(bundledCatalog).toEqual(getGraph2DPresetCatalog().entries);
   });
-  it("provides 21 scenes, six Featured entries and multi-object comparisons", () => {
+  it("provides 24 scenes, seven Featured entries and phase portrait examples", () => {
     const catalog = getGraph2DPresetCatalog();
-    expect(catalog.entries).toHaveLength(21);
-    expect(catalog.entries.filter(p => p.featuredOrder !== null)).toHaveLength(6);
+    expect(catalog.entries).toHaveLength(24);
+    expect(catalog.entries.filter(p => p.featuredOrder !== null)).toHaveLength(7);
     expect(catalog.entries.filter(p => p.template.source.objects.length > 1).length).toBeGreaterThanOrEqual(6);
-    // The curated gallery covers seven standalone graph kinds; linked ODE objects are authored in the workspace.
+    expect(catalog.filter("phase portrait", "Differential equations")).toHaveLength(3);
+    // Linked slope trajectories are authored in the workspace.
     expect([...new Set(catalog.entries.flatMap(p => p.template.source.objects.map(o => o.kind)))].sort())
-      .toEqual(GRAPH2D_OBJECT_KINDS.filter(kind => kind !== "slope-field" && kind !== "trajectory" && kind !== "phase-portrait").slice().sort());
+      .toEqual(GRAPH2D_OBJECT_KINDS.filter(kind => kind !== "slope-field" && kind !== "trajectory").slice().sort());
   });
   it("opens the 10,000-row regression preset with the full checked table and a bounded display", () => {
     const preset = getGraph2DPresetCatalog().get("regression-10000")!;
@@ -35,7 +36,7 @@ describe("curated seven-kind catalog", () => {
     if (object.kind !== "point-series") throw new Error("Expected point-series source.");
     expect(preset.costClass).toBe("complex"); expect(sidecars[0]?.rows).toHaveLength(10000);
     expect(sidecars[0]?.rows.at(-1)?.id).toBe("row_10000"); expect(object.table.rowCount).toBe(10000);
-    const sampled = sampleGraph2DScene({ document, viewport: document.display.viewport, width: 960, height: 600,
+    const sampled = sampleGraph2DScene({ document, viewport: document.display.viewport, width: 960, height: 600, interaction: false,
       pointTables: { [object.table.id]: sidecars[0]!.rows } });
     expect(sampled[0]?.artifact.samplesEvaluated).toBeLessThanOrEqual(1024);
     expect(sampled[0]?.artifact.segments[0]?.points.length).toBeGreaterThan(100);

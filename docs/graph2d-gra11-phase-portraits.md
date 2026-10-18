@@ -8,4 +8,4 @@ Desktop/web: **Graphs → Add phase portrait** in Functions. Edit both derivativ
 
 The exact-reference corpus includes the rotation system `x′=y, y′=-x`: a seed `(1,0)` remains on the unit circle and returns to its start after `2π` in either time direction. A saddle `x′=x, y′=-y` checks domain exits and the invariant `xy=1`; `(0,0)` checks equilibrium. Budget, invalid seed, capability, persistence, undo and mobile projection checks cover the document boundary. Physical mobile visual and accessibility checks remain in the release gate.
 
-General non-autonomous vector fields, 3D phase space, equilibria classification and parameter sweeps remain separate work.
+[GRA-11.4](graph2d-gra11-nullclines-equilibria.md) adds bounded nullclines, numerical equilibrium candidates and three Gallery examples. General non-autonomous vector fields, 3D phase space, equilibrium classification and parameter sweeps remain separate work.

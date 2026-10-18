@@ -7,8 +7,10 @@ import { mobileCrossModuleCatalog, searchMobileCrossModuleCatalog, relatedSurfac
 describe("shared native Graph gallery discovery", () => {
   it("uses the exact desktop catalog/default source and deterministic Featured/category/search filters", () => {
     const all = mobileGraphGalleryItems("", "All", false);
-    expect(all).toEqual(getGraph2DPresetCatalog().entries); expect(all).toHaveLength(21);
-    expect(mobileGraphGalleryItems("", "All", true).map(preset => preset.featuredOrder)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(all).toEqual(getGraph2DPresetCatalog().entries); expect(all).toHaveLength(24);
+    expect(mobileGraphGalleryItems("", "All", true).map(preset => preset.featuredOrder)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(mobileGraphGalleryItems("", "Differential equations", false).map(preset => preset.id))
+      .toEqual(["phase-center", "phase-saddle", "phase-bistable"]);
     expect(mobileGraphGalleryItems("signed radius", "Polar", false).map(preset => preset.id)).toEqual(["polar-rose"]);
     expect(mobileGraphGalleryItems("missing data", "Piecewise and data", false).map(preset => preset.id)).toEqual(["piecewise-data-gaps"]);
     expect(mobileGraphGalleryItems("nothing matches", "All", false)).toEqual([]);
@@ -26,7 +28,7 @@ describe("shared native Graph gallery discovery", () => {
 describe("GGL17 cross-module catalog adapters", () => {
   it("uses existing Graph and Surface identities without converting their documents", () => {
     const cards=mobileCrossModuleCatalog();
-    expect(cards.filter(card=>card.module==="graph2d")).toHaveLength(21);
+    expect(cards.filter(card=>card.module==="graph2d")).toHaveLength(24);
     expect(cards.some(card=>card.key==="surface:paraboloid")).toBe(true);
     expect(new Set(cards.map(card=>card.key)).size).toBe(cards.length);
     expect(searchMobileCrossModuleCatalog("quadratic","graph2d").some(card=>card.sourceId==="translated-quadratic")).toBe(true);

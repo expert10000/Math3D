@@ -33,10 +33,20 @@ export const mobileGraphAdvancedGeometry = (series: readonly Graph2DSampledSerie
         });
         boundaries.push({ ...item, style: { ...item.style, lineWidth: Math.min(1.5, item.style.lineWidth) },
           artifact: { ...phase, segments: arrows } });
+        boundaries.push({ ...item, style: { ...item.style, color: "#ea580c", lineWidth: 1.8, lineStyle: "dashed" },
+          artifact: { ...phase, segments: phase.nullclines.x } });
+        boundaries.push({ ...item, style: { ...item.style, color: "#0891b2", lineWidth: 1.8, lineStyle: "dotted" },
+          artifact: { ...phase, segments: phase.nullclines.y } });
         for (const orbit of phase.orbits) {
           const pixel = graph2DWorldToScreen(viewport, size, orbit.seed);
           if (pixel.x >= 0 && pixel.x <= size.width && pixel.y >= 0 && pixel.y <= size.height) {
             pointsSeen++; if (points.length < markerLimit) points.push({ ...pixel, color: item.style.color });
+          }
+        }
+        for (const equilibrium of phase.equilibria) {
+          const pixel = graph2DWorldToScreen(viewport, size, equilibrium);
+          if (pixel.x >= 0 && pixel.x <= size.width && pixel.y >= 0 && pixel.y <= size.height) {
+            pointsSeen++; if (points.length < markerLimit) points.push({ ...pixel, color: "#111827" });
           }
         }
       }

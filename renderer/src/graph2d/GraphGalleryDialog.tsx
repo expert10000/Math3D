@@ -19,13 +19,15 @@ const previewURL = (preset: Graph2DPreset) => {
 type Props={onClose:()=>void;onOpen:(preset:Graph2DPreset)=>void;onResume:(id:string)=>void;onCopy:(id:string,title:string)=>void;
   onExportProject?:(id:string)=>{bytes:string;title:string;externalTableCount:number;missingTableCount:number;resultCount:number};
   onCopyDefinition?:(id:string)=>string;onPreviewImport?:(raw:string)=>Graph2DPersonalPresetPreview;
-  onImportProject?:(preview:Graph2DPersonalPresetPreview)=>void;error:string|null;activeId:string;activeTitle:string};
-export function GraphGalleryDialog({onClose,onOpen,onResume,onCopy,onExportProject,onCopyDefinition,onPreviewImport,onImportProject,error,activeId,activeTitle}:Props) {
+  onImportProject?:(preview:Graph2DPersonalPresetPreview)=>void;error:string|null;activeId:string;activeTitle:string;
+  initialCategory?: Graph2DPresetCategory | "All"};
+export function GraphGalleryDialog({onClose,onOpen,onResume,onCopy,onExportProject,onCopyDefinition,onPreviewImport,onImportProject,error,activeId,activeTitle,initialCategory="All"}:Props) {
   const ref=useRef<HTMLDialogElement>(null),titleId=useId();
   const [catalog,setCatalog]=useState<GalleryCatalog|null>(null);
   const [catalogError,setCatalogError]=useState("");
   const searchRef=useRef<HTMLInputElement>(null);
-  const [query,setQuery]=useState(""),[category,setCategory]=useState<Graph2DPresetCategory|"All">("All"),[collection,setCollection]=useState("Featured");
+  const [query,setQuery]=useState(""),[category,setCategory]=useState<Graph2DPresetCategory|"All">(initialCategory),
+    [collection,setCollection]=useState(initialCategory === "All" ? "Featured" : "All scenes");
   const [preferences,setPreferences]=useState(()=>{try{return {value:parseGraphGalleryPreferences(localStorage.getItem(GRAPH_GALLERY_PREFERENCES_KEY)),error:null as string|null};}
     catch(error){return {value:emptyGraphGalleryPreferences(),error:(error as Error).message};}});
   const featured=collection==="Featured";

@@ -14,6 +14,11 @@ const polar = (label: string, rExpression: string, max = 2 * Math.PI): Graph2DAu
   ({ type: "create-polar", draft: { label, rExpression, domain: domain(0, max), style } });
 const implicit = (label: string, expression: string): Graph2DAuthoringAction =>
   ({ type: "create-implicit", draft: { label, expression, domain: domain(-2.5, 2.5), yDomain: domain(-2.5, 2.5), style } });
+const phase = (label: string, xDerivative: string, yDerivative: string, bounds: number,
+  timeSpan: number, seed: { x: number; y: number }): Graph2DAuthoringAction =>
+  ({ type: "create-phase-portrait", draft: { label, xDerivative, yDerivative,
+    domain: domain(-bounds, bounds), yDomain: domain(-bounds, bounds), timeSpan, seeds: [seed],
+    style: { ...style, color: "#7c3aed" } } });
 const viewport = (xMin: number, xMax: number, yMin: number, yMax: number, aspect: "equal" | "free" = "free"): Graph2DViewport =>
   ({ xMin, xMax, yMin, yMax, aspect });
 type Recipe = { id: string; title: string; category: Graph2DPresetCategory; description: string; goal: string;
@@ -80,6 +85,24 @@ const recipes = (): Recipe[] => {
       actions: [{ type: "create-point-series", draft: { label: "10,000 measurements", table: regressionTable, mode: "line", domain: domain(-1, 1), style } }],
       sidecars: [{ id: regressionTable.id, rows: regressionRows }], view: viewport(-1.2, 1.2, 0, 3),
       tags: ["regression", "10000", "performance", "data"], costClass: "complex", difficulty: "advanced" },
+    { id: "phase-center", title: "Circular flow", category: "Differential equations",
+      description: "x′=y, y′=-x has concentric circular orbits and one equilibrium at the origin. The orange x′ nullcline is y=0; the cyan y′ nullcline is x=0.",
+      goal: "Compare a closed orbit with the two nullclines and their equilibrium crossing.",
+      actions: [phase("Circular flow", "y", "-x", 2.5, 2 * Math.PI, { x: 1, y: 0 })],
+      view: viewport(-2.5, 2.5, -2.5, 2.5, "equal"), featured: 6,
+      tags: ["phase portrait", "center", "closed orbit", "equilibrium"], difficulty: "intermediate" },
+    { id: "phase-saddle", title: "Saddle flow", category: "Differential equations",
+      description: "x′=x, y′=-y has a saddle equilibrium at the origin. Away from the axes, xy stays constant along a trajectory until the plot boundary.",
+      goal: "Compare the two zero-derivative axes and the diverging forward orbit.",
+      actions: [phase("Saddle flow", "x", "-y", 3, 2, { x: 1, y: 1 })],
+      view: viewport(-3, 3, -3, 3, "equal"),
+      tags: ["phase portrait", "saddle", "nullclines", "equilibrium"], difficulty: "intermediate" },
+    { id: "phase-bistable", title: "Three equilibria", category: "Differential equations",
+      description: "x′=x-x^3, y′=-y has equilibria at (-1,0), (0,0), and (1,0). The cubic x′ nullcline has three branches.",
+      goal: "Locate the three numerical equilibrium candidates and edit the initial point.",
+      actions: [phase("Bistable flow", "x-x^3", "-y", 2, 3, { x: 0.5, y: 1 })],
+      view: viewport(-2, 2, -2, 2, "equal"),
+      tags: ["phase portrait", "nonlinear", "three equilibria", "nullclines"], difficulty: "advanced" },
   ];
 };
 let catalog: ReturnType<typeof createGraph2DPresetRegistry> | undefined;

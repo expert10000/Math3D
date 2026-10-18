@@ -30,8 +30,9 @@ describe("MOB-G09 native kind flows", () => {
     const size = { width: 320, height: 320 };
     const series = sampleGraph2DScene({ document, viewport: document.display.viewport, ...size, interaction: false });
     const geometry = mobileGraphAdvancedGeometry(series, document.display.viewport, size);
-    expect(geometry.points).toHaveLength(2);
-    expect(geometry.boundaries).toHaveLength(2); // Orbits and direction-arrow geometry.
+    expect(geometry.points).toHaveLength(3); // Two seeds and the equilibrium at the origin.
+    expect(geometry.points.some(point => point.color === "#111827")).toBe(true);
+    expect(geometry.boundaries).toHaveLength(4); // Orbits, directions, and two nullclines.
     expect(projectMobileGraphLines(geometry.boundaries, document.display.viewport, size).length).toBeGreaterThan(20);
     edit.draft.seedsText = "1,not-a-number";
     expect(() => applyMobileGraphAuthoring(created, mobileGraphKindAction(edit, tables))).toThrow();

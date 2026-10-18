@@ -1,4 +1,5 @@
 import { evaluateGraph2DExpression } from "./graph2dExpression";
+import { sampleGraph2DImplicit } from "./graph2dImplicit";
 import type { Graph2DPhasePortraitObject } from "./graph2dDocument";
 import type { Graph2DSamplePoint, Graph2DSampleSegment, Graph2DSamplingArtifact, Graph2DSamplingDiagnostic } from "./graph2dSampling";
 import type { Graph2DViewport } from "./graph2dViewport";
@@ -13,6 +14,11 @@ export type Graph2DPhasePortraitArtifact = Graph2DSamplingArtifact & Readonly<{
   kind: "phase-portrait";
   fieldSegments: readonly Graph2DSampleSegment[];
   orbits: readonly Graph2DPhaseOrbit[];
+  nullclines: Readonly<{ x: readonly Graph2DSampleSegment[]; y: readonly Graph2DSampleSegment[] }>;
+  equilibria: readonly Readonly<{ x: number; y: number; residual: number }> [];
+  analysis: Readonly<{ status: "complete" | "partial" | "unavailable";
+    method: "contour-intersection-newton"; gridScale: number | null;
+    candidates: number; unresolved: number; evaluations: number }>;
 }>;
 export type Graph2DPhasePortraitRequest = Readonly<{
   object: Graph2DPhasePortraitObject;
@@ -29,6 +35,9 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
     throw new TypeError("Invalid phase-portrait sampling request.");
   if (viewport.xScale === "log10" || viewport.yScale === "log10") return {
     samplerVersion: 1, kind: "phase-portrait", segments: [], fieldSegments: [], orbits: [], samplesEvaluated: 0,
+    nullclines: { x: [], y: [] }, equilibria: [],
+    analysis: { status: "unavailable", method: "contour-intersection-newton", gridScale: null,
+      candidates: 0, unresolved: 0, evaluations: 0 },
     converged: false, diagnostics: [{ code: "unsupported-scale", count: 1 }],
   };
   const maxEvaluations = Math.min(request.maxSamples, 12000);
@@ -129,6 +138,73 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
     orbits.push({ seedIndex, seed, backward: backward.stop, forward: forward.stop,
       acceptedSteps: backward.accepted + forward.accepted, rejectedSteps: backward.rejected + forward.rejected });
   }
+  const analysisStart = samplesEvaluated;
+  let nullclines: Graph2DPhasePortraitArtifact["nullclines"] = { x: [], y: [] };
+  const equilibria: { x: number; y: number; residual: number }[] = [];
+  let analysisStatus: Graph2DPhasePortraitArtifact["analysis"]["status"] = "unavailable";
+  let gridScale: number | null = null, candidates = 0, unresolved = 0;
+  const remaining = maxEvaluations - samplesEvaluated;
+  if (xMin < xMax && yMin < yMax && remaining >= 96 && (deadlineMs === undefined || Date.now() <= deadlineMs)) {
+    const contourBudget = Math.min(512, Math.floor(remaining * 0.38));
+    const contour = (expression: Graph2DPhasePortraitObject["xDerivative"]) => {
+      const sampled = sampleGraph2DImplicit({ object: { id: object.id, kind: "implicit", label: object.label,
+        expression, domain: object.domain, yDomain: object.yDomain }, variables: request.variables,
+        viewport, width, height, policy: { maxSamples: contourBudget, maxDepth: 8, tolerancePx: 1.5 }, deadlineMs });
+      samplesEvaluated += sampled.samplesEvaluated;
+      return sampled;
+    };
+    const xContour = contour(object.xDerivative), yContour = contour(object.yDerivative);
+    nullclines = { x: xContour.segments, y: yContour.segments };
+    gridScale = Math.hypot(xMax - xMin, yMax - yMin) /
+      Math.sqrt(Math.max(1, Math.min(xContour.cellsVisited, yContour.cellsVisited)));
+    analysisStatus = xContour.converged && yContour.converged ? "complete" : "partial";
+    const intersections = (a: Point, b: Point, c: Point, d: Point): Point | null => {
+      const ux = b.x - a.x, uy = b.y - a.y, vx = d.x - c.x, vy = d.y - c.y;
+      const det = ux * vy - uy * vx;
+      if (!Number.isFinite(det) || Math.abs(det) < 1e-14 * Math.max(1, Math.hypot(ux, uy) * Math.hypot(vx, vy))) return null;
+      const wx = c.x - a.x, wy = c.y - a.y;
+      const t = (wx * vy - wy * vx) / det, u = (wx * uy - wy * ux) / det;
+      return t >= -1e-9 && t <= 1 + 1e-9 && u >= -1e-9 && u <= 1 + 1e-9 ?
+        { x: a.x + t * ux, y: a.y + t * uy } : null;
+    };
+    const linePieces = (segments: readonly Graph2DSampleSegment[]) => segments.flatMap(segment =>
+      segment.points.slice(1).map((point, index) => [segment.points[index]!, point] as const)).slice(0, 512);
+    const xs = linePieces(nullclines.x), ys = linePieces(nullclines.y);
+    const seen: Point[] = [];
+    outer: for (const [a, b] of xs) for (const [c, d] of ys) {
+      const crossing = intersections(a, b, c, d);
+      if (!crossing || seen.some(point => Math.hypot(point.x - crossing.x, point.y - crossing.y) < (gridScale ?? 0) * 0.25)) continue;
+      seen.push(crossing); candidates += 1;
+      if (candidates > 32) { analysisStatus = "partial"; unresolved += 1; break outer; }
+      let point = crossing, value = evaluate(point), resolved = false;
+      for (let iteration = 0; iteration < 5 && value; iteration += 1) {
+        const residual = Math.hypot(value.x, value.y);
+        if (residual <= 1e-7 * (1 + Math.hypot(point.x, point.y))) {
+          if (!equilibria.some(other => Math.hypot(other.x - point.x, other.y - point.y) < (gridScale ?? 0) * 0.25))
+            equilibria.push({ ...point, residual });
+          resolved = true; break;
+        }
+        const hx = Math.max(1e-7, (xMax - xMin) * 1e-5), hy = Math.max(1e-7, (yMax - yMin) * 1e-5);
+        const px = evaluate({ x: Math.min(xMax, point.x + hx), y: point.y });
+        const py = evaluate({ x: point.x, y: Math.min(yMax, point.y + hy) });
+        if (!px || !py) break;
+        const dx = Math.min(xMax, point.x + hx) - point.x, dy = Math.min(yMax, point.y + hy) - point.y;
+        if (dx <= 0 || dy <= 0) break;
+        const j11 = (px.x - value.x) / dx, j21 = (px.y - value.y) / dx;
+        const j12 = (py.x - value.x) / dy, j22 = (py.y - value.y) / dy;
+        const det = j11 * j22 - j12 * j21;
+        if (!Number.isFinite(det) || Math.abs(det) < 1e-12 * Math.max(1, Math.hypot(j11, j21) * Math.hypot(j12, j22))) break;
+        const next = { x: point.x + (-value.x * j22 + j12 * value.y) / det,
+          y: point.y + (j21 * value.x - j11 * value.y) / det };
+        if (!inside(next)) break;
+        point = next; value = evaluate(point);
+      }
+      if (!resolved) { unresolved += 1; analysisStatus = "partial"; }
+      if (samplesEvaluated + 8 > maxEvaluations || deadlineMs !== undefined && Date.now() > deadlineMs) {
+        analysisStatus = "partial"; break outer;
+      }
+    }
+  }
   const diagnostics: Graph2DSamplingDiagnostic[] = [];
   if (invalidGlyphs) diagnostics.push({ code: "invalid-sample", count: invalidGlyphs });
   if (fieldTimedOut) diagnostics.push({ code: "deadline", count: 1 });
@@ -137,7 +213,9 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
     if (stop === "sample-limit" || stop === "step-limit") diagnostics.push({ code: "sample-limit", count: 1 });
     if (stop === "deadline") diagnostics.push({ code: "deadline", count: 1 });
   }
-  return { samplerVersion: 1, kind: "phase-portrait", fieldSegments, orbits, segments,
-    samplesEvaluated, converged: !diagnostics.some(item => item.code === "deadline" || item.code === "sample-limit" ||
+  return { samplerVersion: 1, kind: "phase-portrait", fieldSegments, orbits, segments, nullclines, equilibria,
+    analysis: { status: analysisStatus, method: "contour-intersection-newton", gridScale,
+      candidates, unresolved, evaluations: samplesEvaluated - analysisStart },
+    samplesEvaluated, converged: analysisStatus === "complete" && !diagnostics.some(item => item.code === "deadline" || item.code === "sample-limit" ||
       item.code === "invalid-sample" && orbits.some(orbit => orbit.backward === "singular" || orbit.forward === "singular")), diagnostics };
 };

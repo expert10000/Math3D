@@ -15,7 +15,7 @@ import { pointTableStore } from "./pointTableStore";
 export type Graph2DLeftPalette = "classic" | "geometry";
 type Props = { document: Graph2DDocument; onCommit?: (action: Graph2DAuthoringAction) => void;
   onSelect?: (objectId: string) => void; palette: Graph2DLeftPalette;
-  onPaletteChange: (palette: Graph2DLeftPalette) => void };
+  onPaletteChange: (palette: Graph2DLeftPalette) => void; onBrowsePhasePortraits?: (opener: HTMLButtonElement) => void };
 const initialDraft = (): Graph2DFunctionDraft => ({ label: "f", expression: "x",
   domain: { min: -10, max: 10, includeMin: true, includeMax: true },
   style: { visible: true, color: "#2563eb", lineWidth: 2, lineStyle: "solid" } });
@@ -58,7 +58,7 @@ const initialPiecewiseDraft = (): Graph2DPiecewiseDraft => ({ label: "piecewise"
     { expression: "x", domain: { min: 0, max: 10, includeMin: true, includeMax: true } },
   ], style: { visible: true, color: "#9333ea", lineWidth: 2, lineStyle: "solid" } });
 
-export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, onPaletteChange }: Props) {
+export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, onPaletteChange, onBrowsePhasePortraits }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Graph2DFunctionDraft>(initialDraft);
   const [parametricDraft, setParametricDraft] = useState<Graph2DParametricDraft>(initialParametricDraft);
@@ -435,6 +435,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       onSubmit={event => { event.preventDefault(); save(); }}>
       <h3>{editingId ? "Edit phase portrait" : "New phase portrait"}</h3>
       <p>Planar system with direction arrows and solution orbits. Linear axes only; each seed integrates forward and backward in time.</p>
+      {onBrowsePhasePortraits && <button type="button" onClick={event => onBrowsePhasePortraits(event.currentTarget)}>Browse phase portrait examples</button>}
       <label>Name <input aria-label="Phase portrait name" value={phaseDraft.label} maxLength={160}
         onChange={event => setPhaseDraft({ ...phaseDraft, label: event.target.value })} /></label>
       <label>x′ = <input aria-label="Phase portrait x derivative" value={phaseDraft.xDerivative} spellCheck={false}
