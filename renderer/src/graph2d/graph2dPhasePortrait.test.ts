@@ -31,6 +31,9 @@ describe("GRA-11.3 planar phase portraits", () => {
     expect(result.equilibria).toHaveLength(1);
     expect(Math.hypot(result.equilibria[0]!.x, result.equilibria[0]!.y)).toBeLessThan(1e-6);
     expect(result.equilibria[0]!.residual).toBeLessThan(1e-7);
+    expect(result.equilibria[0]!.linearization).toMatchObject({ kind: "linear-center", status: "inconclusive",
+      stability: "undetermined", trace: 0, determinant: 1 });
+    expect(result.equilibria[0]!.linearization.eigenvalues?.[0].imaginary).toBeCloseTo(1, 5);
     expect(result.orbits[0]).toMatchObject({ backward: "time-horizon", forward: "time-horizon" });
     expect(result.converged).toBe(true);
     const points = result.segments[0]!.points;
@@ -46,6 +49,7 @@ describe("GRA-11.3 planar phase portraits", () => {
     expect(saddle.orbits[1]).toMatchObject({ backward: "equilibrium", forward: "equilibrium" });
     expect(saddle.segments[0]!.points.some(point => Math.abs(point.x * point.y - 1) < 1e-4)).toBe(true);
     expect(saddle.orbits).toHaveLength(2);
+    expect(saddle.equilibria[0]?.linearization).toMatchObject({ kind: "saddle", status: "classified", stability: "unstable" });
   });
 
   it("resolves three isolated equilibria in a cubic bistable system", () => {
@@ -58,6 +62,29 @@ describe("GRA-11.3 planar phase portraits", () => {
     expect(xs[1]).toBeCloseTo(0, 5);
     expect(xs[2]).toBeCloseTo(1, 5);
     expect(result.equilibria.every(point => Math.abs(point.y) < 1e-6 && point.residual < 1e-7)).toBe(true);
+    const ordered = result.equilibria.slice().sort((a, b) => a.x - b.x);
+    expect(ordered.map(point => point.linearization.kind))
+      .toEqual(["stable-node", "saddle", "stable-node"]);
+    expect(ordered[0]!.linearization.jacobian?.[0]).toBeCloseTo(-2, 4);
+    expect(ordered[1]!.linearization.jacobian?.[0]).toBeCloseTo(1, 4);
+    expect(ordered[2]!.linearization.jacobian?.[3]).toBeCloseTo(-1, 4);
+  });
+
+  it("distinguishes stable and unstable spirals, and labels a nonhyperbolic point inconclusive", () => {
+    const sink = solve(create({ ...draft("-x-y", "x-y"), timeSpan: 2 }));
+    expect(sink.equilibria[0]?.linearization).toMatchObject({ kind: "stable-spiral", stability: "stable" });
+    const source = solve(create({ ...draft("x-y", "x+y"), timeSpan: 1 }));
+    expect(source.equilibria[0]?.linearization).toMatchObject({ kind: "unstable-spiral", stability: "unstable" });
+    const degenerate = solve(create({ ...draft("-x^3", "-y"), timeSpan: 1 }));
+    expect(degenerate.equilibria[0]?.linearization).toMatchObject({ kind: "nonhyperbolic",
+      status: "inconclusive", stability: "undetermined" });
+    const corner = solve(create({ ...draft("abs(x)+y", "-y"), timeSpan: 1 }));
+    expect(corner.equilibria[0]?.linearization).toMatchObject({ kind: "unresolved",
+      status: "inconclusive", stability: "undetermined" });
+    const stiff = solve(create({ ...draft("-1000000000*x", "-y"), timeSpan: 1, seeds: [{ x: 0, y: 0 }] }));
+    expect(stiff.equilibria).toHaveLength(1);
+    expect(stiff.equilibria[0]!.linearization.kind).toBe("unresolved");
+    expect([sink, source, degenerate].every(result => result.samplesEvaluated <= 12000)).toBe(true);
   });
 
   it("labels a singular initial field and refuses logarithmic axes", () => {

@@ -911,7 +911,15 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             <dt>Equilibria</dt><dd data-testid="graph2d-phase-equilibria">
               {(selectedSeries.artifact as Graph2DPhasePortraitArtifact).equilibria.length ?
                 (selectedSeries.artifact as Graph2DPhasePortraitArtifact).equilibria.map((point, index) =>
-                  <span key={index}>({point.x.toPrecision(6)}, {point.y.toPrecision(6)}) · residual {point.residual.toExponential(2)}<br /></span>) :
+                  <span key={index} data-testid="graph2d-phase-classification">
+                    ({point.x.toPrecision(6)}, {point.y.toPrecision(6)}) · residual {point.residual.toExponential(2)}<br />
+                    Linearization: {point.linearization.kind.replace(/-/g, " ")} · {point.linearization.stability}
+                    {point.linearization.jacobian && <> · J = [{point.linearization.jacobian.map(value => value.toPrecision(4)).join(", ")}]</>}
+                    {point.linearization.eigenvalues && <> · λ = {point.linearization.eigenvalues.map(value => value.imaginary === 0 ?
+                        value.real.toPrecision(4) :
+                        `${value.real.toPrecision(4)}${value.imaginary < 0 ? "−" : "+"}${Math.abs(value.imaginary).toPrecision(4)}i`).join(", ")}</>}
+                    {point.linearization.reason && <> · {point.linearization.reason}</>}<br />
+                  </span>) :
                 "None resolved at sampled grid resolution"}</dd>
             <dt>Method</dt><dd>Marching squares contour crossings, then up to five Newton steps.
               {" "}{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.candidates} candidates;

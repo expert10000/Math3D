@@ -203,7 +203,7 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
             const screen = graph2DWorldToScreen(display.viewport, size, point);
             return <g key={`equilibrium-${item.objectId}-${index}`} data-graph2d-equilibrium={item.objectId}
               transform={`translate(${screen.x} ${screen.y})`} pointerEvents="none">
-              <title>{`Approximate equilibrium (${point.x.toPrecision(6)}, ${point.y.toPrecision(6)}); residual ${point.residual.toExponential(2)}`}</title>
+              <title>{`Approximate equilibrium (${point.x.toPrecision(6)}, ${point.y.toPrecision(6)}); residual ${point.residual.toExponential(2)}; linearization ${point.linearization.kind.replace(/-/g, " ")} (${point.linearization.stability})`}</title>
               <circle r="7" fill="white" stroke="#111827" strokeWidth="2" />
               <circle r="2" fill="#111827" />
             </g>;

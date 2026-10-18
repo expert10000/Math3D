@@ -1,5 +1,6 @@
 import { evaluateGraph2DExpression } from "./graph2dExpression";
 import { sampleGraph2DImplicit } from "./graph2dImplicit";
+import { estimateGraph2DPhaseLinearization, type Graph2DPhaseLinearization } from "./graph2dPhaseLinearization";
 import type { Graph2DPhasePortraitObject } from "./graph2dDocument";
 import type { Graph2DSamplePoint, Graph2DSampleSegment, Graph2DSamplingArtifact, Graph2DSamplingDiagnostic } from "./graph2dSampling";
 import type { Graph2DViewport } from "./graph2dViewport";
@@ -15,7 +16,7 @@ export type Graph2DPhasePortraitArtifact = Graph2DSamplingArtifact & Readonly<{
   fieldSegments: readonly Graph2DSampleSegment[];
   orbits: readonly Graph2DPhaseOrbit[];
   nullclines: Readonly<{ x: readonly Graph2DSampleSegment[]; y: readonly Graph2DSampleSegment[] }>;
-  equilibria: readonly Readonly<{ x: number; y: number; residual: number }> [];
+  equilibria: readonly Readonly<{ x: number; y: number; residual: number; linearization: Graph2DPhaseLinearization }> [];
   analysis: Readonly<{ status: "complete" | "partial" | "unavailable";
     method: "contour-intersection-newton"; gridScale: number | null;
     candidates: number; unresolved: number; evaluations: number }>;
@@ -205,6 +206,9 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
       }
     }
   }
+  // Classify only after searching for crossings, so Jacobian work cannot hide another equilibrium.
+  const classifiedEquilibria = equilibria.map(point => ({ ...point,
+    linearization: estimateGraph2DPhaseLinearization(point, object.domain, object.yDomain, evaluate) }));
   const diagnostics: Graph2DSamplingDiagnostic[] = [];
   if (invalidGlyphs) diagnostics.push({ code: "invalid-sample", count: invalidGlyphs });
   if (fieldTimedOut) diagnostics.push({ code: "deadline", count: 1 });
@@ -213,7 +217,8 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
     if (stop === "sample-limit" || stop === "step-limit") diagnostics.push({ code: "sample-limit", count: 1 });
     if (stop === "deadline") diagnostics.push({ code: "deadline", count: 1 });
   }
-  return { samplerVersion: 1, kind: "phase-portrait", fieldSegments, orbits, segments, nullclines, equilibria,
+  return { samplerVersion: 1, kind: "phase-portrait", fieldSegments, orbits, segments, nullclines,
+    equilibria: classifiedEquilibria,
     analysis: { status: analysisStatus, method: "contour-intersection-newton", gridScale,
       candidates, unresolved, evaluations: samplesEvaluated - analysisStart },
     samplesEvaluated, converged: analysisStatus === "complete" && !diagnostics.some(item => item.code === "deadline" || item.code === "sample-limit" ||

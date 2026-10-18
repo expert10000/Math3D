@@ -13,3 +13,5 @@ Graphs Gallery adds a **Differential equations** category with three editable ex
 | Three equilibria | `x′=x-x³`, `y′=-y` | Isolated equilibria `(-1,0)`, `(0,0)`, `(1,0)` |
 
 Open a preset through **Graphs → Gallery → Differential equations**, or choose **Add phase portrait → Browse phase portrait examples** from Functions. The editor link opens Gallery with the category already selected. The first example is also Featured. Each opens as a normal editable Graph document with its own fresh project identity. Exact-reference tests cover the three systems, bounded work, no false probe, Gallery portability, mobile projection, web rendering, and export primitives. Physical mobile visual and accessibility signoff remains in the existing release gate.
+
+[GRA-11.5](graph2d-gra11-equilibrium-classification.md) adds local Jacobian estimates and conservative stability labels to these numerical candidates.

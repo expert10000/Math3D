@@ -3,7 +3,8 @@ import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleS
 import { fitGraph2DViewport, panGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, graph2DHasLogScale, projectGraph2DConstructionVector, pickGraph2DProbe,
   graph2DSceneFitBounds, graph2DConstructionFitBounds,
   resolveGraph2DViewport, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, graph2DParameterSessionKey,
-  previewGraph2DParameterValues, graph2DRegressionOverlaySeries, applyGraph2DAuthoring, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion } from "@math3d/core";
+  previewGraph2DParameterValues, graph2DRegressionOverlaySeries, applyGraph2DAuthoring, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion,
+  type Graph2DPhasePortraitArtifact } from "@math3d/core";
 import { createGraph2DSplineRegressionJob, createGraph2DPolynomialRegressionJob,
   type Graph2DSplineRegressionJob, type Graph2DPolynomialRegressionJob } from "@math3d/core";
 import { projectGraph2DConstrainedPoint, previewGraph2DConstrainedPoint, resolveGraph2DConstructions } from "@math3d/core";
@@ -169,6 +170,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   }, [sourceKey, draftHash, destination]);
   const sampling = useMobileGraphSampling(sampledDocument, viewport, size, !!preview, () => { setAnalysis(null); setParameterPreview(null); }, parameterPreviewActive ? document.identity : undefined, tableStore);
   const { series, budget } = sampling;
+  const selectedPhase = series.find(item => item.objectId === document.selection.objectId &&
+    "kind" in item.artifact && item.artifact.kind === "phase-portrait")?.artifact as Graph2DPhasePortraitArtifact | undefined;
   const pointPreviewDocument = useMemo(() => {
     if (!pointDragPreview || pointDrag.current?.documentId !== document.identity.id) return null;
     try { return previewGraph2DConstrainedPoint(document, pointDragPreview.id, pointDragPreview.parameter); }
@@ -474,6 +477,16 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
           <Text>Saved markers are source-linked. Numerical results are computed only when requested and keep their stated limits.</Text>
         </View>}
         {series.some((item) => !item.artifact.converged) && <Text style={s.readout}>Sampling budget reached; unresolved regions are not a proof of absence.</Text>}
+        {selectedPhase && <View accessibilityLabel="Phase portrait equilibrium analysis" testID="mobile-graph-phase-equilibria">
+          <Text style={s.title}>Equilibrium scan · {selectedPhase.analysis.status}</Text>
+          <Text>Orange dashed: x′=0. Cyan dotted: y′=0. Markers are residual-checked numerical candidates.</Text>
+          {selectedPhase.equilibria.length ? selectedPhase.equilibria.map((point, index) =>
+            <Text key={index}>({point.x.toPrecision(5)}, {point.y.toPrecision(5)}) · residual {point.residual.toExponential(2)}
+              {" · "}{point.linearization.kind.replace(/-/g, " ")} · {point.linearization.stability}
+              {point.linearization.reason ? ` · ${point.linearization.reason}` : ""}</Text>) :
+            <Text>No equilibrium resolved at the sampled grid resolution.</Text>}
+          <Text>Jacobian estimates use two finite-difference scales. Linear center and nonhyperbolic cases do not determine nonlinear stability.</Text>
+        </View>}
         {button("Clear probe", () => commit(() => adapter.commitSelection({ objectId: null, probe: null })))}
         {probe && button("Cycle overlap", () => tap(graph2DWorldToScreen(document.display.viewport, size, probe)))}
         <MobileGraphAnalysisPanel document={document} draft={analysisDraft} result={analysis} pending={analysisPending}

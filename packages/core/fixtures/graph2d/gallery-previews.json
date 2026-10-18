@@ -258,7 +258,7 @@
       "png": "phase-center.png",
       "svgHash": "sha256:3528d53a6e3968bfd75724a5be8a0674e729ac7860e90e00607c8bdd64ac8e1a",
       "pngHash": "sha256:089d70c768246f2161357d8a40acf64580f53a3e0e5a1f7adfdacf30354d43da",
-      "samples": 1608,
+      "samples": 1626,
       "diagnostics": []
     },
     {
@@ -269,7 +269,7 @@
       "png": "phase-saddle.png",
       "svgHash": "sha256:2af736d359bcda25a273de3e7d2523f3632f6fc88584b66b2b31a77460c4e7ec",
       "pngHash": "sha256:b3a6b8684042e2508a1d062f742671ac2b0f38a779d4259cd61a62a4fb0eefbf",
-      "samples": 1032,
+      "samples": 1050,
       "diagnostics": []
     },
     {
@@ -280,7 +280,7 @@
       "png": "phase-bistable.png",
       "svgHash": "sha256:2601c5d6ea183711ca6bb8deaffcaa35ef253686dfac972f36a6bc3469ed2840",
       "pngHash": "sha256:d4d9b635f6d115ab5a58ab6729253089b42b2be55a712d6fb997e8e3bdc9eeed",
-      "samples": 1120,
+      "samples": 1174,
       "diagnostics": []
     }
   ]

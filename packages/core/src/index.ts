@@ -28,6 +28,7 @@ export * from "./graph2dSceneSampling";
 export * from "./graph2dSlopeField";
 export * from "./graph2dTrajectory";
 export * from "./graph2dPhasePortrait";
+export * from "./graph2dPhaseLinearization";
 export * from "./graph2dParametric";
 export * from "./graph2dPolar";
 export * from "./graph2dImplicit";
