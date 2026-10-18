@@ -201,6 +201,8 @@
 .graph2d-axis { stroke: currentColor; stroke-width: 1.5; opacity: .75; }
 .graph2d-tick-labels { fill: currentColor; font-size: 10px; opacity: .7; }
 .graph2d-probe-marker { pointer-events: none; }
+.graph2d-plot [data-graph2d-phase-seed] { cursor: grab; }
+.graph2d-viewer[data-phase-seed-dragging="true"] .graph2d-plot [data-graph2d-phase-seed] { cursor: grabbing; }
 .graph2d-probe-marker circle:first-child { fill: var(--panel-strong); stroke: #f59e0b; stroke-width: 2; }
 .graph2d-probe-marker circle:last-child { fill: #f59e0b; }
 .graph2d-probe-hover { opacity: .65; }

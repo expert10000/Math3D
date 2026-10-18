@@ -194,9 +194,12 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
           .flatMap(item => (item.artifact as Graph2DPhasePortraitArtifact).orbits.map(orbit => {
             if (orbit.seed.x < bounds.xMin || orbit.seed.x > bounds.xMax || orbit.seed.y < bounds.yMin || orbit.seed.y > bounds.yMax) return null;
             const screen = graph2DWorldToScreen(display.viewport, size, orbit.seed);
-            return <circle key={`phase-seed-${item.objectId}-${orbit.seedIndex}`}
-              data-graph2d-phase-seed={`${item.objectId}-${orbit.seedIndex}`}
-              cx={screen.x} cy={screen.y} r={5} fill="white" stroke={item.style.color} strokeWidth={2} pointerEvents="none" />;
+            return <g key={`phase-seed-${item.objectId}-${orbit.seedIndex}`}>
+              <circle data-graph2d-phase-seed={`${item.objectId}-${orbit.seedIndex}`}
+                cx={screen.x} cy={screen.y} r={14} fill="transparent" pointerEvents="all" />
+              <circle cx={screen.x} cy={screen.y} r={5} fill="white" stroke={item.style.color}
+                strokeWidth={2} pointerEvents="none" />
+            </g>;
           }))}
         {series.filter(item => item.style.visible && "kind" in item.artifact && item.artifact.kind === "phase-portrait")
           .flatMap(item => (item.artifact as Graph2DPhasePortraitArtifact).equilibria.map((point, index) => {

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocument,
   inspectGraph2DCompatibility, normalizeGraph2DDocument, sampleGraph2DPhasePortrait,
   sampleGraph2DScene, projectGraph2DPublicationGeometry, selectionForGraph2DObject,
+  graph2DPhaseSeedAtScreen, graph2DPhaseSeedAction, previewGraph2DPhaseSeed, graph2DWorldToScreen,
   type Graph2DPhasePortraitDraft } from "@math3d/core";
+import { Graph2DCommandAdapter } from "@math3d/kernel";
 
 const bounds = { min: -4, max: 4, includeMin: true, includeMax: true };
 const style = { color: "#7c3aed", lineWidth: 2, lineStyle: "solid" as const, visible: true };
@@ -21,6 +23,54 @@ const solve = (document = create(), maxSamples = 12000) => {
   return sampleGraph2DPhasePortrait({ object, variables: {}, viewport, width: 640, height: 640, maxSamples });
 };
 
+describe("GRA-11.6 interactive initial points", () => {
+  it("places inside the authored domain and clamps a drag to its boundary", () => {
+    const document = create();
+    const size = { width: 640, height: 640 };
+    const screen = graph2DWorldToScreen(viewport, size, { x: 2, y: -1 });
+    expect(graph2DPhaseSeedAtScreen(document, "phase_portrait_1", viewport, size, screen, "place"))
+      .toEqual({ x: 2, y: -1 });
+    const outside = graph2DWorldToScreen(viewport, size, { x: 5, y: -5 });
+    expect(graph2DPhaseSeedAtScreen(document, "phase_portrait_1", viewport, size, outside, "place")).toBeNull();
+    expect(graph2DPhaseSeedAtScreen(document, "phase_portrait_1", viewport, size, outside, "drag"))
+      .toEqual({ x: 4, y: -4 });
+    expect(graph2DPhaseSeedAtScreen(document, "phase_portrait_1", { ...viewport, xScale: "log10" }, size,
+      screen, "drag")).toBeNull();
+  });
+
+  it("previews changed trajectories without mutating the source, then commits one undo step", () => {
+    const adapter = new Graph2DCommandAdapter(create());
+    const original = adapter.document();
+    const moved = { x: 0, y: 2 };
+    const preview = previewGraph2DPhaseSeed(original, "phase_portrait_1", 0, moved);
+    expect(preview.identity.structuralHash).not.toBe(original.identity.structuralHash);
+    expect(preview.identity.revision).toBe(original.identity.revision);
+    expect(original.source.objects[0]?.kind === "phase-portrait" && original.source.objects[0].seeds[0])
+      .toEqual({ x: 1, y: 0 });
+    const orbit = sampleGraph2DScene({ document: preview, viewport, width: 640, height: 640, interaction: true })[0]!.artifact;
+    expect("kind" in orbit && orbit.kind === "phase-portrait" && orbit.orbits[0]?.seed).toEqual(moved);
+    adapter.commitScene(applyGraph2DAuthoring(original,
+      graph2DPhaseSeedAction(original, "phase_portrait_1", 0, moved)), "edit-phase-portrait");
+    expect(adapter.history().undoDepth).toBe(1);
+    expect(adapter.document().source.objects[0]?.kind === "phase-portrait" &&
+      adapter.document().source.objects[0].seeds[0]).toEqual(moved);
+    adapter.undo();
+    expect(adapter.document().source.objects[0]?.kind === "phase-portrait" &&
+      adapter.document().source.objects[0].seeds[0]).toEqual({ x: 1, y: 0 });
+  });
+
+  it("adds at most eight initial points and leaves other source fields intact", () => {
+    const document = create();
+    const first = graph2DPhaseSeedAction(document, "phase_portrait_1", null, { x: -1, y: 2 });
+    const next = createGraph2DDocument({ ...applyGraph2DAuthoring(document, first), stableKey: "phase" });
+    const source = next.source.objects[0];
+    expect(source?.kind === "phase-portrait" && source.seeds).toHaveLength(2);
+    expect(source?.kind === "phase-portrait" && source.xDerivative.source).toBe("y");
+    const full = create({ ...draft(), seeds: Array.from({ length: 8 }, (_, index) => ({ x: index / 4, y: 0 })) });
+    expect(() => graph2DPhaseSeedAction(full, "phase_portrait_1", null, { x: 0, y: 0 }))
+      .toThrow(/at most eight/);
+  });
+});
 describe("GRA-11.3 planar phase portraits", () => {
   it("returns to the unit circle for x′=y, y′=-x in both time directions", () => {
     const result = solve();
