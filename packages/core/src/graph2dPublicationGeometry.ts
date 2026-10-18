@@ -106,6 +106,8 @@ export const projectGraph2DPublicationGeometry = (document: Graph2DDocument, ser
       }
     }
     const groups = region ? region.boundaries.map((b) => ({ segments: b.segments, dash: b.strict ? "dashed" as const : item.style.lineStyle })) :
+      "kind" in a && a.kind === "time-ode" ? a.segments.map((segment, index) => ({ segments: [segment],
+        dash: index === 0 && (a as import("./graph2dTimeOde").Graph2DTimeOdeArtifact).backward?.acceptedSteps ? "dashed" as const : "solid" as const })) :
       [{ segments: "kind" in a && a.kind === "point-series" && (a as Graph2DPointSeriesArtifact).mode === "points" ? [] : a.segments, dash: item.style.lineStyle }];
     for (const group of groups) for (const segment of group.segments) {
       let distance = 0;
@@ -122,6 +124,10 @@ export const projectGraph2DPublicationGeometry = (document: Graph2DDocument, ser
     };
     if ("kind" in a && a.kind === "point-series") for (const p of (a as Graph2DPointSeriesArtifact).points) marker(p, false, Math.max(2.5, item.style.lineWidth + 1.5));
     else if ("kind" in a && a.kind === "phase-portrait") for (const orbit of (a as Graph2DPhasePortraitArtifact).orbits) marker(orbit.seed, false, 4);
+    else if ("kind" in a && a.kind === "time-ode") {
+      const seed = (a as import("./graph2dTimeOde").Graph2DTimeOdeArtifact).seed;
+      marker({ x: seed.t, y: seed.x }, false, 4);
+    }
     else if ("kind" in a && a.kind === "piecewise") for (const p of [...(a as Graph2DPiecewiseArtifact).endpoints].sort((x, y) => Number(y.open) - Number(x.open))) marker(p, p.open, Math.max(3.5, item.style.lineWidth + 2));
     else for (const segment of a.segments) {
       const first = segment.points[0], last = segment.points.at(-1);

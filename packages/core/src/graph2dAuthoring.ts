@@ -43,6 +43,11 @@ export type Graph2DPhasePortraitDraft = Readonly<{
   seeds: readonly Readonly<{ x: number; y: number }>[];
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
 }>;
+export type Graph2DTimeOdeDraft = Readonly<{
+  label: string; expression: string; domain: Graph2DDomain; stateDomain: Graph2DDomain;
+  seed: Readonly<{ t: number; x: number }>;
+  style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
+}>;
 export type Graph2DInequalityDraft = Readonly<{
   label: string;
   clauses: readonly Readonly<{ expression: string; comparator: "<" | "<=" | ">" | ">=" }>[];
@@ -80,6 +85,8 @@ export type Graph2DAuthoringAction =
   | Readonly<{ type: "edit-trajectory"; objectId: string; draft: Graph2DTrajectoryDraft }>
   | Readonly<{ type: "create-phase-portrait"; draft: Graph2DPhasePortraitDraft }>
   | Readonly<{ type: "edit-phase-portrait"; objectId: string; draft: Graph2DPhasePortraitDraft }>
+  | Readonly<{ type: "create-time-ode"; draft: Graph2DTimeOdeDraft }>
+  | Readonly<{ type: "edit-time-ode"; objectId: string; draft: Graph2DTimeOdeDraft }>
   | Readonly<{ type: "create-inequality"; draft: Graph2DInequalityDraft }>
   | Readonly<{ type: "edit-inequality"; objectId: string; draft: Graph2DInequalityDraft }>
   | Readonly<{ type: "create-point-series"; draft: Graph2DPointSeriesDraft }>
@@ -181,6 +188,22 @@ export const validateGraph2DPhasePortraitDraft = (draft: Graph2DPhasePortraitDra
     seed.x < draft.domain.min || seed.x > draft.domain.max || seed.y < draft.yDomain.min || seed.y > draft.yDomain.max)
     errors.push("Every initial point must be finite and inside the phase domain.");
   return [...new Set(errors)];
+};
+export const validateGraph2DTimeOdeDraft = (draft: Graph2DTimeOdeDraft,
+  variables: readonly string[] = ["t", "x"]): readonly string[] => {
+  const errors = [...validateGraph2DFunctionDraft(draft, variables)];
+  const state = draft.stateDomain, seed = draft.seed;
+  if (!draft.domain.includeMin || !draft.domain.includeMax || !state.includeMin || !state.includeMax)
+    errors.push("Time and state bounds include both endpoints.");
+  if (!Number.isFinite(state.min) || !Number.isFinite(state.max) || state.min >= state.max ||
+      typeof state.includeMin !== "boolean" || typeof state.includeMax !== "boolean")
+    errors.push("State minimum must be less than maximum.");
+  if (!Number.isFinite(seed.t) || !Number.isFinite(seed.x) || seed.t < draft.domain.min ||
+      seed.t > draft.domain.max || seed.x < state.min || seed.x > state.max)
+    errors.push("Initial time and value must be finite and inside the authored bounds.");
+  if (seed.t - draft.domain.min > 100 || draft.domain.max - seed.t > 100)
+    errors.push("Each time direction may span at most 100 units.");
+  return errors;
 };
 export const validateGraph2DInequalityDraft = (draft: Graph2DInequalityDraft,
   variables: readonly string[] = ["x", "y"]): readonly string[] => {
@@ -393,6 +416,30 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       seeds: action.draft.seeds };
     const display = { objectId: id, ...action.draft.style };
     if (action.type === "create-phase-portrait") { objects.push(object); displays.push(display); }
+    else { objects[index] = object; displays[index] = display; }
+    selection = { objectId: id, probe: null };
+  } else if (action.type === "create-time-ode" || action.type === "edit-time-ode") {
+    if (action.type === "edit-time-ode" && objects[index]?.kind !== "time-ode")
+      throw new TypeError("Selected object is not a time-dependent ODE.");
+    if (document.source.variables.some(entry => entry.name === "t" || entry.name === "x"))
+      throw new TypeError("The coordinate names t and x conflict with document variables.");
+    const names = ["t", "x", ...document.source.variables.map(entry => entry.name)];
+    const errors = validateGraph2DTimeOdeDraft(action.draft, names);
+    if (errors.length) throw new TypeError(errors.join(" "));
+    const parsed = parseGraph2DExpression(action.draft.expression, names);
+    if (!parsed.ok) throw new TypeError("Time-dependent ODE expression is invalid.");
+    if (action.type === "create-time-ode" && objects.length >= GRAPH2D_MAX_OBJECTS)
+      throw new TypeError("Function limit reached.");
+    let id = action.type === "edit-time-ode" ? action.objectId : "time_ode_1";
+    if (action.type === "create-time-ode") {
+      let serial = 1;
+      while (objects.some(entry => entry.id === id)) id = "time_ode_" + ++serial;
+    }
+    const object = { id, kind: "time-ode" as const, label: action.draft.label,
+      expression: { source: action.draft.expression, variable: "tx" as const, ast: parsed.ast },
+      domain: action.draft.domain, stateDomain: action.draft.stateDomain, seed: action.draft.seed };
+    const display = { objectId: id, ...action.draft.style };
+    if (action.type === "create-time-ode") { objects.push(object); displays.push(display); }
     else { objects[index] = object; displays[index] = display; }
     selection = { objectId: id, probe: null };
   } else if (action.type === "create-inequality" || action.type === "edit-inequality") {

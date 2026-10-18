@@ -8,6 +8,7 @@ import type { Graph2DRegionArtifact } from "../graph2dInequality";
 import type { Graph2DPiecewiseArtifact } from "../graph2dPiecewise";
 import type { Graph2DPointSeriesArtifact } from "../graph2dPointSeries";
 import type { Graph2DPhasePortraitArtifact } from "../graph2dPhasePortrait";
+import type { Graph2DTimeOdeArtifact } from "../graph2dTimeOde";
 
 export const GRAPH2D_PREVIEW_RECIPE = Object.freeze({ version: 2, width: 320, height: 180, maxSamples: 1024,
   phaseSamples: 2048, maxDepth: 12, tolerancePx: .75, theme: "light" });
@@ -19,7 +20,7 @@ const n = (v: number) => { if (!Number.isFinite(v)) throw new TypeError("Non-fin
 export const renderGraph2DDocumentPreview = (source: Graph2DDocument, title: string,
   pointTables: Readonly<Record<string, readonly Graph2DPointRow[] | null>> = {}) => {
   const size = GRAPH2D_PREVIEW_RECIPE, viewport = source.display.viewport;
-  const sampleLimit = source.source.objects.some(object => object.kind === "phase-portrait") ? size.phaseSamples : size.maxSamples;
+  const sampleLimit = source.source.objects.some(object => object.kind === "phase-portrait" || object.kind === "time-ode") ? size.phaseSamples : size.maxSamples;
   const document = { ...source, display: { ...source.display, sampling: {
     maxSamples: sampleLimit, maxDepth: size.maxDepth, tolerancePx: size.tolerancePx } } };
   const series = sampleGraph2DScene({ document, viewport, width: size.width, height: size.height, interaction: false,
@@ -53,6 +54,13 @@ export const renderGraph2DDocumentPreview = (source: Graph2DDocument, title: str
       const region=a as Graph2DRegionArtifact;
       for (const f of region.fills) { const p=screen({ x:f.xMin,y:f.yMax }), q=screen({ x:f.xMax,y:f.yMin }); elements.push(`<rect x="${n(p.x)}" y="${n(p.y)}" width="${n(q.x-p.x)}" height="${n(q.y-p.y)}" fill="${color}" opacity="0.18"/>`); }
       for (const b of region.boundaries) path(b.segments,b.strict);
+    } else if ("kind" in a && a.kind === "time-ode") {
+      const ode = a as Graph2DTimeOdeArtifact;
+      const backwardCount = ode.backward?.acceptedSteps ? 1 : 0;
+      if (backwardCount) path(ode.segments.slice(0, 1), true);
+      path(ode.segments.slice(backwardCount));
+      elements.push('<text x="4" y="13" font-size="11" fill="#334155">state x</text>');
+      elements.push('<text x="282" y="175" font-size="11" fill="#334155">time t</text>');
     } else path(a.segments);
     if ("kind" in a && a.kind === "phase-portrait") {
       const phase = a as Graph2DPhasePortraitArtifact;
@@ -75,6 +83,7 @@ export const renderGraph2DDocumentPreview = (source: Graph2DDocument, title: str
     }
     const circle = (p: { x:number;y:number }, open = false) => { const q=screen(p); elements.push(`<circle cx="${n(q.x)}" cy="${n(q.y)}" r="3" fill="${open ? "#ffffff" : color}" stroke="${color}" stroke-width="1.5"/>`); };
     if ("kind" in a && a.kind === "piecewise") for (const p of (a as Graph2DPiecewiseArtifact).endpoints) circle(p,p.open);
+    if ("kind" in a && a.kind === "time-ode") { const seed = (a as Graph2DTimeOdeArtifact).seed; circle({ x: seed.t, y: seed.x }); }
     if ("kind" in a && a.kind === "point-series") for (const p of (a as Graph2DPointSeriesArtifact).points) circle(p);
   }
   if (elements.length > 4096) throw new Error("Graph preview exceeds its element budget.");

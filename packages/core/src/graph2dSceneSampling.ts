@@ -10,6 +10,7 @@ import { sampleGraph2DPiecewise } from "./graph2dPiecewise";
 import { sampleGraph2DSlopeField } from "./graph2dSlopeField";
 import { sampleGraph2DTrajectory } from "./graph2dTrajectory";
 import { sampleGraph2DPhasePortrait } from "./graph2dPhasePortrait";
+import { sampleGraph2DTimeOde } from "./graph2dTimeOde";
 import { resolveGraph2DViewport } from "./graph2dViewport";
 import type { Graph2DSlopeFieldObject } from "./graph2dDocument";
 
@@ -43,10 +44,14 @@ export const sampleGraph2DScene = (request: Graph2DSceneSamplingRequest): readon
   const series: Graph2DSampledSeries[] = document.source.objects.flatMap((object, index) => {
     const style = document.display.objects[index];
     if (!style?.visible) return [];
-    if (Date.now() > deadlineMs) return [{ objectId: object.id, style, artifact: { samplerVersion: 1 as const,
-      segments: [], samplesEvaluated: 0, converged: false, diagnostics: [{ code: "deadline" as const, count: 1 }] } }];
-    if (remaining < 32) return [{ objectId: object.id, style, artifact: { samplerVersion: 1 as const,
-      segments: [], samplesEvaluated: 0, converged: false, diagnostics: [{ code: "sample-limit" as const, count: 1 }] } }];
+    if (Date.now() > deadlineMs) return [{ objectId: object.id, style, artifact: object.kind === "time-ode" ?
+      sampleGraph2DTimeOde({ object, variables, viewport, maxSamples: 1, deadlineMs: Date.now() - 1 }) :
+      { samplerVersion: 1 as const, segments: [], samplesEvaluated: 0, converged: false,
+        diagnostics: [{ code: "deadline" as const, count: 1 }] } }];
+    if (remaining < 32) return [{ objectId: object.id, style, artifact: object.kind === "time-ode" ?
+      sampleGraph2DTimeOde({ object, variables, viewport, maxSamples: 1 }) :
+      { samplerVersion: 1 as const, segments: [], samplesEvaluated: 0, converged: false,
+        diagnostics: [{ code: "sample-limit" as const, count: 1 }] } }];
     const common = { variables, viewport, width, height, policy: { ...policy, maxSamples: Math.min(remaining, policy.maxSamples) }, deadlineMs };
     const artifact = object.kind === "explicit-cartesian" ? sampleGraph2DExplicit({ ...common, ast: object.expression.ast, domain: object.domain }) :
       object.kind === "parametric" ? sampleGraph2DParametric({ ...common, object }) :
@@ -60,6 +65,8 @@ export const sampleGraph2DScene = (request: Graph2DSceneSamplingRequest): readon
           Graph2DSlopeFieldObject,
         maxSamples: common.policy.maxSamples }) :
       object.kind === "phase-portrait" ? sampleGraph2DPhasePortrait({ ...common, object,
+        maxSamples: common.policy.maxSamples }) :
+      object.kind === "time-ode" ? sampleGraph2DTimeOde({ ...common, object,
         maxSamples: common.policy.maxSamples }) :
       sampleGraph2DPointSeries(object, request.pointTables?.[object.table.id] ?? null, common.policy.maxSamples);
     remaining -= artifact.samplesEvaluated;

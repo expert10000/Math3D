@@ -11,7 +11,7 @@
     "tolerancePx": 0.75,
     "theme": "light"
   },
-  "compressedBytes": 287520,
+  "compressedBytes": 293809,
   "entries": [
     {
       "id": "line-comparison",
@@ -259,6 +259,17 @@
       "svgHash": "sha256:3528d53a6e3968bfd75724a5be8a0674e729ac7860e90e00607c8bdd64ac8e1a",
       "pngHash": "sha256:089d70c768246f2161357d8a40acf64580f53a3e0e5a1f7adfdacf30354d43da",
       "samples": 1626,
+      "diagnostics": []
+    },
+    {
+      "id": "time-ode-driven",
+      "presetDigest": "sha256:28daa23d25dadf68629132eebc087409622903e4ebf00541e4d6f86126c60831",
+      "key": "sha256:1271d7a0da81354ad4979cf4054ccf0613abadcd5a694c5c158fdad9918e4c2d",
+      "svg": "time-ode-driven.svg",
+      "png": "time-ode-driven.png",
+      "svgHash": "sha256:0767c749046d58393625332e8e14adcf7806107ca1c1145f202cce226f420cd5",
+      "pngHash": "sha256:e07e70de445779b71116bdb9744bcb519f279e01a2bef8e8501268f74815e90f",
+      "samples": 756,
       "diagnostics": []
     },
     {

@@ -11,6 +11,7 @@ import {
   type Graph2DPiecewiseArtifact,
   type Graph2DTrajectoryArtifact,
   type Graph2DPhasePortraitArtifact,
+  type Graph2DTimeOdeArtifact,
   type Graph2DConstructionArtifact,
   graph2DRegressionOverlaySeries, graph2DGridAppearance, projectGraph2DPolarGrid, type Graph2DRegression,
   type projectGraph2DProbeMarkers,
@@ -74,7 +75,8 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
   const isPointSeries = (artifact: Graph2DSamplingArtifact): artifact is Graph2DPointSeriesArtifact =>
     "kind" in artifact && artifact.kind === "point-series";
   return (
-    <svg data-testid="graph2d-plot" role="img" aria-label="Cartesian graph plot" className="graph2d-plot"
+    <svg data-testid="graph2d-plot" role="img" aria-label={series.some(item => "kind" in item.artifact && item.artifact.kind === "time-ode") ?
+      "Cartesian graph plot with time t horizontally and state x vertically" : "Cartesian graph plot"} className="graph2d-plot"
       viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none">
       <defs><clipPath id={clipId}><rect x="0" y="0" width={size.width} height={size.height} /></clipPath>
         <marker id={`${clipId}-phase-arrow`} markerWidth="7" markerHeight="7" refX="6" refY="3.5"
@@ -168,7 +170,13 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
                 stroke="#0891b2" strokeDasharray="3 4" />
             </g>;
           })}
-        {series.filter((item) => item.style.visible).flatMap((item) => isRegion(item.artifact) ?
+        {series.filter((item) => item.style.visible).flatMap((item) => "kind" in item.artifact && item.artifact.kind === "time-ode" ?
+          (item.artifact as Graph2DTimeOdeArtifact).segments.map((segment, index) =>
+            <path key={`${item.objectId}-${index}`} data-graph2d-path={item.objectId}
+              data-graph2d-time-direction={index === 0 && (item.artifact as Graph2DTimeOdeArtifact).backward?.acceptedSteps ? "backward" : "forward"}
+              d={pathFor({ ...item.artifact, segments: [segment] })} fill="none" stroke={item.style.color}
+              strokeWidth={item.style.lineWidth} strokeDasharray={index === 0 && (item.artifact as Graph2DTimeOdeArtifact).backward?.acceptedSteps ? "8 5" : undefined}
+              strokeLinejoin="round" strokeLinecap="round" />) : isRegion(item.artifact) ?
           item.artifact.boundaries.map((boundary, index) => <path key={`${item.objectId}-${index}`}
             data-graph2d-path={item.objectId} data-boundary-strict={boundary.strict}
             d={pathFor({ ...item.artifact, segments: boundary.segments })} fill="none"
@@ -222,6 +230,16 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
             if (!Number.isFinite(screen.x) || !Number.isFinite(screen.y)) return null;
             return <circle key={`seed-${item.objectId}`} data-graph2d-trajectory-seed={item.objectId}
               cx={screen.x} cy={screen.y} r={5} fill="white" stroke={item.style.color} strokeWidth={2} pointerEvents="none" />;
+          })}
+        {series.filter(item => item.style.visible && "kind" in item.artifact && item.artifact.kind === "time-ode")
+          .map(item => {
+            const seed = (item.artifact as Graph2DTimeOdeArtifact).seed;
+            if (seed.t < bounds.xMin || seed.t > bounds.xMax || seed.x < bounds.yMin || seed.x > bounds.yMax) return null;
+            const screen = graph2DWorldToScreen(display.viewport, size, { x: seed.t, y: seed.x });
+            return <g key={`ode-seed-${item.objectId}`} data-graph2d-time-ode-seed={item.objectId} pointerEvents="none">
+              <title>{`Initial value x(${seed.t}) = ${seed.x}`}</title>
+              <circle cx={screen.x} cy={screen.y} r={5} fill="white" stroke={item.style.color} strokeWidth={2} />
+            </g>;
           })}
         {series.filter((item) => item.style.visible && isPointSeries(item.artifact)).map((item) => {
           const artifact = item.artifact as Graph2DPointSeriesArtifact;

@@ -19,6 +19,7 @@ import {
   type Graph2DScientificDatasetPreview,
   type Graph2DTrajectoryArtifact,
   type Graph2DPhasePortraitArtifact,
+  type Graph2DTimeOdeArtifact,
   type Graph2DConstructionAction,
   graph2DConstructionFromCandidate, graph2DLineConstructionActionsFromProbe, GRAPH2D_MAX_CONSTRUCTIONS,
   type Graph2DIntegralMode,
@@ -960,7 +961,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             {" "}(index {selectedObject.origin.slice.fixedIndex})</dd></>}
           <dt>Source hashes</dt><dd><code>manifest {selectedObject.origin.sceneFingerprint}<br />resource {selectedObject.origin.resourceSha256}</code></dd>
         </>}
-        <dt>{inspected.kind === "parametric" ? "Parameter t" : inspected.kind === "polar" ? "Angle θ" : "X domain"}</dt>
+        <dt>{inspected.kind === "parametric" ? "Parameter t" : inspected.kind === "polar" ? "Angle θ" : inspected.kind === "time-ode" ? "Time domain" : "X domain"}</dt>
         <dd>{inspected.domain.includeMin ? "[" : "("}{inspected.domain.min}, {inspected.domain.max}{inspected.domain.includeMax ? "]" : ")"}</dd>
         {(selectedObject?.kind === "implicit" || selectedObject?.kind === "inequality" || selectedObject?.kind === "slope-field" || selectedObject?.kind === "phase-portrait") && <><dt>Y domain</dt>
           <dd>{selectedObject.yDomain.min}, {selectedObject.yDomain.max}</dd></>}
@@ -1030,6 +1031,20 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               {" "}{(selectedSeries.artifact as Graph2DTrajectoryArtifact).rejectedSteps} rejected · local tolerance 10⁻⁶</dd>
           </>}
         </>}
+        {selectedObject?.kind === "time-ode" && <>
+          <dt>Equation</dt><dd>x′ = {selectedObject.expression.source}</dd>
+          <dt>Axes</dt><dd>Horizontal: time t; vertical: state x. Linear scales only.</dd>
+          <dt>State bounds</dt><dd>{selectedObject.stateDomain.min}, {selectedObject.stateDomain.max}</dd>
+          <dt>Initial value</dt><dd>x({selectedObject.seed.t}) = {selectedObject.seed.x}</dd>
+          {selectedSeries?.artifact && "kind" in selectedSeries.artifact && selectedSeries.artifact.kind === "time-ode" && (() => {
+            const ode = selectedSeries.artifact as Graph2DTimeOdeArtifact;
+            return <><dt>Integration</dt><dd data-testid="graph2d-time-ode-stops">
+              {ode.backward && ode.forward ? <>Backward: {ode.backward.stop} at ({ode.backward.last.t.toPrecision(6)}, {ode.backward.last.x.toPrecision(6)}) · {ode.backward.acceptedSteps} accepted, {ode.backward.rejectedSteps} rejected;
+                {" "}forward: {ode.forward.stop} at ({ode.forward.last.t.toPrecision(6)}, {ode.forward.last.x.toPrecision(6)}) · {ode.forward.acceptedSteps} accepted, {ode.forward.rejectedSteps} rejected.</> :
+                "Unavailable on logarithmic axes."}</dd>
+              <dt>Method</dt><dd>Adaptive RK4 step doubling, local tolerance 10⁻⁶. Paths are numerical approximations.</dd></>;
+          })()}
+        </>}
         <dt>Style</dt><dd><span className="graph2d-inspector-swatch" style={{ background: inspected.style.color }} />
           {inspected.style.lineStyle}, {inspected.style.lineWidth} px · {inspected.style.visible ? "visible" : "hidden"}</dd>
         <dt>Probe</dt><dd>{inspected.probe ? <span data-testid="graph2d-probe-coordinates">
@@ -1047,6 +1062,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             `${inspected.sampling.method === "bounded-direction-grid" ? "Bounded direction grid" :
               inspected.sampling.method === "adaptive-initial-value-trajectory" ? "Adaptive initial-value trajectory" :
               inspected.sampling.method === "adaptive-phase-portrait" ? "Adaptive phase portrait" :
+              inspected.sampling.method === "adaptive-time-ode" ? "Adaptive time-dependent ODE" :
                 "Adaptive bounded polyline"} · ${inspected.sampling.status}`}</dd>
         {inspected.regionState && <><dt>Region</dt><dd data-testid="graph2d-region-status">{inspected.regionState}</dd></>}
         {inspected.pointState && <><dt>Table</dt><dd data-testid="graph2d-table-status">{inspected.pointState}</dd></>}

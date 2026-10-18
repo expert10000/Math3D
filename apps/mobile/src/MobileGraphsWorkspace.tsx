@@ -4,7 +4,7 @@ import { fitGraph2DViewport, panGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph
   graph2DSceneFitBounds, graph2DConstructionFitBounds,
   resolveGraph2DViewport, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, graph2DParameterSessionKey,
   previewGraph2DParameterValues, graph2DRegressionOverlaySeries, applyGraph2DAuthoring, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion,
-  type Graph2DPhasePortraitArtifact } from "@math3d/core";
+  type Graph2DPhasePortraitArtifact, type Graph2DTimeOdeArtifact } from "@math3d/core";
 import { createGraph2DSplineRegressionJob, createGraph2DPolynomialRegressionJob,
   type Graph2DSplineRegressionJob, type Graph2DPolynomialRegressionJob } from "@math3d/core";
 import { projectGraph2DConstrainedPoint, previewGraph2DConstrainedPoint, resolveGraph2DConstructions } from "@math3d/core";
@@ -185,6 +185,9 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const selectedPhase = series.find(item => item.objectId === document.selection.objectId &&
     "kind" in item.artifact && item.artifact.kind === "phase-portrait")?.artifact as Graph2DPhasePortraitArtifact | undefined;
   const selectedPhaseObject = document.source.objects.find(item => item.id === document.selection.objectId && item.kind === "phase-portrait");
+  const selectedTimeOde = series.find(item => item.objectId === document.selection.objectId &&
+    "kind" in item.artifact && item.artifact.kind === "time-ode")?.artifact as Graph2DTimeOdeArtifact | undefined;
+  const selectedTimeOdeObject = document.source.objects.find(item => item.id === document.selection.objectId && item.kind === "time-ode");
   const highlightedPhaseSeed = selectedPhaseObject?.kind === "phase-portrait" &&
     selectedPhaseSeed?.objectId === selectedPhaseObject.id ? selectedPhaseObject.seeds[selectedPhaseSeed.index] : null;
   const pointPreviewDocument = useMemo(() => {
@@ -560,6 +563,14 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
           <Text>Saved markers are source-linked. Numerical results are computed only when requested and keep their stated limits.</Text>
         </View>}
         {series.some((item) => !item.artifact.converged) && <Text style={s.readout}>Sampling budget reached; unresolved regions are not a proof of absence.</Text>}
+        {selectedTimeOdeObject?.kind === "time-ode" && <View accessibilityLabel="Time-dependent ODE integration status" testID="mobile-graph-time-ode-status">
+          <Text style={s.title}>x′ = {selectedTimeOdeObject.expression.source}; x({selectedTimeOdeObject.seed.t}) = {selectedTimeOdeObject.seed.x}</Text>
+          <Text>Time t is horizontal; state x is vertical. Numerical approximation on linear axes.</Text>
+          <Text>Time bounds {selectedTimeOdeObject.domain.min} to {selectedTimeOdeObject.domain.max}; state bounds {selectedTimeOdeObject.stateDomain.min} to {selectedTimeOdeObject.stateDomain.max}.</Text>
+          {selectedTimeOde?.backward && <Text>Backward: {selectedTimeOde.backward.stop}; last ({selectedTimeOde.backward.last.t}, {selectedTimeOde.backward.last.x}); {selectedTimeOde.backward.acceptedSteps} accepted, {selectedTimeOde.backward.rejectedSteps} rejected.</Text>}
+          {selectedTimeOde?.forward && <Text>Forward: {selectedTimeOde.forward.stop}; last ({selectedTimeOde.forward.last.t}, {selectedTimeOde.forward.last.x}); {selectedTimeOde.forward.acceptedSteps} accepted, {selectedTimeOde.forward.rejectedSteps} rejected.</Text>}
+          {selectedTimeOde && !selectedTimeOde.forward && <Text>Integration unavailable on logarithmic axes.</Text>}
+        </View>}
         {selectedPhase && <View accessibilityLabel="Phase portrait equilibrium analysis" testID="mobile-graph-phase-equilibria">
           <Text style={s.title}>Equilibrium scan · {selectedPhase.analysis.status}</Text>
           {selectedPhaseObject?.kind === "phase-portrait" && <>

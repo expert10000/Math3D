@@ -7,11 +7,11 @@ import { getGraph2DPresetCatalog, renderGraph2DPresetPreview, graph2DPresetPrevi
 import manifest from "../../../packages/core/fixtures/graph2d/gallery-previews.json";
 describe("reproducible static gallery previews", () => {
   it("matches every digest/asset and fits the shared budgets without executing content", () => {
-    expect(manifest.entries).toHaveLength(25); expect(manifest.compressedBytes).toBeLessThan(2*1024*1024);
+    expect(manifest.entries).toHaveLength(26); expect(manifest.compressedBytes).toBeLessThan(2*1024*1024);
     for (const preset of getGraph2DPresetCatalog().entries) {
       const preview = renderGraph2DPresetPreview(preset), entry = manifest.entries.find(e => e.id===preset.id)!;
       expect(preview.key).toBe(entry.key); expect(entry.presetDigest).toBe(preset.digest);
-      const sampleLimit=preset.template.source.objects.some(object=>object.kind==="phase-portrait")?2048:1024;
+      const sampleLimit=preset.template.source.objects.some(object=>object.kind==="phase-portrait" || object.kind==="time-ode")?2048:1024;
       expect(preview.samples).toBeLessThanOrEqual(sampleLimit);
       expect(preview.svg).not.toMatch(/NaN|Infinity|<script|onload=|foreignObject/);
       for (const [filename,hash] of [[entry.svg,entry.svgHash],[entry.png,entry.pngHash]]) {

@@ -46,7 +46,7 @@ describe("G2D38 native parameter ownership and deterministic desktop return", ()
     expect(graph).toEqual(committed); expect(committed.source.variables[0]).toEqual({ name: "a", value: -1.25, control: { min: -3, max: 3, step: .25, unit: "ratio" } });
     expect(adapter.undo()?.source.variables[0].value).toBe(2); expect(adapter.redo()?.source.variables[0].value).toBe(-1.25);
   });
-  it("preserves all seven kinds and immutable catalog templates when configuring controls", () => {
+  it("preserves all nine curated kinds and immutable catalog templates when configuring controls", () => {
     const kinds = new Set<string>();
     for (const preset of getGraph2DPresetCatalog().entries) {
       const before = structuralHash(preset.template), document = instantiateGraph2DPreset(preset, "native-controls").document;
@@ -57,7 +57,7 @@ describe("G2D38 native parameter ownership and deterministic desktop return", ()
       expect(result.source.objects).toEqual(document.source.objects); expect(result.requiredCapabilities).toContain("graph2d.parameters.v1");
       expect(structuralHash(preset.template)).toBe(before); result.source.objects.forEach(o => kinds.add(o.kind));
     }
-    expect(kinds.size).toBe(7); expect(mobileGraphPanelDestination("Parameters", false)).toBe("Parameters"); expect(mobileGraphPanelDestination("Parameters", true)).toBe("Parameters");
+    expect(kinds.size).toBe(9); expect(mobileGraphPanelDestination("Parameters", false)).toBe("Parameters"); expect(mobileGraphPanelDestination("Parameters", true)).toBe("Parameters");
   });
   it("native yielded frame export matches desktop direct export, with no source/history mutation", () => {
     const adapter = new Graph2DCommandAdapter(createEmptyGraph2DDocument("native-animation"));

@@ -8,6 +8,34 @@ const {importMobileGraph,readMobileGraph,updateStoredMobileGraph}=require(resolv
 const {serializeMobileProjectHandoff}=require(resolve("apps/mobile/src/models/mobileProjectTransfer.ts"));
 const {Graph2DCommandAdapter}=require(resolve("packages/kernel/src/graph2dCommandAdapter.ts"));
 
+test("GRA-11.8 authored and Gallery time-dependent ODEs expose two stop reasons", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page; await resetSurfaceAppState(page); await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    const functions = page.getByLabel("Graph functions");
+    await functions.getByRole("button", { name: "Add time-dependent ODE", exact: true }).click();
+    await functions.getByLabel("ODE initial time").fill("0.5");
+    await functions.getByLabel("ODE initial value").fill("2");
+    await functions.getByRole("button", { name: "Save time-dependent ODE", exact: true }).click();
+    await expect(functions.getByText("x′ = t-x; x(0.5) = 2")).toBeVisible();
+    await expect(page.getByTestId("graph2d-time-ode-stops").first()).toContainText("Backward:");
+    await expect(page.locator("[data-graph2d-time-ode-seed]")).toHaveCount(1);
+    await functions.getByRole("button", { name: "Edit Driven trajectory", exact: true }).click();
+    await functions.getByLabel("ODE initial value").fill("1");
+    await functions.getByRole("button", { name: "Save time-dependent ODE", exact: true }).click();
+    await expect(functions.getByText("x′ = t-x; x(0.5) = 1")).toBeVisible();
+    await page.getByTestId("graph-gallery-open").click();
+    const gallery = page.getByTestId("graph-gallery");
+    await gallery.getByLabel("Search graphs").fill("Driven trajectory");
+    await gallery.getByRole("button", { name: "Open Driven trajectory", exact: true }).click();
+    await expect(page.getByTestId("graph2d-time-ode-stops").first()).toContainText("Backward: state-boundary");
+    await expect(page.getByTestId("graph2d-time-ode-stops").first()).toContainText("forward: time-boundary");
+    await expect(page.locator("[data-graph2d-time-direction=backward]")).toHaveCount(1);
+    await expect(page.locator("[data-graph2d-time-direction=forward]")).toHaveCount(1);
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("GRA-11.7 Gallery orbit explorer manages each initial point", async () => {
   const app = await launchSurfaceApp();
   try {
@@ -48,7 +76,7 @@ test("GGL04 desktop browse/preview creates independent editable scenes and resum
     await expect(page.getByLabel("Empty graph scene")).toContainText("0 graph objects");
     await page.getByTestId("graph-gallery-open").click();
     await gallery.getByRole("button",{name:"All scenes",exact:true}).click();
-    await expect(gallery.getByRole("status")).toContainText("25 scenes");
+    await expect(gallery.getByRole("status")).toContainText("26 scenes");
     await gallery.getByLabel("Search graphs").fill("slope");
     await gallery.getByRole("button",{name:"Open Two slopes",exact:true}).click();
     await expect(gallery).not.toBeVisible();

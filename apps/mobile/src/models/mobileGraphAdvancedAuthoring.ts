@@ -16,13 +16,14 @@ export const mobileGraphKindEditor = (document: Graph2DDocument, kind: Graph2DOb
   if (objectId && (!object || object.kind !== kind || !style)) throw new TypeError("Unsupported graph editor.");
   const draft: MobileGraphAdvancedEditor["draft"] = { ...mobileGraphFunctionDraft(document, null), label: `${kind} ${document.source.objects.length + 1}`,
     expression: kind === "parametric" ? "cos(t)" : kind === "polar" ? "2*cos(3*theta)" :
-      kind === "slope-field" ? "x-y" : kind === "phase-portrait" ? "y" : "x^2+y^2-4", second: kind === "phase-portrait" ? "-x" : "sin(t)",
+      kind === "slope-field" ? "x-y" : kind === "phase-portrait" ? "y" : kind === "time-ode" ? "t-x" : "x^2+y^2-4", second: kind === "phase-portrait" ? "-x" : "sin(t)",
     yMin: "-10", yMax: "10", operator: "all", clauses: [{ expression: "x^2+y^2-4", comparator: "<=" }],
     pieces: [{ expression: "-x", min: "-10", max: "0", includeMin: true, includeMax: false },
       { expression: "x", min: "0", max: "10", includeMin: true, includeMax: true }],
     data: "x,y\n-2,4\n-1,1\n0,0\n1,1\n2,4", mode: "points", sourceFieldId, initialX: "0", initialY: "0",
     timeSpan: String(2 * Math.PI), seedsText: "1,0" };
   if (kind === "parametric" || kind === "polar") { draft.min = "0"; draft.max = String(2 * Math.PI); }
+  if (kind === "time-ode") { draft.min = "-2"; draft.max = "4"; draft.yMin = "-1"; draft.yMax = "8"; draft.initialY = "1"; }
   if (object && style) {
     Object.assign(draft, { label: object.label, color: style.color, width: String(style.lineWidth), lineStyle: style.lineStyle, visible: style.visible });
     if ("domain" in object) Object.assign(draft, { min: String(object.domain.min), max: String(object.domain.max), includeMin: object.domain.includeMin, includeMax: object.domain.includeMax });
@@ -38,6 +39,9 @@ export const mobileGraphKindEditor = (document: Graph2DDocument, kind: Graph2DOb
     if (object.kind === "phase-portrait") { draft.expression = object.xDerivative.source; draft.second = object.yDerivative.source;
       draft.yMin = String(object.yDomain.min); draft.yMax = String(object.yDomain.max);
       draft.timeSpan = String(object.timeSpan); draft.seedsText = object.seeds.map(seed => `${seed.x},${seed.y}`).join("\n"); }
+    if (object.kind === "time-ode") { draft.expression = object.expression.source;
+      draft.yMin = String(object.stateDomain.min); draft.yMax = String(object.stateDomain.max);
+      draft.initialX = String(object.seed.t); draft.initialY = String(object.seed.x); }
   }
   return { objectId, kind, draft };
 };
@@ -55,6 +59,10 @@ export const mobileGraphKindAction = (editor: MobileGraphAdvancedEditor, tables:
     case "slope-field": return action("-slope-field", { ...base, expression: d.expression.trim(), yDomain: { min: number(d.yMin), max: number(d.yMax), includeMin: true, includeMax: true } });
     case "trajectory": return action("-trajectory", { label: d.label.trim(), sourceFieldId: d.sourceFieldId,
       seed: { x: number(d.initialX), y: number(d.initialY) }, style: base.style });
+    case "time-ode": return action("-time-ode", { ...base, expression: d.expression.trim(),
+      domain: { ...domain, includeMin: true, includeMax: true },
+      stateDomain: { min: number(d.yMin), max: number(d.yMax), includeMin: true, includeMax: true },
+      seed: { t: number(d.initialX), x: number(d.initialY) } });
     case "phase-portrait": {
       const lines = d.seedsText.trim() ? d.seedsText.trim().split(/\r?\n/) : [];
       if (lines.length > 8) throw new TypeError("Enter at most eight initial points, one x,y pair per line.");

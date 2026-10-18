@@ -18,7 +18,7 @@ export type Graph2DInspectorSummary = Readonly<{
   probeMethod: "direct-expression-floating-point" | "sampled-contour" | "table-row" | "unavailable";
   sampling: Readonly<{
     status: "converged" | "incomplete" | "unavailable";
-    method: "adaptive-bounded-polyline" | "bounded-direction-grid" | "adaptive-initial-value-trajectory" | "adaptive-phase-portrait";
+    method: "adaptive-bounded-polyline" | "bounded-direction-grid" | "adaptive-initial-value-trajectory" | "adaptive-phase-portrait" | "adaptive-time-ode";
     samplesEvaluated: number | null;
     segmentCount: number | null;
     policy: Graph2DDocument["display"]["sampling"];
@@ -58,6 +58,7 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
           object.kind === "slope-field" ? `dy/dx = ${object.expression.source}` :
           object.kind === "trajectory" ? `Trajectory from ${object.sourceFieldId}, y(${object.seed.x}) = ${object.seed.y}` :
           object.kind === "phase-portrait" ? `x' = ${object.xDerivative.source}, y' = ${object.yDerivative.source}` :
+          object.kind === "time-ode" ? `x′ = ${object.expression.source}, x(${object.seed.t}) = ${object.seed.x}` :
           object.kind === "inequality" ? object.clauses.map((clause) =>
             `${clause.source} ${clause.comparator} 0`).join(object.operator === "all" ? " AND " : " OR ") :
             object.kind === "point-series" ? `${object.table.rowCount} rows · ${object.mode} · missing y: gap` :
@@ -79,7 +80,8 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
       status: !visibleArtifact ? "unavailable" : visibleArtifact.converged ? "converged" : "incomplete",
       method: object.kind === "slope-field" ? "bounded-direction-grid" :
         object.kind === "trajectory" ? "adaptive-initial-value-trajectory" :
-          object.kind === "phase-portrait" ? "adaptive-phase-portrait" : "adaptive-bounded-polyline",
+          object.kind === "phase-portrait" ? "adaptive-phase-portrait" :
+          object.kind === "time-ode" ? "adaptive-time-ode" : "adaptive-bounded-polyline",
       samplesEvaluated: visibleArtifact?.samplesEvaluated ?? null,
       segmentCount: visibleArtifact?.segments.length ?? null, policy: document.display.sampling, diagnostics,
       suspectedJumpCount: diagnostics.find((entry) => entry.code === "suspected-jump")?.count ?? 0,
@@ -93,6 +95,7 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
             object.kind === "implicit" ? object.expression.ast.version :
               object.kind === "slope-field" ? object.expression.ast.version :
               object.kind === "phase-portrait" ? object.xDerivative.ast.version :
+              object.kind === "time-ode" ? object.expression.ast.version :
               object.kind === "inequality" ? object.clauses[0]!.ast.version :
                 object.kind === "piecewise" ? object.pieces[0]!.expression.ast.version : null,
       samplerVersion: visibleArtifact?.samplerVersion ?? null },

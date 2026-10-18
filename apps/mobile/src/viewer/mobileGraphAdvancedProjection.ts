@@ -1,5 +1,5 @@
 import { graph2DWorldToScreen, graph2DScreenToWorld, type Graph2DRegionArtifact, type Graph2DPointSeriesArtifact,
-  type Graph2DSampledSeries, type Graph2DTrajectoryArtifact, type Graph2DPhasePortraitArtifact,
+  type Graph2DSampledSeries, type Graph2DTrajectoryArtifact, type Graph2DPhasePortraitArtifact, type Graph2DTimeOdeArtifact,
   type Graph2DViewport, type Graph2DScreenSize } from "@math3d/core";
 import { mobileGraphFillRect, type MobileGraphRect } from "./mobileGraphOverlays";
 
@@ -18,7 +18,12 @@ export const mobileGraphAdvancedGeometry = (series: readonly Graph2DSampledSerie
       }
       for (const boundary of artifact.boundaries) boundaries.push({ ...item, style: { ...item.style, lineStyle: boundary.strict ? "dashed" : "solid" }, artifact: { ...artifact, segments: boundary.segments } });
     } else {
-      boundaries.push(item);
+      if ("kind" in item.artifact && item.artifact.kind === "time-ode") {
+        const ode = item.artifact as Graph2DTimeOdeArtifact;
+        for (const [index, segment] of ode.segments.entries()) boundaries.push({ ...item,
+          style: { ...item.style, lineStyle: index === 0 && ode.backward?.acceptedSteps ? "dashed" : "solid" },
+          artifact: { ...ode, segments: [segment] } });
+      } else boundaries.push(item);
       if ("kind" in item.artifact && item.artifact.kind === "phase-portrait") {
         const phase = item.artifact as Graph2DPhasePortraitArtifact;
         const arrows = phase.fieldSegments.flatMap(segment => {
@@ -53,6 +58,13 @@ export const mobileGraphAdvancedGeometry = (series: readonly Graph2DSampledSerie
       if ("kind" in item.artifact && item.artifact.kind === "trajectory") {
         const seed = (item.artifact as Graph2DTrajectoryArtifact).seed;
         const pixel = graph2DWorldToScreen(viewport, size, seed);
+        if (pixel.x >= 0 && pixel.x <= size.width && pixel.y >= 0 && pixel.y <= size.height) {
+          pointsSeen++; if (points.length < markerLimit) points.push({ ...pixel, color: item.style.color });
+        }
+      }
+      if ("kind" in item.artifact && item.artifact.kind === "time-ode") {
+        const seed = (item.artifact as Graph2DTimeOdeArtifact).seed;
+        const pixel = graph2DWorldToScreen(viewport, size, { x: seed.t, y: seed.x });
         if (pixel.x >= 0 && pixel.x <= size.width && pixel.y >= 0 && pixel.y <= size.height) {
           pointsSeen++; if (points.length < markerLimit) points.push({ ...pixel, color: item.style.color });
         }
