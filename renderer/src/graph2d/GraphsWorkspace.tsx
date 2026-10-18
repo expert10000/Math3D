@@ -17,6 +17,7 @@ import {
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
   type Graph2DScientificDatasetPreview,
   type Graph2DTrajectoryArtifact,
+  type Graph2DPhasePortraitArtifact,
   type Graph2DConstructionAction,
   graph2DConstructionFromCandidate, graph2DLineConstructionActionsFromProbe, GRAPH2D_MAX_CONSTRUCTIONS,
   type Graph2DIntegralMode,
@@ -893,8 +894,18 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         </>}
         <dt>{inspected.kind === "parametric" ? "Parameter t" : inspected.kind === "polar" ? "Angle θ" : "X domain"}</dt>
         <dd>{inspected.domain.includeMin ? "[" : "("}{inspected.domain.min}, {inspected.domain.max}{inspected.domain.includeMax ? "]" : ")"}</dd>
-        {(selectedObject?.kind === "implicit" || selectedObject?.kind === "inequality" || selectedObject?.kind === "slope-field") && <><dt>Y domain</dt>
+        {(selectedObject?.kind === "implicit" || selectedObject?.kind === "inequality" || selectedObject?.kind === "slope-field" || selectedObject?.kind === "phase-portrait") && <><dt>Y domain</dt>
           <dd>{selectedObject.yDomain.min}, {selectedObject.yDomain.max}</dd></>}
+        {selectedObject?.kind === "phase-portrait" && <>
+          <dt>System</dt><dd>x′ = {selectedObject.xDerivative.source}; y′ = {selectedObject.yDerivative.source}</dd>
+          <dt>Time horizon</dt><dd>±{selectedObject.timeSpan}</dd>
+          <dt>Initial points</dt><dd>{selectedObject.seeds.map(seed => `(${seed.x}, ${seed.y})`).join("; ")}</dd>
+          {selectedSeries?.artifact && "kind" in selectedSeries.artifact && selectedSeries.artifact.kind === "phase-portrait" && <>
+            <dt>Orbits</dt><dd data-testid="graph2d-phase-orbits">{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).orbits.map((orbit, index) =>
+              <span key={index}>{index + 1}: backward {orbit.backward}, forward {orbit.forward}; {orbit.acceptedSteps} accepted, {orbit.rejectedSteps} rejected<br /></span>)}</dd>
+            <dt>Field</dt><dd>{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).fieldSegments.length} direction arrows · adaptive RK4, local tolerance 10⁻⁶</dd>
+          </>}
+        </>}
         {selectedObject?.kind === "trajectory" && <>
           <dt>Linked field</dt><dd>{document.source.objects.find(object => object.id === selectedObject.sourceFieldId)?.label ?? selectedObject.sourceFieldId}</dd>
           <dt>Initial value</dt><dd>y({selectedObject.seed.x}) = {selectedObject.seed.y}</dd>
@@ -921,6 +932,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           sampling.retained ? "Updating — previous observation" : "Updating — no observation yet" :
             `${inspected.sampling.method === "bounded-direction-grid" ? "Bounded direction grid" :
               inspected.sampling.method === "adaptive-initial-value-trajectory" ? "Adaptive initial-value trajectory" :
+              inspected.sampling.method === "adaptive-phase-portrait" ? "Adaptive phase portrait" :
                 "Adaptive bounded polyline"} · ${inspected.sampling.status}`}</dd>
         {inspected.regionState && <><dt>Region</dt><dd data-testid="graph2d-region-status">{inspected.regionState}</dd></>}
         {inspected.pointState && <><dt>Table</dt><dd data-testid="graph2d-table-status">{inspected.pointState}</dd></>}

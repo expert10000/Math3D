@@ -37,6 +37,12 @@ export type Graph2DTrajectoryDraft = Readonly<{
   label: string; sourceFieldId: string; seed: Readonly<{ x: number; y: number }>;
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
 }>;
+export type Graph2DPhasePortraitDraft = Readonly<{
+  label: string; xDerivative: string; yDerivative: string;
+  domain: Graph2DDomain; yDomain: Graph2DDomain; timeSpan: number;
+  seeds: readonly Readonly<{ x: number; y: number }>[];
+  style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
+}>;
 export type Graph2DInequalityDraft = Readonly<{
   label: string;
   clauses: readonly Readonly<{ expression: string; comparator: "<" | "<=" | ">" | ">=" }>[];
@@ -72,6 +78,8 @@ export type Graph2DAuthoringAction =
   | Readonly<{ type: "edit-slope-field"; objectId: string; draft: Graph2DSlopeFieldDraft }>
   | Readonly<{ type: "create-trajectory"; draft: Graph2DTrajectoryDraft }>
   | Readonly<{ type: "edit-trajectory"; objectId: string; draft: Graph2DTrajectoryDraft }>
+  | Readonly<{ type: "create-phase-portrait"; draft: Graph2DPhasePortraitDraft }>
+  | Readonly<{ type: "edit-phase-portrait"; objectId: string; draft: Graph2DPhasePortraitDraft }>
   | Readonly<{ type: "create-inequality"; draft: Graph2DInequalityDraft }>
   | Readonly<{ type: "edit-inequality"; objectId: string; draft: Graph2DInequalityDraft }>
   | Readonly<{ type: "create-point-series"; draft: Graph2DPointSeriesDraft }>
@@ -161,6 +169,18 @@ export const validateGraph2DTrajectoryDraft = (draft: Graph2DTrajectoryDraft, do
       draft.seed.y < field.yDomain.min || draft.seed.y > field.yDomain.max))
     errors.push("Initial point must be finite and inside the slope field bounds.");
   return errors;
+};
+export const validateGraph2DPhasePortraitDraft = (draft: Graph2DPhasePortraitDraft,
+  variables: readonly string[] = ["x", "y"]): readonly string[] => {
+  const errors = [...validateGraph2DImplicitDraft({ ...draft, expression: draft.xDerivative }, variables),
+    ...validateGraph2DImplicitDraft({ ...draft, expression: draft.yDerivative }, variables)];
+  if (!Number.isFinite(draft.timeSpan) || draft.timeSpan <= 0 || draft.timeSpan > 100)
+    errors.push("Time horizon must be greater than 0 and at most 100.");
+  if (draft.seeds.length < 1 || draft.seeds.length > 8) errors.push("Use 1–8 initial points.");
+  for (const seed of draft.seeds) if (!Number.isFinite(seed.x) || !Number.isFinite(seed.y) ||
+    seed.x < draft.domain.min || seed.x > draft.domain.max || seed.y < draft.yDomain.min || seed.y > draft.yDomain.max)
+    errors.push("Every initial point must be finite and inside the phase domain.");
+  return [...new Set(errors)];
 };
 export const validateGraph2DInequalityDraft = (draft: Graph2DInequalityDraft,
   variables: readonly string[] = ["x", "y"]): readonly string[] => {
@@ -346,6 +366,33 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       sourceFieldId: action.draft.sourceFieldId, seed: action.draft.seed };
     const display = { objectId: id, ...action.draft.style };
     if (action.type === "create-trajectory") { objects.push(object); displays.push(display); }
+    else { objects[index] = object; displays[index] = display; }
+    selection = { objectId: id, probe: null };
+  } else if (action.type === "create-phase-portrait" || action.type === "edit-phase-portrait") {
+    if (action.type === "edit-phase-portrait" && objects[index]?.kind !== "phase-portrait")
+      throw new TypeError("Selected object is not a phase portrait.");
+    if (document.source.variables.some(entry => entry.name === "y"))
+      throw new TypeError("The coordinate name y conflicts with a document variable.");
+    const names = ["x", "y", ...document.source.variables.map(entry => entry.name)];
+    const errors = validateGraph2DPhasePortraitDraft(action.draft, names);
+    if (errors.length) throw new TypeError(errors.join(" "));
+    const parsedX = parseGraph2DExpression(action.draft.xDerivative, names);
+    const parsedY = parseGraph2DExpression(action.draft.yDerivative, names);
+    if (!parsedX.ok || !parsedY.ok) throw new TypeError("Phase equations are invalid.");
+    if (action.type === "create-phase-portrait" && objects.length >= GRAPH2D_MAX_OBJECTS)
+      throw new TypeError("Function limit reached.");
+    let id = action.type === "edit-phase-portrait" ? action.objectId : "phase_portrait_1";
+    if (action.type === "create-phase-portrait") {
+      let serial = 1;
+      while (objects.some(entry => entry.id === id)) id = "phase_portrait_" + ++serial;
+    }
+    const object = { id, kind: "phase-portrait" as const, label: action.draft.label,
+      xDerivative: { source: action.draft.xDerivative, variable: "xy" as const, ast: parsedX.ast },
+      yDerivative: { source: action.draft.yDerivative, variable: "xy" as const, ast: parsedY.ast },
+      domain: action.draft.domain, yDomain: action.draft.yDomain, timeSpan: action.draft.timeSpan,
+      seeds: action.draft.seeds };
+    const display = { objectId: id, ...action.draft.style };
+    if (action.type === "create-phase-portrait") { objects.push(object); displays.push(display); }
     else { objects[index] = object; displays[index] = display; }
     selection = { objectId: id, probe: null };
   } else if (action.type === "create-inequality" || action.type === "edit-inequality") {

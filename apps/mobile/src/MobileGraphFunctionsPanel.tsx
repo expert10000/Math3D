@@ -39,7 +39,8 @@ export const MobileGraphFunctionsPanel = ({ document, editor, onEditor, onApply,
     </View>}
     {document.source.objects.map((object, index) => <View style={s.card} key={object.id}>
       {button(`Select ${object.label}`, () => onSelect(object.id))}
-      <Text>{object.kind === "explicit-cartesian" ? `y = ${object.expression.source}` : object.kind}</Text>
+      <Text>{object.kind === "explicit-cartesian" ? `y = ${object.expression.source}` :
+        object.kind === "phase-portrait" ? `x′ = ${object.xDerivative.source}; y′ = ${object.yDerivative.source} · ${object.seeds.length} initial points` : object.kind}</Text>
       <View style={s.row}>
         {object.kind === "slope-field" && button(`Add trajectory for ${object.label}`, () => {
           onEditor(null); onAdvanced(mobileGraphKindEditor(document, "trajectory", null, object.id));

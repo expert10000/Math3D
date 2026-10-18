@@ -9,6 +9,7 @@ import { sampleGraph2DPointSeries, type Graph2DPointRow } from "./graph2dPointSe
 import { sampleGraph2DPiecewise } from "./graph2dPiecewise";
 import { sampleGraph2DSlopeField } from "./graph2dSlopeField";
 import { sampleGraph2DTrajectory } from "./graph2dTrajectory";
+import { sampleGraph2DPhasePortrait } from "./graph2dPhasePortrait";
 import { resolveGraph2DViewport } from "./graph2dViewport";
 import type { Graph2DSlopeFieldObject } from "./graph2dDocument";
 
@@ -57,6 +58,8 @@ export const sampleGraph2DScene = (request: Graph2DSceneSamplingRequest): readon
       object.kind === "trajectory" ? sampleGraph2DTrajectory({ ...common, object,
         field: document.source.objects.find(entry => entry.id === object.sourceFieldId && entry.kind === "slope-field") as
           Graph2DSlopeFieldObject,
+        maxSamples: common.policy.maxSamples }) :
+      object.kind === "phase-portrait" ? sampleGraph2DPhasePortrait({ ...common, object,
         maxSamples: common.policy.maxSamples }) :
       sampleGraph2DPointSeries(object, request.pointTables?.[object.table.id] ?? null, common.policy.maxSamples);
     remaining -= artifact.samplesEvaluated;

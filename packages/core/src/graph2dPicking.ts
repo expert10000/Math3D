@@ -31,7 +31,7 @@ export const pickGraph2DProbe = (input: Readonly<{
     distancePx: number; order: number }[] = [];
   input.document.source.objects.forEach((object, order) => {
     if (!input.document.display.objects[order]?.visible) return;
-    if (object.kind === "slope-field" || object.kind === "trajectory") return; // Trajectory samples are approximate, not exact solution probes.
+    if (object.kind === "slope-field" || object.kind === "trajectory" || object.kind === "phase-portrait") return;
     const artifact = artifacts.get(object.id);
     if (!artifact) return;
     if (object.kind === "point-series") {
@@ -172,7 +172,7 @@ export const selectionForGraph2DObject = (
 ): Graph2DSelection => {
   const object = document.source.objects.find((entry) => entry.id === objectId);
   if (!object) return empty;
-  if (object.kind === "slope-field" || object.kind === "trajectory") return { objectId, probe: null };
+  if (object.kind === "slope-field" || object.kind === "trajectory" || object.kind === "phase-portrait") return { objectId, probe: null };
   const artifact = series.find((entry) => entry.objectId === objectId)?.artifact;
   const segments = artifact?.segments.filter((entry) => entry.points.length > 0) ?? [];
   if (!segments.length) return { objectId, probe: null };

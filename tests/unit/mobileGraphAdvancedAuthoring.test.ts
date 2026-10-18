@@ -9,6 +9,33 @@ import { mobileGraphAdvancedGeometry } from "../../apps/mobile/src/viewer/mobile
 import { projectMobileGraphLines } from "../../apps/mobile/src/viewer/mobileGraphProjection";
 
 describe("MOB-G09 native kind flows", () => {
+  it("authors a planar phase portrait with bounded arrows, saved seeds, and one undoable edit", () => {
+    const adapter = new Graph2DCommandAdapter(createMobileGraph("Phase", false, "mobile-phase"));
+    const tables = new Graph2DPointTableStore();
+    const editor = mobileGraphKindEditor(adapter.document(), "phase-portrait");
+    editor.draft.seedsText = "1,0\n2,0";
+    const create = mobileGraphKindAction(editor, tables);
+    adapter.commitScene(applyMobileGraphAuthoring(adapter.document(), create), create.type);
+    const created = adapter.document();
+    const object = created.source.objects[0];
+    expect(object?.kind).toBe("phase-portrait");
+    const edit = mobileGraphKindEditor(created, "phase-portrait", object!.id);
+    expect(edit.draft.seedsText).toBe("1,0\n2,0");
+    edit.draft.second = "x";
+    const change = mobileGraphKindAction(edit, tables);
+    adapter.commitScene(applyMobileGraphAuthoring(created, change), change.type);
+    expect(adapter.undo()?.source).toEqual(created.source);
+    adapter.redo();
+    const document = parseGraph2DDocument(serializeGraph2DDocument(adapter.document()));
+    const size = { width: 320, height: 320 };
+    const series = sampleGraph2DScene({ document, viewport: document.display.viewport, ...size, interaction: false });
+    const geometry = mobileGraphAdvancedGeometry(series, document.display.viewport, size);
+    expect(geometry.points).toHaveLength(2);
+    expect(geometry.boundaries).toHaveLength(2); // Orbits and direction-arrow geometry.
+    expect(projectMobileGraphLines(geometry.boundaries, document.display.viewport, size).length).toBeGreaterThan(20);
+    edit.draft.seedsText = "1,not-a-number";
+    expect(() => applyMobileGraphAuthoring(created, mobileGraphKindAction(edit, tables))).toThrow();
+  });
   it("authors and edits a linked initial-value trajectory with one undo step per commit", () => {
     const adapter = new Graph2DCommandAdapter(createMobileGraph("ODE", false, "mobile-trajectory"));
     const tables = new Graph2DPointTableStore();

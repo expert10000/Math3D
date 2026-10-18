@@ -26,7 +26,7 @@ describe("curated seven-kind catalog", () => {
     expect(catalog.entries.filter(p => p.template.source.objects.length > 1).length).toBeGreaterThanOrEqual(6);
     // The curated gallery covers seven standalone graph kinds; linked ODE objects are authored in the workspace.
     expect([...new Set(catalog.entries.flatMap(p => p.template.source.objects.map(o => o.kind)))].sort())
-      .toEqual(GRAPH2D_OBJECT_KINDS.filter(kind => kind !== "slope-field" && kind !== "trajectory").slice().sort());
+      .toEqual(GRAPH2D_OBJECT_KINDS.filter(kind => kind !== "slope-field" && kind !== "trajectory" && kind !== "phase-portrait").slice().sort());
   });
   it("opens the 10,000-row regression preset with the full checked table and a bounded display", () => {
     const preset = getGraph2DPresetCatalog().get("regression-10000")!;
