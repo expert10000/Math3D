@@ -36,6 +36,10 @@ describe("MOB-G09 native kind flows", () => {
     expect(projectMobileGraphLines(geometry.boundaries, document.display.viewport, size).length).toBeGreaterThan(20);
     edit.draft.seedsText = "1,not-a-number";
     expect(() => applyMobileGraphAuthoring(created, mobileGraphKindAction(edit, tables))).toThrow();
+    edit.draft.seedsText = "";
+    const empty = mobileGraphKindAction(edit, tables);
+    const cleared = applyMobileGraphAuthoring(created, empty);
+    expect(cleared.source.objects[0]?.kind === "phase-portrait" && cleared.source.objects[0].seeds).toEqual([]);
   });
   it("authors and edits a linked initial-value trajectory with one undo step per commit", () => {
     const adapter = new Graph2DCommandAdapter(createMobileGraph("ODE", false, "mobile-trajectory"));

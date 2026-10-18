@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocument,
   inspectGraph2DCompatibility, normalizeGraph2DDocument, sampleGraph2DPhasePortrait,
   sampleGraph2DScene, projectGraph2DPublicationGeometry, selectionForGraph2DObject,
-  graph2DPhaseSeedAtScreen, graph2DPhaseSeedAction, previewGraph2DPhaseSeed, graph2DWorldToScreen,
+  graph2DPhaseSeedAtScreen, graph2DPhaseSeedAction, graph2DPhaseSeedRemovalAction, previewGraph2DPhaseSeed, graph2DWorldToScreen,
   type Graph2DPhasePortraitDraft } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 
@@ -69,6 +69,28 @@ describe("GRA-11.6 interactive initial points", () => {
     const full = create({ ...draft(), seeds: Array.from({ length: 8 }, (_, index) => ({ x: index / 4, y: 0 })) });
     expect(() => graph2DPhaseSeedAction(full, "phase_portrait_1", null, { x: 0, y: 0 }))
       .toThrow(/at most eight/);
+  });
+
+  it("removes and clears seeds in one undoable edit while retaining the system", () => {
+    const adapter = new Graph2DCommandAdapter(create({ ...draft(), seeds: [{ x: 1, y: 0 }, { x: 0, y: 2 }] }));
+    const original = adapter.document();
+    adapter.commitScene(applyGraph2DAuthoring(original,
+      graph2DPhaseSeedRemovalAction(original, "phase_portrait_1", 0)), "edit-phase-portrait");
+    expect(adapter.document().source.objects[0]?.kind === "phase-portrait" &&
+      adapter.document().source.objects[0].seeds).toEqual([{ x: 0, y: 2 }]);
+    adapter.undo();
+    expect(adapter.document().source).toEqual(original.source);
+    adapter.commitScene(applyGraph2DAuthoring(adapter.document(),
+      graph2DPhaseSeedRemovalAction(adapter.document(), "phase_portrait_1", null)), "edit-phase-portrait");
+    const cleared = adapter.document();
+    const object = cleared.source.objects[0];
+    expect(object?.kind === "phase-portrait" && object.seeds).toEqual([]);
+    expect(object?.kind === "phase-portrait" && object.xDerivative.source).toBe("y");
+    expect(normalizeGraph2DDocument(cleared).ok).toBe(true);
+    expect(solve(cleared).orbits).toHaveLength(0);
+    adapter.undo();
+    expect(adapter.document().source).toEqual(original.source);
+    expect(() => graph2DPhaseSeedRemovalAction(original, "phase_portrait_1", 4)).toThrow(/unavailable/);
   });
 });
 describe("GRA-11.3 planar phase portraits", () => {

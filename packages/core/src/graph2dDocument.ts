@@ -272,7 +272,7 @@ const validPhasePortraitObject = (value: unknown, variables: readonly string[]):
   objectId(value.id) && value.kind === "phase-portrait" && bounded(value.label, 160) &&
   validExpression(value.xDerivative, variables, "xy") && validExpression(value.yDerivative, variables, "xy") &&
   validDomain(value.domain) && validDomain(value.yDomain) && finite(value.timeSpan) && value.timeSpan > 0 && value.timeSpan <= 100 &&
-  Array.isArray(value.seeds) && value.seeds.length >= 1 && value.seeds.length <= 8 &&
+  Array.isArray(value.seeds) && value.seeds.length <= 8 &&
   value.seeds.every((seed: unknown) => record(seed) && exact(seed, ["x", "y"]) && finite(seed.x) && finite(seed.y) &&
     seed.x >= (value.domain as Graph2DDomain).min && seed.x <= (value.domain as Graph2DDomain).max &&
     seed.y >= (value.yDomain as Graph2DDomain).min && seed.y <= (value.yDomain as Graph2DDomain).max);

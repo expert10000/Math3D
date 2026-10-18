@@ -459,8 +459,9 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
           onChange={event => setPhaseDraft({ ...phaseDraft, seeds: phaseDraft.seeds.map((entry, i) => i === index ? { ...entry, x: Number(event.target.value) } : entry) })} /></label>
         <label>y <input aria-label={`Phase seed ${index + 1} y`} type="number" step="any" value={seed.y}
           onChange={event => setPhaseDraft({ ...phaseDraft, seeds: phaseDraft.seeds.map((entry, i) => i === index ? { ...entry, y: Number(event.target.value) } : entry) })} /></label>
-        <button type="button" disabled={phaseDraft.seeds.length === 1} onClick={() => setPhaseDraft({ ...phaseDraft, seeds: phaseDraft.seeds.filter((_, i) => i !== index) })}>Remove seed {index + 1}</button>
+        <button type="button" onClick={() => setPhaseDraft({ ...phaseDraft, seeds: phaseDraft.seeds.filter((_, i) => i !== index) })}>Remove seed {index + 1}</button>
       </div>)}
+      {phaseDraft.seeds.length === 0 && <p>No initial points. Add one here or place it on the graph after saving.</p>}
       <button type="button" disabled={phaseDraft.seeds.length >= 8} onClick={() => setPhaseDraft({ ...phaseDraft, seeds: [...phaseDraft.seeds, { x: 1, y: 0 }] })}>Add initial point</button>
       <label>Color <input aria-label="Phase portrait color" type="color" value={phaseDraft.style.color}
         onChange={event => setPhaseDraft({ ...phaseDraft, style: { ...phaseDraft.style, color: event.target.value } })} /></label>

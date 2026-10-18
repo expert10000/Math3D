@@ -15,9 +15,9 @@ const polar = (label: string, rExpression: string, max = 2 * Math.PI): Graph2DAu
 const implicit = (label: string, expression: string): Graph2DAuthoringAction =>
   ({ type: "create-implicit", draft: { label, expression, domain: domain(-2.5, 2.5), yDomain: domain(-2.5, 2.5), style } });
 const phase = (label: string, xDerivative: string, yDerivative: string, bounds: number,
-  timeSpan: number, seed: { x: number; y: number }): Graph2DAuthoringAction =>
+  timeSpan: number, seed: { x: number; y: number } | readonly { x: number; y: number }[]): Graph2DAuthoringAction =>
   ({ type: "create-phase-portrait", draft: { label, xDerivative, yDerivative,
-    domain: domain(-bounds, bounds), yDomain: domain(-bounds, bounds), timeSpan, seeds: [seed],
+    domain: domain(-bounds, bounds), yDomain: domain(-bounds, bounds), timeSpan, seeds: Array.isArray(seed) ? seed : [seed],
     style: { ...style, color: "#7c3aed" } } });
 const viewport = (xMin: number, xMax: number, yMin: number, yMax: number, aspect: "equal" | "free" = "free"): Graph2DViewport =>
   ({ xMin, xMax, yMin, yMax, aspect });
@@ -91,6 +91,13 @@ const recipes = (): Recipe[] => {
       actions: [phase("Circular flow", "y", "-x", 2.5, 2 * Math.PI, { x: 1, y: 0 })],
       view: viewport(-2.5, 2.5, -2.5, 2.5, "equal"), featured: 6,
       tags: ["phase portrait", "center", "closed orbit", "equilibrium"], difficulty: "intermediate" },
+    { id: "phase-orbit-explorer", title: "Orbit explorer · two starts", category: "Differential equations",
+      description: "Two initial points trace concentric orbits of x′=y, y′=-x. Select a point in Inspector or Analyze to see its forward and backward stop status. Remove, clear, place, or drag starts to compare trajectories.",
+      goal: "Select and move a start, remove one, then clear and place new starts on the canvas.",
+      actions: [phase("Orbit explorer", "y", "-x", 2.5, Math.PI,
+        [{ x: 0.5, y: 0 }, { x: 1, y: 0 }])],
+      view: viewport(-2.5, 2.5, -2.5, 2.5, "equal"),
+      tags: ["phase portrait", "orbits", "initial points", "interactive"], difficulty: "intermediate" },
     { id: "phase-saddle", title: "Saddle flow", category: "Differential equations",
       description: "x′=x, y′=-y has a saddle equilibrium at the origin. Away from the axes, xy stays constant along a trajectory until the plot boundary.",
       goal: "Compare the two zero-derivative axes and the diverging forward orbit.",

@@ -8,7 +8,7 @@ import { fitGraph2DViewport, panGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph
 import { createGraph2DSplineRegressionJob, createGraph2DPolynomialRegressionJob,
   type Graph2DSplineRegressionJob, type Graph2DPolynomialRegressionJob } from "@math3d/core";
 import { projectGraph2DConstrainedPoint, previewGraph2DConstrainedPoint, resolveGraph2DConstructions } from "@math3d/core";
-import { graph2DPhaseSeedAtScreen, graph2DPhaseSeedAction, previewGraph2DPhaseSeed } from "@math3d/core";
+import { graph2DPhaseSeedAtScreen, graph2DPhaseSeedAction, graph2DPhaseSeedRemovalAction, previewGraph2DPhaseSeed } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { MobileGraphGesture, mobileGraphProbeRadius, type GraphTouch } from "./models/mobileGraphGestures";
 import { mobileGraphCapabilities } from "./models/mobileGraphProject";
@@ -67,6 +67,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     start: { x: number; y: number }; point: { x: number; y: number }; moved: boolean; sourceHash: string; documentId: string } | null>(null);
   const [phaseSeedPreview, setPhaseSeedPreview] = useState<{ objectId: string; index: number; point: { x: number; y: number } } | null>(null);
   const [phaseSeedPlacement, setPhaseSeedPlacement] = useState<string | null>(null);
+  const [selectedPhaseSeed, setSelectedPhaseSeed] = useState<{ objectId: string; index: number } | null>(null);
   const cancelPhaseSeedDrag = () => { phaseSeedDrag.current = null; setPhaseSeedPreview(null); };
   const parameterKey = graph2DParameterSessionKey(document);
   const [parameterPreview, setParameterPreview] = useState<{ key: string; values: Record<string, number> } | null>(null);
@@ -184,6 +185,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const selectedPhase = series.find(item => item.objectId === document.selection.objectId &&
     "kind" in item.artifact && item.artifact.kind === "phase-portrait")?.artifact as Graph2DPhasePortraitArtifact | undefined;
   const selectedPhaseObject = document.source.objects.find(item => item.id === document.selection.objectId && item.kind === "phase-portrait");
+  const highlightedPhaseSeed = selectedPhaseObject?.kind === "phase-portrait" &&
+    selectedPhaseSeed?.objectId === selectedPhaseObject.id ? selectedPhaseObject.seeds[selectedPhaseSeed.index] : null;
   const pointPreviewDocument = useMemo(() => {
     if (!pointDragPreview || pointDrag.current?.documentId !== document.identity.id) return null;
     try { return previewGraph2DConstrainedPoint(document, pointDragPreview.id, pointDragPreview.parameter); }
@@ -302,7 +305,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
           graph2DWorldToScreen(viewport, size, seed).y - touch.y) }))
         .filter(item => item.distance <= 22).sort((a, b) => a.distance - b.distance)[0];
       if (nearest) {
-        gesture.current.cancel(); setPreview(null);
+        gesture.current.cancel(); setPreview(null); setSelectedPhaseSeed({ objectId: selectedPhaseObject.id, index: nearest.index });
         phaseSeedDrag.current = { objectId: selectedPhaseObject.id, index: nearest.index, touchId: touch.id,
           x: touch.x, y: touch.y, start: nearest.seed, point: nearest.seed, moved: false,
           sourceHash: document.identity.structuralHash, documentId: document.identity.id };
@@ -491,6 +494,11 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         {phaseSeedPreview && (() => { const point = graph2DWorldToScreen(viewport, size, phaseSeedPreview.point);
           return <View style={{ position: "absolute", left: point.x - 7, top: point.y - 7, width: 14, height: 14,
             borderRadius: 7, borderWidth: 2, borderColor: "#f97316", backgroundColor: "#fff" }} />; })()}
+        {highlightedPhaseSeed && (() => {
+          const point = graph2DWorldToScreen(viewport, size, highlightedPhaseSeed);
+          return <View pointerEvents="none" style={{ position: "absolute", left: point.x - 11, top: point.y - 11,
+            width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: "#f97316" }} />;
+        })()}
       </View>
       {!document.source.objects.length && <Text pointerEvents="none" style={s.empty}>Empty graph. Open Functions to add a graph object, or import a desktop Graph project.</Text>}
     </View>
@@ -556,6 +564,27 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
           <Text style={s.title}>Equilibrium scan · {selectedPhase.analysis.status}</Text>
           {selectedPhaseObject?.kind === "phase-portrait" && <>
             <Text>Initial points: {selectedPhaseObject.seeds.length}/8. Drag a marked point to update its orbit.</Text>
+            {selectedPhaseObject.seeds.length === 0 && <Text>No initial points. Place one on the graph.</Text>}
+            {selectedPhaseObject.seeds.map((seed, index) => {
+              const orbit = selectedPhase.orbits[index];
+              return <View key={index} style={{ paddingVertical: 5 }} testID={`mobile-graph-phase-seed-${index + 1}`}>
+                {button(`Select point ${index + 1} (${seed.x.toPrecision(5)}, ${seed.y.toPrecision(5)})`,
+                  () => setSelectedPhaseSeed({ objectId: selectedPhaseObject.id, index }), false, true)}
+                {orbit && <Text>Backward {orbit.backward}; forward {orbit.forward} · {orbit.acceptedSteps} accepted, {orbit.rejectedSteps} rejected</Text>}
+                {button(`Remove initial point ${index + 1}`, () => {
+                  if (commit(() => adapter.commitScene(applyGraph2DAuthoring(document,
+                    graph2DPhaseSeedRemovalAction(document, selectedPhaseObject.id, index)), "edit-phase-portrait"))) {
+                    setSelectedPhaseSeed(null); setPhaseSeedPlacement(null);
+                  }
+                }, !!parameterPreviewActive, true)}
+              </View>;
+            })}
+            {button("Clear all initial points", () => {
+              if (commit(() => adapter.commitScene(applyGraph2DAuthoring(document,
+                graph2DPhaseSeedRemovalAction(document, selectedPhaseObject.id, null)), "edit-phase-portrait"))) {
+                setSelectedPhaseSeed(null); setPhaseSeedPlacement(null);
+              }
+            }, selectedPhaseObject.seeds.length === 0 || !!parameterPreviewActive, true)}
             {button(phaseSeedPlacement === selectedPhaseObject.id ? "Cancel initial point placement" : "Place initial point",
               () => { setPhaseSeedPlacement(current => current === selectedPhaseObject.id ? null : selectedPhaseObject.id);
                 setDestination("Graph"); setError(""); }, !sampling.ready || selectedPhaseObject.seeds.length >= 8 ||

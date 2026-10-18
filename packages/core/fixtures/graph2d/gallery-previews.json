@@ -11,7 +11,7 @@
     "tolerancePx": 0.75,
     "theme": "light"
   },
-  "compressedBytes": 278547,
+  "compressedBytes": 287520,
   "entries": [
     {
       "id": "line-comparison",
@@ -259,6 +259,17 @@
       "svgHash": "sha256:3528d53a6e3968bfd75724a5be8a0674e729ac7860e90e00607c8bdd64ac8e1a",
       "pngHash": "sha256:089d70c768246f2161357d8a40acf64580f53a3e0e5a1f7adfdacf30354d43da",
       "samples": 1626,
+      "diagnostics": []
+    },
+    {
+      "id": "phase-orbit-explorer",
+      "presetDigest": "sha256:6d598e756f09e748382c30fe5ebb20df8d70debd12657b1a305bc1cd1d41a186",
+      "key": "sha256:3c192e9c92141444296c3ce80e3739aa3d72d4d70570d8006ec3ff198b87427a",
+      "svg": "phase-orbit-explorer.svg",
+      "png": "phase-orbit-explorer.png",
+      "svgHash": "sha256:2787460a5b480a364dd596f1250cac0bb207e337d287a1c0a62ca3ccbc72ecfe",
+      "pngHash": "sha256:67ec21b8958482b9f3388c85416331d3b2abdf0077c22784e22b18a66694f0e1",
+      "samples": 1934,
       "diagnostics": []
     },
     {

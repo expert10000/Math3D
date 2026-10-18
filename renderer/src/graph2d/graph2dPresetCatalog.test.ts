@@ -19,15 +19,26 @@ describe("curated Graphs catalog", () => {
   it("keeps the fast Gallery bundle identical to the checked authored catalog", () => {
     expect(bundledCatalog).toEqual(getGraph2DPresetCatalog().entries);
   });
-  it("provides 24 scenes, seven Featured entries and phase portrait examples", () => {
+  it("provides 25 scenes, seven Featured entries and phase portrait examples", () => {
     const catalog = getGraph2DPresetCatalog();
-    expect(catalog.entries).toHaveLength(24);
+    expect(catalog.entries).toHaveLength(25);
     expect(catalog.entries.filter(p => p.featuredOrder !== null)).toHaveLength(7);
     expect(catalog.entries.filter(p => p.template.source.objects.length > 1).length).toBeGreaterThanOrEqual(6);
-    expect(catalog.filter("phase portrait", "Differential equations")).toHaveLength(3);
+    expect(catalog.filter("phase portrait", "Differential equations")).toHaveLength(4);
     // Linked slope trajectories are authored in the workspace.
     expect([...new Set(catalog.entries.flatMap(p => p.template.source.objects.map(o => o.kind)))].sort())
       .toEqual(GRAPH2D_OBJECT_KINDS.filter(kind => kind !== "slope-field" && kind !== "trajectory").slice().sort());
+  });
+  it("opens the orbit explorer with two independently editable starts", () => {
+    const preset = getGraph2DPresetCatalog().get("phase-orbit-explorer")!;
+    const { document } = instantiateGraph2DPreset(preset, "orbit-explorer-test");
+    const object = document.source.objects[0];
+    expect(object?.kind === "phase-portrait" && object.seeds).toEqual([
+      { x: 0.5, y: 0 }, { x: 1, y: 0 },
+    ]);
+    const artifact = sampleGraph2DScene({ document, viewport: document.display.viewport,
+      width: 640, height: 480, interaction: false })[0]?.artifact;
+    expect(artifact && "kind" in artifact && artifact.kind === "phase-portrait" && artifact.orbits).toHaveLength(2);
   });
   it("opens the 10,000-row regression preset with the full checked table and a bounded display", () => {
     const preset = getGraph2DPresetCatalog().get("regression-10000")!;

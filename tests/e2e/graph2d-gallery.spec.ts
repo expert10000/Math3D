@@ -8,6 +8,30 @@ const {importMobileGraph,readMobileGraph,updateStoredMobileGraph}=require(resolv
 const {serializeMobileProjectHandoff}=require(resolve("apps/mobile/src/models/mobileProjectTransfer.ts"));
 const {Graph2DCommandAdapter}=require(resolve("packages/kernel/src/graph2dCommandAdapter.ts"));
 
+test("GRA-11.7 Gallery orbit explorer manages each initial point", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page; await resetSurfaceAppState(page); await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.getByTestId("graph-gallery-open").click();
+    const gallery = page.getByTestId("graph-gallery");
+    await gallery.getByLabel("Search graphs").fill("Orbit explorer");
+    await gallery.getByRole("button", { name: "Open Orbit explorer · two starts", exact: true }).click();
+    const seeds = page.getByLabel("Graph inspector").getByTestId("graph2d-phase-seed-list");
+    await expect(seeds.getByRole("button", { name: /Point 2/ })).toBeVisible();
+    await seeds.getByRole("button", { name: /Point 2/ }).click();
+    await expect(seeds.getByRole("button", { name: /Point 2/ })).toHaveAttribute("aria-pressed", "true");
+    await seeds.getByRole("button", { name: "Remove initial point 2" }).click();
+    await expect(seeds.getByRole("button", { name: /Point 2/ })).toHaveCount(0);
+    await expect(seeds.getByRole("button", { name: /Point 1/ })).toBeVisible();
+    await seeds.getByTestId("graph2d-phase-clear-seeds").click();
+    await expect(seeds).toContainText("No initial points");
+    await expect(page.locator("[data-graph2d-phase-seed]")).toHaveCount(0);
+    await page.getByTestId("main-viewer").focus(); await page.keyboard.press("Control+z");
+    await expect(seeds.getByRole("button", { name: /Point 1/ })).toBeVisible();
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("GGL04 desktop browse/preview creates independent editable scenes and resumes preserved work",async()=>{
   const app=await launchSurfaceApp();
   try {
@@ -24,7 +48,7 @@ test("GGL04 desktop browse/preview creates independent editable scenes and resum
     await expect(page.getByLabel("Empty graph scene")).toContainText("0 graph objects");
     await page.getByTestId("graph-gallery-open").click();
     await gallery.getByRole("button",{name:"All scenes",exact:true}).click();
-    await expect(gallery.getByRole("status")).toContainText("24 scenes");
+    await expect(gallery.getByRole("status")).toContainText("25 scenes");
     await gallery.getByLabel("Search graphs").fill("slope");
     await gallery.getByRole("button",{name:"Open Two slopes",exact:true}).click();
     await expect(gallery).not.toBeVisible();

@@ -30,10 +30,11 @@ type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonl
   constructions?: Graph2DConstructionArtifact | null;
   probeMarkers?: ReturnType<typeof projectGraph2DProbeMarkers>;
   selectedProbe?: Graph2DProbe | null; hoverProbe?: Graph2DProbe | null;
+  selectedPhaseSeed?: { objectId: string; index: number } | null;
   overlays?: readonly Graph2DLineOverlay[]; intervals?: Graph2DIntervalAnalysis | null;
   area?: Graph2DIntegralAnalysis | null; intersections?: Graph2DIntersectionAnalysis | null };
 
-export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, regression, constructions, selectedProbe, hoverProbe, overlays = [], intervals, area, intersections, probeMarkers = [] }: Props) {
+export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, regression, constructions, selectedProbe, hoverProbe, selectedPhaseSeed, overlays = [], intervals, area, intersections, probeMarkers = [] }: Props) {
   if (graph2DHasLogScale(display.viewport)) { overlays = []; area = null; intervals = null; }
   const clipId = useId();
   const grid = projectGraph2DGrid(display.viewport, size, display.axes.gridOptions);
@@ -195,6 +196,8 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
             if (orbit.seed.x < bounds.xMin || orbit.seed.x > bounds.xMax || orbit.seed.y < bounds.yMin || orbit.seed.y > bounds.yMax) return null;
             const screen = graph2DWorldToScreen(display.viewport, size, orbit.seed);
             return <g key={`phase-seed-${item.objectId}-${orbit.seedIndex}`}>
+              {selectedPhaseSeed?.objectId === item.objectId && selectedPhaseSeed.index === orbit.seedIndex &&
+                <circle cx={screen.x} cy={screen.y} r={10} fill="none" stroke="#f97316" strokeWidth={2} pointerEvents="none" />}
               <circle data-graph2d-phase-seed={`${item.objectId}-${orbit.seedIndex}`}
                 cx={screen.x} cy={screen.y} r={14} fill="transparent" pointerEvents="all" />
               <circle cx={screen.x} cy={screen.y} r={5} fill="white" stroke={item.style.color}

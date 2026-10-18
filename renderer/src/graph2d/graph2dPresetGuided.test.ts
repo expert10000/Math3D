@@ -35,7 +35,7 @@ describe("GGL13 guided concepts", () => {
       expect(preset.template.source.objects.length).toBeLessThanOrEqual(6);
     }
     expect(catalog.entries.map(serializeGraph2DPreset)).toEqual(before);
-    expect(catalog.entries).toHaveLength(24);
+    expect(catalog.entries).toHaveLength(25);
     expect(() => getGraph2DGuidedPreset("unknown")).toThrow();
   });
   it("links markers to the canonical source and makes them stale after an edit", () => {

@@ -176,7 +176,7 @@ export const validateGraph2DPhasePortraitDraft = (draft: Graph2DPhasePortraitDra
     ...validateGraph2DImplicitDraft({ ...draft, expression: draft.yDerivative }, variables)];
   if (!Number.isFinite(draft.timeSpan) || draft.timeSpan <= 0 || draft.timeSpan > 100)
     errors.push("Time horizon must be greater than 0 and at most 100.");
-  if (draft.seeds.length < 1 || draft.seeds.length > 8) errors.push("Use 1–8 initial points.");
+  if (draft.seeds.length > 8) errors.push("Use at most eight initial points.");
   for (const seed of draft.seeds) if (!Number.isFinite(seed.x) || !Number.isFinite(seed.y) ||
     seed.x < draft.domain.min || seed.x > draft.domain.max || seed.y < draft.yDomain.min || seed.y > draft.yDomain.max)
     errors.push("Every initial point must be finite and inside the phase domain.");

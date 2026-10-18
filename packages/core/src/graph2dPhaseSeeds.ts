@@ -39,16 +39,30 @@ const editedSeeds = (object: Graph2DPhasePortraitObject, index: number | null, p
 };
 
 /** The host commits this one authoring action on release, yielding one undo step. */
-export const graph2DPhaseSeedAction = (document: Graph2DDocument, objectId: string,
-  index: number | null, point: Point): Graph2DAuthoringAction => {
+const seedListAction = (document: Graph2DDocument, objectId: string,
+  seeds: readonly Point[]): Graph2DAuthoringAction => {
   const object = phase(document, objectId);
   const style = document.display.objects.find(item => item.objectId === objectId);
   if (!style) throw new TypeError("Phase portrait display is unavailable.");
   return { type: "edit-phase-portrait", objectId, draft: { label: object.label,
     xDerivative: object.xDerivative.source, yDerivative: object.yDerivative.source,
     domain: object.domain, yDomain: object.yDomain, timeSpan: object.timeSpan,
-    seeds: editedSeeds(object, index, point),
+    seeds,
     style: { color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle, visible: style.visible } } };
+};
+
+export const graph2DPhaseSeedAction = (document: Graph2DDocument, objectId: string,
+  index: number | null, point: Point): Graph2DAuthoringAction =>
+  seedListAction(document, objectId, editedSeeds(phase(document, objectId), index, point));
+
+/** Remove one seed, or every seed when index is null. The host commits one undoable edit. */
+export const graph2DPhaseSeedRemovalAction = (document: Graph2DDocument, objectId: string,
+  index: number | null): Graph2DAuthoringAction => {
+  const object = phase(document, objectId);
+  if (index === null) return seedListAction(document, objectId, []);
+  if (!Number.isInteger(index) || index < 0 || index >= object.seeds.length)
+    throw new TypeError("Initial point is unavailable.");
+  return seedListAction(document, objectId, object.seeds.filter((_, offset) => offset !== index));
 };
 
 /** Ephemeral source for live orbit sampling. Revision/history change only after release. */

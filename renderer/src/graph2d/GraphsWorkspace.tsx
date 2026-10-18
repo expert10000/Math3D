@@ -10,7 +10,7 @@ import {
   analyzeGraph2DPolarMeasurement, isGraph2DPolarMeasurementCurrent,
   GRAPH2D_DEFAULT_VIEWPORT, GRAPH2D_WORKSPACE_CONTRACT,
   graph2DWorldToScreen, panGraph2DViewport, pickGraph2DProbe,
-  graph2DPhaseSeedAtScreen, graph2DPhaseSeedAction, previewGraph2DPhaseSeed,
+  graph2DPhaseSeedAtScreen, graph2DPhaseSeedAction, graph2DPhaseSeedRemovalAction, previewGraph2DPhaseSeed,
   isGraph2DCriticalPointCurrent, isGraph2DIntegralCurrent, isGraph2DIntervalAnalysisCurrent,
   isGraph2DIntersectionCurrent,
   isGraph2DLocalDifferentialCurrent, queryGraph2DInspector,
@@ -275,6 +275,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const cancelPointDrag = () => { const active = pointDragRef.current; pointDragRef.current = null; setPointDragPreview(null);
     if (active && viewerRef.current?.hasPointerCapture(active.pointerId)) viewerRef.current.releasePointerCapture(active.pointerId); };
   const [phaseSeedPlacement, setPhaseSeedPlacement] = useState<string | null>(null);
+  const [selectedPhaseSeed, setSelectedPhaseSeed] = useState<{ objectId: string; index: number } | null>(null);
   const phaseSeedDrag = useRef<{ pointerId: number; objectId: string; index: number; x: number; y: number;
     start: { x: number; y: number }; point: { x: number; y: number }; moved: boolean; sourceHash: string; documentId: string } | null>(null);
   const [phaseSeedPreview, setPhaseSeedPreview] = useState<{ objectId: string; index: number; point: { x: number; y: number } } | null>(null);
@@ -402,7 +403,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       const object = document.source.objects.find(item => item.id === objectId);
       const style = document.display.objects.find(item => item.objectId === objectId);
       if (object?.kind === "phase-portrait" && style?.visible && Number.isInteger(index) && object.seeds[index]) {
-        finishWheel(); setHoverSelection(null);
+        finishWheel(); setHoverSelection(null); setSelectedPhaseSeed({ objectId, index });
         phaseSeedDrag.current = { pointerId: event.pointerId, objectId, index, x: event.clientX, y: event.clientY,
           start: object.seeds[index], point: object.seeds[index], moved: false,
           sourceHash: document.identity.structuralHash, documentId: document.identity.id };
@@ -966,7 +967,26 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {selectedObject?.kind === "phase-portrait" && <>
           <dt>System</dt><dd>x′ = {selectedObject.xDerivative.source}; y′ = {selectedObject.yDerivative.source}</dd>
           <dt>Time horizon</dt><dd>±{selectedObject.timeSpan}</dd>
-          <dt>Initial points</dt><dd>{selectedObject.seeds.map(seed => `(${seed.x}, ${seed.y})`).join("; ")}</dd>
+          <dt>Initial points</dt><dd data-testid="graph2d-phase-seed-list">
+            {selectedObject.seeds.length === 0 && <span>No initial points. Place one on the graph.</span>}
+            {selectedObject.seeds.map((seed, index) => {
+              const orbit = selectedSeries?.artifact && "kind" in selectedSeries.artifact &&
+                selectedSeries.artifact.kind === "phase-portrait" ?
+                (selectedSeries.artifact as Graph2DPhasePortraitArtifact).orbits[index] : undefined;
+              return <div className="graph2d-phase-seed-row" key={index}>
+                <button type="button" aria-pressed={selectedPhaseSeed?.objectId === selectedObject.id && selectedPhaseSeed.index === index}
+                  onClick={() => setSelectedPhaseSeed({ objectId: selectedObject.id, index })}>
+                  Point {index + 1} ({seed.x.toPrecision(5)}, {seed.y.toPrecision(5)})</button>
+                <button type="button" aria-label={`Remove initial point ${index + 1}`} disabled={!onAuthoringCommit || parameterPreviewActive}
+                  onClick={() => { onAuthoringCommit?.(graph2DPhaseSeedRemovalAction(document, selectedObject.id, index));
+                    setSelectedPhaseSeed(null); setPhaseSeedPlacement(null); }}>Remove</button>
+                {orbit && <small>Backward {orbit.backward}; forward {orbit.forward} · {orbit.acceptedSteps} accepted, {orbit.rejectedSteps} rejected</small>}
+              </div>;
+            })}
+            <button type="button" data-testid="graph2d-phase-clear-seeds" disabled={!onAuthoringCommit || !selectedObject.seeds.length || parameterPreviewActive}
+              onClick={() => { onAuthoringCommit?.(graph2DPhaseSeedRemovalAction(document, selectedObject.id, null));
+                setSelectedPhaseSeed(null); setPhaseSeedPlacement(null); }}>Clear all initial points</button>
+          </dd>
           <dt>Explore</dt><dd><button type="button" data-testid="graph2d-phase-place-seed"
             disabled={!onAuthoringCommit || !sampling.ready || !selectedSeries?.style.visible || selectedObject.seeds.length >= 8 ||
               parameterPreviewActive || graph2DHasLogScale(viewport)}
@@ -1223,6 +1243,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           {showRight && <details><summary>Inspector</summary>{inspector}</details>}
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={series}
+          selectedPhaseSeed={selectedPhaseSeed}
           constructions={parameterPreviewActive ? null : shownConstructions}
           probeMarkers={probeMarkers}
           regression={!parameterPreviewActive && document.display.objects.find(s => s.objectId === currentRegression?.objectId)?.visible ? currentRegression : null}

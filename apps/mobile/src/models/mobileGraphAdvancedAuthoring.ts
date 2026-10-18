@@ -56,8 +56,8 @@ export const mobileGraphKindAction = (editor: MobileGraphAdvancedEditor, tables:
     case "trajectory": return action("-trajectory", { label: d.label.trim(), sourceFieldId: d.sourceFieldId,
       seed: { x: number(d.initialX), y: number(d.initialY) }, style: base.style });
     case "phase-portrait": {
-      const lines = d.seedsText.trim().split(/\r?\n/);
-      if (lines.length < 1 || lines.length > 8) throw new TypeError("Enter 1–8 initial points, one x,y pair per line.");
+      const lines = d.seedsText.trim() ? d.seedsText.trim().split(/\r?\n/) : [];
+      if (lines.length > 8) throw new TypeError("Enter at most eight initial points, one x,y pair per line.");
       const seeds = lines.map(line => {
         const pair = line.split(",");
         if (pair.length !== 2 || !pair[0]?.trim() || !pair[1]?.trim()) throw new TypeError("Enter each initial point as x,y.");

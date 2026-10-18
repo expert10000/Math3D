@@ -20,7 +20,7 @@ export const MobileGraphAdvancedEditor = ({ editor, onEditor, onApply, onPick }:
     {editor.kind === "parametric" && field("Y expression y(t)", "second")}
     {editor.kind === "phase-portrait" && <>{field("Y derivative y′ = g(x,y)", "second")}
       {input("Time horizon in each direction", d.timeSpan, timeSpan => change({ timeSpan }))}
-      {input("Initial points x,y (one per line, max 8)", d.seedsText, seedsText => change({ seedsText }), true, 256)}
+      {input("Initial points x,y (one per line, max 8; blank for none)", d.seedsText, seedsText => change({ seedsText }), true, 256)}
       <Text>Shows direction arrows and two-sided adaptive solution orbits on linear axes.</Text></>}
     {editor.kind === "trajectory" && <><Text>Linked slope field: {d.sourceFieldId}</Text>
       {input("Initial x", d.initialX, initialX => change({ initialX }))}
