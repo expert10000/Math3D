@@ -8,7 +8,7 @@ import { nativeDocumentEditable } from "./nativeProjectRestore";
 import { scientificDocumentEditable } from "./nativeScientificRestore";
 import { volumeDocumentEditable, volumePayloadRequired, validateNativeVolumeReplay } from "./nativeVolumeRestore";
 import type { VolumeReplayBundle } from "../volume/volumeDocumentAdapter";
-import { adoptMixedWorkspaceProject, createMixedWorkspaceDocument, matchesScientificSourceGeneration, viewerSourceFromDocument, MAX_MATH3D_PROJECT_BYTES, parseMath3DProject,
+import { adoptMixedWorkspaceProject, canonicalJsonStringify, createMixedWorkspaceDocument, matchesScientificSourceGeneration, viewerSourceFromDocument, MAX_MATH3D_PROJECT_BYTES, parseMath3DProject,
   parseMixedWorkspaceDocument, parseWorkspaceProjectHandoff, serializeMath3DProject, replaceMath3DProjectWorkspace, type Graph2DPointTableReference,
   mergeGraph2DHandoffCheckpoint,
   type Math3DProject, type MixedWorkspaceDocument } from "@math3d/core";
@@ -134,7 +134,25 @@ export const mergeProjectLiveWorkspace = (retained: MixedWorkspaceDocument, live
     activeDocumentIds: [...new Set([...live.activeDocumentIds.filter((id) => live.entries.some((entry) => entry.module !== "quantum" && entry.expected.id === id)),
       ...retained.activeDocumentIds.filter((id) => quantum.some((entry) => entry.expected.id === id))])] }) : live;
   const previousGraphs = retained.entries.filter((entry) => entry.module === "graph2d"), liveGraphs = combined.entries.filter((entry) => entry.module === "graph2d");
-  if (previousGraphs.length !== 1 || liveGraphs.length !== 1 || previousGraphs[0]!.expected.id !== liveGraphs[0]!.expected.id) return combined;
+  if (previousGraphs.length !== 1 || liveGraphs.length !== 1 || previousGraphs[0]!.expected.id !== liveGraphs[0]!.expected.id) {
+    // A Project may be visible while its editor module has not loaded. The live
+    // capture is then incomplete, not an instruction to delete saved documents.
+    // Explicit Project deletion uses deleteProjectDocument instead.
+    const liveIds = new Set(combined.entries.map((entry) => entry.expected.id));
+    const missing = retained.entries.filter((entry) => !liveIds.has(entry.expected.id));
+    if (!missing.length) return combined;
+    const missingIds = new Set<string>(missing.map((entry) => entry.expected.id));
+    const merge = <T>(saved: readonly T[], current: readonly T[], key: (item: T) => string): T[] =>
+      [...new Map([...saved, ...current].map((item) => [key(item), item])).values()];
+    return createMixedWorkspaceDocument({ ...combined,
+      entries: [...combined.entries, ...missing],
+      activeDocumentIds: [...new Set([...combined.activeDocumentIds, ...retained.activeDocumentIds.filter((id) => missingIds.has(id))])],
+      results: merge(retained.results, combined.results, (result) => result.resultId),
+      artifacts: merge(retained.artifacts, combined.artifacts, (artifact) => artifact.handle.artifactId),
+      relations: merge(retained.relations, combined.relations, (relation) => relation.relationId),
+      constructions: merge(retained.constructions, combined.constructions, canonicalJsonStringify),
+    });
+  }
   const merged = mergeGraph2DHandoffCheckpoint(projectCheckpoint(retained), projectCheckpoint(combined));
   const entries = new Map([...retained.entries, ...combined.entries].map((entry) => [entry.expected.id, entry]));
   return createMixedWorkspaceDocument({ ...merged, constructions: live.constructions, entries: merged.entries.map((entry) => entries.get(entry.expected.id)!) });

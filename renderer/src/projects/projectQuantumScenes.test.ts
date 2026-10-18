@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { adoptMixedWorkspaceProject, createEmptyGraph2DDocument, createGraph2DWorkspaceProject, createMath3DProject, createMixedWorkspaceDocument, createQuantumSceneDocument,
+  instantiateMath3DProjectTemplate,
   normalizeMath3DProject, parseMath3DProject, replaceMath3DProjectWorkspace, serializeMath3DProject,
   relinkMath3DProjectQuantumScene, upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference } from "@math3d/core";
 import { loadLibraryProject, projectPayloadKey, PROJECT_LIBRARY_KEY, PROJECT_STORAGE_KEY, saveLibraryProject } from "./projectLibrary";
@@ -30,6 +31,26 @@ const store = () => {
 };
 
 describe("read-only Project quantum-scene links", () => {
+  it("saves a linked scene without dropping a saved Geometry document while its editor is not loaded", () => {
+    const original = instantiateMath3DProjectTemplate("geometry-note-pins", "quantum-save-recovery");
+    const linked = upsertMath3DProjectQuantumScene(original, reference);
+    const live = createGraph2DWorkspaceProject(createEmptyGraph2DDocument("unrelated-live-editor"));
+    const merged = mergeProjectLiveWorkspace(linked.workspace, live);
+    const saved = replaceMath3DProjectWorkspace(linked, merged);
+
+    expect(saved.workspace.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ module: "geometry", expected: original.workspace.entries[0]!.expected }),
+      expect.objectContaining({ module: "graph2d", expected: live.entries[0]!.expected }),
+    ]));
+    expect(saved.metadata.documents).toEqual(original.metadata.documents);
+    expect(saved.notes).toEqual(original.notes);
+    expect(saved.quantumScenes).toEqual([reference]);
+    expect(parseMath3DProject(serializeMath3DProject(saved))).toEqual(saved);
+    const storage = store();
+    saveLibraryProject(storage, saved, 100);
+    expect(loadLibraryProject(storage, saved.identity.id)).toEqual(saved);
+  });
+
   it("admits a native read-only document, persists its descriptor, and never invokes an editor adapter", () => {
     const { document, project } = admitted();
     expect(inspectProjectCompatibility(project)).toMatchObject({ canOpenWorkspace: true,
