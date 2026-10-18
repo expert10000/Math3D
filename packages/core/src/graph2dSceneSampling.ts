@@ -7,6 +7,7 @@ import { sampleGraph2DImplicit } from "./graph2dImplicit";
 import { sampleGraph2DInequality } from "./graph2dInequality";
 import { sampleGraph2DPointSeries, type Graph2DPointRow } from "./graph2dPointSeries";
 import { sampleGraph2DPiecewise } from "./graph2dPiecewise";
+import { sampleGraph2DSlopeField } from "./graph2dSlopeField";
 import { resolveGraph2DViewport } from "./graph2dViewport";
 
 export type Graph2DSceneSamplingRequest = Readonly<{
@@ -50,6 +51,7 @@ export const sampleGraph2DScene = (request: Graph2DSceneSamplingRequest): readon
       object.kind === "implicit" ? sampleGraph2DImplicit({ ...common, object }) :
       object.kind === "inequality" ? sampleGraph2DInequality({ ...common, object }) :
       object.kind === "piecewise" ? sampleGraph2DPiecewise({ ...common, object }) :
+      object.kind === "slope-field" ? sampleGraph2DSlopeField({ ...common, object, maxSamples: common.policy.maxSamples }) :
       sampleGraph2DPointSeries(object, request.pointTables?.[object.table.id] ?? null, common.policy.maxSamples);
     remaining -= artifact.samplesEvaluated;
     return [{ objectId: object.id, style, artifact }];

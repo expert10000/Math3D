@@ -12,7 +12,7 @@ export type Graph2DSampleSegment = Readonly<{
   openEnd: boolean;
 }>;
 export type Graph2DSamplingDiagnostic = Readonly<{
-  code: "empty-domain" | "invalid-sample" | "suspected-jump" | "depth-limit" | "sample-limit" | "segment-limit" | "output-limit" | "deadline" | "ambiguous-cell" | "unresolved-cell" | "missing-table";
+  code: "empty-domain" | "invalid-sample" | "unsupported-scale" | "suspected-jump" | "depth-limit" | "sample-limit" | "segment-limit" | "output-limit" | "deadline" | "ambiguous-cell" | "unresolved-cell" | "missing-table";
   count: number;
 }>;
 export type Graph2DSamplingArtifact = Readonly<{

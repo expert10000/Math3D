@@ -18,7 +18,7 @@ export type Graph2DInspectorSummary = Readonly<{
   probeMethod: "direct-expression-floating-point" | "sampled-contour" | "table-row" | "unavailable";
   sampling: Readonly<{
     status: "converged" | "incomplete" | "unavailable";
-    method: "adaptive-bounded-polyline";
+    method: "adaptive-bounded-polyline" | "bounded-direction-grid";
     samplesEvaluated: number | null;
     segmentCount: number | null;
     policy: Graph2DDocument["display"]["sampling"];
@@ -54,10 +54,11 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
       object.kind === "parametric" ? `x(t) = ${object.xExpression.source}, y(t) = ${object.yExpression.source}` :
       object.kind === "polar" ? `r(θ) = ${object.rExpression.source}` :
         object.kind === "implicit" ? `F(x,y) = ${object.expression.source} = 0` :
+          object.kind === "slope-field" ? `dy/dx = ${object.expression.source}` :
           object.kind === "inequality" ? object.clauses.map((clause) =>
             `${clause.source} ${clause.comparator} 0`).join(object.operator === "all" ? " AND " : " OR ") :
             object.kind === "point-series" ? `${object.table.rowCount} rows · ${object.mode} · missing y: gap` :
-              object.pieces.map((piece) => `${piece.expression.source} on ${piece.domain.includeMin ? "[" : "("}${piece.domain.min}, ${piece.domain.max}${piece.domain.includeMax ? "]" : ")"}`).join("; "),
+              object.kind === "piecewise" ? object.pieces.map((piece) => `${piece.expression.source} on ${piece.domain.includeMin ? "[" : "("}${piece.domain.min}, ${piece.domain.max}${piece.domain.includeMax ? "]" : ")"}`).join("; ") : "",
     domain: object.kind === "piecewise" ? { min: object.pieces[0]!.domain.min,
       max: object.pieces.at(-1)!.domain.max, includeMin: object.pieces[0]!.domain.includeMin,
       includeMax: object.pieces.at(-1)!.domain.includeMax } : object.domain, style,
@@ -71,7 +72,8 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
         object.kind === "point-series" ? "table-row" : "direct-expression-floating-point" : "unavailable",
     sampling: {
       status: !visibleArtifact ? "unavailable" : visibleArtifact.converged ? "converged" : "incomplete",
-      method: "adaptive-bounded-polyline", samplesEvaluated: visibleArtifact?.samplesEvaluated ?? null,
+      method: object.kind === "slope-field" ? "bounded-direction-grid" : "adaptive-bounded-polyline",
+      samplesEvaluated: visibleArtifact?.samplesEvaluated ?? null,
       segmentCount: visibleArtifact?.segments.length ?? null, policy: document.display.sampling, diagnostics,
       suspectedJumpCount: diagnostics.find((entry) => entry.code === "suspected-jump")?.count ?? 0,
       invalidSampleCount: diagnostics.find((entry) => entry.code === "invalid-sample")?.count ?? 0,
@@ -82,6 +84,7 @@ export const queryGraph2DInspector = (document: Graph2DDocument,
         object.kind === "parametric" ? object.xExpression.ast.version :
           object.kind === "polar" ? object.rExpression.ast.version :
             object.kind === "implicit" ? object.expression.ast.version :
+              object.kind === "slope-field" ? object.expression.ast.version :
               object.kind === "inequality" ? object.clauses[0]!.ast.version :
                 object.kind === "piecewise" ? object.pieces[0]!.expression.ast.version : null,
       samplerVersion: visibleArtifact?.samplerVersion ?? null },

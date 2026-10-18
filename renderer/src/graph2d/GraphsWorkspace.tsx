@@ -892,7 +892,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         </>}
         <dt>{inspected.kind === "parametric" ? "Parameter t" : inspected.kind === "polar" ? "Angle θ" : "X domain"}</dt>
         <dd>{inspected.domain.includeMin ? "[" : "("}{inspected.domain.min}, {inspected.domain.max}{inspected.domain.includeMax ? "]" : ")"}</dd>
-        {(selectedObject?.kind === "implicit" || selectedObject?.kind === "inequality") && <><dt>Y domain</dt>
+        {(selectedObject?.kind === "implicit" || selectedObject?.kind === "inequality" || selectedObject?.kind === "slope-field") && <><dt>Y domain</dt>
           <dd>{selectedObject.yDomain.min}, {selectedObject.yDomain.max}</dd></>}
         <dt>Style</dt><dd><span className="graph2d-inspector-swatch" style={{ background: inspected.style.color }} />
           {inspected.style.lineStyle}, {inspected.style.lineWidth} px · {inspected.style.visible ? "visible" : "hidden"}</dd>
@@ -907,7 +907,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           "Direct expression evaluation (floating point)" : inspected.probeMethod === "sampled-contour" ?
             "Sampled contour projection" : inspected.probeMethod === "table-row" ? "Table row" : "Unavailable"}</dd>
         <dt>Sampling</dt><dd className="graph2d-sampling-observation-status" data-testid="graph2d-sampling-status">{!parameterPreviewActive && !sampling.ready ?
-          sampling.retained ? "Updating — previous observation" : "Updating — no observation yet" : `Adaptive bounded polyline · ${inspected.sampling.status}`}</dd>
+          sampling.retained ? "Updating — previous observation" : "Updating — no observation yet" :
+            `${inspected.sampling.method === "bounded-direction-grid" ? "Bounded direction grid" : "Adaptive bounded polyline"} · ${inspected.sampling.status}`}</dd>
         {inspected.regionState && <><dt>Region</dt><dd data-testid="graph2d-region-status">{inspected.regionState}</dd></>}
         {inspected.pointState && <><dt>Table</dt><dd data-testid="graph2d-table-status">{inspected.pointState}</dd></>}
         <dt>Budget</dt><dd>{inspected.sampling.policy.maxSamples.toLocaleString()} samples, depth {inspected.sampling.policy.maxDepth},
@@ -1118,6 +1119,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           {!sampling.ready && !sampling.error ? sampling.retained ? " Updating graph… previous preview/same-source samples remain visible." : " Sampling graph…" : ""}
           {viewport.continuation ? " Light dotted continuation: outside authored range; visual only, not analysed/exported. Bounded preview may be incomplete." : ""}
           {graph2DHasLogScale(viewport) ? " Log axes: non-positive coordinates omitted; analysis uses world units, tangent/area/interval overlays hidden." : ""}
+          {graph2DHasLogScale(viewport) && document.source.objects.some(object => object.kind === "slope-field" &&
+            document.display.objects.some(style => style.objectId === object.id && style.visible)) ? " Slope fields require linear axes." : ""}
         </div>}
         {status === "loading" ? <div className="graph2d-viewer-message" role="status">Loading graph…</div> :
           status === "error" ? <div className="graph2d-viewer-message" role="alert">{errorMessage || "Graph could not be opened."}</div> :

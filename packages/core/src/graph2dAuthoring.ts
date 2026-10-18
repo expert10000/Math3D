@@ -32,6 +32,7 @@ export type Graph2DImplicitDraft = Readonly<{
   yDomain: Graph2DDomain;
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
 }>;
+export type Graph2DSlopeFieldDraft = Graph2DImplicitDraft;
 export type Graph2DInequalityDraft = Readonly<{
   label: string;
   clauses: readonly Readonly<{ expression: string; comparator: "<" | "<=" | ">" | ">=" }>[];
@@ -63,6 +64,8 @@ export type Graph2DAuthoringAction =
   | Readonly<{ type: "edit-polar"; objectId: string; draft: Graph2DPolarDraft }>
   | Readonly<{ type: "create-implicit"; draft: Graph2DImplicitDraft }>
   | Readonly<{ type: "edit-implicit"; objectId: string; draft: Graph2DImplicitDraft }>
+  | Readonly<{ type: "create-slope-field"; draft: Graph2DSlopeFieldDraft }>
+  | Readonly<{ type: "edit-slope-field"; objectId: string; draft: Graph2DSlopeFieldDraft }>
   | Readonly<{ type: "create-inequality"; draft: Graph2DInequalityDraft }>
   | Readonly<{ type: "edit-inequality"; objectId: string; draft: Graph2DInequalityDraft }>
   | Readonly<{ type: "create-point-series"; draft: Graph2DPointSeriesDraft }>
@@ -141,6 +144,7 @@ export const validateGraph2DImplicitDraft = (draft: Graph2DImplicitDraft,
     typeof draft.yDomain.includeMax !== "boolean") errors.push("Y bound minimum must be less than maximum.");
   return errors;
 };
+export const validateGraph2DSlopeFieldDraft = validateGraph2DImplicitDraft;
 export const validateGraph2DInequalityDraft = (draft: Graph2DInequalityDraft,
   variables: readonly string[] = ["x", "y"]): readonly string[] => {
   const errors = [...validateGraph2DImplicitDraft({ ...draft, expression: draft.clauses[0]?.expression ?? "" }, variables)];
@@ -278,6 +282,30 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       domain: action.draft.domain, yDomain: action.draft.yDomain };
     const display = { objectId: id, ...action.draft.style };
     if (action.type === "create-implicit") { objects.push(object); displays.push(display); }
+    else { objects[index] = object; displays[index] = display; }
+    selection = { objectId: id, probe: null };
+  } else if (action.type === "create-slope-field" || action.type === "edit-slope-field") {
+    if (action.type === "edit-slope-field" && objects[index]?.kind !== "slope-field")
+      throw new TypeError("Selected object is not a slope field.");
+    if (document.source.variables.some(entry => entry.name === "y"))
+      throw new TypeError("The coordinate name y conflicts with a document variable.");
+    const names = ["x", "y", ...document.source.variables.map(entry => entry.name)];
+    const errors = validateGraph2DSlopeFieldDraft(action.draft, names);
+    if (errors.length) throw new TypeError(errors.join(" "));
+    const parsed = parseGraph2DExpression(action.draft.expression, names);
+    if (!parsed.ok) throw new TypeError("Slope expression is invalid.");
+    if (action.type === "create-slope-field" && objects.length >= GRAPH2D_MAX_OBJECTS)
+      throw new TypeError("Function limit reached.");
+    let id = action.type === "edit-slope-field" ? action.objectId : "slope_field_1";
+    if (action.type === "create-slope-field") {
+      let serial = 1;
+      while (objects.some(entry => entry.id === id)) id = "slope_field_" + ++serial;
+    }
+    const object = { id, kind: "slope-field" as const, label: action.draft.label,
+      expression: { source: action.draft.expression, variable: "xy" as const, ast: parsed.ast },
+      domain: action.draft.domain, yDomain: action.draft.yDomain };
+    const display = { objectId: id, ...action.draft.style };
+    if (action.type === "create-slope-field") { objects.push(object); displays.push(display); }
     else { objects[index] = object; displays[index] = display; }
     selection = { objectId: id, probe: null };
   } else if (action.type === "create-inequality" || action.type === "edit-inequality") {

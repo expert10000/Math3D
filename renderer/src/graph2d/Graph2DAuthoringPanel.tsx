@@ -1,10 +1,11 @@
 import { GRAPH2D_MAX_OBJECTS, validateGraph2DFunctionDraft, validateGraph2DParametricDraft,
   validateGraph2DPolarDraft, validateGraph2DImplicitDraft, validateGraph2DInequalityDraft,
+  validateGraph2DSlopeFieldDraft,
   validateGraph2DPiecewiseDraft,
   previewGraph2DPointImport, graph2DPointDomain,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DFunctionDraft,
   type Graph2DParametricDraft, type Graph2DPolarDraft, type Graph2DImplicitDraft,
-  type Graph2DInequalityDraft, type Graph2DPointSeriesDraft, type Graph2DPiecewiseDraft } from "@math3d/core";
+  type Graph2DInequalityDraft, type Graph2DPointSeriesDraft, type Graph2DPiecewiseDraft, type Graph2DSlopeFieldDraft } from "@math3d/core";
 import { useState } from "react";
 import { pointTableStore } from "./pointTableStore";
 
@@ -25,6 +26,10 @@ const initialImplicitDraft = (): Graph2DImplicitDraft => ({ label: "contour", ex
   domain: { min: -10, max: 10, includeMin: true, includeMax: true },
   yDomain: { min: -10, max: 10, includeMin: true, includeMax: true },
   style: { visible: true, color: "#059669", lineWidth: 2, lineStyle: "solid" } });
+const initialSlopeFieldDraft = (): Graph2DSlopeFieldDraft => ({ label: "dy/dx", expression: "x-y",
+  domain: { min: -10, max: 10, includeMin: true, includeMax: true },
+  yDomain: { min: -10, max: 10, includeMin: true, includeMax: true },
+  style: { visible: true, color: "#0d9488", lineWidth: 1.5, lineStyle: "solid" } });
 const initialInequalityDraft = (): Graph2DInequalityDraft => ({ label: "region",
   clauses: [{ expression: "x^2+y^2-4", comparator: "<=" }], operator: "all",
   domain: { min: -10, max: 10, includeMin: true, includeMax: true },
@@ -47,10 +52,11 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
   const [parametricDraft, setParametricDraft] = useState<Graph2DParametricDraft>(initialParametricDraft);
   const [polarDraft, setPolarDraft] = useState<Graph2DPolarDraft>(initialPolarDraft);
   const [implicitDraft, setImplicitDraft] = useState<Graph2DImplicitDraft>(initialImplicitDraft);
+  const [slopeFieldDraft, setSlopeFieldDraft] = useState<Graph2DSlopeFieldDraft>(initialSlopeFieldDraft);
   const [inequalityDraft, setInequalityDraft] = useState<Graph2DInequalityDraft>(initialInequalityDraft);
   const [pointDraft, setPointDraft] = useState(initialPointDraft);
   const [piecewiseDraft, setPiecewiseDraft] = useState<Graph2DPiecewiseDraft>(initialPiecewiseDraft);
-  const [mode, setMode] = useState<"explicit" | "parametric" | "polar" | "implicit" | "inequality" | "point-series" | "piecewise">("explicit");
+  const [mode, setMode] = useState<"explicit" | "parametric" | "polar" | "implicit" | "inequality" | "point-series" | "piecewise" | "slope-field">("explicit");
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const variables = ["x", ...document.source.variables.map((entry) => entry.name)];
@@ -63,6 +69,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
     mode === "inequality" ? validateGraph2DInequalityDraft(inequalityDraft,
       ["x", "y", ...document.source.variables.map((entry) => entry.name)]) :
     mode === "implicit" ? validateGraph2DImplicitDraft(implicitDraft,
+      ["x", "y", ...document.source.variables.map((entry) => entry.name)]) :
+    mode === "slope-field" ? validateGraph2DSlopeFieldDraft(slopeFieldDraft,
       ["x", "y", ...document.source.variables.map((entry) => entry.name)]) :
     mode === "parametric" ? validateGraph2DParametricDraft(parametricDraft,
       ["t", ...document.source.variables.map((entry) => entry.name)]) :
@@ -78,6 +86,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
     setPolarDraft(initialPolarDraft()); setMessage(""); setOpen(true); };
   const beginCreateImplicit = () => { setMode("implicit"); setEditingId(null);
     setImplicitDraft(initialImplicitDraft()); setMessage(""); setOpen(true); };
+  const beginCreateSlopeField = () => { setMode("slope-field"); setEditingId(null);
+    setSlopeFieldDraft(initialSlopeFieldDraft()); setMessage(""); setOpen(true); };
   const beginCreateInequality = () => { setMode("inequality"); setEditingId(null);
     setInequalityDraft(initialInequalityDraft()); setMessage(""); setOpen(true); };
   const beginCreatePointSeries = () => { setMode("point-series"); setEditingId(null);
@@ -102,6 +112,10 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
         style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
     } else if (object.kind === "implicit") {
       setMode("implicit"); setImplicitDraft({ label: object.label, expression: object.expression.source,
+        domain: object.domain, yDomain: object.yDomain,
+        style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
+    } else if (object.kind === "slope-field") {
+      setMode("slope-field"); setSlopeFieldDraft({ label: object.label, expression: object.expression.source,
         domain: object.domain, yDomain: object.yDomain,
         style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
     } else if (object.kind === "inequality") {
@@ -145,6 +159,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
         { type: "create-inequality", draft: inequalityDraft } :
       mode === "implicit" ? editingId ? { type: "edit-implicit", objectId: editingId, draft: implicitDraft } :
         { type: "create-implicit", draft: implicitDraft } :
+      mode === "slope-field" ? editingId ? { type: "edit-slope-field", objectId: editingId, draft: slopeFieldDraft } :
+        { type: "create-slope-field", draft: slopeFieldDraft } :
       mode === "parametric" ? editingId ? { type: "edit-parametric", objectId: editingId, draft: parametricDraft } :
         { type: "create-parametric", draft: parametricDraft } :
         editingId ? { type: "edit-polar", objectId: editingId, draft: polarDraft } :
@@ -153,6 +169,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       setOpen(false); setEditingId(null); setDraft(initialDraft()); setParametricDraft(initialParametricDraft());
       setPolarDraft(initialPolarDraft());
       setImplicitDraft(initialImplicitDraft());
+      setSlopeFieldDraft(initialSlopeFieldDraft());
       setInequalityDraft(initialInequalityDraft());
       setPointDraft(initialPointDraft());
       setPiecewiseDraft(initialPiecewiseDraft());
@@ -173,6 +190,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       <button type="button" onClick={beginCreateParametric} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add parametric</button>
       <button type="button" onClick={beginCreatePolar} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add polar</button>
       <button type="button" onClick={beginCreateImplicit} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add implicit</button>
+      <button type="button" onClick={beginCreateSlopeField} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add slope field</button>
       <button type="button" onClick={beginCreateInequality} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add inequality</button>
       <button type="button" onClick={beginCreatePiecewise} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add piecewise</button>
       <button type="button" onClick={beginCreatePointSeries} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add data series</button></div>
@@ -186,6 +204,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
                 `x(t) = ${object.xExpression.source}; y(t) = ${object.yExpression.source}` :
                 object.kind === "polar" ? `r(θ) = ${object.rExpression.source}` :
                   object.kind === "implicit" ? `F(x,y) = ${object.expression.source} = 0` :
+                    object.kind === "slope-field" ? `dy/dx = ${object.expression.source}` :
                     object.kind === "inequality" ? object.clauses.map((clause) =>
                       `${clause.source} ${clause.comparator} 0`).join(object.operator === "all" ? " AND " : " OR ") :
                       object.kind === "point-series" ? `${object.table.rowCount} rows · ${object.mode} · missing y: gap` :
@@ -336,6 +355,39 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
       {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
       <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save polar</button>
+        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+    </form>}
+    {open && mode === "slope-field" && <form className="graph2d-function-editor"
+      aria-label={editingId ? "Edit slope field" : "New slope field"}
+      onSubmit={event => { event.preventDefault(); save(); }}>
+      <h3>{editingId ? "Edit slope field" : "New slope field"}</h3>
+      <p>Direction segments for dy/dx = f(x,y). This field shows local slopes, not solution curves. Linear axes only.</p>
+      <label>Name <input aria-label="Slope field name" value={slopeFieldDraft.label} maxLength={160}
+        onChange={event => setSlopeFieldDraft({ ...slopeFieldDraft, label: event.target.value })} /></label>
+      <label>dy/dx = <input aria-label="Slope field expression" value={slopeFieldDraft.expression} spellCheck={false}
+        onChange={event => setSlopeFieldDraft({ ...slopeFieldDraft, expression: event.target.value })} /></label>
+      <div className="graph2d-domain-row">
+        <label>X from <input aria-label="Slope field x minimum" type="number" value={slopeFieldDraft.domain.min}
+          onChange={event => setSlopeFieldDraft({ ...slopeFieldDraft,
+            domain: { ...slopeFieldDraft.domain, min: Number(event.target.value) } })} /></label>
+        <label>X to <input aria-label="Slope field x maximum" type="number" value={slopeFieldDraft.domain.max}
+          onChange={event => setSlopeFieldDraft({ ...slopeFieldDraft,
+            domain: { ...slopeFieldDraft.domain, max: Number(event.target.value) } })} /></label>
+      </div>
+      <div className="graph2d-domain-row">
+        <label>Y from <input aria-label="Slope field y minimum" type="number" value={slopeFieldDraft.yDomain.min}
+          onChange={event => setSlopeFieldDraft({ ...slopeFieldDraft,
+            yDomain: { ...slopeFieldDraft.yDomain, min: Number(event.target.value) } })} /></label>
+        <label>Y to <input aria-label="Slope field y maximum" type="number" value={slopeFieldDraft.yDomain.max}
+          onChange={event => setSlopeFieldDraft({ ...slopeFieldDraft,
+            yDomain: { ...slopeFieldDraft.yDomain, max: Number(event.target.value) } })} /></label>
+      </div>
+      <label>Color <input aria-label="Slope field color" type="color" value={slopeFieldDraft.style.color}
+        onChange={event => setSlopeFieldDraft({ ...slopeFieldDraft,
+          style: { ...slopeFieldDraft.style, color: event.target.value } })} /></label>
+      {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
+      {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save slope field</button>
         <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
     </form>}
     {open && mode === "implicit" && <form className="graph2d-function-editor"

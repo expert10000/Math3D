@@ -13,7 +13,8 @@ export const mobileGraphKindEditor = (document: Graph2DDocument, kind: Graph2DOb
   const style = document.display.objects.find((entry) => entry.objectId === objectId);
   if (objectId && (!object || object.kind !== kind || !style)) throw new TypeError("Unsupported graph editor.");
   const draft: MobileGraphAdvancedEditor["draft"] = { ...mobileGraphFunctionDraft(document, null), label: `${kind} ${document.source.objects.length + 1}`,
-    expression: kind === "parametric" ? "cos(t)" : kind === "polar" ? "2*cos(3*theta)" : "x^2+y^2-4", second: "sin(t)",
+    expression: kind === "parametric" ? "cos(t)" : kind === "polar" ? "2*cos(3*theta)" :
+      kind === "slope-field" ? "x-y" : "x^2+y^2-4", second: "sin(t)",
     yMin: "-10", yMax: "10", operator: "all", clauses: [{ expression: "x^2+y^2-4", comparator: "<=" }],
     pieces: [{ expression: "-x", min: "-10", max: "0", includeMin: true, includeMax: false },
       { expression: "x", min: "0", max: "10", includeMin: true, includeMax: true }],
@@ -24,8 +25,8 @@ export const mobileGraphKindEditor = (document: Graph2DDocument, kind: Graph2DOb
     if ("domain" in object) Object.assign(draft, { min: String(object.domain.min), max: String(object.domain.max), includeMin: object.domain.includeMin, includeMax: object.domain.includeMax });
     if (object.kind === "parametric") { draft.expression = object.xExpression.source; draft.second = object.yExpression.source; }
     if (object.kind === "polar") draft.expression = object.rExpression.source;
-    if (object.kind === "implicit" || object.kind === "explicit-cartesian") draft.expression = object.expression.source;
-    if (object.kind === "implicit" || object.kind === "inequality") { draft.yMin = String(object.yDomain.min); draft.yMax = String(object.yDomain.max); }
+    if (object.kind === "implicit" || object.kind === "explicit-cartesian" || object.kind === "slope-field") draft.expression = object.expression.source;
+    if (object.kind === "implicit" || object.kind === "inequality" || object.kind === "slope-field") { draft.yMin = String(object.yDomain.min); draft.yMax = String(object.yDomain.max); }
     if (object.kind === "inequality") { draft.operator = object.operator; draft.clauses = object.clauses.map((clause) => ({ expression: clause.source, comparator: clause.comparator })); }
     if (object.kind === "piecewise") draft.pieces = object.pieces.map((piece) => ({ expression: piece.expression.source, min: String(piece.domain.min), max: String(piece.domain.max), includeMin: piece.domain.includeMin, includeMax: piece.domain.includeMax }));
     if (object.kind === "point-series") { draft.data = ""; draft.table = object.table; draft.mode = object.mode; }
@@ -43,6 +44,7 @@ export const mobileGraphKindAction = (editor: MobileGraphAdvancedEditor, tables:
     case "parametric": return action("-parametric", { ...base, xExpression: d.expression.trim(), yExpression: d.second.trim() });
     case "polar": return action("-polar", { ...base, rExpression: d.expression.trim() });
     case "implicit": return action("-implicit", { ...base, expression: d.expression.trim(), yDomain: { min: number(d.yMin), max: number(d.yMax), includeMin: true, includeMax: true } });
+    case "slope-field": return action("-slope-field", { ...base, expression: d.expression.trim(), yDomain: { min: number(d.yMin), max: number(d.yMax), includeMin: true, includeMax: true } });
     case "inequality": return action("-inequality", { ...base, operator: d.operator, clauses: d.clauses.map((c) => ({ ...c, expression: c.expression.trim() })), yDomain: { min: number(d.yMin), max: number(d.yMax), includeMin: true, includeMax: true } });
     case "piecewise": return action("-piecewise", { ...base, pieces: d.pieces.map((p) => ({ expression: p.expression.trim(), domain: { min: number(p.min), max: number(p.max), includeMin: p.includeMin, includeMax: p.includeMax } })) });
     case "point-series": {
