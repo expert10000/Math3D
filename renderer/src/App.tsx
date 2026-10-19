@@ -44577,7 +44577,7 @@ const App: React.FC = () => {
   const surfacePreviewFocusPrevLeftTabRef = useRef<SurfacesLeftTab>("scene");
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<SurfacesLeftTab>("scene");
   useLayoutEffect(() => {
-    if (surfacesPanelState === "work" && surfacesLeftTab === "scene" && surfacesWorkGalleryOpen) {
+    if (surfacesPanelState === "work" && (surfacesLeftTab === "object" || (surfacesLeftTab === "scene" && surfacesWorkGalleryOpen))) {
       surfaceLeftPanelRef.current?.scrollTo(0, 0);
     }
   }, [surfacesPanelState, surfacesLeftTab, surfacesWorkGalleryOpen]);
@@ -116750,115 +116750,6 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
         )}
         <div style={{ fontSize: 10, color: "#64748b", marginTop: 4 }}>Family: {currentFamilyLabel}</div>
       </div>
-
-      {selectedIsDerivedSurfaceMesh && (
-        <MeshOperationsPanel
-          testId="mesh-object-operation-registry"
-          meshReady={!!activeSurfaceMeshStats}
-          activeMeshLabel={selectedNode?.name ?? null}
-          workerReady={meshOperationWorkerReady}
-          workerStatusText={meshOperationWorkerStatusText}
-          cgalReady={meshOperationCgalReady}
-          cgalStatusText={meshOperationCgalStatusText}
-          busy={meshOperationBusy}
-          cgalBusy={meshOperationCgalBusy}
-          lastResult={meshLastOperation}
-          lastValidation={meshOperationLastValidation}
-          focusedOperation={meshOperationFocusedOperation}
-          focusedOperationToken={meshOperationFocusedOperationToken}
-          operationHistory={meshOperationHistory}
-          savedPresets={meshOperationSavedPresets}
-          onRestoreOperationHistoryEntry={onRestoreMeshOperationHistoryEntry}
-          onUndoLastOperation={onUndoLatestMeshOperation}
-          canUndoLastOperation={canUndoLatestMeshOperation}
-          onApplyOperationPreset={onApplyMeshOperationPreset}
-          onApplySavedOperationPreset={onApplyMeshOperationSavedPreset}
-          onSaveOperationPreset={onSaveMeshOperationPreset}
-          canSaveOperationPreset={canSaveMeshOperationPreset}
-          cleanComputeNormals={meshOperationCleanComputeNormals}
-          onChangeCleanComputeNormals={onChangeMeshOperationCleanComputeNormals}
-          onValidate={onMeshOperationValidate}
-          repairOrientFaces={meshOperationRepairOrientFaces}
-          onChangeRepairOrientFaces={onChangeMeshOperationRepairOrientFaces}
-          repairRemoveDegenerateFaces={meshOperationRepairRemoveDegenerateFaces}
-          onChangeRepairRemoveDegenerateFaces={onChangeMeshOperationRepairRemoveDegenerateFaces}
-          repairRemoveDuplicateFaces={meshOperationRepairRemoveDuplicateFaces}
-          onChangeRepairRemoveDuplicateFaces={onChangeMeshOperationRepairRemoveDuplicateFaces}
-          repairCompactVertices={meshOperationRepairCompactVertices}
-          onChangeRepairCompactVertices={onChangeMeshOperationRepairCompactVertices}
-          repairFillSmallHoles={meshOperationRepairFillSmallHoles}
-          onChangeRepairFillSmallHoles={onChangeMeshOperationRepairFillSmallHoles}
-          repairMaxHoleEdges={meshOperationRepairMaxHoleEdges}
-          onChangeRepairMaxHoleEdges={onChangeMeshOperationRepairMaxHoleEdges}
-          onRepair={onMeshOperationRepair}
-          onRepairValidate={onMeshOperationRepairValidate}
-          remeshTargetEdgeLength={meshOperationRemeshTargetEdgeLength}
-          onChangeRemeshTargetEdgeLength={onChangeMeshOperationRemeshTargetEdgeLength}
-          remeshIterations={meshOperationRemeshIterations}
-          onChangeRemeshIterations={onChangeMeshOperationRemeshIterations}
-          remeshPreserveSharpEdges={meshOperationRemeshPreserveSharpEdges}
-          onChangeRemeshPreserveSharpEdges={onChangeMeshOperationRemeshPreserveSharpEdges}
-          onRemesh={onMeshOperationRemesh}
-          onClean={onMeshOperationClean}
-          decimateReduction={meshOperationDecimateReduction}
-          onChangeDecimateReduction={onChangeMeshOperationDecimateReduction}
-          decimateTargetFaces={meshOperationDecimateTargetFaces}
-          onChangeDecimateTargetFaces={onChangeMeshOperationDecimateTargetFaces}
-          decimateUseTargetFaces={meshOperationDecimateUseTargetFaces}
-          onChangeDecimateUseTargetFaces={onChangeMeshOperationDecimateUseTargetFaces}
-          onDecimate={onMeshOperationDecimate}
-          smoothIterations={meshOperationSmoothIterations}
-          onChangeSmoothIterations={onChangeMeshOperationSmoothIterations}
-          smoothPassband={meshOperationSmoothPassband}
-          onChangeSmoothPassband={onChangeMeshOperationSmoothPassband}
-          onSmooth={onMeshOperationSmooth}
-          booleanOperation={meshOperationBooleanOperation}
-          onChangeBooleanOperation={onChangeMeshOperationBooleanOperation}
-          booleanStrategy={meshOperationBooleanStrategy}
-          onChangeBooleanStrategy={onChangeMeshOperationBooleanStrategy}
-          booleanOperandObjectId={meshOperationBooleanOperandObjectId}
-          onChangeBooleanOperandObjectId={onChangeMeshOperationBooleanOperandObjectId}
-          booleanOperandOptions={meshOperationBooleanOperandOptions}
-          booleanCurveRadius={meshOperationBooleanCurveRadius}
-          onChangeBooleanCurveRadius={onChangeMeshOperationBooleanCurveRadius}
-          booleanStatus={meshOperationBooleanStatus}
-          onRunBoolean={onRunMeshOperationBoolean}
-          onPrepareBooleanDemo={onPrepareMeshOperationBooleanDemo}
-          onDuplicateActiveMeshForBoolean={onDuplicateActiveMeshForBoolean}
-          onSwapBooleanOperands={onSwapMeshOperationBooleanOperands}
-          outputMode={meshOperationOutputMode}
-          onChangeOutputMode={onChangeMeshOperationOutputMode}
-          implicitAvailable={meshOperationImplicitAvailable}
-          implicitExpr={meshOperationImplicitExpr}
-          onOpenImplicitSpherePreset={onOpenImplicitSpherePreset}
-          implicitResolution={meshOperationImplicitResolution}
-          previewBusy={meshOperationPreviewBusy}
-          previewError={meshOperationPreviewError}
-          previewTargetFaces={meshOperationPreviewTargetFaces}
-          previewUseDecimate={meshOperationPreviewUseDecimate}
-          onChangePreviewTargetFaces={onChangeMeshOperationPreviewTargetFaces}
-          onChangePreviewUseDecimate={onChangeMeshOperationPreviewUseDecimate}
-          onRunPreview={onRunMeshOperationPreview}
-          cgalTargetEdge={meshOperationCgalTargetEdge}
-          onChangeCgalTargetEdge={onChangeMeshOperationCgalTargetEdge}
-          cgalAutoTargetEdge={meshOperationCgalAutoTargetEdge}
-          onChangeCgalAutoTargetEdge={onChangeMeshOperationCgalAutoTargetEdge}
-          cgalTriBudgetEnabled={meshOperationCgalTriBudgetEnabled}
-          onChangeCgalTriBudgetEnabled={onChangeMeshOperationCgalTriBudgetEnabled}
-          cgalTriBudget={meshOperationCgalTriBudget}
-          onChangeCgalTriBudget={onChangeMeshOperationCgalTriBudget}
-          cgalEffectiveEdge={meshOperationCgalEffectiveEdge}
-          cgalEstimatedTris={meshOperationCgalEstimatedTris}
-          cgalError={meshOperationCgalError}
-          onRunCgalMesh={onRunMeshOperationCgalMesh}
-          onShowResultDetails={onShowMeshOperationResultDetails}
-          canSendToGeometry={canConvertToMeshObject}
-          onSendToGeometry={onConvertToMeshObject}
-          onRepairResult={onRepairMeshOperationResult}
-          onUseResultAsBooleanA={onUseMeshOperationResultAsBooleanA}
-          onUseResultAsBooleanB={onUseMeshOperationResultAsBooleanB}
-        />
-      )}
 
       <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
         <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Identity</div>

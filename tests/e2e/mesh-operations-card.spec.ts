@@ -298,6 +298,26 @@ test.describe("Mesh Operations card", () => {
     await expect(page.getByTestId("mesh-workspace-scene-outliner")).toBeVisible();
   });
 
+  test("Object tab shows object details without repeating Mesh Operations", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+    await openWorkspaceOperationsCard(page);
+    await page.getByTestId("mesh-workspace-example-1").click();
+    const leftPanel = page.getByTestId("surface-left-panel");
+    await leftPanel.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await page.getByTestId("surfaces-left-tab-object").click();
+
+    await expect(page.getByTestId("mesh-object-operation-registry")).toHaveCount(0);
+    await expect(leftPanel.getByText("Identity", { exact: true })).toBeVisible();
+    await expect(leftPanel).toHaveJSProperty("scrollTop", 0);
+
+    await page.getByTestId("surfaces-action-gallery").click();
+    await expect(page.getByTestId("mesh-preset-grid")).toBeVisible();
+    await expect(leftPanel).toHaveJSProperty("scrollTop", 0);
+  });
+
   test("expands rows, changes parameters, and records a Decimate run", async () => {
     ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
     const { page } = ctx;
