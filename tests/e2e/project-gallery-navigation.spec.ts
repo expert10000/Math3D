@@ -24,6 +24,30 @@ test("reactivating Projects during resize keeps the Gallery and its filters open
   } finally { await closeSurfaceApp(ctx); }
 });
 
+test("module navigation closes Projects without unloading the current project", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await expect(panel).toBeVisible();
+    await page.getByTestId("workspace-nav-curves").click();
+    await expect(panel).toBeHidden();
+    await expect(page.getByTestId("projects-toggle")).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByTestId("workspace-nav-curves")).toHaveAttribute("aria-pressed", "true");
+
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-template-open-catenoid-evidence").click();
+    const projectId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id);
+    await page.getByTestId("workspace-nav-mesh").click();
+    await expect(panel).toBeHidden();
+    await expect(page.getByTestId("workspace-nav-mesh")).toHaveAttribute("aria-pressed", "true");
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id)).toBe(projectId);
+    await page.getByTestId("projects-toggle").click();
+    await expect(panel).toBeVisible();
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("Project Gallery filters starters and saved projects and keeps browsing separate from project actions", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
   try {

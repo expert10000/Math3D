@@ -79851,6 +79851,7 @@ case "mobius":
                           aria-expanded={entry.id === "projects" ? projectsOpen : undefined}
                           aria-controls={entry.id === "projects" ? "project-explorer-panel" : undefined}
                           onClick={() => {
+                            if (entry.id !== "projects") setProjectsOpen(false);
                             if (entry.id === "surfaces") {
                               openNormalSurfacesWorkspace(); return;
                             }
