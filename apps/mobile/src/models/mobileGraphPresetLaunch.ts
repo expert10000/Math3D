@@ -15,7 +15,7 @@ export const planMobileGraphPresetLaunch = (preset: Graph2DPreset, token: string
     updatedAt: now, lastOpenedAt: now, serializedProject: serializeSceneProject(createSceneProjectDocument(current.scene)),
   };
   const next = [project, ...(preserved ? [preserved] : []), ...projects.filter(item => item.id !== preserved?.id)];
-  return { project, projects: next, sidecars: launch.sidecars };
+  return { project, document: launch.document, projects: next, sidecars: launch.sidecars };
 };
 
 /** Sidecars are available before the normal atomic library write; failures undo newly staged files. */
