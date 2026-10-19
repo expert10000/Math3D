@@ -32,7 +32,7 @@ export const sampleGraph2DTimeOde = (request: Graph2DTimeOdeRequest): Graph2DTim
   const span = object.domain.max - object.domain.min;
   const maxStep = span / 64;
   const evaluationLimit = Math.min(request.maxSamples, 12000);
-  // Allocate half to each direction; an expensive side cannot erase the other side's path.
+  // Reserve half for each direction; the forward path may use backward's unspent share.
   const backwardLimit = Math.floor(evaluationLimit / 2);
   const forwardLimit = evaluationLimit - backwardLimit;
   const integrate = (direction: -1 | 1, limit: number) => {
@@ -106,7 +106,7 @@ export const sampleGraph2DTimeOde = (request: Graph2DTimeOdeRequest): Graph2DTim
     return result("time-boundary");
   };
   const backward = integrate(-1, backwardLimit);
-  const forward = integrate(1, forwardLimit);
+  const forward = integrate(1, forwardLimit + backwardLimit - backward.status.evaluations);
   const segments: Graph2DSampleSegment[] = [];
   if (backward.points.length > 1) segments.push({ points: backward.points.slice().reverse(),
     openStart: backward.status.stop !== "time-boundary" && backward.status.stop !== "state-boundary", openEnd: false });

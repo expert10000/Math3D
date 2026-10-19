@@ -20,7 +20,7 @@ In **Graphs → Functions**, offer **Add time-dependent ODE** and an editor with
 
 ## Numerical contract
 
-Integrate toward `tMin` and `tMax` from the same seed with adaptive RK4 step doubling and Richardson correction, matching the existing scalar trajectory method. Use local error tolerance `10⁻⁶ × (1 + max(|x_current|, |x_next|))`, a maximum proposed step of `(tMax-tMin)/64`, and a minimum step tied to the span and floating-point spacing at the current time. Cap accepted steps at 384 **per direction** and derivative evaluations at 12,000 **per object** or the lower scene budget, with the existing host deadline. The 384-step cap is reachable under the 6,000-evaluation share of a 12-call RK4 step. Reserve a fair evaluation share for each direction so a difficult backward path cannot silently consume the entire forward budget. Report accepted and rejected counts separately for each direction. Return finite, time-ordered samples only; never join across a failed evaluation. Do not infer a mathematical singularity solely from hitting a numerical limit.
+Integrate toward `tMin` and `tMax` from the same seed with adaptive RK4 step doubling and Richardson correction, matching the existing scalar trajectory method. Use local error tolerance `10⁻⁶ × (1 + max(|x_current|, |x_next|))`, a maximum proposed step of `(tMax-tMin)/64`, and a minimum step tied to the span and floating-point spacing at the current time. Cap accepted steps at 384 **per direction** and derivative evaluations at 12,000 **per object** or the lower scene budget, with the existing host deadline. The 384-step cap is reachable under the 6,000-evaluation share of a 12-call RK4 step. Reserve a fair evaluation share for each direction so a difficult backward path cannot silently consume the entire forward budget; unused backward evaluations may extend the forward path within the same object budget. Report accepted and rejected counts separately for each direction. Return finite, time-ordered samples only; never join across a failed evaluation. Do not infer a mathematical singularity solely from hitting a numerical limit.
 
 Each direction returns exactly one explicit stop code:
 
@@ -53,4 +53,4 @@ Its exact reference is `x(t) = t - 1 + 2 exp(-t)`. The forward path reaches the 
 
 ## Fixed implementation choices
 
-Use one initial condition per distinct saved object, a 100-unit maximum in each time direction, and an even split of the 12,000-evaluation object budget between directions. At a state-boundary exit, render through the last accepted sample; do not interpolate an unverified endpoint.
+Use one initial condition per distinct saved object, a 100-unit maximum in each time direction, and an even reserved split of the 12,000-evaluation object budget between directions, allowing the forward path to use backward evaluations left unspent. At a state-boundary exit, render through the last accepted sample; do not interpolate an unverified endpoint.

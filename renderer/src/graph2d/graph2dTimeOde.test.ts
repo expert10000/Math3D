@@ -51,6 +51,10 @@ describe("GRA-11.8 time-dependent scalar ODE", () => {
     expect(artifact.backward?.last.x).toBeLessThanOrEqual(8);
     expect(artifact.forward?.last.t).toBeCloseTo(4, 7);
     expect(artifact.samplesEvaluated).toBe((artifact.backward?.evaluations ?? 0) + (artifact.forward?.evaluations ?? 0));
+    const mobileMid = sample(gallery, 1024).artifact;
+    expect(mobileMid.backward?.stop).toBe("state-boundary");
+    expect(mobileMid.forward?.stop).toBe("time-boundary");
+    expect(mobileMid.samplesEvaluated).toBeLessThanOrEqual(1024);
     const endpoint = sample({ ...draft("0", -2, 1), domain: bounds(-2, 2) }).artifact;
     expect(endpoint.backward?.stop).toBe("time-boundary");
     expect(endpoint.backward?.acceptedSteps).toBe(0);
