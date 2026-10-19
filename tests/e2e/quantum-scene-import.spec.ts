@@ -372,6 +372,17 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     const orbitalBounds=(await orbitalCanvas.boundingBox())!;
     await orbitalCanvas.click({position:{x:orbitalBounds.width*.5,y:orbitalBounds.height*.5}});
     await expect(page.getByTestId("quantum-field-sample")).toContainText("undefined near a node");
+    await page.getByTestId("quantum-scene-geometry").getByRole("button", { name: "Volume", exact: true }).click();
+    await expect(page.getByTestId("quantum-volume-source")).toContainText("a0^-3");
+    await expect(page.getByTestId("quantum-volume-fit-details")).toContainText("source-grid window");
+    await page.getByRole("button", { name: "Fit visible field" }).click();
+    await expect(page.getByTestId("quantum-field-volume").getByTestId("volume-slice-viewer-free"))
+      .toHaveAttribute("data-camera-fit-target", "crop");
+    await page.getByRole("button", { name: "Fit volume grid" }).click();
+    await expect(page.getByTestId("quantum-field-volume").getByTestId("volume-slice-viewer-free"))
+      .toHaveAttribute("data-camera-fit-target", "volume");
+    await page.getByLabel("Volume quantity").selectOption("phase");
+    await expect(page.getByRole("button", { name: "Fit visible field" })).toBeDisabled();
     await page.getByRole("button",{name:"Density surface"}).click();
     await expect(page.getByTestId("quantum-field-surface")).toBeVisible();
     await expect(page.getByTestId("quantum-surface-legend")).toContainText("a0^-3");
