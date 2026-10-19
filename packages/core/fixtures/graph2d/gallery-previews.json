@@ -2,20 +2,21 @@
   "format": "math3d.graph2d-gallery-previews",
   "version": 1,
   "recipe": {
-    "version": 1,
+    "version": 2,
     "width": 320,
     "height": 180,
     "maxSamples": 1024,
+    "phaseSamples": 2048,
     "maxDepth": 12,
     "tolerancePx": 0.75,
     "theme": "light"
   },
-  "compressedBytes": 257356,
+  "compressedBytes": 293809,
   "entries": [
     {
       "id": "line-comparison",
       "presetDigest": "sha256:cc4fc22adc575c83b19a5f5ec5895a8e29d07823ed514e2b697344d398fa8a06",
-      "key": "sha256:c6efdbc6652542ab81e06831c339f0744f4cda92628dffc603b451012e824d7c",
+      "key": "sha256:c2c2a16fe603c3d1d22cf2be5946430b6847adfc6182c5fb27f0ae11566719f0",
       "svg": "line-comparison.svg",
       "png": "line-comparison.png",
       "svgHash": "sha256:1119043fdbdaa8c1845aef251a2283c7140bfdf9e60d7d703274094cb24029ab",
@@ -26,7 +27,7 @@
     {
       "id": "translated-quadratic",
       "presetDigest": "sha256:3db48a644d53cdc46a6c74a2343b8d666e97d436c0d05b71f840f0bc4cea6b51",
-      "key": "sha256:2fecf24714e4784b33c5095a34f80fc7b37edc5e9091b54f2793742207db13d9",
+      "key": "sha256:684fbbbacdc02d050d22b4ce61304aaef4aa3844b884a6eee793d7b3dcda8ffa",
       "svg": "translated-quadratic.svg",
       "png": "translated-quadratic.png",
       "svgHash": "sha256:e783ab1c19f0307d886503c2674e654baa6cd7dd05f110725cd42c52347ddcd9",
@@ -37,7 +38,7 @@
     {
       "id": "cubic-extrema",
       "presetDigest": "sha256:3837eedf15233af70dfea67d9b1c293a4fcbb176fb9de49f21fc9baa3b926977",
-      "key": "sha256:d51e32aa15cc6b63cf746c1cbbb1e123077484f82e1b33ee6fd9900b3bd70fe0",
+      "key": "sha256:bc11a3e24d261de875c6d176e58e89fa99fa3459175656ad2e81bda2ff25ca44",
       "svg": "cubic-extrema.svg",
       "png": "cubic-extrema.png",
       "svgHash": "sha256:b6e9f2b8b302a12113c724f18eff03d33406fbaed74096893042dd0915112a81",
@@ -48,7 +49,7 @@
     {
       "id": "repeated-root",
       "presetDigest": "sha256:f8466089be1af284315c580ca2b64e8a8ad737889f1440179a4643c3d41b155c",
-      "key": "sha256:39d6c5db97c0d19985645fcd768f3cb13db13ba51772eddf3a4eee2e6e4b6fa4",
+      "key": "sha256:a8d7109fe836265d968043ff3747fad9b50bc0a9863a57ec60ba587a27502b91",
       "svg": "repeated-root.svg",
       "png": "repeated-root.png",
       "svgHash": "sha256:35c0b6a4b355fb2af6f0ce8eb2b3bfb75ec8644e1b0cf7383fc3b5f0f53e272a",
@@ -59,7 +60,7 @@
     {
       "id": "reciprocal-pole",
       "presetDigest": "sha256:2a166f5f6f4f18e1ecb16bc24b6a44bb7dd810a1e0578562f516d5db3466b88f",
-      "key": "sha256:04593ec04f3fbf7ca32c016ea684bf0e9e7366f5550699cf984c888425cfa022",
+      "key": "sha256:1f6ba12db3b01d2560c9160d3e604c490c405f832b586436157dcc765fab6f86",
       "svg": "reciprocal-pole.svg",
       "png": "reciprocal-pole.png",
       "svgHash": "sha256:6eeb747dff831bbb27ca967c5299117aafe441579f82179f9e34db285af79f59",
@@ -70,7 +71,7 @@
     {
       "id": "exponential-log",
       "presetDigest": "sha256:bf6701ba565e8fd6607d340c201551374ff68028b9e4fd8a87be49178ee11ac0",
-      "key": "sha256:e77b11c7c19a33f77a2178eb36081f3d5c38f8c4eb0ed97b9e9304ba6fa9fa75",
+      "key": "sha256:b52ff2d1199de317519a75f7140a184447b48a702a4c43ffc3ba8ac62a154b45",
       "svg": "exponential-log.svg",
       "png": "exponential-log.png",
       "svgHash": "sha256:6196155ff8b27e98e50d4a1c8b17a2156fafeff09c44150b8b003f26deea31c6",
@@ -81,7 +82,7 @@
     {
       "id": "sine-cosine",
       "presetDigest": "sha256:b6574902f82d6966c050131777f0db0c85fe3af5224ecad3bab5f80a7b75c525",
-      "key": "sha256:038911a9460c8c6bcb0cd55ce7c021fa6528867b7888d678113d24597de51a66",
+      "key": "sha256:815e02c63081cbe19772714e8fea59dbe090002b84b07121bee026a9cb5d254c",
       "svg": "sine-cosine.svg",
       "png": "sine-cosine.png",
       "svgHash": "sha256:4acc023f03d1b4d99622598cf2273aa5367c04802c082c09ec4bbad45f54c901",
@@ -92,7 +93,7 @@
     {
       "id": "damped-wave",
       "presetDigest": "sha256:d2f33e19ef1415f3c9425b7862425750903a63dfb48d1749eafd9d040d0cdaa5",
-      "key": "sha256:b1caa71fc49f92b7341d33194ee22366acbe053577aaf0af5b6f1080f28808bd",
+      "key": "sha256:5ac1d296cd220c847e79fb790d5eeac0be050f6230b1fc56832af65c7246a754",
       "svg": "damped-wave.svg",
       "png": "damped-wave.png",
       "svgHash": "sha256:b93519addf179b7ad00cc03c659755630d8c7e23542c1684c127bd48edee3011",
@@ -103,7 +104,7 @@
     {
       "id": "wave-beats",
       "presetDigest": "sha256:da44c4e12b37920fdda49bc6130fcfa2347f3e0f9f0ee45ed9a413ff36c5d836",
-      "key": "sha256:03648e4a32c413d2693db4d7eca5d49e0fe113092f5ec62c780ec543c8a13703",
+      "key": "sha256:771b49a39beadb2d203a3c9a356fe2efd4322169e68614209e68325b1f0f768f",
       "svg": "wave-beats.svg",
       "png": "wave-beats.png",
       "svgHash": "sha256:1ef87727da5de39318b1170ad85c2dfff54fb6fbbf9eb189263972dc12610344",
@@ -114,7 +115,7 @@
     {
       "id": "sine-derivative",
       "presetDigest": "sha256:63eabaa27a9a98b17e9ac75307b44f9e086cfa9819b0d8fe2d304035fff8bdd6",
-      "key": "sha256:b4da4e816f80d799879c6944eeae3d6cd3df53b854892cda9ee19d3472fae708",
+      "key": "sha256:8507d6f2f1e533d407fee37174452421d34e18a1fd55ccea7f4f222f36dfc889",
       "svg": "sine-derivative.svg",
       "png": "sine-derivative.png",
       "svgHash": "sha256:e85b156d5326de2f4bfd0f800ff045f08a0ef2626c927307164ed0e10c5de50b",
@@ -125,7 +126,7 @@
     {
       "id": "parabola-tangent",
       "presetDigest": "sha256:0e583bebdaf70229435262ab046d49235cb0672d214d35a169178757d8450ac7",
-      "key": "sha256:32e43fd8f2d6984ce4ad8be0fd3a74b0cbe5ada750371163ee6d1cbb5aef0218",
+      "key": "sha256:5ee034ee68b3f46e274042e5f4290259a1d5ef9b4ab686c6eedadd9cd1f7de7d",
       "svg": "parabola-tangent.svg",
       "png": "parabola-tangent.png",
       "svgHash": "sha256:bf925d218d7baec08d2a543b8e526022cb93df7937b685b674f4ca42ea552b00",
@@ -136,7 +137,7 @@
     {
       "id": "circle-ellipse",
       "presetDigest": "sha256:617ba939fec9310048694047ee77084dba47af91ad442d948ec56990ba4588e2",
-      "key": "sha256:68054fbe98e80b13da4157b50ab58e0e65eeb361e54f8538ede40a960fa64475",
+      "key": "sha256:fbd1f7a05f5e19989432e7878f078491b79ef4fd331b8e1ef2abacb8949dd1e1",
       "svg": "circle-ellipse.svg",
       "png": "circle-ellipse.png",
       "svgHash": "sha256:d7dc8540b72058e44ff12828a85fd9cdaef4da5d43f2ac364020485e886cd96f",
@@ -147,7 +148,7 @@
     {
       "id": "lissajous",
       "presetDigest": "sha256:8af775fb3f27a4a9f480771f1b0fdf517120fe616e816462e646a8bbcd43e03a",
-      "key": "sha256:b501d6dabb53880588edd1d83e94198d9e100e227b6d37eefd20655285fed063",
+      "key": "sha256:2fd7f1da8ea5318ee70f5066b8ff71129daecc8e49f6b872df065480b57235e0",
       "svg": "lissajous.svg",
       "png": "lissajous.png",
       "svgHash": "sha256:0f860e692ea0701dd1616b68e9b651bc56a5eff4b7d53193d9da263af0269689",
@@ -158,7 +159,7 @@
     {
       "id": "cycloid",
       "presetDigest": "sha256:fbe67cb0e093d34e4ca167bc1ef2274f0201ebf6e6f31aa1af1052621b0e1481",
-      "key": "sha256:2e2d9560bfe24d412c16b26b4946969ca9777ee397cd8a1dbe52d87bcc3ecea6",
+      "key": "sha256:3dad854af9253fc860987ba6664a345405a2401461466b224ae1d3d5cda01b0d",
       "svg": "cycloid.svg",
       "png": "cycloid.png",
       "svgHash": "sha256:bd7eada93418f3b085440650d7dd53d1b983b28b8182b4381cefe3587c5c0b34",
@@ -169,7 +170,7 @@
     {
       "id": "polar-rose",
       "presetDigest": "sha256:329599ebbdb82d6f7b38a114d96cc7aed70ab04fb7765dd6c51a1dbd63edd2b0",
-      "key": "sha256:ea599315c8143c89154157c028798e6a965bd053f36866f686ff05ab6830ffed",
+      "key": "sha256:aa4593e26c8fb4942bf4f4dfc7f2dd24c5921018e37e1e306bc5b12d1069c705",
       "svg": "polar-rose.svg",
       "png": "polar-rose.png",
       "svgHash": "sha256:113dc27960cc2f665c670202ed155db558ccd4bea73e27bfb88ace7e3ed7a2fb",
@@ -180,7 +181,7 @@
     {
       "id": "archimedean-spiral",
       "presetDigest": "sha256:fe6a591104c919d528e562b654271428ce7d577a0acd2f59349627d28ec5c7d6",
-      "key": "sha256:9945561a9dabab99fefd163b35cedc3dc4296b60386cf0e7f5d662169e51c973",
+      "key": "sha256:99fe325fac14bfe562e7a5f89cf613d4b1d2b4dec5aab55502cd7a2cf53ebf51",
       "svg": "archimedean-spiral.svg",
       "png": "archimedean-spiral.png",
       "svgHash": "sha256:60311c262540054439159b65e85ec03e1cf8fe9197f713aa5e16317b29b21064",
@@ -191,7 +192,7 @@
     {
       "id": "cardioid",
       "presetDigest": "sha256:af994a8859dd40c0aed89374bf9211535a0b5b839d706e4a032489c71ed2f590",
-      "key": "sha256:c2bbea1ee81609a28485ce71d2cc2e22bdcd35dc27224b61afdea9e92a6042bf",
+      "key": "sha256:5d897a7015e65fa15e36ee9b8869229fa210653f14cdeacfb7275b959c25af49",
       "svg": "cardioid.svg",
       "png": "cardioid.png",
       "svgHash": "sha256:527a7967e7bf182b78e06559d59320078717eee29331c9e13297a7009ebbef49",
@@ -202,7 +203,7 @@
     {
       "id": "implicit-conics",
       "presetDigest": "sha256:26fb484b1c8f221ad66acda91a526ff50eda7c6d1d0c67989526b702bb5a73ec",
-      "key": "sha256:9cbd6ac088acfd877fc0937972c25b3f86d1f00d68a4d1b928bcefe4f00aaf56",
+      "key": "sha256:63704de04216a33143cd547ba664222f7e81b7091ee916a07556a10fc5a07366",
       "svg": "implicit-conics.svg",
       "png": "implicit-conics.png",
       "svgHash": "sha256:22fc51d995e45ddacaa484d633b33b5179529a2b7670dca66e14d6f4af52c939",
@@ -213,7 +214,7 @@
     {
       "id": "strict-disk",
       "presetDigest": "sha256:d474c5a65ab605e0e5580ddc70185a77e68a65ee7325ced5c3571d73801b5418",
-      "key": "sha256:e9f21b70d6caf90fa5d0b5c2f31f95c10cec63a32e34c9407a7bdbc1abc30805",
+      "key": "sha256:d45829976a4a2c364302fc64b19d4e8a5bfcf3112f29bb5d647ca6f33ab32405",
       "svg": "strict-disk.svg",
       "png": "strict-disk.png",
       "svgHash": "sha256:5a83e59dd9b3eb6923ab6d14ca75ae7e5cffca5bed23204de1d66af6fc44f279",
@@ -224,7 +225,7 @@
     {
       "id": "piecewise-data-gaps",
       "presetDigest": "sha256:af6e3854062647cc0af005ea90ef2fadcbe3563504237b6e794cd5083913add4",
-      "key": "sha256:98f5ae6d5fe9c43dbaf27b128af4c6c8dc501ef2a7c1bb2150277974b8e51f93",
+      "key": "sha256:15cddbff49390afa51d504f3e738b232623d86f0f78f0164ee519e17ef49ff5f",
       "svg": "piecewise-data-gaps.svg",
       "png": "piecewise-data-gaps.png",
       "svgHash": "sha256:c323871a38f7860613163269f5eeafadd76bf7c031f819d21c1144a4a06942b4",
@@ -235,7 +236,7 @@
     {
       "id": "regression-10000",
       "presetDigest": "sha256:1221f6b15676f5785413f08eacbbf71f2e2161c4fa803b20019fcb6d01d23969",
-      "key": "sha256:d244bcf4fb71f5e9d01f1d90b113551619c6b9660823447034e068c540fa9ac6",
+      "key": "sha256:beeb15310330b2b85275919d6ff4b14fd655a8c3b7c4b36271f038bffe2169c5",
       "svg": "regression-10000.svg",
       "png": "regression-10000.png",
       "svgHash": "sha256:6bd8060c76bd60d65b357e754c0ed9fcf0f7d4062fc3ea878828d30ba73b0fff",
@@ -248,6 +249,61 @@
           "count": 1
         }
       ]
+    },
+    {
+      "id": "phase-center",
+      "presetDigest": "sha256:eb963df2b9f63bad7b5e36ecf1305496d6aa6b8b471cf60cbe3ef5a0bdfaad6c",
+      "key": "sha256:827295a60855e230bd8bd2033976e57108e7b4aa2e41a29e62f375fc60f2b0cc",
+      "svg": "phase-center.svg",
+      "png": "phase-center.png",
+      "svgHash": "sha256:3528d53a6e3968bfd75724a5be8a0674e729ac7860e90e00607c8bdd64ac8e1a",
+      "pngHash": "sha256:089d70c768246f2161357d8a40acf64580f53a3e0e5a1f7adfdacf30354d43da",
+      "samples": 1626,
+      "diagnostics": []
+    },
+    {
+      "id": "time-ode-driven",
+      "presetDigest": "sha256:28daa23d25dadf68629132eebc087409622903e4ebf00541e4d6f86126c60831",
+      "key": "sha256:1271d7a0da81354ad4979cf4054ccf0613abadcd5a694c5c158fdad9918e4c2d",
+      "svg": "time-ode-driven.svg",
+      "png": "time-ode-driven.png",
+      "svgHash": "sha256:0767c749046d58393625332e8e14adcf7806107ca1c1145f202cce226f420cd5",
+      "pngHash": "sha256:e07e70de445779b71116bdb9744bcb519f279e01a2bef8e8501268f74815e90f",
+      "samples": 756,
+      "diagnostics": []
+    },
+    {
+      "id": "phase-orbit-explorer",
+      "presetDigest": "sha256:6d598e756f09e748382c30fe5ebb20df8d70debd12657b1a305bc1cd1d41a186",
+      "key": "sha256:3c192e9c92141444296c3ce80e3739aa3d72d4d70570d8006ec3ff198b87427a",
+      "svg": "phase-orbit-explorer.svg",
+      "png": "phase-orbit-explorer.png",
+      "svgHash": "sha256:2787460a5b480a364dd596f1250cac0bb207e337d287a1c0a62ca3ccbc72ecfe",
+      "pngHash": "sha256:67ec21b8958482b9f3388c85416331d3b2abdf0077c22784e22b18a66694f0e1",
+      "samples": 1934,
+      "diagnostics": []
+    },
+    {
+      "id": "phase-saddle",
+      "presetDigest": "sha256:a00e30d0ad15dc7cf89299d0f6596e770229b0ec36587d17ccf8fd831a2c71c0",
+      "key": "sha256:d40e71694db023ce9ce78339ac16da89328e8ed1ef8ea655840c33fa9e1c44b1",
+      "svg": "phase-saddle.svg",
+      "png": "phase-saddle.png",
+      "svgHash": "sha256:2af736d359bcda25a273de3e7d2523f3632f6fc88584b66b2b31a77460c4e7ec",
+      "pngHash": "sha256:b3a6b8684042e2508a1d062f742671ac2b0f38a779d4259cd61a62a4fb0eefbf",
+      "samples": 1050,
+      "diagnostics": []
+    },
+    {
+      "id": "phase-bistable",
+      "presetDigest": "sha256:43f72c8cdb78d43dce92990da36f291ccba16819611feca7f69a31e30729ae88",
+      "key": "sha256:e83e8f0b1333b092c056d8bd97b4a4881e65f2d4878647fc5de3503ac6a77bac",
+      "svg": "phase-bistable.svg",
+      "png": "phase-bistable.png",
+      "svgHash": "sha256:2601c5d6ea183711ca6bb8deaffcaa35ef253686dfac972f36a6bc3469ed2840",
+      "pngHash": "sha256:d4d9b635f6d115ab5a58ab6729253089b42b2be55a712d6fb997e8e3bdc9eeed",
+      "samples": 1174,
+      "diagnostics": []
     }
   ]
 }

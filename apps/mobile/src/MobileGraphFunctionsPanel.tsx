@@ -39,8 +39,13 @@ export const MobileGraphFunctionsPanel = ({ document, editor, onEditor, onApply,
     </View>}
     {document.source.objects.map((object, index) => <View style={s.card} key={object.id}>
       {button(`Select ${object.label}`, () => onSelect(object.id))}
-      <Text>{object.kind === "explicit-cartesian" ? `y = ${object.expression.source}` : object.kind}</Text>
+      <Text>{object.kind === "explicit-cartesian" ? `y = ${object.expression.source}` :
+        object.kind === "phase-portrait" ? `x′ = ${object.xDerivative.source}; y′ = ${object.yDerivative.source} · ${object.seeds.length} initial points` :
+        object.kind === "time-ode" ? `x′ = ${object.expression.source}; x(${object.seed.t}) = ${object.seed.x}` : object.kind}</Text>
       <View style={s.row}>
+        {object.kind === "slope-field" && button(`Add trajectory for ${object.label}`, () => {
+          onEditor(null); onAdvanced(mobileGraphKindEditor(document, "trajectory", null, object.id));
+        }, document.source.objects.length >= GRAPH2D_MAX_OBJECTS)}
         {button(`Edit ${object.label}`, () => { onEditor(null); onAdvanced(null);
           if (object.kind === "explicit-cartesian") onEditor({ objectId: object.id, draft: mobileGraphFunctionDraft(document, object.id) });
           else onAdvanced(mobileGraphKindEditor(document, object.kind, object.id)); })}

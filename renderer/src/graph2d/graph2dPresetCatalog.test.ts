@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getGraph2DPresetCatalog, GRAPH2D_OBJECT_KINDS, instantiateGraph2DPreset, sampleGraph2DScene,
   parseGraph2DDocument, serializeGraph2DDocument, applyGraph2DAuthoring, createGraph2DDocument, analyzeGraph2DRegression,
-  type Graph2DRegionArtifact, type Graph2DPiecewiseArtifact } from "@math3d/core";
+  type Graph2DRegionArtifact, type Graph2DPiecewiseArtifact, type Graph2DPhasePortraitArtifact } from "@math3d/core";
 import { mobileGraphBudget } from "../../../apps/mobile/src/models/mobileGraphPerformance";
 import { mobileGraphAdvancedGeometry } from "../../../apps/mobile/src/viewer/mobileGraphAdvancedProjection";
 import { projectMobileGraphLines } from "../../../apps/mobile/src/viewer/mobileGraphProjection";
@@ -15,16 +15,31 @@ const functions: Record<string, ((x: number) => number)[]> = {
   "wave-beats": [x => Math.sin(4*x)+Math.sin(4.5*x), x => 2*Math.cos(.25*x)],
   "sine-derivative": [Math.sin, Math.cos], "parabola-tangent": [x => x*x, x => 2*x-1],
 };
-describe("curated seven-kind catalog", () => {
+describe("curated Graphs catalog", () => {
   it("keeps the fast Gallery bundle identical to the checked authored catalog", () => {
     expect(bundledCatalog).toEqual(getGraph2DPresetCatalog().entries);
   });
-  it("provides 21 scenes, six Featured entries and multi-object comparisons", () => {
+  it("provides 26 scenes, seven Featured entries and differential equation examples", () => {
     const catalog = getGraph2DPresetCatalog();
-    expect(catalog.entries).toHaveLength(21);
-    expect(catalog.entries.filter(p => p.featuredOrder !== null)).toHaveLength(6);
+    expect(catalog.entries).toHaveLength(26);
+    expect(catalog.entries.filter(p => p.featuredOrder !== null)).toHaveLength(7);
     expect(catalog.entries.filter(p => p.template.source.objects.length > 1).length).toBeGreaterThanOrEqual(6);
-    expect([...new Set(catalog.entries.flatMap(p => p.template.source.objects.map(o => o.kind)))].sort()).toEqual([...GRAPH2D_OBJECT_KINDS].sort());
+    expect(catalog.filter("phase portrait", "Differential equations")).toHaveLength(4);
+    // Linked slope trajectories are authored in the workspace.
+    expect([...new Set(catalog.entries.flatMap(p => p.template.source.objects.map(o => o.kind)))].sort())
+      .toEqual(GRAPH2D_OBJECT_KINDS.filter(kind => kind !== "slope-field" && kind !== "trajectory").slice().sort());
+  });
+  it("opens the orbit explorer with two independently editable starts", () => {
+    const preset = getGraph2DPresetCatalog().get("phase-orbit-explorer")!;
+    const { document } = instantiateGraph2DPreset(preset, "orbit-explorer-test");
+    const object = document.source.objects[0];
+    expect(object?.kind === "phase-portrait" && object.seeds).toEqual([
+      { x: 0.5, y: 0 }, { x: 1, y: 0 },
+    ]);
+    const artifact = sampleGraph2DScene({ document, viewport: document.display.viewport,
+      width: 640, height: 480, interaction: false })[0]?.artifact;
+    expect(artifact && "kind" in artifact && artifact.kind === "phase-portrait" &&
+      (artifact as Graph2DPhasePortraitArtifact).orbits).toHaveLength(2);
   });
   it("opens the 10,000-row regression preset with the full checked table and a bounded display", () => {
     const preset = getGraph2DPresetCatalog().get("regression-10000")!;
@@ -33,7 +48,7 @@ describe("curated seven-kind catalog", () => {
     if (object.kind !== "point-series") throw new Error("Expected point-series source.");
     expect(preset.costClass).toBe("complex"); expect(sidecars[0]?.rows).toHaveLength(10000);
     expect(sidecars[0]?.rows.at(-1)?.id).toBe("row_10000"); expect(object.table.rowCount).toBe(10000);
-    const sampled = sampleGraph2DScene({ document, viewport: document.display.viewport, width: 960, height: 600,
+    const sampled = sampleGraph2DScene({ document, viewport: document.display.viewport, width: 960, height: 600, interaction: false,
       pointTables: { [object.table.id]: sidecars[0]!.rows } });
     expect(sampled[0]?.artifact.samplesEvaluated).toBeLessThanOrEqual(1024);
     expect(sampled[0]?.artifact.segments[0]?.points.length).toBeGreaterThan(100);

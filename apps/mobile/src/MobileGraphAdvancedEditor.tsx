@@ -15,11 +15,24 @@ export const MobileGraphAdvancedEditor = ({ editor, onEditor, onApply, onPick }:
   const toggle = (label: string, value: boolean, update: (value: boolean) => void) => <View key={label} style={{ flexDirection: "row", alignItems: "center" }}><Text>{label}</Text><Switch accessibilityLabel={label} value={value} onValueChange={update} /></View>;
   const preview = editor.kind === "point-series" && d.data.trim() ? previewGraph2DPointImport(d.data) : null;
   return <View testID="mobile-graph-kind-editor"><Text>{editor.kind} · draft, not saved</Text>{field("Graph label", "label")}
-    {(["parametric", "polar", "implicit"] as string[]).includes(editor.kind) && field(editor.kind === "parametric" ? "X expression x(t)" : editor.kind === "polar" ? "Radius expression r(theta)" : "Implicit expression F(x,y)=0", "expression")}
+    {(["parametric", "polar", "implicit", "slope-field", "phase-portrait", "time-ode"] as string[]).includes(editor.kind) && field(editor.kind === "parametric" ? "X expression x(t)" : editor.kind === "polar" ? "Radius expression r(theta)" :
+      editor.kind === "slope-field" ? "Slope dy/dx = f(x,y)" : editor.kind === "phase-portrait" ? "X derivative x′ = f(x,y)" : editor.kind === "time-ode" ? "Derivative x′ = f(t,x)" : "Implicit expression F(x,y)=0", "expression")}
     {editor.kind === "parametric" && field("Y expression y(t)", "second")}
-    {editor.kind !== "piecewise" && editor.kind !== "point-series" && <>{field("Domain minimum", "min")}{field("Domain maximum", "max")}
-      {toggle("Include minimum", d.includeMin, (includeMin) => change({ includeMin }))}{toggle("Include maximum", d.includeMax, (includeMax) => change({ includeMax }))}</>}
-    {(editor.kind === "implicit" || editor.kind === "inequality") && <>{field("Y minimum", "yMin")}{field("Y maximum", "yMax")}<Text>Numerical contours/regions are approximate, not exact proofs.</Text></>}
+    {editor.kind === "phase-portrait" && <>{field("Y derivative y′ = g(x,y)", "second")}
+      {input("Time horizon in each direction", d.timeSpan, timeSpan => change({ timeSpan }))}
+      {input("Initial points x,y (one per line, max 8; blank for none)", d.seedsText, seedsText => change({ seedsText }), true, 256)}
+      <Text>Shows direction arrows and two-sided adaptive solution orbits on linear axes.</Text></>}
+    {editor.kind === "trajectory" && <><Text>Linked slope field: {d.sourceFieldId}</Text>
+      {input("Initial x", d.initialX, initialX => change({ initialX }))}
+      {input("Initial y", d.initialY, initialY => change({ initialY }))}
+      <Text>Numerical solution runs in both x directions until field bounds, a singularity, or a work limit.</Text></>}
+    {editor.kind === "time-ode" && <>{input("Initial time t₀", d.initialX, initialX => change({ initialX }))}
+      {input("Initial value x₀", d.initialY, initialY => change({ initialY }))}
+      <Text>Horizontal axis: time t. Vertical axis: state x. Forward and backward paths are approximate.</Text></>}
+    {editor.kind !== "piecewise" && editor.kind !== "point-series" && editor.kind !== "trajectory" && <>{field(editor.kind === "time-ode" ? "Time minimum" : "Domain minimum", "min")}{field(editor.kind === "time-ode" ? "Time maximum" : "Domain maximum", "max")}
+      {editor.kind !== "time-ode" && <>{toggle("Include minimum", d.includeMin, (includeMin) => change({ includeMin }))}{toggle("Include maximum", d.includeMax, (includeMax) => change({ includeMax }))}</>}</>}
+    {(editor.kind === "implicit" || editor.kind === "inequality" || editor.kind === "slope-field" || editor.kind === "phase-portrait" || editor.kind === "time-ode") && <>{field(editor.kind === "time-ode" ? "State minimum" : "Y minimum", "yMin")}{field(editor.kind === "time-ode" ? "State maximum" : "Y maximum", "yMax")}
+      {editor.kind !== "time-ode" && <Text>{editor.kind === "slope-field" ? "Shows bounded local directions on linear axes, not solution curves." : "Numerical contours/regions are approximate, not exact proofs."}</Text>}</>}
     {editor.kind === "inequality" && <>{button(`Combine: ${d.operator === "all" ? "AND" : "OR"}`, () => change({ operator: d.operator === "all" ? "any" : "all" }))}
       {d.clauses.map((clause, index) => <View key={index}>{input(`Condition ${index + 1} expression`, clause.expression, (expression) => change({ clauses: d.clauses.map((c, i) => i === index ? { ...c, expression } : c) }))}
         <View style={{ flexDirection: "row" }}>{(["<", "<=", ">", ">="] as const).map((comparator) => button(`Condition ${index + 1}: ${comparator} 0${clause.comparator === comparator ? " ✓" : ""}`, () => change({ clauses: d.clauses.map((c, i) => i === index ? { ...c, comparator } : c) })))}</View>

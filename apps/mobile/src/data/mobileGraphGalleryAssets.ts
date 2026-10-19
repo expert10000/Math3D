@@ -22,4 +22,5 @@ export const mobileGraphGalleryAssets: Readonly<Record<string, ImageSourcePropTy
   "strict-disk": require("../../../../packages/core/assets/graph2d-gallery/strict-disk.png"),
   "piecewise-data-gaps": require("../../../../packages/core/assets/graph2d-gallery/piecewise-data-gaps.png"),
   "regression-10000": require("../../../../packages/core/assets/graph2d-gallery/regression-10000.png"),
+  "time-ode-driven": require("../../../../packages/core/assets/graph2d-gallery/time-ode-driven.png"),
 };

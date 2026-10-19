@@ -10,12 +10,16 @@ import {
   analyzeGraph2DPolarMeasurement, isGraph2DPolarMeasurementCurrent,
   GRAPH2D_DEFAULT_VIEWPORT, GRAPH2D_WORKSPACE_CONTRACT,
   graph2DWorldToScreen, panGraph2DViewport, pickGraph2DProbe,
+  graph2DPhaseSeedAtScreen, graph2DPhaseSeedAction, graph2DPhaseSeedRemovalAction, previewGraph2DPhaseSeed,
   isGraph2DCriticalPointCurrent, isGraph2DIntegralCurrent, isGraph2DIntervalAnalysisCurrent,
   isGraph2DIntersectionCurrent,
   isGraph2DLocalDifferentialCurrent, queryGraph2DInspector,
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
   type Graph2DScientificDatasetPreview,
+  type Graph2DTrajectoryArtifact,
+  type Graph2DPhasePortraitArtifact,
+  type Graph2DTimeOdeArtifact,
   type Graph2DConstructionAction,
   graph2DConstructionFromCandidate, graph2DLineConstructionActionsFromProbe, GRAPH2D_MAX_CONSTRUCTIONS,
   type Graph2DIntegralMode,
@@ -100,6 +104,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onOpenPreset, onResumeCheckpoint, onCopyProject,
   onExportPersonalProject, onCopyGraphDefinition, onPreviewPersonalImport, onImportPersonalProject }: Props) {
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryStartCategory, setGalleryStartCategory] = useState<"All" | "Differential equations">("All");
   const [leftPalette, setLeftPalette] = useState<Graph2DLeftPalette>(readGraph2DLeftPalette);
   const changeLeftPalette = (palette: Graph2DLeftPalette) => {
     setLeftPalette(palette);
@@ -241,8 +246,6 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const [parameterPreview, setParameterPreview] = useState<{ key: string; values: Record<string, number> } | null>(null);
   const parameterPreviewActive = parameterPreview?.key === parameterKey;
   const cancelParameter = () => { setParameterPreview(null); setParameterEpoch(value => value + 1); };
-  const sampledDocument = useMemo(() => parameterPreview?.key === parameterKey ? previewGraph2DParameterValues(document, parameterPreview.values) : document,
-    [document, parameterPreview, parameterKey]);
   const exportOpener = useRef<HTMLButtonElement | null>(null);
   const [galleryError, setGalleryError] = useState<string | null>(null);
   const galleryOpener = useRef<HTMLButtonElement | null>(null);
@@ -272,6 +275,19 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const [pointDragPreview, setPointDragPreview] = useState<{ id: string; parameter: number } | null>(null);
   const cancelPointDrag = () => { const active = pointDragRef.current; pointDragRef.current = null; setPointDragPreview(null);
     if (active && viewerRef.current?.hasPointerCapture(active.pointerId)) viewerRef.current.releasePointerCapture(active.pointerId); };
+  const [phaseSeedPlacement, setPhaseSeedPlacement] = useState<string | null>(null);
+  const [selectedPhaseSeed, setSelectedPhaseSeed] = useState<{ objectId: string; index: number } | null>(null);
+  const phaseSeedDrag = useRef<{ pointerId: number; objectId: string; index: number; x: number; y: number;
+    start: { x: number; y: number }; point: { x: number; y: number }; moved: boolean; sourceHash: string; documentId: string } | null>(null);
+  const [phaseSeedPreview, setPhaseSeedPreview] = useState<{ objectId: string; index: number; point: { x: number; y: number } } | null>(null);
+  const cancelPhaseSeedDrag = () => { const active = phaseSeedDrag.current; phaseSeedDrag.current = null; setPhaseSeedPreview(null);
+    if (active && viewerRef.current?.hasPointerCapture(active.pointerId)) viewerRef.current.releasePointerCapture(active.pointerId); };
+  const sampledDocument = useMemo(() => {
+    const parameterDocument = parameterPreview?.key === parameterKey ? previewGraph2DParameterValues(document, parameterPreview.values) : document;
+    if (!phaseSeedPreview || phaseSeedDrag.current?.documentId !== document.identity.id) return parameterDocument;
+    try { return previewGraph2DPhaseSeed(parameterDocument, phaseSeedPreview.objectId, phaseSeedPreview.index, phaseSeedPreview.point); }
+    catch { return parameterDocument; }
+  }, [document, parameterPreview, parameterKey, phaseSeedPreview]);
   const wheelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hoverFrameRef = useRef<number | null>(null);
   const wheelHandlerRef = useRef<(event: globalThis.WheelEvent) => void>(() => {});
@@ -341,11 +357,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const manualGrid = displayAxes.gridOptions?.xStep != null || displayAxes.gridOptions?.yStep != null;
   const renderedDisplay = useMemo(() => ({ ...document.display, axes: displayAxes, viewport, ...(parameterPreviewActive ? { pinnedProbes: [] } : {}) }), [document.display, displayAxes, viewport, parameterPreviewActive]);
   const samplingRequest = useMemo(() => ({ document: sampledDocument, viewport, width: size.width, height: size.height,
-    interaction: previewViewport !== null,
+    interaction: previewViewport !== null || phaseSeedPreview !== null,
     pointTables: Object.fromEntries(document.source.objects.flatMap((object) =>
       object.kind === "point-series" ? [[object.table.id, pointTableStore.resolve(object.table)]] : [])),
-  }), [sampledDocument, size, viewport, previewViewport]);
-  const sampling = useGraph2DSampling(samplingRequest, parameterPreviewActive ? document.identity : undefined);
+  }), [sampledDocument, size, viewport, previewViewport, phaseSeedPreview]);
+  const sampling = useGraph2DSampling(samplingRequest, parameterPreviewActive || phaseSeedPreview ? document.identity : undefined);
   const pointPreviewDocument = useMemo(() => {
     if (!pointDragPreview || pointDragRef.current?.documentId !== document.identity.id) return null;
     try { return previewGraph2DConstrainedPoint(document, pointDragPreview.id, pointDragPreview.parameter); }
@@ -357,6 +373,13 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   useEffect(() => { if (pointDragRef.current && (pointDragRef.current.sourceHash !== document.identity.structuralHash ||
     pointDragRef.current.documentId !== document.identity.id)) cancelPointDrag(); },
     [document.identity.id, document.identity.structuralHash]);
+  useEffect(() => { if (phaseSeedDrag.current && (phaseSeedDrag.current.sourceHash !== document.identity.structuralHash ||
+    phaseSeedDrag.current.documentId !== document.identity.id)) cancelPhaseSeedDrag();
+    const placingObject = document.source.objects.find(item => item.id === phaseSeedPlacement);
+    if (phaseSeedPlacement && (document.selection.objectId !== phaseSeedPlacement ||
+      placingObject?.kind !== "phase-portrait" || placingObject.seeds.length >= 8 ||
+      !document.display.objects.find(item => item.objectId === phaseSeedPlacement)?.visible)) setPhaseSeedPlacement(null);
+  }, [document.identity.id, document.identity.structuralHash, document.selection.objectId, document.display.objects, phaseSeedPlacement]);
   const series = sampling.series;
   const pick = (x: number, y: number, previous?: Graph2DSelection) => sampling.ready && !parameterPreviewActive ? pickGraph2DProbe({ document, series,
     viewport, size, screen: { x, y }, previous }).selection : document.selection;
@@ -374,6 +397,21 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const fitConstruction = (id: string) => fitBounds(graph2DConstructionFitBounds(sampling.constructions, id));
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || (event.target as HTMLElement).closest("button,summary,details,input,select,textarea,label,form")) return;
+    const phaseTarget = (event.target as Element).closest("[data-graph2d-phase-seed]")?.getAttribute("data-graph2d-phase-seed");
+    if (phaseTarget && onAuthoringCommit && sampling.ready && !parameterPreviewActive && !graph2DHasLogScale(viewport)) {
+      const split = phaseTarget.lastIndexOf("-");
+      const objectId = phaseTarget.slice(0, split), index = Number(phaseTarget.slice(split + 1));
+      const object = document.source.objects.find(item => item.id === objectId);
+      const style = document.display.objects.find(item => item.objectId === objectId);
+      if (object?.kind === "phase-portrait" && style?.visible && Number.isInteger(index) && object.seeds[index]) {
+        finishWheel(); setHoverSelection(null); setSelectedPhaseSeed({ objectId, index });
+        phaseSeedDrag.current = { pointerId: event.pointerId, objectId, index, x: event.clientX, y: event.clientY,
+          start: object.seeds[index], point: object.seeds[index], moved: false,
+          sourceHash: document.identity.structuralHash, documentId: document.identity.id };
+        event.currentTarget.setPointerCapture(event.pointerId); event.currentTarget.focus();
+        return;
+      }
+    }
     const pointId = (event.target as Element).closest("[data-graph2d-draggable-point]")?.getAttribute("data-graph2d-draggable-point");
     if (pointId && onConstructionCommit && sampling.ready && !parameterPreviewActive) {
       const definition = document.source.constructions?.objects.find(item => item.id === pointId);
@@ -396,6 +434,15 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     event.currentTarget.focus();
   };
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const seedDrag = phaseSeedDrag.current;
+    if (seedDrag) {
+      if (seedDrag.pointerId !== event.pointerId) return;
+      if (!seedDrag.moved && Math.hypot(event.clientX - seedDrag.x, event.clientY - seedDrag.y) < 3) return;
+      const point = graph2DPhaseSeedAtScreen(document, seedDrag.objectId, viewport, size, localPoint(event), "drag");
+      if (point) { seedDrag.moved = true; seedDrag.point = point;
+        setPhaseSeedPreview({ objectId: seedDrag.objectId, index: seedDrag.index, point }); }
+      return;
+    }
     const pointDrag = pointDragRef.current;
     if (pointDrag) {
       if (pointDrag.pointerId !== event.pointerId) return;
@@ -424,6 +471,19 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     setPreview(panGraph2DViewport(drag.viewport, size, { x: dx, y: dy }));
   };
   const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    const seedDrag = phaseSeedDrag.current;
+    if (seedDrag && seedDrag.pointerId === event.pointerId) {
+      if (seedDrag.moved) {
+        const point = graph2DPhaseSeedAtScreen(document, seedDrag.objectId, viewport, size, localPoint(event), "drag");
+        if (point) seedDrag.point = point;
+      }
+      const canCommit = seedDrag.moved && seedDrag.sourceHash === document.identity.structuralHash &&
+        seedDrag.documentId === document.identity.id &&
+        Math.hypot(seedDrag.point.x - seedDrag.start.x, seedDrag.point.y - seedDrag.start.y) > 1e-9;
+      cancelPhaseSeedDrag();
+      if (canCommit) onAuthoringCommit?.(graph2DPhaseSeedAction(document, seedDrag.objectId, seedDrag.index, seedDrag.point));
+      return;
+    }
     const pointDrag = pointDragRef.current;
     if (pointDrag && pointDrag.pointerId === event.pointerId) {
       if (pointDrag.moved) {
@@ -445,7 +505,15 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     dragRef.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     if (drag.moved && previewRef.current) onViewportCommit?.(previewRef.current);
-    else if (!drag.moved && !gridOpen && !scalesOpen && !parametersOpen) { const point = localPoint(event); onSelectionCommit?.(pick(point.x, point.y, document.selection)); }
+    else if (!drag.moved && !gridOpen && !scalesOpen && !parametersOpen) {
+      const point = localPoint(event);
+      if (phaseSeedPlacement && onAuthoringCommit && sampling.ready && !parameterPreviewActive && !graph2DHasLogScale(viewport)) {
+        const seed = graph2DPhaseSeedAtScreen(document, phaseSeedPlacement, viewport, size, point, "place");
+        if (seed) { onAuthoringCommit(graph2DPhaseSeedAction(document, phaseSeedPlacement, null, seed));
+          setPhaseSeedPlacement(null); setToolHint(""); }
+        else setToolHint("Tap inside the selected phase portrait domain to place an initial point.");
+      } else onSelectionCommit?.(pick(point.x, point.y, document.selection));
+    }
     setPreview(null);
   };
   wheelHandlerRef.current = (event: globalThis.WheelEvent) => {
@@ -461,6 +529,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     wheelTimerRef.current = setTimeout(finishWheel, 180);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape" && phaseSeedDrag.current) { event.preventDefault(); event.stopPropagation(); cancelPhaseSeedDrag(); return; }
+    if (event.key === "Escape" && phaseSeedPlacement) { event.preventDefault(); event.stopPropagation(); setPhaseSeedPlacement(null); setToolHint(""); return; }
     if (event.key === "Escape" && pointDragRef.current) { event.preventDefault(); event.stopPropagation(); cancelPointDrag(); return; }
     if (event.key === "Escape" && presentation) { event.preventDefault(); event.stopPropagation(); exitPresentation(); return; }
     if (event.key === "Escape" && toolsOpen) { event.preventDefault(); event.stopPropagation(); closeTools(); return; }
@@ -606,6 +676,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   };
   const functionList = <Graph2DAuthoringPanel document={document} onCommit={onAuthoringCommit}
     palette={leftPalette} onPaletteChange={changeLeftPalette}
+    onBrowsePhasePortraits={opener => { galleryOpener.current = opener; setGalleryStartCategory("Differential equations"); setGalleryError(null); setGalleryOpen(true); }}
     onSelect={(objectId) => onSelectionCommit?.(parameterPreviewActive || !sampling.ready ? { objectId, probe: null } : selectionForGraph2DObject(document, series, objectId, document.selection.probe?.x))} />;
   const savedProbes = <Graph2DProbesPanel document={document} onAction={action => {
     if (!onProbesCommit) throw new Error("Probe storage unavailable.");
@@ -890,10 +961,90 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             {" "}(index {selectedObject.origin.slice.fixedIndex})</dd></>}
           <dt>Source hashes</dt><dd><code>manifest {selectedObject.origin.sceneFingerprint}<br />resource {selectedObject.origin.resourceSha256}</code></dd>
         </>}
-        <dt>{inspected.kind === "parametric" ? "Parameter t" : inspected.kind === "polar" ? "Angle θ" : "X domain"}</dt>
+        <dt>{inspected.kind === "parametric" ? "Parameter t" : inspected.kind === "polar" ? "Angle θ" : inspected.kind === "time-ode" ? "Time domain" : "X domain"}</dt>
         <dd>{inspected.domain.includeMin ? "[" : "("}{inspected.domain.min}, {inspected.domain.max}{inspected.domain.includeMax ? "]" : ")"}</dd>
-        {(selectedObject?.kind === "implicit" || selectedObject?.kind === "inequality") && <><dt>Y domain</dt>
+        {(selectedObject?.kind === "implicit" || selectedObject?.kind === "inequality" || selectedObject?.kind === "slope-field" || selectedObject?.kind === "phase-portrait") && <><dt>Y domain</dt>
           <dd>{selectedObject.yDomain.min}, {selectedObject.yDomain.max}</dd></>}
+        {selectedObject?.kind === "phase-portrait" && <>
+          <dt>System</dt><dd>x′ = {selectedObject.xDerivative.source}; y′ = {selectedObject.yDerivative.source}</dd>
+          <dt>Time horizon</dt><dd>±{selectedObject.timeSpan}</dd>
+          <dt>Initial points</dt><dd data-testid="graph2d-phase-seed-list">
+            {selectedObject.seeds.length === 0 && <span>No initial points. Place one on the graph.</span>}
+            {selectedObject.seeds.map((seed, index) => {
+              const orbit = selectedSeries?.artifact && "kind" in selectedSeries.artifact &&
+                selectedSeries.artifact.kind === "phase-portrait" ?
+                (selectedSeries.artifact as Graph2DPhasePortraitArtifact).orbits[index] : undefined;
+              return <div className="graph2d-phase-seed-row" key={index}>
+                <button type="button" aria-pressed={selectedPhaseSeed?.objectId === selectedObject.id && selectedPhaseSeed.index === index}
+                  onClick={() => setSelectedPhaseSeed({ objectId: selectedObject.id, index })}>
+                  Point {index + 1} ({seed.x.toPrecision(5)}, {seed.y.toPrecision(5)})</button>
+                <button type="button" aria-label={`Remove initial point ${index + 1}`} disabled={!onAuthoringCommit || parameterPreviewActive}
+                  onClick={() => { onAuthoringCommit?.(graph2DPhaseSeedRemovalAction(document, selectedObject.id, index));
+                    setSelectedPhaseSeed(null); setPhaseSeedPlacement(null); }}>Remove</button>
+                {orbit && <small>Backward {orbit.backward}; forward {orbit.forward} · {orbit.acceptedSteps} accepted, {orbit.rejectedSteps} rejected</small>}
+              </div>;
+            })}
+            <button type="button" data-testid="graph2d-phase-clear-seeds" disabled={!onAuthoringCommit || !selectedObject.seeds.length || parameterPreviewActive}
+              onClick={() => { onAuthoringCommit?.(graph2DPhaseSeedRemovalAction(document, selectedObject.id, null));
+                setSelectedPhaseSeed(null); setPhaseSeedPlacement(null); }}>Clear all initial points</button>
+          </dd>
+          <dt>Explore</dt><dd><button type="button" data-testid="graph2d-phase-place-seed"
+            disabled={!onAuthoringCommit || !sampling.ready || !selectedSeries?.style.visible || selectedObject.seeds.length >= 8 ||
+              parameterPreviewActive || graph2DHasLogScale(viewport)}
+            aria-pressed={phaseSeedPlacement === selectedObject.id}
+            onClick={() => { setPhaseSeedPlacement(current => current === selectedObject.id ? null : selectedObject.id); setToolHint(""); }}>
+            {phaseSeedPlacement === selectedObject.id ? "Cancel placement" : "Place initial point"}</button>
+            <span> Drag a marked initial point to update its orbit. Release saves one undo step.</span></dd>
+          {selectedSeries?.artifact && "kind" in selectedSeries.artifact && selectedSeries.artifact.kind === "phase-portrait" && <>
+            <dt>Orbits</dt><dd data-testid="graph2d-phase-orbits">{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).orbits.map((orbit, index) =>
+              <span key={index}>{index + 1}: backward {orbit.backward}, forward {orbit.forward}; {orbit.acceptedSteps} accepted, {orbit.rejectedSteps} rejected<br /></span>)}</dd>
+            <dt>Field</dt><dd>{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).fieldSegments.length} direction arrows · adaptive RK4, local tolerance 10⁻⁶</dd>
+            <dt>Nullclines</dt><dd data-testid="graph2d-phase-nullclines">x′=0 orange dashed;
+              {" "}y′=0 cyan dotted · {(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.status}</dd>
+            <dt>Equilibria</dt><dd data-testid="graph2d-phase-equilibria">
+              {(selectedSeries.artifact as Graph2DPhasePortraitArtifact).equilibria.length ?
+                (selectedSeries.artifact as Graph2DPhasePortraitArtifact).equilibria.map((point, index) =>
+                  <span key={index} data-testid="graph2d-phase-classification">
+                    ({point.x.toPrecision(6)}, {point.y.toPrecision(6)}) · residual {point.residual.toExponential(2)}<br />
+                    Linearization: {point.linearization.kind.replace(/-/g, " ")} · {point.linearization.stability}
+                    {point.linearization.jacobian && <> · J = [{point.linearization.jacobian.map(value => value.toPrecision(4)).join(", ")}]</>}
+                    {point.linearization.eigenvalues && <> · λ = {point.linearization.eigenvalues.map(value => value.imaginary === 0 ?
+                        value.real.toPrecision(4) :
+                        `${value.real.toPrecision(4)}${value.imaginary < 0 ? "−" : "+"}${Math.abs(value.imaginary).toPrecision(4)}i`).join(", ")}</>}
+                    {point.linearization.reason && <> · {point.linearization.reason}</>}<br />
+                  </span>) :
+                "None resolved at sampled grid resolution"}</dd>
+            <dt>Method</dt><dd>Marching squares contour crossings, then up to five Newton steps.
+              {" "}{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.candidates} candidates;
+              {" "}{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.unresolved} unresolved.
+              {" "}Grid scale ≈ {(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.gridScale?.toPrecision(3) ?? "unavailable"} world units.
+              {" "}Residual tolerance 10⁻⁷(1+|position|); no certified error bound.</dd>
+          </>}
+        </>}
+        {selectedObject?.kind === "trajectory" && <>
+          <dt>Linked field</dt><dd>{document.source.objects.find(object => object.id === selectedObject.sourceFieldId)?.label ?? selectedObject.sourceFieldId}</dd>
+          <dt>Initial value</dt><dd>y({selectedObject.seed.x}) = {selectedObject.seed.y}</dd>
+          {selectedSeries?.artifact && "kind" in selectedSeries.artifact && selectedSeries.artifact.kind === "trajectory" && <>
+            <dt>Integration</dt><dd data-testid="graph2d-trajectory-stops">Backward: {(selectedSeries.artifact as Graph2DTrajectoryArtifact).stops.backward};
+              {" "}forward: {(selectedSeries.artifact as Graph2DTrajectoryArtifact).stops.forward}</dd>
+            <dt>Steps</dt><dd>{(selectedSeries.artifact as Graph2DTrajectoryArtifact).acceptedSteps} accepted,
+              {" "}{(selectedSeries.artifact as Graph2DTrajectoryArtifact).rejectedSteps} rejected · local tolerance 10⁻⁶</dd>
+          </>}
+        </>}
+        {selectedObject?.kind === "time-ode" && <>
+          <dt>Equation</dt><dd>x′ = {selectedObject.expression.source}</dd>
+          <dt>Axes</dt><dd>Horizontal: time t; vertical: state x. Linear scales only.</dd>
+          <dt>State bounds</dt><dd>{selectedObject.stateDomain.min}, {selectedObject.stateDomain.max}</dd>
+          <dt>Initial value</dt><dd>x({selectedObject.seed.t}) = {selectedObject.seed.x}</dd>
+          {selectedSeries?.artifact && "kind" in selectedSeries.artifact && selectedSeries.artifact.kind === "time-ode" && (() => {
+            const ode = selectedSeries.artifact as Graph2DTimeOdeArtifact;
+            return <><dt>Integration</dt><dd data-testid="graph2d-time-ode-stops">
+              {ode.backward && ode.forward ? <>Backward: {ode.backward.stop} at ({ode.backward.last.t.toPrecision(6)}, {ode.backward.last.x.toPrecision(6)}) · {ode.backward.acceptedSteps} accepted, {ode.backward.rejectedSteps} rejected;
+                {" "}forward: {ode.forward.stop} at ({ode.forward.last.t.toPrecision(6)}, {ode.forward.last.x.toPrecision(6)}) · {ode.forward.acceptedSteps} accepted, {ode.forward.rejectedSteps} rejected.</> :
+                "Unavailable on logarithmic axes."}</dd>
+              <dt>Method</dt><dd>Adaptive RK4 step doubling, local tolerance 10⁻⁶. Paths are numerical approximations.</dd></>;
+          })()}
+        </>}
         <dt>Style</dt><dd><span className="graph2d-inspector-swatch" style={{ background: inspected.style.color }} />
           {inspected.style.lineStyle}, {inspected.style.lineWidth} px · {inspected.style.visible ? "visible" : "hidden"}</dd>
         <dt>Probe</dt><dd>{inspected.probe ? <span data-testid="graph2d-probe-coordinates">
@@ -907,7 +1058,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           "Direct expression evaluation (floating point)" : inspected.probeMethod === "sampled-contour" ?
             "Sampled contour projection" : inspected.probeMethod === "table-row" ? "Table row" : "Unavailable"}</dd>
         <dt>Sampling</dt><dd className="graph2d-sampling-observation-status" data-testid="graph2d-sampling-status">{!parameterPreviewActive && !sampling.ready ?
-          sampling.retained ? "Updating — previous observation" : "Updating — no observation yet" : `Adaptive bounded polyline · ${inspected.sampling.status}`}</dd>
+          sampling.retained ? "Updating — previous observation" : "Updating — no observation yet" :
+            `${inspected.sampling.method === "bounded-direction-grid" ? "Bounded direction grid" :
+              inspected.sampling.method === "adaptive-initial-value-trajectory" ? "Adaptive initial-value trajectory" :
+              inspected.sampling.method === "adaptive-phase-portrait" ? "Adaptive phase portrait" :
+              inspected.sampling.method === "adaptive-time-ode" ? "Adaptive time-dependent ODE" :
+                "Adaptive bounded polyline"} · ${inspected.sampling.status}`}</dd>
         {inspected.regionState && <><dt>Region</dt><dd data-testid="graph2d-region-status">{inspected.regionState}</dd></>}
         {inspected.pointState && <><dt>Table</dt><dd data-testid="graph2d-table-status">{inspected.pointState}</dd></>}
         <dt>Budget</dt><dd>{inspected.sampling.policy.maxSamples.toLocaleString()} samples, depth {inspected.sampling.policy.maxDepth},
@@ -946,10 +1102,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {functionList}
       </aside>}
       <div data-testid="main-viewer" className="graph2d-viewer" aria-label="Graph scene" ref={viewerRef}
-        data-point-dragging={!!pointDragPreview}
+        data-point-dragging={!!pointDragPreview} data-phase-seed-dragging={!!phaseSeedPreview}
         tabIndex={0} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-        onPointerCancel={() => { cancelPointDrag(); dragRef.current = null; setPreview(null); setHoverSelection(null); }}
-        onLostPointerCapture={event => { if (pointDragRef.current?.pointerId === event.pointerId) cancelPointDrag(); }}
+        onPointerCancel={() => { cancelPointDrag(); cancelPhaseSeedDrag(); dragRef.current = null; setPreview(null); setHoverSelection(null); }}
+        onLostPointerCapture={event => { if (pointDragRef.current?.pointerId === event.pointerId) cancelPointDrag();
+          if (phaseSeedDrag.current?.pointerId === event.pointerId) cancelPhaseSeedDrag(); }}
         onPointerLeave={() => setHoverSelection(null)} onKeyDown={onKeyDown}>
         {presentation && <div className="graph2d-presentation-controls" onPointerDown={event => event.stopPropagation()}>
           <span>Presentation · {document.metadata.title}</span>
@@ -976,7 +1133,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             }}>−</button>
           </div>
           <div className="graph2d-toolbar-secondary">
-            <button type="button" data-testid="graph-gallery-open" onClick={event => { galleryOpener.current = event.currentTarget; finishWheel(); closeGrid(true, false); setScalesOpen(false); setParametersOpen(false); setParameterPreview(null); setGalleryError(null); setGalleryOpen(true); }}>Gallery</button>
+            <button type="button" data-testid="graph-gallery-open" onClick={event => { galleryOpener.current = event.currentTarget; setGalleryStartCategory("All"); finishWheel(); closeGrid(true, false); setScalesOpen(false); setParametersOpen(false); setParameterPreview(null); setGalleryError(null); setGalleryOpen(true); }}>Gallery</button>
             <div className="graph2d-toolbar-group" role="group" aria-label="Construction tools">
               <button type="button" ref={toolsOpener} aria-expanded={toolsOpen} onClick={() => { finishWheel(); closeGrid(true, false); cancelParameter(); setToolsOpen(!toolsOpen); }}>Tools</button>
             </div>
@@ -1102,6 +1259,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           {showRight && <details><summary>Inspector</summary>{inspector}</details>}
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={series}
+          selectedPhaseSeed={selectedPhaseSeed}
           constructions={parameterPreviewActive ? null : shownConstructions}
           probeMarkers={probeMarkers}
           regression={!parameterPreviewActive && document.display.objects.find(s => s.objectId === currentRegression?.objectId)?.visible ? currentRegression : null}
@@ -1111,20 +1269,24 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           intersections={!parameterPreviewActive && intersections && isGraph2DIntersectionCurrent(intersections, document) ? intersections : null} />}
         {sampling.error && <div role="alert" className="graph2d-viewer-message"><p>{sampling.error}</p>
           <button type="button" onClick={sampling.retry}>Retry sampling</button></div>}
-        {(gridWarnings.length > 0 || viewport.continuation || graph2DHasLogScale(viewport) || parameterPreviewActive || pointDragPreview || !sampling.ready && !sampling.error && document.source.objects.length > 0) && <div role="status" className="graph2d-update-status" data-testid="graph2d-update-status">
+        {(gridWarnings.length > 0 || viewport.continuation || graph2DHasLogScale(viewport) || parameterPreviewActive || pointDragPreview || phaseSeedPreview || phaseSeedPlacement || !sampling.ready && !sampling.error && document.source.objects.length > 0) && <div role="status" className="graph2d-update-status" data-testid="graph2d-update-status">
           {gridWarnings.join(" ")}
           {pointDragPreview ? ` Dragging saved point: parameter ${pointDragPreview.parameter.toPrecision(7)}. Release to save; Esc to cancel.` : ""}
+          {phaseSeedPreview ? ` Dragging initial point (${phaseSeedPreview.point.x.toPrecision(5)}, ${phaseSeedPreview.point.y.toPrecision(5)}). Release to save; Esc to cancel.` : ""}
+          {phaseSeedPlacement ? " Tap inside the phase portrait domain to add an initial point; Esc to cancel." : ""}
           {parameterPreviewActive ? "Parameter preview — not saved. Apply or Cancel; committed analyses are hidden on the plot." : ""}
           {!sampling.ready && !sampling.error ? sampling.retained ? " Updating graph… previous preview/same-source samples remain visible." : " Sampling graph…" : ""}
           {viewport.continuation ? " Light dotted continuation: outside authored range; visual only, not analysed/exported. Bounded preview may be incomplete." : ""}
           {graph2DHasLogScale(viewport) ? " Log axes: non-positive coordinates omitted; analysis uses world units, tangent/area/interval overlays hidden." : ""}
+          {graph2DHasLogScale(viewport) && document.source.objects.some(object => object.kind === "slope-field" &&
+            document.display.objects.some(style => style.objectId === object.id && style.visible)) ? " Slope fields require linear axes." : ""}
         </div>}
         {status === "loading" ? <div className="graph2d-viewer-message" role="status">Loading graph…</div> :
           status === "error" ? <div className="graph2d-viewer-message" role="alert">{errorMessage || "Graph could not be opened."}</div> :
           document.source.objects.length === 0 ? <div className="graph2d-viewer-message" aria-label="Empty graph scene">
             <h2>Graphs</h2>
             <p>{graph2DSceneStatusLabel(document)} is ready.</p>
-            <button type="button" onClick={event => { galleryOpener.current = event.currentTarget; setGalleryError(null); setGalleryOpen(true); }}>Explore Graph Gallery</button>
+            <button type="button" onClick={event => { galleryOpener.current = event.currentTarget; setGalleryStartCategory("All"); setGalleryError(null); setGalleryOpen(true); }}>Explore Graph Gallery</button>
             <small>{document.source.objects.length} graph objects · {GRAPH2D_WORKSPACE_CONTRACT.initialObjectKind} starter source</small>
           </div> : null}
       </div>
@@ -1137,7 +1299,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           <small>Markers are saved probes. Numerical results are computed only when requested, with their stated limits.</small>
         </details>}{inspector}
       </aside>}
-      {galleryOpen && <GraphGalleryDialog activeId={document.identity.id} activeTitle={document.metadata.title} error={galleryError} onClose={closeGallery}
+      {galleryOpen && <GraphGalleryDialog activeId={document.identity.id} activeTitle={document.metadata.title} error={galleryError} onClose={closeGallery} initialCategory={galleryStartCategory}
         onExportProject={onExportPersonalProject} onCopyDefinition={onCopyGraphDefinition} onPreviewImport={onPreviewPersonalImport}
         onImportProject={preview => { try { if (!onImportPersonalProject) throw new Error("Project import is unavailable.");
           onImportPersonalProject(preview); setGalleryOpen(false); } catch (e) { setGalleryError((e as Error).message); } }}

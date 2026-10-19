@@ -8,6 +8,10 @@ const sourceName: Record<Graph2DObjectKind, string> = {
   inequality: "Inequality region",
   "point-series": "Point series",
   piecewise: "Piecewise function",
+  "slope-field": "Slope field",
+  trajectory: "Solution trajectory",
+  "phase-portrait": "Phase portrait",
+  "time-ode": "Time-dependent ODE",
 };
 
 /** Describes source objects and display coordinates without relying on the active module's default scene. */

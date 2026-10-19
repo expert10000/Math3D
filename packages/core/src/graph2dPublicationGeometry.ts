@@ -3,6 +3,7 @@ import type { Graph2DSampledSeries } from "./graph2dSceneSampling";
 import type { Graph2DRegionArtifact } from "./graph2dInequality";
 import type { Graph2DPointSeriesArtifact } from "./graph2dPointSeries";
 import type { Graph2DPiecewiseArtifact } from "./graph2dPiecewise";
+import type { Graph2DPhasePortraitArtifact } from "./graph2dPhasePortrait";
 import { graph2DWorldToScreen, resolveGraph2DViewport, type Graph2DScreenSize } from "./graph2dViewport";
 import { projectGraph2DGrid, projectGraph2DPolarGrid } from "./graph2dGrid";
 import { graph2DGridAppearance } from "./graph2dGridOptions";
@@ -84,7 +85,29 @@ export const projectGraph2DPublicationGeometry = (document: Graph2DDocument, ser
   }
   for (const item of series) {
     const a = item.artifact, region = "kind" in a && a.kind === "inequality-region" ? a as Graph2DRegionArtifact : null;
+    if ("kind" in a && a.kind === "phase-portrait") {
+      const phase = a as Graph2DPhasePortraitArtifact;
+      for (const segment of phase.fieldSegments) {
+        const first = segment.points[0], last = segment.points[1];
+        if (!first || !last) continue;
+        const start = screen(first), end = screen(last), angle = Math.atan2(end.y - start.y, end.x - start.x);
+        line(start, end, item.style.color, Math.min(1.5, item.style.lineWidth));
+        for (const offset of [-0.55, 0.55]) line({ x: end.x - 6 * Math.cos(angle + offset),
+          y: end.y - 6 * Math.sin(angle + offset) }, end, item.style.color, Math.min(1.5, item.style.lineWidth));
+      }
+      for (const [segments, color, dash] of [[phase.nullclines.x, "#ea580c", "dashed"],
+        [phase.nullclines.y, "#0891b2", "dotted"]] as const)
+        for (const segment of segments) for (let index = 1; index < segment.points.length; index += 1)
+          line(screen(segment.points[index - 1]!), screen(segment.points[index]!), color, 1.8, dash);
+      for (const equilibrium of phase.equilibria) {
+        const point = screen(equilibrium);
+        if (point.x >= 0 && point.x <= size.width && point.y >= 0 && point.y <= size.height)
+          push({ kind: "circle", ...point, radius: 6, color: "#111827", open: true });
+      }
+    }
     const groups = region ? region.boundaries.map((b) => ({ segments: b.segments, dash: b.strict ? "dashed" as const : item.style.lineStyle })) :
+      "kind" in a && a.kind === "time-ode" ? a.segments.map((segment, index) => ({ segments: [segment],
+        dash: index === 0 && (a as import("./graph2dTimeOde").Graph2DTimeOdeArtifact).backward?.acceptedSteps ? "dashed" as const : "solid" as const })) :
       [{ segments: "kind" in a && a.kind === "point-series" && (a as Graph2DPointSeriesArtifact).mode === "points" ? [] : a.segments, dash: item.style.lineStyle }];
     for (const group of groups) for (const segment of group.segments) {
       let distance = 0;
@@ -100,6 +123,11 @@ export const projectGraph2DPublicationGeometry = (document: Graph2DDocument, ser
       if (p.x >= 0 && p.x <= size.width && p.y >= 0 && p.y <= size.height) push({ kind: "circle", ...p, radius, color: item.style.color, open });
     };
     if ("kind" in a && a.kind === "point-series") for (const p of (a as Graph2DPointSeriesArtifact).points) marker(p, false, Math.max(2.5, item.style.lineWidth + 1.5));
+    else if ("kind" in a && a.kind === "phase-portrait") for (const orbit of (a as Graph2DPhasePortraitArtifact).orbits) marker(orbit.seed, false, 4);
+    else if ("kind" in a && a.kind === "time-ode") {
+      const seed = (a as import("./graph2dTimeOde").Graph2DTimeOdeArtifact).seed;
+      marker({ x: seed.t, y: seed.x }, false, 4);
+    }
     else if ("kind" in a && a.kind === "piecewise") for (const p of [...(a as Graph2DPiecewiseArtifact).endpoints].sort((x, y) => Number(y.open) - Number(x.open))) marker(p, p.open, Math.max(3.5, item.style.lineWidth + 2));
     else for (const segment of a.segments) {
       const first = segment.points[0], last = segment.points.at(-1);

@@ -3,10 +3,12 @@ import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleS
 import { fitGraph2DViewport, panGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, graph2DHasLogScale, projectGraph2DConstructionVector, pickGraph2DProbe,
   graph2DSceneFitBounds, graph2DConstructionFitBounds,
   resolveGraph2DViewport, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, graph2DParameterSessionKey,
-  previewGraph2DParameterValues, graph2DRegressionOverlaySeries, applyGraph2DAuthoring, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion } from "@math3d/core";
+  previewGraph2DParameterValues, graph2DRegressionOverlaySeries, applyGraph2DAuthoring, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion,
+  type Graph2DPhasePortraitArtifact, type Graph2DTimeOdeArtifact } from "@math3d/core";
 import { createGraph2DSplineRegressionJob, createGraph2DPolynomialRegressionJob,
   type Graph2DSplineRegressionJob, type Graph2DPolynomialRegressionJob } from "@math3d/core";
 import { projectGraph2DConstrainedPoint, previewGraph2DConstrainedPoint, resolveGraph2DConstructions } from "@math3d/core";
+import { graph2DPhaseSeedAtScreen, graph2DPhaseSeedAction, graph2DPhaseSeedRemovalAction, previewGraph2DPhaseSeed } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { MobileGraphGesture, mobileGraphProbeRadius, type GraphTouch } from "./models/mobileGraphGestures";
 import { mobileGraphCapabilities } from "./models/mobileGraphProject";
@@ -61,11 +63,21 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     parameter: number; moved: boolean; sourceHash: string; documentId: string } | null>(null);
   const [pointDragPreview, setPointDragPreview] = useState<{ id: string; parameter: number } | null>(null);
   const cancelPointDrag = () => { pointDrag.current = null; setPointDragPreview(null); };
+  const phaseSeedDrag = useRef<{ objectId: string; index: number; touchId: string | number; x: number; y: number;
+    start: { x: number; y: number }; point: { x: number; y: number }; moved: boolean; sourceHash: string; documentId: string } | null>(null);
+  const [phaseSeedPreview, setPhaseSeedPreview] = useState<{ objectId: string; index: number; point: { x: number; y: number } } | null>(null);
+  const [phaseSeedPlacement, setPhaseSeedPlacement] = useState<string | null>(null);
+  const [selectedPhaseSeed, setSelectedPhaseSeed] = useState<{ objectId: string; index: number } | null>(null);
+  const cancelPhaseSeedDrag = () => { phaseSeedDrag.current = null; setPhaseSeedPreview(null); };
   const parameterKey = graph2DParameterSessionKey(document);
   const [parameterPreview, setParameterPreview] = useState<{ key: string; values: Record<string, number> } | null>(null);
   const parameterPreviewActive = parameterPreview?.key === parameterKey;
-  const sampledDocument = useMemo(() => parameterPreview?.key === parameterKey ? previewGraph2DParameterValues(document, parameterPreview.values) : document,
-    [document, parameterKey, parameterPreview]);
+  const sampledDocument = useMemo(() => {
+    const parameterDocument = parameterPreview?.key === parameterKey ? previewGraph2DParameterValues(document, parameterPreview.values) : document;
+    if (!phaseSeedPreview || phaseSeedDrag.current?.documentId !== document.identity.id) return parameterDocument;
+    try { return previewGraph2DPhaseSeed(parameterDocument, phaseSeedPreview.objectId, phaseSeedPreview.index, phaseSeedPreview.point); }
+    catch { return parameterDocument; }
+  }, [document, parameterKey, parameterPreview, phaseSeedPreview]);
   const [parameterEpoch, setParameterEpoch] = useState(0);
   const cancelParameter = () => { setParameterPreview(null); setParameterEpoch(value => value + 1); };
   const [destination, setDestination] = useState<MobileGraphDestination>("Graph");
@@ -158,7 +170,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   };
   const viewport = preview ?? document.display.viewport;
   const guided = getGraph2DGuidedDocumentGuidance(document);
-  const cancel = () => { gesture.current.cancel(); setPreview(null); cancelPointDrag(); };
+  const cancel = () => { gesture.current.cancel(); setPreview(null); cancelPointDrag(); cancelPhaseSeedDrag(); };
   useEffect(() => {
     const listener = AppState.addEventListener("change", (state) => { if (state !== "active") { cancel(); cancelFit(false); setParameterPreview(null); } });
     return () => { listener.remove(); gesture.current.cancel(); const active = activeFit.current;
@@ -167,8 +179,17 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   useEffect(() => { const active = activeFit.current;
     if (active && (active.sourceKey !== sourceKey || active.draftHash !== draftHash || destination !== "Analyze")) cancelFit(false);
   }, [sourceKey, draftHash, destination]);
-  const sampling = useMobileGraphSampling(sampledDocument, viewport, size, !!preview, () => { setAnalysis(null); setParameterPreview(null); }, parameterPreviewActive ? document.identity : undefined, tableStore);
+  const sampling = useMobileGraphSampling(sampledDocument, viewport, size, !!preview || !!phaseSeedPreview,
+    () => { setAnalysis(null); setParameterPreview(null); }, parameterPreviewActive || phaseSeedPreview ? document.identity : undefined, tableStore);
   const { series, budget } = sampling;
+  const selectedPhase = series.find(item => item.objectId === document.selection.objectId &&
+    "kind" in item.artifact && item.artifact.kind === "phase-portrait")?.artifact as Graph2DPhasePortraitArtifact | undefined;
+  const selectedPhaseObject = document.source.objects.find(item => item.id === document.selection.objectId && item.kind === "phase-portrait");
+  const selectedTimeOde = series.find(item => item.objectId === document.selection.objectId &&
+    "kind" in item.artifact && item.artifact.kind === "time-ode")?.artifact as Graph2DTimeOdeArtifact | undefined;
+  const selectedTimeOdeObject = document.source.objects.find(item => item.id === document.selection.objectId && item.kind === "time-ode");
+  const highlightedPhaseSeed = selectedPhaseObject?.kind === "phase-portrait" &&
+    selectedPhaseSeed?.objectId === selectedPhaseObject.id ? selectedPhaseObject.seeds[selectedPhaseSeed.index] : null;
   const pointPreviewDocument = useMemo(() => {
     if (!pointDragPreview || pointDrag.current?.documentId !== document.identity.id) return null;
     try { return previewGraph2DConstrainedPoint(document, pointDragPreview.id, pointDragPreview.parameter); }
@@ -180,6 +201,13 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   useEffect(() => { if (pointDrag.current && (pointDrag.current.sourceHash !== document.identity.structuralHash ||
     pointDrag.current.documentId !== document.identity.id)) cancelPointDrag(); },
     [document.identity.id, document.identity.structuralHash]);
+  useEffect(() => { if (phaseSeedDrag.current && (phaseSeedDrag.current.sourceHash !== document.identity.structuralHash ||
+    phaseSeedDrag.current.documentId !== document.identity.id)) cancelPhaseSeedDrag();
+    const placingObject = document.source.objects.find(item => item.id === phaseSeedPlacement);
+    if (phaseSeedPlacement && (document.selection.objectId !== phaseSeedPlacement ||
+      placingObject?.kind !== "phase-portrait" || placingObject.seeds.length >= 8 ||
+      !document.display.objects.find(item => item.objectId === phaseSeedPlacement)?.visible)) setPhaseSeedPlacement(null);
+  }, [document.identity.id, document.identity.structuralHash, document.selection.objectId, document.display.objects, phaseSeedPlacement]);
   const geometry = useMemo(() => mobileGraphAdvancedGeometry(series, viewport, size, budget), [series, viewport, size, budget.fills, budget.markers]);
   const lines = useMemo(() => projectMobileGraphLines(geometry.boundaries, viewport, size, document.selection.objectId, budget.lines), [geometry, viewport, size, document.selection.objectId, budget.lines]);
   const continuationLines = useMemo(() => viewport.continuation ? projectMobileGraphLines(series.filter(item => item.continuation).map(item => ({ ...item,
@@ -205,6 +233,22 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     return adapter.commitSelection(picked.selection);
   });
   const finish = (event: GestureResponderEvent) => {
+    const seedDrag = phaseSeedDrag.current;
+    if (seedDrag) {
+      const released = event.nativeEvent.changedTouches.find(touch => touch.identifier === seedDrag.touchId);
+      if (released && (seedDrag.moved || Math.hypot(released.locationX - seedDrag.x, released.locationY - seedDrag.y) >= 4)) {
+        const point = graph2DPhaseSeedAtScreen(document, seedDrag.objectId, document.display.viewport, size,
+          { x: released.locationX, y: released.locationY }, "drag");
+        if (point) { seedDrag.point = point; seedDrag.moved = true; }
+      }
+      cancelPhaseSeedDrag();
+      if (seedDrag.moved && seedDrag.sourceHash === document.identity.structuralHash &&
+          seedDrag.documentId === document.identity.id &&
+          Math.hypot(seedDrag.point.x - seedDrag.start.x, seedDrag.point.y - seedDrag.start.y) > 1e-9)
+        commit(() => adapter.commitScene(applyGraph2DAuthoring(document,
+          graph2DPhaseSeedAction(document, seedDrag.objectId, seedDrag.index, seedDrag.point)), "edit-phase-portrait"));
+      return;
+    }
     const dragged = pointDrag.current;
     if (dragged) {
       const released = event.nativeEvent.changedTouches.find(touch => touch.identifier === dragged.touchId);
@@ -226,7 +270,15 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     }
     const result = gesture.current.finish(); setPreview(null);
     if (result.viewport) commit(() => adapter.commitViewport(result.viewport!));
-    else if (result.tap) tap(result.tap);
+    else if (result.tap) {
+      if (phaseSeedPlacement && sampling.ready && !parameterPreviewActive && !graph2DHasLogScale(viewport)) {
+        const point = graph2DPhaseSeedAtScreen(document, phaseSeedPlacement, document.display.viewport, size, result.tap, "place");
+        if (point && commit(() => adapter.commitScene(applyGraph2DAuthoring(document,
+          graph2DPhaseSeedAction(document, phaseSeedPlacement, null, point)), "edit-phase-portrait"))) {
+          setPhaseSeedPlacement(null); onHaptic?.();
+        } else if (!point) setError("Tap inside the selected phase portrait domain to place an initial point.");
+      } else tap(result.tap);
+    }
   };
   const beginPointOrPan = (event: GestureResponderEvent) => {
     cancelParameter();
@@ -247,9 +299,36 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         return;
       }
     }
+    if (activeTouches.length === 1 && sampling.ready && !parameterPreviewActive && !graph2DHasLogScale(viewport) &&
+        selectedPhaseObject?.kind === "phase-portrait" && document.display.objects.find(item =>
+          item.objectId === selectedPhaseObject.id)?.visible) {
+      const touch = activeTouches[0]!;
+      const nearest = selectedPhaseObject.seeds.map((seed, index) => ({ seed, index,
+        distance: Math.hypot(graph2DWorldToScreen(viewport, size, seed).x - touch.x,
+          graph2DWorldToScreen(viewport, size, seed).y - touch.y) }))
+        .filter(item => item.distance <= 22).sort((a, b) => a.distance - b.distance)[0];
+      if (nearest) {
+        gesture.current.cancel(); setPreview(null); setSelectedPhaseSeed({ objectId: selectedPhaseObject.id, index: nearest.index });
+        phaseSeedDrag.current = { objectId: selectedPhaseObject.id, index: nearest.index, touchId: touch.id,
+          x: touch.x, y: touch.y, start: nearest.seed, point: nearest.seed, moved: false,
+          sourceHash: document.identity.structuralHash, documentId: document.identity.id };
+        return;
+      }
+    }
     gesture.current.begin(document.display.viewport, size, activeTouches);
   };
   const movePointOrPan = (event: GestureResponderEvent) => {
+    const seedDrag = phaseSeedDrag.current;
+    if (seedDrag) {
+      const activeTouches = touches(event);
+      if (activeTouches.length !== 1 || activeTouches[0]!.id !== seedDrag.touchId) { cancelPhaseSeedDrag(); return; }
+      const touch = activeTouches[0]!;
+      if (!seedDrag.moved && Math.hypot(touch.x - seedDrag.x, touch.y - seedDrag.y) < 4) return;
+      const point = graph2DPhaseSeedAtScreen(document, seedDrag.objectId, document.display.viewport, size, touch, "drag");
+      if (point) { seedDrag.point = point; seedDrag.moved = true;
+        setPhaseSeedPreview({ objectId: seedDrag.objectId, index: seedDrag.index, point }); }
+      return;
+    }
     const dragged = pointDrag.current;
     if (!dragged) { try { setPreview(gesture.current.update(touches(event))); } catch { cancel(); } return; }
     const activeTouches = touches(event);
@@ -310,7 +389,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     </ScrollView>}</>}
     <View style={[s.workspace, layout.split && s.split]} testID={layout.split ? "mobile-graph-split-pane" : "mobile-graph-phone-layout"}>
     <View style={[s.graphPane, layout.split && { minWidth: layout.graphMinWidth }]}>
-    <View style={s.plot} testID="mobile-graph-plot" accessibilityLabel="Graph plot. Drag saved points along curves, drag elsewhere to pan, pinch to zoom, tap to probe."
+    <View style={s.plot} testID="mobile-graph-plot" accessibilityLabel="Graph plot. Drag marked phase portrait initial points to update orbits, drag saved points along curves, drag elsewhere to pan, pinch to zoom, tap to probe or place an armed initial point."
       onLayout={(event) => { cancel(); const { width, height } = event.nativeEvent.layout; if (width > 0 && height > 0) setSize({ width, height }); }}
       onStartShouldSetResponder={() => true} onMoveShouldSetResponder={() => true}
       onResponderGrant={beginPointOrPan}
@@ -415,6 +494,14 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         {marker && marker.x >= 0 && marker.x <= size.width && marker.y >= 0 && marker.y <= size.height &&
           <View style={{ position: "absolute", left: marker.x - 7, top: marker.y - 7, width: 14, height: 14,
             borderRadius: 7, borderWidth: 2, borderColor: "#0f172a", backgroundColor: "#fff" }} />}
+        {phaseSeedPreview && (() => { const point = graph2DWorldToScreen(viewport, size, phaseSeedPreview.point);
+          return <View style={{ position: "absolute", left: point.x - 7, top: point.y - 7, width: 14, height: 14,
+            borderRadius: 7, borderWidth: 2, borderColor: "#f97316", backgroundColor: "#fff" }} />; })()}
+        {highlightedPhaseSeed && (() => {
+          const point = graph2DWorldToScreen(viewport, size, highlightedPhaseSeed);
+          return <View pointerEvents="none" style={{ position: "absolute", left: point.x - 11, top: point.y - 11,
+            width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: "#f97316" }} />;
+        })()}
       </View>
       {!document.source.objects.length && <Text pointerEvents="none" style={s.empty}>Empty graph. Open Functions to add a graph object, or import a desktop Graph project.</Text>}
     </View>
@@ -423,6 +510,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     {/* Fixed status height prevents ready/incomplete changes from resizing and resampling the plot in a loop. */}
     {!presentation && <Text style={[s.readout, { height: 36 * Math.max(1, window.fontScale) }]} numberOfLines={2}>{[
       parameterPreviewActive ? "Parameter preview — not saved. Apply or Cancel; committed analysis overlays hidden." : "",
+      phaseSeedPreview ? `Initial point preview: (${phaseSeedPreview.point.x.toPrecision(4)}, ${phaseSeedPreview.point.y.toPrecision(4)}). Release to save.` : "",
+      phaseSeedPlacement ? "Tap inside the selected phase portrait domain to place an initial point." : "",
       viewport.continuation ? "Light dotted continuation is visual only; not analysed/exported." : "",
       graph2DHasLogScale(viewport) ? "Log axes omit non-positive values. Analysis uses world units; area/tangent overlays hidden." : "",
       !sampling.ready ? sampling.active ? sampling.retained ? "Graph updating; previous samples visible." : "Graph updating…" : "Graph sampling paused in background." : "",
@@ -474,6 +563,52 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
           <Text>Saved markers are source-linked. Numerical results are computed only when requested and keep their stated limits.</Text>
         </View>}
         {series.some((item) => !item.artifact.converged) && <Text style={s.readout}>Sampling budget reached; unresolved regions are not a proof of absence.</Text>}
+        {selectedTimeOdeObject?.kind === "time-ode" && <View accessibilityLabel="Time-dependent ODE integration status" testID="mobile-graph-time-ode-status">
+          <Text style={s.title}>x′ = {selectedTimeOdeObject.expression.source}; x({selectedTimeOdeObject.seed.t}) = {selectedTimeOdeObject.seed.x}</Text>
+          <Text>Time t is horizontal; state x is vertical. Numerical approximation on linear axes.</Text>
+          <Text>Time bounds {selectedTimeOdeObject.domain.min} to {selectedTimeOdeObject.domain.max}; state bounds {selectedTimeOdeObject.stateDomain.min} to {selectedTimeOdeObject.stateDomain.max}.</Text>
+          {selectedTimeOde?.backward && <Text>Backward: {selectedTimeOde.backward.stop}; last ({selectedTimeOde.backward.last.t}, {selectedTimeOde.backward.last.x}); {selectedTimeOde.backward.acceptedSteps} accepted, {selectedTimeOde.backward.rejectedSteps} rejected.</Text>}
+          {selectedTimeOde?.forward && <Text>Forward: {selectedTimeOde.forward.stop}; last ({selectedTimeOde.forward.last.t}, {selectedTimeOde.forward.last.x}); {selectedTimeOde.forward.acceptedSteps} accepted, {selectedTimeOde.forward.rejectedSteps} rejected.</Text>}
+          {selectedTimeOde && !selectedTimeOde.forward && <Text>Integration unavailable on logarithmic axes.</Text>}
+        </View>}
+        {selectedPhase && <View accessibilityLabel="Phase portrait equilibrium analysis" testID="mobile-graph-phase-equilibria">
+          <Text style={s.title}>Equilibrium scan · {selectedPhase.analysis.status}</Text>
+          {selectedPhaseObject?.kind === "phase-portrait" && <>
+            <Text>Initial points: {selectedPhaseObject.seeds.length}/8. Drag a marked point to update its orbit.</Text>
+            {selectedPhaseObject.seeds.length === 0 && <Text>No initial points. Place one on the graph.</Text>}
+            {selectedPhaseObject.seeds.map((seed, index) => {
+              const orbit = selectedPhase.orbits[index];
+              return <View key={index} style={{ paddingVertical: 5 }} testID={`mobile-graph-phase-seed-${index + 1}`}>
+                {button(`Select point ${index + 1} (${seed.x.toPrecision(5)}, ${seed.y.toPrecision(5)})`,
+                  () => setSelectedPhaseSeed({ objectId: selectedPhaseObject.id, index }), false, true)}
+                {orbit && <Text>Backward {orbit.backward}; forward {orbit.forward} · {orbit.acceptedSteps} accepted, {orbit.rejectedSteps} rejected</Text>}
+                {button(`Remove initial point ${index + 1}`, () => {
+                  if (commit(() => adapter.commitScene(applyGraph2DAuthoring(document,
+                    graph2DPhaseSeedRemovalAction(document, selectedPhaseObject.id, index)), "edit-phase-portrait"))) {
+                    setSelectedPhaseSeed(null); setPhaseSeedPlacement(null);
+                  }
+                }, !!parameterPreviewActive, true)}
+              </View>;
+            })}
+            {button("Clear all initial points", () => {
+              if (commit(() => adapter.commitScene(applyGraph2DAuthoring(document,
+                graph2DPhaseSeedRemovalAction(document, selectedPhaseObject.id, null)), "edit-phase-portrait"))) {
+                setSelectedPhaseSeed(null); setPhaseSeedPlacement(null);
+              }
+            }, selectedPhaseObject.seeds.length === 0 || !!parameterPreviewActive, true)}
+            {button(phaseSeedPlacement === selectedPhaseObject.id ? "Cancel initial point placement" : "Place initial point",
+              () => { setPhaseSeedPlacement(current => current === selectedPhaseObject.id ? null : selectedPhaseObject.id);
+                setDestination("Graph"); setError(""); }, !sampling.ready || selectedPhaseObject.seeds.length >= 8 ||
+                  !document.display.objects.find(item => item.objectId === selectedPhaseObject.id)?.visible || graph2DHasLogScale(viewport))}
+          </>}
+          <Text>Orange dashed: x′=0. Cyan dotted: y′=0. Markers are residual-checked numerical candidates.</Text>
+          {selectedPhase.equilibria.length ? selectedPhase.equilibria.map((point, index) =>
+            <Text key={index}>({point.x.toPrecision(5)}, {point.y.toPrecision(5)}) · residual {point.residual.toExponential(2)}
+              {" · "}{point.linearization.kind.replace(/-/g, " ")} · {point.linearization.stability}
+              {point.linearization.reason ? ` · ${point.linearization.reason}` : ""}</Text>) :
+            <Text>No equilibrium resolved at the sampled grid resolution.</Text>}
+          <Text>Jacobian estimates use two finite-difference scales. Linear center and nonhyperbolic cases do not determine nonlinear stability.</Text>
+        </View>}
         {button("Clear probe", () => commit(() => adapter.commitSelection({ objectId: null, probe: null })))}
         {probe && button("Cycle overlap", () => tap(graph2DWorldToScreen(document.display.viewport, size, probe)))}
         <MobileGraphAnalysisPanel document={document} draft={analysisDraft} result={analysis} pending={analysisPending}

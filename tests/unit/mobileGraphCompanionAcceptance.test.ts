@@ -24,7 +24,7 @@ describe("MOB-G13 shared companion fixture acceptance (not native hardware signo
     for (const name of ["future", "corrupt", "unsupported-capability"])
       expect(() => importMobileGraph(readFileSync(`packages/core/fixtures/graph2d/${name}.json`, "utf8"), [], `${name}.json`)).toThrow();
   });
-  it("round-trips a seven-kind companion and bounds its aggregate native geometry without rewriting source", () => {
+  it("round-trips a ten-kind companion and bounds its aggregate native geometry without rewriting source", () => {
     const disk = new Map<string, string>(), backing = { read: (id: string) => disk.get(id) ?? null,
       write: (id: string, data: string) => { disk.set(id, data); } };
     const tables = new Graph2DPointTableStore(backing), adapter = new Graph2DCommandAdapter(createMobileGraph("All kinds", true, "g13-all-kinds"));
@@ -33,7 +33,7 @@ describe("MOB-G13 shared companion fixture acceptance (not native hardware signo
       adapter.commitScene(applyMobileGraphAuthoring(adapter.document(), action), action.type);
     }
     const document = adapter.document(), restored = readMobileGraph(importMobileGraph(serializeMobileProjectHandoff(storeMobileGraph(document)), [], "all-kinds.json"));
-    expect(restored).toEqual(document); expect(new Set(restored.source.objects.map((object) => object.kind)).size).toBe(7);
+    expect(restored).toEqual(document); expect(new Set(restored.source.objects.map((object) => object.kind)).size).toBe(10);
     const restartedTables = new Graph2DPointTableStore(backing, 4 * 1024 * 1024);
     const pointTables = Object.fromEntries(restored.source.objects.flatMap((object) => object.kind === "point-series" ? [[object.table.id, restartedTables.resolve(object.table)]] : []));
     const sourceBefore = JSON.stringify(restored.source);

@@ -9,6 +9,66 @@ import { mobileGraphAdvancedGeometry } from "../../apps/mobile/src/viewer/mobile
 import { projectMobileGraphLines } from "../../apps/mobile/src/viewer/mobileGraphProjection";
 
 describe("MOB-G09 native kind flows", () => {
+  it("authors a planar phase portrait with bounded arrows, saved seeds, and one undoable edit", () => {
+    const adapter = new Graph2DCommandAdapter(createMobileGraph("Phase", false, "mobile-phase"));
+    const tables = new Graph2DPointTableStore();
+    const editor = mobileGraphKindEditor(adapter.document(), "phase-portrait");
+    editor.draft.seedsText = "1,0\n2,0";
+    const create = mobileGraphKindAction(editor, tables);
+    adapter.commitScene(applyMobileGraphAuthoring(adapter.document(), create), create.type);
+    const created = adapter.document();
+    const object = created.source.objects[0];
+    expect(object?.kind).toBe("phase-portrait");
+    const edit = mobileGraphKindEditor(created, "phase-portrait", object!.id);
+    expect(edit.draft.seedsText).toBe("1,0\n2,0");
+    edit.draft.second = "x";
+    const change = mobileGraphKindAction(edit, tables);
+    adapter.commitScene(applyMobileGraphAuthoring(created, change), change.type);
+    expect(adapter.undo()?.source).toEqual(created.source);
+    adapter.redo();
+    const document = parseGraph2DDocument(serializeGraph2DDocument(adapter.document()));
+    const size = { width: 320, height: 320 };
+    const series = sampleGraph2DScene({ document, viewport: document.display.viewport, ...size, interaction: false });
+    const geometry = mobileGraphAdvancedGeometry(series, document.display.viewport, size);
+    expect(geometry.points).toHaveLength(3); // Two seeds and the equilibrium at the origin.
+    expect(geometry.points.some(point => point.color === "#111827")).toBe(true);
+    expect(geometry.boundaries).toHaveLength(4); // Orbits, directions, and two nullclines.
+    expect(projectMobileGraphLines(geometry.boundaries, document.display.viewport, size).length).toBeGreaterThan(20);
+    edit.draft.seedsText = "1,not-a-number";
+    expect(() => applyMobileGraphAuthoring(created, mobileGraphKindAction(edit, tables))).toThrow();
+    edit.draft.seedsText = "";
+    const empty = mobileGraphKindAction(edit, tables);
+    const cleared = applyMobileGraphAuthoring(created, empty);
+    expect(cleared.source.objects[0]?.kind === "phase-portrait" && cleared.source.objects[0].seeds).toEqual([]);
+  });
+  it("authors and edits a linked initial-value trajectory with one undo step per commit", () => {
+    const adapter = new Graph2DCommandAdapter(createMobileGraph("ODE", false, "mobile-trajectory"));
+    const tables = new Graph2DPointTableStore();
+    const fieldEditor = mobileGraphKindEditor(adapter.document(), "slope-field");
+    fieldEditor.draft.expression = "x";
+    const fieldAction = mobileGraphKindAction(fieldEditor, tables);
+    adapter.commitScene(applyMobileGraphAuthoring(adapter.document(), fieldAction), fieldAction.type);
+    const trajectoryEditor = mobileGraphKindEditor(adapter.document(), "trajectory", null, "slope_field_1");
+    trajectoryEditor.draft.initialX = "0"; trajectoryEditor.draft.initialY = "1";
+    const createAction = mobileGraphKindAction(trajectoryEditor, tables);
+    adapter.commitScene(applyMobileGraphAuthoring(adapter.document(), createAction), createAction.type);
+    const created = adapter.document();
+    expect(created.source.objects[1]?.kind).toBe("trajectory");
+    const edit = mobileGraphKindEditor(created, "trajectory", "trajectory_1");
+    edit.draft.initialY = "2";
+    const editAction = mobileGraphKindAction(edit, tables);
+    adapter.commitScene(applyMobileGraphAuthoring(created, editAction), editAction.type);
+    expect(adapter.undo()?.source).toEqual(created.source);
+    adapter.redo();
+    const restored = parseGraph2DDocument(serializeGraph2DDocument(adapter.document()));
+    const size = { width: 320, height: 320 };
+    const series = sampleGraph2DScene({ document: restored, viewport: restored.display.viewport, ...size,
+      interaction: false });
+    expect(series[1]!.artifact.segments[0]!.points.length).toBeGreaterThan(2);
+    const geometry = mobileGraphAdvancedGeometry(series, restored.display.viewport, size);
+    expect(geometry.points.length).toBeGreaterThan(0); // Initial-value seed marker.
+    expect(projectMobileGraphLines(geometry.boundaries, restored.display.viewport, size).length).toBeGreaterThan(0);
+  });
   for (const kind of MOBILE_GRAPH_KINDS.filter((k) => k !== "explicit-cartesian")) it(`authors, edits, undoes, samples and round-trips ${kind}`, () => {
     const adapter = new Graph2DCommandAdapter(createMobileGraph(kind, false, kind));
     const tables = new Graph2DPointTableStore();

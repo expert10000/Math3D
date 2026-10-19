@@ -3,7 +3,7 @@ import { createGraph2DDocument, parseGraph2DDocument, type Graph2DDocument } fro
 import { GRAPH2D_POINT_TABLE_MAX_ROWS, Graph2DPointTableStore, type Graph2DPointRow } from "./graph2dPointSeries";
 
 export const GRAPH2D_PRESET_FORMAT = "math3d.graph2d-preset" as const;
-export const GRAPH2D_PRESET_CATEGORIES = ["Algebra", "Trigonometry", "Calculus", "Parametric", "Polar", "Implicit and regions", "Piecewise and data"] as const;
+export const GRAPH2D_PRESET_CATEGORIES = ["Algebra", "Trigonometry", "Calculus", "Parametric", "Polar", "Implicit and regions", "Piecewise and data", "Differential equations"] as const;
 export type Graph2DPresetCategory = typeof GRAPH2D_PRESET_CATEGORIES[number];
 export type Graph2DPreset = Readonly<{
   format: typeof GRAPH2D_PRESET_FORMAT; schemaVersion: 1; id: string; version: number; digest: string;

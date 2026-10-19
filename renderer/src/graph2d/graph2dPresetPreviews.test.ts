@@ -7,17 +7,18 @@ import { getGraph2DPresetCatalog, renderGraph2DPresetPreview, graph2DPresetPrevi
 import manifest from "../../../packages/core/fixtures/graph2d/gallery-previews.json";
 describe("reproducible static gallery previews", () => {
   it("matches every digest/asset and fits the shared budgets without executing content", () => {
-    expect(manifest.entries).toHaveLength(21); expect(manifest.compressedBytes).toBeLessThan(2*1024*1024);
+    expect(manifest.entries).toHaveLength(26); expect(manifest.compressedBytes).toBeLessThan(2*1024*1024);
     for (const preset of getGraph2DPresetCatalog().entries) {
       const preview = renderGraph2DPresetPreview(preset), entry = manifest.entries.find(e => e.id===preset.id)!;
       expect(preview.key).toBe(entry.key); expect(entry.presetDigest).toBe(preset.digest);
-      expect(preview.samples).toBeLessThanOrEqual(1024);
+      const sampleLimit=preset.template.source.objects.some(object=>object.kind==="phase-portrait" || object.kind==="time-ode")?2048:1024;
+      expect(preview.samples).toBeLessThanOrEqual(sampleLimit);
       expect(preview.svg).not.toMatch(/NaN|Infinity|<script|onload=|foreignObject/);
       for (const [filename,hash] of [[entry.svg,entry.svgHash],[entry.png,entry.pngHash]]) {
         const bytes=readFileSync(new URL(`../../../packages/core/assets/graph2d-gallery/${filename}`,import.meta.url));
         expect(`sha256:${createHash("sha256").update(bytes).digest("hex")}`).toBe(hash);
       }
-      const doc={...preset.template,display:{...preset.template.display,sampling:{maxSamples:1024,maxDepth:12,tolerancePx:.75}}};
+      const doc={...preset.template,display:{...preset.template.display,sampling:{maxSamples:sampleLimit,maxDepth:12,tolerancePx:.75}}};
       const series=sampleGraph2DScene({document:doc,viewport:doc.display.viewport,width:320,height:180,interaction:false,
         pointTables:Object.fromEntries(preset.sidecars.map(s=>[s.id,s.rows]))});
       for(const [i,s] of series.entries()) {

@@ -1,17 +1,22 @@
 import { GRAPH2D_MAX_OBJECTS, validateGraph2DFunctionDraft, validateGraph2DParametricDraft,
   validateGraph2DPolarDraft, validateGraph2DImplicitDraft, validateGraph2DInequalityDraft,
+  validateGraph2DSlopeFieldDraft,
+  validateGraph2DTrajectoryDraft,
+  validateGraph2DPhasePortraitDraft,
+  validateGraph2DTimeOdeDraft,
   validateGraph2DPiecewiseDraft,
   previewGraph2DPointImport, graph2DPointDomain,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DFunctionDraft,
   type Graph2DParametricDraft, type Graph2DPolarDraft, type Graph2DImplicitDraft,
-  type Graph2DInequalityDraft, type Graph2DPointSeriesDraft, type Graph2DPiecewiseDraft } from "@math3d/core";
+  type Graph2DInequalityDraft, type Graph2DPointSeriesDraft, type Graph2DPiecewiseDraft, type Graph2DSlopeFieldDraft,
+  type Graph2DTrajectoryDraft, type Graph2DPhasePortraitDraft, type Graph2DTimeOdeDraft } from "@math3d/core";
 import { useState } from "react";
 import { pointTableStore } from "./pointTableStore";
 
 export type Graph2DLeftPalette = "classic" | "geometry";
 type Props = { document: Graph2DDocument; onCommit?: (action: Graph2DAuthoringAction) => void;
   onSelect?: (objectId: string) => void; palette: Graph2DLeftPalette;
-  onPaletteChange: (palette: Graph2DLeftPalette) => void };
+  onPaletteChange: (palette: Graph2DLeftPalette) => void; onBrowsePhasePortraits?: (opener: HTMLButtonElement) => void };
 const initialDraft = (): Graph2DFunctionDraft => ({ label: "f", expression: "x",
   domain: { min: -10, max: 10, includeMin: true, includeMax: true },
   style: { visible: true, color: "#2563eb", lineWidth: 2, lineStyle: "solid" } });
@@ -25,6 +30,23 @@ const initialImplicitDraft = (): Graph2DImplicitDraft => ({ label: "contour", ex
   domain: { min: -10, max: 10, includeMin: true, includeMax: true },
   yDomain: { min: -10, max: 10, includeMin: true, includeMax: true },
   style: { visible: true, color: "#059669", lineWidth: 2, lineStyle: "solid" } });
+const initialSlopeFieldDraft = (): Graph2DSlopeFieldDraft => ({ label: "dy/dx", expression: "x-y",
+  domain: { min: -10, max: 10, includeMin: true, includeMax: true },
+  yDomain: { min: -10, max: 10, includeMin: true, includeMax: true },
+  style: { visible: true, color: "#0d9488", lineWidth: 1.5, lineStyle: "solid" } });
+const initialTrajectoryDraft = (sourceFieldId: string): Graph2DTrajectoryDraft => ({
+  label: "Solution", sourceFieldId, seed: { x: 0, y: 0 },
+  style: { visible: true, color: "#e11d48", lineWidth: 2.5, lineStyle: "solid" },
+});
+const initialPhasePortraitDraft = (): Graph2DPhasePortraitDraft => ({ label: "Phase portrait",
+  xDerivative: "y", yDerivative: "-x", domain: { min: -4, max: 4, includeMin: true, includeMax: true },
+  yDomain: { min: -4, max: 4, includeMin: true, includeMax: true }, timeSpan: 2 * Math.PI,
+  seeds: [{ x: 1, y: 0 }],
+  style: { visible: true, color: "#7c3aed", lineWidth: 2, lineStyle: "solid" } });
+const initialTimeOdeDraft = (): Graph2DTimeOdeDraft => ({ label: "Driven trajectory",
+  expression: "t-x", domain: { min: -2, max: 4, includeMin: true, includeMax: true },
+  stateDomain: { min: -1, max: 8, includeMin: true, includeMax: true }, seed: { t: 0, x: 1 },
+  style: { visible: true, color: "#7c3aed", lineWidth: 2.5, lineStyle: "solid" } });
 const initialInequalityDraft = (): Graph2DInequalityDraft => ({ label: "region",
   clauses: [{ expression: "x^2+y^2-4", comparator: "<=" }], operator: "all",
   domain: { min: -10, max: 10, includeMin: true, includeMax: true },
@@ -41,16 +63,20 @@ const initialPiecewiseDraft = (): Graph2DPiecewiseDraft => ({ label: "piecewise"
     { expression: "x", domain: { min: 0, max: 10, includeMin: true, includeMax: true } },
   ], style: { visible: true, color: "#9333ea", lineWidth: 2, lineStyle: "solid" } });
 
-export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, onPaletteChange }: Props) {
+export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, onPaletteChange, onBrowsePhasePortraits }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Graph2DFunctionDraft>(initialDraft);
   const [parametricDraft, setParametricDraft] = useState<Graph2DParametricDraft>(initialParametricDraft);
   const [polarDraft, setPolarDraft] = useState<Graph2DPolarDraft>(initialPolarDraft);
   const [implicitDraft, setImplicitDraft] = useState<Graph2DImplicitDraft>(initialImplicitDraft);
+  const [slopeFieldDraft, setSlopeFieldDraft] = useState<Graph2DSlopeFieldDraft>(initialSlopeFieldDraft);
+  const [trajectoryDraft, setTrajectoryDraft] = useState<Graph2DTrajectoryDraft>(initialTrajectoryDraft(""));
+  const [phaseDraft, setPhaseDraft] = useState<Graph2DPhasePortraitDraft>(initialPhasePortraitDraft);
+  const [timeOdeDraft, setTimeOdeDraft] = useState<Graph2DTimeOdeDraft>(initialTimeOdeDraft);
   const [inequalityDraft, setInequalityDraft] = useState<Graph2DInequalityDraft>(initialInequalityDraft);
   const [pointDraft, setPointDraft] = useState(initialPointDraft);
   const [piecewiseDraft, setPiecewiseDraft] = useState<Graph2DPiecewiseDraft>(initialPiecewiseDraft);
-  const [mode, setMode] = useState<"explicit" | "parametric" | "polar" | "implicit" | "inequality" | "point-series" | "piecewise">("explicit");
+  const [mode, setMode] = useState<"explicit" | "parametric" | "polar" | "implicit" | "inequality" | "point-series" | "piecewise" | "slope-field" | "trajectory" | "phase-portrait" | "time-ode">("explicit");
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const variables = ["x", ...document.source.variables.map((entry) => entry.name)];
@@ -64,6 +90,13 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       ["x", "y", ...document.source.variables.map((entry) => entry.name)]) :
     mode === "implicit" ? validateGraph2DImplicitDraft(implicitDraft,
       ["x", "y", ...document.source.variables.map((entry) => entry.name)]) :
+    mode === "slope-field" ? validateGraph2DSlopeFieldDraft(slopeFieldDraft,
+      ["x", "y", ...document.source.variables.map((entry) => entry.name)]) :
+    mode === "trajectory" ? validateGraph2DTrajectoryDraft(trajectoryDraft, document) :
+    mode === "phase-portrait" ? validateGraph2DPhasePortraitDraft(phaseDraft,
+      ["x", "y", ...document.source.variables.map((entry) => entry.name)]) :
+    mode === "time-ode" ? validateGraph2DTimeOdeDraft(timeOdeDraft,
+      ["t", "x", ...document.source.variables.map((entry) => entry.name)]) :
     mode === "parametric" ? validateGraph2DParametricDraft(parametricDraft,
       ["t", ...document.source.variables.map((entry) => entry.name)]) :
       validateGraph2DPolarDraft(polarDraft, ["theta", ...document.source.variables.map((entry) => entry.name)]);
@@ -78,6 +111,14 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
     setPolarDraft(initialPolarDraft()); setMessage(""); setOpen(true); };
   const beginCreateImplicit = () => { setMode("implicit"); setEditingId(null);
     setImplicitDraft(initialImplicitDraft()); setMessage(""); setOpen(true); };
+  const beginCreateSlopeField = () => { setMode("slope-field"); setEditingId(null);
+    setSlopeFieldDraft(initialSlopeFieldDraft()); setMessage(""); setOpen(true); };
+  const beginCreateTrajectory = (sourceFieldId: string) => { setMode("trajectory"); setEditingId(null);
+    setTrajectoryDraft(initialTrajectoryDraft(sourceFieldId)); setMessage(""); setOpen(true); };
+  const beginCreatePhasePortrait = () => { setMode("phase-portrait"); setEditingId(null);
+    setPhaseDraft(initialPhasePortraitDraft()); setMessage(""); setOpen(true); };
+  const beginCreateTimeOde = () => { setMode("time-ode"); setEditingId(null);
+    setTimeOdeDraft(initialTimeOdeDraft()); setMessage(""); setOpen(true); };
   const beginCreateInequality = () => { setMode("inequality"); setEditingId(null);
     setInequalityDraft(initialInequalityDraft()); setMessage(""); setOpen(true); };
   const beginCreatePointSeries = () => { setMode("point-series"); setEditingId(null);
@@ -103,6 +144,22 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
     } else if (object.kind === "implicit") {
       setMode("implicit"); setImplicitDraft({ label: object.label, expression: object.expression.source,
         domain: object.domain, yDomain: object.yDomain,
+        style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
+    } else if (object.kind === "slope-field") {
+      setMode("slope-field"); setSlopeFieldDraft({ label: object.label, expression: object.expression.source,
+        domain: object.domain, yDomain: object.yDomain,
+        style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
+    } else if (object.kind === "trajectory") {
+      setMode("trajectory"); setTrajectoryDraft({ label: object.label, sourceFieldId: object.sourceFieldId,
+        seed: object.seed, style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
+    } else if (object.kind === "phase-portrait") {
+      setMode("phase-portrait"); setPhaseDraft({ label: object.label, xDerivative: object.xDerivative.source,
+        yDerivative: object.yDerivative.source, domain: object.domain, yDomain: object.yDomain,
+        timeSpan: object.timeSpan, seeds: object.seeds.map(seed => ({ ...seed })),
+        style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
+    } else if (object.kind === "time-ode") {
+      setMode("time-ode"); setTimeOdeDraft({ label: object.label, expression: object.expression.source,
+        domain: object.domain, stateDomain: object.stateDomain, seed: object.seed,
         style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
     } else if (object.kind === "inequality") {
       setMode("inequality"); setInequalityDraft({ label: object.label,
@@ -145,6 +202,14 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
         { type: "create-inequality", draft: inequalityDraft } :
       mode === "implicit" ? editingId ? { type: "edit-implicit", objectId: editingId, draft: implicitDraft } :
         { type: "create-implicit", draft: implicitDraft } :
+      mode === "slope-field" ? editingId ? { type: "edit-slope-field", objectId: editingId, draft: slopeFieldDraft } :
+        { type: "create-slope-field", draft: slopeFieldDraft } :
+      mode === "trajectory" ? editingId ? { type: "edit-trajectory", objectId: editingId, draft: trajectoryDraft } :
+        { type: "create-trajectory", draft: trajectoryDraft } :
+      mode === "phase-portrait" ? editingId ? { type: "edit-phase-portrait", objectId: editingId, draft: phaseDraft } :
+        { type: "create-phase-portrait", draft: phaseDraft } :
+      mode === "time-ode" ? editingId ? { type: "edit-time-ode", objectId: editingId, draft: timeOdeDraft } :
+        { type: "create-time-ode", draft: timeOdeDraft } :
       mode === "parametric" ? editingId ? { type: "edit-parametric", objectId: editingId, draft: parametricDraft } :
         { type: "create-parametric", draft: parametricDraft } :
         editingId ? { type: "edit-polar", objectId: editingId, draft: polarDraft } :
@@ -153,6 +218,10 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       setOpen(false); setEditingId(null); setDraft(initialDraft()); setParametricDraft(initialParametricDraft());
       setPolarDraft(initialPolarDraft());
       setImplicitDraft(initialImplicitDraft());
+      setSlopeFieldDraft(initialSlopeFieldDraft());
+      setTrajectoryDraft(initialTrajectoryDraft(""));
+      setPhaseDraft(initialPhasePortraitDraft());
+      setTimeOdeDraft(initialTimeOdeDraft());
       setInequalityDraft(initialInequalityDraft());
       setPointDraft(initialPointDraft());
       setPiecewiseDraft(initialPiecewiseDraft());
@@ -173,6 +242,9 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       <button type="button" onClick={beginCreateParametric} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add parametric</button>
       <button type="button" onClick={beginCreatePolar} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add polar</button>
       <button type="button" onClick={beginCreateImplicit} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add implicit</button>
+      <button type="button" onClick={beginCreateSlopeField} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add slope field</button>
+      <button type="button" onClick={beginCreatePhasePortrait} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add phase portrait</button>
+      <button type="button" onClick={beginCreateTimeOde} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add time-dependent ODE</button>
       <button type="button" onClick={beginCreateInequality} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add inequality</button>
       <button type="button" onClick={beginCreatePiecewise} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add piecewise</button>
       <button type="button" onClick={beginCreatePointSeries} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add data series</button></div>
@@ -186,6 +258,10 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
                 `x(t) = ${object.xExpression.source}; y(t) = ${object.yExpression.source}` :
                 object.kind === "polar" ? `r(θ) = ${object.rExpression.source}` :
                   object.kind === "implicit" ? `F(x,y) = ${object.expression.source} = 0` :
+                    object.kind === "slope-field" ? `dy/dx = ${object.expression.source}` :
+                    object.kind === "trajectory" ? `from ${object.sourceFieldId}: y(${object.seed.x}) = ${object.seed.y}` :
+                    object.kind === "phase-portrait" ? `x' = ${object.xDerivative.source}; y' = ${object.yDerivative.source} · ${object.seeds.length} initial points` :
+                    object.kind === "time-ode" ? `x′ = ${object.expression.source}; x(${object.seed.t}) = ${object.seed.x}` :
                     object.kind === "inequality" ? object.clauses.map((clause) =>
                       `${clause.source} ${clause.comparator} 0`).join(object.operator === "all" ? " AND " : " OR ") :
                       object.kind === "point-series" ? `${object.table.rowCount} rows · ${object.mode} · missing y: gap` :
@@ -195,6 +271,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
             <button type="button" aria-label={"Select " + object.label} aria-pressed={document.selection.objectId === object.id}
               onClick={() => onSelect?.(object.id)}>Select</button>
             <button type="button" aria-label={"Edit " + object.label} onClick={() => beginEdit(object.id)}>Edit</button>
+            {object.kind === "slope-field" && <button type="button" aria-label={`Add trajectory for ${object.label}`}
+              disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS} onClick={() => beginCreateTrajectory(object.id)}>Add trajectory</button>}
             <button type="button" aria-label={(style.visible ? "Hide " : "Show ") + object.label}
               onClick={() => commit({ type: "visibility", objectId: object.id })}>{style.visible ? "Hide" : "Show"}</button>
             <details className="graph2d-function-more" onKeyDown={(event) => {
@@ -336,6 +414,137 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
       {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
       <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save polar</button>
+        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+    </form>}
+    {open && mode === "slope-field" && <form className="graph2d-function-editor"
+      aria-label={editingId ? "Edit slope field" : "New slope field"}
+      onSubmit={event => { event.preventDefault(); save(); }}>
+      <h3>{editingId ? "Edit slope field" : "New slope field"}</h3>
+      <p>Direction segments for dy/dx = f(x,y). This field shows local slopes, not solution curves. Linear axes only.</p>
+      <label>Name <input aria-label="Slope field name" value={slopeFieldDraft.label} maxLength={160}
+        onChange={event => setSlopeFieldDraft({ ...slopeFieldDraft, label: event.target.value })} /></label>
+      <label>dy/dx = <input aria-label="Slope field expression" value={slopeFieldDraft.expression} spellCheck={false}
+        onChange={event => setSlopeFieldDraft({ ...slopeFieldDraft, expression: event.target.value })} /></label>
+      <div className="graph2d-domain-row">
+        <label>X from <input aria-label="Slope field x minimum" type="number" value={slopeFieldDraft.domain.min}
+          onChange={event => setSlopeFieldDraft({ ...slopeFieldDraft,
+            domain: { ...slopeFieldDraft.domain, min: Number(event.target.value) } })} /></label>
+        <label>X to <input aria-label="Slope field x maximum" type="number" value={slopeFieldDraft.domain.max}
+          onChange={event => setSlopeFieldDraft({ ...slopeFieldDraft,
+            domain: { ...slopeFieldDraft.domain, max: Number(event.target.value) } })} /></label>
+      </div>
+      <div className="graph2d-domain-row">
+        <label>Y from <input aria-label="Slope field y minimum" type="number" value={slopeFieldDraft.yDomain.min}
+          onChange={event => setSlopeFieldDraft({ ...slopeFieldDraft,
+            yDomain: { ...slopeFieldDraft.yDomain, min: Number(event.target.value) } })} /></label>
+        <label>Y to <input aria-label="Slope field y maximum" type="number" value={slopeFieldDraft.yDomain.max}
+          onChange={event => setSlopeFieldDraft({ ...slopeFieldDraft,
+            yDomain: { ...slopeFieldDraft.yDomain, max: Number(event.target.value) } })} /></label>
+      </div>
+      <label>Color <input aria-label="Slope field color" type="color" value={slopeFieldDraft.style.color}
+        onChange={event => setSlopeFieldDraft({ ...slopeFieldDraft,
+          style: { ...slopeFieldDraft.style, color: event.target.value } })} /></label>
+      {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
+      {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save slope field</button>
+        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+    </form>}
+    {open && mode === "time-ode" && <form className="graph2d-function-editor"
+      aria-label={editingId ? "Edit time-dependent ODE" : "New time-dependent ODE"}
+      onSubmit={event => { event.preventDefault(); save(); }}>
+      <h3>{editingId ? "Edit time-dependent ODE" : "New time-dependent ODE"}</h3>
+      <p>Approximate x(t) forward and backward from an initial value. Horizontal axis: time t; vertical axis: state x. Linear axes only.</p>
+      <label>Name <input aria-label="ODE name" value={timeOdeDraft.label} maxLength={160}
+        onChange={event => setTimeOdeDraft({ ...timeOdeDraft, label: event.target.value })} /></label>
+      <label>x′ = <input aria-label="ODE derivative f(t,x)" value={timeOdeDraft.expression} spellCheck={false}
+        onChange={event => setTimeOdeDraft({ ...timeOdeDraft, expression: event.target.value })} /></label>
+      <div className="graph2d-domain-row">
+        <label>Time from <input aria-label="ODE time minimum" type="number" step="any" value={timeOdeDraft.domain.min}
+          onChange={event => setTimeOdeDraft({ ...timeOdeDraft, domain: { ...timeOdeDraft.domain, min: Number(event.target.value) } })} /></label>
+        <label>Time to <input aria-label="ODE time maximum" type="number" step="any" value={timeOdeDraft.domain.max}
+          onChange={event => setTimeOdeDraft({ ...timeOdeDraft, domain: { ...timeOdeDraft.domain, max: Number(event.target.value) } })} /></label>
+      </div>
+      <div className="graph2d-domain-row">
+        <label>State from <input aria-label="ODE state minimum" type="number" step="any" value={timeOdeDraft.stateDomain.min}
+          onChange={event => setTimeOdeDraft({ ...timeOdeDraft, stateDomain: { ...timeOdeDraft.stateDomain, min: Number(event.target.value) } })} /></label>
+        <label>State to <input aria-label="ODE state maximum" type="number" step="any" value={timeOdeDraft.stateDomain.max}
+          onChange={event => setTimeOdeDraft({ ...timeOdeDraft, stateDomain: { ...timeOdeDraft.stateDomain, max: Number(event.target.value) } })} /></label>
+      </div>
+      <div className="graph2d-domain-row">
+        <label>Initial time t₀ <input aria-label="ODE initial time" type="number" step="any" value={timeOdeDraft.seed.t}
+          onChange={event => setTimeOdeDraft({ ...timeOdeDraft, seed: { ...timeOdeDraft.seed, t: Number(event.target.value) } })} /></label>
+        <label>Initial value x₀ <input aria-label="ODE initial value" type="number" step="any" value={timeOdeDraft.seed.x}
+          onChange={event => setTimeOdeDraft({ ...timeOdeDraft, seed: { ...timeOdeDraft.seed, x: Number(event.target.value) } })} /></label>
+      </div>
+      <label>Color <input aria-label="ODE color" type="color" value={timeOdeDraft.style.color}
+        onChange={event => setTimeOdeDraft({ ...timeOdeDraft, style: { ...timeOdeDraft.style, color: event.target.value } })} /></label>
+      {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
+      {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save time-dependent ODE</button>
+        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+    </form>}
+    {open && mode === "phase-portrait" && <form className="graph2d-function-editor"
+      aria-label={editingId ? "Edit phase portrait" : "New phase portrait"}
+      onSubmit={event => { event.preventDefault(); save(); }}>
+      <h3>{editingId ? "Edit phase portrait" : "New phase portrait"}</h3>
+      <p>Planar system with direction arrows and solution orbits. Linear axes only; each seed integrates forward and backward in time.</p>
+      {onBrowsePhasePortraits && <button type="button" onClick={event => onBrowsePhasePortraits(event.currentTarget)}>Browse phase portrait examples</button>}
+      <label>Name <input aria-label="Phase portrait name" value={phaseDraft.label} maxLength={160}
+        onChange={event => setPhaseDraft({ ...phaseDraft, label: event.target.value })} /></label>
+      <label>x′ = <input aria-label="Phase portrait x derivative" value={phaseDraft.xDerivative} spellCheck={false}
+        onChange={event => setPhaseDraft({ ...phaseDraft, xDerivative: event.target.value })} /></label>
+      <label>y′ = <input aria-label="Phase portrait y derivative" value={phaseDraft.yDerivative} spellCheck={false}
+        onChange={event => setPhaseDraft({ ...phaseDraft, yDerivative: event.target.value })} /></label>
+      <div className="graph2d-domain-row">
+        <label>X from <input aria-label="Phase portrait x minimum" type="number" step="any" value={phaseDraft.domain.min}
+          onChange={event => setPhaseDraft({ ...phaseDraft, domain: { ...phaseDraft.domain, min: Number(event.target.value) } })} /></label>
+        <label>X to <input aria-label="Phase portrait x maximum" type="number" step="any" value={phaseDraft.domain.max}
+          onChange={event => setPhaseDraft({ ...phaseDraft, domain: { ...phaseDraft.domain, max: Number(event.target.value) } })} /></label>
+        <label>Y from <input aria-label="Phase portrait y minimum" type="number" step="any" value={phaseDraft.yDomain.min}
+          onChange={event => setPhaseDraft({ ...phaseDraft, yDomain: { ...phaseDraft.yDomain, min: Number(event.target.value) } })} /></label>
+        <label>Y to <input aria-label="Phase portrait y maximum" type="number" step="any" value={phaseDraft.yDomain.max}
+          onChange={event => setPhaseDraft({ ...phaseDraft, yDomain: { ...phaseDraft.yDomain, max: Number(event.target.value) } })} /></label>
+      </div>
+      <label>Time horizon in each direction <input aria-label="Phase portrait time horizon" type="number" step="any" min="0.000001" max="100" value={phaseDraft.timeSpan}
+        onChange={event => setPhaseDraft({ ...phaseDraft, timeSpan: Number(event.target.value) })} /></label>
+      {phaseDraft.seeds.map((seed, index) => <div className="graph2d-domain-row" key={index}>
+        <label>Seed {index + 1} x <input aria-label={`Phase seed ${index + 1} x`} type="number" step="any" value={seed.x}
+          onChange={event => setPhaseDraft({ ...phaseDraft, seeds: phaseDraft.seeds.map((entry, i) => i === index ? { ...entry, x: Number(event.target.value) } : entry) })} /></label>
+        <label>y <input aria-label={`Phase seed ${index + 1} y`} type="number" step="any" value={seed.y}
+          onChange={event => setPhaseDraft({ ...phaseDraft, seeds: phaseDraft.seeds.map((entry, i) => i === index ? { ...entry, y: Number(event.target.value) } : entry) })} /></label>
+        <button type="button" onClick={() => setPhaseDraft({ ...phaseDraft, seeds: phaseDraft.seeds.filter((_, i) => i !== index) })}>Remove seed {index + 1}</button>
+      </div>)}
+      {phaseDraft.seeds.length === 0 && <p>No initial points. Add one here or place it on the graph after saving.</p>}
+      <button type="button" disabled={phaseDraft.seeds.length >= 8} onClick={() => setPhaseDraft({ ...phaseDraft, seeds: [...phaseDraft.seeds, { x: 1, y: 0 }] })}>Add initial point</button>
+      <label>Color <input aria-label="Phase portrait color" type="color" value={phaseDraft.style.color}
+        onChange={event => setPhaseDraft({ ...phaseDraft, style: { ...phaseDraft.style, color: event.target.value } })} /></label>
+      {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
+      {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save phase portrait</button>
+        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+    </form>}
+    {open && mode === "trajectory" && <form className="graph2d-function-editor"
+      aria-label={editingId ? "Edit trajectory" : "New trajectory"}
+      onSubmit={event => { event.preventDefault(); save(); }}>
+      <h3>{editingId ? "Edit trajectory" : "New trajectory"}</h3>
+      <p>Numerical solution of the linked slope field in both x directions. Integration stops at field bounds, a singularity, or a work limit.</p>
+      <label>Name <input aria-label="Trajectory name" value={trajectoryDraft.label} maxLength={160}
+        onChange={event => setTrajectoryDraft({ ...trajectoryDraft, label: event.target.value })} /></label>
+      <label>Slope field <select aria-label="Trajectory slope field" value={trajectoryDraft.sourceFieldId}
+        onChange={event => setTrajectoryDraft({ ...trajectoryDraft, sourceFieldId: event.target.value })}>
+        {document.source.objects.filter(object => object.kind === "slope-field").map(object =>
+          <option key={object.id} value={object.id}>{object.label}</option>)}</select></label>
+      <div className="graph2d-domain-row">
+        <label>Initial x <input aria-label="Trajectory initial x" type="number" step="any" value={trajectoryDraft.seed.x}
+          onChange={event => setTrajectoryDraft({ ...trajectoryDraft, seed: { ...trajectoryDraft.seed, x: Number(event.target.value) } })} /></label>
+        <label>Initial y <input aria-label="Trajectory initial y" type="number" step="any" value={trajectoryDraft.seed.y}
+          onChange={event => setTrajectoryDraft({ ...trajectoryDraft, seed: { ...trajectoryDraft.seed, y: Number(event.target.value) } })} /></label>
+      </div>
+      <label>Color <input aria-label="Trajectory color" type="color" value={trajectoryDraft.style.color}
+        onChange={event => setTrajectoryDraft({ ...trajectoryDraft, style: { ...trajectoryDraft.style, color: event.target.value } })} /></label>
+      {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
+      {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save trajectory</button>
         <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
     </form>}
     {open && mode === "implicit" && <form className="graph2d-function-editor"
