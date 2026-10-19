@@ -61259,7 +61259,7 @@ case "mobius":
     const active = getMeshForMeshOperation();
     if (!active) {
       setMeshOperationError("Load a mesh before creating operand B.");
-      return;
+      return null;
     }
     let minX = Infinity;
     let maxX = -Infinity;
@@ -61314,6 +61314,7 @@ case "mobius":
     setMeshOperationOutputMode("derived");
     setMeshOperationError(null);
     setMeshOperationBooleanStatus(`Created ${label}, offset along its longest dimension and shown beside A. Validate A, then run Union with Auto; you can move B in Geometry first.`);
+    return duplicate;
   }, [getMeshForMeshOperation]);
 
   const applyMeshOperationResultToSurfaceMesh = useCallback(
@@ -61331,10 +61332,11 @@ case "mobius":
         resultSummary?: MeshOperationResultSummary;
         request?: MeshOperationRequest | null;
         preserveCamera?: boolean;
+        forceDerived?: boolean;
       }
     ) => {
       const baseLabel = buildActiveMeshLabel();
-      const label = meshOperationOutputMode === "replace" ? baseLabel : `${baseLabel} (${labelSuffix})`;
+      const label = meshOperationOutputMode === "replace" && !meta.forceDerived ? baseLabel : `${baseLabel} (${labelSuffix})`;
       const source = surfaceMeshData?.source ?? { kind: "bakedFromImplicit" };
       const next: SurfaceMeshData = {
         label,
@@ -62878,6 +62880,117 @@ case "mobius":
     applyMeshOperationResultToSurfaceMesh,
     startMeshBooleanReview,
     publishMeshOperationResult,
+    refreshCgalHealthAfterWorkerAction,
+  ]);
+
+  const handleAutoUnionWithOffsetCopy = useCallback(async () => {
+    if (meshOperationBusy) return;
+    if (cgalHealthState?.ok === false) {
+      setMeshOperationError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
+    const meshA = getMeshForMeshOperation();
+    if (!meshA) {
+      setMeshOperationError("Load a mesh before running Union.");
+      return;
+    }
+    setMeshOperationBusy(true);
+    setMeshOperationError(null);
+    setMeshOperationBooleanStatus("Validating A before Auto Union...");
+    try {
+      const activeMeshLabel = buildActiveMeshLabel();
+      const validationRequest: MeshOperationRequest = {
+        operation: "cgal-validate",
+        inputs: [activeMeshLabel],
+        engine: "auto",
+        parameters: { selfIntersectionSampleLimit: 1200 },
+        outputMode: "preview",
+        quality: "robust",
+      };
+      const validationResult = await runMeshOperation(validationRequest, { primaryMesh: meshA });
+      const validationSummary = summarizeMeshOperationResult(validationResult, "preview");
+      publishMeshOperationResult(validationSummary, validationRequest);
+      if (validationSummary.validation) {
+        setMeshOperationLastValidation({
+          meshLabel: activeMeshLabel,
+          meshKey: meshOperationAnalysisKey(meshA),
+          status: validationSummary.status,
+          validation: validationSummary.validation,
+          timestamp: validationSummary.timestamp,
+        });
+      }
+      const blockers = getBooleanValidationBlockers(validationSummary.validation ?? null);
+      if (validationResult.status === "error" || blockers.length) {
+        setMeshOperationError(validationResult.errors[0]?.message ?? `Repair A before Union: ${blockers.join(", ")}`);
+        setMeshOperationBooleanStatus("Auto Union stopped after validation.");
+        return;
+      }
+
+      const duplicate = handleDuplicateActiveMeshForBoolean();
+      if (!duplicate) return;
+      const shift = duplicate.transform.position;
+      const positions = Float32Array.from(duplicate.mesh.positions);
+      for (let i = 0; i < positions.length; i += 3) {
+        positions[i] += shift.x;
+        positions[i + 1] += shift.y;
+        positions[i + 2] += shift.z;
+      }
+      const meshB: MeshOperationMeshInput = {
+        label: duplicate.name,
+        positions,
+        indices: duplicate.mesh.indices ?? new Uint32Array(),
+        source: { kind: "geometryObject", objectId: duplicate.id, objectName: duplicate.name },
+      };
+      setMeshOperationBooleanStatus("Running Auto Union with the offset copy...");
+      const request: MeshOperationRequest = {
+        operation: "boolean-union",
+        inputs: [meshA.label, meshB.label],
+        engine: "auto",
+        parameters: { computeNormals: true, booleanStrategy: "auto", validationPass: true, validationBlockers: [] },
+        outputMode: "new-object",
+        quality: "robust",
+      };
+      const result = await runMeshOperation(request, { primaryMesh: meshA, secondaryMesh: meshB });
+      const summary = summarizeMeshOperationResult(result, "new-object");
+      if (result.status === "error" || !result.resultMesh) {
+        publishMeshOperationResult(summary, request);
+        setMeshOperationError(result.errors[0]?.message ?? "Auto Union failed.");
+        setMeshOperationBooleanStatus("Auto Union failed.");
+        return;
+      }
+      const resultLabel = `${meshA.label} (Boolean union)`;
+      summary.booleanReview = { operandA: meshA.label, operandB: meshB.label, result: resultLabel };
+      startMeshBooleanReview("union", "auto", meshA, meshB, cloneSurfaceMeshData(result.resultMesh, resultLabel));
+      applyMeshOperationResultToSurfaceMesh("Boolean union", result.resultMesh, {
+        operation: "Boolean union",
+        beforeFaces: result.before.faceCount,
+        requestedFaces: null,
+        normalsRecomputed: true,
+        warnings: result.warnings.map((warning) => warning.message),
+        engine: result.engine,
+        durationMs: result.durationMs,
+        resultSummary: summary,
+        request,
+        preserveCamera: true,
+        forceDerived: true,
+      });
+      setMeshOperationBooleanStatus("Auto Union completed. Review A, B, and the result.");
+    } catch (err: any) {
+      setMeshOperationError(err?.message ?? "Auto Union failed.");
+      setMeshOperationBooleanStatus("Auto Union failed.");
+    } finally {
+      setMeshOperationBusy(false);
+      refreshCgalHealthAfterWorkerAction();
+    }
+  }, [
+    meshOperationBusy,
+    cgalHealthState,
+    getMeshForMeshOperation,
+    buildActiveMeshLabel,
+    publishMeshOperationResult,
+    handleDuplicateActiveMeshForBoolean,
+    startMeshBooleanReview,
+    applyMeshOperationResultToSurfaceMesh,
     refreshCgalHealthAfterWorkerAction,
   ]);
 
@@ -82938,6 +83051,7 @@ case "mobius":
                           onRunBoolean={handleMeshOperationBoolean}
                           onPrepareBooleanDemo={handlePrepareMeshOperationBooleanDemo}
                           onDuplicateActiveMeshForBoolean={handleDuplicateActiveMeshForBoolean}
+                          onAutoUnionWithOffsetCopy={handleAutoUnionWithOffsetCopy}
                           onOpenBooleanDemoPair={handleOpenMeshOperationBooleanDemoPairInGeometry}
                           onSwapBooleanOperands={handleSwapMeshOperationBooleanOperands}
                           booleanOperandsVisible={meshOperationBooleanDemoOperandsVisible}

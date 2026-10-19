@@ -171,3 +171,25 @@ test("Auto union validates one mesh and its offset duplicate", async () => {
     await closeSurfaceApp(ctx);
   }
 });
+
+test("one click unions a mesh with an offset copy and opens review", async () => {
+  test.skip(process.env.MATH3D_NATIVE_BOOLEAN_E2E !== "1", "Requires an installed local native CGAL worker.");
+  const ctx = await launchSurfaceApp();
+  try {
+    const { page } = ctx;
+    let card = await openMeshTools(page);
+    await page.getByTestId("mesh-workspace-example-1").click();
+    card = await openMeshTools(page);
+    await card.getByTestId("mesh-workspace-operation-registry-row-boolean-union").click();
+    await card.getByTestId("mesh-workspace-operation-registry-auto-union-with-copy").click();
+
+    const lastResult = card.getByTestId("mesh-workspace-operation-registry-last-result");
+    await expect(lastResult).toContainText("Boolean union", { timeout: 90_000 });
+    await expect(lastResult).toContainText(/success/i);
+    await expect(lastResult).toContainText("Native CGAL backend: CGAL corefine");
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-operand")).toContainText("copy B");
+    await expect(page.getByTestId("mesh-operation-boolean-card")).toContainText("copy B");
+  } finally {
+    await closeSurfaceApp(ctx);
+  }
+});

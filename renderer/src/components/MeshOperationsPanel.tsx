@@ -197,6 +197,7 @@ export type MeshOperationsPanelProps = {
   onRunBoolean: () => void | Promise<void>;
   onPrepareBooleanDemo: () => void;
   onDuplicateActiveMeshForBoolean?: () => void;
+  onAutoUnionWithOffsetCopy?: () => void | Promise<void>;
   onOpenBooleanDemoPair?: () => void;
   onSwapBooleanOperands?: () => void;
   booleanOperandsVisible?: boolean;
@@ -961,6 +962,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
   onRunBoolean,
   onPrepareBooleanDemo,
   onDuplicateActiveMeshForBoolean,
+  onAutoUnionWithOffsetCopy,
   onOpenBooleanDemoPair,
   onSwapBooleanOperands,
   booleanOperandsVisible,
@@ -1925,15 +1927,28 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                         </select>
                       </label>
                       {onDuplicateActiveMeshForBoolean && (
-                        <button
-                          data-testid={`${testId}-duplicate-active-for-boolean`}
-                          type="button"
-                          onClick={onDuplicateActiveMeshForBoolean}
-                          disabled={!meshReady || operationBusy}
-                          style={{ justifySelf: "start", fontWeight: 800 }}
-                        >
-                          Duplicate active mesh as B
-                        </button>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {booleanOperation === "union" && onAutoUnionWithOffsetCopy && (
+                            <button
+                              data-testid={`${testId}-auto-union-with-copy`}
+                              type="button"
+                              onClick={() => void onAutoUnionWithOffsetCopy()}
+                              disabled={!meshReady || operationBusy}
+                              style={{ fontWeight: 800 }}
+                            >
+                              Union with offset copy (Auto)
+                            </button>
+                          )}
+                          <button
+                            data-testid={`${testId}-duplicate-active-for-boolean`}
+                            type="button"
+                            onClick={onDuplicateActiveMeshForBoolean}
+                            disabled={!meshReady || operationBusy}
+                            style={{ fontWeight: 800 }}
+                          >
+                            Duplicate active mesh as B
+                          </button>
+                        </div>
                       )}
                       {booleanOperandOptions.length === 0 ? (
                         <div
