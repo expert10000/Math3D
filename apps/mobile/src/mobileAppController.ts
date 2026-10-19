@@ -1626,11 +1626,12 @@ export const useMobileAppController = () => {
     try {
       const plan = planMobileGraphPresetLaunch(preset, `mobile-gallery/${Date.now()}/${++graphProjectSequence.current}`, storedProjects,
         currentGraphWork());
+      const planFinishedAt = Date.now();
       const result = await commitMobileGraphPresetLaunch(plan, saveStoredSceneProjects, stageMobileGraphPresetSidecars);
       setStoredProjects(result.projects); setStorageStatus(storageIssues.length > 0 ? "error" : "ready");
       setProjectActionMessage(`Created ${result.project.title}. Previous work was saved.`);
       openCreatedGraph(result.project); setGraphGalleryOpen(false); setGraphGalleryMessage("");
-      console.info(`MATH3D_DEVICE_METRIC gallery-launch durationMs=${Date.now() - launchStartedAt} preset=${preset.id}`);
+      console.info(`MATH3D_DEVICE_METRIC gallery-launch durationMs=${Date.now() - launchStartedAt} planMs=${planFinishedAt - launchStartedAt} commitMs=${Date.now() - planFinishedAt} preset=${preset.id}`);
       return true;
     } catch (error) {
       setGraphGalleryMessage(`Could not open the graph: ${(error as Error).message}. Current work remains open.`); return false;

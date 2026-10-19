@@ -316,12 +316,14 @@ export const createMobileSceneStorage = (storageDirectory: Directory) => {
   const ensureStorageDirectory = () => storageDirectory.create({ idempotent: true, intermediates: true });
 
   const writeProjectsAtomically = async (projects: MobileStoredSceneProject[]): Promise<void> => {
+    const startedAt = Date.now();
     ensureStorageDirectory();
     const primary = storageFile();
     const staged = storageTempFile();
     const backup = storageBackupFile();
     const stagedBackup = storageBackupTempFile();
     const raw = encodeProjects(projects);
+    const encodedAt = Date.now();
     let backupCommitted = false;
     let initializeBackup = false;
 
@@ -330,6 +332,7 @@ export const createMobileSceneStorage = (storageDirectory: Directory) => {
       const primaryValidation = primaryRaw?.trim() ? decodeMobileSceneStorage(primaryRaw) : null;
       const backupRaw = primaryValidation?.ok ? null : await readFile(backup);
       const existing = resolveMobileSceneStorage(primaryRaw, backupRaw);
+      const existingCheckedAt = Date.now();
       if (existing.source === "invalid") {
         throw new MobileSceneStorageError("recovery-required", "Damaged or unsupported storage was kept. Restore a valid storage backup before saving.");
       }
@@ -340,6 +343,7 @@ export const createMobileSceneStorage = (storageDirectory: Directory) => {
       if (!stagedValidation.ok) {
         throw new MobileSceneStorageError("validation", `Temporary project file failed validation: ${stagedValidation.issues.join(" ")}`);
       }
+      const stagedCheckedAt = Date.now();
 
       const replaceBackupFrom = async (source: File) => {
         removeIfPresent(stagedBackup);
@@ -359,6 +363,7 @@ export const createMobileSceneStorage = (storageDirectory: Directory) => {
         const backupValidation = backupRaw?.trim() ? decodeMobileSceneStorage(backupRaw) : null;
         if (!backupValidation?.ok) initializeBackup = true;
       }
+      const backupCheckedAt = Date.now();
 
       removeIfPresent(primary);
       staged.move(primary);
@@ -368,6 +373,7 @@ export const createMobileSceneStorage = (storageDirectory: Directory) => {
         try { await replaceBackupFrom(primary); }
         catch { try { removeIfPresent(stagedBackup); } catch { /* The committed primary remains valid. */ } }
       }
+      console.info(`MATH3D_DEVICE_METRIC project-save totalMs=${Date.now() - startedAt} encodeMs=${encodedAt - startedAt} existingMs=${existingCheckedAt - encodedAt} stagedMs=${stagedCheckedAt - existingCheckedAt} backupMs=${backupCheckedAt - stagedCheckedAt} commitMs=${Date.now() - backupCheckedAt} bytes=${raw.length} projects=${projects.length}`);
     } catch (error) {
       try { removeIfPresent(staged); } catch { /* Preserve the original failure and valid copies. */ }
       if (!backupCommitted) {
