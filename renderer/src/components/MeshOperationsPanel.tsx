@@ -17,6 +17,7 @@ import {
   MeshBooleanReviewCard,
   type MeshBooleanReviewEntityControls,
 } from "./MeshBooleanReviewCard";
+import { NativeBooleanCubeMatrixPreset } from "./NativeBooleanCubeMatrixPreset";
 
 export type MeshBooleanOperation = "union" | "difference" | "intersection" | "split" | "imprint";
 export type MeshBooleanStrategy = "auto" | "fast" | "robust";
@@ -1994,6 +1995,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                           Open Boolean demo pair in Geometry
                         </button>
                       )}
+                      <NativeBooleanCubeMatrixPreset />
                       </div>
                       <div style={booleanStageStyle("next")}>
                         {booleanStageHeader(3, "Preview", "next")}
