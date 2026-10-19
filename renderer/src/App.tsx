@@ -80224,72 +80224,8 @@ case "mobius":
                   ? { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6 }
                   : { display: "contents" }}
               >
-              {mode === "surfaces" && !activeGraph2DTarget && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind !== "complex" && !isPhoneViewerPriorityLayout && (
+              {mode === "surfaces" && !activeGraph2DTarget && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind !== "complex" && surfaceViewerKind !== "mesh" && !isPhoneViewerPriorityLayout && (
                 <div style={topNavContextBarStyle}>
-                  {headerIsSurface && surfaceViewerKind === "mesh" ? (
-                    <>
-                      <button
-                        type="button"
-                        data-testid="mesh-context-presets"
-                        onClick={() => {
-                          setSurfacesPanelState("work");
-                          setSurfacesLeftTab("scene");
-                          setSurfacesWorkGalleryOpen(true);
-                          resetSurfaceLeftPanelScroll();
-                        }}
-                        aria-pressed={surfacesPanelState === "work" && surfacesLeftTab === "scene" && surfacesWorkGalleryOpen}
-                        style={headerFamilyButtonStyle(
-                          surfacesPanelState === "work" && surfacesLeftTab === "scene" && surfacesWorkGalleryOpen
-                        )}
-                      >
-                        Mesh presets
-                      </button>
-                      <button
-                        type="button"
-                        data-testid="mesh-context-tools"
-                        onClick={() => {
-                          setSurfacesPanelState("work");
-                          setSurfacesLeftTab("scene");
-                          setMeshWorkspaceLeftTab("operations");
-                          setSurfacesWorkGalleryOpen(false);
-                          resetSurfaceLeftPanelScroll();
-                        }}
-                        aria-pressed={surfacesPanelState === "work" && surfacesLeftTab === "scene" && !surfacesWorkGalleryOpen}
-                        style={headerFamilyButtonStyle(
-                          surfacesPanelState === "work" && surfacesLeftTab === "scene" && !surfacesWorkGalleryOpen
-                        )}
-                      >
-                        Mesh tools
-                      </button>
-                      <button
-                        type="button"
-                        data-testid="mesh-context-object"
-                        onClick={() => {
-                          setSurfacesPanelState("work");
-                          setSurfacesLeftTab("object");
-                          setSurfacesWorkGalleryOpen(false);
-                          resetSurfaceLeftPanelScroll();
-                        }}
-                        aria-pressed={surfacesPanelState === "work" && surfacesLeftTab === "object"}
-                        style={headerFamilyButtonStyle(surfacesPanelState === "work" && surfacesLeftTab === "object")}
-                      >
-                        Object
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSurfacesPanelState("browse");
-                          setSurfacesWorkGalleryOpen(false);
-                          setSurfacesTopActionsMoreOpen(false);
-                          setDatasetKind("surface");
-                          handleChangeViewerKind("graph");
-                        }}
-                        style={headerFamilyButtonStyle(false, "aux")}
-                      >
-                        Back to Surfaces
-                      </button>
-                    </>
-                  ) : (
                     <>
                       <button
                         type="button"
@@ -80406,7 +80342,6 @@ case "mobius":
                         {headerShowExtendedFamilyButtons ? "Less" : "More"}
                       </button>
                     </>
-                  )}
                 </div>
               )}
               {mode === "surfaces" && (!additionalActiveId || activeSavedSurfaceBinding) && !activeGraph2DTarget && surfaceViewerKind !== "complex" && !isPhoneViewerPriorityLayout && (
@@ -80422,8 +80357,8 @@ case "mobius":
                           (!surfacesWorkGalleryOpen && meshWorkspaceLeftTab === "scene"));
                       const disabled = !surfacesWorkTabsEnabled && tab !== "scene";
                       return (
+                        <React.Fragment key={`surface-nav-tab-${tab}`}>
                         <button
-                          key={`surface-nav-tab-${tab}`}
                           type="button"
                           data-testid={`surfaces-left-tab-${tab}`}
                           onClick={() => {
@@ -80441,6 +80376,24 @@ case "mobius":
                         >
                           {surfaceViewerKind === "mesh" && tab === "scene" ? "Outliner" : tab}
                         </button>
+                        {tab === "scene" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "mesh" && !isPresentDisplayMode && (
+                          <button
+                            type="button"
+                            data-testid="mesh-panel-tools"
+                            onClick={() => {
+                              setSurfacesPanelState("work");
+                              setSurfacesLeftTab("scene");
+                              setMeshWorkspaceLeftTab("operations");
+                              setSurfacesWorkGalleryOpen(false);
+                              resetSurfaceLeftPanelScroll();
+                            }}
+                            aria-pressed={surfacesPanelState === "work" && surfacesLeftTab === "scene" && !surfacesWorkGalleryOpen && meshWorkspaceLeftTab === "operations"}
+                            style={surfacesModeButtonStyle(surfacesPanelState === "work" && surfacesLeftTab === "scene" && !surfacesWorkGalleryOpen && meshWorkspaceLeftTab === "operations", "panel")}
+                          >
+                            Mesh tools
+                          </button>
+                        )}
+                        </React.Fragment>
                       );
                     })}
                     </div>
@@ -80471,7 +80424,7 @@ case "mobius":
                       aria-pressed={datasetKind === "volume" ? surfacesPanelState === "browse" : surfacesPanelState === "work" && surfacesWorkGalleryOpen}
                       style={surfacesModeButtonStyle(datasetKind === "volume" ? surfacesPanelState === "browse" : surfacesPanelState === "work" && surfacesWorkGalleryOpen, "actions")}
                     >
-                      Gallery
+                      {isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "mesh" ? "Mesh presets" : "Gallery"}
                     </button>
                     <button
                       type="button"
@@ -112064,7 +112017,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   };
   return (
     <div style={{ display: "grid", gap: compactForPresent ? 8 : 10 }}>
-      {panelMode === "browse" && showBrowseContextBar && (
+      {panelMode === "browse" && showBrowseContextBar && !(isSurface && isMesh) && (
       <div style={stickyTopStyle}>
         <div style={contextBarStyle}>
           <div style={{ display: "flex", gap: 6, alignItems: "center", minWidth: 0, flexWrap: "wrap" }} aria-label={workflowPath}>
@@ -112091,27 +112044,6 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             )}
           </div>
           <div style={{ display: "flex", gap: 4, alignItems: "center", minWidth: 0, flexWrap: "wrap" }}>
-            {isSurface && isMesh ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => onEnterWorkMode()}
-                  style={toolbarChipStyle(false, "tool")}
-                >
-                  Mesh presets
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onChangeDatasetKind("surface");
-                    onChangeViewerKind("graph");
-                  }}
-                  style={toolbarChipStyle(false, "aux")}
-                >
-                  Back to Surfaces
-                </button>
-              </>
-            ) : (
               <>
                 <button
                   type="button"
@@ -112206,7 +112138,6 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                   {showExtendedFamilyButtons ? "Less" : "More"}
                 </button>
               </>
-            )}
           </div>
         </div>
 

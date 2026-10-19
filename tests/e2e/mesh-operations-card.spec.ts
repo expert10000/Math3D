@@ -293,39 +293,47 @@ test.describe("Mesh Operations card", () => {
     expect(trailingGap, "Mesh Gallery should not leave a full-height empty workspace below its last card.").toBeLessThan(160);
   });
 
-  test("Mesh navigation keeps Gallery, tools, and Outliner in sync", async () => {
+  test("Mesh navigation has one presets action and distinct tools, Outliner, and Object panels", async () => {
     ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
     const { page } = ctx;
     await resetSurfaceAppState(page);
     await page.setViewportSize({ width: 2048, height: 1152 });
     await selectSection(page, "Mesh");
-    const contextRow = await page.getByTestId("mesh-context-presets").boundingBox();
+    const toolsButton = await page.getByTestId("mesh-panel-tools").boundingBox();
     const actionRow = await page.getByTestId("surface-module-actions").boundingBox();
-    expect(contextRow).not.toBeNull();
+    expect(toolsButton).not.toBeNull();
     expect(actionRow).not.toBeNull();
-    expect(Math.abs((contextRow!.y + contextRow!.height / 2) - (actionRow!.y + actionRow!.height / 2))).toBeLessThan(12);
+    expect(toolsButton!.y).toBeGreaterThanOrEqual(actionRow!.y);
+    expect(toolsButton!.y).toBeLessThan(actionRow!.y + actionRow!.height);
+    await expect(page.getByTestId("mesh-context-presets")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Back to Surfaces", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Mesh presets", exact: true })).toHaveCount(1);
     await openWorkspaceOperationsCard(page);
     await page.getByTestId("mesh-workspace-example-1").click();
     const leftPanel = page.getByTestId("surface-left-panel");
 
     await leftPanel.evaluate((element) => { element.scrollTop = element.scrollHeight; });
-    await page.getByTestId("mesh-context-presets").click();
+    await page.getByTestId("surfaces-action-gallery").click();
     await expect(page.getByTestId("mesh-preset-grid")).toBeVisible();
-    await expect(page.getByTestId("mesh-context-presets")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("surfaces-action-gallery")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("surfaces-left-tab-scene")).toHaveAttribute("aria-pressed", "false");
     await expect(leftPanel).toHaveJSProperty("scrollTop", 0);
 
     await leftPanel.evaluate((element) => { element.scrollTop = element.scrollHeight; });
-    await page.getByTestId("surfaces-action-gallery").click();
-    await expect(page.getByTestId("mesh-context-presets")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByTestId("mesh-preset-grid")).toBeVisible();
+    await page.getByTestId("mesh-panel-tools").click();
+    await expect(page.getByTestId("mesh-panel-tools")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("mesh-workspace-operation-registry")).toBeVisible();
     await expect(leftPanel).toHaveJSProperty("scrollTop", 0);
 
     await page.getByTestId("surfaces-left-tab-scene").click();
     await expect(page.getByTestId("surfaces-left-tab-scene")).toHaveText("Outliner");
     await expect(page.getByTestId("surfaces-left-tab-scene")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("mesh-workspace-scene-outliner")).toBeVisible();
-    await expect(page.getByTestId("mesh-context-tools")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("mesh-panel-tools")).toHaveAttribute("aria-pressed", "false");
+
+    await page.getByTestId("surfaces-left-tab-object").click();
+    await expect(page.getByTestId("surfaces-left-tab-object")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("mesh-panel-tools")).toHaveAttribute("aria-pressed", "false");
   });
 
   test("top Scene tab opens the Mesh Outliner", async () => {
