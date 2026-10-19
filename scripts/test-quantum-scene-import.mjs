@@ -180,6 +180,7 @@ try {
   const density = renderVerifiedFieldSlice(orbital, request);
   assert.deepEqual([density.width, density.height, density.rgba.length, density.unit, density.range],
     [3, 3, 36, "a0^-3", [0, 2]]);
+  assert.deepEqual(density.fitBounds, [0, 0, 3, 3], "small fields retain the complete source plane");
   const phase = renderVerifiedFieldSlice(orbital, { ...request, quantity: "phase" });
   assert.equal(phase.rgba[(1 * 3 + 1) * 4 + 3], 0, "phase at a zero-amplitude node is transparent");
   const sample = inspectVerifiedFieldSample(orbital, { ...request, u: 2, v: 1 });

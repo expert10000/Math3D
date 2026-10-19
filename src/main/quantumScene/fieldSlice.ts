@@ -8,6 +8,8 @@ export type FieldSlice = {
   fieldId: string; axis: 0 | 1 | 2; index: number; quantity: FieldQuantity;
   width: number; height: number; rgba: Uint8Array;
   range: [number, number]; unit: string; planeAxes: [number, number];
+  /** Source-grid indices, upper bounds exclusive. Display guidance only; never crops verified samples. */
+  fitBounds: [number, number, number, number] | null;
 };
 export type FieldSample = {
   grid: [number, number, number]; position: [number, number, number];
@@ -87,6 +89,23 @@ export function renderVerifiedFieldSlice(imported: ImportedQuantumScene, request
   else for (const value of request.quantity === "real" ? real : imaginary!) maximum = Math.max(maximum, Math.abs(value));
   const range: [number, number] = request.quantity === "phase" ? [-Math.PI, Math.PI]
     : request.quantity === "density" ? [0, maximum] : [maximum ? -maximum : 0, maximum];
+  let planeMaximum = 0;
+  for (let v = 0; v < height; v++) for (let u = 0; u < width; u++) {
+    const grid = [0, 0, 0]; grid[request.axis] = request.index; grid[planeAxes[0]] = u; grid[planeAxes[1]] = v;
+    const sourceIndex = flatIndex(field, grid);
+    planeMaximum = Math.max(planeMaximum, real[sourceIndex] ** 2 + (imaginary?.[sourceIndex] ?? 0) ** 2);
+  }
+  let minU = width, minV = height, maxU = -1, maxV = -1;
+  if (planeMaximum > 0) for (let v = 0; v < height; v++) for (let u = 0; u < width; u++) {
+    const grid = [0, 0, 0]; grid[request.axis] = request.index; grid[planeAxes[0]] = u; grid[planeAxes[1]] = v;
+    const sourceIndex = flatIndex(field, grid);
+    if (real[sourceIndex] ** 2 + (imaginary?.[sourceIndex] ?? 0) ** 2 < planeMaximum * 0.01) continue;
+    minU = Math.min(minU, u); minV = Math.min(minV, v); maxU = Math.max(maxU, u); maxV = Math.max(maxV, v);
+  }
+  const padU = Math.max(1, Math.ceil((maxU - minU + 1) * 0.1));
+  const padV = Math.max(1, Math.ceil((maxV - minV + 1) * 0.1));
+  const fitBounds: FieldSlice["fitBounds"] = maxU < 0 ? null : [Math.max(0, minU - padU), Math.max(0, minV - padV),
+    Math.min(width, maxU + padU + 1), Math.min(height, maxV + padV + 1)];
   for (let v = 0; v < height; v++) for (let u = 0; u < width; u++) {
     const grid = [0, 0, 0]; grid[request.axis] = request.index; grid[planeAxes[0]] = u; grid[planeAxes[1]] = v;
     const sourceIndex = flatIndex(field, grid);
@@ -97,7 +116,7 @@ export function renderVerifiedFieldSlice(imported: ImportedQuantumScene, request
       real[sourceIndex] ** 2 + (imaginary?.[sourceIndex] ?? 0) ** 2 <= maximum * 1e-12 ? 0 : 255;
   }
   return { fieldId: field.id, axis: request.axis, index: request.index, quantity: request.quantity,
-    width, height, rgba, range, unit, planeAxes };
+    width, height, rgba, range, unit, planeAxes, fitBounds };
 }
 
 export function inspectVerifiedFieldSample(imported: ImportedQuantumScene, request: FieldSampleRequest): FieldSample {

@@ -79,6 +79,7 @@ export function QuantumFieldSurface({ fingerprint, resultSha256, fields, camera 
         <option value="real-sign">Sign of Re ψ</option>
       </select></label>
     </div>
+    <p style={{ margin: "0 8px 6px", fontSize: 12 }}>Density surface shows a threshold derived from supplied |ψ|² samples. Rotate and zoom to inspect its shape; phase and sign colors describe the supplied amplitudes, not electron paths.</p>
     <div style={{ minHeight: 0, flex: 1 }}>
       {surface?.triangleCount ? <GeometryViewer scene={EMPTY_SCENE} meshOverrides={mesh} showPlanes={false}
         cameraOverride={camera ?? null} /> : <div style={{ padding: 16 }} role="status">

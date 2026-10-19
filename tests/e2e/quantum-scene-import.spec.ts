@@ -332,6 +332,34 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await expect(page.getByTestId("quantum-scene-parameters")).toContainText("complex");
     await expect(page.getByTestId("quantum-field-slice")).toBeVisible();
     await expect(page.getByTestId("quantum-field-legend")).toContainText("a0^-3");
+    const fittedOrbital = await page.evaluate(async () => {
+      const opened = await (window as any).quantumScenes.reopenRecent();
+      if (!opened.ok) throw new Error("Orbital source unavailable");
+      return (window as any).quantumScenes.fieldSlice({ fingerprint: opened.reference.sceneFingerprint,
+        fieldId: "wavefunction", axis: 2, index: 10, quantity: "density" });
+    });
+    const fit = fittedOrbital.fitBounds as [number, number, number, number];
+    expect(fit).not.toBeNull();
+    expect(fit[2] - fit[0]).toBeLessThan(fittedOrbital.width);
+    expect(fit[3] - fit[1]).toBeLessThan(fittedOrbital.height);
+    await expect(page.getByRole("button", { name: "Fit to field" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("quantum-field-viewport")).toContainText("display-only framing");
+    const fittedCanvas = page.getByTestId("quantum-field-canvas");
+    expect(await fittedCanvas.evaluate(canvas => (canvas as HTMLCanvasElement).width)).toBe(fit[2] - fit[0]);
+    const sourceU = fit[0] + Math.floor((fit[2] - fit[0]) * 0.65);
+    const sourceV = fit[1] + Math.floor((fit[3] - fit[1]) * 0.45);
+    const fittedBox = (await fittedCanvas.boundingBox())!;
+    await fittedCanvas.click({ position: { x: fittedBox.width * (sourceU - fit[0] + 0.5) / (fit[2] - fit[0]),
+      y: fittedBox.height * (fit[3] - sourceV - 0.5) / (fit[3] - fit[1]) } });
+    await expect(page.getByTestId("quantum-field-sample")).toContainText(`Grid [${sourceU}, ${sourceV}, 10]`);
+    const fittedSample = await page.getByTestId("quantum-field-sample").innerText();
+    await page.getByRole("button", { name: "Show full grid" }).click();
+    expect(await page.getByTestId("quantum-field-canvas").evaluate(canvas => (canvas as HTMLCanvasElement).width)).toBe(fittedOrbital.width);
+    const fullBox = (await fittedCanvas.boundingBox())!;
+    await fittedCanvas.click({ position: { x: fullBox.width * (sourceU + 0.5) / fittedOrbital.width,
+      y: fullBox.height * (fittedOrbital.height - sourceV - 0.5) / fittedOrbital.height } });
+    await expect(page.getByTestId("quantum-field-sample")).toHaveText(fittedSample);
+    await page.getByRole("button", { name: "Fit to field" }).click();
     await page.getByRole("combobox",{name:"Quantum field quantity"}).selectOption("phase");
     const orbitalCanvas=page.getByTestId("quantum-field-canvas");
     const orbitalBounds=(await orbitalCanvas.boundingBox())!;

@@ -62,6 +62,7 @@ export function QuantumFieldVolume({ fingerprint, fields }: { fingerprint: strin
         <option value={0.2}>20% of range</option><option value={0.5}>50% of range</option>
       </select></label>}
     </div>
+    <p style={{ margin: "0 8px 6px", fontSize: 12 }}>Volume uses the complete verified grid in source coordinates. Choose a plane to inspect samples, or an isosurface to see a derived threshold; the viewer camera can be fitted without changing data.</p>
     <div style={{ minHeight: 0, flex: 1 }}>{adapted ? <VolumeViewer key={adapted.document.identity.id} dataset={adapted.dataset}
       axis={axis} index={safeIndex} opacity={0.9} renderMode={safeMode} showIsosurface={safeMode === "isosurface"}
       isoValue={isoValue} showPrimarySlice={safeMode === "slice"} /> : <p role="status" style={{ padding: 16 }}>

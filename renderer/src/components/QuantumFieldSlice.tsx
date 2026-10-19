@@ -4,7 +4,7 @@ export type FieldQuantity = "density" | "real" | "imaginary" | "phase";
 export type FieldSliceRequest = { fingerprint: string; fieldId: string; axis: 0 | 1 | 2; index: number; quantity: FieldQuantity };
 export type FieldSampleRequest = FieldSliceRequest & { u: number; v: number };
 export type FieldSlice = FieldSliceRequest & { width: number; height: number; rgba: Uint8Array;
-  range: [number, number]; unit: string; planeAxes: [number, number] };
+  range: [number, number]; unit: string; planeAxes: [number, number]; fitBounds: [number, number, number, number] | null };
 export type FieldSample = { grid: [number, number, number]; position: [number, number, number];
   value: number | null; unit: string; undefinedNearNode: boolean };
 export type QuantumField = { id: string; label: string; kind: "scalar-field" | "complex-field";
@@ -21,39 +21,54 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units }: {
   const [slice, setSlice] = useState<Omit<FieldSlice, "rgba"> | null>(null);
   const [sample, setSample] = useState<FieldSample | null>(null);
   const [error, setError] = useState("");
+  const [fitToField, setFitToField] = useState(true);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const sourcePixels = useRef<Uint8Array | null>(null);
   const generation = useRef(0);
   const safeIndex = field ? Math.min(index, field.grid.shape[axis] - 1) : 0;
   const safeQuantity = field?.kind === "scalar-field" ? "real" : quantity;
 
   useEffect(() => {
     const current = ++generation.current;
-    setSlice(null); setSample(null); setError("");
+    setSlice(null); setSample(null); setError(""); sourcePixels.current = null;
     if (!field || !window.quantumScenes?.fieldSlice) return;
     const request: FieldSliceRequest = { fingerprint, fieldId: field.id, axis, index: safeIndex, quantity: safeQuantity };
     void window.quantumScenes.fieldSlice(request).then(result => {
       if (generation.current !== current) return;
-      const target = canvas.current;
-      if (!target || result.rgba.length !== result.width * result.height * 4) throw new Error("Invalid bounded field image");
-      target.width = result.width; target.height = result.height;
-      const context = target.getContext("2d");
-      if (!context) throw new Error("Field slice canvas unavailable");
-      const image = context.createImageData(result.width, result.height);
-      image.data.set(result.rgba);
-      context.putImageData(image, 0, 0);
+      if (result.rgba.length !== result.width * result.height * 4) throw new Error("Invalid bounded field image");
+      sourcePixels.current = result.rgba;
       const { rgba: _pixels, ...metadata } = result;
       setSlice(metadata);
     }).catch(cause => { if (generation.current === current) setError(String((cause as Error)?.message ?? cause)); });
     return () => { generation.current += 1; };
   }, [fingerprint, field?.id, axis, safeIndex, safeQuantity]);
 
+  const viewport: [number, number, number, number] | null = slice && fitToField ? slice.fitBounds : null;
+  const visible: [number, number, number, number] | null = slice
+    ? viewport ?? [0, 0, slice.width, slice.height] : null;
+  useEffect(() => {
+    const target = canvas.current, pixels = sourcePixels.current;
+    if (!target || !slice || !pixels || !visible) return;
+    const [minU, minV, maxU, maxV] = visible;
+    target.width = maxU - minU; target.height = maxV - minV;
+    const context = target.getContext("2d");
+    if (!context) { setError("Field slice canvas unavailable"); return; }
+    const image = context.createImageData(target.width, target.height);
+    for (let row = 0; row < target.height; row++) {
+      const sourceOffset = ((slice.height - maxV + row) * slice.width + minU) * 4;
+      image.data.set(pixels.subarray(sourceOffset, sourceOffset + target.width * 4), row * target.width * 4);
+    }
+    context.putImageData(image, 0, 0);
+  }, [slice, fitToField]);
+
   if (!field) return <p>No field in this verified scene.</p>;
   const plane = [0, 1, 2].filter(candidate => candidate !== axis);
   const selectPixel = (event: MouseEvent<HTMLCanvasElement>) => {
-    if (!slice || !window.quantumScenes?.fieldSample) return;
+    if (!slice || !visible || !window.quantumScenes?.fieldSample) return;
     const bounds = event.currentTarget.getBoundingClientRect();
-    const u = Math.min(slice.width - 1, Math.max(0, Math.floor((event.clientX - bounds.left) / bounds.width * slice.width)));
-    const v = Math.min(slice.height - 1, Math.max(0, Math.floor((1 - (event.clientY - bounds.top) / bounds.height) * slice.height)));
+    const [minU, minV, maxU, maxV] = visible;
+    const u = Math.min(maxU - 1, Math.max(minU, minU + Math.floor((event.clientX - bounds.left) / bounds.width * (maxU - minU))));
+    const v = Math.min(maxV - 1, Math.max(minV, minV + Math.floor((1 - (event.clientY - bounds.top) / bounds.height) * (maxV - minV))));
     const request: FieldSampleRequest = { fingerprint, fieldId: field.id, axis, index: safeIndex, quantity: safeQuantity, u, v };
     const current = generation.current;
     void window.quantumScenes.fieldSample(request).then(result => {
@@ -76,6 +91,9 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units }: {
       }}>{axes.map((label, value) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label>Slice {safeIndex} <input aria-label="Quantum slice index" type="range" min={0} max={field.grid.shape[axis] - 1}
         value={safeIndex} onChange={event => setIndex(Number(event.target.value))} /></label>
+      <button type="button" aria-label="Fit to field" aria-pressed={Boolean(viewport)} disabled={!slice?.fitBounds}
+        onClick={() => { setFitToField(true); setSample(null); }}>Fit to field</button>
+      <button type="button" aria-label="Show full grid" aria-pressed={!viewport} onClick={() => { setFitToField(false); setSample(null); }}>Full grid</button>
     </div>
     <canvas ref={canvas} data-testid="quantum-field-canvas" aria-label="Verified quantum field slice" onClick={selectPixel}
       style={{ width: "min(58vh, 70vw, 480px)", height: "min(58vh, 70vw, 480px)", maxHeight: "70%", objectFit: "contain",
@@ -86,6 +104,7 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units }: {
         : safeQuantity === "density" ? "Dark → bright: low → high sampled density"
           : "Blue → white → red: negative → zero → positive component"}</div>
       <div>Verified {field.grid.order} grid · {safeQuantity === "density" || safeQuantity === "phase" ? "display quantity derived from supplied amplitudes" : "supplied component"}</div>
+      <div data-testid="quantum-field-viewport">{viewport ? `Fit to field: source-grid window u ${viewport[0]}–${viewport[2] - 1}, v ${viewport[1]}–${viewport[3] - 1}` : "Full source grid"} · display-only framing; source coordinates and samples are unchanged. Click to inspect an exact stored grid point.</div>
       <div>Grid {field.grid.shape.join(" × ")} · origin [{field.grid.origin.map(value => value.toPrecision(5)).join(", ")}] · spacing [{field.grid.spacing.map(value => value.toPrecision(5)).join(", ")}]</div>
       {sample && <div data-testid="quantum-field-sample">Grid [{sample.grid.join(", ")}] · {sample.position.map((value, coordinate) =>
         `${axes[coordinate]}=${value.toPrecision(5)} ${units[coordinate]}`).join(" · ")} · {safeQuantity} = {
