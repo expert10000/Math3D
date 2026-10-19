@@ -14,6 +14,7 @@ export function QuantumFieldVolume({ fingerprint, fields }: { fingerprint: strin
   const [index, setIndex] = useState(() => Math.floor((fields[0]?.grid.shape[2] ?? 1) / 2));
   const [mode, setMode] = useState<"slice" | "isosurface">("slice");
   const [level, setLevel] = useState(0.1);
+  const [fitCommand, setFitCommand] = useState<{ token: number; kind: "fit-volume" | "fit-mesh" } | null>(null);
   const generation = useRef(0);
   const maximumIndex = field ? field.grid.shape[{ x: 0, y: 1, z: 2 }[axis]] - 1 : 0;
   const safeIndex = Math.min(index, maximumIndex);
@@ -61,11 +62,17 @@ export function QuantumFieldVolume({ fingerprint, fields }: { fingerprint: strin
         <option value={0.05}>5% of range</option><option value={0.1}>10% of range</option>
         <option value={0.2}>20% of range</option><option value={0.5}>50% of range</option>
       </select></label>}
+      <button type="button" aria-label={safeMode === "isosurface" ? "Fit volume isosurface" : "Fit volume grid"}
+        disabled={!adapted} onClick={() => setFitCommand(previous => ({ token: (previous?.token ?? 0) + 1,
+          kind: safeMode === "isosurface" ? "fit-mesh" : "fit-volume" }))}>
+        {safeMode === "isosurface" ? "Fit isosurface" : "Fit grid"}
+      </button>
     </div>
-    <p style={{ margin: "0 8px 6px", fontSize: 12 }}>Volume uses the complete verified grid in source coordinates. Choose a plane to inspect samples, or an isosurface to see a derived threshold; the viewer camera can be fitted without changing data.</p>
+    <p style={{ margin: "0 8px 6px", fontSize: 12 }}>Volume uses the complete verified grid in source coordinates. Choose a plane to inspect samples, or an isosurface to see a derived threshold. Fit changes only the camera, never the grid or units.</p>
     <div style={{ minHeight: 0, flex: 1 }}>{adapted ? <VolumeViewer key={adapted.document.identity.id} dataset={adapted.dataset}
       axis={axis} index={safeIndex} opacity={0.9} renderMode={safeMode} showIsosurface={safeMode === "isosurface"}
-      isoValue={isoValue} showPrimarySlice={safeMode === "slice"} /> : <p role="status" style={{ padding: 16 }}>
+      isoValue={isoValue} showPrimarySlice={safeMode === "slice"} cameraCommand={fitCommand ?? undefined}
+      autoFitIsosurface /> : <p role="status" style={{ padding: 16 }}>
       {error || "Converting verified grid for Math3D Volume…"}</p>}</div>
     {artifact && <div data-testid="quantum-volume-source" style={{ padding: 8, fontSize: 12 }}>
       Read-only Volume source {adapted?.document.identity.id} · {artifact.shape.join(" × ")} point grid · {artifact.layout} · {artifact.valueUnit}

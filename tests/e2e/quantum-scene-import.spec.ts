@@ -95,6 +95,9 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await page.getByTestId("quantum-scene-geometry").getByRole("button", { name: "Volume", exact: true }).click();
     await expect(page.getByTestId("quantum-volume-source")).toContainText("a0^-3");
     await expect(page.getByTestId("quantum-volume-source")).toContainText("f64le-planar-real-imaginary");
+    await page.getByRole("button", { name: "Fit volume grid" }).click();
+    await expect(page.getByTestId("quantum-field-volume").getByTestId("volume-slice-viewer-free"))
+      .toHaveAttribute("data-camera-fit-target", "volume");
     await page.getByLabel("Volume quantity").selectOption("phase");
     await expect(page.getByTestId("quantum-volume-source")).toContainText("undefined phase");
     await expect(page.getByLabel("Volume view").locator("option[value=isosurface]")).toHaveCount(0);
@@ -102,6 +105,10 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await expect(page.getByTestId("quantum-volume-source")).toContainText("a0^-3");
     await page.getByLabel("Volume view").selectOption("isosurface");
     await expect(page.getByTestId("quantum-volume-source")).toContainText("threshold");
+    await expect(page.getByRole("button", { name: "Fit volume isosurface" })).toBeEnabled();
+    await page.getByRole("button", { name: "Fit volume isosurface" }).click();
+    await expect(page.getByTestId("quantum-field-volume").getByTestId("volume-slice-viewer-free"))
+      .toHaveAttribute("data-camera-fit-target", "mesh");
     await page.getByLabel("Volume view").selectOption("slice");
     const changedReal = Buffer.from(real); changedReal[0] ^= 1;
     await writeFile(join(directory, "real.f64"), changedReal);
@@ -370,6 +377,12 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await expect(page.getByTestId("quantum-surface-legend")).toContainText("a0^-3");
     await expect(page.getByTestId("quantum-surface-legend")).toContainText("10% of sampled maximum");
     await expect(page.getByTestId("quantum-field-surface").locator("canvas").first()).toBeVisible();
+    const surfaceFit = page.getByRole("button", { name: "Fit density surface" });
+    await expect(surfaceFit).toBeEnabled();
+    const firstFitRevision = Number(await page.getByTestId("quantum-field-surface").getAttribute("data-fit-revision"));
+    await surfaceFit.click();
+    await expect(page.getByTestId("quantum-field-surface"))
+      .toHaveAttribute("data-fit-revision", String(firstFitRevision + 1));
     await page.getByRole("combobox",{name:"Quantum surface threshold"}).selectOption("0.2");
     await expect(page.getByTestId("quantum-surface-legend")).toContainText("20% of sampled maximum");
     await page.getByRole("combobox",{name:"Quantum surface color"}).selectOption("phase");

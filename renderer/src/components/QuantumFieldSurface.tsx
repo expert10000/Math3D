@@ -24,6 +24,7 @@ export function QuantumFieldSurface({ fingerprint, resultSha256, fields, camera 
   const [level, setLevel] = useState<FieldSurfaceRequest["level"]>(0.1);
   const [color, setColor] = useState<SurfaceColor>("density");
   const [surface, setSurface] = useState<FieldSurface | null>(null);
+  const [fitRevision, setFitRevision] = useState(0);
   const [error, setError] = useState("");
   const generation = useRef(0);
   useEffect(() => {
@@ -31,7 +32,10 @@ export function QuantumFieldSurface({ fingerprint, resultSha256, fields, camera 
     setSurface(null); setError("");
     if (!field || !window.quantumScenes?.fieldSurface) return;
     void window.quantumScenes.fieldSurface({ fingerprint, fieldId: field.id, level }).then(result => {
-      if (generation.current === current) setSurface(result);
+      if (generation.current === current) {
+        setSurface(result);
+        if (result.triangleCount) setFitRevision(revision => revision + 1);
+      }
     }).catch(cause => {
       if (generation.current === current) setError(String((cause as Error)?.message ?? cause));
     });
@@ -62,8 +66,24 @@ export function QuantumFieldSurface({ fingerprint, resultSha256, fields, camera 
       source, color: palette[bin], opacity: 0.9, flatShading: true,
     }] : []);
   }, [surface, field?.label, resultSha256, color]);
+  const fitBounds = useMemo(() => {
+    if (!surface?.triangleCount) return null;
+    const positions = surface.positions;
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    for (let i = 0; i < positions.length; i += 3) {
+      minX = Math.min(minX, positions[i]); maxX = Math.max(maxX, positions[i]);
+      minY = Math.min(minY, positions[i + 1]); maxY = Math.max(maxY, positions[i + 1]);
+      minZ = Math.min(minZ, positions[i + 2]); maxZ = Math.max(maxZ, positions[i + 2]);
+    }
+    if (![minX, minY, minZ, maxX, maxY, maxZ].every(Number.isFinite)) return null;
+    return { center: { x: (minX + maxX) / 2, y: (minY + maxY) / 2, z: (minZ + maxZ) / 2 },
+      radius: Math.max(1e-4, Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) / 2) };
+  }, [surface]);
+  const cameraFitCommand = fitBounds && fitRevision ? { token: fitRevision, ...fitBounds, padding: 1.15 } : null;
   if (!field) return <p>No complex field is available for a density surface.</p>;
-  return <section data-testid="quantum-field-surface" style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
+  return <section data-testid="quantum-field-surface" data-fit-revision={fitRevision}
+    style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
     <div style={{ padding: 8, display: "flex", gap: 12, flexWrap: "wrap" }}>
       <label>Field <select aria-label="Quantum surface field" value={field.id} onChange={event => setFieldId(event.target.value)}>
         {available.map(entry => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
@@ -78,11 +98,13 @@ export function QuantumFieldSurface({ fingerprint, resultSha256, fields, camera 
         <option value="density">Density surface</option><option value="phase">Complex phase</option>
         <option value="real-sign">Sign of Re ψ</option>
       </select></label>
+      <button type="button" aria-label="Fit density surface" disabled={!fitBounds}
+        onClick={() => setFitRevision(revision => revision + 1)}>Fit density surface</button>
     </div>
-    <p style={{ margin: "0 8px 6px", fontSize: 12 }}>Density surface shows a threshold derived from supplied |ψ|² samples. Rotate and zoom to inspect its shape; phase and sign colors describe the supplied amplitudes, not electron paths.</p>
+    <p style={{ margin: "0 8px 6px", fontSize: 12 }}>Density surface shows a threshold derived from supplied |ψ|² samples. Fit changes only the camera; rotate and zoom freely. Phase and sign colors describe supplied amplitudes, not electron paths.</p>
     <div style={{ minHeight: 0, flex: 1 }}>
       {surface?.triangleCount ? <GeometryViewer scene={EMPTY_SCENE} meshOverrides={mesh} showPlanes={false}
-        cameraOverride={camera ?? null} /> : <div style={{ padding: 16 }} role="status">
+        cameraOverride={camera ?? null} cameraFitCommand={cameraFitCommand} /> : <div style={{ padding: 16 }} role="status">
         {error || (surface ? "No surface crosses this threshold in the supplied grid." : "Deriving bounded surface from verified amplitudes…")}
       </div>}
     </div>
