@@ -132,6 +132,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   };
   const runAnalysis = () => {
     cancel(); cancelFit(false);
+    const analysisStartedAt = Date.now();
     try {
       const object = document.source.objects.find(o => o.id === analysisDraft.objectId);
       const rows = object?.kind === "point-series" ? tableStore.resolve(object.table) : null;
@@ -156,6 +157,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
           if (job.advance(draft.kind === "regression-spline" ? 128 : 2048)) {
             const result = mobileGraphRegressionResult(draft, job.result());
             activeFit.current = null; setAnalysisPending(null); setAnalysis(result); setError("");
+            console.info(`MATH3D_DEVICE_METRIC fit-publish durationMs=${Date.now() - analysisStartedAt} model=${draft.kind} rows=${rows?.length ?? 0}`);
           } else {
             const bucket = Math.floor(job.progress * 20);
             if (bucket !== active.progressBucket) { active.progressBucket = bucket; setAnalysisPending(job.progress); }

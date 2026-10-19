@@ -1621,6 +1621,7 @@ export const useMobileAppController = () => {
   const openGraphGalleryPreset = async (preset: Graph2DPreset): Promise<boolean> => {
     if (graphGalleryLaunchInFlight.current) return false;
     if (storageStatus === "loading") { setGraphGalleryMessage("Project storage is still loading. Try again shortly."); return false; }
+    const launchStartedAt = Date.now();
     graphGalleryLaunchInFlight.current = true; setGraphGalleryBusy(true); setGraphGalleryMessage("Saving current work and opening the graph…");
     try {
       const plan = planMobileGraphPresetLaunch(preset, `mobile-gallery/${Date.now()}/${++graphProjectSequence.current}`, storedProjects,
@@ -1629,6 +1630,7 @@ export const useMobileAppController = () => {
       setStoredProjects(result.projects); setStorageStatus(storageIssues.length > 0 ? "error" : "ready");
       setProjectActionMessage(`Created ${result.project.title}. Previous work was saved.`);
       openCreatedGraph(result.project); setGraphGalleryOpen(false); setGraphGalleryMessage("");
+      console.info(`MATH3D_DEVICE_METRIC gallery-launch durationMs=${Date.now() - launchStartedAt} preset=${preset.id}`);
       return true;
     } catch (error) {
       setGraphGalleryMessage(`Could not open the graph: ${(error as Error).message}. Current work remains open.`); return false;
