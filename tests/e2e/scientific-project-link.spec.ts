@@ -60,6 +60,14 @@ test("reference scene links to a Project without arrays, survives restart, and r
     page = await app.firstWindow();
     await page.getByTestId("projects-toggle").click();
     const restarted = page.getByTestId("project-explorer-panel");
+    await expect(restarted.getByTestId("project-scene-shortcuts")).toContainText("Python sin(x) cos(y) reference grid");
+    await restarted.getByTestId(`project-scene-shortcut-scientific-${reference.sceneFingerprint}`).click();
+    await expect(page.getByTestId("scientific-scene-preview")).toBeVisible();
+    await page.getByTestId("scientific-scene-preview").getByRole("button", { name: "Close" }).click();
+    await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, output);
+    await restarted.getByTestId("project-import-sscene").click();
+    await expect(page.getByTestId("scientific-scene-preview")).toBeVisible();
+    await page.getByTestId("scientific-scene-preview").getByRole("button", { name: "Close" }).click();
     const openLink = restarted.getByTestId(`project-open-scientific-scene-${reference.sceneFingerprint}`);
     await expect(openLink).toBeVisible();
     await openLink.click();

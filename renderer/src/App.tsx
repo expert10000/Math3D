@@ -70649,6 +70649,20 @@ case "mobius":
           }
           return;
         }
+        case "file:open-scientific-scene": {
+          if (!window.scientificScenes?.openDirectory) {
+            notify("Verified scientific-scene import is available in the desktop app.");
+            return;
+          }
+          try {
+            const result = await window.scientificScenes.openDirectory();
+            if (result.ok) { setScientificScenePreview(result.scene); setScientificSceneReference(result.scene.reference); }
+            else if (!result.canceled) notify(`Scientific scene import failed: ${result.error}`);
+          } catch (error) {
+            notify(`Scientific scene import failed: ${String((error as Error)?.message ?? error)}`);
+          }
+          return;
+        }
         case "file:quantum-examples": {
           setShowQuantumSceneExamples(true);
           return;
@@ -71025,7 +71039,8 @@ case "mobius":
     () => [
       { id: "menu:new-workspace", title: "New workspace", keywords: "file workspace new", shortcut: "Ctrl/Cmd+N", run: () => handleMenuCommand("file:new-workspace") },
       { id: "menu:open-workspace", title: "Open workspace", keywords: "file workspace open", shortcut: "Ctrl/Cmd+O", run: () => handleMenuCommand("file:open-workspace") },
-      { id: "menu:open-quantum-scene", title: "Open verified quantum scene", keywords: "file import quantum qscene theory lab", run: () => handleMenuCommand("file:open-quantum-scene") },
+      { id: "menu:open-quantum-scene", title: "Open Theory Lab quantum scene (.qscene)", keywords: "file import quantum qscene theory lab", run: () => handleMenuCommand("file:open-quantum-scene") },
+      { id: "menu:open-scientific-scene", title: "Open scientific scene (.sscene)", keywords: "file import scientific sscene python", run: () => handleMenuCommand("file:open-scientific-scene") },
       { id: "menu:quantum-examples", title: "Verified quantum examples", keywords: "file example qwz berry curvature ssh hydrogen orbital scene", run: () => handleMenuCommand("file:quantum-examples") },
       { id: "menu:reopen-quantum-scene", title: "Reopen recent quantum scene", keywords: "file quantum qscene theory lab recent", run: () => handleMenuCommand("file:reopen-quantum-scene") },
       { id: "menu:save-workspace", title: "Save workspace", keywords: "file workspace save", shortcut: "Ctrl/Cmd+S", run: () => handleMenuCommand("file:save-workspace") },
@@ -79323,6 +79338,8 @@ case "mobius":
         noteRequest={projectNoteRequest}
         onCurrentProjectChange={(project) => { activeNotebookProjectRef.current = project; setNotebookProjectVersion((version) => version + 1); }}
         verifiedQuantumScene={verifiedQuantumSceneTitle && quantumSceneReference ? { format: verifiedQuantumSceneFormat, title: verifiedQuantumSceneTitle, ...quantumSceneReference } : null}
+        onImportQuantumScene={() => handleMenuCommand("file:open-quantum-scene")}
+        onImportScientificScene={() => handleMenuCommand("file:open-scientific-scene")}
         onOpenQuantumScene={async (reference) => {
           if (!window.quantumScenes?.openReference) throw new TypeError("Verified quantum scenes are available only in the desktop app.");
           const opened = await window.quantumScenes.openReference({ directory: reference.directory, sceneFingerprint: reference.sceneFingerprint });

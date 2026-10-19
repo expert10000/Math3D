@@ -59,6 +59,8 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   onCurrentProjectChange?: (project: Math3DProject) => void;
   verifiedQuantumScene?: ProjectQuantumSceneReference | null;
+  onImportQuantumScene?: () => void;
+  onImportScientificScene?: () => void;
   onOpenQuantumScene?: (reference: ProjectQuantumSceneReference) => Promise<void>;
   onVerifyQuantumSceneDocument?: (reference: ProjectQuantumSceneReference) => Promise<QuantumSceneDocument>;
   onRelinkQuantumScene?: (reference: ProjectQuantumSceneReference) => Promise<string | null>;
@@ -83,7 +85,7 @@ type Props = {
   activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
@@ -189,6 +191,18 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [preview, setPreview] = useState(false);
   const [managed, setManaged] = useState<ProjectCommandAdapter | null>(null);
   const [managedBytes, setManagedBytes] = useState<string | undefined>();
+  const openLinkedQuantumScene = async (item: ProjectQuantumSceneReference) => {
+    if (!onOpenQuantumScene) return;
+    setQuantumSceneMessage("Verifying external .qscene…");
+    try { await onOpenQuantumScene(item); setQuantumSceneMessage("Verified read-only quantum scene opened."); }
+    catch (error) { setQuantumSceneMessage(`Scene unavailable: ${String((error as Error).message)}`); }
+  };
+  const openLinkedScientificScene = async (item: ProjectScientificSceneReference) => {
+    if (!onOpenScientificScene) return;
+    setScientificSceneMessage("Verifying external .sscene…");
+    try { await onOpenScientificScene(item); setScientificSceneMessage("Verified read-only scientific scene opened."); }
+    catch (error) { setScientificSceneMessage(`Scene unavailable: ${String((error as Error).message)}`); }
+  };
   const relinkQuantumScene = async (item: ProjectQuantumSceneReference) => {
     if (busy || managed || !project || !onRelinkQuantumScene) return;
     const before = serializeMath3DProject(project);
@@ -1226,6 +1240,27 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           <p className="project-workspace-counts">{project?.workspace.entries.length ?? 0} {project?.workspace.entries.length === 1 ? "document" : "documents"} · {project?.workbooks?.length ?? 0} {project?.workbooks?.length === 1 ? "workbook" : "workbooks"} · {project?.notes?.length ?? 0} {project?.notes?.length === 1 ? "note" : "notes"}</p>
           <p className="project-workspace-guidance">{managed ? "Edits apply to this saved copy. Save changes to keep them." : preview ? "This is a saved snapshot. Open it to work with its documents, or edit its saved details." : "Save keeps the current workspace and its documents in your library."}</p>
           {!!project?.metadata.description && <p className="project-workspace-description">{project.metadata.description}</p>}
+          {project && <section className="project-scene-shortcuts" data-testid="project-scene-shortcuts" aria-label="Verified scene links">
+            <div className="project-scene-shortcuts-heading"><strong>Verified scene links</strong><span>{(project.quantumScenes?.length ?? 0) + (project.scientificScenes?.length ?? 0)}</span></div>
+            {!!(project.quantumScenes?.length || project.scientificScenes?.length) && <div className="project-scene-shortcuts-list">
+              {project.quantumScenes?.slice(0, 3).map(item => <button type="button" key={item.sceneFingerprint}
+                data-testid={`project-scene-shortcut-quantum-${item.sceneFingerprint}`} disabled={busy || !onOpenQuantumScene}
+                onClick={() => { void openLinkedQuantumScene(item); }} title="Re-verify the saved .qscene source before viewing">
+                <span className="project-scene-format">.qscene</span><span>{item.title}</span><span aria-hidden="true">↗</span></button>)}
+              {project.scientificScenes?.slice(0, 3).map(item => <button type="button" key={item.sceneFingerprint}
+                data-testid={`project-scene-shortcut-scientific-${item.sceneFingerprint}`} disabled={busy || !onOpenScientificScene}
+                onClick={() => { void openLinkedScientificScene(item); }} title="Re-verify the saved .sscene source before viewing">
+                <span className="project-scene-format">.sscene</span><span>{item.title}</span><span aria-hidden="true">↗</span></button>)}
+            </div>}
+            {!project.quantumScenes?.length && !project.scientificScenes?.length && <small>No scenes linked to this Project yet. Open a scene folder, then attach it in Contents.</small>}
+            <div className="project-scene-import-actions">
+              <button type="button" data-testid="project-import-qscene" disabled={!onImportQuantumScene} onClick={onImportQuantumScene}>Open .qscene folder <small>Theory Lab quantum</small></button>
+              <button type="button" data-testid="project-import-sscene" disabled={!onImportScientificScene} onClick={onImportScientificScene}>Open .sscene folder <small>Scientific data</small></button>
+            </div>
+            <button type="button" data-testid="project-scene-manage" onClick={() => fullDetails ? openDetailPage("documents", contentsSection) : jumpTo(contentsSection)}>Manage links / attach in Contents</button>
+            {quantumSceneMessage && <p role="status">.qscene: {quantumSceneMessage}</p>}
+            {scientificSceneMessage && <p role="status">.sscene: {scientificSceneMessage}</p>}
+          </section>}
           {!quick && detailView && project && <div className="project-dashboard-grid" data-testid="project-dashboard">
             <section className="project-dashboard-card project-dashboard-documents" aria-label="Project documents overview">
               <div className="project-dashboard-card-heading"><h4>Documents</h4><span>{dashboardDocuments.length}</span></div>
@@ -1392,11 +1427,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                       .catch(error => setQuantumSceneMessage(`Attachment refused: ${String((error as Error).message)}`));
                   }}>Attach open verified scene</button></div>
               <p>External quantum-scene/v1 and v2 bundles stay read-only. Opening a link re-verifies its fingerprint and source files; Project JSON does not embed the arrays.</p>
-              {!project?.quantumScenes?.length && <small>Open a verified quantum scene from File, then attach it here.</small>}
+              {!project?.quantumScenes?.length && <small>Use Open .qscene folder above, then attach the verified source here.</small>}
               {project?.quantumScenes?.map(item => <article key={item.sceneFingerprint} className="project-workspace-workbook">
                 <strong>{item.title}</strong><small style={{ overflowWrap: "anywhere" }}> · SHA-256 {item.sceneFingerprint}</small>
                 <button type="button" data-testid={`project-open-quantum-scene-${item.sceneFingerprint}`} disabled={busy || !onOpenQuantumScene}
-                  onClick={() => { if (!onOpenQuantumScene) return; setQuantumSceneMessage("Verifying external scene…"); void onOpenQuantumScene(item).then(() => setQuantumSceneMessage("Verified read-only scene opened.")).catch(error => setQuantumSceneMessage(`Scene unavailable: ${String((error as Error).message)}`)); }}>Verify and view scene</button>
+                  onClick={() => { void openLinkedQuantumScene(item); }}>Verify and view scene</button>
                 <button type="button" data-testid={`project-admit-quantum-scene-${item.sceneFingerprint}`}
                   disabled={busy || preview || !!managed || !onVerifyQuantumSceneDocument || project.workspace.entries.some((entry) => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document" && entry.checkpoint.source.sceneFingerprint === item.sceneFingerprint)}
                   onClick={() => { void admitQuantumScene(item); }}>Add read-only Project document</button>
@@ -1411,13 +1446,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                   disabled={busy || preview || !!managed || !project || !verifiedScientificScene || !onOpenScientificScene || project.scientificScenes?.some(item => item.sceneFingerprint === verifiedScientificScene.sceneFingerprint)}
                   onClick={() => { void attachScientificScene(); }}>Attach open verified scene</button></div>
               <p>Links retain only the location and manifest fingerprint. Opening re-verifies source bytes; no scientific arrays enter Project JSON. Missing or changed bundles remain unavailable until an exact copy is relinked.</p>
-              {!project?.scientificScenes?.length && <small>Open or publish a verified .sscene from File, then attach it here.</small>}
+              {!project?.scientificScenes?.length && <small>Use Open .sscene folder above (or publish one from File), then attach the verified source here.</small>}
               {project?.scientificScenes?.map(item => <article key={item.sceneFingerprint} className="project-workspace-workbook">
                 <strong>{item.title}</strong><small style={{ overflowWrap: "anywhere" }}> · SHA-256 {item.sceneFingerprint}</small>
                 <button type="button" data-testid={`project-open-scientific-scene-${item.sceneFingerprint}`} disabled={busy || !onOpenScientificScene}
-                  onClick={() => { if (!onOpenScientificScene) return; setScientificSceneMessage("Verifying external scene…");
-                    void onOpenScientificScene(item).then(() => setScientificSceneMessage("Verified read-only scene opened."))
-                      .catch(error => setScientificSceneMessage(`Scene unavailable: ${String((error as Error).message)}`)); }}>Verify and view scene</button>
+                  onClick={() => { void openLinkedScientificScene(item); }}>Verify and view scene</button>
                 <button type="button" data-testid={`project-relink-scientific-scene-${item.sceneFingerprint}`}
                   disabled={busy || !!managed || !onRelinkScientificScene} onClick={() => { void relinkScientificScene(item); }}>Relink source</button>
               </article>)}

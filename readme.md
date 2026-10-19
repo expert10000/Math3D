@@ -50,7 +50,7 @@ Documentation:
 ## Verified quantum scenes from Theory Lab
 
 Math3D desktop can open a verified `quantum-scene/v1` or `quantum-scene/v2` `.qscene` folder with
-**File → Open verified quantum scene**. Theory Lab's **Scenes** page can export bounded
+**File → Open Theory Lab quantum scene (.qscene)**. Theory Lab's **Scenes** page can export bounded
 square, honeycomb, and simple-cubic geometry examples; saved numerical scenes
 also support a direct **Open in Math3D** checkout handoff. The read-only viewer
 inspects supplied sites, links, cells, basis identities, translations and units,
@@ -63,9 +63,9 @@ To try the supplied scenes immediately, choose **File → Verified quantum examp
 Theory Lab exports: QWZ Berry curvature and bands, SSH chain and bands, and
 hydrogenic 1s/2s/2p/3p/3d fields. Each example is hash-verified before opening;
 the QWZ curvature scene includes supplied reciprocal vectors. Your own Lab
-exports still use **Open verified quantum scene** or **Open in Math3D**.
+exports still use **Open Theory Lab quantum scene (.qscene)** or **Open in Math3D**.
 
-For producer-neutral `scientific-scene/v1`, use **File → Verified quantum examples → Publish with reference Python script…** with an independently installed Python 3.10+ executable and the offered `sincos-grid.json` sample. Approve the explicit run, inspect the verified 2D surface, and reopen its `.sscene` folder later. **Projects → Contents → Scientific scenes** can attach the open verified source as a compact link; save the Project to retain it. No arrays are copied into Project JSON, and reopening a link re-verifies the external source. See the [Python publication workflow](docs/scientific-scene-python-job-workflow.md).
+For producer-neutral `scientific-scene/v1`, use **File → Verified quantum examples → Publish with reference Python script…** with an independently installed Python 3.10+ executable and the offered `sincos-grid.json` sample. Approve the explicit run, inspect the verified 2D surface, and reopen its `.sscene` folder with **File → Open scientific scene (.sscene)**. In **Projects**, the Verified scene links card near the top separates the two folder commands and reopens saved links after source verification. **Contents → Scientific scenes** can attach the open verified source as a compact link; save the Project to retain it. No arrays are copied into Project JSON. See the [Python publication workflow](docs/scientific-scene-python-job-workflow.md).
 
 For a hands-on test of **both** a Theory Lab `.qscene` and a Python `.sscene` in the installed desktop app, follow the [scene walkthrough](docs/theory-lab-python-scene-walkthrough.md). It includes Project restart, exact-source relink and a reversible missing-source check.
 

@@ -53,7 +53,8 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await page.waitForLoadState("domcontentloaded");
     const fileActions=await app.evaluate(({Menu})=>Menu.getApplicationMenu()?.items
       .find(item=>item.label==="File")?.submenu?.items.map(item=>item.label)??[]);
-    expect(fileActions).toContain("Open verified quantum scene...");
+    expect(fileActions).toContain("Open Theory Lab quantum scene (.qscene)...");
+    expect(fileActions).toContain("Open scientific scene (.sscene)...");
     expect(fileActions).toContain("Reopen recent quantum scene");
     await expect.poll(()=>page.evaluate(()=>typeof (window as any).quantumScenes?.open)).toBe("function");
     await expect.poll(()=>page.evaluate(()=>typeof (window as any).quantumScenes?.reopenRecent)).toBe("function");
@@ -141,6 +142,13 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await expect(projects.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
     const projectScene = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).quantumScenes[0]);
     expect(projectScene).toMatchObject({ format: "quantum-scene/v1", directory, sceneFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    await expect(projects.getByTestId("project-scene-shortcuts")).toContainText("IPC verified path");
+    await projects.getByTestId(`project-scene-shortcut-quantum-${projectScene.sceneFingerprint}`).click();
+    await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
+    await page.getByTestId("quantum-scene-close").click();
+    await projects.getByTestId("project-import-qscene").click();
+    await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
+    await page.getByTestId("quantum-scene-close").click();
     await projects.getByTestId(`project-admit-quantum-scene-${projectScene.sceneFingerprint}`).click();
     await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("Project contents");
     await expect(projects.getByTestId("project-group-quantum")).toContainText("IPC verified path");

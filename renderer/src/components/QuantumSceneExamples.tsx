@@ -144,7 +144,7 @@ export function QuantumSceneExamples({ onOpened, onOpenedScientific, onClose }: 
         </div>}
         {busy === "python-run" && <p role="status">External Python publisher running; deadline 60 seconds…</p>}
       </section>
-      <p style={{ fontSize: 12 }}>Bundled scenes retain immutable source hashes. For your own Lab result, use File → Open verified quantum scene or Open in Math3D from Theory Lab.</p>
+      <p style={{ fontSize: 12 }}>Bundled scenes retain immutable source hashes. For your own Lab result, use File → Open Theory Lab quantum scene (.qscene) or Open in Math3D from Theory Lab. For a producer-neutral .sscene, use File → Open scientific scene (.sscene).</p>
     </div>
   </div>, document.body);
 }
