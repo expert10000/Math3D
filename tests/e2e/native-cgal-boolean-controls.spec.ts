@@ -142,3 +142,32 @@ for (const fixture of cases) {
     }
   });
 }
+
+test("Auto union validates one mesh and its offset duplicate", async () => {
+  test.skip(process.env.MATH3D_NATIVE_BOOLEAN_E2E !== "1", "Requires an installed local native CGAL worker.");
+  const ctx = await launchSurfaceApp();
+  try {
+    const { page } = ctx;
+    let card = await openMeshTools(page);
+    await page.getByTestId("mesh-workspace-example-1").click();
+    card = await openMeshTools(page);
+    await card.getByTestId("mesh-workspace-operation-registry-row-boolean-union").click();
+    await card.getByTestId("mesh-workspace-operation-registry-duplicate-active-for-boolean").click();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-operand")).toContainText("copy B");
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-strategy-auto")).toHaveAttribute("aria-pressed", "true");
+
+    await card.getByTestId("mesh-workspace-operation-registry-row-cgal-validate").click();
+    await card.getByTestId("mesh-workspace-operation-registry-run-cgal-validate").click();
+    const lastResult = card.getByTestId("mesh-workspace-operation-registry-last-result");
+    await expect(lastResult).toContainText("Ready for robust operations", { timeout: 90_000 });
+
+    await card.getByTestId("mesh-workspace-operation-registry-row-boolean-union").click();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-strategy-auto")).toHaveAttribute("aria-pressed", "true");
+    await card.getByTestId("mesh-workspace-operation-registry-run-boolean-union").click();
+    await expect(lastResult).toContainText("Boolean union", { timeout: 90_000 });
+    await expect(lastResult).toContainText(/success/i);
+    await expect(lastResult).toContainText("Native CGAL backend: CGAL corefine");
+  } finally {
+    await closeSurfaceApp(ctx);
+  }
+});
