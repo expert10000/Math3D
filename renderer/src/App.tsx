@@ -61292,12 +61292,16 @@ case "mobius":
       material: { color: 0xf97316, opacity: 0.68 },
     };
     setGeometryDatasetMeshObjects((previous) => [duplicate, ...previous]);
+    const linkId = `workspace:geometry:${id}`;
+    setMeshWorkspaceGeometryLinks((previous) => [...previous, { id: linkId, geometryObjectId: id, linkedAt: Date.now() }]);
+    setMeshWorkspaceOrder((previous) => [...previous, linkId]);
+    setMeshWorkspaceBooleanInputIds({ a: "workspace:active", b: linkId });
     setMeshOperationBooleanOperandObjectId(id);
     setMeshOperationBooleanOperation("union");
     setMeshOperationBooleanStrategy("auto");
     setMeshOperationOutputMode("derived");
     setMeshOperationError(null);
-    setMeshOperationBooleanStatus(`Created ${label}, offset along its longest dimension. Validate A, then run Union with Auto; you can move B in Geometry first.`);
+    setMeshOperationBooleanStatus(`Created ${label}, offset along its longest dimension and shown beside A. Validate A, then run Union with Auto; you can move B in Geometry first.`);
   }, [getMeshForMeshOperation]);
 
   const applyMeshOperationResultToSurfaceMesh = useCallback(

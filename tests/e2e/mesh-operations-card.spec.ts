@@ -702,6 +702,10 @@ test.describe("Mesh Operations card", () => {
     await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-operand")).toContainText("copy B");
     await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-strategy-auto")).toHaveAttribute("aria-pressed", "true");
     await expect(card).toContainText(/Validate A, then run Union with Auto/);
+    const leftTabs = page.getByTestId("mesh-workspace-left-tabs");
+    await leftTabs.getByTestId("mesh-workspace-left-tab-scene").click();
+    await expect(page.getByTestId("mesh-workspace-scene-outliner").getByRole("button", { name: /Geometry links \(1\)/ })).toBeVisible();
+    card = await openWorkspaceOperationsCard(page);
     await applyManagedMeshPreset(card, "boolean-demo-pair");
     await expect(page.getByText(/Boolean demo A/i).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/Boolean demo B/i).first()).toBeVisible({ timeout: 15_000 });
