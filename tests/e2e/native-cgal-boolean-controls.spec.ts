@@ -119,12 +119,12 @@ for (const fixture of cases) {
       await card.getByTestId(`mesh-workspace-operation-registry-run-boolean-${fixture.operation}`).click();
       await expect(lastResult).toContainText(`Boolean ${fixture.operation}`, { timeout: 90_000 });
       await expect(lastResult).toContainText(/success/i);
-      await expect(lastResult).toContainText("Standalone native CGAL worker");
+      await expect(lastResult).toContainText("Native CGAL backend: CGAL corefine");
       await expect(lastResult).toContainText(`Vertices: 8 -> ${fixture.vertices}`);
       await expect(lastResult).toContainText(`Triangles: 12 -> ${fixture.triangles}`);
       await expect(page.getByTestId("mesh-operation-boolean-card")).toContainText("Boolean demo B");
 
-      await page.getByTestId("mesh-inspector-tab-history").click();
+      await page.getByTestId("shared-inspector-tab-history").click();
       await expect(page.getByText("Mesh History", { exact: true })).toBeVisible();
       await expect(page.getByText(`Boolean ${fixture.operation}`, { exact: true }).last()).toBeVisible();
 
