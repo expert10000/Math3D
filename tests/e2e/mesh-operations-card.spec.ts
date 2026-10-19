@@ -284,6 +284,13 @@ test.describe("Mesh Operations card", () => {
     expect(position).not.toBeNull();
     expect(position!.galleryTop).toBeGreaterThanOrEqual(position!.paneTop);
     expect(position!.galleryTop).toBeLessThan(position!.paneBottom);
+
+    await leftPanel.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    const trailingGap = await page.getByTestId("mesh-preset-grid").locator(".gallery-scan-card").last().evaluate((card) => {
+      const pane = card.closest('[data-testid="surface-left-panel"]');
+      return pane ? pane.getBoundingClientRect().bottom - card.getBoundingClientRect().bottom : Infinity;
+    });
+    expect(trailingGap, "Mesh Gallery should not leave a full-height empty workspace below its last card.").toBeLessThan(160);
   });
 
   test("Mesh navigation keeps Gallery, tools, and Outliner in sync", async () => {
@@ -292,6 +299,11 @@ test.describe("Mesh Operations card", () => {
     await resetSurfaceAppState(page);
     await page.setViewportSize({ width: 2048, height: 1152 });
     await selectSection(page, "Mesh");
+    const contextRow = await page.getByTestId("mesh-context-presets").boundingBox();
+    const actionRow = await page.getByTestId("surface-module-actions").boundingBox();
+    expect(contextRow).not.toBeNull();
+    expect(actionRow).not.toBeNull();
+    expect(Math.abs((contextRow!.y + contextRow!.height / 2) - (actionRow!.y + actionRow!.height / 2))).toBeLessThan(12);
     await openWorkspaceOperationsCard(page);
     await page.getByTestId("mesh-workspace-example-1").click();
     const leftPanel = page.getByTestId("surface-left-panel");

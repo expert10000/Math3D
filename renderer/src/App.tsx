@@ -80105,6 +80105,12 @@ case "mobius":
                   )}
                 </div>
               </div>
+              <div
+                data-testid="surface-context-actions-row"
+                style={mode === "surfaces" && surfaceViewerKind === "mesh" && !isPhoneViewerPriorityLayout
+                  ? { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6 }
+                  : { display: "contents" }}
+              >
               {mode === "surfaces" && !activeGraph2DTarget && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind !== "complex" && !isPhoneViewerPriorityLayout && (
                 <div style={topNavContextBarStyle}>
                   {headerIsSurface && surfaceViewerKind === "mesh" ? (
@@ -80544,6 +80550,7 @@ case "mobius":
                   </div>
                 </div>
               )}
+              </div>
               {mode === "curves" && !isPhoneViewerPriorityLayout && (
                 <div style={topNavContextBarStyle} data-testid="curves-professional-shell">
                   <div style={surfacesModeStripWrapStyle}>
@@ -82258,7 +82265,8 @@ case "mobius":
                   </div>
                 </div>
               )}
-              {(surfacesLayoutVariant === "layout2" || (surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "scene")) && (
+              {(surfacesLayoutVariant === "layout2" || (surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "scene")) &&
+                !(surfaceViewerKind === "mesh" && surfacesWorkGalleryOpen) && (
                 <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%", flex: 1 }}>
                   {surfaceViewerKind === "implicit" && (
                     <div
