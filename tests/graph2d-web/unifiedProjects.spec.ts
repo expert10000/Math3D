@@ -2,10 +2,17 @@ import { additionalRepresentationFixture, exerciseAdditionalEditors, checkReopen
 import { exerciseRepresentationStarters } from "../e2e/helpers/projectRepresentationStarters";
 import { exerciseMultipleGraphs, checkMultipleGraphHistory, exerciseDependencyRefresh, exerciseExtendedRefresh } from "../e2e/helpers/projectContinuation";
 import { readFileSync } from "node:fs";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import { runNamedProjectRoundTrip } from "../e2e/helpers/namedProjectRoundTrip";
 import { inspectMeshPackage, meshResourceFixture, pointResourceFixture, scalarVolumeResourceFixture, inspectScalarVolumePackage } from "../e2e/helpers/meshProjectResources";
 import { projectFreezeFixture, inspectFreezePackage, editFreezeProject, freezeControls, checkFreezeHistory, checkFreezeResources } from "../e2e/helpers/projectFreeze";
+
+const showProjectTransfer = async (panel: Locator) => {
+  const more = panel.locator("details.project-header-more");
+  if (!await more.getAttribute("open")) await more.locator("summary").click();
+  await more.getByRole("button", { name: "Import / export" }).click();
+  await expect(panel.getByTestId("project-export-resources")).toBeVisible();
+};
 
 test("Project → Workbook → Note opens from the main web workspace", async ({ page }) => {
   const raw = readFileSync("tests/fixtures/project-workbook-note-journey.json", "utf8");
@@ -93,6 +100,8 @@ test("PRJ16 built-in source starters preview, edit and transfer with restored hi
     await other.getByTestId("projects-toggle").click(); const panel = other.getByTestId("project-explorer-panel");
     await panel.getByTestId("project-import-file").setInputFiles({ name: "starter.json", mimeType: "application/json", buffer: Buffer.from(exported) });
     await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await expect(panel.getByTestId("project-viewer-document")).toBeVisible();
+    await panel.getByTestId("project-gallery-layout-toggle").click();
     await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved"); await other.reload();
     await other.getByTestId("projects-toggle").click(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click();
     await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
@@ -108,6 +117,7 @@ test("PRJ16 browser additional source editors retain measured sources and histor
   const fixture=additionalRepresentationFixture();await page.goto("/");await page.evaluate(()=>{localStorage.clear();localStorage.setItem("math3d.computeEngines.firstLaunchSeen","1");});await page.reload();
   const {selected,saved}=await exerciseAdditionalEditors(page,fixture);await page.reload();await page.getByTestId("projects-toggle").click();const panel=page.getByTestId("project-explorer-panel");
   await panel.getByTestId("project-view-saved").click();await panel.getByTestId("project-restore-saved").click();await expect(panel.getByTestId("project-import-open")).toBeEnabled();await panel.getByTestId("project-import-open").click();
+  await expect(panel.getByTestId("project-viewer-document")).toBeVisible();await panel.getByTestId("project-gallery-layout-toggle").click();
   await panel.getByTestId("project-save").click();await expect(panel.getByTestId("project-message")).toContainText("Saved");expect((await page.evaluate(()=>JSON.parse(localStorage.getItem("math3d.project.v1")!))).workspace.entries.map((e:any)=>e.expected)).toEqual(saved.workspace.entries.map((e:any)=>e.expected));
   for(const document of selected)await checkReopenedAdditionalHistory(page,document);
 });
@@ -127,8 +137,10 @@ test("PRJ16 browser samples verified dense Volume bytes and retains grid history
   const generations = (await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!))).workspace.entries.map((entry: any) => entry.expected);
   await page.reload(); await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click();
   await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+  await expect(panel.getByTestId("project-viewer-document")).toBeVisible(); await panel.getByTestId("project-gallery-layout-toggle").click();
   await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
   expect((await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!))).workspace.entries.map((entry: any) => entry.expected)).toEqual(generations);
+  await showProjectTransfer(panel);
   const download = page.waitForEvent("download"); await panel.getByTestId("project-export-resources").click();
   const exported = readFileSync((await (await download).path())!, "utf8"), samples = inspectScalarVolumePackage(exported);
   expect(samples[0]!.document.source.spatial).toEqual(changed); expect(samples[0]!.values).toEqual([1,2,3,4,5,6,7,8]);
@@ -145,20 +157,26 @@ test("PRJ15 browser verifies resource packages and preserves Mesh selection/hist
   const panel = page.getByTestId("project-explorer-panel");
   await panel.getByTestId("project-import-file").setInputFiles({ name: "mesh.resources.json", mimeType: "application/json", buffer: Buffer.from(fixture.raw) });
   await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
-  await expect(page.getByTestId("project-mesh-editor")).toContainText("First saved triangle");
   await page.getByRole("button", { name: "Close project explorer" }).click();
+  await page.getByTestId("project-mesh-study-view").click();
+  await expect(page.getByTestId("project-mesh-editor")).toContainText("First saved triangle");
   await page.getByTestId("project-mesh-translate-0").fill("3"); await page.getByTestId("project-mesh-apply").click();
-  await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
+  await page.getByTestId("projects-toggle").click();
+  if (!await panel.getByTestId("project-save").isVisible()) await panel.getByTestId("project-gallery-layout-toggle").click();
+  await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)), generations = saved.workspace.entries.map((entry: any) => entry.expected);
   await page.reload(); await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click();
   await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+  await expect(panel.getByTestId("project-viewer-document")).toBeVisible(); await panel.getByTestId("project-gallery-layout-toggle").click();
   await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
   expect((await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!))).workspace.entries.map((entry: any) => entry.expected)).toEqual(generations);
+  await showProjectTransfer(panel);
   const download = page.waitForEvent("download"); await panel.getByTestId("project-export-resources").click();
   const exported = readFileSync((await (await download).path())!, "utf8"), mesh = inspectMeshPackage(exported)[0]!;
   expect(mesh.positions).toEqual([5,0,0,6,0,0,5,1,0]); expect(mesh.selection).toEqual(["mesh-face:0"]);
   expect(mesh.document.source.origin).toEqual(fixture.docs[0].source.origin);
-  await page.getByRole("button", { name: "Close project explorer" }).click(); await page.getByTestId("project-mesh-undo").click();
+  await page.getByRole("button", { name: "Close project explorer" }).click(); await page.getByTestId("project-mesh-study-view").click();
+  await page.getByTestId("project-mesh-undo").click(); await page.getByTestId("project-mesh-study-view").click();
   await page.setViewportSize({ width: 390, height: 844 }); const bounds = await page.getByTestId("project-mesh-editor").boundingBox(); expect(bounds!.width).toBeLessThanOrEqual(391);
   await page.getByTestId("project-mesh-editor").screenshot({ path: test.info().outputPath("mesh-resource-editor-phone.png") });
 });
@@ -169,10 +187,13 @@ test("PRJ15 imports Graph point-table bytes into an independent host and reopens
   await page.getByTestId("projects-toggle").click(); const panel = page.getByTestId("project-explorer-panel");
   await panel.getByTestId("project-import-file").setInputFiles({ name: "point-table.resources.json", mimeType: "application/json", buffer: Buffer.from(fixture.raw) });
   await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+  await expect(panel.getByTestId("project-viewer-document")).toBeVisible(); await panel.getByTestId("project-gallery-layout-toggle").click();
   await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
   expect(await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("math3d.graph2d.table.")))).toEqual([]);
   await page.reload(); await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click();
   await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+  await expect(panel.getByTestId("project-viewer-document")).toBeVisible(); await panel.getByTestId("project-gallery-layout-toggle").click();
+  await showProjectTransfer(panel);
   const download = page.waitForEvent("download"); await panel.getByTestId("project-export-resources").click();
   const returned = JSON.parse(readFileSync((await (await download).path())!, "utf8")), original = JSON.parse(fixture.raw);
   expect(returned.project.workspace.entries[0].expected).toEqual(original.project.workspace.entries[0].expected);

@@ -21,10 +21,26 @@ export const freezeControls = (page: Page) => {
   const panel = page.getByTestId("project-explorer-panel");
   const show = async () => { if (!await panel.isVisible()) await page.getByTestId("projects-toggle").click(); };
   const hide = async () => { if (await panel.isVisible()) await page.getByRole("button", { name: "Close project explorer" }).click(); };
-  const open = async (id: string) => { await show(); await panel.getByTestId(`project-open-${id}`).click(); await hide(); };
+  const open = async (id: string) => {
+    await show();
+    const viewerDocument = panel.getByTestId("project-viewer-document");
+    if (await viewerDocument.isVisible()) await viewerDocument.selectOption(id);
+    else {
+      const openButton = panel.getByTestId(`project-open-${id}`);
+      if (!await openButton.isVisible()) await panel.getByTestId("project-detail-tab-documents").click();
+      await openButton.click();
+    }
+    await hide();
+  };
   const importOpen = async (raw: string) => { await show(); await panel.getByTestId("project-import-file").setInputFiles({ name: "freeze.resources.json", mimeType: "application/json", buffer: Buffer.from(raw) });
     await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click(); await expect(panel.getByTestId("project-message")).toContainText("Opened supported project"); };
-  const save = async () => { await show(); await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved"); return page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)); };
+  const save = async () => {
+    await show();
+    if (!await panel.getByTestId("project-save").isVisible()) await panel.getByTestId("project-gallery-layout-toggle").click();
+    await panel.getByTestId("project-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Saved");
+    return page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+  };
   const reopen = async (projectId: string) => { await show(); await panel.getByTestId(`project-preview-${projectId}`).click(); await panel.getByTestId("project-restore-saved").click();
     await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click(); await expect(panel.getByTestId("project-message")).toContainText("Opened supported project"); };
   return { panel, show, hide, open, importOpen, save, reopen };
@@ -47,8 +63,12 @@ export const editFreezeProject = async (page: Page, fixture: ReturnType<typeof p
     await editor.getByTestId("project-source-undo").click(); expect(JSON.parse(await editor.getByTestId("project-source-definition").inputValue())).toEqual(source);
     await editor.getByTestId("project-source-redo").click(); expect(JSON.parse(await editor.getByTestId("project-source-definition").inputValue())).toEqual(changed);
   }
-  await controls.open(fixture.targets.mesh!); await page.getByTestId("project-mesh-translate-0").fill("1"); await page.getByTestId("project-mesh-apply").click();
-  await page.getByTestId("project-mesh-undo").click(); await page.getByTestId("project-mesh-redo").click();
+  await controls.open(fixture.targets.mesh!); await page.getByTestId("project-mesh-study-view").click();
+  await page.getByTestId("project-mesh-translate-0").fill("1"); await page.getByTestId("project-mesh-apply").click();
+  await page.getByTestId("project-mesh-study-view").click();
+  await page.getByTestId("project-mesh-undo").click();
+  await page.getByTestId("project-mesh-study-view").click();
+  await page.getByTestId("project-mesh-redo").click();
   await controls.open(fixture.targets.volume!); await page.getByTestId("project-volume-editor").locator("summary").click();
   const spatial = JSON.parse(await page.getByTestId("project-volume-spatial").inputValue()); spatial.origin = [20,30,40];
   await page.getByTestId("project-volume-spatial").fill(JSON.stringify(spatial)); await page.getByTestId("project-volume-apply").click();
@@ -79,8 +99,11 @@ export const checkFreezeHistory = async (page: Page, fixture: ReturnType<typeof 
     expect(JSON.parse(await editor.getByTestId("project-source-definition").inputValue())).toEqual(original);
     await editor.getByTestId("project-source-redo").click();
   }
-  await controls.open(fixture.targets.mesh!); await expect(page.getByTestId("project-mesh-undo")).toBeEnabled();
-  await page.getByTestId("project-mesh-undo").click(); await page.getByTestId("project-mesh-redo").click();
+  await controls.open(fixture.targets.mesh!); await page.getByTestId("project-mesh-study-view").click();
+  await expect(page.getByTestId("project-mesh-undo")).toBeEnabled();
+  await page.getByTestId("project-mesh-undo").click();
+  await page.getByTestId("project-mesh-study-view").click();
+  await page.getByTestId("project-mesh-redo").click();
   await controls.open(fixture.targets.volume!); await expect(page.getByTestId("project-volume-undo")).toBeEnabled();
   await page.getByTestId("project-volume-undo").click(); await page.getByTestId("project-volume-redo").click();
   await controls.open(fixture.targets.complex!); await page.getByTestId("project-scientific-undo").click();

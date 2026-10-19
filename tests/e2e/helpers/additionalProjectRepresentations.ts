@@ -31,6 +31,8 @@ export const expectAdditionalPreview = async (page: Page) => {
 export const exerciseAdditionalEditors=async(page:Page,fixture:ReturnType<typeof additionalRepresentationFixture>)=>{
   const panel=page.getByTestId("project-explorer-panel"),editor=page.getByTestId("project-source-editor");
   const show=async()=>{if(!await panel.isVisible())await page.getByTestId("projects-toggle").click();};
+  const fullDetails=async()=>{await show();if(await panel.getByTestId("project-viewer-document").isVisible())await panel.getByTestId("project-gallery-layout-toggle").click();await expect(panel.getByTestId("project-save")).toBeVisible();};
+  const open=async(id:string)=>{await show();const viewer=panel.getByTestId("project-viewer-document");if(await viewer.isVisible())await viewer.selectOption(id);else{const button=panel.getByTestId(`project-open-${id}`);if(!await button.isVisible())await panel.getByTestId("project-detail-tab-documents").click();await button.click();}if(await panel.isVisible())await page.getByRole("button",{name:"Close project explorer"}).click();};
   await show();await panel.getByTestId("project-import-file").setInputFiles({name:"representations.json",mimeType:"application/json",buffer:Buffer.from(JSON.stringify(fixture.project))});
   await panel.getByTestId("project-import-save").click();
   await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
@@ -44,11 +46,11 @@ export const exerciseAdditionalEditors=async(page:Page,fixture:ReturnType<typeof
   expect(headerBox.y + headerBox.height).toBeLessThanOrEqual(panelBox.y + panelBox.height);
   await restore.click();
   await expect(panel.getByTestId("project-import-open")).toBeEnabled();await panel.getByTestId("project-import-open").click();
+  await expect(panel.getByTestId("project-viewer-document")).toBeVisible();await fullDetails();
   await panel.getByTestId("project-save").click();await expect(panel.getByTestId("project-message")).toContainText("Saved");
   expect((await page.evaluate(()=>JSON.parse(localStorage.getItem("math3d.project.v1")!))).workspace.entries.map((entry:any)=>entry.expected)).toEqual(fixture.docs.map((d)=>d.identity));
   const parent = fixture.docs.find((document) => document.metadata?.title === "Construction parent");
-  await panel.getByTestId(`project-open-${parent.identity.id}`).click();
-  if (await panel.isVisible()) await page.getByRole("button", { name: "Close project explorer" }).click();
+  await open(parent.identity.id);
   const curveCanvas = page.getByTestId("curve-viewer-canvas").locator("canvas");
   await expect(curveCanvas).toBeVisible();
   const curveHandle = await curveCanvas.elementHandle();
@@ -59,7 +61,7 @@ export const exerciseAdditionalEditors=async(page:Page,fixture:ReturnType<typeof
   const titles=["Saved polyline","Saved nurbs","Saved implicit Surface","Saved nurbsSurface","Saved revolution","Saved scene constructions"];
   const selected=[...titles.map((title)=>fixture.docs.find((d)=>d.metadata?.title===title)),fixture.docs.find((d)=>d.source?.kind==="simplicial-complex")];
   for(const document of selected){
-    await show();await panel.getByTestId(`project-open-${document.identity.id}`).click();if(await panel.isVisible())await page.getByRole("button",{name:"Close project explorer"}).click();
+    await open(document.identity.id);
     await expect(editor).toHaveAttribute("data-document-id",document.identity.id);await expect(editor.getByTestId("project-source-measurement")).toContainText("bounds");
     await expectAdditionalPreview(page);
     await editor.getByTestId("project-source-json").locator("summary").click();const source=JSON.parse(await editor.getByTestId("project-source-definition").inputValue());expect(source).toEqual(document.source);
@@ -76,13 +78,16 @@ export const exerciseAdditionalEditors=async(page:Page,fixture:ReturnType<typeof
     await editor.getByTestId("project-source-definition").fill(JSON.stringify({...changed,invalid:true}));await editor.getByTestId("project-source-apply").click();await expect(editor.getByRole("alert")).toBeVisible();await expect(editor.getByTestId("project-source-redo")).toBeEnabled();
     await editor.getByTestId("project-source-redo").click();expect(JSON.parse(await editor.getByTestId("project-source-definition").inputValue())).toEqual(changed);
   }
-  await show();await panel.getByTestId("project-save").click();await expect(panel.getByTestId("project-message")).toContainText("Saved");
+  await fullDetails();await panel.getByTestId("project-save").click();await expect(panel.getByTestId("project-message")).toContainText("Saved");
   return {selected,saved:await page.evaluate(()=>JSON.parse(localStorage.getItem("math3d.project.v1")!))};
 };
 
 export const checkReopenedAdditionalHistory=async(page:Page,document:any)=>{
   const panel=page.getByTestId("project-explorer-panel");if(!await panel.isVisible())await page.getByTestId("projects-toggle").click();
-  await panel.getByTestId(`project-open-${document.identity.id}`).click();if(await panel.isVisible())await page.getByRole("button",{name:"Close project explorer"}).click();
+  const viewerDocument=panel.getByTestId("project-viewer-document");
+  if(await viewerDocument.isVisible())await viewerDocument.selectOption(document.identity.id);
+  else{const open=panel.getByTestId(`project-open-${document.identity.id}`);if(!await open.isVisible())await panel.getByTestId("project-detail-tab-documents").click();await open.click();}
+  if(await panel.isVisible())await page.getByRole("button",{name:"Close project explorer"}).click();
   const editor=page.getByTestId("project-source-editor");await expect(editor.getByTestId("project-source-undo")).toBeEnabled();
   await editor.getByTestId("project-source-json").locator("summary").click();await editor.getByTestId("project-source-undo").click();expect(JSON.parse(await editor.getByTestId("project-source-definition").inputValue())).toEqual(document.source);await editor.getByTestId("project-source-redo").click();
 };
