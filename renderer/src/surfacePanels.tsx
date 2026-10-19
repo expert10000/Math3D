@@ -802,6 +802,7 @@ export type SurfacesLeftPanelProps = {
   meshOperationBooleanStatus: string | null;
   onRunMeshOperationBoolean: () => void | Promise<void>;
   onPrepareMeshOperationBooleanDemo: () => void;
+  onDuplicateActiveMeshForBoolean: () => void;
   onSwapMeshOperationBooleanOperands: () => void;
   meshOperationOutputMode: "replace" | "derived";
   onChangeMeshOperationOutputMode: (mode: "replace" | "derived") => void;
@@ -1616,6 +1617,7 @@ export const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   meshOperationBooleanStatus,
   onRunMeshOperationBoolean,
   onPrepareMeshOperationBooleanDemo,
+  onDuplicateActiveMeshForBoolean,
   onSwapMeshOperationBooleanOperands,
   meshOperationOutputMode,
   onChangeMeshOperationOutputMode,
@@ -6489,6 +6491,7 @@ onChangeImplicitExpr,
               booleanStatus={meshOperationBooleanStatus}
               onRunBoolean={onRunMeshOperationBoolean}
               onPrepareBooleanDemo={onPrepareMeshOperationBooleanDemo}
+              onDuplicateActiveMeshForBoolean={onDuplicateActiveMeshForBoolean}
               onSwapBooleanOperands={onSwapMeshOperationBooleanOperands}
               outputMode={meshOperationOutputMode}
               onChangeOutputMode={onChangeMeshOperationOutputMode}

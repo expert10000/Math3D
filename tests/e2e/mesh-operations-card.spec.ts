@@ -697,6 +697,11 @@ test.describe("Mesh Operations card", () => {
     await selectSection(page, "Mesh");
 
     let card = await openWorkspaceOperationsCard(page);
+    await card.getByTestId("mesh-workspace-operation-registry-row-boolean-union").click();
+    await card.getByTestId("mesh-workspace-operation-registry-duplicate-active-for-boolean").click();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-operand")).toContainText("copy B");
+    await expect(card.getByTestId("mesh-workspace-operation-registry-boolean-strategy-auto")).toHaveAttribute("aria-pressed", "true");
+    await expect(card).toContainText(/Validate A, then run Union with Auto/);
     await applyManagedMeshPreset(card, "boolean-demo-pair");
     await expect(page.getByText(/Boolean demo A/i).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/Boolean demo B/i).first()).toBeVisible({ timeout: 15_000 });
@@ -761,7 +766,7 @@ test.describe("Mesh Operations card", () => {
     const operandToggle = cardAgain.getByTestId("mesh-workspace-operation-registry-toggle-boolean-operands");
     if (await operandToggle.isVisible().catch(() => false)) {
       await operandToggle.click();
-      await expect(operandToggle).toContainText(/Show cutter B|Hide cutter B/);
+      await expect(operandToggle).toContainText(/Show operand B|Hide operand B/);
     }
     await cardAgain.getByTestId("mesh-workspace-operation-registry-open-result-in-geometry").click();
     await expect(page.getByText(/mesh sent to geometry/i)).toBeVisible({ timeout: 15_000 });
@@ -900,7 +905,7 @@ test.describe("Mesh Operations card", () => {
     const cutterToggle = card.getByTestId("mesh-workspace-operation-registry-toggle-boolean-operands");
     if (await cutterToggle.isVisible().catch(() => false)) {
       await cutterToggle.click();
-      await expect(cutterToggle).toContainText(/Show cutter B|Hide cutter B/);
+      await expect(cutterToggle).toContainText(/Show operand B|Hide operand B/);
     }
     await reviewToolbar.getByTestId("mesh-boolean-review-validate-result").click();
     await expectLastOperation(card, /Validate mesh/i);

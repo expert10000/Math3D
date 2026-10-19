@@ -196,6 +196,7 @@ export type MeshOperationsPanelProps = {
   booleanStatus: string | null;
   onRunBoolean: () => void | Promise<void>;
   onPrepareBooleanDemo: () => void;
+  onDuplicateActiveMeshForBoolean?: () => void;
   onOpenBooleanDemoPair?: () => void;
   onSwapBooleanOperands?: () => void;
   booleanOperandsVisible?: boolean;
@@ -959,6 +960,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
   booleanStatus,
   onRunBoolean,
   onPrepareBooleanDemo,
+  onDuplicateActiveMeshForBoolean,
   onOpenBooleanDemoPair,
   onSwapBooleanOperands,
   booleanOperandsVisible,
@@ -1922,6 +1924,17 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                           )}
                         </select>
                       </label>
+                      {onDuplicateActiveMeshForBoolean && (
+                        <button
+                          data-testid={`${testId}-duplicate-active-for-boolean`}
+                          type="button"
+                          onClick={onDuplicateActiveMeshForBoolean}
+                          disabled={!meshReady || operationBusy}
+                          style={{ justifySelf: "start", fontWeight: 800 }}
+                        >
+                          Duplicate active mesh as B
+                        </button>
+                      )}
                       {booleanOperandOptions.length === 0 ? (
                         <div
                           style={{
@@ -2007,7 +2020,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                             onClick={booleanOperandsVisible ? onHideBooleanOperands : onShowBooleanOperands}
                             style={{ justifySelf: "start", fontWeight: 800 }}
                           >
-                            {booleanOperandsVisible ? "Hide cutter B" : "Show cutter B"}
+                             {booleanOperandsVisible ? "Hide operand B" : "Show operand B"}
                           </button>
                         </div>
                       )}

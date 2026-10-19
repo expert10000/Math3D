@@ -13785,13 +13785,6 @@ const App: React.FC = () => {
       })),
     [geometryDatasetMeshObjects, geometryObjects]
   );
-  const meshOperationBooleanDemoOperandsVisible = useMemo(
-    () =>
-      geometryDatasetMeshObjects.some(
-        (entry) => (entry.name === "Boolean demo A" || entry.name.endsWith("cutter box")) && entry.visible
-      ),
-    [geometryDatasetMeshObjects]
-  );
   const geometryCompareObjectOptions = useMemo(
     () =>
       [...geometryObjects, ...geometryDatasetMeshObjects].map((obj) => ({
@@ -35926,6 +35919,15 @@ const App: React.FC = () => {
   const [meshOperationBooleanOperation, setMeshOperationBooleanOperation] = useState<MeshBooleanOperation>("union");
   const [meshOperationBooleanStrategy, setMeshOperationBooleanStrategy] = useState<MeshBooleanStrategy>("auto");
   const [meshOperationBooleanOperandObjectId, setMeshOperationBooleanOperandObjectId] = useState<string | null>(null);
+  const meshOperationBooleanDemoOperandsVisible = useMemo(
+    () =>
+      geometryDatasetMeshObjects.some(
+        (entry) =>
+          (entry.id === meshOperationBooleanOperandObjectId || entry.name === "Boolean demo A" || entry.name.endsWith("cutter box")) &&
+          entry.visible
+      ),
+    [geometryDatasetMeshObjects, meshOperationBooleanOperandObjectId]
+  );
   const [meshOperationBooleanCurveRadius, setMeshOperationBooleanCurveRadius] = useState(0);
   const [meshOperationBooleanStatus, setMeshOperationBooleanStatus] = useState<string | null>(null);
   const [meshOperationOutputMode, setMeshOperationOutputMode] = useState<"replace" | "derived">("derived");
@@ -61241,6 +61243,63 @@ case "mobius":
     };
   }, [surfaceMeshData, surfaceSampleSet, buildActiveMeshLabel]);
 
+  const handleDuplicateActiveMeshForBoolean = useCallback(() => {
+    const active = getMeshForMeshOperation();
+    if (!active) {
+      setMeshOperationError("Load a mesh before creating operand B.");
+      return;
+    }
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (let i = 0; i < active.positions.length; i += 3) {
+      minX = Math.min(minX, active.positions[i]);
+      maxX = Math.max(maxX, active.positions[i]);
+      minY = Math.min(minY, active.positions[i + 1]);
+      maxY = Math.max(maxY, active.positions[i + 1]);
+      minZ = Math.min(minZ, active.positions[i + 2]);
+      maxZ = Math.max(maxZ, active.positions[i + 2]);
+    }
+    const spans = [maxX - minX, maxY - minY, maxZ - minZ];
+    const axis = spans.indexOf(Math.max(...spans));
+    const span = spans[axis];
+    const offset = Number.isFinite(span) && span > 0 ? span * 0.35 : 0.35;
+    const id = makeId();
+    const label = `${active.label} copy B`;
+    const duplicate: GeometryDatasetMeshObject = {
+      id,
+      name: label,
+      mesh: {
+        label,
+        positions: Float32Array.from(active.positions),
+        indices: Uint32Array.from(active.indices),
+        normals: "normals" in active && active.normals ? Float32Array.from(active.normals) : null,
+        source: { kind: "detachedMesh", fromLabel: active.label },
+      },
+      transform: {
+        position: {
+          x: axis === 0 ? offset : 0,
+          y: axis === 1 ? offset : 0,
+          z: axis === 2 ? offset : 0,
+        },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+      },
+      visible: true,
+      material: { color: 0xf97316, opacity: 0.68 },
+    };
+    setGeometryDatasetMeshObjects((previous) => [duplicate, ...previous]);
+    setMeshOperationBooleanOperandObjectId(id);
+    setMeshOperationBooleanOperation("union");
+    setMeshOperationBooleanStrategy("auto");
+    setMeshOperationOutputMode("derived");
+    setMeshOperationError(null);
+    setMeshOperationBooleanStatus(`Created ${label}, offset along its longest dimension. Validate A, then run Union with Auto; you can move B in Geometry first.`);
+  }, [getMeshForMeshOperation]);
+
   const applyMeshOperationResultToSurfaceMesh = useCallback(
     (
       labelSuffix: string,
@@ -76556,6 +76615,12 @@ case "mobius":
       },
     },
     {
+      id: "geometry",
+      label: "Geometry",
+      active: mode === "geometry",
+      onSelect: () => setMode("geometry"),
+    },
+    {
       id: "volume",
       label: "Volume",
       active: mode === "surfaces" && datasetKind === "volume",
@@ -76573,12 +76638,6 @@ case "mobius":
       label: "Topology",
       active: mode === "topology",
       onSelect: () => setMode("topology"),
-    },
-    {
-      id: "geometry",
-      label: "Geometry",
-      active: mode === "geometry",
-      onSelect: () => setMode("geometry"),
     },
     {
       id: "complex_analysis",
@@ -77811,6 +77870,7 @@ case "mobius":
                   meshOperationBooleanStatus={meshOperationBooleanStatus}
                   onRunMeshOperationBoolean={handleMeshOperationBoolean}
                   onPrepareMeshOperationBooleanDemo={handlePrepareMeshOperationBooleanDemo}
+                  onDuplicateActiveMeshForBoolean={handleDuplicateActiveMeshForBoolean}
                   onSwapMeshOperationBooleanOperands={handleSwapMeshOperationBooleanOperands}
                   meshOperationOutputMode={meshOperationOutputMode}
                   onChangeMeshOperationOutputMode={setMeshOperationOutputMode}
@@ -82837,6 +82897,7 @@ case "mobius":
                           booleanStatus={meshOperationBooleanStatus}
                           onRunBoolean={handleMeshOperationBoolean}
                           onPrepareBooleanDemo={handlePrepareMeshOperationBooleanDemo}
+                          onDuplicateActiveMeshForBoolean={handleDuplicateActiveMeshForBoolean}
                           onOpenBooleanDemoPair={handleOpenMeshOperationBooleanDemoPairInGeometry}
                           onSwapBooleanOperands={handleSwapMeshOperationBooleanOperands}
                           booleanOperandsVisible={meshOperationBooleanDemoOperandsVisible}
@@ -83582,6 +83643,7 @@ case "mobius":
                     meshOperationBooleanStatus={meshOperationBooleanStatus}
                     onRunMeshOperationBoolean={handleMeshOperationBoolean}
                     onPrepareMeshOperationBooleanDemo={handlePrepareMeshOperationBooleanDemo}
+                    onDuplicateActiveMeshForBoolean={handleDuplicateActiveMeshForBoolean}
                     onSwapMeshOperationBooleanOperands={handleSwapMeshOperationBooleanOperands}
                     meshOperationOutputMode={meshOperationOutputMode}
                     onChangeMeshOperationOutputMode={setMeshOperationOutputMode}
@@ -116174,6 +116236,7 @@ type SurfacesObjectPanelProps = {
   meshOperationBooleanStatus: string | null;
   onRunMeshOperationBoolean: () => void | Promise<void>;
   onPrepareMeshOperationBooleanDemo: () => void;
+  onDuplicateActiveMeshForBoolean: () => void;
   onSwapMeshOperationBooleanOperands: () => void;
   meshOperationOutputMode: "replace" | "derived";
   onChangeMeshOperationOutputMode: (mode: "replace" | "derived") => void;
@@ -116356,6 +116419,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   meshOperationBooleanStatus,
   onRunMeshOperationBoolean,
   onPrepareMeshOperationBooleanDemo,
+  onDuplicateActiveMeshForBoolean,
   onSwapMeshOperationBooleanOperands,
   meshOperationOutputMode,
   onChangeMeshOperationOutputMode,
@@ -116748,6 +116812,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
           booleanStatus={meshOperationBooleanStatus}
           onRunBoolean={onRunMeshOperationBoolean}
           onPrepareBooleanDemo={onPrepareMeshOperationBooleanDemo}
+          onDuplicateActiveMeshForBoolean={onDuplicateActiveMeshForBoolean}
           onSwapBooleanOperands={onSwapMeshOperationBooleanOperands}
           outputMode={meshOperationOutputMode}
           onChangeOutputMode={onChangeMeshOperationOutputMode}
