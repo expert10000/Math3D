@@ -29,7 +29,8 @@ export function QuantumFieldVolume({ fingerprint, fields }: { fingerprint: strin
       if (current === generation.current) setArtifact(result);
     }).catch(cause => { if (current === generation.current) setError(String((cause as Error)?.message ?? cause)); });
     return () => { generation.current++; void window.quantumScenes?.cancelFieldVolume(request.requestId); };
-  }, [fingerprint, field?.id, safeQuantity, axis, safeIndex, safeMode, level]);
+  // The verified grid depends on source and quantity, not camera, slice, or threshold controls.
+  }, [fingerprint, field?.id, safeQuantity]);
   const adapted = useMemo(() => artifact ? adaptQuantumFieldVolume(artifact) : null, [artifact]);
   const visibleFit = useMemo(() => artifact && safeMode === "slice"
     ? fitVisibleQuantumField(artifact, { x: 0, y: 1, z: 2 }[axis] as 0 | 1 | 2, safeIndex) : null,
@@ -73,6 +74,9 @@ export function QuantumFieldVolume({ fingerprint, fields }: { fingerprint: strin
         onClick={() => setFitCommand(previous => ({ token: (previous?.token ?? 0) + 1, kind: "fit-crop" }))}>
         Fit visible field
       </button>}
+      {safeMode === "slice" && artifact && !visibleFit && <small data-testid="quantum-volume-fit-hint">
+        {artifact.quantity === "phase" ? "Amplitude needed for fit" : "No signal on this slice"}
+      </small>}
       <button type="button" aria-label={safeMode === "isosurface" ? "Fit volume isosurface" : "Fit volume grid"}
         disabled={!adapted} onClick={() => setFitCommand(previous => ({ token: (previous?.token ?? 0) + 1,
           kind: safeMode === "isosurface" ? "fit-mesh" : "fit-volume" }))}>
