@@ -7,7 +7,8 @@ import type { MobileStoredSceneProject } from "../../apps/mobile/src/models/mobi
 import { createMobileGraph, storeMobileGraph, readMobileGraph } from "../../apps/mobile/src/models/mobileGraphProject";
 
 const fileContents = vi.hoisted(() => new Map<string, string>());
-const fileFaults = vi.hoisted(() => ({ writePath: "", moveDestination: "", readPath: "", deletePath: "", copyDestination: "" }));
+const fileFaults = vi.hoisted(() => ({ writePath: "", moveDestination: "", readPath: "", deletePath: "", copyDestination: "",
+  corruptWritePath: "", corruptCopyDestination: "" }));
 
 vi.mock("expo-file-system", () => {
   class Directory {
@@ -31,7 +32,7 @@ vi.mock("expo-file-system", () => {
     }
     write(value: string) {
       if (fileFaults.writePath === this.uri) throw new Error("ENOSPC: no space left on device");
-      fileContents.set(this.uri, value);
+      fileContents.set(this.uri, fileFaults.corruptWritePath === this.uri ? value.slice(0, -1) : value);
     }
     delete() {
       if (fileFaults.deletePath === this.uri) throw new Error("simulated cleanup failure");
@@ -39,7 +40,8 @@ vi.mock("expo-file-system", () => {
     }
     copy(destination: File) {
       if (fileFaults.copyDestination === destination.uri) throw new Error("ENOSPC: no space left on device");
-      fileContents.set(destination.uri, fileContents.get(this.uri) ?? "");
+      const content = fileContents.get(this.uri) ?? "";
+      fileContents.set(destination.uri, fileFaults.corruptCopyDestination === destination.uri ? content.slice(0, -1) : content);
     }
     move(destination: File) {
       if (fileFaults.moveDestination === destination.uri) {
@@ -137,6 +139,8 @@ describe("mobile scene storage recovery", () => {
     fileFaults.readPath = "";
     fileFaults.deletePath = "";
     fileFaults.copyDestination = "";
+    fileFaults.corruptWritePath = "";
+    fileFaults.corruptCopyDestination = "";
   });
 
   it("migrates the legacy project-array payload", () => {
@@ -235,6 +239,21 @@ describe("mobile scene storage recovery", () => {
     await expect(saveStoredSceneProjects([{ ...project, lastOpenedAt: 10 }])).rejects.toMatchObject({ code: "storage-full" });
     expect(decodeMobileSceneStorage(fileContents.get("documents/math3d-mobile/scene-projects.json") ?? ""))
       .toMatchObject({ ok: true, projects: [project] });
+  });
+  it("rejects altered staged and backup copies without replacing the accepted primary", async () => {
+    await saveStoredSceneProjects([project]);
+    const primaryPath = "documents/math3d-mobile/scene-projects.json";
+    const accepted = fileContents.get(primaryPath);
+    const changed = [{ ...project, lastOpenedAt: 10 }];
+
+    fileFaults.corruptWritePath = "documents/math3d-mobile/scene-projects.tmp";
+    await expect(saveStoredSceneProjects(changed)).rejects.toMatchObject({ code: "validation" });
+    expect(fileContents.get(primaryPath)).toBe(accepted);
+    fileFaults.corruptWritePath = "";
+
+    fileFaults.corruptCopyDestination = "documents/math3d-mobile/scene-projects.backup.tmp";
+    await expect(saveStoredSceneProjects(changed)).rejects.toMatchObject({ code: "validation" });
+    expect(fileContents.get(primaryPath)).toBe(accepted);
   });
   it("does not resurrect a failed first project save from a newly written backup", async () => {
     fileFaults.moveDestination = "documents/math3d-mobile/scene-projects.json";

@@ -331,34 +331,36 @@ export const createMobileSceneStorage = (storageDirectory: Directory) => {
       const primaryRaw = await readFile(primary);
       const primaryValidation = primaryRaw?.trim() ? decodeMobileSceneStorage(primaryRaw) : null;
       const backupRaw = primaryValidation?.ok ? null : await readFile(backup);
-      const existing = resolveMobileSceneStorage(primaryRaw, backupRaw);
+      const existingSource = primaryValidation?.ok ? "primary" : resolveMobileSceneStorage(primaryRaw, backupRaw).source;
       const existingCheckedAt = Date.now();
-      if (existing.source === "invalid") {
+      if (existingSource === "invalid") {
         throw new MobileSceneStorageError("recovery-required", "Damaged or unsupported storage was kept. Restore a valid storage backup before saving.");
       }
       removeIfPresent(staged);
       staged.create({ intermediates: true, overwrite: true });
       staged.write(raw, { encoding: "utf8" });
-      const stagedValidation = decodeMobileSceneStorage(await staged.text());
-      if (!stagedValidation.ok) {
-        throw new MobileSceneStorageError("validation", `Temporary project file failed validation: ${stagedValidation.issues.join(" ")}`);
+      // The serialized snapshot was validated by encodeProjects. Verify that the
+      // staged file is byte-identical before it can replace the primary.
+      if (await staged.text() !== raw) {
+        throw new MobileSceneStorageError("validation", "Temporary project file did not match validated bytes.");
       }
       const stagedCheckedAt = Date.now();
 
-      const replaceBackupFrom = async (source: File) => {
+      const replaceBackupFrom = async (source: File, expectedRaw: string) => {
         removeIfPresent(stagedBackup);
         source.copy(stagedBackup);
-        const backupValidation = decodeMobileSceneStorage(await stagedBackup.text());
-        if (!backupValidation.ok) {
-          throw new MobileSceneStorageError("validation", "Temporary project backup failed validation.");
+        // The source has already passed document validation. Confirm the copy
+        // has exactly those bytes, including on the first successful save.
+        if (await stagedBackup.text() !== expectedRaw) {
+          throw new MobileSceneStorageError("validation", "Temporary project backup did not match validated bytes.");
         }
         removeIfPresent(backup);
         stagedBackup.move(backup);
         backupCommitted = true;
       };
 
-      if (primaryValidation?.ok) {
-        await replaceBackupFrom(primary);
+      if (primaryValidation?.ok && primaryRaw !== null) {
+        await replaceBackupFrom(primary, primaryRaw);
       } else {
         const backupValidation = backupRaw?.trim() ? decodeMobileSceneStorage(backupRaw) : null;
         if (!backupValidation?.ok) initializeBackup = true;
@@ -370,7 +372,7 @@ export const createMobileSceneStorage = (storageDirectory: Directory) => {
       if (initializeBackup) {
         // A failed first primary rename must not resurrect an unaccepted new project from backup.
         // Once the primary commits, a backup failure cannot invalidate that successful save.
-        try { await replaceBackupFrom(primary); }
+        try { await replaceBackupFrom(primary, raw); }
         catch { try { removeIfPresent(stagedBackup); } catch { /* The committed primary remains valid. */ } }
       }
       console.info(`MATH3D_DEVICE_METRIC project-save totalMs=${Date.now() - startedAt} encodeMs=${encodedAt - startedAt} existingMs=${existingCheckedAt - encodedAt} stagedMs=${stagedCheckedAt - existingCheckedAt} backupMs=${backupCheckedAt - stagedCheckedAt} commitMs=${Date.now() - backupCheckedAt} bytes=${raw.length} projects=${projects.length}`);
