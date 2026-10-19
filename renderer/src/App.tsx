@@ -44576,6 +44576,12 @@ const App: React.FC = () => {
   const surfacePreviewFocusPrevRightPanelRef = useRef(true);
   const surfacePreviewFocusPrevLeftTabRef = useRef<SurfacesLeftTab>("scene");
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<SurfacesLeftTab>("scene");
+  const resetSurfaceLeftPanelScroll = () => {
+    if (surfaceLeftPanelRef.current) surfaceLeftPanelRef.current.scrollTop = 0;
+    requestAnimationFrame(() => {
+      if (surfaceLeftPanelRef.current) surfaceLeftPanelRef.current.scrollTop = 0;
+    });
+  };
   useLayoutEffect(() => {
     if (surfacesPanelState === "work" && (surfacesLeftTab === "object" || (surfacesLeftTab === "scene" && surfacesWorkGalleryOpen))) {
       surfaceLeftPanelRef.current?.scrollTo(0, 0);
@@ -80105,11 +80111,14 @@ case "mobius":
                     <>
                       <button
                         type="button"
+                        data-testid="mesh-context-presets"
                         onClick={() => {
                           setSurfacesPanelState("work");
                           setSurfacesLeftTab("scene");
                           setSurfacesWorkGalleryOpen(true);
+                          resetSurfaceLeftPanelScroll();
                         }}
+                        aria-pressed={surfacesPanelState === "work" && surfacesLeftTab === "scene" && surfacesWorkGalleryOpen}
                         style={headerFamilyButtonStyle(
                           surfacesPanelState === "work" && surfacesLeftTab === "scene" && surfacesWorkGalleryOpen
                         )}
@@ -80118,12 +80127,15 @@ case "mobius":
                       </button>
                       <button
                         type="button"
+                        data-testid="mesh-context-tools"
                         onClick={() => {
                           setSurfacesPanelState("work");
                           setSurfacesLeftTab("scene");
                           setMeshWorkspaceLeftTab("operations");
                           setSurfacesWorkGalleryOpen(false);
+                          resetSurfaceLeftPanelScroll();
                         }}
+                        aria-pressed={surfacesPanelState === "work" && surfacesLeftTab === "scene" && !surfacesWorkGalleryOpen}
                         style={headerFamilyButtonStyle(
                           surfacesPanelState === "work" && surfacesLeftTab === "scene" && !surfacesWorkGalleryOpen
                         )}
@@ -80132,11 +80144,14 @@ case "mobius":
                       </button>
                       <button
                         type="button"
+                        data-testid="mesh-context-object"
                         onClick={() => {
                           setSurfacesPanelState("work");
                           setSurfacesLeftTab("object");
                           setSurfacesWorkGalleryOpen(false);
+                          resetSurfaceLeftPanelScroll();
                         }}
+                        aria-pressed={surfacesPanelState === "work" && surfacesLeftTab === "object"}
                         style={headerFamilyButtonStyle(surfacesPanelState === "work" && surfacesLeftTab === "object")}
                       >
                         Object
@@ -80283,7 +80298,9 @@ case "mobius":
                       Panel
                     </span>
                     {surfacesWorkspaceTabs.map((tab) => {
-                      const active = surfacesPanelState === "work" && surfacesLeftTab === tab;
+                      const active = surfacesPanelState === "work" && surfacesLeftTab === tab &&
+                        (surfaceViewerKind !== "mesh" || tab !== "scene" ||
+                          (!surfacesWorkGalleryOpen && meshWorkspaceLeftTab === "scene"));
                       const disabled = !surfacesWorkTabsEnabled && tab !== "scene";
                       return (
                         <button
@@ -80295,14 +80312,15 @@ case "mobius":
                             setSurfacesPanelState("work");
                             setSurfacesLeftTab(tab);
                             setSurfacesWorkGalleryOpen(false);
-                             if (surfaceViewerKind === "mesh" && tab === "scene") setMeshWorkspaceLeftTab("scene");
+                            if (surfaceViewerKind === "mesh" && tab === "scene") setMeshWorkspaceLeftTab("scene");
+                            resetSurfaceLeftPanelScroll();
                             if (activeSavedSurfaceBinding) window.dispatchEvent(new CustomEvent("math3d:hide-project-dock", { detail: "left" }));
                           }}
                           disabled={disabled}
                           aria-pressed={active}
                           style={{ ...surfacesModeButtonStyle(active, "panel", disabled), textTransform: "capitalize" }}
                         >
-                          {tab}
+                          {surfaceViewerKind === "mesh" && tab === "scene" ? "Outliner" : tab}
                         </button>
                       );
                     })}
@@ -80324,10 +80342,12 @@ case "mobius":
                           setSurfacesPanelState("work");
                           setSurfacesLeftTab("scene");
                           setSurfacesWorkGalleryOpen(true);
+                          resetSurfaceLeftPanelScroll();
                           return;
                         }
                         if (surfacesLeftTab !== "scene") setSurfacesLeftTab("scene");
-                        setSurfacesWorkGalleryOpen((v) => !v);
+                        setSurfacesWorkGalleryOpen(surfaceViewerKind === "mesh" ? true : !surfacesWorkGalleryOpen);
+                        resetSurfaceLeftPanelScroll();
                       }}
                       aria-pressed={datasetKind === "volume" ? surfacesPanelState === "browse" : surfacesPanelState === "work" && surfacesWorkGalleryOpen}
                       style={surfacesModeButtonStyle(datasetKind === "volume" ? surfacesPanelState === "browse" : surfacesPanelState === "work" && surfacesWorkGalleryOpen, "actions")}

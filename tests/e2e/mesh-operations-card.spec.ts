@@ -286,6 +286,36 @@ test.describe("Mesh Operations card", () => {
     expect(position!.galleryTop).toBeLessThan(position!.paneBottom);
   });
 
+  test("Mesh navigation keeps Gallery, tools, and Outliner in sync", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 2048, height: 1152 });
+    await selectSection(page, "Mesh");
+    await openWorkspaceOperationsCard(page);
+    await page.getByTestId("mesh-workspace-example-1").click();
+    const leftPanel = page.getByTestId("surface-left-panel");
+
+    await leftPanel.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await page.getByTestId("mesh-context-presets").click();
+    await expect(page.getByTestId("mesh-preset-grid")).toBeVisible();
+    await expect(page.getByTestId("mesh-context-presets")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("surfaces-left-tab-scene")).toHaveAttribute("aria-pressed", "false");
+    await expect(leftPanel).toHaveJSProperty("scrollTop", 0);
+
+    await leftPanel.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await page.getByTestId("surfaces-action-gallery").click();
+    await expect(page.getByTestId("mesh-context-presets")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("mesh-preset-grid")).toBeVisible();
+    await expect(leftPanel).toHaveJSProperty("scrollTop", 0);
+
+    await page.getByTestId("surfaces-left-tab-scene").click();
+    await expect(page.getByTestId("surfaces-left-tab-scene")).toHaveText("Outliner");
+    await expect(page.getByTestId("surfaces-left-tab-scene")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("mesh-workspace-scene-outliner")).toBeVisible();
+    await expect(page.getByTestId("mesh-context-tools")).toHaveAttribute("aria-pressed", "true");
+  });
+
   test("top Scene tab opens the Mesh Outliner", async () => {
     ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
     const { page } = ctx;
