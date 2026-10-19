@@ -389,7 +389,9 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     </ScrollView>}</>}
     <View style={[s.workspace, layout.split && s.split]} testID={layout.split ? "mobile-graph-split-pane" : "mobile-graph-phone-layout"}>
     <View style={[s.graphPane, layout.split && { minWidth: layout.graphMinWidth }]}>
-    <View style={s.plot} testID="mobile-graph-plot" accessibilityLabel="Graph plot. Drag marked phase portrait initial points to update orbits, drag saved points along curves, drag elsewhere to pan, pinch to zoom, tap to probe or place an armed initial point."
+    <View style={s.plot} testID="mobile-graph-plot" accessibilityLabel={document.source.objects.some(object => object.kind === "time-ode") ?
+      "Graph plot with a time-dependent ODE. Time t is horizontal and state x is vertical. Initial value is marked. Backward path is dashed; forward path is solid. Use Analyze for each stop reason. Drag to pan and pinch to zoom." :
+      "Graph plot. Drag marked phase portrait initial points to update orbits, drag saved points along curves, drag elsewhere to pan, pinch to zoom, tap to probe or place an armed initial point."}
       onLayout={(event) => { cancel(); const { width, height } = event.nativeEvent.layout; if (width > 0 && height > 0) setSize({ width, height }); }}
       onStartShouldSetResponder={() => true} onMoveShouldSetResponder={() => true}
       onResponderGrant={beginPointOrPan}
@@ -567,8 +569,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
           <Text style={s.title}>x′ = {selectedTimeOdeObject.expression.source}; x({selectedTimeOdeObject.seed.t}) = {selectedTimeOdeObject.seed.x}</Text>
           <Text>Time t is horizontal; state x is vertical. Numerical approximation on linear axes.</Text>
           <Text>Time bounds {selectedTimeOdeObject.domain.min} to {selectedTimeOdeObject.domain.max}; state bounds {selectedTimeOdeObject.stateDomain.min} to {selectedTimeOdeObject.stateDomain.max}.</Text>
-          {selectedTimeOde?.backward && <Text>Backward: {selectedTimeOde.backward.stop}; last ({selectedTimeOde.backward.last.t}, {selectedTimeOde.backward.last.x}); {selectedTimeOde.backward.acceptedSteps} accepted, {selectedTimeOde.backward.rejectedSteps} rejected.</Text>}
-          {selectedTimeOde?.forward && <Text>Forward: {selectedTimeOde.forward.stop}; last ({selectedTimeOde.forward.last.t}, {selectedTimeOde.forward.last.x}); {selectedTimeOde.forward.acceptedSteps} accepted, {selectedTimeOde.forward.rejectedSteps} rejected.</Text>}
+          {selectedTimeOde?.backward && <Text accessibilityLabel={`Backward numerical path: ${selectedTimeOde.backward.stop.replace("-", " ")}; last time ${selectedTimeOde.backward.last.t}, state ${selectedTimeOde.backward.last.x}; ${selectedTimeOde.backward.acceptedSteps} accepted and ${selectedTimeOde.backward.rejectedSteps} rejected steps.`}>Backward: {selectedTimeOde.backward.stop}; last ({selectedTimeOde.backward.last.t}, {selectedTimeOde.backward.last.x}); {selectedTimeOde.backward.acceptedSteps} accepted, {selectedTimeOde.backward.rejectedSteps} rejected.</Text>}
+          {selectedTimeOde?.forward && <Text accessibilityLabel={`Forward numerical path: ${selectedTimeOde.forward.stop.replace("-", " ")}; last time ${selectedTimeOde.forward.last.t}, state ${selectedTimeOde.forward.last.x}; ${selectedTimeOde.forward.acceptedSteps} accepted and ${selectedTimeOde.forward.rejectedSteps} rejected steps.`}>Forward: {selectedTimeOde.forward.stop}; last ({selectedTimeOde.forward.last.t}, {selectedTimeOde.forward.last.x}); {selectedTimeOde.forward.acceptedSteps} accepted, {selectedTimeOde.forward.rejectedSteps} rejected.</Text>}
           {selectedTimeOde && !selectedTimeOde.forward && <Text>Integration unavailable on logarithmic axes.</Text>}
         </View>}
         {selectedPhase && <View accessibilityLabel="Phase portrait equilibrium analysis" testID="mobile-graph-phase-equilibria">

@@ -68,6 +68,15 @@ react {
     autolinkLibrariesWithApp()
 }
 
+// The native project lives below the monorepo root. React Native's default bundle
+// inputs do not cover shared package sources, so an incremental APK can otherwise
+// retain an older JS bundle after a core-only change.
+tasks.matching { it.name.startsWith("createBundle") && it.name.endsWith("JsAndAssets") }.configureEach {
+    inputs.dir(file("../../../../packages/core"))
+    inputs.dir(file("../../../../packages/kernel"))
+    inputs.dir(file("../../../../packages/api-client"))
+}
+
 /**
  * Set this to true in release builds to optimize the app using [R8](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization).
  */
