@@ -11,7 +11,7 @@ import { MobileProjectGraphSessions } from "./models/mobileProjectGraphSessions"
 import { refreshMobileProjectDependency } from "./models/mobileProjectRefresh";
 import { commitMobileGraphPromotion, readMobileGraphPromotions } from "./models/mobileGraphPromotions";
 import { probeMobilePlatformCapabilities } from "./services/mobilePlatformCapabilities";
-import { AppState, PixelRatio, Platform, Share, type GestureResponderEvent } from "react-native";
+import { AppState, PixelRatio, Platform, Share, unstable_batchedUpdates, type GestureResponderEvent } from "react-native";
 import { SCENE_PROJECT_VERSION, createSceneProjectDocument, deserializeSceneProject, serializeSceneProject, type SceneDocument, type SurfaceDefinition, type VtkPreviewJobSnapshot, type VtkPreviewRequest } from "@math3d/core";
 import { mobileExamples, mobileSeedScenes } from "./data/mobileSeedData";
 import { DEFAULT_MOBILE_GRID_PLANES } from "./models/mobileCoordinateGrid";
@@ -302,6 +302,7 @@ export const useMobileAppController = () => {
   const [graphGalleryBusy, setGraphGalleryBusy] = useState(false), [graphGalleryMessage, setGraphGalleryMessage] = useState("");
   const [graphGalleryImportPreview, setGraphGalleryImportPreview] = useState<Graph2DPersonalPresetPreview | null>(null);
   const graphGalleryLaunchInFlight = useRef(false);
+  const graphGalleryPresentationPending = useRef<{ startedAt: number; projectId: string; presetId: string } | null>(null);
   const graphProjectSequence = useRef(0);
   useEffect(() => { if (viewerDocument) { setGraphDocument(null); setCurveDocument(null); setSurfaceDocument(null); } }, [viewerDocument]);
   const [selectedExampleId, setSelectedExampleId] = useState<string | null>(mobileExamples[0]?.id ?? null);
@@ -1614,17 +1615,15 @@ export const useMobileAppController = () => {
   };
 
   const openCreatedGraph = (project: MobileStoredSceneProject, readyDocument?: Graph2DDocument) => {
-    const openedAt = Date.now();
     mixedGraphSessions.current = null; setCurveDocument(null); setSurfaceDocument(null);
     setGraphDocument(readyDocument ?? readMobileGraph(project)); setViewerDocument(null); setSelectedSceneId(project.id); setTab("workspace");
-    const beforeSettingsAt = Date.now();
     void persistMobileSettings({ lastSceneId: project.id, lastViewerProject: undefined }).catch(() => undefined);
-    if (readyDocument) console.info(`MATH3D_DEVICE_METRIC graph-open stateMs=${beforeSettingsAt - openedAt} settingsCallMs=${Date.now() - beforeSettingsAt}`);
   };
   const openGraphGalleryPreset = async (preset: Graph2DPreset): Promise<boolean> => {
     if (graphGalleryLaunchInFlight.current) return false;
     if (storageStatus === "loading") { setGraphGalleryMessage("Project storage is still loading. Try again shortly."); return false; }
     const launchStartedAt = Date.now();
+    let published = false;
     graphGalleryLaunchInFlight.current = true; setGraphGalleryBusy(true); setGraphGalleryMessage("Saving current work and opening the graph…");
     try {
       const plan = planMobileGraphPresetLaunch(preset, `mobile-gallery/${Date.now()}/${++graphProjectSequence.current}`, storedProjects,
@@ -1632,16 +1631,26 @@ export const useMobileAppController = () => {
       const planFinishedAt = Date.now();
       const result = await commitMobileGraphPresetLaunch(plan, saveStoredSceneProjects, stageMobileGraphPresetSidecars);
       const savedAt = Date.now();
-      setStoredProjects(result.projects); setStorageStatus(storageIssues.length > 0 ? "error" : "ready");
-      setProjectActionMessage(`Created ${result.project.title}. Previous work was saved.`);
-      const beforeOpenAt = Date.now();
-      openCreatedGraph(result.project, result.document); setGraphGalleryOpen(false); setGraphGalleryMessage("");
-      console.info(`MATH3D_DEVICE_METRIC gallery-launch durationMs=${Date.now() - launchStartedAt} planMs=${planFinishedAt - launchStartedAt} saveMs=${savedAt - planFinishedAt} publishMs=${Date.now() - savedAt} preOpenMs=${beforeOpenAt - savedAt} preset=${preset.id}`);
+      graphGalleryPresentationPending.current = { startedAt: launchStartedAt, projectId: result.project.id, presetId: preset.id };
+      unstable_batchedUpdates(() => {
+        setStoredProjects(result.projects); setStorageStatus(storageIssues.length > 0 ? "error" : "ready");
+        setProjectActionMessage(`Created ${result.project.title}. Previous work was saved.`);
+        openCreatedGraph(result.project, result.document); setGraphGalleryOpen(false); setGraphGalleryMessage("");
+        setGraphGalleryBusy(false);
+      });
+      published = true;
+      console.info(`MATH3D_DEVICE_METRIC gallery-launch durationMs=${Date.now() - launchStartedAt} planMs=${planFinishedAt - launchStartedAt} saveMs=${savedAt - planFinishedAt} publishMs=${Date.now() - savedAt} preset=${preset.id}`);
       return true;
     } catch (error) {
       setGraphGalleryMessage(`Could not open the graph: ${(error as Error).message}. Current work remains open.`); return false;
-    } finally { graphGalleryLaunchInFlight.current = false; setGraphGalleryBusy(false); }
+    } finally { graphGalleryLaunchInFlight.current = false; if (!published) { graphGalleryPresentationPending.current = null; setGraphGalleryBusy(false); } }
   };
+  useEffect(() => {
+    const pending = graphGalleryPresentationPending.current;
+    if (!pending || graphGalleryOpen || tab !== "workspace" || graphDocument?.identity.id !== pending.projectId) return;
+    graphGalleryPresentationPending.current = null;
+    console.info(`MATH3D_DEVICE_METRIC gallery-screen-commit durationMs=${Date.now() - pending.startedAt} preset=${pending.presetId}`);
+  }, [graphGalleryOpen, graphDocument?.identity.id, tab]);
   const createGraphProject = async (title: string, withExample: boolean): Promise<boolean> => {
     const graph = createMobileGraph(title, withExample, `mobile-graph/${Date.now()}/${++graphProjectSequence.current}`);
     const project = storeMobileGraph(graph);
