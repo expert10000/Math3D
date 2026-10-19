@@ -1614,9 +1614,12 @@ export const useMobileAppController = () => {
   };
 
   const openCreatedGraph = (project: MobileStoredSceneProject, readyDocument?: Graph2DDocument) => {
+    const openedAt = Date.now();
     mixedGraphSessions.current = null; setCurveDocument(null); setSurfaceDocument(null);
     setGraphDocument(readyDocument ?? readMobileGraph(project)); setViewerDocument(null); setSelectedSceneId(project.id); setTab("workspace");
+    const beforeSettingsAt = Date.now();
     void persistMobileSettings({ lastSceneId: project.id, lastViewerProject: undefined }).catch(() => undefined);
+    if (readyDocument) console.info(`MATH3D_DEVICE_METRIC graph-open stateMs=${beforeSettingsAt - openedAt} settingsCallMs=${Date.now() - beforeSettingsAt}`);
   };
   const openGraphGalleryPreset = async (preset: Graph2DPreset): Promise<boolean> => {
     if (graphGalleryLaunchInFlight.current) return false;
@@ -1631,8 +1634,9 @@ export const useMobileAppController = () => {
       const savedAt = Date.now();
       setStoredProjects(result.projects); setStorageStatus(storageIssues.length > 0 ? "error" : "ready");
       setProjectActionMessage(`Created ${result.project.title}. Previous work was saved.`);
+      const beforeOpenAt = Date.now();
       openCreatedGraph(result.project, result.document); setGraphGalleryOpen(false); setGraphGalleryMessage("");
-      console.info(`MATH3D_DEVICE_METRIC gallery-launch durationMs=${Date.now() - launchStartedAt} planMs=${planFinishedAt - launchStartedAt} saveMs=${savedAt - planFinishedAt} publishMs=${Date.now() - savedAt} preset=${preset.id}`);
+      console.info(`MATH3D_DEVICE_METRIC gallery-launch durationMs=${Date.now() - launchStartedAt} planMs=${planFinishedAt - launchStartedAt} saveMs=${savedAt - planFinishedAt} publishMs=${Date.now() - savedAt} preOpenMs=${beforeOpenAt - savedAt} preset=${preset.id}`);
       return true;
     } catch (error) {
       setGraphGalleryMessage(`Could not open the graph: ${(error as Error).message}. Current work remains open.`); return false;
