@@ -7,6 +7,7 @@ test("GGL14–15 web presentation and local read-only Graph file", async ({page}
   await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); });
   await page.reload();
   await page.getByTestId("workspace-nav-graphs").click();
+  await page.locator("details.graph2d-toolbar-menu summary").click();
   await page.getByTestId("graph2d-presentation-open").click();
   await expect(page.getByTestId("graphs-workspace")).toHaveAttribute("data-presentation", "true");
   await page.keyboard.press("Escape");

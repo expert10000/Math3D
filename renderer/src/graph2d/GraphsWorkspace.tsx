@@ -589,9 +589,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     galleryFocusFrame.current = requestAnimationFrame(() => {
       galleryFocusFrame.current = null;
       const root = viewerRef.current?.closest(".graph2d-workspace");
-      const compact = root?.querySelector<HTMLDetailsElement>(".graph2d-compact-panels details:last-child");
+      const compact = root?.querySelector<HTMLDetailsElement>(".graph2d-compact-panels > details:last-child");
       if (compact && compact.getBoundingClientRect().width > 0) compact.open = true;
-      const section = Array.from(root?.querySelectorAll<HTMLElement>(target) ?? []).find(el => el.getBoundingClientRect().width > 0);
+      const compactSection = compact?.open ? compact.querySelector<HTMLElement>(target) : null;
+      const section = compactSection ?? Array.from(root?.querySelectorAll<HTMLElement>(target) ?? []).find(el => el.getBoundingClientRect().width > 0);
       if (section) { section.tabIndex = -1; section.focus(); section.scrollIntoView({ block: "nearest" }); }
     });
   };

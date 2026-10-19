@@ -10,6 +10,12 @@ const start = async (page: Page) => {
 const save = async (page: Page) => { await page.getByTestId("kernel-workspace-toggle").click(); await page.getByTestId("kernel-workspace-save").click();
   await expect(page.getByTestId("kernel-workspace-message")).toContainText("Saved"); await page.getByTestId("kernel-workspace-toggle").click(); };
 const checkpoint = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.mixed-workspace.v1")!).entries.find((e: { module: string }) => e.module === "graph2d").checkpoint);
+const moreButton = async (page: Page, name: string) => {
+  const button = page.getByRole("button", { name, exact: true });
+  if (!await button.isVisible()) await page.locator("details.graph2d-toolbar-menu summary").click();
+  return button;
+};
+const gridButton = (page: Page) => moreButton(page, "Grid");
 
 test("Graphs follows Projects and precedes Curves and Surfaces in desktop navigation", async ({ page }) => {
   await page.goto("/");
@@ -71,7 +77,7 @@ test("10,000-point gallery preset opens with a bounded plot and fits its origina
 
 test("G2D41 Dense previews immediately, Close keeps settings and the selected inspector", async ({ page }) => {
   await start(page); await page.getByLabel("Graph functions", { exact: true }).getByRole("button", { name: "Select Parabola", exact: true }).click();
-  const inspector = page.getByLabel("Graph inspector", { exact: true }); await expect(inspector.locator(".graph2d-inspector-details").first()).toContainText("Parabola");
+  const inspector = page.getByLabel("Graph inspector", { exact: true }); await expect(inspector.getByLabel("Selected graph result")).toContainText("Parabola");
   await expect(inspector.getByTestId("graph2d-sampling-status")).toContainText("converged");
   await save(page); const original = await checkpoint(page);
   await page.evaluate(() => {
@@ -82,26 +88,26 @@ test("G2D41 Dense previews immediately, Close keeps settings and the selected in
     } };
   });
   const before = await page.locator(".graph2d-grid-major").count();
-  await page.getByRole("button", { name: "Grid", exact: true }).click(); const panel = page.getByTestId("graph2d-grid-settings");
+  await (await gridButton(page)).click(); const panel = page.getByTestId("graph2d-grid-settings");
   await panel.getByLabel("Grid density", { exact: true }).selectOption("dense");
   await expect.poll(() => page.locator(".graph2d-grid-major").count()).toBeGreaterThan(before);
   await save(page); expect((await checkpoint(page)).display.axes.gridOptions).toBeUndefined();
   await panel.getByRole("button", { name: "Close grid settings", exact: true }).click();
-  await expect(inspector.locator(".graph2d-inspector-details").first()).toContainText("Parabola");
+  await expect(inspector.getByLabel("Selected graph result")).toContainText("Parabola");
   await save(page); const saved = await checkpoint(page); expect(saved.display.axes.gridOptions.density).toBe("dense");
   expect(saved.selection).toEqual(original.selection); expect(saved.source).toEqual(original.source);
   expect(await page.evaluate(() => document.documentElement.dataset.gridSamplingStarts)).toBe("0");
-  await page.getByRole("button", { name: "Grid", exact: true }).click(); await panel.getByLabel("Grid density", { exact: true }).selectOption("sparse");
+  await (await gridButton(page)).click(); await panel.getByLabel("Grid density", { exact: true }).selectOption("sparse");
   // Escape must dismiss Grid even after focus returned to the plot/toolbar; a repeated Escape on its button must not clear selection.
-  await page.getByRole("button", { name: "Grid", exact: true }).focus(); await page.keyboard.press("Escape"); await expect(panel).toHaveCount(0);
-  await page.keyboard.press("Escape"); await expect(inspector.locator(".graph2d-inspector-details").first()).toContainText("Parabola");
-  await page.getByRole("button", { name: "Grid", exact: true }).click(); await expect(panel.getByLabel("Grid density", { exact: true })).toHaveValue("dense");
+  await (await gridButton(page)).focus(); await page.keyboard.press("Escape"); await expect(panel).toHaveCount(0);
+  await page.keyboard.press("Escape"); await expect(inspector.getByLabel("Selected graph result")).toContainText("Parabola");
+  await (await gridButton(page)).click(); await expect(panel.getByLabel("Grid density", { exact: true })).toHaveValue("dense");
 });
 
 test("G2D41 inspector keeps observations and scroll position while zoom sampling is pending", async ({ page }) => {
   await start(page); await page.getByLabel("Graph functions", { exact: true }).getByRole("button", { name: "Select Parabola", exact: true }).click();
   const inspector = page.getByLabel("Graph inspector", { exact: true }); await expect(inspector.getByTestId("graph2d-sampling-status")).toContainText("converged");
-  const observedField = inspector.locator('.graph2d-inspector-details').first().locator('dt:text-is("Observed") + dd');
+  const observedField = inspector.locator('dt:text-is("Observed") + dd');
   const observed = await observedField.innerText();
   await inspector.evaluate(el => { el.scrollTop = 120; });
   const scroll = await inspector.evaluate(el => el.scrollTop), bounds = await inspector.boundingBox();
@@ -124,7 +130,7 @@ test("G2D41 inspector keeps observations and scroll position while zoom sampling
 });
 
 test("G2D41 grid controls retain source, saved spacing and reversible display intent", async ({ page }, info) => {
-  await start(page); const original = await checkpoint(page), opener = page.getByRole("button", { name: "Grid", exact: true });
+  await start(page); const original = await checkpoint(page), opener = await gridButton(page);
   await opener.focus(); await page.keyboard.press("Enter"); const panel = page.getByTestId("graph2d-grid-settings");
   await expect(panel.getByRole("checkbox", { name: "Show grid", exact: true })).toBeFocused();
   await panel.getByLabel("X grid spacing", { exact: true }).fill("0"); await panel.getByRole("button", { name: "Apply grid settings", exact: true }).click();
@@ -141,31 +147,31 @@ test("G2D41 grid controls retain source, saved spacing and reversible display in
   await page.getByTestId("main-viewer").focus(); await page.keyboard.press("Control+y"); await save(page);
   await page.reload(); await page.getByTestId("workspace-nav-graphs").click(); await page.getByTestId("kernel-workspace-toggle").click();
   await page.getByTestId("kernel-workspace-reopen").click(); await page.getByTestId("kernel-workspace-toggle").click();
-  await page.getByRole("button", { name: "Grid", exact: true }).click(); await expect(page.getByLabel("X grid spacing", { exact: true })).toHaveValue("0.5");
+  await (await gridButton(page)).click(); await expect(page.getByLabel("X grid spacing", { exact: true })).toHaveValue("0.5");
   await page.screenshot({ path: info.outputPath("grid-settings.png") });
 });
 
 test("G2D41 dense-grid notice, visibility and compact keyboard access", async ({ page }, info) => {
   await start(page); await page.setViewportSize({ width: 700, height: 800 });
-  await page.getByRole("button", { name: "Grid", exact: true }).click(); const panel = page.getByTestId("graph2d-grid-settings");
+  await (await gridButton(page)).click(); const panel = page.getByTestId("graph2d-grid-settings");
   await panel.getByLabel("X grid spacing", { exact: true }).fill("1e-100"); await panel.getByRole("button", { name: "Apply grid settings", exact: true }).click();
   await expect(page.getByTestId("graph2d-update-status")).toContainText("Manual X spacing");
   await panel.getByLabel("Show grid", { exact: true }).uncheck(); await panel.getByLabel("Show numbers", { exact: true }).uncheck();
   await panel.getByRole("button", { name: "Apply grid settings", exact: true }).click(); await page.keyboard.press("Escape");
   await expect(page.locator(".graph2d-grid")).toHaveCount(0); await expect(page.locator(".graph2d-tick-labels")).toHaveCount(0);
-  await page.emulateMedia({ forcedColors: "active" }); await page.getByRole("button", { name: "Grid", exact: true }).click();
+  await page.emulateMedia({ forcedColors: "active" }); await (await gridButton(page)).click();
   await expect(page.getByTestId("graph2d-grid-settings").getByRole("checkbox", { name: "Show grid", exact: true })).toBeFocused();
   await page.screenshot({ path: info.outputPath("grid-compact-high-contrast.png") });
 });
 test("G2D37 continuation and scale policies preserve authored range, undo and saved log zoom", async ({ page }, info) => {
   await start(page); const source = (await checkpoint(page)).source;
   await page.getByTestId("main-viewer").focus(); for (let i = 0; i < 5; i++) await page.keyboard.press("-");
-  await page.getByRole("button", { name: "Show continuation", exact: true }).click();
+  await (await moreButton(page, "Show continuation")).click();
   await expect(page.locator("[data-graph2d-continuation]").first()).toHaveAttribute("stroke-opacity", "0.35");
   await expect.poll(() => page.locator("[data-graph2d-continuation]").first().getAttribute("d")).not.toBe("");
   await save(page); expect((await checkpoint(page)).source).toEqual(source);
   await page.screenshot({ path: info.outputPath("continuation.png") });
-  await page.getByRole("button", { name: "Scales", exact: true }).click(); const panel = page.getByTestId("graph2d-scales");
+  await (await moreButton(page, "Scales")).click(); const panel = page.getByTestId("graph2d-scales");
   await panel.getByLabel("X scale", { exact: true }).selectOption("log10"); await panel.getByLabel("Y scale", { exact: true }).selectOption("log10");
   await panel.getByLabel("Axis aspect", { exact: true }).selectOption("free");
   await panel.getByRole("button", { name: "Apply scales and bounds", exact: true }).click(); await expect(panel.getByRole("alert")).toContainText("positive");
@@ -182,7 +188,7 @@ test("G2D37 continuation and scale policies preserve authored range, undo and sa
   expect((await checkpoint(page)).display.viewport.xScale).toBe("log10");
   await page.reload(); await page.getByTestId("workspace-nav-graphs").click(); await page.getByTestId("kernel-workspace-toggle").click();
   await page.getByTestId("kernel-workspace-reopen").click(); await page.getByTestId("kernel-workspace-toggle").click();
-  await page.getByRole("button", { name: "Scales", exact: true }).click(); await expect(panel.getByLabel("X scale", { exact: true })).toHaveValue("log10");
+  await (await moreButton(page, "Scales")).click(); await expect(panel.getByLabel("X scale", { exact: true })).toHaveValue("log10");
 });
 test("G2D39 checked data fitting, residuals, stale models and offline uncertainty publication", async ({ page, context }, info) => {
   await start(page); const functions = page.getByLabel("Graph functions");
@@ -224,13 +230,13 @@ test("G2D39 checked data fitting, residuals, stale models and offline uncertaint
 });
 
 test("G2D40 keyboard scales focus, high contrast patterns and compact controls", async ({ page }, info) => {
-  await start(page); const opener = page.getByRole("button", { name: "Scales", exact: true });
+  await start(page); const opener = await moreButton(page, "Scales");
   await opener.focus(); await page.keyboard.press("Enter"); const panel = page.getByTestId("graph2d-scales");
   await expect(panel.getByLabel("X scale", { exact: true })).toBeFocused();
   await page.keyboard.press("Tab"); await expect(panel.getByLabel("Y scale", { exact: true })).toBeFocused();
   await page.keyboard.press("Escape"); await expect(panel).not.toBeVisible(); await expect(opener).toBeFocused();
   await page.getByTestId("main-viewer").focus(); for (let i = 0; i < 4; i++) await page.keyboard.press("-");
-  await page.getByRole("button", { name: "Show continuation", exact: true }).click();
+  await (await moreButton(page, "Show continuation")).click();
   await page.emulateMedia({ forcedColors: "active", reducedMotion: "reduce" });
   const extension = page.locator("[data-graph2d-continuation]").first(); await expect(extension).toHaveAttribute("stroke-dasharray", "3 6");
   expect(await extension.evaluate(e => getComputedStyle(e).strokeOpacity)).toBe("0.75");
@@ -252,7 +258,7 @@ test("G2D40 logarithmic display omits non-positive piecewise endpoints and selec
   await page.getByLabel("Search graphs").fill("Endpoints");
   await page.getByRole("button", { name: "Open Endpoints and missing data", exact: true }).click();
   await page.getByLabel("Graph functions").getByRole("button", { name: "Select Jump", exact: true }).click();
-  await page.getByRole("button", { name: "Scales", exact: true }).click(); const panel = page.getByTestId("graph2d-scales");
+  await (await moreButton(page, "Scales")).click(); const panel = page.getByTestId("graph2d-scales");
   await panel.getByLabel("X scale", { exact: true }).selectOption("log10"); await panel.getByLabel("Y scale", { exact: true }).selectOption("log10");
   for (const [key, value] of Object.entries({ xMin: ".1", xMax: "10", yMin: ".1", yMax: "10" })) await panel.getByLabel(`Axis ${key}`, { exact: true }).fill(value);
   await panel.getByRole("button", { name: "Apply scales and bounds", exact: true }).click();

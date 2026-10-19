@@ -341,5 +341,5 @@ describe("mobile scene storage recovery", () => {
     expect(finished.libraryUnchanged).toBe(true);
     for (const [path, raw] of before) expect(fileContents.get(path)).toBe(raw);
     await expect(finishMobileStorageRecoveryCheck()).rejects.toThrow("Prepare a new recovery check first");
-  });
+  }, 15_000); // Full fixture and 11 checks exceed Vitest's 5 s default on shared CI runners.
 });

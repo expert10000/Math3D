@@ -7,6 +7,8 @@ test("GGL10 Electron interactive presets preserve edited copies, undo a single s
   const app = await launchSurfaceApp();
   try {
     const page = app.page; await resetSurfaceAppState(page); await page.setViewportSize({ width: 1440, height: 900 });
+    const openMore = async () => { const menu = page.locator("details.graph2d-toolbar-menu");
+      if (await menu.getAttribute("open") === null) await menu.locator("summary").click(); };
     const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.mixed-workspace.v1")!).entries.find((e: { module: string }) => e.module === "graph2d").checkpoint);
     const save = async () => { await page.getByTestId("kernel-workspace-toggle").click(); await page.getByTestId("kernel-workspace-save").click();
       await expect(page.getByTestId("kernel-workspace-message")).toContainText("Saved"); await page.getByTestId("kernel-workspace-toggle").click(); };
@@ -14,14 +16,14 @@ test("GGL10 Electron interactive presets preserve edited copies, undo a single s
       await gallery.getByLabel("Search graphs").fill("Two slopes"); await gallery.getByRole("button", { name: "Preview Two slopes", exact: true }).click();
       await gallery.getByRole("button", { name: "Open interactive Two slopes", exact: true }).click(); };
     await page.getByTestId("workspace-nav-graphs").click(); await open();
-    const id = (await saved()).identity.id; await page.getByTestId("graph2d-parameters-open").click();
+    const id = (await saved()).identity.id; await openMore(); await page.getByTestId("graph2d-parameters-open").click();
     const panel = page.getByTestId("graph2d-parameters"), value = panel.getByLabel("a preview value", { exact: true });
     await expect(value).toHaveValue("2"); await expect(panel).toContainText("No active frame");
     for (const v of ["1", "1.5", "2.5"]) await value.fill(v);
     await panel.getByRole("button", { name: "Apply preview value", exact: true }).click(); await save();
     const committed = await saved(); expect(committed.source.variables[0].value).toBe(2.5);
     for (let i = 0; i < 3; i++) await open();
-    await page.getByTestId("graph2d-parameters-open").click(); await expect(value).toHaveValue("2.5");
+    await openMore(); await page.getByTestId("graph2d-parameters-open").click(); await expect(value).toHaveValue("2.5");
     // Opening schedules focus restoration; wait for it before moving focus to the viewer for Undo.
     await expect(page.getByTestId("graph2d-parameters-close")).toBeFocused();
     await page.getByTestId("main-viewer").focus(); await page.keyboard.press("Control+z"); await expect(value).toHaveValue("2");

@@ -23,7 +23,8 @@ test("GGL06 all gallery scenes preserve portable source and match real worker ge
   expect(url).toContain("graph2dSamplingWorker");
   await page.getByTestId("graph-gallery-open").click();const gallery=page.getByTestId("graph-gallery");
   await expect(gallery.getByLabel("Search graphs")).toBeFocused();
-  await gallery.getByRole("button",{name:"All scenes",exact:true}).click();await expect(gallery.locator("article")).toHaveCount(20);
+  await gallery.getByRole("button",{name:"All scenes",exact:true}).click();
+  await expect(gallery.locator("article")).toHaveCount(getGraph2DPresetCatalog().entries.length);
   await expect.poll(()=>gallery.locator("article img").evaluateAll(images=>images.every(img=>(img as HTMLImageElement).complete&&(img as HTMLImageElement).naturalWidth>0))).toBe(true);
   await gallery.getByRole("button",{name:"Preview Lissajous loops",exact:true}).click();
   await expect(gallery.getByRole("heading",{name:"Lissajous loops",exact:true})).toBeVisible();await page.keyboard.press("Escape");
@@ -59,7 +60,7 @@ test("GGL06 all gallery scenes preserve portable source and match real worker ge
   expect(await gallery.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
   await page.screenshot({path:`output/graph2d-gallery/${info.project.name}-narrow.png`});
   await page.context().setOffline(true);await gallery.getByRole("button",{name:"All scenes",exact:true}).click();
-  await expect(gallery.locator("article")).toHaveCount(20);
+  await expect(gallery.locator("article")).toHaveCount(getGraph2DPresetCatalog().entries.length);
   await page.keyboard.press("Escape");await expect.poll(async()=>(await workerState(page)).active).toBe(0);
   await page.context().setOffline(false);
   const runtime=await page.evaluate(()=>({locale:navigator.language,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone}));

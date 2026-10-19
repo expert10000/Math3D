@@ -7,7 +7,12 @@ const show = async (page: Page) => {
   if (!await panel.isVisible()) await page.getByTestId("projects-toggle").click();
   return panel;
 };
-const select = async (page: Page, id: string) => { await (await show(page)).getByTestId(`project-open-${id}`).click(); };
+const select = async (page: Page, id: string) => {
+  const panel = await show(page);
+  const viewerDocument = panel.getByTestId("project-viewer-document");
+  if (await viewerDocument.isVisible()) await viewerDocument.selectOption(id);
+  else await panel.getByTestId(`project-open-${id}`).click();
+};
 const expression = (page: Page) => page.getByLabel("Graph functions").locator(".graph2d-function-summary code").first();
 const edit = async (page: Page, source: string) => {
   const functions = page.getByLabel("Graph functions");
@@ -31,16 +36,20 @@ export async function exerciseMultipleGraphs(page: Page) {
   await select(page, b.identity.id); await expect(expression(page)).toContainText("x^2"); await edit(page, "3*x");
   await history(page, "Control+z"); await expect(expression(page)).toContainText("x^2");
   await select(page, a.identity.id); await expect(expression(page)).toContainText("x*x+2");
-  await (await show(page)).getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
+  await panel.getByTestId("project-gallery-layout-toggle").click();
+  await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
   expect(saved.workspace.entries.map((entry: any) => entry.expected.id)).toEqual([a.identity.id, b.identity.id]);
   expect(saved.workspace.entries.every((entry: any) => entry.replay.format === "math3d.graph2d-replay.v1")).toBe(true);
   return saved;
 }
-export async function checkMultipleGraphHistory(page: Page, saved: any) {
+export async function checkMultipleGraphHistory(page: Page, saved: any, reopen = true) {
   const panel = await show(page);
-  await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click();
-  await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+  if (reopen) {
+    if (await panel.getByTestId("project-gallery-layout-toggle").isVisible()) await panel.getByTestId("project-gallery-layout-toggle").click();
+    await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click();
+    await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+  }
   await select(page, saved.workspace.entries[1].expected.id); await expect(expression(page)).toContainText("x^2");
   await history(page, "Control+y"); await expect(expression(page)).toContainText("3*x");
   await select(page, saved.workspace.entries[0].expected.id); await expect(expression(page)).toContainText("x*x+2");

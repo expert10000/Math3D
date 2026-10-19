@@ -531,6 +531,7 @@ test("Graphs renders a signed-radius polar curve and switches grid modes", async
     await expect(app.page.locator('[data-graph2d-path="polar_1"]')).toHaveAttribute("d", /[ML]/);
     await expect(app.page.getByTestId("app-status-bar")).toContainText("Polar curve · Cartesian grid");
     await expect(app.page.getByLabel("Empty graph scene")).toHaveCount(0);
+    await app.page.locator("details.graph2d-toolbar-menu summary").click();
     await app.page.getByRole("button", { name: "Toggle polar grid" }).click();
     await expect(app.page.getByTestId("graph2d-polar-grid")).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Toggle polar grid" })).toHaveAttribute("aria-pressed", "true");
@@ -555,6 +556,8 @@ test("Graphs renders a signed-radius polar curve and switches grid modes", async
     await functions.getByLabel("Polar radius expression").fill("1+cos(theta)");
     await functions.getByRole("button", { name: "Save polar" }).click();
     await expect(inspector).toContainText("r(θ) = 1+cos(theta)");
+    if (await app.page.locator("details.graph2d-toolbar-menu").getAttribute("open") === null)
+      await app.page.locator("details.graph2d-toolbar-menu summary").click();
     await app.page.getByRole("button", { name: "Toggle polar grid" }).click();
     await expect(app.page.getByTestId("graph2d-polar-grid")).toHaveCount(0);
   } finally {

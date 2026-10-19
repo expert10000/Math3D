@@ -8,6 +8,8 @@ const start = async (page: Page) => {
   await page.getByTestId("workspace-nav-graphs").click();
 };
 const checkpoint = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.mixed-workspace.v1")!).entries.find((e: { module: string }) => e.module === "graph2d").checkpoint);
+const openMore = async (page: Page) => { const menu = page.locator("details.graph2d-toolbar-menu");
+  if (await menu.getAttribute("open") === null) await menu.locator("summary").click(); };
 const save = async (page: Page) => { await page.getByTestId("kernel-workspace-toggle").click(); await page.getByTestId("kernel-workspace-save").click();
   await expect(page.getByTestId("kernel-workspace-message")).toContainText("Saved"); await page.getByTestId("kernel-workspace-toggle").click(); };
 
@@ -22,6 +24,7 @@ test("GGL10 interactive gallery previews no source; sliders reset/apply once, re
   await page.setViewportSize({ width: 1440, height: 850 });
   await gallery.getByRole("button", { name: "Open interactive Two slopes", exact: true }).click();
   const source = await checkpoint(page); expect(source.requiredCapabilities).toContain("graph2d.parameters.v1");
+  await openMore(page);
   await page.getByTestId("graph2d-parameters-open").click(); const panel = page.getByTestId("graph2d-parameters"), value = panel.getByLabel("a preview value", { exact: true });
   await expect(panel.getByLabel("Interactive recipe guidance")).toContainText("Matches Two slopes (interactive)");
   await expect(panel).toContainText("No active frame"); await expect(panel.getByLabel("Animation frames", { exact: true })).toHaveValue("15");
@@ -46,6 +49,7 @@ test("GGL10 interactive gallery previews no source; sliders reset/apply once, re
   await panel.evaluate(el => { el.scrollTop = 0; }); await page.screenshot({ path: info.outputPath("interactive-parameters.png") });
   await panel.getByRole("button", { name: "Close parameters", exact: true }).click();
   await page.getByTestId("kernel-workspace-toggle").click(); await page.getByTestId("kernel-workspace-reopen").click(); await page.getByTestId("kernel-workspace-toggle").click();
+  await openMore(page);
   await page.getByTestId("graph2d-parameters-open").click(); await expect(value).toHaveValue("1.9");
 });
 
@@ -140,6 +144,7 @@ test("GGL10 all ten curated copies render in actual workers with ready-to-use na
     const saved = await checkpoint(page); expect(saved.source).toEqual(variant.template.source);
     await expect.poll(async () => (await workers()).active).toBe(0);
     for (const object of saved.source.objects) await expect(page.locator(`[data-graph2d-path="${object.id}"]`).first()).toHaveAttribute("d", /[ML]/);
+    await openMore(page);
     await page.getByTestId("graph2d-parameters-open").click(); const panel = page.getByTestId("graph2d-parameters"), guidance = getGraph2DInteractivePresetGuidance(saved);
     await expect(panel).toContainText("No active frame");
     for (const parameter of saved.source.variables) {

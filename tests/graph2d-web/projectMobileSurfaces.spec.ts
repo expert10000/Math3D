@@ -19,7 +19,10 @@ test("PRJ30 browser retains complete Surface packages and saved histories throug
   await page.reload(); await page.getByTestId("projects-toggle").click();
   await panel.getByTestId(`project-preview-${pkg.project.identity.id}`).click(); await panel.getByTestId("project-restore-saved").click();
   await expect(panel.getByTestId("project-import-open")).toBeEnabled();
+  await panel.getByTestId("project-import-cancel").click();
+  await expect(page.locator(".project-gallery-preview-backdrop")).toHaveCount(0);
   await exportExact("browser-reloaded.math3d.project-package.json");
+  await panel.getByTestId("project-restore-saved").click();
   await panel.getByTestId("project-import-open").click(); await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
   if (process.env.MATH3D_PRJ30_RETURN) {
     const manifest = JSON.parse(readFileSync(resolve(output, "manifest.json"), "utf8"));

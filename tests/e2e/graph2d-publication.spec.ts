@@ -11,6 +11,7 @@ test("G2D36 Electron saves all publication formats without changing its Graph ch
     await page.getByTestId("workspace-nav-graphs").click(); await page.getByTestId("graph-gallery-open").click();
     await page.getByLabel("Search graphs").fill("Two slopes"); await page.getByRole("button", { name: "Open Two slopes", exact: true }).click();
     const before = await page.evaluate(() => localStorage.getItem("math3d.mixed-workspace.v1"));
+    await page.locator("details.graph2d-toolbar-menu summary").click();
     await page.getByTestId("graph2d-export-open").click(); const dialog = page.getByTestId("graph2d-export");
     await dialog.getByLabel("Image size").selectOption("640x480"); await expect(dialog.getByRole("button", { name: "Export PNG", exact: true })).toBeEnabled();
     const snapshot = await dialog.locator("code").textContent();
@@ -34,12 +35,16 @@ test("GGL14 presentation exits accessibly and capture recipe matches publication
     const page=app.page; await resetSurfaceAppState(page); await page.setViewportSize({width:1440,height:900});
     await page.getByTestId("workspace-nav-graphs").click(); await page.getByTestId("graph-gallery-open").click();
     await page.getByLabel("Search graphs").fill("Two slopes"); await page.getByRole("button",{name:"Open Two slopes",exact:true}).click();
+    const openMore = async () => { const menu = page.locator("details.graph2d-toolbar-menu");
+      if (await menu.getAttribute("open") === null) await menu.locator("summary").click(); };
+    await openMore();
     await page.getByTestId("graph2d-presentation-open").click();
     await expect(page.getByTestId("graphs-workspace")).toHaveAttribute("data-presentation","true");
     await expect(page.getByTestId("graph2d-presentation-exit")).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("graphs-workspace")).toHaveAttribute("data-presentation","false");
     await expect(page.getByTestId("graph2d-presentation-open")).toBeFocused();
+    await openMore();
     await page.getByTestId("graph2d-export-open").click();
     const dialog=page.getByTestId("graph2d-export");
     await expect(dialog.getByRole("button",{name:"Export capture recipe JSON"})).toBeEnabled();

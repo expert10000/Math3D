@@ -8,9 +8,12 @@ const open = async (page: Page) => {
   await page.getByTestId("workspace-nav-graphs").click(); await page.getByTestId("graph-gallery-open").click();
   await page.getByLabel("Search graphs").fill("Two slopes"); await page.getByRole("button", { name: "Open Two slopes", exact: true }).click();
 };
+const openMore = async (page: Page) => { const menu = page.locator("details.graph2d-toolbar-menu");
+  if (await menu.getAttribute("open") === null) await menu.locator("summary").click(); };
 test("G2D36 real worker downloads four offline publications from one snapshot", async ({ page, context }, info) => {
   await open(page);
   const before = await page.evaluate(() => localStorage.getItem("math3d.mixed-workspace.v1"));
+  await openMore(page);
   await page.getByTestId("graph2d-export-open").click(); const dialog = page.getByTestId("graph2d-export");
   await expect(dialog.getByRole("button", { name: "Close graph export" })).toBeFocused();
   await dialog.getByLabel("Image size").selectOption("640x480");
@@ -55,8 +58,10 @@ test("G2D36 closes/cancels workers and rejects stale settings; worker failure is
   await open(page);
   const set = (value: { fail?: boolean; hold?: boolean }) => page.evaluate(value => Object.assign((window as unknown as { publicationWorkers: object }).publicationWorkers, value), value);
   const active = () => page.evaluate(() => (window as unknown as { publicationWorkers: { active: number } }).publicationWorkers.active);
+  await openMore(page);
   await set({ hold: true }); await page.getByTestId("graph2d-export-open").click(); await expect.poll(active).toBe(1);
   await page.keyboard.press("Escape"); await expect.poll(active).toBe(0);
+  await openMore(page);
   await set({ hold: false, fail: true }); await page.getByTestId("graph2d-export-open").click(); const dialog = page.getByTestId("graph2d-export");
   await expect(dialog.getByRole("alert")).toContainText("Injected export worker failure"); await expect.poll(active).toBe(0);
   await set({ fail: false }); await dialog.getByRole("button", { name: "Retry export" }).click();

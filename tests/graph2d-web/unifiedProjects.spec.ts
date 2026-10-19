@@ -41,8 +41,8 @@ test("PRJ19 browser retains separate Graph histories after reload and independen
     const panel = destination.getByTestId("project-explorer-panel");
     await panel.getByTestId("project-import-file").setInputFiles({ name: "independent-graphs.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(saved)) });
     await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
-    await checkMultipleGraphHistory(destination, saved);
-  } finally { await context.close(); }
+    await checkMultipleGraphHistory(destination, saved, false);
+  } finally { await context.close().catch(() => { /* A test timeout may already have closed the browser. */ }); }
 });
 test("PRJ20 browser refresh preserves historical documents and analysis", async ({ page }) => {
   await page.goto("/"); await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); }); await page.reload();
