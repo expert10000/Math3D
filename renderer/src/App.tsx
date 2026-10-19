@@ -44546,6 +44546,7 @@ const App: React.FC = () => {
   const [headerSurfaceFamilyMoreOpen, setHeaderSurfaceFamilyMoreOpen] = useState(false);
   const [surfacesPanelState, setSurfacesPanelState] = useState<"browse" | "work">("browse");
   const [surfacesWorkGalleryOpen, setSurfacesWorkGalleryOpen] = useState(false);
+  const surfaceLeftPanelRef = useRef<HTMLDivElement | null>(null);
   const [surfacesTopActionsMoreOpen, setSurfacesTopActionsMoreOpen] = useState(false);
   const [surfacePreviewFocusMode, setSurfacePreviewFocusMode] = useState(false);
   const [surfaceDrawerPanel, setSurfaceDrawerPanel] = useState<"left" | "right" | null>(null);
@@ -44575,6 +44576,11 @@ const App: React.FC = () => {
   const surfacePreviewFocusPrevRightPanelRef = useRef(true);
   const surfacePreviewFocusPrevLeftTabRef = useRef<SurfacesLeftTab>("scene");
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<SurfacesLeftTab>("scene");
+  useLayoutEffect(() => {
+    if (surfacesPanelState === "work" && surfacesLeftTab === "scene" && surfacesWorkGalleryOpen) {
+      surfaceLeftPanelRef.current?.scrollTo(0, 0);
+    }
+  }, [surfacesPanelState, surfacesLeftTab, surfacesWorkGalleryOpen]);
   const [activeSurfaceComputation, setActiveSurfaceComputation] = useState<SurfaceComputationId>("differential-geometry");
   const [surfaceLegacyAnalysisOpen, setSurfaceLegacyAnalysisOpen] = useState(false);
   const [surfaceCurvatureScalar, setSurfaceCurvatureScalar] = useState<SurfaceCurvatureScalar>("K");
@@ -80289,6 +80295,7 @@ case "mobius":
                             setSurfacesPanelState("work");
                             setSurfacesLeftTab(tab);
                             setSurfacesWorkGalleryOpen(false);
+                             if (surfaceViewerKind === "mesh" && tab === "scene") setMeshWorkspaceLeftTab("scene");
                             if (activeSavedSurfaceBinding) window.dispatchEvent(new CustomEvent("math3d:hide-project-dock", { detail: "left" }));
                           }}
                           disabled={disabled}
@@ -82010,6 +82017,7 @@ case "mobius":
             {/* LEFT */}
             <div
               data-testid="surface-left-panel"
+              ref={surfaceLeftPanelRef}
               className={savedSurfaceModuleActive || savedMeshModuleActive ? "native-module-panel" : undefined}
               style={{
                 ...styles.panelLeft,

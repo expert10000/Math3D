@@ -266,6 +266,38 @@ test.describe("Mesh Operations card", () => {
     ctx = null;
   });
 
+  test("shows Mesh Gallery after scrolling Mesh tools", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+    await openWorkspaceOperationsCard(page);
+    const leftPanel = page.getByTestId("surface-left-panel");
+    await leftPanel.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await page.getByTestId("surfaces-action-gallery").click();
+    await expect(page.getByTestId("mesh-preset-grid")).toBeVisible();
+    const position = await page.getByTestId("mesh-preset-gallery-path").evaluate((element) => {
+      const pane = element.closest('[data-testid="surface-left-panel"]');
+      if (!pane) return null;
+      return { galleryTop: element.getBoundingClientRect().top, paneTop: pane.getBoundingClientRect().top, paneBottom: pane.getBoundingClientRect().bottom };
+    });
+    expect(position).not.toBeNull();
+    expect(position!.galleryTop).toBeGreaterThanOrEqual(position!.paneTop);
+    expect(position!.galleryTop).toBeLessThan(position!.paneBottom);
+  });
+
+  test("top Scene tab opens the Mesh Outliner", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+    await openWorkspaceOperationsCard(page);
+    await expect(page.getByTestId("mesh-workspace-left-tab-operations")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("surfaces-left-tab-scene").click();
+    await expect(page.getByTestId("mesh-workspace-left-tab-scene")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("mesh-workspace-scene-outliner")).toBeVisible();
+  });
+
   test("expands rows, changes parameters, and records a Decimate run", async () => {
     ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
     const { page } = ctx;
