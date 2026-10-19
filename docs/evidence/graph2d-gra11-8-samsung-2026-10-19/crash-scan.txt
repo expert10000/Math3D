@@ -1,0 +1,1 @@
+Scoped logcat scan after fresh install and walkthrough: no FATAL EXCEPTION, app ANR, or ReactNativeJS TypeError/Error matches.

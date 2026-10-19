@@ -2,6 +2,8 @@
 
 **Status: software delivered for the defined GRA-11.8 roadmap milestone, 2026-10-19.** The bounded choices below are the implementation contract. Physical mobile visual and accessibility signoff remains in the existing Graphs release gate.
 
+The [focused Samsung walkthrough](evidence/graph2d-gra11-8-samsung-2026-10-19/README.md) verified the Gallery and create/edit/save/reopen journey, both intended Gallery stop reasons, and Android accessibility labels on a standalone internal APK. Actual TalkBack speech and the full physical release gate remain pending.
+
 ## User problem and boundary
 
 Graphs should let a user author one scalar initial-value problem

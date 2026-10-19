@@ -1,0 +1,11 @@
+10-19 17:44:44.026 27915 27951 I ReactNativeJS: MATH3D_DEVICE_METRIC gallery-launch durationMs=12573 preset=regression-10000
+10-19 17:46:47.569 27915 27951 I ReactNativeJS: MATH3D_DEVICE_METRIC fit-publish durationMs=1771 model=regression-quartic rows=10000
+10-19 17:47:14.928 27915 27951 I ReactNativeJS: MATH3D_DEVICE_METRIC fit-publish durationMs=2099 model=regression-quartic rows=10000
+10-19 17:47:18.030 27915 27951 I ReactNativeJS: MATH3D_DEVICE_METRIC fit-publish durationMs=2154 model=regression-quartic rows=10000
+10-19 17:47:20.932 27915 27951 I ReactNativeJS: MATH3D_DEVICE_METRIC fit-publish durationMs=2104 model=regression-quartic rows=10000
+10-19 17:47:23.933 27915 27951 I ReactNativeJS: MATH3D_DEVICE_METRIC fit-publish durationMs=2134 model=regression-quartic rows=10000
+10-19 17:47:26.882 27915 27951 I ReactNativeJS: MATH3D_DEVICE_METRIC fit-publish durationMs=2117 model=regression-quartic rows=10000
+10-19 17:47:29.881 27915 27951 I ReactNativeJS: MATH3D_DEVICE_METRIC fit-publish durationMs=2150 model=regression-quartic rows=10000
+10-19 17:47:32.769 27915 27951 I ReactNativeJS: MATH3D_DEVICE_METRIC fit-publish durationMs=2085 model=regression-quartic rows=10000
+10-19 17:47:35.751 27915 27951 I ReactNativeJS: MATH3D_DEVICE_METRIC fit-publish durationMs=2109 model=regression-quartic rows=10000
+10-19 17:47:38.702 27915 27951 I ReactNativeJS: MATH3D_DEVICE_METRIC fit-publish durationMs=2108 model=regression-quartic rows=10000
