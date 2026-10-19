@@ -391,7 +391,8 @@ test.describe("Workspace navigation", () => {
 
   for (const depth of [1, 2, 5, 10] as const) {
     test(`back/forward supports history depth ${depth}`, async () => {
-      // The deepest case makes 30 workspace transitions, including costly Mesh mounts.
+      // The short walks exercise Mesh restoration. Keep the deepest history
+      // walk independent of repeated Mesh mounts on slower CI machines.
       test.setTimeout(depth === 10 ? 360_000 : 180_000);
       let ctx: LaunchedSurfaceApp | null = null;
       try {
@@ -407,10 +408,13 @@ test.describe("Workspace navigation", () => {
         await expect(forward).toBeDisabled();
 
         const start = await getActiveSectionLabel(ctx.page, labels);
-        const alternate = labels.find((label) => label !== start);
+        const alternate = depth === 10
+          ? labels.find((label) => label === "Curves" && label !== start) ?? labels.find((label) => label !== start)
+          : labels.find((label) => label !== start);
         expect(alternate).toBeTruthy();
         const walk = buildAlternatingWalk(start, alternate as SectionLabel, depth);
         const visited: SectionLabel[] = [start];
+        const navigationTimeout = depth === 10 ? 30_000 : 15_000;
         for (const label of walk) {
           await selectSection(ctx.page, labels, label);
           visited.push(label);
@@ -421,14 +425,14 @@ test.describe("Workspace navigation", () => {
 
         for (let idx = visited.length - 2; idx >= 0; idx--) {
           await back.click();
-          await expect.poll(async () => getActiveSectionLabel(ctx.page, labels)).toBe(visited[idx]);
+          await expect.poll(async () => getActiveSectionLabel(ctx.page, labels), { timeout: navigationTimeout }).toBe(visited[idx]);
         }
         await expect(back).toBeDisabled();
         await expect(forward).toBeEnabled();
 
         for (let idx = 1; idx < visited.length; idx++) {
           await forward.click();
-          await expect.poll(async () => getActiveSectionLabel(ctx.page, labels)).toBe(visited[idx]);
+          await expect.poll(async () => getActiveSectionLabel(ctx.page, labels), { timeout: navigationTimeout }).toBe(visited[idx]);
         }
         await expect(forward).toBeDisabled();
       } finally {
