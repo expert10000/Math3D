@@ -1,0 +1,10 @@
+10-19 18:38:50.787 11108 11164 I ReactNativeJS: MATH3D_DEVICE_METRIC project-save totalMs=3595 encodeMs=1789 existingMs=1769 stagedMs=20 backupMs=17 commitMs=0 bytes=396165 projects=38
+10-19 18:38:52.040 11108 11164 I ReactNativeJS: MATH3D_DEVICE_METRIC gallery-screen-commit durationMs=4889 preset=time-ode-driven
+10-19 18:38:52.041 11108 11164 I ReactNativeJS: MATH3D_DEVICE_METRIC gallery-launch durationMs=4890 planMs=21 saveMs=3615 publishMs=1254 preset=time-ode-driven
+10-19 18:39:51.721 11108 11164 I ReactNativeJS: MATH3D_DEVICE_METRIC project-save totalMs=3539 encodeMs=1743 existingMs=1759 stagedMs=18 backupMs=18 commitMs=1 bytes=397732 projects=39
+10-19 18:39:52.971 11108 11164 I ReactNativeJS: MATH3D_DEVICE_METRIC gallery-screen-commit durationMs=5765 preset=regression-10000
+10-19 18:39:52.971 11108 11164 I ReactNativeJS: MATH3D_DEVICE_METRIC gallery-launch durationMs=5765 planMs=12 saveMs=4503 publishMs=1250 preset=regression-10000
+10-19 18:42:38.726 12166 12196 I ReactNativeJS: MATH3D_DEVICE_METRIC project-save totalMs=3572 encodeMs=1786 existingMs=1759 stagedMs=14 backupMs=13 commitMs=0 bytes=397732 projects=39
+10-19 18:44:05.431 12166 12196 I ReactNativeJS: MATH3D_DEVICE_METRIC project-save totalMs=3577 encodeMs=1776 existingMs=1769 stagedMs=15 backupMs=16 commitMs=1 bytes=400045 projects=40
+10-19 18:44:06.695 12166 12196 I ReactNativeJS: MATH3D_DEVICE_METRIC gallery-screen-commit durationMs=4911 preset=line-comparison
+10-19 18:44:06.696 12166 12196 I ReactNativeJS: MATH3D_DEVICE_METRIC gallery-launch durationMs=4912 planMs=23 saveMs=3624 publishMs=1265 preset=line-comparison

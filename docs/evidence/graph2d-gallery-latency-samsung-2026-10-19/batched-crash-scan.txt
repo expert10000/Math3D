@@ -1,0 +1,1 @@
+No scoped fatal exception, app ANR, or React Native TypeError/Error match.
