@@ -7,6 +7,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   upsertMath3DProjectWorkbook, upsertMath3DProjectNote, updateProjectNote,
   relinkMath3DProjectQuantumScene, upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference,
   relinkMath3DProjectScientificScene, upsertMath3DProjectScientificScene, type ProjectScientificSceneReference,
+  upsertMath3DProjectComposition, inspectProjectComposition, type ProjectComposition,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
@@ -21,6 +22,7 @@ import { presentProjectFreshness, presentProjectRelationFreshness } from "../pro
 import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnalysisRefreshOptions, recomputeProjectAnalysis } from "../projects/projectDependencyRefresh";
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
+const ProjectCompositionView = React.lazy(() => import("./ProjectCompositionView").then(module => ({ default: module.ProjectCompositionView })));
 import { ProjectResultsBrowser } from "./ProjectResultsBrowser";
 import { ProjectResearchLinks } from "./ProjectResearchLinks";
 import { ProjectActivityTimeline } from "./ProjectActivityTimeline";
@@ -152,6 +154,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [scientificSceneMessage, setScientificSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
+  const [compositionOpen, setCompositionOpen] = useState(false);
+  const comparisonResource = useCallback<ProjectResourceReader>((item) => resourceSession.current?.bytes(item) ?? resourceReader?.(item) ?? null, [resourceReader]);
   const projectWorkbookBytes = useCallback((id: string) => resourceSessionId.current === project?.identity.id
     ? resourceSession.current?.bytes({ kind: "workbook-payload", id }) ?? null : null, [project?.identity.id]);
   useEffect(() => { setDetailPage("overview"); }, [project?.identity.id]);
@@ -1230,6 +1234,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         </nav>}
         {projectNotesView && <div className="project-notes-workspace"><p className="project-workspace-eyebrow">PROJECT / NOTES</p>{renderNotesPanel("page")}</div>}
         <div className="project-workspace-main">
+        {project && !preview && !managed && <section aria-label="Project comparison" data-testid="project-composition-entry" style={{ padding: 12, border: "1px solid #cbd5e1", borderRadius: 8, margin: "12px 0" }}>
+          <h4 style={{ margin: "0 0 4px" }}>Compare saved documents</h4>
+          <p style={{ margin: "0 0 8px" }}>View two saved Mesh, Geometry or bounded Surface documents without copying their sources. {project.compositions?.length ?? 0} saved compositions.</p>
+          <button type="button" data-testid="project-open-composition" disabled={busy || project.workspace.entries.filter(entry => ["mesh", "geometry", "surface"].includes(entry.module)).length < 2}
+            onClick={() => setCompositionOpen(true)}>Open comparison</button>
+        </section>}
         {fullDetails && <nav className="project-detail-tabs" aria-label="Project details sections">
           {(["overview", "documents", "relations", "results", "history"] as const).map(page => <button key={page} type="button" data-testid={`project-detail-tab-${page}`}
             aria-current={detailPage === page ? "page" : undefined} onClick={() => openDetailPage(page)}>{page[0].toUpperCase() + page.slice(1)}</button>)}
@@ -1563,6 +1573,16 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         </div>
       </aside></div>
       {incoming && <div className="project-gallery-preview-backdrop"><div className="project-gallery-preview-sheet"><ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !busy} onCancel={() => { importSequence.current++; setIncoming(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div></div>}
+      {compositionOpen && project && <React.Suspense fallback={<p role="status">Opening Project comparison…</p>}><ProjectCompositionView project={project} readResource={comparisonResource} onClose={() => setCompositionOpen(false)}
+        onSave={async (composition: ProjectComposition) => {
+          const ok = await commitNotes(saved => {
+            const statuses = inspectProjectComposition(composition, saved.workspace);
+            if (statuses.some(status => status !== "current")) throw new Error("Source changed since this comparison opened. Reopen the saved Project.");
+            return upsertMath3DProjectComposition(saved, composition);
+          }, `Saved composition “${composition.title}”.`);
+          if (!ok) setMessage("Composition save failed. Save this Project first, then retry.");
+          return ok;
+        }} /></React.Suspense>}
     </ProjectGalleryFrame>}
   </div>;
 };

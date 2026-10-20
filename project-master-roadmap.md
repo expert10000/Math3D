@@ -4,8 +4,20 @@ Date: 2026-10-09 (navigation handoff; original plan dated October 7)
 
 Status: the Project navigation and first-open optimization are committed and
 pushed to remote `main` in `030f0010`. The supported Electron Project/Catenoid
-checks pass. Installer release and new comparison/composition capabilities
-remain separate work.
+checks pass. Installer release and the wider PC06–PC10 phase remain separate
+work.
+
+**PC01–PC05 bounded implementation — October 20:** a saved Project can now
+retain two checked, non-owning document references and open them side by side.
+Current saved Mesh and Geometry documents can also share an overlay after the
+user explicitly declares a common frame and unit. Bounded parametric Surfaces
+use their existing viewer in an independent pane. Member visibility and supported
+appearance settings are stored in the composition, never in either source.
+The initial implementation does not resolve retained historical generations,
+automatically verify Mesh/Geometry units, synchronize cameras, or import
+unsupported Surface families. Those remain acceptance/extension work rather
+than implied capabilities. See
+[Project comparison and composition](docs/project-comparison-and-composition.md).
 
 ## Current delivery
 
@@ -196,13 +208,14 @@ construction (364 ms Mesh, 168 ms Workbook, 136 ms analysis, 124 ms resources),
 163 ms initial compatibility inspection and 0 ms repeated compatibility. These
 single-run timings are diagnostic, not a release performance guarantee.
 
-The next planned product phase is **PC01–PC10** below. Begin with PC01's checked,
-non-owning references for existing saved documents and its missing/historical
-source behavior. Confirm the PM10 acceptance prerequisite before implementing
-compare or overlay UI. PC05's Surface-beside-Mesh comparison is the concrete
-user example; PC03's overlay must first qualify coordinate frames and units.
-Do not duplicate or regenerate a saved Catenoid source to provide the second
-view. The active-document and native module sessions remain the owners.
+The **PC01–PC05 initial comparison slice** is implemented below. Its first
+supported sources are current saved Mesh, Geometry, and bounded parametric
+Surface documents. Missing and historical references are reported and refused,
+not substituted. PC05's Surface-beside-Mesh comparison is the concrete user
+example. Overlay currently requires an explicit user assertion of common frame
+and unit; source metadata does not independently establish compatibility. Do not
+duplicate or regenerate a saved Catenoid source to provide the second view. The
+active-document and native module sessions remain the owners.
 
 If continuing performance work, profile starter construction separately from
 saved-card opening. Catenoid Mesh/Workbook/resource generation now runs in a
@@ -1287,7 +1300,7 @@ See [workspace acceptance and timing evidence](docs/evidence/project-workspace-2
 
 ## Later phase: Project comparison and composition
 
-Begin this phase only after PM10 acceptance. It references existing documents
+This phase follows PM10 acceptance. It references existing documents
 without transferring ownership or merging their scientific sources. Coordinate
 systems, units, transforms, historical generations, capabilities and resource
 budgets must be explicit before members can be combined.
@@ -1305,6 +1318,19 @@ budgets must be explicit before members can be combined.
 | PC09 | `feat(notes): allow observations spanning multiple source documents` | Extend checked Note references with compatibility/migration acceptance; do not silently broaden existing anchor semantics. |
 | PC10 | `test(projects): qualify multi-document composition and comparison` | Prove ownership, generation, units, missing-data, selection, capture, restart and renderer-lifetime parity for the declared supported modes. |
 
+PC01, PC02, and PC04 are delivered for the bounded current-revision adapters.
+PC03 has a usable Mesh/Geometry overlay but remains **Partial** until source
+coordinate compatibility can be independently checked. PC05 has a usable
+heterogeneous side-by-side view with independent source-specific picks; its
+retained-historical-generation comparison and synchronized cross-pane selection
+remain **Partial**. PC06–PC10 remain planned. Overlay frame/unit
+labels are explicitly user assertions because the existing Mesh/Geometry
+documents do not both carry independently comparable coordinate metadata.
+Composition parsing, source-revision and sidecar-checksum refusal, saved-view
+reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
+and Electron acceptance tests. Do not interpret a saved view as a scientific
+merge or a copy of source buffers.
+
 Keep two distinct modes:
 
 - **Overlay:** compatible Geometry and Mesh members share a SurfaceViewer scene
@@ -1318,8 +1344,8 @@ versus live document. Resolve retained snapshots and missing resources explicitl
 never reconstruct unavailable history from a current source and call it historical.
 
 Reliable active-document navigation and the first Related/Overview/Workbook
-slice are delivered on `main`. Explicit comparison/composition of multiple
-retained documents remains the next planned phase after its prerequisite check.
+slice are delivered on `main`. The bounded current-generation composition view
+is implemented; retained historical comparison and PC06–PC10 remain next.
 
 ## First-flow implementation — 2026-10-07
 
