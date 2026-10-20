@@ -14,6 +14,8 @@ export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]
   "curve-construction-study": ["Curve", "Surface"],
   "scene-topology-study": ["Geometry", "Topology"],
   "geometry-note-pins": ["Geometry", "Notes"],
+  "coordinate-overlay-study": ["Geometry", "Analysis"],
+  "surface-generation-study": ["Surface", "Analysis"],
   "catenoid-evidence": ["Surface", "Mesh", "Workbook", "Notes"],
   "edge-path-evidence": ["Mesh", "Analysis", "Workbook", "Notes"],
   "graph-derivative-notebook": ["Graph", "Curve", "Analysis", "Workbook", "Notes"],
@@ -41,6 +43,8 @@ export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <s
   {(id === "curve-construction-study" || id === "curve-construction-notebook") && <><path d="M48 120L82 78L115 103L151 40" fill="none" stroke="#2563eb" strokeWidth="5" /><path d="M151 40C194 20 248 32 264 72C247 119 194 130 151 104" fill="#dbeafe" stroke="#3984c9" strokeWidth="2" /><path d="M151 40C176 81 176 83 151 104M190 31C216 73 216 96 190 119M230 42C255 76 255 91 230 107" fill="none" stroke="#70a5d7" strokeWidth="2" /></>}
   {id === "scene-topology-study" && <><path d="M48 116L154 27L273 116Z" fill="#eaf3ff" stroke="#2563eb" strokeWidth="4" /><path d="M48 116L273 116M154 27L154 116" stroke="#93b5dc" strokeWidth="2" /><circle cx="48" cy="116" r="7" fill="#2563eb" /><circle cx="154" cy="27" r="7" fill="#2563eb" /><circle cx="273" cy="116" r="7" fill="#2563eb" /><circle cx="154" cy="116" r="7" fill="#e69b22" /></>}
   {id === "geometry-note-pins" && <><path d="M40 60L88 35L137 60L88 84Z" fill="#7c95ce" /><path d="M40 60V112L88 136V84Z" fill="#526daa" /><path d="M88 84V136L137 112V60Z" fill="#647fb7" /><circle cx="229" cy="85" r="47" fill="#2fa895" stroke="#178774" strokeWidth="3" /><circle cx="88" cy="35" r="8" fill="#f59e0b" stroke="#fff" strokeWidth="3" /><circle cx="229" cy="38" r="8" fill="#f59e0b" stroke="#fff" strokeWidth="3" /></>}
+  {id === "coordinate-overlay-study" && <><rect x="55" y="34" width="102" height="84" rx="8" fill="#3976d7" fillOpacity=".55" stroke="#3976d7" strokeWidth="3" /><circle cx="180" cy="75" r="48" fill="#e8793a" fillOpacity=".48" stroke="#e8793a" strokeWidth="3" /><path d="M160 19V132M25 75H292" stroke="#64748b" strokeWidth="2" strokeDasharray="6 5" /><path d="M227 105l16 16 33-42" fill="none" stroke="#16856c" strokeWidth="7" strokeLinecap="round" /></>}
+  {id === "surface-generation-study" && <><path d="M20 48Q88 155 155 48M165 115Q228 18 299 115" fill="none" stroke="#3976d7" strokeWidth="5" /><path d="M150 75h34m-13-12 13 12-13 12" fill="none" stroke="#e8793a" strokeWidth="4" strokeLinecap="round" /><path d="M30 124H145M175 124H290" stroke="#8093af" strokeWidth="2" /></>}
 </svg>;
 
 export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId) => void; onOpen: (id: ProjectStarterId) => void; onNewCopy: (id: ProjectStarterId) => void; copies: Partial<Record<ProjectStarterId, ProjectLibraryEntry>>; busy: boolean; query?: string; moduleFilter?: string }> = ({ onPreview, onOpen, onNewCopy, copies, busy, query = "", moduleFilter = "All modules" }) => {

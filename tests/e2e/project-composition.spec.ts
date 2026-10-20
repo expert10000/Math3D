@@ -115,3 +115,49 @@ test("PC05 compares a retained Surface checkpoint with its current generation", 
     expect(saved.compositions[0].members.map((member: any) => member.expected.revision)).toEqual([1, 2]);
   } finally { await closeSurfaceApp(ctx); }
 });
+
+test("PC03 starter exposes verified, asserted and refused coordinate overlays", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-template-open-coordinate-overlay-study").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
+    await panel.getByTestId("project-open-composition").click();
+    const view = page.getByTestId("project-composition-view");
+    await view.getByLabel("Saved composition").selectOption({ label: "Verified A/B overlay" });
+    await expect(view.getByText("Source-declared coordinate frames, axes, handedness, and units match this overlay.")).toBeVisible();
+    await view.getByLabel("Saved composition").selectOption({ label: "Unverified A/D overlay" });
+    await expect(view.getByText(/Unverified overlay: at least one source/)).toBeVisible();
+    const project = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    await view.getByTestId("project-composition-source-1").selectOption(project.workspace.entries[2].expected.id);
+    await expect(view.getByRole("alert")).toContainText("Source coordinate frames, axes, handedness, or units disagree");
+    await view.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    expect(core.parseMath3DProject(await page.evaluate(() => localStorage.getItem("math3d.project.v1")))).toEqual(project);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("PC05 starter opens a replay-backed before/after comparison", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-template-open-surface-generation-study").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
+    await panel.getByTestId("project-open-composition").click();
+    const view = page.getByTestId("project-composition-view");
+    await view.getByLabel("Saved composition").selectOption({ label: "Before / after · linked u,v" });
+    await expect(view.getByRole("region", { name: /A: Bowl → saddle/ })).toContainText("retained checkpoint r1");
+    await expect(view.getByRole("region", { name: /B: Bowl → saddle/ })).toContainText("current r2");
+    await expect(view.getByText(/Linked selection uses the same stored parameter/)).toBeVisible();
+    await view.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    const stored = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
+    expect(core.parseMath3DProject(stored).compositions).toHaveLength(1);
+  } finally { await closeSurfaceApp(ctx); }
+});

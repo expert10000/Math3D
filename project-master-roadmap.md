@@ -1333,6 +1333,13 @@ reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific
 merge or a copy of source buffers.
 
+Two self-contained Project starters now make the bounded PC03/PC05 behavior
+testable from the UI: **Coordinate Overlay Verification** provides matching,
+mismatched, and undeclared Geometry frames, while **Surface Generation
+Comparison** supplies a replay-backed bowl-to-saddle edit and saved before/after
+view. Their unit and Electron checks cover opening, refusal, serialization and
+restart. These presets do not close the remaining PC03/PC05 gaps above.
+
 Keep two distinct modes:
 
 - **Overlay:** compatible Geometry and Mesh members share a SurfaceViewer scene

@@ -11,6 +11,7 @@ import { createRepresentationTemplateWorkspace } from "./projectRepresentationTe
 import { createGeometryDocument, geometryObjectShape } from "./geometryDocument";
 import { createProjectNote } from "./projectNotes";
 import { structuralHash } from "./documentIdentity";
+import { createProjectComparisonTemplate } from "./projectComparisonTemplates";
 
 /** Built-in recipes create ordinary documents; there is no executable template input. */
 export const MATH3D_PROJECT_TEMPLATES = Object.freeze([
@@ -46,6 +47,16 @@ export const MATH3D_PROJECT_TEMPLATES = Object.freeze([
     steps: Object.freeze(["Open the Geometry document and choose Notes: All in the viewer.",
       "Open the Notes sidebar to read the two anchored observations.",
       "Move or rotate an object: its pin follows. Change its shape: the Note becomes stale and its pin disappears."]) }),
+  Object.freeze({ id: "coordinate-overlay-study", version: 1, title: "Coordinate Overlay Verification",
+    description: "Test verified, mismatched, and operator-asserted overlays with four independent saved Geometry sources.",
+    steps: Object.freeze(["Open Compare saved documents and choose the saved Verified A/B overlay.",
+      "Choose the Unverified A/D overlay to see that missing source metadata remains an operator assertion.",
+      "Replace B with C to confirm that a declared mm/cm mismatch refuses the overlay."]) }),
+  Object.freeze({ id: "surface-generation-study", version: 1, title: "Surface Generation Comparison",
+    description: "Inspect a retained bowl checkpoint beside its current saddle and link their shared parameter chart.",
+    steps: Object.freeze(["Open Compare saved documents and choose Before / after · linked u,v.",
+      "Pick a surface point to link its stored u,v chart coordinate across both generations.",
+      "Save and reopen the Project: both immutable source identities must still verify."]) }),
 ] as const);
 export type Math3DProjectTemplateId = typeof MATH3D_PROJECT_TEMPLATES[number]["id"];
 
@@ -54,6 +65,8 @@ export const instantiateMath3DProjectTemplate = (id: string, instanceKey: string
   if (!template) throw new TypeError("Unknown project template.");
   if (typeof instanceKey !== "string" || instanceKey.trim() !== instanceKey || !instanceKey.length || instanceKey.length > 160)
     throw new TypeError("A fresh template instance token of 1–160 characters is required.");
+  if (template.id === "coordinate-overlay-study" || template.id === "surface-generation-study")
+    return createProjectComparisonTemplate(template.id, instanceKey);
   if (template.id === "geometry-note-pins") {
     const position = (x: number) => ({ position: { x, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } });
     const geometry = createGeometryDocument({ stableKey: ["project-template", id, template.version, instanceKey, "geometry"],

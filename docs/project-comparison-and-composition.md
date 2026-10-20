@@ -5,6 +5,26 @@ composition saves source IDs, exact document revisions and hashes, visibility,
 supported appearance choices, and view mode. It does not copy, edit, or merge
 the owning Surface, Mesh, or Geometry documents or their scientific buffers.
 
+## Ready-to-open test starters
+
+In Math3D choose **Projects → Starter projects** and open one of these built-in
+Projects. Each creates an independent saved copy; **New copy** creates another.
+Then open **Compare saved documents** in the Project navigator and choose the
+named entry under **Saved composition**.
+
+| Starter | Saved comparison | What to check |
+| --- | --- | --- |
+| **Coordinate Overlay Verification** | **Verified A/B overlay** | The two source-declared `laboratory xyz` / `mm` frames, axes and handedness match; the banner identifies a source-declared match. |
+| Same starter | **Unverified A/D overlay** | D has no coordinate declaration, so the banner says the alignment is an operator assertion. |
+| Same starter | Choose **C · mismatched cm box** as source B while in Overlay mode | The viewer refuses the `mm`/`cm` mismatch instead of drawing it as aligned. |
+| **Surface Generation Comparison** | **Before / after · linked u,v** | A is the retained bowl checkpoint (r1); B is the current saddle (r2). Select a Surface point to link its stored parameter coordinate across panes. |
+
+Save the Project, restart Math3D, and reopen the comparison to check that the
+same source revisions still verify. The test starters add no worker, derived
+physics, or editable copy of a source inside a composition. An overlay banner
+checks declarations supplied by the sources; it cannot prove that a producer's
+coordinate declaration was scientifically correct.
+
 ## Open a comparison
 
 1. Open a saved Project with at least two supported documents.
