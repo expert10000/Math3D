@@ -31,9 +31,12 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def input_record(mesh: tuple[bytes, bytes]) -> dict:
-    value = HARNESS.metrics("input", *mesh)
-    return {"sha256": sha256(mesh[0] + mesh[1]), "metrics": serializable_metrics(value)}
+def input_record(mesh: tuple[bytes, bytes], validate: bool = True) -> dict:
+    record = {"sha256": sha256(mesh[0] + mesh[1]),
+              "vertices": len(mesh[0]) // 12, "triangles": len(mesh[1]) // 12}
+    if validate:
+        record["metrics"] = serializable_metrics(HARNESS.metrics("input", *mesh))
+    return record
 
 
 def serializable_metrics(value: dict) -> dict:
@@ -44,9 +47,10 @@ def rotated_copy(mesh: tuple[bytes, bytes]) -> tuple[bytes, bytes]:
     points = np.frombuffer(mesh[0], dtype="<f4").copy().reshape(-1, 3)
     center = (points.min(axis=0) + points.max(axis=0)) / 2
     angle = math.radians(8)
-    rotation = np.asarray([[math.cos(angle), -math.sin(angle), 0],
-                           [math.sin(angle), math.cos(angle), 0], [0, 0, 1]])
-    result = (points - center) @ rotation.T + center
+    centered = points - center
+    result = np.column_stack((math.cos(angle) * centered[:, 0] - math.sin(angle) * centered[:, 1] + center[0],
+                              math.sin(angle) * centered[:, 0] + math.cos(angle) * centered[:, 1] + center[1],
+                              centered[:, 2] + center[2]))
     result[:, 0] += 0.05 * float(np.ptp(points[:, 0]))
     return np.asarray(result, dtype="<f4").tobytes(), mesh[1]
 
@@ -56,9 +60,20 @@ def shifted_surface_cutter(mesh: tuple[bytes, bytes]) -> tuple[bytes, bytes]:
     return HARNESS.shifted_copy(cutter[0], 0.06), cutter[1]
 
 
+def open_surface(mesh: tuple[bytes, bytes]) -> tuple[bytes, bytes]:
+    faces = np.frombuffer(mesh[1], dtype="<u4").reshape(-1, 3)
+    return mesh[0], np.ascontiguousarray(faces[:-1]).tobytes()
+
+
+def non_manifold_surface(mesh: tuple[bytes, bytes]) -> tuple[bytes, bytes]:
+    faces = np.frombuffer(mesh[1], dtype="<u4").reshape(-1, 3)
+    return mesh[0], np.ascontiguousarray(np.concatenate((faces, faces[:1]))).tobytes()
+
+
 def write_obj(path: Path, mesh: tuple[bytes, bytes]) -> str:
     points = np.frombuffer(mesh[0], dtype="<f4").reshape(-1, 3)
     faces = np.frombuffer(mesh[1], dtype="<u4").reshape(-1, 3)
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="ascii", newline="\n") as output:
         for x, y, z in points:
             output.write(f"v {x:.9g} {y:.9g} {z:.9g}\n")
@@ -69,31 +84,42 @@ def write_obj(path: Path, mesh: tuple[bytes, bytes]) -> str:
 
 def qualify(name: str, source: Path, transform: str, make_b, worker: Path,
             output_dir: Path, operation_seconds: int, deadline: float,
-            max_payload: int, expected_rejection: str | None = None) -> dict:
+            max_payload: int, expected_rejection: tuple[str, str] | None = None,
+            invalid_b: bool = False) -> dict:
     evidence = {"name": name, "source": source.name, "sourceSha256": sha256(source.read_bytes()),
                 "transformB": transform, "expectedOutcome": "rejected" if expected_rejection else "succeeded",
                 "operations": [], "invariants": {}, "status": "failed", "diagnostics": []}
     try:
         a = HARNESS.read_mesh(source)
         b = make_b(a)
-        evidence["inputs"] = {"A": input_record(a), "B": input_record(b)}
+        evidence["inputs"] = {"A": input_record(a), "B": input_record(b, not invalid_b)}
         if sum(map(len, (*a, *b))) > max_payload:
             raise RuntimeError("Encoded input exceeds the configured payload memory budget")
         if expected_rejection:
+            operation, expected_diagnostic = expected_rejection
+            rejected_output = output_dir / f"{name}-{operation}.obj"
+            if rejected_output.exists():
+                raise RuntimeError(f"A rejected case already has an output artifact: {rejected_output.name}")
             remaining = int(deadline - time.monotonic())
             if remaining <= 0:
                 raise RuntimeError("Total suite runtime limit exceeded")
             try:
-                HARNESS.run_worker(worker, name, "union", a, b, min(operation_seconds, remaining))
+                HARNESS.run_worker(worker, name, operation, a, b, min(operation_seconds, remaining))
             except RuntimeError as error:
-                if expected_rejection not in str(error):
+                if expected_diagnostic not in str(error) or rejected_output.exists():
                     raise
                 evidence["status"] = "passed"
                 evidence["observedOutcome"] = "rejected"
+                evidence["rejection"] = {"operation": operation, "expectedDiagnostic": expected_diagnostic,
+                                         "artifactAbsent": True}
                 evidence["diagnostics"].append(str(error))
                 print(f"{name}: expected rejection: {error}", flush=True)
                 return evidence
             raise RuntimeError("Native worker unexpectedly accepted a pair expected to be rejected")
+        snapshot = f"inputs/{name}-b.obj"
+        snapshot_path = output_dir / snapshot
+        evidence["previewInputs"] = {"B": {"path": snapshot, "sha256": write_obj(snapshot_path, b),
+                                           "bytes": snapshot_path.stat().st_size}}
         outputs = {}
         for operation in ("union", "intersection", "difference"):
             remaining = int(deadline - time.monotonic())
@@ -162,15 +188,19 @@ def main() -> int:
     armadillo = args.assets_dir / "11_armadillo.obj"
     benchy = args.assets_dir / "10_3dbenchy.stl"
     tasks = [
-        ("armadillo-shift", armadillo, "B translated +0.15 A X-span", lambda a: (HARNESS.shifted_copy(a[0], 0.15), a[1]), None),
-        ("armadillo-rotated", armadillo, "B rotated +8 degrees Z, translated +0.05 A X-span", rotated_copy, None),
-        ("3dbenchy-cutter", benchy, "B surface-centred cube, half-edge 0.12 max span", lambda a: HARNESS.surface_cutter(*a), None),
-        ("3dbenchy-second-cutter", benchy, "B surface-centred cube translated +0.06 cutter X-span", shifted_surface_cutter, None),
-        ("3dbenchy-coplanar-overlap", benchy, "B translated +0.08 A X-span; known CGAL corefinement rejection", lambda a: (HARNESS.shifted_copy(a[0], 0.08), a[1]), "Unauthorized intersections of constraints"),
+        ("armadillo-shift", armadillo, "B translated +0.15 A X-span", lambda a: (HARNESS.shifted_copy(a[0], 0.15), a[1]), None, False),
+        ("armadillo-rotated", armadillo, "B rotated +8 degrees Z, translated +0.05 A X-span", rotated_copy, None, False),
+        ("3dbenchy-cutter", benchy, "B surface-centred cube, half-edge 0.12 max span", lambda a: HARNESS.surface_cutter(*a), None, False),
+        ("3dbenchy-second-cutter", benchy, "B surface-centred cube translated +0.06 cutter X-span", shifted_surface_cutter, None, False),
+        ("3dbenchy-coplanar-overlap", benchy, "B translated +0.08 A X-span; known CGAL corefinement rejection", lambda a: (HARNESS.shifted_copy(a[0], 0.08), a[1]), ("union", "Unauthorized intersections of constraints"), False),
+        ("armadillo-open-intersection", armadillo, "B has one face removed", open_surface, ("intersection", "Boolean inputs must be closed triangle meshes"), True),
+        ("armadillo-nonmanifold-intersection", armadillo, "B repeats one face", non_manifold_surface, ("intersection", "Invalid or non-manifold mesh face"), True),
+        ("armadillo-open-difference", armadillo, "B has one face removed", open_surface, ("difference", "Boolean inputs must be closed triangle meshes"), True),
+        ("armadillo-nonmanifold-difference", armadillo, "B repeats one face", non_manifold_surface, ("difference", "Invalid or non-manifold mesh face"), True),
     ]
     cases = [qualify(name, source, transform, make_b, args.worker, args.output_dir,
-                     args.operation_seconds, deadline, args.max_payload_mb * 1048576, expected_rejection)
-             for name, source, transform, make_b, expected_rejection in tasks]
+                     args.operation_seconds, deadline, args.max_payload_mb * 1048576, expected_rejection, invalid_b)
+             for name, source, transform, make_b, expected_rejection, invalid_b in tasks]
     passed = sum(case["status"] == "passed" for case in cases)
     suite = {"worker": {"version": "native-protocol-v1", "recordedCgalVersion": args.recorded_cgal_version,
                         "sha256": sha256(args.worker.read_bytes())},
