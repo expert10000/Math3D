@@ -75,6 +75,27 @@ PC06 provides opt-in, one-way camera-pose linking only for compatible pairs; no
 arbitrary cross-frame camera transform is inferred. No physics worker or
 scientific recomputation is involved.
 
+## PC07 · Workbook Visualize comparison
+
+Open a saved Project containing a saved composition, then open a Workbook's
+**Visualize** stage. In a Visualize block, choose that composition under
+**Saved Project comparison**. The block records the Project ID, composition ID,
+and exact composition hash; it does not copy either document or its buffers.
+Choose **Show embedded comparison** to render the saved two-pane or overlay
+view inside the block. Closing it releases the mounted viewers. The same link
+appears in Workbook document mode and in a saved Project Workbook.
+
+The embedded view replays and checks both source generations and Mesh sidecars
+before display. If the composition changes, a member goes missing, or a
+generation is no longer retained, the block says stale or missing and refuses
+the preview. It does not follow a changed composition implicitly. The existing
+same-chart `(u,v)` selection and qualified camera preference are reused where
+applicable; neither creates new physics or alters the active document. Legacy
+overlay alignment remains an operator assertion when source metadata is absent.
+
+Focused checks: `npx vitest run tests/unit/workbookProjectComparison.test.ts`
+and `npx playwright test tests/e2e/workbook-comparison.spec.ts --reporter=list`.
+
 An optional source declaration uses the exact object
 `{"format":"math3d.coordinate-frame/v1","frame":"laboratory xyz","unit":"mm","axes":["x","y","z"],"handedness":"right"}`.
 The Mesh producer stores it at `source.origin.math3dCoordinateFrame`; the

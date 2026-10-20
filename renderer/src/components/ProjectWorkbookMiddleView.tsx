@@ -3,6 +3,7 @@ import type { KernelWorkspaceModule, Math3DProject } from "@math3d/core";
 import type { Workbook } from "@math3d/workbook";
 import { WorkbookDocumentView } from "./WorkbookDocumentView";
 import { ProjectMiddlePortal } from "./ProjectMiddlePortal";
+import type { ProjectResourceReader } from "../projects/projectResources";
 
 type Props = {
   workbook: Workbook;
@@ -14,10 +15,11 @@ type Props = {
   onOpenNote: (id: string) => void;
   onOpenProjects: () => void;
   focusBlockId?: string;
+  readComparisonResource?: ProjectResourceReader;
 };
 
 /** A presentation layer over the current viewer; its document session stays mounted. */
-export const ProjectWorkbookMiddleView: React.FC<Props> = ({ workbook, project, documentTitle, onReturn, onEdit, onOpenDocument, onOpenNote, onOpenProjects, focusBlockId }) => {
+export const ProjectWorkbookMiddleView: React.FC<Props> = ({ workbook, project, documentTitle, onReturn, onEdit, onOpenDocument, onOpenNote, onOpenProjects, focusBlockId, readComparisonResource }) => {
   useEffect(() => {
     if (!focusBlockId) return;
     const frame = requestAnimationFrame(() => document.querySelector(`[data-testid="workbook-document-block-${CSS.escape(focusBlockId)}"]`)?.scrollIntoView({ block: "start" }));
@@ -30,6 +32,7 @@ export const ProjectWorkbookMiddleView: React.FC<Props> = ({ workbook, project, 
       <span style={{ color: "#475569" }}>The selected Project document remains active.</span>
     </div>
     <WorkbookDocumentView workbook={workbook} project={project} projectLive={!!project} readOnly
+      readComparisonResource={readComparisonResource}
       statusFor={() => ({ state: "saved", label: "Saved" })} onUpdateBlock={() => undefined}
       onEditBlock={onEdit} onOpenDocument={onOpenDocument} onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} />
   </ProjectMiddlePortal>;

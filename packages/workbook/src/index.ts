@@ -8,3 +8,4 @@ export * from "./workbookNamedParameters";
 export * from "./notebookProvenance";
 export * from "./workbookClaims";
 export * from "./workbookSnapshotProvenance";
+export * from "./workbookComparisonReference";

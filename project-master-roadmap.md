@@ -4,7 +4,7 @@ Date: 2026-10-09 (navigation handoff; original plan dated October 7)
 
 Status: the Project navigation and first-open optimization are committed and
 pushed to remote `main` in `030f0010`. The supported Electron Project/Catenoid
-checks pass. Installer release and the wider PC06–PC10 phase remain separate
+checks pass. Installer release and the wider PC08–PC10 phase remain separate
 work.
 
 **PC01–PC05 bounded implementation — October 20:** a saved Project can now
@@ -18,9 +18,14 @@ parameter pick across two generations of the same Surface when their stored
 domains match. Mesh/Geometry overlays now check matching coordinate declarations
 when both structural sources supply them. Legacy sources without declarations
 remain operator-asserted, and arbitrary unretained generations, unrelated-model
-selection mapping, camera sync, and unsupported Surface families remain outside
+selection mapping and unsupported Surface families remain outside
 this bounded implementation. See
 [Project comparison and composition](docs/project-comparison-and-composition.md).
+
+**PC06–PC07 bounded continuation — October 20:** compatible pairs can opt into
+qualified one-way camera synchronization. Workbook Visualize blocks can link an
+exact saved Project composition and open its checked comparison inline, without
+copying or changing either source. The viewer loads only when expanded.
 
 ## Current delivery
 
@@ -1331,8 +1336,11 @@ unretained history and unrelated-model selection mapping. PC06 is delivered for
 compatible side-by-side pairs: camera linking is opt-in, A or B may lead, and
 saved preference is requalified on reopening. It is disabled without matching
 declared 3D frames or the same Surface's parameter axes/domain/unit; camera
-poses are not persisted or transformed between unrelated frames. PC07–PC10
-remain planned.
+poses are not persisted or transformed between unrelated frames. PC07 adds an
+exact, non-owning saved-composition reference to Workbook Visualize blocks and
+an on-demand embedded view. Composition hash, both member generations, replay,
+and sidecars are checked again on opening; stale or missing sources are refused
+without changing the active scientific documents. PC08–PC10 remain planned.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

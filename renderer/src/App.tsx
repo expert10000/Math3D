@@ -77467,6 +77467,24 @@ case "mobius":
     const volume = volumeExtractionBridgeRef.current?.artifacts().resolve(handle, source);
     return volume?.ok ? volume.bytes : null;
   };
+  const readComparisonResource = (item: ProjectResourceRequirement): Uint8Array | null => {
+    const restored = restoredProjectRef.current?.resources?.bytes(item);
+    if (restored) return restored;
+    if (item.kind === "mesh-buffers") {
+      const reference = item.reference as import("@math3d/core").MeshResourceReference;
+      for (const adapter of [meshDocumentAdapterRef.current, ...restoredProjectRef.current?.meshes.values() ?? []]) {
+        const bytes = adapter?.resources.bytes(reference);
+        if (bytes) return bytes;
+      }
+      for (const record of surfaceMeshKernelHandoff.records())
+        if (record.meshDocument?.source.resource.id === item.id) return surfaceMeshKernelHandoff.resolvePromoted(record.meshId);
+    }
+    if (item.kind === "volume-payload") {
+      const data = volumeStorageStoreRef.current.get(item.id);
+      if (data) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength).slice();
+    }
+    return null;
+  };
   const readNotebookContext = () => readNotebookProjectContext(activeNotebookProjectRef.current, localStorage.getItem(PROJECT_STORAGE_KEY), captureMixedKernelWorkspace, readNotebookArtifact);
   const getNotebookContext = () => {
     const context = readNotebookContext();
@@ -79753,6 +79771,7 @@ case "mobius":
       />
       {projectMiddleContent?.kind === "workbook" && activeProjectDocumentId && <ProjectWorkbookMiddleView
         workbook={projectMiddleContent.workbook} project={activeNotebookProjectRef.current}
+        readComparisonResource={readComparisonResource}
         documentTitle={activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId]?.title ?? "document"}
         focusBlockId={projectMiddleContent.focusBlockId}
         onReturn={() => setProjectMiddleContent(null)}
@@ -89753,6 +89772,7 @@ case "mobius":
                   ) : (
                     <WorkbookPanel
                       workbooks={workbooks}
+                      readComparisonResource={readComparisonResource}
                       getNotebookProject={getNotebookContext}
                       onExportPublication={exportNotebookPublication}
                       onOpenProjects={() => setProjectsOpen(true)}

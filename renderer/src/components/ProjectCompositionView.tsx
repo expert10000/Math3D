@@ -19,7 +19,7 @@ import type { CameraSyncState, OverlayPointSet, OverlayPolylineGroup } from "./S
 type RenderMesh = SurfaceMeshData & { id: string; color: number; opacity: number; transform?: {
   position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number };
 } };
-type RenderMember = { id: string; title: string; revision: number; hash: string; generation: "current" | "retained checkpoint"; slot?: 0 | 1;
+export type RenderMember = { id: string; title: string; revision: number; hash: string; generation: "current" | "retained checkpoint"; slot?: 0 | 1;
   coordinates: ProjectCoordinateFrameRead; meshes: RenderMesh[]; points: OverlayPointSet[]; lines: OverlayPolylineGroup[];
   param?: { binding?: SurfaceDocumentBinding; x?: string; y?: string; z?: string; domain?: { uMin: number; uMax: number; vMin: number; vMax: number }; unit: string; opacity: number } };
 type Pick = { memberId: string; revision: number; hash: string; meshKey?: string; faceIndex?: number; uv?: { u: number; v: number };
@@ -115,14 +115,14 @@ export const qualifyProjectCameraPair = (members: readonly RenderMember[]): "sha
   return null;
 };
 
-const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; onPick: (pick: Pick) => void;
+export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; onPick: (pick: Pick) => void; height?: number;
   linkedUV?: { u: number; v: number } | null; linkedToken?: number;
   onCameraSync?: (state: CameraSyncState) => void; cameraOverride?: CameraSyncState | null; cameraOverrideToken?: number }> =
-  ({ members, label, onPick, linkedUV, linkedToken, onCameraSync, cameraOverride, cameraOverrideToken }) => {
+  ({ members, label, onPick, height = 520, linkedUV, linkedToken, onCameraSync, cameraOverride, cameraOverrideToken }) => {
   const meshes = useMemo(() => members.flatMap(member => member.meshes), [members]);
   const points = useMemo(() => members.flatMap(member => member.points), [members]);
   const lines = useMemo(() => members.flatMap(member => member.lines), [members]);
-  return <section aria-label={label} style={{ minWidth: 0, height: 520, position: "relative", border: "1px solid #cbd5e1", borderRadius: 8, overflow: "hidden" }}>
+  return <section aria-label={label} style={{ minWidth: 0, height, position: "relative", border: "1px solid #cbd5e1", borderRadius: 8, overflow: "hidden" }}>
     <div style={{ position: "absolute", zIndex: 30, top: 58, left: 10, background: "#fff", padding: "4px 8px", borderRadius: 4, maxWidth: "min(80%, 450px)" }}>
       <strong>{label}</strong><br /><small>{members.map(member => `${member.generation} r${member.revision} · ${member.hash.slice(0, 20)}… · ${member.param?.unit ?? "unit not recorded"}`).join(" / ")}</small>
     </div>

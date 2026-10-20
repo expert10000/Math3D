@@ -4,6 +4,7 @@ import { createNotebookReference, inspectNotebookReference, normalizeNotebookRef
 import type { Workbook, WorkbookBlock } from "./workbookModel";
 import { normalizeWorkbookNamedParameters, workbookNamedParameterHash, inspectWorkbookParameterBinding } from "./workbookNamedParameters";
 import { normalizeWorkbookClaim } from "./workbookClaims";
+import { normalizeWorkbookComparisonReference } from "./workbookComparisonReference";
 
 /** Dependency edges record provenance and ordering. They do not execute or copy target content. */
 export type WorkbookDependency = Readonly<{
@@ -33,6 +34,10 @@ export function validateWorkbookDependencies(workbook: Workbook): void {
     normalizeWorkbookClaim(block.claim);
   }
   for (const block of blocksOf(workbook)) for (const snapshot of [block.visualize?.snapshot, block.visualize?.snapshotA, block.visualize?.snapshotB]) if (snapshot?.provenance !== undefined) normalizeWorkbookSnapshotProvenance(snapshot.provenance);
+  for (const block of blocksOf(workbook)) if (block.visualize?.comparison !== undefined) {
+    if (block.type !== "visualize") throw new TypeError("Project comparisons belong to Visualize blocks.");
+    normalizeWorkbookComparisonReference(block.visualize.comparison);
+  }
   if (workbook.dependencies === undefined) return;
   if (!Array.isArray(workbook.dependencies)) throw new TypeError("Invalid Workbook dependencies.");
   const blocks = new Map(blocksOf(workbook).map((block) => [block.id, block]));
