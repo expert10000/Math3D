@@ -51,6 +51,11 @@ def rotated_copy(mesh: tuple[bytes, bytes]) -> tuple[bytes, bytes]:
     return np.asarray(result, dtype="<f4").tobytes(), mesh[1]
 
 
+def shifted_surface_cutter(mesh: tuple[bytes, bytes]) -> tuple[bytes, bytes]:
+    cutter = HARNESS.surface_cutter(*mesh)
+    return HARNESS.shifted_copy(cutter[0], 0.06), cutter[1]
+
+
 def write_obj(path: Path, mesh: tuple[bytes, bytes]) -> str:
     points = np.frombuffer(mesh[0], dtype="<f4").reshape(-1, 3)
     faces = np.frombuffer(mesh[1], dtype="<u4").reshape(-1, 3)
@@ -64,15 +69,31 @@ def write_obj(path: Path, mesh: tuple[bytes, bytes]) -> str:
 
 def qualify(name: str, source: Path, transform: str, make_b, worker: Path,
             output_dir: Path, operation_seconds: int, deadline: float,
-            max_payload: int) -> dict:
+            max_payload: int, expected_rejection: str | None = None) -> dict:
     evidence = {"name": name, "source": source.name, "sourceSha256": sha256(source.read_bytes()),
-                "transformB": transform, "operations": [], "invariants": {}, "status": "failed", "diagnostics": []}
+                "transformB": transform, "expectedOutcome": "rejected" if expected_rejection else "succeeded",
+                "operations": [], "invariants": {}, "status": "failed", "diagnostics": []}
     try:
         a = HARNESS.read_mesh(source)
         b = make_b(a)
         evidence["inputs"] = {"A": input_record(a), "B": input_record(b)}
         if sum(map(len, (*a, *b))) > max_payload:
             raise RuntimeError("Encoded input exceeds the configured payload memory budget")
+        if expected_rejection:
+            remaining = int(deadline - time.monotonic())
+            if remaining <= 0:
+                raise RuntimeError("Total suite runtime limit exceeded")
+            try:
+                HARNESS.run_worker(worker, name, "union", a, b, min(operation_seconds, remaining))
+            except RuntimeError as error:
+                if expected_rejection not in str(error):
+                    raise
+                evidence["status"] = "passed"
+                evidence["observedOutcome"] = "rejected"
+                evidence["diagnostics"].append(str(error))
+                print(f"{name}: expected rejection: {error}", flush=True)
+                return evidence
+            raise RuntimeError("Native worker unexpectedly accepted a pair expected to be rejected")
         outputs = {}
         for operation in ("union", "intersection", "difference"):
             remaining = int(deadline - time.monotonic())
@@ -141,14 +162,15 @@ def main() -> int:
     armadillo = args.assets_dir / "11_armadillo.obj"
     benchy = args.assets_dir / "10_3dbenchy.stl"
     tasks = [
-        ("armadillo-shift", armadillo, "B translated +0.15 A X-span", lambda a: (HARNESS.shifted_copy(a[0], 0.15), a[1])),
-        ("armadillo-rotated", armadillo, "B rotated +8 degrees Z, translated +0.05 A X-span", rotated_copy),
-        ("3dbenchy-cutter", benchy, "B surface-centred cube, half-edge 0.12 max span", lambda a: HARNESS.surface_cutter(*a)),
-        ("3dbenchy-shift", benchy, "B translated +0.08 A X-span", lambda a: (HARNESS.shifted_copy(a[0], 0.08), a[1])),
+        ("armadillo-shift", armadillo, "B translated +0.15 A X-span", lambda a: (HARNESS.shifted_copy(a[0], 0.15), a[1]), None),
+        ("armadillo-rotated", armadillo, "B rotated +8 degrees Z, translated +0.05 A X-span", rotated_copy, None),
+        ("3dbenchy-cutter", benchy, "B surface-centred cube, half-edge 0.12 max span", lambda a: HARNESS.surface_cutter(*a), None),
+        ("3dbenchy-second-cutter", benchy, "B surface-centred cube translated +0.06 cutter X-span", shifted_surface_cutter, None),
+        ("3dbenchy-coplanar-overlap", benchy, "B translated +0.08 A X-span; known CGAL corefinement rejection", lambda a: (HARNESS.shifted_copy(a[0], 0.08), a[1]), "Unauthorized intersections of constraints"),
     ]
     cases = [qualify(name, source, transform, make_b, args.worker, args.output_dir,
-                     args.operation_seconds, deadline, args.max_payload_mb * 1048576)
-             for name, source, transform, make_b in tasks]
+                     args.operation_seconds, deadline, args.max_payload_mb * 1048576, expected_rejection)
+             for name, source, transform, make_b, expected_rejection in tasks]
     passed = sum(case["status"] == "passed" for case in cases)
     suite = {"worker": {"version": "native-protocol-v1", "recordedCgalVersion": args.recorded_cgal_version,
                         "sha256": sha256(args.worker.read_bytes())},
@@ -156,7 +178,7 @@ def main() -> int:
                         "payloadMiB": args.max_payload_mb},
              "cases": cases, "passed": passed, "total": len(cases)}
     diagnostics = [{"severity": "error", "message": f"{case['name']}: {message}"}
-                   for case in cases for message in case["diagnostics"]]
+                   for case in cases if case["status"] != "passed" for message in case["diagnostics"]]
     (args.output_dir / "results.json").write_text(
         json.dumps({"realMeshSuite": suite, "diagnostics": diagnostics}, indent=2), encoding="utf-8"
     )
